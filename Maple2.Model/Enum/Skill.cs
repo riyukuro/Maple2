@@ -229,9 +229,11 @@ public enum BounceType {
     Unknown5 = 5,
 }
 
-[Flags]
+// stateAttr / MotionProperty superArmor: a level, not flags (SuperArmorRules.Holds says what each keeps off).
 public enum SuperArmor {
     None = 0,
     StunImmunity = 1,
     KnockbackImmunity = 2,
+    Full = 3,
+    PushOnly = 4,
 }

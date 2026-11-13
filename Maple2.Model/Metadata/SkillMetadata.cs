@@ -52,7 +52,9 @@ public record SkillMetadataState(
     // The skill counts its recharge uses on its origin skill (PlayedClientSkills).
     bool RechargeShared = false,
     // stateAttr clearCooldownFromPVPZone: entering a PvP zone ends the skill's cooldown.
-    bool ClearCooldownOnPvpZone = false);
+    bool ClearCooldownOnPvpZone = false,
+    // stateAttr superArmorApplyFieldType: where the cast's SuperArmor counts (0 anywhere, 1 off PvP maps, 2 on them).
+    int SuperArmorApplyField = 0);
 
 public record SkillMetadataLevel(
     BeginCondition Condition,
@@ -129,7 +131,9 @@ public record SkillMetadataAttack(
     SkillMetadataArrow Arrow,
     SkillMetadataDamage Damage,
     SkillEffectMetadata[] Skills,
-    SkillEffectMetadata[] SkillsOnDamage);
+    SkillEffectMetadata[] SkillsOnDamage,
+    // grabTargetType: 1 grabs the target (super armor 1, 2 and 4 give way to it).
+    int GrabTargetType = 0);
 
 public record SkillMetadataPet(
     int TamingGroup,

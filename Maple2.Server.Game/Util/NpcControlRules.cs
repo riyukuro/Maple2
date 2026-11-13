@@ -39,9 +39,10 @@ public static class NpcControlRules {
     // A damaging hit puts a monster in the hit state when the attack's hitImmuneBreak is above the npc's hitImmune.
     // KMS2 does it for npc classes 1 and 2 only (never for class 3 and up, whatever their hitImmune). A hit without
     // a push does it only to an npc that stands or walks: not during a cast, not while the last hit's hold runs. A
-    // hit with a push does it in those too and ends the cast. Chosen here: none while spawning or stunned.
-    public static bool HitReacts(int hitImmuneBreak, int hitImmune, int npcClass, bool push, ActorState state) {
-        if (hitImmuneBreak <= hitImmune || npcClass >= 3) {
+    // hit with a push does it in those too and ends the cast. Chosen here: none while spawning or stunned. Super
+    // armor that holds (SuperArmorRules.Holds) keeps it off as well.
+    public static bool HitReacts(int hitImmuneBreak, int hitImmune, int npcClass, bool push, ActorState state, bool armorHolds = false) {
+        if (hitImmuneBreak <= hitImmune || npcClass >= 3 || armorHolds) {
             return false;
         }
         return state switch {

@@ -51,7 +51,9 @@ public record AdditionalEffectMetadataProperty(
     int InvokeGroupId = 0, // the played client's Basic groupIDs of the first level: the group an invoke's effectGroupID names
     int SkillUseDisableMask = 0, // MotionProperty skillUseDisable: bit n set = the holder casts no skill of main type n
     bool IgnoreReduceTime = false, // BasicProperty ignoreReduceTimeCondition: the holder's duration reductions do not apply
-    bool ClearCooldownOnPvpZone = false); // BasicProperty clearCooldownFromPVPZone: entering a PvP zone ends the effect's cooldown
+    bool ClearCooldownOnPvpZone = false, // BasicProperty clearCooldownFromPVPZone: entering a PvP zone ends the effect's cooldown
+    int SuperArmor = 0, // MotionProperty superArmor: the holder's super armor level (see SuperArmorRules)
+    int SuperArmorApplyField = 0); // MotionProperty superArmorApplyFieldType: where it counts (0 anywhere, 1 off PvP maps, 2 on them)
 
 public record CooldownGroupRate(int GroupId, float Rate);
 

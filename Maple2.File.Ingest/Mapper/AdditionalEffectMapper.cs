@@ -90,7 +90,9 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                         InvokeGroupId: played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? playedEntry) ? playedEntry.GroupId : 0,
                         SkillUseDisableMask: mask,
                         IgnoreReduceTime: data.BasicProperty.ignoreReduceTimeCondition,
-                        ClearCooldownOnPvpZone: data.BasicProperty.clearCooldownFromPVPZone),
+                        ClearCooldownOnPvpZone: data.BasicProperty.clearCooldownFromPVPZone,
+                        SuperArmor: data.MotionProperty.superArmor,
+                        SuperArmorApplyField: data.MotionProperty.superArmorApplyFieldType),
                     Consume: new AdditionalEffectMetadataConsume(
                         HpRate: data.ConsumeProperty.hpRate,
                         SpRate: data.ConsumeProperty.spRate),

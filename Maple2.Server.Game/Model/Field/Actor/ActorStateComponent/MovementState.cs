@@ -187,9 +187,14 @@ public partial class MovementState {
     // npc in a jump arc or without the sequences is left alone (its cast goes on). The push runs straight over the
     // navmesh and stops at the first wall or ledge. Field thread only: see QueueHit.
     private bool TryHit(Vector3 source, SkillMetadataAttack attack) {
-        SkillMetadataPush? push = attack.Damage.Push is { Type: not 0 } p && (p.Probability >= 1 || Random.Shared.NextSingle() < p.Probability) ? p : null;
+        MapType mapType = actor.Field.Metadata.Property.Type;
+        SkillMetadataPush? push = SuperArmorRules.PushOn(attack.Damage.Push, mapType) is { } p
+                                  && (p.Probability >= 1 || Random.Shared.NextSingle() < p.Probability) ? p : null;
+        int armor = SuperArmorRules.Armor(State == ActorState.PcSkill ? castSkill?.Metadata.State : null,
+            actor.Buffs.EnumerateBuffs().Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property), mapType);
         if (actor.IsDead || IsJumping || actor.Value.Metadata.Basic.Friendly != 0 || !NpcControlRules.HitReacts(attack.HitImmuneBreak,
-                actor.Value.Metadata.Basic.HitImmune, actor.Value.Metadata.Basic.Class, push != null, State)) {
+                actor.Value.Metadata.Basic.HitImmune, actor.Value.Metadata.Basic.Class, push != null, State,
+                SuperArmorRules.Holds(armor, attack, push))) {
             return false;
         }
 

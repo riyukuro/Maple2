@@ -119,7 +119,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                                 ) : null
                             ),
                             Skills: attack.conditionSkill.Where(skill => !skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
-                            SkillsOnDamage: attack.conditionSkill.Where(skill => skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray()
+                            SkillsOnDamage: attack.conditionSkill.Where(skill => skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
+                            GrabTargetType: attack.grabTargetType
                         )).ToArray(),
                         AttackPoints: motion.CollectAttackPoints()
                     )).ToArray(),
@@ -165,7 +166,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     CooldownGroupId: data.basic.stateAttr.cooldownGroupID,
                     RechargeMaxCount: client?.RechargeMaxCount ?? data.basic.stateAttr.rechargeMaxCount,
                     RechargeShared: client?.RechargeShared ?? false,
-                    ClearCooldownOnPvpZone: data.basic.stateAttr.clearCooldownFromPVPZone != 0),
+                    ClearCooldownOnPvpZone: data.basic.stateAttr.clearCooldownFromPVPZone != 0,
+                    SuperArmorApplyField: data.basic.stateAttr.superArmorApplyFieldType),
                 Levels: levels
             );
         }
