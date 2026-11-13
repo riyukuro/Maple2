@@ -118,6 +118,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.MAID_PROPERTY, Table = ParseMaidTable() };
         yield return new TableMetadata { Name = TableNames.FIELD_METADATA, Table = ParseFieldMetaTable() };
         yield return new TableMetadata { Name = TableNames.WEAPON_ACTION, Table = ParseWeaponAction() };
+        yield return new TableMetadata { Name = TableNames.QUEST_MASK_NPC, Table = ParseQuestMaskNpcTable() };
 
         // Marriage/Wedding
         yield return new TableMetadata { Name = TableNames.WEDDING, Table = ParseWeddingTable() };
@@ -2719,6 +2720,60 @@ public class TableMapper : TypeMapper<TableMetadata> {
     // The played client's fieldmetadata.xml when there is one (the copy its taxi box and quest window read), else the data pack's
     // table/<pack region>/fieldmetadata.xml. As CFieldMetaTable::Load reads it, a <portal> without targetField repeats
     // the one before it in the same <fieldPortal>.
+    // The played client's table/questmasknpc.xml (else the data pack's): the npc masks the client applies.
+    private QuestMaskNpcTable ParseQuestMaskNpcTable() {
+        XmlDocument? document = ClientListedRows.PlayedTable(playedReader, FeatureLocaleFilter.Locale, TableNames.QUEST_MASK_NPC);
+        if (document == null) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+                file.Name.Equals($"table/{TableNames.QUEST_MASK_NPC}", StringComparison.OrdinalIgnoreCase));
+            document = entry == null ? null : xmlReader.GetXmlDocument(entry);
+        }
+        QuestMaskNpcTable table = document == null ? new QuestMaskNpcTable(new Dictionary<int, IReadOnlyDictionary<int, QuestMaskNpcTable.Mask>>()) : QuestMaskNpcs(document);
+        Console.WriteLine($"{TableNames.QUEST_MASK_NPC}: {table.Fields.Values.Sum(field => field.Count)} npc masks in {table.Fields.Count} fields");
+        return table;
+    }
+
+    // The parser has no questmasknpc.xml; its rows are read here as CQuestMaskTable::LoadFile reads them
+    // (questmasktable.cpp:317): fieldID and key id 0 are skipped, a field listed again adds to the same field, a key
+    // listed again replaces its mask, a <mask> of a disabled feature or locale is left out (IsElementAvailable), and a
+    // mask is kept only with at least one range and a start quest on each (QuestMask::IsSatisfied).
+    public static QuestMaskNpcTable QuestMaskNpcs(XmlDocument document) {
+        var fields = new Dictionary<int, Dictionary<int, QuestMaskNpcTable.Mask>>();
+        foreach (XmlElement field in document.SelectNodes("ms2/field")?.OfType<XmlElement>() ?? []) {
+            int fieldId = Int(field, "fieldID");
+            if (fieldId == 0) {
+                continue;
+            }
+            if (!fields.TryGetValue(fieldId, out Dictionary<int, QuestMaskNpcTable.Mask>? keys)) {
+                fields[fieldId] = keys = [];
+            }
+            foreach (XmlElement key in field.SelectNodes("key")?.OfType<XmlElement>() ?? []) {
+                int npcId = Int(key, "id");
+                if (npcId == 0) {
+                    continue;
+                }
+                bool enable = !key.HasAttribute("enableInMask") || Int(key, "enableInMask") != 0;
+                var ranges = new List<QuestMaskNpcTable.Range>();
+                foreach (XmlElement mask in key.SelectNodes("mask")?.OfType<XmlElement>() ?? []) {
+                    if (!FeatureLocaleFilter.FeatureEnabled(mask.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(mask.GetAttribute("locale"))) {
+                        continue;
+                    }
+                    ranges.Add(new QuestMaskNpcTable.Range(Int(mask, "startQuestID"), Int(mask, "startQuestState"),
+                        Int(mask, "endQuestID"), Int(mask, "endQuestState")));
+                }
+                var result = new QuestMaskNpcTable.Mask(enable, ranges);
+                if (QuestMaskRules.Valid(result)) {
+                    keys[npcId] = result;
+                }
+            }
+        }
+        return new QuestMaskNpcTable(fields.ToDictionary(entry => entry.Key, entry => (IReadOnlyDictionary<int, QuestMaskNpcTable.Mask>) entry.Value));
+
+        static int Int(XmlElement node, string name) {
+            return int.TryParse(node.GetAttribute(name), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : 0;
+        }
+    }
+
     private FieldMetaTable ParseFieldMetaTable() {
         XmlDocument? document = ClientListedRows.PlayedTable(playedReader, FeatureLocaleFilter.Locale, TableNames.FIELD_METADATA);
         if (document == null) {

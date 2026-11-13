@@ -386,6 +386,11 @@ public partial class FieldManager : IField {
         foreach (SpawnPointNPC spawnPointNpc in Entities.NpcSpawns) {
             AddSpawnPointNpc(spawnPointNpc);
         }
+        // Masked npcs no map places stand at their unmasked partner's point (QuestMaskRules.PartnerSpawns).
+        TableMetadata.QuestMaskNpcTable.Fields.TryGetValue(MapId, out IReadOnlyDictionary<int, QuestMaskNpcTable.Mask>? questMasks);
+        foreach (SpawnPointNPC spawnPointNpc in QuestMaskRules.PartnerSpawns(questMasks, Entities.NpcSpawns, Entities.EventNpcSpawns.Values)) {
+            AddSpawnPointNpc(spawnPointNpc);
+        }
 
         foreach (SpawnPointPC spawnPoint in Entities.PlayerSpawns) {
             int fieldId = spawnPoint.SpawnPointId;

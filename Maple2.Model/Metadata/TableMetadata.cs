@@ -102,4 +102,5 @@ public class TableMetadata {
 [JsonDerivedType(typeof(MaidTable), typeDiscriminator: "maidproperty")]
 [JsonDerivedType(typeof(FieldMetaTable), typeDiscriminator: "fieldmetadata")]
 [JsonDerivedType(typeof(WeaponActionTable), typeDiscriminator: "weaponaction")]
+[JsonDerivedType(typeof(QuestMaskNpcTable), typeDiscriminator: "questmasknpc")]
 public abstract record Table;

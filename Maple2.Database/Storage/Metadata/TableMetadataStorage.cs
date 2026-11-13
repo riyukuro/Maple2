@@ -67,6 +67,7 @@ public class TableMetadataStorage {
     private readonly Lazy<MaidTable> maidTable;
     private readonly Lazy<FieldMetaTable> fieldMetaTable;
     private readonly Lazy<WeaponActionTable> weaponActionTable;
+    private readonly Lazy<QuestMaskNpcTable> questMaskNpcTable;
 
     private readonly Lazy<EnchantScrollTable> enchantScrollTable;
     private readonly Lazy<ItemRemakeScrollTable> itemRemakeScrollTable;
@@ -152,6 +153,7 @@ public class TableMetadataStorage {
     public MaidTable MaidTable => maidTable.Value;
     public FieldMetaTable FieldMetaTable => fieldMetaTable.Value;
     public WeaponActionTable WeaponActionTable => weaponActionTable.Value;
+    public QuestMaskNpcTable QuestMaskNpcTable => questMaskNpcTable.Value;
 
     public EnchantScrollTable EnchantScrollTable => enchantScrollTable.Value;
     public ItemRemakeScrollTable ItemRemakeScrollTable => itemRemakeScrollTable.Value;
@@ -257,6 +259,7 @@ public class TableMetadataStorage {
         maidTable = Retrieve<MaidTable>(context, TableNames.MAID_PROPERTY);
         fieldMetaTable = Retrieve<FieldMetaTable>(context, TableNames.FIELD_METADATA);
         weaponActionTable = Retrieve<WeaponActionTable>(context, TableNames.WEAPON_ACTION);
+        questMaskNpcTable = Retrieve<QuestMaskNpcTable>(context, TableNames.QUEST_MASK_NPC);
 
     }
 
