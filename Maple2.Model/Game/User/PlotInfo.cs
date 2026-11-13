@@ -52,6 +52,9 @@ public class Plot(UgcMapGroup metadata) : PlotInfo(metadata) {
     // Held while a cube is placed, removed, rotated or replaced: the owner and its build helpers edit the
     // same plot from their own sessions.
     public readonly object EditLock = new();
+    // Rows of cubes this instance took off the plot but could not delete (a place refused after its row was written,
+    // a remove): the instance's next save deletes them. Read and changed under EditLock.
+    public readonly HashSet<long> StrayRows = [];
 
     public void SetPlannerMode(PlotMode mode) {
         PlotMode = mode;

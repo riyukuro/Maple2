@@ -85,13 +85,14 @@ public class HomeFieldManager : FieldManager {
         return false;
     }
 
-    // The same for one plot, called under its edit lock; rows gets the plot's cube row ids as read.
+    // The same for one plot, called under its edit lock; rows gets the plot's cube row ids as read. The plot's stray
+    // rows (a delete that failed) count as saved: the next save deletes them.
     internal bool Outdated(GameStorage.Request db, Plot plot, out HashSet<long> rows) {
         List<PlotCube> cubes = plot.Cubes.Values.Where(cube => cube.Id < Constant.FurnishingBaseId).ToList();
         HashSet<long> held = cubes.Select(cube => cube.Id).ToHashSet();
         Dictionary<long, float> rotations = db.GetCubeRotations(plot.Id);
         rows = rotations.Keys.ToHashSet();
-        HashSet<long> saved = savedCubes?.GetValueOrDefault(plot.Number) ?? [];
+        HashSet<long> saved = [.. savedCubes?.GetValueOrDefault(plot.Number) ?? [], .. plot.StrayRows];
         if (Outdated(saved, held, rows)) {
             return true;
         }

@@ -689,10 +689,15 @@ public class HousingManager {
         return result;
     }
 
-    private void DeleteCube(PlotCube cube) {
+    // Called under the plot's edit lock. A row that cannot be deleted is kept as a stray row of the plot: the
+    // instance stays current (HomeFieldManager.Outdated) and its next save deletes the row.
+    private void DeleteCube(Plot plot, PlotCube cube) {
         using GameStorage.Request db = session.GameStorage.Context();
         if (db.DeleteCube(cube)) return;
         logger.Error("Failed to delete cube {CubeId} at position {Position}.", cube.Id, cube.Position);
+        if (cube.Id < Constant.FurnishingBaseId) {
+            plot.StrayRows.Add(cube.Id);
+        }
     }
 
     // Turns the cube at the position and writes its rotation to its row at once, as a place or a remove writes its
@@ -936,7 +941,7 @@ public class HousingManager {
         long storedUid = 0; // the storage item the cube was placed from, when it was in storage already
         if (helper != null) {
             if (!TryBuyFromBudget(helper, cube, shopEntry, result, edit)) {
-                DeleteCube(result);
+                DeleteCube(plot, result);
                 return false;
             }
         } else if (session.Item.Furnishing.TryAddCube(cube.Id, result)) {
@@ -945,13 +950,13 @@ public class HousingManager {
             // A cube bought here goes to storage only once it is paid: a cube not for sale, or one the player cannot
             // pay for, leaves no storage item. Room was asked above, so the paid cube is not refused by storage.
             if (shopEntry is null) {
-                DeleteCube(result);
+                DeleteCube(plot, result);
                 Refuse(UgcMapError.s_err_cannot_buy_limited_item_more);
                 return false;
             }
 
             if (!session.Item.Furnishing.PurchaseCube(shopEntry, out UgcMapError purchaseError)) {
-                DeleteCube(result);
+                DeleteCube(plot, result);
                 if (purchaseError != UgcMapError.s_ugcmap_ok) {
                     Refuse(purchaseError);
                 }
@@ -962,7 +967,7 @@ public class HousingManager {
             if (itemUid == 0) {
                 logger.Error("Paid cube {ItemId} could not be added to storage, refunded", cube.ItemId);
                 session.Item.Furnishing.RefundCube(shopEntry);
-                DeleteCube(result);
+                DeleteCube(plot, result);
                 Refuse(UgcMapError.s_ugcmap_db);
                 return false;
             }
@@ -971,7 +976,7 @@ public class HousingManager {
             session.Send(CubePacket.PurchaseCube(session.Player.ObjectId));
             // Now that we have purchased the cube, it must be placeable.
             if (!session.Item.Furnishing.TryAddCube(itemUid, result)) {
-                DeleteCube(result);
+                DeleteCube(plot, result);
                 Refuse(UgcMapError.s_ugcmap_not_owned_item);
                 return false;
             }
@@ -984,7 +989,7 @@ public class HousingManager {
         if (outdoor && itemMetadata.Install.IndoorPortal) {
             FieldPortal? fieldPortal = session.Field.SpawnFieldToHomePortal(result, plot.OwnerId);
             if (fieldPortal is null) {
-                DeleteCube(result);
+                DeleteCube(plot, result);
                 Refuse(UgcMapError.s_ugcmap_not_owned_item);
                 return false;
             }
@@ -1086,7 +1091,7 @@ public class HousingManager {
 
         // Before the cube row goes, which would take a maid still keyed by it.
         MoveMaidToItem(cube, itemUid);
-        DeleteCube(cube);
+        DeleteCube(plot, cube);
 
         return true;
     }

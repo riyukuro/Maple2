@@ -411,6 +411,29 @@ public class ModelHouseStaleFieldTests {
         });
     }
 
+    // A row the field took off the plot but could not delete (a stray row) leaves the field current, and the next
+    // save deletes it. Before, such a row kept the field outdated for its life, and its leave saved nothing.
+    [Test]
+    public void StrayRow_KeepsTheFieldCurrent_AndTheSaveDeletesIt() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        PlotCube cube = plot.Cubes[new Vector3B(-1, -1, 0)];
+        lock (plot.EditLock) {
+            // As a place refused after its row was written, whose delete then failed.
+            plot.Cubes.Remove(cube.Position);
+            plot.StrayRows.Add(cube.Id);
+        }
+        Assert.That(CubeRows(session), Does.Contain(cube.Id));
+        Assert.That(Outdated(home), Is.False);
+        Commit(home, session);
+        Assert.Multiple(() => {
+            Assert.That(CubeRows(session), Does.Not.Contain(cube.Id));
+            Assert.That(plot.StrayRows, Is.Empty);
+            Assert.That(Outdated(home), Is.False);
+        });
+    }
+
     // The rule: a row the field neither holds nor saved, or a held cube without its row, makes the field outdated.
     [TestCase(new long[] { 1, 2 }, new long[] { 1, 2 }, new long[] { 1, 2 }, false)]
     [TestCase(new long[] { 1, 2 }, new long[] { 1 }, new long[] { 1, 2 }, false)] // removed here, saved row not yet deleted
