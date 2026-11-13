@@ -173,7 +173,7 @@ public class ItemSocketHandler : FieldPacketHandler {
                 }
 
                 result.Value.gem.ItemId = result.Value.entry.NextItemId;
-                session.Send(ItemSocketPacket.UpgradeGemstone(itemUid, true, gemUid, result.Value.gem));
+                session.Send(ItemSocketPacket.UpgradeGemstone(itemUid, (byte) slot, true, gemUid, result.Value.gem));
                 session.ConditionUpdate(ConditionType.gemstone_upgrade, targetLong: result.Value.entry.Level + 1);
                 session.ConditionUpdate(ConditionType.gemstone_upgrade_try);
                 session.ConditionUpdate(ConditionType.gemstone_upgrade_success);

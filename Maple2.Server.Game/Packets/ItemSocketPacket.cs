@@ -71,11 +71,14 @@ public static class ItemSocketPacket {
         return pWriter;
     }
 
-    public static ByteWriter UpgradeGemstone(long uid, bool success, long clientUid, ItemGemstone gem) {
+    // A gem in an equipment socket. The client's reader (FUN_140629a30, itemsocketsystemutil.cpp:1005) takes the byte
+    // after the uid as the socket slot, and the upgrade page stores the new gem in that slot of the item
+    // (FUN_140f787a0, SetGemInfo), so it must be the slot the gem is in.
+    public static ByteWriter UpgradeGemstone(long uid, byte slot, bool success, long clientUid, ItemGemstone gem) {
         var pWriter = Packet.Of(SendOp.ItemSocketSystem);
         pWriter.Write<Command>(Command.UpgradeGemstone);
         pWriter.WriteLong(uid);
-        pWriter.WriteByte();
+        pWriter.WriteByte(slot);
         pWriter.WriteBool(success);
         pWriter.WriteByte(Constant.GemstoneGrade);
         pWriter.WriteLong(clientUid);
