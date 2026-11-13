@@ -55,6 +55,8 @@ public sealed partial class GameSession : Core.Network.Session {
     public string PlayerName => FieldEntryRules.LogName(Player?.Value.Character.Name);
     public Guid MachineId { get; private set; }
     private bool preMigrationSaved;
+    // The account's and character's item rows, held from an entry that took the account lock (see EnterServer).
+    private IDisposable? heldRows;
     // EnterServer finished: the World's cache config (buffs, cooldowns, death) was loaded and the session played, so
     // Dispose stores it back. A refused entry leaves the World's copy as it was.
     private bool entered;
@@ -270,8 +272,13 @@ public sealed partial class GameSession : Core.Network.Session {
         db.BeginTransaction();
         int objectId = FieldManager.NextGlobalId();
         Player? player;
+        bool locked = false;
         try {
-            AcquireLock(AccountId, 5);
+            // Taken: the channel this session came from has stored its save (its MigrationSave holds the lock), and
+            // nothing else writes this account's and character's item rows while the session plays: the item loads
+            // may keep the values they read (GameStorage.HoldOwners). Not taken (after the retries, or the world
+            // down): another server may still write them, and no load of this session keeps any.
+            locked = AcquireLock(AccountId, 5);
             // A running SendMail ReturnUser row mails a character that enters after its days away (KR 10100100:
             // 90), stored with the entry's stamp.
             IList<GameEvent> sendMail = FindEvent(GameEventType.SendMail);
@@ -288,6 +295,9 @@ public sealed partial class GameSession : Core.Network.Session {
             Logger.Warning("Failed to load player from database: {AccountId}, {CharacterId}", AccountId, CharacterId);
             Send(MigrationPacket.MoveResult(MigrationError.s_move_err_default));
             return false;
+        }
+        if (locked) {
+            heldRows ??= GameStorage.HoldOwners(AccountId, CharacterId);
         }
 
         Player = new FieldPlayer(this, player);
@@ -1376,7 +1386,8 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
-    private void AcquireLock(long accountId, int maxRetries = 3) {
+    // True when the lock was taken.
+    private bool AcquireLock(long accountId, int maxRetries = 3) {
         int retryCount = 0;
         const int backoffMs = 500;
 
@@ -1390,11 +1401,11 @@ public sealed partial class GameSession : Core.Network.Session {
                 // A world that is down (stopped before this server) holds no locks and grants none. The save goes on
                 // without the lock, as after the retries below; a throw here would skip the save.
                 Logger.Warning("World unavailable; lock for account {AccountId} not taken", accountId);
-                return;
+                return false;
             }
 
             if (string.IsNullOrEmpty(response.Error)) {
-                return;
+                return true;
             }
 
             retryCount++;
@@ -1402,6 +1413,7 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         Logger.Error("Failed to acquire lock for account {AccountId} after {MaxRetries} retries", accountId, maxRetries);
+        return false;
     }
 
     private void ReleaseLock(long accountId) {
@@ -1426,6 +1438,8 @@ public sealed partial class GameSession : Core.Network.Session {
     protected override void Dispose(bool disposing) {
         // Ensure dispose is only run once
         if (Interlocked.CompareExchange(ref gameDisposeState, 1, 0) != 0) return;
+        // Loads from here on keep nothing (the final save writes what changed all the same).
+        heldRows?.Dispose();
 
         // Snapshot values needed after teardown
         long fieldTickSnapshot = Field?.FieldTick ?? Environment.TickCount64;

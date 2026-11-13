@@ -32,7 +32,18 @@ public class ItemSaveTests {
         }
         options = new DbContextOptionsBuilder().UseMySql(Connection, ServerVersion.AutoDetect(Connection)).Options;
         test = new TestGameSession(options);
+        // As a session that took the account lock at its entry (GameSession.EnterServer).
+        held = GameStorage.HoldOwners(test.AccountId, test.CharacterId);
     }
+
+    [TearDown]
+    public void TearDown() {
+        held?.Dispose();
+        held = null;
+        GameStorage.AfterSeedingQuery = null;
+    }
+
+    private IDisposable? held;
 
     // The managers a full save writes, as SessionSaveTransactionTests sets them.
     private void StartSaving() {
@@ -231,6 +242,54 @@ public class ItemSaveTests {
             Assert.That(db.SaveItems(test.CharacterId, loaded), Is.True);
         }
         Assert.That(Stored(item.Uid)?.Amount, Is.EqualTo(6));
+    }
+
+    // A session that did not take the account lock at its entry (refused after its tries, or the world down) holds
+    // no rows: the channel it came from may still be storing its save, which this server's stamps never see. No load
+    // is seeded, and the first save writes every row, as before the seeds (the rows hold the server's amounts again).
+    [Test]
+    public void LoadOfAnOwnerNotHeld_IsNotSeeded() {
+        held!.Dispose();
+        ItemMetadata metadata = TestGameSession.Metadata(50000339);
+        test.Register(metadata);
+        long storage;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            storage = db.CreateItem(test.AccountId, new Item(metadata, amount: 2))!.Uid;
+        }
+        long bag = test.Store(metadata, 2).Uid, single = test.Store(metadata, 2).Uid;
+        (long Owner, Item Item)[] loads = [
+            (test.CharacterId, Loaded(db => db.GetInventory(test.CharacterId).Values.SelectMany(items => items), bag)),
+            (test.AccountId, Loaded(db => db.GetStorage(test.AccountId), storage)),
+            (test.CharacterId, Loaded(db => [db.GetItem(single)!], single)),
+        ];
+        foreach ((long owner, Item item) in loads) {
+            SetStoredAmount(item.Uid, 77); // the other server's save, after the load
+            using GameStorage.Request db = test.Storage.Context();
+            Assert.That(db.SaveItems(owner, item), Is.True);
+        }
+        Assert.That(loads.Select(load => Stored(load.Item.Uid)?.Amount), Is.All.EqualTo(2));
+    }
+
+    // A write of a row between the load's query and its seeds (a split of another object of the row, here 10 to 7):
+    // the query read the row before it, so its values are not the DB's; the row's stamp is past the clock read
+    // before the query, and the row is not seeded. Its save writes 10.
+    [Test]
+    public void WriteDuringLoad_IsNotSeeded() {
+        Item item = test.Store(TestGameSession.Metadata(50000340), 10);
+        Item? piece = null;
+        GameStorage.AfterSeedingQuery = () => {
+            GameStorage.AfterSeedingQuery = null;
+            using GameStorage.Request split = test.Storage.Context();
+            piece = split.SplitItem(test.CharacterId, item, 3);
+        };
+        Item loaded = Loaded(db => db.GetInventory(test.CharacterId).Values.SelectMany(items => items), item.Uid);
+        Assume.That(piece, Is.Not.Null);
+        Assume.That(loaded.Amount, Is.EqualTo(10), "read before the split");
+        Assume.That(Stored(item.Uid)?.Amount, Is.EqualTo(7));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveItems(test.CharacterId, loaded), Is.True);
+        }
+        Assert.That(Stored(item.Uid)?.Amount, Is.EqualTo(10));
     }
 
     // A row written by another write after the load (a split of another object of the row) is not skipped: its

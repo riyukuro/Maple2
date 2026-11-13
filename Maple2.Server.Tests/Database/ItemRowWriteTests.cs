@@ -1,4 +1,5 @@
 ﻿using System.Linq;
+using System.Reflection;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
@@ -154,6 +155,26 @@ public class ItemRowWriteTests {
             Assert.That(row.Amount, Is.EqualTo(6));
             Assert.That(row.OwnerId, Is.EqualTo(test.CharacterId));
         });
+    }
+
+    // A row's stamp only rises: a write whose clock value is older than the stamp a later write stored (a thread
+    // that stalled between the two steps) leaves the stamp, which a load's clock may already have passed. Here the
+    // slot is set past the clock, as the later write leaves it, and the stalled write comes after.
+    [Test]
+    public void StaleBump_DoesNotLowerTheStamp() {
+        const BindingFlags statics = BindingFlags.Static | BindingFlags.NonPublic;
+        var slots = (long[]) typeof(GameStorage).GetField("RowWrites", statics)!.GetValue(null)!;
+        long uid = 987654321;
+        int index = (int) unchecked((ulong) uid * 0x9E3779B97F4A7C15UL >> 46);
+        long ahead = (long) typeof(GameStorage).GetField("WriteClock", statics)!.GetValue(null)! + 1_000_000;
+        long before = slots[index];
+        slots[index] = ahead;
+        try {
+            typeof(GameStorage).GetMethod("ForgetRows", statics)!.Invoke(null, [new[] { uid }]);
+            Assert.That(slots[index], Is.EqualTo(ahead));
+        } finally {
+            slots[index] = before; // a stamp past the clock would only stop seeds and keeps of rows in this slot
+        }
     }
 
     // A transaction rolled back after its save (or a commit whose answer was lost): nothing is kept.

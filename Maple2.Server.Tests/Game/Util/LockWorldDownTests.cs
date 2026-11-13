@@ -28,10 +28,10 @@ public class LockWorldDownTests {
         return session;
     }
 
-    private static void AcquireLock(GameSession session) {
+    private static bool AcquireLock(GameSession session, int tries = 5) {
         MethodInfo acquire = typeof(GameSession).GetMethod("AcquireLock", BindingFlags.Instance | BindingFlags.NonPublic)!;
         try {
-            acquire.Invoke(session, [1L, 5]);
+            return (bool) acquire.Invoke(session, [1L, tries])!;
         } catch (TargetInvocationException ex) {
             throw ex.InnerException!;
         }
@@ -40,8 +40,25 @@ public class LockWorldDownTests {
     [Test]
     public void WorldDown_ReturnsAtOnceWithoutThrowing() {
         var world = new DownWorld(StatusCode.Unavailable);
-        Assert.DoesNotThrow(() => AcquireLock(SessionWith(world)));
-        Assert.That(world.Calls, Is.EqualTo(1));
+        bool taken = true;
+        Assert.DoesNotThrow(() => taken = AcquireLock(SessionWith(world)));
+        Assert.Multiple(() => {
+            Assert.That(world.Calls, Is.EqualTo(1));
+            Assert.That(taken, Is.False, "not taken: the entry's loads keep no item rows (GameStorage.HoldOwners)");
+        });
+    }
+
+    private sealed class LockWorld(string error) : WorldClient {
+        public override LockResponse AcquireLock(LockRequest request, CallOptions options) => new() { Error = error };
+    }
+
+    // The answer EnterServer holds the item rows by: taken, or refused after the tries (another server holds it).
+    [Test]
+    public void Lock_TakenOrRefused() {
+        Assert.Multiple(() => {
+            Assert.That(AcquireLock(SessionWith(new LockWorld(""))), Is.True);
+            Assert.That(AcquireLock(SessionWith(new LockWorld("held")), tries: 1), Is.False);
+        });
     }
 
     [Test]

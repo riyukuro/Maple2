@@ -50,7 +50,59 @@ public partial class GameStorage {
     private static ref long RowWrite(long uid) => ref RowWrites[(int) ((ulong) uid * 0x9E3779B97F4A7C15UL >> 46)];
 
     // Moves row uid's stamp on: a stamp is never set twice to one value, so values kept at an earlier one no longer count.
-    private static void BumpRow(long uid) => Volatile.Write(ref RowWrite(uid), Interlocked.Increment(ref WriteClock));
+    // The stamp only rises: a write that took its clock value before another one's stores it only while it is higher
+    // (a plain store after a stall would set the slot back to an older value, which a load's clock may have passed).
+    private static void BumpRow(long uid) {
+        long next = Interlocked.Increment(ref WriteClock);
+        ref long slot = ref RowWrite(uid);
+        long current = Volatile.Read(ref slot);
+        while (current < next) {
+            long seen = Interlocked.CompareExchange(ref slot, next, current);
+            if (seen == current) {
+                return;
+            }
+            current = seen;
+        }
+    }
+
+    // The owners whose item rows no other process writes while they are held (count of holds by owner id). A row
+    // loaded here is seeded only when its owner is held: the RowWrites stamps are this process's, so a write by
+    // another game server after the load would never reach the seed, and every save here would skip the row while
+    // the DB keeps the other write (an item lost at the next login, or doubled). A session holds its account and
+    // character from its entry when it took the account lock there (the save of the channel it came from holds the
+    // lock until it is stored, and that session saves nothing after it); a session without the lock seeds nothing.
+    // The ids of owners other than accounts and characters (pets, cubes, mails) are never held: their rows are
+    // written by sessions and fields of other servers too (a home's doll, a mail sent). Account, character and item
+    // ids are in separate ranges (the auto increment starts of their tables), so no other owner's id equals one held.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<long, int> HeldOwners = new();
+
+    // Holds owners until the result is disposed (once).
+    public static IDisposable HoldOwners(params long[] owners) {
+        foreach (long owner in owners) {
+            HeldOwners.AddOrUpdate(owner, 1, (_, count) => count + 1);
+        }
+        return new OwnersHold(owners);
+    }
+
+    private sealed class OwnersHold(long[] owners) : IDisposable {
+        private int disposed;
+
+        public void Dispose() {
+            if (Interlocked.Exchange(ref disposed, 1) != 0) {
+                return;
+            }
+            foreach (long owner in owners) {
+                while (HeldOwners.TryGetValue(owner, out int count)) {
+                    if (count <= 1 ? HeldOwners.TryRemove(new KeyValuePair<long, int>(owner, count)) : HeldOwners.TryUpdate(owner, count - 1, count)) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // A test's step between a seeding load's query and its seeds (a write of a row the query read).
+    internal static Action? AfterSeedingQuery;
 
     // Forgets what any item object holds for rows uids.
     private static void ForgetRows(IEnumerable<long> uids) {
@@ -131,6 +183,7 @@ public partial class GameStorage {
         public Item? GetItem(long itemUid) {
             Seeding seeding = StartSeeding(tracking: true); // Find gives a tracked row as it is tracked
             Model.Item? model = Context.Item.Find(itemUid);
+            AfterSeedingQuery?.Invoke();
             Item? item = ToItem(model);
             if (item != null) {
                 SeedLoaded(seeding, item, model!);
@@ -199,6 +252,7 @@ public partial class GameStorage {
         private List<Item> LoadItems(IQueryable<Model.Item> query, bool noTracking = false) {
             Seeding seeding = StartSeeding(!noTracking && Context.ChangeTracker.QueryTrackingBehavior == QueryTrackingBehavior.TrackAll);
             List<Model.Item> models = query.ToList();
+            AfterSeedingQuery?.Invoke();
             var items = new List<Item>(models.Count);
             foreach (Model.Item model in models) {
                 Item? item = ToItem(model);
@@ -239,7 +293,7 @@ public partial class GameStorage {
         }
 
         private void SeedLoaded(Seeding seeding, Item item, Model.Item model) {
-            if (!seeding.Fresh || seeding.Tracked?.Contains(model.Id) == true) {
+            if (!seeding.Fresh || seeding.Tracked?.Contains(model.Id) == true || !HeldOwners.ContainsKey(model.OwnerId)) {
                 return;
             }
             long stamp = Volatile.Read(ref RowWrite(model.Id));
