@@ -229,7 +229,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 ingredients.Add(new GemstoneUpgradeTable.Ingredient(Enum.Parse<ItemTag>(upgrade.IngredientItemID4[1]), upgrade.IngredientCount4));
             }
 
-            results.Add(itemId, new GemstoneUpgradeTable.Entry(upgrade.GemLevel, upgrade.NextItemID, ingredients));
+            results.Add(itemId, new GemstoneUpgradeTable.Entry(upgrade.GemLevel, upgrade.NextItemID, ingredients, upgrade.EquipPart));
         }
 
         return new GemstoneUpgradeTable(results);

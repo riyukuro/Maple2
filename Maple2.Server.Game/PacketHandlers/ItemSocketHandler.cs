@@ -172,6 +172,14 @@ public class ItemSocketHandler : FieldPacketHandler {
                     return;
                 }
 
+                if (!RollGemstoneUpgrade(result.Value.entry)) {
+                    // The gem stays as it was; the client stores the gem the answer carries in the slot.
+                    session.Send(ItemSocketPacket.UpgradeGemstone(itemUid, (byte) slot, false, gemUid, result.Value.gem));
+                    session.ConditionUpdate(ConditionType.gemstone_upgrade_try);
+                    session.ConditionUpdate(ConditionType.gemstone_upgrade_fail);
+                    return;
+                }
+
                 result.Value.gem.ItemId = result.Value.entry.NextItemId;
                 session.Send(ItemSocketPacket.UpgradeGemstone(itemUid, (byte) slot, true, gemUid, result.Value.gem));
                 session.ConditionUpdate(ConditionType.gemstone_upgrade, targetLong: result.Value.entry.Level + 1);
@@ -189,6 +197,17 @@ public class ItemSocketHandler : FieldPacketHandler {
                 }
 
                 if (!ConsumeGemstoneUpgradeIngredients(result.Value.entry)) {
+                    return;
+                }
+
+                if (!RollGemstoneUpgrade(result.Value.entry)) {
+                    // The gem stays in the inventory as it was.
+                    Item? kept = session.Item.Inventory.Get(gemUid, InventoryType.Gemstone);
+                    if (kept != null) {
+                        session.Send(ItemSocketPacket.UpgradeGemstone(itemUid, false, kept));
+                    }
+                    session.ConditionUpdate(ConditionType.gemstone_upgrade_try);
+                    session.ConditionUpdate(ConditionType.gemstone_upgrade_fail);
                     return;
                 }
 
@@ -212,6 +231,10 @@ public class ItemSocketHandler : FieldPacketHandler {
         }
 
         #region Local Function
+        bool RollGemstoneUpgrade(GemstoneUpgradeTable.Entry entry) {
+            return ItemSocketRules.GemstoneUpgradeSucceeds(GemstoneUpgradeRate(session, entry), Random.Shared.Next(100));
+        }
+
         bool ConsumeGemstoneUpgradeIngredients(GemstoneUpgradeTable.Entry entry) {
             IngredientInfo[] ingredients = entry.Ingredients.Select(ingredient => new IngredientInfo(ingredient.ItemTag, ingredient.Amount)).ToArray();
             if (!session.Item.Inventory.Consume(ingredients)) {
@@ -229,17 +252,23 @@ public class ItemSocketHandler : FieldPacketHandler {
         sbyte slot = packet.Read<sbyte>(); // -1 if not equipped
         long gemUid = packet.ReadLong();   // this has a client-generated uid when if equipped
 
+        GemstoneUpgradeTable.Entry? entry;
         if (itemUid != 0) {
-            if (CheckUpgradeGemstoneOnItem(session, itemUid, slot) == null) {
-                return;
-            }
+            entry = CheckUpgradeGemstoneOnItem(session, itemUid, slot)?.Item2;
         } else {
-            if (CheckUpgradeGemstoneInInventory(session, gemUid) == null) {
-                return;
-            }
+            entry = CheckUpgradeGemstoneInInventory(session, gemUid)?.Item1;
+        }
+        if (entry == null) {
+            return;
         }
 
-        session.Send(ItemSocketPacket.StageUpgradeGemstone(itemUid, slot, gemUid, 100f));
+        // The page shows this rate (s_itemsocketsystem_success_prob); the upgrade rolls the same one.
+        session.Send(ItemSocketPacket.StageUpgradeGemstone(itemUid, slot, gemUid, GemstoneUpgradeRate(session, entry)));
+    }
+
+    private static int GemstoneUpgradeRate(GameSession session, GemstoneUpgradeTable.Entry entry) {
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        return ItemSocketRules.GemstoneUpgradeRate(entry.Level, entry.EquipPart, constants.GemStoneProbList, constants.SkinGemStoneProbList);
     }
 
     private void HandleEquipGemstone(GameSession session, IByteReader packet) {

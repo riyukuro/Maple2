@@ -267,6 +267,7 @@ public static class ConditionUtil {
             case ConditionType.fall_damage:
             case ConditionType.gemstone_upgrade:
             case ConditionType.gemstone_upgrade_success:
+            case ConditionType.gemstone_upgrade_fail:
             case ConditionType.gemstone_upgrade_try:
             case ConditionType.socket_unlock_success:
             case ConditionType.socket_unlock_try:
@@ -515,6 +516,7 @@ public static class ConditionUtil {
             case ConditionType.trophy_point:
             case ConditionType.interact_object:
             case ConditionType.gemstone_upgrade_success:
+            case ConditionType.gemstone_upgrade_fail:
             case ConditionType.gemstone_upgrade_try:
             case ConditionType.socket_unlock_success:
             case ConditionType.socket_unlock_try:

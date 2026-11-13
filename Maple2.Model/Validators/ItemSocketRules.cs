@@ -29,6 +29,26 @@ public static class ItemSocketRules {
 
     public static ConditionType GemstonePutOffCondition(int skinType) =>
         skinType != 0 ? ConditionType.skin_gemstone_putoff : ConditionType.equip_gemstone_putoff;
+
+    // itemgemstoneupgrade.xml equipPart of an outfit gem (KR: the 4022xxxx gems; the others are 3).
+    public const int SkinGemEquipPart = 4;
+
+    // The success rate in percent of upgrading a gem of this level, from the server constants GemStoneProbList
+    // (SkinGemStoneProbList for an outfit gem), indexed by the level the upgrade gives (KR: 25 for level 2 down to 8
+    // for level 10; indices 0 and 1 are 0, no upgrade gives them). The client reads neither list; it shows the rate the
+    // stage answer carries (s_itemsocketsystem_success_prob) and plays the fail when the result says so. No list or no
+    // entry for the level: 100.
+    public static int GemstoneUpgradeRate(int level, int equipPart, IReadOnlyList<int>? gemRates, IReadOnlyList<int>? skinRates) {
+        IReadOnlyList<int>? rates = equipPart == SkinGemEquipPart ? skinRates : gemRates;
+        int index = level + 1;
+        if (rates == null || index < 0 || index >= rates.Count) {
+            return 100;
+        }
+        return Math.Clamp(rates[index], 0, 100);
+    }
+
+    // roll: 0-99.
+    public static bool GemstoneUpgradeSucceeds(int rate, int roll) => roll < rate;
     // CItemData::FUN_14053e940 (itemdata.cpp), for an item of type 1: the equip subtypes (id digits 3-4) the socket
     // system takes. An outfit: earring, hat, top, bottom, gloves, shoes, cape, ring and overall (12-18, 20, 22); other
     // equipment: earring, necklace and ring (12, 19, 20).
