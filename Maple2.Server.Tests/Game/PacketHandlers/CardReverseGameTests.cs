@@ -140,6 +140,49 @@ public class CardReverseGameTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // The deck sent holds only the cards the client has item data for: an id the server has no item of, or an item the
+    // played client lacks (40000026 on a KR server pack with an older client), is left out, and the pick indices are
+    // those of the cards sent. A deck with no such card is no game.
+    [Test]
+    public void Of_LeavesOutCardsTheClientCannotRead() {
+        var ui = new InteractObjectMetadataUi("CardReverseGameDialog", "6");
+        int[] cards = [CardIds[0], 40000026, 99999999, CardIds[1]];
+        CardReverseGame game = CardReverseGame.Of(ui, Table(cards), id => id != 40000026 && id != 99999999)!;
+        Assert.That(game.Drop.Items.Select(card => card.ItemComponent.ItemId), Is.EqualTo(new[] { CardIds[0], CardIds[1] }));
+        game.Shuffle();
+        Assert.That(new[] { game.Pick(), game.Pick() }, Is.EquivalentTo(new[] { 0, 1 }));
+        Assert.That(CardReverseGame.Of(ui, Table([40000026]), id => id != 40000026), Is.Null);
+    }
+
+    // At the object: a card with no server item, or an item marked as not in the played client, is not in the deck sent.
+    [Test]
+    public void Game_DeckLeavesOutItemsNotInThePlayedClient() {
+        var test = new TestGameSession();
+        test.Store(TestGameSession.Metadata(CoinId), 2);
+        foreach (int id in CardIds) {
+            test.Register(TestGameSession.Metadata(id));
+        }
+        ItemMetadata absent = TestGameSession.Metadata(40000026);
+        test.Register(absent with { Property = absent.Property with { NotInPlayedClient = true } });
+        test.SetServerTable(Table([CardIds[0], 40000026, 99999999, CardIds[1]]));
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(63000031));
+        test.AddInteract(Row(31000002, new InteractObjectMetadataUi("CardReverseGameDialog", "6")),
+            new InteractUiObject("ab", new Ms2SimpleUiObject(31000002, Vector3.Zero, Vector3.Zero)));
+        new InteractObjectHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteInt(1);
+            writer.WriteString("ab");
+        }));
+        test.TakeSent();
+
+        Send(session, 0);
+        List<byte[]> sent = Sent(test);
+        Assert.That(sent, Has.Count.EqualTo(1));
+        Assert.That(BitConverter.ToInt32(sent[0], 11), Is.EqualTo(2), "two cards");
+        Assert.That(session.CardReverseGame!.Drop.Items.Select(card => card.ItemComponent.ItemId), Is.EqualTo(new[] { CardIds[0], CardIds[1] }));
+    }
+
     // The page's messages from a player who used no card game object are dropped.
     [Test]
     public void Game_NoObjectUsed_SendsNothing() {
