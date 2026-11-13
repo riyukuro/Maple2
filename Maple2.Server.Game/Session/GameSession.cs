@@ -514,7 +514,8 @@ public sealed partial class GameSession : Core.Network.Session {
 
         Buddy.Load();
         // KMS2 sends it at every login, after the guild, club and buddy lists and before the home blocks.
-        Send(UserConditionEventPacket.Load());
+        // Its id is the preview row of the last user condition row noticed (GameEventManager.UserConditionPreview).
+        Send(UserConditionEventPacket.Load(GameEvent.UserConditionPreview()));
         Send(HomeBlockPacket.Load(db.GetHomeBlocks(AccountId)));
         // The account's restrictions, at every server entry (Chosen here: where in the login sequence; the client
         // replaces its record of each kind, so a resend does no harm).
@@ -1069,6 +1070,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Achievement.Update(conditionType, counter, targetString, targetLong, codeString, codeLong);
         Quest.Update(conditionType, counter, targetString, targetLong, codeString, codeLong);
         GameEvent.SnowmanCondition(conditionType);
+        GameEvent.UserConditionChanged(conditionType);
     }
 
     public IList<GameEvent> FindEvent(GameEventType type) => server.FindEvent(type);

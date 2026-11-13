@@ -70,6 +70,7 @@ public class TableMetadataStorage {
     private readonly Lazy<WeaponActionTable> weaponActionTable;
     private readonly Lazy<QuestMaskNpcTable> questMaskNpcTable;
     private readonly Lazy<InventoryTabNameTable> inventoryTabNameTable;
+    private readonly Lazy<UserConditionEventTable> userConditionEventTable;
 
     private readonly Lazy<EnchantScrollTable> enchantScrollTable;
     private readonly Lazy<ItemRemakeScrollTable> itemRemakeScrollTable;
@@ -158,6 +159,7 @@ public class TableMetadataStorage {
     public WeaponActionTable WeaponActionTable => weaponActionTable.Value;
     public QuestMaskNpcTable QuestMaskNpcTable => questMaskNpcTable.Value;
     public InventoryTabNameTable InventoryTabNameTable => inventoryTabNameTable.Value;
+    public UserConditionEventTable UserConditionEventTable => userConditionEventTable.Value;
 
     public EnchantScrollTable EnchantScrollTable => enchantScrollTable.Value;
     public ItemRemakeScrollTable ItemRemakeScrollTable => itemRemakeScrollTable.Value;
@@ -267,6 +269,8 @@ public class TableMetadataStorage {
         questMaskNpcTable = Retrieve<QuestMaskNpcTable>(context, TableNames.QUEST_MASK_NPC);
         // A metadata db ingested before this table has no row: its notices name a tab by the server's type name.
         inventoryTabNameTable = Retrieve(context, TableNames.STRING_COMMON, InventoryTabNameTable.Empty);
+        // A metadata db ingested before this table has no row: no user condition rows.
+        userConditionEventTable = Retrieve(context, TableNames.USER_CONDITION_EVENT, UserConditionEventTable.Empty);
 
     }
 

@@ -80,6 +80,12 @@ public enum GameEventUserValueType {
     // type in its list and reads this one nowhere.
     DailyLoginRewardGiven = 2420,
 
+    // User condition event (UserCondition): the table rows already given (a comma list of row ids) and the row last
+    // noticed, whose preview row the login's UserConditionEvent 0 sends. Not KMS2 values; the client keeps any type
+    // in its list and reads these nowhere.
+    UserConditionDone = 2430,
+    UserConditionNotice = 2431,
+
     // Long-term attendance (LongTermAttendGift), read by its dialog (uilongtermattendgiftdialog.cpp)
     LongTermAttendClaimedDays = 2700, // claimed reward days, "5,11,20"
     LongTermAttendPoints = 2701,

@@ -102,6 +102,9 @@ public static class TableNames {
     public const string WEAPON_ACTION = "weaponaction.xml";
     public const string QUEST_MASK_NPC = "questmasknpc.xml";
 
+    // Game events
+    public const string USER_CONDITION_EVENT = "userconditionevent.xml";
+
     // Strings (string/<language>/)
     public const string STRING_COMMON = "stringcommon.xml";
 

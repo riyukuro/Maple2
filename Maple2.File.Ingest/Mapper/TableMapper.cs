@@ -121,6 +121,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.WEAPON_ACTION, Table = ParseWeaponAction() };
         yield return new TableMetadata { Name = TableNames.QUEST_MASK_NPC, Table = ParseQuestMaskNpcTable() };
         yield return new TableMetadata { Name = TableNames.STRING_COMMON, Table = ParseInventoryTabNames() };
+        yield return new TableMetadata { Name = TableNames.USER_CONDITION_EVENT, Table = ParseUserConditionEventTable() };
 
         // Marriage/Wedding
         yield return new TableMetadata { Name = TableNames.WEDDING, Table = ParseWeddingTable() };
@@ -2828,6 +2829,74 @@ public class TableMapper : TypeMapper<TableMetadata> {
             }
         }
         return new InventoryTabNameTable(names);
+    }
+
+    // The played client's table/<LOCALE>/userconditionevent.xml (else its table/userconditionevent.xml), the copy its
+    // notice dialog reads; without one, the data pack's own when the pack is LOCALE's region.
+    private UserConditionEventTable ParseUserConditionEventTable() {
+        XmlDocument? document = ClientListedRows.PlayedTable(playedReader, FeatureLocaleFilter.Locale, TableNames.USER_CONDITION_EVENT);
+        if (document == null && string.Equals(FeatureLocaleFilter.Locale, PackTables.Locale, StringComparison.OrdinalIgnoreCase)) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+                    file.Name.Equals($"table/{PackTables.Locale.ToLowerInvariant()}/{TableNames.USER_CONDITION_EVENT}", StringComparison.OrdinalIgnoreCase))
+                ?? xmlReader.Files.FirstOrDefault(file => file.Name.Equals($"table/{TableNames.USER_CONDITION_EVENT}", StringComparison.OrdinalIgnoreCase));
+            document = entry == null ? null : xmlReader.GetXmlDocument(entry);
+        }
+        UserConditionEventTable table = document == null ? UserConditionEventTable.Empty : UserConditionEvents(document);
+        Console.WriteLine($"{TableNames.USER_CONDITION_EVENT}: {table.Entries.Count} rows");
+        return table;
+    }
+
+    // As CUserConditionEventData::Load reads the rows (commonfiles/userconditioneventdata.cpp): <event id gameEventID>
+    // with its <condition> (a row whose condition type is unknown is skipped, as the client skips a condition that
+    // does not load), <notify useNotify preview descKey descArg> and <mail useMail context meso merat>, each with its
+    // <attachment job itemID itemRank itemCount/> (itemRank 1 when missing). Id 0 is skipped (GetEvent(0) finds
+    // nothing); an id listed again replaces the row.
+    public static UserConditionEventTable UserConditionEvents(XmlDocument document) {
+        var rows = new Dictionary<int, UserConditionEventMetadata>();
+        foreach (XmlElement row in document.SelectNodes("ms2/event")?.OfType<XmlElement>() ?? []) {
+            int id = Int(row, "id");
+            if (id == 0 || row.SelectSingleNode("condition") is not XmlElement condition
+                || !Enum.TryParse(condition.GetAttribute("type"), out Maple2.Model.Enum.ConditionType type) || !Enum.IsDefined(type)
+                || int.TryParse(condition.GetAttribute("type"), out _)) {
+                continue;
+            }
+
+            UserConditionEventMetadata.NotifyData? notify = null;
+            if (row.SelectSingleNode("notify") is XmlElement notifyNode && Int(notifyNode, "useNotify") != 0) {
+                notify = new UserConditionEventMetadata.NotifyData(
+                    Preview: Int(notifyNode, "preview"),
+                    DescKey: notifyNode.GetAttribute("descKey"),
+                    DescArg: notifyNode.GetAttribute("descArg"),
+                    Attachments: Attachments(notifyNode));
+            }
+            UserConditionEventMetadata.MailData? mail = null;
+            if (row.SelectSingleNode("mail") is XmlElement mailNode && Int(mailNode, "useMail") != 0) {
+                mail = new UserConditionEventMetadata.MailData(
+                    Context: Int(mailNode, "context"),
+                    Meso: Long(mailNode, "meso"),
+                    Merat: Long(mailNode, "merat"),
+                    Attachments: Attachments(mailNode));
+            }
+            rows[id] = new UserConditionEventMetadata(id, Int(row, "gameEventID"), type, Long(condition, "code"), Long(condition, "target"), notify, mail);
+        }
+        return new UserConditionEventTable(rows);
+
+        static UserConditionEventMetadata.Attachment[] Attachments(XmlElement node) =>
+            (node.SelectNodes("attachment")?.OfType<XmlElement>() ?? [])
+            .Select(attachment => new UserConditionEventMetadata.Attachment(
+                Job: Int(attachment, "job"),
+                ItemId: Int(attachment, "itemID"),
+                Rarity: attachment.HasAttribute("itemRank") ? Int(attachment, "itemRank") : 1,
+                Amount: Int(attachment, "itemCount")))
+            .ToArray();
+
+        static int Int(XmlElement node, string name) {
+            return int.TryParse(node.GetAttribute(name), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : 0;
+        }
+
+        static long Long(XmlElement node, string name) {
+            return long.TryParse(node.GetAttribute(name), NumberStyles.Integer, CultureInfo.InvariantCulture, out long value) ? value : 0;
+        }
     }
 
     // The played client's table/questmasknpc.xml (else the data pack's): the npc masks the client applies.

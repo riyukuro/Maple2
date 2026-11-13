@@ -217,6 +217,12 @@ public class GameEvent : IByteSerializable {
                 writer.WriteLong(EndTime);
                 writer.WriteUnicodeString(snowman.Layout);
                 break;
+            case UserCondition userCondition:
+                // GameEvent::vfunc_4 reads the id, then GameEventUserCondition::vfunc_4 the group and the page.
+                writer.WriteInt(Id);
+                writer.WriteInt(userCondition.Group);
+                writer.WriteUnicodeString(userCondition.Url);
+                break;
             case GuildVsGameOpen:
                 // GameEventGuildVsGameOpen reads only the base event's id.
                 writer.WriteInt(Id);

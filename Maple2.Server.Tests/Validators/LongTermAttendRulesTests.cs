@@ -176,6 +176,7 @@ public class LongTermAttendRulesTests {
             GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup, GameEventType.ArcadeOpen,
             GameEventType.TreeWatering, GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent,
             GameEventType.CoupleDance, GameEventType.ExchangeScrollSale, GameEventType.ItemBox, GameEventType.Snowman,
+            GameEventType.UserCondition,
         }));
 
         var now = new DateTime(2030, 6, 15, 9, 30, 0);

@@ -603,6 +603,12 @@ public record Snowman(
         int Prop);
 }
 
+// value1, the group of user condition rows the event runs (GameEventUserCondition::vfunc_2 reads it as an unsigned
+// number; the rows' gameEventID), and value2, the page the notice dialog links to (GameRule::SetUserConditionText).
+public record UserCondition(
+    int Group,
+    string Url) : GameEventData;
+
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "!")]
 [JsonDerivedType(typeof(StringBoard), "StringBoard")]
 [JsonDerivedType(typeof(StringBoardLink), "StringBoardLink")]
@@ -623,6 +629,7 @@ public record Snowman(
 [JsonDerivedType(typeof(LoginNotice), "LoginNotice")]
 [JsonDerivedType(typeof(ItemBox), "ItemBox")]
 [JsonDerivedType(typeof(Snowman), "Snowman")]
+[JsonDerivedType(typeof(UserCondition), "UserCondition")]
 [JsonDerivedType(typeof(FieldEffect), "FieldEffect")]
 [JsonDerivedType(typeof(Festival), "Festival")]
 [JsonDerivedType(typeof(QuestTag), "QuestTag")]

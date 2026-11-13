@@ -1,6 +1,7 @@
 ﻿using System.Collections.Immutable;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
@@ -9,6 +10,7 @@ using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
 
@@ -21,6 +23,9 @@ public sealed class GameEventManager {
     // handler (a game of two) and Save runs on logout; every access of eventValues takes this lock.
     private readonly object valuesLock = new();
     private long nextUpdateTick;
+    // Set when the level, exp or job may have changed (and at login), so the next second step looks at the user
+    // condition rows again.
+    private volatile bool userConditionDue = true;
 
     // The server's local time; each step reads it once, so that a step across midnight tests and stores its values
     // against one day (tests set it).
@@ -48,6 +53,7 @@ public sealed class GameEventManager {
 
         UpdateDtReward();
         UpdateDailyLoginReward();
+        UpdateUserCondition();
         // Chosen here: the SAHotTime bonus follows its events within this one second step.
         session.Stats.RefreshHotTime();
     }
@@ -145,6 +151,7 @@ public sealed class GameEventManager {
             GameEventType.StampEvent => StampValueTypes.Contains(value.Type),
             GameEventType.CollectItemGroup => value.Type is GameEventUserValueType.CollectItemGroup,
             GameEventType.Snowman => value.Type is GameEventUserValueType.AccumCompleteCount or GameEventUserValueType.AccumCompleteRewardReceived,
+            GameEventType.UserCondition => value.Type is GameEventUserValueType.UserConditionDone or GameEventUserValueType.UserConditionNotice,
             _ => false,
         };
         if (!follows || value.ExpirationTime == gameEvent.EndTime) {
@@ -320,6 +327,125 @@ public sealed class GameEventManager {
             }
             session.Mail.Notify(true);
         }
+    }
+
+    // The level, exp or job may have changed: the user condition rows are looked at on the next second step.
+    public void UserConditionChanged(ConditionType type) {
+        if (type is ConditionType.level or ConditionType.exp or ConditionType.job) {
+            userConditionDue = true;
+        }
+    }
+
+    // The user condition event (UserCondition): each row of a running event's group (value1) the character meets
+    // and has not been given (UserConditionRules) is given now: its mail, a system mail with the row's mail text
+    // (context) and the attachments for every job and the character's (as the notice dialog shows them), and its
+    // notice: UserConditionEvent 1 with the last such row, whose preview row the client keeps as the one noticed.
+    // The given rows are stored before the mails are made: a stop between the two loses a mail instead of sending
+    // it twice. Chosen here: per character (each character's levels are its own), on the second step after a
+    // level, exp or job change and at login, so rows already met when an event starts are given too; one notice
+    // per step (the client shows one dialog).
+    private void UpdateUserCondition() {
+        if (session.Field is null || !userConditionDue) return;
+        userConditionDue = false;
+
+        IList<GameEvent> events = session.FindEvent(GameEventType.UserCondition);
+        if (events.Count == 0) {
+            return;
+        }
+        IReadOnlyDictionary<int, UserConditionEventMetadata> table = session.TableMetadata.UserConditionEventTable.Entries;
+        if (table.Count == 0) {
+            return;
+        }
+
+        Character character = session.Player.Value.Character;
+        long nextExp = session.TableMetadata.ExpTable.NextExp.GetValueOrDefault(character.Level);
+        long expRate = UserConditionRules.ExpRate(character.Exp, nextExp);
+        int jobCode = (int) character.Job.Code();
+        long now = Clock().ToEpochSeconds();
+        foreach (GameEvent gameEvent in events.OrderBy(found => found.Id)) {
+            if (gameEvent.Metadata.Data is not UserCondition { Group: > 0 } userCondition) {
+                continue;
+            }
+            HashSet<int> done = UserConditionRules.Ids(Get(GameEventUserValueType.UserConditionDone, gameEvent.Id, gameEvent.EndTime, now).Value);
+            List<UserConditionEventMetadata> due = UserConditionRules.Due(table.Values, userCondition.Group, done, character.Level, expRate, jobCode);
+            if (due.Count == 0) {
+                continue;
+            }
+            done.UnionWith(due.Select(row => row.Id));
+            Set(gameEvent.Id, GameEventUserValueType.UserConditionDone, UserConditionRules.Join(done));
+            UserConditionEventMetadata? notice = due.LastOrDefault(row => row.Notify != null);
+            if (notice != null) {
+                Get(GameEventUserValueType.UserConditionNotice, gameEvent.Id, gameEvent.EndTime, now);
+                Set(gameEvent.Id, GameEventUserValueType.UserConditionNotice, notice.Id);
+            }
+            if (!Store(gameEvent.Id, GameEventUserValueType.UserConditionDone)
+                || (notice != null && !Store(gameEvent.Id, GameEventUserValueType.UserConditionNotice))) {
+                logger.Error("Failed to store the user condition rows of event {EventId} for {CharacterId}", gameEvent.Id, session.CharacterId);
+                continue;
+            }
+
+            bool mailed = false;
+            foreach (UserConditionEventMetadata row in due) {
+                if (row.Mail != null) {
+                    mailed |= SendUserConditionMail(gameEvent.Id, row.Mail, jobCode);
+                }
+            }
+            if (mailed) {
+                session.Mail.Notify(true);
+            }
+            if (notice != null) {
+                session.Send(UserConditionEventPacket.Notice(notice.Id));
+            }
+        }
+    }
+
+    private bool SendUserConditionMail(int eventId, UserConditionEventMetadata.MailData mailData, int jobCode) {
+        var items = new List<Item>();
+        foreach (UserConditionEventMetadata.Attachment attachment in UserConditionRules.ForJob(mailData.Attachments, jobCode)) {
+            Item? item = session.Field?.ItemDrop.CreateItem(attachment.ItemId, attachment.Rarity, attachment.Amount);
+            if (item != null) {
+                items.Add(item);
+            }
+        }
+        if (items.Count == 0 && mailData.Meso <= 0 && mailData.Merat <= 0) {
+            return false;
+        }
+
+        using GameStorage.Request db = session.GameStorage.Context();
+        Mail? mail = db.CreateMail(new Mail {
+            Type = MailType.System,
+            ReceiverId = session.CharacterId,
+            SenderId = session.CharacterId,
+            Content = mailData.Context > 0 ? mailData.Context.ToString() : string.Empty,
+            Meso = Math.Max(0, mailData.Meso),
+            Meret = Math.Max(0, mailData.Merat),
+        });
+        if (mail == null) {
+            logger.Error("Failed to create the user condition mail {Context} of event {EventId} for {CharacterId}", mailData.Context, eventId, session.CharacterId);
+            return false;
+        }
+        foreach (Item item in items) {
+            Item? created = db.CreateItem(mail.Id, item);
+            if (created == null) {
+                logger.Error("Failed to create item {ItemId} of the user condition mail of event {EventId}", item.Id, eventId);
+                continue;
+            }
+            mail.Items.Add(created);
+        }
+        return true;
+    }
+
+    // The preview row of the last row noticed, sent at login (UserConditionEvent 0): the row the client keeps as the
+    // one noticed. 0 when none was, or its row is gone. With several events, the highest id's.
+    public int UserConditionPreview() {
+        IReadOnlyDictionary<int, UserConditionEventMetadata> table = session.TableMetadata.UserConditionEventTable.Entries;
+        foreach (GameEvent gameEvent in session.FindEvent(GameEventType.UserCondition).OrderByDescending(found => found.Id)) {
+            if (int.TryParse(Peek(GameEventUserValueType.UserConditionNotice, gameEvent.Id), out int id)
+                && table.TryGetValue(id, out UserConditionEventMetadata? row)) {
+                return row.Notify?.Preview ?? 0;
+            }
+        }
+        return 0;
     }
 
     // One attend point a day for each live long-term attendance event (chosen here: the client does not say how

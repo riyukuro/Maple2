@@ -13,10 +13,19 @@ public static class UserConditionEventPacket {
         Notice = 1,
     }
 
-    // What KMS2 sends once at every login: no row noticed yet (id 0).
+    // Sent once at every login: the row last noticed (KMS2 sends 0, none).
     public static ByteWriter Load(int id = 0) {
         var pWriter = Packet.Of(SendOp.UserConditionEvent);
         pWriter.WriteByte((byte) Command.Load);
+        pWriter.WriteInt(id);
+
+        return pWriter;
+    }
+
+    // A row's notice: the client shows the row's notify text and attachments and keeps its preview row as noticed.
+    public static ByteWriter Notice(int id) {
+        var pWriter = Packet.Of(SendOp.UserConditionEvent);
+        pWriter.WriteByte((byte) Command.Notice);
         pWriter.WriteInt(id);
 
         return pWriter;

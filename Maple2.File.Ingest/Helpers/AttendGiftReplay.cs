@@ -19,7 +19,8 @@ namespace Maple2.File.Ingest.Helpers;
 // its play item during it, moved by the same amount (Companions). An RPS, bingo or time run that no such row
 // feeds is not taken: nothing else gives its ticket, pencil or start item. The item box (ItemBox) is replayed
 // too, at its own time of day (the KR rows open the box for 17 minutes at 19:00), and the snowman (Snowman), whose
-// snowflakes come from its promotionContents rows (read with it, so they move with it).
+// snowflakes come from its promotionContents rows (read with it, so they move with it). So is the user condition
+// event (UserCondition): the live KR row runs group 2, which no user condition row has; the ended one runs group 1.
 public static class AttendGiftReplay {
     public const string Option = "MS2_REPLAY_ATTEND_GIFT";
 
@@ -31,13 +32,16 @@ public static class AttendGiftReplay {
         GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup, GameEventType.ArcadeOpen,
         GameEventType.TreeWatering, GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent,
         GameEventType.CoupleDance, GameEventType.ExchangeScrollSale, GameEventType.ItemBox, GameEventType.Snowman,
+        GameEventType.UserCondition,
     ];
 
     // The replayed types whose events are not taken without data (not read): the minigames, whose rules are all
-    // in it, the item box, whose field and box are, and the snowman, whose snowmen are.
+    // in it, the item box, whose field and box are, the snowman, whose snowmen are, and the user condition event,
+    // whose row group is.
     public static readonly GameEventType[] NeedData = [
         GameEventType.StampEvent, GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent,
         GameEventType.CoupleDance, GameEventType.ItemBox, GameEventType.Snowman,
+        GameEventType.UserCondition,
     ];
 
     // The item a round of the event takes: the RPS ticket, the bingo's daily pencil, the time run's start item

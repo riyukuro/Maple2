@@ -1648,6 +1648,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return ReadItemBox(value1);
             case GameEventType.Snowman:
                 return ReadSnowman(value1, value2);
+            case GameEventType.UserCondition:
+                return new UserCondition(
+                    Group: uint.TryParse(value1, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint group) ? (int) group : 0,
+                    Url: value2);
             case GameEventType.Festival:
                 // GameEventFestival::vfunc_2 reads value1 and value2 as unsigned numbers (FUN_140718200).
                 return new Festival(
