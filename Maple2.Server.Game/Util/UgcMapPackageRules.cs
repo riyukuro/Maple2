@@ -40,7 +40,10 @@ public static class UgcMapPackageRules {
     }
 
     // A furnishing storage stack: the item, its template url, whether it is a maid's item, its amount and stack size.
-    public record struct Stack(int ItemId, string? Url, bool Maid, int Amount, int SlotMax);
+    // Expiry: a stored stack's expiry; for an incoming cube the one it keeps (FurnishingManager.KeptExpiry), which
+    // joins only a stack of that expiry, else an empty one (which takes it), or null for a new item's, which joins
+    // the first stack of its item and design as before.
+    public record struct Stack(int ItemId, string? Url, bool Maid, int Amount, int SlotMax, long? Expiry = null);
 
     // Whether the furnishing storage takes every incoming cube, one at a time, as FurnishingManager.AddStorage adds
     // them: onto the first stack of the same item and design (MaidRules.CanJoin; a maid item only onto an empty stack), which must
@@ -62,7 +65,12 @@ public static class UgcMapPackageRules {
         List<Stack> stacks = stored.ToList();
         var places = new List<Placement>();
         foreach (Stack add in incoming) {
-            int index = stacks.FindIndex(stack => stack.ItemId == add.ItemId && MaidRules.DesignKey(stack.Url) == MaidRules.DesignKey(add.Url) && (!add.Maid || stack.Amount == 0));
+            bool Joins(Stack stack) => stack.ItemId == add.ItemId && MaidRules.DesignKey(stack.Url) == MaidRules.DesignKey(add.Url) && (!add.Maid || stack.Amount == 0);
+            int index = add.Expiry is not { } expiry
+                ? stacks.FindIndex(Joins)
+                : stacks.FindIndex(stack => Joins(stack) && stack.Expiry == expiry) is var same and >= 0
+                    ? same
+                    : stacks.FindIndex(stack => Joins(stack) && stack.Amount == 0);
             if (index < 0) {
                 if (openSlots <= 0) {
                     places.Add(new Placement(PlaceKind.Mail, -1));
@@ -78,7 +86,7 @@ public static class UgcMapPackageRules {
                 places.Add(new Placement(PlaceKind.Mail, -1));
                 continue;
             }
-            stacks[index] = join with { Amount = join.Amount + 1 };
+            stacks[index] = join with { Amount = join.Amount + 1, Expiry = add.Expiry ?? join.Expiry };
             places.Add(new Placement(PlaceKind.Join, index));
         }
         return places;

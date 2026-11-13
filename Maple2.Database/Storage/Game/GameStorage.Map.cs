@@ -404,6 +404,9 @@ public partial class GameStorage {
                             return null;
                         }
                         row.Amount = join.Amount;
+                        if (join.ExpiryTime is { } expiryTime) {
+                            row.ExpiryTime = expiryTime > 0 ? expiryTime.FromEpochSeconds() : default;
+                        }
                     }
                     foreach (CubeReturn.Add add in back.NewStacks) {
                         Model.Item model = add.Item;

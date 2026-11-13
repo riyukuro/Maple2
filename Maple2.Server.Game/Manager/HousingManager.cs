@@ -517,7 +517,7 @@ public class HousingManager {
             List<PlotCube> old = plot.Cubes.Values.ToList();
             var incoming = new List<UgcMapPackageRules.Stack>();
             incoming.AddRange(old.Select(cube => new UgcMapPackageRules.Stack(cube.ItemId, cube.Template?.Url,
-                cube.Metadata.Housing?.MaidId > 0, 1, cube.Metadata.Property.SlotMax)));
+                cube.Metadata.Housing?.MaidId > 0, 1, cube.Metadata.Property.SlotMax, FurnishingManager.KeptExpiry(cube.Metadata, cube.ExpiryTime))));
             foreach (ExportedUgcMapMetadata.Cube cube in package.Cubes) {
                 if (session.ItemMetadata.TryGet(cube.ItemId, out ItemMetadata? metadata) && metadata.Install != null && metadata.Housing != null) {
                     incoming.Add(new UgcMapPackageRules.Stack(cube.ItemId, null, metadata.Housing.MaidId > 0, 1, metadata.Property.SlotMax));
@@ -965,10 +965,17 @@ public class HousingManager {
 
     private bool RemoveCube(Plot plot, in Vector3B position, [NotNullWhen(true)] out PlotCube? cube, GameSession? helper) {
         GameSession notify = helper ?? session;
-        if (!plot.Cubes.Remove(position, out cube)) {
+        if (!plot.Cubes.TryGetValue(position, out cube)) {
             notify.Send(CubePacket.EditError(CubePacket.Edit.Remove, UgcMapError.s_ugcmap_no_cube_to_remove, notify.Player.ObjectId));
             return false;
         }
+        // Storage must take the cube back before it leaves the plot (a cube of its own expiry may need a new slot).
+        if (!plot.IsPlanner && !session.Item.Furnishing.CanRetrieve(cube)) {
+            notify.Send(CubePacket.EditError(CubePacket.Edit.Remove, UgcMapError.s_ugcmap_cant_be_removed, notify.Player.ObjectId));
+            cube = null;
+            return false;
+        }
+        plot.Cubes.Remove(position);
 
         if (cube.Interact?.PortalSettings is not null) {
             session.Field?.RemovePortal(cube.Interact.PortalSettings.PortalObjectId);

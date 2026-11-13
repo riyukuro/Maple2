@@ -8,7 +8,8 @@ namespace Maple2.Database.Storage;
 // sent to CharacterId, one system mail each. A maid cube's maid moves with it, to the stack or the mailed item
 // (MaidCubeId names the cube, 0 for none).
 public sealed class CubeReturn {
-    public sealed record Join(Item Stack, int Amount, long MaidCubeId);
+    // ExpiryTime: the expiry an empty stack takes from the cube that joins it (null: the stack keeps its own).
+    public sealed record Join(Item Stack, int Amount, long MaidCubeId, long? ExpiryTime = null);
     public sealed record Add(Item Item, long MaidCubeId);
 
     public required long AccountId { get; init; }

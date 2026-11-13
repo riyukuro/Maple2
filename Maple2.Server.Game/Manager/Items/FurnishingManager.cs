@@ -209,13 +209,23 @@ public class FurnishingManager {
     // Whether storage takes all these cubes (UgcMapPackageRules.StorageTakes).
     public bool StorageTakes(IEnumerable<UgcMapPackageRules.Stack> incoming) {
         lock (session.Item) {
-            return UgcMapPackageRules.StorageTakes(storage.Select(item => new UgcMapPackageRules.Stack(item.Id, item.Template?.Url,
-                item.Metadata.Housing?.MaidId > 0, item.Amount, item.Metadata.Property.SlotMax)), storage.OpenSlots, incoming);
+            return UgcMapPackageRules.StorageTakes(storage.Select(ToStoredStack), storage.OpenSlots, incoming);
         }
     }
 
     private static UgcMapPackageRules.Stack ToStack(Item item) =>
         new(item.Id, item.Template?.Url, item.Metadata.Housing?.MaidId > 0, item.Amount, item.Metadata.Property.SlotMax);
+
+    private static UgcMapPackageRules.Stack ToStoredStack(Item item) => ToStack(item) with { Expiry = item.ExpiryTime };
+
+    // The expiry a cube goes back to storage with: its row's. A row of 0 for an item with a lifetime is a cube placed
+    // before the rows kept the expiry; it takes a new item's, as it did then (null).
+    public static long? KeptExpiry(ItemMetadata metadata, long expiryTime) =>
+        expiryTime > 0 || metadata.Life is not { ExpirationDuration: > 0 } and not { ExpirationTimestamp: > 0 } ? expiryTime : null;
+
+    // A cube storage would take back (RetrieveCube), asked before it leaves the plot.
+    public bool CanRetrieve(PlotCube cube) => StorageTakes([new UgcMapPackageRules.Stack(cube.ItemId, cube.Template?.Url,
+        cube.Metadata.Housing?.MaidId > 0, 1, cube.Metadata.Property.SlotMax, KeptExpiry(cube.Metadata, cube.ExpiryTime))]);
 
     // Whether storage takes every piece of these furnishing items, each item's amount as TakeMailed adds it (the
     // same rule InventoryManager.Add uses: all of them or none). A furnishing item makes no second stack in storage
@@ -247,19 +257,23 @@ public class FurnishingManager {
     public CubeReturn? PlanReturn(IReadOnlyList<PlotCube> cubes, long characterId) {
         lock (session.Item) {
             Item[] stored = storage.ToArray();
-            List<UgcMapPackageRules.Placement> places = UgcMapPackageRules.Place(stored.Select(ToStack), storage.OpenSlots,
-                cubes.Select(cube => new UgcMapPackageRules.Stack(cube.ItemId, cube.Template?.Url, cube.Metadata.Housing?.MaidId > 0, 1, cube.Metadata.Property.SlotMax)));
+            // Each cube keeps its expiry (KeptExpiry), as RetrieveCube gives it back.
+            long?[] kept = cubes.Select(cube => KeptExpiry(cube.Metadata, cube.ExpiryTime)).ToArray();
+            List<UgcMapPackageRules.Placement> places = UgcMapPackageRules.Place(stored.Select(ToStoredStack), storage.OpenSlots,
+                cubes.Select((cube, i) => new UgcMapPackageRules.Stack(cube.ItemId, cube.Template?.Url, cube.Metadata.Housing?.MaidId > 0, 1,
+                    cube.Metadata.Property.SlotMax, kept[i])));
             var plan = new CubeReturn { AccountId = session.AccountId, CharacterId = characterId };
-            var joins = new Dictionary<int, (int Amount, long MaidCubeId)>();
+            var joins = new Dictionary<int, (int Amount, long MaidCubeId, long? Expiry)>();
             var made = new Dictionary<int, CubeReturn.Add>();
-            var mailed = new Dictionary<(int ItemId, string? Design), CubeReturn.Add>();
+            var mailed = new Dictionary<(int ItemId, string? Design, long? Expiry), CubeReturn.Add>();
             for (int i = 0; i < cubes.Count; i++) {
                 PlotCube cube = cubes[i];
                 long maidCubeId = cube.Metadata.Housing?.MaidId > 0 ? cube.Id : 0;
                 UgcMapPackageRules.Placement place = places[i];
                 if (place.Kind == UgcMapPackageRules.PlaceKind.Join && place.Index < stored.Length) {
-                    (int amount, long maid) = joins.TryGetValue(place.Index, out (int, long) join) ? join : (stored[place.Index].Amount, 0);
-                    joins[place.Index] = (amount + 1, maidCubeId != 0 ? maidCubeId : maid);
+                    (int amount, long maid, long? expiry) = joins.TryGetValue(place.Index, out (int, long, long?) join) ? join : (stored[place.Index].Amount, 0, null);
+                    // An empty stack joined by a cube of another expiry takes it (AddStorage).
+                    joins[place.Index] = (amount + 1, maidCubeId != 0 ? maidCubeId : maid, kept[i] ?? expiry);
                     continue;
                 }
                 if (place.Kind == UgcMapPackageRules.PlaceKind.Join) {
@@ -267,7 +281,7 @@ public class FurnishingManager {
                     continue;
                 }
                 if (place.Kind == UgcMapPackageRules.PlaceKind.Mail && maidCubeId == 0
-                    && mailed.TryGetValue((cube.ItemId, MaidRules.DesignKey(cube.Template?.Url)), out CubeReturn.Add? share)
+                    && mailed.TryGetValue((cube.ItemId, MaidRules.DesignKey(cube.Template?.Url), kept[i]), out CubeReturn.Add? share)
                     && share.Item.Amount < Math.Max(1, cube.Metadata.Property.SlotMax)) {
                     share.Item.Amount++;
                     continue;
@@ -279,6 +293,9 @@ public class FurnishingManager {
                     return null;
                 }
                 item.Amount = 1;
+                if (kept[i] is { } expiryTime) {
+                    item.ExpiryTime = expiryTime;
+                }
                 if (cube.Template != null) {
                     item.Template = cube.Template.Clone();
                 }
@@ -291,11 +308,11 @@ public class FurnishingManager {
                 }
                 plan.Mailed.Add(add);
                 if (maidCubeId == 0) {
-                    mailed[(cube.ItemId, MaidRules.DesignKey(cube.Template?.Url))] = add;
+                    mailed[(cube.ItemId, MaidRules.DesignKey(cube.Template?.Url), kept[i])] = add;
                 }
             }
-            foreach ((int index, (int amount, long maidCubeId)) in joins) {
-                plan.Joins.Add(new CubeReturn.Join(stored[index], amount, maidCubeId));
+            foreach ((int index, (int amount, long maidCubeId, long? expiry)) in joins) {
+                plan.Joins.Add(new CubeReturn.Join(stored[index], amount, maidCubeId, expiry));
             }
             return plan;
         }
@@ -309,6 +326,9 @@ public class FurnishingManager {
             foreach (CubeReturn.Join join in plan.Joins) {
                 int previous = join.Stack.Amount;
                 join.Stack.Amount = join.Amount;
+                if (join.ExpiryTime is { } expiryTime) {
+                    join.Stack.ExpiryTime = expiryTime;
+                }
                 session.Send(previous == 0
                     ? FurnishingStoragePacket.Add(join.Stack)
                     : FurnishingStoragePacket.Update(join.Stack.Uid, join.Stack.Amount));
@@ -429,24 +449,26 @@ public class FurnishingManager {
 
             long itemUid = AddStorage(cube);
             if (itemUid == 0) {
-                logger.Fatal("Failed to return cube: {CubeId} to storage", cube.Id);
-                throw new InvalidOperationException($"Failed to return cube: {cube.Id} to storage");
+                // The cube stays in the furnishing inventory, as a cube still placed (HousingManager asks CanRetrieve first).
+                logger.Error("Failed to return cube: {CubeId} to storage", cube.Id);
+                AddInventory(cube);
+                return 0;
             }
 
             return itemUid;
         }
     }
 
-    // A cube with an expiry (one placed from a timed item; the server's own, HeldCube.ReadFrom keeps none from the
-    // client) goes back with it, not with a new item's: it joins only a stack of the same expiry, or an empty one.
+    // A cube goes back with its expiry (KeptExpiry; the server's own, HeldCube.ReadFrom keeps none from the client),
+    // not with a new item's: it joins only a stack of the same expiry, or an empty one.
     private long AddStorage(HeldCube cube) {
         Item? item = session.Field?.ItemDrop.CreateItem(cube.ItemId);
         if (item == null) {
             return 0;
         }
 
-        if (cube.ExpiryTime > 0) {
-            item.ExpiryTime = cube.ExpiryTime;
+        if (KeptExpiry(item.Metadata, cube.ExpiryTime) is { } expiryTime) {
+            item.ExpiryTime = expiryTime;
             return AddStorage(item, cube.Template, keepExpiry: true);
         }
         return AddStorage(item, cube.Template);
