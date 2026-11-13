@@ -177,6 +177,27 @@ public class ItemRowWriteTests {
         }
     }
 
+    // Two stacks merged by the bag's sort: the emptied one's row is deleted by the bag save, not left at owner 0
+    // until the next world start; the kept stack holds both amounts.
+    [Test]
+    public void MergedAwayStack_RowIsDeleted() {
+        ItemMetadata metadata = TestGameSession.Metadata(Stackable);
+        long first = test.Store(metadata, 3).Uid, second = test.Store(metadata, 4).Uid;
+        var session = test.Start();
+        Item kept = session.Item.Inventory.Get(first)!;
+        session.Item.Inventory.Sort(kept.Inventory, mergeStacks: true);
+        using (GameStorage.Request db = test.Storage.Context()) {
+            session.Item.Inventory.Save(db);
+        }
+        using var context = new Ms2Context(test.Options);
+        long[] rows = context.Item.AsNoTracking().Where(row => row.Id == first || row.Id == second).Select(row => row.Id).ToArray();
+        Assert.Multiple(() => {
+            Assert.That(rows, Has.Length.EqualTo(1), "the emptied stack's row");
+            Assert.That(Amount(rows.Single()), Is.EqualTo(7));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // A transaction rolled back after its save (or a commit whose answer was lost): nothing is kept.
     [Test]
     public void RolledBackSave_KeepsNothing() {

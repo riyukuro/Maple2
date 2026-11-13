@@ -1101,7 +1101,16 @@ public class InventoryManager {
         lock (session.Item) {
             Item[] discarded = delete.ToArray();
             if (discarded.Length > 0 && db.SaveItems(0, discarded)) {
+                long[] emptied = discarded.Where(item => item.Amount == 0).Select(item => item.Uid).Distinct().ToArray();
                 db.AfterCommit(() => {
+                    // Emptied stacks (merged away) are deleted, not left at owner 0 until the next world start. Once the
+                    // owner-0 writes are committed, with a request of its own: a failed delete (a deadlock rolls back
+                    // the whole transaction it runs in) leaves the rows at owner 0 and cannot touch the save.
+                    // A failure is logged by the delete.
+                    if (emptied.Length > 0) {
+                        using GameStorage.Request own = session.GameStorage.Context();
+                        own.DeleteEmptiedItems(emptied);
+                    }
                     lock (session.Item) {
                         var back = new List<Item>();
                         foreach (Item item in discarded) {

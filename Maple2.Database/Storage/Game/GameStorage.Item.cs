@@ -555,6 +555,38 @@ public partial class GameStorage {
             }
         }
 
+        // Deletes the rows of uids that are emptied stacks (owner 0, amount 0: a stack merged into another, or an add
+        // merged whole into a stack). Such a row cannot come back to an owner, so it is not left to the delete of
+        // unowned rows at the next world start (one row a merge until then). A row that has an owner or an amount
+        // again is kept. The number of rows deleted, -1 when the delete failed (nothing is deleted then).
+        public int DeleteEmptiedItems(long[] uids) {
+            if (uids.Length == 0) {
+                return 0;
+            }
+            return WriteForgetting(uids, () => {
+                try {
+                    IQueryable<Model.Item> emptied = Context.Item.Where(row => uids.Contains(row.Id) && row.OwnerId == 0 && row.Amount == 0);
+                    if (Context.Database.IsRelational()) {
+                        return emptied.ExecuteDelete();
+                    }
+                    // The in-memory store: a row this request wrote is still tracked; it is detached before the row read
+                    // untracked is removed (two tracked instances of one id break the next save).
+                    List<Model.Item> rows = emptied.AsNoTracking().ToList();
+                    Dictionary<long, EntityEntry<Model.Item>> tracked = TrackedItems();
+                    foreach (Model.Item row in rows) {
+                        if (tracked.TryGetValue(row.Id, out EntityEntry<Model.Item>? entry)) {
+                            entry.State = EntityState.Detached;
+                        }
+                        Context.Item.Remove(row);
+                    }
+                    return Context.TrySaveChanges() ? rows.Count : -1;
+                } catch (Exception ex) {
+                    Logger.LogError(ex, "Failed to delete emptied item rows {Uids}: left owner 0 until the next world start", string.Join(",", uids));
+                    return -1;
+                }
+            });
+        }
+
         // The item object has no owner: the row keeps the one it has (written as 0 it was an unowned row, deleted at
         // the next world start, until a save of its owner wrote it back).
         public bool UpdateItem(Item item) {

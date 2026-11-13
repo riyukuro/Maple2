@@ -191,6 +191,50 @@ public class SessionSaveTransactionTests {
         Assert.That(StoredMeso(), Is.EqualTo(4321), string.Join("\n", test.Errors));
     }
 
+    // A stack merged away is deleted after the save; the delete fails as a deadlock does (MySQL rolls back the
+    // transaction the statement ran in, then the statement throws). The save is stored whole and the emptied row
+    // stays at owner 0. Run inside the save's transaction, the delete's rollback took the player row with it, the
+    // rest of the save went on in autocommit, and the save was reported stored.
+    [Test]
+    public void Save_EmptiedRowDeleteDeadlocks_SaveStoredWhole() {
+        Item first = test.Store(TestGameSession.Metadata(ItemId), 3), second = test.Store(TestGameSession.Metadata(ItemId), 4);
+        Assert.That(session.Item.Inventory.Add(first), Is.True);
+        Assert.That(session.Item.Inventory.Add(second), Is.True, "joins the first stack");
+        Assume.That(session.Item.Inventory.Get(second.Uid), Is.Null);
+        session.Currency.Meso = 4321;
+        bool refused = false;
+        hook.Before = command => {
+            if (refused || !command.CommandText.StartsWith("DELETE") || !command.CommandText.Contains("`item`")) {
+                return;
+            }
+            refused = true;
+            using (DbCommand rollback = command.Connection!.CreateCommand()) {
+                rollback.Transaction = command.Transaction;
+                rollback.CommandText = "ROLLBACK";
+                rollback.ExecuteNonQuery();
+            }
+            throw new InvalidOperationException("Deadlock found when trying to get lock");
+        };
+
+        bool saved = session.SessionSave();
+        hook.Before = null;
+
+        Assert.Multiple(() => {
+            Assert.That(refused, Is.True, "the delete ran");
+            Assert.That(saved, Is.True);
+            Assert.That(StoredMeso(), Is.EqualTo(4321), "the player row");
+            Assert.That(StoredAmount(first.Uid), Is.EqualTo(7));
+            Assert.That(StoredOwner(second.Uid), Is.EqualTo(0L), "the emptied row, left to the World start");
+        });
+        using var context = new Ms2Context(plain);
+        context.Item.Where(item => item.Id == second.Uid && item.OwnerId == 0).ExecuteDelete();
+    }
+
+    private long? StoredOwner(long uid) {
+        using var context = new Ms2Context(plain);
+        return context.Item.AsNoTracking().Where(item => item.Id == uid).Select(item => (long?) item.OwnerId).SingleOrDefault();
+    }
+
     // The player row is not saved: nothing else is (the components' saves used to be stored, with the player row
     // the request still had pending).
     [Test]

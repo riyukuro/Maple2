@@ -225,6 +225,30 @@ public class ItemSaveTests {
         });
     }
 
+    // Two stacks merged by the bag's sort: the session save deletes the emptied one's row (one conditional delete,
+    // owner 0 and amount 0), and a row of that list that is not empty stays.
+    [Test]
+    public void MergedAwayStack_RowIsDeleted() {
+        ItemMetadata metadata = TestGameSession.Metadata(50000337);
+        long first = test.Store(metadata, 3).Uid, second = test.Store(metadata, 4).Uid;
+        StartSaving();
+        Item kept = session.Item.Inventory.Get(first)!;
+        session.Item.Inventory.Sort(kept.Inventory, mergeStacks: true);
+        Assert.That(session.SessionSave(), Is.True);
+
+        (long, int)? firstRow = Stored(first), secondRow = Stored(second);
+        Assert.Multiple(() => {
+            Assert.That(new[] { firstRow, secondRow }.Count(row => row == null), Is.EqualTo(1), "the emptied stack's row");
+            Assert.That(new[] { firstRow, secondRow }.Single(row => row != null), Is.EqualTo(((long, int)?) (test.CharacterId, 7)));
+            Assert.That(test.Errors, Is.Empty);
+        });
+        using (GameStorage.Request db = test.Storage.Context()) {
+            long left = test.Store(metadata, 2).Uid;
+            Assert.That(db.DeleteEmptiedItems([left]), Is.EqualTo(0), "a row with an owner and an amount");
+            Assert.That(Stored(left)?.Amount, Is.EqualTo(2));
+        }
+    }
+
     // A created item has no loaded values: its first save writes its row (as an item a mail or the market made).
     [Test]
     public void CreatedItem_FirstSaveWrites() {
