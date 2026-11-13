@@ -89,6 +89,18 @@ public class ItemSocketHandler : FieldPacketHandler {
                 return;
             }
 
+            // The client sends no material for an item with a skin type and exactly the feature's count for any
+            // other (ItemSocketRules.UnlockMaterials), each a different item of its list.
+            int skinType = item.Metadata.Property.SkinType;
+            if (materialUids.Length != ItemSocketRules.UnlockMaterials(skinType)) {
+                session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_ingredient_count));
+                return;
+            }
+            if (materialUids.Distinct().Count() != materialUids.Length) {
+                session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_ingredient));
+                return;
+            }
+
             foreach (long materialUid in materialUids) {
                 // The client offers ingredients from inventory tabs 0 and 1 (gear and outfit).
                 Item? material = ItemSocketRules.Inventories.Select(type => session.Item.Inventory.Get(materialUid, type))
@@ -98,13 +110,18 @@ public class ItemSocketHandler : FieldPacketHandler {
                     return;
                 }
 
-                if (!IsSocketMaterialEqual(item, material) || !AllSocketsEmpty(material)) {
+                // The client's list (EnableSocketUnlockFunction::Matches) leaves out the item itself and an item with
+                // a locked gem; an item with other gems is sent after s_itemsocketsystem_socketunlock_msg_ask_unlock_
+                // ingredient_in_gemstone, whose text says its gems go with it.
+                if (material.Uid == item.Uid || !IsSocketMaterialEqual(item, material) || HasLockedGem(material)) {
                     session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_ingredient));
                     return;
                 }
             }
 
-            if (!ConsumeSocketUnlockIngredients(item)) {
+            SocketPrice? price = SocketPrice.Check(session, [SocketUnlockIngredient(session, item)]);
+            if (price == null || !price.Take(session)) {
+                session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_lack_price));
                 return;
             }
 
@@ -123,20 +140,19 @@ public class ItemSocketHandler : FieldPacketHandler {
             session.ConditionUpdate(ConditionType.socket_unlock_try);
         }
 
-        #region Local Function
-        bool ConsumeSocketUnlockIngredients(Item equip) {
-            (int _, string tag, int amount) =
-                Lua.CalcItemSocketUnlockIngredient(0, equip.Rarity, (ushort) equip.Metadata.Limit.Level, 0, equip.Metadata.Property.SkinType);
+    }
 
-            var ingredient = new IngredientInfo(Enum.Parse<ItemTag>(tag), amount);
-            if (!session.Item.Inventory.Consume([ingredient])) {
-                session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_lack_price));
-                return false;
-            }
-
-            return true;
-        }
-        #endregion
+    // The unlock's catalyst (GetSocketUnlockCost, the same rule as the Lua), lowered by the ReduceGameItemSocketUnlockFee
+    // attribute (SA 179) on an item with no skin type (FUN_140627ac0), held to IngredientFeeReduceLimit and at least 1
+    // (FUN_140627b80, the same math as a change of attributes' ingredient count).
+    private static IngredientInfo SocketUnlockIngredient(GameSession session, Item equip) {
+        int skinType = equip.Metadata.Property.SkinType;
+        (int _, string tag, int amount) =
+            Lua.CalcItemSocketUnlockIngredient(0, equip.Rarity, (ushort) equip.Metadata.Limit.Level, 0, skinType);
+        int rate = skinType > 0 ? 0
+            : EventSaleRules.RemakeDiscount(0, session.Player.Stats.Values[SpecialAttribute.ReduceGameItemSocketUnlockFee].Total);
+        int count = EventSaleRules.RemakeIngredientCount(amount, rate, session.ServerTableMetadata.ConstantsTable.IngredientFeeReduceLimit);
+        return new IngredientInfo(Enum.Parse<ItemTag>(tag), count);
     }
 
     private void HandleStageUnlockSocket(GameSession session, IByteReader packet) {
@@ -456,8 +472,8 @@ public class ItemSocketHandler : FieldPacketHandler {
                && item.Socket.UnlockSlots == material.Socket.UnlockSlots;
     }
 
-    private static bool AllSocketsEmpty(Item material) {
-        return material.Socket == null || material.Socket.Sockets.All(gem => gem == null);
+    private static bool HasLockedGem(Item material) {
+        return material.Socket != null && material.Socket.Sockets.Any(gem => gem is { IsLocked: true });
     }
 
     private enum SocketState { None, Locked, Used, Empty }

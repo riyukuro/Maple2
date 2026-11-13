@@ -10,6 +10,14 @@ public static class ItemSocketRules {
     // The client counts no sockets on an item with a skin type (an outfit) while the SkinSocket feature is off
     // (CItemSocketTable::IsSocketFeatureEnabled, commonfiles/itemsocketsystemutil.cpp), so the ingest keeps such an
     // item's socketDataId only when the feature is on for the locale.
+    // The materials a socket unlock takes (RequestUnlock, unit_140f7d060_itemsocketsystempagesocketunlock.cpp:604):
+    // none for an item with a skin type, else exactly FUN_140628350's count, 2 while the ItemSocketExpansion100
+    // feature (id 253) is on, else 1. Chosen here: 2, as the server keeps no feature levels after the ingest; the
+    // feature is on in the KR and NA Live data (feature.xml KR 49 and NA 40, feature_setting.xml Live KR 56, NA 47).
+    public const int UnlockMaterialCount = 2;
+
+    public static int UnlockMaterials(int skinType) => skinType != 0 ? 0 : UnlockMaterialCount;
+
     public static int SocketId(int socketDataId, int skinType, bool skinSocketEnabled) {
         return skinType != 0 && !skinSocketEnabled ? 0 : socketDataId;
     }
