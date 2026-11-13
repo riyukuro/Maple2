@@ -97,6 +97,24 @@ public class PlayedTakeOverTests {
               </SpecialAbility>
             </level>
           </additional>
+          <additional id="10800215" mainType="1">
+            <level level="1">
+              <Basic durationTick="60000" />
+              <SpecialAbility>
+                <v type="improve_stat_wap_u" value="80" />
+                <v type="FireDamage" value="10" />
+                <v type="firedamage" value="20" />
+              </SpecialAbility>
+            </level>
+          </additional>
+          <additional id="10800216" mainType="1">
+            <level level="1">
+              <Basic durationTick="60000" />
+              <SpecialAbility>
+                <v type="atpToBap" value="100" />
+              </SpecialAbility>
+            </level>
+          </additional>
           <additional id="10300201">
             <level level="1">
               <Basic durationTick="2000" />
@@ -210,7 +228,9 @@ public class PlayedTakeOverTests {
         <ms2>
           <key id="10" option="atpToBap" valueType="2" />
           <key id="19" option="fireDamage" valueType="2" />
+          <key id="130" option="improve_stat_wap_u" valueType="2" />
           <key id="177" option="offensive_physicaldamage" valueType="2" />
+          <key id="999" option="noValueType" valueType="0" />
         </ms2>
         """));
 
@@ -485,6 +505,81 @@ public class PlayedTakeOverTests {
             Assert.That(metadata, Is.SameAs(pack));
             Assert.That(aspHolding, Is.Empty);
             Assert.That(asp.Property.DurationTick, Is.EqualTo(2000));
+        });
+    }
+
+    // improve_stat_wap_u is the max weapon attack rate the server reads (the pack's Rates.MaxWeaponAtk), not the
+    // MaxWeaponAttack special no server calc reads.
+    [Test]
+    public void TheMaxWeaponAttackTypeIsTheBasicRate() {
+        ClientSpecialAbility.Stats stats = PlayedAdditionalRows.SpecialAbilityStats(Table, new Dictionary<string, int> { ["improve_stat_wap_u"] = 160 }, new List<string>());
+        Assert.Multiple(() => {
+            Assert.That(stats.Rates[Maple2.Model.Enum.BasicAttribute.MaxWeaponAtk], Is.EqualTo(0.16f));
+            Assert.That(stats.Rates.ContainsKey(Maple2.Model.Enum.BasicAttribute.MinWeaponAtk), Is.False);
+            Assert.That(stats.SpecialRates, Is.Empty);
+        });
+    }
+
+    // The client matches type names case-insensitively: FireDamage and firedamage are one type, the later row kept.
+    [Test]
+    public void TypesDifferingInCaseAreOne() {
+        Dictionary<string, int> rows = Abilities(10800215);
+        Assert.Multiple(() => {
+            Assert.That(rows, Has.Count.EqualTo(2));
+            Assert.That(rows["fireDamage"], Is.EqualTo(20));
+        });
+    }
+
+    // A type whose table row has valueType 0 the client drops (SpecialAbilityInfo's m_nValueType): no stat, and it
+    // holds no level.
+    [Test]
+    public void SkipsATypeWithValueTypeZero() {
+        var unmapped = new List<string>();
+        ClientSpecialAbility.Stats stats = PlayedAdditionalRows.SpecialAbilityStats(Table, new Dictionary<string, int> { ["noValueType"] = 50 }, unmapped);
+        Assert.Multiple(() => {
+            Assert.That(Table.Rate("noValueType"), Is.Null);
+            Assert.That(unmapped, Is.Empty);
+            Assert.That(stats.Rates, Is.Empty);
+            Assert.That(stats.Values, Is.Empty);
+            Assert.That(stats.SpecialRates, Is.Empty);
+            Assert.That(stats.SpecialValues, Is.Empty);
+        });
+    }
+
+    private static (List<AdditionalEffectMetadata>? Levels, List<string> Unread) Own(int id) {
+        Dictionary<int, PlayedClientAdditionalEffects.Entry> played = PlayedClientAdditionalEffects.Read([Xml(Played)], _ => true);
+        var mapper = (AdditionalEffectMapper) RuntimeHelpers.GetUninitializedObject(typeof(AdditionalEffectMapper));
+        typeof(AdditionalEffectMapper).GetField("played", Any)!.SetValue(mapper, played);
+        typeof(AdditionalEffectMapper).GetField("abilities", Any)!.SetValue(mapper, Table);
+        var rates = (CooldownGroupRates) RuntimeHelpers.GetUninitializedObject(typeof(CooldownGroupRates));
+        typeof(CooldownGroupRates).GetField("rates", Any)!.SetValue(rates, System.Activator.CreateInstance(typeof(CooldownGroupRates).GetField("rates", Any)!.FieldType));
+        typeof(AdditionalEffectMapper).GetField("groupRates", Any)!.SetValue(mapper, rates);
+        var unread = new List<string>();
+        object?[] args = [id, played[id], unread, null];
+        var levels = (List<AdditionalEffectMetadata>?) typeof(AdditionalEffectMapper).GetMethod("Own", Any)!.Invoke(mapper, args);
+        return (levels, unread);
+    }
+
+    // An effect only the played client has takes its <SpecialAbility> where every type has a server stat.
+    [Test]
+    public void APlayedOnlyEffectTakesItsSpecialAbility() {
+        (List<AdditionalEffectMetadata>? levels, List<string> unread) = Own(10800215);
+        Assert.Multiple(() => {
+            Assert.That(unread, Is.Empty);
+            Assert.That(levels, Has.Count.EqualTo(1));
+            Assert.That(levels![0].Property.DurationTick, Is.EqualTo(60000));
+            Assert.That(levels[0].Status.Rates[Maple2.Model.Enum.BasicAttribute.MaxWeaponAtk], Is.EqualTo(0.08f));
+            Assert.That(levels[0].Status.SpecialRates[Maple2.Model.Enum.SpecialAttribute.FireDamage], Is.EqualTo(0.02f));
+        });
+    }
+
+    // One with a type that has no server stat (atpToBap) is left out.
+    [Test]
+    public void APlayedOnlyEffectWithATypeWithoutAStatIsLeftOut() {
+        (List<AdditionalEffectMetadata>? levels, List<string> unread) = Own(10800216);
+        Assert.Multiple(() => {
+            Assert.That(levels, Is.Null);
+            Assert.That(unread, Is.EqualTo(new[] { "SpecialAbility" }));
         });
     }
 

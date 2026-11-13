@@ -150,15 +150,9 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             if (packIds.Contains(id) || entry.Rows.Count == 0) {
                 continue;
             }
-            var unread = PlayedAdditionalRows.Unread(entry).ToList();
-            // The client's <SpecialAbility> is read where every type the client keeps has a server stat and no level
-            // has final stats (Status adds them to the stats it replaces).
-            bool readAbilities = unread.Contains("SpecialAbility") && abilities != null
-                                 && entry.Rows.Keys.All(level => finals?.Get(id, level) == null && Mapped(abilities, entry.SpecialAbilities.GetValueOrDefault(level)));
-            if (readAbilities) {
-                unread.Remove("SpecialAbility");
-            }
-            if (unread.Count > 0) {
+            var unread = new List<string>();
+            List<AdditionalEffectMetadata>? levels = Own(id, entry, unread, out bool readAbilities);
+            if (levels == null) {
                 foreach (string reason in unread) {
                     left[reason] = left.GetValueOrDefault(reason) + 1;
                 }
@@ -166,20 +160,40 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             }
             own++;
             ownAbilities += readAbilities ? 1 : 0;
-            foreach (AdditionalEffectData data in PlayedOnly(entry)) {
+            foreach (AdditionalEffectMetadata metadata in levels) {
                 ownLevels++;
-                AdditionalEffectMetadata metadata = Build(id, data, SkillUseDisableMask(id, data.BasicProperty.level, 0));
-                if (abilities != null && entry.SpecialAbilities.TryGetValue(data.BasicProperty.level, out Dictionary<string, int>? rows)) {
-                    metadata = metadata with {
-                        Status = PlayedAdditionalRows.WithStats(metadata.Status, PlayedAdditionalRows.SpecialAbilityStats(abilities, rows, new List<string>())),
-                    };
-                }
                 yield return metadata;
             }
         }
         Console.WriteLine($"Additional effects only the played client has, taken over: {own} ({ownLevels} levels; {ownAbilities} with a SpecialAbility read; " +
                           $"{played.Count(pair => !packIds.Contains(pair.Key) && pair.Value.Rows.Count > 0) - own} left out for what the ingest does not map: " +
                           $"{string.Join(", ", left.Select(pair => $"{pair.Key} {pair.Value}"))})");
+    }
+
+    // The levels of an effect only the played client has, or null where a child is not read (named in unread). The
+    // client's <SpecialAbility> is read where every type the client keeps has a server stat and no level has final
+    // stats (Status adds them to the stats it replaces).
+    private List<AdditionalEffectMetadata>? Own(int id, PlayedClientAdditionalEffects.Entry entry, List<string> unread, out bool readAbilities) {
+        unread.AddRange(PlayedAdditionalRows.Unread(entry));
+        readAbilities = unread.Contains("SpecialAbility") && abilities != null
+                        && entry.Rows.Keys.All(level => finals?.Get(id, level) == null && Mapped(abilities, entry.SpecialAbilities.GetValueOrDefault(level)));
+        if (readAbilities) {
+            unread.Remove("SpecialAbility");
+        }
+        if (unread.Count > 0) {
+            return null;
+        }
+        var levels = new List<AdditionalEffectMetadata>();
+        foreach (AdditionalEffectData data in PlayedOnly(entry)) {
+            AdditionalEffectMetadata metadata = Build(id, data, SkillUseDisableMask(id, data.BasicProperty.level, 0));
+            if (abilities != null && entry.SpecialAbilities.TryGetValue(data.BasicProperty.level, out Dictionary<string, int>? rows)) {
+                metadata = metadata with {
+                    Status = PlayedAdditionalRows.WithStats(metadata.Status, PlayedAdditionalRows.SpecialAbilityStats(abilities, rows, new List<string>())),
+                };
+            }
+            levels.Add(metadata);
+        }
+        return levels;
     }
 
     // Whether every type of a played level's <SpecialAbility> rows the client keeps has a server stat.

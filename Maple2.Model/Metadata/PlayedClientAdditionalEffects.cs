@@ -112,9 +112,10 @@ public static class PlayedClientAdditionalEffects {
             SkillGroupId: Number(row, "skillGroupID"));
     }
 
-    // The rows of a <SpecialAbility>: a zero value is skipped, a later row of a type replaces the earlier one.
+    // The rows of a <SpecialAbility>: a zero value is skipped, a later row of a type replaces the earlier one. The
+    // client matches type names case-insensitively (Unk_SANameLess, commonfiles/specialability.cpp:63), so iceDamage and icedamage are one type.
     public static Dictionary<string, int> SpecialAbility(XmlElement? element) {
-        var rows = new Dictionary<string, int>();
+        var rows = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         if (element == null) {
             return rows;
         }

@@ -15,6 +15,9 @@ namespace Maple2.File.Ingest.Helpers;
 // Where a type goes on the server:
 // - the basic stats (hp, msp, pap, ...) and their xRate types: the BasicAttribute value or rate;
 // - wapRate: the MinWeaponAtk and MaxWeaponAtk rates;
+// - improve_stat_wap_u: the MaxWeaponAtk rate (the client's name for it is "Max Weapon Attack {0:0.1f}%"; the data
+//   pack writes the same rows as Rates.MaxWeaponAtk, 90050836). Its SpecialAttribute (MaxWeaponAttack) is read by
+//   no server calc;
 // - finalAttackPower: the PhysicalAtk and MagicalAtk rates. Chosen here: the server has no final attack stat of its
 //   own; the data pack writes the same rows as finalpaprate and finalmaprate (70002591, 90000764);
 // - offensive_physicaldamage and offensive_magicaldamage: the OffensivePhysicalDamage and OffensiveMagicalDamage
@@ -129,6 +132,7 @@ public sealed class ClientSpecialAbility {
         ["parRate"] = [BasicAttribute.PhysicalRes],
         ["marRate"] = [BasicAttribute.MagicalRes],
         ["wapRate"] = [BasicAttribute.MinWeaponAtk, BasicAttribute.MaxWeaponAtk],
+        ["improve_stat_wap_u"] = [BasicAttribute.MaxWeaponAtk],
         // Chosen here (see above).
         ["finalAttackPower"] = [BasicAttribute.PhysicalAtk, BasicAttribute.MagicalAtk],
     };
