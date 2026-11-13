@@ -1563,6 +1563,12 @@ public sealed partial class GameSession : Core.Network.Session {
     // Runs once: the save before a migration is not tried again when the session is disposed, since the client was
     // already sent to the other channel, which may have loaded (and saved) the player by then. A failed save is
     // logged, and the other channel starts from the last stored state.
+    // It waits for a reset being stored (up to ResetWait), on the field thread when a move handler calls it: the
+    // move must be stored before the client is sent on, and coming back later would let the other channel load the
+    // state from before it. The wait is the reset's own run, about 1 to 5 s for a daily reset over 50k characters,
+    // once a day and only for the moves in those seconds; the save holds no row while it waits (the reset times are
+    // its first read), so the reset never waits on it. 60 s bounds a reset that hangs (its statements time out at
+    // 30 s each); before the share-lock read, the same save waited on the reset's rows in the database, up to 50 s.
     public void MigrationSave() {
         if (preMigrationSaved) return;
         preMigrationSaved = true;
@@ -1693,36 +1699,57 @@ public sealed partial class GameSession : Core.Network.Session {
     /// under the account lock. Only the currency and the given rows are written, not the whole session.
     /// Answers true when the currency and the purchase's rows were stored.
     /// </summary>
+    // A purchase save does not wait for a reset being stored (its callers run on the field thread, which a wait would
+    // hold for every player of the field): this one, whose callers go on whatever it answers, comes back 2 s later
+    // on the same field queue, as often as needed while the session plays on that field, as the timed save does. A
+    // session that has left the field by then stored the purchase with its move's save. It used to wait up to 60 s.
     public bool SavePurchase(Action<GameStorage.Request>? alsoSave = null) {
-        return TrySavePurchase(db => {
+        SaveResult result = PurchaseSave(db => {
             alsoSave?.Invoke(db);
             return true;
         });
+        if (result == SaveResult.ResetRunning && Field is { } field) {
+            field.Scheduler.Schedule(() => SavePurchaseRetry(field, alsoSave), TimedSaveRetryDelay);
+        }
+        return result == SaveResult.Stored;
     }
 
-    // SavePurchase for rows whose save reports its result: nothing is stored when alsoSave answers false.
-    public bool TrySavePurchase(Func<GameStorage.Request, bool> alsoSave) {
+    private void SavePurchaseRetry(FieldManager field, Action<GameStorage.Request>? alsoSave) {
+        if (TimedSaveDue(field)) {
+            SavePurchase(alsoSave);
+        }
+    }
+
+    // SavePurchase for rows whose save reports its result: nothing is stored when alsoSave answers false. A reset
+    // being stored refuses the purchase at once (false, as a failed save: the caller gives back what it took), so the
+    // field thread does not wait for it; the player can buy again a few seconds later.
+    public bool TrySavePurchase(Func<GameStorage.Request, bool> alsoSave) => PurchaseSave(alsoSave) == SaveResult.Stored;
+
+    private SaveResult PurchaseSave(Func<GameStorage.Request, bool> alsoSave) {
         try {
             AcquireLock(AccountId);
             using GameStorage.Request db = GameStorage.Context();
             using var tokens = new RowTokens(Player);
             // A reset stored since the session's state was read is taken first, so the rows written hold it.
-            BeginWithResets(db, ResetWait);
+            BeginWithResets(db, TimeSpan.Zero);
             // The currency and the purchase's rows are stored together or not at all (the request rolls back what it
             // did not commit); the session keeps both, and its next save stores them.
             if (!db.SaveCurrency(Player)) {
                 Logger.Error("SavePurchase: currency not saved AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
-                return false;
+                return SaveResult.Failed;
             }
             int failed = db.FailedSaves;
             if (!alsoSave(db) || db.FailedSaves != failed) {
                 Logger.Error("SavePurchase: purchase rows not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
-                return false;
+                return SaveResult.Failed;
             }
-            return tokens.Kept = db.Commit();
+            return (tokens.Kept = db.Commit()) ? SaveResult.Stored : SaveResult.Failed;
+        } catch (ResetRunningException ex) {
+            Logger.Information("SavePurchase: {Reason}, nothing written AccountId={AccountId} CharacterId={CharacterId}", ex.Message, AccountId, CharacterId);
+            return SaveResult.ResetRunning;
         } catch (Exception ex) {
             Logger.Error(ex, "SavePurchase failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
-            return false;
+            return SaveResult.Failed;
         } finally {
             ReleaseLock(AccountId);
         }

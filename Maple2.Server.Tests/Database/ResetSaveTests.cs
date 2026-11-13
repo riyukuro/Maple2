@@ -159,6 +159,55 @@ public class ResetSaveTests {
         Assert.That((Ended, Stored()), Is.EqualTo((false, (3, 2))));
     }
 
+    // A purchase whose caller gives back what it took (TrySavePurchase) is refused at once while a reset is being
+    // stored: the field thread does not wait for the reset, and nothing is logged as a failed save. It used to wait
+    // up to 60 s on the field thread.
+    [Test]
+    public void TrySavePurchase_ResetRunning_RefusedAtOnce() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        test.Errors.Clear();
+        int saved = 0;
+        var watch = Stopwatch.StartNew();
+        bool stored;
+        using (new ResetHold(options, "DailyReset", test.AccountId, test.CharacterId)) {
+            stored = session.TrySavePurchase(_ => ++saved > 0);
+        }
+        Assert.Multiple(() => {
+            Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "the field thread waited for the reset");
+            Assert.That((stored, saved, test.Errors.Count), Is.EqualTo((false, 0, 0)));
+        });
+        Assert.That(session.TrySavePurchase(_ => ++saved > 0), Is.True, "the reset done, the next purchase stores");
+    }
+
+    // A purchase whose caller goes on whatever it answers (SavePurchase) comes back 2 s later on the field's queue
+    // while a reset is being stored, as the timed save does, and stores then.
+    [Test]
+    public void SavePurchase_ResetRunning_ComesBackLater() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(session, false);
+        session.State = SessionState.Connected;
+        test.Errors.Clear();
+        int queued = session.Field!.Scheduler.Count;
+        int saved = 0;
+        var watch = Stopwatch.StartNew();
+        using (new ResetHold(options, "DailyReset", test.AccountId, test.CharacterId)) {
+            Assert.That(session.SavePurchase(_ => saved++), Is.False);
+        }
+        Assert.Multiple(() => {
+            Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "the field thread waited for the reset");
+            Assert.That((saved, test.Errors.Count, session.Field!.Scheduler.Count), Is.EqualTo((0, 0, queued + 1)));
+        });
+
+        // The reset rolled back: the queued try again stores the purchase.
+        var timed = (System.Collections.IList) typeof(EventQueue).GetField("timedEvents", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(session.Field!.Scheduler)!;
+        object retry = timed.Cast<object>().Last();
+        var task = (Action) retry.GetType().GetField("task", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(retry)!;
+        timed.Remove(retry);
+        task();
+        Assert.That((saved, test.Errors.Count, session.Field!.Scheduler.Count), Is.EqualTo((1, 0, queued)));
+    }
+
     // A session save (logout, field entry) waits for a reset being stored, then takes it and stores it.
     [Test]
     public void SessionSave_ResetRunning_WaitsAndTakesIt() {
