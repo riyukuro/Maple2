@@ -695,7 +695,9 @@ public class FieldNpc : Actor<Npc> {
         }
         base.ApplyDamage(caster, damage, attack);
         if (!IsDead && damage.Targets.TryGetValue(ObjectId, out DamageRecordTarget? hit) && hit.Damage.Any(entry => entry.Amount != 0)) {
-            MovementState.QueueHit(hit.Position, attack); // applied by the field thread in Update
+            // applied by the field thread in Update; a region's caster (at the map origin) is no attacker to measure from
+            Vector3 attacker = caster.Position.LengthSquared() < 0.001f ? hit.Position : caster.Position;
+            MovementState.QueueHit(new NpcControlRules.HitSource(hit.Position, attacker, caster.Transform.FrontAxis), attack);
         }
     }
 

@@ -177,7 +177,7 @@ public partial class MovementState {
     // field thread applies it in the npc's next update, where the tasks, the sequence and the position are its own.
     private readonly NpcControlRules.PendingHits pendingHits = new();
 
-    public void QueueHit(Vector3 source, SkillMetadataAttack attack) => pendingHits.Add(source, attack);
+    public void QueueHit(NpcControlRules.HitSource source, SkillMetadataAttack attack) => pendingHits.Add(source, attack);
 
     public void ApplyHits() => pendingHits.Apply(TryHit);
 
@@ -186,7 +186,7 @@ public partial class MovementState {
     // and emote end (no cancel packet, as for a stun). Chosen here: pushprob below 1 is rolled per hit, and an
     // npc in a jump arc or without the sequences is left alone (its cast goes on). The push runs straight over the
     // navmesh and stops at the first wall or ledge. Field thread only: see QueueHit.
-    private bool TryHit(Vector3 source, SkillMetadataAttack attack) {
+    private bool TryHit(NpcControlRules.HitSource source, SkillMetadataAttack attack) {
         MapType mapType = actor.Field.Metadata.Property.Type;
         SkillMetadataPush? push = SuperArmorRules.PushOn(attack.Damage.Push, mapType) is { } p
                                   && (p.Probability >= 1 || Random.Shared.NextSingle() < p.Probability) ? p : null;
@@ -217,7 +217,7 @@ public partial class MovementState {
         bool moved = false;
         if (push != null) {
             Vector3 from = actor.Position;
-            Vector3 offset = NpcControlRules.PushOffset(source, from, push.Distance);
+            Vector3 offset = NpcControlRules.PushOffset(push.Type, source, from, push.Distance);
             moved = offset != default && actor.Navigation != null && actor.Navigation.MoveStraight(from + offset)
                     && Vector2.DistanceSquared(new Vector2(from.X, from.Y), new Vector2(actor.Position.X, actor.Position.Y)) > 1;
         }

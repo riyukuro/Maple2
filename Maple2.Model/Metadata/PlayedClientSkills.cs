@@ -287,6 +287,10 @@ public static class PlayedClientSkills {
     public record AttackPush(int Type, int EaseType, int ApplyField, float Distance, float UpDistance, int Down, bool Fall, float Duration,
         float Probability, int Priority, int PriorityHitImmune);
 
+    // A push type other than 0 is a push: the client tests SkillDamage::GetPush against 0 for the hit reaction and
+    // super armor (pc.cpp:902, 929), so -1 and 3 count though they move nothing (pcbase.cpp:4135-4172).
+    public static bool IsPush(int type) => type != 0;
+
     // The client's push ease types are 0 to 2; any other value is 0 (skillattackdata.cpp:276-277).
     private static int PushEaseType(int value) => value is >= 0 and <= 2 ? value : 0;
 

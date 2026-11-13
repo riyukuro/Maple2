@@ -57,14 +57,41 @@ public static class NpcControlRules {
         };
     }
 
-    // A push moves the npc pushdistance away from the point the hit came from, level with the ground. KMS2 sends
-    // this for push type 1; the other types are given the same here.
-    public static Vector3 PushOffset(Vector3 source, Vector3 target, float distance) {
-        var direction = new Vector2(target.X - source.X, target.Y - source.Y);
-        if (distance <= 0 || direction.LengthSquared() < 0.001f) {
+    // Where a hit came from: the damage record's origin (the caster, or the region for a skill placed on the
+    // ground), the attacker's own position and the attacker's facing.
+    public readonly record struct HitSource(Vector3 Origin, Vector3 Attacker, Vector3 Forward);
+
+    // How far a push moves the npc, level with the ground (the server keeps it on the navmesh). Client
+    // (PCBase::vfunc_107), by push type: 1 pushes pushdistance away from the origin; 2 pulls toward the origin by
+    // pushdistance but no closer than 150 to the attacker (so one standing nearer is put back out to 150); 4 pulls
+    // all the way to the origin; 5 pushes pushdistance along the attacker's facing. 3, -1 and any other type leave
+    // the direction zero, so the npc reacts as pushed but does not move; 6 (-forward of the record's facing) is not
+    // in the KR data and is given no move here.
+    public static Vector3 PushOffset(int type, HitSource source, Vector3 target, float distance) {
+        Vector2 direction;
+        float length = distance;
+        switch (type) {
+            case 1:
+                direction = new Vector2(target.X - source.Origin.X, target.Y - source.Origin.Y);
+                break;
+            case 2:
+                direction = new Vector2(source.Origin.X - target.X, source.Origin.Y - target.Y);
+                length = Math.Min(Vector3.Distance(source.Attacker, target) - 150, distance);
+                break;
+            case 4:
+                direction = new Vector2(source.Origin.X - target.X, source.Origin.Y - target.Y);
+                length = direction.Length();
+                break;
+            case 5:
+                direction = new Vector2(source.Forward.X, source.Forward.Y);
+                break;
+            default:
+                return default;
+        }
+        if ((type != 4 && distance <= 0) || Math.Abs(length) < 0.001f || direction.LengthSquared() < 0.001f) {
             return default;
         }
-        direction = Vector2.Normalize(direction) * distance;
+        direction = Vector2.Normalize(direction) * length;
         return new Vector3(direction.X, direction.Y, 0);
     }
 
@@ -83,13 +110,13 @@ public static class NpcControlRules {
     // Hits wait here between the thread that dealt the damage and the field thread, which applies them in the
     // npc's next update. Add is safe from any thread; Apply runs each waiting hit once, in order.
     public sealed class PendingHits {
-        private readonly ConcurrentQueue<(Vector3 Source, SkillMetadataAttack Attack)> hits = new();
+        private readonly ConcurrentQueue<(HitSource Source, SkillMetadataAttack Attack)> hits = new();
 
-        public void Add(Vector3 source, SkillMetadataAttack attack) => hits.Enqueue((source, attack));
+        public void Add(HitSource source, SkillMetadataAttack attack) => hits.Enqueue((source, attack));
 
-        public int Apply(Func<Vector3, SkillMetadataAttack, bool> apply) {
+        public int Apply(Func<HitSource, SkillMetadataAttack, bool> apply) {
             int applied = 0;
-            for (int count = hits.Count; count > 0 && hits.TryDequeue(out (Vector3 Source, SkillMetadataAttack Attack) hit); count--) {
+            for (int count = hits.Count; count > 0 && hits.TryDequeue(out (HitSource Source, SkillMetadataAttack Attack) hit); count--) {
                 if (apply(hit.Source, hit.Attack)) {
                     applied++;
                 }

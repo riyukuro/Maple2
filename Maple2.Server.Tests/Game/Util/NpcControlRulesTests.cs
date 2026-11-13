@@ -37,16 +37,59 @@ public class NpcControlRulesTests {
         }
     }
 
+    private static NpcControlRules.HitSource From(Vector3 origin, Vector3? forward = null) =>
+        new(origin, origin, forward ?? new Vector3(0, 1, 0));
+
     [Test]
     public void PushGoesAwayFromTheSourceOnTheGround() {
-        Assert.That(NpcControlRules.PushOffset(new Vector3(0, 0, 0), new Vector3(300, 0, 150), 50), Is.EqualTo(new Vector3(50, 0, 0)));
-        Vector3 offset = NpcControlRules.PushOffset(new Vector3(100, 100, 0), new Vector3(400, 500, 0), 150);
+        Assert.That(NpcControlRules.PushOffset(1, From(new Vector3(0, 0, 0)), new Vector3(300, 0, 150), 50), Is.EqualTo(new Vector3(50, 0, 0)));
+        Vector3 offset = NpcControlRules.PushOffset(1, From(new Vector3(100, 100, 0)), new Vector3(400, 500, 0), 150);
         Assert.That(offset.X, Is.EqualTo(90).Within(0.01));
         Assert.That(offset.Y, Is.EqualTo(120).Within(0.01));
         Assert.That(offset.Z, Is.EqualTo(0));
         // on the source point, or no distance: no move
-        Assert.That(NpcControlRules.PushOffset(new Vector3(5, 5, 0), new Vector3(5, 5, 90), 50), Is.EqualTo(default(Vector3)));
-        Assert.That(NpcControlRules.PushOffset(new Vector3(0, 0, 0), new Vector3(300, 0, 0), 0), Is.EqualTo(default(Vector3)));
+        Assert.That(NpcControlRules.PushOffset(1, From(new Vector3(5, 5, 0)), new Vector3(5, 5, 90), 50), Is.EqualTo(default(Vector3)));
+        Assert.That(NpcControlRules.PushOffset(1, From(new Vector3(0, 0, 0)), new Vector3(300, 0, 0), 0), Is.EqualTo(default(Vector3)));
+    }
+
+    // Type 2 pulls toward the origin, stopping 150 short of the attacker; one nearer than that is put back out.
+    [Test]
+    public void PullTypeTwoStopsShortOfTheAttacker() {
+        var origin = new Vector3(0, 0, 0);
+        Assert.That(NpcControlRules.PushOffset(2, From(origin), new Vector3(500, 0, 0), 200), Is.EqualTo(new Vector3(-200, 0, 0)));
+        Vector3 offset = NpcControlRules.PushOffset(2, From(origin), new Vector3(250, 0, 0), 200);
+        Assert.That(offset.X, Is.EqualTo(-100).Within(0.01));
+        offset = NpcControlRules.PushOffset(2, From(origin), new Vector3(100, 0, 0), 200);
+        Assert.That(offset.X, Is.EqualTo(50).Within(0.01));
+        Assert.That(NpcControlRules.PushOffset(2, From(origin), new Vector3(150, 0, 0), 200), Is.EqualTo(default(Vector3)));
+        // the 150 is measured from the attacker, the direction from the origin
+        offset = NpcControlRules.PushOffset(2, new NpcControlRules.HitSource(origin, new Vector3(400, 0, 0), default), new Vector3(500, 0, 0), 200);
+        Assert.That(offset.X, Is.EqualTo(50).Within(0.01)); // 100 from the attacker: put back out to 150
+    }
+
+    // Type 4 pulls the npc all the way to the origin, whatever pushdistance says.
+    [Test]
+    public void PullTypeFourGoesToTheOrigin() {
+        Vector3 offset = NpcControlRules.PushOffset(4, From(new Vector3(100, 100, 0)), new Vector3(400, 500, 90), 10);
+        Assert.That(offset.X, Is.EqualTo(-300).Within(0.01));
+        Assert.That(offset.Y, Is.EqualTo(-400).Within(0.01));
+        Assert.That(offset.Z, Is.EqualTo(0));
+    }
+
+    // Type 5 pushes along the attacker's facing, not away from it.
+    [Test]
+    public void PushTypeFiveFollowsTheAttackersFacing() {
+        Vector3 offset = NpcControlRules.PushOffset(5, From(new Vector3(0, 0, 0), new Vector3(0, 1, 0)), new Vector3(300, 0, 0), 120);
+        Assert.That(offset.X, Is.EqualTo(0).Within(0.01));
+        Assert.That(offset.Y, Is.EqualTo(120).Within(0.01));
+    }
+
+    // Types 3 and -1 (and 6, not in the data) leave the client's direction zero: no move.
+    [Test]
+    public void OtherPushTypesDoNotMove() {
+        foreach (int type in new[] { 3, -1, 6, 0 }) {
+            Assert.That(NpcControlRules.PushOffset(type, From(new Vector3(0, 0, 0)), new Vector3(300, 0, 0), 100), Is.EqualTo(default(Vector3)), $"type {type}");
+        }
     }
 
     [Test]
@@ -87,20 +130,20 @@ public class NpcControlRulesTests {
         var pending = new NpcControlRules.PendingHits();
         var applied = new List<Vector3>();
 
-        pending.Add(new Vector3(1, 0, 0), null!);
-        pending.Add(new Vector3(2, 0, 0), null!);
+        pending.Add(From(new Vector3(1, 0, 0)), null!);
+        pending.Add(From(new Vector3(2, 0, 0)), null!);
         Assert.That(applied, Is.Empty);
 
         int count = pending.Apply((source, _) => {
-            applied.Add(source);
-            pending.Add(new Vector3(9, 0, 0), null!); // a hit dealt while applying waits for the update after
-            return source.X > 1;
+            applied.Add(source.Origin);
+            pending.Add(From(new Vector3(9, 0, 0)), null!); // a hit dealt while applying waits for the update after
+            return source.Origin.X > 1;
         });
         Assert.That(applied.Select(source => source.X), Is.EqualTo(new[] { 1f, 2f }));
         Assert.That(count, Is.EqualTo(1));
 
         applied.Clear();
-        Assert.That(pending.Apply((source, _) => { applied.Add(source); return true; }), Is.EqualTo(2));
+        Assert.That(pending.Apply((source, _) => { applied.Add(source.Origin); return true; }), Is.EqualTo(2));
         Assert.That(pending.Apply((_, _) => true), Is.Zero);
     }
 
@@ -109,12 +152,12 @@ public class NpcControlRulesTests {
         var pending = new NpcControlRules.PendingHits();
         Parallel.For(0, 8, thread => {
             for (int i = 0; i < 500; i++) {
-                pending.Add(new Vector3(thread, i, 0), null!);
+                pending.Add(From(new Vector3(thread, i, 0)), null!);
             }
         });
 
         var seen = new HashSet<Vector3>();
-        Assert.That(pending.Apply((source, _) => seen.Add(source)), Is.EqualTo(4000));
+        Assert.That(pending.Apply((source, _) => seen.Add(source.Origin)), Is.EqualTo(4000));
     }
 
     [Test]

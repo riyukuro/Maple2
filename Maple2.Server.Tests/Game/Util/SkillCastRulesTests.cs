@@ -868,6 +868,15 @@ public class SkillCastRulesTests {
         }));
     }
 
+    [Test]
+    public void AnyPushTypeButZeroIsAPush() {
+        // The client takes push -1 (6 KR attacks) as a push for the hit reaction and super armor, as it does 3.
+        foreach (int type in new[] { 1, 2, 3, 4, 5, 6, -1 }) {
+            Assert.That(PlayedClientSkills.IsPush(type), Is.True, $"type {type}");
+        }
+        Assert.That(PlayedClientSkills.IsPush(0), Is.False);
+    }
+
     private static (int, int, bool) Kept(PlayedClientSkills.Entry entry) => (entry.MainType, entry.RechargeMaxCount, entry.RechargeShared);
 
     [Test]

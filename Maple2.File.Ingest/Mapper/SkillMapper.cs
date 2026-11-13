@@ -203,7 +203,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                                 Value: attack.damageProperty.value,
                                 DamageByTargetMaxHp: attack.damageProperty.damageByTargetMaxHP,
                                 SuperArmorBreak: attack.damageProperty.superArmorBreak,
-                                Push: WithClientPush(id, level.value, motionIndex, attackIndex, attack.point, attack.damageProperty.push > 0 ? new SkillMetadataPush(
+                                Push: WithClientPush(id, level.value, motionIndex, attackIndex, attack.point, PlayedClientSkills.IsPush(attack.damageProperty.push) ? new SkillMetadataPush(
                                     Type: attack.damageProperty.push,
                                     EaseType: attack.damageProperty.pushEaseType,
                                     ApplyField: attack.damageProperty.pushApplyField,
@@ -388,7 +388,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     }
 
     // The played client's push where it has the attack at that place with the same point, else the data pack's. As
-    // for the data pack's, a push type of 0 or less is no push.
+    // for the data pack's, only a push type of 0 is no push (PlayedClientSkills.IsPush).
     private SkillMetadataPush? WithClientPush(int id, short level, int motion, int attack, string point, SkillMetadataPush? pack) {
         if (!clientPushes.TryGetValue((id, level, motion, attack), out (PlayedClientSkills.AttackPush Push, string Point) played)) {
             return pack;
@@ -398,7 +398,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             return pack;
         }
         PlayedClientSkills.AttackPush push = played.Push;
-        SkillMetadataPush? taken = push.Type > 0 ? new SkillMetadataPush(
+        SkillMetadataPush? taken = PlayedClientSkills.IsPush(push.Type) ? new SkillMetadataPush(
             Type: push.Type,
             EaseType: push.EaseType,
             ApplyField: push.ApplyField,
