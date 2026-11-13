@@ -75,14 +75,19 @@ public class DungeonManager {
             if (metadata.Reward.AccountWide) {
                 if (accountRecords.TryGetValue(metadata.Id, out DungeonRecord? account)) {
                     CopyAccountCounts(account, record);
+                    accountRooms.Add(metadata.Id);
                 } else {
-                    DungeonRoomRules.MergeAccountCounts(record, db.GetAccountCharacterDungeonRecords(session.AccountId, metadata.Id), now);
-                    if (!db.CreateDungeonAccountRecord(session.AccountId, record)) {
+                    // The sum goes to the character's record only once the account row holds it: a failed create
+                    // leaves the record its own counts, so the next login does not add them twice.
+                    var merged = new DungeonRecord(metadata.Id);
+                    DungeonRoomRules.MergeAccountCounts(merged, db.GetAccountCharacterDungeonRecords(session.AccountId, metadata.Id), now);
+                    if (db.CreateDungeonAccountRecord(session.AccountId, merged)) {
+                        CopyAccountCounts(merged, record);
+                        accountRooms.Add(metadata.Id);
+                    } else {
                         logger.Error("Failed to create the account dungeon record for dungeonId {dungeonId}", metadata.Id);
-                        continue;
                     }
                 }
-                accountRooms.Add(metadata.Id);
             }
             // A period end written by an older rule is healed before the client or a script reads it.
             DungeonRoomRules.HealCooldown(record, metadata.CooldownType, metadata.CooldownValue, DateTime.Now);

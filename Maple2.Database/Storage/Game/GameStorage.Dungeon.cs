@@ -1,5 +1,6 @@
 ﻿using Maple2.Database.Extensions;
 using Maple2.Model.Game.Dungeon;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Database.Storage;
 
@@ -33,7 +34,8 @@ public partial class GameStorage {
 
         // The account reward rooms' counts of the account (dungeon-account-record), by room.
         public Dictionary<int, DungeonRecord> GetDungeonAccountRecords(long accountId) {
-            return Context.DungeonAccountRecord.Where(record => record.AccountId == accountId)
+            return Context.DungeonAccountRecord.AsNoTracking()
+                .Where(record => record.AccountId == accountId)
                 .AsEnumerable()
                 .ToDictionary(record => record.DungeonId, record => {
                     var result = new DungeonRecord(record.DungeonId);
@@ -54,8 +56,14 @@ public partial class GameStorage {
         }
 
         public bool CreateDungeonAccountRecord(long accountId, DungeonRecord record) {
-            Context.DungeonAccountRecord.Add(Model.DungeonAccountRecord.From(accountId, record));
-            return Context.TrySaveChanges();
+            Model.DungeonAccountRecord model = Model.DungeonAccountRecord.From(accountId, record);
+            Context.DungeonAccountRecord.Add(model);
+            if (Context.TrySaveChanges()) {
+                return true;
+            }
+            // A failed row leaves the context, so the next rooms' saves do not try it again.
+            Context.Entry(model).State = EntityState.Detached;
+            return false;
         }
 
         // The counts of the given account rooms' records, with the character's rows.

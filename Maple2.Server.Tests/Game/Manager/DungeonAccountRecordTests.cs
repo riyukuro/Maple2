@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -137,6 +138,74 @@ public class DungeonAccountRecordTests {
         });
         // The account count is made once; the main then reads it, not its own row.
         Assert.That(LoginAs(test.CharacterId).Records[AccountRoom].UnionClears, Is.EqualTo(5));
+    }
+
+    // A save of the account row the store refuses.
+    private static Func<Microsoft.EntityFrameworkCore.DbContext, bool> FailAccountCreate(int dungeonId) => context =>
+        context.ChangeTracker.Entries().Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Added
+                                                     && entry.Metadata.ClrType.Name == "DungeonAccountRecord"
+                                                     && (int) entry.Property("DungeonId").CurrentValue! == dungeonId);
+
+    // A first account count whose row is not written leaves the character's record its own counts, so the save
+    // does not write the sum into the character's row and the next login does not count it twice.
+    [Test]
+    public void AFailedAccountCreateKeepsTheCharactersCounts() {
+        Rooms(accountWide: false);
+        test.Start();
+        Took(session.Dungeon.Records[AccountRoom], 3, 1, now + 3600);
+        SaveMain();
+        long altId = CreateAlt();
+        DungeonManager alt = LoginAs(altId);
+        Took(alt.Records[AccountRoom], 2, 1, now + 3600);
+        using (GameStorage.Request db = test.Storage.Context()) {
+            alt.Save(db);
+        }
+
+        Rooms(accountWide: true);
+        test.FailSave = FailAccountCreate(AccountRoom);
+        DungeonManager failed = LoginAs(altId);
+        test.FailSave = null;
+        Assert.That(failed.Records[AccountRoom].UnionClears, Is.EqualTo(2));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            failed.Save(db);
+        }
+
+        DungeonManager next = LoginAs(altId);
+        Assert.That((next.Records[AccountRoom].UnionClears, next.Records[AccountRoom].UnionSubClears), Is.EqualTo((5, 2)));
+    }
+
+    // A failed account row leaves the context: the next account room still gets its row, and the failed room still
+    // gets its enter limit.
+    [Test]
+    public void AFailedAccountCreateLeavesTheOtherRooms() {
+        const int SecondRoom = 29006003;
+        void Tables(bool accountWide) {
+            DungeonRoomMetadata first = TestGameSession.DungeonRoom(AccountRoom, 50000013, rewardCount: 10);
+            DungeonRoomMetadata second = TestGameSession.DungeonRoom(SecondRoom, 50000013, rewardCount: 10);
+            test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> {
+                [AccountRoom] = first with { Reward = first.Reward with { AccountWide = accountWide } },
+                [SecondRoom] = second with { Reward = second.Reward with { AccountWide = accountWide } },
+            }));
+        }
+        Tables(accountWide: false);
+        test.Start();
+        Took(session.Dungeon.Records[SecondRoom], 4, 0, now + 3600);
+        SaveMain();
+
+        Tables(accountWide: true);
+        session.Player.Value.Character.DungeonEnterLimits.Clear();
+        test.FailSave = FailAccountCreate(AccountRoom);
+        DungeonManager failed = LoginAs(test.CharacterId);
+        test.FailSave = null;
+
+        using GameStorage.Request check = test.Storage.Context();
+        Dictionary<int, DungeonRecord> accountRows = check.GetDungeonAccountRecords(test.AccountId);
+        Assert.Multiple(() => {
+            Assert.That(accountRows.Keys, Is.EquivalentTo(new[] { SecondRoom }));
+            Assert.That(accountRows[SecondRoom].UnionClears, Is.EqualTo(4));
+            Assert.That(failed.Records[SecondRoom].UnionClears, Is.EqualTo(4));
+            Assert.That(session.Player.Value.Character.DungeonEnterLimits.Keys, Is.EquivalentTo(new[] { AccountRoom, SecondRoom }));
+        });
     }
 
     [Test]
