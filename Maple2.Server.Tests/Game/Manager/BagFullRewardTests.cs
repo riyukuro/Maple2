@@ -301,4 +301,34 @@ public class BagFullRewardTests {
             Assert.That(test.Errors, Is.Empty);
         });
     }
+
+    // The request's one inbox fetch counts a mail the session had not fetched yet, and sends its notice then (the
+    // unread count, Mail 15 first for a temporary item): before, the fetch took the mail in with no notice, which
+    // waited for the next notify.
+    [Test]
+    public void TutorialItem_UnfetchedMail_CountsAndNotifies() {
+        const int itemId = 30000001;
+        GameSession session = Start(TestGameSession.Metadata(itemId));
+        test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
+            [JobCode.Newbie] = new(new JobTable.Tutorial(session.Field!.MapId, 0, 0, [], [], [new JobTable.Item(itemId, 1, 3)], []),
+                new Dictionary<SkillRank, JobTable.Skill[]>(), []),
+        }));
+        var mail = new Mail { ReceiverId = test.CharacterId, Type = MailType.System, Title = "t", Content = "c" };
+        using (GameStorage.Request db = test.Storage.Context()) {
+            StoredItem piece = session.Field.ItemDrop.CreateItem(itemId, amount: 3)!;
+            mail.Items.Add(db.CreateItem(0, piece)!);
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.CreateMail(mail);
+        }
+        test.TakeSent();
+
+        new TutorialItemHandler().Handle(session, TestGameSession.Packet(_ => { }));
+
+        Assert.Multiple(() => {
+            Assert.That(BagSplitTests.Held(session, itemId), Is.Zero);
+            Assert.That(test.TakeSentOps(), Does.Contain(SendOp.Mail));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
 }

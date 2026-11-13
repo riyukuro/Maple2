@@ -29,12 +29,15 @@ public class TutorialItemHandler : FieldPacketHandler {
             return;
         }
 
-        foreach (IGrouping<int, JobTable.Item> tutorialItemGroup in jobMetadata.Tutorial.StartItem.GroupBy(item => item.Id)) {
+        // One inbox fetch for the request, not one per start item.
+        List<IGrouping<int, JobTable.Item>> groups = jobMetadata.Tutorial.StartItem.GroupBy(item => item.Id).ToList();
+        Dictionary<int, int> mailed = session.Mail.HeldAmounts(groups.Select(group => group.Key));
+        foreach (IGrouping<int, JobTable.Item> tutorialItemGroup in groups) {
             // Amounts, not stacks: a stack of 10 counted as 1 and was given again on every request. What waits on a
             // mail counts too, so a start item mailed for a full bag is not mailed again on the next request.
             int owned = session.Item.Inventory.Find(tutorialItemGroup.Key).Sum(item => item.Amount)
                         + session.Item.Equips.Gear.Count(x => x.Value.Id == tutorialItemGroup.Key)
-                        + session.Mail.HeldAmount(tutorialItemGroup.Key);
+                        + mailed[tutorialItemGroup.Key];
             int missing = TutorialItemRules.Missing(owned, tutorialItemGroup.Select(item => item.Count));
             if (missing <= 0) {
                 continue;

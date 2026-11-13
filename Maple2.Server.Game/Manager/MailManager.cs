@@ -36,30 +36,44 @@ public sealed class MailManager {
 
     public void Notify(bool force = false) {
         if (Fetch(force) || force) {
-            int unreadMail;
-            int unreadAlarm;
-            bool temporary;
-            lock (inbox) {
-                long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                unreadMail = MailRules.UnreadCount(inbox.Values, now);
-                unreadAlarm = MailRules.UnreadAlarmCount(inbox.Values, now);
-                temporary = temporaryArrived;
-                temporaryArrived = false;
-            }
-            // KMS2 sends the temporary item notice (Mail 15) right before the count of the mail that brought it.
-            if (temporary) {
-                session.Send(MailPacket.NotifyTemporary());
-            }
-            session.Send(MailPacket.Notify(unreadMail, unreadMail > 0, unreadAlarm));
+            SendNotice();
         }
     }
 
-    // Pieces of an item on the inbox's mails, fetched first so a mail just sent counts.
-    public int HeldAmount(int itemId) {
+    // The unread counts, after the temporary item notice when a fetched mail brought one.
+    private void SendNotice() {
+        int unreadMail;
+        int unreadAlarm;
+        bool temporary;
         lock (inbox) {
-            Fetch(force: true);
-            return inbox.Values.Sum(mail => mail.Items.Where(item => item.Id == itemId).Sum(item => item.Amount));
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            unreadMail = MailRules.UnreadCount(inbox.Values, now);
+            unreadAlarm = MailRules.UnreadAlarmCount(inbox.Values, now);
+            temporary = temporaryArrived;
+            temporaryArrived = false;
         }
+        // KMS2 sends the temporary item notice (Mail 15) right before the count of the mail that brought it.
+        if (temporary) {
+            session.Send(MailPacket.NotifyTemporary());
+        }
+        session.Send(MailPacket.Notify(unreadMail, unreadMail > 0, unreadAlarm));
+    }
+
+    // Pieces of each item on the inbox's mails, after one fetch so a mail just sent counts. A fetch that brought
+    // mail sends its notice now (Notify), so a temporary item's notice is not held back to the next notify.
+    public Dictionary<int, int> HeldAmounts(IEnumerable<int> itemIds) {
+        var held = new Dictionary<int, int>();
+        bool newMail;
+        lock (inbox) {
+            newMail = Fetch(force: true);
+            foreach (int itemId in itemIds) {
+                held[itemId] = inbox.Values.Sum(mail => mail.Items.Where(item => item.Id == itemId).Sum(item => item.Amount));
+            }
+        }
+        if (newMail) {
+            SendNotice();
+        }
+        return held;
     }
 
     public void Load() {
