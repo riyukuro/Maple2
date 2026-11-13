@@ -91,10 +91,20 @@ public class ItemGemstone : IByteSerializable, IByteDeserializable {
             writer.WriteClass<ItemBinding>(Binding);
         }
 
-        writer.WriteBool(IsLocked);
-        if (IsLocked) {
-            writer.WriteByte();
-            writer.WriteLong(UnlockTime);
+        WriteLock(writer, IsLocked, UnlockTime);
+    }
+
+    // The gem's lock record as the client builds it from a bag gem (TSocketGemStoneInfo::SetLockFromItem and
+    // TrySetLock, itemsocket.cpp:184-205): state 1 = locked, state 0 = unlocking until the expire time. A gem neither
+    // locked nor still unlocking has no record. The client reads state 0 as locked only while the server time is
+    // before the expire time (TSocketGemStoneLock::IsLocked, itemsocket.cpp:58), so a locked gem must send state 1:
+    // its UnlockTime is the time it was locked.
+    public static void WriteLock(IByteWriter writer, bool isLocked, long unlockTime) {
+        bool unlocking = !isLocked && unlockTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        writer.WriteBool(isLocked || unlocking);
+        if (isLocked || unlocking) {
+            writer.WriteByte((byte) (isLocked ? 1 : 0));
+            writer.WriteLong(unlockTime);
         }
     }
 
@@ -106,9 +116,10 @@ public class ItemGemstone : IByteSerializable, IByteDeserializable {
             Binding = reader.ReadClass<ItemBinding>();
         }
 
-        IsLocked = reader.ReadBool();
-        if (IsLocked) {
-            reader.ReadByte();
+        IsLocked = false;
+        UnlockTime = 0;
+        if (reader.ReadBool()) {
+            IsLocked = reader.ReadByte() == 1;
             UnlockTime = reader.ReadLong();
         }
     }

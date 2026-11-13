@@ -171,11 +171,7 @@ public static class ItemSocketPacket {
             writer.WriteClass<ItemBinding>(gem.Transfer.Binding);
         }
 
-        writer.WriteBool(gem.IsLocked);
-        if (gem.IsLocked) {
-            writer.WriteByte();
-            writer.WriteLong(gem.UnlockTime);
-        }
+        ItemGemstone.WriteLock(writer, gem.IsLocked, gem.UnlockTime);
     }
 
     // Gemstone in socket
@@ -186,10 +182,6 @@ public static class ItemSocketPacket {
             writer.WriteClass<ItemBinding>(gem.Binding);
         }
 
-        writer.WriteBool(gem.IsLocked);
-        if (gem.IsLocked) {
-            writer.WriteByte();
-            writer.WriteLong(gem.UnlockTime);
-        }
+        ItemGemstone.WriteLock(writer, gem.IsLocked, gem.UnlockTime);
     }
 }
