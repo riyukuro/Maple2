@@ -916,11 +916,14 @@ public class RequestCubeHandler : FieldPacketHandler {
             }
 
             session.Currency.Meret -= blueprintCost;
-            // The room was checked under the same lock, so the add takes it; should it not, the paid item goes by mail.
+            // The room was checked under the same lock, so the add takes it; should it not, the paid item goes by mail,
+            // and the request is answered with a failure so the client's upload dialog does not wait on it (before, no
+            // answer was sent). Chosen here: no extra notice says the blueprint was mailed.
             if (!session.Item.Inventory.Add(created, notifyNew: true, commit: true)) {
                 if (!session.Item.MailHeldItem(created)) {
                     Logger.Error("Blueprint {Uid} of {CharacterId} was neither added nor mailed", created.Uid, session.CharacterId);
                 }
+                session.Send(CubePacket.CreateBlueprintFailed());
                 return;
             }
             // create_blueprint (23500025 "Create a blueprint once").

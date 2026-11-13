@@ -14,6 +14,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
 using Microsoft.EntityFrameworkCore;
@@ -173,6 +174,27 @@ public class BagFullRewardTests {
         session.Currency.Meret = 1000;
         test.TakeSent();
         return session;
+    }
+
+    // An add that fails after the room check (its bag save fails): the blueprint goes by mail and request 63 is
+    // answered with ok 0, which closes the client's upload dialog. Before, nothing answered it.
+    [Test]
+    public void CreateBlueprint_FailedBagSave_MailsAndAnswers() {
+        GameSession session = StartBlueprint();
+        int fails = 1;
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Modified
+                                                                               && entry.Entity.GetType().Name == "Item") && fails-- > 0;
+
+        CreateBlueprint(session);
+        test.FailSave = null;
+
+        List<byte[]> answers = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.ResponseCube).ToList();
+        Assert.Multiple(() => {
+            Assert.That(answers.Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(CubePacket.CreateBlueprintFailed().ToArray()) }));
+            Assert.That(answers.Single()[2..], Is.EqualTo(new byte[] { 63, 0 }));
+            Assert.That(Mailed(Constant.BlueprintId), Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Find(Constant.BlueprintId), Is.Empty);
+        });
     }
 
     private void CreateBlueprint(GameSession session) =>

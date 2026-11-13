@@ -654,6 +654,16 @@ public static class CubePacket {
         return pWriter;
     }
 
+    // A blueprint that did not reach the bag. The client reads the first byte as ok; 0 closes the upload dialog and
+    // shows its own notice (CUgcManager::FUN_14188ff10, ugcmanager_4.cpp:3934-3965), and nothing more is read.
+    public static ByteWriter CreateBlueprintFailed() {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.Write<Command>(Command.CreateBlueprint);
+        pWriter.WriteByte(0);
+
+        return pWriter;
+    }
+
     public static ByteWriter CreateBlueprint(long itemUid, ItemBlueprint blueprint) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.CreateBlueprint);
