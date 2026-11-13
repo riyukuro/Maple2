@@ -65,6 +65,25 @@ public class TriggerState {
         return null;
     }
 
+    // The GM "Next Trigger" key (Trigger 0x04). Chosen here: the first condition of the state that names a
+    // transition acts as if it had passed, without being tested: its actions run, then the state changes.
+    // A state with no such condition stays.
+    public TriggerState? ForceNext() {
+        if (Stopped) return null;
+
+        foreach (ICondition condition in triggerState.Conditions) {
+            if (condition.NextState is null) continue;
+
+            foreach (IAction actionNode in condition.Actions) {
+                ExecuteAction(actionNode);
+            }
+
+            return GetNextState(condition.NextState, out Trigger.State? nextState)
+                ? new TriggerState(trigger, nextState, triggerContext) : null;
+        }
+        return null;
+    }
+
     public void OnExit() {
         Trigger.State.OnExit? onExit = triggerState.Exit;
         if (onExit == null) return;

@@ -6,6 +6,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -13,7 +14,7 @@ public class TriggerHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.Trigger;
 
     private enum Command : byte {
-        Unknown4 = 4,
+        NextTrigger = 4,
         SkipCutscene = 8,
         Ui = 9,
         LoadScript = 11,
@@ -24,7 +25,8 @@ public class TriggerHandler : FieldPacketHandler {
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
         switch (command) {
-            case Command.Unknown4:
+            case Command.NextTrigger:
+                HandleNextTrigger(session);
                 return;
             case Command.SkipCutscene:
                 HandleSkipCutscene(session);
@@ -42,6 +44,23 @@ public class TriggerHandler : FieldPacketHandler {
                 HandleDiscardScript(session, packet);
                 return;
         }
+    }
+
+    // The "Next Trigger" key (key 300014, keytable.cpp:778), bound by default for every player: GMs only, and a
+    // press from anyone else is dropped with a Debug line, not the GM-packet warning. Each trigger of the field
+    // moves on at its next update (FieldTrigger.RequestNext).
+    private void HandleNextTrigger(GameSession session) {
+        if (session.Field == null || session.Player == null || !GmCheck.IsGm(session.Player.AdminPermissions)) {
+            Logger.Debug("Trigger NextTrigger from {CharacterId} dropped (not a GM)", session.CharacterId);
+            return;
+        }
+
+        int count = 0;
+        foreach (FieldTrigger trigger in session.Field.EnumerateTrigger()) {
+            trigger.RequestNext();
+            count++;
+        }
+        Logger.Information("Trigger NextTrigger from GM {CharacterId} on map {MapId}: {Count} triggers", session.CharacterId, session.Field.MapId, count);
     }
 
     private void HandleSkipCutscene(GameSession session) {

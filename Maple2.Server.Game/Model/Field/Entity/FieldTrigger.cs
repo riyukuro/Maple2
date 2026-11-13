@@ -14,6 +14,7 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
     private long nextTick;
     private TriggerState? state;
     private TriggerState? nextState;
+    private int forceNext;
 
     public FieldTrigger(FieldManager field, int objectId, TriggerModel value) : base(field, objectId, value) {
         Context = new TriggerContext(this);
@@ -84,7 +85,20 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
             }
         }
 
+        if (Interlocked.Exchange(ref forceNext, 0) != 0 && state != null) {
+            nextState = state.ForceNext();
+            if (nextState != null) {
+                return;
+            }
+        }
+
         nextState = state?.OnTick();
+    }
+
+    // Trigger 0x04 (the GM "Next Trigger" key): the next update on the field thread moves this trigger on
+    // (TriggerState.ForceNext). Set from the session thread, so only a flag is written here.
+    public void RequestNext() {
+        Interlocked.Exchange(ref forceNext, 1);
     }
 
     /// <summary>
