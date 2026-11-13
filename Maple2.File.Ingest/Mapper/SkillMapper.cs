@@ -59,6 +59,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     // The played client's attack pushes (PlayedClientSkills.ReadAttackPushes); empty without a played client.
     private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (PlayedClientSkills.AttackPush Push, string Point)> clientPushes = [];
     private int clientPushesTaken;
+    // The played client's attack arrows (PlayedClientSkills.ReadAttackArrows); empty without a played client.
+    private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (PlayedClientSkills.AttackArrow Arrow, string Point)> clientArrows = [];
+    private int clientArrowsTaken;
+    private int arrowPointMismatches;
     private int pushPointMismatches;
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
@@ -111,6 +115,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientPushes = PlayedClientSkills.ReadAttackPushes(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill attacks in the played client's skill data (push): {clientPushes.Count}");
+            clientArrows = PlayedClientSkills.ReadAttackArrows(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
+            Console.WriteLine($"Skill attacks in the played client's skill data (arrow): {clientArrows.Count}");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -182,7 +189,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                                 ForcedTaming: attack.petTamingProperty.forcedTaming
                             ) : null,
                             Range: WithClientRange(id, level.value, motionIndex, attackIndex, attack.point, Convert(attack.rangeProperty)),
-                            Arrow: new SkillMetadataArrow(
+                            Arrow: WithClientArrow(id, level.value, motionIndex, attackIndex, attack.point, new SkillMetadataArrow(
                                 Overlap: attack.arrowProperty.overlap,
                                 Explosion: attack.arrowProperty.explosion,
                                 RayPhysXTest: attack.arrowProperty.rayPhysxTest,
@@ -193,7 +200,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                                 BounceOverlap: attack.arrowProperty.bounceType > 0 && attack.arrowProperty.bounceOverlap,
                                 Collision: attack.arrowProperty.collision,
                                 CollisionAdd: attack.arrowProperty.collisionAdd,
-                                RayType: attack.arrowProperty.rayType),
+                                RayType: attack.arrowProperty.rayType)),
                             Damage: new SkillMetadataDamage(
                                 Count: attack.damageProperty.count,
                                 Rate: DamageRate(id, level.value, motionIndex, attackIndex, attack.point, attack.damageProperty.rate),
@@ -317,6 +324,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientPushes.Count > 0) {
             Console.WriteLine($"Skill attacks given the played client's push over the data pack's: {clientPushesTaken} ({pushPointMismatches} with another point at that place, the data pack's kept)");
         }
+        if (clientArrows.Count > 0) {
+            Console.WriteLine($"Skill attacks given the played client's arrow over the data pack's: {clientArrowsTaken} ({arrowPointMismatches} with another point at that place, the data pack's kept)");
+        }
         if (clientMotions.Count > 0) {
             Console.WriteLine($"Skill motions given the played client's sequence name, sequence speed, move distance and splash life tick over the data pack's: {clientMotionsTaken} ({motionPointMismatches} with other attack points, or another motion count in the level and another sequence, at that place, the data pack's kept)");
         }
@@ -413,6 +423,35 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             PriorityHitImmune: push.PriorityHitImmune) : null;
         if (taken != pack) {
             clientPushesTaken++;
+        }
+        return taken;
+    }
+
+    // The played client's arrow where it has the attack at that place with the same point, else the data pack's. The
+    // bounce overlap is kept only for a bouncing arrow, as for the data pack's.
+    private SkillMetadataArrow WithClientArrow(int id, short level, int motion, int attack, string point, SkillMetadataArrow pack) {
+        if (!clientArrows.TryGetValue((id, level, motion, attack), out (PlayedClientSkills.AttackArrow Arrow, string Point) played)) {
+            return pack;
+        }
+        if (played.Point != point) {
+            arrowPointMismatches++;
+            return pack;
+        }
+        PlayedClientSkills.AttackArrow arrow = played.Arrow;
+        var taken = new SkillMetadataArrow(
+            Overlap: arrow.Overlap != 0,
+            Explosion: arrow.Explosion != 0,
+            RayPhysXTest: arrow.RayPhysxTest != 0,
+            NonTarget: (SkillTargetType) arrow.NonTarget,
+            BounceType: (BounceType) arrow.BounceType,
+            BounceCount: arrow.BounceCount,
+            BounceRadius: arrow.BounceRadius,
+            BounceOverlap: arrow.BounceType > 0 && arrow.BounceOverlap != 0,
+            Collision: arrow.Collision,
+            CollisionAdd: arrow.CollisionAdd,
+            RayType: arrow.RayType);
+        if (taken != pack) {
+            clientArrowsTaken++;
         }
         return taken;
     }

@@ -302,6 +302,37 @@ public static class PlayedClientSkills {
     public record AttackPush(int Type, int EaseType, int ApplyField, float Distance, float UpDistance, int Down, bool Fall, float Duration,
         float Probability, int Priority, int PriorityHitImmune);
 
+    // The arrow of every attack of the client's levels, by skill id, level, the motion's place in the level and the
+    // attack's place in the motion, with the attack's point. SkillArrow::Load reads it from the attack's <arrow>
+    // (skillattackdata.cpp:99-121): overlap, explosion, rayPhysxTest, nonTarget, bounceType, bounceCount, bounceRadius,
+    // bounceOverlap, collision, collisionAdd and rayType, each left at SkillArrow::SkillArrow's default when not given
+    // (0, but 1 for bounceOverlap; a vector only as three comma-separated values, FUN_14028f060), and all of them when
+    // the attack has no <arrow>. The skills and levels are the client's pick (SelectSkills).
+    public static Dictionary<(int Skill, short Level, int Motion, int Attack), (AttackArrow Arrow, string Point)> ReadAttackArrows(
+            IEnumerable<XmlDocument> skillFiles, Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
+        var result = new Dictionary<(int, short, int, int), (AttackArrow, string)>();
+        foreach ((int id, (_, List<(short, XmlElement)> levels)) in SelectSkills(skillFiles, available, select)) {
+            foreach ((short value, XmlElement level) in levels) {
+                int motionIndex = 0;
+                foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
+                    int attackIndex = 0;
+                    foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
+                        XmlElement? arrow = attack.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "arrow");
+                        var taken = new AttackArrow(Number(arrow, "overlap"), Number(arrow, "explosion"), Number(arrow, "rayPhysxTest"),
+                            Number(arrow, "nonTarget"), Number(arrow, "bounceType"), Number(arrow, "bounceCount"), Real(arrow, "bounceRadius"),
+                            Number(arrow, "bounceOverlap", 1), Point(arrow, "collision"), Point(arrow, "collisionAdd"), Number(arrow, "rayType"));
+                        result[(id, value, motionIndex, attackIndex++)] = (taken, attack.GetAttribute("point"));
+                    }
+                    motionIndex++;
+                }
+            }
+        }
+        return result;
+    }
+
+    public record AttackArrow(int Overlap, int Explosion, int RayPhysxTest, int NonTarget, int BounceType, int BounceCount, float BounceRadius,
+        int BounceOverlap, Vector3 Collision, Vector3 CollisionAdd, int RayType);
+
     // A push type other than 0 is a push: the client tests SkillDamage::GetPush against 0 for the hit reaction and
     // super armor (pc.cpp:902, 929), so -1 and 3 count though they move nothing (pcbase.cpp:4135-4172).
     public static bool IsPush(int type) => type != 0;
@@ -381,7 +412,7 @@ public static class PlayedClientSkills {
         return new Vector3(result[0], result[1], result[2]);
     }
 
-    private static int Number(XmlElement? element, string attribute) {
-        return element != null && int.TryParse(element.GetAttribute(attribute), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : 0;
+    private static int Number(XmlElement? element, string attribute, int fallback = 0) {
+        return element != null && int.TryParse(element.GetAttribute(attribute), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : fallback;
     }
 }

@@ -896,6 +896,29 @@ public class SkillCastRulesTests {
     }
 
     [Test]
+    public void AttackArrowIsTheClients() {
+        // Arrows as the played client gives them (SkillArrow::Load reads them from the attack's <arrow>; bounceOverlap
+        // is 1 and the rest 0 when not given, a vector only as three values): a bouncing arrow with its collision box,
+        // an attack without an <arrow>, an arrow with a two-value collision, which is zero, and 10600211's arrow, which
+        // bounces nowhere where the data pack bounces it 160 times.
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="10300014"><level value="2"><motion><attack point="p0"><arrow overlap="1" explosion="1" nonTarget="1" bounceType="1" bounceCount="3" bounceRadius="300" collision="30,30,100" collisionAdd="0,0,50" rayType="2" rayPhysxTest="1" /></attack></motion></level></skill>
+              <skill id="10300015"><level value="1"><motion><attack point="p0" /></motion><motion><attack point="p1"><arrow bounceOverlap="0" collision="30,30" /></attack></motion></level></skill>
+              <skill id="10600211"><level value="1"><motion><attack point="p0"><arrow nonTarget="1" /></attack></motion></level></skill>
+            </ms2>
+            """);
+        Dictionary<(int Skill, short Level, int Motion, int Attack), (PlayedClientSkills.AttackArrow, string)> read = PlayedClientSkills.ReadAttackArrows([document]);
+        Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short, int, int), (PlayedClientSkills.AttackArrow, string)> {
+            [(10300014, 2, 0, 0)] = (new PlayedClientSkills.AttackArrow(1, 1, 1, 1, 1, 3, 300, 1, new Vector3(30, 30, 100), new Vector3(0, 0, 50), 2), "p0"),
+            [(10300015, 1, 0, 0)] = (new PlayedClientSkills.AttackArrow(0, 0, 0, 0, 0, 0, 0, 1, Vector3.Zero, Vector3.Zero, 0), "p0"),
+            [(10300015, 1, 1, 0)] = (new PlayedClientSkills.AttackArrow(0, 0, 0, 0, 0, 0, 0, 0, Vector3.Zero, Vector3.Zero, 0), "p1"),
+            [(10600211, 1, 0, 0)] = (new PlayedClientSkills.AttackArrow(0, 0, 0, 1, 0, 0, 0, 1, Vector3.Zero, Vector3.Zero, 0), "p0"),
+        }));
+    }
+
+    [Test]
     public void AnyPushTypeButZeroIsAPush() {
         // The client takes push -1 (6 KR attacks) as a push for the hit reaction and super armor, as it does 3.
         foreach (int type in new[] { 1, 2, 3, 4, 5, 6, -1 }) {
