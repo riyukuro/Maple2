@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Session;
@@ -12,6 +13,7 @@ namespace Maple2.Server.Tests.Game.Manager;
 // exported UGC map c + 1, -1 and any other value make the empty home, and a home with a name is left alone. The
 // three templates here are made up and told apart by their size; they have no cubes.
 public class HomeConceptTests {
+    private const int CubeItem = 50400001;
     private TestGameSession test = null!;
 
     private GameSession Start() {
@@ -72,5 +74,27 @@ public class HomeConceptTests {
         Assert.That(session.Housing.InitHomeForConcept(1), Is.False);
         Assert.That(session.Player.Value.Home.Indoor.Name, Is.EqualTo("home"));
         Assert.That(session.Player.Value.Home.Area, Is.EqualTo(20));
+    }
+
+    // An unnamed indoor home that holds a cube keeps it: no model house, no name, the cube row stays.
+    [Test]
+    public void UnnamedHomeWithCubes_IsLeftAlone() {
+        GameSession session = Start();
+        test.Register(TestGameSession.Metadata(CubeItem));
+        session.ItemMetadata.TryGet(CubeItem, out ItemMetadata? metadata);
+        PlotInfo indoor = session.Player.Value.Home.Indoor;
+        long cubeId;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            PlotCube? cube = db.CreateCube(indoor, new PlotCube(metadata!) { Position = new Vector3B(1, 1, 0), Type = PlotCube.CubeType.Construction });
+            Assert.That(cube, Is.Not.Null);
+            cubeId = cube!.Id;
+        }
+
+        Assert.That(session.Housing.InitHomeForConcept(0), Is.False);
+        Assert.That(indoor.Name, Is.Empty);
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.GetCube(cubeId), Is.Not.Null);
+            Assert.That(db.HasCubes(indoor.Id), Is.True);
+        }
     }
 }

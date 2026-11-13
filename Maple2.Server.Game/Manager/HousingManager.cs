@@ -405,9 +405,16 @@ public class HousingManager {
     // A bought plot's concept builds the buyer's indoor home when it has no name yet (never made), the same as the
     // dialog's RequestHome 3 path; a home that already has a name is left as it is. Nothing is placed on the outdoor
     // plot. The template's cubes are free, as for a new home made by RequestHome 3.
+    // Chosen here: an unnamed indoor home that already holds cubes (built through the plot's door) is left as it is
+    // too, as building the model house would delete them (SaveCubes) without returning them to storage.
     public bool InitHomeForConcept(int concept) {
         if (!string.IsNullOrEmpty(Home.Indoor.Name)) {
             return false;
+        }
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            if (db.HasCubes(Home.Indoor.Id)) {
+                return false;
+            }
         }
 
         ExportedUgcMapMetadata? template = null;

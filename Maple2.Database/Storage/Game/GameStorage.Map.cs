@@ -617,6 +617,11 @@ public partial class GameStorage {
             return Context.TrySaveChanges() ? model : null;
         }
 
+        // Whether the plot (indoor or outdoor) holds any cube row.
+        public bool HasCubes(long plotInfoId) {
+            return Context.UgcMapCube.Any(cube => cube.UgcMapId == plotInfoId);
+        }
+
         public PlotCube? GetCube(long cubeId) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
 
