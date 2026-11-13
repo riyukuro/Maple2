@@ -505,6 +505,32 @@ public sealed class QuestManager {
             return false;
         }
 
+        if (!QuestRules.MeetsSubJob(require.SubJob, session.Player.Value.Character.Job)) {
+            return false;
+        }
+
+        Guild? guild = session.Guild.Guild;
+        int guildLevel = require.GuildLevel <= 0 || guild == null ? 0
+            : GuildRules.PropertyAt(session.TableMetadata.GuildTable.Properties, guild.Experience)?.Level ?? 1;
+        if (!QuestRules.MeetsGuildLevel(require.GuildLevel, guild != null, guildLevel)) {
+            return false;
+        }
+
+        if (!QuestRules.MeetsMentoring(require.Mentor, require.Mentee, QuestRules.NoMentoringRole)) {
+            return false;
+        }
+
+        if (!QuestRules.MeetsVip(require.Vip, session.Player.Value.Account.PremiumTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+            return false;
+        }
+
+        if (require.Equipment != null) {
+            var equips = session.Item.Equips;
+            if (!QuestRules.WearsAny(require.Equipment, equips.Gear.Values.Concat(equips.Outfit.Values).Concat(equips.Outfit2.Values).Select(item => item.Id))) {
+                return false;
+            }
+        }
+
         if (!QuestRules.OnWeekday(require.Weekdays, DateTime.Now)) {
             return false;
         }

@@ -98,6 +98,65 @@ public class QuestRequireTests {
         Assert.That(session.Quest.CanStart(Register(Require() with { GuildNpcLevel = 1 }, GuildQuest)), Is.EqualTo(canStart));
     }
 
+    // require subJob (questdata.cpp:476; KR 40002788 lists the first-awakened jobs 101-1101): an unawakened job is
+    // refused.
+    [TestCase(Job.Knight, false)]
+    [TestCase(Job.KnightII, true)]
+    public void CanStart_SubJob(Job job, bool canStart) {
+        session.Player.Value.Character.Job = job;
+        Assert.That(session.Quest.CanStart(Register(Require() with { SubJob = [101, 201] })), Is.EqualTo(canStart));
+    }
+
+    // require guildLevel 0 (questdata.cpp:553; KR 90000720): a player in a guild is refused. No attribute (-1) takes any.
+    [TestCase(null, 0, true)]
+    [TestCase(0, 0, false)]
+    [TestCase(0, -1, true)]
+    public void CanStart_GuildLevel(int? questNpcLevel, int guildLevel, bool canStart) {
+        SetGuild(questNpcLevel);
+        Assert.That(session.Quest.CanStart(Register(Require() with { GuildLevel = guildLevel })), Is.EqualTo(canStart));
+    }
+
+    [TestCase(-1, false, 0, true)]
+    [TestCase(1, false, 0, false)]
+    [TestCase(2, true, 1, false)]
+    [TestCase(2, true, 2, true)]
+    [TestCase(2, true, 3, true)]
+    public void MeetsGuildLevel(int required, bool inGuild, int level, bool meets) {
+        Assert.That(QuestRules.MeetsGuildLevel(required, inGuild, level), Is.EqualTo(meets));
+    }
+
+    // require mentor and mentee (questdata.cpp:605; KR 70600056, 70600057): no player has a mentoring role here.
+    [Test]
+    public void CanStart_MentorAndMentee() {
+        Assert.Multiple(() => {
+            Assert.That(session.Quest.CanStart(Register(Require() with { Mentor = true })), Is.False);
+            Assert.That(session.Quest.CanStart(Register(Require() with { Mentee = true }, Main + 1)), Is.False);
+            Assert.That(QuestRules.MeetsMentoring(true, false, 5), Is.True);
+            Assert.That(QuestRules.MeetsMentoring(false, true, 2), Is.True);
+        });
+    }
+
+    // require vip (questdata.cpp:609; KR 70700061): premium time must be left.
+    [TestCase(-60, false)]
+    [TestCase(3600, true)]
+    public void CanStart_Vip(int premiumLeft, bool canStart) {
+        session.Player.Value.Account.PremiumTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + premiumLeft;
+        Assert.That(session.Quest.CanStart(Register(Require() with { Vip = true })), Is.EqualTo(canStart));
+    }
+
+    // require equipment (questdata.cpp:611; KR 95000000-95000008): one listed item must be worn.
+    [TestCase(false, false)]
+    [TestCase(true, true)]
+    public void CanStart_Equipment(bool worn, bool canStart) {
+        const int Listed = 11850151;
+        if (worn) {
+            session.Item.Equips.Outfit[EquipSlot.CL] = new Maple2.Model.Game.Item(TestGameSession.Metadata(Listed, EquipSlot.CL, Gender.All, type: 1)) {
+                Uid = 998, Group = ItemGroup.Outfit, Slot = (short) EquipSlot.CL,
+            };
+        }
+        Assert.That(session.Quest.CanStart(Register(Require() with { Equipment = [11850152, Listed] })), Is.EqualTo(canStart));
+    }
+
     // 2026-11-12 is a Thursday (5); 2026-11-15 a Sunday (1), 2026-11-14 a Saturday (7).
     [TestCase(2026, 11, 12, null, true)]
     [TestCase(2026, 11, 12, new[] { 4 }, false)]

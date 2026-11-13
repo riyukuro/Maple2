@@ -38,6 +38,31 @@ public static class QuestRules {
     public static bool MeetsGuildNpcLevel(int required, bool inGuild, int questNpcLevel) =>
         required == 0 || inGuild && questNpcLevel == required;
 
+    // require subJob (CanAcceptQuest, questdata.cpp:476): the player's job (PC::GetSubJob, the Job value, 101 a
+    // first-awakened knight) must be listed; no list accepts any job.
+    public static bool MeetsSubJob(int[]? subJobs, Job job) => subJobs == null || subJobs.Contains((int) job);
+
+    // require guildLevel (questdata.cpp:553): -1 checks nothing; 0 needs no guild; a level needs a guild of at least
+    // that level (CGuildXmlData::GetLevelByExp of the guild's experience).
+    public static bool MeetsGuildLevel(int required, bool inGuild, int guildLevel) => required switch {
+        -1 => true,
+        0 => !inGuild,
+        _ => inGuild && guildLevel >= required,
+    };
+
+    // require mentor and mentee (questdata.cpp:605-608): the mentoring role (CMentoringManager::FUN_140b71580, the
+    // player's role) must be 5 for mentor and 2 for mentee. The server has no mentoring, so every role is 0 and
+    // neither quest is accepted, as the client refuses it.
+    public const int NoMentoringRole = 0;
+    public static bool MeetsMentoring(bool mentor, bool mentee, int role) => (!mentor || role == 5) && (!mentee || role == 2);
+
+    // require vip (questdata.cpp:609): premium time must be left (PC::IsVip, its end time after the server time).
+    public static bool MeetsVip(bool vip, long premiumEndSeconds, long nowSeconds) => !vip || premiumEndSeconds > nowSeconds;
+
+    // require equipment (questdata.cpp:611): at least one listed item among the worn items (FUN_1416d3af0 counts the
+    // distinct listed ids worn, as equip_exist does).
+    public static bool WearsAny(int[]? equipment, IEnumerable<int> wornItemIds) => equipment == null || wornItemIds.Any(equipment.Contains);
+
     // require dayOfWeek (vfunc_o10_21, questdata.cpp:342): the CMsTime weekday (GetDayOfWeek, tm_wday + 1: 1 is
     // Sunday) of the local time must be listed; no list accepts any day.
     public static bool OnWeekday(int[]? weekdays, DateTime now) =>

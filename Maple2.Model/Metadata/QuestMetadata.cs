@@ -104,7 +104,19 @@ public record QuestMetadataRequire(
     int[]? DungeonBeginner = null,
     // require achievementGrade: with an achievement, 0 needs it completed and a grade needs that grade cleared
     // (CanAcceptQuest, questdata.cpp:538; QuestRules.AchievementCleared).
-    int AchievementGrade = 0);
+    int AchievementGrade = 0,
+    // require subJob: the player's job (Job, 101 a first-awakened knight) must be listed (questdata.cpp:476).
+    int[]? SubJob = null,
+    // require guildLevel: -1 (no attribute) checks nothing, 0 refuses a player in a guild, a level refuses one without
+    // a guild or in a lower-level guild (questdata.cpp:553).
+    int GuildLevel = -1,
+    // require mentor and mentee: the player's mentoring role must be mentor (5) or mentee (2) (questdata.cpp:605).
+    bool Mentor = false,
+    bool Mentee = false,
+    // require vip: the player must have premium time left (PC::IsVip, questdata.cpp:609).
+    bool Vip = false,
+    // require equipment: at least one listed item must be worn (CQuestManager::FUN_1416d3af0, questdata.cpp:611).
+    int[]? Equipment = null);
 
 public record QuestMetadataReward(
     int Meso,

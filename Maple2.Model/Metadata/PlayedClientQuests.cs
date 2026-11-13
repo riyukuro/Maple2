@@ -44,6 +44,32 @@ public static class PlayedClientQuests {
         return npcs;
     }
 
+    // The requires the server's quest parser does not read, from the table's <require> of each quest: guildLevel (-1
+    // without the attribute, as QuestData keeps it; 0 is a require, no guild), vip and equipment.
+    public static Dictionary<int, PlayedRequire> Requires(XmlDocument questTable, Func<XmlElement, bool> available) {
+        var requires = new Dictionary<int, PlayedRequire>();
+        XmlNodeList? quests = questTable.SelectNodes("ms2/quest");
+        if (quests == null) {
+            return requires;
+        }
+        foreach (XmlNode node in quests) {
+            if (node is not XmlElement quest || !int.TryParse(quest.GetAttribute("id"), out int id) || id == 0 || !available(quest)
+                || quest.SelectSingleNode("require") is not XmlElement require) {
+                continue;
+            }
+            int guildLevel = require.HasAttribute("guildLevel") && int.TryParse(require.GetAttribute("guildLevel"), out int level) ? level : -1;
+            bool vip = int.TryParse(require.GetAttribute("vip"), out int flag) && flag != 0;
+            int[] equipment = require.GetAttribute("equipment").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(item => int.TryParse(item, out int itemId) ? itemId : 0).Where(itemId => itemId != 0).ToArray();
+            if (guildLevel != -1 || vip || equipment.Length > 0) {
+                requires[id] = new PlayedRequire(guildLevel, vip, equipment);
+            }
+        }
+        return requires;
+    }
+
+    public record PlayedRequire(int GuildLevel, bool Vip, int[] Equipment);
+
     private static int Npc(XmlElement quest, string element) =>
         quest.SelectSingleNode(element) is XmlElement node && int.TryParse(node.GetAttribute("npc"), out int npc) ? npc : 0;
 

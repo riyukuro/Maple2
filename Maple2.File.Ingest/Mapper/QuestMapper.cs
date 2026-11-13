@@ -26,6 +26,9 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
         // playedNpcs: the start and complete npcs of that table, which the client's quest marks and talks follow.
         HashSet<int>? known = null;
         Dictionary<int, (int Start, int Complete)>? playedNpcs = null;
+        // playedRequires: the guildLevel, vip and equipment requires, which the parser does not read; without a played
+        // client no quest has them.
+        Dictionary<int, PlayedClientQuests.PlayedRequire>? playedRequires = null;
         Maple2.File.IO.Crypto.Common.PackFileEntry? entry = playedReader?.Files.FirstOrDefault(file =>
             string.Equals(file.Name, PlayedClientQuests.QuestTable, StringComparison.OrdinalIgnoreCase));
         if (playedReader != null && entry != null) {
@@ -33,6 +36,7 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
             Func<System.Xml.XmlElement, bool> available = node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature"));
             known = PlayedClientQuests.Ids(questTable, available);
             playedNpcs = PlayedClientQuests.Npcs(questTable, available);
+            playedRequires = PlayedClientQuests.Requires(questTable, available);
             if (known.Count == 0) {
                 known = null;
                 playedNpcs = null;
@@ -59,6 +63,7 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                 int.TryParse(data.require.unreqAchievement[1], out int grade)) {
                 unrequiredAchievement = (achievementId, grade);
             }
+            PlayedClientQuests.PlayedRequire? playedRequire = playedRequires?.GetValueOrDefault(id);
             yield return new QuestMetadata(
                 Id: id,
                 Name: name,
@@ -112,7 +117,13 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     Dungeon: data.require.dungeon,
                     UnrequireDungeon: data.require.unrequireDungeon,
                     EnterDungeon: data.require.enterDungeon,
-                    DungeonBeginner: data.require.dungeonBeginner.Length > 0 ? data.require.dungeonBeginner : null
+                    DungeonBeginner: data.require.dungeonBeginner.Length > 0 ? data.require.dungeonBeginner : null,
+                    SubJob: data.require.subJob.Length > 0 ? data.require.subJob.Select(job => (int) job).ToArray() : null,
+                    GuildLevel: playedRequire?.GuildLevel ?? -1,
+                    Mentor: data.require.mentor != 0,
+                    Mentee: data.require.mentee != 0,
+                    Vip: playedRequire?.Vip ?? false,
+                    Equipment: playedRequire is { Equipment.Length: > 0 } ? playedRequire.Equipment : null
                 ),
                 AcceptReward: Convert(data.acceptReward),
                 CompleteReward: Convert(data.completeReward),

@@ -39,6 +39,31 @@ public class PlayedClientQuestsTests {
         Assert.That(PlayedClientQuests.Ids(table, node => node.GetAttribute("feature") == ""), Is.EqualTo(new[] { 100 }));
     }
 
+    // The requires the parser does not read: guildLevel only with the attribute (0 is a require), vip and the
+    // equipment list; a quest without any of them has no row.
+    [Test]
+    public void Requires_AreTheGuildLevelVipAndEquipment() {
+        var table = new XmlDocument();
+        table.LoadXml("""
+            <ms2>
+              <quest id="90000720"><require level="17" guildLevel="0" /></quest>
+              <quest id="70700061"><require maxLevel="99" vip="1" /></quest>
+              <quest id="95000001"><require level="10" equipment="11850151, 11850152" /></quest>
+              <quest id="95000002" feature="Off"><require equipment="1" /></quest>
+              <quest id="100"><require level="1" /></quest>
+            </ms2>
+            """);
+
+        var requires = PlayedClientQuests.Requires(table, Available);
+
+        Assert.Multiple(() => {
+            Assert.That(requires.Keys.OrderBy(id => id), Is.EqualTo(new[] { 70700061, 90000720, 95000001 }));
+            Assert.That((requires[90000720].GuildLevel, requires[90000720].Vip), Is.EqualTo((0, false)));
+            Assert.That((requires[70700061].GuildLevel, requires[70700061].Vip), Is.EqualTo((-1, true)));
+            Assert.That(requires[95000001].Equipment, Is.EqualTo(new[] { 11850151, 11850152 }));
+        });
+    }
+
     // The start and complete npcs of the enabled quests, 0 for a missing element or attribute (the played client moved
     // the completion of 10003408 from 11004779 to 11000074, which the server's quest files still name).
     [Test]
