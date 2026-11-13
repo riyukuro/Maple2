@@ -39,6 +39,11 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     // client.
     private readonly Dictionary<(int Skill, short Level), (int Sp, int Ep)> clientCosts = [];
     private int clientCostsTaken;
+    // The played client's attack damage rates (PlayedClientSkills.ReadAttackDamageRates); empty without a played
+    // client.
+    private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (float Rate, string Point)> clientDamageRates = [];
+    private int clientDamageRatesTaken;
+    private int damageRatePointMismatches;
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -78,6 +83,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientCosts = PlayedClientSkills.ReadLevelCosts(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill levels in the played client's skill data (spirit and stamina cost): {clientCosts.Count}");
+            clientDamageRates = PlayedClientSkills.ReadAttackDamageRates(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
+            Console.WriteLine($"Skill attacks in the played client's skill data (damage rate): {clientDamageRates.Count}");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -163,7 +171,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                                 RayType: attack.arrowProperty.rayType),
                             Damage: new SkillMetadataDamage(
                                 Count: attack.damageProperty.count,
-                                Rate: attack.damageProperty.rate,
+                                Rate: DamageRate(id, level.value, motionIndex, attackIndex, attack.point, attack.damageProperty.rate),
                                 HitSpeed: attack.damageProperty.hitSpeedRate,
                                 HitDelay: attack.damageProperty.hitPauseTime,
                                 IsConstDamage: attack.damageProperty.isConstDamageValue != 0,
@@ -275,6 +283,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientCosts.Count > 0) {
             Console.WriteLine($"Skill levels given the played client's spirit and stamina cost over the data pack's: {clientCostsTaken}");
         }
+        if (clientDamageRates.Count > 0) {
+            Console.WriteLine($"Skill attacks given the played client's damage rate over the data pack's: {clientDamageRatesTaken} ({damageRatePointMismatches} with another point at that place, the data pack's kept)");
+        }
     }
 
     // The played client's type where it has the attack at that place with the same point, else the data pack's.
@@ -287,6 +298,21 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             return pack;
         }
         return played.Method;
+    }
+
+    // The played client's damage rate where it has the attack at that place with the same point, else the data pack's.
+    private float DamageRate(int id, short level, int motion, int attack, string point, float pack) {
+        if (!clientDamageRates.TryGetValue((id, level, motion, attack), out (float Rate, string Point) played)) {
+            return pack;
+        }
+        if (played.Point != point) {
+            damageRatePointMismatches++;
+            return pack;
+        }
+        if (played.Rate != pack) {
+            clientDamageRatesTaken++;
+        }
+        return played.Rate;
     }
 
     // The played client's splashActiveSkillID where it has the attack at that place with the same point, else none.

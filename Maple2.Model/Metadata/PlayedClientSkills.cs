@@ -142,6 +142,30 @@ public static class PlayedClientSkills {
         return result;
     }
 
+    // The damage rate of every attack of the client's levels, by skill id, level, the motion's place in the level and
+    // the attack's place in the motion, with the attack's point (SkillDamage::Load reads the rate of the attack's
+    // <damage>, skillattackdata.cpp:258; 0 when the attack has no <damage> or no rate, SkillDamage::SkillDamage). The
+    // server takes an attack by its place in the motion (SkillRecord.Attack), as the client sends it. The skills and
+    // levels are the client's pick (SelectSkills).
+    public static Dictionary<(int Skill, short Level, int Motion, int Attack), (float Rate, string Point)> ReadAttackDamageRates(
+            IEnumerable<XmlDocument> skillFiles, Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
+        var result = new Dictionary<(int, short, int, int), (float, string)>();
+        foreach ((int id, (_, List<(short, XmlElement)> levels)) in SelectSkills(skillFiles, available, select)) {
+            foreach ((short value, XmlElement level) in levels) {
+                int motionIndex = 0;
+                foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
+                    int attackIndex = 0;
+                    foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
+                        XmlElement? damage = attack.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "damage");
+                        result[(id, value, motionIndex, attackIndex++)] = (Real(damage, "rate"), attack.GetAttribute("point"));
+                    }
+                    motionIndex++;
+                }
+            }
+        }
+        return result;
+    }
+
     // The cooldown of each of the client's levels that gives one, in milliseconds, by skill id and level
     // (SkillLevelData::Load reads the level's cooldown attribute; SkillLevelData::GetCooldown is the length the
     // client's skill slot counts down and its tooltip shows). The data pack's beginCondition cooldownTime differs
@@ -195,6 +219,10 @@ public static class PlayedClientSkills {
 
     // The main types whose skills take the caster off the ride at the cast.
     public static bool UnrideMainType(int mainType) => mainType is 1 or 4 or 7 or (>= 11 and <= 15) or (>= 17 and <= 19);
+
+    private static float Real(XmlElement? element, string attribute) {
+        return element != null && float.TryParse(element.GetAttribute(attribute), NumberStyles.Float, CultureInfo.InvariantCulture, out float value) ? value : 0f;
+    }
 
     private static int Number(XmlElement? element, string attribute) {
         return element != null && int.TryParse(element.GetAttribute(attribute), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : 0;

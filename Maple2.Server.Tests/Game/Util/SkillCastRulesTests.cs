@@ -760,6 +760,28 @@ public class SkillCastRulesTests {
         });
     }
 
+    [Test]
+    public void AttackDamageRateIsTheClients() {
+        // Attacks as the played client gives them (SkillDamage::Load reads the rate of the attack's <damage>, 0 when
+        // it has none): 10100001 level 1 hits for 0.79 where the data pack says 0.76, the second attack of its motion
+        // has no <damage> (0), and of a skill given twice the client keeps the last.
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="10100001"><level value="1"><motion><attack point="p0"><damage rate="0.79" /></attack><attack point="p1" /></motion></level></skill>
+              <skill id="10800202"><level value="1"><motion><attack point="p0"><damage rate="0.81" /></attack></motion></level></skill>
+              <skill id="10800202"><level value="1"><motion><attack point="p0"><damage count="0" /></attack></motion><motion><attack point="p2"><damage rate="1.5" /></attack></motion></level></skill>
+            </ms2>
+            """);
+        Dictionary<(int Skill, short Level, int Motion, int Attack), (float Rate, string Point)> read = PlayedClientSkills.ReadAttackDamageRates([document]);
+        Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short, int, int), (float, string)> {
+            [(10100001, 1, 0, 0)] = (0.79f, "p0"),
+            [(10100001, 1, 0, 1)] = (0f, "p1"),
+            [(10800202, 1, 0, 0)] = (0f, "p0"),
+            [(10800202, 1, 1, 0)] = (1.5f, "p2"),
+        }));
+    }
+
     private static (int, int, bool) Kept(PlayedClientSkills.Entry entry) => (entry.MainType, entry.RechargeMaxCount, entry.RechargeShared);
 
     [Test]
