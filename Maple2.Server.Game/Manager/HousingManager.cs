@@ -1430,7 +1430,10 @@ public class HousingManager {
             cubeCount += missingCubes;
         }
 
-        result = (cubeCosts, cubeCount);
+        // Only the money types with a cost: the client's bill opens only for a bill with entries, and a bill of none
+        // is applied at once (FUN_140ee8190 sends RequestCube 0x30, FUN_140ee83f0 0x46 when it is not a preview;
+        // uiugccubebilldialog.cpp:248, :297). A layout whose cubes are all in storage showed a bill of 0 meso.
+        result = (cubeCosts.Where(entry => entry.Value > 0).ToDictionary(entry => entry.Key, entry => entry.Value), cubeCount);
         return true;
     }
 
