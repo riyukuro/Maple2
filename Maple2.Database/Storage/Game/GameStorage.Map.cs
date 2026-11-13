@@ -6,6 +6,7 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
@@ -222,6 +223,91 @@ public partial class GameStorage {
             }
         }
 
+        // Takes back an expired outdoor plot of plot.OwnerId: the row is left without an owner (pending sale), its cubes
+        // and their maids are deleted, and the cubes go to the owner's furnishing storage as new rows (a stored stack is
+        // not raised: a game server that holds the storage writes its own amounts back). createItem makes the item of a
+        // cube's item id (null skips the cube). One transaction on a relational DB, on the owner and expiry re-read: a
+        // plot extended or given up since it was listed, or a cube removed meanwhile, writes nothing, and a later check
+        // takes the plot. False then and on any failure; nothing is written then.
+        public bool ExpirePlot(PlotInfo plot, Func<int, Maple2.Model.Game.Item?> createItem) {
+            try {
+                using IDbContextTransaction? transaction = Context.Database.IsRelational()
+                    ? Context.Database.BeginTransaction(IsolationLevel.ReadCommitted)
+                    : null;
+                UgcMap? model = Context.UgcMap.AsNoTracking().FirstOrDefault(map => map.Id == plot.Id);
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                if (model == null || model.Indoor || model.OwnerId <= 0 || model.OwnerId != plot.OwnerId
+                    || model.ExpiryTime <= DateTimeOffset.MinValue || model.ExpiryTime > now) {
+                    return false;
+                }
+
+                long id = model.Id;
+                long ownerId = model.OwnerId;
+                DateTimeOffset expiry = model.ExpiryTime;
+                Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+                if (transaction != null) {
+                    int updated = Context.UgcMap
+                        .Where(map => map.Id == id && map.OwnerId == ownerId && map.ExpiryTime == expiry)
+                        .ExecuteUpdate(update => update
+                            .SetProperty(map => map.OwnerId, 0L)
+                            .SetProperty(map => map.Name, string.Empty)
+                            .SetProperty(map => map.ExpiryTime, now));
+                    if (updated != 1) {
+                        return false;
+                    }
+                } else {
+                    UgcMap tracked = Context.UgcMap.Single(map => map.Id == id);
+                    tracked.OwnerId = 0;
+                    tracked.Name = string.Empty;
+                    tracked.ExpiryTime = now;
+                }
+
+                // The cubes are removed as loaded: a cube deleted since (picked up) fails the save, so it is not
+                // credited twice.
+                List<UgcMapCube> cubes = Context.UgcMapCube.Where(cube => cube.UgcMapId == id).ToList();
+                List<long> cubeIds = cubes.Select(cube => cube.Id).ToList();
+                Context.Maid.RemoveRange(Context.Maid.Where(maid => cubeIds.Contains(maid.Id)).ToList());
+                Context.UgcMapCube.RemoveRange(cubes);
+                var returned = new List<Maple2.Model.Game.Item>();
+                foreach (UgcMapCube cube in cubes) {
+                    Maple2.Model.Game.Item? item = createItem(cube.ItemId);
+                    if (item == null) {
+                        Logger.LogWarning("Expired plot {PlotId}: cube {CubeId} item {ItemId} not returned (no item)", id, cube.Id, cube.ItemId);
+                        continue;
+                    }
+                    // As FurnishingManager.AddStorage stacks them: by item and design, up to the slot size; a maid
+                    // item keeps a row of its own.
+                    bool maidItem = item.Metadata.Housing?.MaidId > 0;
+                    Maple2.Model.Game.Item? stack = maidItem ? null : returned.FirstOrDefault(existing =>
+                        MaidRules.CanJoin(existing, cube.ItemId, cube.Template?.Url, false) && existing.Amount < item.Metadata.Property.SlotMax);
+                    if (stack != null) {
+                        stack.Amount++;
+                        continue;
+                    }
+                    item.Amount = 1;
+                    item.Group = ItemGroup.Furnishing;
+                    if (cube.Template != null) {
+                        item.Template = cube.Template;
+                    }
+                    returned.Add(item);
+                }
+                foreach (Maple2.Model.Game.Item item in returned) {
+                    Model.Item row = item;
+                    row.Id = 0;
+                    row.OwnerId = ownerId;
+                    Context.Item.Add(row);
+                }
+
+                if (!Context.TrySaveChanges()) {
+                    return false;
+                }
+                return transaction == null || CommitPlotWrite(transaction, "expiry", id, ownerId, expiry);
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to expire plot {PlotId}", plot.Id);
+                return false;
+            }
+        }
+
         // Commits a plot buy or forfeit. A commit that throws may still have been applied on the server (a lost
         // connection after the COMMIT was sent): the caller then treats it as failed (a buy refunds its cost), so the
         // ids are logged to trace a refund for a plot that was in fact written.
@@ -257,19 +343,6 @@ public partial class GameStorage {
             return expired.Select(ToPlotInfo).Where(p => p != null).ToList()!;
         }
 
-        public void SetPlotPending(long plotId) {
-            // Set expiry time to now
-            UgcMap? ugcMap = Context.UgcMap.Find(plotId);
-            if (ugcMap == null) return;
-
-            ugcMap.ExpiryTime = DateTimeOffset.UtcNow;
-            ugcMap.OwnerId = 0;
-            ugcMap.Name = string.Empty;
-
-            Context.UgcMap.Update(ugcMap);
-            Context.TrySaveChanges();
-        }
-
         public void SetPlotOpen(long plotId) {
             UgcMap? model = Context.UgcMap.Find(plotId);
             if (model == null) return;
@@ -278,15 +351,6 @@ public partial class GameStorage {
 
             Context.UgcMap.Update(model);
             Context.TrySaveChanges();
-        }
-
-        public Plot? GetOutdoorPlotInfo(int plotNumber, int mapId) {
-            UgcMap? model = Context.UgcMap.Include(x => x.Cubes).SingleOrDefault(map => map.MapId == mapId && map.Number == plotNumber && !map.Indoor);
-            if (model == null) {
-                return null;
-            }
-
-            return ToPlot(model);
         }
 
         public bool SaveHome(Home home) {

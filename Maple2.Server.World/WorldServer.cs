@@ -504,16 +504,22 @@ public class WorldServer {
         }
     }
 
+    private static readonly TimeSpan PlotRetryDelay = TimeSpan.FromMinutes(1);
+
     public void FieldPlotExpiryCheck() {
         using GameStorage.Request db = gameStorage.Context();
         // Get all plots that have expired but are not yet pending
         List<PlotInfo> expiredPlots = db.GetPlotsToExpire();
+        bool retry = false;
         if (expiredPlots.Count > 0) {
             foreach (PlotInfo plot in expiredPlots) {
                 bool forfeit = false;
                 try {
                     if (plot.OwnerId > 0 && plot.ExpiryTime < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
-                        SetPlotAsPending(db, plot);
+                        if (!SetPlotAsPending(db, plot)) {
+                            retry = true;
+                            continue; // Nothing was written: the channels keep the plot as it is
+                        }
                         forfeit = true;
                         // mark as open when 3 days has passed since the expiry time
                     } else if (plot.OwnerId == 0 && plot.ExpiryTime + Constants.UgcHomeSaleWaitingTime.TotalSeconds < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
@@ -554,55 +560,22 @@ public class WorldServer {
         } else {
             delay = TimeSpan.FromDays(1); // Default to 1 day if no plots are found
         }
+        if (retry && delay < PlotRetryDelay) {
+            delay = PlotRetryDelay; // A plot not taken back is still the soonest: do not check again at once
+        }
         scheduler.Schedule(FieldPlotExpiryCheck, delay);
     }
 
-    // Marks a plot as pending, removes its cubes, and adds them to the owner's inventory.
-    private void SetPlotAsPending(GameStorage.Request db, PlotInfo plot) {
+    // Marks a plot as pending, removes its cubes, and adds them to the owner's furnishing storage, all in one write
+    // (GameStorage.Request.ExpirePlot). False when nothing was written: the plot was extended or given up since it was
+    // listed, a cube went meanwhile, or the write failed; a later check takes it then.
+    private bool SetPlotAsPending(GameStorage.Request db, PlotInfo plot) {
         logger.Information("Marking plot {PlotId} as pending (owner: {OwnerId})", plot.Id, plot.OwnerId);
-
-        db.SetPlotPending(plot.Id);
-
-        Plot? outdoorPlot = db.GetOutdoorPlotInfo(plot.Number, plot.MapId);
-        if (outdoorPlot == null) {
-            logger.Warning("Outdoor plot not found for plot id {PlotId}", plot.Id);
-            return;
+        if (db.ExpirePlot(plot, itemId => CreateItem(itemId))) {
+            return true;
         }
-
-        List<Item>? items = db.GetItemGroupsNoTracking(plot.OwnerId, ItemGroup.Furnishing).GetValueOrDefault(ItemGroup.Furnishing);
-        if (items == null) {
-            logger.Warning("No furnishing items found for owner id {OwnerId}", outdoorPlot.OwnerId);
-            return;
-        }
-
-        var changedItems = new List<Item>();
-
-        foreach (PlotCube cube in outdoorPlot.Cubes.Values.ToList()) {
-            // remove cube from plot
-            db.DeleteCube(cube);
-
-            // add item to account inventory
-            Item? stored = items.FirstOrDefault(existing => existing.Id == cube.ItemId && existing.Template?.Url == cube.Template?.Url);
-            if (stored == null) {
-                Item? item = CreateItem(cube.ItemId);
-                if (item == null) {
-                    continue;
-                }
-                item.Group = ItemGroup.Furnishing;
-                db.CreateItem(outdoorPlot.OwnerId, item);
-                continue;
-            }
-
-            stored.Amount += 1;
-            if (!changedItems.Contains(stored)) {
-                changedItems.Add(stored);
-            }
-        }
-
-        if (changedItems.Count > 0) {
-            db.SaveItems(plot.OwnerId, changedItems.ToArray());
-        }
-        return;
+        logger.Warning("Plot {PlotId} of owner {OwnerId} was not taken back", plot.Id, plot.OwnerId);
+        return false;
 
         Item? CreateItem(int itemId, int rarity = -1, int amount = 1) {
             if (!itemMetadata.TryGet(itemId, out ItemMetadata? metadata) || !PlayedClientItems.CanCreate(metadata)) {
