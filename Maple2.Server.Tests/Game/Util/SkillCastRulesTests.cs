@@ -922,6 +922,23 @@ public class SkillCastRulesTests {
     }
 
     [Test]
+    public void ArrowNumbersReadAsTheClientReadsThem() {
+        // The client reads an int as sscanf "%d" and a float as "%lf" do (the number in front, after white space), and
+        // a vector as three comma tokens read by atof with empty tokens skipped (CString::Tokenize), a token with no
+        // number in front reading 0.
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="10300014"><level value="1"><motion><attack point="p0"><arrow overlap="1.0" bounceType=" 1x" bounceCount="+3" bounceRadius="1.5x" bounceOverlap="x" collision="30,,30,100," collisionAdd="x,1, 2" rayType="" /></attack></motion></level></skill>
+              <skill id="10300015"><level value="1"><motion><attack point="p0"><arrow bounceRadius="2e2" collision="30,30,100,1" collisionAdd="-.5e1,1e,." /></attack></motion></level></skill>
+            </ms2>
+            """);
+        Dictionary<(int Skill, short Level, int Motion, int Attack), (PlayedClientSkills.AttackArrow, string)> read = PlayedClientSkills.ReadAttackArrows([document]);
+        Assert.That(read[(10300014, 1, 0, 0)].Item1, Is.EqualTo(new PlayedClientSkills.AttackArrow(1, 0, 0, 0, 1, 3, 1.5f, 1, new Vector3(30, 30, 100), new Vector3(0, 1, 2), 0)));
+        Assert.That(read[(10300015, 1, 0, 0)].Item1, Is.EqualTo(new PlayedClientSkills.AttackArrow(0, 0, 0, 0, 0, 0, 200, 1, Vector3.Zero, new Vector3(-5, 1, 0), 0)));
+    }
+
+    [Test]
     public void AnyPushTypeButZeroIsAPush() {
         // The client takes push -1 (6 KR attacks) as a push for the hit reaction and super armor, as it does 3.
         foreach (int type in new[] { 1, 2, 3, 4, 5, 6, -1 }) {

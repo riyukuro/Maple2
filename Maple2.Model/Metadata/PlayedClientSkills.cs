@@ -396,25 +396,85 @@ public static class PlayedClientSkills {
     // The main types whose skills take the caster off the ride at the cast.
     public static bool UnrideMainType(int mainType) => mainType is 1 or 4 or 7 or (>= 11 and <= 15) or (>= 17 and <= 19);
 
+    // TiXml's QueryDoubleAttribute (sscanf "%lf") cast to float: a missing attribute or one with no number in front
+    // keeps the fallback, and the number in front is read alone ("1.5x" reads 1.5).
     private static float Real(XmlElement? element, string attribute, float fallback = 0f) {
-        return element != null && float.TryParse(element.GetAttribute(attribute), NumberStyles.Float, CultureInfo.InvariantCulture, out float value) ? value : fallback;
+        return element != null && element.HasAttribute(attribute) && ScanReal(element.GetAttribute(attribute), out double value)
+            ? (float) value : fallback;
     }
 
+    // FUN_14028f060 (commonutil.cpp:1172): the attribute's comma tokens, empty ones skipped as CString::Tokenize does,
+    // each read by atof (0 with no number in front); anything but three tokens is the zero vector.
     private static Vector3 Point(XmlElement? element, string attribute) {
-        string[] values = element?.GetAttribute(attribute).Split(',') ?? [];
+        string[] values = element?.GetAttribute(attribute).Split(',', StringSplitOptions.RemoveEmptyEntries) ?? [];
         if (values.Length != 3) {
             return Vector3.Zero;
         }
         var result = new float[3];
         for (int i = 0; i < 3; i++) {
-            if (!float.TryParse(values[i], NumberStyles.Float, CultureInfo.InvariantCulture, out result[i])) {
-                return Vector3.Zero;
-            }
+            result[i] = ScanReal(values[i], out double value) ? (float) value : 0f;
         }
         return new Vector3(result[0], result[1], result[2]);
     }
 
+    // TiXml's QueryIntAttribute (sscanf "%d"): a missing attribute or one with no digit in front keeps the fallback,
+    // and the digits in front are read alone ("1.0" and " 1x" read 1).
     private static int Number(XmlElement? element, string attribute, int fallback = 0) {
-        return element != null && int.TryParse(element.GetAttribute(attribute), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : fallback;
+        return element != null && element.HasAttribute(attribute) && ScanInt(element.GetAttribute(attribute), out int value) ? value : fallback;
+    }
+
+    // The number at the front of the text, after white space, as sscanf "%d" takes it: a sign and at least one digit.
+    private static bool ScanInt(string text, out int value) {
+        int start = SkipSpace(text);
+        int end = start < text.Length && text[start] is '+' or '-' ? start + 1 : start;
+        int digits = end;
+        while (end < text.Length && char.IsAsciiDigit(text[end])) {
+            end++;
+        }
+        value = 0;
+        return end > digits && int.TryParse(text.AsSpan(start, end - start), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out value);
+    }
+
+    // The number at the front of the text, after white space, as sscanf "%lf" and atof take it: a sign, digits with an
+    // optional fraction (at least one digit) and an optional exponent.
+    private static bool ScanReal(string text, out double value) {
+        int start = SkipSpace(text);
+        int end = start < text.Length && text[start] is '+' or '-' ? start + 1 : start;
+        int digits = 0;
+        while (end < text.Length && char.IsAsciiDigit(text[end])) {
+            end++;
+            digits++;
+        }
+        if (end < text.Length && text[end] == '.') {
+            end++;
+            while (end < text.Length && char.IsAsciiDigit(text[end])) {
+                end++;
+                digits++;
+            }
+        }
+        value = 0;
+        if (digits == 0) {
+            return false;
+        }
+        if (end < text.Length && text[end] is 'e' or 'E') {
+            int exponent = end + 1 < text.Length && text[end + 1] is '+' or '-' ? end + 2 : end + 1;
+            int exponentEnd = exponent;
+            while (exponentEnd < text.Length && char.IsAsciiDigit(text[exponentEnd])) {
+                exponentEnd++;
+            }
+            if (exponentEnd > exponent) {
+                end = exponentEnd;
+            }
+        }
+        return double.TryParse(text.AsSpan(start, end - start), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+    }
+
+    // The C locale's isspace.
+    private static int SkipSpace(string text) {
+        int index = 0;
+        while (index < text.Length && text[index] is ' ' or '\t' or '\n' or '\v' or '\f' or '\r') {
+            index++;
+        }
+        return index;
     }
 }
