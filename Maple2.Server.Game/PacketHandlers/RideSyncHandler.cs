@@ -18,26 +18,9 @@ public class RideSyncHandler : FieldPacketHandler {
             return;
         }
 
-        packet.ReadByte(); // Unknown
-        packet.ReadInt(); // ServerTicks
-        packet.ReadInt(); // ClientTicks
-
-        byte segments = packet.ReadByte();
-        if (segments == 0) {
+        StateSync[]? stateSyncs = ReadRecords(packet);
+        if (stateSyncs == null) {
             return;
-        }
-
-        var stateSyncs = new StateSync[segments];
-        for (int i = 0; i < segments; i++) {
-            stateSyncs[i] = packet.ReadClass<StateSync>();
-            // Same record and same reader on the other clients as UserSync: a record they would fail on is not sent on.
-            if (!StateSyncRules.IsRelayable((byte) stateSyncs[i].SubState, stateSyncs[i].Unknown1)) {
-                return;
-            }
-            if (stateSyncs[i].State is ActorState.Walk) {
-                stateSyncs[i].State = ActorState.Ride;
-            }
-            packet.ReadInt(); // ClientTicks
         }
 
         using (var buffer = new PoolByteWriter()) {
@@ -46,5 +29,26 @@ public class RideSyncHandler : FieldPacketHandler {
         }
 
         session.Player.OnStateSync(stateSyncs[^1]);
+    }
+
+    // The client writes RideSync like UserSync (StateRideeController::vfunc_0): u8, i32 server tick, i32 elapsed,
+    // u8 count, then per record the same virtual record writer, so a record of a state with extras (couple
+    // emotion, rps, couple dance, wedding emotion) carries them here too, and the client's tick.
+    // Null for no record or for a record the other clients' reader would fail on.
+    public static StateSync[]? ReadRecords(IByteReader packet) {
+        packet.ReadByte(); // Unknown
+        packet.ReadInt(); // ServerTicks
+        packet.ReadInt(); // ClientTicks
+
+        StateSync[]? stateSyncs = GuideObjectSyncHandler.ReadRecords(packet);
+        if (stateSyncs == null) {
+            return null;
+        }
+        foreach (StateSync stateSync in stateSyncs) {
+            if (stateSync.State is ActorState.Walk) {
+                stateSync.State = ActorState.Ride;
+            }
+        }
+        return stateSyncs;
     }
 }
