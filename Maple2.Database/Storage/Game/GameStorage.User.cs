@@ -107,6 +107,11 @@ public partial class GameStorage {
             return Context.Character.Count(character => character.AccountId == accountId);
         }
 
+        // An outdoor plot (a bought ugc map, not the home) is the account's: BuyPlot writes the account id as owner.
+        public bool OwnsOutdoorPlot(long accountId) {
+            return Context.UgcMap.Any(map => map.OwnerId == accountId && !map.Indoor);
+        }
+
         // LastModified is the row version (ON UPDATE CURRENT_TIMESTAMP): assigning it to itself keeps its value, so an
         // online character's next save still matches it instead of hitting a concurrency conflict, and the last-online
         // time read from it is not moved to the World's start.

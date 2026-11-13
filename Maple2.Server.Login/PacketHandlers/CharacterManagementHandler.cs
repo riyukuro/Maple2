@@ -405,6 +405,16 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             return false;
         }
 
+        // s_char_err_exist_ugc_map: an account that owns an outdoor plot keeps at least one active character, one
+        // with no delete pending, besides this one.
+        if (db.OwnsOutdoorPlot(session.AccountId)) {
+            (_, IList<Character>? characters) = db.ListCharacters(session.AccountId);
+            if (characters == null || !characters.Any(other => other.Id != characterId && other.DeleteTime == default)) {
+                session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_exist_ugc_map));
+                return false;
+            }
+        }
+
         return true;
     }
 
