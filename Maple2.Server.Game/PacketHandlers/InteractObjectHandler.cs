@@ -35,20 +35,30 @@ public class InteractObjectHandler : FieldPacketHandler {
                     return;
                 }
 
-                // Not handled: the client's object create dialog (uiobjectcreatedialog.cpp:156), a debug window
-                // that asks for an object of a kind with four strings, a count, a position and a rotation.
-                // GM accounts only (above), then read and logged.
-                int kind = packet.ReadInt();
-                packet.ReadUnicodeString();
-                packet.ReadUnicodeString();
-                packet.ReadUnicodeString();
-                packet.ReadUnicodeString();
-                int count = packet.ReadInt();
-                packet.Read<System.Numerics.Vector3>(); // position
-                packet.Read<System.Numerics.Vector3>(); // rotation
-                Logger.Debug("InteractObject {Command} from {CharacterId}: kind {Kind}, count {Count}", command, session.CharacterId, kind, count);
+                HandleDebugCreate(session, packet);
                 return;
         }
+    }
+
+    // The client's object create dialog (uiobjectcreatedialog.cpp:156), GM accounts only (above): the interact object
+    // table row, four strings, a count, the GM's position and rotation. See DebugInteract.
+    private void HandleDebugCreate(GameSession session, IByteReader packet) {
+        int interactId = packet.ReadInt();
+        string model = packet.ReadUnicodeString();
+        string asset = packet.ReadUnicodeString();
+        string normal = packet.ReadUnicodeString();
+        string reactable = packet.ReadUnicodeString();
+        int count = packet.ReadInt();
+        var position = packet.Read<System.Numerics.Vector3>();
+        var rotation = packet.Read<System.Numerics.Vector3>();
+
+        FieldInteract? added = session.Field?.AddDebugInteractObject(interactId, model, asset, normal, reactable, position, rotation);
+        if (added == null) {
+            Logger.Debug("InteractObject DebugCreate from {CharacterId}: no interact object {InteractId}", session.CharacterId, interactId);
+            return;
+        }
+        Logger.Debug("InteractObject DebugCreate from {CharacterId}: {EntityId} ({InteractId}), count {Count}",
+            session.CharacterId, added.EntityId, interactId, count);
     }
 
     // Start and End carry a count, then that many object names (CInteractObject and StateInteraction senders).

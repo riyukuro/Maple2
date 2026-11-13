@@ -459,6 +459,26 @@ public partial class FieldManager {
         return fieldInteract;
     }
 
+    /// <summary>The GM object create dialog (InteractObject 9, see DebugInteract): the object is added where the GM stands.</summary>
+    public FieldInteract? AddDebugInteractObject(int interactId, string model, string asset, string normal, string reactable,
+                                                 Vector3 position, Vector3 rotation) {
+        if (!TableMetadata.InteractObjectTable.Entries.TryGetValue(interactId, out InteractObjectMetadata? interactObjectMetadata)) {
+            return null;
+        }
+
+        int objectId = NextLocalId();
+        InteractMeshObject interactObject = DebugInteract.Create(objectId, interactId, model, asset, normal, reactable, position, rotation);
+        var fieldInteract = new FieldInteract(this, objectId, interactObject.EntityId, interactObjectMetadata, interactObject) {
+            Transform = new Transform {
+                Position = position,
+                RotationAnglesDegrees = rotation,
+            },
+        };
+        fieldChests[interactObject.EntityId] = fieldInteract;
+        Broadcast(InteractObjectPacket.Add(fieldInteract.Object));
+        return fieldInteract;
+    }
+
     public FieldMobSpawn? AddMobSpawn(MapMetadataSpawn metadata, Ms2RegionSpawn regionSpawn, ICollection<int> npcIds) {
         var spawnNpcs = new WeightedSet<NpcMetadata>();
         foreach (int npcId in npcIds) {
