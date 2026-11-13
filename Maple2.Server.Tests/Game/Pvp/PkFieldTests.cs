@@ -208,9 +208,10 @@ public class PkFieldTests {
         Assert.That(scene.Field.PlayerHostile(scene.A, scene.B), Is.EqualTo(scene.Field.Survival!.Hostile(scene.A, scene.B)));
     }
 
-    // A kill on a pk field: the trophies, the field's kill log and each side's notice.
+    // A kill on a pk field: the trophies and the field's kill log; no mode 1 notice, as the client prints each side's
+    // line itself from the kill log (UIPvPKillLogDialog::AddKill).
     [Test]
-    public void Kill_TrophiesAndNotices() {
+    public void Kill_TrophiesAndKillLog() {
         Scene scene = Start(pk: true);
         string killer = scene.A.Value.Character.Name;
         string victim = scene.B.Value.Character.Name;
@@ -223,8 +224,8 @@ public class PkFieldTests {
         Assert.Multiple(() => {
             Assert.That(log, Does.StartWith(Convert.ToHexString(BitConverter.GetBytes((short) SendOp.PlayerKillNotice)) + "00"));
             Assert.That(killNotice, Does.StartWith(Convert.ToHexString(BitConverter.GetBytes((short) SendOp.PlayerKillNotice)) + "01"));
-            Assert.That(sentA, Does.Contain(log).And.Contain(killNotice).And.No.Contain(dieNotice));
-            Assert.That(sentB, Does.Contain(log).And.Contain(dieNotice).And.No.Contain(killNotice));
+            Assert.That(sentA, Does.Contain(log).And.No.Contain(killNotice).And.No.Contain(dieNotice));
+            Assert.That(sentB, Does.Contain(log).And.No.Contain(dieNotice).And.No.Contain(killNotice));
             Assert.That(scene.TestA.TrophyCounter(KillTrophy), Is.EqualTo(1));
             Assert.That(scene.TestA.TrophyCounter(DieTrophy), Is.Null);
             Assert.That(scene.TestB.TrophyCounter(DieTrophy), Is.EqualTo(1));

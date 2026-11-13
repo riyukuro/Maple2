@@ -243,9 +243,9 @@ public partial class FieldManager : IField {
 
     // A player killed another on a pk field outside the field's games (a PvP zone, survival, rank duel or Hide and
     // Seek count their own kills): shadow_world_kill for the killer and shadow_world_die for the victim (trophies
-    // 21300001 and 21300002), and the kill log. The client shows no text of its own for it; chosen here: the field
-    // gets mode 0 (killer and victim names, the kill log dialog), the killer s_shadowworld_kill_log_kill with the
-    // victim's name and the victim s_shadowworld_kill_log_die with the killer's name (mode 1).
+    // 21300001 and 21300002), and the kill log: the field gets mode 0 (killer and victim names). The client prints
+    // the killer's and the victim's chat line itself from mode 0 (UIPvPKillLogDialog::AddKill, strings 0x973 and
+    // 0x972), so no mode 1 notice is sent (it doubled the line).
     public bool PkKill(FieldPlayer killer, FieldPlayer victim) {
         if (!PkField || killer == victim || FieldGameRuns) {
             return false;
@@ -255,8 +255,6 @@ public partial class FieldManager : IField {
         killer.Session.ConditionUpdate(ConditionType.shadow_world_kill);
         victim.Session.ConditionUpdate(ConditionType.shadow_world_die);
         Broadcast(PlayerKillNoticePacket.Kill(killerName, victimName));
-        killer.Session.Send(PlayerKillNoticePacket.Notice(new InterfaceText(StringCode.s_shadowworld_kill_log_kill, victimName)));
-        victim.Session.Send(PlayerKillNoticePacket.Notice(new InterfaceText(StringCode.s_shadowworld_kill_log_die, killerName)));
         return true;
     }
     public int RoomId { get; init; }
