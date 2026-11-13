@@ -76,6 +76,35 @@ public static class DungeonScoreRules {
         return reset < seasonEnd ? reset : seasonEnd;
     }
 
+    // A season week end written before the week end moved to the season's start time of day: midnight on the
+    // season's dayOfWeeks, in a season (the one holding the second before it) that starts at another time of day.
+    // It is the end of the same week the new rule gives (that day at the start time, clamped to the season's end),
+    // so in the week running at the change the records of rooms cleared before it and after it end together and the
+    // week is mailed once, with one total. Any other expiry is returned as it is.
+    public static long NormalizeSeasonExpiry(long expiry, DungeonSeasonTable seasons) {
+        if (expiry <= 0) {
+            return expiry;
+        }
+        DateTime end = DateTimeOffset.FromUnixTimeSeconds(expiry).LocalDateTime;
+        if (end.TimeOfDay != TimeSpan.Zero) {
+            return expiry;
+        }
+        DungeonSeasonTable.Entry? season = seasons.Current(end.AddSeconds(-1));
+        TimeSpan resetTime = season?.StartTime.TimeOfDay ?? TimeSpan.Zero;
+        if (season == null || resetTime == TimeSpan.Zero) {
+            return expiry;
+        }
+        DayOfWeek day = season.DayOfWeeks is >= 1 and <= 7 ? (DayOfWeek) (season.DayOfWeeks - 1) : Constant.ResetDay;
+        if (end.DayOfWeek != day) {
+            return expiry;
+        }
+        DateTime moved = end + resetTime;
+        if (moved > season.EndTime) {
+            moved = season.EndTime > end ? season.EndTime : end;
+        }
+        return new DateTimeOffset(moved).ToUnixTimeSeconds();
+    }
+
     // CurrentRecord keeps the best score of the season week: the live value (0 once its expiry has passed) or
     // this clear's score, whichever is higher, and its expiry moves to the end of the week.
     public static void ApplySeason(DungeonRecord record, short score, long now, long expiry) {

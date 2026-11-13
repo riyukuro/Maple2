@@ -53,6 +53,7 @@ public class DungeonManager {
     private void Init() {
         using GameStorage.Request db = session.GameStorage.Context();
         Records = db.GetDungeonRecords(session.CharacterId);
+        int seasonRankMinLevel = session.ServerTableMetadata.ConstantsTable.DungeonSeasonRankMinLevel;
 
         foreach (DungeonRoomMetadata metadata in session.TableMetadata.DungeonRoomTable.Entries.Values) {
             if (!Records.TryGetValue(metadata.Id, out DungeonRecord? record)) {
@@ -66,6 +67,10 @@ public class DungeonManager {
             }
             // A period end written by an older rule is healed before the client or a script reads it.
             DungeonRoomRules.HealCooldown(record, metadata.CooldownType, metadata.CooldownValue, DateTime.Now);
+            // A season week end written before the week ended at the season's start time of day: the same week's end.
+            if (DungeonScoreRules.IsSeasonRankRoom(metadata.GroupType, metadata.Limit.MinLevel, seasonRankMinLevel)) {
+                record.CooldownTimestamp = DungeonScoreRules.NormalizeSeasonExpiry(record.CooldownTimestamp, session.TableMetadata.DungeonSeasonTable);
+            }
 
             DungeonEnterLimit limit = GetEnterLimit(metadata);
             EnterLimits[metadata.Id] = limit;
