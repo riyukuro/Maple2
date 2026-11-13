@@ -41,6 +41,7 @@ public partial class FieldManager {
 
         private readonly ConcurrentDictionary<int, ConcurrentDictionary<int, FieldManager>> fields = []; // Key MapId, RoomId
         private readonly ConcurrentDictionary<long, HomeFieldManager> homes = []; // Key: OwnerId
+        private readonly ConcurrentQueue<FieldManager> retired = []; // Taken out of homes, disposed by DisposeLoop.
         private readonly ConcurrentDictionary<(int MapId, long OwnerId), int> ownerRooms = []; // Value: RoomId
         private readonly ConcurrentDictionary<int, DungeonFieldManager> dungeons = []; // Key: RoomId
         private readonly ConcurrentDictionary<int, DungeonFieldManager> subDungeonFields = []; // Key: RoomId. This is for rooms created by the dungeon lobby.
@@ -357,8 +358,25 @@ public partial class FieldManager {
         /// <summary>
         /// Disposes the field managers that have no players and have been empty for more than 10 minutes.
         /// </summary>
+        // An empty home field loaded while the home had no name, of a home that has one now: the model house was
+        // applied since (RequestHome 3, which deletes the cubes the field still holds and places the template's), so
+        // the field is not entered and the home is loaded again. Without this the owner came back to the old cubes
+        // for the field's empty time, and leaving saved the old list (refused: its rows are gone). Chosen here: a
+        // field that has players keeps them and stays (an unnamed home with visitors only); a name given another
+        // way (SetName) only reloads an empty field, whose cubes were saved when the owner left.
+        private bool MadeSinceLoaded(HomeFieldManager field) {
+            if (!field.Players.IsEmpty || !string.IsNullOrEmpty(field.Home.Indoor.Name)) {
+                return false;
+            }
+            using GameStorage.Request db = GameStorage.Context();
+            return !string.IsNullOrEmpty(db.GetHome(field.OwnerId)?.Indoor.Name);
+        }
+
         private void DisposeLoop() {
             while (!cancel.IsCancellationRequested) {
+                while (retired.TryDequeue(out FieldManager? old)) {
+                    old.Dispose();
+                }
                 foreach ((int mapId, ConcurrentDictionary<int, FieldManager> fieldList) in fields) {
                     foreach ((int roomId, FieldManager field) in fieldList) {
                         if (!field.Players.IsEmpty) {
@@ -546,6 +564,12 @@ public partial class FieldManager {
                             return Create(mapId, ownerId: ownerId, roomId: roomId, instanceFieldMetadata: metadata);
                         }
                         if (!homes.TryGetValue(ownerId, out HomeFieldManager? homeField)) {
+                            return Create(mapId, ownerId: ownerId, roomId: roomId, instanceFieldMetadata: metadata);
+                        }
+                        if (MadeSinceLoaded(homeField)) {
+                            // Its cubes are not the home's: a model house replaced them in the database (InitNewHome).
+                            homes.TryRemove(new KeyValuePair<long, HomeFieldManager>(ownerId, homeField));
+                            retired.Enqueue(homeField);
                             return Create(mapId, ownerId: ownerId, roomId: roomId, instanceFieldMetadata: metadata);
                         }
                         return homeField;
