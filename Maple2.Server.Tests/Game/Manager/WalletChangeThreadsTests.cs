@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
@@ -80,6 +81,54 @@ public class WalletChangeThreadsTests {
             Assert.That(thrown, Is.Zero);
             Assert.That(extended, Is.Positive);
             Assert.That(session.Currency.Meret, Is.EqualTo(980));
+        });
+    }
+
+    // The build budget takes a raise of its merets, then its mesos. Another thread (a field's tax, a trade) can take
+    // the mesos after the budget's check: the raise is then refused and its merets given back. Before, the meso
+    // take threw and the merets taken before it were kept.
+    [Test]
+    public void BuildBudget_AgainstAnotherMesoTake_KeepsNoMerets() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        session.Housing.InitNewHome("home", null);
+        session.Currency.Meso = 1000;
+        session.Currency.Meret = 1000;
+        int thrown = 0;
+        int raised = 0;
+        bool done = false;
+        // The other thread takes and gives back the mesos for as long as the budget is changed.
+        var other = new Thread(() => {
+            while (!Volatile.Read(ref done)) {
+                if (session.Currency.TryTakeMeso(600, notify: false)) {
+                    session.Currency.ReturnMeso(600);
+                }
+            }
+        });
+        other.Start();
+        for (int i = 0; i < 3000; i++) {
+            try {
+                session.Housing.SetBuildBudget(600, 600);
+            } catch (ArgumentException) {
+                thrown++;
+            }
+            if (session.Player.Value.Home.BuildMeso == 600) {
+                raised++;
+            }
+            session.Housing.SetBuildBudget(0, 0);
+            // Each give-back sends a meso packet; the queue is emptied so it does not grow without bound.
+            if (i % 100 == 0) {
+                test.TakeSent();
+            }
+        }
+        Volatile.Write(ref done, true);
+        other.Join();
+        Home home = session.Player.Value.Home;
+        Assert.Multiple(() => {
+            Assert.That(thrown, Is.Zero);
+            Assert.That(raised, Is.Positive);
+            Assert.That(session.Currency.Meso + home.BuildMeso, Is.EqualTo(1000));
+            Assert.That(session.Currency.Meret + home.BuildMerat, Is.EqualTo(1000));
         });
     }
 

@@ -1203,12 +1203,20 @@ public class HousingManager {
                 if (error == UgcMapError.s_ugcmap_ok && meratCost > 0 && !session.Currency.TryTakeMeret(meratCost, notify: false)) {
                     error = HomeBuildRules.Refused;
                 }
+                // The mesos can be taken on another thread too (a field's take) after the check: a raise takes them
+                // in one step, and when they are gone the merets taken above go back.
+                if (error == UgcMapError.s_ugcmap_ok && mesoCost > 0 && !session.Currency.TryTakeMeso(mesoCost)) {
+                    if (meratCost > 0) {
+                        session.Currency.ReturnMeret(meratCost);
+                    }
+                    error = HomeBuildRules.Refused;
+                }
                 if (error != UgcMapError.s_ugcmap_ok) {
                     session.Send(CubePacket.UpdateBuildBudget((byte) error));
                     return;
                 }
 
-                if (mesoCost != 0) {
+                if (mesoCost < 0) {
                     session.Currency.ChangeMeso(-mesoCost);
                 }
                 if (meratCost > 0) {
