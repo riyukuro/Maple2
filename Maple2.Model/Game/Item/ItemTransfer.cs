@@ -47,6 +47,16 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
         return true;
     }
 
+    // A binding the item takes whatever its transfer rule, e.g. at a skin socket unlock; false when it is bound already.
+    public bool BindAnyway(Character character) {
+        if (Binding != null) {
+            return false;
+        }
+
+        Binding = new ItemBinding(character.Id, character.Name);
+        return true;
+    }
+
     public void WriteTo(IByteWriter writer) {
         // CItemTransfer is CItem[66]
         // The client's own rule (CItemTransfer::ComputeRule) only knows Trade (4), Bind (8) and LimitTrade (16), and

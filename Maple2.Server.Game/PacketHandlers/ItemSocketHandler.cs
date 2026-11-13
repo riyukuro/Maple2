@@ -133,6 +133,13 @@ public class ItemSocketHandler : FieldPacketHandler {
                 }
             }
 
+            // A skin socket unlock binds the item to the character: the client asks first for an unbound item with no
+            // open socket (s_itemsocketsystem_socketunlock_msg_ask_unlock_skin_first, "change it to a character-bound
+            // state"). The answer carries the item's transfer, so the client takes the binding from it.
+            if (skinType != 0) {
+                item.Transfer?.BindAnyway(session.Player.Value.Character);
+            }
+
             item.Socket.UnlockSlots++;
             session.Send(ItemSocketPacket.UnlockSocket(true, item));
             session.ConditionUpdate(ConditionType.socket_unlock, targetLong: item.Socket.UnlockSlots);

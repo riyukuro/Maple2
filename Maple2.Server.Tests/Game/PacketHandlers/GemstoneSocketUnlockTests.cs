@@ -21,14 +21,16 @@ public class GemstoneSocketUnlockTests {
     private Item[] materials = [];
     private Item? chips;
 
-    private GameSession Start(int chipCount, long mesos, int materialCount = 2) {
+    private GameSession Start(int chipCount, long mesos, int materialCount = 2, int skinType = 0) {
         test = new TestGameSession();
         ItemMetadata gearData = TestGameSession.Metadata(11200001, type: 1);
+        gearData = gearData with { Property = gearData.Property with { SkinType = skinType } };
         gear = test.Store(gearData);
         materials = Enumerable.Range(0, materialCount).Select(_ => test.Store(gearData)).ToArray();
         if (chipCount > 0) {
             ItemMetadata chipData = TestGameSession.Metadata(40100001, type: 2, slotMax: 1000);
-            chips = test.Store(chipData with { Property = chipData.Property with { Tag = ItemTag.CrystalPiece } }, amount: chipCount);
+            ItemTag tag = skinType != 0 ? ItemTag.SkinCrystal : ItemTag.CrystalPiece;
+            chips = test.Store(chipData with { Property = chipData.Property with { Tag = tag } }, amount: chipCount);
         }
         test.Register(TestGameSession.Metadata(40200001, type: 13));
         GameSession session = test.Start();
@@ -146,6 +148,22 @@ public class GemstoneSocketUnlockTests {
             Assert.That(gear.Socket!.UnlockSlots, Is.EqualTo(1));
             Assert.That(Chips(session), Is.EqualTo(200));
             Assert.That(MaterialsLeft(session), Is.EqualTo(2));
+        });
+    }
+
+    // An outfit's unlock takes no copy and 690 skin crystals, and binds the outfit to the character.
+    [Test]
+    public void SkinUnlock_BindsTheItem() {
+        GameSession session = Start(chipCount: 690, mesos: 0, materialCount: 0, skinType: 1);
+        Assert.That(gear.Transfer, Is.Not.Null);
+        Assert.That(gear.Transfer!.Binding, Is.Null);
+
+        Unlock(session);
+
+        Assert.Multiple(() => {
+            Assert.That(gear.Socket!.UnlockSlots, Is.EqualTo(2));
+            Assert.That(Chips(session), Is.Zero);
+            Assert.That(gear.Transfer!.Binding?.CharacterId, Is.EqualTo(session.CharacterId));
         });
     }
 
