@@ -16,12 +16,13 @@ public record ShopItemMetadata(
     ShopItemMetadata.Requirement Requirements,
     RestrictedBuyData? RestrictedBuyData,
     short SellUnit,
-    ShopItemLabel Label,
+    ShopItemLabel SaleTag,
     string IconTag,
     bool WearForPreview,
     bool RandomOption,
     long Probability,
-    bool IsPremiumItem) {
+    bool IsPremiumItem,
+    byte FrameType = 0) {
 
     public record Requirement(
         int GuildTrophy,

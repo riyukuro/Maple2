@@ -2347,12 +2347,13 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                             Grade: item.requireAllianceGrade)),
                     RestrictedBuyData: restrictedBuyData,
                     SellUnit: (short) item.sellUnit,
-                    Label: (ShopItemLabel) item.frameType,
+                    SaleTag: (ShopItemLabel) item.saleTag,
                     IconTag: item.paymentIconTag,
                     WearForPreview: item.wearForPreview,
                     RandomOption: item.randomOption,
                     Probability: item.prob,
-                    IsPremiumItem: item.premiumItem);
+                    IsPremiumItem: item.premiumItem,
+                    FrameType: (byte) item.frameType);
                 shopResults.Add(item.sn, entry);
             }
             results.Add(shopId, shopResults);

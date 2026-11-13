@@ -31,6 +31,13 @@ public class ShopItem : IByteSerializable {
         };
     }
 
+    // The row's frame (UIShopDialog::SetProductBackground: 2 premium, 4 hot, 5-7 bf_1-3, else normal). The client's own
+    // shop load (CNpcShopData, commonfiles/npcshopdata.cpp:1279) keeps the row's frameType and gives a row without one
+    // 2 when it is a premiumItem, else 1.
+    public static byte Frame(byte frameType, bool premiumItem) {
+        return frameType != 0 ? frameType : (byte) (premiumItem ? 2 : 1);
+    }
+
     public virtual void WriteTo(IByteWriter writer) {
         writer.WriteInt(Id);
         writer.WriteInt(Metadata.ItemId);
@@ -49,8 +56,8 @@ public class ShopItem : IByteSerializable {
         writer.WriteShort(Metadata.Requirements.GuildNpc.Level);
         writer.WriteBool(false);
         writer.WriteShort(Metadata.SellUnit);
-        writer.WriteByte();
-        writer.Write<ShopItemLabel>(Metadata.Label);
+        writer.WriteByte(Frame(Metadata.FrameType, Metadata.IsPremiumItem)); // CNpcShopProductCli m_bc, the row frame
+        writer.WriteByte((byte) Metadata.SaleTag); // m_c0, the sale tag
         writer.WriteString(Metadata.IconTag);
         writer.WriteShort((short) Metadata.Requirements.QuestAlliance.Type);
         writer.WriteInt(Metadata.Requirements.QuestAlliance.Grade);
