@@ -211,7 +211,7 @@ public static class PlayedClientActionAdditionals {
         }
         return new BeginConditionTarget(
             Buff: value.HasBuffId != 0 ? [new BeginConditionTarget.HasBuff(value.HasBuffId, 0, value.HasBuffOwner, value.HasBuffCount, CompareType.Equals)] : [],
-            Event: new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], []),
+            Event: new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []),
             Stat: [], States: [], SubStates: [], Masteries: new Dictionary<MasteryType, int>(), NpcIds: [],
             HasNotBuffIds: value.HasNotBuffId != 0 ? [value.HasNotBuffId] : [],
             HasNotBuffOwned: value.HasNotBuffId != 0 && value.HasNotBuffOwner);

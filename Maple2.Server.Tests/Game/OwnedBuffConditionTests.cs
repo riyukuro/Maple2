@@ -43,7 +43,7 @@ public class OwnedBuffConditionTests {
 
     private static BeginConditionTarget Test(bool owned, int count = 0) {
         return new BeginConditionTarget([new BeginConditionTarget.HasBuff(BuffId, 0, owned, count, CompareType.Equals)],
-            new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], []), [], [], [],
+            new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []), [], [], [],
             new Dictionary<MasteryType, int>(), [], []);
     }
 
@@ -169,7 +169,7 @@ public class OwnedBuffConditionTests {
         var payoff = new SkillEffectMetadata(0, [new SkillEffectMetadata.Skill(10300275, 1)],
             new SkillEffectMetadataCondition(Condition(null, null) with {
                 Owner = new BeginConditionTarget([new BeginConditionTarget.HasBuff(Stacked, 0, true, 10, CompareType.GreaterEquals)],
-                    new BeginConditionTarget.EventCondition(EventConditionType.OnBuffStacksReached, false, [], []), [], [], [],
+                    new BeginConditionTarget.EventCondition(EventConditionType.OnBuffStacksReached, false, [], [], []), [], [], [],
                     new Dictionary<MasteryType, int>(), [], []),
             }, SkillTargetType.Owner, SkillTargetType.Owner, 0, false), null);
         AdditionalEffectMetadata metadata = DisabledBuffTests.Effect(Stacked, property: DisabledBuffTests.Property with { MaxCount = 10 })

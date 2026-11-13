@@ -352,7 +352,7 @@ public static class MapperExtensions {
     }
 
     // We use this default to avoid writing useless checks
-    private static readonly BeginConditionTarget DefaultBeginConditionTarget = new([], new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], []), [], [], [], new Dictionary<MasteryType, int>(), [], []);
+    private static readonly BeginConditionTarget DefaultBeginConditionTarget = new([], new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []), [], [], [], new Dictionary<MasteryType, int>(), [], []);
     private static BeginConditionTarget? Convert(SubConditionTarget? target) {
         if (target == null) {
             return null;
@@ -434,7 +434,8 @@ public static class MapperExtensions {
                 Type: (EventConditionType) data.eventCondition,
                 IgnoreOwner: data.ignoreOwnerEvent != 0,
                 SkillIds: data.eventSkillID,
-                BuffIds: data.eventEffectID);
+                BuffIds: data.eventEffectID,
+                IgnoreSkillIds: data.eventIgnoreSkillID);
         }
 
         BeginConditionTarget.BeginConditionStat[] ParseStat(SubConditionTarget data) {

@@ -14,7 +14,7 @@ using Maple2.Tools.VectorMath;
 namespace Maple2.Server.Tests.Game;
 
 // A target condition's NpcRanks (BeginConditionTarget.NpcClasses): it holds only for an npc whose class is in the
-// list. KR: the proc 90000296 of the potion buff 90000499 has eventCondition 6 (OnOwnerAttackHit) on owner and only
+// list. Also the event an event-less sub-condition takes from its sibling, and eventIgnoreSkillID. KR: the proc 90000296 of the potion buff 90000499 has eventCondition 6 (OnOwnerAttackHit) on owner and only
 // NpcRanks 7 on target; the target sub-condition names no event and holds for the owner's one.
 public class NpcRanksConditionTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -48,9 +48,24 @@ public class NpcRanksConditionTests {
         return npc;
     }
 
-    private static BeginConditionTarget Sub(EventConditionType type, int[]? classes = null) {
-        return new BeginConditionTarget([], new BeginConditionTarget.EventCondition(type, false, [], []), [], [], [],
-            new Dictionary<MasteryType, int>(), [], [], NpcClasses: classes);
+    private static BeginConditionTarget Sub(EventConditionType type, int[]? classes = null, BeginConditionTarget.HasBuff[]? buffs = null,
+            int[]? skillIds = null, int[]? ignoreSkillIds = null) {
+        return new BeginConditionTarget(buffs ?? [], new BeginConditionTarget.EventCondition(type, false, skillIds ?? [], [], ignoreSkillIds ?? []),
+            [], [], [], new Dictionary<MasteryType, int>(), [], [], NpcClasses: classes);
+    }
+
+    private static BeginCondition Of(BeginConditionTarget? caster, BeginConditionTarget? owner, BeginConditionTarget? target) {
+        return new BeginCondition(0, 0, Gender.All, [], 1, 0, 0, 0, false, false, false, true, false, true, [],
+            new Dictionary<BasicAttribute, long>(), [], [], [], [], null, target, owner, caster);
+    }
+
+    // Puts an enabled level-1 buff with the given id, cast by caster, on holder.
+    private static void Give(IActor holder, int id, IActor caster) {
+        Buff buff = DisabledBuffTests.Held(DisabledBuffTests.Effect(id), enabled: true);
+        typeof(Buff).GetField("<Caster>k__BackingField", Any)!.SetValue(buff, caster);
+        typeof(Buff).GetField("<Owner>k__BackingField", Any)!.SetValue(buff, holder);
+        var buffs = (System.Collections.Concurrent.ConcurrentDictionary<int, List<Buff>>) typeof(BuffManager).GetField("buffs", Any)!.GetValue(holder.Buffs)!;
+        buffs.GetOrAdd(id, _ => []).Add(buff);
     }
 
     // As in the KR data: owner eventCondition 6, target NpcRanks only.
@@ -108,5 +123,55 @@ public class NpcRanksConditionTests {
         Assert.That(holder.Applied, Has.Count.EqualTo(1), "class 7");
         Assert.That(holder.Applied[0].Effect.Skills[0].Id, Is.EqualTo(Proc));
         Assert.That(holder.Applied[0].Owner, Is.SameAs(chaw), "skillTarget 2: on the npc hit");
+    }
+
+    // 10600283 (KR): owner eventCondition 6 with eventSkillID 10600231/2/3, target hasBuffID 10600281 cast by the owner
+    // (hasBuffOwner 1) and no event. A 10600231 hit on a target marked by the attacker fires 10600284.
+    [Test]
+    public void MarkedTarget_FiresOnASkillHit() {
+        var test = new TestGameSession();
+        test.Start();
+        FieldPlayer player = test.Session.Player;
+        BeginCondition condition = Of(null, Sub(EventConditionType.OnOwnerAttackHit, skillIds: [10600231, 10600232, 10600233]),
+            Sub(EventConditionType.Activate, buffs: [new BeginConditionTarget.HasBuff(10600281, 1, true, 0, CompareType.Equals)]));
+        EffectLogNpc marked = Npc(null, 30, 3), bare = Npc(null, 31, 3), other = Npc(null, 32, 3);
+        Give(marked, 10600281, player);
+        Give(other, 10600281, other);
+        Assert.Multiple(() => {
+            Assert.That(condition.Check(player, player, marked, EventConditionType.OnOwnerAttackHit, 10600231), Is.True);
+            Assert.That(condition.Check(player, player, marked, EventConditionType.OnOwnerAttackHit, 1), Is.False, "other skill");
+            Assert.That(condition.Check(player, player, bare, EventConditionType.OnOwnerAttackHit, 10600231), Is.False, "no mark");
+            Assert.That(condition.Check(player, player, other, EventConditionType.OnOwnerAttackHit, 10600231), Is.False, "mark of another");
+            Assert.That(condition.Check(player, player, marked), Is.False, "activate");
+        });
+    }
+
+    // 50005300 / 50005301 (KR): owner eventCondition 6 with eventIgnoreSkillID 10400062; hits of that skill do not count.
+    [Test]
+    public void IgnoredSkill_DoesNotFire() {
+        var test = new TestGameSession();
+        test.Start();
+        FieldPlayer player = test.Session.Player;
+        BeginCondition condition = Of(null, Sub(EventConditionType.OnOwnerAttackHit, ignoreSkillIds: [10400062]), null);
+        EffectLogNpc npc = Npc(null, 33, 3);
+        Assert.That(condition.Check(player, player, npc, EventConditionType.OnOwnerAttackHit, 10400062), Is.False);
+        Assert.That(condition.Check(player, player, npc, EventConditionType.OnOwnerAttackHit, 10400061), Is.True);
+    }
+
+    // 10300286 (KR): caster hasBuffID 10300288 and no event, owner eventCondition 16; the caster test borrows event 16
+    // and still checks the caster's own buffs.
+    [Test]
+    public void CasterSub_TakesTheOwnersEvent() {
+        var test = new TestGameSession();
+        test.Start();
+        FieldPlayer player = test.Session.Player;
+        const EventConditionType named = EventConditionType.OnEffectApplied;
+        BeginCondition condition = Of(Sub(EventConditionType.Activate, buffs: [new BeginConditionTarget.HasBuff(10300288, 1, false, 0, CompareType.Equals)]),
+            Sub(named), null);
+        EffectLogNpc buffed = Npc(null, 34, 3), bare = Npc(null, 35, 3);
+        Give(buffed, 10300288, buffed);
+        Assert.That(condition.Check(buffed, player, player, named), Is.True);
+        Assert.That(condition.Check(bare, player, player, named), Is.False, "no caster buff");
+        Assert.That(condition.Check(buffed, player, player), Is.False, "activate");
     }
 }

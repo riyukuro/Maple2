@@ -75,7 +75,7 @@ public class InRangeConditionTests {
 
     // An effect condition with only the owner's range check (battle mounts allowed: a test session has no ride).
     private static BeginCondition Condition(int range, int count, int friendly, CompareType compare, int minRange = 0) {
-        var owner = new BeginConditionTarget([], new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], []), [], [], [],
+        var owner = new BeginConditionTarget([], new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []), [], [], [],
             new Dictionary<MasteryType, int>(), [], [], new BeginConditionTarget.TargetCheck(range, minRange, count, friendly, compare));
         return new BeginCondition(0, 0, Gender.All, [], 1, 0, 0, 0, false, false, false, true, false, true, [],
             new Dictionary<BasicAttribute, long>(), [], [], [], [], null, null, owner, null);

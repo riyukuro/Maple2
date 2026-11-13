@@ -57,7 +57,8 @@ public record BeginConditionTarget(
 ) {
     public record HasBuff(int Id, short Level, bool Owned, int Count, CompareType Compare);
 
-    public record EventCondition(EventConditionType Type, bool IgnoreOwner, int[] SkillIds, int[] BuffIds);
+    // IgnoreSkillIds (eventIgnoreSkillID): an event from one of these skills fails the condition (SkillUtils).
+    public record EventCondition(EventConditionType Type, bool IgnoreOwner, int[] SkillIds, int[] BuffIds, int[] IgnoreSkillIds);
     public record BeginConditionStat(BasicAttribute Attribute, float Value, CompareType Compare, CompareStatValueType ValueType);
 
     // Friendly 1 counts the checked actor's enemies, 2 its allies; distances are in field units (600 is 6 m).

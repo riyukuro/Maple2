@@ -339,6 +339,11 @@ public static class SkillUtils {
         if (condition.Event.SkillIds.Length > 0 && !condition.Event.SkillIds.Contains(eventSkillId)) {
             return false;
         }
+        // eventIgnoreSkillID: the client loads it (ownerEventNoSkillID) and never tests it; an event from a listed
+        // skill fails here. Chosen here. KR: 50005300 and 50005301 skip hits of 10400062.
+        if (condition.Event.IgnoreSkillIds.Length > 0 && condition.Event.IgnoreSkillIds.Contains(eventSkillId)) {
+            return false;
+        }
 
         return true;
     }
