@@ -197,9 +197,11 @@ public class MaidCraftItemHandler : FieldPacketHandler {
 
     // Mode 7 (CManufactureManager::SendRequest7): the craft is received now, ready or not, for the merets the dialog
     // shows (UIManufactureDialog::OnRecieveByMerat). The client tests only the meret balance (vfunc_40; red merets
-    // count only with feature 0x43, off here). The cost is worked out here from the stored craft, and the merets are
-    // taken only once the craft is cleared and the whole product is in the bag; a bag that took only part of it gives
-    // that part back and the craft is stored again.
+    // count only with feature 0x102, which FUN_14036d710 tests
+    // only while feature 0x43 is on, and 0x43 is off here). The cost is worked out here from the stored craft. Once the craft is
+    // cleared the merets are taken, then the product is added; an add that fails or puts in only part of it is taken
+    // out again, the merets are given back and the craft is stored again. Every product kind follows this order (a
+    // currency, medal or furnishing product is never added in part).
     private void HandleMeretReceive(GameSession session, IByteReader packet) {
         long maidUid = packet.ReadLong();
         FieldManager? field = session.Field;
@@ -248,15 +250,34 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                     }
                     return;
                 }
+                // The merets are taken before the add, under the same lock, so a balance spent meanwhile is found
+                // before anything is given (the setter refuses a negative balance).
+                try {
+                    if (cost > 0) {
+                        session.Currency.Meret -= cost;
+                    }
+                } catch (ArgumentException) {
+                    if (!field.SetMaidCraft(found, recipeId, start, duration)) {
+                        Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: the craft not restored after a failed meret receive",
+                            recipeId, maidUid);
+                    }
+                    session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
+                    return;
+                }
                 int amount = product.Amount, rarity = product.Rarity;
                 Dictionary<long, int> held = session.Item.Inventory
                     .Filter(item => item.Id == product.Id && item.Rarity == product.Rarity)
                     .ToDictionary(item => item.Uid, item => item.Amount);
                 var added = new List<Item>();
                 bool whole = session.Item.Inventory.Add(product, true, onAdded: item => added.Add(item));
-                // The merets are tested again after the add: another purchase may have spent them meanwhile.
-                if (!whole || !HasMerets(session, cost)) {
-                    if (!TakeBack(session, added, held)) {
+                if (!whole) {
+                    bool back = TakeBack(session, added, held);
+                    if (cost > 0) {
+                        session.Currency.Meret += cost;
+                    }
+                    Logger.Warning("Maid craft {RecipeId} of maid {MaidUid}: product {ItemId} not added whole, {Cost} merets given back to {CharacterId}",
+                        recipeId, maidUid, recipe.ProductItemId, cost, session.CharacterId);
+                    if (!back) {
                         Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: product {ItemId} not taken back after a failed meret receive",
                             recipeId, maidUid, recipe.ProductItemId);
                         return;
@@ -265,13 +286,7 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                         Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: the craft not restored after a failed meret receive",
                             recipeId, maidUid);
                     }
-                    if (whole) {
-                        session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
-                    }
                     return;
-                }
-                if (cost > 0) {
-                    session.Currency.Meret -= cost;
                 }
                 Logger.Information("Maid craft {RecipeId} of maid {MaidUid} received for {Cost} merets by {CharacterId}",
                     recipeId, maidUid, cost, session.CharacterId);

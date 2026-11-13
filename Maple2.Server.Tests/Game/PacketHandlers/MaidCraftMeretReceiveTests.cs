@@ -25,6 +25,7 @@ public class MaidCraftMeretReceiveTests {
     private const int RecipeId = 4101;
     private const int Product = 20000101;
     private const int Filler = 20000102;
+    private const int Meso = 90000001;
     private const int MaidCube = 50400001;
     private long MaidUid;
     private Plot plot = null!;
@@ -32,7 +33,7 @@ public class MaidCraftMeretReceiveTests {
     private TestGameSession test = null!;
     private GameSession session => test.Session;
 
-    private void Login(bool fullBag = false, int slotMax = 100) {
+    private void Login(bool fullBag = false, int slotMax = 100, int product = Product) {
         DbContextOptions options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
@@ -40,6 +41,7 @@ public class MaidCraftMeretReceiveTests {
         test = new TestGameSession(options);
         test.Register(TestGameSession.Metadata(Product, slotMax: slotMax));
         test.Register(TestGameSession.Metadata(MaidCube));
+        test.Register(TestGameSession.Metadata(Meso));
         if (fullBag) {
             test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { bagSlotTabMiscCount = [1, 0] });
             test.Store(TestGameSession.Metadata(Filler));
@@ -47,7 +49,7 @@ public class MaidCraftMeretReceiveTests {
         test.Start();
         plot = test.EnterHome();
         test.SetTable(new MaidTable(new Dictionary<int, MaidTable.Entry>(), new Dictionary<int, int>(), new Dictionary<int, MaidTable.Recipe> {
-            [RecipeId] = new MaidTable.Recipe(RecipeId, [], 0, [300, 200, 100], 50, 5, Product, 2, 1),
+            [RecipeId] = new MaidTable.Recipe(RecipeId, [], 0, [300, 200, 100], 50, 5, product, 2, 1),
         }));
         test.TakeSent();
     }
@@ -213,6 +215,44 @@ public class MaidCraftMeretReceiveTests {
         Assert.Multiple(() => {
             Assert.That(session.Currency.Meret, Is.EqualTo(100));
             Assert.That(Held(Product), Is.EqualTo(0));
+            Assert.That(Stored(), Is.EqualTo((RecipeId, start, 3700)));
+            Assert.That(Crafts(sent), Is.Empty);
+        });
+    }
+
+    // A currency product is added without a bag row, and follows the same order: the merets are taken, the mesos given.
+    [Test]
+    public void ACurrencyProductIsChargedAndGiven() {
+        Login(product: Meso);
+        Place(RecipeId, DateTime.UtcNow.ToEpochSeconds(), 3700);
+        session.Currency.Meret = 100;
+        long mesos = session.Currency.Meso;
+        test.TakeSent();
+
+        List<byte[]> sent = Send();
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(100 - 27));
+            Assert.That(session.Currency.Meso, Is.EqualTo(mesos + 2));
+            Assert.That(Stored(), Is.EqualTo((0, 0L, 0)));
+            Assert.That(Crafts(sent), Does.Contain(Convert.ToHexString(MaidCraftItemPacket.MeretReceiveResult(2).ToArray())));
+        });
+    }
+
+    [Test]
+    public void ACurrencyProductIsNotGivenWithTooFewMerets() {
+        Login(product: Meso);
+        long start = DateTime.UtcNow.ToEpochSeconds();
+        Place(RecipeId, start, 3700);
+        session.Currency.Meret = 26;
+        long mesos = session.Currency.Meso;
+        test.TakeSent();
+
+        List<byte[]> sent = Send();
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(26));
+            Assert.That(session.Currency.Meso, Is.EqualTo(mesos));
             Assert.That(Stored(), Is.EqualTo((RecipeId, start, 3700)));
             Assert.That(Crafts(sent), Is.Empty);
         });
