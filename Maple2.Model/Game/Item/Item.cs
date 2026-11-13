@@ -70,7 +70,7 @@ public class Item : IByteSerializable, IByteDeserializable {
             _ => new ItemAppearance(EquipColor.None),
         };
 
-        Transfer = new ItemTransfer(GetTransferFlag(), Metadata.Property.TradableCount);
+        Transfer = new ItemTransfer(TransferFlagOf(Metadata, Rarity), Metadata.Property.TradableCount);
         Enchant = new ItemEnchant();
 
         ExpiryTime = GetExpiryTime();
@@ -157,10 +157,13 @@ public class Item : IByteSerializable, IByteDeserializable {
         };
     }
 
-    private TransferFlag GetTransferFlag() {
-        bool zeroTrades = Metadata.Property.TradableCount <= 0;
-        bool belowRarity = Rarity < Metadata.Limit.TradeMaxRarity;
-        switch (Metadata.Limit.TransferType) {
+    // The transfer rule an item of this data is made with at this rarity. KMS2 sends a gem at rank 4 with this rule's
+    // flag at 4: bind-on-loot gems as 8 (bind, no trade bit) and untradeable ones as 0, and rank 4 tradable gear at
+    // rarity 4 as 16 (limited trade; KMS sessions, builds 2486-2546).
+    public static TransferFlag TransferFlagOf(ItemMetadata metadata, int rarity) {
+        bool zeroTrades = metadata.Property.TradableCount <= 0;
+        bool belowRarity = rarity < metadata.Limit.TradeMaxRarity;
+        switch (metadata.Limit.TransferType) {
             case TransferType.Tradable:
                 if (belowRarity) {
                     return TransferFlag.Trade | TransferFlag.Split;
@@ -245,11 +248,19 @@ public class Item : IByteSerializable, IByteDeserializable {
         return metadata.Property.Rank is > 0 and < 7 ? metadata.Property.Rank.Value : 1;
     }
 
-    // The rarity a stored item is loaded with. A gem (the gem tab, types 13 and 14) stored at rarity 1 was made
-    // before DefaultRarity (its option constant is no rarity, so it was made at 1); it loads at its default rarity,
-    // which its next save stores, so a gem upgrade that takes it by id and rank counts it. Other rows keep theirs.
+    // The rarity a stored item is loaded with. A stackable item (a gem, a type 19 catalyst) whose option constant is
+    // no rarity and that is stored at 1 was made before DefaultRarity, at 1; it loads at its default rarity, which its
+    // next save stores, so it stacks with the copies made since and a gem upgrade that takes it by id and rank counts
+    // it. Other rows keep theirs: gear is not stacked, and a stored rarity of 1 may be the one its source named.
     public static int LoadedRarity(int stored, ItemMetadata metadata) =>
-        stored == 1 && metadata.Inventory() == InventoryType.Gemstone ? DefaultRarity(metadata) : stored;
+        stored == 1 && metadata.Property.SlotMax > 1 && metadata.Option?.ConstantId is not (> 0 and < 7)
+            ? DefaultRarity(metadata) : stored;
+
+    // The transfer flag a stored item is loaded with: a row whose rarity LoadedRarity raised takes its rule's flag at
+    // that rarity when its flag is still the one its rule gave at the stored rarity (nothing changed it since), as a
+    // copy made now has it; so it stacks with those copies. Its trades left and binding stay.
+    public static TransferFlag LoadedTransferFlag(TransferFlag stored, int storedRarity, int rarity, ItemMetadata metadata) =>
+        rarity != storedRarity && stored == TransferFlagOf(metadata, storedRarity) ? TransferFlagOf(metadata, rarity) : stored;
 
     public void WriteTo(IByteWriter writer) {
         writer.WriteInt(Amount);

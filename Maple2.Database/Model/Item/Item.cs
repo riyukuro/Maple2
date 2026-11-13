@@ -123,6 +123,12 @@ internal class Item {
             Binding = Binding,
         };
 
+        if (item.Transfer != null && item.Rarity != Rarity) {
+            // A copy: the row's own transfer stays as read.
+            item.Transfer = item.Transfer.Clone();
+            item.Transfer.Flag = Maple2.Model.Game.Item.LoadedTransferFlag(item.Transfer.Flag, Rarity, item.Rarity, metadata);
+        }
+
         switch (SubType) {
             case ItemUgc(var ugcItemLook, var itemBlueprint):
                 item.Template = ugcItemLook;

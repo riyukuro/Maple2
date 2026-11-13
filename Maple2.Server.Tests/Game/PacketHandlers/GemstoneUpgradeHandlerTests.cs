@@ -138,8 +138,9 @@ public class GemstoneUpgradeHandlerTests {
     }
 
     // An ingredient named by id counts only copies of its rank's rarity (FUN_140f6e580 -> inventory.cpp:782-803): a rank 2
-    // ingredient held at rarity 1 refuses the upgrade, held at rarity 2 it is taken.
-    [TestCase(1, false)]
+    // ingredient held at rarity 3 refuses the upgrade, held at rarity 2 it is taken (a stackable held at 1 now loads at
+    // its rank, Item.LoadedRarity).
+    [TestCase(3, false)]
     [TestCase(2, true)]
     public void IdIngredient_CountsOnlyItsRankRarity(int heldRarity, bool upgrades) {
         ItemMetadata stoneData = TestGameSession.Metadata(40300002, type: 2);
