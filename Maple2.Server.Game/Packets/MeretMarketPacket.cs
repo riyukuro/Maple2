@@ -242,10 +242,11 @@ public static class MeretMarketPacket {
         return pWriter;
     }
 
-    public static ByteWriter Purchase(byte kind, int flag, int childMarketItemId, long bookmarkId, int totalQuantity, int itemIndex, int unknown, long price, int premiumMarketId, long ugcMarketItemId) {
+    public static ByteWriter Purchase(byte kind, int flag, int childMarketItemId, long bookmarkId, int totalQuantity, int itemIndex, int unknown, long price, int premiumMarketId, long ugcMarketItemId,
+                                      bool gift = false, string receiver = "", string message = "", byte payType = 0) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
-        pWriter.Write<Command>(Command.Purchase);
-        WriteBuyRecord(pWriter, kind, flag, childMarketItemId, bookmarkId, totalQuantity, itemIndex, unknown, price, premiumMarketId, ugcMarketItemId);
+        pWriter.WriteByte((byte) Command.Purchase);
+        WriteBuyRecord(pWriter, kind, flag, childMarketItemId, bookmarkId, totalQuantity, itemIndex, unknown, price, premiumMarketId, ugcMarketItemId, gift, receiver, message, payType);
         // The client reads four more ints after the echoed request: the buyer's buy count,
         // the sold count, and two counts of a design item. The fork tracks none of them.
         pWriter.WriteInt();
@@ -258,16 +259,18 @@ public static class MeretMarketPacket {
     // 0x1F, CMeratMarketMan::OnBuyFailed: the request's record, then the i32 error code. The client keeps the
     // code on its queued purchase, sends the next queued one, and lists the failed products with
     // GetPurchaseErrorText(code) when the queue is done.
-    public static ByteWriter FailPurchase(byte kind, int flag, int childMarketItemId, long bookmarkId, int totalQuantity, int itemIndex, int unknown, long price, int premiumMarketId, long ugcMarketItemId, int error) {
+    public static ByteWriter FailPurchase(byte kind, int flag, int childMarketItemId, long bookmarkId, int totalQuantity, int itemIndex, int unknown, long price, int premiumMarketId, long ugcMarketItemId, int error,
+                                          bool gift = false, string receiver = "", string message = "", byte payType = 0) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
-        pWriter.Write<Command>(Command.FailPurchase);
-        WriteBuyRecord(pWriter, kind, flag, childMarketItemId, bookmarkId, totalQuantity, itemIndex, unknown, price, premiumMarketId, ugcMarketItemId);
+        pWriter.WriteByte((byte) Command.FailPurchase);
+        WriteBuyRecord(pWriter, kind, flag, childMarketItemId, bookmarkId, totalQuantity, itemIndex, unknown, price, premiumMarketId, ugcMarketItemId, gift, receiver, message, payType);
         pWriter.WriteInt(error);
         return pWriter;
     }
 
     // CMeratMarketPacket::BuyPacket::Read (meratmarketbasketinfo.cpp): the request's record is sent back.
-    private static void WriteBuyRecord(ByteWriter pWriter, byte kind, int flag, int childMarketItemId, long bookmarkId, int totalQuantity, int itemIndex, int unknown, long price, int premiumMarketId, long ugcMarketItemId) {
+    private static void WriteBuyRecord(ByteWriter pWriter, byte kind, int flag, int childMarketItemId, long bookmarkId, int totalQuantity, int itemIndex, int unknown, long price, int premiumMarketId, long ugcMarketItemId,
+                                       bool gift, string receiver, string message, byte payType) {
         // The kind byte comes first, the quantity is the int after the index.
         pWriter.WriteByte(kind);
         pWriter.WriteInt(premiumMarketId);
@@ -278,12 +281,12 @@ public static class MeretMarketPacket {
         pWriter.WriteInt(itemIndex);
         pWriter.WriteInt(totalQuantity);
         pWriter.WriteInt(unknown);
-        pWriter.WriteByte(); // true if gift
-        pWriter.WriteUnicodeString(); // player name
-        pWriter.WriteUnicodeString(); // message
+        pWriter.WriteBool(gift);
+        pWriter.WriteUnicodeString(receiver);
+        pWriter.WriteUnicodeString(message);
         pWriter.WriteLong(price);
         pWriter.WriteByte();
-        pWriter.WriteByte();
+        pWriter.WriteByte(payType); // the bill dialog's pay type
         pWriter.WriteInt();
         pWriter.WriteInt();
         pWriter.WriteInt();

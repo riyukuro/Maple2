@@ -37,6 +37,17 @@ message MailNotificationRequest {
   int64 mail_id = 1;
   optional int64 character_id = 2;
   optional int64 account_id = 3;
+  // Set for a meret market gift: the receiver's channel also sends the gift notice (Mail 0x16).
+  MailGift gift = 4;
+}
+
+message MailGift {
+  string sender = 1;
+  int32 item_id = 2;
+  int32 rarity = 3;
+  int32 amount = 4;
+  string ugc_url = 5;
+  string ugc_title = 6;
 }
 
 message MailNotificationResponse {

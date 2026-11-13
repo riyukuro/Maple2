@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Security;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model;
@@ -343,20 +344,25 @@ public class MeretMarketHandler : FieldPacketHandler {
         string playerName = packet.ReadUnicodeString();
         string message = packet.ReadUnicodeString();
         long price = packet.ReadLong(); // price? (but price is auto-determined below)
-
-        if (gift) {
-            // TODO: Implement gifting. This wasn't enabled in GMS2
-            Logger.Warning("Gifting in Meret Market is not implemented");
-            Fail(PurchaseErrorGiftCannot);
-            return;
+        // BuyPacket::Write ends with a flag and the pay type the bill dialog chose (its choice 0 meso, 1 meret,
+        // 2 red meret, 3 the product's own currency, sent as 1, 3, 9 and 0x11), then four ints the server does not use.
+        byte payType = 0;
+        if (packet.Available >= 2) {
+            packet.ReadBool();
+            payType = packet.ReadByte();
         }
 
-        //PlayerInfo? giftedPlayer = GetGiftedPlayerInfo(session, playerName);
-        //if (gift && giftedPlayer == null) {
-        // The meret market packet to send to player if the player doesn't exist is FailPurchase (31) but it somehow doesn't
-        // send the correct message to the player.
-        //    return;
-        //}
+        if (gift) {
+            int giftError = GiftUgcItem(session, ugcItemId, playerName, message, payType);
+            if (giftError != 0) {
+                Fail(giftError);
+                return;
+            }
+            session.SavePurchase();
+            session.Send(MeretMarketPacket.Purchase(kind, flag, childMarketItemId, unk1, totalQuantity, itemIndex, unk2, price, premiumMarketId, ugcItemId,
+                true, playerName, message, payType));
+            return;
+        }
 
         int error = PurchaseErrorUnknown;
         Item? item = ugcItemId > 0 ? PurchaseUgcItem(session, ugcItemId) : PurchasePremiumItem(session, premiumMarketId, childMarketItemId, out error);
@@ -371,22 +377,14 @@ public class MeretMarketHandler : FieldPacketHandler {
         // Store the paid merets now, not only at the next session save.
         session.SavePurchase();
 
-        session.Send(MeretMarketPacket.Purchase(kind, flag, childMarketItemId, unk1, totalQuantity, itemIndex, unk2, price, premiumMarketId, ugcItemId));
+        session.Send(MeretMarketPacket.Purchase(kind, flag, childMarketItemId, unk1, totalQuantity, itemIndex, unk2, price, premiumMarketId, ugcItemId,
+            false, playerName, message, payType));
         return;
 
         // Without a 0x1F answer the client's purchase queue waits for good.
         void Fail(int code) {
-            session.Send(MeretMarketPacket.FailPurchase(kind, flag, childMarketItemId, unk1, totalQuantity, itemIndex, unk2, price, premiumMarketId, ugcItemId, code));
-        }
-
-        PlayerInfo? GetGiftedPlayerInfo(GameSession session, string name) {
-            if (string.IsNullOrWhiteSpace(name)) {
-                return null;
-            }
-            using GameStorage.Request db = session.GameStorage.Context();
-            long characterId = db.GetCharacterId(name);
-            session.PlayerInfo.GetOrFetch(characterId, out PlayerInfo? receiverInfo);
-            return receiverInfo;
+            session.Send(MeretMarketPacket.FailPurchase(kind, flag, childMarketItemId, unk1, totalQuantity, itemIndex, unk2, price, premiumMarketId, ugcItemId, code,
+                gift, playerName, message, payType));
         }
     }
 
@@ -397,6 +395,14 @@ public class MeretMarketHandler : FieldPacketHandler {
     private const int PurchaseErrorLevel = 0xB4; // s_meratmarket_error_buy_limit_level (or the product's level text)
     private const int PurchaseErrorJob = 0xB5; // s_meratmarket_error_buy_limit_job
     private const int PurchaseErrorGiftCannot = 0xA4; // s_meratmarket_error_result_gift_cannot
+    private const int PurchaseErrorLackMeret = 0x88; // s_meratmarket_error_result_buy_lack_merat (the box opens the charge page)
+    private const int PurchaseErrorPriceType = 0x87; // s_meratmarket_error_buy_invalid_price_type
+    private const int PurchaseErrorGiftOwnProduct = 0x91; // s_meratmarket_error_result_gift_own_product
+    private const int PurchaseErrorGiftNoUser = 0xA6; // s_meratmarket_error_result_gift_not_exist_user
+    private const int PurchaseErrorGiftSameAccount = 0xB3; // s_cashshop_err_same_account
+    // The bill dialog's pay type for merets (its choice 1 is sent as 3). The client offers a gift only on
+    // a design (IsUgcProduct sets bGift) and a design's GetCurrency is merets, so no other pay type is a gift.
+    private const byte PayTypeMeret = 3;
 
     private Item? PurchasePremiumItem(GameSession session, int premiumMarketId, int childMarketItemId, out int error) {
         error = PurchaseErrorUnknown;
@@ -457,8 +463,8 @@ public class MeretMarketHandler : FieldPacketHandler {
         return item;
     }
 
-    private Item? PurchaseUgcItem(GameSession session, long id) {
-        using GameStorage.Request db = session.GameStorage.Context();
+    // A listing on sale with its design entry, and the item it sells (made, not yet paid for).
+    private (UgcMarketItem Listing, Item Item)? PrepareUgcItem(GameSession session, GameStorage.Request db, long id) {
         UgcMarketItem? ugcItem = db.GetUgcMarketItem(id);
         if (ugcItem == null) {
             return null;
@@ -473,10 +479,20 @@ public class MeretMarketHandler : FieldPacketHandler {
             return null;
         }
 
-        // The item is made before anything is paid, and a sale that cannot be stored gives the merets back.
         Item? item = session.Field?.ItemDrop.CreateItem(ugcItem.ItemMetadata.Id, designMetadata.ItemRarity);
         if (item == null) {
             Logger.Error("Unable to create Item for {itemId}", ugcItem.ItemMetadata.Id);
+            return null;
+        }
+        item.Template = ugcItem.Look;
+        item.Blueprint = ugcItem.Blueprint;
+        return (ugcItem, item);
+    }
+
+    private Item? PurchaseUgcItem(GameSession session, long id) {
+        using GameStorage.Request db = session.GameStorage.Context();
+        // The item is made before anything is paid, and a sale that cannot be stored gives the merets back.
+        if (PrepareUgcItem(session, db, id) is not (UgcMarketItem ugcItem, Item item)) {
             return null;
         }
 
@@ -493,9 +509,119 @@ public class MeretMarketHandler : FieldPacketHandler {
             session.Currency.Meret += ugcItem.Price;
             return null;
         }
-        item.Template = ugcItem.Look;
-        item.Blueprint = ugcItem.Blueprint;
         return item;
+    }
+
+    // A design bought for another player: the item goes to the receiver's mailbox in a system mail with the client's
+    // gift texts (s_meratmarket_gift_mail_*), and the receiver's channel shows the gift notice (Mail 0x16).
+    // Returns 0, or the error code for OnBuyFailed.
+    private int GiftUgcItem(GameSession session, long ugcItemId, string receiverName, string message, byte payType) {
+        if (ugcItemId <= 0) {
+            return PurchaseErrorGiftCannot;
+        }
+        if (payType != PayTypeMeret) {
+            return PurchaseErrorPriceType;
+        }
+
+        using GameStorage.Request db = session.GameStorage.Context();
+        (long AccountId, long CharacterId, string Name)? receiver = string.IsNullOrWhiteSpace(receiverName) ? null : db.FindCharacterByName(receiverName);
+        if (receiver == null) {
+            return PurchaseErrorGiftNoUser;
+        }
+        if (receiver.Value.AccountId == session.AccountId) {
+            return PurchaseErrorGiftSameAccount;
+        }
+
+        if (PrepareUgcItem(session, db, ugcItemId) is not (UgcMarketItem ugcItem, Item item)) {
+            return PurchaseErrorUnknown;
+        }
+        if (ugcItem.SellerAccountId == session.AccountId) {
+            return PurchaseErrorGiftOwnProduct;
+        }
+        long price = ugcItem.Price;
+        if (session.Currency.CanAddMeret(-price) != -price) {
+            return PurchaseErrorLackMeret;
+        }
+
+        long receiverId = receiver.Value.CharacterId;
+        Mail? mail = DeliverGift(
+            writeMail: () => WriteGiftMail(db, receiverId, session.PlayerName, message, item),
+            pay: () => Pay(session, price, MeretMarketCurrencyType.Meret) == StringCode.s_empty_string,
+            recordSale: () => UgcMarketManager.RecordSale(db, ugcItem) != null,
+            refund: () => session.Currency.Meret += price,
+            undoMail: written => db.DeleteMail(written.Id, receiverId));
+        if (mail == null) {
+            Logger.Error("Unable to deliver gift {ListingId} to {CharacterId}", ugcItem.Id, receiverId);
+            return PurchaseErrorUnknown;
+        }
+
+        Item gifted = mail.Items[0];
+        try {
+            session.World.MailNotification(new MailNotificationRequest {
+                CharacterId = receiverId,
+                MailId = mail.Id,
+                Gift = new MailGift {
+                    Sender = session.PlayerName,
+                    ItemId = gifted.Id,
+                    Rarity = gifted.Rarity,
+                    Amount = gifted.Amount,
+                    UgcUrl = ugcItem.Look.Url,
+                    UgcTitle = ugcItem.Look.Name,
+                },
+            });
+        } catch { /* ignored: the mail is there at the next mailbox load */ }
+        return 0;
+    }
+
+    // The order of a gift: the mail with its item is written first, so nothing is charged when it cannot be; a
+    // payment or a sale that fails after that takes the mail back (and gives back what was paid).
+    internal static Mail? DeliverGift(Func<Mail?> writeMail, Func<bool> pay, Func<bool> recordSale, Action refund, Action<Mail> undoMail) {
+        Mail? mail = writeMail();
+        if (mail == null) {
+            return null;
+        }
+        if (!pay()) {
+            undoMail(mail);
+            return null;
+        }
+        if (!recordSale()) {
+            refund();
+            undoMail(mail);
+            return null;
+        }
+        return mail;
+    }
+
+    // The gift mail: from s_meratmarket_gift_mail_sender, titled with the item, the content with the buyer's name
+    // and the gift message. Null when the mail or its item row cannot be written.
+    internal static Mail? WriteGiftMail(GameStorage.Request db, long receiverId, string buyerName, string message, Item item) {
+        var mail = new Mail {
+            ReceiverId = receiverId,
+            Type = MailType.System,
+            TitleArgs = [
+                ("item", $"{item.Id}"),
+            ],
+            ContentArgs = [
+                ("str", SecurityElement.Escape(buyerName) ?? string.Empty),
+                ("str", SecurityElement.Escape(message) ?? string.Empty),
+            ],
+        };
+        mail.SetTitle(StringCode.s_meratmarket_gift_mail_title);
+        mail.SetContent(StringCode.s_meratmarket_gift_mail_content);
+        mail.SetSenderName(StringCode.s_meratmarket_gift_mail_sender);
+
+        Mail? written = db.CreateMail(mail);
+        if (written == null) {
+            return null;
+        }
+        item.Slot = -1;
+        Item? row = db.CreateItem(written.Id, item);
+        if (row == null) {
+            db.DeleteMail(written.Id, receiverId);
+            return null;
+        }
+        written.Items.Add(row);
+        return written;
     }
 
     private static void HandleFeatured(GameSession session, IByteReader packet) {

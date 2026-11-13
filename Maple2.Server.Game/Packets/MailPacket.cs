@@ -161,20 +161,19 @@ public static class MailPacket {
         return pWriter;
     }
 
-    // s_mail_notify_recieve_gift
-    // - You received a gift from {0}!
-    // s_mail_get_gift_item
-    // - {1} has sent you a gift. Check your mailbox.
-    public static ByteWriter Gift(long mailId) {
+    // 0x16, read by the game scene's ReadGiftNew: the sender's name, a type byte the client does not use, the item
+    // (id, rarity, amount) and, for a design, its url and title. The client shows s_mail_notify_recieve_gift with the
+    // sender's name and adds the item to the notice dialog with s_mail_get_gift_item.
+    public static ByteWriter Gift(string sender, int itemId, int rarity, int amount, string ugcUrl, string ugcTitle) {
         var pWriter = Packet.Of(SendOp.Mail);
-        pWriter.Write<Command>(Command.Gift);
-        pWriter.WriteUnicodeString();
+        pWriter.WriteByte((byte) Command.Gift);
+        pWriter.WriteUnicodeString(sender);
         pWriter.WriteByte();
-        pWriter.WriteInt();
-        pWriter.WriteByte();
-        pWriter.WriteInt();
-        pWriter.WriteString();
-        pWriter.WriteUnicodeString();
+        pWriter.WriteInt(itemId);
+        pWriter.WriteByte((byte) rarity);
+        pWriter.WriteInt(amount);
+        pWriter.WriteString(ugcUrl);
+        pWriter.WriteUnicodeString(ugcTitle);
 
         return pWriter;
     }

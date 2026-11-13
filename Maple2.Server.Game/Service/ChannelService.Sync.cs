@@ -12,6 +12,9 @@ public partial class ChannelService {
         }
 
         session.Mail.Notify(true);
+        if (request.Gift is { } gift) {
+            session.Send(MailPacket.Gift(gift.Sender, gift.ItemId, gift.Rarity, gift.Amount, gift.UgcUrl, gift.UgcTitle));
+        }
 
         return Task.FromResult(new MailNotificationResponse {
             Delivered = true,
