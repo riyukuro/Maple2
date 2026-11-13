@@ -55,7 +55,9 @@ public class FunctionCubeMapper : TypeMapper<FunctionCubeMetadata> {
             ),
             RequiredGrowth: ParseRequiredGrowth(functionCubeNurturing),
             QuestTag: functionCubeNurturing.nurturingQuestTag
-        );
+        ) {
+            PetNpcIds = functionCubeNurturing.pluralNpcID ?? [],
+        };
 
         FunctionCubeMetadata.NurturingData.Growth[] ParseRequiredGrowth(Nurturing nurturing) {
             List<FunctionCubeMetadata.NurturingData.Growth> result = [];

@@ -107,6 +107,11 @@ public static class ConditionUtil {
             case ConditionType.pet_catch_grade:
             case ConditionType.pet_catch_category:
             case ConditionType.pet_enchant:
+            case ConditionType.pet_first_collect: // code: the pet item added to the album
+            // nurturing_*: the cube pet's stage-1 npc (92000095 "Play with ... in someone's home": code 50400282).
+            case ConditionType.nurturing_play:
+            case ConditionType.nurturing_eat:
+            case ConditionType.nurturing_growth:
             // pet_evolution_by_rank: the rarity the pet evolved to (23100383 "Evolve normal pets to rare": code 2).
             // pet_evolution_point_by_rank: the rarity of the pet that gained the points (23100387 "with a normal pet": code 1).
             case ConditionType.pet_evolution_by_rank:
@@ -325,6 +330,7 @@ public static class ConditionUtil {
                 }
                 break;
             case ConditionType.gemstone_upgrade:
+            case ConditionType.pet_collect: // target: the least grade of the pet added (23100276: target 1)
             case ConditionType.socket_unlock:
             case ConditionType.level_up:
             case ConditionType.level:

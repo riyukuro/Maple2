@@ -120,4 +120,15 @@ public class FunctionCubeNurturingTests {
         Assert.That(pet.Exp, Is.EqualTo(10));
         Assert.That(pet.PlayedBy, Is.EqualTo(new long[] { 2 }));
     }
+
+    // The nurturing trophies' code is the stage-1 pet npc (pluralNpcID[0]); a cube without the list falls back to
+    // its item id.
+    [Test]
+    public void TrophyCode_IsTheStageOnePetNpc() {
+        var data = new Maple2.Model.Metadata.FunctionCubeMetadata.NurturingData(default, default, [], "tag") {
+            PetNpcIds = [50400282, 50400283, 50400284],
+        };
+        Assert.That(data.TrophyCode(itemId: 50400282), Is.EqualTo(50400282));
+        Assert.That((data with { PetNpcIds = [] }).TrophyCode(itemId: 50400309), Is.EqualTo(50400309));
+    }
 }

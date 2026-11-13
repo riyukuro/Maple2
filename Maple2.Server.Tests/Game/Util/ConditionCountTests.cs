@@ -103,6 +103,33 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: rarity), Is.EqualTo(expected));
     }
 
+    // A pet new to the album counts for pet_collect at its grade (23100276: target 1, any grade) and for
+    // pet_first_collect with its item (23100377: code 61100100).
+    [TestCase(1, true)]
+    [TestCase(4, true)]
+    public void PetCollect_CountsAnyGradeFromTheTarget(int rarity, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.pet_collect, 1, null, new ConditionMetadata.Parameters(Integers: [1]));
+        Assert.That(condition.Check(null!, targetLong: rarity), Is.EqualTo(expected));
+    }
+
+    [TestCase(61100100, true)]
+    [TestCase(61100101, false)]
+    public void PetFirstCollect_CountsTheListedPet(int petItemId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.pet_first_collect, 1, new ConditionMetadata.Parameters(Integers: [61100100]), null);
+        Assert.That(condition.Check(null!, codeLong: petItemId), Is.EqualTo(expected));
+    }
+
+    // The nurturing trophies name the cube pet's stage-1 npc (92000095 play, 92000118 eat, 92000096 growth).
+    [TestCase(ConditionType.nurturing_play, 50400282, true)]
+    [TestCase(ConditionType.nurturing_eat, 50400309, true)]
+    [TestCase(ConditionType.nurturing_growth, 50400282, true)]
+    [TestCase(ConditionType.nurturing_eat, 50400341, false)]
+    public void Nurturing_CountsTheListedPet(ConditionType type, int npcId, bool expected) {
+        int code = type == ConditionType.nurturing_eat ? 50400309 : 50400282;
+        var condition = new ConditionMetadata(type, 1, new ConditionMetadata.Parameters(Integers: [code]), null);
+        Assert.That(condition.Check(null!, codeLong: npcId), Is.EqualTo(expected));
+    }
+
     // A hit on a vibrate object counts with its materialTag (70400059 "Hit a tree 20 times": code "wood").
     [TestCase("wood", true)]
     [TestCase("stone", false)]

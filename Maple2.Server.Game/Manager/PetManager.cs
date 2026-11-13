@@ -42,9 +42,17 @@ public sealed class PetManager : IDisposable {
         items = new ItemCollection(itemSlots);
 
         // AddOrUpdate Pet Collection
-        if (!session.Player.Value.Unlock.Pets.TryGetValue(pet.Value.Id, out short rarity) || rarity < Pet.Rarity) {
+        bool firstCollect = !session.Player.Value.Unlock.Pets.TryGetValue(pet.Value.Id, out short rarity);
+        if (firstCollect || rarity < Pet.Rarity) {
             session.Player.Value.Unlock.Pets[pet.Value.Id] = (short) Pet.Rarity;
             newCollection = (pet.Value.Id, (short) Pet.Rarity);
+        }
+        // A pet new to the album: 23100276 "Collect {0} pet(s) in the Album" (pet_collect, target = the least grade)
+        // and 23100377 "Add ... to your Pet Album" (pet_first_collect, code = the pet item). A better grade of a pet
+        // already in the album adds no pet.
+        if (firstCollect) {
+            session.ConditionUpdate(ConditionType.pet_collect, targetLong: Pet.Rarity);
+            session.ConditionUpdate(ConditionType.pet_first_collect, codeLong: pet.Value.Id);
         }
 
         using GameStorage.Request db = session.GameStorage.Context();

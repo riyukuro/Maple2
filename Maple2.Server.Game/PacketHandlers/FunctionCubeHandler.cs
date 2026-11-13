@@ -235,8 +235,16 @@ public class FunctionCubeHandler : FieldPacketHandler {
 
         // drop the item
         session.Field.DropItem(fieldCube.Position, fieldCube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
+        long exp = nurturing.Exp;
         nurturing.Feed(Constants.NurturingEatGrowth);
         db.RecordNurturing(session.AccountId, session.AccountId, fieldCube.InteractCube, played: false);
+        // 92000118 "Feed ... in your home" (nurturing_eat) and 92000096 "Contribute 100 growth points ... through
+        // feeding or play" (nurturing_growth, the points the pet gained) count the owner's feeding.
+        int trophyCode = nurturing.NurturingMetadata.TrophyCode(fieldCube.ItemId);
+        session.ConditionUpdate(ConditionType.nurturing_eat, codeLong: trophyCode);
+        if (nurturing.Exp > exp) {
+            session.ConditionUpdate(ConditionType.nurturing_growth, counter: nurturing.Exp - exp, codeLong: trophyCode);
+        }
 
         session.Field.Broadcast(FunctionCubePacket.UpdateFunctionCube(fieldCube.InteractCube));
         SendDailyRecord(session, db, fieldCube, session.AccountId);
@@ -258,8 +266,15 @@ public class FunctionCubeHandler : FieldPacketHandler {
             return;
         }
 
+        long exp = nurturing.Exp;
         if (!nurturing.Play(session.AccountId, Constants.NurturingPlayGrowth, Constants.NurturingPlayMaxGrowth)) {
             return;
+        }
+        // 92000095 "Play with ... in someone's home" (nurturing_play) and nurturing_growth count the visitor's play.
+        int trophyCode = nurturing.NurturingMetadata.TrophyCode(cube.ItemId);
+        session.ConditionUpdate(ConditionType.nurturing_play, codeLong: trophyCode);
+        if (nurturing.Exp > exp) {
+            session.ConditionUpdate(ConditionType.nurturing_growth, counter: nurturing.Exp - exp, codeLong: trophyCode);
         }
 
         RewardItem rewardPlay = nurturing.NurturingMetadata.Feed;
