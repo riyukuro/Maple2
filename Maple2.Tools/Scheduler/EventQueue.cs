@@ -117,13 +117,12 @@ public class EventQueue {
                     Interlocked.Exchange(ref nextTime, Math.Min(nextTime, result));
                 }
             } catch (Exception ex) {
-                // Log exception but continue processing other events
-                // The scheduler should be resilient to individual task failures
-                logger.Error(ex, "[EventQueue] Task threw exception");
-
-                // Even if task threw, we need to check if it has a next execution time
-                // (for repeated tasks that should continue despite errors)
-                if (scheduledEvent is { Completed: false, ExecutionTime: > 0 }) {
+                // Logged, and the other events still run. The task was advanced as one that returned: a task run once
+                // is dropped, a repeated one runs again an interval later (not on the next loop).
+                if (scheduledEvent.Completed) {
+                    logger.Error(ex, "[EventQueue] Task threw exception, dropped");
+                } else {
+                    logger.Error(ex, "[EventQueue] Task threw exception, runs again at its next interval");
                     Interlocked.Exchange(ref nextTime, Math.Min(nextTime, scheduledEvent.ExecutionTime));
                 }
             }

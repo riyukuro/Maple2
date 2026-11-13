@@ -79,4 +79,41 @@ public class EventQueueTests {
         }
         Assert.That(count, Is.EqualTo(1));
     }
+
+    // A task run once that throws is dropped (logged): the next loops do not run it again. It used to stay due and
+    // run (and log) on every loop.
+    [Test]
+    public void Schedule_DelayedTaskThrows_Dropped() {
+        var queue = new EventQueue(logger);
+        queue.Start();
+        int count = 0;
+        queue.Schedule(() => {
+            count++;
+            throw new InvalidOperationException("the test's task");
+        }, TimeSpan.FromMilliseconds(1));
+        Thread.Sleep(10);
+        for (int i = 0; i < 3; i++) {
+            queue.InvokeAll();
+        }
+        Assert.That(count, Is.EqualTo(1));
+    }
+
+    // A repeated task that throws runs again at its next interval, not on the next loop.
+    [Test]
+    public void ScheduleRepeated_TaskThrows_WaitsItsInterval() {
+        var queue = new EventQueue(logger);
+        queue.Start();
+        int count = 0;
+        queue.ScheduleRepeated(() => {
+            count++;
+            throw new InvalidOperationException("the test's task");
+        }, TimeSpan.FromMilliseconds(200));
+        for (int i = 0; i < 3; i++) {
+            queue.InvokeAll();
+        }
+        Assert.That((count, queue.Count), Is.EqualTo((1, 1)));
+        Thread.Sleep(250);
+        queue.InvokeAll();
+        Assert.That(count, Is.EqualTo(2), "it still runs at its interval");
+    }
 }
