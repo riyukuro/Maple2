@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Util;
@@ -24,10 +25,8 @@ public class KeyBindRulesTests {
         }
         var reader = new ByteReader(writer.Buffer.AsSpan(0, writer.Length).ToArray(), 0);
 
-        int count = reader.ReadInt();
         var kept = new System.Collections.Generic.List<int>();
-        for (int i = 0; i < count; i++) {
-            var keyBind = reader.Read<KeyBind>();
+        foreach (KeyBind keyBind in KeyTableHandler.ReadKeyBinds(reader)) {
             Assert.That(keyBind.OptionGuid, Is.EqualTo(10));
             Assert.That(keyBind.Priority, Is.EqualTo(2));
             if (KeyBindRules.IsClientKeyCode(keyBind.KeyCode)) {

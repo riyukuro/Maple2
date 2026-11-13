@@ -11,6 +11,10 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class KeyTableHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.KeyTable;
 
+    // Client writers: CKeyTable::SendKeyTableMode1 (keytable.cpp:385) and SendKeysToServer (keytable.cpp:407) for 1
+    // and 2, SendKeyTableMode7 (keytable.cpp:2031) for 7; the quick slot modes are in
+    // unit_14092f420_accountsessionstate.cpp: 3 at :405, 4 at :468, 5 at :493 (SendKeyTableMode5), 6 at :507
+    // (SendKeyTableMode6), 8 at :516 (SendKeyTableMode8).
     private enum Command : byte {
         SetGameKeyBind = 1,
         SetKeyBind = 2,
@@ -23,7 +27,7 @@ public class KeyTableHandler : FieldPacketHandler {
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
-        var command = packet.Read<Command>();
+        var command = (Command) packet.ReadByte();
         switch (command) {
             case Command.SetGameKeyBind:
             case Command.SetKeyBind:
@@ -37,7 +41,7 @@ public class KeyTableHandler : FieldPacketHandler {
                 RemoveQuickSlot(session, packet);
                 return;
             case Command.Unknown6:
-                // The client has no writer for 6.
+                // SendKeyTableMode6 (0x140930040) writes the mode alone, and nothing in the client calls it.
                 break;
             case Command.LeaveSkillSet:
                 // CKeyTable::SendKeyTableMode7, on leaving the skill set mode. The client sends its keys with
@@ -50,9 +54,7 @@ public class KeyTableHandler : FieldPacketHandler {
     }
 
     private void SetKeyBinds(GameSession session, IByteReader packet) {
-        int count = packet.ReadInt();
-        for (int i = 0; i < count; i++) {
-            var keyBind = packet.Read<KeyBind>();
+        foreach (KeyBind keyBind in ReadKeyBinds(packet)) {
             if (!KeyBindRules.CanStore(keyBind.KeyCode, Target.LOCALE, session.Config.KeyBindCount, session.Config.HasKeyBind(keyBind.KeyCode))) {
                 continue;
             }
@@ -61,13 +63,12 @@ public class KeyTableHandler : FieldPacketHandler {
     }
 
     private void SetQuickSlot(GameSession session, IByteReader packet) {
-        short index = packet.ReadShort();
+        (short index, QuickSlot quickSlot, int targetSlot) = ReadQuickSlotMove(packet);
         if (!session.Config.TryGetHotBar(index, out HotBar? targetHotBar)) {
             Logger.Warning("Invalid HotBar: {Index}", index);
             return;
         }
 
-        var quickSlot = packet.Read<QuickSlot>();
         if (quickSlot.ItemUid != 0) {
             Item? item = session.Item.Inventory.Get(quickSlot.ItemUid);
             if (item == null || item.Id != quickSlot.ItemId) {
@@ -76,7 +77,6 @@ public class KeyTableHandler : FieldPacketHandler {
             }
         }
 
-        int targetSlot = packet.ReadInt();
         targetHotBar.MoveQuickSlot(targetSlot, quickSlot);
         session.Config.LoadHotBars();
     }
@@ -99,5 +99,30 @@ public class KeyTableHandler : FieldPacketHandler {
         short hotBarIndex = packet.ReadShort();
 
         session.Config.SetActiveHotBar(hotBarIndex);
+    }
+
+    // Modes 1 and 2: int count, count x (int key, int type, long code, int slot, byte priority).
+    public static List<KeyBind> ReadKeyBinds(IByteReader packet) {
+        int count = packet.ReadInt();
+        var keyBinds = new List<KeyBind>();
+        for (int i = 0; i < count; i++) {
+            int keyCode = packet.ReadInt();
+            int optionType = packet.ReadInt();
+            long optionGuid = packet.ReadLong();
+            int slot = packet.ReadInt();
+            byte priority = packet.ReadByte();
+            keyBinds.Add(new KeyBind(keyCode, optionType, optionGuid, slot, priority));
+        }
+        return keyBinds;
+    }
+
+    // Modes 3 and 4: short hot bar, int skill, int item, long item uid, int target slot (-1 from mode 4).
+    public static (short HotBar, QuickSlot Slot, int TargetSlot) ReadQuickSlotMove(IByteReader packet) {
+        short hotBar = packet.ReadShort();
+        int skillId = packet.ReadInt();
+        int itemId = packet.ReadInt();
+        long itemUid = packet.ReadLong();
+        int targetSlot = packet.ReadInt();
+        return (hotBar, new QuickSlot(skillId, itemId, itemUid), targetSlot);
     }
 }
