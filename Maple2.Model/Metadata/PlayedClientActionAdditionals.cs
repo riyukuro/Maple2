@@ -162,8 +162,13 @@ public static class PlayedClientActionAdditionals {
     private static IEnumerable<XmlElement> Children(XmlElement parent, string name) =>
         parent.ChildNodes.OfType<XmlElement>().Where(child => child.Name == name);
 
-    // The client reads these flags as numbers: any value but 0 is set.
-    private static bool Flag(XmlElement element, string attribute) => Number(element, attribute) != 0;
+    // The client reads these flags with TiXmlElement::QueryBoolAttribute (XmlGetBool, SkillBeginCondition::Load): a
+    // value starting with "true", "yes" or "1" in any case is set, any other value is not.
+    private static bool Flag(XmlElement element, string attribute) => QueryBool(element.GetAttribute(attribute));
+
+    public static bool QueryBool(string text) =>
+        text.StartsWith("true", StringComparison.OrdinalIgnoreCase) || text.StartsWith("yes", StringComparison.OrdinalIgnoreCase)
+        || text.StartsWith('1');
 
     private static int Number(XmlElement element, string attribute, int fallback = 0) {
         string text = element.GetAttribute(attribute);

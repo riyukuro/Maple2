@@ -648,13 +648,14 @@ public class SkillCastRulesTests {
               <skill id="200"><level value="3"><motion><attack attackMethodType="1" /></motion></level></skill>
             </ms2>
             """);
-        Dictionary<(int, short, int, int), int> read = PlayedClientSkills.ReadAttackMethods([document]);
-        Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short, int, int), int> {
-            [(200, 1, 0, 0)] = 1,
-            [(200, 1, 0, 1)] = 0,
-            [(200, 1, 1, 0)] = 2,
-            [(200, 2, 0, 0)] = 0,
+        Dictionary<(int, short, int, int), (int, string)> read = PlayedClientSkills.ReadAttackMethods([document], out int duplicateLevels);
+        Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short, int, int), (int, string)> {
+            [(200, 1, 0, 0)] = (1, "p0"),
+            [(200, 1, 0, 1)] = (0, "p1"),
+            [(200, 1, 1, 0)] = (2, ""),
+            [(200, 2, 0, 0)] = (0, ""),
         }));
+        Assert.That(duplicateLevels, Is.EqualTo(1), "the second level 1");
     }
 
     private static (int, int, bool) Kept(PlayedClientSkills.Entry entry) => (entry.MainType, entry.RechargeMaxCount, entry.RechargeShared);

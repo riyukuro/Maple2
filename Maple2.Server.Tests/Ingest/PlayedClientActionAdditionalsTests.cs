@@ -19,7 +19,7 @@ public class PlayedClientActionAdditionalsTests {
               <actionAdditional additionalID="901" level="1" skillTarget="1" />
               <actionAdditional additionalID="999" level="1" skillTarget="1" />
               <actionAdditional additionalID="903" level="1" skillTarget="1"><beginCondition jobCode="10" /></actionAdditional>
-              <actionAdditional additionalID="904" level="1" skillTarget="1"><beginCondition allowBattleRidingState="1" onlyBattleRidingState="2"><!-- note --></beginCondition></actionAdditional>
+              <actionAdditional additionalID="904" level="1" skillTarget="1"><beginCondition allowBattleRidingState="True" onlyBattleRidingState="2"><!-- note --></beginCondition></actionAdditional>
               <motion>
                 <attack point="p0">
                   <actionAdditional additionalID="910" level="1" skillTarget="2" skillOwner="1" dependOnDamageCount="1"><beginCondition probability="0.07" useTargetCountFactor="1" /></actionAdditional>
@@ -69,8 +69,8 @@ public class PlayedClientActionAdditionalsTests {
         Assert.That(uses.Level.Select(use => use.EffectId), Is.EqualTo(new[] { 900, 901, 999, 904 }));
         Assert.That(uses.Level[0].AllowOnBattleMount, Is.True);
         Assert.That(uses.Level[0].OnlyOnBattleMount, Is.False);
-        Assert.That((uses.Level[3].AllowOnBattleMount, uses.Level[3].OnlyOnBattleMount), Is.EqualTo((true, true)),
-            "the battle-ride flags are numbers, and a comment is no condition field");
+        Assert.That((uses.Level[3].AllowOnBattleMount, uses.Level[3].OnlyOnBattleMount), Is.EqualTo((true, false)),
+            "the battle-ride flags are the client's bools (\"True\" is set, \"2\" is not), and a comment is no condition field");
         Assert.That(uses.Attacks.Keys, Is.EqualTo(new[] { (0, 0), (0, 1), (0, 2), (0, 3) }));
         Assert.That(uses.Attacks[(0, 0)].Uses.Select(use => use.EffectId), Is.EqualTo(new[] { 910, 911, 901 }));
         Assert.That((uses.Attacks[(0, 1)].Point, uses.Attacks[(0, 1)].Uses[0].EffectId), Is.EqualTo(("p0", 912)));
@@ -92,7 +92,8 @@ public class PlayedClientActionAdditionalsTests {
         SkillMetadataLevel merged = PlayedClientActionAdditionals.Merge(level, uses, (id, lv) => Pack.Contains((id, lv)), out int added, out int unmatched);
 
         Assert.That(merged.Skills.Select(Id), Is.EqualTo(new[] { 900, 901, 904 }), "900 was given, 999 has no effect file");
-        Assert.That(merged.Skills[2].Condition!.Condition.OnlyOnBattleMount, Is.True);
+        Assert.That((merged.Skills[2].Condition!.Condition.AllowOnBattleMount, merged.Skills[2].Condition!.Condition.OnlyOnBattleMount),
+            Is.EqualTo((true, false)));
         SkillMetadataAttack first = merged.Motions[0].Attacks[0];
         Assert.That(first.Skills.Select(Id), Is.EqualTo(new[] { 920, 911 }), "901 is already the level's");
         Assert.That(first.SkillsOnDamage.Select(Id), Is.EqualTo(new[] { 910 }));
@@ -109,4 +110,20 @@ public class PlayedClientActionAdditionalsTests {
     }
 
     private static int Id(SkillEffectMetadata effect) => effect.Skills[0].Id;
+
+    // TiXmlElement::QueryBoolAttribute: a prefix of "true", "yes" or "1" in any case is set; "false", "no", "0" and
+    // anything else (a 2, an empty value) is not.
+    [Test]
+    public void FlagsAreTheClientsBools() {
+        string[] set = ["1", "true", "TRUE", "Yes", "10", "truely"];
+        string[] unset = ["0", "2", "false", "no", "", " 1", "on"];
+        Assert.Multiple(() => {
+            foreach (string text in set) {
+                Assert.That(PlayedClientActionAdditionals.QueryBool(text), Is.True, text);
+            }
+            foreach (string text in unset) {
+                Assert.That(PlayedClientActionAdditionals.QueryBool(text), Is.False, text);
+            }
+        });
+    }
 }

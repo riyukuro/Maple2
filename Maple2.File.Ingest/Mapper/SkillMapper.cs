@@ -24,7 +24,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private readonly HashSet<(int Id, short Level)> packEffects = [];
     // The played client's attackMethodType of each attack of its levels (PlayedClientSkills.ReadAttackMethods); empty
     // without a played client.
-    private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), int> clientAttackMethods = [];
+    private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (int Method, string Point)> clientAttackMethods = [];
+    private int attackMethodPointMismatches;
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -41,8 +42,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             }
             Console.WriteLine($"Skill levels with effects in the played client's skill data: {clientEffects.Count} ({unsupported} effect rows left out for a condition the ingest does not read)");
             clientAttackMethods = PlayedClientSkills.ReadAttackMethods(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
-                .Select(file => playedReader.GetXmlDocument(file)));
-            Console.WriteLine($"Skill attacks in the played client's skill data: {clientAttackMethods.Count} ({clientAttackMethods.Values.Count(method => method == 1)} of attack method type 1)");
+                .Select(file => playedReader.GetXmlDocument(file)), out int duplicateLevels);
+            Console.WriteLine($"Skill attacks in the played client's skill data: {clientAttackMethods.Count} ({clientAttackMethods.Values.Count(entry => entry.Method == 1)} of attack method type 1, {duplicateLevels} duplicate levels left out)");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -144,9 +145,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                             SkillsOnDamage: attack.conditionSkill.Where(skill => skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
                             GrabTargetType: attack.grabTargetType,
                             Direction: directions.Get(id, level.value, motionIndex, attackIndex),
-                            // The played client's type where it has the attack, else the data pack's.
-                            AttackMethodType: clientAttackMethods.TryGetValue((id, level.value, motionIndex, attackIndex), out int method)
-                                ? method : (int) attack.attackMethodType
+                            AttackMethodType: AttackMethod(id, level.value, motionIndex, attackIndex, attack.point, (int) attack.attackMethodType)
                         )).ToArray(),
                         AttackPoints: motion.CollectAttackPoints()
                     )).ToArray(),
@@ -214,6 +213,21 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientEffects.Count > 0) {
             Console.WriteLine($"Skill effects added from the played client's skill data: {clientAdded} in {clientSkills} skills ({clientUnmatched} attack effects with no attack of their point)");
         }
+        if (clientAttackMethods.Count > 0) {
+            Console.WriteLine($"Skill attacks whose played attack method has another point: {attackMethodPointMismatches} (the data pack's kept)");
+        }
+    }
+
+    // The played client's type where it has the attack at that place with the same point, else the data pack's.
+    private int AttackMethod(int id, short level, int motion, int attack, string point, int pack) {
+        if (!clientAttackMethods.TryGetValue((id, level, motion, attack), out (int Method, string Point) played)) {
+            return pack;
+        }
+        if (played.Point != point) {
+            attackMethodPointMismatches++;
+            return pack;
+        }
+        return played.Method;
     }
 
     private static SkillMetadataRange Convert(RegionSkill region) {

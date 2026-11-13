@@ -52,8 +52,13 @@ public static class PlayedClientSkills {
     // The attackMethodType of every attack of the client's levels, by skill id, level, the motion's place in the level
     // and the attack's place in the motion (0 kept, so that a level the client has overrides the data pack's). The
     // first <skill> of an id and the first <level> of a value are read, as in Read.
-    public static Dictionary<(int Skill, short Level, int Motion, int Attack), int> ReadAttackMethods(IEnumerable<XmlDocument> skillFiles) {
-        var methods = new Dictionary<(int, short, int, int), int>();
+    // Each attack's type with its point, so the ingest takes it only for the data pack's attack of the same point.
+    // The first <level> of a value is kept; duplicateLevels counts the later ones (the client's FUN_14028faa0 picks
+    // among them by feature, which this does not do; KR has none).
+    public static Dictionary<(int Skill, short Level, int Motion, int Attack), (int Method, string Point)> ReadAttackMethods(
+            IEnumerable<XmlDocument> skillFiles, out int duplicateLevels) {
+        var methods = new Dictionary<(int, short, int, int), (int, string)>();
+        duplicateLevels = 0;
         var skillIds = new HashSet<int>();
         foreach (XmlDocument file in skillFiles) {
             XmlNodeList? skills = file.SelectNodes("ms2/skill");
@@ -66,14 +71,18 @@ public static class PlayedClientSkills {
                 }
                 var levelValues = new HashSet<short>();
                 foreach (XmlElement level in skill.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "level")) {
-                    if (!short.TryParse(level.GetAttribute("value"), out short value) || !levelValues.Add(value)) {
+                    if (!short.TryParse(level.GetAttribute("value"), out short value)) {
+                        continue;
+                    }
+                    if (!levelValues.Add(value)) {
+                        duplicateLevels++;
                         continue;
                     }
                     int motionIndex = 0;
                     foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
                         int attackIndex = 0;
                         foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
-                            methods[(id, value, motionIndex, attackIndex++)] = Number(attack, "attackMethodType");
+                            methods[(id, value, motionIndex, attackIndex++)] = (Number(attack, "attackMethodType"), attack.GetAttribute("point"));
                         }
                         motionIndex++;
                     }
