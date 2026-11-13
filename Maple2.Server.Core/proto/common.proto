@@ -456,6 +456,10 @@ message AdminRequest {
     int32 action = 2;
   }
 
+  // A GM changed the live ban-word list (banword command, DynamicBanWordRules): each channel reloads it from the
+  // database and sends it to every player (DynamicBanword 0x124).
+  message BanWord {}
+
   int64 requester_id = 1;
   oneof request {
     Alert alert = 2;
@@ -465,6 +469,7 @@ message AdminRequest {
     AccountBlock account_block = 6;
     ShutdownNotice shutdown_notice = 7;
     Notice notice = 8;
+    BanWord ban_word = 9;
   }
 }
 

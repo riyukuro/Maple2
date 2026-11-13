@@ -60,6 +60,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<BossClear> BossClear { get; set; } = null!;
     internal DbSet<BossClearMember> BossClearMember { get; set; } = null!;
     internal DbSet<PlayerReport> PlayerReports { get; set; } = null!;
+    internal DbSet<DynamicBanWord> DynamicBanWord { get; set; } = null!;
     internal DbSet<Ban> Ban { get; set; } = null!;
     internal DbSet<AccountBlock> AccountBlock { get; set; } = null!;
     internal DbSet<HomeBlock> HomeBlock { get; set; } = null!;
@@ -116,6 +117,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
 
         modelBuilder.Entity<ServerInfo>(Maple2.Database.Model.ServerInfo.Configure);
         modelBuilder.Entity<PlayerReport>(PlayerReport.Configure);
+        modelBuilder.Entity<DynamicBanWord>(Maple2.Database.Model.DynamicBanWord.Configure);
 
         modelBuilder.Entity<DungeonRecord>(Maple2.Database.Model.DungeonRecord.Configure);
         modelBuilder.Entity<DungeonAccountRecord>(Maple2.Database.Model.DungeonAccountRecord.Configure);

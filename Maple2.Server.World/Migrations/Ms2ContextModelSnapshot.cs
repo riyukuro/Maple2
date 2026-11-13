@@ -885,6 +885,36 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("dungeon-record", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.DynamicBanWord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    b.Property<long>("AddedBy")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreationTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Replacement")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Word")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("dynamic-ban-word", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.GameEventUserValue", b =>
                 {
                     b.Property<long>("CharacterId")

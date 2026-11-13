@@ -9,6 +9,7 @@ public partial class WorldService {
             case AdminRequest.RequestOneofCase.Alert:
             case AdminRequest.RequestOneofCase.AccountBlock:
             case AdminRequest.RequestOneofCase.ShutdownNotice:
+            case AdminRequest.RequestOneofCase.BanWord:
                 return Task.FromResult(Alert(request));
             case AdminRequest.RequestOneofCase.AddStringBoard:
                 return Task.FromResult(AddStringBoard(request.AddStringBoard));
@@ -23,8 +24,8 @@ public partial class WorldService {
         }
     }
 
-    // Sent to every channel: an alert or a shutdown notice to all players, an account restriction to whichever channel
-    // has the account.
+    // Sent to every channel: an alert, a shutdown notice or the ban-word list to all players, an account restriction to
+    // whichever channel has the account.
     private AdminResponse Alert(AdminRequest request) {
         string responseMessage = string.Empty;
         foreach (int channel in channelClients.Keys) {
