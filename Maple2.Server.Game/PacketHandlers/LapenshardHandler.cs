@@ -138,16 +138,27 @@ public class LapenshardHandler : FieldPacketHandler {
                 return;
             }
 
+            bool upgraded;
             if (lapenshardUid > 0) {
-                if (UpgradeInventoryLapenshard(session, lapenshardUid, fodders, entry)) {
+                upgraded = UpgradeInventoryLapenshard(session, lapenshardUid, fodders, entry);
+                if (upgraded) {
                     // KMS2 answers with uid 0 for a bag lapenshard too (the old item is gone by now).
                     session.Send(LapenshardPacket.Upgrade(0, lapenshardId, slot));
                 }
             } else {
-                if (UpgradeEquipLapenshard(session, slot, fodders, entry)) {
+                upgraded = UpgradeEquipLapenshard(session, slot, fodders, entry);
+                if (upgraded) {
                     session.Config.LoadLapenshard();
                     session.Send(LapenshardPacket.Upgrade(lapenshardUid, lapenshardId, slot));
                 }
+            }
+
+            // A fusion always succeeds: the upgrade table has no rate, so lapenshard_upgrade_fail (21100058) is never due.
+            if (upgraded) {
+                session.ConditionUpdate(ConditionType.lapenshard_upgrade_try);
+                session.ConditionUpdate(ConditionType.lapenshard_upgrade_success);
+                session.ConditionUpdate(ConditionType.lapenshard_upgrade_result,
+                    targetLong: LapenshardRules.ResultTier(TableMetadata.LapenshardUpgradeTable, entry));
             }
         }
     }

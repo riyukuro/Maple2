@@ -60,4 +60,16 @@ public class LapenshardRulesTests {
         Assert.That(LapenshardRules.MissingEffects([], EffectsOf, (_, _) => false), Is.Empty);
         Assert.That(LapenshardRules.MissingEffects([999], EffectsOf, (_, _) => false), Is.Empty);
     }
+
+    // The tier a fusion makes is the next item's LapenLevel (41000015 tier 5 -> 41000016 tier 6); a next item
+    // the table does not list is one tier up.
+    [Test]
+    public void ResultTier_IsTheNextItemsLevel() {
+        var table = new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry> {
+            [41000015] = new(5, 41000011, 41000016, 8, [], 1_500_000),
+            [41000016] = new(6, 41000011, 41000017, 14, [], 2_000_000),
+        });
+        Assert.That(LapenshardRules.ResultTier(table, table.Entries[41000015]), Is.EqualTo(6));
+        Assert.That(LapenshardRules.ResultTier(table, table.Entries[41000016]), Is.EqualTo(7));
+    }
 }

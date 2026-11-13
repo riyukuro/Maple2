@@ -62,6 +62,26 @@ public class ConditionCountTests {
         Assert.That(noCode.Check(null!, codeLong: petItemId), Is.True);
     }
 
+    // A fusion counts for lapenshard_upgrade_result when it reaches the target tier (21100060: tier 6).
+    [TestCase(6, true)]
+    [TestCase(7, false)]
+    public void LapenshardUpgradeResult_CountsTheTierReached(int tier, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.lapenshard_upgrade_result, 1, null,
+            new ConditionMetadata.Parameters(Integers: [6]));
+        Assert.That(condition.Check(null!, targetLong: tier), Is.EqualTo(expected));
+    }
+
+    // Pet evolution trophies name a rarity: the one reached (pet_evolution_by_rank, 23100383 code 2) or the one of
+    // the pet that gained the points (pet_evolution_point_by_rank, 23100387 code 1).
+    [TestCase(ConditionType.pet_evolution_by_rank, 2, 2, true)]
+    [TestCase(ConditionType.pet_evolution_by_rank, 2, 3, false)]
+    [TestCase(ConditionType.pet_evolution_point_by_rank, 1, 1, true)]
+    [TestCase(ConditionType.pet_evolution_point_by_rank, 1, 2, false)]
+    public void PetEvolution_CountsTheListedRarity(ConditionType type, int code, int rarity, bool expected) {
+        var condition = new ConditionMetadata(type, 1, new ConditionMetadata.Parameters(Integers: [code]), null);
+        Assert.That(condition.Check(null!, codeLong: rarity), Is.EqualTo(expected));
+    }
+
     // A hit on a vibrate object counts with its materialTag (70400059 "Hit a tree 20 times": code "wood").
     [TestCase("wood", true)]
     [TestCase("stone", false)]

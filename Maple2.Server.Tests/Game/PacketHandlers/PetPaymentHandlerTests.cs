@@ -231,6 +231,51 @@ public class PetPaymentHandlerTests {
         Assert.That(session.Item.Inventory.Get(Fodders[0].Uid), Is.Null);
     }
 
+    // The points gained count for pet_evolution_point_by_rank of the pet's rarity (23100387 "with a normal pet":
+    // code 1); a trophy of another rarity counts nothing.
+    [Test]
+    public void EvolvePoints_CountsThePointsGainedByThePetsRarity() {
+        GameSession session = Login(meso: 50000, pets: 3);
+        pet.Pet!.Level = 50;
+        pet.Pet.EvolvePoints = 3;
+        test.AddAchievement(
+            TestGameSession.Trophy(23100387, ConditionType.pet_evolution_point_by_rank, [1, 10], codes: [pet.Rarity]),
+            TestGameSession.Trophy(23100388, ConditionType.pet_evolution_point_by_rank, [1, 10], codes: [pet.Rarity + 1]));
+
+        new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(18);
+            writer.WriteLong(pet.Uid);
+            writer.WriteShort(2);
+            writer.WriteLong(Fodders[0].Uid);
+            writer.WriteLong(Fodders[1].Uid);
+        }));
+
+        Assert.That(pet.Pet.EvolvePoints, Is.EqualTo(5));
+        Assert.That(test.TrophyCounter(23100387), Is.EqualTo(2));
+        Assert.That(test.TrophyCounter(23100388), Is.Null);
+    }
+
+    // An evolution counts for pet_evolution_by_rank of the rarity reached (23100383 "Evolve normal pets to rare": code 2).
+    [Test]
+    public void Evolve_CountsTheRarityReached() {
+        GameSession session = Login(meso: 0);
+        pet.Pet!.Level = 50;
+        pet.Pet.EvolvePoints = 10;
+        int rarity = pet.Rarity;
+        test.AddAchievement(
+            TestGameSession.Trophy(23100383, ConditionType.pet_evolution_by_rank, [1, 3], codes: [rarity + 1]),
+            TestGameSession.Trophy(23100384, ConditionType.pet_evolution_by_rank, [1, 3], codes: [rarity + 2]));
+
+        new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(17);
+            writer.WriteLong(pet.Uid);
+        }));
+
+        Assert.That(pet.Rarity, Is.EqualTo(rarity + 1));
+        Assert.That(test.TrophyCounter(23100383), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(23100384), Is.Null);
+    }
+
     [Test]
     public void Fusion_TakesTheMesoThenTheFodder() {
         GameSession session = Login(meso: 10_000_000, pets: 2);

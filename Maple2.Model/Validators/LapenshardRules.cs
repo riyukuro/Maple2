@@ -14,6 +14,12 @@ public static class LapenshardRules {
         return amount <= (isUpgradedStack ? owned - 1 : owned);
     }
 
+    // The tier a fusion makes (lapenshard_upgrade_result, 21100060-21100064 "Fuse lapenshards to tier 6" to 10): the
+    // LapenLevel of the next item's row in itemlapenshardupgrade.xml, which is the entry's level plus one in the data.
+    public static int ResultTier(LapenshardUpgradeTable table, LapenshardUpgradeTable.Entry entry) {
+        return table.Entries.TryGetValue(entry.NextItemId, out LapenshardUpgradeTable.Entry? next) ? next.Level : entry.Level + 1;
+    }
+
     // The effects the worn lapenshards give that their wearer does not have: each shard item's additional
     // effects (not its pick-up ones), once each. These effects have no duration, so the logout save does not
     // keep them, and the client only records which shards are worn (MyPC::EquipLapenshard, mypc.cpp:4195);

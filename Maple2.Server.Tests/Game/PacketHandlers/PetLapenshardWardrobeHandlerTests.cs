@@ -73,6 +73,40 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));
     }
 
+    // A fusion counts one try and one success (21100057, 21100059); a refused one counts nothing.
+    [TestCase(20, 1L)]
+    [TestCase(10, null)]
+    public void LapenshardUpgrade_CountsTheTryAndTheSuccess(int crystalsOwned, long? counted) {
+        var test = new TestGameSession();
+        ItemMetadata crystalData = TestGameSession.Metadata(40100001, type: 2);
+        crystalData = crystalData with { Property = crystalData.Property with { Tag = ItemTag.RedCrystal } };
+        Item shards = test.Store(TestGameSession.Metadata(ShardId, type: 21), amount: 9);
+        test.Store(crystalData, amount: crystalsOwned);
+        test.Register(TestGameSession.Metadata(NextShardId, type: 21));
+        test.SetTable(new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry> {
+            [ShardId] = new(1, 1, NextShardId, 4, [new LapenshardUpgradeTable.Ingredient(ItemTag.RedCrystal, 20)], 1000),
+        }));
+        GameSession session = test.Start();
+        var handler = new LapenshardHandler { TableMetadata = test.TableMetadata, ItemMetadata = session.ItemMetadata };
+        session.Currency.Meso = 5000;
+        test.AddAchievement(
+            TestGameSession.Trophy(21100057, ConditionType.lapenshard_upgrade_try, [1, 50]),
+            TestGameSession.Trophy(21100059, ConditionType.lapenshard_upgrade_success, [5, 25]));
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(5);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(ShardId);
+            writer.WriteInt(0);
+            writer.WriteInt(1);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(4);
+        }));
+
+        Assert.That(test.TrophyCounter(21100057), Is.EqualTo(counted));
+        Assert.That(test.TrophyCounter(21100059), Is.EqualTo(counted));
+    }
+
     // Too few ingredients: nothing is taken.
     [Test]
     public void LapenshardUpgrade_WithoutIngredientsTakesNothing() {

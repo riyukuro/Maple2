@@ -107,6 +107,10 @@ public static class ConditionUtil {
             case ConditionType.pet_catch_grade:
             case ConditionType.pet_catch_category:
             case ConditionType.pet_enchant:
+            // pet_evolution_by_rank: the rarity the pet evolved to (23100383 "Evolve normal pets to rare": code 2).
+            // pet_evolution_point_by_rank: the rarity of the pet that gained the points (23100387 "with a normal pet": code 1).
+            case ConditionType.pet_evolution_by_rank:
+            case ConditionType.pet_evolution_point_by_rank:
             case ConditionType.pet_taming:
             case ConditionType.openItemBox:
             case ConditionType.dungeon_clear:
@@ -278,6 +282,12 @@ public static class ConditionUtil {
                 break;
             case ConditionType.quest_alliance_by_grade:
                 // The mission's alliance (1 to 5, 6 to 8 for Kritias, 9 for Georg).
+                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                    return true;
+                }
+                break;
+            case ConditionType.lapenshard_upgrade_result:
+                // The tier the lapenshard was fused to (21100060-21100064 "Fuse lapenshards to tier 6" to 10).
                 if (target.Integers != null && target.Integers.Contains((int) longValue)) {
                     return true;
                 }
