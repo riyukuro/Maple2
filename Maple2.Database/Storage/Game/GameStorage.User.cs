@@ -409,7 +409,9 @@ public partial class GameStorage {
                                 object? originalValue = entry.OriginalValues[property];
                                 object? currentValue = proposedValues[property];
                                 object? databaseValue2 = databaseValues[property];
-                                Logger.LogError("    {PropertyName}: original='{S}' current='{FormatValue1}' db='{S1}' <concurrency token>", property.Name, FormatValue(originalValue), FormatValue(currentValue), FormatValue(databaseValue2));
+                                // The token of a row another writer saved (the World marking the account online or offline): the retry
+                                // below saves over it, and a save that still fails after the last attempt is the error.
+                                Logger.LogWarning("    {PropertyName}: original='{S}' current='{FormatValue1}' db='{S1}' <concurrency token>", property.Name, FormatValue(originalValue), FormatValue(currentValue), FormatValue(databaseValue2));
                                 continue;
                             }
                             if (property.Name.Equals("Password", StringComparison.OrdinalIgnoreCase)) {
