@@ -355,8 +355,19 @@ public class BuffManager : IUpdatable {
     // An enabled buff held has deathResistanceHP: hits and dot ticks take the holder no lower than 1 health.
     public bool DeathResistance => Sums().DeathResistance;
     // An enabled buff held has attackPossible limits that refuse the caster's skill hit or dot tick (AttackPossibleRules).
+    // Only a holder of such a limit pays for the check: the caster's lookup is built after the empty test.
     public bool AttackRefused(IActor caster, int skillId, int dotEffectId = 0) {
-        return Sums().AttackRefused(skillId, dotEffectId, effectId => caster.Buffs.HasBuff(effectId));
+        BuffSums sums = Sums();
+        return sums.HasAttackLimits && sums.AttackRefused(skillId, dotEffectId, caster.Buffs.HoldsEnabled);
+    }
+    // An enabled buff of this id is held (the attackPossibleEffectID test: a buff whose begin condition is off does not count).
+    public bool HoldsEnabled(int effectId) {
+        foreach (Buff buff in EnumerateBuffs(effectId)) {
+            if (buff.Enabled) {
+                return true;
+            }
+        }
+        return false;
     }
     // The type of that hit: InvincibleReflection when the buff's invincible value is 2.
     public DamageType InvincibleHitType => Sums().InvincibleReflect ? DamageType.InvincibleReflection : DamageType.Invincible;

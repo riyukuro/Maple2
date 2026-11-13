@@ -60,6 +60,8 @@ public sealed class BuffSums {
     }
 
     // A hit (skillId) or a damage over time tick (dotEffectId) of the caster is refused by an attackPossible limit held.
+    public bool HasAttackLimits => attackLimits.Length != 0;
+
     public bool AttackRefused(int skillId, int dotEffectId, Func<int, bool> casterHolds) {
         return attackLimits.Length != 0 && !Util.AttackPossibleRules.Allows(attackLimits, skillId, dotEffectId, casterHolds);
     }
