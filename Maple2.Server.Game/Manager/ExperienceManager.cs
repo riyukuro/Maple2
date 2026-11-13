@@ -260,7 +260,18 @@ public sealed class ExperienceManager {
             return;
         }
 
-        amount = PrestigeRules.Scale(amount, rate);
+        GainPrestigeExp(PrestigeRules.Scale(amount, rate));
+    }
+
+    // A fixed amount of prestige exp (a reward contents row's adventureExpTableID value), under the same daily rule.
+    public void AddPrestigeExp(long amount) {
+        if (Level < Constants.AdventureLevelStartLevel) {
+            return;
+        }
+        GainPrestigeExp(amount);
+    }
+
+    private void GainPrestigeExp(long amount) {
         // The day's first level's worth counts in full, the rest at AdventureLevelFactor (a gain that crosses it is split).
         long gainedToday = PrestigeCurrentExp - PrestigeExp + (PrestigeLevelsGained * (long) Constants.AdventureLevelLvUpExp);
         amount = PrestigeRules.Gain(amount, gainedToday, Constants.AdventureLevelLvUpExp, Constants.AdventureLevelFactor);

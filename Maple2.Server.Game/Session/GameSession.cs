@@ -1133,8 +1133,10 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         long prestigeExp = 0;
+        // The row's adventureExpTableID names a fixed amount in the server's AdventureIdExpTable (the client does not
+        // load that table: CAdventureLevelTable::FindUnused2, adventureleveltablehelper.cpp:315).
         if (baseMetadata.PrestigeExpTableId > 0 && ServerTableMetadata.PrestigeIdExpTable.Entries.TryGetValue(baseMetadata.PrestigeExpTableId, out PrestigeIdExpTable.Entry? prestigeExpTable)) {
-            // TODO: Prestige exp given this way is fixed. Need to revise how exp is given.
+            prestigeExp = prestigeExpTable.Value;
         }
 
         List<Item> items = [];
@@ -1163,6 +1165,9 @@ public sealed partial class GameSession : Core.Network.Session {
                 }
             }
             Exp.AddExp(exp, message);
+            if (prestigeExp > 0) {
+                Exp.AddPrestigeExp(prestigeExp);
+            }
             foreach (Item item in items) {
                 if (!Item.Inventory.Add(item, true)) {
                     Item.MailItem(item);
