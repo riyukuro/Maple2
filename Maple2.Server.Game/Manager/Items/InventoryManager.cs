@@ -336,6 +336,7 @@ public class InventoryManager {
                 }
                 session.ConditionUpdate(ConditionType.item_collect, codeLong: item.Id);
                 session.ConditionUpdate(ConditionType.item_add, counter: item.Amount, codeLong: item.Id);
+                session.Field?.Survival?.ItemGot(session.CharacterId, item.Id, added);
                 session.Achievement.Update(ConditionType.item_exist, count: item.Amount, targetLong: session.Field?.MapId ?? 0, codeLong: item.Id);
                 session.Quest.UpdateHeld(item.Id);
             }

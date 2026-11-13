@@ -187,6 +187,29 @@ public static class ConditionUtil {
                     return true;
                 }
                 break;
+            // The Maple Survival conditions with a code: the killing hit's skill (21300043 Jab 90000772; 21300057 the six
+            // levels of one weapon's skill), the item (21300062 20000733) or the map (21300073 82000012, 82000001).
+            case ConditionType.survival_kill_use_skill:
+            case ConditionType.survival_total_kill_use_skill:
+            case ConditionType.survival_total_kill_use_single_skill:
+            case ConditionType.survival_win_use_one_skill:
+            case ConditionType.survival_item_get:
+            case ConditionType.survive_map:
+                if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
+                    return true;
+                }
+
+                if (code.Integers != null && code.Integers.Contains((int) longValue)) {
+                    return true;
+                }
+                break;
+            // survival_rank_with_kill: the code is the rank, at most (21300058 "Place 5th ... without defeating anyone"
+            // code 5, 21300059 "Win" code 1). Chosen here: a better rank holds it too.
+            case ConditionType.survival_rank_with_kill:
+                if (code.Integers != null && code.Integers.Any(value => longValue >= 1 && longValue <= value)) {
+                    return true;
+                }
+                break;
             // The PvP conditions: the code is the map of the fight (65000001 Red Arena, 65000002 Crimson Tear Mine,
             // 65000003 Treasure Island, 65010001-65010010 the rank duel maps; the trophies 21300003-21300041 name them
             // so). A row without a code (21300014, any arena) counts on every map.
@@ -294,6 +317,24 @@ public static class ConditionUtil {
             case ConditionType.quest_alliance_by_grade:
                 // The mission's alliance (1 to 5, 6 to 8 for Kritias, 9 for Georg).
                 if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                    return true;
+                }
+                break;
+            // The Maple Survival conditions of one match: the target is the match's count, at least (21300042 "Defeat 10
+            // players in one Mushking Royale match" target 10, 21300062 "Obtain 50 ..." target 50).
+            case ConditionType.survival_kill:
+            case ConditionType.survival_kill_use_skill:
+            case ConditionType.survival_npc_kill:
+            case ConditionType.survival_breakable_object:
+            case ConditionType.survival_item_get:
+                if (target.Integers != null && target.Integers.Any(value => longValue >= value)) {
+                    return true;
+                }
+                break;
+            // survival_rank_with_kill: the target is the match's kills, at most (21300058 "without defeating anyone",
+            // target 0).
+            case ConditionType.survival_rank_with_kill:
+                if (target.Integers != null && target.Integers.Any(value => longValue <= value)) {
                     return true;
                 }
                 break;

@@ -553,7 +553,7 @@ public class FieldPlayer : Actor<Player> {
         }
         // A hit between players in a PvP zone grows the attacker's damage row.
         if (caster is FieldPlayer survivor && Field.Survival != null) {
-            Field.Survival.Damage(survivor, this);
+            Field.Survival.Damage(survivor, this, damage.SkillMetadata.Id);
         }
         // A hit that takes health between rank duelists, for the kill credit.
         if (caster is FieldPlayer rankDuelist && Field.RankDuel != null && healthBefore > Stats.Values[BasicAttribute.Health].Current) {

@@ -59,6 +59,10 @@ public sealed class SurvivalGameField {
         logger.Information("Maple Survival game on {MapId} started with {Count} players", field.MapId, list.Count);
         if (!state.Ended) {
             GiveKits(list);
+            // survival_enter (21300074 "Participate in Mushking Royale {0} times"): each participant of a game that starts.
+            foreach (FieldPlayer player in list) {
+                player.Session.ConditionUpdate(ConditionType.survival_enter);
+            }
         }
         if (state.Ended) {
             Finish();
@@ -89,8 +93,26 @@ public sealed class SurvivalGameField {
         lock (mutex) return state.Hostile(caster.Value.Character.Id, target.Value.Character.Id);
     }
 
-    public void Damage(FieldPlayer attacker, FieldPlayer victim) {
-        lock (mutex) state.Hit(attacker.Value.Character.Id, victim.Value.Character.Id, field.FieldTick);
+    public void Damage(FieldPlayer attacker, FieldPlayer victim, int skillId) {
+        lock (mutex) state.Hit(attacker.Value.Character.Id, victim.Value.Character.Id, field.FieldTick, skillId);
+    }
+
+    // This match's play for the survival trophies (SurvivalConditions): a monster the player helped defeat, a breakable
+    // object it broke, an interact object it completed, items that entered its inventory.
+    public void NpcKill(FieldPlayer player) {
+        lock (mutex) state.NpcKill(player.Value.Character.Id);
+    }
+
+    public void Breakable(FieldPlayer player) {
+        lock (mutex) state.Break(player.Value.Character.Id);
+    }
+
+    public void Interact(FieldPlayer player) {
+        lock (mutex) state.Interact(player.Value.Character.Id);
+    }
+
+    public void ItemGot(long characterId, int itemId, int amount) {
+        lock (mutex) state.ItemGot(characterId, itemId, amount);
     }
 
     public void Death(FieldPlayer victim) {
@@ -113,11 +135,25 @@ public sealed class SurvivalGameField {
 
     // True when the participant was still playing.
     private bool Fall(long characterId) {
-        if (!state.Fall(characterId, field.FieldTick, out long killer)) {
+        if (!state.Fall(characterId, field.FieldTick, out long killer, out int skillId, out bool doubleKill)) {
             return false;
         }
         if (killer != 0) {
             field.Broadcast(MapleSurvivalPacket.KillFeed(names.GetValueOrDefault(killer, string.Empty), names.GetValueOrDefault(characterId, string.Empty), 0, state.Alive));
+            // The kill's trophies for the killer (21300052 "Defeat {0} players in Mushking Royale using ...": code the
+            // killing hit's skill; 21300072 "Defeat two players simultaneously").
+            after.Add(() => {
+                if (!field.TryGetPlayerById(killer, out FieldPlayer? player)) {
+                    return;
+                }
+                if (skillId != 0) {
+                    player.Session.ConditionUpdate(ConditionType.survival_total_kill_use_skill, codeLong: skillId);
+                    player.Session.ConditionUpdate(ConditionType.survival_total_kill_use_single_skill, codeLong: skillId);
+                }
+                if (doubleKill) {
+                    player.Session.ConditionUpdate(ConditionType.survival_double_kill);
+                }
+            });
         }
         field.Broadcast(MapleSurvivalPacket.AliveCount(state.Alive));
         if (field.TryGetPlayerById(characterId, out FieldPlayer? fallen)) {
@@ -245,10 +281,14 @@ public sealed class SurvivalGameField {
             bool squad = state.UnitOf(entry.CharacterId).Count() > 1;
             int rank = entry.Rank;
             int kills = entry.Kills;
+            List<SurvivalConditions.Raise> raises = SurvivalConditions.Result(entry, rank, startTick, field.MapId);
             // The save and the lobby resend run after the field's lock (RunAfter): a slow save would stall the hits.
             after.Add(() => {
                 int[] values = MapleSurvivalProgress.Result(player.Session, rank, squads, kills, seconds, squad);
                 player.Session.Send(MapleSurvivalPacket.Result(values));
+                foreach (SurvivalConditions.Raise raise in raises) {
+                    player.Session.ConditionUpdate(raise.Type, counter: raise.Counter, targetLong: raise.Target, codeLong: raise.Code);
+                }
             });
         }
     }

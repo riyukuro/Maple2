@@ -148,6 +148,7 @@ public class InteractObjectHandler : FieldPacketHandler {
             session.ConditionUpdate(ConditionType.interact_object, codeLong: interact.Object.Id);
         }
         session.ConditionUpdate(ConditionType.interact_object_rep, codeLong: interact.Object.Id, targetLong: (long) interact.Value.Type);
+        session.Field?.Survival?.Interact(session.Player);
         session.Buffs.TriggerEvent(session.Player, session.Player, session.Player, EventConditionType.OnInvestigate);
         // Spring Farm: each use of a scored interact object adds its score (set_interact_score names the object id);
         // one that keeps its state (Ui, Telescope) scores once per object in the game.

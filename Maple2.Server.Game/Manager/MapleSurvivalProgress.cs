@@ -53,6 +53,8 @@ public static class MapleSurvivalProgress {
         }
         session.Currency.Meret -= period.PassPrice;
         account.ActiveGoldPass = true;
+        // survival_buy_gold_pass (23200042 "(Account) Royalety: Activate {0} Gold Royale Pass").
+        session.ConditionUpdate(ConditionType.survival_buy_gold_pass);
         session.Send(MapleSurvivalPacket.PassProgress(0, 0));
         session.Send(SurvivalPacket.UpdateStats(account));
     }

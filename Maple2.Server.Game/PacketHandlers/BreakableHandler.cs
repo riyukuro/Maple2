@@ -55,6 +55,7 @@ public class BreakableHandler : FieldPacketHandler {
                 }
             }
             session.ConditionUpdate(ConditionType.breakable_object);
+            session.Field.Survival?.Breakable(session.Player);
             breakable.UpdateState(BreakableState.Break);
         } else {
             Console.WriteLine(entityId + " does not exist...");
