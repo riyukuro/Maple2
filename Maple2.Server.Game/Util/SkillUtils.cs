@@ -48,6 +48,11 @@ public static class SkillUtils {
     public static Prism GetPrism(this SkillMetadataRange range, in Vector3 position, float angle) =>
         range.GetPrism(position, angle, ApplyTargetType.None);
 
+    // A region skill's area (FieldSkill): the client never searches for these, so the offset is added as it is, not
+    // turned to the facing, and the area is rotated by the angle plus the range's z rotation.
+    public static Prism GetRegionPrism(this SkillMetadataAttack attack, in Vector3 position, float angle) =>
+        attack.Range.GetPrism(position + attack.Range.RangeOffset, angle + attack.Range.RotateZDegree, attack.Range.ApplyTarget, placed: false);
+
     // The client's search frame for an attack cast at position facing angle (StateSkill FUN_1417e95a0 setting up the
     // detect context): the origin is the position plus the range offset turned to the facing, the facing is the angle
     // plus the range's z rotation, and the order is the attack's direction. An attack of method type 1 (its arrow

@@ -374,4 +374,37 @@ public class RangeTargetSelectTests {
             Assert.That(arrow.Contains(new Vector3(0, -200, 10)), Is.False);
         });
     }
+
+    // A region skill's area keeps the offset as it is, not turned to the facing: the client never searches for it.
+    [Test]
+    public void GetRegionPrism_KeepsTheOffset() {
+        SkillMetadataRange range = Range(null) with {
+            Type = SkillRegion.Box, Distance = 100, Width = 50, RangeOffset = new Vector3(0, 150, 0),
+        };
+        SkillMetadataAttack attack = new("p0", 0, 1, 0, 0, 0, 0, [], null, range, null!, null!, [], []);
+        Prism region = attack.GetRegionPrism(Vector3.Zero, 0);
+        Assert.Multiple(() => {
+            // From (0, 150) along (0, -1): y 150 down to 50.
+            Assert.That(region.Contains(new Vector3(0, 100, 10)), Is.True);
+            Assert.That(region.Contains(new Vector3(0, -200, 10)), Is.False);
+        });
+    }
+
+    // An arrow step leaves out its excluded targets before the range's target choice, which it makes once, then puts
+    // the hits in the step's order: B 100 and C 200 along a travel facing 90 (forward (1, 0)).
+    [Test]
+    public void GetStepTargets_ExcludesBeforeTheChoiceAndSorts() {
+        Scene scene = Start();
+        int b = scene.B.ObjectId, c = scene.C.ObjectId;
+        int[] Step(SkillMetadataRange range, int direction, int? excluded = null) => Ids(scene.Field.GetStepTargets(scene.A, Around[0], range,
+            target => target.ObjectId != excluded, new TargetSort(direction, Vector3.Zero, 90)));
+        Mark(scene.B, scene.A);
+        SkillMetadataRange marked = Range(Select(3, 10600151, fromCaster: true));
+        Assert.Multiple(() => {
+            Assert.That(Step(Range(null), 3), Is.EqualTo(new[] { b, c }), "nearest ahead first");
+            Assert.That(Step(Range(null), 4), Is.EqualTo(new[] { c, b }), "farthest first");
+            Assert.That(Step(marked, 4), Is.EqualTo(new[] { b }), "only the marked one");
+            Assert.That(Step(marked, 4, excluded: b), Is.EqualTo(new[] { c }), "the marked one is left out, so all");
+        });
+    }
 }

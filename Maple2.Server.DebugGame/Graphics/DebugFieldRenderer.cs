@@ -1271,7 +1271,7 @@ public class DebugFieldRenderer : IFieldRenderer {
                         if (zOffset != 0) {
                             adjustedPoint.Z += zOffset;
                         }
-                        Prism prism = attack.GetPrism(adjustedPoint, angle, attack.Range.ApplyTarget);
+                        Prism prism = attack.GetRegionPrism(adjustedPoint, angle);
 
                         RenderPrism(window, prism, attack.Range);
                     }

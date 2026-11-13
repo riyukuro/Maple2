@@ -981,6 +981,15 @@ public partial class FieldManager {
         return GetTargets(record.Caster, prisms, record.Attack.Range, record.Attack.TargetCount, ignore, sort);
     }
 
+    // An arrow step's hits (StateSkill FUN_1417e9d20, DetectWithMatrixRotation): the range's actors in the query box
+    // but the caster, less the ones the step leaves out (hit already, or off the step's own box), then the range's
+    // target choice, once, and the step's order, as the client's search applies its exclusion before both.
+    public List<IActor> GetStepTargets(IActor caster, Prism query, SkillMetadataRange range, Func<IActor, bool> hits, TargetSort sort) {
+        IEnumerable<IActor> pool = GetTargetPool(caster, [query], range.ApplyTarget, int.MaxValue, [caster])
+            .Where(target => target.ObjectId != caster.ObjectId && hits(target));
+        return RangeTargetSelect.Apply(range.Select, caster, pool, SkillRegion.Box, sort).ToList();
+    }
+
     // The client's bounce search: a cylinder of the arrow's bounce radius, 150 high, around the last hit; nearest first.
     private const float BounceSearchHeight = 150f;
 

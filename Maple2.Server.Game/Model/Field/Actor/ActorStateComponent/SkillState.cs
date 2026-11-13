@@ -1,5 +1,4 @@
 ﻿using System.Numerics;
-using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Skill;
@@ -218,13 +217,9 @@ public class SkillState {
             Tools.Collision.Prism box = NpcProjectileRules.SweepBox(from, next, forward, arrow);
             Vector3 travel = next - from;
             Vector3 facing = travel.LengthSquared() > 1e-6f ? Vector3.Normalize(travel) : forward;
-            IEnumerable<IActor> inBox = field.GetTargets(actor, [NpcProjectileRules.QueryBox(box)], attack.Range, int.MaxValue)
-                .Where(target => target.ObjectId != actor.ObjectId && !excluded.Contains(target.ObjectId))
-                .Where(target => box.Intersects(HitBox(target)));
-            // The client's arrow search puts the box's hits in the attack's order, from the step's start facing the
-            // travel (StateSkill FUN_1417e9d20, DetectWithMatrixRotation).
-            List<IActor> found = RangeTargetSelect.Apply(attack.Range.Select, actor, inBox, SkillRegion.Box,
-                NpcProjectileRules.StepSort(attack, from, facing)).ToList();
+            List<IActor> found = field.GetStepTargets(actor, NpcProjectileRules.QueryBox(box), attack.Range,
+                target => !excluded.Contains(target.ObjectId) && box.Intersects(HitBox(target)),
+                NpcProjectileRules.StepSort(attack, from, facing));
             foreach (IActor target in found) {
                 hitActors[target.ObjectId] = target;
             }
