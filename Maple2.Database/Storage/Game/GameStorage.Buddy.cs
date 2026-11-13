@@ -40,6 +40,11 @@ public partial class GameStorage {
             return Context.Buddy.Count(buddy => buddy.OwnerId == ownerId && buddy.Type != BuddyType.Blocked);
         }
 
+        // Friends only, not requests: the limit an accept checks.
+        public int CountFriends(long ownerId) {
+            return Context.Buddy.Count(buddy => buddy.OwnerId == ownerId && buddy.Type == BuddyType.Default);
+        }
+
         public bool UpdateBuddy(params BuddyEntry[] buddies) {
             Context.Buddy.UpdateRange(buddies.Select<BuddyEntry, Model.Buddy>(buddy => buddy));
             return Context.TrySaveChanges();

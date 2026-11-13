@@ -67,6 +67,39 @@ public static class BuddyPacket {
         return pWriter;
     }
 
+    // A refused accept, decline, unblock, remove or cancel: the same layout with the error and the entry id. The client
+    // acts on these protocols only for result 0 (buddymanager.cpp:131-178), so a refusal changes nothing there.
+    public static ByteWriter Accept(long entryId, BuddyError error) {
+        var pWriter = Packet.Of(SendOp.Buddy);
+        pWriter.Write<Command>(Command.Accept);
+        pWriter.Write<BuddyError>(error);
+        pWriter.WriteLong(entryId);
+        pWriter.WriteLong(0);
+        pWriter.WriteLong(0);
+        pWriter.WriteUnicodeString("");
+
+        return pWriter;
+    }
+
+    public static ByteWriter Decline(long entryId, BuddyError error) => Refused(Command.Decline, entryId, error);
+    public static ByteWriter Unblock(long entryId, BuddyError error) => Refused(Command.Unblock, entryId, error);
+    public static ByteWriter Remove(long entryId, BuddyError error) => Refused(Command.Remove, entryId, error);
+    public static ByteWriter Cancel(long entryId, BuddyError error) => Refused(Command.Cancel, entryId, error);
+
+    private static ByteWriter Refused(Command command, long entryId, BuddyError error) {
+        var pWriter = Packet.Of(SendOp.Buddy);
+        pWriter.Write<Command>(command);
+        pWriter.Write<BuddyError>(error);
+        pWriter.WriteLong(entryId);
+        if (command == Command.Remove) {
+            pWriter.WriteLong(0);
+            pWriter.WriteLong(0);
+            pWriter.WriteUnicodeString("");
+        }
+
+        return pWriter;
+    }
+
     public static ByteWriter Decline(Buddy buddy) {
         var pWriter = Packet.Of(SendOp.Buddy);
         pWriter.Write<Command>(Command.Decline);

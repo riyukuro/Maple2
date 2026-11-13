@@ -117,7 +117,8 @@ public class BuddyManager : IDisposable {
             session.Send(BuddyPacket.Invite(error: s_buddy_err_unknown));
             return;
         }
-        if (name == session.PlayerName) {
+        // Names are looked up without case (GetCharacterId; the client's FindByName uses CompareNoCase).
+        if (SameName(name, session.PlayerName)) {
             session.Send(BuddyPacket.Invite(error: s_buddy_err_my_id_ex));
             return;
         }
@@ -130,6 +131,10 @@ public class BuddyManager : IDisposable {
         long receiverId = db.GetCharacterId(name);
         if (receiverId == default) {
             session.Send(BuddyPacket.Invite(error: s_buddy_err_miss_id));
+            return;
+        }
+        if (receiverId == session.CharacterId) {
+            session.Send(BuddyPacket.Invite(error: s_buddy_err_my_id_ex));
             return;
         }
 
@@ -206,6 +211,7 @@ public class BuddyManager : IDisposable {
     public void SendAccept(long entryId) {
         if (!buddies.TryGetValue(entryId, out Buddy? self) || self.Type != BuddyType.InRequest) {
             logger.Debug("Could not find entry:{EntryId} to Accept", entryId);
+            session.Send(BuddyPacket.Accept(entryId, s_buddy_err_miss_id));
             return;
         }
 
@@ -214,6 +220,18 @@ public class BuddyManager : IDisposable {
         BuddyEntry? other = db.GetBuddy(receiverId, session.CharacterId);
         if (other == null) {
             logger.Warning("Accept without paired entry");
+            session.Send(BuddyPacket.Accept(entryId, s_buddy_err_miss_id));
+            return;
+        }
+
+        // The friend limit of both lists (the client's errors 7 and 8, uibuddyeventlistener.cpp:1876-1905); the
+        // request stays for a later accept.
+        if (buddies.Values.Count(buddy => buddy.Type == BuddyType.Default) >= Constants.MaxBuddyCount) {
+            session.Send(BuddyPacket.Accept(entryId, s_buddy_err_max_buddy));
+            return;
+        }
+        if (db.CountFriends(receiverId) >= Constants.MaxBuddyCount) {
+            session.Send(BuddyPacket.Accept(entryId, s_buddy_err_target_full));
             return;
         }
 
@@ -223,6 +241,8 @@ public class BuddyManager : IDisposable {
         try {
             if (!db.UpdateBuddy(self, other)) {
                 logger.Error("Failed to update buddy");
+                self.SetType(BuddyType.InRequest);
+                session.Send(BuddyPacket.Accept(entryId, s_buddy_err_unknown));
                 return;
             }
 
@@ -243,6 +263,7 @@ public class BuddyManager : IDisposable {
             }
         } catch (SystemException ex) {
             logger.Warning(ex, "Buddy Accept failed");
+            session.Send(BuddyPacket.Accept(entryId, s_buddy_err_unknown));
         }
     }
 
@@ -268,6 +289,7 @@ public class BuddyManager : IDisposable {
     public void SendDecline(long entryId) {
         if (!buddies.TryGetValue(entryId, out Buddy? self) || self.Type != BuddyType.InRequest) {
             logger.Debug("Could not find entry:{EntryId} to Decline", entryId);
+            session.Send(BuddyPacket.Decline(entryId, s_buddy_err_miss_id));
             return;
         }
 
@@ -277,12 +299,15 @@ public class BuddyManager : IDisposable {
             BuddyEntry? other = db.GetBuddy(receiverId, session.CharacterId);
             if (other == null) {
                 logger.Warning("Decline without paired entry");
+                session.Send(BuddyPacket.Decline(entryId, s_buddy_err_miss_id));
                 return;
             }
 
-            if (!buddies.Remove(entryId) || !db.RemoveBuddy(self, other)) {
+            if (!db.RemoveBuddy(self, other)) {
+                session.Send(BuddyPacket.Decline(entryId, s_buddy_err_unknown));
                 return;
             }
+            buddies.Remove(entryId);
 
             session.Send(BuddyPacket.Decline(self));
             BuddyResponse response = session.World.Buddy(new BuddyRequest {
@@ -292,6 +317,7 @@ public class BuddyManager : IDisposable {
             KeepNotice(db, response, receiverId, BuddyNoticeType.Declined, other.Id);
         } catch (SystemException ex) {
             logger.Warning(ex, "Decline failed");
+            session.Send(BuddyPacket.Decline(entryId, s_buddy_err_unknown));
         }
     }
 
@@ -315,15 +341,19 @@ public class BuddyManager : IDisposable {
             return;
         }
         if (entryId == 0) {
-            // entryId is 0 when blocking by |name|.
+            // entryId is 0 when blocking by |name|, in any case (names are looked up without case).
+            if (SameName(name, session.PlayerName)) {
+                session.Send(BuddyPacket.Block(name: name, error: s_buddy_err_my_id_ex));
+                return;
+            }
             // We still search for entryId to convert the existing buddy entry.
             foreach (Buddy value in buddies.Values) {
-                if (value.Info.Name == name) {
+                if (SameName(value.Info.Name, name)) {
                     entryId = value.Id;
                 }
             }
             // Already blocked: the client only asks for players it has not blocked, so a repeat is dropped.
-            if (blocked.Values.Any(value => value.Info.Name == name)) {
+            if (blocked.Values.Any(value => SameName(value.Info.Name, name))) {
                 logger.Information("{Name} is already blocked", name);
                 return;
             }
@@ -352,6 +382,14 @@ public class BuddyManager : IDisposable {
                 receiverId = db.GetCharacterId(name);
                 if (receiverId == default) {
                     session.Send(BuddyPacket.Block(error: s_buddy_err_miss_id));
+                    return;
+                }
+                if (receiverId == session.CharacterId) {
+                    session.Send(BuddyPacket.Block(name: name, error: s_buddy_err_my_id_ex));
+                    return;
+                }
+                if (blocked.Values.Any(value => value.Info.CharacterId == receiverId)) {
+                    logger.Information("{Name} is already blocked", name);
                     return;
                 }
 
@@ -401,12 +439,15 @@ public class BuddyManager : IDisposable {
     public void Unblock(long entryId) {
         if (!blocked.Remove(entryId, out Buddy? self)) {
             logger.Debug("Could not find entry:{EntryId} to Unblock", entryId);
+            session.Send(BuddyPacket.Unblock(entryId, s_buddy_err_miss_id));
             return;
         }
 
         try {
             using GameStorage.Request db = session.GameStorage.Context();
             if (!db.RemoveBuddy(self)) {
+                blocked[entryId] = self;
+                session.Send(BuddyPacket.Unblock(entryId, s_buddy_err_unknown));
                 return;
             }
 
@@ -414,12 +455,14 @@ public class BuddyManager : IDisposable {
             session.Send(BuddyPacket.Remove(self));
         } catch (SystemException ex) {
             logger.Warning(ex, "Unblock failed");
+            session.Send(BuddyPacket.Unblock(entryId, s_buddy_err_unknown));
         }
     }
 
     public void SendDelete(long entryId) {
         if (!buddies.TryGetValue(entryId, out Buddy? self) || self.Type != BuddyType.Default) {
             logger.Debug("Could not find entry:{EntryId} to Delete", entryId);
+            session.Send(BuddyPacket.Remove(entryId, s_buddy_err_miss_id));
             return;
         }
 
@@ -429,10 +472,12 @@ public class BuddyManager : IDisposable {
             BuddyEntry? other = db.GetBuddy(receiverId, session.CharacterId);
             if (other == null) {
                 logger.Warning("Delete without paired entry");
+                session.Send(BuddyPacket.Remove(entryId, s_buddy_err_miss_id));
                 return;
             }
 
             if (!db.RemoveBuddy(self, other)) {
+                session.Send(BuddyPacket.Remove(entryId, s_buddy_err_unknown));
                 return;
             }
 
@@ -448,6 +493,7 @@ public class BuddyManager : IDisposable {
             KeepNotice(db, response, receiverId, BuddyNoticeType.Removed, other.Id);
         } catch (SystemException ex) {
             logger.Warning(ex, "Delete failed");
+            session.Send(BuddyPacket.Remove(entryId, s_buddy_err_unknown));
         }
     }
 
@@ -489,6 +535,7 @@ public class BuddyManager : IDisposable {
     public void SendCancel(long entryId) {
         if (!buddies.TryGetValue(entryId, out Buddy? self) || self.Type != BuddyType.OutRequest) {
             logger.Debug("Could not find entry:{EntryId} to Cancel", entryId);
+            session.Send(BuddyPacket.Cancel(entryId, s_buddy_err_miss_id));
             return;
         }
 
@@ -498,10 +545,12 @@ public class BuddyManager : IDisposable {
             BuddyEntry? other = db.GetBuddy(receiverId, session.CharacterId);
             if (other == null) {
                 logger.Warning("Cancel without paired entry");
+                session.Send(BuddyPacket.Cancel(entryId, s_buddy_err_miss_id));
                 return;
             }
 
             if (!db.RemoveBuddy(self, other)) {
+                session.Send(BuddyPacket.Cancel(entryId, s_buddy_err_unknown));
                 return;
             }
 
@@ -512,6 +561,7 @@ public class BuddyManager : IDisposable {
             });
         } catch (SystemException ex) {
             logger.Warning(ex, "Cancel failed");
+            session.Send(BuddyPacket.Cancel(entryId, s_buddy_err_unknown));
         }
     }
 
@@ -524,6 +574,8 @@ public class BuddyManager : IDisposable {
 
         session.Send(BuddyPacket.Remove(self));
     }
+
+    private static bool SameName(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     private bool TryGet(long buddyId, [NotNullWhen(true)] out Buddy? result) {
         foreach (Buddy buddy in buddies.Values) {

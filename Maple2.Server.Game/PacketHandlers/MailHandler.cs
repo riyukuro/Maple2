@@ -69,7 +69,8 @@ public class MailHandler : FieldPacketHandler {
             return;
         }
 
-        if (receiverName == session.PlayerName) {
+        // Names are looked up without case (GetCharacterId), so the own name in another case is the sender too.
+        if (string.Equals(receiverName, session.PlayerName, StringComparison.OrdinalIgnoreCase)) {
             session.Send(MailPacket.Error(MailError.s_mail_error_recipient_equal_sender, (byte) Command.Send));
             return;
         }
@@ -78,6 +79,10 @@ public class MailHandler : FieldPacketHandler {
         long receiverId = db.GetCharacterId(receiverName);
         if (receiverId == default) {
             session.Send(MailPacket.Error(MailError.s_mail_error_username, (byte) Command.Send));
+            return;
+        }
+        if (receiverId == session.CharacterId) {
+            session.Send(MailPacket.Error(MailError.s_mail_error_recipient_equal_sender, (byte) Command.Send));
             return;
         }
         // The client has a text for both directions of a block (OnMail error 27 and 28).
