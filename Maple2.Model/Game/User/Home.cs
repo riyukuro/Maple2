@@ -191,7 +191,11 @@ public class Home : IByteSerializable {
                 writer.Write<HomePermissionSetting>(setting);
             }
         }
+    }
 
+    // The client reads the saved layouts and blueprints only when the home's owner is its own account
+    // (CSceneStateGame::OnLoadUgcMap, scenestategame.cpp:2172), so LoadUgcMap writes them for the owner alone.
+    public void WriteLayouts(IByteWriter writer) {
         writer.WriteByte((byte) Layouts.Count);
         foreach (HomeLayout layout in Layouts) {
             writer.WriteClass<HomeLayout>(layout);

@@ -71,7 +71,7 @@ public class LoadUgcMapHandler : FieldPacketHandler {
 
         // Technically this sends home details to all players who enter map (including passcode)
         // but you would already know passcode if you entered the map.
-        session.Send(LoadUgcMapPacket.LoadHome(plotCubes.Count, home));
+        session.Send(LoadUgcMapPacket.LoadHome(plotCubes.Count, home, session.AccountId));
 
         LoadPlots(session, plotCubes);
     }

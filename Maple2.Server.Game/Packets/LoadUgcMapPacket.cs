@@ -19,12 +19,15 @@ public static class LoadUgcMapPacket {
         return pWriter;
     }
 
-    public static ByteWriter LoadHome(int cubeCount, Home home) {
+    public static ByteWriter LoadHome(int cubeCount, Home home, long accountId) {
         var pWriter = Packet.Of(SendOp.LoadUgcMap);
         pWriter.WriteInt(cubeCount);
         pWriter.WriteInt(); // apartment number
         pWriter.WriteBool(true);
         pWriter.WriteClass<Home>(home);
+        if (home.AccountId == accountId) {
+            home.WriteLayouts(pWriter);
+        }
 
         return pWriter;
     }
