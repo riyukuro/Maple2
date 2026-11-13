@@ -186,6 +186,10 @@ public class BeautyHandler : FieldPacketHandler {
         if (entry == null) {
             return;
         }
+        if (BeautyRules.IsLocked(session.Player.Value.Character.Level, entry.RequiredLevel, entry.AchievementId,
+                () => session.Achievement.HasAchievement(entry.AchievementId, entry.AchievementRank))) {
+            return;
+        }
 
         // The fee is taken only once the new item is on the character.
         Item? created = ReadBeauty(session, packet, entry.Id);
