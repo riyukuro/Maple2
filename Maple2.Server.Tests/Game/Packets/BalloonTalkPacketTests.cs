@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Trigger;
 
 namespace Maple2.Server.Tests.Game.Packets;
 
@@ -25,5 +27,14 @@ public class BalloonTalkPacketTests {
     public void NpcAiTableIsOne() {
         var talk = Read(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.NpcAi, 9002, "$AI__AI_TEST__0$", 2000, 0));
         Assert.That(talk, Is.EqualTo(((byte) 1, 9002, "$AI__AI_TEST__0$", 2000, 0)));
+    }
+
+    [Test]
+    public void SpawnZeroGoesToEachPlayersOwnCharacter() {
+        var sent = new List<(string Player, int ObjectId)>();
+        (string Name, int ObjectId)[] players = [("a", 101), ("b", 202)];
+        TriggerContext.ForEachPlayer(players, player => player.ObjectId, (player, packet) => sent.Add((player.Name, Read(packet).ObjectId)),
+            objectId => CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, objectId, "$90000001_XX__MAIN__2$", 3000, 0));
+        Assert.That(sent, Is.EqualTo(new[] { ("a", 101), ("b", 202) }));
     }
 }

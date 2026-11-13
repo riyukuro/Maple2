@@ -165,11 +165,7 @@ public partial class TriggerContext {
             type, spawnId, script, delay, arg5, align);
 
         if (spawnId == 0) {
-            var player = Field.Players.Values.FirstOrDefault();
-            if (player == null) {
-                return;
-            }
-            Broadcast(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, player.ObjectId, script, delay * 1000, 0));
+            SendOwnBalloon(script, delay * 1000, 0);
             return;
         }
 

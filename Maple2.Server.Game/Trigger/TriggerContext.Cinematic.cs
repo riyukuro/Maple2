@@ -1,4 +1,5 @@
-﻿using Maple2.Server.Game.Model;
+﻿using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger.Helpers;
 
@@ -84,13 +85,7 @@ public partial class TriggerContext {
     public void AddBalloonTalk(int spawnId, string msg, int duration, int delayTick, int npcId) {
         DebugLog("[AddBalloonTalk] spawnId:{SpawnId}, msg:{Message}, duration:{Duration}, delayTick:{Delay}, npcId:{NpcId}", spawnId, msg, duration, delayTick, npcId);
         if (spawnId == 0) {
-            FieldPlayer? fieldPlayer = Field.Players.Values.FirstOrDefault();
-            if (fieldPlayer == null) {
-                ErrorLog("[AddBalloonTalk] No players found in field");
-                return;
-            }
-
-            Broadcast(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, fieldPlayer.ObjectId, msg, duration, delayTick));
+            SendOwnBalloon(msg, duration, delayTick);
             return;
         }
 
@@ -110,6 +105,25 @@ public partial class TriggerContext {
             : SpawnPointNpcs(Field.Npcs.Values, Field.Mobs.Values, npc => npc.SpawnPointId, spawnId);
         foreach (FieldNpc npc in talkers) {
             Broadcast(CinematicPacket.RemoveBalloonTalk(npc.ObjectId));
+        }
+        if (spawnId == 0) {
+            // Chosen here: spawn 0 also clears each player's own balloon (see SendOwnBalloon).
+            ForEachPlayer(Field.Players.Values, player => player.ObjectId, (player, packet) => player.Session.Send(packet),
+                CinematicPacket.RemoveBalloonTalk);
+        }
+    }
+
+    // Chosen here: a balloon on spawn id 0 is the player's own character. The client keys a balloon by the object
+    // id in the packet (UICutSceneCinematic 0x141909eb0) and runs no trigger itself, so each player in the field gets
+    // the balloon over its own character, sent to its own session. Before, everyone saw it over the first player.
+    private void SendOwnBalloon(string script, int duration, int delay) {
+        ForEachPlayer(Field.Players.Values, player => player.ObjectId, (player, packet) => player.Session.Send(packet),
+            objectId => CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, objectId, script, duration, delay));
+    }
+
+    internal static void ForEachPlayer<T>(IEnumerable<T> players, Func<T, int> objectId, Action<T, ByteWriter> send, Func<int, ByteWriter> packet) {
+        foreach (T player in players) {
+            send(player, packet(objectId(player)));
         }
     }
 

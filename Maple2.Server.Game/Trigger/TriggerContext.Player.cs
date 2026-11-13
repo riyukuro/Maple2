@@ -245,7 +245,7 @@ public partial class TriggerContext {
     }
 
     public void SetState(int triggerId, string[] states, bool randomize) {
-        ErrorLog("[SetState] triggerId:{TriggerId}, states:{States}, randomize:{Randomize}", triggerId, string.Join(", ", states), randomize);
+        DebugLog("[SetState] triggerId:{TriggerId}, states:{States}, randomize:{Randomize}", triggerId, string.Join(", ", states), randomize);
         if (randomize) {
             Random.Shared.Shuffle(states);
         }
