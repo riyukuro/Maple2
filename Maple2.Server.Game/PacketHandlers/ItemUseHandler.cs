@@ -36,6 +36,19 @@ public class ItemUseHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
+    // The checks an item use passes before its function runs: not expired (pets and maid furnishings excepted), a
+    // premium-club item only with premium club, a shadow world item only in the shadow world. RequestItemBox runs them
+    // too (ItemBoxHandler).
+    public static bool UseAllowed(GameSession session, Item item) {
+        if (!ItemLockRules.ExpiryAllowsUse(item.IsExpired(), item.Metadata.Property.Type, MaidRules.MaidId(item.Metadata, false))) {
+            return false;
+        }
+        if (item.Metadata.Limit.RequireVip && session.Player.Value.Account.PremiumTime < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+            return false;
+        }
+        return item.Metadata.Function?.OnlyShadowWorld != true || session.Field?.Metadata.Property.Continent == Continent.ShadowWorld;
+    }
+
     public override void Handle(GameSession session, IByteReader packet) {
         if (session.Field is null) return;
         long itemUid = packet.ReadLong();
@@ -46,15 +59,7 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        if (!ItemLockRules.ExpiryAllowsUse(item.IsExpired(), item.Metadata.Property.Type, MaidRules.MaidId(item.Metadata, false))) {
-            return;
-        }
-
-        if (item.Metadata.Limit.RequireVip && session.Player.Value.Account.PremiumTime < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
-            return;
-        }
-
-        if (item.Metadata.Function?.OnlyShadowWorld == true && session.Field.Metadata.Property.Continent != Continent.ShadowWorld) {
+        if (!UseAllowed(session, item)) {
             return;
         }
 

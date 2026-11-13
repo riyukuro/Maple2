@@ -30,9 +30,12 @@ public class ItemBoxHandlerTests {
 
     // The box in the bag, and drop box 100 = two groups: RewardA x3 | RewardB x1.
     private GameSession Login(ItemFunction function, string parameters, int amount, int rewardSlotMax = 100, short[]? tabCount = null,
-                              int otherRarityAmount = 0, int keys = 0) {
+                              int otherRarityAmount = 0, int keys = 0, bool requireVip = false) {
         test = new TestGameSession();
         ItemMetadata boxMetadata = TestGameSession.Metadata(BoxId, function: new ItemMetadataFunction(function, function.ToString(), parameters, false));
+        if (requireVip) {
+            boxMetadata = boxMetadata with { Limit = boxMetadata.Limit with { RequireVip = true } };
+        }
         test.Register(TestGameSession.Metadata(RewardA, slotMax: rewardSlotMax), TestGameSession.Metadata(RewardB, slotMax: rewardSlotMax));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
             [DropBoxId] = function == ItemFunction.SelectItemBox
@@ -165,6 +168,35 @@ public class ItemBoxHandlerTests {
         Assert.That(Held(session, BoxId), Is.EqualTo(2));
         Assert.That(Held(session, RewardA), Is.EqualTo(9));
         Assert.That(Held(session, RewardB), Is.EqualTo(3));
+    }
+
+    // RequestItemBox runs the item use checks (ItemUseHandler.UseAllowed): a box that expired while the dialog ran is
+    // not opened, and the answer "Unable to open boxes" (3) closes the dialog.
+    [Test]
+    public void OpenItemBox_MultiOpen_ExpiredBoxIsRefused() {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 5);
+        session.Item.Inventory.Get(box.Uid)!.ExpiryTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
+
+        MultiOpen(session, 3);
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Select(Convert.ToHexString).ToArray(),
+            Is.EqualTo(new[] { Hex(ItemBoxPacket.Open(BoxId, 0, ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail)) }));
+        Assert.That(Held(session, box), Is.EqualTo(5));
+        Assert.That(Held(session, RewardA), Is.EqualTo(0));
+    }
+
+    // A premium club item is opened only with premium club, as it is used only with it.
+    [Test]
+    public void OpenItemBox_MultiOpen_PremiumBoxNeedsPremiumClub() {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 5, requireVip: true);
+        session.Player.Value.Account.PremiumTime = 0;
+
+        MultiOpen(session, 3);
+
+        Assert.That(Convert.ToHexString(test.TakeSent().Single()),
+            Is.EqualTo(Hex(ItemBoxPacket.Open(BoxId, 0, ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail))));
+        Assert.That(Held(session, BoxId), Is.EqualTo(5));
     }
 
     [TestCase(0)]

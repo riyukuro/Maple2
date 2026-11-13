@@ -25,8 +25,18 @@ public class ItemBoxHandler : FieldPacketHandler {
         if (rarity < 0) {
             return;
         }
-        Item? item = session.Item.Inventory.Find(itemId, rarity).FirstOrDefault();
+        // The stack must pass the checks of an item use (ItemUseHandler.UseAllowed): the dialog sends again after each
+        // answer without asking CanUseItem, so a box that expired or a premium club that ended while it ran is still
+        // sent. Chosen here: a box held but not usable is answered "Unable to open boxes" (3), which closes the dialog,
+        // as the client sends nothing for it from the bag.
+        // Filter, as Find skips an expired stack.
+        IList<Item> held = session.Item.Inventory.Filter(stack => stack.Id == itemId && stack.Rarity == rarity);
+        if (held.Count == 0) {
+            return;
+        }
+        Item? item = held.FirstOrDefault(stack => ItemUseHandler.UseAllowed(session, stack));
         if (item == null) {
+            session.Send(ItemBoxPacket.Open(itemId, 0, ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail));
             return;
         }
 
