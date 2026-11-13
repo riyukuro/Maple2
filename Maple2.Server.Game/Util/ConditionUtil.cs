@@ -202,6 +202,14 @@ public static class ConditionUtil {
                     return true;
                 }
                 break;
+            // dungeon_reward: the raise passes the dungeon room, the rows name the dungeon (21230122-21230129, the
+            // Lapenta dungeons: codes 27000-27003, rooms 27000001-27003001). The client's dungeon of a room is the room
+            // id / 1000 (GetDungeonIdOfRoom, commonfiles/dungeonroom.cpp:258).
+            case ConditionType.dungeon_reward:
+                if (code.Integers != null && code.Integers.Contains((int) (longValue / 1000))) {
+                    return true;
+                }
+                break;
             // The Maple Survival conditions with a code: the killing hit's skill (21300043 Jab 90000772; 21300057 the six
             // levels of one weapon's skill), the item (21300062 20000733) or the map (21300073 82000012, 82000001).
             case ConditionType.survival_kill_use_skill:

@@ -755,8 +755,8 @@ public class DungeonManager {
 
         if (UserRecord.Flag.HasFlag(DungeonBonusFlag.Clear)) {
             GetClearDungeonRewards();
-            // "Collect a reward from any dungeon" (70700002): a clear that still had a reward count left. The dungeon id
-            // goes along as the code; the achievement rows that name a dungeon have no code case yet and stay uncounted.
+            // "Collect a reward from any dungeon" (70700002): a clear that still had a reward count left. The dungeon room
+            // goes along as the code; the rows that name a dungeon match it by room id / 1000 (ConditionUtil).
             session.ConditionUpdate(ConditionType.dungeon_reward, codeLong: Lobby.DungeonId);
             // The same reward by the room's group type (dungeon_reward_group: 70700006 code 1 normal, 89000215 code 2
             // raid, 70700061 code 9 item, 70700003 code 10 vip).

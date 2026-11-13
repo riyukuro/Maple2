@@ -463,6 +463,17 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!), Is.True);
     }
 
+    // dungeon_reward rows that name a dungeon (21230122 "Green Lapenta Eruption": code 27000) count a reward from any
+    // of its rooms (room id / 1000, the client's GetDungeonIdOfRoom), not one from another dungeon's room.
+    [TestCase(27000001L, true)]
+    [TestCase(27000002L, true)]
+    [TestCase(27001001L, false)]
+    [TestCase(23021003L, false)]
+    public void DungeonReward_CountsTheRoomsOfTheNamedDungeon(long roomId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.dungeon_reward, 15, new ConditionMetadata.Parameters(Integers: [27000]), null);
+        Assert.That(condition.Check(null!, codeLong: roomId), Is.EqualTo(expected));
+    }
+
     [Test]
     public void EnterOtherHouse_ConditionWithoutCodesCounts() {
         var condition = new ConditionMetadata(ConditionType.enter_otherhouse, 3, null, null);
