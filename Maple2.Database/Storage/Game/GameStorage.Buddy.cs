@@ -49,5 +49,32 @@ public partial class GameStorage {
             Context.Buddy.RemoveRange(buddies.Select<BuddyEntry, Model.Buddy>(buddy => buddy));
             return Context.TrySaveChanges();
         }
+
+        public bool CreateBuddyNotice(long ownerId, BuddyNotice notice) {
+            Context.BuddyNotice.Add(new Model.BuddyNotice {
+                OwnerId = ownerId,
+                Name = notice.Name,
+                Type = notice.Type,
+                EntryId = notice.EntryId,
+            });
+            return Context.TrySaveChanges();
+        }
+
+        // The character's friend notices in the order they were kept; they are deleted as they are read.
+        public IList<BuddyNotice> TakeBuddyNotices(long ownerId) {
+            List<Model.BuddyNotice> rows = Context.BuddyNotice
+                .Where(notice => notice.OwnerId == ownerId)
+                .OrderBy(notice => notice.Id)
+                .ToList();
+            if (rows.Count == 0) {
+                return Array.Empty<BuddyNotice>();
+            }
+
+            Context.BuddyNotice.RemoveRange(rows);
+            if (!Context.TrySaveChanges()) {
+                return Array.Empty<BuddyNotice>();
+            }
+            return rows.Select(row => new BuddyNotice(row.Name, row.Type, row.EntryId)).ToList();
+        }
     }
 }

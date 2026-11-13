@@ -20,4 +20,10 @@ public static class BuddyRules {
     public static bool DeclinesOnReceipt(bool autoReject, BuddyType type) {
         return autoReject && type == BuddyType.InRequest;
     }
+
+    // The world answers a friend change with the game server it handed the change to; no server (0) means the other
+    // player is not online, so the change is kept as a notice for the next login.
+    public static bool Delivered(BuddyResponse response) {
+        return response.Channel > 0;
+    }
 }

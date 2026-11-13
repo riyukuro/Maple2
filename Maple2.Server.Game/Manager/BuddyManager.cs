@@ -93,6 +93,23 @@ public class BuddyManager : IDisposable {
         session.Send(BuddyPacket.EndList(ListCount(buddies.Values.Select(buddy => buddy.Type))));
         // The option lives in the client's own settings; ask for it once per session.
         session.Send(BuddyPacket.AskAutoReject());
+
+        // What the player's friends did while it was offline; after the list, as "approved" marks the friend in it.
+        using GameStorage.Request db = session.GameStorage.Context();
+        IList<BuddyNotice> notices = db.TakeBuddyNotices(session.CharacterId);
+        if (notices.Count > 0) {
+            session.Send(BuddyPacket.Notices(notices));
+        }
+    }
+
+    // Keeps the change as a notice for the other player's next login when the world found it offline.
+    private void KeepNotice(GameStorage.Request db, BuddyResponse response, long receiverId, BuddyNoticeType type, long entryId) {
+        if (Util.BuddyRules.Delivered(response)) {
+            return;
+        }
+        if (!db.CreateBuddyNotice(receiverId, new BuddyNotice(session.PlayerName, type, entryId))) {
+            logger.Warning("Failed to keep buddy notice {Type} for {ReceiverId}", type, receiverId);
+        }
     }
 
     public void SendInvite(string name, string message) {
@@ -209,10 +226,11 @@ public class BuddyManager : IDisposable {
                 return;
             }
 
-            session.World.Buddy(new BuddyRequest {
+            BuddyResponse response = session.World.Buddy(new BuddyRequest {
                 ReceiverId = receiverId,
                 Accept = new BuddyRequest.Types.Accept { EntryId = other.Id },
             });
+            KeepNotice(db, response, receiverId, BuddyNoticeType.Approved, other.Id);
             if (session.PlayerInfo.GetOrFetch(self.Info.CharacterId, out PlayerInfo? info)) {
                 self.Info.Update(UpdateField.All, info);
             }
@@ -267,10 +285,11 @@ public class BuddyManager : IDisposable {
             }
 
             session.Send(BuddyPacket.Decline(self));
-            BuddyResponse _ = session.World.Buddy(new BuddyRequest {
+            BuddyResponse response = session.World.Buddy(new BuddyRequest {
                 ReceiverId = receiverId,
                 Decline = new BuddyRequest.Types.Decline { EntryId = other.Id },
             });
+            KeepNotice(db, response, receiverId, BuddyNoticeType.Declined, other.Id);
         } catch (SystemException ex) {
             logger.Warning(ex, "Decline failed");
         }
@@ -422,10 +441,11 @@ public class BuddyManager : IDisposable {
             }
             EndListen(self);
             session.Send(BuddyPacket.Remove(self));
-            BuddyResponse _ = session.World.Buddy(new BuddyRequest {
+            BuddyResponse response = session.World.Buddy(new BuddyRequest {
                 ReceiverId = receiverId,
                 Delete = new BuddyRequest.Types.Delete { EntryId = other.Id },
             });
+            KeepNotice(db, response, receiverId, BuddyNoticeType.Removed, other.Id);
         } catch (SystemException ex) {
             logger.Warning(ex, "Delete failed");
         }

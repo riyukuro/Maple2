@@ -380,6 +380,32 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("buddy", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.BuddyNotice", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("EntryId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<long>("OwnerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte>("Type")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.ToTable("buddy-notice", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.Character", b =>
                 {
                     b.Property<long>("Id")
@@ -2109,6 +2135,15 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired();
 
                     b.Navigation("BuddyCharacter");
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.BuddyNotice", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.Character", b =>

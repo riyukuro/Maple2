@@ -20,6 +20,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<ClubMember> ClubMember { get; set; } = null!;
     internal DbSet<SkillTab> SkillTab { get; set; } = null!;
     internal DbSet<Buddy> Buddy { get; set; } = null!;
+    internal DbSet<BuddyNotice> BuddyNotice { get; set; } = null!;
     internal DbSet<UgcMap> UgcMap { get; set; } = null!;
     internal DbSet<UgcMapCube> UgcMapCube { get; set; } = null!;
     internal DbSet<Maid> Maid { get; set; } = null!;
@@ -78,6 +79,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
         modelBuilder.Entity<ClubMember>(Maple2.Database.Model.ClubMember.Configure);
         modelBuilder.Entity<SkillTab>(Maple2.Database.Model.SkillTab.Configure);
         modelBuilder.Entity<Buddy>(Maple2.Database.Model.Buddy.Configure);
+        modelBuilder.Entity<BuddyNotice>(Maple2.Database.Model.BuddyNotice.Configure);
         modelBuilder.Entity<UgcMap>(Maple2.Database.Model.UgcMap.Configure);
         modelBuilder.Entity<UgcMapCube>(Maple2.Database.Model.UgcMapCube.Configure);
         modelBuilder.Entity<Maid>(Maple2.Database.Model.Maid.Configure);

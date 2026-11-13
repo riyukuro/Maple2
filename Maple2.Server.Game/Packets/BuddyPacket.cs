@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Error;
+﻿using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -151,15 +152,28 @@ public static class BuddyPacket {
         return pWriter;
     }
 
-    public static ByteWriter NotifyRemove(Buddy buddy, string action) {
+    // The friend notices kept while the player was offline. The client shows each as a notice line: "approved" also
+    // marks the friend new in the list (so it is sent after the list), "declined" and "removed" name the other player.
+    public static ByteWriter Notices(ICollection<BuddyNotice> notices) {
         var pWriter = Packet.Of(SendOp.Buddy);
         pWriter.Write<Command>(Command.NotifyRemove);
-        pWriter.WriteInt(1); // entry count; the client reads this many name, action, id entries
-        pWriter.WriteUnicodeString(buddy.Info.Name);
-        pWriter.WriteUnicodeString(action);
-        pWriter.WriteLong(buddy.Id);
+        pWriter.WriteInt(notices.Count);
+        foreach (BuddyNotice notice in notices) {
+            pWriter.WriteUnicodeString(notice.Name);
+            pWriter.WriteUnicodeString(NoticeAction(notice.Type));
+            pWriter.WriteLong(notice.EntryId);
+        }
 
         return pWriter;
+    }
+
+    public static string NoticeAction(BuddyNoticeType type) {
+        return type switch {
+            BuddyNoticeType.Approved => "approved",
+            BuddyNoticeType.Declined => "declined",
+            BuddyNoticeType.Removed => "removed",
+            _ => throw new ArgumentOutOfRangeException(nameof(type), type, null),
+        };
     }
 
     public static ByteWriter NotifyOnline(Buddy buddy) {

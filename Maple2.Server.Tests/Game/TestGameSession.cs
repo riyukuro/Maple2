@@ -724,6 +724,16 @@ public sealed class TestGameSession {
             return new Maple2.Server.World.Service.ClubResponse { Error = ClubError };
         }
 
+        // The friend changes handed to the world; BuddyWorld answers as the world would (the other player's game
+        // server, or none when it is offline). Without it the world finds no one.
+        public readonly List<BuddyRequest> BuddyRequests = [];
+        public Func<BuddyRequest, BuddyResponse>? BuddyWorld;
+
+        public override BuddyResponse Buddy(BuddyRequest request, CallOptions options) {
+            BuddyRequests.Add(request);
+            return BuddyWorld?.Invoke(request) ?? new BuddyResponse();
+        }
+
         // What PlayerInfo.SendUpdate sent to the world.
         public readonly List<PlayerUpdateRequest> PlayerUpdates = [];
 
