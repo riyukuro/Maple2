@@ -28,6 +28,10 @@ public class Guild : IByteSerializable {
     public int Funds;
     public int HouseRank;
     public int HouseTheme;
+    // The guild championship: the record (World-owned; the channels hold a copy) and the queue state of now
+    // (CGuildInfo m_pvpState: 0 none, 1 registered, 2 matched), which is not stored.
+    public GuildPvp Pvp = new();
+    public GuildPvpState PvpState;
 
     public readonly ConcurrentDictionary<long, GuildMember> Members;
     public required IList<GuildRank> Ranks { get; init; }
@@ -140,10 +144,12 @@ public class Guild : IByteSerializable {
         writer.WriteLong(LeaderCharacterId);
         writer.WriteUnicodeString(LeaderName);
         writer.WriteLong(CreationTime);
-        writer.WriteByte(); // championship state (CGuildInfo::SetPvpState); KMS2 sends 0
-        writer.WriteInt(1000);
-        writer.WriteInt();
-        writer.WriteInt();
+        // The championship (CGuildInfo::SetPvpState, then the score, wins and losses the guild page shows).
+        GuildPvp pvp = Pvp;
+        writer.WriteByte((byte) PvpState);
+        writer.WriteInt(pvp.Score);
+        writer.WriteInt(pvp.Wins);
+        writer.WriteInt(pvp.Losses);
         writer.WriteInt();
         writer.WriteInt();
         writer.WriteInt();

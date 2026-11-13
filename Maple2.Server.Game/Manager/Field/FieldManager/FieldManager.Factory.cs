@@ -279,7 +279,26 @@ public partial class FieldManager {
         public bool HasPvpMatch(int roomId) {
             return fields.Values.Any(mapFields => mapFields.TryGetValue(roomId, out FieldManager? field) && !field.Disposed
                                                   && (field.RankDuel is { Runs: true } || field.Arena != null
-                                                      || field.GuildVsGame is { MatchId: > 0, State.Ended: false }));
+                                                      || field.GuildVsGame is { MatchId: > 0, State.Ended: false }
+                                                      || (field.GuildPvp != null && field.PvpZone is not { Ended: true })));
+        }
+
+        // A field for a guild championship match (World GuildPvpLookup): a new room of the guild arena (64000001, the
+        // map of the guildpvp_* trophies), its guilds the two of the match. The zone tells the World when it ended.
+        public const int GuildPvpMapId = 64000001;
+
+        public FieldManager? CreateGuildPvp(int matchId, long guildA, long guildB) {
+            SemaphoreSlim mapLock = GetMapLock(GuildPvpMapId);
+            mapLock.Wait();
+            try {
+                FieldManager? field = Create(GuildPvpMapId);
+                field?.SetGuildPvp(new GuildPvpFieldMatch(matchId, guildA, guildB, end => World.Guild(new Maple2.Server.World.Service.GuildRequest {
+                    PvpEnd = end,
+                }, deadline: DateTime.UtcNow.AddSeconds(10))));
+                return field;
+            } finally {
+                mapLock.Release();
+            }
         }
 
         // A field for a guild vs game match (World GuildVsGameLookup): a new room of the guild vs game map (the

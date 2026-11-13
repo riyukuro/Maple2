@@ -46,6 +46,27 @@ public partial class GameStorage {
                 .ToList();
         }
 
+        // The guild championship board of a season (GameRanking 0x35/0x36): the guilds that fought in it, by score, then
+        // by fewer losses, then by id; a closed season from its season rows. Each row: id, name, emblem, leader, score.
+        public IList<GuildPvpStanding> GetGuildPvpStandings(int seasonId) {
+            return Context.Guild.Where(guild => guild.Pvp != null)
+                .Join(Context.Character, guild => guild.LeaderId, character => character.Id,
+                    (guild, character) => new { guild.Id, guild.Name, guild.Emblem, guild.Pvp, LeaderName = character.Name })
+                .AsEnumerable()
+                .Select(row => {
+                    if (row.Pvp!.SeasonId == seasonId && row.Pvp.Wins + row.Pvp.Losses > 0) {
+                        return new GuildPvpStanding(row.Id, row.Name, row.Emblem, row.LeaderName, row.Pvp.Score, row.Pvp.Losses);
+                    }
+                    GuildPvpSeason? closed = row.Pvp.Seasons.LastOrDefault(season => season.SeasonId == seasonId);
+                    return closed == null ? null : new GuildPvpStanding(row.Id, row.Name, row.Emblem, row.LeaderName, closed.Score, closed.Losses);
+                })
+                .WhereNotNull()
+                .OrderByDescending(row => row.Score)
+                .ThenBy(row => row.Losses)
+                .ThenBy(row => row.GuildId)
+                .ToList();
+        }
+
         public bool GuildExists(long guildId = 0, string guildName = "") {
             return Context.Guild.Any(guild => guild.Id == guildId || guild.Name == guildName);
         }
@@ -66,6 +87,8 @@ public partial class GameStorage {
                         WeeklyContribution = member.WeeklyContribution,
                         TotalContribution = member.TotalContribution,
                         DailyDonationCount = member.DailyDonationCount,
+                        PvpSeasonCount = member.PvpSeasonCount,
+                        PvpTotalCount = member.PvpTotalCount,
                         JoinTime = member.CreationTime.ToEpochSeconds(),
                         CheckinTime = member.CheckinTime.ToEpochSeconds(),
                         DonationTime = member.DonationTime.ToEpochSeconds(),
@@ -395,6 +418,7 @@ public partial class GameStorage {
                         StorageLog = (guild.StorageLog ?? []).Select(entry => new GuildStorageLog(entry.GiverAccountId,
                             entry.GiverCharacterId, entry.GiverName, entry.ReceiverAccountId, entry.ReceiverCharacterId,
                             entry.ReceiverName, entry.ItemId, entry.Rarity, entry.Amount, entry.Time)).ToList(),
+                        Pvp = guild.Pvp ?? new GuildPvp(),
                     };
                 })
                 .FirstOrDefault();

@@ -184,7 +184,7 @@ public class GuildAndNpcJumpPacketTests {
     // CGuildManager::OnPacketPvpHistory (0x4a): the row count; no rows.
     [Test]
     public void PvpHistory_IsMode74WithZeroRows() {
-        ByteWriter writer = GuildPacket.PvpHistory();
+        ByteWriter writer = GuildPacket.PvpHistory([]);
         var reader = new ByteReader(writer.Buffer, 0);
 
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
@@ -196,7 +196,7 @@ public class GuildAndNpcJumpPacketTests {
     // CGuildManager::OnPacketPvpSeasonHistory (0x4b): the row count; no rows.
     [Test]
     public void PvpSeason_IsMode75WithZeroRows() {
-        ByteWriter writer = GuildPacket.PvpSeason();
+        ByteWriter writer = GuildPacket.PvpSeason([]);
         var reader = new ByteReader(writer.Buffer, 0);
 
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));

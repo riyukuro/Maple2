@@ -57,6 +57,9 @@ internal class Character {
                 Insignia = other.Insignia,
                 SkinTabStart = other.SkinTabStart,
                 SkinTabEnd = other.SkinTabEnd,
+                ChampionSeasonId = other.ChampionSeasonId,
+                ChampionGuildId = other.ChampionGuildId,
+                ChampionGuildName = other.ChampionGuildName,
             },
             Cooldown = new Cooldown {
                 Doctor = other.DoctorCooldown,
@@ -119,6 +122,9 @@ internal class Character {
             Insignia = other.Profile.Insignia,
             SkinTabStart = other.Profile.SkinTabStart,
             SkinTabEnd = other.Profile.SkinTabEnd,
+            ChampionSeasonId = other.Profile.ChampionSeasonId,
+            ChampionGuildId = other.Profile.ChampionGuildId,
+            ChampionGuildName = other.Profile.ChampionGuildName ?? string.Empty,
             DoctorCooldown = other.Cooldown.Doctor,
             StorageCooldown = other.Cooldown.Storage,
             AbilityResetTime = other.Cooldown.AbilityReset,
@@ -184,6 +190,10 @@ internal class Profile {
     public short Insignia { get; set; }
     public long SkinTabStart { get; set; }
     public long SkinTabEnd { get; set; }
+    // The guild championship's champion guild (Pvp 4); in this JSON column so that no migration is needed.
+    public int ChampionSeasonId { get; set; }
+    public long ChampionGuildId { get; set; }
+    public string? ChampionGuildName { get; set; }
 }
 
 internal class Cooldown {

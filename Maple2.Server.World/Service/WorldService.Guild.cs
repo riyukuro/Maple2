@@ -1,4 +1,5 @@
-﻿using Grpc.Core;
+﻿using System.Text.Json;
+using Grpc.Core;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -74,6 +75,14 @@ public partial class WorldService {
             case GuildRequest.GuildOneofCase.VsGameEnd:
                 guildVsGameLookup.End(request.VsGameEnd.MatchId);
                 return Task.FromResult(new GuildResponse());
+            case GuildRequest.GuildOneofCase.PvpRegister:
+                return Task.FromResult(GuildPvpRegister(request.RequestorId, request.PvpRegister));
+            case GuildRequest.GuildOneofCase.PvpUnregister:
+                return Task.FromResult(GuildPvpUnregister(request.RequestorId, request.PvpUnregister));
+            case GuildRequest.GuildOneofCase.PvpJoin:
+                return Task.FromResult(GuildPvpJoin(request.RequestorId, request.PvpJoin));
+            case GuildRequest.GuildOneofCase.PvpEnd:
+                return Task.FromResult(GuildPvpEnd(request.PvpEnd));
             case GuildRequest.GuildOneofCase.UpgradeNpc:
                 return Task.FromResult(UpgradeGuildNpc(request.RequestorId, request.UpgradeNpc));
             case GuildRequest.GuildOneofCase.UpgradeHouse:
@@ -556,6 +565,123 @@ public partial class WorldService {
         return new GuildResponse { Error = (int) error, GuildId = join.GuildId, Channel = channel, MapId = mapId, RoomId = roomId };
     }
 
+    // Pvp 1: a member with the championship right (GuildPermission.StartPvp, the client's 0x100) registers the
+    // guild. Chosen here: at least GuildPvpMinOnline members online (s_guild_ui_championship_condition: "more than 3
+    // guild members"; its level is not checked).
+    public const int GuildPvpMinOnline = 3;
+
+    private GuildResponse GuildPvpRegister(long requestorId, GuildRequest.Types.PvpRegister register) {
+        if (!guildLookup.TryGet(register.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+        if (!manager.Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_member };
+        }
+        if (!manager.HasPermission(requestorId, GuildPermission.StartPvp)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_no_authority };
+        }
+        if (!guildPvpLookup.IsOpen) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_isNotVsGameTime };
+        }
+        if (manager.OnlineCount() < GuildPvpMinOnline) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_requireOnlineUserCount, ErrorArg = GuildPvpMinOnline };
+        }
+        manager.RollPvp(DateTime.Now);
+        GuildError error = guildPvpLookup.Register(register.GuildId, manager.PvpSnapshot().Score, requestor.Name);
+        return new GuildResponse { Error = (int) error, GuildId = register.GuildId };
+    }
+
+    private GuildResponse GuildPvpUnregister(long requestorId, GuildRequest.Types.PvpUnregister unregister) {
+        if (!guildLookup.TryGet(unregister.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+        if (!manager.Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_member };
+        }
+        if (!manager.HasPermission(requestorId, GuildPermission.StartPvp)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_no_authority };
+        }
+        return new GuildResponse { Error = (int) guildPvpLookup.Unregister(unregister.GuildId, requestor.Name), GuildId = unregister.GuildId };
+    }
+
+    // Pvp 3: any member of a matched guild enters its match field.
+    private GuildResponse GuildPvpJoin(long requestorId, GuildRequest.Types.PvpJoin join) {
+        if (!guildLookup.TryGet(join.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+        if (!manager.Guild.Members.ContainsKey(requestorId)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_member };
+        }
+        GuildError error = guildPvpLookup.Join(join.GuildId, out int channel, out int mapId, out int roomId);
+        return new GuildResponse { Error = (int) error, GuildId = join.GuildId, Channel = channel, MapId = mapId, RoomId = roomId };
+    }
+
+    // The match field ended the match. With a winner, both guilds' records move (the winner by guildPVPWinPoint,
+    // the loser by guildPVPLosePoint) and each keeps the match in its history from its own side; a draw changes
+    // nothing. The answer has both guilds' new scores, the winner first (Pvp 'u').
+    private GuildResponse GuildPvpEnd(GuildRequest.Types.PvpEnd end) {
+        GuildPvpLookup.Match? match = guildPvpLookup.End(end.MatchId);
+        if (match == null) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_unknown };
+        }
+        if (end.WinnerGuildId != match.A && end.WinnerGuildId != match.B) {
+            return new GuildResponse();
+        }
+        if (!guildLookup.TryGet(match.A, out GuildManager? managerA) || !guildLookup.TryGet(match.B, out GuildManager? managerB)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        DateTime now = DateTime.Now;
+        managerA.RollPvp(now);
+        managerB.RollPvp(now);
+        var constants = managerA.ServerTableMetadata.ConstantsTable;
+        long[] fighters = end.Fighters.ToArray();
+
+        (int Score, int Delta) Apply(GuildManager self, GuildManager other, bool selfIsA) {
+            bool won = end.WinnerGuildId == self.Guild.Id;
+            var rounds = end.Rounds.Take(5).ToList();
+            var history = new GuildPvpMatch {
+                GuildA = self.Guild.Id,
+                GuildB = other.Guild.Id,
+                NameA = self.Guild.Name,
+                NameB = other.Guild.Name,
+                PlayersA = rounds.Select(round => selfIsA ? round.PlayersA : round.PlayersB).Concat(Enumerable.Repeat(string.Empty, 5)).Take(5).ToArray(),
+                PlayersB = rounds.Select(round => selfIsA ? round.PlayersB : round.PlayersA).Concat(Enumerable.Repeat(string.Empty, 5)).Take(5).ToArray(),
+                Results = rounds.Select(round => round.Winner == 0 ? (byte) 0 : (round.Winner == 1) == selfIsA ? (byte) 'W' : (byte) 'L')
+                    .Concat(Enumerable.Repeat((byte) 0, 5)).Take(5).ToArray(),
+                Time = time,
+            };
+            return self.EndPvp(history, won, won ? constants.guildPVPWinPoint : constants.guildPVPLosePoint, fighters);
+        }
+
+        (int scoreA, int deltaA) = Apply(managerA, managerB, true);
+        (int scoreB, int deltaB) = Apply(managerB, managerA, false);
+        var scoreRowA = new GuildResponse.Types.PvpScore {
+            GuildId = match.A,
+            Name = managerA.Guild.Name,
+            Emblem = managerA.Guild.Emblem,
+            Score = scoreA,
+            Delta = deltaA,
+        };
+        var scoreRowB = new GuildResponse.Types.PvpScore {
+            GuildId = match.B,
+            Name = managerB.Guild.Name,
+            Emblem = managerB.Guild.Emblem,
+            Score = scoreB,
+            Delta = deltaB,
+        };
+        var response = new GuildResponse();
+        if (end.WinnerGuildId == match.A) {
+            response.PvpScores.Add(scoreRowA);
+            response.PvpScores.Add(scoreRowB);
+        } else {
+            response.PvpScores.Add(scoreRowB);
+            response.PvpScores.Add(scoreRowA);
+        }
+        return response;
+    }
+
     private GuildResponse UpgradeGuildBuff(long requestorId, GuildRequest.Types.UpgradeBuff upgrade) {
         if (!guildLookup.TryGet(upgrade.GuildId, out GuildManager? manager)) {
             return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
@@ -745,6 +871,8 @@ public partial class WorldService {
                     TotalContribution = member.TotalContribution,
                     DailyDonationCount = member.DailyDonationCount,
                     Raids = { member.Raids },
+                    PvpSeasonCount = member.PvpSeasonCount,
+                    PvpTotalCount = member.PvpTotalCount,
                 }),
             },
             Ranks = {
@@ -781,6 +909,8 @@ public partial class WorldService {
                     Level = npc.Level,
                 }),
             },
+            Pvp = JsonSerializer.Serialize(manager.PvpSnapshot()),
+            PvpState = (int) guild.PvpState,
             Storage = {
                 guild.StorageSnapshot().Select(item => new GuildInfo.Types.StorageItem {
                     ItemId = item.ItemId,

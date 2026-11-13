@@ -17,15 +17,16 @@ using Maple2.Server.World.Service;
 namespace Maple2.Server.Game.PacketHandlers;
 
 // The client's Pvp requests. The rank duel and the individual arena have a queue in the World server (PvpLookup)
-// and a field per match (RankDuelField, ArenaMatchField); guild PvP has none.
+// and a field per match (RankDuelField, ArenaMatchField); the guild championship's queue is the World's
+// GuildPvpLookup and its field the guild arena's (GuildPvpZoneField).
 public class PvpHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.Pvp;
 
     private enum Command : byte {
         GuildRegister = 1, // uiguilddialog OnRegistPVP
         GuildUnregister = 2,
-        Guild3 = 3, // CGuildManager::SendPVPMode3
-        Guild4 = 4, // CGuildManager::SendPVPMode4
+        GuildJoin = 3, // CGuildManager::SendPVPMode3: the matched guild's member enters the match
+        GuildChampion = 4, // CGuildManager::SendPVPMode4: the player cheers for its own guild this season
         ArenaRegister = 9, // UIIndividualPvPDialog, with the picked arena
         ArenaUnregister = 10,
         ArenaJoin = 11, // CPVPManager::SendCancelRequest, after a match
@@ -59,8 +60,20 @@ public class PvpHandler : FieldPacketHandler {
             case Command.RankDuelJoin:
                 HandleRankDuelJoin(session);
                 return;
+            case Command.GuildRegister:
+                HandleGuildRegister(session, true);
+                return;
+            case Command.GuildUnregister:
+                HandleGuildRegister(session, false);
+                return;
+            case Command.GuildJoin:
+                HandleGuildJoin(session);
+                return;
+            case Command.GuildChampion:
+                HandleGuildChampion(session);
+                return;
             default:
-                // Guild PvP has no refusal the client reads here; the result dialogs' close needs no answer.
+                // The result dialogs' close needs no answer.
                 return;
         }
     }
@@ -175,9 +188,86 @@ public class PvpHandler : FieldPacketHandler {
         MoveToMatch(session, response, PvpPacket.ArenaUnregistered());
     }
 
+    // Pvp 1 and 2: the World checks the right and the event; its notices (Guild 0x2b, 0x2c, 0x27) go to the guild. A
+    // refusal is the guild error box.
+    private static void HandleGuildRegister(GameSession session, bool register) {
+        long guildId = session.Guild.Id;
+        if (guildId == 0) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_null_guild));
+            return;
+        }
+        var request = new GuildRequest { RequestorId = session.CharacterId };
+        if (register) {
+            request.PvpRegister = new GuildRequest.Types.PvpRegister { GuildId = guildId };
+        } else {
+            request.PvpUnregister = new GuildRequest.Types.PvpUnregister { GuildId = guildId };
+        }
+        GuildResponse? response = GuildRequest(session, request);
+        if (response == null) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        } else if ((GuildError) response.Error != GuildError.none) {
+            session.Send(GuildPacket.Error((GuildError) response.Error, response.ErrorArg));
+        }
+    }
+
+    // Pvp 3: the client sends it only in state 2 (matched) for the guild it cheers for; the World names the match's
+    // field.
+    private static void HandleGuildJoin(GameSession session) {
+        long guildId = session.Guild.Id;
+        if (guildId == 0) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_null_guild));
+            return;
+        }
+        if (session.Field?.GuildPvp != null || !CanLeave(session)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_cant_during_pvp));
+            return;
+        }
+        GuildResponse? response = GuildRequest(session, new GuildRequest {
+            RequestorId = session.CharacterId,
+            PvpJoin = new GuildRequest.Types.PvpJoin { GuildId = guildId },
+        });
+        if (response == null || (GuildError) response.Error != GuildError.none) {
+            session.Send(GuildPacket.Error(response == null ? GuildError.s_guild_err_unknown : (GuildError) response.Error, response?.ErrorArg ?? 0));
+            return;
+        }
+        MoveToMatch(session, response.Channel, response.MapId, response.RoomId, GuildPacket.Error(GuildError.s_guild_err_unknown));
+    }
+
+    // Pvp 4 (the guild dialog's button): the player's championship guild becomes its own guild for the current season
+    // (Character ChampionSeasonId, ChampionGuildId, ChampionGuildName; ServerEnter sends them back), answered with Pvp
+    // 4. Outside a season, or without a guild, nothing changes.
+    private static void HandleGuildChampion(GameSession session) {
+        if (session.Guild.Guild is not { } guild) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_null_guild));
+            return;
+        }
+        SeasonDataTable.Entry? season = Maple2.Model.Game.GuildPvp.CurrentSeason(session.TableMetadata.SeasonDataTable.GuildPvp, DateTime.Now);
+        if (season == null) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_isNotVsGameTime));
+            return;
+        }
+        Maple2.Model.Game.Character character = session.Player.Value.Character;
+        character.ChampionSeasonId = season.Id;
+        character.ChampionGuildId = guild.Id;
+        character.ChampionGuildName = guild.Name;
+        session.Send(PvpPacket.ChampionGuild(guild.Id, guild.Name));
+    }
+
+    private static GuildResponse? GuildRequest(GameSession session, GuildRequest request) {
+        try {
+            return session.World.Guild(request, deadline: DateTime.UtcNow.AddSeconds(5));
+        } catch (RpcException) {
+            return null;
+        }
+    }
+
+    internal static void MoveToMatch(GameSession session, PvpResponse response, Maple2.PacketLib.Tools.ByteWriter failed) {
+        MoveToMatch(session, response.Channel, response.MapId, response.RoomId, failed);
+    }
+
     // Moves the character into the match field the World named; a failed move sends `failed` (the client's way back to
     // state 0).
-    internal static void MoveToMatch(GameSession session, PvpResponse response, Maple2.PacketLib.Tools.ByteWriter failed) {
+    private static void MoveToMatch(GameSession session, int channel, int mapId, int roomId, Maple2.PacketLib.Tools.ByteWriter failed) {
         // Back to this spot after the match (GameSession.ReturnField), when this is the return field. The field's own
         // map: an instanced field (a dungeon hall, a channelScale map) leaves Character.MapId at the open field it was
         // entered from, so a join from a hall kept the hall's spot as the town's return position.
@@ -193,9 +283,9 @@ public class PvpHandler : FieldPacketHandler {
                 CharacterId = session.CharacterId,
                 MachineId = session.MachineId.ToString(),
                 Server = Maple2.Server.World.Service.Server.Game,
-                Channel = response.Channel,
-                MapId = response.MapId,
-                RoomId = response.RoomId,
+                Channel = channel,
+                MapId = mapId,
+                RoomId = roomId,
                 Type = Maple2.Server.World.Service.MigrationType.PvpMatch,
                 PetUid = session.SummonedPetUid,
             });
@@ -205,7 +295,7 @@ public class PvpHandler : FieldPacketHandler {
                 session.MigrationRefused();
                 return;
             }
-            session.Send(MigrationPacket.GameToGame(endpoint, migrate.Token, response.MapId));
+            session.Send(MigrationPacket.GameToGame(endpoint, migrate.Token, mapId));
             session.State = Maple2.Model.Enum.SessionState.ChangeMap;
         } catch (RpcException) {
             // The World counts the character as joined (it is not told again at the end): its client goes back to

@@ -17,7 +17,9 @@ namespace Maple2.Server.Game.Util;
 //   seconds) for a team win, and pvp_win_perfect (full health), pvp_win_with_buff (each effect held) and
 //   pvp_win_with_grade (the grade after the win) for a rank duel win. A rank duel counts only once the fight started:
 //   a walkover (the opponent never came or left before the fight) raises nothing, and an opponent that left during
-//   the fight gives pvp_win alone (chosen here: no proof the rest was earned).
+//   the fight gives pvp_win alone (chosen here: no proof the rest was earned);
+// - guildpvp_kill and guildpvp_die for a death in a guild championship round, and guildpvp_win for the winning
+//   guild's players in the field at the end.
 public static class PvpConditions {
     private static readonly ILogger Logger = Log.Logger.ForContext(typeof(PvpConditions));
 
@@ -30,6 +32,12 @@ public static class PvpConditions {
     public static void Death(FieldPlayer victim, int mapId) => Raise(victim, mapId, [new Update(ConditionType.pvp_die)]);
 
     public static void Win(FieldPlayer winner, int mapId) => Raise(winner, mapId, [new Update(ConditionType.pvp_win)]);
+
+    public static void GuildKill(FieldPlayer killer, int mapId) => Raise(killer, mapId, [new Update(ConditionType.guildpvp_kill)]);
+
+    public static void GuildDeath(FieldPlayer victim, int mapId) => Raise(victim, mapId, [new Update(ConditionType.guildpvp_die)]);
+
+    public static void GuildWin(FieldPlayer winner, int mapId) => Raise(winner, mapId, [new Update(ConditionType.guildpvp_win)]);
 
     public static void TeamWin(FieldPlayer winner, int mapId, int lead, long fightMs) => Raise(winner, mapId, TeamWinUpdates(lead, fightMs));
 

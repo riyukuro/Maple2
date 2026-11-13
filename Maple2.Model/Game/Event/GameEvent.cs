@@ -221,6 +221,10 @@ public class GameEvent : IByteSerializable {
                 // GameEventGuildVsGameOpen reads only the base event's id.
                 writer.WriteInt(Id);
                 break;
+            case GuildChampionship:
+                // GameEventGuildChampionship has no vfunc_4 of its own: the base reads the id.
+                writer.WriteInt(Id);
+                break;
             case Festival festival:
                 // GameEvent::vfunc_4 reads the id, then FestivalContext::Read two bytes.
                 writer.WriteInt(Id);

@@ -47,8 +47,10 @@ public static class ServerEnterPacket {
         foreach (int mapId in player.Unlock.Taxis) {
             pWriter.WriteInt(mapId);
         }
-        pWriter.WriteLong();
-        pWriter.WriteUnicodeString();
+        // The guild championship's guild the character cheers for (CGuildManager::SetTargetGuild), of the season it chose
+        // it in (Pvp 4).
+        pWriter.WriteLong(player.Character.ChampionGuildId);
+        pWriter.WriteUnicodeString(player.Character.ChampionGuildName);
         pWriter.WriteUnicodeString(MaviewUrl(Target.WebUri));
         pWriter.WriteUnicodeString();
         pWriter.WriteUnicodeString(AllowedUrls(Target.WebUri));

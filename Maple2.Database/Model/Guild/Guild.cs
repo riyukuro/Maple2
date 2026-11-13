@@ -25,6 +25,8 @@ internal class Guild {
     // Null in the rows from before the columns.
     public IList<GuildStorageItem>? Storage { get; set; }
     public IList<GuildStorageLogEntry>? StorageLog { get; set; }
+    // The guild championship record; null in the rows from before the column and for a guild that never fought.
+    public Maple2.Model.Game.GuildPvp? Pvp { get; set; }
 
     public long LeaderId { get; set; }
     public IList<GuildMember>? Members { get; set; }
@@ -80,6 +82,7 @@ internal class Guild {
                 Amount = entry.Amount,
                 Time = entry.Time,
             }).ToArray(),
+            Pvp = other.Pvp.Clone(),
             LeaderId = other.LeaderCharacterId,
         };
     }
@@ -93,6 +96,7 @@ internal class Guild {
         builder.Property(guild => guild.Npcs).HasJsonConversion();
         builder.Property(guild => guild.Storage).HasJsonConversion();
         builder.Property(guild => guild.StorageLog).HasJsonConversion();
+        builder.Property(guild => guild.Pvp).HasJsonConversion();
         // rows from before the column are listed; the value is always written on insert
         builder.Property(guild => guild.Listed).HasDefaultValue(true).ValueGeneratedNever();
 

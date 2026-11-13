@@ -1,4 +1,5 @@
-﻿using Grpc.Core;
+﻿using System.Text.Json;
+using Grpc.Core;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -67,6 +68,10 @@ public partial class ChannelService {
                 return Task.FromResult(GuildVsGameNotice(request.GuildId, request.ReceiverIds, GuildPacket.VsGameOpen(request.VsGameOpen.GameId)));
             case GuildRequest.GuildOneofCase.VsGameCanceled:
                 return Task.FromResult(GuildVsGameNotice(request.GuildId, request.ReceiverIds, GuildPacket.VsGameMatchCanceled()));
+            case GuildRequest.GuildOneofCase.PvpState:
+            case GuildRequest.GuildOneofCase.PvpMatched:
+            case GuildRequest.GuildOneofCase.PvpRating:
+                return Task.FromResult(GuildPvpNotice(request.GuildId, request.ReceiverIds, request));
             case GuildRequest.GuildOneofCase.UpdateStorage:
                 return Task.FromResult(UpdateGuildStorage(request.GuildId, request.ReceiverIds, request.UpdateStorage));
             case GuildRequest.GuildOneofCase.ApplicationResult:
@@ -81,6 +86,47 @@ public partial class ChannelService {
         foreach (long characterId in receiverIds) {
             if (server.GetSession(characterId, out GameSession? session) && session.Guild.Id == guildId) {
                 session.Send(packet);
+            }
+        }
+        return new GuildResponse();
+    }
+
+    // The guild championship's notices (World GuildPvpLookup, GuildManager.EndPvp) to the guild's members here; the
+    // session's guild copy keeps the state and the record (the guild page, Guild 0x4a/0x4b).
+    private GuildResponse GuildPvpNotice(long guildId, IEnumerable<long> receiverIds, GuildRequest request) {
+        GuildPvp? pvp = request.GuildCase == GuildRequest.GuildOneofCase.PvpRating
+            ? JsonSerializer.Deserialize<GuildPvp>(request.PvpRating.Pvp)
+            : null;
+        foreach (long characterId in receiverIds) {
+            if (!server.GetSession(characterId, out GameSession? session) || session.Guild.Id != guildId || session.Guild.Guild == null) {
+                continue;
+            }
+            Guild guild = session.Guild.Guild;
+            switch (request.GuildCase) {
+                case GuildRequest.GuildOneofCase.PvpState:
+                    if (request.PvpState.Line == 0x2b) {
+                        session.Send(GuildPacket.PvpRegistered(request.PvpState.Name));
+                    } else if (request.PvpState.Line == 0x2c) {
+                        session.Send(GuildPacket.PvpUnregistered(request.PvpState.Name));
+                    }
+                    guild.PvpState = (GuildPvpState) request.PvpState.State;
+                    session.Send(GuildPacket.PvpState(guild.PvpState));
+                    break;
+                case GuildRequest.GuildOneofCase.PvpMatched:
+                    session.Send(GuildPacket.PvpMatched(request.PvpMatched.Matched));
+                    break;
+                case GuildRequest.GuildOneofCase.PvpRating when pvp != null:
+                    // A copy per session: the history and seasons are read by the session's own handlers.
+                    guild.Pvp = pvp.Clone();
+                    foreach (GuildRequest.Types.PvpRating.Types.Count count in request.PvpRating.Counts) {
+                        if (guild.Members.TryGetValue(count.CharacterId, out GuildMember? member)) {
+                            member.PvpSeasonCount = count.Season;
+                            member.PvpTotalCount = count.Total;
+                        }
+                    }
+                    session.Send(GuildPacket.PvpRating(pvp.Score, pvp.Wins, pvp.Losses));
+                    session.Send(GuildPacket.PvpResult(request.PvpRating.Won, request.PvpRating.Opponent));
+                    break;
             }
         }
         return new GuildResponse();

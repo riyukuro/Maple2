@@ -161,6 +161,9 @@ message GuildInfo {
     int32 daily_donation_count = 10;
     // The member's guild raid values by raid (dungeon room id), CGuildMemberRaid.
     map<int32, int32> raids = 11;
+    // The member's guild championship matches: this season, and in all (CGuildMember fe0/fe4).
+    int32 pvp_season_count = 12;
+    int32 pvp_total_count = 13;
   }
   message Rank {
     string name = 1;
@@ -213,6 +216,9 @@ message GuildInfo {
   repeated Npc npcs = 16;
   // The guild storage (the gift log is read from the guild row).
   repeated StorageItem storage = 18;
+  // The guild championship record (GuildPvp as json) and the World's registration state (GuildPvpState).
+  string pvp = 19;
+  int32 pvp_state = 20;
 }
 
 message GuildInfoRequest {
@@ -407,6 +413,33 @@ message GuildRequest {
   message VsGameEnd {
     int32 match_id = 1;
   }
+  // Pvp 1: a member with the championship right registers the guild for the guild championship (GuildPvpLookup).
+  message PvpRegister {
+    int64 guild_id = 1;
+  }
+  // Pvp 2: the guild's registration is taken back.
+  message PvpUnregister {
+    int64 guild_id = 1;
+  }
+  // Pvp 3: the room of the guild's championship match (the answer's channel, map_id and room_id).
+  message PvpJoin {
+    int64 guild_id = 1;
+  }
+  // The championship match field ended the match: the winner (0: a draw), each round's fighters and result, and
+  // the members who fought.
+  message PvpEnd {
+    message Round {
+      // "id,name:id,name" (CGuildPVPHistoryData f58/f80)
+      string players_a = 1;
+      string players_b = 2;
+      // 1: guild A won the round, 2: guild B, 0: a draw.
+      int32 winner = 3;
+    }
+    int32 match_id = 1;
+    int64 winner_guild_id = 2;
+    repeated Round rounds = 3;
+    repeated int64 fighters = 4;
+  }
 
   int64 requestor_id = 4;
   oneof guild {
@@ -447,6 +480,10 @@ message GuildRequest {
     VsGameJoin vs_game_join = 37;
     VsGameEnd vs_game_end = 38;
     StorageGift storage_gift = 39;
+    PvpRegister pvp_register = 40;
+    PvpUnregister pvp_unregister = 41;
+    PvpJoin pvp_join = 42;
+    PvpEnd pvp_end = 43;
   }
 }
 
@@ -473,6 +510,17 @@ message GuildResponse {
   int32 room_id = 14;
   // storage gift: the receiver's name
   string receiver_name = 15;
+  // guild championship end: each guild's new score and its change (Pvp 'u')
+  message PvpScore {
+    int64 guild_id = 1;
+    string name = 2;
+    string emblem = 3;
+    int32 score = 4;
+    int32 delta = 5;
+  }
+  repeated PvpScore pvp_scores = 16;
+  // the error's argument (Guild error {0}: the members online the guild championship needs)
+  int32 error_arg = 17;
 }
 
 message GroupChatInfoRequest {

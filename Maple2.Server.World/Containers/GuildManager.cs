@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Text.Json;
 using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -1325,6 +1326,91 @@ public class GuildManager : IDisposable {
         }
 
         return string.Empty;
+    }
+
+    // The guild championship record moves into the current season (GuildPvp.Roll): a record of an earlier season
+    // is closed with its rank among the guilds of that season, and the members' season counts start again.
+    // Outside every season the record stays. True when it changed (then saved).
+    public bool RollPvp(DateTime now) {
+        SeasonDataTable.Entry? season = GuildPvp.CurrentSeason(TableMetadata.SeasonDataTable.GuildPvp, now);
+        if (season == null) {
+            return false;
+        }
+        lock (guildLock) {
+            bool changed = Guild.Pvp.Roll(season.Id, closedId => {
+                TableMetadata.SeasonDataTable.GuildPvp.TryGetValue(closedId, out SeasonDataTable.Entry? closed);
+                int rank = 0;
+                try {
+                    using GameStorage.Request db = GameStorage.Context();
+                    IList<GuildPvpStanding> standings = db.GetGuildPvpStandings(closedId);
+                    int index = standings.ToList().FindIndex(standing => standing.GuildId == Guild.Id);
+                    rank = index < 0 ? 0 : index + 1;
+                } catch (Exception) { /* the season row keeps rank 0 */ }
+                return (closed, rank);
+            });
+            if (!changed) {
+                return false;
+            }
+            foreach (GuildMember member in Guild.Members.Values) {
+                member.PvpSeasonCount = 0;
+            }
+            TrySave();
+            return true;
+        }
+    }
+
+    public GuildPvp PvpSnapshot() {
+        lock (guildLock) {
+            return Guild.Pvp.Clone();
+        }
+    }
+
+    // The World's registration state of the guild (GuildPvpLookup), sent with the guild to members who log in.
+    public void SetPvpState(GuildPvpState state) {
+        lock (guildLock) {
+            Guild.PvpState = state;
+        }
+    }
+
+    // The members online, for the registration's minimum.
+    public int OnlineCount() => Guild.Members.Values.Count(member => member.Info.Online);
+
+    // A played championship match (one of the two guilds' view, Guild A = this guild): the score moves by the
+    // win or loss points, the match goes into the history and the members who fought get a match more. Saved; the
+    // members get the new record and the result (Guild 0x29, 0x2a). Returns the new score and the change.
+    public (int Score, int Delta) EndPvp(GuildPvpMatch match, bool won, int point, IReadOnlyCollection<long> fighters) {
+        var counts = new List<GuildRequest.Types.PvpRating.Types.Count>();
+        string pvp;
+        int score;
+        lock (guildLock) {
+            Guild.Pvp.Score += point;
+            if (won) {
+                Guild.Pvp.Wins++;
+            } else {
+                Guild.Pvp.Losses++;
+            }
+            Guild.Pvp.AddMatch(match);
+            foreach (long characterId in fighters.Distinct()) {
+                if (!Guild.Members.TryGetValue(characterId, out GuildMember? member)) {
+                    continue;
+                }
+                member.PvpSeasonCount++;
+                member.PvpTotalCount++;
+                counts.Add(new GuildRequest.Types.PvpRating.Types.Count {
+                    CharacterId = characterId,
+                    Season = member.PvpSeasonCount,
+                    Total = member.PvpTotalCount,
+                });
+            }
+            TrySave();
+            score = Guild.Pvp.Score;
+            pvp = JsonSerializer.Serialize(Guild.Pvp);
+        }
+
+        var rating = new GuildRequest.Types.PvpRating { Pvp = pvp, Won = won, Opponent = match.NameB };
+        rating.Counts.AddRange(counts);
+        Broadcast(new GuildRequest { PvpRating = rating }, member => member.Info.Online);
+        return (score, point);
     }
 
     private GuildTable.Property GuildProperty() {

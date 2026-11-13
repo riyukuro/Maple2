@@ -16,6 +16,9 @@ internal class GuildMember {
     public int WeeklyContribution { get; set; }
     public int TotalContribution { get; set; }
     public int DailyDonationCount { get; set; }
+    // The guild championship matches fought in the season and in all (CGuildMember fe0, fe4).
+    public int PvpSeasonCount { get; set; }
+    public int PvpTotalCount { get; set; }
     // The member's guild raid values by dungeon room id; null when none.
     public IDictionary<int, int>? Raids { get; set; }
 
@@ -35,6 +38,8 @@ internal class GuildMember {
             WeeklyContribution = other.WeeklyContribution,
             TotalContribution = other.TotalContribution,
             DailyDonationCount = other.DailyDonationCount,
+            PvpSeasonCount = other.PvpSeasonCount,
+            PvpTotalCount = other.PvpTotalCount,
             Raids = other.Raids.IsEmpty ? null : new Dictionary<int, int>(other.Raids),
             CheckinTime = other.CheckinTime.FromEpochSeconds(),
             DonationTime = other.DonationTime.FromEpochSeconds(),

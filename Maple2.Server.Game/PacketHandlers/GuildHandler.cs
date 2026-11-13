@@ -775,24 +775,27 @@ public class GuildHandler : PacketHandler<GameSession> {
     }
 
     // CGuildManager::RequestPvpHistoryAndSeason (guildmanager.cpp:1144): sent when the guild PvP tab opens,
-    // with the last history id the client holds. The server runs no guild PvP: the answer has no rows.
+    // with the end time (fb8) of the newest match the client holds; the client adds the rows it gets, so only
+    // the guild's matches after that time are sent.
     private void HandlePvpHistory(GameSession session, IByteReader packet) {
-        packet.ReadLong(); // the id of the newest row the client holds; the rows after it are asked for
-        if (session.Guild.Guild == null) {
+        long lastTime = packet.ReadLong();
+        Guild? guild = session.Guild.Guild;
+        if (guild == null) {
             return; // Not in a guild.
         }
 
-        session.Send(GuildPacket.PvpHistory());
+        session.Send(GuildPacket.PvpHistory(guild.Pvp.History.Where(match => match.Time > lastTime).ToList()));
     }
 
     // CGuildManager::RequestPvpHistoryAndSeason (guildmanager.cpp:1152): no body; sent once per login, after
     // the history request. Until the answer comes the client does not draw the season part of the tab.
     private void HandlePvpSeason(GameSession session) {
-        if (session.Guild.Guild == null) {
+        Guild? guild = session.Guild.Guild;
+        if (guild == null) {
             return; // Not in a guild.
         }
 
-        session.Send(GuildPacket.PvpSeason());
+        session.Send(GuildPacket.PvpSeason(guild.Pvp.Seasons.ToList()));
     }
 
     // CGuildManager::SendGuildMode82: the guild to ask, sent only by a player without a guild. The reply makes

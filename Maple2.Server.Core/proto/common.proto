@@ -33,6 +33,12 @@ message FieldRequest {
     int64 blue_guild_id = 2;
     int64 red_guild_id = 3;
   }
+  // A guild championship match field (World GuildPvpLookup) for two guilds. The answer names the map and the room.
+  message CreateGuildPvp {
+    int32 match_id = 1;
+    int64 guild_a_id = 2;
+    int64 guild_b_id = 3;
+  }
   int64 requester_id = 1;
   oneof field {
     CreateDungeon create_dungeon = 2;
@@ -40,6 +46,7 @@ message FieldRequest {
     CheckDungeon check_dungeon = 4;
     CreatePvpMatch create_pvp_match = 5;
     CreateGuildVsGame create_guild_vs_game = 6;
+    CreateGuildPvp create_guild_pvp = 7;
   }
 }
 

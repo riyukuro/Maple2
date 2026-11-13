@@ -66,6 +66,12 @@ public class Character {
     public long DailyMissionGrantTime;
     public long WeddingMissionGrantTime;
 
+    // The guild the character fights for in a guild championship season (Pvp 4, the champion guild confirm): the
+    // season, the guild's id and name. ServerEnter and Pvp 4 send it while the season runs; Pvp 3 needs it.
+    public int ChampionSeasonId;
+    public long ChampionGuildId;
+    public string ChampionGuildName = string.Empty;
+
     public LimitedStack<int> ReturnMaps = new LimitedStack<int>(3);
     public Vector3 ReturnPosition;
     public string Picture = string.Empty;

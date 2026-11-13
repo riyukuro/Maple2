@@ -356,6 +356,13 @@ public record MapleSurvivalOpenPeriod : GameEventData;
 /// </summary>
 public record GuildVsGameOpen : GameEventData;
 
+/// <summary>
+/// The guild championship's time (GameEventGuildChampionship: OnStart opens CGameRule's championship flag when the
+/// client's GuildPvP feature is on, its end closes it). The guild PvP registration is taken only while one runs. No
+/// values.
+/// </summary>
+public record GuildChampionship : GameEventData;
+
 
 /// <summary>
 /// Closes Maple Survival (Mushking Royale)
@@ -633,6 +640,7 @@ public record Snowman(
 [JsonDerivedType(typeof(StampEvent), "StampEvent")]
 [JsonDerivedType(typeof(MapleSurvivalOpenPeriod), "MapleSurvivalOpenPeriod")]
 [JsonDerivedType(typeof(GuildVsGameOpen), "GuildVsGameOpen")]
+[JsonDerivedType(typeof(GuildChampionship), "GuildChampionship")]
 [JsonDerivedType(typeof(ShutdownMapleSurvival), "ShutdownMapleSurvival")]
 [JsonDerivedType(typeof(Ontime), "Ontime")]
 [JsonDerivedType(typeof(DailyLoginReward), "DailyLoginReward")]

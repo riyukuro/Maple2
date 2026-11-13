@@ -223,6 +223,31 @@ message GuildRequest {
   // Guild 117: the guild's ticket was canceled.
   message VsGameCanceled {
   }
+  // Guild 0x2b (register) or 0x2c (unregister) with the member's name, then Guild 0x27 with the state
+  // (GuildPvpState); line 0: the state alone.
+  message PvpState {
+    int32 state = 1;
+    string name = 2;
+    int32 line = 3;
+  }
+  // Guild 0x28: the guild was matched (true) or its registration ran out (false).
+  message PvpMatched {
+    bool matched = 1;
+  }
+  // After a championship match: Guild 0x29 with the guild's new record, then 0x2a with the result.
+  message PvpRating {
+    // GuildPvp as json
+    string pvp = 1;
+    bool won = 2;
+    bool draw = 3;
+    string opponent = 4;
+    message Count {
+      int64 character_id = 1;
+      int32 season = 2;
+      int32 total = 3;
+    }
+    repeated Count counts = 5;
+  }
   // Guild 110: the stored amount of an item (0: none left).
   message UpdateStorage {
     int32 item_id = 1;
@@ -262,6 +287,9 @@ message GuildRequest {
     VsGameOpen vs_game_open = 29;
     VsGameCanceled vs_game_canceled = 30;
     UpdateStorage update_storage = 31;
+    PvpState pvp_state = 32;
+    PvpMatched pvp_matched = 33;
+    PvpRating pvp_rating = 34;
   }
 }
 

@@ -1847,6 +1847,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new MapleSurvivalOpenPeriod();
             case GameEventType.GuildVsGameOpen:
                 return new GuildVsGameOpen();
+            case GameEventType.GuildChampionship:
+                return new GuildChampionship();
             case GameEventType.ShutdownMapleSurvival:
                 return new ShutdownMapleSurvival();
             case GameEventType.LevelUpPackage:

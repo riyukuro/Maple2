@@ -211,11 +211,8 @@ public class PvpHandlerTests {
         Assert.That((move.MapId, move.RoomId, move.Type), Is.EqualTo((65000002, 77, MigrationType.PvpMatch)));
     }
 
-    // Guild PvP (1 to 4) and the result dialogs' close (104, 110) have no answer.
-    [TestCase("01")]
-    [TestCase("02")]
-    [TestCase("03")]
-    [TestCase("04")]
+    // The result dialogs' close (104, 110) has no answer outside a match field (guild PvP 1 to 4: see
+    // GuildChampionshipTests).
     [TestCase("68")]
     [TestCase("6E")]
     public void RequestsWithoutAnAnswer_SendNothing(string request) {

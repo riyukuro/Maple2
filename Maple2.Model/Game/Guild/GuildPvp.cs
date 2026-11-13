@@ -1,0 +1,161 @@
+﻿using System.Globalization;
+using Maple2.Model.Metadata;
+using Maple2.PacketLib.Tools;
+
+namespace Maple2.Model.Game;
+
+// The guild championship (guild PvP) record of a guild: the score, wins and losses of the season it last fought in
+// (CGuildInfo after the create time), its last matches (Guild 0x4a) and the seasons before (Guild 0x4b). Written by
+// the World under the guild's lock; the channels get a copy with the guild.
+public class GuildPvp {
+    // CGuildInfo's score default: a guild without a match in the season.
+    public const int DefaultScore = 1000;
+    // The client keeps the newest 10 matches (CGuildManager::OnPacketPvpHistory).
+    public const int HistoryCapacity = 10;
+
+    public int SeasonId { get; set; }
+    public int Score { get; set; } = DefaultScore;
+    public int Wins { get; set; }
+    public int Losses { get; set; }
+    public List<GuildPvpMatch> History { get; set; } = [];
+    public List<GuildPvpSeason> Seasons { get; set; } = [];
+
+    // The grade of a score: the first index whose threshold is above it, else the count (CGuildInfo::GetGrade).
+    public static int Grade(int score, IReadOnlyList<int> grades) {
+        for (int i = 0; i < grades.Count; i++) {
+            if (grades[i] > score) {
+                return i;
+            }
+        }
+        return grades.Count;
+    }
+
+    // The season a time falls in (CSeasonDataTable::GetCurrent), null outside all of them.
+    public static SeasonDataTable.Entry? CurrentSeason(IReadOnlyDictionary<int, SeasonDataTable.Entry> seasons, DateTime now) {
+        return seasons.Values.Where(season => season.StartTime <= now && now < season.EndTime)
+            .OrderBy(season => season.Id).FirstOrDefault();
+    }
+
+    // The season's name: its start month, the form the season table's seasonName attribute uses ("March 2026").
+    public static string SeasonName(SeasonDataTable.Entry season) {
+        return season.StartTime.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
+    }
+
+    // Moves the record into the season: a record of an earlier season is closed into a season row and starts again.
+    // The rank is the guild's place among the guilds of the closed season. True when the record changed.
+    public bool Roll(int seasonId, Func<int, (SeasonDataTable.Entry? Season, int Rank)> closed) {
+        if (SeasonId == seasonId) {
+            return false;
+        }
+        if (SeasonId != 0 && (Wins > 0 || Losses > 0)) {
+            (SeasonDataTable.Entry? season, int rank) = closed(SeasonId);
+            Seasons.Add(new GuildPvpSeason {
+                SeasonId = SeasonId,
+                StartTime = season == null ? 0 : new DateTimeOffset(season.StartTime).ToUnixTimeSeconds(),
+                EndTime = season == null ? 0 : new DateTimeOffset(season.EndTime).ToUnixTimeSeconds(),
+                Name = season == null ? string.Empty : SeasonName(season),
+                Score = Score,
+                Rank = rank,
+                Grade = season == null ? 0 : Grade(Score, season.Grades),
+                Wins = Wins,
+                Losses = Losses,
+            });
+        }
+        SeasonId = seasonId;
+        Score = DefaultScore;
+        Wins = 0;
+        Losses = 0;
+        return true;
+    }
+
+    public void AddMatch(GuildPvpMatch match) {
+        History.Add(match);
+        while (History.Count > HistoryCapacity) {
+            History.RemoveAt(0);
+        }
+    }
+
+    public GuildPvp Clone() {
+        return new GuildPvp {
+            SeasonId = SeasonId,
+            Score = Score,
+            Wins = Wins,
+            Losses = Losses,
+            History = History.ToList(),
+            Seasons = Seasons.ToList(),
+        };
+    }
+}
+
+// One match (CGuildPVPHistoryData, guilddef_1.cpp ReadStream), as the guild saw it: Guild A is the guild itself.
+public record GuildPvpMatch {
+    public long GuildA { get; init; }
+    public long GuildB { get; init; }
+    public string NameA { get; init; } = string.Empty;
+    public string NameB { get; init; } = string.Empty;
+    // f20: 1 when the match was not fought; the page shows it as a loss (0x3eb) with no rounds.
+    public bool NoFight { get; init; }
+    // f58/f80: each round's fighters, "id,name:id,name" (the page shows the names).
+    public string[] PlayersA { get; init; } = new string[5];
+    public string[] PlayersB { get; init; } = new string[5];
+    // fa8: each round's result for Guild A, 'W', 'L' or 0 (not fought).
+    public byte[] Results { get; init; } = new byte[5];
+    // fb8: the end time; the page shows its age, the client asks again from the last one it has.
+    public long Time { get; init; }
+
+    public void WriteTo(IByteWriter writer) {
+        writer.WriteInt();
+        writer.WriteInt();
+        writer.WriteBool(NoFight);
+        writer.WriteLong(GuildA);
+        writer.WriteLong(GuildB);
+        writer.WriteUnicodeString(NameA);
+        writer.WriteUnicodeString(NameB);
+        writer.WriteInt();
+        writer.WriteInt();
+        writer.WriteInt();
+        writer.WriteInt();
+        for (int i = 0; i < 5; i++) {
+            writer.WriteUnicodeString(i < PlayersA.Length ? PlayersA[i] ?? string.Empty : string.Empty);
+            writer.WriteUnicodeString(i < PlayersB.Length ? PlayersB[i] ?? string.Empty : string.Empty);
+            writer.WriteByte(i < Results.Length ? Results[i] : (byte) 0);
+        }
+        writer.WriteLong(Time);
+        writer.WriteLong(Time);
+    }
+}
+
+// One closed season (CGuildPVPSeasonHistoryData, guilddef_2.cpp): the page shows the name, the wins and losses,
+// the rank (0x3ef) and the grade.
+public record GuildPvpSeason {
+    public int SeasonId { get; init; }
+    public long StartTime { get; init; }
+    public long EndTime { get; init; }
+    public string Name { get; init; } = string.Empty;
+    public int Score { get; init; }
+    public int Rank { get; init; }
+    public int Grade { get; init; }
+    public int Wins { get; init; }
+    public int Losses { get; init; }
+
+    public void WriteTo(IByteWriter writer) {
+        writer.WriteInt(SeasonId);
+        writer.WriteLong(StartTime);
+        writer.WriteLong(EndTime);
+        writer.WriteUnicodeString(Name);
+        writer.WriteInt(Score);
+        writer.WriteInt(Rank);
+        writer.WriteInt(Grade);
+        writer.WriteString();
+        writer.WriteInt();
+        writer.WriteInt(Wins);
+        writer.WriteInt(Losses);
+        writer.WriteInt();
+        writer.WriteInt();
+        writer.WriteInt();
+        writer.WriteInt();
+    }
+}
+
+// A guild's place on a season's championship board: what the board row shows, and the losses that break a tie.
+public record GuildPvpStanding(long GuildId, string Name, string Emblem, string LeaderName, int Score, int Losses);

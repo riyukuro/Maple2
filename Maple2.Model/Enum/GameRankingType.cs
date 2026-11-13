@@ -13,6 +13,12 @@ public enum GameRankingType {
     PvpPersonalPreviousSeason = 42,
     Pvp = 43,
     PvpPreviousSeason = 44,
+    // The guild championship board (the ranking dialog's board 5; the season boards' date is the season id): the
+    // own guild's rank, the guilds by their season score.
+    GuildPvpPersonal = 51,
+    GuildPvpPersonalPreviousSeason = 52,
+    GuildPvp = 53,
+    GuildPvpPreviousSeason = 54,
     UgcPersonal = 61,
     UgcPersonalPreviousSeason = 62,
     Ugc = 63,

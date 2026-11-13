@@ -4,6 +4,7 @@ using Maple2.Database.Model.Ranking;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Web.Controllers;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Web.Packet;
@@ -282,6 +283,28 @@ public static class InGameRankPacket {
             pWriter.WriteInt(info.RankingId); // read, not used by the client
             pWriter.WriteInt(info.Seconds);
             pWriter.WriteUnicodeStringWithLength(DateTimeOffset.FromUnixTimeSeconds(info.ClearTime).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
+        }
+
+        return pWriter;
+    }
+
+    // The guild championship board (0x35, 0x36), as GameRankingItem::GuildPvp reads it: the header, then a count of
+    // rows, each a rank, the guild id, its name, emblem and leader's name, the season score and the grade (string
+    // table 0x2d).
+    public static ByteWriter GuildPvp(GameRankingType type, IList<GuildPvpRankRow> rows) {
+        var pWriter = new ByteWriter();
+        pWriter.WriteInt((int) type);
+        pWriter.WriteInt(0);
+        pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        pWriter.WriteInt(rows.Count);
+        foreach (GuildPvpRankRow row in rows) {
+            pWriter.WriteInt(row.Rank);
+            pWriter.WriteLong(row.Standing.GuildId);
+            pWriter.WriteUnicodeStringWithLength(row.Standing.Name);
+            pWriter.WriteUnicodeStringWithLength(row.Standing.Emblem);
+            pWriter.WriteUnicodeStringWithLength(row.Standing.LeaderName);
+            pWriter.WriteInt(row.Standing.Score);
+            pWriter.WriteInt(row.Grade);
         }
 
         return pWriter;

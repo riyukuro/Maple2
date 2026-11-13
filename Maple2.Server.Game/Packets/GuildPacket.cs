@@ -45,7 +45,13 @@ public static class GuildPacket {
         Achievement = 35,
         CheckInTime = 36,
         MemberRaid = 37,
-        // 38, 39, 40, 41, 42, 43, 44
+        // 38
+        PvpState = 39,
+        PvpMatched = 40,
+        PvpRating = 41,
+        PvpResult = 42,
+        PvpRegistered = 43,
+        PvpUnregistered = 44,
         ReceiveApplication = 45,
         WithdrawApplication = 46,
         NotifyApplication = 47,
@@ -834,21 +840,86 @@ public static class GuildPacket {
     }
 
     // CGuildManager::OnPacketPvpHistory (guildmanager.cpp:2805): a count, then per row a byte and, when it
-    // is 1, the history row. The server runs no guild PvP, so only the empty list can be written.
-    public static ByteWriter PvpHistory() {
+    // is 1, the history row (CGuildPVPHistoryData). The client adds the rows to the ones it holds (the newest 10).
+    public static ByteWriter PvpHistory(IReadOnlyCollection<GuildPvpMatch> matches) {
         var pWriter = Packet.Of(SendOp.Guild);
-        pWriter.Write<Command>(Command.PvpHistory);
-        pWriter.WriteInt(0);
+        pWriter.WriteByte((byte) Command.PvpHistory);
+        pWriter.WriteInt(matches.Count);
+        foreach (GuildPvpMatch match in matches) {
+            pWriter.WriteByte(1);
+            match.WriteTo(pWriter);
+        }
 
         return pWriter;
     }
 
     // CGuildManager::OnPacketPvpSeasonHistory (guildmanager.cpp:2826): the same shape with season rows. The
     // client empties its season list first, then redraws the tab.
-    public static ByteWriter PvpSeason() {
+    public static ByteWriter PvpSeason(IReadOnlyCollection<GuildPvpSeason> seasons) {
         var pWriter = Packet.Of(SendOp.Guild);
-        pWriter.Write<Command>(Command.PvpSeason);
-        pWriter.WriteInt(0);
+        pWriter.WriteByte((byte) Command.PvpSeason);
+        pWriter.WriteInt(seasons.Count);
+        foreach (GuildPvpSeason season in seasons) {
+            pWriter.WriteByte(1);
+            season.WriteTo(pWriter);
+        }
+
+        return pWriter;
+    }
+
+    // 0x27 (FUN_1413c2860): the guild's championship state (CGuildInfo::SetPvpState).
+    public static ByteWriter PvpState(GuildPvpState state) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.WriteByte((byte) Command.PvpState);
+        pWriter.WriteByte((byte) state);
+
+        return pWriter;
+    }
+
+    // 0x28: the guild was matched (0x3bf, then the join prompt) or not (0x3c0).
+    public static ByteWriter PvpMatched(bool matched) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.WriteByte((byte) Command.PvpMatched);
+        pWriter.WriteBool(matched);
+
+        return pWriter;
+    }
+
+    // 0x29: the guild's new score, wins and losses (0x3b8 when the grade changed).
+    public static ByteWriter PvpRating(int score, int wins, int losses) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.WriteByte((byte) Command.PvpRating);
+        pWriter.WriteInt(score);
+        pWriter.WriteInt(wins);
+        pWriter.WriteInt(losses);
+
+        return pWriter;
+    }
+
+    // 0x2a (OnPacketBattleResult): won (0x3bb) or lost (0x3bc) against the named guild.
+    public static ByteWriter PvpResult(bool won, string opponent) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.WriteByte((byte) Command.PvpResult);
+        pWriter.WriteBool(won);
+        pWriter.WriteUnicodeString(opponent);
+
+        return pWriter;
+    }
+
+    // 0x2b (OnPacketBattleApplied): the member who registered the guild (s_guild_notify_pvp_regist).
+    public static ByteWriter PvpRegistered(string name) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.WriteByte((byte) Command.PvpRegistered);
+        pWriter.WriteUnicodeString(name);
+
+        return pWriter;
+    }
+
+    // 0x2c (OnPacketGuildBattleNotice): the member who took the registration back (s_guild_notify_pvp_unregist).
+    public static ByteWriter PvpUnregistered(string name) {
+        var pWriter = Packet.Of(SendOp.Guild);
+        pWriter.WriteByte((byte) Command.PvpUnregistered);
+        pWriter.WriteUnicodeString(name);
 
         return pWriter;
     }

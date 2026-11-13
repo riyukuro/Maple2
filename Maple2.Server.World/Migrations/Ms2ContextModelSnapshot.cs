@@ -994,6 +994,9 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("json");
 
+                    b.Property<string>("Pvp")
+                        .HasColumnType("json");
+
                     b.Property<string>("Ranks")
                         .IsRequired()
                         .HasColumnType("json");
@@ -1084,6 +1087,12 @@ namespace Maple2.Server.World.Migrations
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasColumnType("longtext");
+
+                    b.Property<int>("PvpSeasonCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PvpTotalCount")
+                        .HasColumnType("int");
 
                     b.Property<string>("Raids")
                         .HasColumnType("json");

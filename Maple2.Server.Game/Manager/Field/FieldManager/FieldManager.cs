@@ -109,8 +109,15 @@ public partial class FieldManager : IField {
     // The trigger's PvP zone (set_pvp_zone) while it runs and after (pvp_zone_ended); null before one is set.
     public IPvpZoneField? PvpZone { get; private set; }
 
-    // A PvP zone of the script's type: 1 the Red Arena's face-offs, 2 the free-for-all, 3 Treasure Island's teams, 5
-    // 61000035's one punch round and 6 its item round (both free-for-all zones in their own mode). False for a type the
+    // The World's guild championship match this field was made for (Factory.CreateGuildPvp); null in every other field.
+    public GuildPvpFieldMatch? GuildPvp { get; private set; }
+
+    public void SetGuildPvp(GuildPvpFieldMatch match) {
+        GuildPvp = match;
+    }
+
+    // A PvP zone of the script's type: 1 the Red Arena's face-offs, 2 the free-for-all, 3 Treasure Island's teams, 4 the
+    // guild championship's rounds, 5 61000035's one punch round and 6 its item round (both free-for-all zones in their own mode). False for a type the
     // server does not build.
     public bool StartPvpZone(int type, int boxId, int prepareSeconds, int matchSeconds, int additionalEffectId, IReadOnlyList<int> boxIds,
                              Func<int, IEnumerable<FieldPlayer>> playersInBox) {
@@ -128,6 +135,7 @@ public partial class FieldManager : IField {
             5 or 6 => new PvpZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, () => playersInBox(boxId), onEnd, tick,
                 waiting: WaitingArea(boxId), mode: type),
             3 => new TeamZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, boxIds, playersInBox, onEnd, tick),
+            4 => new GuildPvpZoneField(this, boxId, prepareSeconds, matchSeconds, additionalEffectId, boxIds, playersInBox, GuildPvp, tick),
             _ => null,
         };
         if (zone == null) {

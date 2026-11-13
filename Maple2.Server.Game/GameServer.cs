@@ -155,6 +155,10 @@ public class GameServer : Server<GameSession> {
         return fieldFactory.CreateGuildVsGame(matchId, blueGuildId, redGuildId);
     }
 
+    public FieldManager? CreateGuildPvp(int matchId, long guildA, long guildB) {
+        return fieldFactory.CreateGuildPvp(matchId, guildA, guildB);
+    }
+
     // Whether the rank duel field of this room still runs on this channel. Never creates a field.
     public bool HasPvpMatch(int roomId) {
         return fieldFactory.HasPvpMatch(roomId);

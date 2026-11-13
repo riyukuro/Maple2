@@ -10,6 +10,7 @@ namespace Maple2.Server.Game.Packets;
 // queue; the rank duel has its queue, match and result.
 public static class PvpPacket {
     private enum Command : byte {
+        ChampionGuild = 4,
         ArenaRegistered = 9,
         GameRuleValues = 12,
         ArenaUnregistered = 10,
@@ -42,7 +43,13 @@ public static class PvpPacket {
         TeamGauge = 111,
         TeamFlag = 112,
         TeamPlunder = 113,
+        GuildTeams = 0x72,
+        GuildResult = 0x75,
     }
+
+    // One guild of the guild championship result (Pvp 'u'): the name, the guild, the rounds won, the new score and its
+    // change, the emblem.
+    public readonly record struct GuildSide(string Name, long GuildId, int Rounds, int Score, int ScoreChange, string Emblem);
 
     // One side of the rank duel result (UIPvPRankDuelResultDialog::FUN_140f90b10): the name, the character,
     // the rounds won, the rating and its change (the dialog shows the change only when it is not 0) and the
@@ -329,6 +336,45 @@ public static class PvpPacket {
         pWriter.WriteByte((byte) Command.TeamPlunder);
         pWriter.WriteUnicodeString(name);
         pWriter.WriteByte(team);
+        return pWriter;
+    }
+
+    // 4: the championship guild the player cheers for (SetTargetGuildAndNotify, message 0x3c8): the guild and its name.
+    public static ByteWriter ChampionGuild(long guildId, string name) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.ChampionGuild);
+        pWriter.WriteLong(guildId);
+        pWriter.WriteUnicodeString(name);
+        return pWriter;
+    }
+
+    // 'r': the guild championship's two guilds (each the guild, its name and emblem); the client opens the guild team
+    // dialog (UIPvPGuildTeamDialog) with them.
+    public static ByteWriter GuildTeams(long guildA, string nameA, string emblemA, long guildB, string nameB, string emblemB) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.GuildTeams);
+        pWriter.WriteLong(guildA);
+        pWriter.WriteUnicodeString(nameA);
+        pWriter.WriteUnicodeString(emblemA);
+        pWriter.WriteLong(guildB);
+        pWriter.WriteUnicodeString(nameB);
+        pWriter.WriteUnicodeString(emblemB);
+        return pWriter;
+    }
+
+    // 'u': the guild championship result, the winner first, then the valor tokens (90000006) the player won.
+    public static ByteWriter GuildResult(GuildSide winner, GuildSide loser, int rewardCount) {
+        var pWriter = Packet.Of(SendOp.Pvp);
+        pWriter.WriteByte((byte) Command.GuildResult);
+        foreach (GuildSide side in new[] { winner, loser }) {
+            pWriter.WriteUnicodeString(side.Name);
+            pWriter.WriteLong(side.GuildId);
+            pWriter.WriteInt(side.Rounds);
+            pWriter.WriteInt(side.Score);
+            pWriter.WriteInt(side.ScoreChange);
+            pWriter.WriteUnicodeString(side.Emblem);
+        }
+        pWriter.WriteInt(rewardCount);
         return pWriter;
     }
 

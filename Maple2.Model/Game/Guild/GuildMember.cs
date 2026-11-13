@@ -19,6 +19,9 @@ public class GuildMember : IByteSerializable, IDisposable {
     public int WeeklyContribution;
     public int TotalContribution;
     public int DailyDonationCount;
+    // CGuildMember fe0 and fe4: the guild championship matches the member fought in this season and in all.
+    public int PvpSeasonCount;
+    public int PvpTotalCount;
     // CGuildMemberRaid (guilddef_1.cpp:724): the member's value per guild raid, by the raid's dungeon room id
     // (table/guildraid.xml). The raid page shows each value and their sum (UIGuildDialog, uiguilddialog.cpp:2108/2718).
     public readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> Raids = new();
@@ -40,8 +43,8 @@ public class GuildMember : IByteSerializable, IDisposable {
         writer.WriteLong(JoinTime);
         writer.WriteLong(Info.LastOnlineTime);
         writer.WriteLong(CheckinTime);
-        writer.WriteInt();
-        writer.WriteInt();
+        writer.WriteInt(PvpSeasonCount);
+        writer.WriteInt(PvpTotalCount);
         writer.WriteInt(WeeklyContribution);
         writer.WriteInt(TotalContribution);
         writer.WriteInt(DailyDonationCount);

@@ -45,6 +45,13 @@ public class GuildLookup : IDisposable {
         }
     }
 
+    // The guild championship season roll of every guild held here (GuildManager.RollPvp).
+    public void RollPvp(DateTime now) {
+        foreach (GuildManager manager in guilds.Values) {
+            manager.RollPvp(now);
+        }
+    }
+
     // The join requests are rows of the game database; they have no copy in the guild held here.
     public GameStorage.Request Storage() {
         return gameStorage.Context();
@@ -135,6 +142,10 @@ public class GuildLookup : IDisposable {
             ItemMetadata = itemMetadata,
             ServerTableMetadata = serverTableMetadata,
         };
-        return guilds.TryAdd(guild.Id, manager) ? manager : null;
+        if (!guilds.TryAdd(guild.Id, manager)) {
+            return null;
+        }
+        manager.RollPvp(DateTime.Now);
+        return manager;
     }
 }

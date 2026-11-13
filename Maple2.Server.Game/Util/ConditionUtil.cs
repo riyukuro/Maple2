@@ -236,8 +236,12 @@ public static class ConditionUtil {
                 }
                 break;
             // The PvP conditions: the code is the map of the fight (65000001 Red Arena, 65000002 Crimson Tear Mine,
-            // 65000003 Treasure Island, 65010001-65010010 the rank duel maps; the trophies 21300003-21300041 name them
-            // so). A row without a code (21300014, any arena) counts on every map.
+            // 65000003 Treasure Island, 65010001-65010010 the rank duel maps, 64000001 the guild championship's arena
+            // for the guildpvp_* rows 21300009-21300011; the trophies 21300003-21300041 name them so). A row without a
+            // code (21300014, any arena) counts on every map.
+            case ConditionType.guildpvp_win:
+            case ConditionType.guildpvp_kill:
+            case ConditionType.guildpvp_die:
             case ConditionType.pvp_win:
             case ConditionType.pvp_kill:
             case ConditionType.pvp_die:

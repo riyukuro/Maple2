@@ -81,13 +81,13 @@ public class PvpZoneFieldTests {
     private static string Long(long value) => Convert.ToHexString(BitConverter.GetBytes(value));
 
     // Each shipped set_pvp_zone with its script's box, type and box list: 1 the Red Arena, 2 the free-for-all, 3
-    // Treasure Island, 5 and 6 61000035's rounds; 4 (64000001, the guild arena) builds no zone.
+    // Treasure Island, 5 and 6 61000035's rounds, 4 64000001's guild championship.
     [TestCase(1, 102, new int[0], typeof(RedArenaZoneField))]
     [TestCase(2, 101, new int[0], typeof(PvpZoneField))]
     [TestCase(3, 104, new[] { 1, 2, 101, 102, 103 }, typeof(TeamZoneField))]
     [TestCase(5, 701, new int[0], typeof(PvpZoneField))]
     [TestCase(6, 701, new int[0], typeof(PvpZoneField))]
-    [TestCase(4, 101, new[] { 102, 103, 112, 113, 10, 11, 1, 3 }, null)]
+    [TestCase(4, 101, new[] { 102, 103, 112, 113, 10, 11, 1, 3 }, typeof(GuildPvpZoneField))]
     public void ShippedTypes(int type, int box, int[] boxIds, System.Type? zone) {
         bool started = false;
         Arena arena = Start(field => started = field.StartPvpZone(type, box, 0, 120, 90001002, boxIds, _ => field.Players.Values),

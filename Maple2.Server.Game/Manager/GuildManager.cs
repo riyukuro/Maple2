@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using Google.Protobuf;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -96,6 +97,8 @@ public class GuildManager : IDisposable {
                 WeeklyContribution = member.WeeklyContribution,
                 TotalContribution = member.TotalContribution,
                 DailyDonationCount = member.DailyDonationCount,
+                PvpSeasonCount = member.PvpSeasonCount,
+                PvpTotalCount = member.PvpTotalCount,
             };
             foreach ((int raidId, int value) in member.Raids) {
                 result.Raids[raidId] = value;
@@ -120,6 +123,8 @@ public class GuildManager : IDisposable {
             Funds = info.Funds,
             HouseRank = info.HouseRank,
             HouseTheme = info.HouseTheme,
+            Pvp = string.IsNullOrEmpty(info.Pvp) ? new GuildPvp() : JsonSerializer.Deserialize<GuildPvp>(info.Pvp) ?? new GuildPvp(),
+            PvpState = (GuildPvpState) info.PvpState,
             Ranks = info.Ranks.Select((rank, i) => new GuildRank {
                 Id = (byte) i,
                 Name = rank.Name,

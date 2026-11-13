@@ -95,14 +95,9 @@ public partial class TriggerContext {
 
     // The PvP zone of a map script. Its type is the client's PvP mode (CPvPInfo m_nMode): 1 the Red Arena's face-offs,
     // 2 the free-for-all of the Crimson Tear Mine, 3 Treasure Island's teams (RedArenaZoneField, PvpZoneField,
-    // TeamZoneField), 5 and 6 61000035's one punch rounds (PvpZoneField in that mode). 4 (the guild arena 64000001) is
-    // not built: its teams come from the guild PvP register, which the KR client cannot reach (no current guild season;
-    // FORK.md, Guild PvP), and its rules would be guessed. Its script then waits in its end state; logged at Debug.
+    // TeamZoneField), 4 the guild championship's rounds in the guild arena 64000001 (GuildPvpZoneField), 5 and 6
+    // 61000035's one punch rounds (PvpZoneField in that mode).
     public void SetPvpZone(int boxId, int prepareTime, int matchTime, int additionalEffectId, int type, params int[] boxIds) {
-        if (type == 4) {
-            logger.Debug("[SetPvpZone] guild zone (type 4) on box {BoxId} not built", boxId);
-            return;
-        }
         if (!Field.StartPvpZone(type, boxId, prepareTime, matchTime, additionalEffectId, boxIds, box => PlayersInBox(box))) {
             ErrorLog("[SetPvpZone] boxId:{BoxId}, prepareTime:{PrepareTime}, matchTime:{MatchTime}, additionalEffectId:{AdditionalEffectId}, type:{Type}, boxIds:{BoxIds}",
                 boxId, prepareTime, matchTime, additionalEffectId, type, string.Join(", ", boxIds));
