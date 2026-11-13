@@ -39,5 +39,20 @@ public class DurationParserTests {
             Assert.That(span, Is.EqualTo(TimeSpan.FromDays(expectedDays)));
         }
     }
+
+    // A count too large for a TimeSpan is refused, not thrown or wrapped.
+    [TestCase("2147483647y")]
+    [TestCase("1000000y")]
+    [TestCase("2147483647M")]
+    public void Parse_TooLargeIsRefused(string token) {
+        Assert.That(DurationParser.TryParse(token, out TimeSpan span), Is.False);
+        Assert.That(span, Is.EqualTo(TimeSpan.Zero));
+    }
+
+    [Test]
+    public void Parse_LargeYearsDoNotWrap() {
+        Assert.That(DurationParser.TryParse("9000y", out TimeSpan span), Is.True);
+        Assert.That(span, Is.EqualTo(TimeSpan.FromDays(365L * 9000)));
+    }
 }
 

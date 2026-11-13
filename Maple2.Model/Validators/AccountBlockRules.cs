@@ -30,6 +30,13 @@ public static class AccountBlockRules {
         [36, 34, 6, 32, 37, 39, 20],
     ];
 
+    // The reason column's width (account-block.Reason varchar(255)).
+    public const int MaxReasonLength = 255;
+    // The last second a stored expiry (a DateTime) can hold: 9999-12-31 23:59:59 UTC.
+    public const long MaxExpiry = 253_402_300_799;
+
+    public static bool ExpiryFits(long expiry) => expiry is >= 0 and <= MaxExpiry;
+
     public static bool ValidKind(int kind) => kind is >= MinKind and <= MaxKind;
 
     // Kinds 1 and 9 block the login, which the server's ban table already does (Chosen here: the restrict command

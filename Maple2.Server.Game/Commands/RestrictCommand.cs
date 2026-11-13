@@ -26,7 +26,16 @@ public class RestrictCommand : GameCommand {
         AddCommand(new ListSubcommand(session));
     }
 
-    private static bool IsStaff(Account account) => (account.AdminPermissions & (AdminPermissions.GameMaster | AdminPermissions.Admin)) != 0;
+    // A GM (the client's GM level) or an account that may restrict or ban others itself.
+    private static bool IsStaff(Account account) => AdminLevel.IsGm(account.AdminPermissions) || account.AdminPermissions.HasFlag(AdminPermissions.Ban);
+
+    private static bool ReasonFits(InvocationContext ctx, string reason) {
+        if (reason.Length <= AccountBlockRules.MaxReasonLength) {
+            return true;
+        }
+        ctx.Console.Out.WriteLine($"Reason is {reason.Length} characters; at most {AccountBlockRules.MaxReasonLength}.");
+        return false;
+    }
 
     // Tells the channel holding the account (any channel) to reload and update the client.
     private static void Push(GameSession session, long accountId, int mode, AccountBlock block, int delta = 0) {
@@ -73,6 +82,15 @@ public class RestrictCommand : GameCommand {
                 ctx.Console.Out.WriteLine($"Invalid duration '{durationToken}' (e.g. 30m, 12h, 7d).");
                 return;
             }
+            DateTime now = DateTime.UtcNow;
+            if (!AccountBlockRules.ExpiryFits(now.ToEpochSeconds() + (long) duration.TotalSeconds)) {
+                ctx.Console.Out.WriteLine($"Duration '{durationToken}' ends after the year 9999.");
+                return;
+            }
+            string reason = string.Join(' ', reasonWords);
+            if (!ReasonFits(ctx, reason)) {
+                return;
+            }
 
             using GameStorage.Request db = session.GameStorage.Context();
             Account? target = db.GetAccountByCharacterName(characterName);
@@ -91,8 +109,7 @@ public class RestrictCommand : GameCommand {
                 return;
             }
 
-            string reason = string.Join(' ', reasonWords);
-            AccountBlock? created = db.CreateAccountBlock(target.Id, kind, reason, DateTime.UtcNow.Add(duration), session.AccountId);
+            AccountBlock? created = db.CreateAccountBlock(target.Id, kind, reason, now.Add(duration), session.AccountId);
             if (created == null) {
                 ctx.Console.Out.WriteLine("Failed to save the restriction.");
                 return;
@@ -167,6 +184,11 @@ public class RestrictCommand : GameCommand {
             Account? target = db.GetAccount(block.AccountId);
             if (target != null && IsStaff(target)) {
                 ctx.Console.Out.WriteLine("Cannot change a GM/Admin account's restriction.");
+                return;
+            }
+
+            if (!AccountBlockRules.ExpiryFits(block.ExpiryTime + delta)) {
+                ctx.Console.Out.WriteLine($"Restriction {id} would end after the year 9999.");
                 return;
             }
 

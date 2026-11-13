@@ -1,10 +1,13 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Service;
+using Maple2.Server.World.Service;
 
 namespace Maple2.Server.Tests.Game.Packets;
 
@@ -86,6 +89,33 @@ public class AdminBlockPacketTests {
         Assert.That(AccountBlockRules.ChatRefusal([Block(2, 5_000)], 5_001), Is.Null);
         Assert.That(AccountBlockRules.ChatRefusal([Block(4, 9_000), Block(7, 9_000)], 4_000), Is.Null);
         Assert.That(AccountBlockRules.ChatRefusal([], 4_000), Is.Null);
+    }
+
+    // A stored expiry is a DateTime: the last second of 9999 still fits, the next does not.
+    [Test]
+    public void ExpiryFits_UpToTheLastDateTimeSecond() {
+        Assert.That(AccountBlockRules.MaxExpiry, Is.EqualTo(new DateTimeOffset(9999, 12, 31, 23, 59, 59, TimeSpan.Zero).ToUnixTimeSeconds()));
+        Assert.That(AccountBlockRules.ExpiryFits(AccountBlockRules.MaxExpiry), Is.True);
+        Assert.That(AccountBlockRules.ExpiryFits(AccountBlockRules.MaxExpiry + 1), Is.False);
+        Assert.That(AccountBlockRules.ExpiryFits(-1), Is.False);
+    }
+
+    // The channel holding the account: mode 0 sends the added record as stored, none when it is gone; 1 the removal;
+    // 2 the new expiry and the change.
+    [Test]
+    public void ChannelDispatch_SendsTheModesPacket() {
+        AccountBlock[] held = [Block(6, 9_000)];
+        var add = new AdminRequest.Types.AccountBlock { AccountId = 1001, Mode = 0, BlockId = 7 };
+        Assert.That(ChannelService.AccountBlockPacket(held, add)!.ToArray(), Is.EqualTo(AdminBlockPacket.Load(held).ToArray()));
+        Assert.That(ChannelService.AccountBlockPacket([], add), Is.Null);
+
+        var remove = new AdminRequest.Types.AccountBlock { AccountId = 1001, Mode = 1, BlockId = 7 };
+        Assert.That(ChannelService.AccountBlockPacket([], remove)!.ToArray(), Is.EqualTo(AdminBlockPacket.Remove(7).ToArray()));
+
+        var extend = new AdminRequest.Types.AccountBlock { AccountId = 1001, Mode = 2, BlockId = 7, Kind = 6, ExpiryTime = 12_600, Delta = 3_600 };
+        Assert.That(ChannelService.AccountBlockPacket(held, extend)!.ToArray(), Is.EqualTo(AdminBlockPacket.SetExpiry(7, 6, 12_600, 3_600).ToArray()));
+
+        Assert.That(ChannelService.AccountBlockPacket(held, new AdminRequest.Types.AccountBlock { Mode = 3 }), Is.Null);
     }
 
     // FindAction walks the kinds from 1: with both a Penalty and kind 6 live, the Penalty answers.

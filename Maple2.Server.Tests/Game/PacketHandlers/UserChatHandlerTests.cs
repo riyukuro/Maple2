@@ -419,6 +419,49 @@ public class UserChatHandlerTests {
         Assert.That(session.SuperChatId, Is.EqualTo(0));
     }
 
+    // A live chat restriction (AdminBlock kind 2 Penalty or 6) refuses the line with the client's text; an ended one
+    // does not, and the client's own whisper reject still goes out.
+    [TestCase(2, StringCode.s_admin_block_velma_notice_chat)]
+    [TestCase(6, StringCode.s_admin_block_chat)]
+    public void RestrictedAccount_LineIsRefused(int kind, StringCode text) {
+        GameSession session = Login(meret: 100000);
+        session.AccountBlocks = [Block(kind, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 600)];
+
+        Say(session, ChatType.World, "hello");
+
+        Assert.That(test.World.Chats, Is.Empty);
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.UserChat), Is.EqualTo(new[] { Hex(ChatPacket.Alert(text)) }));
+    }
+
+    [Test]
+    public void EndedRestriction_LineGoesOut() {
+        GameSession session = Login(meret: 100000);
+        session.AccountBlocks = [Block(6, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 1)];
+
+        Say(session, ChatType.World, "hello");
+
+        Assert.That(test.World.Chats, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public void RestrictedAccount_WhisperRejectGoesOut() {
+        GameSession session = Login(meret: 0);
+        session.AccountBlocks = [Block(6, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 600)];
+        session.WhisperedBy["friend"] = 42;
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteInt((int) ChatType.WhisperReject);
+            writer.WriteUnicodeString();
+            writer.WriteUnicodeString("friend");
+            writer.WriteLong();
+        }));
+
+        Assert.That(test.World.Chats.Single().Whisper.Reject, Is.True);
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.UserChat), Is.Empty);
+    }
+
+    private static AccountBlock Block(int kind, long expiry) => new() { Id = 1, Kind = kind, ExpiryTime = expiry };
+
     // A whisper to a name no character has: the lookup gives id 0, which is a plain not-found (the whisper error
     // alert) and not a request the world refuses, so nothing is asked of the world and no error is logged.
     [Test]

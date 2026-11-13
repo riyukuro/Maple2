@@ -37,16 +37,22 @@ public static partial class DurationParser {
         if (!allowedUnits.Contains(unit)) return false;
 
         // Map units. Months and years approximated as 30 / 365 days respectively.
-        duration = unit switch {
-            's' => TimeSpan.FromSeconds(value),
-            'm' => TimeSpan.FromMinutes(value),
-            'h' => TimeSpan.FromHours(value),
-            'd' => TimeSpan.FromDays(value),
-            'w' => TimeSpan.FromDays(7 * value),
-            'M' => TimeSpan.FromDays(30 * value),
-            'y' => TimeSpan.FromDays(365 * value),
-            _ => TimeSpan.Zero,
-        };
+        // Days in long and double, so a large count is refused instead of wrapping or throwing.
+        try {
+            duration = unit switch {
+                's' => TimeSpan.FromSeconds(value),
+                'm' => TimeSpan.FromMinutes(value),
+                'h' => TimeSpan.FromHours(value),
+                'd' => TimeSpan.FromDays((double) value),
+                'w' => TimeSpan.FromDays((double) (7L * value)),
+                'M' => TimeSpan.FromDays((double) (30L * value)),
+                'y' => TimeSpan.FromDays((double) (365L * value)),
+                _ => TimeSpan.Zero,
+            };
+        } catch (OverflowException) {
+            duration = TimeSpan.Zero;
+            return false;
+        }
         return duration > TimeSpan.Zero;
     }
 

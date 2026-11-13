@@ -53,6 +53,28 @@ public class GroupChatItemLinkTests {
         });
     }
 
+    // A live chat restriction refuses a group line too (CGroupChatManager::SendGroupChatMode10), with the client's text.
+    [Test]
+    public void RestrictedAccount_LineIsRefused() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        session.GroupChats ??= new ConcurrentDictionary<int, GroupChatManager>();
+        session.GroupChats[ChatId] = (GroupChatManager) RuntimeHelpers.GetUninitializedObject(typeof(GroupChatManager));
+        session.AccountBlocks = [new AccountBlock { Id = 1, Kind = 6, ExpiryTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 600 }];
+        test.TakeSent();
+        var handler = new GroupChatHandler { World = test.World };
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(10);
+            writer.WriteUnicodeString("hello");
+            writer.WriteInt(ChatId);
+        }));
+
+        Assert.That(test.World.GroupChats, Is.Empty);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(ChatPacket.Alert(Maple2.Model.Enum.StringCode.s_admin_block_chat).ToArray()) }));
+    }
+
     // The 0xb block: chat id, sender name, count, then per item its uid, id and rarity and the item block.
     [Test]
     public void ItemLinks_IsReadItemLinksShape() {

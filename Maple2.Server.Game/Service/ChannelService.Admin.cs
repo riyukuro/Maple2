@@ -4,6 +4,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -57,21 +58,27 @@ public partial class ChannelService {
         using (GameStorage.Request db = gameStorage.Context()) {
             session.AccountBlocks = db.GetAccountBlocks(change.AccountId).ToArray();
         }
-        switch (change.Mode) {
-            case 0:
-                AccountBlock? added = session.AccountBlocks.FirstOrDefault(block => block.Id == change.BlockId);
-                if (added != null) {
-                    session.Send(AdminBlockPacket.Load([added]));
-                }
-                break;
-            case 1:
-                session.Send(AdminBlockPacket.Remove(change.BlockId));
-                break;
-            case 2:
-                session.Send(AdminBlockPacket.SetExpiry(change.BlockId, change.Kind, change.ExpiryTime, change.Delta));
-                break;
+        ByteWriter? packet = AccountBlockPacket(session.AccountBlocks, change);
+        if (packet != null) {
+            session.Send(packet);
         }
         return new AdminResponse();
+    }
+
+    // Mode 0 sends the added record as the account holds it now (none when it is already gone), 1 the removal and
+    // 2 the new expiry with the change in seconds.
+    internal static ByteWriter? AccountBlockPacket(AccountBlock[] blocks, AdminRequest.Types.AccountBlock change) {
+        switch (change.Mode) {
+            case 0:
+                AccountBlock? added = blocks.FirstOrDefault(block => block.Id == change.BlockId);
+                return added == null ? null : AdminBlockPacket.Load([added]);
+            case 1:
+                return AdminBlockPacket.Remove(change.BlockId);
+            case 2:
+                return AdminBlockPacket.SetExpiry(change.BlockId, change.Kind, change.ExpiryTime, change.Delta);
+            default:
+                return null;
+        }
     }
 
     private AdminResponse AddStringBoard(AdminRequest.Types.AddStringBoard addStringBoard) {
