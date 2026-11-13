@@ -198,9 +198,10 @@ public class QuestHandler : FieldPacketHandler {
         }
 
         bool isPostbox = npcObjectId == 0 && metadata.Basic.UsePostbox;
-        bool fieldNpcExists = session.Field!.Npcs.TryGetValue(npcObjectId, out FieldNpc? _);
+        // The talk's npc is the quest's start npc (CQuestManagerCommon::vfunc_o10_21, commonfiles/questdata.cpp:330).
+        bool atStartNpc = session.Field!.Npcs.TryGetValue(npcObjectId, out FieldNpc? npc) && npc.Value.Id == metadata.Basic.StartNpc;
 
-        if (!isPostbox && !fieldNpcExists) {
+        if (!isPostbox && !atStartNpc) {
             return QuestError.s_quest_error_accept_fail;
         }
 

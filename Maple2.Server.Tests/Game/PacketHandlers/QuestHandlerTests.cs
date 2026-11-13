@@ -64,11 +64,11 @@ public class QuestHandlerTests {
         return quest;
     }
 
-    private void Accept(GameSession session, int questId = QuestId) {
+    private void Accept(GameSession session, int questId = QuestId, int npcObjectId = 0) {
         handler.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(2);
             writer.WriteInt(questId);
-            writer.WriteInt(0);
+            writer.WriteInt(npcObjectId);
         }));
     }
 
@@ -523,6 +523,26 @@ public class QuestHandlerTests {
 
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Error(QuestError.s_quest_error_accept_fail) }));
         Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.False);
+    }
+
+    // The accept talk names its npc (cinematiccomponent.cpp:584): only the quest's start npc gives it
+    // (CQuestManagerCommon::vfunc_o10_21, commonfiles/questdata.cpp:330), another npc of the field does not.
+    [TestCase(Npc, true)]
+    [TestCase(Npc + 1, false)]
+    public void Accept_AtTheQuestsStartNpcOnly(int npcId, bool expected) {
+        GameSession session = Login();
+        QuestMetadata data = Data();
+        test.Register(data with { Basic = data.Basic with { StartNpc = Npc }, RemoteAccept = new QuestRemoteAccept(QuestRemoteType.None, 0) });
+        AddNpc(session, 55, npcId);
+
+        Accept(session, npcObjectId: 55);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.EqualTo(expected));
+            if (!expected) {
+                Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Error(QuestError.s_quest_error_accept_fail) }));
+            }
+        });
     }
 
     // The quest's own items do not fit: the full-bag text, and the quest is not started.
