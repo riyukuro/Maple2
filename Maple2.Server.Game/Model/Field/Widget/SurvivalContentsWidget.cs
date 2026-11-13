@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Numerics;
 using Maple2.Model.Game.Pvp;
-using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Tools;
@@ -12,7 +11,7 @@ namespace Maple2.Server.Game.Model.Widget;
 // The survival maps' SurvivalContents widget (03_storm.xml): StormData, then EnterStep 1 to 8, each until the
 // condition TimeOver. The storm (SurvivalStorm) is a safe circle at the field's center that shrinks with each step; the
 // steps go to the clients as SurvivalEvent 4 (ready), 5 (start) and 0 (the zone).
-public class SurvivalContentsWidget : Widget, IByteSerializable {
+public class SurvivalContentsWidget : Widget {
     private const short ZoneId = 1;
     // Chosen here: the smallest safe zone.
     private const float MinRadius = 300f;
@@ -92,13 +91,4 @@ public class SurvivalContentsWidget : Widget, IByteSerializable {
     }
 
     private static short Short(float value) => (short) Math.Clamp(value, 0, short.MaxValue);
-
-    public void WriteTo(IByteWriter writer) {
-        writer.WriteShort(ZoneId);
-        writer.WriteShort((short) (Storm?.StartRadius ?? 0));
-        writer.WriteShort((short) (Storm?.Step ?? 0));
-        writer.Write<Vector3>(Center);
-        writer.WriteShort((short) (Storm?.SafeRadius ?? 0));
-        writer.Write<Vector3>(Center);
-    }
 }
