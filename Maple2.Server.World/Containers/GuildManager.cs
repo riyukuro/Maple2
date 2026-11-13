@@ -41,8 +41,10 @@ public class GuildManager : IDisposable {
     // The weekly reset of the members held here; the database row is reset after it, so a later save of the
     // guild keeps the 0.
     public void WeeklyReset() {
-        GuildRules.ResetWeeklyContribution(Guild.Members.Values);
-        GuildRules.ResetRaids(Guild.Members.Values);
+        lock (guildLock) {
+            GuildRules.ResetWeeklyContribution(Guild.Members.Values);
+            GuildRules.ResetRaids(Guild.Members.Values);
+        }
     }
 
     public bool HasPermission(long characterId, GuildPermission permission) {
@@ -926,9 +928,14 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_unknown;
         }
 
-        int value = GuildRules.AddRaidClear(requestor, raid.DungeonRoomId, raid.ClearRaidPoint);
-        // Stored now, only the member's row: a failed save keeps the value here for the next save of the guild.
-        TrySaveMember(requestor);
+        // Under the guild's lock, as the other writers and the saves: two clears of one member, or a clear during a
+        // save or the weekly reset, do not race on the raid map. Stored now, only the member's row: a failed save
+        // keeps the value here for the next save of the guild.
+        int value;
+        lock (guildLock) {
+            value = GuildRules.AddRaidClear(requestor, raid.DungeonRoomId, raid.ClearRaidPoint);
+            TrySaveMember(requestor);
+        }
 
         Broadcast(new GuildRequest {
             MemberRaid = new GuildRequest.Types.MemberRaid {
