@@ -183,6 +183,19 @@ public class ItemDropManager {
             .SelectMany(itemEntry => CreateIndividualDropBoxItems(itemEntry)).ToList();
     }
 
+    // The quest-only rows (constraintsQuest) of a box a trigger spawns, rolled for one player: each group rolled over
+    // the quest-only rows the player's started quest still needs on this map (QuestManager.NeedsItem), so a player who
+    // holds the item or finished the quest gets none. The no-player roll above leaves these rows out.
+    public ICollection<Item> GetIndividualQuestDropItems(GameSession session, int individualDropBoxId) {
+        if (!field.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId, out IDictionary<int, IndividualDropItemTable.Entry>? entryDict)) {
+            return new List<Item>();
+        }
+
+        return entryDict.Values.SelectMany(group => PickGroupEntries(group, group.Items,
+                itemEntry => itemEntry.QuestConstraint && IsEntryAvailable(session, itemEntry), _ => false, itemEntry => itemEntry.Weight))
+            .SelectMany(itemEntry => CreateIndividualDropBoxItems(itemEntry, session.Player.Value.Character)).ToList();
+    }
+
     internal static IEnumerable<IndividualDropItemTable.Item> PickBoxEntriesWithoutPlayer(IEnumerable<IndividualDropItemTable.Entry> groups, int mapId) {
         return groups.SelectMany(group => PickGroupEntries(group, group.Items,
             itemEntry => !itemEntry.QuestConstraint && (itemEntry.MapIds.Length == 0 || itemEntry.MapIds.Contains(mapId)),

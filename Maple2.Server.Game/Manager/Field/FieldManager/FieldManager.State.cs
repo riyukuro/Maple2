@@ -403,6 +403,11 @@ public partial class FieldManager {
         return fieldItem;
     }
 
+    // Whether an item of this id dropped for the character still lies on the field.
+    public bool HasItemFor(long characterId, int itemId) {
+        return fieldItems.Values.Any(fieldItem => fieldItem.ReceiverId == characterId && fieldItem.Value.Id == itemId);
+    }
+
     public void DropItem(IActor owner, Item item) {
         FieldItem fieldItem = SpawnItem(owner, item);
         Broadcast(FieldPacket.DropItem(fieldItem));

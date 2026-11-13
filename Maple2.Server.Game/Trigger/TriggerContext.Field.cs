@@ -464,6 +464,28 @@ public partial class TriggerContext {
                 Field.DropItem(spawn.Position, spawn.Rotation, item, characterId: 0, fixedPosition: true,
                     dropKind: ItemDropKind.Trigger, msDuration: FieldItem.SpawnPointDurationMs(spawn.Lifetime));
             }
+            DropQuestItems(spawn);
+        }
+    }
+
+    // A spawn point box's quest-only rows (52000066's spawn 300: 30000023 for quest 60100070) drop for each player
+    // whose started quest still needs the item, as that player's item. A player whose copy still lies on the field gets
+    // no other one when the trigger runs again. Chosen here: one owned drop per player, as a shared one could go to a
+    // player without the quest.
+    private void DropQuestItems(EventSpawnPointItem spawn) {
+        if (spawn.IndividualDropBoxId <= 0) {
+            return;
+        }
+
+        foreach (FieldPlayer player in Field.Players.Values) {
+            foreach (Item item in Field.ItemDrop.GetIndividualQuestDropItems(player.Session, spawn.IndividualDropBoxId)) {
+                long characterId = player.Value.Character.Id;
+                if (Field.HasItemFor(characterId, item.Id)) {
+                    continue;
+                }
+                Field.DropItem(spawn.Position, spawn.Rotation, item, characterId: characterId, fixedPosition: true,
+                    dropKind: ItemDropKind.Trigger, msDuration: FieldItem.SpawnPointDurationMs(spawn.Lifetime));
+            }
         }
     }
 
@@ -494,6 +516,7 @@ public partial class TriggerContext {
                 sent++;
                 firstPosition ??= spawn.Position;
             }
+            DropQuestItems(spawn);
         }
 
         // Logged in every build (not only TRIGGER_DEBUG), so a Release run shows what the drops were.

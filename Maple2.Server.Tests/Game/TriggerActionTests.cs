@@ -1223,20 +1223,31 @@ public class TriggerItemTests : TriggerTestBase {
     private const int Coin = 30000001;
     private const int Potion = 30000002;
     private const int BoxId = 900002;
+    // KR 52000066 spawn point 300: box 310000175 holds one quest-only row, 30000023 for quest 60100070.
+    private const int QuestBoxId = 310000175;
+    private const int QuestItem = 30000023;
+    private const int QuestId = 60100070;
 
-    // A field whose map has item spawn point 9001 (box BoxId, 30 s) and 9002 (no box, no lifetime).
+    // A field whose map has item spawn point 9001 (box BoxId, 30 s), 9002 (no box, no lifetime) and 9004 (QuestBoxId).
     [SetUp]
     public void SetUpItems() {
         test = new TestGameSession();
-        test.Register(TestGameSession.Metadata(Coin), TestGameSession.Metadata(Potion));
+        test.Register(TestGameSession.Metadata(Coin), TestGameSession.Metadata(Potion), TestGameSession.Metadata(QuestItem));
+        IndividualDropItemTable.Entry.DropCount[] always = [new(1, 100)];
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
             [BoxId] = TestGameSession.DropBox([(Coin, 3)]),
+            [QuestBoxId] = new Dictionary<int, IndividualDropItemTable.Entry> {
+                [1] = new(1, 0, always, 0, false, false, [
+                    new([QuestItem, 0], false, 0, 0, 0, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], true),
+                ]),
+            },
         }));
         test.Start();
         SetTriggers();
         typeof(MapEntityMetadata).GetField("<EventItemSpawns>k__BackingField", Any)!.SetValue(Field.Entities, new Dictionary<int, EventSpawnPointItem> {
             [9001] = new(9001, new Vector3(100, 200, 300), Vector3.Zero, 30, BoxId, 0, 0, true),
             [9002] = new(9002, new Vector3(-100, 0, 0), Vector3.Zero, 0, 0, 0, 0, true),
+            [9004] = new(9004, new Vector3(6800, -1125, 4950), Vector3.Zero, 0, QuestBoxId, 0, 0, true),
         });
         context = NewContext();
         test.TakeSent();
@@ -1269,6 +1280,53 @@ public class TriggerItemTests : TriggerTestBase {
 
         Action("""<action name="create_item" spawn_ids="9003" item_id="30000002" />""");
         Assert.That(Drops(), Is.Empty);
+    }
+
+    // 60100070's one condition: hold 1 of 30000023 (item_exist, no map).
+    private Quest StartQuest() {
+        return test.StartQuest(TestGameSession.QuestData(QuestId) with {
+            Conditions = [new ConditionMetadata(ConditionType.item_exist, 1, new ConditionMetadata.Parameters(Integers: [QuestItem]), null)],
+        });
+    }
+
+    // A spawn point box's quest-only row drops for the player whose started quest needs the item, as that player's
+    // item (52000066 AgentEscape03: create_item spawn_ids="300" arg5="6000"). While that copy lies on the field the
+    // trigger running again drops no other.
+    [Test]
+    public void CreateItem_QuestRowForThePlayerWhoNeedsIt() {
+        StartQuest();
+        long characterId = test.Session.CharacterId;
+
+        Action("""<action name="create_item" spawn_ids="9004" arg5="6000" />""");
+        Assert.That(Drops(), Is.EqualTo(new[] { (QuestItem, 1, characterId, new Vector3(6800, -1125, 4950), ItemDropKind.Trigger, true) }));
+
+        Action("""<action name="create_item" spawn_ids="9004" arg5="6000" />""");
+        Assert.That(Drops(), Is.Empty);
+    }
+
+    // No drop without the quest, with the quest's item already held (its count met), or with the quest done.
+    [Test]
+    public void CreateItem_QuestRowNotNeeded() {
+        Action("""<action name="create_item" spawn_ids="9004" />""");
+        Assert.That(Drops(), Is.Empty);
+
+        Quest quest = StartQuest();
+        quest.Conditions.Values.Single().Counter = 1;
+        Action("""<action name="create_item" spawn_ids="9004" />""");
+        Assert.That(Drops(), Is.Empty);
+
+        quest.Conditions.Values.Single().Counter = 0;
+        quest.State = QuestState.Completed;
+        Action("""<action name="create_item" spawn_ids="9004" />""");
+        Assert.That(Drops(), Is.Empty);
+    }
+
+    // spawn_item_range rolls its spawn points' quest-only rows the same way.
+    [Test]
+    public void SpawnItemRange_QuestRow() {
+        StartQuest();
+        Action("""<action name="spawn_item_range" range_ids="9004" random_pick_count="1" />""");
+        Assert.That(Drops().Select(drop => (drop.ItemId, drop.Receiver)), Is.EqualTo(new[] { (QuestItem, test.Session.CharacterId) }));
     }
 }
 
