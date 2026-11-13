@@ -700,7 +700,7 @@ public class DungeonManager {
             DateTime clearTime = clearTimeStamp.FromEpochSeconds();
             DungeonSeasonTable.Entry? season = session.TableMetadata.DungeonSeasonTable.Current(clearTime);
             if (season != null) {
-                DateTime expiry = DungeonScoreRules.SeasonExpiry(clearTime, season.DayOfWeeks, season.EndTime);
+                DateTime expiry = DungeonScoreRules.SeasonExpiry(clearTime, season.DayOfWeeks, season.StartTime.TimeOfDay, season.EndTime);
                 DungeonScoreRules.ApplySeason(record, score, clearTimeStamp, expiry.ToEpochSeconds());
             }
         }

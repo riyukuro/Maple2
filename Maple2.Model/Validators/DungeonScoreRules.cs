@@ -11,8 +11,8 @@ namespace Maple2.Model.Validators;
 // Proven from the client: the rank table of a room (GetRankTableID), its maxScore (DungeonRankRequire), which
 // rooms are season rank rooms (IsSeasonRankRoom) and the season rows (DungeonSeason::Load, GetCurrentSeason).
 // Inferred, not found in the client (the server fills these records): the run score is the sum of the run's
-// mission scores capped at maxScore, the records keep the best score, and the season week ends at midnight of
-// the season's dayOfWeeks.
+// mission scores capped at maxScore, the records keep the best score, and the season week ends on the season's
+// dayOfWeeks at the time of day the season starts.
 public static class DungeonScoreRules {
     // DungeonRoomData::GetRankTableID (dungeonroom.cpp): rankTableID when set, else by group type; 0 = no rank.
     public static int RankTableId(int rankTableId, DungeonGroupType groupType) {
@@ -60,14 +60,19 @@ public static class DungeonScoreRules {
         record.LifetimeRecord = Math.Max(record.LifetimeRecord, score);
     }
 
-    // The end of the season week holding now: the next midnight of the season's dayOfWeeks (Sunday = 1, the
-    // client's CMsTime::GetDayOfWeek convention for limitDayOfWeeks; two of the season starts in the table fall on a
-    // Friday, which fits 6, but the client code that reads this field was not found), clamped to the season's end.
-    // A dayOfWeeks outside 1-7 uses the server's weekly reset day.
-    public static DateTime SeasonExpiry(DateTime now, int dayOfWeeks, DateTime seasonEnd) {
+    // The end of the season week holding now: the season's next dayOfWeeks (Sunday = 1, the client's
+    // CMsTime::GetDayOfWeek convention for limitDayOfWeeks; two of the season starts in the table fall on a Friday,
+    // which fits 6, but the client code that reads this field was not found) at the season's reset time, clamped to
+    // the season's end. The reset time is the time of day of the season's startTime: the KR seasons 1, 2 and 1001
+    // start at 00:00 and the current one, 1002, at 08:00 (it follows 1001, which ends at 07:59:59). A dayOfWeeks
+    // outside 1-7 uses the server's weekly reset day.
+    public static DateTime SeasonExpiry(DateTime now, int dayOfWeeks, TimeSpan resetTime, DateTime seasonEnd) {
         DayOfWeek day = dayOfWeeks is >= 1 and <= 7 ? (DayOfWeek) (dayOfWeeks - 1) : Constant.ResetDay;
         int days = ((int) day - (int) now.DayOfWeek + 7) % 7;
-        DateTime reset = now.Date.AddDays(days == 0 ? 7 : days);
+        DateTime reset = now.Date.AddDays(days) + resetTime;
+        if (reset <= now) {
+            reset = reset.AddDays(7);
+        }
         return reset < seasonEnd ? reset : seasonEnd;
     }
 

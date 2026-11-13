@@ -111,13 +111,24 @@ public class DungeonScoreRulesTests {
     [TestCase("2025-01-01 15:00", 7, "2025-01-04 00:00")] // Saturday
     [TestCase("2025-01-01 15:00", 0, "2025-01-02 00:00")] // none: the server's reset day, Thursday
     public void SeasonExpiryIsTheNextWeekEnd(string now, int dayOfWeeks, string expected) {
-        Assert.That(DungeonScoreRules.SeasonExpiry(DateTime.Parse(now), dayOfWeeks, DateTime.MaxValue), Is.EqualTo(DateTime.Parse(expected)));
+        Assert.That(DungeonScoreRules.SeasonExpiry(DateTime.Parse(now), dayOfWeeks, TimeSpan.Zero, DateTime.MaxValue), Is.EqualTo(DateTime.Parse(expected)));
+    }
+
+    // A season that starts at 08:00 (KR 1002, startTime 2018-07-05 08:00): its week ends on its day at 08:00, so a
+    // clear before 08:00 on that day still counts in the week that is ending.
+    [TestCase("2025-01-01 15:00", "2025-01-03 08:00")]
+    [TestCase("2025-01-03 07:59", "2025-01-03 08:00")] // on the day, before the reset: this week's
+    [TestCase("2025-01-03 08:00", "2025-01-10 08:00")] // at the reset: the next week's
+    [TestCase("2025-01-03 10:00", "2025-01-10 08:00")]
+    public void SeasonExpiryUsesTheSeasonStartTime(string now, string expected) {
+        var start = new DateTime(2018, 7, 5, 8, 0, 0);
+        Assert.That(DungeonScoreRules.SeasonExpiry(DateTime.Parse(now), 6, start.TimeOfDay, DateTime.MaxValue), Is.EqualTo(DateTime.Parse(expected)));
     }
 
     [Test]
     public void SeasonExpiryStopsAtTheSeasonEnd() {
         var end = new DateTime(2025, 1, 2, 23, 59, 59);
-        Assert.That(DungeonScoreRules.SeasonExpiry(new DateTime(2025, 1, 1, 15, 0, 0), 6, end), Is.EqualTo(end));
+        Assert.That(DungeonScoreRules.SeasonExpiry(new DateTime(2025, 1, 1, 15, 0, 0), 6, TimeSpan.Zero, end), Is.EqualTo(end));
     }
 
     private const string SeasonXml = """
