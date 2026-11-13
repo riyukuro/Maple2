@@ -142,6 +142,40 @@ public class ItemExchangeScrollUpgradeTests {
         Assert.That(Answers(), Is.EqualTo(new[] { ((byte) 2, (short) answer) }));
     }
 
+    // Chosen here: a target with a gem in a socket is refused (2), since the reward carries no sockets over and the
+    // gem would go with the target; an empty unlocked socket does not refuse. Before, the gem was lost.
+    [Test]
+    public void TargetWithAGem_IsRefusedWithUpgradeInvalid() {
+        GameSession session = Start();
+        target.Socket = new ItemSocket(3, 2);
+        target.Socket.Sockets[1] = new ItemGemstone(40110001, stats: new ItemStats());
+        Exchange(session);
+        Assert.Multiple(() => {
+            Assert.That(Answers(), Is.EqualTo(new[] { ((byte) 2, (short) ItemExchangeScrollError.s_itemslot_exchange_upgrade_invalid) }));
+            Assert.That(Held(session, target), Is.True);
+            Assert.That(Held(session, scroll), Is.True);
+        });
+        target.Socket.Sockets[1] = null;
+        Exchange(session);
+        Assert.That(Answers(), Is.EqualTo(new[] { ((byte) 2, (short) ItemExchangeScrollError.s_itemslot_exchange_ok) }));
+    }
+
+    // Chosen here: the reward keeps the target's transfer whole. Before, it came with a fresh transfer, so a bound
+    // target came back as a tradable item, and a limited one with its trades used up got them back.
+    [Test]
+    public void BoundTarget_TheRewardStaysBound() {
+        GameSession session = Start();
+        target.Transfer = new ItemTransfer(TransferFlag.Bind | TransferFlag.LimitTrade, 2, 1, new ItemBinding(test.CharacterId, "a"));
+        Exchange(session);
+        BagItem? reward = session.Item.Inventory.Find(RewardId).SingleOrDefault();
+        Assert.Multiple(() => {
+            Assert.That(reward?.Transfer?.Binding?.CharacterId, Is.EqualTo(test.CharacterId));
+            Assert.That(reward?.Transfer?.Flag, Is.EqualTo(TransferFlag.Bind | TransferFlag.LimitTrade));
+            Assert.That(reward?.Transfer?.RemainTrades, Is.EqualTo(2));
+            Assert.That(reward?.Transfer?.RepackageCount, Is.EqualTo(1));
+        });
+    }
+
     // A requirement of the target's own id is not paid with the target: alone, it is refused and nothing is taken.
     // Before, the target went as the material, then its own Consume threw after the scroll's materials were gone.
     [Test]

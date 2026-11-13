@@ -52,7 +52,9 @@ public static class ItemExchangeScrollRules {
     // uiitemexchangescrolldialog.cpp:655-660); its answers are 2 (upgrade_invalid, "this item cannot be fused"),
     // 5 (grade_invalid, the enchant level is too high) and 6 (lockstate_item) (FUN_140f55670). The client checks
     // none of them itself, so the order is chosen here: the item, then its lock, then its enchant level. A
-    // requireEquip rank of 0 or less takes any rarity (chosen here; every row names one).
+    // requireEquip rank of 0 or less takes any rarity (chosen here; every row names one). Chosen here: a target
+    // with a gem in a socket is refused as an item that cannot be fused (2); the preview carries only the enchant
+    // and the Empowerment group over (FUN_140f514c0), so the gems would be lost with the target.
     public static ItemExchangeScrollError? UpgradeRefusal(ItemExchangeScrollMetadata scroll, Item? target) {
         ItemComponent? equip = scroll.RequireEquip;
         if (target == null || equip == null || target.Id != equip.ItemId || (equip.Rarity > 0 && target.Rarity != equip.Rarity)) {
@@ -60,6 +62,9 @@ public static class ItemExchangeScrollRules {
         }
         if (target.IsLockedOrUnlocking()) {
             return ItemExchangeScrollError.s_itemslot_exchange_lockstate_item;
+        }
+        if (target.Socket?.Sockets.Any(gem => gem != null) == true) {
+            return ItemExchangeScrollError.s_itemslot_exchange_upgrade_invalid;
         }
         if ((target.Enchant?.Enchants ?? 0) > scroll.MaxGrade) {
             return ItemExchangeScrollError.s_itemslot_exchange_grade_invalid;

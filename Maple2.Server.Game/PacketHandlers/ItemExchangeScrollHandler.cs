@@ -158,6 +158,12 @@ public class ItemExchangeScroll : FieldPacketHandler {
             reward.Stats ??= new ItemStats();
             reward.Stats.CopyEmpowermentFrom(target.Stats);
         }
+        // Chosen here (the preview sets no transfer): the reward keeps the target's transfer whole (its trade rule,
+        // trades left, binding and repack count), as the same item upgraded, so an upgrade neither frees a bound or
+        // traded-out item nor takes the trades of a tradable one.
+        if (target.Transfer != null) {
+            reward.Transfer = target.Transfer.Clone();
+        }
     }
 
     // Client ItemExchangeSlot::vfunc_18 (itemexchangeslot.cpp:87): an item dropped on the target slot of a
