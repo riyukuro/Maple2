@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using Grpc.Core;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -28,6 +29,7 @@ public class BuddyNameLimitTests {
     private const byte Delete = 7;
     private const byte Cancel = 17;
 
+    private readonly BuddyDeleteFault fault = new();
     private TestGameSession playerTest = null!;
     private TestGameSession otherTest = null!;
     private readonly BuddyHandler buddyHandler = new();
@@ -42,6 +44,7 @@ public class BuddyNameLimitTests {
         DbContextOptions options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .AddInterceptors(fault)
             .Options;
         playerTest = new TestGameSession(options);
         otherTest = new TestGameSession(options);
@@ -264,5 +267,55 @@ public class BuddyNameLimitTests {
                 Is.EqualTo("6100" + "07" + "01" + "0500000000000000" + "0000000000000000" + "0000000000000000" + "0000"));
             Assert.That(Hex(BuddyPacket.Cancel(5, BuddyError.s_buddy_err_miss_id)), Is.EqualTo("6100" + "11" + "01" + "0500000000000000"));
         });
+    }
+
+    // The accept is stored when the World call fails: the client is told it is a friend (it acts on result 0 only, so
+    // an error left it showing a request that was a friend in storage).
+    [Test]
+    public void AnAcceptStoredWhileWorldFailsStillMakesFriends() {
+        Invite(other, player.PlayerName);
+        long entryId = EntryId(player.CharacterId, other.CharacterId);
+        playerTest.World.BuddyWorld = _ => throw new RpcException(new Status(StatusCode.Unavailable, "test"));
+        playerTest.TakeSent();
+
+        Answer(player, Accept, entryId);
+
+        string[] sent = BuddySent(playerTest);
+        Assert.Multiple(() => {
+            Assert.That(sent.First(), Does.StartWith("6100" + "03" + "00"));
+            Assert.That(sent, Has.None.EqualTo(Hex(BuddyPacket.Accept(entryId, BuddyError.s_buddy_err_unknown))));
+            Assert.That(Entries(player.CharacterId).Single().Type, Is.EqualTo(BuddyType.Default));
+        });
+    }
+
+    // An unblock whose delete is not stored keeps the block in memory as in storage, so a second try goes through.
+    [Test]
+    public void AnUnblockNotStoredKeepsTheBlock() {
+        BlockByName(player, other.PlayerName);
+        long entryId = EntryId(player.CharacterId, other.CharacterId);
+        playerTest.TakeSent();
+
+        fault.Fail = true;
+        Answer(player, Unblock, entryId);
+        fault.Fail = false;
+        Assert.That(BuddySent(playerTest), Is.EqualTo(new[] { Hex(BuddyPacket.Unblock(entryId, BuddyError.s_buddy_err_unknown)) }));
+        Assert.That(Entries(player.CharacterId).Single().Type, Is.EqualTo(BuddyType.Blocked));
+
+        Answer(player, Unblock, entryId);
+        Assert.That(BuddySent(playerTest).First(), Does.StartWith("6100" + "06" + "00"));
+        Assert.That(Entries(player.CharacterId), Is.Empty);
+    }
+
+    // A save that deletes a buddy row fails (TrySaveChanges turns it into false).
+    private sealed class BuddyDeleteFault : SaveChangesInterceptor {
+        public bool Fail;
+
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
+            if (Fail && eventData.Context != null && eventData.Context.ChangeTracker.Entries<Maple2.Database.Model.Buddy>()
+                    .Any(entry => entry.State == EntityState.Deleted)) {
+                throw new InvalidOperationException("The test made this save fail");
+            }
+            return result;
+        }
     }
 }

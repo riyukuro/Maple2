@@ -238,14 +238,23 @@ public class BuddyManager : IDisposable {
         self.SetType(BuddyType.Default);
         other.Type = BuddyType.Default;
 
+        bool stored;
         try {
-            if (!db.UpdateBuddy(self, other)) {
-                logger.Error("Failed to update buddy");
-                self.SetType(BuddyType.InRequest);
-                session.Send(BuddyPacket.Accept(entryId, s_buddy_err_unknown));
-                return;
-            }
+            stored = db.UpdateBuddy(self, other);
+        } catch (SystemException ex) {
+            logger.Warning(ex, "Buddy Accept failed");
+            stored = false;
+        }
+        if (!stored) {
+            logger.Error("Failed to update buddy");
+            self.SetType(BuddyType.InRequest);
+            session.Send(BuddyPacket.Accept(entryId, s_buddy_err_unknown));
+            return;
+        }
 
+        // Both entries are friends in storage now, so the client is told so even if the other side cannot be reached
+        // (it sees the friend at its next list load).
+        try {
             BuddyResponse response = session.World.Buddy(new BuddyRequest {
                 ReceiverId = receiverId,
                 Accept = new BuddyRequest.Types.Accept { EntryId = other.Id },
@@ -254,16 +263,15 @@ public class BuddyManager : IDisposable {
             if (session.PlayerInfo.GetOrFetch(self.Info.CharacterId, out PlayerInfo? info)) {
                 self.Info.Update(UpdateField.All, info);
             }
-            BeginListen(self);
+        } catch (Exception ex) { // RpcException when World is down
+            logger.Warning(ex, "Buddy Accept: the other side was not told");
+        }
+        BeginListen(self);
 
-            session.Send(BuddyPacket.Accept(self));
-            session.Send(BuddyPacket.UpdateInfo(self));
-            if (self.Info.Online) {
-                session.Send(BuddyPacket.NotifyOnline(self));
-            }
-        } catch (SystemException ex) {
-            logger.Warning(ex, "Buddy Accept failed");
-            session.Send(BuddyPacket.Accept(entryId, s_buddy_err_unknown));
+        session.Send(BuddyPacket.Accept(self));
+        session.Send(BuddyPacket.UpdateInfo(self));
+        if (self.Info.Online) {
+            session.Send(BuddyPacket.NotifyOnline(self));
         }
     }
 
@@ -443,20 +451,23 @@ public class BuddyManager : IDisposable {
             return;
         }
 
+        bool removed;
         try {
             using GameStorage.Request db = session.GameStorage.Context();
-            if (!db.RemoveBuddy(self)) {
-                blocked[entryId] = self;
-                session.Send(BuddyPacket.Unblock(entryId, s_buddy_err_unknown));
-                return;
-            }
-
-            session.Send(BuddyPacket.Unblock(self));
-            session.Send(BuddyPacket.Remove(self));
+            removed = db.RemoveBuddy(self);
         } catch (SystemException ex) {
             logger.Warning(ex, "Unblock failed");
-            session.Send(BuddyPacket.Unblock(entryId, s_buddy_err_unknown));
+            removed = false;
         }
+        if (!removed) {
+            // Still blocked in storage: kept in memory too, and the client keeps its entry (it acts on result 0 only).
+            blocked[entryId] = self;
+            session.Send(BuddyPacket.Unblock(entryId, s_buddy_err_unknown));
+            return;
+        }
+
+        session.Send(BuddyPacket.Unblock(self));
+        session.Send(BuddyPacket.Remove(self));
     }
 
     public void SendDelete(long entryId) {
