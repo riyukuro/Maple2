@@ -8,7 +8,7 @@ namespace Maple2.Server.Game.Packets;
 public static class SkillUseFailedPacket {
     private enum Command : byte {
         Fail = 5,
-        Unknown = 6,
+        State = 6,
     }
 
     // Client: CSceneStateGame::OnSkillUseFailed reads byte mode, long cast uid, int skill id, byte error,
@@ -20,6 +20,20 @@ public static class SkillUseFailedPacket {
         pWriter.WriteLong(castUid);
         pWriter.WriteInt(skillId);
         pWriter.WriteByte(); // error
+        pWriter.WriteCooldown(cooldownSeconds, cooldown, currentTick);
+
+        return pWriter;
+    }
+
+    // Mode 6: a state skill (climb, swim, ...) the server did not take. The client ends its state when it is still the
+    // one named here (CSceneStateGame::OnSkillUseFailed, scenestategame.cpp:3440), then takes the cooldown as in mode 5.
+    public static ByteWriter StateFail(long castUid, int skillId, int state, float cooldownSeconds, SkillCooldown? cooldown, long currentTick) {
+        var pWriter = Packet.Of(SendOp.SkillUseFailed);
+        pWriter.WriteByte((byte) Command.State);
+        pWriter.WriteLong(castUid);
+        pWriter.WriteInt(skillId);
+        pWriter.WriteByte(); // error
+        pWriter.WriteInt(state);
         pWriter.WriteCooldown(cooldownSeconds, cooldown, currentTick);
 
         return pWriter;

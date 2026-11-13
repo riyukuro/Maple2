@@ -28,21 +28,30 @@ public class StateSkillHandler : FieldPacketHandler {
         int clientTick = packet.ReadInt();
         long itemUid = packet.ReadLong();
 
+        // A state skill not taken is answered with SkillUseFailed 6, so the client leaves the state it entered.
         if (itemUid != 0 && session.Item.Inventory.Get(itemUid) == null) {
+            Refuse(session, skillCastUid, skillId, state, null);
             return; // Invalid item
         }
 
         if (!session.Field.SkillMetadata.TryGet(skillId, skillLevel, out SkillMetadata? metadata)) {
+            Refuse(session, skillCastUid, skillId, state, null);
             return;
         }
 
         var cast = new SkillRecord(metadata, skillCastUid, session.Player);
         if (!session.Player.SkillCastConsume(cast)) {
+            Refuse(session, skillCastUid, skillId, state, metadata);
             return;
         }
 
         cast.StateNextTick = session.Field.FieldTick + (int) TimeSpan.FromSeconds(cast.Motion.MotionProperty.SequenceSpeed).TotalMilliseconds;
         session.Player.ActiveSkills.Add(cast);
         session.Field.Broadcast(SkillPacket.StateSkill(session.Player, skillId, skillCastUid));
+    }
+
+    private static void Refuse(GameSession session, long castUid, int skillId, ActorState state, SkillMetadata? metadata) {
+        session.Send(SkillUseFailedPacket.StateFail(castUid, skillId, (int) state, metadata?.Data.Condition.CooldownTime ?? 0f,
+            session.Config.GetSkillCooldown(skillId), session.Field?.FieldTick ?? 0));
     }
 }
