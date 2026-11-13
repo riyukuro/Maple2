@@ -66,6 +66,13 @@ public static class DivorceRules {
         return IsFiled(status) && now > CoolingOffEnd(filingTime, coolingOffDays);
     }
 
+    // The read marriage is the same one, now divorced: the divorce was completed since the last read (mutual,
+    // agreed or at the end of the cooling off). The partner who reads it counts wedding_divorce ("Divorce {0} times",
+    // 23100447) once.
+    public static bool JustDivorced(long beforeId, MaritalStatus before, long afterId, MaritalStatus after) {
+        return beforeId != 0 && beforeId == afterId && before != MaritalStatus.Divorced && after == MaritalStatus.Divorced;
+    }
+
     // Client WeddingProxy::IsProposeCooldownOver (weddingproxy.cpp:697): divorced, and the propose cooltime
     // since the divorce has passed. The marriage is then over for good.
     public static bool ProposeCooltimeOver(MaritalStatus status, long divorceTime, int cooltimeDays, long now) {

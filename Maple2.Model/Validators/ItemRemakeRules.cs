@@ -58,6 +58,12 @@ public static class ItemRemakeRules {
     public static ConditionType RemakeCondition(bool isPet) =>
         isPet ? ConditionType.pet_remake_option : ConditionType.item_remake_option;
 
+    // The record of one item's changes (0xe2 and 0xe4): "Change the bonus attributes on a single item {0} time(s)"
+    // (23200025) and "Re-roll a single pet's bonus talents {0} time(s)" (23200039) count the changes of a single item,
+    // so each change reports the item's change count and the trophy keeps the highest (AchievementManager.KeepsHighest).
+    public static ConditionType RecordCondition(bool isPet) =>
+        isPet ? ConditionType.pet_remake_option_record : ConditionType.item_remake_option_record;
+
     public const long FragmentMeso = 1000;
 
     // An attribute change is paid in the crystal fragments the player owns and in 1000 meso for each one

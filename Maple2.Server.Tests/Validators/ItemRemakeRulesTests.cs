@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Validators;
+using Maple2.Server.Game.Manager;
 using Maple2.PacketLib.Tools;
 
 namespace Maple2.Server.Tests.Validators;
@@ -100,6 +101,18 @@ public class ItemRemakeRulesTests {
     public void RemakeCondition_KeepsGearAndPetsApart() {
         Assert.That(ItemRemakeRules.RemakeCondition(false), Is.EqualTo(ConditionType.item_remake_option));
         Assert.That(ItemRemakeRules.RemakeCondition(true), Is.EqualTo(ConditionType.pet_remake_option));
+    }
+
+    // The record of one item's changes, gear and pets apart, kept at the highest count.
+    [Test]
+    public void RecordCondition_KeepsGearAndPetsApart() {
+        Assert.That(ItemRemakeRules.RecordCondition(false), Is.EqualTo(ConditionType.item_remake_option_record));
+        Assert.That(ItemRemakeRules.RecordCondition(true), Is.EqualTo(ConditionType.pet_remake_option_record));
+        Assert.That(AchievementManager.KeepsHighest(ConditionType.item_remake_option_record), Is.True);
+        Assert.That(AchievementManager.KeepsHighest(ConditionType.pet_remake_option_record), Is.True);
+        Assert.That(AchievementManager.KeepsHighest(ConditionType.item_remake_option), Is.False);
+        Assert.That(AchievementManager.Advances(ConditionType.item_remake_option_record, 5, 5), Is.False);
+        Assert.That(AchievementManager.Advances(ConditionType.item_remake_option_record, 5, 6), Is.True);
     }
 
     // Owned fragments first, 1000 meso for each one lacking (KMS2 charges whole thousands).

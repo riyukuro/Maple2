@@ -294,6 +294,19 @@ public class DivorceRulesTests {
         Assert.That(DivorceRules.CanAnswerAsk(0, expire, tick + 1, First, askerInField: true), Is.False, "nothing asked");
     }
 
+    // The divorce is counted once, by a partner who held the marriage before it was divorced.
+    [TestCase(7, MaritalStatus.Married, 7, MaritalStatus.Divorced, true)]
+    [TestCase(7, MaritalStatus.DivorceFiledByGroom, 7, MaritalStatus.Divorced, true)]
+    [TestCase(7, MaritalStatus.DivorceFiledByBride, 7, MaritalStatus.Divorced, true)]
+    [TestCase(7, MaritalStatus.Divorced, 7, MaritalStatus.Divorced, false)] // read again
+    [TestCase(7, MaritalStatus.Married, 7, MaritalStatus.DivorceFiledByGroom, false)] // only filed
+    [TestCase(0, MaritalStatus.Single, 7, MaritalStatus.Divorced, false)] // first read
+    [TestCase(7, MaritalStatus.Divorced, 0, MaritalStatus.Single, false)] // the divorced marriage deleted
+    [TestCase(6, MaritalStatus.Married, 7, MaritalStatus.Divorced, false)] // another marriage
+    public void JustDivorced(long beforeId, MaritalStatus before, long afterId, MaritalStatus after, bool divorced) {
+        Assert.That(DivorceRules.JustDivorced(beforeId, before, afterId, after), Is.EqualTo(divorced));
+    }
+
     [Test]
     public void DivorceRequestPacket_IsTheModeAlone() {
         ByteWriter packet = WeddingPacket.DivorceRequest();

@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
@@ -63,6 +64,11 @@ public sealed class WeddingCeremony {
     public IReadOnlyList<WeddingPackage.HallData.Item> Gifts { get; set; } = [];
 
     public bool IsCouple(long characterId) => characterId != 0 && Array.IndexOf(couple, characterId) >= 0;
+
+    // What the completed vow counts for a player in the room: the couple completed a wedding, anyone else attended
+    // one as a guest.
+    public ConditionType VowCondition(long characterId) =>
+        IsCouple(characterId) ? ConditionType.wedding_complete : ConditionType.wedding_guest;
 
     // The hall state weddingComplete: the vow was completed and the couple is married.
     public bool Complete {

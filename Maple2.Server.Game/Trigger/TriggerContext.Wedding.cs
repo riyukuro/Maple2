@@ -150,6 +150,11 @@ public partial class TriggerContext {
         foreach (long characterId in ceremony.Couple) {
             MailCompleteGifts(ceremony, characterId);
         }
+        // "Complete {0} weddings" (23100428) counts the couple, "Attend {0} weddings as a guest" (23100446) every
+        // other player in the room at the vow.
+        foreach (FieldPlayer player in Field.Players.Values) {
+            player.Session.ConditionUpdate(ceremony.VowCondition(player.Session.CharacterId));
+        }
         // The hall was held: its ticket is taken back from the guests in the room (Wedding 25).
         foreach (FieldPlayer player in Field.Players.Values) {
             player.Session.Marriage.TakeBackTicket(ceremony.MarriageId);

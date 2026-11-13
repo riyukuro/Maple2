@@ -456,13 +456,21 @@ public sealed class MarriageManager {
     private bool IsFiler => DivorceRules.FilerId(Marriage.Status, Marriage.Partner1.CharacterId, Marriage.Partner2.CharacterId) == session.CharacterId;
 
     // Reads the stored marriage again and shows it. Used after every change of its state, on both partners.
+    // Each partner reads the marriage again after a divorce is completed (here, or through the world server on
+    // another channel), so the one who reads it divorced counts the divorce. A partner offline at that time is
+    // not counted: the marriage is read divorced at login, with nothing to tell it from an older divorce.
     public void Reload() {
+        long beforeId = Marriage.Id;
+        MaritalStatus before = Marriage.Status;
         using (GameStorage.Request db = session.GameStorage.Context()) {
             Marriage = db.GetMarriage(session.CharacterId) ?? Marriage.Default;
             session.Player.Value.Character.MarriageInfo = db.GetMarriageInfo(session.CharacterId);
         }
         Marriage.Exp = GetExp();
         session.Send(WeddingPacket.UpdateMarriage(Marriage));
+        if (DivorceRules.JustDivorced(beforeId, before, Marriage.Id, Marriage.Status)) {
+            session.ConditionUpdate(ConditionType.wedding_divorce);
+        }
     }
 
     // The partner reads the marriage again: directly on this channel, through the world server on another.
@@ -1186,6 +1194,9 @@ public sealed class MarriageManager {
         }
         session.Send(WeddingPacket.AcceptReservationChange(WeddingHall, differenceCost));
         partner.Session.Send(WeddingPacket.AcceptReservationChange(WeddingHall, differenceCost));
+        // "Change your wedding hall reservation {0} times" (23100425): both of the couple, as the reservation.
+        session.ConditionUpdate(ConditionType.wedding_hall_change);
+        partner.Session.ConditionUpdate(ConditionType.wedding_hall_change);
 
         return WeddingError.none;
     }

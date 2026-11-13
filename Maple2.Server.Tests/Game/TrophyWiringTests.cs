@@ -385,7 +385,9 @@ public class TrophyWiringTests {
         }));
         // Level 2 at 40 exp, level 3 at 1000.
         test.SetTable(new MasteryUgcHousingTable(new Dictionary<int, MasteryUgcHousingTable.Entry> {
-            [1] = new(1, 0, 0), [2] = new(2, 40, 0), [3] = new(3, 1000, 0),
+            [1] = new(1, 0, 0),
+            [2] = new(2, 40, 0),
+            [3] = new(3, 1000, 0),
         }));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>()));
         GameSession session = Start(
@@ -902,6 +904,29 @@ public class TrophyWiringTests {
         Assert.That(test.TrophyCounter(AllClassesTrophy), Is.EqualTo(1));
         Assert.That(test.TrophyCounter(BerserkerTrophy), Is.Null);
         Assert.That(Sent().Count(op => op == SendOp.Achieve), Is.EqualTo(2));
+    }
+    #endregion
+
+    #region remake records
+    // "Change the bonus attributes on a single item {0} time(s)": each change reports the item's change count, so a
+    // second item's lower count leaves the trophy at the first item's.
+    [TestCase(ConditionType.item_remake_option_record)]
+    [TestCase(ConditionType.pet_remake_option_record)]
+    public void RemakeRecord_KeepsTheMostChangedItem(ConditionType type) {
+        GameSession session = Start(TestGameSession.Trophy(Trophy, type, [Goal]));
+
+        session.ConditionUpdate(type, counter: 1);
+        session.ConditionUpdate(type, counter: 2);
+        session.ConditionUpdate(type, counter: 3);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(3));
+        Assert.That(Achieves(), Is.EqualTo(3));
+
+        session.ConditionUpdate(type, counter: 1); // another item's first change
+        session.ConditionUpdate(type, counter: 3);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(3));
+        Assert.That(Achieves(), Is.EqualTo(0));
+        session.ConditionUpdate(type, counter: 4);
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(4));
     }
     #endregion
 }

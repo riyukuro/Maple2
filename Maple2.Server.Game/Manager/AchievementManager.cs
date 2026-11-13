@@ -104,8 +104,15 @@ public sealed class AchievementManager {
         if (conditionType is ConditionType.interior_point) {
             return InteriorPointRules.Advances(counter, count);
         }
-        return conditionType is not (ConditionType.item_gear_score or ConditionType.killcount or ConditionType.interior_level or ConditionType.fame_grade)
-            || count > counter;
+        return !KeepsHighest(conditionType) || count > counter;
+    }
+
+    // The counters that keep the highest count reported instead of adding it. item_remake_option_record and
+    // pet_remake_option_record count the changes of a single item ("Change the bonus attributes on a single item {0}
+    // time(s)"): each change reports that item's change count.
+    public static bool KeepsHighest(ConditionType conditionType) {
+        return conditionType is ConditionType.item_gear_score or ConditionType.killcount or ConditionType.interior_level or ConditionType.fame_grade
+            or ConditionType.item_remake_option_record or ConditionType.pet_remake_option_record;
     }
 
     /// <summary>
@@ -139,7 +146,7 @@ public sealed class AchievementManager {
 
     private bool RankUp(ConditionType conditionType, Achievement achievement, long count = 1) {
         // Are there more conditions that should be added here?
-        if (conditionType is ConditionType.item_gear_score or ConditionType.killcount or ConditionType.interior_level or ConditionType.fame_grade) {
+        if (KeepsHighest(conditionType)) {
             achievement.Counter = Math.Max(achievement.Counter, count); // Using Math.Max to ensure gear score doesn't decrease.
         } else if (conditionType is ConditionType.interior_point) {
             achievement.Counter = InteriorPointRules.Counter(achievement.Counter, count);
