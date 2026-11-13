@@ -14,6 +14,7 @@ namespace Maple2.File.Ingest.Mapper;
 public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private readonly SkillParser parser;
     private readonly SkillMoveTypes moveTypes;
+    private readonly SkillAttackDirections directions;
 
     // The played client's own skill data (PlayedClientSkills); empty without a played client.
     private readonly Dictionary<int, PlayedClientSkills.Entry> played = [];
@@ -39,6 +40,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
+        directions = new SkillAttackDirections(xmlReader);
+        Console.WriteLine($"Skill attacks with a target order other than nearest first: {directions.Count} ({directions.Conflicts} given two orders)");
     }
 
     protected override IEnumerable<StoredSkillMetadata> Map() {
@@ -80,7 +83,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                             MoveDistance: motion.motionProperty.movedistance,
                             FaceTarget: motion.motionProperty.faceTarget,
                             MoveType: moveTypes.Get(id, level.value, motionIndex)),
-                        Attacks: motion.attack.Select(attack => new SkillMetadataAttack(
+                        Attacks: motion.attack.Select((attack, attackIndex) => new SkillMetadataAttack(
                             Point: attack.point,
                             PointGroup: attack.pointGroupID,
                             TargetCount: attack.targetCount,
@@ -133,7 +136,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                             ),
                             Skills: attack.conditionSkill.Where(skill => !skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
                             SkillsOnDamage: attack.conditionSkill.Where(skill => skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
-                            GrabTargetType: attack.grabTargetType
+                            GrabTargetType: attack.grabTargetType,
+                            Direction: directions.Get(id, level.value, motionIndex, attackIndex)
                         )).ToArray(),
                         AttackPoints: motion.CollectAttackPoints()
                     )).ToArray(),
@@ -230,9 +234,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
 
     // The client loads the buff, party and guild fields only when targetSelectType is set, and the stat sort always
     // (Unk_RangeProperty::LoadElement); its search filters by the first and sorts by the second (CBaseCollision).
-    // Select modes other than 2 and 3 filter nothing, so a range with neither is left without one.
+    // Select modes other than 2 and 3 remove no target but put the passing ones first, so any mode keeps its fields.
     private static SkillMetadataRangeSelect? ConvertSelect(RegionSkill region) {
-        bool filters = region.targetSelectType is 2 or 3;
+        bool filters = region.targetSelectType != 0;
         if (!filters && region.targetStatCompareFunction == 0) {
             return null;
         }

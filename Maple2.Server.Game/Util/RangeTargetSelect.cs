@@ -1,34 +1,132 @@
-﻿using Maple2.Model.Enum;
+﻿using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
+using Maple2.Tools.Collision;
 
 namespace Maple2.Server.Game.Util;
 
-// A skill range's target choice, as the client's search makes it (CBaseCollision, after the shape test and before the
-// target count): the buff, party and guild filter of targetSelectType 2 and 3, then the stat sort of
-// targetStatCompareFunction. The caller takes the target count from the result.
-public static class RangeTargetSelect {
-    public static bool Active(this SkillMetadataRangeSelect? select) => select is { Mode: 2 or 3 } or { StatSort: not 0 };
+// Where an attack's search stands and faces, with the attack's direction (CDetectContext m_kPos and m_nSortMode, and
+// the z rotation in degrees its m_kDir and m_kRight come from).
+public readonly record struct TargetSort(int Direction, Vector3 Origin, float Degrees);
 
-    public static IEnumerable<IActor> Apply(SkillMetadataRangeSelect? select, IActor caster, IEnumerable<IActor> pool) {
-        if (select == null) {
-            return pool;
-        }
+// A skill range's target choice, as the client's search makes it (CBaseCollision::Detect, after the shape test and
+// before the target count): the buff, party and guild filter of targetSelectType, then the stat sort of
+// targetStatCompareFunction or, without one, the attack's direction order, then the passing targets of a mode that
+// keeps all first. The caller takes the target count from the result.
+public static class RangeTargetSelect {
+    public static bool Active(this SkillMetadataRangeSelect? select) => select is { Mode: not 0 } or { StatSort: not 0 };
+
+    public static IEnumerable<IActor> Apply(SkillMetadataRangeSelect? select, IActor caster, IEnumerable<IActor> pool,
+            SkillRegion shape = SkillRegion.None, TargetSort? sort = null, Random? random = null) {
         List<IActor> targets = pool.ToList();
-        if (select.Mode is 2 or 3) {
-            List<IActor> passed = targets.Where(target => Passes(select, caster, target)).ToList();
-            // Mode 2 keeps only the passing targets; mode 3 keeps them if there are any, else all.
-            if (select.Mode == 2 || passed.Count > 0) {
+        List<IActor> passed = [];
+        if (select is { Mode: not 0 }) {
+            passed = targets.Where(target => Passes(select, caster, target)).ToList();
+            // Mode 2 keeps only the passing targets; mode 3 keeps them if there are any, else all; other modes keep
+            // all and put the passing ones first once sorted.
+            if (select.Mode == 2 || (select.Mode == 3 && passed.Count > 0)) {
                 targets = passed;
+                passed = [];
             }
         }
-        return select.StatSort switch {
-            1 => targets.OrderBy(target => Current(target, select.Stat)).ToList(),
-            2 => targets.OrderByDescending(target => Current(target, select.Stat)).ToList(),
-            3 => targets.OrderBy(target => Ratio(target, select.Stat)).ToList(),
-            4 => targets.OrderByDescending(target => Ratio(target, select.Stat)).ToList(),
-            _ => targets,
-        };
+        if (select is { StatSort: not 0 }) {
+            SortByStat(targets, select.StatSort, select.Stat);
+        } else if (sort is { } frame) {
+            SortByDirection(targets, shape, frame, random ?? Random.Shared);
+        }
+        if (passed.Count > 0) {
+            var first = new HashSet<IActor>(passed);
+            targets = targets.Where(first.Contains).Concat(targets.Where(target => !first.Contains(target))).ToList();
+        }
+        return targets;
+    }
+
+    // The client's exchange sort: each place swaps with every later target that should come before it, so ties keep
+    // the order the swaps leave (not a stable sort).
+    private static void ExchangeSort(List<IActor> targets, Func<int, int, bool> swaps) {
+        for (int i = 0; i < targets.Count; i++) {
+            for (int j = i + 1; j < targets.Count; j++) {
+                if (swaps(i, j)) {
+                    (targets[i], targets[j]) = (targets[j], targets[i]);
+                }
+            }
+        }
+    }
+
+    private static void SortByStat(List<IActor> targets, int statSort, BasicAttribute stat) {
+        ExchangeSort(targets, (i, j) => statSort switch {
+            1 => Current(targets[i], stat) > Current(targets[j], stat),
+            2 => Current(targets[i], stat) < Current(targets[j], stat),
+            3 => Ratio(targets[i], stat) > Ratio(targets[j], stat),
+            4 => Ratio(targets[i], stat) < Ratio(targets[j], stat),
+            _ => false,
+        });
+    }
+
+    // What the search measures for the direction order (CBaseCollision::TestShape and Detect): for a box or frustum
+    // the target's signed offset along the search's right axis (Side, kept signed for directions 1 and 2) and its
+    // offset along the facing (Forward), both from planes through the search's origin; for a cylinder the squared
+    // distance from its center to the target's shape, for a hole cylinder the distance from its center to the target,
+    // on the plane; for directions 5 and 6 the cosine between the facing and the way to the target.
+    public readonly record struct Measure(float Side, float Forward, float Distance, float Facing);
+
+    public static Measure Measured(IActor target, SkillRegion shape, TargetSort sort) {
+        float radians = sort.Degrees * MathF.PI / 180;
+        var forward = new Vector2(MathF.Sin(radians), -MathF.Cos(radians));
+        var right = new Vector2(-MathF.Cos(radians), -MathF.Sin(radians));
+        Vector2 offset = new Vector2(target.Position.X, target.Position.Y) - new Vector2(sort.Origin.X, sort.Origin.Y);
+        float side = 0, ahead = 0, distance = 0, facing = 0;
+        switch (shape) {
+            case SkillRegion.Box or SkillRegion.Frustum when sort.Direction is 1 or 2 or 3 or 4:
+                side = Vector2.Dot(right, offset);
+                ahead = MathF.Abs(Vector2.Dot(forward, offset));
+                if (sort.Direction is 3 or 4) {
+                    side = MathF.Abs(side);
+                }
+                break;
+            case SkillRegion.Cylinder:
+                float radius = target.Shape.Polygon is Circle circle ? circle.Radius : 0;
+                float gap = MathF.Max(0, offset.Length() - radius);
+                distance = gap * gap;
+                break;
+            case SkillRegion.HoleCylinder:
+                distance = offset.Length();
+                break;
+        }
+        if (sort.Direction is 5 or 6) {
+            float length = offset.Length();
+            facing = length > 1e-6f ? Vector2.Dot(forward, offset / length) : 0;
+        }
+        return new Measure(side, ahead, distance, facing);
+    }
+
+    private static void SortByDirection(List<IActor> targets, SkillRegion shape, TargetSort sort, Random random) {
+        if (sort.Direction == 0) {
+            // The client's Fisher-Yates shuffle (ShuffleTargets).
+            for (int i = targets.Count - 1; i >= 1; i--) {
+                int j = random.Next(i + 1);
+                if (i != j) {
+                    (targets[i], targets[j]) = (targets[j], targets[i]);
+                }
+            }
+            return;
+        }
+        Dictionary<IActor, Measure> measures = targets.Distinct().ToDictionary(target => target, target => Measured(target, shape, sort));
+        bool round = shape is SkillRegion.Cylinder or SkillRegion.HoleCylinder;
+        ExchangeSort(targets, (i, j) => {
+            Measure a = measures[targets[i]];
+            Measure b = measures[targets[j]];
+            return sort.Direction switch {
+                2 => a.Side < b.Side,
+                1 => a.Side > b.Side,
+                3 => round && a.Distance > b.Distance || a.Forward > b.Forward,
+                4 => round && a.Distance < b.Distance || a.Forward < b.Forward,
+                5 => a.Facing < b.Facing,
+                6 => a.Facing > b.Facing,
+                _ => false,
+            };
+        });
     }
 
     public static bool Passes(SkillMetadataRangeSelect select, IActor caster, IActor target) {

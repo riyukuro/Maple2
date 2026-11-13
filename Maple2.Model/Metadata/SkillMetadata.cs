@@ -133,7 +133,13 @@ public record SkillMetadataAttack(
     SkillEffectMetadata[] Skills,
     SkillEffectMetadata[] SkillsOnDamage,
     // grabTargetType: 1 grabs the target (super armor 1, 2 and 4 give way to it).
-    int GrabTargetType = 0);
+    int GrabTargetType = 0,
+    // direction: the order the search puts its targets in before the target count is taken (CBaseCollision::Detect):
+    // 0 shuffled, 1 and 2 by the side offset from the search's facing (1 left first, 2 right first), 3 nearest first
+    // and 4 farthest first (forward distance for a box or frustum, distance for a cylinder or hole cylinder), 5 and 6
+    // by how straight ahead the target stands (5 most first). Null when not given, which the client reads as 3 (kept
+    // null so that 0 is stored: the metadata JSON leaves out values equal to their type's default).
+    int? Direction = null);
 
 public record SkillMetadataPet(
     int TamingGroup,
@@ -156,10 +162,11 @@ public record SkillMetadataRange(
     SkillMetadataRangeSelect? Select = null);
 
 // The range's target choice (rangeProperty targetSelectType ... targetStatCompareFunction). Mode 2 keeps only the
-// targets that pass (none if none pass), mode 3 keeps them if any pass, other modes keep all. A target passes when it
-// holds the enabled buff BuffId (0: any; from the caster if BuffFromCaster) and, between two players, shares the
-// caster's party (SameParty) and guild (SameGuild). StatSort orders the targets by Stat: 1 current ascending,
-// 2 descending, 3 current/total ascending, 4 descending; 0 leaves the order.
+// targets that pass (none if none pass), mode 3 keeps them if any pass, other modes keep all with the passing ones
+// first. A target passes when it holds the enabled buff BuffId (0: any; from the caster if BuffFromCaster) and,
+// between two players, shares the caster's party (SameParty) and guild (SameGuild). StatSort orders the targets by
+// Stat: 1 current ascending, 2 descending, 3 current/total ascending, 4 descending; 0 leaves the attack's direction
+// order.
 public record SkillMetadataRangeSelect(
     int Mode,
     int BuffId,

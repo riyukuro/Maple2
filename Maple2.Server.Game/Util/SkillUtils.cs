@@ -44,6 +44,20 @@ public static class SkillUtils {
         return new Prism(polygon, position.Z + range.RangeOffset.Z, range.Height + range.RangeAdd.Z);
     }
 
+    // The client's search frame for an attack cast at position facing angle (CMagic and StateSkill setting up the
+    // detect context): the origin is the position plus the range offset turned by the facing, the facing is the
+    // angle plus the range's z rotation, and the order is the attack's direction.
+    public static TargetSort GetTargetSort(this SkillMetadataAttack attack, in Vector3 position, float angle) =>
+        attack.Range.GetTargetSort(attack.Direction ?? 3, position, angle);
+
+    public static TargetSort GetTargetSort(this SkillMetadataRange range, int direction, in Vector3 position, float angle) {
+        float radians = angle * MathF.PI / 180;
+        Vector3 offset = range.RangeOffset;
+        var turned = new Vector3(offset.X * MathF.Cos(radians) - offset.Y * MathF.Sin(radians),
+            offset.X * MathF.Sin(radians) + offset.Y * MathF.Cos(radians), offset.Z);
+        return new TargetSort(direction, position + turned, angle + range.RotateZDegree);
+    }
+
     public static IEnumerable<T> Filter<T>(this Prism prism, IEnumerable<T> entities, int limit = 10) where T : IActor {
         HashSet<int> addedActorObjectIds = [];
         foreach (T entity in entities) {

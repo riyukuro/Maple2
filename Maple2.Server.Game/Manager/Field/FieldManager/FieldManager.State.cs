@@ -941,7 +941,7 @@ public partial class FieldManager {
         }
     }
 
-    public IEnumerable<IActor> GetTargets(IActor caster, Prism[] prisms, SkillMetadataRange range, int targetCount, ICollection<IActor>? ignore = null) {
+    public IEnumerable<IActor> GetTargets(IActor caster, Prism[] prisms, SkillMetadataRange range, int targetCount, ICollection<IActor>? ignore = null, TargetSort? sort = null) {
         if (targetCount <= 0) {
             return [];
         }
@@ -952,31 +952,33 @@ public partial class FieldManager {
         switch (range.IncludeCaster) {
             case IncludeCasterType.Priority: {
                     // Caster guaranteed as first target; pool fills remaining slots
-                    IActor[] pool = SelectTargets(caster, prisms, range, targetCount - 1, poolIgnore).ToArray();
+                    IActor[] pool = SelectTargets(caster, prisms, range, targetCount - 1, poolIgnore, sort).ToArray();
                     return Enumerable.Repeat<IActor>(caster, 1).Concat(pool);
                 }
             case IncludeCasterType.Last: {
                     // Pool fills all slots; caster appended only if fewer than targetCount were found
-                    IActor[] pool = SelectTargets(caster, prisms, range, targetCount, poolIgnore).ToArray();
+                    IActor[] pool = SelectTargets(caster, prisms, range, targetCount, poolIgnore, sort).ToArray();
                     return pool.Length < targetCount ? pool.Concat(Enumerable.Repeat<IActor>(caster, 1)) : pool;
                 }
             default: // Exclude
-                return SelectTargets(caster, prisms, range, targetCount, poolIgnore);
+                return SelectTargets(caster, prisms, range, targetCount, poolIgnore, sort);
         }
     }
 
-    // The range's pool in its prisms; a range with a target choice (Select) filters and sorts the whole pool before
-    // the target count is taken, as the client's search does.
-    private IEnumerable<IActor> SelectTargets(IActor caster, Prism[] prisms, SkillMetadataRange range, int limit, ICollection<IActor>? ignore) {
-        if (!range.Select.Active()) {
+    // The range's pool in its prisms; with a target choice (Select) or a search frame (sort) the whole pool is
+    // filtered and put in order before the target count is taken, as the client's search does.
+    private IEnumerable<IActor> SelectTargets(IActor caster, Prism[] prisms, SkillMetadataRange range, int limit, ICollection<IActor>? ignore, TargetSort? sort) {
+        if (!range.Select.Active() && sort == null) {
             return GetTargetPool(caster, prisms, range.ApplyTarget, limit, ignore);
         }
-        return RangeTargetSelect.Apply(range.Select, caster, GetTargetPool(caster, prisms, range.ApplyTarget, int.MaxValue, ignore)).Take(limit);
+        IEnumerable<IActor> pool = GetTargetPool(caster, prisms, range.ApplyTarget, int.MaxValue, ignore);
+        return RangeTargetSelect.Apply(range.Select, caster, pool, range.Type, sort).Take(limit);
     }
 
     public IEnumerable<IActor> GetTargets(SkillRecord record, ICollection<IActor>? ignore = null) {
         Prism[] prisms = [record.Attack.Range.GetPrism(record.ImpactPosition, record.Rotation.Z)];
-        return GetTargets(record.Caster, prisms, record.Attack.Range, record.Attack.TargetCount, ignore);
+        TargetSort sort = record.Attack.GetTargetSort(record.ImpactPosition, record.Rotation.Z);
+        return GetTargets(record.Caster, prisms, record.Attack.Range, record.Attack.TargetCount, ignore, sort);
     }
 
     // The client's bounce search: a cylinder of the arrow's bounce radius, 150 high, around the last hit; nearest first.

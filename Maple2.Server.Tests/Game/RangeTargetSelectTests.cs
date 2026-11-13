@@ -153,16 +153,162 @@ public class RangeTargetSelectTests {
         });
     }
 
-    // Modes 1 and 4 filter nothing; a select with neither a filter nor a sort is inactive.
+    // Modes other than 2 and 3 remove no one but put the passing targets first; a select with neither a filter nor a
+    // stat sort is inactive.
     [Test]
-    public void OtherModes_FilterNothing() {
+    public void OtherModes_PutPassingFirst() {
         Scene scene = Start();
+        scene.A.Value.Character.PartyId = 7;
+        scene.C.Value.Character.PartyId = 7;
+        Mark(scene.C, scene.A);
+        TargetSort nearest = new(3, Vector3.Zero, 0);
         Assert.Multiple(() => {
-            Assert.That(Targets(scene, Range(Select(1, party: true)), 5), Has.Length.EqualTo(2));
-            Assert.That(Targets(scene, Range(Select(4, 10600151)), 5), Has.Length.EqualTo(2));
-            Assert.That(Select(1, 10600151).Active(), Is.False);
+            Assert.That(Ids(RangeTargetSelect.Apply(Select(1, party: true), scene.A, [scene.B, scene.C], SkillRegion.Cylinder, nearest)),
+                Is.EqualTo(new[] { scene.C.ObjectId, scene.B.ObjectId }));
+            Assert.That(Ids(RangeTargetSelect.Apply(Select(4, 10600151), scene.A, [scene.B, scene.C], SkillRegion.Cylinder, nearest)),
+                Is.EqualTo(new[] { scene.C.ObjectId, scene.B.ObjectId }));
+            Assert.That(Ids(RangeTargetSelect.Apply(Select(1, party: true), scene.A, [scene.C, scene.B], SkillRegion.Cylinder, nearest)),
+                Is.EqualTo(new[] { scene.C.ObjectId, scene.B.ObjectId }));
+            Assert.That(Targets(scene, Range(Select(1, 10600151)), 1), Is.EqualTo(new[] { scene.C.ObjectId }));
+            Assert.That(Select(1, 10600151).Active(), Is.True);
+            Assert.That(Select(0).Active(), Is.False);
             Assert.That(Select(3).Active(), Is.True);
             Assert.That(Select(0, statSort: 3).Active(), Is.True);
+        });
+    }
+
+    private static int[] Ids(IEnumerable<IActor> targets) => targets.Select(target => target.ObjectId).ToArray();
+
+    // A at the origin, B 100 to the search's right and 50 ahead, C 50 to its left and 200 ahead, for a search at the
+    // origin facing 0 (ahead is -y, the right axis is -x).
+    private static IActor[] Spread(Scene scene) {
+        scene.B.Position = new Vector3(-100, -50, 0);
+        scene.C.Position = new Vector3(50, -200, 0);
+        return [scene.B, scene.C, scene.A];
+    }
+
+    private static int[] Sorted(Scene scene, IActor[] pool, int direction, SkillRegion shape, SkillMetadataRangeSelect? select = null) {
+        return Ids(RangeTargetSelect.Apply(select, scene.A, pool, shape, new TargetSort(direction, Vector3.Zero, 0)));
+    }
+
+    // Box and frustum: 1 and 2 by the signed side offset (1 the most negative first), 3 and 4 by the forward
+    // distance (3 nearest first). A cylinder measures neither, so 1 and 2 keep the pool order.
+    [Test]
+    public void Direction_BoxSideAndForward() {
+        Scene scene = Start();
+        IActor[] pool = Spread(scene);
+        int a = scene.A.ObjectId, b = scene.B.ObjectId, c = scene.C.ObjectId;
+        Assert.Multiple(() => {
+            Assert.That(Sorted(scene, pool, 1, SkillRegion.Box), Is.EqualTo(new[] { c, a, b }));
+            Assert.That(Sorted(scene, pool, 2, SkillRegion.Box), Is.EqualTo(new[] { b, a, c }));
+            Assert.That(Sorted(scene, pool, 3, SkillRegion.Box), Is.EqualTo(new[] { a, b, c }));
+            Assert.That(Sorted(scene, pool, 4, SkillRegion.Frustum), Is.EqualTo(new[] { c, b, a }));
+            Assert.That(Sorted(scene, pool, 1, SkillRegion.Cylinder), Is.EqualTo(new[] { b, c, a }));
+        });
+    }
+
+    // The side axis turns with the search: facing 90 the right axis is -y and ahead is +x.
+    [Test]
+    public void Direction_TurnsWithTheFacing() {
+        Scene scene = Start();
+        IActor[] pool = Spread(scene);
+        var sort = new TargetSort(3, Vector3.Zero, 90);
+        Assert.Multiple(() => {
+            Assert.That(RangeTargetSelect.Measured(scene.C, SkillRegion.Box, sort).Forward, Is.EqualTo(50).Within(1e-3));
+            Assert.That(RangeTargetSelect.Measured(scene.C, SkillRegion.Box, sort).Side, Is.EqualTo(200).Within(1e-3));
+            Assert.That(Ids(RangeTargetSelect.Apply(null, scene.A, pool, SkillRegion.Box, sort)),
+                Is.EqualTo(new[] { scene.A.ObjectId, scene.C.ObjectId, scene.B.ObjectId }));
+        });
+    }
+
+    // Cylinder and hole cylinder: 3 and 4 by the distance to the target (a cylinder to the target's edge).
+    [Test]
+    public void Direction_CylinderDistance() {
+        Scene scene = Start();
+        IActor[] pool = Spread(scene);
+        int a = scene.A.ObjectId, b = scene.B.ObjectId, c = scene.C.ObjectId;
+        var sort = new TargetSort(3, Vector3.Zero, 0);
+        Assert.Multiple(() => {
+            Assert.That(Sorted(scene, pool, 3, SkillRegion.Cylinder), Is.EqualTo(new[] { a, b, c }));
+            Assert.That(Sorted(scene, pool, 4, SkillRegion.HoleCylinder), Is.EqualTo(new[] { c, b, a }));
+            Assert.That(RangeTargetSelect.Measured(scene.B, SkillRegion.Cylinder, sort).Distance,
+                Is.EqualTo(System.MathF.Pow(System.MathF.Sqrt(12500) - 10, 2)).Within(0.1));
+            Assert.That(RangeTargetSelect.Measured(scene.A, SkillRegion.Cylinder, sort).Distance, Is.Zero);
+            Assert.That(RangeTargetSelect.Measured(scene.B, SkillRegion.HoleCylinder, sort).Distance,
+                Is.EqualTo(System.MathF.Sqrt(12500)).Within(1e-3));
+        });
+    }
+
+    // 5 and 6 by how straight ahead the target stands (5 most first); the target on the origin counts 0.
+    [Test]
+    public void Direction_Facing() {
+        Scene scene = Start();
+        IActor[] pool = Spread(scene);
+        int a = scene.A.ObjectId, b = scene.B.ObjectId, c = scene.C.ObjectId;
+        Assert.Multiple(() => {
+            Assert.That(Sorted(scene, pool, 5, SkillRegion.Cylinder), Is.EqualTo(new[] { c, b, a }));
+            Assert.That(Sorted(scene, pool, 6, SkillRegion.Box), Is.EqualTo(new[] { a, b, c }));
+        });
+    }
+
+    // Ties keep the order the client's exchange sort leaves, which is not the pool order: B and C both 50 ahead.
+    [Test]
+    public void Direction_TiesFollowTheExchangeSort() {
+        Scene scene = Start();
+        scene.B.Position = new Vector3(-100, -50, 0);
+        scene.C.Position = new Vector3(100, -50, 0);
+        Assert.That(Sorted(scene, [scene.B, scene.C, scene.A], 3, SkillRegion.Box),
+            Is.EqualTo(new[] { scene.A.ObjectId, scene.C.ObjectId, scene.B.ObjectId }));
+    }
+
+    // 0 shuffles the pool the client's way (from the last place down, each swapped with a random place up to it).
+    [Test]
+    public void Direction_ShuffleIsFisherYates() {
+        Scene scene = Start();
+        IActor[] pool = Spread(scene);
+        var expected = pool.ToList();
+        var random = new System.Random(5);
+        for (int i = expected.Count - 1; i >= 1; i--) {
+            int j = random.Next(i + 1);
+            (expected[i], expected[j]) = (expected[j], expected[i]);
+        }
+        IEnumerable<IActor> shuffled = RangeTargetSelect.Apply(null, scene.A, pool, SkillRegion.Box,
+            new TargetSort(0, Vector3.Zero, 0), new System.Random(5));
+        Assert.That(Ids(shuffled), Is.EqualTo(Ids(expected)));
+    }
+
+    // A stat sort replaces the direction order.
+    [Test]
+    public void StatSort_OverridesDirection() {
+        Scene scene = Start();
+        IActor[] pool = Spread(scene);
+        Health(scene.A, 500, 1000);
+        Health(scene.B, 900, 1000);
+        Health(scene.C, 100, 1000);
+        Assert.That(Sorted(scene, pool, 4, SkillRegion.Box, Select(0, statSort: 3)),
+            Is.EqualTo(new[] { scene.C.ObjectId, scene.A.ObjectId, scene.B.ObjectId }));
+    }
+
+    // Through the field: the count is taken after the order, and the search's origin is the cast position plus the
+    // range offset turned by the facing, its facing the cast's plus the range's z rotation.
+    [Test]
+    public void GetTargets_TakesTheCountAfterTheOrder() {
+        Scene scene = Start();
+        SkillMetadataRange range = Range(null);
+        int[] farthest = scene.Field.GetTargets(scene.A, Around, range, 1, sort: new TargetSort(4, Vector3.Zero, 0))
+            .Select(target => target.ObjectId).ToArray();
+        int[] nearest = scene.Field.GetTargets(scene.A, Around, range, 1, sort: new TargetSort(3, Vector3.Zero, 0))
+            .Select(target => target.ObjectId).ToArray();
+        TargetSort turned = (range with { RangeOffset = new Vector3(0, 100, 5), RotateZDegree = 30 })
+            .GetTargetSort(5, new Vector3(10, 0, 0), 90);
+        Assert.Multiple(() => {
+            Assert.That(farthest, Is.EqualTo(new[] { scene.C.ObjectId }));
+            Assert.That(nearest, Is.EqualTo(new[] { scene.B.ObjectId }));
+            Assert.That(turned.Direction, Is.EqualTo(5));
+            Assert.That(turned.Degrees, Is.EqualTo(120));
+            Assert.That(turned.Origin.X, Is.EqualTo(-90).Within(1e-3));
+            Assert.That(turned.Origin.Y, Is.EqualTo(0).Within(1e-3));
+            Assert.That(turned.Origin.Z, Is.EqualTo(5).Within(1e-3));
         });
     }
 }
