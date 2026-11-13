@@ -78,6 +78,8 @@ public sealed class QuestManager {
         foreach (ImmutableList<Quest> batch in characterValues.Values.Where(quest => PlayedClientQuests.Known(quest.Metadata.Basic)).Batch(BATCH_SIZE)) {
             session.Send(QuestPacket.LoadQuestStates(batch));
         }
+        // After the list: the client takes each grant's Start as a new quest.
+        GrantDailyQuests(DateTime.Now);
     }
 
     // The quests of the live stamp cards (StampEvent). They are event missions with an event tag that no quest tag
@@ -980,6 +982,37 @@ public sealed class QuestManager {
         session.Send(QuestPacket.DailyMissionReset(new DateTimeOffset(day).ToUnixTimeSeconds()));
         session.Send(QuestPacket.FieldQuestReset());
         session.Send(QuestPacket.WeddingMissionReset());
+        GrantDailyQuests(day);
+    }
+
+    // The quests the server grants (DailyQuestGrant), at login after the login drop and at the daily reset after its
+    // packets. now: the local time of the period to grant.
+    private void GrantDailyQuests(DateTime now) {
+        GrantFieldQuest(now);
+    }
+
+    // The day's field quest: the day's pick of the field quest group, when the player can start it (level 50,
+    // the played client has it). Once a day, and not while a field quest of the day is held.
+    private void GrantFieldQuest(DateTime now) {
+        Character character = session.Player.Value.Character;
+        DateTime day = now.Date;
+        if (!DailyQuestGrant.Due(character.FieldQuestGrantTime, day) || HoldsAny(DailyQuestGrant.IsFieldQuest)) {
+            return;
+        }
+        foreach (int questId in GroupPicks(DailyQuestGrant.FieldQuestGroup, now)) {
+            if (TryGetQuest(questId, out Quest? held) && !CanStartAgain(held)
+                || !session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata) || !DailyQuestGrant.IsFieldQuest(metadata)
+                || Start(questId) != QuestError.none) {
+                continue;
+            }
+            character.FieldQuestGrantTime = day.ToEpochSeconds();
+            logger.Information("Daily field quest of {CharacterId}: granted {QuestId}", session.CharacterId, questId);
+        }
+    }
+
+    // Whether a held quest (any state) matches.
+    private bool HoldsAny(Func<QuestMetadata, bool> match) {
+        return characterValues.Values.Concat(accountValues.Values).Any(quest => match(quest.Metadata));
     }
 
     // atReset: the reset (every row of the three kinds, mission points by their Friday); else the login check, before
