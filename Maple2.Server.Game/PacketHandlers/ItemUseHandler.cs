@@ -776,11 +776,17 @@ public class ItemUseHandler : FieldPacketHandler {
         // The client counts rewards, not placements, so the event's limit also caps how many reactors
         // of one character stand at once.
         int ownerLimit = gameEvent?.Metadata.Data is Maple2.Model.Metadata.Reactor reactorEvent ? Math.Max(reactorEvent.DailyCount, 1) : 1;
-        if (!session.Field.TryAddReactor(metadata, session.Player.Position, session.CharacterId, ownerLimit, out _)) {
+        if (!session.Field.TryAddReactor(metadata, session.Player.Position, session.CharacterId, ownerLimit, out FieldReactor? reactor)) {
+            return;
+        }
+        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+            session.Field.RemoveReactor(reactor.ObjectId);
             return;
         }
 
-        session.Item.Inventory.Consume(item.Uid, 1);
+        // Reactor mode 5 is the client's only use of a reactor's create animation (state 0x3d, sub state 0x9e);
+        // chosen here: the placer plays it once the reactor stands.
+        session.Send(ReactorPacket.StartReact(metadata.Id));
     }
 
     private static void HandleHongBao(GameSession session, Item item) {

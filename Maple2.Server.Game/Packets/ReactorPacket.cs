@@ -64,11 +64,13 @@ public static class ReactorPacket {
         return pWriter;
     }
 
-    // Puts the receiving player into the react state on the reactor.
-    public static ByteWriter StartReact(int objectId) {
+    // The receiving player plays the create animation of the reactor data (reactor.xml createAnimation, one at
+    // random): the client puts its own player into the react state (0x3d) with sub state 0x9e and no target, and
+    // StateReact::FUN_140b8e030 looks the id up in the reactor table, so this is the reactor id, not an object id.
+    public static ByteWriter StartReact(int reactorId) {
         var pWriter = Packet.Of(SendOp.Reactor);
         pWriter.Write<Command>(Command.StartReact);
-        pWriter.WriteInt(objectId);
+        pWriter.WriteInt(reactorId);
 
         return pWriter;
     }

@@ -37,7 +37,8 @@ public class ReactorPacketTests {
     [Test]
     public void OtherModes_WriteWhatTheClientReads() {
         Assert.That(Bytes(ReactorPacket.Remove(77)), Is.EqualTo(new byte[] { 1, 77, 0, 0, 0 }));
-        Assert.That(Bytes(ReactorPacket.StartReact(77)), Is.EqualTo(new byte[] { 5, 77, 0, 0, 0 }));
+        // Mode 5 carries the reactor id (the reactor table key), here 10000001.
+        Assert.That(Bytes(ReactorPacket.StartReact(10000001)), Is.EqualTo(new byte[] { 5, 0x81, 0x96, 0x98, 0 }));
         Assert.That(Bytes(ReactorPacket.UpdateState(77, 2, 0, [])),
             Is.EqualTo(new byte[] { 3, 77, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }));
         // The amount is a short.
