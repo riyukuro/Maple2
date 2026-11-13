@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Data;
+using System.Diagnostics;
 using Maple2.Database.Extensions;
 using Maple2.Database.Model;
 using Maple2.Model.Common;
@@ -211,80 +212,85 @@ public partial class GameStorage {
 
         // Saves the plot's cubes: those given are added or updated, every other cube on the plot is deleted. A
         // mannequin among the deleted ones (an older instance of the home that does not hold a cube placed elsewhere)
-        // gives its items back in the same transaction: each row goes into a system mail of its own, to the character
-        // the item is bound to (if it still exists), else to characterId (the plot owner's character that saves).
-        // mailed gets the (character, mail) of each mail, for the notice. Null when the save fails; nothing is written
-        // then.
+        // gives its items back in the same transaction as the cube save, one system mail per item row: to the
+        // character the item is bound to (if it still exists), else to characterId (the plot owner's character that
+        // saves). mailed gets the (character, mail) of each mail, for the notice. Null when the save fails, also on a
+        // database error such as a deadlock; nothing is written then.
         public ICollection<PlotCube>? SaveCubes(PlotInfo plotInfo, IEnumerable<PlotCube> cubes, long characterId,
                                                 List<(long CharacterId, long MailId)>? mailed = null) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
-            PlotCube[] given = cubes.ToArray();
-            cubes = given;
-
-            HashSet<long> kept = given.Where(cube => cube.Id < Constant.FurnishingBaseId).Select(cube => cube.Id).ToHashSet();
-            long[] dropped = Context.UgcMapCube.AsNoTracking()
-                .Where(cube => cube.UgcMapId == plotInfo.Id)
-                .Select(cube => cube.Id)
-                .AsEnumerable()
-                .Where(id => !kept.Contains(id))
-                .ToArray();
-            List<Model.Item> dollRows = dropped.Length == 0 ? [] : Context.Item.AsNoTracking()
-                .Where(row => dropped.Contains(row.OwnerId) && row.Group == ItemGroup.FittingDoll)
-                .ToList();
-            using IDbContextTransaction? transaction = dollRows.Count > 0 ? Context.Database.BeginTransaction() : null;
+            var results = new List<UgcMapCube>();
             var mails = new List<(Model.Item Row, Model.Mail Mail)>();
-            if (dollRows.Count > 0) {
-                foreach (Model.Item row in dollRows) {
-                    long bound = row.Transfer?.Binding?.CharacterId ?? 0;
-                    if (bound != 0 && !Context.Character.Any(character => character.Id == bound)) {
-                        bound = 0; // the bound character was deleted
+            try {
+                // Read committed: the doll rows are read after the cube deletes are written (the cube rows locked),
+                // and see the put-ons and swaps other channels committed up to then, not a snapshot taken earlier.
+                // The in-memory store has no transactions (the tests).
+                using IDbContextTransaction? transaction = Context.Database.IsRelational()
+                    ? Context.Database.BeginTransaction(IsolationLevel.ReadCommitted)
+                    : null;
+                var updated = new HashSet<long>();
+                foreach (PlotCube cube in cubes) {
+                    UgcMapCube model = cube;
+                    model.UgcMapId = plotInfo.Id;
+                    if (model.Id >= Constant.FurnishingBaseId) {
+                        model.Id = 0; // This needs to be auto-generated.
+                        results.Add(model);
+                        Context.UgcMapCube.Add(model);
+                    } else {
+                        updated.Add(model.Id);
+                        results.Add(model);
+                        Context.UgcMapCube.Update(model);
                     }
-                    Model.Mail mail = DollItemMail(bound != 0 ? bound : characterId);
-                    Context.Mail.Add(mail);
-                    mails.Add((row, mail));
                 }
-                // The mails first, for their ids; the transaction is rolled back when it is disposed uncommitted.
+                var dropped = new List<long>();
+                // Listed first: MySQL has one open reader per connection, and Maid.Find below may query.
+                foreach (UgcMapCube cube in Context.UgcMapCube.Where(cube => cube.UgcMapId == plotInfo.Id).ToList()) {
+                    if (!updated.Contains(cube.Id)) {
+                        Context.UgcMapCube.Remove(cube);
+                        dropped.Add(cube.Id);
+                        // A cube dropped here does not go back to storage, so its maid goes too.
+                        Model.Maid? maid = Context.Maid.Find(cube.Id);
+                        if (maid != null) {
+                            Context.Maid.Remove(maid);
+                        }
+                    }
+                }
                 if (!Context.TrySaveChanges()) {
                     return null;
                 }
-                foreach ((Model.Item row, Model.Mail mail) in mails) {
-                    if (!MoveDollRow(row, mail.Id)) {
-                        Context.Mail.Remove(mail); // the row left the cube meanwhile: no empty mail
+
+                List<Model.Item> dollRows = dropped.Count == 0 ? [] : Context.Item.AsNoTracking()
+                    .Where(row => dropped.Contains(row.OwnerId) && row.Group == ItemGroup.FittingDoll)
+                    .ToList();
+                if (dollRows.Count > 0) {
+                    foreach (Model.Item row in dollRows) {
+                        long bound = row.Transfer?.Binding?.CharacterId ?? 0;
+                        if (bound != 0 && !Context.Character.Any(character => character.Id == bound)) {
+                            bound = 0; // the bound character was deleted
+                        }
+                        Model.Mail mail = DollItemMail(bound != 0 ? bound : characterId);
+                        Context.Mail.Add(mail);
+                        mails.Add((row, mail));
+                    }
+                    // The mails first, for their ids; the transaction is rolled back when it is disposed uncommitted.
+                    if (!Context.TrySaveChanges()) {
+                        return null;
+                    }
+                    foreach ((Model.Item row, Model.Mail mail) in mails) {
+                        if (!MoveDollRow(row, mail.Id)) {
+                            Context.Mail.Remove(mail); // the row left the cube meanwhile: no empty mail
+                        }
+                    }
+                    mails.RemoveAll(entry => Context.Entry(entry.Mail).State == EntityState.Deleted);
+                    if (!Context.TrySaveChanges()) {
+                        return null;
                     }
                 }
-                mails.RemoveAll(entry => Context.Entry(entry.Mail).State == EntityState.Deleted);
-            }
-
-            var results = new List<UgcMapCube>();
-            var updated = new HashSet<long>();
-            foreach (PlotCube cube in cubes) {
-                UgcMapCube model = cube;
-                model.UgcMapId = plotInfo.Id;
-                if (model.Id >= Constant.FurnishingBaseId) {
-                    model.Id = 0; // This needs to be auto-generated.
-                    results.Add(model);
-                    Context.UgcMapCube.Add(model);
-                } else {
-                    updated.Add(model.Id);
-                    results.Add(model);
-                    Context.UgcMapCube.Update(model);
-                }
-            }
-            foreach (UgcMapCube cube in Context.UgcMapCube.Where(cube => cube.UgcMapId == plotInfo.Id)) {
-                if (!updated.Contains(cube.Id)) {
-                    Context.UgcMapCube.Remove(cube);
-                    // A cube dropped here does not go back to storage, so its maid goes too.
-                    Model.Maid? maid = Context.Maid.Find(cube.Id);
-                    if (maid != null) {
-                        Context.Maid.Remove(maid);
-                    }
-                }
-            }
-
-            if (!Context.TrySaveChanges()) {
+                transaction?.Commit();
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to save the cubes of plot {PlotId}", plotInfo.Id);
                 return null;
             }
-            transaction?.Commit();
             mailed?.AddRange(mails.Select(entry => (entry.Mail.ReceiverId, entry.Mail.Id)));
 
             PlotCube[] plotCubes = results
