@@ -90,7 +90,11 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     Unrequire: data.require.unrequire.Length > 0 ? data.require.unrequire : null,
                     ProgressQuest: data.require.progressQuest.Length > 0 ? data.require.progressQuest : null,
                     GuildNpcLevel: data.require.guildNpcLevel,
-                    Weekdays: data.require.dayOfWeek.Length > 0 ? data.require.dayOfWeek.Select(day => (int) day).ToArray() : null
+                    Weekdays: data.require.dayOfWeek.Length > 0 ? data.require.dayOfWeek.Select(day => (int) day).ToArray() : null,
+                    Dungeon: data.require.dungeon,
+                    UnrequireDungeon: data.require.unrequireDungeon,
+                    EnterDungeon: data.require.enterDungeon,
+                    DungeonBeginner: data.require.dungeonBeginner.Length > 0 ? data.require.dungeonBeginner : null
                 ),
                 AcceptReward: Convert(data.acceptReward),
                 CompleteReward: Convert(data.completeReward),

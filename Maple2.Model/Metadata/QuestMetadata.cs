@@ -84,7 +84,15 @@ public record QuestMetadataRequire(
     // (CanAcceptQuest, questdata.cpp:569). 0 checks nothing.
     int GuildNpcLevel = 0,
     // require dayOfWeek: the local weekday, 1 Sunday to 7 Saturday, must be listed (vfunc_o10_21, questdata.cpp:342).
-    int[]? Weekdays = null);
+    int[]? Weekdays = null,
+    // require dungeon: refused until the player has cleared this room (the record's clear count, questdata.cpp:588);
+    // unrequireDungeon: refused once it has a clear (:590); enterDungeon: refused while the player's enter state for
+    // the room is 10 or above (:592); dungeonBeginner: refused unless at least one listed room is one the player cannot
+    // claim the helper reward of (:594). 0 or no list checks nothing.
+    int Dungeon = 0,
+    int UnrequireDungeon = 0,
+    int EnterDungeon = 0,
+    int[]? DungeonBeginner = null);
 
 public record QuestMetadataReward(
     int Meso,

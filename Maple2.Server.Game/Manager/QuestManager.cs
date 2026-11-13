@@ -6,6 +6,7 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -434,6 +435,10 @@ public sealed class QuestManager {
             return false;
         }
 
+        if (!MeetsDungeonRequires(require)) {
+            return false;
+        }
+
         if (require.GroupId != 0 && !GroupPicks(require.GroupId, DateTime.Now).Contains(metadata.Id)) {
             return false;
         }
@@ -444,6 +449,36 @@ public sealed class QuestManager {
 
         return require.SelectableQuest.Length <= 0 || SelectableQuests(require.SelectableQuest);
     }
+
+    // The dungeon requires (CanAcceptQuest, questdata.cpp:588-607). The clear count is the record's TotalClears, the
+    // value the client reads (DungeonRecordManagerCli::GetRoomValue5c, dungeonrecordcli.cpp:597, the m_5c the record
+    // packet carries in TotalClears' place; no record reads 0). The enter state is the one FieldEntrancePacket sends
+    // (CMyCharacter::GetDungeonEnterState, notifydebugstate.cpp:257; a room not sent reads 0).
+    private bool MeetsDungeonRequires(QuestMetadataRequire require) {
+        if (require.Dungeon != 0 && DungeonClears(require.Dungeon) < 1) {
+            return false;
+        }
+        if (require.UnrequireDungeon != 0 && DungeonClears(require.UnrequireDungeon) != 0) {
+            return false;
+        }
+        if (require.EnterDungeon != 0 && session.Player.Value.Character.DungeonEnterLimits.TryGetValue(require.EnterDungeon, out DungeonEnterLimit limit)
+                && (byte) limit >= 10) {
+            return false;
+        }
+        if (require.DungeonBeginner != null && require.DungeonBeginner.Length > 0 && require.DungeonBeginner.All(CanClaimHelperReward)) {
+            return false;
+        }
+        return true;
+    }
+
+    private int DungeonClears(int dungeonId) =>
+        session.Dungeon.Records.TryGetValue(dungeonId, out DungeonRecord? record) ? record.TotalClears : 0;
+
+    // A room the table lacks reads false (CanClaimHelperReward, dungeonrecordcli.cpp:509).
+    private bool CanClaimHelperReward(int dungeonId) =>
+        session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(dungeonId, out DungeonRoomMetadata? room)
+        && DungeonRoomRules.CanClaimHelperReward(session.Dungeon.Records.TryGetValue(dungeonId, out DungeonRecord? record) ? record : null,
+            room.HelperRequireClearCount);
 
     private bool HasState(int questId, QuestState state) => TryGetQuest(questId, out Quest? quest) && quest.State == state;
 
