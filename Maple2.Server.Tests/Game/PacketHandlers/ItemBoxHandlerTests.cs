@@ -21,12 +21,16 @@ public class ItemBoxHandlerTests {
     private const int RewardB = 20000002;
     private const int DropBoxId = 100;
     private const int GachaInfoId = 300;
+    private const int KeyId = 20300002;
+    private const int OtherRarity = 4;
 
     private TestGameSession test = null!;
     private Item box = null!;
+    private Item otherBox = null!;
 
     // The box in the bag, and drop box 100 = two groups: RewardA x3 | RewardB x1.
-    private GameSession Login(ItemFunction function, string parameters, int amount, int rewardSlotMax = 100, short[]? tabCount = null) {
+    private GameSession Login(ItemFunction function, string parameters, int amount, int rewardSlotMax = 100, short[]? tabCount = null,
+                              int otherRarityAmount = 0, int keys = 0) {
         test = new TestGameSession();
         ItemMetadata boxMetadata = TestGameSession.Metadata(BoxId, function: new ItemMetadataFunction(function, function.ToString(), parameters, false));
         test.Register(TestGameSession.Metadata(RewardA, slotMax: rewardSlotMax), TestGameSession.Metadata(RewardB, slotMax: rewardSlotMax));
@@ -42,6 +46,14 @@ public class ItemBoxHandlerTests {
             test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { bagSlotTabMiscCount = tabCount });
         }
         box = test.Store(boxMetadata, amount: amount);
+        if (otherRarityAmount > 0) {
+            // A second stack of the same box at another rarity (the box is stored at rarity 1).
+            using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+            otherBox = db.CreateItem(test.CharacterId, new Item(boxMetadata, rarity: OtherRarity, amount: otherRarityAmount))!;
+        }
+        if (keys > 0) {
+            test.Store(TestGameSession.Metadata(KeyId), amount: keys);
+        }
         GameSession session = test.Start();
         test.TakeSent();
         return session;
@@ -79,6 +91,8 @@ public class ItemBoxHandlerTests {
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
     private static int Held(GameSession session, int itemId) => session.Item.Inventory.Find(itemId).Sum(item => item.Amount);
+
+    private static int Held(GameSession session, Item stack) => session.Item.Inventory.Get(stack.Uid)?.Amount ?? 0;
 
     private int Mails() {
         using var context = new Ms2Context(test.Options);
@@ -281,5 +295,42 @@ public class ItemBoxHandlerTests {
         Assert.That(test.TakeSentOps(), Has.No.Member(SendOp.ItemInventory));
         Assert.That(Held(session, RewardA), Is.EqualTo(3));
         Assert.That(Held(session, RewardB), Is.EqualTo(1));
+    }
+
+    // Two stacks of one select box at two rarities: the dialog of one opens only that stack, whichever the bag
+    // lists first.
+    [TestCase(OtherRarity, 1, 4, 0)]
+    [TestCase(1, 2, 2, 1)]
+    public void SelectItemBox_MultiOpen_UsesOnlyThePickedRarity(int rarity, int count, int leftRarity1, int leftOther) {
+        GameSession session = Login(ItemFunction.SelectItemBox, $"1,{DropBoxId}", amount: 4, otherRarityAmount: 1);
+
+        new ItemBoxHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteInt(BoxId);
+            writer.WriteShort((short) rarity);
+            writer.WriteInt(count);
+            writer.WriteUnicodeString("0");
+        }));
+
+        Assert.That(Held(session, box), Is.EqualTo(leftRarity1));
+        Assert.That(Held(session, otherBox), Is.EqualTo(leftOther));
+        Assert.That(Held(session, RewardA), Is.EqualTo(3 * count));
+    }
+
+    // The same for a box with a key: the key is any stack, the box only the picked rarity's.
+    [TestCase(OtherRarity, 1, 4, 0)]
+    [TestCase(1, 2, 2, 1)]
+    public void OpenItemBoxWithKey_MultiOpen_UsesOnlyThePickedRarity(int rarity, int count, int leftRarity1, int leftOther) {
+        GameSession session = Login(ItemFunction.OpenItemBoxWithKey, $"{KeyId},1,0,0,0,{DropBoxId}", amount: 4, otherRarityAmount: 1, keys: 5);
+
+        new ItemBoxHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteInt(BoxId);
+            writer.WriteShort((short) rarity);
+            writer.WriteInt(count);
+            writer.WriteUnicodeString("");
+        }));
+
+        Assert.That(Held(session, box), Is.EqualTo(leftRarity1));
+        Assert.That(Held(session, otherBox), Is.EqualTo(leftOther));
+        Assert.That(Held(session, KeyId), Is.EqualTo(5 - count));
     }
 }

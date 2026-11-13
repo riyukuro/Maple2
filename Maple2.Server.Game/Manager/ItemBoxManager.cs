@@ -315,7 +315,7 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
         // check if box count is enough to open
-        if (session.Item.Inventory.Find(item.Id).Sum(box => box.Amount) < 1) {
+        if (session.Item.Inventory.Find(item.Id, item.Rarity).Sum(box => box.Amount) < 1) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
@@ -328,7 +328,7 @@ public class ItemBoxManager {
         }
 
         var error = ItemBoxError.ok;
-        var ingredient = new ItemComponent(item.Id, -1, 1, ItemTag.None);
+        var ingredient = new ItemComponent(item.Id, item.Rarity, 1, ItemTag.None);
         for (int startCount = 0; startCount < count; startCount++) {
             ICollection<Item> itemList = session.Field.ItemDrop.GetSelectBoxItems(session, boxId, rows);
             if (itemList.Count == 0) {
@@ -356,7 +356,7 @@ public class ItemBoxManager {
         // unknownId is treated as a bool. if 1 = receive one item from each drop group, if 0 = receive all items from one drop group.
         // There are occasions where this number is higher than 1. No idea what it is as it's not a globaldropBoxId
 
-        if (itemRequiredAmount > -1 && session.Item.Inventory.Find(item.Id).Sum(box => box.Amount) < itemRequiredAmount) {
+        if (itemRequiredAmount > -1 && session.Item.Inventory.Find(item.Id, item.Rarity).Sum(box => box.Amount) < itemRequiredAmount) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
@@ -428,7 +428,7 @@ public class ItemBoxManager {
         }
 
         var ingredients = new List<ItemComponent> {
-            new ItemComponent(item.Id, -item.Rarity, 1, ItemTag.None),
+            new ItemComponent(item.Id, item.Rarity, 1, ItemTag.None),
             new ItemComponent(keyItemId, -1, keyAmountRequired, ItemTag.None),
         };
         for (int startCount = 0; startCount < count; startCount++) {

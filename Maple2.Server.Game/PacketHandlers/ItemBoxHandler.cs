@@ -20,7 +20,11 @@ public class ItemBoxHandler : FieldPacketHandler {
         }
 
         // The client names the box by id and rarity, the two it keeps for the dialog (UIItemMultiOpenBoxDialog
-        // FUN_140c3f9d0 is given the item's id and GetRarity()), so the stack is picked by both.
+        // FUN_140c3f9d0 is given the item's id and GetRarity()), so the stack is picked by both. A rarity below 0,
+        // which Find takes as any rarity, is never sent by the client and is dropped.
+        if (rarity < 0) {
+            return;
+        }
         Item? item = session.Item.Inventory.Find(itemId, rarity).FirstOrDefault();
         if (item == null) {
             return;

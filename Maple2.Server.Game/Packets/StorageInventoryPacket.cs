@@ -135,8 +135,9 @@ public static class StorageInventoryPacket {
 
     // CStore::Dispatch 7 (store.cpp, named OnClose there) has no payload: an open storage window that is not
     // closing plays its expand effect and sound (UIStoreDialog::FUN_141b109a0, "m_expandEff",
-    // system_expandbankSlot) and rebuilds its slots at the store's capacity, which 13 set. Nothing else in the
-    // client plays that effect or rebuilds an open window's slots after 13.
+    // system_expandbankSlot) and sets its refresh state to 6; the window's next update (vfunc_15) then rebuilds its
+    // slots at the store's capacity, which 13 set (bit 4, FUN_141b110e0), and its slot count text (bit 2,
+    // UpdateExpandText). Nothing else in the client plays that effect or rebuilds an open window's slots after 13.
     public static ByteWriter ExpandEffect() {
         var pWriter = Packet.Of(SendOp.StorageInventory);
         pWriter.Write<Command>(Command.ExpandEffect);
