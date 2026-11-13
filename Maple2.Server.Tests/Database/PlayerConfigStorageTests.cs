@@ -83,6 +83,7 @@ public class PlayerConfigStorageTests {
         var before = new PlayerConfigLookUp((_, _) => false, (_, _) => false, store);
         before.Save([], [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 30000, StopTime = 1000, Charges = 1 }],
             new DeathInfo(), characterId);
+        Assert.That(before.Flush(TimeSpan.FromSeconds(5)), Is.True);
 
         var after = new PlayerConfigLookUp((_, _) => false, (_, _) => false, store);
         Assert.That(after.Retrieve(characterId, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(20000));

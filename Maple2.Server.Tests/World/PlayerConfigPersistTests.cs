@@ -20,9 +20,13 @@ public class PlayerConfigPersistTests {
         public readonly Dictionary<long, string> Rows = [];
         public int Loads;
         public bool Fail;
+        public bool FailLoad;
 
         public PlayerConfigSave? Load(long characterId) {
             Loads++;
+            if (FailLoad) {
+                throw new InvalidOperationException("db down");
+            }
             return Rows.TryGetValue(characterId, out string? json) ? JsonSerializer.Deserialize<PlayerConfigSave>(json) : null;
         }
 
@@ -35,8 +39,9 @@ public class PlayerConfigPersistTests {
         }
     }
 
-    private static PlayerConfigLookUp World(IPlayerConfigStore store, bool inGameTime = false) =>
-        new((_, _) => inGameTime, (id, _) => id == Buff ? inGameTime : null, store);
+    // The db writes run in the saving thread here, so a test reads the store right after a save.
+    private static PlayerConfigLookUp World(IPlayerConfigStore store, bool inGameTime = false, Func<long>? clockMs = null) =>
+        new((_, _) => inGameTime, (id, _) => id == Buff ? inGameTime : null, store, work => work(), clockMs);
 
     // A logout at epoch second 1000: a 30 s cooldown, a 60 s buff, a 20 s death penalty (count 2), a 25 s held cooldown.
     private static void Logout(PlayerConfigLookUp world, int buffId = Buff) {
@@ -139,7 +144,8 @@ public class PlayerConfigPersistTests {
         Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(20000));
     }
 
-    // The stored row is read while a newer save comes in: the newer save is what the World keeps.
+    // The stored row is read while a newer save comes in: the save does not wait for the read, and the newer save is
+    // what the World keeps.
     private sealed class SlowStore(JsonStore inner) : IPlayerConfigStore {
         public readonly System.Threading.ManualResetEventSlim Reading = new();
         public readonly System.Threading.ManualResetEventSlim Release = new();
@@ -147,7 +153,7 @@ public class PlayerConfigPersistTests {
         public PlayerConfigSave? Load(long characterId) {
             PlayerConfigSave? save = inner.Load(characterId);
             Reading.Set();
-            Release.Wait(TimeSpan.FromSeconds(5));
+            Release.Wait();
             return save;
         }
 
@@ -161,16 +167,132 @@ public class PlayerConfigPersistTests {
         var store = new SlowStore(rows);
         PlayerConfigLookUp world = World(store);
 
-        var read = System.Threading.Tasks.Task.Run(() => world.Retrieve(CharacterId, 1010));
-        Assert.That(store.Reading.Wait(TimeSpan.FromSeconds(5)), Is.True);
-        var save = System.Threading.Tasks.Task.Run(() => world.Save([],
-            [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 5000, StopTime = 1010, Charges = 1 }],
-            new DeathInfo(), CharacterId));
-        Assert.That(save.Wait(200), Is.False, "the save waits for the read");
-        store.Release.Set();
-        Assert.That(System.Threading.Tasks.Task.WaitAll([read, save], TimeSpan.FromSeconds(5)), Is.True);
+        System.Threading.Tasks.Task<(List<BuffInfo>, List<SkillCooldownInfo>, DeathInfo)> read;
+        try {
+            read = System.Threading.Tasks.Task.Run(() => world.Retrieve(CharacterId, 1010));
+            Assert.That(store.Reading.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            var save = System.Threading.Tasks.Task.Run(() => world.Save([],
+                [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 5000, StopTime = 1010, Charges = 1 }],
+                new DeathInfo(), CharacterId));
+            Assert.That(save.Wait(TimeSpan.FromSeconds(10)), Is.True, "the save does not wait for the read");
+        } finally {
+            store.Release.Set();
+        }
+        Assert.That(read.Wait(TimeSpan.FromSeconds(10)), Is.True);
 
         Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(5000));
         Assert.That(World(rows).Retrieve(CharacterId, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(5000));
+    }
+    // A db write that does not end until it is let go (a slow or hung MySQL).
+    private sealed class HungStore(JsonStore inner) : IPlayerConfigStore {
+        public readonly System.Threading.ManualResetEventSlim Writing = new();
+        public readonly System.Threading.ManualResetEventSlim Release = new();
+
+        public PlayerConfigSave? Load(long characterId) => inner.Load(characterId);
+
+        public bool Store(long characterId, PlayerConfigSave save) {
+            Writing.Set();
+            Release.Wait();
+            return inner.Store(characterId, save);
+        }
+    }
+
+    // The Game's logout saves through the World: the save ends without waiting for the db, a read of the character
+    // in the meantime gets the memory copy, and the write still reaches the db (Flush, as at the World's stop).
+    [Test]
+    public void HungDb_DoesNotHoldUpTheSave() {
+        var rows = new JsonStore();
+        var store = new HungStore(rows);
+        var world = new PlayerConfigLookUp((_, _) => false, (id, _) => id == Buff ? false : null, store);
+
+        try {
+            var save = System.Threading.Tasks.Task.Run(() => Logout(world));
+            Assert.That(save.Wait(TimeSpan.FromSeconds(10)), Is.True, "the save does not wait for the db");
+            Assert.That(store.Writing.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            var read = System.Threading.Tasks.Task.Run(() => world.Retrieve(CharacterId, 1010));
+            Assert.That(read.Wait(TimeSpan.FromSeconds(10)), Is.True, "a read does not wait for the db");
+            Assert.That(read.Result.SkillCooldowns.Single().MsRemaining, Is.EqualTo(20000));
+            Assert.That(rows.Rows, Is.Empty);
+        } finally {
+            store.Release.Set();
+        }
+        Assert.That(world.Flush(TimeSpan.FromSeconds(5)), Is.True);
+        Assert.That(World(rows).Retrieve(CharacterId, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(20000));
+    }
+
+    // Saves that come in while a write runs: the db ends with the newest one.
+    [Test]
+    public void SavesDuringAWrite_TheNewestIsWritten() {
+        var rows = new JsonStore();
+        var store = new HungStore(rows);
+        var world = new PlayerConfigLookUp((_, _) => false, (_, _) => false, store);
+        try {
+            world.Save([], [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 1000, StopTime = 1000, Charges = 1 }],
+                new DeathInfo(), CharacterId);
+            Assert.That(store.Writing.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            foreach (int ms in new[] { 2000, 3000 }) {
+                world.Save([], [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = ms, StopTime = 1000, Charges = 1 }],
+                    new DeathInfo(), CharacterId);
+            }
+        } finally {
+            store.Release.Set();
+        }
+        Assert.That(world.Flush(TimeSpan.FromSeconds(5)), Is.True);
+        Assert.That(World(rows).Retrieve(CharacterId, 1000).SkillCooldowns.Single().MsRemaining, Is.EqualTo(3000));
+    }
+
+    // While the db is down a login reads it once, not once per Retrieve and RetrievePvpHold; after the retry time
+    // the next login reads it again, and gets the stored config once the db is back.
+    [Test]
+    public void FailedRead_NotRetriedUntilTheRetryTime() {
+        var store = new JsonStore();
+        Logout(World(store));
+        store.FailLoad = true;
+        long now = 0;
+        PlayerConfigLookUp world = World(store, clockMs: () => now);
+
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns, Is.Empty);
+        Assert.That(world.RetrievePvpHold(CharacterId, 1010).Held, Is.Empty);
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns, Is.Empty);
+        Assert.That(store.Loads, Is.EqualTo(1));
+
+        now = PlayerConfigLookUp.LoadRetryMs - 1;
+        world.Retrieve(CharacterId, 1010);
+        Assert.That(store.Loads, Is.EqualTo(1));
+
+        store.FailLoad = false;
+        now = PlayerConfigLookUp.LoadRetryMs;
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(20000));
+        Assert.That(store.Loads, Is.EqualTo(2));
+    }
+
+    // A login whose read failed, and one whose read fell in the retry time, play from an empty config: their
+    // logouts do not write it over the stored rows, and the next read that works gives the stored config back.
+    [Test]
+    public void UnreadCharacter_SaveDoesNotReplaceTheStoredRow() {
+        const long Other = CharacterId + 1;
+        var store = new JsonStore();
+        PlayerConfigLookUp before = World(store);
+        Logout(before);
+        before.Save([], [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 40000, StopTime = 1000, Charges = 1 }],
+            new DeathInfo(), Other);
+        string row = store.Rows[CharacterId], otherRow = store.Rows[Other];
+        store.FailLoad = true;
+        long now = 0;
+        PlayerConfigLookUp world = World(store, clockMs: () => now);
+
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns, Is.Empty);
+        store.FailLoad = false;
+        Assert.That(world.Retrieve(Other, 1010).SkillCooldowns, Is.Empty, "read skipped in the retry time");
+        world.Save([], [], new DeathInfo(), CharacterId);
+        world.Save([], [], new DeathInfo(), Other);
+        Assert.That((store.Rows[CharacterId], store.Rows[Other]), Is.EqualTo((row, otherRow)));
+
+        now = PlayerConfigLookUp.LoadRetryMs;
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(20000));
+        Assert.That(world.Retrieve(Other, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(30000));
+        world.Save([], [new SkillCooldownInfo { SkillId = Skill, SkillLevel = 1, MsRemaining = 5000, StopTime = 1010, Charges = 1 }],
+            new DeathInfo(), Other);
+        Assert.That(World(store).Retrieve(Other, 1010).SkillCooldowns.Single().MsRemaining, Is.EqualTo(5000));
     }
 }

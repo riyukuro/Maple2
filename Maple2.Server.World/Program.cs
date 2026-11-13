@@ -117,6 +117,13 @@ lifetime.ApplicationStopping.Register(() => {
     world.Stop();
     lifetime.StopApplication();
 });
+// The player config saves still waiting for the db, once the gRPC server takes no more calls (a logout that comes in
+// while the World stops is still written).
+lifetime.ApplicationStopped.Register(() => {
+    if (!app.Services.GetRequiredService<PlayerConfigLookUp>().Flush(TimeSpan.FromSeconds(10))) {
+        Log.Warning("Player config saves not all written to the db before the stop");
+    }
+});
 
 
 ILifetimeScope root = app.Services.GetAutofacRoot();

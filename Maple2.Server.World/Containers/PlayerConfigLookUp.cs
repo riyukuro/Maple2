@@ -42,8 +42,24 @@ public class PlayerConfigLookUp {
     private readonly ConcurrentDictionary<long, DeathInfo> deaths;
     // The town cooldowns held through a PvP-zone stay (the game server's PvpCooldownHold) and whether the stay runs.
     private readonly ConcurrentDictionary<long, (ConcurrentDictionary<int, SkillCooldownInfo> Held, bool Stay)> pvpHolds = [];
-    // One lock per character: a save and a first read from the store never interleave, and the db sees the saves in order.
-    private readonly ConcurrentDictionary<long, object> characterLocks = [];
+    // A save and a first read from the store of one character never interleave. Striped: a fixed set of locks by
+    // character id, so the World keeps no lock per character it has seen.
+    private const int LockStripes = 64;
+    private readonly object[] locks = Enumerable.Range(0, LockStripes).Select(_ => new object()).ToArray();
+    // The db writes run behind the save, out of its lock: a slow or hung db does not hold up the Game's logout. One
+    // writer at a time takes the newest save of each character, so the db sees the saves in order.
+    private readonly ConcurrentDictionary<long, PlayerConfigSave> pendingWrites = [];
+    private readonly Action<Action> runWriter;
+    private int writerRunning;
+    // After a failed read the store is not read again for a while: while the db is down a login does not wait on it
+    // again and again (the config of that login is the memory copy, or none).
+    internal const long LoadRetryMs = 30_000;
+    private readonly Func<long> clockMs;
+    private long loadRetryAt = long.MinValue;
+    // Characters whose stored row was not read (the read failed, or fell in the retry time): their saves stay in
+    // memory and are not written, so a config begun from nothing never replaces the stored row. The next read that
+    // works takes the stored row over the memory copy.
+    private readonly ConcurrentDictionary<long, byte> unread = [];
 
     public PlayerConfigLookUp(SkillMetadataStorage skillMetadataStorage, GameStorage gameStorage) : this(
         (id, level) => skillMetadataStorage.TryGet(id, level, out SkillMetadata? skill) ? skill.State.UseInGameTime : null,
@@ -53,10 +69,14 @@ public class PlayerConfigLookUp {
     // No store: the config lives as long as this instance.
     internal PlayerConfigLookUp(SkillMetadataStorage? _, Func<int, short, bool?> usesGameTime) : this(usesGameTime, (_, _) => false, null) { }
 
-    internal PlayerConfigLookUp(Func<int, short, bool?> usesGameTime, Func<int, short, bool?> buffUsesGameTime, IPlayerConfigStore? store) {
+    // runWriter runs the db writer (the thread pool by default); clockMs is the clock of the read retry.
+    internal PlayerConfigLookUp(Func<int, short, bool?> usesGameTime, Func<int, short, bool?> buffUsesGameTime, IPlayerConfigStore? store,
+                                Action<Action>? runWriter = null, Func<long>? clockMs = null) {
         this.usesGameTime = usesGameTime;
         this.buffUsesGameTime = buffUsesGameTime;
         this.store = store;
+        this.runWriter = runWriter ?? (work => Task.Run(work));
+        this.clockMs = clockMs ?? (() => Environment.TickCount64);
         buffs = [];
         skillCooldowns = [];
         deaths = [];
@@ -64,22 +84,56 @@ public class PlayerConfigLookUp {
 
     public void Save(List<BuffInfo> saveBuffs, List<SkillCooldownInfo> skillCooldownInfos, DeathInfo death, long characterId,
                      List<SkillCooldownInfo>? pvpHeld = null, bool pvpStay = false) {
+        bool write;
         lock (LockOf(characterId)) {
             Keep(saveBuffs, skillCooldownInfos, death, characterId, pvpHeld ?? [], pvpStay);
-            if (store == null) {
-                return;
+            write = store != null && !unread.ContainsKey(characterId);
+            if (write) {
+                pendingWrites[characterId] = ToSave(saveBuffs, skillCooldownInfos, death, pvpHeld ?? [], pvpStay);
             }
-            try {
-                if (!store.Store(characterId, ToSave(saveBuffs, skillCooldownInfos, death, pvpHeld ?? [], pvpStay))) {
-                    Logger.Warning("Player config of Character:{CharacterId} not written to the db; kept in memory only", characterId);
+        }
+        if (write) {
+            StartWriter();
+        }
+    }
+
+    private object LockOf(long characterId) => locks[(int) ((ulong) characterId % LockStripes)];
+
+    private void StartWriter() {
+        if (Interlocked.CompareExchange(ref writerRunning, 1, 0) == 0) {
+            runWriter(WritePending);
+        }
+    }
+
+    private void WritePending() {
+        while (true) {
+            foreach (long characterId in pendingWrites.Keys) {
+                if (pendingWrites.TryRemove(characterId, out PlayerConfigSave? save)) {
+                    Write(characterId, save);
                 }
-            } catch (Exception ex) {
-                Logger.Warning(ex, "Player config of Character:{CharacterId} not written to the db; kept in memory only", characterId);
+            }
+            // A full fence: the check below must not read the dictionary before the flag is seen as 0.
+            Interlocked.Exchange(ref writerRunning, 0);
+            // A save that came in after the last pass, while no writer was taking it.
+            if (pendingWrites.IsEmpty || Interlocked.CompareExchange(ref writerRunning, 1, 0) != 0) {
+                return;
             }
         }
     }
 
-    private object LockOf(long characterId) => characterLocks.GetOrAdd(characterId, _ => new object());
+    private void Write(long characterId, PlayerConfigSave save) {
+        try {
+            if (!store!.Store(characterId, save)) {
+                Logger.Warning("Player config of Character:{CharacterId} not written to the db; kept in memory only", characterId);
+            }
+        } catch (Exception ex) {
+            Logger.Warning(ex, "Player config of Character:{CharacterId} not written to the db; kept in memory only", characterId);
+        }
+    }
+
+    // Waits for the saves not yet written (the World's shutdown); false when the timeout ends first.
+    public bool Flush(TimeSpan timeout) =>
+        SpinWait.SpinUntil(() => pendingWrites.IsEmpty && Volatile.Read(ref writerRunning) == 0, timeout);
 
     private void Keep(IEnumerable<BuffInfo> saveBuffs, IEnumerable<SkillCooldownInfo> skillCooldownInfos, DeathInfo? death, long characterId,
                       IEnumerable<SkillCooldownInfo> pvpHeld, bool pvpStay) {
@@ -107,24 +161,35 @@ public class PlayerConfigLookUp {
         deaths[characterId] = death ?? new DeathInfo();
     }
 
-    // Fills the memory from the store for a character this World has nothing for (none saved since it started).
-    // A character with no row is remembered as empty, so the next login does not read again.
+    // Fills the memory from the store for a character this World has nothing for (none saved since it started), or
+    // whose stored row was not read before. A character with no row is remembered as empty, so the next login does
+    // not read again. The read runs out of the lock: a slow db holds up no save.
     private void LoadIfUnknown(long characterId) {
-        if (store == null || skillCooldowns.ContainsKey(characterId)) {
+        if (store == null || (skillCooldowns.ContainsKey(characterId) && !unread.ContainsKey(characterId))) {
             return;
         }
-        lock (LockOf(characterId)) {
-            // A save that came in before the lock wins over the stored one.
-            if (skillCooldowns.ContainsKey(characterId)) {
-                return;
-            }
-            PlayerConfigSave? save;
+        PlayerConfigSave? save = null;
+        bool read = clockMs() >= Interlocked.Read(ref loadRetryAt);
+        if (read) {
             try {
                 save = store.Load(characterId);
             } catch (Exception ex) {
-                Logger.Warning(ex, "Player config of Character:{CharacterId} not read from the db", characterId);
+                read = false;
+                Interlocked.Exchange(ref loadRetryAt, clockMs() + LoadRetryMs);
+                Logger.Warning(ex, "Player config of Character:{CharacterId} not read from the db; not read again for {Seconds} s",
+                    characterId, LoadRetryMs / 1000);
+            }
+        }
+        lock (LockOf(characterId)) {
+            // A save of a read character that came in during the read wins over the stored row.
+            if (skillCooldowns.ContainsKey(characterId) && !unread.ContainsKey(characterId)) {
                 return;
             }
+            if (!read) {
+                unread.TryAdd(characterId, 0);
+                return;
+            }
+            unread.TryRemove(characterId, out _);
             if (save == null) {
                 skillCooldowns.TryAdd(characterId, []);
                 return;
