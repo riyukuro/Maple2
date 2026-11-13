@@ -723,12 +723,14 @@ public class FieldPlayer : Actor<Player> {
     /// Adds health to player, and sends update packet.
     /// </summary>
     /// <param name="amount"></param>
-    public void RecoverHp(int amount) {
+    /// <returns>The health actually restored (after the maximum cap).</returns>
+    public int RecoverHp(int amount) {
         if (amount <= 0) {
-            return;
+            return 0;
         }
 
         Stat stat = Stats.Values[BasicAttribute.Health];
+        long before = stat.Current;
         if (stat.Current < stat.Total) {
             stat.Add(amount);
             Session.Send(StatsPacket.Update(this, BasicAttribute.Health));
@@ -736,19 +738,29 @@ public class FieldPlayer : Actor<Player> {
 
         healthSync.Sent(healthSyncTick);
         SendHealth();
+        return (int) (stat.Current - before);
     }
 
     // The killing blow on an npc gives back the killer's item option lines HpOnKill, SpiritOnKill and StaminaOnKill
     // (special 13 to 15, killhprestore/killsprestore/killeprestore) as flat amounts, capped at the maximum. The client
     // computes none of it (it only shows the stats the server sends); chosen here: the last hitter only, and only while
     // alive. In the KR data only HpOnKill is on items: 7,151 random option lines of 1 to 15 health.
+    // Each amount actually restored is shown with UiText (0x94), the client's recovery number for type 4/7/10. Chosen
+    // here: the client does not say which events send it, so only this restore does (skill heals keep
+    // SkillDamagePacket.Heal), and it goes to the killer's session only, not the field.
     public void RestoreOnKill() {
         if (IsDead) {
             return;
         }
-        RecoverHp((int) Stats.Values[SpecialAttribute.HpOnKill].Total);
-        RecoverSp((int) Stats.Values[SpecialAttribute.SpiritOnKill].Total);
-        RecoverStamina((int) Stats.Values[SpecialAttribute.StaminaOnKill].Total);
+        SendRecovered(BasicAttribute.Health, RecoverHp((int) Stats.Values[SpecialAttribute.HpOnKill].Total));
+        SendRecovered(BasicAttribute.Spirit, RecoverSp((int) Stats.Values[SpecialAttribute.SpiritOnKill].Total));
+        SendRecovered(BasicAttribute.Stamina, RecoverStamina((int) Stats.Values[SpecialAttribute.StaminaOnKill].Total));
+    }
+
+    private void SendRecovered(BasicAttribute attribute, int amount) {
+        if (amount > 0) {
+            Session.Send(UiTextPacket.Recover(ObjectId, attribute, amount));
+        }
     }
 
     /// <summary>
@@ -774,16 +786,19 @@ public class FieldPlayer : Actor<Player> {
     /// Adds spirit to player, and sends update packet.
     /// </summary>
     /// <param name="amount"></param>
-    public void RecoverSp(int amount) {
+    /// <returns>The spirit actually restored (after the maximum cap).</returns>
+    public int RecoverSp(int amount) {
         if (amount <= 0) {
-            return;
+            return 0;
         }
 
         Stat stat = Stats.Values[BasicAttribute.Spirit];
+        long before = stat.Current;
         if (stat.Current < stat.Total) {
             stat.Add(amount);
             Session.Send(StatsPacket.Update(this, BasicAttribute.Spirit));
         }
+        return (int) (stat.Current - before);
     }
 
     /// <summary>
@@ -803,16 +818,19 @@ public class FieldPlayer : Actor<Player> {
     /// Adds stamina to player, and sends update packet.
     /// </summary>
     /// <param name="amount"></param>
-    public void RecoverStamina(int amount) {
+    /// <returns>The stamina actually restored (after the maximum cap).</returns>
+    public int RecoverStamina(int amount) {
         if (amount <= 0) {
-            return;
+            return 0;
         }
 
         Stat stat = Stats.Values[BasicAttribute.Stamina];
+        long before = stat.Current;
         if (stat.Current < stat.Total) {
             Stats.Values[BasicAttribute.Stamina].Add(amount);
             Session.Send(StatsPacket.Update(this, BasicAttribute.Stamina));
         }
+        return (int) (stat.Current - before);
     }
 
     /// <summary>

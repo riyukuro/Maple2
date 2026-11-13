@@ -1,6 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Util;
 using NUnit.Framework;
@@ -31,6 +35,14 @@ public class RestoreOnKillTests {
 
     private long Current(BasicAttribute attribute) => stats[attribute].Current;
 
+    // The UiText packets sent since the last call, as (object id, type, value).
+    private List<(int Id, int Type, int Value)> UiTexts() => test.TakeSent()
+        .Where(packet => TestGameSession.Op(packet) == SendOp.UiText)
+        .Select(packet => {
+            Assert.That(packet.Length, Is.EqualTo(2 + 12));
+            return (BitConverter.ToInt32(packet, 2), BitConverter.ToInt32(packet, 6), BitConverter.ToInt32(packet, 10));
+        }).ToList();
+
     [Test]
     public void TheKillerGetsItsLinesBack() {
         stats[SpecialAttribute.HpOnKill].AddTotal(8);
@@ -56,6 +68,33 @@ public class RestoreOnKillTests {
         stats[SpecialAttribute.HpOnKill].AddTotal(8);
         player.RestoreOnKill();
         Assert.That(Current(BasicAttribute.Health), Is.EqualTo(1000));
+    }
+
+    [Test]
+    public void EachRestoreShowsItsRecoveryNumberToTheKiller() {
+        stats[SpecialAttribute.HpOnKill].AddTotal(8);
+        stats[SpecialAttribute.SpiritOnKill].AddTotal(3);
+        stats[SpecialAttribute.StaminaOnKill].AddTotal(5);
+        stats[BasicAttribute.Health].Add(495);
+        UiTexts();
+        player.RestoreOnKill();
+        // Health 4 (only 5 left below the maximum), Spirit 7, Stamina 10: the amounts actually restored.
+        Assert.That(UiTexts(), Is.EqualTo(new List<(int, int, int)> {
+            (player.ObjectId, 4, 5), (player.ObjectId, 7, 3), (player.ObjectId, 10, 5),
+        }));
+
+        // At the maximum nothing is restored and no number is shown.
+        stats[BasicAttribute.Spirit].Add(1000);
+        stats[BasicAttribute.Stamina].Add(1000);
+        player.RestoreOnKill();
+        Assert.That(UiTexts(), Is.Empty);
+    }
+
+    [Test]
+    public void NoLineShowsNoNumber() {
+        UiTexts();
+        player.RestoreOnKill();
+        Assert.That(UiTexts(), Is.Empty);
     }
 
     [Test]
