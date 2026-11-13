@@ -31,6 +31,16 @@ public static class ItemExchangeScrollRules {
         return mesoPerExchange * count;
     }
 
+    // A row's tradableCountDeduction (itemexchangescrolltable.cpp:110), which the client reads and never uses.
+    // Inferred, as the drop table's tradableCountDeduction (ItemDropManager): the reward's trades left go down by
+    // that many, not below 0. KR has 547 rows with 1, which make a gear from 16 tradable pieces.
+    public static void DeductTrades(ItemTransfer? transfer, int deduction) {
+        if (transfer == null || deduction <= 0 || transfer.RemainTrades <= 0) {
+            return;
+        }
+        transfer.RemainTrades = Math.Max(0, transfer.RemainTrades - deduction);
+    }
+
     // How much to take from each stack, in order, to take total; null when the stacks hold less.
     public static int[]? TakeFromStacks(IReadOnlyList<int> stacks, long total) {
         if (total < 0) {

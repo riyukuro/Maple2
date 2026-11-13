@@ -115,6 +115,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
             if (target != null) {
                 CarryUpgrade(session.ServerTableMetadata.EnchantOptionTable, target, rewardItem);
             }
+            ItemExchangeScrollRules.DeductTrades(rewardItem.Transfer, scrollMetadata.TradeCountDeduction);
 
             // The target is no material: a requirement of the target's id is paid with other items.
             if (!session.Item.Inventory.ConsumeItemComponents(scrollMetadata.RequiredItems, quantity, target?.Uid ?? 0)) {
