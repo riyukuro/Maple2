@@ -181,25 +181,27 @@ public class MapleopolyHandler : FieldPacketHandler {
         while (trips < totalNewTrips) {
             trips++;
 
-            // Check if there's any item to give for every 1 trip
+            // The reward of every lap (round 0), then the reward of this lap count, each at its amount.
             BlueMarble.Round? entry1 = blueMarble.Rounds.FirstOrDefault(entry => entry.RoundCount == 0);
             if (entry1 != default) {
-                Item? trip0Item = session.Field?.ItemDrop.CreateItem(entry1.Item.ItemId);
-                if (trip0Item != null && !session.Item.Inventory.Add(trip0Item, true)) {
-                    session.Item.MailItem(trip0Item);
-                }
+                GiveTripReward(session, entry1.Item);
             }
 
-            // Check if there's any other item to give for hitting a specific number of trips
             BlueMarble.Round? entry2 = blueMarble.Rounds.FirstOrDefault(entry => entry.RoundCount == trips);
             if (entry2 != default) {
-                Item? tripItem = session.Field?.ItemDrop.CreateItem(entry2.Item.ItemId);
-                if (tripItem != null && !session.Item.Inventory.Add(tripItem, true)) {
-                    session.Item.MailItem(tripItem);
-                }
+                GiveTripReward(session, entry2.Item);
             }
         }
 
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyTotalTrips, trips);
+    }
+
+    private void GiveTripReward(GameSession session, ItemComponent reward) {
+        Item? item = session.Field?.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
+        if (item == null) {
+            Logger.Error("Mapleopoly lap reward {ItemId} could not be created", reward.ItemId);
+            return;
+        }
+        session.Item.AddOrMail(item, true);
     }
 }

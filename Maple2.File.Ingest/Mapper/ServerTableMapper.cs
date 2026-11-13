@@ -1256,6 +1256,28 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         return rates;
     }
 
+    // A lap reward of a BlueMarble row's value1: <v round="5" itemID="20303095" count="10" />. The KR rows write the
+    // amount as count (14 rows; none writes itemCount) and give no rank, so the item's own rank is used, as for the
+    // board's item tiles. Round 0 (no round attribute) is the reward of every lap.
+    public static BlueMarble.Round ParseBlueMarbleRound(XmlNode vNode) {
+        if (!int.TryParse(vNode.Attributes?["round"]?.Value, out int round)) {
+            round = 0;
+        }
+        if (!int.TryParse(vNode.Attributes?["itemID"]?.Value, out int itemId)) {
+            itemId = 0;
+        }
+        if (!int.TryParse(vNode.Attributes?["count"]?.Value ?? vNode.Attributes?["itemCount"]?.Value, out int itemCount) || itemCount <= 0) {
+            itemCount = 1;
+        }
+        return new BlueMarble.Round(
+            RoundCount: round,
+            Item: new ItemComponent(
+                ItemId: itemId,
+                Rarity: -1,
+                Amount: itemCount,
+                Tag: ItemTag.None));
+    }
+
     private GameEventData? ParseGameEventData(GameEventType type, string value1, string value2, string value3, string value4) {
         var value1Xml = new XmlDocument();
         var value2Xml = new XmlDocument();
@@ -1285,25 +1307,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     }
 
                     foreach (XmlNode vNode in roundNode.ChildNodes) {
-                        if (!int.TryParse(vNode.Attributes?["round"]?.Value, out int round)) {
-                            round = 0;
-                        }
-
-                        if (!int.TryParse(vNode.Attributes?["itemID"]?.Value, out int itemId)) {
-                            itemId = 0;
-                        }
-
-                        if (!int.TryParse(vNode.Attributes?["itemCount"]?.Value, out int itemCount)) {
-                            itemCount = 1;
-                        }
-
-                        rounds.Add(new BlueMarble.Round(
-                            RoundCount: round,
-                            Item: new ItemComponent(
-                                ItemId: itemId,
-                                Rarity: 1,
-                                Amount: itemCount,
-                                Tag: ItemTag.None)));
+                        rounds.Add(ParseBlueMarbleRound(vNode));
                     }
                 }
 
