@@ -475,6 +475,43 @@ public class RangeTargetSelectTests {
         });
     }
 
+    // A box or frustum attack of a cast moved by key reaches its key move farther (CSkillCollisionManager::GetCached
+    // adds the z offset to the depth): KR 10200252's box (distance 300, add.y 25, keyMove 100) and 10200172's frustum
+    // (distance 450, add.y 100, end width 450, keyMove 600).
+    [Test]
+    public void GetPrism_KeyMoveReachGrowsBoxAndFrustum() {
+        SkillMetadataRange box = Range(null) with { Type = SkillRegion.Box, Distance = 300, Width = 350, Height = 150, RangeAdd = new Vector3(0, 25, 0) };
+        SkillMetadataRange frustum = box with { Type = SkillRegion.Frustum, Distance = 450, Width = 150, EndWidth = 450, RangeAdd = new Vector3(0, 100, 0) };
+        SkillMetadataRange cylinder = box with { Type = SkillRegion.Cylinder, Distance = 200 };
+        Assert.Multiple(() => {
+            Assert.That(box.GetPrism(Vector3.Zero, 0, ApplyTargetType.None, reach: 100).Contains(new Vector3(0, -390, 10)), Is.True, "box reaches the key move farther");
+            Assert.That(box.GetPrism(Vector3.Zero, 0, ApplyTargetType.None, reach: 100).Contains(new Vector3(0, -410, 10)), Is.False, "box not past the reach");
+            Assert.That(box.GetPrism(Vector3.Zero, 0).Contains(new Vector3(0, -390, 10)), Is.False, "box without the reach");
+            Assert.That(box.GetPrism(Vector3.Zero, 0, ApplyTargetType.None, reach: 100).Contains(new Vector3(0, 20, 10)), Is.True, "box still add.y behind");
+            Assert.That(frustum.GetPrism(Vector3.Zero, 0, ApplyTargetType.None, reach: 600).Contains(new Vector3(0, -1040, 10)), Is.True, "frustum reaches the key move farther");
+            Assert.That(frustum.GetPrism(Vector3.Zero, 0, ApplyTargetType.None, reach: 600).Contains(new Vector3(0, -1060, 10)), Is.False, "frustum not past the reach");
+            Assert.That(frustum.GetPrism(Vector3.Zero, 0).Contains(new Vector3(0, -460, 10)), Is.False, "frustum without the reach");
+            Assert.That(cylinder.GetPrism(Vector3.Zero, 0, ApplyTargetType.None, reach: 100).Contains(new Vector3(0, -250, 10)), Is.False, "a cylinder takes no reach");
+        });
+    }
+
+    // CSkillRecord::FUN_141759ad0: the motion's keyMove, but 0 for a motion that moves a set distance, a use that
+    // overrides the key move or has no direction; StateSkill::PickAttackTargets searches no shape for nonTarget 1.
+    [Test]
+    public void KeyMoveReachIsTheClients() {
+        var motion = new SkillMetadataMotionProperty("Berserker_BloodSlash_01_A", 1, 0, false, KeyMove: 100);
+        SkillMetadataArrow arrow = new(false, false, false, SkillTargetType.None, default, 0, 0, false, Vector3.Zero, Vector3.Zero, 0);
+        var forward = new Vector3(0, -1, 0);
+        Assert.Multiple(() => {
+            Assert.That(SkillUtils.KeyMoveReach(motion, arrow, 0, forward), Is.EqualTo(100), "a cast moved by key");
+            Assert.That(SkillUtils.KeyMoveReach(motion, arrow, 0, Vector3.Zero), Is.Zero, "a use without direction");
+            Assert.That(SkillUtils.KeyMoveReach(motion, arrow, 50, forward), Is.Zero, "a use overriding the key move");
+            Assert.That(SkillUtils.KeyMoveReach(motion with { MoveDistance = 400 }, arrow, 0, forward), Is.Zero, "a motion moving a set distance");
+            Assert.That(SkillUtils.KeyMoveReach(motion, arrow with { NonTarget = SkillTargetType.Owner }, 0, forward), Is.Zero, "nonTarget 1 searches no shape");
+            Assert.That(SkillUtils.KeyMoveReach(motion with { KeyMove = -180 }, arrow, 0, forward), Is.EqualTo(-180), "a negative key move shortens it");
+        });
+    }
+
     // A region skill's area keeps the offset as it is, not turned to the facing: the client never searches for it.
     [Test]
     public void GetRegionPrism_KeepsTheOffset() {

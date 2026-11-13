@@ -332,7 +332,8 @@ public class SkillHandler : FieldPacketHandler {
             if (targets.All(t => t.TargetId == 0) && session.Field != null) {
                 // The facing of the cast's direction (0 faces -y, as Angle2D).
                 float angle = Vector3.Zero.Angle2D(record.Direction);
-                Prism attackPrism = record.Attack.GetPrism(record.Position, angle);
+                float reach = SkillUtils.KeyMoveReach(record.Motion.MotionProperty, record.Attack.Arrow, record.Rotate2Z, record.CastDirection);
+                Prism attackPrism = record.Attack.GetPrism(record.Position, angle, reach: reach);
                 foreach (FieldNpc npc in attackPrism.Filter(session.Field.Mobs.Values.Where(n => n.IsCorpse), record.Attack.TargetCount)) {
                     record.Targets.TryAdd(npc.ObjectId, npc);
                 }

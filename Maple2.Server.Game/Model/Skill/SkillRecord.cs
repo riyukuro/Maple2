@@ -26,8 +26,9 @@ public class SkillRecord {
     public readonly SkillHitBudget Hits = new();
     public Vector3 ImpactPosition;
     public Vector3 Direction; // Sometimes Rotation
+    public Vector3 CastDirection; // the use's direction (CSkillRecord m_ptDir), zero when the cast is not moved by key
     public Vector3 Rotation;
-    public float Rotate2Z;
+    public float Rotate2Z; // the use's key-move override (CSkillRecord m_fCooldown); 0 takes the motion's own
     public bool Unknown;
 
     public bool IsHold;

@@ -376,8 +376,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         return taken;
     }
 
-    // The played client's sequence name, sequence speed, move distance and splash life tick where it has the motion at
-    // that place (PlayedClientSkills.SameMotion), else the data pack's; the rest of the motion is the data pack's.
+    // The played client's sequence name, sequence speed, move distance, splash life tick and key move where it has the
+    // motion at that place (PlayedClientSkills.SameMotion), else the data pack's (which has no key move); the rest of
+    // the motion is the data pack's.
     private SkillMetadataMotionProperty WithClientMotion(int id, short level, int motion, int motions, string points, SkillMetadataMotionProperty pack) {
         if (!clientMotions.TryGetValue((id, level, motion), out PlayedClientSkills.MotionTiming? played)) {
             return pack;
@@ -391,6 +392,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             SequenceSpeed = played.SequenceSpeed,
             MoveDistance = played.MoveDistance,
             SplashLifeTick = played.SplashLifeTick,
+            KeyMove = played.KeyMove,
         };
         if (taken != pack) {
             clientMotionsTaken++;

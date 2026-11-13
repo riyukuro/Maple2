@@ -234,11 +234,11 @@ public static class PlayedClientSkills {
     // and taking it alone would leave the server's swamp without its effect.
     public static int WithTargetCount(int pack, int played) => played != 0 ? played : pack;
 
-    // The sequence name, sequence speed, move distance and splash life tick of every motion of the client's levels, by
-    // skill id, level and the motion's place in the level, with the points of its attacks in order and the number of
-    // motions in the level. SkillMotionData::Load reads them from the <motion> (skillleveldata.cpp:1161, 1162, 1177,
-    // 1192; "", 1, 0 and 0 when not given, SkillMotionData's ctor). The skills and levels are the client's pick
-    // (SelectSkills).
+    // The sequence name, sequence speed, move distance, splash life tick and key move of every motion of the client's
+    // levels, by skill id, level and the motion's place in the level, with the points of its attacks in order and the
+    // number of motions in the level. SkillMotionData::Load reads them from the <motion> (skillleveldata.cpp:1161, 1162,
+    // 1177, 1192, 1189; "", 1, 0, 0 and 0 when not given, SkillMotionData's ctor). The skills and levels are the
+    // client's pick (SelectSkills).
     public static Dictionary<(int Skill, short Level, int Motion), MotionTiming> ReadMotionTimings(
             IEnumerable<XmlDocument> skillFiles, Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
         var result = new Dictionary<(int, short, int), MotionTiming>();
@@ -250,14 +250,15 @@ public static class PlayedClientSkills {
                     string points = string.Join(",", motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")
                         .Select(attack => attack.GetAttribute("point")));
                     result[(id, value, motionIndex++)] = new MotionTiming(motion.GetAttribute("sequenceName"), Real(motion, "sequenceSpeed", 1f),
-                        Real(motion, "movedistance"), Number(motion, "splashLifeTick"), points, motions.Length);
+                        Real(motion, "movedistance"), Number(motion, "splashLifeTick"), points, motions.Length, Real(motion, "keyMove"));
                 }
             }
         }
         return result;
     }
 
-    public record MotionTiming(string SequenceName, float SequenceSpeed, float MoveDistance, int SplashLifeTick, string Points, int Motions);
+    public record MotionTiming(string SequenceName, float SequenceSpeed, float MoveDistance, int SplashLifeTick, string Points, int Motions,
+        float KeyMove = 0);
 
     // A client motion pairs with the data pack's at the same place when the motion has the same attack points in order
     // and either both levels have as many motions or both name the same sequence there: a motion put in or taken out

@@ -14,10 +14,19 @@ public static class SkillUtils {
     // FUN_1417e95a0: DetectWithEulerRotation at the position plus the range offset turned to the facing, rotated by
     // the facing plus the range's z rotation). An attack of method type 1 takes neither the offset nor the rotation.
     public static Prism GetPrism(this SkillMetadataAttack attack, in Vector3 position, float angle,
-            ApplyTargetType applyTarget = ApplyTargetType.None) =>
-        attack.Range.GetPrism(position, angle, applyTarget, attack.AttackMethodType != 1);
+            ApplyTargetType applyTarget = ApplyTargetType.None, float reach = 0) =>
+        attack.Range.GetPrism(position, angle, applyTarget, attack.AttackMethodType != 1, reach);
 
-    public static Prism GetPrism(this SkillMetadataRange range, in Vector3 position, float angle, ApplyTargetType applyTarget, bool placed = true) {
+    // How much farther a box or frustum attack reaches when its cast moves by key: the client gives the shape
+    // CSkillRecord::FUN_141759ad0 as its z offset (StateSkill::PickAttackTargets, for an arrow other than nonTarget 1)
+    // and CSkillCollisionManager::GetCached adds it to the depth. It is the motion's keyMove, but 0 when the motion
+    // moves a set distance, when the use overrides the key move, or when the use has no direction.
+    public static float KeyMoveReach(SkillMetadataMotionProperty motion, SkillMetadataArrow arrow, float keyMoveOverride, in Vector3 castDirection) =>
+        arrow.NonTarget == SkillTargetType.Owner || motion.MoveDistance != 0 || keyMoveOverride != 0 || castDirection == Vector3.Zero
+            ? 0 : motion.KeyMove;
+
+    public static Prism GetPrism(this SkillMetadataRange range, in Vector3 position, float angle, ApplyTargetType applyTarget, bool placed = true,
+            float reach = 0) {
         Vector3 offset = placed ? TurnOffset(range.RangeOffset, angle) : Vector3.Zero;
         float adjustedAngle = angle + (placed ? range.RotateZDegree : 0) + 180;
         var origin = new Vector2(position.X + offset.X, position.Y + offset.Y);
@@ -38,14 +47,15 @@ public static class SkillUtils {
         // boxcollision.cpp:102-103); a frustum starts add.y behind and add.z below the origin with its near width there
         // and its depth grown by add.y (CFrustumCollision::vfunc_3 and vfunc_4, frustumcollision.cpp:62, 95-96); a
         // cylinder and a hole cylinder reach add.z below the origin and the height above it
-        // (unit_141083230_cylindercollision.cpp:29-30, holecylindercollision.cpp:52-59). add.x is never read.
+        // (unit_141083230_cylindercollision.cpp:29-30, holecylindercollision.cpp:52-59). add.x is never read. A box
+        // and a frustum also reach the key move's reach farther (KeyMoveReach, skillcollisionmanager.cpp:141, 148, 177, 183).
         float behind = range.Type is SkillRegion.Box or SkillRegion.Frustum ? range.RangeAdd.Y : 0;
         float turned = adjustedAngle * MathF.PI / 180;
         Vector2 start = origin - behind * new Vector2(-MathF.Sin(turned), MathF.Cos(turned));
         IPolygon polygon = range.Type switch {
-            SkillRegion.Box => new Trapezoid(start, range.Width, range.Width, range.Distance + behind, adjustedAngle),
+            SkillRegion.Box => new Trapezoid(start, range.Width, range.Width, range.Distance + reach + behind, adjustedAngle),
             SkillRegion.Cylinder => new Circle(origin, range.Distance),
-            SkillRegion.Frustum => new Trapezoid(start, range.Width, range.EndWidth, range.Distance + behind, adjustedAngle),
+            SkillRegion.Frustum => new Trapezoid(start, range.Width, range.EndWidth, range.Distance + reach + behind, adjustedAngle),
             SkillRegion.HoleCylinder => new HoleCircle(origin, range.Width, range.EndWidth),
             _ => throw new ArgumentOutOfRangeException($"Invalid range type: {range.Type}"),
         };

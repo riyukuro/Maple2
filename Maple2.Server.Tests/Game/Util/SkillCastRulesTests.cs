@@ -826,16 +826,17 @@ public class SkillCastRulesTests {
 
     [Test]
     public void MotionTimingIsTheClients() {
-        // Motions as the played client gives them (SkillMotionData::Load reads sequenceName, sequenceSpeed, movedistance
-        // and splashLifeTick from the <motion>, "", 1, 0 and 0 when not given): 10100171 plays at 1.15 where the data pack
-        // says 1, 10700273 moves 0 where the data pack says 400, and 10400292's region stays 8000 ms. The motion's attack
-        // points come along in order, with the level's motion count.
+        // Motions as the played client gives them (SkillMotionData::Load reads sequenceName, sequenceSpeed, movedistance,
+        // splashLifeTick and keyMove from the <motion>, "", 1, 0, 0 and 0 when not given): 10100171 plays at 1.15 where
+        // the data pack says 1, 10700273 moves 0 where the data pack says 400, 10400292's region stays 8000 ms and
+        // 10200252 moves 100 by key. The motion's attack points come along in order, with the level's motion count.
         var document = new System.Xml.XmlDocument();
         document.LoadXml("""
             <ms2>
               <skill id="10100171"><level value="1"><motion sequenceName="Knight_FinishBlow_01_A" sequenceSpeed="1.15"><attack point="p0" /><attack point="p1" /></motion></level></skill>
               <skill id="10700273"><level value="1"><motion sequenceName="Thief_ChaseSlash_01_A"><attack point="p0" /></motion></level></skill>
               <skill id="10400292"><level value="1"><motion /><motion splashLifeTick="8000" movedistance="50"><attack point="p0" /></motion></level></skill>
+              <skill id="10200252"><level value="1"><motion sequenceName="Berserker_BloodSlash_01_A" keyMove="100"><attack point="p0" /></motion></level></skill>
             </ms2>
             """);
         Dictionary<(int Skill, short Level, int Motion), PlayedClientSkills.MotionTiming> read = PlayedClientSkills.ReadMotionTimings([document]);
@@ -844,6 +845,7 @@ public class SkillCastRulesTests {
             [(10700273, 1, 0)] = new("Thief_ChaseSlash_01_A", 1, 0, 0, "p0", 1),
             [(10400292, 1, 0)] = new("", 1, 0, 0, "", 2),
             [(10400292, 1, 1)] = new("", 1, 50, 8000, "p0", 2),
+            [(10200252, 1, 0)] = new("Berserker_BloodSlash_01_A", 1, 0, 0, "p0", 1, 100),
         }));
     }
 

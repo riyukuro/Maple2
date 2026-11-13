@@ -407,6 +407,7 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
         var record = new SkillRecord(metadata, uid, this) {
             Position = position == default ? Position : position,
+            CastDirection = direction,
             Rotation = SkillCastRules.CastRotation(rotation, Rotation),
             Rotate2Z = rotateZ,
             ServerTick = castTick,

@@ -123,7 +123,10 @@ public record SkillMetadataMotionProperty(
     // stays in the field.
     int SplashLifeTick = 0,
     // splashInvokeCoolTick: the least time, in ms, between two fires of such a region.
-    int SplashInvokeCoolTick = 0);
+    int SplashInvokeCoolTick = 0,
+    // keyMove: how far, in units, the motion's attacks reach past a box or frustum's distance when the cast moves
+    // by key (SkillUtils.KeyMoveReach). Only the played client gives it.
+    float KeyMove = 0);
 
 public record SkillMetadataAttack(
     string Point,
