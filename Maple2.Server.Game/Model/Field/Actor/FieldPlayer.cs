@@ -551,6 +551,10 @@ public class FieldPlayer : Actor<Player> {
         if (caster is FieldPlayer survivor && Field.Survival != null) {
             Field.Survival.Damage(survivor, this);
         }
+        // A hit that takes health between rank duelists, for the kill credit.
+        if (caster is FieldPlayer rankDuelist && Field.RankDuel != null && healthBefore > Stats.Values[BasicAttribute.Health].Current) {
+            Field.RankDuel.Damage(rankDuelist, this);
+        }
         if (caster is FieldPlayer attacker && Field.PvpZone != null) {
             long taken = healthBefore - Stats.Values[BasicAttribute.Health].Current;
             if (taken > 0) {

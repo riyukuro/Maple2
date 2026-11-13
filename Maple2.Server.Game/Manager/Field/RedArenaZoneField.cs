@@ -86,18 +86,29 @@ public sealed class RedArenaZoneField : IPvpZoneField {
         }
     }
 
-    public void Damage(FieldPlayer attacker, FieldPlayer victim, long amount) { }
+    private readonly KillCredit killCredit = new();
 
-    // A fighter that falls in a face-off loses it: pvp_die for it and pvp_kill for the other fighter, who wins the
-    // face-off by that death (a fighter that leaves gives no kill).
+    // A hit between the face-off's fighters, for the kill credit.
+    public void Damage(FieldPlayer attacker, FieldPlayer victim, long amount) {
+        lock (mutex) {
+            if (state.Hostile(attacker.Value.Character.Id, victim.Value.Character.Id)) {
+                killCredit.Hit(attacker.Value.Character.Id, victim.Value.Character.Id, field.FieldTick);
+            }
+        }
+    }
+
+    // A fighter that falls in a face-off loses it: pvp_die for it, and pvp_kill for the other fighter, who wins the
+    // face-off by that death, when it hit the victim within PvpZoneState.KillCreditMs (a fall is no kill; a fighter
+    // that leaves gives none).
     public void Death(FieldPlayer victim) {
         lock (mutex) {
             long victimId = victim.Value.Character.Id;
             bool fighting = state.Fighting;
+            long killerId = killCredit.Killer(victimId, field.FieldTick);
             List<RedArenaEvent> events = state.Out(victimId, field.FieldTick);
             if (fighting && events.FirstOrDefault(@event => @event.Type == RedArenaEventType.Result) is { Winner: not 0 } result) {
                 PvpConditions.Death(victim, field.MapId);
-                if (field.TryGetPlayerById(result.Winner, out FieldPlayer? killer)) {
+                if (killerId == result.Winner && field.TryGetPlayerById(killerId, out FieldPlayer? killer)) {
                     PvpConditions.Kill(killer, field.MapId);
                 }
             }

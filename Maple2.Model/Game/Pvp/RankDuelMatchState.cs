@@ -22,6 +22,15 @@ public enum RankDuelEnd {
     Void,
 }
 
+// How a Win came: the loser died in the fight, left during the fight, or never fought (it had not come by JoinMs, or
+// left before the fight started).
+public enum RankDuelWinBy {
+    None,
+    Death,
+    LeftFight,
+    Walkover,
+}
+
 public enum RankDuelEventType {
     Round,
     Fight,
@@ -55,6 +64,7 @@ public sealed class RankDuelMatchState {
     public RankDuelPhase Phase { get; private set; } = RankDuelPhase.Waiting;
     public long Winner { get; private set; }
     public long Loser { get; private set; }
+    public RankDuelWinBy WinBy { get; private set; }
 
     private readonly HashSet<long> present = [];
     private readonly long joinDeadline;
@@ -102,7 +112,7 @@ public sealed class RankDuelMatchState {
             return events;
         }
         if (Phase is RankDuelPhase.Waiting or RankDuelPhase.Countdown or RankDuelPhase.Fighting) {
-            End(events, tick, Opponent(characterId), characterId);
+            End(events, tick, Opponent(characterId), characterId, Phase == RankDuelPhase.Fighting ? RankDuelWinBy.LeftFight : RankDuelWinBy.Walkover);
         }
         return events;
     }
@@ -110,7 +120,7 @@ public sealed class RankDuelMatchState {
     public List<RankDuelEvent> Death(long characterId, long tick) {
         var events = new List<RankDuelEvent>();
         if (Phase == RankDuelPhase.Fighting && IsDuelist(characterId)) {
-            End(events, tick, Opponent(characterId), characterId);
+            End(events, tick, Opponent(characterId), characterId, RankDuelWinBy.Death);
         }
         return events;
     }
@@ -125,7 +135,7 @@ public sealed class RankDuelMatchState {
                     events.Add(new RankDuelEvent(RankDuelEventType.Result, RankDuelEnd.Void));
                 } else {
                     long here = present.First();
-                    End(events, tick, here, Opponent(here));
+                    End(events, tick, here, Opponent(here), RankDuelWinBy.Walkover);
                 }
                 break;
             case RankDuelPhase.Countdown when tick >= phaseTick + CountdownMs:
@@ -146,11 +156,12 @@ public sealed class RankDuelMatchState {
         return events;
     }
 
-    private void End(List<RankDuelEvent> events, long tick, long winner, long loser) {
+    private void End(List<RankDuelEvent> events, long tick, long winner, long loser, RankDuelWinBy winBy) {
         Phase = RankDuelPhase.Ended;
         phaseTick = tick;
         Winner = winner;
         Loser = loser;
+        WinBy = winBy;
         events.Add(new RankDuelEvent(RankDuelEventType.Result, RankDuelEnd.Win, winner, loser));
     }
 }

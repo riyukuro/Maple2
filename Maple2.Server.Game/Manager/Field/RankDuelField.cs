@@ -168,14 +168,27 @@ public sealed class RankDuelField {
         }
     }
 
+    private readonly KillCredit killCredit = new();
+
+    // A hit between the duelists, for the kill credit.
+    public void Damage(FieldPlayer attacker, FieldPlayer victim) {
+        lock (mutex) {
+            if (state.Hostile(attacker.Value.Character.Id, victim.Value.Character.Id)) {
+                killCredit.Hit(attacker.Value.Character.Id, victim.Value.Character.Id, field.FieldTick);
+            }
+        }
+    }
+
     public void Death(FieldPlayer player) {
         lock (mutex) {
             long characterId = player.Value.Character.Id;
+            long killerId = killCredit.Killer(characterId, field.FieldTick);
             List<RankDuelEvent> events = state.Death(characterId, field.FieldTick);
-            // A duelist that falls in the fight: pvp_die for it, pvp_kill for its opponent.
+            // A duelist that falls in the fight: pvp_die for it, pvp_kill for its opponent when the opponent hit it
+            // within PvpZoneState.KillCreditMs (a fall or its own skill is no kill).
             if (events.Count > 0) {
                 PvpConditions.Death(player, field.MapId);
-                if (field.TryGetPlayerById(state.Opponent(characterId), out FieldPlayer? killer)) {
+                if (killerId != 0 && killerId == state.Opponent(characterId) && field.TryGetPlayerById(killerId, out FieldPlayer? killer)) {
                     PvpConditions.Kill(killer, field.MapId);
                 }
             }
@@ -237,11 +250,12 @@ public sealed class RankDuelField {
                 Send(state.First, PvpPacket.RankDuelResult(@event.Winner, left, right));
                 Send(state.Second, PvpPacket.RankDuelResult(@event.Winner, left, right));
                 SendStanding();
-                // A win by the time or a walkover counts too (chosen here). The grade only when the record was saved.
+                // The conditions count only once the fight started (see PvpConditions.DuelWin). The grade only when
+                // the record was saved.
                 if (field.TryGetPlayerById(@event.Winner, out FieldPlayer? winner)) {
                     int? grade = changes.TryGetValue(@event.Winner, out RankDuelChange won)
                         ? RankDuelRules.GradeOf(field.TableMetadata.RankDuelGradeTable, won.Rating)?.Id : null;
-                    PvpConditions.DuelWin(winner, field.MapId, grade);
+                    PvpConditions.DuelWin(winner, field.MapId, state.WinBy, grade);
                 }
                 break;
             case RankDuelEnd.Draw:
