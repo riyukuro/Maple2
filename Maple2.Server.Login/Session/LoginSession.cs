@@ -152,9 +152,12 @@ public class LoginSession : Core.Network.Session {
     public void CreateCharacter(Character createCharacter, List<Item> createOutfits) {
         using GameStorage.Request db = GameStorage.Context();
         db.BeginTransaction();
+        // A step that fails sends the create error and returns; the request's dispose rolls back what was written.
         Character? character = db.CreateCharacter(createCharacter);
         if (character == null) {
-            throw new InvalidOperationException($"Failed to create character: {createCharacter.Id}");
+            Logger.Error("Failed to create character {Name} of account {AccountId}", createCharacter.Name, AccountId);
+            Send(CharacterListPacket.CreateError(s_char_err_system));
+            return;
         }
         CharacterId = character.Id;
 
@@ -166,7 +169,12 @@ public class LoginSession : Core.Network.Session {
         character.AchievementInfo = db.GetAchievementInfo(AccountId, character.Id);
         character.PremiumTime = account.PremiumTime;
 
-        db.InitNewCharacter(character.Id, unlock);
+        // The unlocks, the first skill tab and the config: a character without them is half made.
+        if (!db.InitNewCharacter(character.Id, unlock)) {
+            Logger.Error("Failed to set up new character {CharacterId}", character.Id);
+            Send(CharacterListPacket.CreateError(s_char_err_system));
+            return;
+        }
 
         foreach (Item item in createOutfits) {
             item.Transfer?.Bind(character);
