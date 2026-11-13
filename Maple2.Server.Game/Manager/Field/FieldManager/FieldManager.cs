@@ -245,7 +245,14 @@ public partial class FieldManager : IField {
     // Seek count their own kills): shadow_world_kill for the killer and shadow_world_die for the victim (trophies
     // 21300001 and 21300002), and the kill log: the field gets mode 0 (killer and victim names). The client prints
     // the killer's and the victim's chat line itself from mode 0 (UIPvPKillLogDialog::AddKill, strings 0x973 and
-    // 0x972), so no mode 1 notice is sent (it doubled the line).
+    // 0x972), so no mode 1 notice is sent for the kill itself (it doubled the line).
+    // Mode 1 is the streak notice: the client shows its text as a system notice with the System_KillSlayer sound
+    // (CSceneStateGame::OnPlayerKillNotice), and the strings s_shadowworld_player_kill_slayer ("{0} is on a streak")
+    // and _ruler ("{0}, conqueror of the shadow world", client ids 2411 and 2412) are used by no client code, so the
+    // server sends them, with the counts of the server constants userKillSlayerCount (5) and userKillRulerCount (10).
+    // Chosen here, as the free-for-all's slayer and ruler (PvpZoneState): the streak is the killer's pk kills since
+    // its last death in the field, the notice goes to the field when the streak reaches a count (the ruler first),
+    // the killer's name is the argument; userKillDuration (10000) is not used (nothing says what it times).
     public bool PkKill(FieldPlayer killer, FieldPlayer victim) {
         if (!PkField || killer == victim || FieldGameRuns) {
             return false;
@@ -255,7 +262,25 @@ public partial class FieldManager : IField {
         killer.Session.ConditionUpdate(ConditionType.shadow_world_kill);
         victim.Session.ConditionUpdate(ConditionType.shadow_world_die);
         Broadcast(PlayerKillNoticePacket.Kill(killerName, victimName));
+        // The streak notices are the shadow world's (s_shadowworld_*): only on a field of that continent.
+        if (Metadata.Property.Continent == Continent.ShadowWorld) {
+            victim.PkStreak = 0;
+            killer.PkStreak++;
+            if (PkStreakNotice(killer.PkStreak, killer.Session.ServerTableMetadata.ConstantsTable) is { } notice) {
+                Broadcast(PlayerKillNoticePacket.Notice(new InterfaceText(notice, killerName)));
+            }
+        }
         return true;
+    }
+
+    public static StringCode? PkStreakNotice(int streak, ConstantsTable constants) {
+        if (constants.userKillRulerCount > 0 && streak == constants.userKillRulerCount) {
+            return StringCode.s_shadowworld_player_kill_ruler;
+        }
+        if (constants.userKillSlayerCount > 0 && streak == constants.userKillSlayerCount) {
+            return StringCode.s_shadowworld_player_kill_slayer;
+        }
+        return null;
     }
     public int RoomId { get; init; }
     public int DungeonId { get; init; }

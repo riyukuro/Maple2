@@ -108,6 +108,8 @@ public class FieldPlayer : Actor<Player> {
     public FieldEntity? StandingOnBlock { get; set; }
 
     public Tombstone? Tombstone { get; set; }
+    // Pk field kills since this player's last death in the field (FieldManager.PkKill's streak notices).
+    public int PkStreak { get; set; }
 
     public DeathState DeathState {
         get => Value.Character.DeathState;
@@ -631,6 +633,7 @@ public class FieldPlayer : Actor<Player> {
 
         Session.HeldCube = null;
         InBattle = false;
+        PkStreak = 0;
         // The hits a tombstone takes grow with deaths in a row (each within timeResetDead of the one before),
         // not with the death penalty count: KMS2 gives 5, 10, 15 to a character below the penalty level.
         Tombstone = new Tombstone(this, DeathStreaks.Count(Value.Character.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Constants.timeResetDead));

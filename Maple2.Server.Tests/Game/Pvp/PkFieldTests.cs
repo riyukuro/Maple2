@@ -37,7 +37,7 @@ public class PkFieldTests {
     }
 
     // Two players in one field of the map; pk sets its pkMode. Both have the shadow world kill and die trophies.
-    private static Scene Start(bool pk) {
+    private static Scene Start(bool pk, Continent continent = Continent.ShadowWorld) {
         AchievementMetadata[] trophies = [
             TestGameSession.Trophy(KillTrophy, ConditionType.shadow_world_kill, [1000]),
             TestGameSession.Trophy(DieTrophy, ConditionType.shadow_world_die, [1000]),
@@ -49,7 +49,7 @@ public class PkFieldTests {
         tb.AddAchievement(trophies);
         tb.Start();
         MapMetadata map = TestGameSession.Map(Map);
-        a.EnterMap(map with { Property = map.Property with { PkMode = pk } });
+        a.EnterMap(map with { Property = map.Property with { PkMode = pk, Continent = continent } });
         FieldManager field = a.Session.Field!;
         typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldNpc>());
         typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(tb.Session.Player, 2);
@@ -208,7 +208,7 @@ public class PkFieldTests {
         Assert.That(scene.Field.PlayerHostile(scene.A, scene.B), Is.EqualTo(scene.Field.Survival!.Hostile(scene.A, scene.B)));
     }
 
-    // A kill on a pk field: the trophies and the field's kill log; no mode 1 notice, as the client prints each side's
+    // A kill on a pk field: the trophies and the field's kill log; no mode 1 kill notice, as the client prints each side's
     // line itself from the kill log (UIPvPKillLogDialog::AddKill).
     [Test]
     public void Kill_TrophiesAndKillLog() {
@@ -230,6 +230,59 @@ public class PkFieldTests {
             Assert.That(scene.TestA.TrophyCounter(DieTrophy), Is.Null);
             Assert.That(scene.TestB.TrophyCounter(DieTrophy), Is.EqualTo(1));
             Assert.That(scene.TestB.TrophyCounter(KillTrophy), Is.Null);
+        });
+    }
+
+    // The killer's streak (pk kills since its last death) reaching userKillSlayerCount, then userKillRulerCount, sends
+    // the field mode 1 with s_shadowworld_player_kill_slayer, then _ruler, and the killer's name; a death resets it.
+    [Test]
+    public void Kill_StreakNotices() {
+        Scene scene = Start(pk: true);
+        scene.TestA.SetServerTable(new ConstantsTable(userKillSlayerCount: 2, userKillRulerCount: 3));
+        string killer = scene.A.Value.Character.Name;
+        string slayer = Convert.ToHexString(PlayerKillNoticePacket.Notice(new InterfaceText(StringCode.s_shadowworld_player_kill_slayer, killer)).ToArray());
+        string ruler = Convert.ToHexString(PlayerKillNoticePacket.Notice(new InterfaceText(StringCode.s_shadowworld_player_kill_ruler, killer)).ToArray());
+        List<string> Kill() {
+            scene.Field.PkKill(scene.A, scene.B);
+            scene.TestA.TakeSent();
+            return scene.TestB.TakeSent().Select(Convert.ToHexString).ToList();
+        }
+        List<string> first = Kill();
+        List<string> second = Kill();
+        List<string> third = Kill();
+        List<string> fourth = Kill();
+        scene.A.PkStreak = 0;
+        Kill();
+        List<string> afterDeath = Kill();
+        Assert.Multiple(() => {
+            Assert.That(first, Does.Not.Contain(slayer).And.Not.Contain(ruler));
+            Assert.That(second, Does.Contain(slayer).And.Not.Contain(ruler));
+            Assert.That(third, Does.Contain(ruler).And.Not.Contain(slayer));
+            Assert.That(fourth, Does.Not.Contain(slayer).And.Not.Contain(ruler));
+            Assert.That(afterDeath, Does.Contain(slayer));
+            Assert.That(scene.B.PkStreak, Is.Zero);
+            Assert.That(FieldManager.PkStreakNotice(5, new ConstantsTable(userKillSlayerCount: 5, userKillRulerCount: 10)),
+                Is.EqualTo(StringCode.s_shadowworld_player_kill_slayer));
+            Assert.That(FieldManager.PkStreakNotice(10, new ConstantsTable(userKillSlayerCount: 5, userKillRulerCount: 10)),
+                Is.EqualTo(StringCode.s_shadowworld_player_kill_ruler));
+            Assert.That(FieldManager.PkStreakNotice(5, new ConstantsTable()), Is.Null);
+        });
+    }
+
+    // A pk field outside the shadow world (the Mushtopia maps, continent unset) keeps the kill line, no streak notice.
+    [Test]
+    public void Kill_NoStreakOutsideShadowWorld() {
+        Scene scene = Start(pk: true, continent: 0);
+        scene.TestA.SetServerTable(new ConstantsTable(userKillSlayerCount: 1, userKillRulerCount: 2));
+        string killer = scene.A.Value.Character.Name;
+        string slayer = Convert.ToHexString(PlayerKillNoticePacket.Notice(new InterfaceText(StringCode.s_shadowworld_player_kill_slayer, killer)).ToArray());
+        string kill = Convert.ToHexString(PlayerKillNoticePacket.Kill(killer, scene.B.Value.Character.Name).ToArray());
+        Assert.That(scene.Field.PkKill(scene.A, scene.B), Is.True);
+        scene.TestA.TakeSent();
+        List<string> sent = scene.TestB.TakeSent().Select(Convert.ToHexString).ToList();
+        Assert.Multiple(() => {
+            Assert.That(sent, Does.Contain(kill).And.Not.Contain(slayer));
+            Assert.That(scene.A.PkStreak, Is.Zero);
         });
     }
 
