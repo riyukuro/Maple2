@@ -494,4 +494,21 @@ public static class GuildRules {
         }
         return reset;
     }
+
+    // The guild.xml row of the level an experience gives, as CGuildXmlData::GetLevelByExp picks it: the lowest
+    // level whose experience is above the guild's (a row's experience is what the next level needs), else the
+    // last level. The row carries the level's capacity, fund cap and check-in rewards.
+    // The cap a guild has without a guild.xml row (a level 1 guild's).
+    public const byte DefaultCapacity = 60;
+
+    public static GuildTable.Property? PropertyAt(IReadOnlyDictionary<short, GuildTable.Property> properties, int experience) {
+        GuildTable.Property? last = null;
+        foreach (GuildTable.Property property in properties.Values.OrderBy(entry => entry.Level)) {
+            if (experience < property.Experience) {
+                return property;
+            }
+            last = property;
+        }
+        return last;
+    }
 }

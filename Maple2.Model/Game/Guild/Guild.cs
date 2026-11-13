@@ -9,7 +9,7 @@ using Maple2.Tools.Extensions;
 namespace Maple2.Model.Game;
 
 public class Guild : IByteSerializable {
-    public byte Capacity = 60;
+    public byte Capacity = Validators.GuildRules.DefaultCapacity;
 
     public required long Id { get; init; }
     public required string Name;

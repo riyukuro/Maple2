@@ -278,9 +278,16 @@ public class GuildManager : IDisposable {
         int addFunds = funds - Guild.Funds;
         Guild.Experience = exp;
         Guild.Funds = funds;
+        byte oldCapacity = Guild.Capacity;
+        UpdateProperties();
 
         session.Send(GuildPacket.GuildExperience(Guild.Experience));
         session.Send(GuildPacket.GuildFunds(Guild.Funds));
+        // A level up that raises the member cap: the client sets it, redraws the guild window and shows the new
+        // cap (Guild 28, CGuildManager::FUN_1413c1840; it reads a name it does not use).
+        if (Guild.Capacity > oldCapacity) {
+            session.Send(GuildPacket.NotifyUpdateCapacity(string.Empty, Guild.Capacity));
+        }
         if (session.CharacterId == contributorId) {
             session.Send(GuildPacket.AddContribution(addExp, addFunds));
         }
@@ -689,9 +696,7 @@ public class GuildManager : IDisposable {
     [MemberNotNull(nameof(Properties))]
     private void UpdateProperties() {
         int experience = Guild?.Experience ?? 0;
-        Properties = session.TableMetadata.GuildTable.Properties
-            .OrderBy(entry => entry.Value.Experience)
-            .MinBy(entry => entry.Value.Experience > experience).Value;
+        Properties = GuildRules.PropertyAt(session.TableMetadata.GuildTable.Properties, experience)!;
 
         if (Guild != null) {
             Guild.Capacity = Properties.Capacity;

@@ -961,11 +961,9 @@ public class GuildHandler : PacketHandler<GameSession> {
         session.Send(GuildPacket.ListGuilds(found.Select(entry => (entry, CapacityAt(entry.Experience))).ToList()));
     }
 
-    // The capacity of the guild level the experience gives, as GuildManager.UpdateProperties picks it.
+    // The capacity of the guild level the experience gives.
     private int CapacityAt(int experience) {
-        return TableMetadata.GuildTable.Properties
-            .OrderBy(entry => entry.Value.Experience)
-            .MinBy(entry => entry.Value.Experience > experience).Value.Capacity;
+        return GuildRules.PropertyAt(TableMetadata.GuildTable.Properties, experience)?.Capacity ?? GuildRules.DefaultCapacity;
     }
 
     // CGuildManager::FUN_1413b8fe0: the id of the guild skill the master uses. The World server checks and

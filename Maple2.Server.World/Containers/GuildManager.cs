@@ -88,7 +88,8 @@ public class GuildManager : IDisposable {
         if (rank == null || !rank.Permission.HasFlag(GuildPermission.InviteMembers)) {
             return GuildError.s_guild_err_no_authority;
         }
-        if (Guild.Members.Count >= Guild.Capacity) {
+        // The cap of the guild's level (guild.xml), not the stored default: 60 up to level 3, 100 at level 14.
+        if (Guild.Members.Count >= GuildProperty().Capacity) {
             return GuildError.s_guild_err_full_member;
         }
         if (Guild.Members.ContainsKey(player.CharacterId)) {
@@ -125,7 +126,7 @@ public class GuildManager : IDisposable {
     }
 
     private GuildError JoinLocked(string requestorName, PlayerInfo info, GuildRequest? beforeNotice) {
-        if (Guild.Members.Count >= Guild.Capacity) {
+        if (Guild.Members.Count >= GuildProperty().Capacity) {
             return GuildError.s_guild_err_full_member;
         }
         if (Guild.Members.ContainsKey(info.CharacterId)) {
@@ -1096,8 +1097,6 @@ public class GuildManager : IDisposable {
     }
 
     private GuildTable.Property GuildProperty() {
-        return TableMetadata.GuildTable.Properties
-            .OrderBy(entry => entry.Value.Experience)
-            .MinBy(entry => entry.Value.Experience > Guild.Experience).Value;
+        return GuildRules.PropertyAt(TableMetadata.GuildTable.Properties, Guild.Experience)!;
     }
 }
