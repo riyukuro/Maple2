@@ -301,8 +301,13 @@ public class ItemSocketHandler : FieldPacketHandler {
         int rate = (entry.EquipPart & 8) != 0 ? 0
             : EventSaleRules.RemakeDiscount(0, session.Player.Stats.Values[SpecialAttribute.ReduceGemstoneUpgradeFee].Total);
         float limit = session.ServerTableMetadata.ConstantsTable.IngredientFeeReduceLimit;
+        // An ingredient named by id is a copy of that item's rank (GetItemRank, commonfiles/itemdata.cpp:2084, the rarity
+        // FUN_140f6dc70 builds it with); FUN_140f6e580 counts it with Unk_Inventory::FUN_140a5f180 (client/ms2/inventory.cpp:782-803),
+        // which skips a copy of another rarity when the rank is not 0. A tag ingredient counts at any rarity.
         return entry.Ingredients.Select(ingredient =>
-            new SocketCost(ingredient.ItemTag, ingredient.ItemId, EventSaleRules.RemakeIngredientCount(ingredient.Amount, rate, limit)));
+            new SocketCost(ingredient.ItemTag, ingredient.ItemId, EventSaleRules.RemakeIngredientCount(ingredient.Amount, rate, limit),
+                ingredient.ItemTag == ItemTag.None && session.ItemMetadata.TryGet(ingredient.ItemId, out ItemMetadata? metadata)
+                    ? metadata.Property.Rank ?? 0 : 0));
     }
 
     private static int GemstoneUpgradeRate(GameSession session, GemstoneUpgradeTable.Entry entry) {
@@ -632,10 +637,12 @@ public class ItemSocketHandler : FieldPacketHandler {
     // full. Checked first under lock(session.Item), so the items it takes stay held; the mesos are taken first (the
     // one step another thread can change) and given back once if a later step fails.
     // One cost item: by its tag when it has one, else by its item id (GetOwnedItemCount).
-    private readonly record struct SocketCost(ItemTag Tag, int ItemId, int Amount) {
+    // Rarity (0: any) holds a cost by id to copies of that rarity.
+    private readonly record struct SocketCost(ItemTag Tag, int ItemId, int Amount, int Rarity = 0) {
         public SocketCost(IngredientInfo ingredient) : this(ingredient.Tag, 0, ingredient.Amount) { }
 
-        public bool Matches(Item item) => Tag != ItemTag.None ? item.Metadata.Property.Tag == Tag : ItemId != 0 && item.Id == ItemId;
+        public bool Matches(Item item) => Tag != ItemTag.None ? item.Metadata.Property.Tag == Tag
+            : ItemId != 0 && item.Id == ItemId && (Rarity == 0 || item.Rarity == Rarity);
     }
 
     private sealed class SocketPrice {

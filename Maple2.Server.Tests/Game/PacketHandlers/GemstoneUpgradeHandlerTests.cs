@@ -26,10 +26,10 @@ public class GemstoneUpgradeHandlerTests {
 
     private Item bagGem = null!;
 
-    private GameSession Start(int[] rates, int equipPart = 3, int[]? skinRates = null) {
+    private GameSession Start(int[] rates, int equipPart = 3, int[]? skinRates = null, params GemstoneUpgradeTable.Ingredient[] more) {
         test = new TestGameSession();
         test.SetTable(new GemstoneUpgradeTable(new Dictionary<int, GemstoneUpgradeTable.Entry> {
-            [40200001] = new(1, 40200002, [new GemstoneUpgradeTable.Ingredient(ItemTag.DustBlue, 10)], equipPart),
+            [40200001] = new(1, 40200002, [new GemstoneUpgradeTable.Ingredient(ItemTag.DustBlue, 10), .. more], equipPart),
         }));
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { GemStoneProbList = rates, SkinGemStoneProbList = skinRates ?? rates });
         test.AddAchievement(TestGameSession.Trophy(23200028, ConditionType.gemstone_upgrade_fail, [1, 10, 100]),
@@ -135,6 +135,58 @@ public class GemstoneUpgradeHandlerTests {
     [TestCase(10, 3, 100)]
     public void Rate_ByTheLevelItGives(int level, int equipPart, int rate) {
         Assert.That(ItemSocketRules.GemstoneUpgradeRate(level, equipPart, KrRates, KrSkinRates), Is.EqualTo(rate));
+    }
+
+    // An ingredient named by id counts only copies of its rank's rarity (FUN_140f6e580 -> inventory.cpp:782-803): a rank 2
+    // ingredient held at rarity 1 refuses the upgrade, held at rarity 2 it is taken.
+    [TestCase(1, false)]
+    [TestCase(2, true)]
+    public void IdIngredient_CountsOnlyItsRankRarity(int heldRarity, bool upgrades) {
+        ItemMetadata stoneData = TestGameSession.Metadata(40300002, type: 2);
+        stoneData = stoneData with { Property = stoneData.Property with { Rank = 2 } };
+        GameSession session = Start([0, 0, 100, 100, 100, 100, 100, 100, 100, 100, 100], more: new GemstoneUpgradeTable.Ingredient(ItemTag.None, 1, 40300002));
+        test.Register(stoneData);
+        Item stone = new Item(stoneData, heldRarity, 1);
+        Assert.That(session.Item.Inventory.Add(stone, commit: true), Is.True);
+
+        Send(session, 4);
+
+        Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(upgrades ? 40200002 : 40200001));
+        Assert.That(session.Item.Inventory.Get(dust.Uid)!.Amount, Is.EqualTo(upgrades ? 90 : 100));
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == 40300002).Sum(item => item.Amount), Is.EqualTo(upgrades ? 0 : 1));
+    }
+
+    private static readonly int[] SureRates = [0, 0, 100, 100, 100, 100, 100, 100, 100, 100, 100];
+
+    // A KR gem: rank 4, its option constant its own id (no rarity).
+    private static ItemMetadata RankFourGem(int id, int type = 13) {
+        ItemMetadata data = TestGameSession.Metadata(id, type: type);
+        return data with {
+            Property = data.Property with { Rank = 4 },
+            Option = new ItemMetadataOption(0, default, 0, default, id, default, 0, 0),
+        };
+    }
+
+    // A gem made with no rarity named (a drop, a reward row of grade 0) is made at its rank (Item.DefaultRarity,
+    // GetItemRank itemdata.cpp:2084), so the upgrade that takes it by id and rank counts it. It was made at rarity 1
+    // (its option constant is no rarity), and the upgrade answered lack.
+    [Test]
+    public void IdIngredient_MadeWithNoRarity_IsCounted() {
+        GameSession session = Start(SureRates, more: new GemstoneUpgradeTable.Ingredient(ItemTag.None, 1, 40220131));
+        test.Register(RankFourGem(40220131));
+        // CreateItem rolls the item's options; the gem has none here.
+        test.SetTable(new ItemOptionPickTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionPickTable.Option>>()));
+        test.SetTable(new ItemOptionConstantTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>>()));
+        test.SetTable(new ItemOptionStaticTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+        test.SetTable(new ItemOptionRandomTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+        Item made = session.Field!.ItemDrop.CreateItem(40220131)!;
+        Assert.That(made.Rarity, Is.EqualTo(4));
+        Assert.That(session.Item.Inventory.Add(made, commit: true), Is.True);
+
+        Send(session, 4);
+
+        Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(40200002));
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == 40220131).Sum(item => item.Amount), Is.EqualTo(0));
     }
 
     [Test]
