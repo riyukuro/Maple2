@@ -130,6 +130,7 @@ public static class ConditionUtil {
             case ConditionType.skill:
             case ConditionType.job:
             case ConditionType.job_change:
+            case ConditionType.subjob_change: // code: the advanced job (101 Knight II to 1101)
             case ConditionType.item_move:
             case ConditionType.install_item:
             case ConditionType.rotate_cube:

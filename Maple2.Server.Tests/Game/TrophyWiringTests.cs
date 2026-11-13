@@ -858,4 +858,50 @@ public class TrophyWiringTests {
         Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(1));
     }
     #endregion
+
+    #region subjob_change
+    private const int AdvanceQuestId = 20002333;
+    private const int AllClassesTrophy = 90100000;
+    private const int KnightTrophy = 90100001;
+    private const int BerserkerTrophy = 90100002;
+
+    // A Knight whose job advancement quest (changejob.xml: Knight to Knight II, end quest 20002333) is started.
+    private GameSession StartAdvancingKnight() {
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata> {
+            [Job.Knight] = new(Job.Knight, Job.KnightII, 0, AdvanceQuestId),
+        }));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        // 90100000 "Change jobs" takes any class's advanced job, 90100001 Knight II only, 90100002 Berserker II only.
+        GameSession session = Start(
+            TestGameSession.Trophy(AllClassesTrophy, ConditionType.subjob_change, [1],
+                codes: [101, 201, 301, 401, 501, 601, 701, 801, 901, 1001, 1101]),
+            TestGameSession.Trophy(KnightTrophy, ConditionType.subjob_change, [1], codes: [101]),
+            TestGameSession.Trophy(BerserkerTrophy, ConditionType.subjob_change, [1], codes: [201]));
+        PacketHandlers.ProgressionOrderTests.LoadConfig(test, session);
+        session.Player.Value.Character.Job = Job.Knight;
+        return session;
+    }
+
+    [Test]
+    public void SubjobChange_TheAdvancementCountsItsClassAndTheAnyClassTrophy() {
+        GameSession session = StartAdvancingKnight();
+        Quest other = test.StartQuest(TestGameSession.QuestData(AdvanceQuestId + 1));
+        Quest advance = test.StartQuest(TestGameSession.QuestData(AdvanceQuestId));
+
+        // Another quest does not advance the job, so nothing counts.
+        Assert.That(session.Quest.Complete(other), Is.True);
+        Assert.That(session.Player.Value.Character.Job, Is.EqualTo(Job.Knight));
+        Assert.That(test.TrophyCounter(KnightTrophy), Is.Null);
+        Assert.That(test.TrophyCounter(AllClassesTrophy), Is.Null);
+        test.TakeSent();
+
+        Assert.That(session.Quest.Complete(advance), Is.True);
+        Assert.That(session.Player.Value.Character.Job, Is.EqualTo(Job.KnightII));
+        Assert.That(test.TrophyCounter(KnightTrophy), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(AllClassesTrophy), Is.EqualTo(1));
+        Assert.That(test.TrophyCounter(BerserkerTrophy), Is.Null);
+        Assert.That(Sent().Count(op => op == SendOp.Achieve), Is.EqualTo(2));
+    }
+    #endregion
 }

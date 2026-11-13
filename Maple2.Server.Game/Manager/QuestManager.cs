@@ -919,6 +919,9 @@ public sealed class QuestManager {
         // As the job script's confirm does: the job trophies count the new job and the other players' copy of the
         // character follows it. The row was the old job's.
         session.ConditionUpdate(ConditionType.job, codeLong: (int) changeJobMetadata.ChangeJob.Code());
+        // subjob_change (90100000-11, "Change jobs to Saint Knight"): the code is the advanced job, changeJob.xml's
+        // changeSubJobCode (101 for Knight II).
+        session.ConditionUpdate(ConditionType.subjob_change, codeLong: (int) changeJobMetadata.ChangeJob);
         session.Player.Flag |= PlayerObjectFlag.Job;
         changeJobMetadata = null;
     }
