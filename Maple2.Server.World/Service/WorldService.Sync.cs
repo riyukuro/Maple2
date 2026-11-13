@@ -165,6 +165,7 @@ public partial class WorldService {
             LastOnlineTime = info.LastOnlineTime,
             MapId = info.MapId,
             RoomId = info.RoomId,
+            DungeonId = info.DungeonId,
             Channel = info.Channel,
             Health = new HealthUpdate {
                 CurrentHp = info.CurrentHp,

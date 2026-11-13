@@ -2,10 +2,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Packets;
 
 namespace Maple2.Server.Tests.Game.Packets;
@@ -300,17 +302,82 @@ public class DungeonMatchQueueTests {
         Assert.That(DungeonMatchRules.SearchBits(0), Is.EqualTo(0));
     }
 
+    // The room checks of a search, in the order of OnDungeonMatchError's modes (uidungeonhelper.cpp:333).
     [Test]
-    public void PickedRoomsKeepTheKindAndLevel() {
-        var table = new Dictionary<int, DungeonRoomMetadata> {
-            [1] = Room(1, DungeonGroupType.normal, 0, 10),
-            [2] = Room(2, DungeonGroupType.normal, 0, 50),
-            [3] = Room(3, DungeonGroupType.lapenta, 0, 10),
-        };
-        List<int> ids = DungeonMatchRules.PickedRooms(table, [1, 2, 3, 9, 1], 1, 40).Select(room => room.Id).ToList();
-        Assert.That(ids, Is.EqualTo(new[] { 1 }));
-        Assert.That(DungeonMatchRules.PickedRooms(table, [3], 4, 40).Select(room => room.Id), Is.EqualTo(new[] { 3 }));
-        Assert.That(DungeonMatchRules.PickedRooms(table, [3], 0, 40), Is.Empty);
+    public void RoomErrorAsTheClientModes() {
+        DungeonRoomMetadata normal = Room(1, DungeonGroupType.normal, 0, 10);
+        DungeonRoomMetadata lapenta = Room(3, DungeonGroupType.lapenta, 0, 10);
+        Assert.That(DungeonMatchRules.RoomError(normal, 1, 40, 4, false, null), Is.EqualTo(DungeonMatchError.ok));
+        Assert.That(DungeonMatchRules.RoomError(lapenta, 4, 40, 1, false, DungeonEnterLimit.Veteran), Is.EqualTo(DungeonMatchError.ok));
+        // Not in the table, another kind, kind 0, closed now: cannot be entered.
+        Assert.That(DungeonMatchRules.RoomError(null, 1, 40, 1, false, null), Is.EqualTo(DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter));
+        Assert.That(DungeonMatchRules.RoomError(lapenta, 1, 40, 1, false, null), Is.EqualTo(DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter));
+        Assert.That(DungeonMatchRules.RoomError(normal, 0, 40, 1, false, null), Is.EqualTo(DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter));
+        Assert.That(DungeonMatchRules.RoomError(normal, 1, 40, 1, true, null), Is.EqualTo(DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter));
+        // Under the level, or an enter state of 10 or more (CanEnterDungeonRoom).
+        Assert.That(DungeonMatchRules.RoomError(normal, 1, 9, 1, false, null), Is.EqualTo(DungeonMatchError.s_dungeonMatch_error_lackRequire));
+        Assert.That(DungeonMatchRules.RoomError(normal, 1, 40, 1, false, DungeonEnterLimit.Gearscore), Is.EqualTo(DungeonMatchError.s_dungeonMatch_error_lackRequire));
+        // More members than the row's maxUserCount (4).
+        Assert.That(DungeonMatchRules.RoomError(normal, 1, 40, 5, false, null), Is.EqualTo(DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser));
+    }
+
+    [Test]
+    public void SearchErrorOfPickedAndRecommendedRooms() {
+        (DungeonMatchError, int) lack = (DungeonMatchError.s_dungeonMatch_error_lackRequire, 4);
+        (DungeonMatchError, int) closed = (DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter, 4);
+        (DungeonMatchError, int) over3 = (DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser, 3);
+        (DungeonMatchError, int) over4 = (DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser, 4);
+
+        Assert.That(DungeonMatchRules.SearchError(true, 2, 2, []), Is.EqualTo((DungeonMatchError.ok, 0)));
+        // One picked room gives its own error; of several, any refused room gives 4.
+        Assert.That(DungeonMatchRules.SearchError(true, 1, 0, [lack]), Is.EqualTo((DungeonMatchError.s_dungeonMatch_error_lackRequire, 0)));
+        Assert.That(DungeonMatchRules.SearchError(true, 2, 1, [lack]), Is.EqualTo((DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter, 0)));
+        // A room too small for the party: 2 with the smallest such count.
+        Assert.That(DungeonMatchRules.SearchError(true, 3, 0, [closed, over4, over3]), Is.EqualTo((DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser, 3)));
+        // Recommended rooms: the refused ones drop; none left is 1, or 2 with the largest count.
+        Assert.That(DungeonMatchRules.SearchError(false, 3, 1, [lack, over3]), Is.EqualTo((DungeonMatchError.ok, 0)));
+        Assert.That(DungeonMatchRules.SearchError(false, 0, 0, []), Is.EqualTo((DungeonMatchError.s_dungeonMatch_error_notFoundDungeon, 0)));
+        Assert.That(DungeonMatchRules.SearchError(false, 2, 0, [lack, closed]), Is.EqualTo((DungeonMatchError.s_dungeonMatch_error_notFoundDungeon, 0)));
+        Assert.That(DungeonMatchRules.SearchError(false, 3, 0, [lack, over3, over4]), Is.EqualTo((DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser, 4)));
+    }
+
+    // Mode 5 goes by the members' dungeon instances, not their maps: a room may use an open field map (02000xxx) as
+    // its field, and a member standing on that field outside the room is not in a dungeon.
+    [Test]
+    public void InsideDungeonTestsTheMembersDungeonInstances() {
+        Assert.That(DungeonMatchRules.InsideDungeon([0, 23000001]), Is.True);
+        Assert.That(DungeonMatchRules.InsideDungeon([0, 0]), Is.False);
+        Assert.That(DungeonMatchRules.InsideDungeon([]), Is.False);
+    }
+
+    // World's member info carries the dungeon id with the map: entering a room on an open field map (2000066) and
+    // the same map outside it, as PlayerInfoLookup applies the updates and a game server copies them.
+    [Test]
+    public void MemberInfoCarriesTheDungeonOfARoomOnAnOpenFieldMap() {
+        var info = new PlayerInfo(new CharacterInfo(1, 2, "a", "", "", Gender.Male, Job.Newbie, 1), "", new AchievementInfo(), []) { MapId = 2000023 };
+
+        var enter = new PlayerUpdateRequest { AccountId = 1, CharacterId = 2, MapId = 2000066, RoomId = 7, DungeonId = 23000001 };
+        Assert.That(info.ApplyChanged(enter)?.Type, Is.EqualTo(UpdateField.Map));
+        Assert.That(DungeonMatchRules.InsideDungeon([info.DungeonId]), Is.True);
+        var copy = new PlayerInfo(new CharacterInfo(1, 2, "a", "", "", Gender.Male, Job.Newbie, 1), "", new AchievementInfo(), []);
+        copy.Update(UpdateField.Map, info);
+        Assert.That(copy.DungeonId, Is.EqualTo(23000001));
+        var sent = new PlayerUpdateRequest();
+        sent.SetFields(UpdateField.Map, info);
+        Assert.That(sent.DungeonId, Is.EqualTo(23000001));
+
+        var field = new PlayerUpdateRequest { AccountId = 1, CharacterId = 2, MapId = 2000066, RoomId = 8, DungeonId = 0 };
+        Assert.That(info.ApplyChanged(field)?.Type, Is.EqualTo(UpdateField.Map));
+        Assert.That(info.MapId, Is.EqualTo(2000066));
+        Assert.That(DungeonMatchRules.InsideDungeon([info.DungeonId]), Is.False);
+    }
+
+    // OnDungeonMatchError: mode 0, the error byte, the int and the string.
+    [Test]
+    public void ErrorLayout() {
+        byte[] bytes = DungeonMatchPacket.Error(DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser, 4).ToArray();
+        string expected = Convert.ToHexString(BitConverter.GetBytes((short) SendOp.DungeonMatch)) + "00" + "02" + "04000000" + "0000";
+        Assert.That(Convert.ToHexString(bytes), Is.EqualTo(expected));
     }
 
     // CPartyManager::OnPartyDungeonMatchRegister (0x1e): kind, registered, notice, then the bits IsMatchSearching tests.
@@ -338,7 +405,10 @@ public class DungeonMatchQueueTests {
     public void PartyInfoCarriesTheSearchKindIntoLoad() {
         var party = new Maple2.Model.Game.Party.Party(5, 1, 2, "a");
         Maple2.Server.Game.Manager.PartyManager.ApplyInfo(party, new Maple2.Server.World.Service.PartyInfo {
-            DungeonId = 7, DungeonSet = true, DungeonRoomId = 9, DungeonMatchKind = 4,
+            DungeonId = 7,
+            DungeonSet = true,
+            DungeonRoomId = 9,
+            DungeonMatchKind = 4,
         });
         Assert.That((party.DungeonMatchKind, party.DungeonId, party.DungeonSet, party.DungeonLobbyRoomId), Is.EqualTo(((byte) 4, 7, true, 9)));
         ByteWriter load = PartyPacket.Load(party);
@@ -401,18 +471,6 @@ public class DungeonMatchQueueTests {
         Assert.That(queue.CountOf(1).Users, Is.EqualTo(3));
         Assert.That(queue.Join(1, [room], M(1))!.Value.Outcome, Is.EqualTo(DungeonMatchOutcome.Matched));
         Assert.That(queue.IsSearching(1), Is.False);
-    }
-
-    [Test]
-    public void SearchRoomsRecommendsOnlyForKindOne() {
-        var table = new Dictionary<int, DungeonRoomMetadata> {
-            [1] = Room(1, DungeonGroupType.normal, 0, 10),
-            [5] = Room(5, DungeonGroupType.lapenta, 0, 10),
-        };
-        Assert.That(DungeonMatchRules.SearchRooms(table, [], 1, 40, 150, 6).Select(room => room.Id), Is.EqualTo(new[] { 1 }));
-        // No picked room for a lapenta (4) search: no rooms, not the kind 1 recommendations.
-        Assert.That(DungeonMatchRules.SearchRooms(table, [], 4, 40, 150, 6), Is.Empty);
-        Assert.That(DungeonMatchRules.SearchRooms(table, [5], 4, 40, 150, 6).Select(room => room.Id), Is.EqualTo(new[] { 5 }));
     }
 
     // rv42 MAJOR 2: the smaller goes into the larger, on equal size the later into the earlier, at any start.

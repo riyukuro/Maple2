@@ -1,4 +1,5 @@
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Game;
@@ -60,26 +61,56 @@ public static class DungeonMatchRules {
     // bit kind.
     public static byte SearchBits(byte kind) => kind is > 0 and < 8 ? (byte) (1 << kind) : (byte) 0;
 
-    // The rooms of a Party 32 with picked rooms, or Party 33, that the search may use: a room of the table whose
-    // group type has this match kind, with a level limit the lowest member meets.
-    public static List<DungeonRoomMetadata> PickedRooms(IReadOnlyDictionary<int, DungeonRoomMetadata> table, IEnumerable<int> roomIds, byte kind, short level) {
-        var result = new List<DungeonRoomMetadata>();
-        foreach (int id in roomIds.Distinct()) {
-            if (table.TryGetValue(id, out DungeonRoomMetadata? room) && KindOf(room.GroupType) == kind && kind != 0 && level >= room.Limit.MinLevel) {
-                result.Add(room);
-            }
+    // Why a room is refused for a search, as OnDungeonMatchError (uidungeonhelper.cpp:333) names it; ok when it may be
+    // searched. A room missing from the table, of another match kind, or closed now (day, hours, open period: it is
+    // not created on request) cannot be entered (4). The lowest member's level under the room's limit, or an enter
+    // state of 10 or more (CPartyManager::CanEnterDungeonRoom, partymanager.cpp:561, the FieldEntrance limits) is not
+    // meeting its requirements (3). A party larger than the room's maxUserCount (MaxUsers) is over it (2).
+    public static DungeonMatchError RoomError(DungeonRoomMetadata? room, byte kind, short level, int members, bool closed, DungeonEnterLimit? limit) {
+        if (room == null || kind == 0 || KindOf(room.GroupType) != kind || closed) {
+            return DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter;
         }
-        return result;
+        if (level < room.Limit.MinLevel || (limit != null && (byte) limit.Value >= 10)) {
+            return DungeonMatchError.s_dungeonMatch_error_lackRequire;
+        }
+        if (members > MaxUsers(DungeonMatchRoom.Of(room))) {
+            return DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser;
+        }
+        return DungeonMatchError.ok;
     }
 
-    // The rooms of a Party 32: the picked ones, or with none picked the recommended rooms (MatchRooms), which are
-    // all of match kind 1, so only for a kind 1 search; a search of another kind with no picked room has none
-    // (rv40 MINOR 9).
-    public static List<DungeonRoomMetadata> SearchRooms(IReadOnlyDictionary<int, DungeonRoomMetadata> table, IReadOnlyCollection<int> roomIds, byte kind, short level, int gearScore, int pickCount) {
-        if (roomIds.Count > 0) {
-            return PickedRooms(table, roomIds, kind, level);
+    // The error of a search whose rooms were checked with RoomError (the refused ones with their maxUserCount), and
+    // the int it carries. Picked rooms (Party 32 with rooms, Party 33): a room over its user count gives 2 with the
+    // smallest such count, else one picked room gives its own error and several give 4 ("one of the selected
+    // dungeons cannot be entered"). Recommended rooms (Party 32 with none) drop the refused ones, as the client's
+    // GetAvailableRooms does; with none left the search gives 2 with the largest count when the party is too large
+    // for an otherwise open room, else 1 (notFoundDungeon, the client's own CanStartSearch message,
+    // uidungeonsearchdialog.cpp:431).
+    public static (DungeonMatchError Error, int Param) SearchError(bool picked, int pickedCount, int accepted,
+                                                                   IReadOnlyCollection<(DungeonMatchError Error, int MaxUsers)> refused) {
+        int[] over = refused.Where(entry => entry.Error == DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser)
+            .Select(entry => entry.MaxUsers).ToArray();
+        if (!picked) {
+            if (accepted > 0) {
+                return (DungeonMatchError.ok, 0);
+            }
+            return over.Length > 0
+                ? (DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser, over.Max())
+                : (DungeonMatchError.s_dungeonMatch_error_notFoundDungeon, 0);
         }
-        return kind == 1 ? MatchRooms(table.Values, level, gearScore, pickCount) : [];
+        if (refused.Count == 0) {
+            return accepted > 0 ? (DungeonMatchError.ok, 0) : (DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter, 0);
+        }
+        if (over.Length > 0) {
+            return (DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser, over.Min());
+        }
+        return pickedCount == 1 ? (refused.First().Error, 0) : (DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter, 0);
+    }
+
+    // A member is in a dungeon (insideDungeonUser, 5): the member's field is a dungeon room instance, so it has a
+    // dungeon id. The map alone does not tell: rooms also use open field maps (02000xxx) as their fields.
+    public static bool InsideDungeon(IEnumerable<int> memberDungeonIds) {
+        return memberDungeonIds.Any(id => id != 0);
     }
 
     // DungeonRoomTable::GetMatchRooms (dungeonroom.cpp), the rooms of an empty Party 32 room set: the rooms of group

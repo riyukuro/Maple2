@@ -65,7 +65,8 @@ public class PlayerInfoUpdateEvent {
         if (request.HasGearScore && player.GearScore != request.GearScore) {
             Type |= UpdateField.GearScore;
         }
-        if ((request.HasMapId && player.MapId != request.MapId) || (request.HasRoomId && player.RoomId != request.RoomId)) {
+        if ((request.HasMapId && player.MapId != request.MapId) || (request.HasRoomId && player.RoomId != request.RoomId)
+            || (request.HasDungeonId && player.DungeonId != request.DungeonId)) {
             Type |= UpdateField.Map;
         }
         if ((request.HasChannel && player.Channel != request.Channel) ||

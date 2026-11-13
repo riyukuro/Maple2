@@ -31,6 +31,8 @@ public class Character {
     public short Insignia;
 
     public int RoomId;
+    // The dungeon room (DungeonRoom id) of the field the player is in, 0 outside a dungeon instance.
+    public int DungeonId;
     public int InstanceMapId;
     public short Channel;
     public short ReturnChannel;

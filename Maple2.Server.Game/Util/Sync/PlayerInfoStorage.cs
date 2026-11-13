@@ -48,6 +48,7 @@ public class PlayerInfoStorage {
                 TotalHp = response.Health.TotalHp,
                 MapId = response.MapId,
                 RoomId = response.RoomId,
+                DungeonId = response.DungeonId,
                 Channel = (short) response.Channel,
                 UpdateTime = response.UpdateTime,
                 GuildName = response.GuildName,

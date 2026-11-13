@@ -318,25 +318,67 @@ public class PartyHandler : FieldPacketHandler {
         }
         (short level, int gearScore) = LowestMember(session);
         IReadOnlyDictionary<int, DungeonRoomMetadata> table = session.TableMetadata.DungeonRoomTable.Entries;
-        List<DungeonRoomMetadata> rooms = DungeonMatchRules.SearchRooms(table, request.Value.RoomIds, request.Value.Kind,
-            level, gearScore, Constants.DungeonMatchRecommendPickCount);
-        // A room closed now (day, hours, open period) is not searched, as it is not created on request.
-        rooms.RemoveAll(room => session.Dungeon.ClosedError(room) != null);
-        RequestDungeonMatch(session, request.Value.Kind, rooms);
+        bool picked = request.Value.RoomIds.Count > 0;
+        List<DungeonRoomMetadata?> candidates = picked
+            ? request.Value.RoomIds.Distinct().Select(id => table.GetValueOrDefault(id)).ToList()
+            : request.Value.Kind == 1
+                ? DungeonMatchRules.MatchRooms(table.Values, level, gearScore, Constants.DungeonMatchRecommendPickCount).ToList<DungeonRoomMetadata?>()
+                : [];
+        SearchDungeonMatch(session, request.Value.Kind, picked, candidates, level);
     }
 
     // Party 33: the party search for one dungeon room (PartyDungeonMatch.ReadPartySearch), under the match kind of
     // the room's group type, the kind the room dialog's cancel (34) and IsMatchSearching use.
     private void HandlePartySearch(GameSession session, IByteReader packet) {
         int? roomId = PartyDungeonMatch.ReadPartySearch(packet);
-        if (roomId == null || !session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(roomId.Value, out DungeonRoomMetadata? room)) {
+        if (roomId == null) {
             return;
         }
-        byte kind = DungeonMatchRules.KindOf(room.GroupType);
+        session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(roomId.Value, out DungeonRoomMetadata? room);
+        byte kind = room == null ? (byte) 0 : DungeonMatchRules.KindOf(room.GroupType);
         (short level, _) = LowestMember(session);
-        List<DungeonRoomMetadata> rooms = DungeonMatchRules.PickedRooms(session.TableMetadata.DungeonRoomTable.Entries, [room.Id], kind, level);
-        rooms.RemoveAll(picked => session.Dungeon.ClosedError(picked) != null);
-        RequestDungeonMatch(session, kind, rooms);
+        SearchDungeonMatch(session, kind, true, [room], level);
+    }
+
+    // The rooms are checked (DungeonMatchRules.RoomError) and a refused search gets DungeonMatch 0 with the client's
+    // error (SearchError). The leader and offline checks stay on World, which answers them with Party 40 and 41, the
+    // same isNotChief and hasOfflineUser texts (partymanager.cpp:1409). The cooldown errors 8 and 9 are not sent:
+    // they are for the [Comradery] buff, which this server never gives (FORK.md).
+    private void SearchDungeonMatch(GameSession session, byte kind, bool picked, List<DungeonRoomMetadata?> candidates, short level) {
+        if (DungeonMatchRules.InsideDungeon(MemberDungeonIds(session))) {
+            session.Send(DungeonMatchPacket.Error(DungeonMatchError.s_dungeonMatch_error_insideDungeonUser));
+            return;
+        }
+
+        int members = session.Party.Party?.Members.Count ?? 1;
+        IDictionary<int, DungeonEnterLimit> limits = session.Player.Value.Character.DungeonEnterLimits;
+        var accepted = new List<DungeonRoomMetadata>();
+        var refused = new List<(DungeonMatchError Error, int MaxUsers)>();
+        foreach (DungeonRoomMetadata? room in candidates) {
+            bool closed = room != null && session.Dungeon.ClosedError(room) != null;
+            DungeonEnterLimit? limit = room != null && limits.TryGetValue(room.Id, out DungeonEnterLimit value) ? value : null;
+            DungeonMatchError error = DungeonMatchRules.RoomError(room, kind, level, members, closed, limit);
+            if (error == DungeonMatchError.ok) {
+                accepted.Add(room!);
+            } else {
+                refused.Add((error, room?.Limit.MaxUserCount ?? 0));
+            }
+        }
+
+        (DungeonMatchError searchError, int param) = DungeonMatchRules.SearchError(picked, candidates.Count, accepted.Count, refused);
+        if (searchError != DungeonMatchError.ok) {
+            session.Send(DungeonMatchPacket.Error(searchError, param));
+            return;
+        }
+        RequestDungeonMatch(session, kind, accepted);
+    }
+
+    // The dungeon ids of the party members' fields (or the player's alone), as World's member info carries them.
+    private static IEnumerable<int> MemberDungeonIds(GameSession session) {
+        if (session.Party.Party != null) {
+            return session.Party.Party.Members.Values.Select(member => member.Info.DungeonId).ToArray();
+        }
+        return [session.Field?.DungeonId ?? session.Player.Value.Character.DungeonId];
     }
 
     // Party 34: cancel the search; the byte is the match kind. Any member can send it; World takes the leader's

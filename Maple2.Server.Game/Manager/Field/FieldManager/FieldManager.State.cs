@@ -95,6 +95,7 @@ public partial class FieldManager {
         player.Character.MapId = MapId;
         player.Character.InstanceMapId = MapId;
         player.Character.RoomId = RoomId;
+        player.Character.DungeonId = DungeonId;
 
         var fieldPlayer = new FieldPlayer(session, player) {
             Position = position,

@@ -137,6 +137,8 @@ public class CharacterInfo {
     // Location
     public int MapId { get; set; }
     public int RoomId { get; set; }
+    // The dungeon room of the field (0 outside a dungeon instance); not written to the client.
+    public int DungeonId { get; set; }
     public short Channel { get; set; } = -1;
     public long LastOnlineTime { get; set; }
     public int RetryHeartbeat { get; set; } = 3;
@@ -170,6 +172,7 @@ public class CharacterInfo {
         Level = other.Level;
         MapId = other.MapId;
         RoomId = other.RoomId;
+        DungeonId = other.DungeonId;
         Channel = other.Channel;
         LastOnlineTime = other.LastOnlineTime;
         GuildId = other.GuildId;
@@ -189,6 +192,7 @@ public class CharacterInfo {
             level: player.Character.Level) {
             MapId = player.Character.MapId,
             RoomId = player.Character.RoomId,
+            DungeonId = player.Character.DungeonId,
             Channel = player.Character.Channel,
             GuildId = player.Character.GuildId,
             GuildName = player.Character.GuildName,

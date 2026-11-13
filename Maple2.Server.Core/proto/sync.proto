@@ -85,6 +85,8 @@ message PlayerUpdateRequest {
   bool async = 24;
   // Instance (room) id of the field the player is in; sent together with map_id.
   optional int32 room_id = 25;
+  // The dungeon room of that field (0 outside a dungeon instance); sent together with room_id.
+  optional int32 dungeon_id = 27;
 }
 
 message PlayerUpdateResponse {
@@ -122,4 +124,5 @@ message PlayerInfoResponse {
   int32 mentor_role = 23;
   int32 room_id = 24;
   int32 admin_permissions = 25;
+  int32 dungeon_id = 26;
 }

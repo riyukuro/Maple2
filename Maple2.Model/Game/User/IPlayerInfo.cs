@@ -24,6 +24,7 @@ public interface IPlayerInfo {
     // Location
     public int MapId { get; set; }
     public int RoomId { get; set; }
+    public int DungeonId { get; set; }
     public short Channel { get; set; }
     // Home
     public string HomeName { get; set; }
