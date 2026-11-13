@@ -33,7 +33,14 @@ public partial class WorldService {
                 continue;
             }
 
-            AdminResponse? channelResponse = channelClient.Admin(request);
+            // A channel that is down or stopping fails its own call; the other channels still get the request.
+            AdminResponse? channelResponse;
+            try {
+                channelResponse = channelClient.Admin(request);
+            } catch (RpcException ex) {
+                responseMessage += $"Channel {channel} failed: {ex.Status.StatusCode}\n";
+                continue;
+            }
             if (channelResponse == null) {
                 responseMessage += $"Channel {channel} failed: null response\n";
                 continue;
