@@ -17,7 +17,7 @@ public static class StatsPacket {
 
         var pWriter = Packet.Of(SendOp.Stat);
         pWriter.WriteInt(entity.ObjectId);
-        pWriter.Write<Command>(Command.Update);
+        pWriter.WriteByte((byte) Command.Update);
         pWriter.WriteAllStats(stats);
 
         return pWriter;
@@ -26,7 +26,7 @@ public static class StatsPacket {
     public static ByteWriter Update<T>(Actor<T> entity) {
         var pWriter = Packet.Of(SendOp.Stat);
         pWriter.WriteInt(entity.ObjectId);
-        pWriter.Write<Command>(Command.Update);
+        pWriter.WriteByte((byte) Command.Update);
         switch (entity.Value) {
             case Player:
                 pWriter.WritePlayerStats(entity.Stats.Values);
@@ -60,10 +60,10 @@ public static class StatsPacket {
     public static ByteWriter Update(IActor entity, params BasicAttribute[] attributes) {
         var pWriter = Packet.Of(SendOp.Stat);
         pWriter.WriteInt(entity.ObjectId);
-        pWriter.Write<Command>(Command.Update);
+        pWriter.WriteByte((byte) Command.Update);
         pWriter.WriteByte((byte) attributes.Length);
         foreach (BasicAttribute attribute in attributes) {
-            pWriter.Write<BasicAttribute>(attribute);
+            pWriter.WriteByte((byte) attribute);
             pWriter.WriteAttribute(attribute, entity.Stats.Values[attribute]);
         }
 
@@ -74,9 +74,9 @@ public static class StatsPacket {
     public static ByteWriter Update(IActor entity, BasicAttribute attribute) {
         var pWriter = Packet.Of(SendOp.Stat);
         pWriter.WriteInt(entity.ObjectId);
-        pWriter.Write<Command>(Command.Update);
+        pWriter.WriteByte((byte) Command.Update);
         pWriter.WriteByte(1);
-        pWriter.Write<BasicAttribute>(attribute);
+        pWriter.WriteByte((byte) attribute);
         pWriter.WriteAttribute(attribute, entity.Stats.Values[attribute]);
 
         return pWriter;

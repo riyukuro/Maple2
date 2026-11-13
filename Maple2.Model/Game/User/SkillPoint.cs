@@ -31,7 +31,7 @@ public class SkillPoint : IByteSerializable {
         writer.WriteInt(TotalPoints);
         writer.WriteInt(Points.Count);
         foreach ((SkillPointSource source, PointRank point) in Points) {
-            writer.Write<SkillPointSource>(source);
+            writer.WriteInt((int) source);
             writer.WriteClass<PointRank>(point);
         }
         writer.WriteInt();

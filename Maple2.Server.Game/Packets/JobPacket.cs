@@ -27,7 +27,7 @@ public static class JobPacket {
     public static ByteWriter Notify(IActor<Player> player, SkillInfo skillInfo) {
         var pWriter = Packet.Of(SendOp.Job);
         pWriter.WriteInt(player.ObjectId);
-        pWriter.Write<Command>(Command.Notify);
+        pWriter.WriteByte((byte) Command.Notify);
         pWriter.WriteClass<SkillInfo>(skillInfo);
 
         return pWriter;
@@ -36,7 +36,7 @@ public static class JobPacket {
     public static ByteWriter Basic(IActor<Player> player, SkillInfo skillInfo) {
         var pWriter = Packet.Of(SendOp.Job);
         pWriter.WriteInt(player.ObjectId);
-        pWriter.Write<Command>(Command.Basic);
+        pWriter.WriteByte((byte) Command.Basic);
         pWriter.WriteClass<SkillInfo>(skillInfo);
 
         return pWriter;
@@ -45,7 +45,7 @@ public static class JobPacket {
     public static ByteWriter Advance(IActor<Player> player, SkillInfo skillInfo) {
         var pWriter = Packet.Of(SendOp.Job);
         pWriter.WriteInt(player.ObjectId);
-        pWriter.Write<Command>(Command.Advance);
+        pWriter.WriteByte((byte) Command.Advance);
         pWriter.WriteClass<SkillInfo>(skillInfo);
 
         return pWriter;
@@ -73,7 +73,7 @@ public static class JobPacket {
     public static ByteWriter Unknown(IActor<Player> player, SkillInfo skillInfo) {
         var pWriter = Packet.Of(SendOp.Job);
         pWriter.WriteInt(player.ObjectId);
-        pWriter.Write<Command>(Command.Unknown);
+        pWriter.WriteByte((byte) Command.Unknown);
         pWriter.WriteClass<SkillInfo>(skillInfo);
 
         return pWriter;
@@ -82,7 +82,7 @@ public static class JobPacket {
     public static ByteWriter Load(IActor<Player> player, SkillInfo skillInfo) {
         var pWriter = Packet.Of(SendOp.Job);
         pWriter.WriteInt(player.ObjectId);
-        pWriter.Write<Command>(Command.Load);
+        pWriter.WriteByte((byte) Command.Load);
         pWriter.WriteClass<SkillInfo>(skillInfo);
 
         return pWriter;
@@ -91,7 +91,7 @@ public static class JobPacket {
     public static ByteWriter Update(IActor<Player> player, SkillInfo skillInfo) {
         var pWriter = Packet.Of(SendOp.Job);
         pWriter.WriteInt(player.ObjectId);
-        pWriter.Write<Command>(Command.Update);
+        pWriter.WriteByte((byte) Command.Update);
         pWriter.WriteClass<SkillInfo>(skillInfo);
 
         return pWriter;
@@ -100,7 +100,7 @@ public static class JobPacket {
     public static ByteWriter Reset(IActor<Player> player, SkillInfo skillInfo) {
         var pWriter = Packet.Of(SendOp.Job);
         pWriter.WriteInt(player.ObjectId);
-        pWriter.Write<Command>(Command.Reset);
+        pWriter.WriteByte((byte) Command.Reset);
         pWriter.WriteClass<SkillInfo>(skillInfo);
 
         return pWriter;
@@ -109,7 +109,7 @@ public static class JobPacket {
     public static ByteWriter AutoDistribute(IActor<Player> player, SkillInfo skillInfo) {
         var pWriter = Packet.Of(SendOp.Job);
         pWriter.WriteInt(player.ObjectId);
-        pWriter.Write<Command>(Command.AutoDistribute);
+        pWriter.WriteByte((byte) Command.AutoDistribute);
         pWriter.WriteClass<SkillInfo>(skillInfo);
 
         return pWriter;

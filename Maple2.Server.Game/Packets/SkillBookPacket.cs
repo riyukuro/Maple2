@@ -17,7 +17,7 @@ public static class SkillBookPacket {
 
     public static ByteWriter Load(SkillBook skillBook) {
         var pWriter = Packet.Of(SendOp.SkillBookTree);
-        pWriter.Write<Command>(Command.Load);
+        pWriter.WriteByte((byte) Command.Load);
         pWriter.WriteInt(skillBook.MaxSkillTabs);
         pWriter.WriteLong(skillBook.ActiveSkillTabId);
 
@@ -32,7 +32,7 @@ public static class SkillBookPacket {
     // rank: the client's job rank number of the request (0 every rank, 1 base job, 2 awakening).
     public static ByteWriter Save(SkillBook skillBook, long savedTabId, int rank) {
         var pWriter = Packet.Of(SendOp.SkillBookTree);
-        pWriter.Write<Command>(Command.Save);
+        pWriter.WriteByte((byte) Command.Save);
         pWriter.WriteLong(skillBook.ActiveSkillTabId);
         pWriter.WriteLong(savedTabId);
         pWriter.WriteInt(rank);
@@ -42,7 +42,7 @@ public static class SkillBookPacket {
 
     public static ByteWriter Rename(SkillTab skillTab, bool error = false) {
         var pWriter = Packet.Of(SendOp.SkillBookTree);
-        pWriter.Write<Command>(Command.Rename);
+        pWriter.WriteByte((byte) Command.Rename);
         pWriter.WriteLong(skillTab.Id);
         pWriter.WriteUnicodeString(skillTab.Name);
         pWriter.WriteBool(error); // true -> s_ban_check_err_any_word
@@ -52,7 +52,7 @@ public static class SkillBookPacket {
 
     public static ByteWriter Expand(SkillBook skillBook) {
         var pWriter = Packet.Of(SendOp.SkillBookTree);
-        pWriter.Write<Command>(Command.Expand);
+        pWriter.WriteByte((byte) Command.Expand);
         pWriter.WriteInt(skillBook.MaxSkillTabs);
 
         return pWriter;
