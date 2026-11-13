@@ -59,7 +59,8 @@ public static class QuestMaskRules {
     // Chosen here: such an npc stands at the spawn point of an enableInMask=0 npc of the same field whose ranges are
     // the same (the npc it stands in for: the client shows one of the two by the player's quests). The partner must
     // be at a regular spawn point of the field; the first partner by npc id and its first point is used. The new point
-    // keeps the partner's spawn id, position, rotation and spawn flags with the one npc. An npc a regular or an event
+    // keeps the partner's position, rotation and spawn flags with the one npc, and no spawn id: a trigger that names the
+    // partner's spawn id finds only the partner. An npc a regular or an event
     // spawn point of the field already names is left alone.
     public static IEnumerable<SpawnPointNPC> PartnerSpawns(IReadOnlyDictionary<int, QuestMaskNpcTable.Mask>? masks,
                                                            IReadOnlyList<SpawnPointNPC> npcSpawns,
@@ -82,6 +83,7 @@ public static class QuestMaskRules {
                 }
                 yield return point with {
                     EntityId = $"{point.EntityId}_mask{npcId}",
+                    SpawnPointId = 0,
                     NpcList = [new SpawnPointNPCListEntry(npcId, 1)],
                     PatrolData = null,
                 };

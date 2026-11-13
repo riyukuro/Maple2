@@ -110,8 +110,20 @@ public class QuestMaskNpcTests {
         Assert.That(added[0].Rotation, Is.EqualTo(karl.Rotation));
         Assert.That(added[0].SpawnOnFieldCreate, Is.True);
         Assert.That(added[0].RegenCheckTime, Is.EqualTo(10));
-        Assert.That(added[0].SpawnPointId, Is.EqualTo(karl.SpawnPointId));
+        Assert.That(added[0].SpawnPointId, Is.EqualTo(0));
         Assert.That(added[0].EntityId, Is.Not.EqualTo(karl.EntityId));
+    }
+
+    // A partner with a spawn id: the copy takes none, so a trigger by that id acts on the partner alone.
+    [Test]
+    public void PartnerSpawnTakesNoSpawnId() {
+        IReadOnlyDictionary<int, QuestMaskNpcTable.Mask> masks = Read().Fields[2000065];
+        SpawnPointNPC karl = Point("11000074_0", 11000074, new Vector3(300, 0, 300)) with { SpawnPointId = 101 };
+
+        SpawnPointNPC added = QuestMaskRules.PartnerSpawns(masks, [karl], []).Single();
+
+        Assert.That(added.SpawnPointId, Is.EqualTo(0));
+        Assert.That(added.NpcList.Single().NpcId, Is.EqualTo(11004779));
     }
 
     [Test]

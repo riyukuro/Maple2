@@ -82,6 +82,10 @@ public class NpcTalkHandler : FieldPacketHandler {
         if (!session.Field.Npcs.TryGetValue(objectId, out FieldNpc? npc)) {
             return; // Invalid Npc
         }
+        // The client hides an npc whose quest mask fails (QuestMaskRules.Visible) and sends no talk to it.
+        if (!session.Quest.MaskShows(session.Field.MapId, npc.Value.Id)) {
+            return;
+        }
 
         BeginTalk(session, npc);
     }

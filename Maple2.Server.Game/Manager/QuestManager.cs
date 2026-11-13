@@ -1160,6 +1160,18 @@ public sealed class QuestManager {
         return session.Item.Inventory.Find(item).Sum(held => (long) held.Amount);
     }
 
+    // Whether the player's client shows that npc in that field by its quest mask (table/questmasknpc.xml): true for an
+    // npc with no mask there.
+    public bool MaskShows(int mapId, int npcId) {
+        if (!session.TableMetadata.QuestMaskNpcTable.Fields.TryGetValue(mapId, out IReadOnlyDictionary<int, QuestMaskNpcTable.Mask>? masks)
+            || !masks.TryGetValue(npcId, out QuestMaskNpcTable.Mask? mask)) {
+            return true;
+        }
+        return QuestMaskRules.Visible(mask, questId => TryGetQuest(questId, out Quest? quest) && quest.State != QuestState.None
+            ? (quest.State, CanComplete(quest))
+            : (null, false));
+    }
+
     public bool TryGetQuest(int questId, [NotNullWhen(true)] out Quest? quest) {
         return characterValues.TryGetValue(questId, out quest) || accountValues.TryGetValue(questId, out quest);
     }

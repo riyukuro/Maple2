@@ -2717,9 +2717,6 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return new MaidTable(results, exps, recipes, groups);
     }
 
-    // The played client's fieldmetadata.xml when there is one (the copy its taxi box and quest window read), else the data pack's
-    // table/<pack region>/fieldmetadata.xml. As CFieldMetaTable::Load reads it, a <portal> without targetField repeats
-    // the one before it in the same <fieldPortal>.
     // The played client's table/questmasknpc.xml (else the data pack's): the npc masks the client applies.
     private QuestMaskNpcTable ParseQuestMaskNpcTable() {
         XmlDocument? document = ClientListedRows.PlayedTable(playedReader, FeatureLocaleFilter.Locale, TableNames.QUEST_MASK_NPC);
@@ -2755,7 +2752,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 bool enable = !key.HasAttribute("enableInMask") || Int(key, "enableInMask") != 0;
                 var ranges = new List<QuestMaskNpcTable.Range>();
                 foreach (XmlElement mask in key.SelectNodes("mask")?.OfType<XmlElement>() ?? []) {
-                    if (!FeatureLocaleFilter.FeatureEnabled(mask.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(mask.GetAttribute("locale"))) {
+                    if (!ClientListedRows.Available(mask)) {
                         continue;
                     }
                     ranges.Add(new QuestMaskNpcTable.Range(Int(mask, "startQuestID"), Int(mask, "startQuestState"),
@@ -2774,6 +2771,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
     }
 
+    // The played client's fieldmetadata.xml when there is one (the copy its taxi box and quest window read), else the data pack's
+    // table/<pack region>/fieldmetadata.xml. As CFieldMetaTable::Load reads it, a <portal> without targetField repeats
+    // the one before it in the same <fieldPortal>.
     private FieldMetaTable ParseFieldMetaTable() {
         XmlDocument? document = ClientListedRows.PlayedTable(playedReader, FeatureLocaleFilter.Locale, TableNames.FIELD_METADATA);
         if (document == null) {
