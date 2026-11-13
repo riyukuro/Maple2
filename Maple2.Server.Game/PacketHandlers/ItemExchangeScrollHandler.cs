@@ -86,8 +86,11 @@ public class ItemExchangeScroll : FieldPacketHandler {
                 }
             }
 
-            // The fee of all exchanges, tested and taken as one amount.
-            long fee = ItemExchangeScrollRules.Fee(scrollMetadata.RequiredMeso, quantity);
+            // The fee of all exchanges, tested and taken as one amount: the fee of one under a running
+            // ExchangeScrollSale event of the row, times the count (CheckExchangeRequirements,
+            // uiitemexchangescrolldialog.cpp:392).
+            int saleRate = EventSaleRules.ExchangeScrollSaleRate(session.FindEvent(GameEventType.ExchangeScrollSale), scrollId);
+            long fee = ItemExchangeScrollRules.Fee(EventSaleRules.ExchangeScrollFee(scrollMetadata.RequiredMeso, saleRate), quantity);
             if (fee < 0 || session.Currency.Meso < fee) {
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_money_invalid));
                 return;

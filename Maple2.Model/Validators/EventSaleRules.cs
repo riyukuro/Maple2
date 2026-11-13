@@ -64,6 +64,31 @@ public static class EventSaleRules {
         return rate;
     }
 
+    // The rate of the running ExchangeScrollSale events for an exchange scroll table row. The client keeps one rate
+    // per row, set as each event starts (CGameEventValueExchangeScrollSale::Set, gameeventvalue.cpp:1580), so of
+    // several events of one row the one that started last counts; this takes the latest start, then the higher id
+    // (chosen here: the client's order of events that start at the same time is not known).
+    public static int ExchangeScrollSaleRate(IEnumerable<GameEvent> events, int exchangeId) {
+        GameEvent? last = events
+            .Where(gameEvent => gameEvent.Metadata.Data is ExchangeScrollSale sale && sale.ExchangeIds.Contains(exchangeId))
+            .OrderBy(gameEvent => gameEvent.Metadata.StartTime).ThenBy(gameEvent => gameEvent.Id)
+            .LastOrDefault();
+        return (last?.Metadata.Data as ExchangeScrollSale)?.Rate ?? 0;
+    }
+
+    // The meso fee of one exchange under an ExchangeScrollSale rate, as the dialog shows it (CExchangeItemInfo::GetMeso
+    // and ApplyDiscount, itemexchangescrolltable.cpp:57 and :158): no rate, the fee; else
+    // (long) (fee * (1 - rate / 10000) + 0.000001) in doubles. The fee of count exchanges is that times count
+    // (GetTotalMeso, :66). Chosen here: the rate is held to 0..10000, so a data error neither raises the fee nor
+    // makes it negative (the client takes the rate unsigned and does not test it).
+    public static long ExchangeScrollFee(long meso, int rate) {
+        if (rate == 0) {
+            return meso;
+        }
+        double kept = 1.0 - (double) Math.Clamp(rate, 0, FullRate) / FullRate;
+        return (long) ((double) meso * kept + 1e-06);
+    }
+
     // The discount of a change of attributes: the higher of the sale rate and the character's fee attribute
     // (ReduceRemakeOptionFee 169 for an item, uiitemremakeoptiondialog CanPayRemakePrice; ReducePetRemakeOptionFee
     // 173 for a pet, tabcontentspetremakeoption.cpp:625), which the client turns into a rate out of 10000 as

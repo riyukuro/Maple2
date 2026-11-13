@@ -50,6 +50,23 @@ public static class EventSaleReader {
         return new SaleRemake(rate, type);
     }
 
+    // value1 the exchange scroll table rows, a comma list, value2 the rate (GameEventExchangeScrollSale,
+    // commonfiles/gameevent.cpp:6313). A place that is not a number gives no event (chosen here: the client's
+    // ParseIntArray reads it as 0, a row no scroll names); so does a row without ids or rate.
+    public static ExchangeScrollSale? ExchangeScroll(string? value1, string? value2) {
+        if (!int.TryParse(value2?.Trim(), out int rate) || rate <= 0) {
+            return null;
+        }
+        string[] places = Split(value1);
+        var ids = new int[places.Length];
+        for (int i = 0; i < places.Length; i++) {
+            if (!int.TryParse(places[i], out ids[i])) {
+                return null;
+            }
+        }
+        return ids.Length == 0 ? null : new ExchangeScrollSale(rate, ids);
+    }
+
     // value1 the special attribute ids, value2 their values, comma lists (GameEventSAHotTime,
     // commonfiles/gameevent.cpp:664). The client keeps a value of an attribute whose value type is a rate
     // (specialAbilityStringTable.xml valueType 2, isRate) as (int) (value * 1000) and any other as (int) value,

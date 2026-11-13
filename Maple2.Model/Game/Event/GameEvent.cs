@@ -412,6 +412,15 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(saleRemake.Rate);
                 writer.WriteByte(saleRemake.ItemType);
                 break;
+            case ExchangeScrollSale exchangeSale:
+                // GameEventExchangeScrollSale::vfunc_4 (gameevent.cpp:6349): the rate, the count, the row ids.
+                writer.WriteInt(Id);
+                writer.WriteInt(exchangeSale.Rate);
+                writer.WriteInt(exchangeSale.ExchangeIds.Length);
+                foreach (int exchangeId in exchangeSale.ExchangeIds) {
+                    writer.WriteInt(exchangeId);
+                }
+                break;
             case SaleBeautyShop saleBeautyShop:
                 writer.WriteInt(Id);
                 writer.WriteInt(saleBeautyShop.ShopId);

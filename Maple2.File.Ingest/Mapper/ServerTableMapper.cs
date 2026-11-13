@@ -1867,6 +1867,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventSaleReader.HelperBonus(value1);
             case GameEventType.SaleRemake:
                 return EventSaleReader.Remake(value1, value2);
+            case GameEventType.ExchangeScrollSale:
+                return EventSaleReader.ExchangeScroll(value1, value2);
             case GameEventType.SaleBeautyShop:
                 return EventSaleReader.BeautyShop(value1, value2, value3);
             case GameEventType.DungeonBonusReward:

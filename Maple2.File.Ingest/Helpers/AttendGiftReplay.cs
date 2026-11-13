@@ -10,8 +10,8 @@ namespace Maple2.File.Ingest.Helpers;
 // to start on the ingest day with its original length. Unset, the ingest is unchanged. The same holds for the
 // design price sale (SaleUgcDesign), the cube price sale (SaleHousing) and the dungeon helper bonus
 // (FindDungeonHelperBonus), the change of attributes sale (SaleRemake), the beauty fee sale (SaleBeautyShop), the
-// special attribute bonus (SAHotTime), the dungeon clear bonus (DungeonBonusReward) and the item collection
-// (CollectItemGroup): every row has ended, and the switch replays one of each. The event arcades' openings
+// special attribute bonus (SAHotTime), the dungeon clear bonus (DungeonBonusReward), the item collection
+// (CollectItemGroup) and the exchange scroll fee sale (ExchangeScrollSale): every row has ended, and the switch replays one of each. The event arcades' openings
 // (ArcadeOpen) have ended too; one is replayed per arcade, since each opens one arcade. The tree watering event
 // (TreeWatering) has ended too; its steps and emotion days move with it. Of the event minigames, the rock paper
 // scissors (RPS), the bingo (BingoEvent), the time run (TimeRunEvent) and the couple dance (CoupleDance) are
@@ -28,7 +28,7 @@ public static class AttendGiftReplay {
         GameEventType.SaleRemake, GameEventType.SaleBeautyShop, GameEventType.SAHotTime,
         GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup, GameEventType.ArcadeOpen,
         GameEventType.TreeWatering, GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent,
-        GameEventType.CoupleDance,
+        GameEventType.CoupleDance, GameEventType.ExchangeScrollSale,
     ];
 
     // The replayed types whose events are not taken without data (not read): the minigames, whose rules are all

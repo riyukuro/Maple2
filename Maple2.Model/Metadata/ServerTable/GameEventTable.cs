@@ -430,6 +430,13 @@ public record SaleRemake(
     int Rate,
     byte ItemType) : GameEventData;
 
+// The exchange scroll fee sale (GameEventExchangeScrollSale, commonfiles/gameevent.cpp:6313): value1 is a comma list
+// of exchange scroll table rows, value2 the rate out of 10000 taken off each row's meso fee
+// (EventSaleRules.ExchangeScrollFee).
+public record ExchangeScrollSale(
+    int Rate,
+    int[] ExchangeIds) : GameEventData;
+
 // The beauty fee sale (GameEventSaleBeautyShop, commonfiles/gameevent.cpp:760): value1 is the beauty shop's id,
 // value2 the rate out of 10000 taken off its fees, value3 the flag of a PC room row, which lowers nothing here
 // (EventSaleRules.BeautyShopRate).
@@ -603,6 +610,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(SaleHousing), "SaleHousing")]
 [JsonDerivedType(typeof(FindDungeonHelperBonus), "FindDungeonHelperBonus")]
 [JsonDerivedType(typeof(SaleRemake), "SaleRemake")]
+[JsonDerivedType(typeof(ExchangeScrollSale), "ExchangeScrollSale")]
 [JsonDerivedType(typeof(SaleBeautyShop), "SaleBeautyShop")]
 [JsonDerivedType(typeof(SAHotTime), "SAHotTime")]
 [JsonDerivedType(typeof(DungeonBonusReward), "DungeonBonusReward")]
