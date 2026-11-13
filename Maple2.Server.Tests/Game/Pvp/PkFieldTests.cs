@@ -269,6 +269,38 @@ public class PkFieldTests {
         });
     }
 
+    // A dot tick of the other player that takes the last health is that player's pk kill, as a hit is (Buff.ApplyDotDamage
+    // -> FieldPlayer.PkKilledBy): kill line, trophy and streak. A tick that leaves health is none.
+    [Test]
+    public void Kill_ByDotTick() {
+        Scene scene = Start(pk: true);
+        string kill = Convert.ToHexString(PlayerKillNoticePacket.Kill(scene.A.Value.Character.Name, scene.B.Value.Character.Name).ToArray());
+        typeof(FieldPlayer).GetField("regenClock", Any)!.SetValue(scene.B, new RegenClock());
+        Stat health = scene.B.Stats.Values[BasicAttribute.Health];
+        health.AddTotal(1000 - health.Total);
+        health.Add(1000 - health.Current);
+        List<string> Tick(int amount) {
+            AdditionalEffectMetadata poison = DisabledBuffTests.Effect(1) with {
+                Dot = new AdditionalEffectMetadataDot(new AdditionalEffectMetadataDot.DotDamage(AttackType.None, Element.None, UseGrade: false,
+                    Rate: 0, HpValue: amount, SpValue: 0, EpValue: 0, DamageByTargetMaxHp: 0, RecoverHpByDamage: 0, IsConstDamage: true, NotKill: false), null),
+            };
+            Buff tick = DisabledBuffTests.Held(poison, true);
+            typeof(Buff).GetField("<Caster>k__BackingField", Any)!.SetValue(tick, scene.A);
+            typeof(Buff).GetField("<Owner>k__BackingField", Any)!.SetValue(tick, scene.B);
+            typeof(Buff).GetMethod("ApplyDotDamage", Any)!.Invoke(tick, null);
+            scene.TestA.TakeSent();
+            return scene.TestB.TakeSent().Select(Convert.ToHexString).ToList();
+        }
+        List<string> wound = Tick(400);
+        List<string> last = Tick(5000);
+        Assert.Multiple(() => {
+            Assert.That(wound, Does.Not.Contain(kill));
+            Assert.That(last, Does.Contain(kill));
+            Assert.That(scene.A.PkStreak, Is.EqualTo(1));
+            Assert.That(scene.TestA.TrophyCounter(KillTrophy), Is.EqualTo(1));
+        });
+    }
+
     // A pk field outside the shadow world (the Mushtopia maps, continent unset) keeps the kill line, no streak notice.
     [Test]
     public void Kill_NoStreakOutsideShadowWorld() {

@@ -370,6 +370,7 @@ public class Buff : IUpdatable, IByteSerializable {
             BuffObjectId = ObjectId,
         };
         var targetUpdated = new List<BasicAttribute>(3);
+        long healthBefore = Owner.Stats.Values[BasicAttribute.Health].Current;
         if (record.HpAmount != 0) {
             Owner.Stats.Values[BasicAttribute.Health].Add(NpcTargetRules.HealthChange(Owner.Stats.Values[BasicAttribute.Health].Current, record.HpAmount, Owner is FieldNpc { NoDie: true } || Owner.Buffs.DeathResistance));
             targetUpdated.Add(BasicAttribute.Health);
@@ -396,6 +397,10 @@ public class Buff : IUpdatable, IByteSerializable {
             }
         }
         Field.Broadcast(SkillDamagePacket.DotDamage(record));
+        // A tick of another player's dot that takes the last health on a pk field is that player's kill.
+        if (Owner is FieldPlayer victim) {
+            victim.PkKilledBy(Caster, healthBefore);
+        }
         if (record.RecoverHp != 0) {
             Caster.Stats.Values[BasicAttribute.Health].Add(record.RecoverHp);
             Field.Broadcast(StatsPacket.Update(Caster, BasicAttribute.Health));

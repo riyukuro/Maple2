@@ -590,10 +590,7 @@ public class FieldPlayer : Actor<Player> {
                 Field.PvpZone.Damage(attacker, this, taken);
             }
         }
-        // The hit of another player that takes the last health on a pk field (FieldManager.PkKill).
-        if (caster is FieldPlayer pker && KilledByHit(healthBefore, Stats.Values[BasicAttribute.Health].Current)) {
-            Field.PkKill(pker, this);
-        }
+        PkKilledBy(caster, healthBefore);
         if (caster is not FieldPlayer) {
             // Boom Boom Ocean: a hit by a skill the game scores (the field's projectiles), when it lands.
             if (damage.Targets.TryGetValue(ObjectId, out DamageRecordTarget? hitRecord)
@@ -622,6 +619,14 @@ public class FieldPlayer : Actor<Player> {
             },
             Async = true,
         });
+    }
+
+    // The hit or dot tick of another player that takes the last health on a pk field (FieldManager.PkKill). A dot's
+    // last tick (Buff.ApplyDotDamage) counts as its caster's kill like a hit: Chosen here, no source says otherwise.
+    public void PkKilledBy(IActor caster, long healthBefore) {
+        if (caster is FieldPlayer pker && KilledByHit(healthBefore, Stats.Values[BasicAttribute.Health].Current)) {
+            Field.PkKill(pker, this);
+        }
     }
 
     // A hit kills when it takes a living player's health to 0; a later hit in the same tick finds no health left.
