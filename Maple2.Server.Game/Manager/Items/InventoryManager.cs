@@ -195,17 +195,22 @@ public class InventoryManager {
             }
 
             // A currency or medal item that has a row (a mail attachment) is used up here; with commit its row is
-            // written to owner 0 at once, as a merged-away item's. On the delete list only, the row stayed the mail's
-            // until the next character save, and collecting the mail again gave it again.
+            // written to owner 0 first and given only once that write is kept, so a failed write leaves it on the
+            // mail and gives nothing. On the delete list only, the row stayed the mail's until the next character
+            // save, and collecting the mail again gave it again.
             if (add.IsCurrency()) {
+                if (!UseUp(add, commit)) {
+                    return false;
+                }
                 AddCurrency(add);
-                session.Item.Inventory.Discard(add, commit);
                 return true;
             }
 
             if (add.Type.IsMedal) {
+                if (!UseUp(add, commit)) {
+                    return false;
+                }
                 session.Survival.AddMedal(add);
-                session.Item.Inventory.Discard(add, commit);
                 return true;
             }
 
@@ -1011,6 +1016,23 @@ public class InventoryManager {
                 delete.Add(item);
             }
         }
+    }
+
+    // Discard for an item given as something else (a currency, a medal): with commit and a row, the row must reach
+    // owner 0 before the item is given; a failed write is logged and nothing is given or listed.
+    private bool UseUp(Item item, bool commit) {
+        if (!commit || item.Uid == 0) {
+            Discard(item);
+            return true;
+        }
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            if (!db.SaveItems(0, item)) {
+                logger.Error("Item {ItemId} x{Amount}: row {Uid} not written to owner 0; not given", item.Id, item.Amount, item.Uid);
+                return false;
+            }
+        }
+        CountDestroyed(item);
+        return true;
     }
 
     private void CountDestroyed(Item item) {

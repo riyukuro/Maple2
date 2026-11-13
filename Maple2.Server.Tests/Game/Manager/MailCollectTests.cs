@@ -1,9 +1,11 @@
-using System;
+﻿using System;
+using System.Linq;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 using StoredItem = Maple2.Model.Game.Item;
 
 namespace Maple2.Server.Tests.Game.Manager;
@@ -39,6 +41,40 @@ public class MailCollectTests {
             Assert.That(second, Is.EqualTo(MailError.s_mail_error_already_receive));
             Assert.That(session.Currency.Meso - before, Is.EqualTo(1000));
             Assert.That(reload.GetMail(mailId, test.CharacterId)!.Items, Is.Empty);
+        });
+    }
+
+    // The meso item's row is written to owner 0 before the mesos are given: a write that fails gives nothing and
+    // leaves the item on the mail, so the next collect gives it once. The mesos were given first and the row stayed
+    // the mail's until the next character save, so a collect in between gave them again.
+    [Test]
+    public void Collect_CurrencyItem_FailedWrite_GivesNothing() {
+        GameSession session = Start();
+        StoredItem meso = session.Field!.ItemDrop.CreateItem(MesoItem)!;
+        meso.Amount = 1000;
+        long before = session.Currency.Meso;
+        long mailId = Mail(session, meso);
+
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Modified
+                                                                               && entry.Entity.GetType().Name == "Item");
+        MailError failed = session.Mail.Collect(mailId);
+        test.FailSave = null;
+        long afterFailed = session.Currency.Meso;
+        int left;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            left = db.GetMail(mailId, test.CharacterId)!.Items.Count;
+        }
+
+        MailError first = session.Mail.Collect(mailId);
+        MailError second = session.Mail.Collect(mailId);
+
+        Assert.Multiple(() => {
+            Assert.That(failed, Is.EqualTo(MailError.s_mail_error_receiveitem_to_inven));
+            Assert.That(afterFailed, Is.EqualTo(before));
+            Assert.That(left, Is.EqualTo(1));
+            Assert.That(first, Is.EqualTo(MailError.none));
+            Assert.That(second, Is.EqualTo(MailError.s_mail_error_already_receive));
+            Assert.That(session.Currency.Meso - before, Is.EqualTo(1000));
         });
     }
 
