@@ -935,6 +935,30 @@ public static class Lua {
         }
     }
 
+    // calcManufactureCompleteByMerat: the merets to finish a maid craft at once, from the seconds left (the dialog
+    // passes ready time - server time, so a ready craft gives 0 or less). Lua numbers are doubles.
+    public static long CalcManufactureCompleteByMerat(long seconds) {
+        double t = seconds;
+        double result;
+        if (t < 120) {
+            result = t / 120;
+        } else if (t < 3600) {
+            result = 1 + (t - 119) / 120 * 0.85;
+        } else if (t < 7200) {
+            result = 26 + (t - 3599) / 120 * 0.72;
+        } else if (t < 10800) {
+            result = 48 + (t - 7199) / 120 * 0.61;
+        } else if (t < 28800) {
+            result = 67 + (t - 10799) / 120 * 0.52;
+        } else {
+            result = 145 + (t - 28799) / 120 * 0.44;
+        }
+        if (Locale == LocaleCn) {
+            result = 6 * result;
+        }
+        return (long) Math.Ceiling(result);
+    }
+
     public static int GetMesoRevivalDailyMaxCount() {
         return 3;
     }

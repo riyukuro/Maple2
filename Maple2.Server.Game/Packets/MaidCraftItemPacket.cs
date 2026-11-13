@@ -15,6 +15,7 @@ public static class MaidCraftItemPacket {
         Remove = 3,
         CraftResult = 4,
         ReceiveResult = 6,
+        MeretReceiveResult = 7,
         CancelResult = 10,
         Reward = 11,
     }
@@ -58,6 +59,14 @@ public static class MaidCraftItemPacket {
         return pWriter;
     }
 
+    // The answer to a receive at once for merets (mode 7): the client reads it as the receive result.
+    public static ByteWriter MeretReceiveResult(int result) {
+        var pWriter = Packet.Of(SendOp.MaidCraftItem);
+        pWriter.WriteByte((byte) Command.MeretReceiveResult);
+        pWriter.WriteInt(result);
+        return pWriter;
+    }
+
     public static ByteWriter CancelResult(int result) {
         var pWriter = Packet.Of(SendOp.MaidCraftItem);
         pWriter.WriteByte((byte) Command.CancelResult);
@@ -66,7 +75,8 @@ public static class MaidCraftItemPacket {
     }
 
     // The reward page (FUN_1412e6c30): the product, its count and rarity, the maid exp gained, then the bonus, the
-    // jackpot flag and the merat flag. No jackpot or merat receive is handled, so those three are always 0.
+    // jackpot flag and the merat flag. No jackpot receive is handled and no bonus is given, so those three are always 0
+    // (the merat flag only changes the bonus line, which a bonus of 0 does not show).
     public static ByteWriter Reward(int itemId, int amount, int rarity, int exp) {
         var pWriter = Packet.Of(SendOp.MaidCraftItem);
         pWriter.WriteByte((byte) Command.Reward);

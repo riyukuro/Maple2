@@ -6,6 +6,8 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -16,9 +18,10 @@ using Maple2.Tools.Extensions;
 namespace Maple2.Server.Game.PacketHandlers;
 
 // The maid craft dialog's requests (UIManufactureDialog, client/ms2/ui/uimanufacturedialog.cpp), each for a maid of the
-// owner's home, named by its uid. Mode 4 starts a recipe of table/maidrecipe.xml, 6 receives a finished product, 10
-// cancels a craft. Mode 5 (the dialog's debug craft), 7 (receive at once for merets; the cost is client Lua), 8 and 9
-// (the jackpot receive; its rates are server-only) are not handled. All maid and inventory changes run on the field
+// owner's home, named by its uid. Mode 4 starts a recipe of table/maidrecipe.xml, 6 receives a finished product, 7
+// receives it at once for merets (the cost is the client's Lua calcManufactureCompleteByMerat of the seconds left), 10
+// cancels a craft. Mode 5 (the dialog's debug craft), 8 and 9 (the jackpot receive; its rates are server-only) are not
+// handled. All maid and inventory changes run on the field
 // thread of the maid's field, after the maid is found still placed there and owned by the requester.
 public class MaidCraftItemHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.MaidCraftItem;
@@ -26,6 +29,7 @@ public class MaidCraftItemHandler : FieldPacketHandler {
     private enum Command : byte {
         Craft = 4,
         Receive = 6,
+        MeretReceive = 7,
         Cancel = 10,
     }
 
@@ -45,6 +49,9 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 return;
             case Command.Receive:
                 HandleReceive(session, packet);
+                return;
+            case Command.MeretReceive:
+                HandleMeretReceive(session, packet);
                 return;
             case Command.Cancel:
                 HandleCancel(session, packet);
@@ -186,6 +193,110 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 session.Send(MaidCraftItemPacket.Reward(recipe.ProductItemId, amount, rarity, gained));
             }
         });
+    }
+
+    // Mode 7 (CManufactureManager::SendRequest7): the craft is received now, ready or not, for the merets the dialog
+    // shows (UIManufactureDialog::OnRecieveByMerat). The client tests only the meret balance (vfunc_40; red merets
+    // count only with feature 0x43, off here). The cost is worked out here from the stored craft, and the merets are
+    // taken only once the craft is cleared and the whole product is in the bag; a bag that took only part of it gives
+    // that part back and the craft is stored again.
+    private void HandleMeretReceive(GameSession session, IByteReader packet) {
+        long maidUid = packet.ReadLong();
+        FieldManager? field = session.Field;
+        Maid? found = field?.GetMaid(maidUid);
+        if (field == null || found == null || found.OwnerId != session.AccountId) {
+            return;
+        }
+        MaidTable table = TableMetadata.MaidTable;
+        IReadOnlyDictionary<int, int> exps = table.Exps ?? new Dictionary<int, int>();
+        int affinityMax = Constants.MaidAffinityMax;
+        field.Scheduler.Schedule(() => {
+            Maid? maid = field.GetMaid(maidUid);
+            if (!MaidRules.StillPlaced(maid, found) || found.OwnerId != session.AccountId || session.Field != field) {
+                return;
+            }
+            RefreshCraft(session, field, found);
+            if (!MaidRules.IsCrafting(found)) {
+                session.Send(MaidCraftItemPacket.MeretReceiveResult(MaidRules.CraftNoRecord));
+                return;
+            }
+            MaidTable.Recipe? recipe = table.Recipes?.GetValueOrDefault(found.CraftRecipeId);
+            if (recipe == null) {
+                return; // the recipe left the table: the craft stays until it is cancelled
+            }
+            Item? product = field.ItemDrop.CreateItem(recipe.ProductItemId, recipe.ProductRank, recipe.ProductCount);
+            if (product == null) {
+                return;
+            }
+            long now = DateTime.UtcNow.ToEpochSeconds();
+            long cost = Math.Max(0L, Lua.CalcManufactureCompleteByMerat(MaidRules.CraftReadyTime(found) - now));
+            float expRate = (float) session.Player.Stats.Values[SpecialAttribute.MaidExp].Multiplier();
+            lock (session.Item) {
+                if (!HasMerets(session, cost)) {
+                    session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
+                    return;
+                }
+                if (!session.Item.Inventory.HasRoomFor(product)) {
+                    return; // no client code for a full bag: the craft stays until there is room
+                }
+                // As in mode 6, the stored craft is cleared first, so of two receives of one craft only one gives it.
+                (int recipeId, long start, int duration) = (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration);
+                if (!field.SetMaidCraft(found, 0, 0, 0)) {
+                    SendRecord(session, found);
+                    if (!MaidRules.IsCrafting(found)) {
+                        session.Send(MaidCraftItemPacket.MeretReceiveResult(MaidRules.CraftNoRecord));
+                    }
+                    return;
+                }
+                int amount = product.Amount, rarity = product.Rarity;
+                Dictionary<long, int> held = session.Item.Inventory
+                    .Filter(item => item.Id == product.Id && item.Rarity == product.Rarity)
+                    .ToDictionary(item => item.Uid, item => item.Amount);
+                var added = new List<Item>();
+                bool whole = session.Item.Inventory.Add(product, true, onAdded: item => added.Add(item));
+                // The merets are tested again after the add: another purchase may have spent them meanwhile.
+                if (!whole || !HasMerets(session, cost)) {
+                    if (!TakeBack(session, added, held)) {
+                        Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: product {ItemId} not taken back after a failed meret receive",
+                            recipeId, maidUid, recipe.ProductItemId);
+                        return;
+                    }
+                    if (!field.SetMaidCraft(found, recipeId, start, duration)) {
+                        Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: the craft not restored after a failed meret receive",
+                            recipeId, maidUid);
+                    }
+                    if (whole) {
+                        session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
+                    }
+                    return;
+                }
+                if (cost > 0) {
+                    session.Currency.Meret -= cost;
+                }
+                Logger.Information("Maid craft {RecipeId} of maid {MaidUid} received for {Cost} merets by {CharacterId}",
+                    recipeId, maidUid, cost, session.CharacterId);
+                int gained = MaidRules.Finish(found, recipe, expRate, exps, affinityMax);
+                field.SaveMaid(found);
+                session.Send(MaidCraftItemPacket.Remove(maidUid));
+                session.Send(MaidCraftItemPacket.MeretReceiveResult(MaidRules.CraftReceived));
+                session.Send(MaidCraftItemPacket.Reward(recipe.ProductItemId, amount, rarity, gained));
+            }
+        });
+    }
+
+    private static bool HasMerets(GameSession session, long cost) => session.Currency.CanAddMeret(-cost) == -cost;
+
+    // Takes out of the bag what an add put in: each stack it merged into back to the amount |held| before it, each new
+    // row whole. False when a part could not be taken.
+    internal static bool TakeBack(GameSession session, IEnumerable<Item> added, IReadOnlyDictionary<long, int> held) {
+        bool all = true;
+        foreach (Item item in added.DistinctBy(item => item.Uid)) {
+            int put = item.Amount - held.GetValueOrDefault(item.Uid);
+            if (put > 0 && !session.Item.Inventory.Consume(item.Uid, put)) {
+                all = false;
+            }
+        }
+        return all;
     }
 
     // A cancelled craft gives nothing back.
