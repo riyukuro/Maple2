@@ -533,6 +533,35 @@ public class ModelHouseStaleFieldTests {
         });
     }
 
+    // A stray whose delete after the swap fails, with another cube turned meanwhile: the turn is still written.
+    // Before, the failed delete stayed tracked in the save's context and went out again with the rotation write,
+    // which failed with it, so the cube was turned back while the client had shown the turn.
+    [Test]
+    public void StrayAfterTheCopy_FailedDelete_KeepsTheTurnWrite() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        PlotCube cube = plot.Cubes[new Vector3B(-1, -1, 0)];
+        Vector3B other = plot.Cubes.Keys.First(position => position != cube.Position);
+        float before = plot.Cubes[other].Rotation;
+        DuringTheSave(() => {
+            lock (plot.EditLock) {
+                plot.Cubes.Remove(cube.Position);
+                plot.StrayRows.Add(cube.Id);
+            }
+            Assert.That(session.Housing.TryRotateCube(plot, other, true, out _), Is.True);
+            test.FailSave = context => context.ChangeTracker.Entries<UgcMapCube>().Any(entry => entry.State == EntityState.Deleted);
+        });
+        Commit(home, session);
+        test.FailSave = null;
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes[other].Rotation, Is.Not.EqualTo(before));
+            Assert.That(db.GetCubeRotations(plot.Id)[plot.Cubes[other].Id], Is.EqualTo(plot.Cubes[other].Rotation));
+            Assert.That(plot.StrayRows, Does.Contain(cube.Id));
+        });
+    }
+
     // A cube turned between the copy and the write has its rotation written again by the save, outside lock(Plots):
     // a database write under the field-wide lock. Before, the save wrote it with lock(Plots) held.
     [Test]

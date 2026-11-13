@@ -140,11 +140,14 @@ public partial class FieldManager {
             lock (plot.EditLock) {
                 // The stray rows the save deleted are gone. One it wrote again (a cube copied, then removed with a
                 // failed delete, has its row rewritten) is deleted again here, so the row does not outlive this
-                // instance in memory only; if that delete fails too it stays a stray for the next save.
+                // instance in memory only; if that delete fails too it stays a stray for the next save. Each write
+                // here has a context of its own: a failed write leaves its change tracked in its context, and the
+                // save's would send it again with every later write (a failed delete then failed each rotation).
                 HashSet<long> rewritten = saved.Values.Select(result => result.Id).ToHashSet();
                 plot.StrayRows.ExceptWith(rows.Where(id => !rewritten.Contains(id)));
                 foreach (PlotCube stray in saved.Values.Where(result => plot.StrayRows.Contains(result.Id)).ToList()) {
-                    if (db.DeleteCube(stray)) {
+                    using GameStorage.Request deleteDb = GameStorage.Context();
+                    if (deleteDb.DeleteCube(stray)) {
                         plot.StrayRows.Remove(stray.Id);
                     } else {
                         logger.Error("Failed to delete stray cube row {CubeId} at position {Position}.", stray.Id, stray.Position);
@@ -172,7 +175,8 @@ public partial class FieldManager {
                 // Written under the edit lock, as a rotation is (HousingManager.TryRotateCube), and not under
                 // lock(Plots). A turn whose row cannot be written is undone, so the cube stays what its row holds.
                 foreach ((PlotCube cube, float rotation) in turned) {
-                    if (db.SetCubeRotation(cube.Id, rotation)) {
+                    using GameStorage.Request rotationDb = GameStorage.Context();
+                    if (rotationDb.SetCubeRotation(cube.Id, rotation)) {
                         cube.Rotation = rotation;
                     } else {
                         logger.Error("Failed to save the rotation of cube {CubeId} at position {Position}.", cube.Id, cube.Position);
