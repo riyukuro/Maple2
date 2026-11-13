@@ -29,4 +29,16 @@ public class ItemSocketScrollIngestTests {
             Assert.That(rows[10000030], Is.EqualTo(new ServerItemSocketScroll.Entry(7000, 1)));
         });
     }
+
+    // An ingest without the server pack reads no server row, so every socket scroll is left out: it now says so.
+    // Before, the table came out empty with no line.
+    [Test]
+    public void NoServerRows_Warns() {
+        Assert.Multiple(() => {
+            Assert.That(ServerItemSocketScroll.Read((Maple2.File.IO.M2dReader?) null), Is.Empty);
+            Assert.That(ServerItemSocketScroll.MissingWarning(166, 0), Does.Contain("all 166 socket scrolls"));
+            Assert.That(ServerItemSocketScroll.MissingWarning(166, 165), Does.Contain("1 of 166"));
+            Assert.That(ServerItemSocketScroll.MissingWarning(166, 166), Is.Null);
+        });
+    }
 }

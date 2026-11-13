@@ -22,6 +22,17 @@ public static class ServerItemSocketScroll {
         return Read(reader.GetXmlReader(entry));
     }
 
+    // The ingest's line when client scrolls have no server row (they are left out and refused as unknown), most of
+    // all when the ingest runs without the server pack and every scroll goes; null when every scroll has its row.
+    public static string? MissingWarning(int clientRows, int kept) {
+        if (kept >= clientRows) {
+            return null;
+        }
+        return kept == 0
+            ? $"WARNING itemsocketscroll: no scroll has a row in {File} (no server pack?); all {clientRows} socket scrolls will be refused"
+            : $"WARNING itemsocketscroll: {clientRows - kept} of {clientRows} scrolls have no row in {File} and will be refused";
+    }
+
     public static Dictionary<int, Entry> Read(XmlReader xml) {
         var results = new Dictionary<int, Entry>();
         while (xml.Read()) {

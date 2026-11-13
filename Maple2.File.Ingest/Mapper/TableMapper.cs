@@ -1591,7 +1591,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
         // no server row is left out, so the server refuses it as an unknown scroll (chosen here; every KR row has one).
         Dictionary<int, ServerItemSocketScroll.Entry> serverRows = ServerItemSocketScroll.Read(serverReader);
         var results = new Dictionary<int, ItemSocketScrollMetadata>();
+        var clientIds = new HashSet<int>();
         foreach ((int id, ItemSocketScroll scroll) in parser.ParseItemSocketScroll()) {
+            clientIds.Add(id);
             if (!serverRows.TryGetValue(id, out ServerItemSocketScroll.Entry serverRow)) {
                 continue;
             }
@@ -1603,6 +1605,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 SocketCount: serverRow.OpenCount,
                 TradableCountDeduction: scroll.tradableCountDeduction,
                 SuccessRate: serverRow.SuccessProb));
+        }
+        if (ServerItemSocketScroll.MissingWarning(clientIds.Count, results.Count) is { } warning) {
+            Console.WriteLine(warning);
         }
 
         return new ItemSocketScrollTable(results);
