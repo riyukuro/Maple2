@@ -53,12 +53,14 @@ public static class BeautyRules {
 
     // The client shows a shop item locked and keeps its save button off while the character is under the item's
     // level or the item's trophy is not past the grade (uibeautyshopstyledialog.cpp:709 FUN_140f02860, with
-    // IsBeforeStartGrade, achievemanager.cpp:447; the save button, uibeautyshopdialog.cpp:1412-1421).
-    public static bool IsLocked(short level, short requiredLevel, int achievementId, Func<bool> hasGrade) {
+    // IsBeforeStartGrade, achievemanager.cpp:447; the save button, uibeautyshopdialog.cpp:1412-1421). The trophy
+    // part is open once the start grade is past the row's grade (uibeautyshopstyledialog.cpp:702); the start grade
+    // is at least 1, so a row with grade 0 is never locked by its trophy.
+    public static bool IsLocked(short level, short requiredLevel, int achievementId, int achievementRank, Func<bool> hasGrade) {
         if (requiredLevel > 0 && requiredLevel > level) {
             return true;
         }
-        return achievementId > 0 && !hasGrade();
+        return achievementId > 0 && achievementRank > 0 && !hasGrade();
     }
 
     // Mode 3 (new item from the shop): u8 shop id, u8 free try, i32 item id, i64 the value the shop-open

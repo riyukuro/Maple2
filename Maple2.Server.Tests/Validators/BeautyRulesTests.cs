@@ -162,4 +162,20 @@ public class BeautyRulesTests {
         Assert.That(reader.ReadLong(), Is.EqualTo(0x1122334455667788));
         Assert.That(reader.Available, Is.EqualTo(0));
     }
+
+    // The trophy part of a shop row locks until the row's grade is cleared; a grade 0 row is open, as the client's
+    // start grade (1 or more) is always past it (uibeautyshopstyledialog.cpp:702, achievemanager.cpp:452).
+    [TestCase(0, 0, false, false)]
+    [TestCase(21100001, 0, false, false)]
+    [TestCase(21100001, 2, false, true)]
+    [TestCase(21100001, 2, true, false)]
+    public void IsLocked_TrophyGrade(int achievementId, int rank, bool hasGrade, bool locked) {
+        Assert.That(BeautyRules.IsLocked(60, 0, achievementId, rank, () => hasGrade), Is.EqualTo(locked));
+    }
+
+    [Test]
+    public void IsLocked_Level() {
+        Assert.That(BeautyRules.IsLocked(39, 40, 0, 0, () => true), Is.True);
+        Assert.That(BeautyRules.IsLocked(40, 40, 0, 0, () => true), Is.False);
+    }
 }

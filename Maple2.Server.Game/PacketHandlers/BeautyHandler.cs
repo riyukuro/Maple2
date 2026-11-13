@@ -186,7 +186,7 @@ public class BeautyHandler : FieldPacketHandler {
         if (entry == null) {
             return;
         }
-        if (BeautyRules.IsLocked(session.Player.Value.Character.Level, entry.RequiredLevel, entry.AchievementId,
+        if (BeautyRules.IsLocked(session.Player.Value.Character.Level, entry.RequiredLevel, entry.AchievementId, entry.AchievementRank,
                 () => session.Achievement.HasAchievement(entry.AchievementId, entry.AchievementRank))) {
             return;
         }
