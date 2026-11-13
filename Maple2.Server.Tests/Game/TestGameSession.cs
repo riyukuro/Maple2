@@ -651,9 +651,24 @@ public sealed class TestGameSession {
             return PlayerWarpAnswer ?? new PlayerWarpResponse { Error = -1 };
         }
 
+        // Thrown by MigrateOut after the move is recorded, as the World server refuses a move (a channel that is gone).
+        public RpcException? MoveError;
+
         public override MigrateOutResponse MigrateOut(MigrateOutRequest request, CallOptions options) {
             Moves.Add(request);
+            if (MoveError != null) {
+                throw MoveError;
+            }
             return new MigrateOutResponse { IpAddress = MoveAddress, Port = MovePort, Token = 1 };
+        }
+
+        // The channel list (ChannelPacket.Load), the World's active channels.
+        public readonly List<int> ChannelList = [1, 2];
+
+        public override ChannelsResponse Channels(ChannelsRequest request, CallOptions options) {
+            var response = new ChannelsResponse();
+            response.Channels.AddRange(ChannelList);
+            return response;
         }
 
         // Called at each account lock taken (on the taking thread).
