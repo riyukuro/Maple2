@@ -64,18 +64,23 @@ public class ItemGemstone : IByteSerializable, IByteDeserializable {
     public ItemStats? Stats;
     public bool IsLocked;
     public long UnlockTime;
+    // Server only, not written: the bag gem's transfer (trade count, flag, binding) kept while it sits in the socket,
+    // so the gem taken out again is the gem that went in. Null on a gem socketed before it was kept.
+    public ItemTransfer? Transfer;
 
-    public ItemGemstone(int itemId = 0, ItemBinding? binding = null, ItemStats? stats = null, bool isLocked = false, long unlockTime = 0) {
+    public ItemGemstone(int itemId = 0, ItemBinding? binding = null, ItemStats? stats = null, bool isLocked = false, long unlockTime = 0,
+        ItemTransfer? transfer = null) {
         if (stats == null) throw new ArgumentNullException(nameof(stats));
         ItemId = itemId;
         Binding = binding;
         IsLocked = isLocked;
         UnlockTime = unlockTime;
         Stats = stats;
+        Transfer = transfer;
     }
 
     public ItemGemstone Clone() {
-        return new ItemGemstone(ItemId, Binding?.Clone(), Stats?.Clone(), IsLocked, UnlockTime);
+        return new ItemGemstone(ItemId, Binding?.Clone(), Stats?.Clone(), IsLocked, UnlockTime, Transfer?.Clone());
     }
 
     public void WriteTo(IByteWriter writer) {

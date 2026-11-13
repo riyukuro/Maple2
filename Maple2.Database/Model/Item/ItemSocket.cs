@@ -25,16 +25,17 @@ internal record ItemSocket(byte MaxSlots, ItemGemstone[] Sockets) {
     }
 }
 
-internal record ItemGemstone(int ItemId, ItemBinding Binding, ItemStats Stats, bool IsLocked, long UnlockTime) {
+// Transfer is null on a row saved before the gem's transfer was kept.
+internal record ItemGemstone(int ItemId, ItemBinding Binding, ItemStats Stats, bool IsLocked, long UnlockTime, ItemTransfer? Transfer = null) {
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator ItemGemstone?(Maple2.Model.Game.ItemGemstone? other) {
         return other == null ? null :
-            new ItemGemstone(other.ItemId, other.Binding!, other.Stats!, other.IsLocked, other.UnlockTime);
+            new ItemGemstone(other.ItemId, other.Binding!, other.Stats!, other.IsLocked, other.UnlockTime, other.Transfer);
     }
 
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator Maple2.Model.Game.ItemGemstone?(ItemGemstone? other) {
         return other == null ? null :
-            new Maple2.Model.Game.ItemGemstone(other.ItemId, other.Binding, other.Stats, other.IsLocked, other.UnlockTime);
+            new Maple2.Model.Game.ItemGemstone(other.ItemId, other.Binding, other.Stats, other.IsLocked, other.UnlockTime, other.Transfer);
     }
 }

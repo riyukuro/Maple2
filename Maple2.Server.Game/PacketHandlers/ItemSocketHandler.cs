@@ -347,7 +347,10 @@ public class ItemSocketHandler : FieldPacketHandler {
             }
 
             // item.Socket cannot be null after CheckSocketSlot()
-            var itemGemstone = new ItemGemstone(gem.Id, gem.Binding, gem.Stats, gem.IsLocked, gem.UnlockTime);
+            // The socketed gem's binding is the gem's trade binding (the bag gem's writer sends Transfer.Binding in the
+            // same place), and its whole transfer is kept for the take-off.
+            ItemTransfer? transfer = gem.Transfer?.Clone();
+            var itemGemstone = new ItemGemstone(gem.Id, transfer?.Binding?.Clone(), gem.Stats?.Clone(), gem.IsLocked, gem.UnlockTime, transfer);
             item.Socket!.Sockets[socketSlot] = itemGemstone;
             session.Send(ItemSocketPacket.EquipGemstone(item.Uid, socketSlot, itemGemstone));
             session.ConditionUpdate(ConditionType.gemstone_puton);
@@ -385,6 +388,9 @@ public class ItemSocketHandler : FieldPacketHandler {
             ItemGemstone itemGemstone = item.Socket!.Sockets[socketSlot]!;
             // The price is taken only for a gemstone that exists and has a slot to go to.
             Item? gem = session.Field?.ItemDrop.CreateItem(itemGemstone.ItemId, rarity: Constant.GemstoneGrade);
+            if (gem != null) {
+                RestoreGemstone(gem, itemGemstone);
+            }
             SocketPrice? price = null;
             switch (GemstoneUnequipRules.TakeOut(gem != null, gem != null && session.Item.Inventory.CanAdd(gem),
                         () => TakeGemstoneUnequipMesos(itemGemstone, item.Metadata.Property.SkinType, out price))) {
@@ -415,6 +421,18 @@ public class ItemSocketHandler : FieldPacketHandler {
         }
 
         #region Local Function
+        // The gem taken out is the gem that went in: its trade count, binding and lock, not a fresh item's (a fresh
+        // transfer unbound a bound gem and reset its trades). Its stats are the fresh gem's, rolled for its id: a gem
+        // upgraded in the socket changed only its id. A gem socketed before its transfer was kept gets back its lock
+        // only: its record's binding was the bag gem's storage binding, not a trade binding.
+        static void RestoreGemstone(Item gem, ItemGemstone socketed) {
+            if (socketed.Transfer != null) {
+                gem.Transfer = socketed.Transfer.Clone();
+            }
+            gem.IsLocked = socketed.IsLocked;
+            gem.UnlockTime = socketed.UnlockTime;
+        }
+
         // The client's price (FUN_1406284f0 with the gem's level and the item's skin type: free for an outfit).
         bool TakeGemstoneUnequipMesos(ItemGemstone gemstone, int skinType, out SocketPrice? price) {
             price = null;
