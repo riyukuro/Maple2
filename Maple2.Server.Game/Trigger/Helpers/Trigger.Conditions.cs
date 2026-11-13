@@ -250,11 +250,11 @@ public partial class Trigger {
         public bool Evaluate(TriggerContext context) => context.ScoreBoardScore(score, operatorType);
     }
 
-    public class ShadowExpeditionPoints(int score) : ICondition {
+    public class ShadowExpeditionPoints(int point) : ICondition {
         public string Name => "shadow_expedition_points";
         public string? NextState { get; set; }
         public LinkedList<IAction> Actions { get; set; } = [];
-        public bool Evaluate(TriggerContext context) => context.ShadowExpeditionPoints(score);
+        public bool Evaluate(TriggerContext context) => context.ShadowExpeditionPoints(point);
     }
 
     public class TimeExpired(string timerId) : ICondition {

@@ -82,9 +82,12 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     // Accessors
-    public bool ShadowExpeditionPoints(int score) {
-        ErrorLog("[GetShadowExpeditionPoints]");
-        return 0 >= score;
+    // The boss gauge's points (shadow_expedition_points, point >= GreaterEqual) have no known source: no table, npc
+    // field or script raises them and the client only shows what 0xE1 sends. The threshold passes, as it did before
+    // the attribute was read, so the scripts go on.
+    public bool ShadowExpeditionPoints(int point) {
+        DebugLog("[GetShadowExpeditionPoints] point:{Point} passes (no points source)", point);
+        return true;
     }
 
     // The instance's dungeon variable equals value; an id never set reads 0.

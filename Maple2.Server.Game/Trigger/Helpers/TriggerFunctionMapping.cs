@@ -253,7 +253,7 @@ public static class TriggerFunctionMapping {
         { "quest_user_detected", attrs => new Trigger.QuestUserDetected(ParseIntArray(attrs?["box_ids"]?.Value), ParseIntArray(attrs?["quest_ids"]?.Value), ParseIntArray(attrs?["quest_states"]?.Value), ParseInt(attrs?["job_code"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "random_condition", attrs => new Trigger.RandomCondition(ParseFloat(attrs?["weight"]?.Value), attrs?["desc"]?.Value ?? string.Empty) },
         { "score_board_score", attrs => new Trigger.ScoreBoardScore(ParseInt(attrs?["score"]?.Value), ParseOperatorType(attrs?["operator"]?.Value ?? attrs?["compare_op"]?.Value)) },
-        { "shadow_expedition_points", attrs => new Trigger.ShadowExpeditionPoints(ParseInt(attrs?["score"]?.Value)) },
+        { "shadow_expedition_points", attrs => new Trigger.ShadowExpeditionPoints(ParseInt(attrs?["point"]?.Value)) },
         { "time_expired", attrs => new Trigger.TimeExpired(attrs?["timer_id"]?.Value ?? string.Empty) },
         { "user_detected", ParseUserDetected },
         { "user_value", attrs => new Trigger.UserValue(attrs?["key"]?.Value ?? string.Empty, ParseInt(attrs?["value"]?.Value), ParseUserValueOperator(attrs?["operator"]?.Value), ParseBool(attrs?["negate"]?.Value)) },

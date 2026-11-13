@@ -245,7 +245,7 @@ public interface ITriggerContext {
     public bool QuestUserDetected(int[] boxIds, int[] questIds, int[] questStates, int jobCode, bool negate);
     public bool RandomCondition(float weight, string desc);
     public bool ScoreBoardScore(int score, OperatorType operatorType);
-    public bool ShadowExpeditionPoints(int score);
+    public bool ShadowExpeditionPoints(int point);
     public bool TimeExpired(string timerId);
     public bool UserDetected(int[] boxIds, JobCode jobCode, bool negate);
     public bool UserValue(string key, int value, OperatorType operatorType, bool negate);
