@@ -747,6 +747,26 @@ public sealed partial class GameSession : Core.Network.Session {
         Field = newField;
         Player.Dispose();
         Player = Field.SpawnPlayer(this, Player, portalId, position, rotation);
+        // The field was retired between the factory's answer and the spawn (another entry found the home's model
+        // house applied since it was loaded): the factory now loads the home again, so the player goes there.
+        // Before, the player entered the retired field, which the factory disposes. Should the new load fail, the
+        // player stays in the retired field (logged).
+        if (Field.Retired && Field is not DungeonFieldManager) {
+            FieldManager? again = FieldFactory.Get(mapId, ownerId: ownerId, roomId: roomId);
+            if (again != null && !again.Retired) {
+                Field.RemovePlayer(Player.ObjectId, out _);
+                // The spawn there pushed its return map (when it saves one); the spawn here pushes it again.
+                if (FieldEntryRules.SavesReturnMap(Field.FieldInstance.Type, Field.FieldInstance.SaveField, false, Field.Metadata.Property.EnterReturnId)
+                    && !Player.Value.Character.ReturnMaps.IsEmpty) {
+                    Player.Value.Character.ReturnMaps.Pop();
+                }
+                Field = again;
+                Player.Dispose();
+                Player = Field.SpawnPlayer(this, Player, portalId, position, rotation);
+            } else {
+                Logger.Error("Field {MapId} of {OwnerId} was retired and not loaded again", mapId, ownerId);
+            }
+        }
         Stat health = Stats.Values[BasicAttribute.Health];
         if (RevivalRules.FillsHpOnFieldEntry(leftDead, health.Current)) {
             health.Current = health.Total;

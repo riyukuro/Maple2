@@ -34,6 +34,25 @@ namespace Maple2.Server.Game.Manager.Field;
 public partial class FieldManager {
     // Actors
     public ConcurrentDictionary<int, FieldPlayer> Players { get; } = [];
+    // Players spawned here (PrepareField) who have not entered yet (OnAddPlayer) nor left: the client is loading
+    // the map. Key: object id.
+    private readonly ConcurrentDictionary<int, byte> arriving = [];
+    private readonly object entryLock = new();
+    // Taken out of the factory's list to be disposed (a home whose model house was applied since it was loaded):
+    // nobody is let in any more.
+    public bool Retired { get; private set; }
+
+    // Retires the field when nobody is in it nor on the way in; false (nothing changed) otherwise. The arrival
+    // in SpawnPlayer takes the same lock, so a player is either counted here or sees Retired there.
+    public bool TryRetire() {
+        lock (entryLock) {
+            if (!Players.IsEmpty || !arriving.IsEmpty) {
+                return false;
+            }
+            Retired = true;
+            return true;
+        }
+    }
     public ConcurrentDictionary<int, FieldNpc> Npcs { get; } = [];
     public ConcurrentDictionary<int, FieldNpc> Mobs { get; } = [];
     public ConcurrentDictionary<int, FieldPet> Pets { get; } = [];
@@ -126,6 +145,11 @@ public partial class FieldManager {
             player.Character.ReturnMaps.Push(Metadata.Property.EnterReturnId);
         }
 
+        lock (entryLock) {
+            if (!Retired) {
+                arriving[fieldPlayer.ObjectId] = 0;
+            }
+        }
         return fieldPlayer;
     }
 
@@ -1736,6 +1760,8 @@ public partial class FieldManager {
 
     #region Remove
     public virtual bool RemovePlayer(int objectId, [NotNullWhen(true)] out FieldPlayer? fieldPlayer) {
+        // A player who leaves while the map loads (a disconnect, another warp) is no longer on the way in.
+        arriving.TryRemove(objectId, out _);
         if (Players.TryRemove(objectId, out fieldPlayer)) {
             CommitPlot(fieldPlayer.Session);
             fieldPlayer.Session.Ride.LeaveField(this);
@@ -1911,6 +1937,8 @@ public partial class FieldManager {
             StartGuildVsGame().Arrive(added);
         }
         Players[added.ObjectId] = added;
+        // After the add: Players and arriving are never both without the player in between (TryRetire).
+        arriving.TryRemove(added.ObjectId, out _);
         // A dungeon room's timer starts with its first player; later players get the running one.
         if (RoomTimer == null && this is DungeonFieldManager dungeonField) {
             dungeonField.StartRoomTimer();

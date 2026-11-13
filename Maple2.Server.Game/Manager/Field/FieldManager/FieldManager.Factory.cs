@@ -366,7 +366,8 @@ public partial class FieldManager {
         // applied since (RequestHome 3, which deletes the cubes the field still holds and places the template's), so
         // the field is not entered and the home is loaded again. Without this the owner came back to the old cubes
         // for the field's empty time, and leaving saved the old list (refused: its rows are gone). Chosen here: a
-        // field that has players keeps them and stays (an unnamed home with visitors only); a name given another
+        // field that has players, or a player loading its map (TryRetire), keeps them and stays (an unnamed home with
+        // visitors only); a name given another
         // way (SetName) only reloads an empty field, whose cubes were saved when the owner left.
         private bool MadeSinceLoaded(HomeFieldManager field) {
             if (!field.Players.IsEmpty || !string.IsNullOrEmpty(field.Home.Indoor.Name)) {
@@ -542,6 +543,10 @@ public partial class FieldManager {
             subDungeonFields.Clear();
             cancel.Cancel();
             thread.Join();
+            // A home retired since the loop's last pass is disposed too. Before, it was left undisposed at shutdown.
+            while (retired.TryDequeue(out FieldManager? old)) {
+                old.Dispose();
+            }
         }
 
         private SemaphoreSlim GetMapLock(int mapId) {
@@ -570,7 +575,7 @@ public partial class FieldManager {
                         if (!homes.TryGetValue(ownerId, out HomeFieldManager? homeField)) {
                             return Create(mapId, ownerId: ownerId, roomId: roomId, instanceFieldMetadata: metadata);
                         }
-                        if (MadeSinceLoaded(homeField)) {
+                        if (MadeSinceLoaded(homeField) && homeField.TryRetire()) {
                             // Its cubes are not the home's: a model house replaced them in the database (InitNewHome).
                             homes.TryRemove(new KeyValuePair<long, HomeFieldManager>(ownerId, homeField));
                             retired.Enqueue(homeField);

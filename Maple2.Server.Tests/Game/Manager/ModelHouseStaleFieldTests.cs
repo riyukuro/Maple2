@@ -122,6 +122,12 @@ public class ModelHouseStaleFieldTests {
         foreach (FieldInfo field in typeof(FieldManager.Factory).GetFields(any).Where(field => field.Name == "retired")) {
             field.SetValue(factory, Activator.CreateInstance(field.FieldType));
         }
+        Set("dungeons", new ConcurrentDictionary<int, DungeonFieldManager>());
+        Set("subDungeonFields", new ConcurrentDictionary<int, DungeonFieldManager>());
+        Set("cancel", new CancellationTokenSource());
+        var done = new Thread(() => { });
+        done.Start();
+        Set("thread", done);
         Set("<GameStorage>k__BackingField", test.Storage);
         Set("<MapMetadata>k__BackingField", test.MapMetadata);
         Set("<ServerTableMetadata>k__BackingField", test.ServerTableMetadata);
@@ -153,5 +159,67 @@ public class ModelHouseStaleFieldTests {
             Assert.That(after, Is.Not.SameAs(home));
             Assert.That(factory.FindHome(session.AccountId), Is.Not.SameAs(home));
         });
+    }
+
+    // The unnamed home with the owner's (or a visitor's) map still loading (spawned by PrepareField, not yet
+    // entered): an entry after the model house keeps that field, as one with players in it, so the loading player
+    // does not come into a field the factory disposes. Once the player has left it, the home is loaded again.
+    // Before, the field was retired with the player on the way in.
+    [Test]
+    public void PlayerOnTheWayIn_KeepsTheField() {
+        (GameSession session, Plot _) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        home.Players.Clear();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            typeof(HomeFieldManager).GetField("<Home>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(home, db.GetHome(session.AccountId)!);
+        }
+        FieldManager.Factory factory = Factory(home);
+        // As SpawnPlayer leaves the player it made (the test session's managers cannot spawn one).
+        const int objectId = 77;
+        ((ConcurrentDictionary<int, byte>) typeof(FieldManager).GetField("arriving", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(home)!)[objectId] = 0;
+
+        session.Housing.InitNewHome("home", template);
+        FieldManager? loading = factory.Get(home.MapId, session.AccountId);
+        home.RemovePlayer(objectId, out _);
+        FieldManager? left = factory.Get(home.MapId, session.AccountId);
+
+        Assert.Multiple(() => {
+            Assert.That(loading, Is.SameAs(home));
+            Assert.That(left, Is.Not.SameAs(home));
+            Assert.That(home.Retired, Is.True);
+        });
+    }
+
+    // A home retired since the dispose loop's last pass is disposed when the factory is (the channel's shutdown).
+    // Before, it was left undisposed.
+    [Test]
+    public void Shutdown_DisposesARetiredHome() {
+        (GameSession session, Plot _) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        home.Players.Clear();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            typeof(HomeFieldManager).GetField("<Home>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(home, db.GetHome(session.AccountId)!);
+        }
+        FieldManager.Factory factory = Factory(home);
+        session.Housing.InitNewHome("home", template);
+        Assert.That(factory.Get(home.MapId, session.AccountId), Is.Not.SameAs(home));
+        // What the field's own Dispose stops: its thread (done here), its token and its navigation.
+        void Set(string name, object value) => typeof(FieldManager).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(home, value);
+        Set("logger", Log.Logger);
+        Set("cancel", new CancellationTokenSource());
+        var done = new Thread(() => { });
+        done.Start();
+        Set("thread", done);
+        Set("<Navigation>k__BackingField", RuntimeHelpers.GetUninitializedObject(typeof(Navigation)));
+        Set("<DebugGraphicsContext>k__BackingField", new Maple2.Server.Game.DebugGraphics.HeadlessGraphicsContext());
+
+        factory.Dispose();
+
+        Assert.That(home.Disposed, Is.True);
     }
 }
