@@ -17,6 +17,7 @@ public static class FittingDollPacket {
         Remove = 1,
         PutOn = 6,
         PutOff = 7,
+        Transform = 8,
         Error = 11,
     }
 
@@ -60,6 +61,15 @@ public static class FittingDollPacket {
         pWriter.WriteByte((byte) Command.PutOff);
         pWriter.WriteLong(doll.Uid);
         pWriter.WriteByte((byte) slot);
+        return pWriter;
+    }
+
+    // The answer to a swap, to the one who asked: the client plays the swap pose on its own character and the doll.
+    public static ByteWriter Transform(FieldFittingDoll doll, FittingDollRules.TransformResult result) {
+        var pWriter = Packet.Of(SendOp.FittingDoll);
+        pWriter.WriteByte((byte) Command.Transform);
+        pWriter.WriteLong(doll.Uid);
+        pWriter.WriteInt((int) result);
         return pWriter;
     }
 

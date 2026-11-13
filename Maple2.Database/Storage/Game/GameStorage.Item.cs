@@ -222,6 +222,44 @@ public partial class GameStorage {
             }
         }
 
+        // Swaps items between the fitting doll of cube cubeUid and character characterId in one transaction and one
+        // save: toDoll become the cube's, toCharacter the character's. The cube must still be placed on plot plotId
+        // (TargetGone), and each of toCharacter must still be on the doll (SourceGone: the same home open on another
+        // channel took it); then nothing is written. The rows of toDoll are not tested, as in PutOnFittingDoll.
+        public ItemMove SwapFittingDoll(long cubeUid, long plotId, long characterId, IReadOnlyCollection<Item> toDoll,
+                                        IReadOnlyCollection<Item> toCharacter) {
+            try {
+                using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                if (!Context.UgcMapCube.Any(cube => cube.Id == cubeUid && cube.UgcMapId == plotId)) {
+                    return ItemMove.TargetGone;
+                }
+                foreach (Item item in toCharacter) {
+                    long uid = item.Uid;
+                    IQueryable<Model.Item> held = Context.Item.Where(row => row.Id == uid && row.OwnerId == cubeUid && row.Group == ItemGroup.FittingDoll);
+                    int rows = Context.Database.IsRelational()
+                        ? held.ExecuteUpdate(update => update.SetProperty(row => row.OwnerId, characterId))
+                        : held.AsNoTracking().Count();
+                    if (rows != 1) {
+                        return ItemMove.SourceGone; // the transaction is rolled back when it is disposed
+                    }
+                }
+                foreach ((Item item, long ownerId) in toDoll.Select(item => (item, cubeUid)).Concat(toCharacter.Select(item => (item, characterId)))) {
+                    Model.Item model = item;
+                    model.OwnerId = ownerId;
+                    Context.Item.Update(model);
+                }
+                if (!Context.TrySaveChanges()) {
+                    return ItemMove.Failed;
+                }
+
+                transaction.Commit();
+                return ItemMove.Moved;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to swap items with fitting doll {CubeUid}", cubeUid);
+                return ItemMove.Failed;
+            }
+        }
+
         public bool UpdateItem(Item item) {
             Model.Item model = item;
             Context.Item.Update(model);

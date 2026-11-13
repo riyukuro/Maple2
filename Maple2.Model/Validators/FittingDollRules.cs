@@ -13,12 +13,73 @@ public static class FittingDollRules {
         InvalidOwner = 2, // s_fittingdoll_error_invalid_owner
         ItemIsSkin = 3, // s_fittingdoll_InvalidItemType_Skin: an outfit on an equipment doll
         ItemIsEquip = 4, // s_fittingdoll_InvalidItemType_Equip: equipment on an outfit doll
+        ItemRule = 5, // s_fittingdoll_InvalidItem_rule: a doll item the character's equip rules refuse
+        ItemLimit = 6, // s_fittingdoll_Invaliditem_limit: a doll item the character may not use (level, job, gender, expired)
         Male = 7, // s_fittingdoll_Invaliditem_male
         Female = 8, // s_fittingdoll_Invaliditem_female
         InvalidItem = 0xc, // s_fittingdoll_InvalidItem
         InvalidDoll = 0xd, // s_fittingdoll_Invalid_doll
         InvalidSlot = 0x10, // s_fittingdoll_Invalid_slot
         InvalidBinding = 0x12, // s_fittingdoll_Invalid_binding
+        FailSwap = 0x14, // s_fittingdoll_failswap
+    }
+
+    // FittingDoll 0x7B mode 8, the answer to a swap (CSceneStateGame::OnFittingDoll): Done and Partial name
+    // s_fittingdoll_done_all and s_fittingdoll_done_partially and play the swap pose on the character and the doll;
+    // Nothing shows nothing. Any other value is an assert in the client.
+    public enum TransformResult {
+        Done = 0x17,
+        Partial = 0x18,
+        Nothing = 0x19,
+    }
+
+    // Hair, face, face decoration and ears (CItemData::FUN_14053d550: the model's first slot): body parts, which
+    // neither side of a swap moves.
+    public static bool BodyPart(IReadOnlyList<EquipSlot> itemSlots) =>
+        itemSlots.Count > 0 && itemSlots[0] is EquipSlot.HR or EquipSlot.FA or EquipSlot.FD or EquipSlot.ER;
+
+    // Whether a worn item of the character goes onto the doll in a swap (UIFittingDollDialog::CanWearEquipment,
+    // uifittingdolldialog.cpp:411): it is a skin exactly when the doll is an outfit doll, is no body part, and its
+    // subtype is not 0x13 or 0x15 on an outfit doll (CItemData::FUN_14053c810) and not 0 on an equipment doll
+    // (FUN_14053c870).
+    public static bool Swaps(FunctionCubeMetadata.FittingDollData doll, bool isSkin, int subType, IReadOnlyList<EquipSlot> itemSlots) {
+        bool outfitDoll = doll.Type != 0;
+        if (isSkin != outfitDoll || BodyPart(itemSlots)) {
+            return false;
+        }
+        return outfitDoll ? subType is not (0x13 or 0x15) : subType != 0;
+    }
+
+    // One side of a swap: the item, the slot it is in, the slots its model has, and whether it would move.
+    public readonly record struct SwapEntry<T>(T Item, EquipSlot Slot, IReadOnlyCollection<EquipSlot> ItemSlots, bool Moves);
+
+    // Which items a swap moves. Each item that would move, moves, unless it would overlap an item that stays on the
+    // other side (an item on the character that is not swapped keeps its slots); an item held back then stays too,
+    // which can hold back others, until nothing changes. Partial when an item that would move is held back.
+    public static (List<T> ToCharacter, List<T> ToDoll, bool Partial) Swap<T>(IReadOnlyList<SwapEntry<T>> doll, IReadOnlyList<SwapEntry<T>> character) {
+        bool[] dollMoves = doll.Select(entry => entry.Moves).ToArray();
+        bool[] characterMoves = character.Select(entry => entry.Moves).ToArray();
+        bool changed = true;
+        while (changed) {
+            changed = HoldBack(doll, dollMoves, character, characterMoves) | HoldBack(character, characterMoves, doll, dollMoves);
+        }
+        bool partial = doll.Where((entry, i) => entry.Moves && !dollMoves[i]).Any()
+                       || character.Where((entry, i) => entry.Moves && !characterMoves[i]).Any();
+        return (doll.Where((_, i) => dollMoves[i]).Select(entry => entry.Item).ToList(),
+            character.Where((_, i) => characterMoves[i]).Select(entry => entry.Item).ToList(), partial);
+    }
+
+    // Holds back each moving item of |from| that overlaps an item staying on |to|; true when one was held back.
+    private static bool HoldBack<T>(IReadOnlyList<SwapEntry<T>> from, bool[] fromMoves, IReadOnlyList<SwapEntry<T>> to, bool[] toMoves) {
+        var kept = to.Where((_, i) => !toMoves[i]).SelectMany(entry => Occupies(entry.Slot, entry.ItemSlots)).ToHashSet();
+        bool changed = false;
+        for (int i = 0; i < from.Count; i++) {
+            if (fromMoves[i] && Occupies(from[i].Slot, from[i].ItemSlots).Any(kept.Contains)) {
+                fromMoves[i] = false;
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     // Whether an item fits the doll, as the client tests it before it sends a put (FittingDollPC::FUN_14121c910,

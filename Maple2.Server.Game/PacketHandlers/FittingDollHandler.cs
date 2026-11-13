@@ -1,13 +1,17 @@
-﻿using Maple2.Database.Storage;
+﻿using System.Collections.Concurrent;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -33,6 +37,9 @@ public class FittingDollHandler : FieldPacketHandler {
                 long itemUid = packet.ReadLong();
                 var slot = (EquipSlot) packet.ReadByte();
                 Send(session, PutOn(session, dollUid, itemUid, slot));
+                return;
+            case Command.Transform:
+                Send(session, Transform(session, dollUid));
                 return;
             case Command.PutOff:
                 Send(session, PutOff(session, dollUid, (EquipSlot) packet.ReadByte()));
@@ -128,6 +135,137 @@ public class FittingDollHandler : FieldPacketHandler {
                 return FittingDollRules.Error.None;
             }
         }
+    }
+
+    // Swaps the doll's items with the character's worn items of the doll's kind (gear or outfit). The client tests
+    // the same before it asks (UIFittingDollDialog::CanWearEquipment): every doll item must be one the character may
+    // wear, and every worn item one the doll may. The swap is one save: on any failure nothing moves, in memory or
+    // in the DB, and the sender gets s_fittingdoll_failswap.
+    private static FittingDollRules.Error Transform(GameSession session, long dollUid) {
+        FieldFittingDoll? doll = session.Field?.GetFittingDoll(dollUid);
+        if (doll == null) {
+            return FittingDollRules.Error.InvalidDoll;
+        }
+        if (doll.Plot.OwnerId != session.AccountId) {
+            return FittingDollRules.Error.InvalidOwner;
+        }
+
+        lock (session.Item) {
+            lock (doll.Lock) {
+                if (doll.Removed) {
+                    return FittingDollRules.Error.InvalidDoll;
+                }
+                Reload(session, doll);
+                bool outfit = doll.Data.Type != 0;
+                ConcurrentDictionary<EquipSlot, Item> equips = outfit ? session.Item.Equips.Outfit : session.Item.Equips.Gear;
+
+                var dollSide = new List<FittingDollRules.SwapEntry<Item>>();
+                foreach ((EquipSlot slot, Item item) in doll.Items) {
+                    bool moves = !FittingDollRules.BodyPart(item.Metadata.SlotNames);
+                    if (moves) {
+                        FittingDollRules.Error error = CanWearFromDoll(session, item);
+                        if (error != FittingDollRules.Error.None) {
+                            return error;
+                        }
+                    }
+                    dollSide.Add(new(item, slot, item.Metadata.SlotNames, moves));
+                }
+                var characterSide = new List<FittingDollRules.SwapEntry<Item>>();
+                foreach ((EquipSlot slot, Item item) in equips) {
+                    ItemMetadataProperty property = item.Metadata.Property;
+                    bool moves = FittingDollRules.Swaps(doll.Data, property.IsSkin, property.SubType, item.Metadata.SlotNames);
+                    if (moves) {
+                        FittingDollRules.Error error = FittingDollRules.CanWear(doll.Data, property.IsSkin, item.Metadata.Limit.Gender);
+                        if (error != FittingDollRules.Error.None) {
+                            return error;
+                        }
+                    }
+                    characterSide.Add(new(item, slot, item.Metadata.SlotNames, moves));
+                }
+
+                (List<Item> toCharacter, List<Item> toDoll, bool partial) = FittingDollRules.Swap(dollSide, characterSide);
+                if (toCharacter.Count == 0 && toDoll.Count == 0) {
+                    session.Send(FittingDollPacket.Transform(doll, FittingDollRules.TransformResult.Nothing));
+                    return FittingDollRules.Error.None;
+                }
+
+                // Changed only here, so a failed save can put each item back as it was.
+                var before = toCharacter.Concat(toDoll).Select(item => (item, item.Group, item.Transfer?.Clone())).ToList();
+                var bound = new List<Item>();
+                Character character = session.Player.Value.Character;
+                foreach (Item item in toCharacter) {
+                    // Wearing binds, as an equip does (EquipManager.Equip).
+                    if ((item.Metadata.Limit.TransferType is TransferType.BindOnEquip or TransferType.BindOnLoot) && item.Transfer?.Bind(character) == true) {
+                        bound.Add(item);
+                    }
+                    item.Group = outfit ? ItemGroup.Outfit : ItemGroup.Gear;
+                }
+                foreach (Item item in toDoll) {
+                    item.Group = ItemGroup.FittingDoll;
+                }
+
+                ItemMove moved;
+                using (GameStorage.Request db = session.GameStorage.Context()) {
+                    moved = db.SwapFittingDoll(doll.Uid, doll.Plot.Id, session.CharacterId, toDoll, toCharacter);
+                }
+                if (moved != ItemMove.Moved) {
+                    foreach ((Item item, ItemGroup group, ItemTransfer? transfer) in before) {
+                        item.Group = group;
+                        item.Transfer = transfer;
+                    }
+                    if (moved == ItemMove.TargetGone) {
+                        return FittingDollRules.Error.InvalidDoll;
+                    }
+                    if (moved == ItemMove.SourceGone) {
+                        Reload(session, doll); // the doll was changed in another field instance of this home
+                    }
+                    return FittingDollRules.Error.FailSwap;
+                }
+
+                foreach (Item item in toDoll) {
+                    equips.TryRemove((EquipSlot) item.Slot, out _);
+                    session.Field?.Broadcast(EquipPacket.UnequipItem(session.Player, item));
+                    session.Buffs.RemoveItemBuffs(item);
+                }
+                foreach (Item item in toCharacter) {
+                    doll.Items.Remove((EquipSlot) item.Slot);
+                    session.Field?.Broadcast(FittingDollPacket.PutOff(doll, (EquipSlot) item.Slot));
+                }
+                foreach (Item item in toCharacter) {
+                    equips[(EquipSlot) item.Slot] = item;
+                    session.Field?.Broadcast(EquipPacket.EquipItem(session.Player, item, EquipKind.Gear));
+                }
+                foreach (Item item in bound) {
+                    session.Send(ItemBindPacket.For(item, inBag: false));
+                }
+                foreach (Item item in toDoll) {
+                    doll.Items[(EquipSlot) item.Slot] = item;
+                    session.Field?.Broadcast(FittingDollPacket.PutOn(doll, item));
+                }
+                if (toCharacter.Any(item => item.Template != null)) {
+                    session.ConditionUpdate(ConditionType.change_ugc_equip);
+                }
+                session.Stats.Refresh();
+                session.Quest?.UpdateEquipped();
+                session.Send(FittingDollPacket.Transform(doll, partial ? FittingDollRules.TransformResult.Partial : FittingDollRules.TransformResult.Done));
+                return FittingDollRules.Error.None;
+            }
+        }
+    }
+
+    // A doll item the character is to wear (FittingDollPC::FUN_14121c870): one bound to another character is
+    // refused as in a put; one the character may not use (Unk_Inventory::GetItemUseError: expired, gender, job,
+    // level) is s_fittingdoll_Invaliditem_limit.
+    private static FittingDollRules.Error CanWearFromDoll(GameSession session, Item item) {
+        if (FittingDollRules.BoundToOther(item.Transfer?.Binding, session.CharacterId)) {
+            return FittingDollRules.Error.InvalidBinding;
+        }
+        Gender gender = item.Metadata.Limit.Gender;
+        if (EquipManager.ValidateEquipItem(session, item) != StringCode.s_empty_string
+            || (gender != Gender.All && gender != session.Player.Value.Character.Gender)) {
+            return FittingDollRules.Error.ItemLimit;
+        }
+        return FittingDollRules.Error.None;
     }
 
     private static FittingDollRules.Error PutOff(GameSession session, long dollUid, EquipSlot slot) {

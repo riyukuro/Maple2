@@ -172,4 +172,71 @@ public class MoveItemStorageTests {
             Assert.That(row.Group, Is.EqualTo(ItemGroup.Default));
         });
     }
+
+    // A swap: a worn item of the character's goes onto the cube's doll and one of the doll's onto the character, with
+    // the groups the handler gives them before the save.
+    private (Item Worn, Item Held) SwapPair(long cubeUid) {
+        Item worn = Create();
+        worn.Group = ItemGroup.Gear;
+        worn.Slot = (short) EquipSlot.CL;
+        Item held = Create();
+        held.Group = ItemGroup.FittingDoll;
+        held.Slot = (short) EquipSlot.CL;
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SaveItems(Character, worn), Is.True);
+            Assert.That(db.SaveItems(cubeUid, held), Is.True);
+        }
+        worn.Group = ItemGroup.FittingDoll;
+        held.Group = ItemGroup.Gear;
+        return (worn, held);
+    }
+
+    private ItemMove Swap(long cubeUid, Item worn, Item held) {
+        using GameStorage.Request db = storage.Context();
+        return db.SwapFittingDoll(cubeUid, PlotId, Character, [worn], [held]);
+    }
+
+    [Test]
+    public void Swap_MovesBothRowsInOneSave() {
+        PlotCube cube = PlaceCube();
+        (Item worn, Item held) = SwapPair(cube.Id);
+        Assert.That(Swap(cube.Id, worn, held), Is.EqualTo(ItemMove.Moved));
+        Assert.Multiple(() => {
+            Assert.That((Row(worn.Uid).OwnerId, Row(worn.Uid).Group), Is.EqualTo((cube.Id, ItemGroup.FittingDoll)));
+            Assert.That((Row(held.Uid).OwnerId, Row(held.Uid).Group), Is.EqualTo((Character, ItemGroup.Gear)));
+        });
+    }
+
+    // The doll's item was taken off by another instance first: the swap is refused and neither row moves, so the
+    // worn item does not go onto the doll alone.
+    [Test]
+    public void Swap_RefusedWhenADollItemIsGone_MovesNeither() {
+        PlotCube cube = PlaceCube();
+        (Item worn, Item held) = SwapPair(cube.Id);
+        using (GameStorage.Request db = storage.Context()) {
+            Item other = db.GetItemGroupsNoTracking(cube.Id, ItemGroup.FittingDoll)[ItemGroup.FittingDoll].Single();
+            other.Group = ItemGroup.Default;
+            other.Slot = -1;
+            Assert.That(db.MoveItem(other, cube.Id, ItemGroup.FittingDoll, Character), Is.True);
+        }
+        Assert.That(Swap(cube.Id, worn, held), Is.EqualTo(ItemMove.SourceGone));
+        Assert.Multiple(() => {
+            Assert.That((Row(worn.Uid).OwnerId, Row(worn.Uid).Group), Is.EqualTo((Character, ItemGroup.Gear)));
+            Assert.That(Row(held.Uid).OwnerId, Is.EqualTo(Character));
+        });
+    }
+
+    [Test]
+    public void Swap_RefusedOnceTheCubeIsRemoved_MovesNeither() {
+        PlotCube cube = PlaceCube();
+        (Item worn, Item held) = SwapPair(cube.Id);
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.DeleteCube(cube), Is.True);
+        }
+        Assert.That(Swap(cube.Id, worn, held), Is.EqualTo(ItemMove.TargetGone));
+        Assert.Multiple(() => {
+            Assert.That((Row(worn.Uid).OwnerId, Row(worn.Uid).Group), Is.EqualTo((Character, ItemGroup.Gear)));
+            Assert.That((Row(held.Uid).OwnerId, Row(held.Uid).Group), Is.EqualTo((cube.Id, ItemGroup.FittingDoll)));
+        });
+    }
 }
