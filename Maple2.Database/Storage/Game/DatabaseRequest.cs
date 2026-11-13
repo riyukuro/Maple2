@@ -23,16 +23,34 @@ public abstract class DatabaseRequest<TContext>(TContext context, ILogger logger
         }
 
         transaction.Commit();
+        transaction.Dispose();
         transaction = null; // transaction is completed.
         return true;
+    }
+
+    // Ends an open transaction without its writes, so the request can go on outside it.
+    public void Rollback() {
+        if (transaction == null) {
+            return;
+        }
+
+        transaction.Rollback();
+        transaction.Dispose();
+        transaction = null;
     }
 
     public bool SaveChanges() {
         return Context.TrySaveChanges();
     }
 
+    // A transaction still open here was not committed: a failure return or an exception left it, so its writes are
+    // undone. (It used to be committed here, which kept the first writes of a call that had failed half way.)
     public void Dispose() {
-        Commit();
+        try {
+            Rollback();
+        } catch (Exception ex) {
+            Logger.LogError(ex, "Rollback of an uncommitted transaction failed");
+        }
         Context.Dispose();
     }
 }

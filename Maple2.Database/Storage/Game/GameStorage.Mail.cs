@@ -93,6 +93,7 @@ public partial class GameStorage {
             BeginTransaction();
             Context.Mail.Add(model);
             if (!SaveChanges()) {
+                Rollback();
                 return null;
             }
 

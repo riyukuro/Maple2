@@ -111,6 +111,7 @@ public partial class GameStorage {
             };
             Context.Guild.Add(guild);
             if (!SaveChanges()) {
+                Rollback();
                 return null;
             }
 
@@ -122,6 +123,7 @@ public partial class GameStorage {
             Context.GuildMember.Add(guildLeader);
             RemoveGuildApplicationsOf(leaderId);
             if (!SaveChanges()) {
+                Rollback();
                 return null;
             }
 
@@ -173,6 +175,7 @@ public partial class GameStorage {
 
             int count = Context.Guild.Where(guild => guild.Id == guildId).Delete();
             if (count == 0) {
+                Rollback();
                 return false;
             }
 

@@ -56,6 +56,7 @@ public partial class GameStorage {
             };
             Context.Club.Add(club);
             if (!SaveChanges()) {
+                Rollback();
                 return null;
             }
 
@@ -88,6 +89,7 @@ public partial class GameStorage {
 
             int count = Context.Club.Where(club => club.Id == clubId).Delete();
             if (count == 0) {
+                Rollback();
                 return false;
             }
 
@@ -117,6 +119,7 @@ public partial class GameStorage {
         public bool SaveClub(Club club) {
             BeginTransaction();
             if (!Context.Club.Any(model => model.Id == club.Id)) {
+                Rollback();
                 return false;
             }
             Context.Club.Update(club);
@@ -143,6 +146,7 @@ public partial class GameStorage {
             Context.ClubMember.AddRange(saveMembers.Values.Select<ClubMember, Model.ClubMember>(member => member));
 
             if (!SaveChanges()) {
+                Rollback();
                 return false;
             }
             return Commit();

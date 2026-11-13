@@ -27,6 +27,7 @@ public partial class GameStorage {
             };
             Context.Marriage.Add(marriage);
             if (!SaveChanges()) {
+                Rollback();
                 return null;
             }
 
@@ -248,6 +249,7 @@ public partial class GameStorage {
             model.CreationTime = DateTime.Now;
             Context.WeddingHall.Add(model);
             if (!SaveChanges()) {
+                Rollback();
                 return null;
             }
 
