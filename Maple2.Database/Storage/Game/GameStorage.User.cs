@@ -30,6 +30,26 @@ public partial class GameStorage {
             return Context.Account.Find(accountId);
         }
 
+        // The account birthday (Account.Birthday), written at once: only this column, so the session's next save
+        // writes the same value and nothing else of the account changes here. False when there is no such account.
+        public bool SetAccountBirthday(long accountId, long birthday) {
+            try {
+                if (Context.Database.IsRelational()) {
+                    return Context.Account.Where(account => account.Id == accountId)
+                        .ExecuteUpdate(update => update.SetProperty(account => account.Birthday, birthday)) == 1;
+                }
+                Model.Account? model = Context.Account.AsTracking().FirstOrDefault(account => account.Id == accountId);
+                if (model == null) {
+                    return false;
+                }
+                model.Birthday = birthday;
+                return Context.TrySaveChanges();
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to set the birthday of account {AccountId}", accountId);
+                return false;
+            }
+        }
+
         public Account? GetAccount(string username) {
             return Context.Account
                 .FirstOrDefault(account => account.Username == username);

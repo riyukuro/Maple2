@@ -146,6 +146,8 @@ public class ReportCommand : GameCommand {
         return (report, character.Name, character.AccountId);
     }
 
+    // The reason goes to restrict/ban as one token after "--", so its words are not parsed again as their options
+    // (report ban 5 spam -t ip is an account ban with the reason "spam -t ip").
     private static string Reason(long id, string[] words) => words.Length == 0 ? $"report {id}" : string.Join(' ', words);
 
     private class MuteSubcommand : Command {
@@ -169,7 +171,7 @@ public class ReportCommand : GameCommand {
                 return;
             }
             HashSet<long> before = Mutes(target.AccountId);
-            new RestrictCommand(session).Invoke(["add", target.Name, MuteKind.ToString(), duration, .. Reason(id, reasonWords).Split(' ')], ctx.Console);
+            new RestrictCommand(session).Invoke(["add", target.Name, MuteKind.ToString(), duration, "--", Reason(id, reasonWords)], ctx.Console);
             // The report is closed only for a new mute: restrict refuses a second one of the kind.
             if (!Mutes(target.AccountId).Except(before).Any()) {
                 ctx.ExitCode = 1;
@@ -213,7 +215,7 @@ public class ReportCommand : GameCommand {
                 return;
             }
             string[] args = duration.Length == 0 ? [target.Name] : [target.Name, "-d", duration];
-            new BanCommand(session).Invoke([.. args, .. Reason(id, reasonWords).Split(' ')], ctx.Console);
+            new BanCommand(session).Invoke([.. args, "--", Reason(id, reasonWords)], ctx.Console);
             if (!Banned(target.AccountId)) {
                 ctx.ExitCode = 1;
                 return;

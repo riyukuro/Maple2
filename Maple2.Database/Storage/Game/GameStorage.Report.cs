@@ -3,6 +3,7 @@ using Maple2.Database.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Maple2.Database.Storage;
 
@@ -109,15 +110,32 @@ public partial class GameStorage {
         }
 
         // Closes an open report; null when there is no such report, it is closed already, or the save failed.
+        // On a relational DB the close is one update that tests CloseTime, so of two GMs closing the same report at
+        // once only one changes the row and is told so; the other gets null.
         public PlayerReportEntry? ClosePlayerReport(long id, long gmAccountId) {
+            DateTime? closeTime = DateTime.Now;
+            if (Context.Database.IsRelational()) {
+                try {
+                    int rows = Context.PlayerReports
+                        .Where(report => report.Id == id && report.CloseTime == null)
+                        .ExecuteUpdate(update => update
+                            .SetProperty(report => report.CloseTime, closeTime)
+                            .SetProperty(report => report.ClosedBy, gmAccountId));
+                    return rows == 1 ? GetPlayerReport(id) : null;
+                } catch (Exception ex) {
+                    Logger.LogError(ex, "Failed to close player report {ReportId}", id);
+                    return null;
+                }
+            }
+
             // The context does not track by default; the close is written through a tracked read.
-            PlayerReport? report = Context.PlayerReports.AsTracking().FirstOrDefault(report => report.Id == id);
-            if (report == null || report.CloseTime != null) {
+            PlayerReport? tracked = Context.PlayerReports.AsTracking().FirstOrDefault(report => report.Id == id);
+            if (tracked == null || tracked.CloseTime != null) {
                 return null;
             }
-            report.CloseTime = DateTime.Now;
-            report.ClosedBy = gmAccountId;
-            return Context.TrySaveChanges() ? ToEntry(report) : null;
+            tracked.CloseTime = closeTime;
+            tracked.ClosedBy = gmAccountId;
+            return Context.TrySaveChanges() ? ToEntry(tracked) : null;
         }
 
         private static PlayerReportEntry ToEntry(PlayerReport report) {

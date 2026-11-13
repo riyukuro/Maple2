@@ -166,6 +166,67 @@ public class ReportCommandTests {
         Assert.That(Run("ban", "3").Lines, Is.EqualTo(new[] { "Report 3 is closed already." }));
     }
 
+    // The reason words reach restrict and ban as the reason only: "-t ip" is not read again as ban's type option,
+    // so this is an account ban (an IP ban of an offline character would be refused).
+    [Test]
+    public void ReasonWords_AreNotReadAsOptions() {
+        (int code, string[] lines) = Run("ban", "3", "spam", "-t", "ip");
+
+        using GameStorage.Request db = test.Storage.Context();
+        (bool banned, Maple2.Database.Model.Ban? ban) = db.GetBanStatus(OffenderAccount, null, null);
+        Assert.Multiple(() => {
+            Assert.That(code, Is.EqualTo(0));
+            Assert.That(lines.First(), Does.StartWith("Banned 'offender'"));
+            Assert.That(banned, Is.True);
+            Assert.That(ban!.Reason, Is.EqualTo("spam -t ip"));
+            Assert.That(ban.IpAddress, Is.Null);
+        });
+
+        using (GameStorage.Request add = test.Storage.Context()) {
+            add.ReportPlayer(offender, "Renamed", 22, "Other", "again", PlayerReportFlag.Behavior);
+        }
+        Assert.That(Run("mute", "4", "1h", "see", "-s", "1h").Code, Is.EqualTo(0));
+        Assert.That(Blocks().Single().Reason, Is.EqualTo("see -s 1h"));
+    }
+
+    // A reported character on a GM account: restrict and ban both refuse it, so the report stays open.
+    [Test]
+    public void GmTarget_IsRefusedAndTheReportStaysOpen() {
+        const long gmAccount = 3000;
+        long gm;
+        using (var context = new Ms2Context(test.Options)) {
+            Maple2.Database.Model.Account account = new Account { Username = "staff", AdminPermissions = AdminPermissions.GameMaster };
+            account.Id = gmAccount;
+            context.Account.Add(account);
+            context.SaveChanges();
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            gm = db.CreateCharacter(new Character {
+                AccountId = gmAccount,
+                Name = "Staff",
+                Job = Job.Newbie,
+                Mastery = new Mastery(),
+                MapId = 2000023,
+                ReturnMaps = new Maple2.Tools.LimitedStack<int>(3, 2000023),
+            })!.Id;
+            db.ReportPlayer(gm, "Staff", 21, "Reporter", "abuse", PlayerReportFlag.Behavior);
+        }
+
+        (int mute, string[] muteLines) = Run("mute", "4", "1h");
+        (int ban, string[] banLines) = Run("ban", "4");
+        using GameStorage.Request read = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(mute, Is.EqualTo(1));
+            Assert.That(muteLines.Single(), Is.EqualTo("Cannot restrict GM/Admin account of 'Staff'."));
+            Assert.That(ban, Is.EqualTo(1));
+            Assert.That(banLines.Single(), Is.EqualTo("Cannot account ban GM/Admin account 'Staff'."));
+            Assert.That(read.GetAccountBlocks(gmAccount), Is.Empty);
+            Assert.That(read.GetBanStatus(gmAccount, null, null).IsBanned, Is.False);
+            Assert.That(test.World.Disconnects, Is.Empty);
+            Assert.That(Closed(4), Is.False);
+        });
+    }
+
     // Report 1's character does not exist: nothing is done and the report stays open.
     [Test]
     public void MissingCharacter_DoesNothing() {

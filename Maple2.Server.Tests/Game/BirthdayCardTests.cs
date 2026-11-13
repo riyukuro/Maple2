@@ -16,6 +16,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Microsoft.EntityFrameworkCore;
 using NUnit.Framework;
 
 namespace Maple2.Server.Tests.Game;
@@ -53,11 +54,28 @@ public class BirthdayCardTests {
     [Test]
     public void IsBirthdayMonth_TestsTheMonthOnly() {
         long march = BirthdayRules.Of(3, 14)!.Value;
+        TimeZoneInfo utc = TimeZoneInfo.Utc;
         Assert.Multiple(() => {
-            Assert.That(BirthdayRules.IsBirthdayMonth(march, new DateTime(2031, 3, 1)), Is.True);
-            Assert.That(BirthdayRules.IsBirthdayMonth(march, new DateTime(2031, 3, 31)), Is.True);
-            Assert.That(BirthdayRules.IsBirthdayMonth(march, new DateTime(2031, 4, 14)), Is.False);
-            Assert.That(BirthdayRules.IsBirthdayMonth(0, new DateTime(1970, 1, 1)), Is.False);
+            Assert.That(BirthdayRules.IsBirthdayMonth(march, new DateTimeOffset(2031, 3, 1, 0, 0, 0, TimeSpan.Zero), utc), Is.True);
+            Assert.That(BirthdayRules.IsBirthdayMonth(march, new DateTimeOffset(2031, 3, 31, 23, 0, 0, TimeSpan.Zero), utc), Is.True);
+            Assert.That(BirthdayRules.IsBirthdayMonth(march, new DateTimeOffset(2031, 4, 14, 0, 0, 0, TimeSpan.Zero), utc), Is.False);
+            Assert.That(BirthdayRules.IsBirthdayMonth(0, new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero), utc), Is.False);
+        });
+    }
+
+    // Both months are taken in the server's zone, as the client's CMsTime does (TimeSyncPacket sends that zone).
+    [Test]
+    public void IsBirthdayMonth_InTheServerZone() {
+        TimeZoneInfo kst = TimeZoneInfo.CreateCustomTimeZone("kst", TimeSpan.FromHours(9), "kst", "kst");
+        TimeZoneInfo plus14 = TimeZoneInfo.CreateCustomTimeZone("p14", TimeSpan.FromHours(14), "p14", "p14");
+        long march = BirthdayRules.Of(3, 14)!.Value;
+        long march31 = BirthdayRules.Of(3, 31)!.Value; // 03-31 12:00 UTC is 04-01 02:00 at +14
+        var lateMarchUtc = new DateTimeOffset(2031, 3, 31, 20, 0, 0, TimeSpan.Zero); // 04-01 at +9 and +14
+        Assert.Multiple(() => {
+            Assert.That(BirthdayRules.IsBirthdayMonth(march, lateMarchUtc, TimeZoneInfo.Utc), Is.True);
+            Assert.That(BirthdayRules.IsBirthdayMonth(march, lateMarchUtc, kst), Is.False);
+            Assert.That(BirthdayRules.IsBirthdayMonth(march31, lateMarchUtc, plus14), Is.True);
+            Assert.That(BirthdayRules.IsBirthdayMonth(march31, new DateTimeOffset(2031, 3, 15, 0, 0, 0, TimeSpan.Zero), plus14), Is.False);
         });
     }
 
@@ -99,6 +117,29 @@ public class BirthdayCardTests {
 
         Assert.That(command.Invoke(["birthday", "0", "0"], new TestConsole()), Is.EqualTo(0));
         Assert.That(session.Player.Value.Account.Birthday, Is.EqualTo(0));
+    }
+
+    // The command stores the birthday at once, with no player save: the character list reads the stored value.
+    [Test]
+    public void Command_StoresAtOnce() {
+        Assert.That(new PlayerCommand(session, null!).Invoke(["birthday", "9", "30"], new TestConsole()), Is.EqualTo(0));
+
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetAccount(session.AccountId)?.Birthday, Is.EqualTo(BirthdayRules.Of(9, 30)));
+    }
+
+    // The same on MySQL, where the birthday is one column update. Needs MS2_TEST_GAME_DB, a scratch MySQL game database.
+    [Test]
+    public void SetAccountBirthday_OnMySql() {
+        string? connection = Environment.GetEnvironmentVariable("MS2_TEST_GAME_DB");
+        if (connection == null) {
+            Assert.Ignore("needs MySQL: set MS2_TEST_GAME_DB");
+        }
+        var mysql = new TestGameSession(new DbContextOptionsBuilder().UseMySql(connection, ServerVersion.AutoDetect(connection)).Options);
+        using GameStorage.Request db = mysql.Storage.Context();
+        Assert.That(db.SetAccountBirthday(mysql.AccountId, BirthdayRules.Of(5, 5)!.Value), Is.True);
+        Assert.That(db.GetAccount(mysql.AccountId)?.Birthday, Is.EqualTo(BirthdayRules.Of(5, 5)));
+        Assert.That(db.SetAccountBirthday(-1, 1), Is.False);
     }
 
     [Test]

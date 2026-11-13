@@ -140,7 +140,7 @@ public static class NpcTalkUtil {
         }
 
         // The client's birthday test (BirthdayRules): the account birthday falls in the current month.
-        if (jobCondition.IsBirthday && !BirthdayRules.IsBirthdayMonth(session.Player.Value.Account.Birthday, DateTime.Now)) {
+        if (jobCondition.IsBirthday && !BirthdayRules.IsBirthdayMonth(session.Player.Value.Account.Birthday, DateTimeOffset.Now, TimeZoneInfo.Local)) {
             return false;
         }
 

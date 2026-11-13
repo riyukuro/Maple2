@@ -404,6 +404,14 @@ public class PlayerCommand : GameCommand {
                 return;
             }
 
+            // Stored at once, not only at the next save: the login server's character list reads the stored value.
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                if (!db.SetAccountBirthday(session.AccountId, birthday)) {
+                    ctx.Console.Error.WriteLine("Failed to store the birthday.");
+                    ctx.ExitCode = 1;
+                    return;
+                }
+            }
             session.Player.Value.Account.Birthday = birthday;
             session.Field?.Broadcast(BirthdayCardPacket.Set(session.Player.ObjectId, birthday));
             ctx.Console.Out.WriteLine(birthday == 0 ? "Birthday cleared." : $"Birthday set to {month:D2}-{day:D2}.");
