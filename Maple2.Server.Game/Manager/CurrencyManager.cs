@@ -163,7 +163,7 @@ public class CurrencyManager {
         ReportMeretSpent(change);
     }
 
-    // TryTakeMeret, NotifyMeretTaken and ReturnMeret for the red merets.
+    // TryTakeMeret, NotifyMeretTaken and ReturnMeret for the red merets. Their packet is MeretUse, not Meret.
     public bool TryTakeGameMeret(long amount, bool notify = true) {
         if (amount < 0) {
             return false;
@@ -185,7 +185,7 @@ public class CurrencyManager {
 
     public void NotifyGameMeretTaken(long amount) {
         lock (walletLock) {
-            session.Send(CurrencyPacket.UpdateMeret(Currency, -amount));
+            session.Send(CurrencyPacket.UpdateGameMeret(Currency, -amount));
         }
         ReportMeretSpent(-amount);
     }
@@ -196,14 +196,14 @@ public class CurrencyManager {
         }
         lock (walletLock) {
             Currency.GameMeret += Math.Min(amount, Constant.MaxMeret - Currency.GameMeret);
-            session.Send(CurrencyPacket.UpdateMeret(Currency, 0));
+            session.Send(CurrencyPacket.UpdateGameMeret(Currency, 0));
         }
     }
 
     private long SetGameMeretLocked(long value) {
         long delta = Math.Min(value, Constant.MaxMeret) - Currency.GameMeret;
         Currency.GameMeret = Math.Min(value, Constant.MaxMeret);
-        session.Send(CurrencyPacket.UpdateMeret(Currency, delta));
+        session.Send(CurrencyPacket.UpdateGameMeret(Currency, delta));
         return delta;
     }
 

@@ -18,12 +18,25 @@ public static class CurrencyPacket {
         return pWriter;
     }
 
+    // The plain merets. The client (CSceneStateGame::OnMeret, scenestategame.cpp:7025) reads four wallet longs and
+    // shows their sum as the merets (FUN_1409304d0 sets them, GetMeratBalance adds them up), then the change for
+    // the Merat_Get/Merat_Use text. The red merets are not one of the four: they go in MeretUse (UpdateGameMeret).
     public static ByteWriter UpdateMeret(Currency currency, long delta) {
         var pWriter = Packet.Of(SendOp.Meret);
         pWriter.WriteLong(currency.Meret);
-        pWriter.WriteLong(); // extra meret
+        pWriter.WriteLong();
+        pWriter.WriteLong();
+        pWriter.WriteLong();
+        pWriter.WriteLong(delta);
+
+        return pWriter;
+    }
+
+    // The red merets (GameMeret). The client (CSceneStateGame::OnMeretUse, scenestategame.cpp:7055) reads the
+    // balance into SetRedMeratBalance and the change for the red meret text (0x2c8 gained, 0x2da used).
+    public static ByteWriter UpdateGameMeret(Currency currency, long delta) {
+        var pWriter = Packet.Of(SendOp.MeretUse);
         pWriter.WriteLong(currency.GameMeret);
-        pWriter.WriteLong(); // extra game meret
         pWriter.WriteLong(delta);
 
         return pWriter;

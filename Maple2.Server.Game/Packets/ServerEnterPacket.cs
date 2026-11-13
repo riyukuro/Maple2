@@ -18,13 +18,13 @@ public static class ServerEnterPacket {
         pWriter.WriteLong(player.Character.Exp);
         pWriter.WriteLong(player.Character.RestExp);
         pWriter.WriteLong(player.Currency.Meso);
-        // These Merets are added up
+        // The client (CSceneStateGame::OnServerEnter, scenestategame.cpp:2088-2105) adds up the first four as the
+        // merets (FUN_1409304d0, as in the Meret packet) and takes the fifth as the red merets (SetRedMeratBalance).
         pWriter.WriteLong(player.Currency.Meret);
-        pWriter.WriteLong(); // Merets2
+        pWriter.WriteLong();
+        pWriter.WriteLong();
+        pWriter.WriteLong();
         pWriter.WriteLong(player.Currency.GameMeret);
-        // These Merets are added up. If set, previous are ignored.
-        pWriter.WriteLong(); // Game Merets2
-        pWriter.WriteLong(); // Event Merets
 
         pWriter.WriteLong(player.Currency.ValorToken);
         pWriter.WriteLong(player.Currency.Treva);
