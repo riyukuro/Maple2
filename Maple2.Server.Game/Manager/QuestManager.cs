@@ -835,6 +835,9 @@ public sealed class QuestManager {
         if (session.TableMetadata.FameTable.PickMethods.Any(method => method.ReloadOnComplete == quest.Id)) {
             LoadAllianceMissions();
         }
+        // The field quests' required quest (91000015, the end of the level 50 field chain) completed: the day's field
+        // quest is granted now, not at the next login.
+        GrantFieldQuest(DateTime.Now);
         return true;
     }
 
@@ -1144,8 +1147,9 @@ public sealed class QuestManager {
     }
     private List<QuestMetadata>? grantPool;
 
-    // The day's field quest: the day's pick of the field quest group, when the player can start it (level 50,
-    // the played client has it). Once a day, and not while a field quest of the day is held.
+    // The day's field quest: the day's pick of the field quest group, when the player can start it (level 50, the
+    // required quest 91000015 completed, the played client has it). Once a day, and not while a field quest of the day
+    // is held. At login, at the daily reset and when a quest is completed (the required one).
     private void GrantFieldQuest(DateTime now) {
         Character character = session.Player.Value.Character;
         DateTime day = now.Date;

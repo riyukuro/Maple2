@@ -133,6 +133,31 @@ public class DailyQuestGrantTests {
         Assert.That(test.Session.Quest.TryGetQuest(FieldPick(), out _), Is.False);
     }
 
+    // Every field quest requires 91000015 (the end of the level 50 field chain): none is granted at login before it,
+    // and its completion grants the day's pick at once, not at the next login.
+    [Test]
+    public void FieldQuest_RequiredQuestCompletionGrants() {
+        const int required = 91000015;
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.Register(TestGameSession.QuestData(required, QuestType.EpicQuest));
+        foreach (int id in FieldQuests) {
+            QuestMetadata quest = FieldQuest(id);
+            test.Register(quest with { Require = quest.Require with { Quest = [required] } });
+        }
+        groups[FieldGroup] = FieldQuests;
+        test.Session.QuestMetadata.TryGet(required, out QuestMetadata? metadata);
+        Quest chain = test.StartQuest(metadata!);
+
+        test.Session.Quest.Load();
+        Assert.That(Held(FieldQuests), Is.Empty);
+        Assert.That(Character.FieldQuestGrantTime, Is.Zero);
+
+        Assert.That(test.Session.Quest.Complete(chain, bypassConditions: true), Is.True);
+        Assert.That(Held(FieldQuests), Is.EqualTo(new[] { FieldPick() }));
+        Assert.That(Character.FieldQuestGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
+    }
+
     // The reset grants the new day's pick after its drop.
     [Test]
     public void FieldQuest_ResetGrants() {
