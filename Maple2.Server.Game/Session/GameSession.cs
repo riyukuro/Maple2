@@ -374,6 +374,18 @@ public sealed partial class GameSession : Core.Network.Session {
             migrationType = MigrationType.Dungeon;
             roomId = rejoined.RoomId;
             portalId = -1;
+        } else if (migrationType == MigrationType.Normal && roomId == 0 && ownerId == 0
+                   && DungeonRoomMaps.All(TableMetadata) is var roomMaps && FieldEntryRules.DungeonRoomMapWithoutRoom(fieldId, roomMaps)) {
+            int returnId = player.Character.ReturnMaps.Peek();
+            bool gm = GmCheck.IsGm(player.Account.AdminPermissions);
+            int arrivalId = FieldEntryRules.DungeonLoginReturnField(returnId, roomMaps, Constant.DefaultReturnMapId,
+                id => MapMetadata.TryGet(id, out MapMetadata? metadata) && !metadata.Property.NotInPlayedClient
+                    && FieldEntryRules.AdminFieldAllowed(metadata.Limit.EnterAdminLevel, gm));
+            Logger.Information("Character:{CharacterId} arrives on Map:{MapId} of a dungeon room that does not run, enters Map:{ArrivalId}",
+                characterId, fieldId, arrivalId);
+            position = arrivalId == returnId ? player.Character.ReturnPosition : default;
+            fieldId = arrivalId;
+            portalId = -1;
         }
         if (!PrepareField(fieldId, out FieldManager? fieldManager, portalId: portalId, ownerId: ownerId, roomId: roomId, position: position)) {
             // The saved field cannot be made (for one, its map has no navmesh file). A plain entry goes to the

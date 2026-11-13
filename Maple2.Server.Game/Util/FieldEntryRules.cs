@@ -126,6 +126,26 @@ public static class FieldEntryRules {
         return rankDuelMaps.Contains(mapId);
     }
 
+    // A login on a map of a dungeon room (one of its fields or its lobby) whose room no longer runs: after a Game or
+    // World restart no room runs, and a character that logged out in Demon Tree's field 02000207 came back into a
+    // plain field of it, where the room's portal does nothing and Leave the Dungeon (the client's system menu shows
+    // it by the map type, s_room_exit_dungeon, and sends RequestMoveFieldMode3: the server's return field) reloaded
+    // the same map, as that plain entry had saved the map's own enterReturnId (02000207) as the return field. The
+    // client enters such a map through its room: the hall portals that lead to one (63000054's to 02000207) are
+    // type 8, whose action is s_action_portal_DungeonLobby and whose id is the room (portal.cpp:336, 366-379); the
+    // server still moves a type 8 portal as a plain one (FORK.md). So a plain arrival there (a login, a channel
+    // change, a GM warp) goes to the return field.
+    public static bool DungeonRoomMapWithoutRoom(int mapId, IReadOnlySet<int> roomMaps) {
+        return roomMaps.Contains(mapId);
+    }
+
+    // The field of that login: the saved return field when the client can enter it as a plain field (a known map
+    // the played client has and the player may enter, not itself a room map: the plain entry above could have saved
+    // one), else the default.
+    public static int DungeonLoginReturnField(int returnMapId, IReadOnlySet<int> roomMaps, int defaultMapId, Func<int, bool> usable) {
+        return returnMapId != 0 && !roomMaps.Contains(returnMapId) && usable(returnMapId) ? returnMapId : defaultMapId;
+    }
+
     // The field a character arrives in when the one it was saved on (or sent to from another channel) is a
     // map the played client does not have: the first of the return field and the default return field that
     // the client has. The client is on its loading screen and hangs on a map it cannot load, so it must not

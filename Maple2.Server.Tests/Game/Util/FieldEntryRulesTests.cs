@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -118,6 +119,22 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.RankDuelMapWithoutMatch(65010010, RankDuelField.Maps), Is.True);
         Assert.That(FieldEntryRules.RankDuelMapWithoutMatch(65000001, RankDuelField.Maps), Is.False);
         Assert.That(FieldEntryRules.RankDuelMapWithoutMatch(2000062, RankDuelField.Maps), Is.False);
+    }
+
+    // A login on Demon Tree's field 02000207 (dungeon 20007001) or its lobby 50000004 after a restart, with no room
+    // running: the return field, unless that is itself a room map or a map the client cannot enter, then the default.
+    [Test]
+    public void DungeonRoomMapLogin_WithoutItsRoom_EntersTheReturnField() {
+        var roomMaps = new HashSet<int> { 2000207, 50000004 };
+        Assert.That(FieldEntryRules.DungeonRoomMapWithoutRoom(2000207, roomMaps), Is.True);
+        Assert.That(FieldEntryRules.DungeonRoomMapWithoutRoom(50000004, roomMaps), Is.True);
+        Assert.That(FieldEntryRules.DungeonRoomMapWithoutRoom(2000062, roomMaps), Is.False);
+
+        Func<int, bool> usable = id => id != 9999999;
+        Assert.That(FieldEntryRules.DungeonLoginReturnField(2000062, roomMaps, 2000001, usable), Is.EqualTo(2000062));
+        Assert.That(FieldEntryRules.DungeonLoginReturnField(2000207, roomMaps, 2000001, usable), Is.EqualTo(2000001));
+        Assert.That(FieldEntryRules.DungeonLoginReturnField(9999999, roomMaps, 2000001, usable), Is.EqualTo(2000001));
+        Assert.That(FieldEntryRules.DungeonLoginReturnField(0, roomMaps, 2000001, usable), Is.EqualTo(2000001));
     }
 
     // A rank duel arrival whose field cannot be made goes to the fallback fields, as a plain entry does; a dungeon
