@@ -88,10 +88,9 @@ public class ChannelHandlerTests {
         var test = new TestGameSession();
         GameSession session = test.Start();
         test.World.MoveError = new RpcException(new Status(status, "refused"));
-        test.World.ChannelList.Remove(1);
         Assert.That(Send(test, session, 1), Is.EqualTo(new[] {
             Hex(MigrationPacket.GameToGameError(error)),
-            Hex(ChannelPacket.Load(new List<int> { 2 })),
+            Hex(ChannelPacket.Load(new List<int> { 1, 2 })),
         }));
         MigrateOutRequestAssert(test, 1);
         Assert.That(session.State, Is.Not.EqualTo(SessionState.ChangeChannel));
@@ -106,5 +105,62 @@ public class ChannelHandlerTests {
         List<string> sent = Send(test, session, 1);
         Assert.That(sent.First(), Is.EqualTo(Hex(MigrationPacket.GameToGameError(MigrationError.s_move_err_default))));
         Assert.That(session.State, Is.Not.EqualTo(SessionState.ChangeChannel));
+    }
+
+    // The test session starts as saved (TestGameSession.Start); this one saves as a live session does, and a save
+    // takes the World's account lock, so Acquired counts the saves.
+    private static GameSession Unsaved(TestGameSession test) {
+        GameSession session = test.Start();
+        typeof(GameSession).GetField("preMigrationSaved", Any)!.SetValue(session, false);
+        return session;
+    }
+
+    // A channel the World does not list (the client asks only for one of its list): no save and no move.
+    [TestCase(3)]
+    [TestCase(99)]
+    public void UnlistedChannel_IsRefusedWithoutASave(short channel) {
+        var test = new TestGameSession();
+        GameSession session = Unsaved(test);
+        int acquired = test.World.Acquired;
+        Assert.Multiple(() => {
+            Assert.That(Send(test, session, channel), Is.EqualTo(new[] {
+                Hex(MigrationPacket.GameToGameError(MigrationError.s_move_err_no_server)),
+                Hex(ChannelPacket.Load(new List<int> { 1, 2 })),
+            }));
+            Assert.That(test.World.Moves, Is.Empty);
+            Assert.That(test.World.Acquired, Is.EqualTo(acquired));
+            Assert.That(session.State, Is.Not.EqualTo(SessionState.ChangeChannel));
+        });
+    }
+
+    // A change asked again within RefusalWait of a refused one gets the same refusal at once: no save, no World call.
+    // After the wait it is asked of the World again.
+    [Test]
+    public void RefusedAgainSoon_IsRefusedWithoutASave() {
+        var test = new TestGameSession();
+        GameSession session = Unsaved(test);
+        test.World.MoveError = new RpcException(new Status(StatusCode.Unavailable, "refused"));
+        int acquired = test.World.Acquired;
+        Send(test, session, 1);
+        Assert.That(test.World.Moves, Has.Count.EqualTo(1));
+        Assert.That(test.World.Acquired, Is.EqualTo(acquired + 1));
+
+        Assert.Multiple(() => {
+            Assert.That(Send(test, session, 2), Is.EqualTo(new[] {
+                Hex(MigrationPacket.GameToGameError(MigrationError.s_move_err_no_server)),
+            }));
+            Assert.That(Send(test, session, 99), Has.Count.EqualTo(1));
+            Assert.That(test.World.Moves, Has.Count.EqualTo(1));
+            Assert.That(test.World.Acquired, Is.EqualTo(acquired + 1));
+        });
+
+        session.ChannelChangeRefusedAt -= ChannelHandler.RefusalWait;
+        test.World.MoveError = null;
+        Send(test, session, 2);
+        Assert.Multiple(() => {
+            Assert.That(test.World.Moves, Has.Count.EqualTo(2));
+            Assert.That(test.World.Acquired, Is.EqualTo(acquired + 2));
+            Assert.That(session.State, Is.EqualTo(SessionState.ChangeChannel));
+        });
     }
 }

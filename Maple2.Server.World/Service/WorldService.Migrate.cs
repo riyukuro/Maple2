@@ -39,7 +39,7 @@ public partial class WorldService {
                     }
                 } else {
                     channel = PickGameChannel(request.HasChannel ? request.Channel : null, request.ExactChannel,
-                        id => channelClients.TryGetActiveEndpoint(id, out _), channelClients.FirstChannel);
+                        id => channelClients.TryGetActiveEndpoint(id, out _), channelClients.HasListedChannel, channelClients.FirstChannel);
                     if (channel == -1) {
                         throw new RpcException(new Status(StatusCode.Unavailable, request.ExactChannel && request.HasChannel
                             ? $"Channel {request.Channel} is not available" : "No available game channels"));
@@ -70,13 +70,15 @@ public partial class WorldService {
     }
 
     // The channel of a move to a game server, -1 for none: the requested one when it is active; else the first
-    // active one, unless the player picked the channel (exact), whom a channel that is gone does not move elsewhere.
-    public static int PickGameChannel(int? requested, bool exact, Func<int, bool> isActive, Func<int> firstChannel) {
+    // active one, unless the player picked (exact) a channel the World has that is not active: that one is refused.
+    // A picked channel the World does not have goes to the first one: the client sends its saved last channel,
+    // clamped to the channel count and not to a listed id (UIServerListDialog), so it can be a gap or a gone channel.
+    public static int PickGameChannel(int? requested, bool exact, Func<int, bool> isActive, Func<int, bool> exists, Func<int> firstChannel) {
         if (requested is int wanted) {
             if (isActive(wanted)) {
                 return wanted;
             }
-            if (exact) {
+            if (exact && exists(wanted)) {
                 return -1;
             }
         }

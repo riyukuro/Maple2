@@ -84,19 +84,33 @@ public class CharacterSelectChannelTests {
         Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.LoginToGame }));
     }
 
-    // WorldService.PickGameChannel: channels 1 and 2 are active, 1 is the first.
+    // WorldService.PickGameChannel: the World has channels 1, 3 and 4; 1 and 3 are active (2 is a gap in the ids,
+    // 5 is gone), 4 is inactive; 1 is the first.
     [TestCase(null, false, 1)]
     [TestCase(null, true, 1)]
-    [TestCase(2, false, 2)]
-    [TestCase(2, true, 2)]
-    [TestCase(3, false, 1)]
-    [TestCase(3, true, -1)]
-    public void TheWorldMovesToAGoneChannelOnlyWhenItWasNotPicked(int? requested, bool exact, int expected) {
-        Assert.That(WorldService.PickGameChannel(requested, exact, id => id is 1 or 2, () => 1), Is.EqualTo(expected));
+    [TestCase(3, false, 3)]
+    [TestCase(3, true, 3)]
+    [TestCase(4, false, 1)]
+    [TestCase(4, true, -1)]
+    public void APickedInactiveChannelIsRefused(int? requested, bool exact, int expected) {
+        Assert.That(Pick(requested, exact), Is.EqualTo(expected));
     }
+
+    // The client sends its saved channel clamped to the channel count: a gap or a gone channel enters the first one.
+    [TestCase(2)]
+    [TestCase(5)]
+    public void APickedChannelTheWorldLacksEntersTheFirst(int requested) {
+        Assert.Multiple(() => {
+            Assert.That(Pick(requested, exact: true), Is.EqualTo(1));
+            Assert.That(Pick(requested, exact: false), Is.EqualTo(1));
+        });
+    }
+
+    private static int Pick(int? requested, bool exact) =>
+        WorldService.PickGameChannel(requested, exact, id => id is 1 or 3, id => id is 1 or 3 or 4, () => 1);
 
     [Test]
     public void NoActiveChannelIsNone() {
-        Assert.That(WorldService.PickGameChannel(null, false, _ => false, () => -1), Is.EqualTo(-1));
+        Assert.That(WorldService.PickGameChannel(null, false, _ => false, _ => false, () => -1), Is.EqualTo(-1));
     }
 }

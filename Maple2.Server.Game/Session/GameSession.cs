@@ -1677,6 +1677,11 @@ public sealed partial class GameSession : Core.Network.Session {
         preMigrationSaved = false;
     }
 
+    // The last channel change this session was refused (Environment.TickCount64) and its error, for the throttle of
+    // ChannelHandler; 0 before any.
+    internal long ChannelChangeRefusedAt;
+    internal MigrationError ChannelChangeRefusedError;
+
     // A session whose save fails (after one immediate try again, for a passing error such as a deadlock) is ended:
     // what it gave or took since its last stored save is in its memory only, and items made since are stored at once
     // while the items it used up are written by the save (a stack's lower amount, a removed item). Played on, every

@@ -120,6 +120,11 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
         return channel >= 0 && channels.ContainsKey(channel);
     }
 
+    // A channel of the server list the World has, active or not; an instanced-content channel is not one.
+    public bool HasListedChannel(int channel) {
+        return channels.TryGetValue(channel, out Channel? entry) && !entry.InstancedContent;
+    }
+
     public bool TryGetClient(int channel, [NotNullWhen(true)] out ChannelClient? client) {
         if (!ValidChannel(channel)) {
             client = null;
