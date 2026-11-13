@@ -659,6 +659,21 @@ public partial class FieldManager : IField {
         return true;
     }
 
+    // A random navmesh point within the radius (game units) of the center, reached only over polys linked to the
+    // center's own poly (AgentNavigation.RandomPointNear); false when the center is off the mesh.
+    public bool RandomPointNear(Vector3 center, float radius, out Vector3 point) {
+        point = center;
+        if (!float.IsFinite(center.X) || !float.IsFinite(center.Y) || !float.IsFinite(center.Z)) {
+            return false;
+        }
+        if (!AgentNavigation.RandomPointNear(Navigation.Crowd.GetNavMeshQuery(), Navigation.Crowd.GetFilter(0),
+                DotRecastHelper.ToNavMeshSpace(center), radius / 100f, new RcRand(), out RcVec3f found)) {
+            return false;
+        }
+        point = DotRecastHelper.FromNavMeshSpace(found);
+        return true;
+    }
+
     public bool TryGetPlayerById(long characterId, [NotNullWhen(true)] out FieldPlayer? player) {
         foreach (FieldPlayer fieldPlayer in Players.Values) {
             if (fieldPlayer.Value.Character.Id == characterId) {

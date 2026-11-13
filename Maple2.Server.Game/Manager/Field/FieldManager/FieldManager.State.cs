@@ -162,25 +162,16 @@ public partial class FieldManager {
 
         // Apply random offset if SpawnRadius is set
         Vector3 spawnPosition = position;
+        // A random point within SpawnRadius that the npc can walk to from the spawn point (so never on top of a
+        // breakable: AgentNavigation.RandomPointNear).
         if (spawnPointNpc?.SpawnRadius > 0) {
-            float angle = Random.Shared.NextSingle() * MathF.PI * 2;
-            float distance = Random.Shared.NextSingle() * spawnPointNpc.SpawnRadius;
-            Vector3 offset = new Vector3(
-                MathF.Cos(angle) * distance,
-                MathF.Sin(angle) * distance,
-                0
-            );
-            Vector3 randomizedPosition = position + offset;
-
-            // Validate and snap to nearest valid navmesh position
-            if (FindNearestPoly(randomizedPosition, out long nearestRef, out RcVec3f validPosition) && nearestRef != 0) {
-                spawnPosition = DotRecastHelper.FromNavMeshSpace(validPosition);
-                logger.Debug("[SpawnNpc] Applied spawn radius {Radius} to NPC {NpcId} at SpawnPoint {SpawnPointId}, offset: {Offset}, snapped from {Original} to {Final}",
-                    spawnPointNpc.SpawnRadius, npc.Id, spawnPointNpc.SpawnPointId, offset, randomizedPosition, spawnPosition);
+            if (RandomPointNear(position, spawnPointNpc.SpawnRadius, out Vector3 randomizedPosition)) {
+                spawnPosition = randomizedPosition;
+                logger.Debug("[SpawnNpc] Applied spawn radius {Radius} to NPC {NpcId} at SpawnPoint {SpawnPointId}, moved from {Original} to {Final}",
+                    spawnPointNpc.SpawnRadius, npc.Id, spawnPointNpc.SpawnPointId, position, spawnPosition);
             } else {
-                logger.Warning("[SpawnNpc] Randomized position {Position} invalid for NPC {NpcId}, using original spawn point {Original}",
-                    randomizedPosition, npc.Id, position);
-                spawnPosition = position;
+                logger.Warning("[SpawnNpc] Spawn point {Position} is off the navmesh for NPC {NpcId}, spawn radius not applied",
+                    position, npc.Id);
             }
         }
 

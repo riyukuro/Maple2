@@ -202,6 +202,25 @@ public sealed class AgentNavigation {
         return true;
     }
 
+    // A random point on the navmesh within the radius of the center, all in navmesh space, reached only over polys
+    // linked to the center's own poly. Snapping a random point to its nearest poly instead can pick a poly on top of
+    // a breakable (a barrel or a woodpile carries its own navmesh island over the floor): a mob placed there has no
+    // path off it and floats once the breakable is gone. False when the center is off the mesh.
+    public static bool RandomPointNear(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f center, float radius, IRcRand random, out RcVec3f point) {
+        point = center;
+        if (!float.IsFinite(radius) || radius <= 0 || !SnapToMesh(query, filter, center, out RcVec3f start)) {
+            return false;
+        }
+        DtStatus status = query.FindNearestPoly(start, NearestPolyExtents, filter, out long startRef, out _, out _);
+        if (status.Failed() || startRef == 0) {
+            return false;
+        }
+
+        status = query.FindRandomPointWithinCircle(startRef, start, radius, filter, random, out _, out RcVec3f randomPoint);
+        point = status.Succeeded() && float.IsFinite(randomPoint.X) && float.IsFinite(randomPoint.Y) && float.IsFinite(randomPoint.Z) ? randomPoint : start;
+        return true;
+    }
+
     // The end of a straight move over the navmesh from one point towards another: the target when nothing is in the
     // way, else the point where the line meets the first edge without a neighbour (a wall or a ledge). The start
     // snaps to the mesh first; false when it is off the mesh or a point is not finite.

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using DotRecast.Core;
 using DotRecast.Core.Numerics;
 using DotRecast.Detour;
 using Maple2.Server.Game.Manager.Field;
@@ -147,5 +148,64 @@ public class AgentNavigationTests {
         Assert.That(AgentNavigation.StraightMove(query, filter, new RcVec3f(40, 0, 40), new RcVec3f(41, 0, 40), out _), Is.False);
         Assert.That(AgentNavigation.StraightMove(query, filter, new RcVec3f(2, 0, 5), new RcVec3f(float.NaN, 0, 5), out RcVec3f kept), Is.False);
         Assert.That(kept.X, Is.EqualTo(2));
+    }
+
+    // A floor, x 0..5, and the top of a breakable, x 5.5..9.5 and 1.5 navmesh units up, with no floor under it and no
+    // link to the floor: the navmesh of a woodpile or barrel standing on the ground.
+    private static DtNavMesh FloorAndTop() {
+        var option = new DtNavMeshCreateParams {
+            verts = [0, 0, 0, 0, 0, 100, 50, 0, 100, 50, 0, 0, 55, 15, 0, 55, 15, 100, 95, 15, 100, 95, 15, 0],
+            vertCount = 8,
+            polys = [
+                0, 1, 2, 3, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                4, 5, 6, 7, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+            ],
+            polyAreas = [0, 0],
+            polyFlags = [1, 1],
+            polyCount = 2,
+            nvp = 6,
+            walkableHeight = 2,
+            walkableRadius = 0.5f,
+            walkableClimb = 0.5f,
+            bmin = new RcVec3f(0, 0, 0),
+            bmax = new RcVec3f(9.5f, 2, 10),
+            cs = 0.1f,
+            ch = 0.1f,
+            buildBvTree = true,
+            offMeshConVerts = [],
+            offMeshConRad = [],
+            offMeshConDir = [],
+            offMeshConAreas = [],
+            offMeshConFlags = [],
+            offMeshConUserID = [],
+        };
+        DtMeshData? data = DtNavMeshBuilder.CreateNavMeshData(option);
+        Assert.That(data, Is.Not.Null);
+        var navMesh = new DtNavMesh();
+        Assert.That(navMesh.Init(data, 6, 0).Succeeded(), Is.True);
+        return navMesh;
+    }
+
+    // A spawn spread from a floor point must stay on the floor: a random point snapped to its nearest poly lands on
+    // the breakable's top (a mob there has no path down and floats once the breakable is broken).
+    [Test]
+    public void RandomPointNear_StaysOnPolysLinkedToTheCenter() {
+        var query = new DtNavMeshQuery(FloorAndTop());
+        var filter = new DtQueryDefaultFilter();
+        var center = new RcVec3f(3, 0, 5);
+
+        Assert.That(AgentNavigation.SnapToMesh(query, filter, new RcVec3f(8, 0, 5), out RcVec3f snapped), Is.True);
+        Assert.That(snapped.Y, Is.EqualTo(1.5f).Within(0.01)); // the nearest poly is the breakable's top
+
+        var random = new RcRand(7);
+        for (int i = 0; i < 500; i++) {
+            Assert.That(AgentNavigation.RandomPointNear(query, filter, center, 6, random, out RcVec3f point), Is.True);
+            Assert.That(point.Y, Is.EqualTo(0).Within(0.01), $"draw {i}: {point}");
+            Assert.That(point.X, Is.InRange(0f, 5f), $"draw {i}: {point}");
+        }
+
+        Assert.That(AgentNavigation.RandomPointNear(query, filter, new RcVec3f(30, 0, 30), 6, random, out RcVec3f off), Is.False);
+        Assert.That(off.X, Is.EqualTo(30));
+        Assert.That(AgentNavigation.RandomPointNear(query, filter, center, float.NaN, random, out _), Is.False);
     }
 }

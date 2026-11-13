@@ -59,15 +59,10 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
         return SpawnPicker.Pick(validSpawns, count, Random.Shared, SpreadAround);
     }
 
-    // A navmesh point within SPAWN_DISTANCE of tile, or the tile itself when none is found there.
+    // A navmesh point within SPAWN_DISTANCE of tile that a mob can walk to from it (so never on top of a
+    // breakable), or the tile itself when the tile is off the mesh.
     private Vector3 SpreadAround(Vector3 tile) {
-        float angle = Random.Shared.NextSingle() * MathF.PI * 2;
-        float distance = Random.Shared.NextSingle() * SPAWN_DISTANCE;
-        Vector3 candidate = tile + new Vector3(MathF.Cos(angle) * distance, MathF.Sin(angle) * distance, 0);
-        if (Field.FindNearestPoly(candidate, out long nearestRef, out RcVec3f position) && nearestRef != 0) {
-            return DotRecastHelper.FromNavMeshSpace(position);
-        }
-        return tile;
+        return Field.RandomPointNear(tile, SPAWN_DISTANCE, out Vector3 point) ? point : tile;
     }
 
     private Vector3? GroundAt(Vector3 point) {
