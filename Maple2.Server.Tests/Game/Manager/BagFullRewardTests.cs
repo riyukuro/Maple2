@@ -245,4 +245,27 @@ public class BagFullRewardTests {
             Assert.That(test.Errors, Is.Empty);
         });
     }
+
+    // A start item with a full bag comes by mail, once: the mailed pieces count as given on the next request
+    // (before, the bag's refusal dropped it).
+    [Test]
+    public void TutorialItem_FullBag_MailsTheItemOnce() {
+        const int itemId = 30000001;
+        GameSession session = Start(TestGameSession.Metadata(itemId), TestGameSession.Metadata(itemId + 1));
+        test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
+            [JobCode.Newbie] = new(new JobTable.Tutorial(session.Field!.MapId, 0, 0, [], [], [new JobTable.Item(itemId, 1, 3)], []),
+                new Dictionary<SkillRank, JobTable.Skill[]>(), []),
+        }));
+        FullBag(session, session.Field.ItemDrop.CreateItem(itemId + 1)!);
+        var handler = new TutorialItemHandler();
+
+        handler.Handle(session, TestGameSession.Packet(_ => { }));
+        handler.Handle(session, TestGameSession.Packet(_ => { }));
+
+        Assert.Multiple(() => {
+            Assert.That(BagSplitTests.Held(session, itemId), Is.Zero);
+            Assert.That(Mailed(itemId), Is.EqualTo(3));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
 }

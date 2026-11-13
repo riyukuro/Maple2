@@ -54,6 +54,14 @@ public sealed class MailManager {
         }
     }
 
+    // Pieces of an item on the inbox's mails, fetched first so a mail just sent counts.
+    public int HeldAmount(int itemId) {
+        lock (inbox) {
+            Fetch(force: true);
+            return inbox.Values.Sum(mail => mail.Items.Where(item => item.Id == itemId).Sum(item => item.Amount));
+        }
+    }
+
     public void Load() {
         lock (inbox) {
             DropExpired();

@@ -30,9 +30,11 @@ public class TutorialItemHandler : FieldPacketHandler {
         }
 
         foreach (IGrouping<int, JobTable.Item> tutorialItemGroup in jobMetadata.Tutorial.StartItem.GroupBy(item => item.Id)) {
-            // Amounts, not stacks: a stack of 10 counted as 1 and was given again on every request.
+            // Amounts, not stacks: a stack of 10 counted as 1 and was given again on every request. What waits on a
+            // mail counts too, so a start item mailed for a full bag is not mailed again on the next request.
             int owned = session.Item.Inventory.Find(tutorialItemGroup.Key).Sum(item => item.Amount)
-                        + session.Item.Equips.Gear.Count(x => x.Value.Id == tutorialItemGroup.Key);
+                        + session.Item.Equips.Gear.Count(x => x.Value.Id == tutorialItemGroup.Key)
+                        + session.Mail.HeldAmount(tutorialItemGroup.Key);
             int missing = TutorialItemRules.Missing(owned, tutorialItemGroup.Select(item => item.Count));
             if (missing <= 0) {
                 continue;
@@ -44,7 +46,10 @@ public class TutorialItemHandler : FieldPacketHandler {
                 continue;
             }
 
-            session.Item.Inventory.Add(tutorialItem, true);
+            // A full bag sends the item by mail (chosen here; the request, CGuideActionRequestTutorialItem::vfunc_3,
+            // guideaction.cpp:1340, has no body and the client waits for no reply). The bag's refusal used to drop it,
+            // and the guide asks only once.
+            session.Item.AddOrMail(tutorialItem, true);
         }
     }
 }
