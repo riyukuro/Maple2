@@ -123,4 +123,39 @@ public class ItemEnchantStageTests {
         Assert.That(test.TakeSent().Select(System.Convert.ToHexString),
             Is.EqualTo(new[] { System.Convert.ToHexString(Maple2.Server.Game.Packets.NpcTalkPacket.Update(success).ToArray()) }));
     }
+
+    // A new stage drops the last try: the result event that follows it, with no try of its own, gets no line of the
+    // earlier try (before, the old success line came again).
+    [Test]
+    public void ANewStage_DropsTheLastTry() {
+        var test = new TestGameSession();
+        Item gear = test.Store(TestGameSession.Metadata(11400001, EquipSlot.CL, type: 1));
+        test.SetServerTable(new EnchantOptionTable(new Dictionary<int, EnchantOptionMetadata>()));
+        test.SetServerTable(new ScriptEventConditionTable(new Dictionary<ScriptEventType, Dictionary<int, ScriptEventConditionMetadata>> {
+            [ScriptEventType.EnchantComplete] = new() {
+                [2000] = new ScriptEventConditionMetadata(2000, ScriptEventType.EnchantComplete, ItemEnchantError.s_itemenchant_unknown_err, 0, [2, 3, 4, 5], 0,
+                    EnchantDamageType.None, EnchantResult.Success),
+                [2100] = new ScriptEventConditionMetadata(2100, ScriptEventType.EnchantComplete, ItemEnchantError.s_itemenchant_unknown_err, 0, [], 0,
+                    EnchantDamageType.None, EnchantResult.Success),
+                [2203] = new ScriptEventConditionMetadata(2203, ScriptEventType.EnchantComplete, ItemEnchantError.s_itemenchant_unknown_err, 0, [], 0,
+                    EnchantDamageType.None, EnchantResult.Fail),
+            },
+        }));
+        GameSession session = test.Start();
+        var success = new ScriptContent("success", "", "");
+        session.NpcScript = new NpcScriptManager(session, [
+            new CinematicEventScript(2000, [new ScriptContent("2-5", "", "")]),
+            new CinematicEventScript(2100, [success]),
+            new CinematicEventScript(2203, [new ScriptContent("fail", "", "")]),
+        ]);
+        session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid);
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid, force: true), Is.True);
+        session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid);
+        test.TakeSent();
+
+        session.ItemEnchant.NpcTalkEvent(ScriptEventType.EnchantComplete);
+
+        Assert.That(test.TakeSent().Select(System.Convert.ToHexString),
+            Does.Not.Contain(System.Convert.ToHexString(Maple2.Server.Game.Packets.NpcTalkPacket.Update(success).ToArray())));
+    }
 }

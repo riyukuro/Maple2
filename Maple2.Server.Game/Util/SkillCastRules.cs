@@ -24,9 +24,14 @@ public static class SkillCastRules {
         return level is > 0 ? level.Value : dataLevel;
     }
 
-    // The learned level of the skill for a player caster, null for any other caster.
-    public static short? LearnedLevel(IActor caster, int skillId) {
-        return caster is FieldPlayer player ? player.Session.Config.Skill.SkillInfo.GetMainSkill(skillId)?.Level : null;
+    // The level an effect's skill takes for this caster. Most effect skills have no link: they return before any
+    // lookup.
+    public static short LinkedLevel(IActor caster, SkillEffectMetadata.Skill skill) {
+        if (skill.LinkId == 0) {
+            return skill.Level;
+        }
+        short? learned = caster is FieldPlayer player ? player.Session.Config.Skill.SkillInfo.GetMainSkill(skill.LinkId)?.Level : null;
+        return learned is > 0 ? learned.Value : skill.Level;
     }
 
     public static bool RefusedDead(bool isDead, bool allowDead) => isDead && !allowDead;

@@ -66,7 +66,9 @@ public class ItemEnchantManager {
     private EnchantResult enchantResult;
     // The last try (result, level after it, grade) for the dialog's result event (talk event 3), which comes after the
     // stage is spent: at the last grade nothing stays staged.
-    private (EnchantResult Result, int Level, short Rarity) lastTry;
+    // The last Ophelia try (its result, the level after the roll, the grade) for the result line of talk event 3;
+    // the roll's Reset clears the staged item before that event comes. A new stage drops it.
+    private (EnchantResult Result, int Level, short Rarity)? lastTry;
     // The item of the last stage: the dialog's retry button asks for it again by a talk event alone.
     private EnchantType retryType;
     private long retryUid;
@@ -115,6 +117,7 @@ public class ItemEnchantManager {
         }
 
         Reset();
+        lastTry = null;
         Type = enchantType;
         upgradeItem = item;
         retryType = enchantType;
@@ -536,13 +539,16 @@ public class ItemEnchantManager {
     }
 
     public void NpcTalkEvent(ScriptEventType scriptEventType, ItemEnchantError error = ItemEnchantError.s_itemenchant_unknown_err) {
-        if (scriptEventType == ScriptEventType.EnchantComplete) {
-            session.NpcScript?.EnchantResultScript(scriptEventType, lastTry.Result, error, lastTry.Level, lastTry.Rarity);
-            lastTry = default;
+        if (scriptEventType == ScriptEventType.EnchantComplete && lastTry is { } done) {
+            session.NpcScript?.EnchantResultScript(scriptEventType, done.Result, error, done.Level, done.Rarity);
+            lastTry = null;
             Reset();
             return;
         }
         session.NpcScript?.EnchantResultScript(scriptEventType, enchantResult, error, upgradeItem?.Enchant?.Enchants ?? 0, (short) (upgradeItem?.Rarity ?? 0));
+        if (scriptEventType == ScriptEventType.EnchantComplete) {
+            Reset();
+        }
     }
 
     // The dialog's retry button (UIItemEnchantDialog::OnRetry, uiitemenchantdialog.cpp:781) clears its slots
