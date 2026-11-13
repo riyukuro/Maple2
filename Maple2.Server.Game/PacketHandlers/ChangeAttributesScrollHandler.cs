@@ -43,17 +43,14 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
     private void HandleChange(GameSession session, IByteReader packet) {
         long scrollUid = packet.ReadLong();
         long itemUid = packet.ReadLong();
-        packet.ReadLong();
+        long ingredientUid = packet.ReadLong(); // the talent lock candy (UIItemRemakeScrollDialog m_nIngredientUid)
         packet.ReadByte();
 
         List<ItemRemakeRules.Lock>? locks = ItemRemakeRules.ReadLocks(packet);
-        if (locks == null || !ItemRemakeRules.LocksAllowed(locks.Count)) {
+        if (locks == null || !ItemRemakeRules.LocksAllowed(locks.Count, ItemRemakeRules.MaxLocks)) {
             session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
             return;
         }
-        bool useLock = locks.Count == 1;
-        bool isSpecialAttribute = useLock && locks[0].Special;
-        short attribute = useLock ? locks[0].Attribute : (short) -1;
 
         lock (session.Item) {
             Item? scroll = session.Item.Inventory.Get(scrollUid, InventoryType.Misc);
@@ -79,23 +76,19 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
             }
 
             Item? lockItem = null;
-            if (useLock) {
-                ItemStats.Option itemOption = item.Stats[ItemStats.Type.Random];
-                if (isSpecialAttribute) {
-                    if (!itemOption.Special.ContainsKey((SpecialAttribute) attribute)) {
-                        session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_property));
-                        return;
-                    }
-                } else {
-                    if (!itemOption.Basic.ContainsKey((BasicAttribute) attribute)) {
-                        session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_property));
-                        return;
-                    }
+            if (locks.Count > 0) {
+                if (!ChangeAttributesHandler.HasLockedOptions(item, locks)) {
+                    session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_property));
+                    return;
                 }
 
-                lockItem = ChangeAttributesHandler.GetLockConsumeItem(session, item);
+                lockItem = ChangeAttributesHandler.GetLockConsumeItem(session, item, ingredientUid);
                 if (lockItem == null) {
                     session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_error_server_fail_lack_lock_consume_item));
+                    return;
+                }
+                if (!ItemRemakeRules.LocksAllowed(locks.Count, ChangeAttributesHandler.LockLimit(item, lockItem))) {
+                    session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
                     return;
                 }
             }
@@ -113,50 +106,14 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
             }
 
             // A failed roll answers on the scroll dialog's own packet (code 12, its "failed to modify" string); the
-            // item dialog's error packet is not read by the scroll dialog.
-            if (itemRemakeScrollMetadata.RollAttribute) {
-                // Randomize attributes.
-                if (lockItem != null) {
-                    // Add back the locked attribute.
-                    if (isSpecialAttribute) {
-                        if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, new LockOption((SpecialAttribute) attribute, true))) {
-                            session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
-                            return;
-                        }
-                    } else {
-                        if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, new LockOption((BasicAttribute) attribute, true))) {
-                            session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
-                            return;
-                        }
-                    }
-                } else {
-                    if (!ItemStatsCalc.UpdateRandomOption(ref changeItem)) {
-                        session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
-                        return;
-                    }
-                }
-            } else {
-                // Fixed attributes.
-                if (lockItem != null) {
-                    // Restore locked attribute values.
-                    if (isSpecialAttribute) {
-                        if (!ItemStatsCalc.UpdateFixedOption(ref changeItem, new LockOption((SpecialAttribute) attribute, true))) {
-                            session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
-                            return;
-                        }
-                    } else {
-                        if (!ItemStatsCalc.UpdateFixedOption(ref changeItem, new LockOption((BasicAttribute) attribute, true))) {
-                            session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
-                            return;
-                        }
-                    }
-                } else {
-                    if (!ItemStatsCalc.UpdateFixedOption(ref changeItem)) {
-                        session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
-                        return;
-                    }
-                }
-
+            // item dialog's error packet is not read by the scroll dialog. The locked options are added back.
+            LockOption[] presets = ChangeAttributesHandler.LockOptions(locks);
+            bool rolled = itemRemakeScrollMetadata.RollAttribute
+                ? ItemStatsCalc.UpdateRandomOption(ref changeItem, presets)
+                : ItemStatsCalc.UpdateFixedOption(ref changeItem, presets);
+            if (!rolled) {
+                session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
+                return;
             }
 
             ChangeAttributesScrollError consumed = TakeCosts(session, scroll, lockItem);

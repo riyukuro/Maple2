@@ -59,6 +59,8 @@ public class ItemRemakeRulesTests {
         Assert.That(ItemRemakeRules.LocksAllowed(0), Is.True);
         Assert.That(ItemRemakeRules.LocksAllowed(1), Is.True);
         Assert.That(ItemRemakeRules.LocksAllowed(2), Is.False);
+        Assert.That(ItemRemakeRules.LocksAllowed(2, 2), Is.True);
+        Assert.That(ItemRemakeRules.LocksAllowed(-1, 2), Is.False);
     }
 
     // GetLockItemId checks armor, weapon, accessory, then pet; anything else has no lock item.

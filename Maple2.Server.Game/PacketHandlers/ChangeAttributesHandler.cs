@@ -69,15 +69,12 @@ public class ChangeAttributesHandler : FieldPacketHandler {
 
     private void HandleChange(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
-        packet.ReadLong();
+        long ingredientUid = packet.ReadLong(); // a pet's talent lock candy (TabContentsPetRemakeOption m_uidIngredient)
         List<ItemRemakeRules.Lock>? locks = ItemRemakeRules.ReadLocks(packet);
-        if (locks == null || !ItemRemakeRules.LocksAllowed(locks.Count)) {
+        if (locks == null || !ItemRemakeRules.LocksAllowed(locks.Count, ItemRemakeRules.MaxLocks)) {
             session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
             return;
         }
-        bool useLock = locks.Count == 1;
-        bool isSpecialAttribute = useLock && locks[0].Special;
-        short attribute = useLock ? locks[0].Attribute : (short) -1;
 
         lock (session.Item) {
             // Validate item being changed + lock attributes/lock item if necessary.
@@ -97,24 +94,20 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             }
 
             Item? lockItem = null;
-            if (useLock) {
-                ItemStats.Option itemOption = item.Stats[ItemStats.Type.Random];
-                if (isSpecialAttribute) {
-                    if (!itemOption.Special.ContainsKey((SpecialAttribute) attribute)) {
-                        session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
-                        return;
-                    }
-                } else {
-                    if (!itemOption.Basic.ContainsKey((BasicAttribute) attribute)) {
-                        session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
-                        return;
-                    }
+            if (locks.Count > 0) {
+                if (!HasLockedOptions(item, locks)) {
+                    session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
+                    return;
                 }
 
-                lockItem = GetLockConsumeItem(session, item);
+                lockItem = GetLockConsumeItem(session, item, ingredientUid);
                 if (lockItem == null) {
                     // The dialog's string for a lock without a lock item (OnRemakeError code 9).
                     session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
+                    return;
+                }
+                if (!ItemRemakeRules.LocksAllowed(locks.Count, LockLimit(item, lockItem))) {
+                    session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
                     return;
                 }
             }
@@ -129,25 +122,10 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 return;
             }
 
-            // Randomize attributes.
-            if (lockItem != null) {
-                // Add back the locked attribute.
-                if (isSpecialAttribute) {
-                    if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, new LockOption((SpecialAttribute) attribute, true))) {
-                        session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_apply_option));
-                        return;
-                    }
-                } else {
-                    if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, new LockOption((BasicAttribute) attribute, true))) {
-                        session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_apply_option));
-                        return;
-                    }
-                }
-            } else {
-                if (!ItemStatsCalc.UpdateRandomOption(ref changeItem)) {
-                    session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_apply_option));
-                    return;
-                }
+            // Randomize attributes, adding back the locked ones.
+            if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, LockOptions(locks))) {
+                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_apply_option));
+                return;
             }
 
             if (!PayChange(session, item, ingredients, lockItem)) {
@@ -297,10 +275,11 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         return true;
     }
 
-    // The lock item the client asks for (ItemRemakeRules.LockTag): any inventory item with the lock tag of the
+    // The lock item the client asks for (ItemRemakeRules.LockTag): an inventory item with the lock tag of the
     // item's kind and, for an equip, the equip's rarity, that the character can use (ItemRemakeRules.LockItemUsable).
-    // The first one found is taken.
-    public static Item? GetLockConsumeItem(GameSession session, Item changeItem) {
+    // For gear the first one found is taken. For a pet it is the talent lock candy the player chose
+    // (ingredientUid), which sets how many talents stay (LockLimit).
+    public static Item? GetLockConsumeItem(GameSession session, Item changeItem, long ingredientUid) {
         if (!IsValidItem(changeItem)) {
             return null;
         }
@@ -312,10 +291,38 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         }
         int lockRarity = ItemRemakeRules.LockRarity(changeItem.Type.IsCombatPet, changeItem.Rarity);
         bool vip = session.Config.IsPremiumClubActive();
+        bool pet = lockTag == ItemTag.LockItemOptionPet;
         return session.Item.Inventory.Filter(item => ItemRemakeRules.IsLockItem(lockTag.Value, lockRarity, item.Metadata.Property.Tag, item.Rarity)
-            && ItemRemakeRules.LockItemUsable(item.IsExpired(), item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, session.CharacterId),
+            && ItemRemakeRules.LockItemUsable(item.IsExpired(), item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, session.CharacterId)
+            && (!pet || (item.Uid == ingredientUid && ItemRemakeRules.CandyLocks(item.Metadata.Function?.Type, item.Metadata.Function?.Parameters) > 0)),
             InventoryType.Misc).FirstOrDefault();
     }
+
+    // How many options the lock item keeps: one for gear, the candy's count for a pet (ItemRemakeRules.LocksAllowed).
+    internal static int LockLimit(Item changeItem, Item lockItem) {
+        if (!changeItem.Type.IsCombatPet) {
+            return 1;
+        }
+        int options = changeItem.Stats?[ItemStats.Type.Random].Count ?? 0;
+        return ItemRemakeRules.PetLockLimit(
+            ItemRemakeRules.CandyLocks(lockItem.Metadata.Function?.Type, lockItem.Metadata.Function?.Parameters), options);
+    }
+
+    // Every kept option is one the item has, and none is kept twice.
+    internal static bool HasLockedOptions(Item item, List<ItemRemakeRules.Lock> locks) {
+        if (item.Stats == null || locks.Distinct().Count() != locks.Count) {
+            return false;
+        }
+        ItemStats.Option option = item.Stats[ItemStats.Type.Random];
+        return locks.All(kept => kept.Special
+            ? option.Special.ContainsKey((SpecialAttribute) kept.Attribute)
+            : option.Basic.ContainsKey((BasicAttribute) kept.Attribute));
+    }
+
+    internal static LockOption[] LockOptions(List<ItemRemakeRules.Lock> locks) =>
+        locks.Select(kept => kept.Special
+            ? new LockOption((SpecialAttribute) kept.Attribute, true)
+            : new LockOption((BasicAttribute) kept.Attribute, true)).ToArray();
 
     // Client TabContentsPetRemakeOption / UIItemRemakeOptionDialog: the player keeps the current
     // options instead of the new ones (kind 1 item, 2 pet). Only the pending result in the session

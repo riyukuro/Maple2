@@ -33,8 +33,21 @@ public static class ItemRemakeRules {
         return valid ? locks : null;
     }
 
-    // One lock item keeps one option; a request that keeps more is refused whole.
-    public static bool LocksAllowed(int count) => count is 0 or 1;
+    // Gear: one lock item keeps one option. A pet: the talent lock candy the player put in the ingredient slot
+    // (function LockItemOptionPet, its parameter 1, 2 or 3 in KR) keeps up to its parameter of options, but one
+    // option always rolls (TabContentsPetRemakeOption FUN_140b93460 and UIItemRemakeScrollDialog give the board
+    // maxOptionLockCount = min(options - 1, parameter)). One candy is taken whatever the count. A request that keeps
+    // more is refused whole.
+    public const int MaxLocks = 3;
+
+    public static bool LocksAllowed(int count, int limit = 1) => count >= 0 && count <= limit;
+
+    // The client lists as candies only LockItemOptionPet items with a parameter above 0
+    // (TabContentsPetRemakeOption FUN_140b96e60).
+    public static int CandyLocks(ItemFunction? function, string? parameter) =>
+        function == ItemFunction.LockItemOptionPet && int.TryParse(parameter, out int count) && count > 0 ? count : 0;
+
+    public static int PetLockLimit(int candyLocks, int optionCount) => Math.Max(0, Math.Min(optionCount - 1, candyLocks));
 
     // The client's lock item (GetLockItemId, GetLockItemLevel; itemremakescrolldata.cpp:407): the lock tag of the
     // item's kind (armor 102, weapon 101, accessory 103, pet 104 in its tag table), and for an equip the equip's
