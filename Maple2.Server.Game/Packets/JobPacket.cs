@@ -22,7 +22,8 @@ public static class JobPacket {
         AutoDistribute = 11,
     }
 
-    // Don't know what this actually is used for, but it should create UI component.
+    // CSceneStateGame::OnJob (scenestategame.cpp:7456): the skill book and OnJobChanged without the advance effect, then for
+    // the own player the status and "learned skill" notices. No caller: nothing shows when KMS2 sends it.
     public static ByteWriter Notify(IActor<Player> player, SkillInfo skillInfo) {
         var pWriter = Packet.Of(SendOp.Job);
         pWriter.WriteInt(player.ObjectId);
@@ -67,7 +68,8 @@ public static class JobPacket {
         return pWriter;
     }
 
-    // This might be related to Recv Command 7.
+    // CSceneStateGame::OnJob (scenestategame.cpp:7503): the skill book with no job change, then for the own player the status
+    // and "learned skill" notices. No caller: nothing shows when KMS2 sends it.
     public static ByteWriter Unknown(IActor<Player> player, SkillInfo skillInfo) {
         var pWriter = Packet.Of(SendOp.Job);
         pWriter.WriteInt(player.ObjectId);

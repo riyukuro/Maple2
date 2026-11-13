@@ -266,12 +266,16 @@ public class SkillInfo : IByteSerializable {
             }
         }
 
+        // JobSkill::Read (jobsystem.cpp:129): the level, then changed, learned and extra. Changed is the skill learned
+        // just now: the client's "learned skill" reward notice and the tree's newSkill mark. Extra is a skill granted
+        // outside the job tree, which the skill tree leaves out (UISkillBookTreeDialog::RefreshAll); the server grants
+        // none.
         public void WriteTo(IByteWriter writer) {
             writer.WriteInt(Id);
             writer.WriteInt(Math.Max((int) Level, 1));
-            writer.WriteBool(false);
-            writer.WriteBool(Level > 0);
             writer.WriteBool(Notify);
+            writer.WriteBool(Level > 0);
+            writer.WriteBool(false);
 
             Notify = false;
         }
