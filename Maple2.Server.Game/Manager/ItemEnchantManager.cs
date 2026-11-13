@@ -64,6 +64,9 @@ public class ItemEnchantManager {
     private int fodderWeight;
     private int useCharges;
     private EnchantResult enchantResult;
+    // The last try (result, level after it, grade) for the dialog's result event (talk event 3), which comes after the
+    // stage is spent: at the last grade nothing stays staged.
+    private (EnchantResult Result, int Level, short Rarity) lastTry;
     // The item of the last stage: the dialog's retry button asks for it again by a talk event alone.
     private EnchantType retryType;
     private long retryUid;
@@ -358,6 +361,8 @@ public class ItemEnchantManager {
                     session.ConditionUpdate(ConditionType.enchant_result, codeLong: (int) EnchantResult.Fail, targetLong: upgradeItem.Enchant.Enchants);
                 }
 
+                lastTry = (enchantResult, upgradeItem.Enchant.Enchants, (short) upgradeItem.Rarity);
+
                 // What was staged is spent: a request that follows without a new stage pays the cost of the
                 // item's grade as it is now, at that grade's rate, with no fodder and no charges. The last grade
                 // has no next cost (the tables end with it): nothing stays staged.
@@ -531,10 +536,13 @@ public class ItemEnchantManager {
     }
 
     public void NpcTalkEvent(ScriptEventType scriptEventType, ItemEnchantError error = ItemEnchantError.s_itemenchant_unknown_err) {
-        session.NpcScript?.EnchantResultScript(scriptEventType, enchantResult, error, upgradeItem?.Enchant?.Enchants ?? 0, (short) (upgradeItem?.Rarity ?? 0));
         if (scriptEventType == ScriptEventType.EnchantComplete) {
+            session.NpcScript?.EnchantResultScript(scriptEventType, lastTry.Result, error, lastTry.Level, lastTry.Rarity);
+            lastTry = default;
             Reset();
+            return;
         }
+        session.NpcScript?.EnchantResultScript(scriptEventType, enchantResult, error, upgradeItem?.Enchant?.Enchants ?? 0, (short) (upgradeItem?.Rarity ?? 0));
     }
 
     // The dialog's retry button (UIItemEnchantDialog::OnRetry, uiitemenchantdialog.cpp:781) clears its slots

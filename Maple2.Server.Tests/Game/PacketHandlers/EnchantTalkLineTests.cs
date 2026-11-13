@@ -23,11 +23,49 @@ public class EnchantTalkLineTests {
 
     [Test]
     public void AFieldNpcTalk_AnswersTheResultWithHerLine() {
-        var test = new TestGameSession();
         var line = new ScriptContent("done", "voice", "face");
+        (GameSession session, TestGameSession test) = Start([new CinematicEventScript(7, [line])], new() {
+            [7] = Row(7, [0], EnchantResult.None),
+        });
+
+        session.NpcScript!.EnchantResultScript(ScriptEventType.EnchantComplete);
+
+        Assert.That(Sent(test), Is.EqualTo(new[] { Update(line) }));
+    }
+
+    // The KR rows of scriptEventCondition for enchant_complete: a row without enchantLevel (2100, 2203) is its result's
+    // default line, so a success to +1 gets 2100. A row that names the level wins over the default (2300 before 2203).
+    [TestCase(EnchantResult.Success, 1, 2100)]
+    [TestCase(EnchantResult.Success, 3, 2000)]
+    [TestCase(EnchantResult.Fail, 2, 2300)]
+    [TestCase(EnchantResult.Fail, 4, 2203)]
+    public void TheResultLine_FallsBackToTheRowWithoutALevel(EnchantResult result, int level, int expected) {
+        int[] ids = [2000, 2100, 2203, 2300];
+        CinematicEventScript[] events = ids.Select(id => new CinematicEventScript(id, [new ScriptContent($"l{id}", "", "")])).ToArray();
+        (GameSession session, TestGameSession test) = Start(events, new() {
+            [2000] = Row(2000, [2, 3, 4, 5], EnchantResult.Success),
+            [2100] = Row(2100, [], EnchantResult.Success),
+            [2203] = Row(2203, [], EnchantResult.Fail),
+            [2300] = Row(2300, [1, 2], EnchantResult.Fail),
+        });
+
+        session.NpcScript!.EnchantResultScript(ScriptEventType.EnchantComplete, result, enchantLevel: level, rarity: 1);
+
+        Assert.That(Sent(test), Is.EqualTo(new[] { Update(new ScriptContent($"l{expected}", "", "")) }));
+    }
+
+    private static ScriptEventConditionMetadata Row(int id, int[] levels, EnchantResult result) =>
+        new(id, ScriptEventType.EnchantComplete, ItemEnchantError.s_itemenchant_unknown_err, 0, levels, 0, EnchantDamageType.None, result);
+
+    private static string Update(ScriptContent line) => System.Convert.ToHexString(NpcTalkPacket.Update(line).ToArray());
+
+    private static IEnumerable<string> Sent(TestGameSession test) => test.TakeSent().Select(System.Convert.ToHexString);
+
+    private static (GameSession, TestGameSession) Start(CinematicEventScript[] events, Dictionary<int, ScriptEventConditionMetadata> rows) {
+        var test = new TestGameSession();
         test.Register(new ScriptMetadata(Npc, ScriptType.Npc, new Dictionary<int, ScriptState> {
             [Master] = new(Master, ScriptStateType.Script, false, null,
-                [new CinematicContent("", NpcTalkButton.None, 0, [], [new CinematicEventScript(7, [line])])]),
+                [new CinematicContent("", NpcTalkButton.None, 0, [], events)]),
         }));
         test.SetServerTable(new ConstantsTable(
             bagSlotTabGameCount: [48, 48], bagSlotTabSkinCount: [48, 48], bagSlotTabSummonCount: [48, 48],
@@ -38,10 +76,7 @@ public class EnchantTalkLineTests {
             EnchantMasterScriptID: Master));
         test.SetServerTable(new ScriptConditionTable(new Dictionary<int, Dictionary<int, ScriptConditionMetadata>>()));
         test.SetServerTable(new ScriptEventConditionTable(new Dictionary<ScriptEventType, Dictionary<int, ScriptEventConditionMetadata>> {
-            [ScriptEventType.EnchantComplete] = new() {
-                [7] = new ScriptEventConditionMetadata(7, ScriptEventType.EnchantComplete, ItemEnchantError.s_itemenchant_unknown_err, 0, [0], 0,
-                    EnchantDamageType.None, EnchantResult.None),
-            },
+            [ScriptEventType.EnchantComplete] = rows,
         }));
         GameSession session = test.Start();
         test.TakeSent();
@@ -52,11 +87,6 @@ public class EnchantTalkLineTests {
         var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
         typeof(Actor<Npc>).GetField("<Value>k__BackingField", any)!.SetValue(npc, new Npc(metadata, null));
         session.NpcScript = new NpcScriptManager(session, npc, null, null, NpcTalkType.Talk);
-
-        session.NpcScript.EnchantResultScript(ScriptEventType.EnchantComplete);
-
-        List<byte[]> sent = test.TakeSent();
-        Assert.That(sent.Select(System.Convert.ToHexString),
-            Is.EqualTo(new[] { System.Convert.ToHexString(NpcTalkPacket.Update(line).ToArray()) }));
+        return (session, test);
     }
 }

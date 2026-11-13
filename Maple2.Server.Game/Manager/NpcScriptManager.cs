@@ -519,9 +519,14 @@ public sealed class NpcScriptManager {
             return;
         }
 
-        foreach ((int id, ScriptEventConditionMetadata value) in scriptDict) {
+        // A row with a level or grade is the line for that case, a row without is the default line of its result
+        // (scriptEventCondition 2100 "success default", 2300 "fail at +1-2" before 2203 "fail default"). Chosen here:
+        // the rows that name a level or a grade are tried first, each group in id order.
+        foreach (ScriptEventConditionMetadata value in scriptDict.Values
+                     .OrderBy(row => row.EnchantLevel.Length == 0 && row.Rarity == 0)
+                     .ThenBy(row => row.Id)) {
             if (EventConditionCheck(value, enchantLevel, rarity, failCount, result, error)) {
-                eventId = id;
+                eventId = value.Id;
                 break;
             }
         }
@@ -538,7 +543,8 @@ public sealed class NpcScriptManager {
             return false;
         }
 
-        if (!scriptMetadata.EnchantLevel.Contains(enchantLevel)) {
+        // No enchantLevel in the row (the ingest leaves the list empty): any level.
+        if (scriptMetadata.EnchantLevel.Length > 0 && !scriptMetadata.EnchantLevel.Contains(enchantLevel)) {
             return false;
         }
 

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -87,5 +88,39 @@ public class ItemEnchantStageTests {
                 Is.EqualTo(System.Convert.ToHexString(Maple2.Server.Game.Packets.ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient).ToArray())));
             Assert.That(staged.Enchant!.Enchants, Is.EqualTo(10));
         });
+    }
+
+    // The result event (talk event 3) comes after the try has spent the stage: the line is picked by the try's result
+    // and the item's level after it. A success to +1 has no level row in KR, so it gets the success default (2100).
+    [Test]
+    public void TheResultEvent_PicksTheLineOfTheTry() {
+        var test = new TestGameSession();
+        Item gear = test.Store(TestGameSession.Metadata(11400001, EquipSlot.CL, type: 1));
+        test.SetServerTable(new EnchantOptionTable(new Dictionary<int, EnchantOptionMetadata>()));
+        test.SetServerTable(new ScriptEventConditionTable(new Dictionary<ScriptEventType, Dictionary<int, ScriptEventConditionMetadata>> {
+            [ScriptEventType.EnchantComplete] = new() {
+                [2000] = new ScriptEventConditionMetadata(2000, ScriptEventType.EnchantComplete, ItemEnchantError.s_itemenchant_unknown_err, 0, [2, 3, 4, 5], 0,
+                    EnchantDamageType.None, EnchantResult.Success),
+                [2100] = new ScriptEventConditionMetadata(2100, ScriptEventType.EnchantComplete, ItemEnchantError.s_itemenchant_unknown_err, 0, [], 0,
+                    EnchantDamageType.None, EnchantResult.Success),
+                [2203] = new ScriptEventConditionMetadata(2203, ScriptEventType.EnchantComplete, ItemEnchantError.s_itemenchant_unknown_err, 0, [], 0,
+                    EnchantDamageType.None, EnchantResult.Fail),
+            },
+        }));
+        GameSession session = test.Start();
+        var success = new ScriptContent("success", "", "");
+        session.NpcScript = new NpcScriptManager(session, [
+            new CinematicEventScript(2000, [new ScriptContent("2-5", "", "")]),
+            new CinematicEventScript(2100, [success]),
+            new CinematicEventScript(2203, [new ScriptContent("fail", "", "")]),
+        ]);
+        session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid);
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid, force: true), Is.True);
+        test.TakeSent();
+
+        session.ItemEnchant.NpcTalkEvent(ScriptEventType.EnchantComplete);
+
+        Assert.That(test.TakeSent().Select(System.Convert.ToHexString),
+            Is.EqualTo(new[] { System.Convert.ToHexString(Maple2.Server.Game.Packets.NpcTalkPacket.Update(success).ToArray()) }));
     }
 }
