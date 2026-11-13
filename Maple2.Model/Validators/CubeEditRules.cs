@@ -36,8 +36,11 @@ public static class CubeEditRules {
     // A cube the builder may not place yet: s_ugcmap_cube_lock (88), which the client shows before it sends the place
     // (Unk_PCCubeCraft::ConfirmPlacement, cubecraft_2.cpp:954; MyPC::FUN_1415302e0, mypc.cpp:4446). The client locks a
     // cube whose trophy grade (housing trophyID, trophyLevel) is not cleared: its own in its home or on a plot, the home
-    // owner's (ResponseCube 0x37) for a build helper. A cube of a meret price (price table money type 3) is never
-    // locked. The interior level checks behind feature HousingLevelhurdle (0xdb) are left out: feature.xml gives it
+    // owner's (ResponseCube 0x37) for a build helper. A cube of a meret price is never locked: the client's housing
+    // priceCount is the shop_UGCAll/shop_Maid ugcHousingMoneyType (ItemHousing::LoadXml, itemdatastruct.cpp:1465,
+    // CPriceTable::LoadHousing), the FurnishingShopTable money type here, 1 for an item without a row. A trophyLevel
+    // of 0 (IsGradeCleared(id, 0): any grade cleared) is the server's grade 0 too; no KR housing row has one (all 334
+    // trophy rows give level 1 to 9). The interior level checks behind feature HousingLevelhurdle (0xdb) are left out: feature.xml gives it
     // level 100 for KR and NA, above the Live level, so the client never runs them. cleared is the trophy owner's.
     public static UgcMapError CubeLock(ItemMetadataHousing? housing, FurnishingCurrencyType? currency, Func<int, int, bool> cleared) {
         if (housing == null || currency == FurnishingCurrencyType.Meret) {
