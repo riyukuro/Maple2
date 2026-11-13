@@ -26,14 +26,40 @@ public partial class GameStorage {
     }
 
     // The values each item object's row was last stored with by a save of this server (SaveItems), kept while the
-    // object lives: a save finding them unchanged does not write the row. A write of the row by another way forgets
-    // them, so the next save writes it. A new object (a load, a Clone) has none: its first save writes its row.
-    private static readonly ConditionalWeakTable<Item, object?[]> StoredRows = new();
+    // object lives: a save finding them unchanged does not write the row. A new object (a load, a Clone) has none: its
+    // first save writes its row. Every other write of an item row (a split, a home's stack join, a doll move, a mail,
+    // the black market) forgets what any object holds for that row (ForgetRows), so the next save writes it: each row
+    // id has a write count (one of RowWrites' slots), and kept values count only while it is the one they were kept at.
+    // Two objects of one row (a home's cube and its copy) each bump the count with their saves, so neither skips a
+    // write after the other's. Two saves of one object that overlap (two threads) keep nothing: Pending is the saves
+    // in flight, and a save is skipped only with none; a keep whose count was moved meanwhile drops the values.
+    private static readonly ConditionalWeakTable<Item, Stored> StoredRows = new();
+    private static readonly int[] RowWrites = new int[1 << 20];
     private static (IClrPropertyGetter Getter, ValueConverter? Converter)[]? ItemColumns;
 
-    private static void ForgetStoredRows(IEnumerable<Item> items) {
-        foreach (Item item in items) {
-            StoredRows.Remove(item);
+    private sealed class Stored {
+        public object?[]? Values;
+        public long Uid;
+        public int Stamp;
+        public int Pending;
+    }
+
+    private static ref int RowWrite(long uid) => ref RowWrites[(int) ((ulong) uid * 0x9E3779B97F4A7C15UL >> 44)];
+
+    // Forgets what any item object holds for rows uids now and, in a transaction, again when it ends: a save between
+    // the write and its commit may keep the values the commit then overwrites.
+    private static void ForgetRows(IEnumerable<long> uids) {
+        foreach (long uid in uids) {
+            Interlocked.Increment(ref RowWrite(uid));
+        }
+    }
+
+    public partial class Request {
+        private void ForgetRowsNowAndAtEnd(params long[] uids) {
+            ForgetRows(uids);
+            if (IsTransaction) {
+                AfterEnd(() => ForgetRows(uids), () => ForgetRows(uids));
+            }
         }
     }
 
@@ -60,6 +86,7 @@ public partial class GameStorage {
                 return null;
             }
             source.Amount = item.Amount - amount;
+            ForgetRowsNowAndAtEnd(item.Uid);
 
             Model.Item model = item;
             model.Amount = amount;
@@ -187,39 +214,54 @@ public partial class GameStorage {
         // written again: a session save wrote every row of the bag, storage and equips each time.
         public bool SaveItems(long ownerId, Item[] items, Item[] discard) {
             Dictionary<long, EntityEntry<Model.Item>>? tracked = null;
-            var written = new List<(Item Item, object?[] Row)>();
-            foreach ((Item item, long owner) in items.Select(item => (item, ownerId)).Concat(discard.Select(item => (item, 0L)))) {
-                if (item.Uid == 0) {
-                    continue;
+            var written = new List<Written>();
+            bool saved = false;
+            try {
+                foreach ((Item item, long owner) in items.Select(item => (item, ownerId)).Concat(discard.Select(item => (item, 0L)))) {
+                    if (item.Uid == 0) {
+                        continue;
+                    }
+
+                    Model.Item model = item;
+                    model.OwnerId = owner;
+                    object?[] row = RowValues(model);
+                    Stored stored = StoredRows.GetValue(item, _ => new Stored());
+                    int stamp;
+                    lock (stored) {
+                        stamp = Volatile.Read(ref RowWrite(model.Id));
+                        if (stored.Pending == 0 && stored.Values != null && stored.Uid == model.Id && stored.Stamp == stamp
+                            && stored.Values.SequenceEqual(row)) {
+                            continue;
+                        }
+                        stored.Pending++;
+                    }
+                    written.Add(new Written(stored, model.Id, row, stamp));
+                    // A row this request created (CreateItem) is still tracked; updating a second instance of it threw,
+                    // so a new item that merged in part into a stack was not saved and the add stopped half way. The
+                    // tracked rows are listed once: each lookup ran DetectChanges over every tracked row.
+                    tracked ??= TrackedItems();
+                    if (tracked.Remove(model.Id, out EntityEntry<Model.Item>? entry)) {
+                        entry.State = EntityState.Detached;
+                    }
+                    tracked[model.Id] = Context.Item.Update(model);
+                }
+                // Another write pending on this request is saved here as before.
+                if (written.Count == 0 && !Context.ChangeTracker.HasChanges()) {
+                    return true;
                 }
 
-                Model.Item model = item;
-                model.OwnerId = owner;
-                object?[] row = RowValues(model);
-                if (StoredRows.TryGetValue(item, out object?[]? stored) && stored.SequenceEqual(row)) {
-                    continue;
+                saved = Context.TrySaveChanges();
+                return saved;
+            } finally {
+                if (saved) {
+                    KeepStoredRows(written);
+                } else {
+                    DropStoredRows(written);
                 }
-                // A row this request created (CreateItem) is still tracked; updating a second instance of it threw,
-                // so a new item that merged in part into a stack was not saved and the add stopped half way. The
-                // tracked rows are listed once: each lookup ran DetectChanges over every tracked row.
-                tracked ??= TrackedItems();
-                if (tracked.Remove(model.Id, out EntityEntry<Model.Item>? entry)) {
-                    entry.State = EntityState.Detached;
-                }
-                tracked[model.Id] = Context.Item.Update(model);
-                written.Add((item, row));
             }
-            // Another write pending on this request is saved here as before.
-            if (written.Count == 0 && !Context.ChangeTracker.HasChanges()) {
-                return true;
-            }
-
-            if (!Context.TrySaveChanges()) {
-                return false;
-            }
-            KeepStoredRows(written);
-            return true;
         }
+
+        private readonly record struct Written(Stored Stored, long Uid, object?[] Row, int Stamp);
 
         private Dictionary<long, EntityEntry<Model.Item>> TrackedItems() {
             bool detect = Context.ChangeTracker.AutoDetectChangesEnabled;
@@ -231,18 +273,40 @@ public partial class GameStorage {
             }
         }
 
-        // The rows written are known stored once the request's transaction commits (dropped on a rollback); in a
-        // transaction this request does not hold (MoveItem's) they are not known, so the next save writes them.
-        private void KeepStoredRows(List<(Item Item, object?[] Row)> written) {
+        // The rows written are known stored once the request's transaction commits; on a rollback (or a commit whose
+        // answer was lost) they are not. In a transaction this request does not hold (MoveItem's) they are not known
+        // either, so the next save writes them. A row is kept only when its write count is still the one read before
+        // the write (no other write of it since, this object's or another's), and it moves on by one.
+        private void KeepStoredRows(List<Written> written) {
             if (!IsTransaction && Context.Database.CurrentTransaction != null) {
-                ForgetStoredRows(written.Select(entry => entry.Item));
+                DropStoredRows(written);
                 return;
             }
-            AfterCommit(() => {
-                foreach ((Item item, object?[] row) in written) {
-                    StoredRows.AddOrUpdate(item, row);
+            AfterEnd(() => {
+                foreach (Written write in written) {
+                    lock (write.Stored) {
+                        write.Stored.Pending--;
+                        if (Interlocked.CompareExchange(ref RowWrite(write.Uid), write.Stamp + 1, write.Stamp) == write.Stamp) {
+                            (write.Stored.Values, write.Stored.Uid, write.Stored.Stamp) = (write.Row, write.Uid, write.Stamp + 1);
+                        } else {
+                            write.Stored.Values = null;
+                            Interlocked.Increment(ref RowWrite(write.Uid));
+                        }
+                    }
                 }
-            });
+            }, () => DropStoredRows(written));
+        }
+
+        // A write that may or may not be stored: nothing is kept for it, and what other objects keep for its row is
+        // forgotten (the row may hold this write's values).
+        private static void DropStoredRows(List<Written> written) {
+            foreach (Written write in written) {
+                lock (write.Stored) {
+                    write.Stored.Pending--;
+                    write.Stored.Values = null;
+                }
+                Interlocked.Increment(ref RowWrite(write.Uid));
+            }
         }
 
         // The values item's row is written with: each column's value, the JSON columns as the text written.
@@ -280,6 +344,8 @@ public partial class GameStorage {
             } catch (Exception ex) {
                 Logger.LogError(ex, "Failed to move item {ItemUid} from {FromOwnerId} to {ToOwnerId}", uid, fromOwnerId, toOwnerId);
                 return false;
+            } finally {
+                ForgetRows([uid]); // its own transaction has ended (see ForgetRows)
             }
         }
 
@@ -301,6 +367,8 @@ public partial class GameStorage {
             } catch (Exception ex) {
                 Logger.LogError(ex, "Failed to put item {ItemUid} on fitting doll {CubeUid}", item.Uid, cubeUid);
                 return ItemMove.Failed;
+            } finally {
+                ForgetRows([item.Uid]);
             }
         }
 
@@ -325,7 +393,7 @@ public partial class GameStorage {
                         return ItemMove.SourceGone; // the transaction is rolled back when it is disposed
                     }
                 }
-                ForgetStoredRows(toDoll.Concat(toCharacter));
+                ForgetRows(toDoll.Concat(toCharacter).Select(item => item.Uid));
                 foreach ((Item item, long ownerId) in toDoll.Select(item => (item, cubeUid)).Concat(toCharacter.Select(item => (item, characterId)))) {
                     Model.Item model = item;
                     model.OwnerId = ownerId;
@@ -340,6 +408,8 @@ public partial class GameStorage {
             } catch (Exception ex) {
                 Logger.LogError(ex, "Failed to swap items with fitting doll {CubeUid}", cubeUid);
                 return ItemMove.Failed;
+            } finally {
+                ForgetRows(toDoll.Concat(toCharacter).Select(item => item.Uid));
             }
         }
 
@@ -347,6 +417,7 @@ public partial class GameStorage {
         // home open on another channel may have taken it off): one conditional delete. False when the row has left the
         // cube or the delete failed (nothing is deleted then).
         public bool DeleteFittingDollItem(long uid, long cubeUid) {
+            ForgetRowsNowAndAtEnd(uid);
             try {
                 IQueryable<Model.Item> held = Context.Item.Where(row => row.Id == uid && row.OwnerId == cubeUid && row.Group == ItemGroup.FittingDoll);
                 if (Context.Database.IsRelational()) {
@@ -365,7 +436,7 @@ public partial class GameStorage {
         }
 
         public bool UpdateItem(Item item) {
-            ForgetStoredRows([item]);
+            ForgetRowsNowAndAtEnd(item.Uid);
             Model.Item model = item;
             Context.Item.Update(model);
 
@@ -443,6 +514,7 @@ public partial class GameStorage {
                 Logger.LogError(ex, "Failed to mail fitting doll item {ItemUid}", row.Id);
                 return false;
             } finally {
+                ForgetRows([row.Id]);
                 Context.ChangeTracker.Clear();
             }
         }

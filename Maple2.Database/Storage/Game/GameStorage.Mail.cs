@@ -138,9 +138,12 @@ public partial class GameStorage {
             Context.Mail.Remove(mail);
             // Uncollected items go with the mail: their rows lose the owner and the world server's start-up purge
             // deletes them. Fitting doll rows are keyed by a cube uid that can equal the mail id and stay.
+            var written = new List<long>();
             foreach (Model.Item item in Context.Item.Where(item => item.OwnerId == mailId && item.Group != ItemGroup.FittingDoll)) {
                 item.OwnerId = 0;
+                written.Add(item.Id);
             }
+            ForgetRowsNowAndAtEnd(written.ToArray());
             return SaveChanges();
         }
 

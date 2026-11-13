@@ -426,6 +426,7 @@ public partial class GameStorage {
             Model.Item soldModel;
             Model.Mail mailModel;
             Model.Mail? sellerModel = null;
+            long written = 0; // the listed item's row: forgotten by item objects once the transaction ends (ForgetRows)
             lock (BlackMarketLock) {
                 try {
                     using IDbContextTransaction transaction = Context.Database.BeginTransaction();
@@ -470,6 +471,8 @@ public partial class GameStorage {
                     Context.Mail.Add(mailModel);
                     Context.SaveChanges();
 
+                    written = itemModel.Id;
+                    ForgetRows([written]);
                     if (model.Quantity == 0) {
                         itemModel.OwnerId = mailModel.Id;
                         soldModel = itemModel;
@@ -489,6 +492,8 @@ public partial class GameStorage {
                     Context.ChangeTracker.Clear();
                     Logger.LogError(ex, "Failed to buy {Quantity} of black market listing {ListingId}", quantity, listingId);
                     return null;
+                } finally {
+                    ForgetRows([written]);
                 }
             }
 
@@ -516,6 +521,7 @@ public partial class GameStorage {
             BlackMarketListing listing;
             Model.Mail mailModel;
             Item? item;
+            long written = 0; // as in BuyBlackMarket
             lock (BlackMarketLock) {
                 try {
                     Model.BlackMarketListing? model = Context.BlackMarketListing.AsNoTracking()
@@ -550,6 +556,8 @@ public partial class GameStorage {
                     Context.Mail.Add(mailModel);
                     Context.SaveChanges();
 
+                    written = itemModel.Id;
+                    ForgetRows([written]);
                     itemModel.OwnerId = mailModel.Id;
                     Context.SaveChanges();
                     transaction.Commit();
@@ -557,6 +565,8 @@ public partial class GameStorage {
                     Context.ChangeTracker.Clear();
                     Logger.LogError(ex, "Failed to take black market listing {ListingId} off the market", listingId);
                     return null;
+                } finally {
+                    ForgetRows([written]);
                 }
             }
 

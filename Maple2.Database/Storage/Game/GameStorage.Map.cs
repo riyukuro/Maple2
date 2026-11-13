@@ -447,6 +447,9 @@ public partial class GameStorage {
             var created = new List<Model.Item>();
             var moved = new List<Maid>();
             var returnMails = new List<Model.Mail>();
+            // The existing item rows written here (stack joins, doll rows mailed): what item objects keep for them is
+            // forgotten once the transaction has ended (GameStorage.ForgetRows), so their next save writes them.
+            var written = new List<long>();
             try {
                 // Read committed: the doll rows are read after the cube deletes are written (the cube rows locked),
                 // and see the put-ons and swaps other channels committed up to then, not a snapshot taken earlier.
@@ -502,6 +505,8 @@ public partial class GameStorage {
                             Logger.LogError("Furnishing stack {Uid} of account {AccountId} is gone", join.Stack.Uid, back.AccountId);
                             return null;
                         }
+                        written.Add(row.Id);
+                        ForgetRows([row.Id]);
                         row.Amount = join.Amount;
                         if (join.ExpiryTime is { } expiryTime) {
                             row.ExpiryTime = expiryTime > 0 ? expiryTime.FromEpochSeconds() : default;
@@ -599,6 +604,8 @@ public partial class GameStorage {
                         return null;
                     }
                     foreach ((Model.Item row, Model.Mail mail) in mails) {
+                        written.Add(row.Id);
+                        ForgetRows([row.Id]);
                         if (!MoveDollRow(row, mail.Id)) {
                             Context.Mail.Remove(mail); // the row left the cube meanwhile: no empty mail
                         }
@@ -612,6 +619,8 @@ public partial class GameStorage {
             } catch (Exception ex) {
                 Logger.LogError(ex, "Failed to save the cubes of plot {PlotId}", plotInfo.Id);
                 return null;
+            } finally {
+                ForgetRows(written);
             }
             mailed?.AddRange(mails.Select(entry => (entry.Mail.ReceiverId, entry.Mail.Id)));
             if (back != null) {

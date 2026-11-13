@@ -12,17 +12,21 @@ public abstract class DatabaseRequest<TContext> : IDisposable
 
     private IDbContextTransaction? transaction;
     public bool IsTransaction => transaction != null;
-    private readonly List<Action> afterCommit = [];
+    private readonly List<(Action Committed, Action? Dropped)> afterCommit = [];
 
     // Runs action once the open transaction is committed: memory that may only change when the writes are kept (the
     // bag's delete list). It is dropped when the transaction is rolled back or disposed uncommitted. Without an open
     // transaction a write that returned true is already kept, so action runs at once.
-    public void AfterCommit(Action action) {
+    public void AfterCommit(Action action) => AfterEnd(action, null);
+
+    // As AfterCommit, and dropped runs instead when the transaction ends without a commit: a rollback, a dispose
+    // uncommitted, or a commit that threw (its answer lost: the writes may be kept or not).
+    public void AfterEnd(Action committed, Action? dropped) {
         if (transaction == null) {
-            action();
+            committed();
             return;
         }
-        afterCommit.Add(action);
+        afterCommit.Add((committed, dropped));
     }
 
     // The saves on this request that failed, whether or not the storage method that made them reports it: a caller
@@ -47,9 +51,9 @@ public abstract class DatabaseRequest<TContext> : IDisposable
         transaction.Commit();
         transaction.Dispose();
         transaction = null; // transaction is completed.
-        Action[] committed = afterCommit.ToArray();
+        (Action Committed, Action? Dropped)[] committed = afterCommit.ToArray();
         afterCommit.Clear();
-        foreach (Action action in committed) {
+        foreach ((Action action, _) in committed) {
             action();
         }
         return true;
@@ -67,7 +71,11 @@ public abstract class DatabaseRequest<TContext> : IDisposable
 
         IDbContextTransaction open = transaction;
         transaction = null;
+        (Action Committed, Action? Dropped)[] dropped = afterCommit.ToArray();
         afterCommit.Clear();
+        foreach ((_, Action? action) in dropped) {
+            action?.Invoke();
+        }
         try {
             open.Rollback();
         } catch (Exception ex) {
