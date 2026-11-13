@@ -53,7 +53,7 @@ public class HomeFieldManager : FieldManager {
         }
     }
 
-    // Called under lock(Plots), as the plot's cubes are read.
+    // Called at the load, before anyone can edit the plot, and by a save under lock(Plots) and the plot's edit lock.
     internal void Saved(Plot plot) {
         (savedCubes ??= new Dictionary<int, HashSet<long>>())[plot.Number] = plot.Cubes.Values.Select(cube => cube.Id).Where(id => id < Constant.FurnishingBaseId).ToHashSet();
     }
@@ -77,19 +77,26 @@ public class HomeFieldManager : FieldManager {
             // Under the plot's edit lock: a place or a remove writes its row and changes the cube list in it, so the
             // rows and the held cubes are read at one point (and the list is not changed while it is read).
             lock (plot.EditLock) {
-                List<PlotCube> cubes = plot.Cubes.Values.Where(cube => cube.Id < Constant.FurnishingBaseId).ToList();
-                HashSet<long> held = cubes.Select(cube => cube.Id).ToHashSet();
-                Dictionary<long, float> rows = db.GetCubeRotations(plot.Id);
-                if (Outdated(savedCubes?.GetValueOrDefault(plot.Number) ?? [], held, rows.Keys.ToHashSet())) {
-                    return true;
-                }
-                // Another instance turned a cube: same rows, another rotation.
-                if (cubes.Any(cube => rows.TryGetValue(cube.Id, out float rotation) && Math.Abs(rotation - cube.Rotation) > 0.01f)) {
+                if (Outdated(db, plot, out _)) {
                     return true;
                 }
             }
         }
         return false;
+    }
+
+    // The same for one plot, called under its edit lock; rows gets the plot's cube row ids as read.
+    internal bool Outdated(GameStorage.Request db, Plot plot, out HashSet<long> rows) {
+        List<PlotCube> cubes = plot.Cubes.Values.Where(cube => cube.Id < Constant.FurnishingBaseId).ToList();
+        HashSet<long> held = cubes.Select(cube => cube.Id).ToHashSet();
+        Dictionary<long, float> rotations = db.GetCubeRotations(plot.Id);
+        rows = rotations.Keys.ToHashSet();
+        HashSet<long> saved = savedCubes?.GetValueOrDefault(plot.Number) ?? [];
+        if (Outdated(saved, held, rows)) {
+            return true;
+        }
+        // Another instance turned a cube: same rows, another rotation.
+        return cubes.Any(cube => rotations.TryGetValue(cube.Id, out float rotation) && Math.Abs(rotation - cube.Rotation) > 0.01f);
     }
 
     public static bool Outdated(IReadOnlySet<long> saved, IReadOnlySet<long> held, IReadOnlySet<long> rows) {

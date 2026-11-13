@@ -357,6 +357,60 @@ public class ModelHouseStaleFieldTests {
         Assert.That(Outdated(home), Is.True);
     }
 
+    // The owner's leave saves while a build helper's edits run on another thread (a place, a rotation and a remove,
+    // each writing its row at once). Every save takes one copy of the cubes under the plot's edit lock: no save
+    // fails, and at the end the rows are the cubes the plot holds, with their rotations. Before, the save enumerated
+    // the live cube list (it could throw), deleted the row of a cube placed while it ran, and wrote back the old
+    // rotation of a cube turned meanwhile.
+    [Test]
+    public void SaveWhileEditing_WritesOneCopy() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        session.ItemMetadata.TryGet(OldCube, out ItemMetadata? metadata);
+        var spot = new Vector3B(-3, -1, 0);
+        bool done = false;
+        Exception? failure = null;
+        var other = new Thread(() => {
+            try {
+                while (!Volatile.Read(ref done)) {
+                    long uid = session.Item.Furnishing.AddCube(OldCube);
+                    session.Housing.TryPlaceCube(new PlotCube(metadata!, uid) { Type = PlotCube.CubeType.Default }, plot, metadata!, spot, 0, out _);
+                    session.Housing.TryRotateCube(plot, new Vector3B(-1, -1, 0), true, out _);
+                    session.Housing.TryRemoveCube(plot, spot, out _);
+                    session.Housing.TryPlaceCube(new PlotCube(metadata!, uid) { Type = PlotCube.CubeType.Default }, plot, metadata!, spot, 0, out _);
+                }
+            } catch (Exception e) {
+                failure = e;
+            }
+        });
+        other.Start();
+        int thrown = 0;
+        for (int i = 0; i < 300; i++) {
+            try {
+                Commit(home, session);
+            } catch (TargetInvocationException) {
+                thrown++;
+            }
+            if (i % 20 == 0) {
+                test.TakeSent();
+            }
+        }
+        Volatile.Write(ref done, true);
+        other.Join();
+        test.TakeSent();
+
+        using GameStorage.Request db = test.Storage.Context();
+        Dictionary<long, float> rows = db.GetCubeRotations(plot.Id);
+        Assert.Multiple(() => {
+            Assert.That(failure, Is.Null);
+            Assert.That(thrown, Is.Zero);
+            Assert.That(rows.Keys, Is.EquivalentTo(plot.Cubes.Values.Select(cube => cube.Id)));
+            Assert.That(plot.Cubes.Values.All(cube => rows[cube.Id] == cube.Rotation), Is.True);
+            Assert.That(Outdated(home), Is.False);
+        });
+    }
+
     // The rule: a row the field neither holds nor saved, or a held cube without its row, makes the field outdated.
     [TestCase(new long[] { 1, 2 }, new long[] { 1, 2 }, new long[] { 1, 2 }, false)]
     [TestCase(new long[] { 1, 2 }, new long[] { 1 }, new long[] { 1, 2 }, false)] // removed here, saved row not yet deleted

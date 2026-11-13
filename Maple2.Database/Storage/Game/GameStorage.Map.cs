@@ -437,9 +437,13 @@ public partial class GameStorage {
         // With returns, the deleted cubes are given back: returns gets them (as read in the transaction, so a cube
         // another instance placed meanwhile is among them) and answers where they go (CubeReturn), which is written
         // with the delete; a null answer writes nothing. A deleted cube whose item is unknown is not given back.
+        // With deletable, only the rows in it are deleted: a row written after the caller took its copy of the cubes
+        // (a place made meanwhile) is kept. A given cube whose row is gone (removed meanwhile) is not written again
+        // and is not among the results.
         public ICollection<PlotCube>? SaveCubes(PlotInfo plotInfo, IEnumerable<PlotCube> cubes, long characterId,
                                                 List<(long CharacterId, long MailId)>? mailed = null,
-                                                Func<IReadOnlyList<PlotCube>, CubeReturn?>? returns = null) {
+                                                Func<IReadOnlyList<PlotCube>, CubeReturn?>? returns = null,
+                                                IReadOnlySet<long>? deletable = null) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
             var results = new List<UgcMapCube>();
             var mails = new List<(Model.Item Row, Model.Mail Mail)>();
@@ -458,9 +462,13 @@ public partial class GameStorage {
                     ? Context.Database.BeginTransaction(IsolationLevel.ReadCommitted)
                     : null;
                 var updated = new HashSet<long>();
+                HashSet<long> rowIds = Context.UgcMapCube.Where(cube => cube.UgcMapId == plotInfo.Id).Select(cube => cube.Id).ToHashSet();
                 foreach (PlotCube cube in cubes) {
                     UgcMapCube model = cube;
                     model.UgcMapId = plotInfo.Id;
+                    if (model.Id < Constant.FurnishingBaseId && !rowIds.Contains(model.Id)) {
+                        continue; // removed meanwhile: an update of a missing row would fail the whole save
+                    }
                     if (model.Id >= Constant.FurnishingBaseId) {
                         model.Id = 0; // This needs to be auto-generated.
                         results.Add(model);
@@ -475,7 +483,7 @@ public partial class GameStorage {
                 var droppedRows = new List<UgcMapCube>();
                 // Listed first: MySQL has one open reader per connection, and Maid.Find below may query.
                 foreach (UgcMapCube cube in Context.UgcMapCube.Where(cube => cube.UgcMapId == plotInfo.Id).ToList()) {
-                    if (!updated.Contains(cube.Id)) {
+                    if (!updated.Contains(cube.Id) && (deletable == null || deletable.Contains(cube.Id))) {
                         Context.UgcMapCube.Remove(cube);
                         dropped.Add(cube.Id);
                         droppedRows.Add(cube);
