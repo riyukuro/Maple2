@@ -1,4 +1,5 @@
-﻿using Maple2.Database.Storage;
+﻿using Maple2.Database.Extensions;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -15,6 +16,9 @@ namespace Maple2.Server.Game.PacketHandlers;
 
 public class PremiumClubHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.PremiumClub;
+
+    // Set once the missing VIPServicePeriodLimitDay has been logged.
+    private static int missingLimitLogged;
 
     private enum Command : byte {
         LoadClaimedItems = 1,
@@ -129,6 +133,23 @@ public class PremiumClubHandler : FieldPacketHandler {
 
         DateTime now = DateTime.Now;
         Account account = session.Player.Value.Account;
+        // The VIP time can be extended only within VIPServicePeriodLimitDay days of its end: the dialog refuses a VIP
+        // whose time left is over that window with s_vip_dialog_goods_buy_limit and sends nothing
+        // (UIVIPGoodsShopDialog::OnClickBuyGoods, uivipgoodsshopdialog.cpp:412-433; the constant at +0x6f40 is
+        // VIPServicePeriodLimitDay, KMS2_DEV exe 0x1402af3e9). The same check here keeps a crafted packet from it.
+        // A server-table db ingested before the constant (or a locale with no row) reads 0: the window is unknown, so
+        // the check is skipped (logged once) rather than refusing every active VIP.
+        int limitDays = session.ServerTableMetadata.ConstantsTable.VIPServicePeriodLimitDay;
+        if (limitDays <= 0) {
+            if (Interlocked.Exchange(ref missingLimitLogged, 1) == 0) {
+                Logger.Error("VIPServicePeriodLimitDay is {Days} in the server-table db (ingested before it?), re-ingest; the VIP extension window is not checked", limitDays);
+            }
+        } else if (account.PremiumTime > now.ToEpochSeconds() && account.PremiumTime - now.ToEpochSeconds() > (long) limitDays * 24 * 60 * 60) {
+            Logger.Warning("VIP goods {GoodsId}: VIP time ends {PremiumTime}, more than {Days} days away; purchase refused",
+                packageId, account.PremiumTime, limitDays);
+            return;
+        }
+
         if (premiumMetadata.BuyLimit > 0 && VipGoodsRules.Remaining(account.VipGoodsPurchases, packageId, premiumMetadata.BuyLimit.Value,
                 premiumMetadata.BuyLimitResetType, now) <= 0) {
             // The dialog hides the goods once it has the count.
@@ -152,6 +173,12 @@ public class PremiumClubHandler : FieldPacketHandler {
                 // No field (a map change) or an unknown id: refused before anything is charged.
                 Logger.Warning("VIP goods {GoodsId}: bonus item {ItemId} not created, purchase refused", packageId, item.Id);
                 return;
+            }
+            // bonusItemPeriod is in minutes: the bill shows it as CTimeSpan(period * 60) seconds
+            // (uivipgoodsshopdialog.cpp:505-507) instead of the count. The item lasts that long from the purchase.
+            if (item.Period > 0) {
+                // Epoch seconds plus the minutes: adding them to local time would be an hour off across a DST change.
+                bonusItem.ExpiryTime = now.ToEpochSeconds() + item.Period * 60L;
             }
             bonusItems.Add(bonusItem);
         }

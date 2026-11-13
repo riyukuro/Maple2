@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Context;
+using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -29,6 +30,9 @@ public class VipGoodsShopTests {
     private const int RedLimitedId = 2007;
     private const int OldDbId = 2008;
     private const int NoSalePriceId = 2009;
+    private const int PeriodId = 2010;
+    private const int LimitDays = 60;
+    private const int PeriodMinutes = 1440;
     private const int UnknownItemId = 50999999;
     private const int BonusItemId = 50000104;
 
@@ -58,8 +62,12 @@ public class VipGoodsShopTests {
                 // As read from a metadata db ingested before the sale price and limit: NA 3001 (one per account).
                 [OldDbId] = new(false, 0, 0, 720, 490, 0, false, null, ResetType.Default, []),
                 [NoSalePriceId] = new(false, 0, 0, 24, 30, 0, false, 0, ResetType.Default, []),
+                // A bonus item that lasts PeriodMinutes (bonusItemPeriod).
+                [PeriodId] = Package(20, items: new PremiumClubTable.Item(BonusItemId, 2, 1, PeriodMinutes)),
             }));
         test.Start();
+        // KR and NA constants.xml: 60.
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { VIPServicePeriodLimitDay = LimitDays });
         test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
             [JobCode.Newbie] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
                 [SkillRank.Basic] = [],
@@ -112,6 +120,15 @@ public class VipGoodsShopTests {
         using var context = new Ms2Context(test.Options);
         var currency = context.Account.AsNoTracking().Single(account => account.Id == test.AccountId).Currency;
         return (currency.Meret, currency.GameMeret);
+    }
+
+    private List<(int Amount, long ExpiryTime)> StoredBonusItems() {
+        using var context = new Ms2Context(test.Options);
+        return context.Item.AsNoTracking()
+            .Where(row => row.OwnerId == session.CharacterId && row.ItemId == BonusItemId)
+            .AsEnumerable()
+            .Select(row => (row.Amount, row.ExpiryTime.ToEpochSeconds()))
+            .ToList();
     }
 
     private int BagAmount() => session.Item.Inventory.Find(BonusItemId).Sum(item => item.Amount);
@@ -371,6 +388,91 @@ public class VipGoodsShopTests {
         Assert.Multiple(() => {
             Assert.That(Sent(4), Has.Count.EqualTo(1));
             Assert.That(StoredMerets(), Is.EqualTo((970L, 500L)));
+        });
+    }
+
+    // A VIP whose time ends more than VIPServicePeriodLimitDay days away cannot extend it: the dialog refuses it
+    // (OnClickBuyGoods), and so does the server for a packet sent anyway. Nothing is charged, sent or stored.
+    [Test]
+    public void Purchase_VipOverTheWindow_ChangesNothing() {
+        long premiumTime = DateTime.Now.AddDays(LimitDays).AddMinutes(5).ToEpochSeconds();
+        session.Player.Value.Account.PremiumTime = premiumTime;
+
+        Buy(FreeId);
+        Buy(LimitedId);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.PremiumClub), Is.Empty);
+            Assert.That(session.Currency.Meret, Is.EqualTo(1000));
+            Assert.That(StoredMerets(), Is.EqualTo((1000L, 500L)));
+            Assert.That(session.Player.Value.Account.PremiumTime, Is.EqualTo(premiumTime));
+            Assert.That(StoredAccount().VipGoodsPurchases, Is.Empty);
+            Assert.That(BagAmount(), Is.EqualTo(0));
+        });
+    }
+
+    // Within the window the VIP time is extended from its end.
+    [Test]
+    public void Purchase_VipWithinTheWindow_Extends() {
+        long premiumTime = DateTime.Now.AddDays(LimitDays).AddMinutes(-5).ToEpochSeconds();
+        session.Player.Value.Account.PremiumTime = premiumTime;
+
+        Buy(FreeId);
+
+        Assert.Multiple(() => {
+            Assert.That(Sent(4), Has.Count.EqualTo(1));
+            Assert.That(StoredMerets(), Is.EqualTo((700L, 500L)));
+            Assert.That(StoredAccount().PremiumTime, Is.EqualTo(premiumTime + 24 * 60 * 60));
+        });
+    }
+
+    // A server-table db ingested before VIPServicePeriodLimitDay (or a locale with no row) reads 0: the window is not
+    // checked, so an active VIP can still buy.
+    [Test]
+    public void Purchase_NoLimitConstant_NotLimited() {
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { VIPServicePeriodLimitDay = 0 });
+        long premiumTime = DateTime.Now.AddDays(10).ToEpochSeconds();
+        session.Player.Value.Account.PremiumTime = premiumTime;
+
+        Buy(FreeId);
+
+        Assert.Multiple(() => {
+            Assert.That(Sent(4), Has.Count.EqualTo(1));
+            Assert.That(StoredMerets(), Is.EqualTo((700L, 500L)));
+            Assert.That(StoredAccount().PremiumTime, Is.EqualTo(premiumTime + 24 * 60 * 60));
+        });
+    }
+
+    // A VIP time that has ended is not limited.
+    [Test]
+    public void Purchase_VipEnded_NotLimited() {
+        session.Player.Value.Account.PremiumTime = DateTime.Now.AddDays(-1).ToEpochSeconds();
+
+        Buy(FreeId);
+
+        Assert.That(Sent(4), Has.Count.EqualTo(1));
+    }
+
+    // bonusItemPeriod is minutes from the purchase (the bill shows CTimeSpan(period * 60)); a bonus item without one
+    // keeps its metadata life (none here).
+    [Test]
+    public void Purchase_BonusItemPeriod_SetsTheExpiry() {
+        long before = DateTime.Now.ToEpochSeconds();
+        Buy(PeriodId);
+        Buy(LimitedId);
+        long after = DateTime.Now.ToEpochSeconds();
+
+        List<(int Amount, long ExpiryTime)> stored = StoredBonusItems();
+        List<Item> bag = session.Item.Inventory.Find(BonusItemId).ToList();
+        Assert.Multiple(() => {
+            Assert.That(Sent(4), Has.Count.EqualTo(2));
+            Assert.That(stored.OrderBy(row => row.Amount).Select(row => row.Amount), Is.EqualTo(new[] { 2, 3 }));
+            (int _, long expiry) = stored.Single(row => row.Amount == 2);
+            Assert.That(expiry, Is.InRange(before + PeriodMinutes * 60, after + PeriodMinutes * 60));
+            Assert.That(stored.Single(row => row.Amount == 3).ExpiryTime, Is.LessThanOrEqualTo(0));
+            // The two do not stack: their expiry differs.
+            Assert.That(bag.Select(item => item.Amount).OrderBy(amount => amount), Is.EqualTo(new[] { 2, 3 }));
+            Assert.That(bag.Single(item => item.Amount == 2).ExpiryTime, Is.EqualTo(expiry));
         });
     }
 }
