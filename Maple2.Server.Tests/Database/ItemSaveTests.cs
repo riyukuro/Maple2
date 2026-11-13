@@ -250,22 +250,22 @@ public class ItemSaveTests {
         });
     }
 
-    // A move to another game server: the session saves before it sends the move. Sent first, the client could
-    // enter the other server while the save waited, and that entry's claim refused the save (what was played
-    // since the last timed save was lost).
+    // A move to another game server: the session saves before it asks the World for the move, as the channel change
+    // does. The move's token lives 30 s, so a save after it that waited longer (on a reset being stored) outlived the
+    // token; a save after the move was sent could be refused by the claim of the client's entry on the other server.
     [Test]
-    public void Migrate_SavesBeforeTheMoveIsSent() {
+    public void Migrate_SavesBeforeTheMoveIsAskedFor() {
         const int mapId = 2000062;
         StartSaving();
         typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(session, false);
-        bool? sentAtSave = null;
-        test.World.OnAcquire = () => sentAtSave ??= session.GetLastSentPacket(SendOp.GameToGame) != null;
+        (bool Asked, bool Sent)? atSave = null;
+        test.World.OnAcquire = () => atSave ??= (test.World.Moves.Count > 0, session.GetLastSentPacket(SendOp.GameToGame) != null);
 
         session.Migrate(mapId);
 
         using var context = new Ms2Context(options);
         Assert.Multiple(() => {
-            Assert.That(sentAtSave, Is.False, "the move sent when the save took the lock");
+            Assert.That(atSave, Is.EqualTo((false, false)), "the move asked for or sent when the save took the lock");
             Assert.That(session.GetLastSentPacket(SendOp.GameToGame), Is.Not.Null, "the move");
             Assert.That(context.Character.AsNoTracking().Single(row => row.Id == test.CharacterId).MapId, Is.EqualTo(mapId));
             Assert.That(test.Errors, Is.Empty);
@@ -274,18 +274,57 @@ public class ItemSaveTests {
 
     // The move to the home planner, the same order.
     [Test]
-    public void MigrateToPlanner_SavesBeforeTheMoveIsSent() {
+    public void MigrateToPlanner_SavesBeforeTheMoveIsAskedFor() {
         StartSaving();
         typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(session, false);
-        bool? sentAtSave = null;
-        test.World.OnAcquire = () => sentAtSave ??= session.GetLastSentPacket(SendOp.GameToGame) != null;
+        (bool Asked, bool Sent)? atSave = null;
+        test.World.OnAcquire = () => atSave ??= (test.World.Moves.Count > 0, session.GetLastSentPacket(SendOp.GameToGame) != null);
 
         session.MigrateToPlanner(PlotMode.Normal);
 
         Assert.Multiple(() => {
-            Assert.That(sentAtSave, Is.False, "the move sent when the save took the lock");
+            Assert.That(atSave, Is.EqualTo((false, false)), "the move asked for or sent when the save took the lock");
             Assert.That(session.GetLastSentPacket(SendOp.GameToGame), Is.Not.Null, "the move");
             Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // What beforeMove changes, only once the World gave the move, is stored with the move all the same.
+    [Test]
+    public void Migrate_BeforeMoveChangesAreStored() {
+        StartSaving();
+        typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(session, false);
+        int movesAtCall = -1;
+
+        session.Migrate(2000062, beforeMove: () => {
+            movesAtCall = test.World.Moves.Count;
+            session.Currency.Meso = 4321;
+        });
+
+        using var context = new Ms2Context(options);
+        Assert.Multiple(() => {
+            Assert.That(movesAtCall, Is.EqualTo(1), "called before the World gave the move");
+            Assert.That(context.Character.AsNoTracking().Single(row => row.Id == test.CharacterId).Currency.Meso, Is.EqualTo(4321L));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A move the World answers without an address: the character keeps its map, and the move's save no longer
+    // stands for the session's last save (MigrationRefused), so the save at Dispose stores the map it stays on.
+    [Test]
+    public void Migrate_RefusedByTheWorld_KeepsTheMapAndSavesAgain() {
+        StartSaving();
+        FieldInfo saved = typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        saved.SetValue(session, false);
+        int mapBefore = session.Player.Value.Character.MapId;
+        test.World.MoveAddress = "";
+
+        session.Migrate(2000062);
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.Moves, Has.Count.EqualTo(1), "the move asked for");
+            Assert.That(session.Player.Value.Character.MapId, Is.EqualTo(mapBefore));
+            Assert.That(saved.GetValue(session), Is.EqualTo(false), "the move's save still counted as the last save");
         });
     }
 

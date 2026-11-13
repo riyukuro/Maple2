@@ -1311,7 +1311,14 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     public void MigrateToPlanner(PlotMode plotMode) {
+        SessionState state = State;
+        bool moved = false, saved = false;
         try {
+            // Saved before the World is asked for the move (see Migrate).
+            State = SessionState.ChangeMap;
+            saved = !preMigrationSaved;
+            MigrationSave();
+
             var request = new MigrateOutRequest {
                 AccountId = AccountId,
                 CharacterId = CharacterId,
@@ -1332,15 +1339,19 @@ public sealed partial class GameSession : Core.Network.Session {
                 CutAfterSend();
                 return;
             }
-            // Saved before the move is sent: the client enters the other server only after this save held the
-            // account's row, so the new entry's claim cannot come first and refuse it (see Migrate).
-            State = SessionState.ChangeMap;
-            MigrationSave();
             Send(MigrationPacket.GameToGame(endpoint, response.Token, Constant.DefaultHomeMapId));
+            moved = true;
         } catch (RpcException ex) {
             Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
         } finally {
+            if (!moved) {
+                // Not moved: the session's last save (at Dispose) stores it again, when this move made the save.
+                State = state;
+                if (saved) {
+                    MigrationRefused();
+                }
+            }
             Disconnect();
         }
     }
@@ -1356,7 +1367,25 @@ public sealed partial class GameSession : Core.Network.Session {
 
         bool isInstanced = ServerTableMetadata.InstanceFieldTable.Entries.ContainsKey(mapId);
 
+        Character character = Player.Value.Character;
+        (int mapBefore, short returnBefore, SessionState state) = (character.MapId, character.ReturnChannel, State);
+        bool moved = false, saved = false;
         try {
+            if (isInstanced) {
+                character.ReturnChannel = character.Channel;
+            } else {
+                character.MapId = mapId;
+                character.ReturnChannel = 0;
+            }
+
+            // Saved before the World is asked for the move, as the channel change does. The move's token lives 30 s
+            // (MigrateOut): a save after it that waited longer (on a reset being stored, up to 60 s) outlived the token
+            // and the move failed. Saved after the move was sent, the client could enter the other server while the
+            // save still waited, and that entry's claim of the account refused the save.
+            State = SessionState.ChangeMap;
+            saved = !preMigrationSaved;
+            MigrationSave();
+
             var request = new MigrateOutRequest {
                 AccountId = AccountId,
                 CharacterId = CharacterId,
@@ -1375,26 +1404,31 @@ public sealed partial class GameSession : Core.Network.Session {
                 CutAfterSend();
                 return;
             }
-            beforeMove?.Invoke();
-            Dungeon?.LeaveStage();
-
-            if (isInstanced) {
-                Player.Value.Character.ReturnChannel = Player.Value.Character.Channel;
-            } else {
-                Player.Value.Character.MapId = mapId;
-                Player.Value.Character.ReturnChannel = 0;
+            if (beforeMove != null) {
+                beforeMove();
+                if (saved) {
+                    // What it changed (a trophy count, the return position) is stored with the move: a second save,
+                    // short, since a reset the first save waited on is stored by now.
+                    MigrationRefused();
+                    MigrationSave();
+                }
             }
-
-            // Saved before the move is sent, as the channel change does: sent first, the client could enter the other
-            // server while this save still waited (on a reset being stored, up to 60 s), and that entry's claim of the
-            // account refused the save; what was played since the last timed save was lost.
-            State = SessionState.ChangeMap;
-            MigrationSave();
+            Dungeon?.LeaveStage();
             Send(MigrationPacket.GameToGame(endpoint, response.Token, mapId));
+            moved = true;
         } catch (RpcException ex) {
             Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
         } finally {
+            if (!moved) {
+                // Not moved: the character stays where it is, and the session's last save (at Dispose) stores that.
+                character.MapId = mapBefore;
+                character.ReturnChannel = returnBefore;
+                State = state;
+                if (saved) {
+                    MigrationRefused();
+                }
+            }
             Disconnect();
         }
     }
