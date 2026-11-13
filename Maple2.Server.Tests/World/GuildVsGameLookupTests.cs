@@ -97,6 +97,21 @@ public class GuildVsGameLookupTests {
         Assert.That(lookup.Join(1, out _, out _, out _), Is.EqualTo(GuildError.s_guild_err_isNotVsGameTime));
     }
 
+    // The weekly reset's Guild 61 clears the client's ticket: only the guilds still waiting get it back, without a line.
+    [Test]
+    public void ResendTicketsAfterTheWeeklyReset() {
+        lookup.Register(1);
+        lookup.Register(3);
+        lookup.LastStep.Wait();
+        lookup.Register(5);
+        notices.Clear();
+
+        lookup.ResendTickets();
+
+        Assert.That(notices.Select(n => n.GuildId), Is.EqualTo(new[] { 5L }));
+        Assert.That(Notices(5), Is.EqualTo(new[] { "ticket True False" }));
+    }
+
     [Test]
     public void UnregisterGivesTheTicketBack() {
         lookup.Register(1);

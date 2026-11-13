@@ -106,6 +106,18 @@ public sealed class GuildVsGameLookup : IDisposable {
         return GuildError.none;
     }
 
+    // The weekly reset's Guild 61 runs on into the ticket reader with "not registered" (the channel does not hold the
+    // ticket); the guilds that still wait get their ticket back without a line.
+    public void ResendTickets() {
+        long[] holders;
+        lock (mutex) {
+            holders = waiting.ToArray();
+        }
+        foreach (long guildId in holders) {
+            TryNotify(guildId, Ticket(true, false));
+        }
+    }
+
     // Guild 116: the guild gives its ticket back. A guild without one gets the ticket state without a line.
     public GuildError Unregister(long guildId) {
         bool removed;

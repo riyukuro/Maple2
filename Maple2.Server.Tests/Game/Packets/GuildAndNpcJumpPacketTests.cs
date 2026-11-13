@@ -17,15 +17,17 @@ public class GuildAndNpcJumpPacketTests {
     private static PlayerInfo Info(string name) =>
         new(new CharacterInfo(1, 2, name, "", "", Gender.Male, Job.Newbie, 1), "", new AchievementInfo(), []);
 
-    // CGuildManager::OnPacketWeeklyContributionReset (mode 61) reads no body.
+    // Mode 61 runs on into 62 (no read) and 118 (OnPacketVsGameTicket: bool registered, bool notify).
     [Test]
-    public void WeeklyContributionReset_IsMode61WithNoBody() {
+    public void WeeklyContributionReset_IsMode61WithTheTicketBools() {
         ByteWriter writer = GuildPacket.WeeklyContributionReset();
-        var reader = new ByteReader(writer.Buffer, 0);
+        var reader = new ByteReader(writer.ToArray(), 0);
 
         Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.Guild));
         Assert.That(reader.ReadByte(), Is.EqualTo(61));
-        Assert.That(writer.Length, Is.EqualTo(3));
+        Assert.That(reader.ReadBool(), Is.False);
+        Assert.That(reader.ReadBool(), Is.False);
+        Assert.That(reader.Available, Is.Zero);
     }
 
     // The weekly reset zeroes each member's weekly contribution and keeps the total.

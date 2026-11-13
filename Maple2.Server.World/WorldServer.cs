@@ -32,6 +32,7 @@ public class WorldServer {
     private readonly FieldWarLookup fieldWarLookup;
     private readonly PlayerInfoLookup playerInfoLookup;
     private readonly GuildLookup guildLookup;
+    private readonly GuildVsGameLookup guildVsGameLookup;
     private ConstantsTable Constants => serverTableMetadata.ConstantsTable;
     #endregion
 
@@ -46,7 +47,7 @@ public class WorldServer {
 
     private readonly LoginClient login;
 
-    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, FieldWarLookup fieldWarLookup, PlayerInfoLookup playerInfoLookup, GuildLookup guildLookup, LoginClient login, ItemMetadataStorage itemMetadata, QuestMetadataStorage questMetadata) {
+    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, FieldWarLookup fieldWarLookup, PlayerInfoLookup playerInfoLookup, GuildLookup guildLookup, GuildVsGameLookup guildVsGameLookup, LoginClient login, ItemMetadataStorage itemMetadata, QuestMetadataStorage questMetadata) {
         this.gameStorage = gameStorage;
         this.channelClients = channelClients;
         this.serverTableMetadata = serverTableMetadata;
@@ -55,6 +56,7 @@ public class WorldServer {
         this.fieldWarLookup = fieldWarLookup;
         this.playerInfoLookup = playerInfoLookup;
         this.guildLookup = guildLookup;
+        this.guildVsGameLookup = guildVsGameLookup;
         this.login = login;
         this.itemMetadata = itemMetadata;
         this.questMetadata = questMetadata;
@@ -259,6 +261,8 @@ public class WorldServer {
                 Weekly = new GameResetRequest.Types.Weekly(),
             });
         }
+        // Guild 61 cleared the client's vs game ticket (see GuildPacket.WeeklyContributionReset).
+        guildVsGameLookup.ResendTickets();
     }
     #endregion
 

@@ -520,12 +520,16 @@ public static class GuildPacket {
 
     // s_guild_gain_contribution
     // - You have acquired {0} contributions.
-    // Guild 61 has no body: the client sets every member's weekly contribution to 0 and then, as Guild 62, clears
-    // the members' guild raid records (the dispatcher's case 0x3d runs on into 0x3e, guildmanager.cpp:367), so this
-    // one packet is also the raid reset.
+    // Guild 61: the client sets every member's weekly contribution to 0, then the dispatcher's case 0x3d runs on into
+    // 0x3e (clears the members' guild raid records, so this one packet is also the raid reset) and into 0x76
+    // (OnPacketVsGameTicket: bool registered, bool notify; guildmanager.cpp:367-369, exe 0x1413b68b4). Without the two
+    // bools the client throws on the read. The channel does not hold the vs game ticket, so it sends "not registered"
+    // without a line; the World re-sends the ticket to the guilds that hold one after the reset.
     public static ByteWriter WeeklyContributionReset() {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.WriteByte((byte) Command.WeeklyContributionReset);
+        pWriter.WriteBool(false); // registered
+        pWriter.WriteBool(false); // notify
 
         return pWriter;
     }
