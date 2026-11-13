@@ -15,6 +15,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.ActorStateComponent;
 using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Tools.Scheduler;
@@ -611,8 +612,12 @@ public class TriggerNpcTests : TriggerTestBase {
         FieldInfo summons = typeof(FieldNpc).GetField("summons", Any)!;
         summons.SetValue(npc, Activator.CreateInstance(summons.FieldType));
         typeof(Actor<Npc>).GetField("<Field>k__BackingField", Any)!.SetValue(npc, Field);
-        typeof(Actor<Npc>).GetField("<Value>k__BackingField", Any)!.SetValue(npc,
-            new Npc((NpcMetadata) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadata)), null));
+        var metadata = (NpcMetadata) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadata));
+        typeof(NpcMetadata).GetField("<Property>k__BackingField", Any)!.SetValue(metadata,
+            new NpcMetadataProperty([], new NpcMetadataCapsule(10, 100), null));
+        typeof(Actor<Npc>).GetField("<Value>k__BackingField", Any)!.SetValue(npc, new Npc(metadata, null));
+        typeof(FieldNpc).GetField(nameof(FieldNpc.AiExtraData), Any)!.SetValue(npc, new ConcurrentDictionary<string, int>());
+        typeof(FieldNpc).GetField(nameof(FieldNpc.BattleState), Any)!.SetValue(npc, new BattleState(npc));
         typeof(Actor<Npc>).GetField("<Transform>k__BackingField", Any)!.SetValue(npc, new Transform());
         typeof(Actor<Npc>).GetField("Logger", Any)!.SetValue(npc, Log.Logger);
         npc.SpawnPointId = spawnPointId;
@@ -691,5 +696,122 @@ public class TriggerNpcTests : TriggerTestBase {
         ByteReader talk = Sent(SendOp.Cinematic).Single();
         Assert.That((talk.ReadByte(), talk.ReadInt(), talk.ReadString(), talk.ReadUnicodeString(), talk.ReadInt()),
             Is.EqualTo(((byte) 6, 11000001, "11000001", "def", 2000)));
+    }
+
+    // npc_detected (1413): an npc of the spawn points stands in the box; box 0 is the whole field and spawn id 0
+    // any npc. An npc out of the box is not seen.
+    [Test]
+    public void NpcDetected_InTheBox() {
+        SetTriggers(new Ms2TriggerBox(Vector3.Zero, new Vector3(300, 300, 300), 1, true),
+            new Ms2TriggerBox(new Vector3(5000, 0, 0), new Vector3(300, 300, 300), 2, true));
+        Mob(9001, 5);
+        Mob(9002, 6).Position = new Vector3(5000, 0, 0);
+
+        Assert.That(Condition("""<condition name="npc_detected" box_id="1" spawn_ids="5" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_detected" box_id="1" spawn_ids="6" />"""), Is.False);
+        Assert.That(Condition("""<condition name="npc_detected" box_id="2" spawn_ids="0" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_detected" box_id="0" spawn_ids="6" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_detected" box_id="1" spawn_ids="6" negate="1" />"""), Is.True);
+    }
+
+    // add_effect_nif (1353), remove_effect_nif: the spawn point's npcs get the nif (kept for a later entrant) and
+    // the Trigger AddEffect (17), then lose it with RemoveEffect (18).
+    [Test]
+    public void EffectNif_AddsThenRemoves() {
+        Mob(9001, 5);
+        Mob(9002, 6);
+
+        Action("""<action name="add_effect_nif" spawn_id="5" nif_path="Eff/a.nif" is_outline="1" scale="1.5" rotate_z="90" />""");
+        Assert.That(Field.NpcEffects.Keys, Is.EqualTo(new[] { 9001 }));
+        ByteReader added = Sent(SendOp.Trigger).Single();
+        Assert.That((added.ReadByte(), added.ReadInt(), added.ReadString(), added.ReadBool(), added.ReadFloat(), added.ReadFloat()),
+            Is.EqualTo(((byte) 17, 9001, "Eff/a.nif", true, 1.5f, 90f)));
+
+        Action("""<action name="remove_effect_nif" spawn_id="5" />""");
+        Assert.That(Field.NpcEffects, Is.Empty);
+        ByteReader removed = Sent(SendOp.Trigger).Single();
+        Assert.That((removed.ReadByte(), removed.ReadInt()), Is.EqualTo(((byte) 18, 9001)));
+    }
+
+    // set_ai_extra_data (166): the value is set on the npcs in the box (0: all), or added to the old one with
+    // is_modify.
+    [Test]
+    public void SetAiExtraData_SetsOrAdds() {
+        FieldNpc npc = Mob(9001, 5);
+
+        Action("""<action name="set_ai_extra_data" key="Phase" value="2" />""");
+        Action("""<action name="set_ai_extra_data" key="Phase" value="3" is_modify="1" />""");
+        Action("""<action name="set_ai_extra_data" key="Other" value="4" is_modify="1" />""");
+        Assert.That((npc.AiExtraData["Phase"], npc.AiExtraData["Other"]), Is.EqualTo((5, 4)));
+    }
+
+    // monster_in_combat (151): a monster of the spawn points is in battle.
+    [Test]
+    public void MonsterInCombat_BySpawnPoint() {
+        Mob(9001, 5).BattleState.KeepBattle = true;
+        Mob(9002, 6);
+
+        Assert.That(Condition("""<condition name="monster_in_combat" spawn_ids="5" />"""), Is.True);
+        Assert.That(Condition("""<condition name="monster_in_combat" spawn_ids="6" />"""), Is.False);
+        Assert.That(Condition("""<condition name="monster_in_combat" spawn_ids="6" negate="1" />"""), Is.True);
+    }
+}
+
+public class TriggerInterfaceTests : TriggerTestBase {
+    // show_guide_summary (1392), hide_guide_summary (680): Trigger Ui (9) ShowSummary (2) with the entity, text and
+    // duration, HideSummary (3) with the entity (the client reads one int).
+    [Test]
+    public void GuideSummary_ShowThenHide() {
+        Start();
+
+        Action("""<action name="show_guide_summary" entity_id="20002" text_id="20002" duration="5000" />""");
+        ByteReader shown = Sent(SendOp.Trigger).Single();
+        Assert.That((shown.ReadByte(), shown.ReadByte(), shown.ReadInt(), shown.ReadInt(), shown.ReadInt()),
+            Is.EqualTo(((byte) 9, (byte) 2, 20002, 20002, 5000)));
+
+        Action("""<action name="hide_guide_summary" entity_id="20002" />""");
+        ByteReader hidden = Sent(SendOp.Trigger).Single();
+        Assert.That((hidden.ReadByte(), hidden.ReadByte(), hidden.ReadInt(), hidden.Available), Is.EqualTo(((byte) 9, (byte) 3, 20002, 0)));
+    }
+
+    // remove_cinematic_talk (1144): Cinematic RemoveTalk (7) alone.
+    [Test]
+    public void RemoveCinematicTalk_Sends7() {
+        Start();
+
+        Action("""<action name="remove_cinematic_talk" />""");
+        ByteReader removed = Sent(SendOp.Cinematic).Single();
+        Assert.That((removed.ReadByte(), removed.Available), Is.EqualTo(((byte) 7, 0)));
+    }
+
+    // reset_camera (495): CameraInterpolation with the time.
+    [Test]
+    public void ResetCamera_SendsTheTime() {
+        Start();
+
+        Action("""<action name="reset_camera" interpolation_time="1.5" />""");
+        Assert.That(Sent(SendOp.CameraInterpolation).Single().ReadFloat(), Is.EqualTo(1.5f));
+    }
+
+    // check_user (195): a player is on the field; negate: none is.
+    [Test]
+    public void CheckUser_PlayerOnTheField() {
+        Start();
+
+        Assert.That(Condition("""<condition name="check_user" />"""), Is.True);
+        Assert.That(Condition("""<condition name="check_user" negate="1" />"""), Is.False);
+    }
+
+    // dungeon_variable (278): the field's variable equals the value; an unset one reads 0.
+    [Test]
+    public void DungeonVariable_Equals() {
+        Start();
+        // The test field skips the FieldManager ctor: its variable table is made here.
+        typeof(FieldManager).GetField(nameof(FieldManager.DungeonVariables))!.SetValue(Field, new ConcurrentDictionary<int, int>());
+        Field.DungeonVariables[3] = 1;
+
+        Assert.That(Condition("""<condition name="dungeon_variable" var_id="3" value="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_variable" var_id="3" value="0" />"""), Is.False);
+        Assert.That(Condition("""<condition name="dungeon_variable" var_id="4" value="0" />"""), Is.True);
     }
 }
