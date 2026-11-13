@@ -137,42 +137,40 @@ public partial class FieldManager {
             NotifyMailed(session, mailed);
 
             Dictionary<Vector3B, PlotCube> saved = results.ToDictionary(result => result.Position);
-            lock (Plots) {
-                lock (plot.EditLock) {
-                    // The stray rows the save deleted are gone. One it wrote again stays a stray (a cube copied, then
-                    // removed with a failed delete, has its row rewritten): the next save deletes it.
-                    HashSet<long> rewritten = saved.Values.Select(result => result.Id).ToHashSet();
-                    plot.StrayRows.ExceptWith(rows.Where(id => !rewritten.Contains(id)));
-                    var turned = new List<(PlotCube Cube, float Rotation)>();
-                    foreach ((Vector3B position, PlotCube cube) in held) {
-                        // Only a cube still held as it was copied is replaced by its saved row.
-                        if (!plot.Cubes.TryGetValue(position, out PlotCube? now) || !ReferenceEquals(now, cube)) {
-                            continue;
-                        }
-                        if (!saved.TryGetValue(position, out PlotCube? result)) {
-                            // Its row was gone (deleted outside this instance): the cube is kept, so the instance is
-                            // now outdated and is loaded again once it empties.
-                            continue;
-                        }
-                        if (cube.Interact?.PortalSettings is not null && result.Interact?.PortalSettings is not null && result.ItemId == cube.ItemId) {
-                            result.Interact = cube.Interact;
-                        }
-                        if (result.Rotation != cube.Rotation) {
-                            turned.Add((result, cube.Rotation)); // turned after the copy
-                        }
-                        plot.Cubes[position] = result;
+            lock (plot.EditLock) {
+                // The stray rows the save deleted are gone. One it wrote again stays a stray (a cube copied, then
+                // removed with a failed delete, has its row rewritten): the next save deletes it.
+                HashSet<long> rewritten = saved.Values.Select(result => result.Id).ToHashSet();
+                plot.StrayRows.ExceptWith(rows.Where(id => !rewritten.Contains(id)));
+                var turned = new List<(PlotCube Cube, float Rotation)>();
+                foreach ((Vector3B position, PlotCube cube) in held) {
+                    // Only a cube still held as it was copied is replaced by its saved row.
+                    if (!plot.Cubes.TryGetValue(position, out PlotCube? now) || !ReferenceEquals(now, cube)) {
+                        continue;
                     }
-                    // Written under the lock, as a rotation is (HousingManager.TryRotateCube). A turn whose row cannot be
-                    // written is undone, so the cube stays what its row holds.
-                    foreach ((PlotCube cube, float rotation) in turned) {
-                        if (db.SetCubeRotation(cube.Id, rotation)) {
-                            cube.Rotation = rotation;
-                        } else {
-                            logger.Error("Failed to save the rotation of cube {CubeId} at position {Position}.", cube.Id, cube.Position);
-                        }
+                    if (!saved.TryGetValue(position, out PlotCube? result)) {
+                        // Its row was gone (deleted outside this instance): the cube is kept, so the instance is
+                        // now outdated and is loaded again once it empties.
+                        continue;
                     }
-                    homeField?.Saved(plot);
+                    if (cube.Interact?.PortalSettings is not null && result.Interact?.PortalSettings is not null && result.ItemId == cube.ItemId) {
+                        result.Interact = cube.Interact;
+                    }
+                    if (result.Rotation != cube.Rotation) {
+                        turned.Add((result, cube.Rotation)); // turned after the copy
+                    }
+                    plot.Cubes[position] = result;
                 }
+                // Written under the edit lock, as a rotation is (HousingManager.TryRotateCube), and not under
+                // lock(Plots). A turn whose row cannot be written is undone, so the cube stays what its row holds.
+                foreach ((PlotCube cube, float rotation) in turned) {
+                    if (db.SetCubeRotation(cube.Id, rotation)) {
+                        cube.Rotation = rotation;
+                    } else {
+                        logger.Error("Failed to save the rotation of cube {CubeId} at position {Position}.", cube.Id, cube.Position);
+                    }
+                }
+                homeField?.Saved(plot);
             }
             return true;
         }

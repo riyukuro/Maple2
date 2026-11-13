@@ -510,6 +510,35 @@ public class ModelHouseStaleFieldTests {
         });
     }
 
+    // A cube turned between the copy and the write has its rotation written again by the save, outside lock(Plots):
+    // a database write under the field-wide lock. Before, the save wrote it with lock(Plots) held.
+    [Test]
+    public void TurnDuringTheSave_WritesTheRotationOutsideThePlotsLock() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        var position = new Vector3B(-1, -1, 0);
+        bool turned = false, plotsHeld = false;
+        test.FailSave = context => {
+            if (!turned && context.ChangeTracker.Entries<UgcMapCube>().Any(entry => entry.State == EntityState.Modified)) {
+                turned = true;
+                Assert.That(session.Housing.TryRotateCube(plot, position, true, out _), Is.True);
+            } else if (turned) {
+                plotsHeld |= Monitor.IsEntered(home.Plots);
+            }
+            return false;
+        };
+        Commit(home, session);
+        test.FailSave = null;
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(plotsHeld, Is.False);
+            Assert.That(db.GetCubeRotations(plot.Id)[plot.Cubes[position].Id], Is.EqualTo(270f));
+            Assert.That(plot.Cubes[position].Rotation, Is.EqualTo(270f));
+            Assert.That(Outdated(home), Is.False);
+        });
+    }
+
     // The rule: a row the field neither holds nor saved, or a held cube without its row, makes the field outdated.
     [TestCase(new long[] { 1, 2 }, new long[] { 1, 2 }, new long[] { 1, 2 }, false)]
     [TestCase(new long[] { 1, 2 }, new long[] { 1 }, new long[] { 1, 2 }, false)] // removed here, saved row not yet deleted

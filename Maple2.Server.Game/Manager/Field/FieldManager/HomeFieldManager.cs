@@ -1,4 +1,5 @@
-﻿using Maple2.Database.Storage;
+﻿using System.Collections.Concurrent;
+using Maple2.Database.Storage;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
@@ -13,7 +14,8 @@ public class HomeFieldManager : FieldManager {
     private readonly int roomId;
     // The cube rows of each plot (by number) as this field loaded them or last saved them (CommitPlot).
     // Made on first use: a field built without its constructor (the tests) has none.
-    private Dictionary<int, HashSet<long>>? savedCubes;
+    // Per plot number; a plot's set is replaced under that plot's edit lock, and read under it.
+    private ConcurrentDictionary<int, HashSet<long>>? savedCubes;
 
     public HomeFieldManager(Home home, MapMetadata mapMetadata, UgcMapMetadata ugcMetadata, MapEntityMetadata entities, NpcMetadataStorage npcMetadata, int roomId)
         : base(mapMetadata, ugcMetadata, entities, npcMetadata) {
@@ -53,9 +55,9 @@ public class HomeFieldManager : FieldManager {
         }
     }
 
-    // Called at the load, before anyone can edit the plot, and by a save under lock(Plots) and the plot's edit lock.
+    // Called at the load, before anyone can edit the plot, and by a save under the plot's edit lock.
     internal void Saved(Plot plot) {
-        (savedCubes ??= new Dictionary<int, HashSet<long>>())[plot.Number] = plot.Cubes.Values.Select(cube => cube.Id).Where(id => id < Constant.FurnishingBaseId).ToHashSet();
+        LazyInitializer.EnsureInitialized(ref savedCubes)[plot.Number] = plot.Cubes.Values.Select(cube => cube.Id).Where(id => id < Constant.FurnishingBaseId).ToHashSet();
     }
 
     // The cubes of this field are not the home's any more: the database has a cube row this field neither holds nor
