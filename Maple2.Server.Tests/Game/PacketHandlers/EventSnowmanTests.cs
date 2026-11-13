@@ -92,6 +92,26 @@ public class EventSnowmanTests {
         Assert.That(SentHex(), Does.Not.Contain(Hex(TaskEventPacket.Snowflake())));
     }
 
+    // Two snowman events running: the lower id gathers the snowflakes and pays the claims, the other gets none.
+    [Test]
+    public void Snowman_TwoEvents_TheLowerIdOnly() {
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(DailyItem), TestGameSession.Metadata(AccumItem));
+        test.AddEvent(EventId + 1, GameEventType.Snowman, Data(new Snowman.Source(ConditionType.npc, 4, 10000)));
+        gameEvent = test.AddEvent(EventId, GameEventType.Snowman, Data(new Snowman.Source(ConditionType.npc, 4, 10000)));
+        GameSession session = test.Start();
+        session.GameEvent.Roll = _ => 0;
+        test.TakeSent();
+
+        Kill(session, 3);
+        Claim(session, false, 0);
+
+        Assert.That(SentHex().Count(hex => hex == Hex(TaskEventPacket.Snowflake())), Is.EqualTo(3));
+        Assert.That(session.GameEvent.Peek(GameEventUserValueType.SnowflakeCount, EventId + 1), Is.Null);
+        Assert.That(Value(session, GameEventUserValueType.SnowflakeCount), Is.EqualTo("0,12"));
+        Assert.That(Held(session, DailyItem), Is.EqualTo(2));
+    }
+
     // The sources of one condition add up; a snowman that cannot proceed takes none.
     [Test]
     public void Snowman_Gain_Rules() {

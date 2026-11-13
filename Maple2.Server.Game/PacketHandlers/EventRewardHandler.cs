@@ -418,7 +418,7 @@ public class EventRewardHandler : FieldPacketHandler {
         if (session.Field == null) {
             return;
         }
-        GameEvent? gameEvent = session.FindEvent(GameEventType.Snowman).Where(found => found.Metadata.Data is Snowman).MinBy(found => found.Id);
+        GameEvent? gameEvent = session.GameEvent.SnowmanEvent();
         if (gameEvent?.Metadata.Data is not Snowman snowman || index >= snowman.Snowmen.Length) {
             Logger.Debug("Snowman claim {Index} from {CharacterId} refused: no such snowman", index, session.CharacterId);
             return;

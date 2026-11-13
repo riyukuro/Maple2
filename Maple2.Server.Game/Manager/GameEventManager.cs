@@ -396,12 +396,10 @@ public sealed class GameEventManager {
     // with its chance; the snowmen that can proceed take them (SnowmanRules.Gain) and the client is told
     // (TaskEvent 4). The snowflakes and today's completes last the day ("reset daily at midnight", the dialog's
     // help), so the dialog, which reads them again at the day's change, finds them gone.
-    // Chosen here: the sources' daily limits are not kept (the KR rows of 900070 allow 99999 a day).
+    // Chosen here: the sources' daily limits are not kept (the KR rows of 900070 allow 99999 a day). With two
+    // snowman events running, only the one the claims use (SnowmanEvent) gathers snowflakes.
     public void SnowmanCondition(ConditionType type) {
-        foreach (GameEvent gameEvent in session.FindEvent(GameEventType.Snowman)) {
-            if (gameEvent.Metadata.Data is not Snowman snowman) {
-                continue;
-            }
+        if (SnowmanEvent() is { Metadata.Data: Snowman snowman } gameEvent) {
             int point = 0;
             foreach (Snowman.Source source in snowman.Sources) {
                 if (source.Type == type && Roll(10000) < source.Prop) {
@@ -409,7 +407,7 @@ public sealed class GameEventManager {
                 }
             }
             if (point == 0) {
-                continue;
+                return;
             }
 
             DateTime time = Clock();
@@ -419,11 +417,16 @@ public sealed class GameEventManager {
             int[] snowflakes = SnowmanRules.Counts(Get(GameEventUserValueType.SnowflakeCount, gameEvent.Id, dayEnd, now).Value, length);
             int[] daily = SnowmanRules.Counts(Get(GameEventUserValueType.DailyCompleteCount, gameEvent.Id, dayEnd, now).Value, length);
             if (!SnowmanRules.Gain(snowman, snowflakes, daily, point)) {
-                continue;
+                return;
             }
             Set(gameEvent.Id, GameEventUserValueType.SnowflakeCount, SnowmanRules.Join(snowflakes));
             session.Send(TaskEventPacket.Snowflake());
         }
+    }
+
+    // The running snowman event that gathers snowflakes and pays claims: the lowest id when several run.
+    public GameEvent? SnowmanEvent() {
+        return session.FindEvent(GameEventType.Snowman).Where(found => found.Metadata.Data is Snowman).MinBy(found => found.Id);
     }
 
     public void Set(int gameEventId, GameEventUserValueType type, object value) {
