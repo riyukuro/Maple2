@@ -604,6 +604,11 @@ public sealed partial class GameSession : Core.Network.Session {
     // and not a portal that migrates to another server.
     public bool PortalArrival { get; private set; }
 
+    // The DPS meter window is open (DpsMode 1): only then is DpsStat sent. Chosen here: it lasts for the session, a
+    // field change on this server included (the client sends it only when the window opens or closes); a new
+    // session (a channel change) starts with it closed.
+    public bool DpsMeterOpen;
+
     public bool PrepareFieldByPortal(int mapId, int portalId = -1, int roomId = 0) {
         bool prepared = PrepareFieldInternal(mapId, out _, portalId, 0, roomId, default, default);
         PortalArrival = prepared;

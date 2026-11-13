@@ -322,8 +322,11 @@ public class Buff : IUpdatable, IByteSerializable {
         var record = new HealDamageRecord(Caster, Owner, ObjectId, Metadata.Recovery, Stacks, healingRate, recoveryRate);
         var updated = new List<BasicAttribute>(3);
         if (record.HpAmount != 0) {
-            Owner.Stats.Values[BasicAttribute.Health].Add(record.HpAmount);
+            Stat health = Owner.Stats.Values[BasicAttribute.Health];
+            long before = health.Current;
+            health.Add(record.HpAmount);
             updated.Add(BasicAttribute.Health);
+            SendDpsHealEffective(health.Current - before);
         }
         if (record.SpAmount != 0) {
             Owner.Stats.Values[BasicAttribute.Spirit].Add(record.SpAmount);
@@ -338,6 +341,20 @@ public class Buff : IUpdatable, IByteSerializable {
             Field.Broadcast(StatsPacket.Update(Owner, updated.ToArray()));
         }
         Field.Broadcast(SkillDamagePacket.Heal(record));
+    }
+
+    // The DPS meters' effective heal: the health this heal actually restored, to the caster (given) and the holder
+    // (received), each only while its own meter is open. The full amounts come with SkillDamage Heal.
+    private void SendDpsHealEffective(long restored) {
+        if (restored <= 0) {
+            return;
+        }
+        if (Caster is FieldPlayer { Session.DpsMeterOpen: true } caster) {
+            caster.Session.Send(DpsStatPacket.HealEffective(false, (int) restored));
+        }
+        if (Owner is FieldPlayer { Session.DpsMeterOpen: true } owner) {
+            owner.Session.Send(DpsStatPacket.HealEffective(true, (int) restored));
+        }
     }
 
     private void ApplyDotDamage() {

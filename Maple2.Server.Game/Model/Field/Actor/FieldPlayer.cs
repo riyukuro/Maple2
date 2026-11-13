@@ -295,10 +295,10 @@ public class FieldPlayer : Actor<Player> {
                         RecoverHp((int) regen.Total);
                         continue;
                     case BasicAttribute.Spirit:
-                        RecoverSp((int) regen.Total);
+                        SendDpsNaturalRecovery(attribute, RecoverSp((int) regen.Total));
                         continue;
                     case BasicAttribute.Stamina:
-                        RecoverStamina((int) regen.Total);
+                        SendDpsNaturalRecovery(attribute, RecoverStamina((int) regen.Total));
                         continue;
                 }
                 Session.Send(StatsPacket.Update(this, attribute));
@@ -1049,6 +1049,17 @@ public class FieldPlayer : Actor<Player> {
         }
         if (staminaCost > 0) {
             ConsumeStamina(staminaCost);
+        }
+        if (Session.DpsMeterOpen && (spiritCost > 0 || staminaCost > 0)) {
+            Session.Send(DpsStatPacket.Spend(spiritCost, staminaCost));
+        }
+    }
+
+    // The DPS meter's natural spirit and stamina: what a regen tick actually restored. Chosen here: health regen is
+    // not sent, the client counts no natural health (CDPSMeterSystem::AddStat).
+    private void SendDpsNaturalRecovery(BasicAttribute attribute, int restored) {
+        if (Session.DpsMeterOpen && restored > 0) {
+            Session.Send(DpsStatPacket.Recover(true, attribute, restored));
         }
     }
 
