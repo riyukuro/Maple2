@@ -85,11 +85,13 @@ public static class GroupChatPacket {
         return pWriter;
     }
 
-    public static ByteWriter RemoveMember(string memberName, int groupChatId) {
+    // Client 2525 OnPacketRemoveMember reads the chat, a reason byte and the name; the group messenger shows "left"
+    // for reason 0 and "declined the invitation" for reason 1 (uigroupmessenger.cpp:773-776).
+    public static ByteWriter RemoveMember(string memberName, int groupChatId, bool refused = false) {
         var pWriter = Packet.Of(SendOp.GroupChat);
         pWriter.Write<Command>(Command.RemoveMember);
         pWriter.WriteInt(groupChatId);
-        pWriter.WriteBool(false); // is not member?
+        pWriter.WriteByte((byte) (refused ? 1 : 0));
         pWriter.WriteUnicodeString(memberName);
 
         return pWriter;

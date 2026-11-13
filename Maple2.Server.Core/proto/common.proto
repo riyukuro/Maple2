@@ -192,10 +192,13 @@ message GroupChatRequest {
     string receiver_name = 2;
   }
 
-  message Leave {}
+  message Leave {
+    bool refused = 1; // the client's refuse-invites option turned down the invite
+  }
 
   message RemoveMember {
     int64 character_id = 1;
+    bool refused = 2;
   }
 
   message AddMember {

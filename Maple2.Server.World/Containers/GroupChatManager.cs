@@ -86,7 +86,7 @@ public class GroupChatManager : IDisposable {
         return true;
     }
 
-    public void Leave(long characterId) {
+    public void Leave(long characterId, bool refused = false) {
         if (!GroupChat.Members.TryGetValue(characterId, out GroupChatMember? member)) {
             Log.Error("Failed to remove member {CharacterId} from group chat {GroupChatId} because they were not found", characterId, GroupChat.Id);
             return;
@@ -95,6 +95,7 @@ public class GroupChatManager : IDisposable {
         Broadcast(new GroupChatRequest {
             RemoveMember = new GroupChatRequest.Types.RemoveMember {
                 CharacterId = member.CharacterId,
+                Refused = refused,
             },
         });
         GroupChat.Members.TryRemove(member.CharacterId, out _);

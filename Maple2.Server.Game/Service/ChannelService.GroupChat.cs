@@ -82,7 +82,7 @@ public partial class ChannelService {
                 continue;
             }
 
-            manager.RemoveMember(remove.CharacterId);
+            manager.RemoveMember(remove.CharacterId, remove.Refused);
             if (characterId == remove.CharacterId) {
                 session.GroupChats.Remove(groupChatId, out _);
             }

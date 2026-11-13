@@ -84,7 +84,7 @@ public class GroupChatManager : IDisposable {
         return true;
     }
 
-    public bool RemoveMember(long characterId) {
+    public bool RemoveMember(long characterId, bool refused = false) {
         if (groupChat == null) {
             return false;
         }
@@ -94,7 +94,7 @@ public class GroupChatManager : IDisposable {
         EndListen(member);
 
         session.Send(characterId == session.CharacterId ? GroupChatPacket.Leave(groupChat.Id) :
-            GroupChatPacket.RemoveMember(member.Name, groupChat.Id));
+            GroupChatPacket.RemoveMember(member.Name, groupChat.Id, refused));
         return true;
     }
 

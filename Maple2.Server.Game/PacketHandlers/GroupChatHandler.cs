@@ -148,7 +148,7 @@ public class GroupChatHandler : FieldPacketHandler {
     }
 
     private void HandleLeave(GameSession session, IByteReader packet) {
-        (int groupChatId, _) = GroupChatRules.ReadLeave(packet); // 1 when the client's refuse-invites option turned down an invite, 0 when the player leaves
+        (int groupChatId, bool refused) = GroupChatRules.ReadLeave(packet); // 1 when the client's refuse-invites option turned down an invite, 0 when the player leaves
 
         if (!session.GroupChats.ContainsKey(groupChatId)) {
             return;
@@ -156,7 +156,7 @@ public class GroupChatHandler : FieldPacketHandler {
 
         try {
             World.GroupChat(new GroupChatRequest {
-                Leave = new GroupChatRequest.Types.Leave(),
+                Leave = new GroupChatRequest.Types.Leave { Refused = refused },
                 GroupChatId = groupChatId,
                 RequesterId = session.CharacterId,
             });

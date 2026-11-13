@@ -89,7 +89,7 @@ public partial class WorldService {
             };
         }
 
-        manager.Leave(requestorId);
+        manager.Leave(requestorId, leave.Refused);
         return new GroupChatResponse();
     }
 
