@@ -210,7 +210,9 @@ public class HousingManager {
             costAmount = (int) Math.Ceiling(costAmount * (1 - discount));
         }
 
-        if (!CheckAndRemoveCost(session, contract.ItemId, costAmount)) {
+        // The check and the charge are one step: the merets can also be taken on another thread (a partner's paid
+        // wedding hall), so a charge after the save could fail with the plot already saved.
+        if (!TryRemoveCost(session, contract.ItemId, costAmount)) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_enough_money));
             return false;
         }
@@ -218,6 +220,9 @@ public class HousingManager {
         using GameStorage.Request db = session.GameStorage.Context();
         plotInfo = db.BuyPlot(session.PlayerName, session.AccountId, plot, TimeSpan.FromDays(contract.Days));
         if (plotInfo == null) {
+            // A failed buy (owned on another channel, or a failed save) costs nothing: the cost is given back, and
+            // the home's outdoor plot is left as it was.
+            RefundCost(session, contract.ItemId, costAmount);
             logger.Warning("Failed to buy plot: {PlotId}, {OwnerId}", plot.Id, plot.OwnerId);
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
             return false;
@@ -319,7 +324,7 @@ public class HousingManager {
             costAmount = (int) Math.Ceiling(costAmount * (1 - discount));
         }
 
-        if (!CheckAndRemoveCost(session, extension.ItemId, costAmount)) {
+        if (!TryRemoveCost(session, extension.ItemId, costAmount)) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_need_extension_pay));
             return;
         }
@@ -327,6 +332,8 @@ public class HousingManager {
         using GameStorage.Request db = session.GameStorage.Context();
         PlotInfo? plotInfo = db.ExtendPlot(Home.Outdoor, TimeSpan.FromDays(extension.Days));
         if (plotInfo == null) {
+            // A failed extension costs nothing: the cost is given back.
+            RefundCost(session, extension.ItemId, costAmount);
             logger.Warning("Failed to extend plot: {PlotId}, {OwnerId}", Home.Outdoor.Id, Home.Outdoor.OwnerId);
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
             return;
@@ -349,25 +356,35 @@ public class HousingManager {
         });
     }
 
-    private static bool CheckAndRemoveCost(GameSession session, int itemId, int cost) {
+    private static bool TryRemoveCost(GameSession session, int itemId, int cost) {
         switch (itemId) {
             case >= 90000001 and <= 90000003:
                 if (session.Currency.Meso < cost) {
                     return false;
                 }
-
                 session.Currency.Meso -= cost;
                 return true;
             case 90000004 or 90000011 or 90000015 or 90000016:
                 if (session.Currency.Meret < cost) {
                     return false;
                 }
-
                 session.Currency.Meret -= cost;
                 return true;
         }
-
         return false;
+    }
+
+    // Gives back a cost TryRemoveCost took. Chosen here: the meret refund is a plain Meret update with a positive
+    // change, so the use_merat count the charge reported stays (the refund does not take it back).
+    private static void RefundCost(GameSession session, int itemId, int cost) {
+        switch (itemId) {
+            case >= 90000001 and <= 90000003:
+                session.Currency.Meso += cost;
+                return;
+            case 90000004 or 90000011 or 90000015 or 90000016:
+                session.Currency.Meret += cost;
+                return;
+        }
     }
 
     public void Save(GameStorage.Request db) {

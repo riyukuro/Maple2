@@ -637,6 +637,14 @@ public sealed class TestGameSession {
             return new LockResponse();
         }
 
+        // The plot changes sent to the other channels.
+        public readonly List<FieldPlotRequest> PlotUpdates = [];
+
+        public override FieldPlotResponse UpdateFieldPlot(FieldPlotRequest request, CallOptions options) {
+            PlotUpdates.Add(request);
+            return new FieldPlotResponse();
+        }
+
         // The world's open global portal (the answer to GetGlobalPortal); none is open while it is null.
         public GlobalPortalInfo? OpenPortal;
         public int TimeEventError;
