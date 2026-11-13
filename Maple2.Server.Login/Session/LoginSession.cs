@@ -103,10 +103,14 @@ public class LoginSession : Core.Network.Session {
         }
     }
 
-    public void ListServers() {
+    public void ListServers(long accountId) {
         ChannelsResponse response = World.Channels(new ChannelsRequest());
+        int characters;
+        using (GameStorage.Request db = GameStorage.Context()) {
+            characters = db.CountCharacters(accountId);
+        }
         Send(BannerListPacket.Load(Server.GetSystemBanners()));
-        Send(ServerListPacket.Load(Target.SERVER_NAME, [new IPEndPoint(Target.LoginIp, Target.LoginPort)], response.Channels));
+        Send(ServerListPacket.Load(Target.SERVER_NAME, [new IPEndPoint(Target.LoginIp, Target.LoginPort)], response.Channels, characters));
     }
 
     public void ListCharacters() {

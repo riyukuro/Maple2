@@ -18,13 +18,17 @@ public static class ServerListPacket {
         return pWriter;
     }
 
-    public static ByteWriter Load(string serverName, IList<IPEndPoint> serverIps, ICollection<int> channels) {
+    // UIServerListDialog::ReceiveServerList (uiserverlistdialog.cpp:310): the login scene reads the byte after the
+    // string as a result (above 0 opens the server list), the dialog as the number of servers. Per server: the id
+    // (looked up in the client's server list table), the name, the account's character count on it (the list's
+    // charCnt, uiserverlistdialog.cpp:483), the addresses, the traffic percent and the channels.
+    public static ByteWriter Load(string serverName, IList<IPEndPoint> serverIps, ICollection<int> channels, int characters) {
         var pWriter = Packet.Of(SendOp.ServerList);
         pWriter.WriteString("dev"); // env (Live, Staging, qa, dev)
-        pWriter.Write<Command>(Command.Load);
-        pWriter.WriteInt(1); // Unknown
+        pWriter.Write<Command>(Command.Load); // one server
+        pWriter.WriteInt(1); // server id
         pWriter.WriteUnicodeString(serverName);
-        pWriter.WriteByte(4); // IPv4?
+        pWriter.WriteByte((byte) Math.Clamp(characters, 0, byte.MaxValue));
         pWriter.Write<ushort>((ushort) serverIps.Count);
         foreach (IPEndPoint endpoint in serverIps) {
             pWriter.WriteUnicodeString(endpoint.Address.ToString());

@@ -41,7 +41,17 @@ public class LoginServer : Server<LoginSession> {
     public override void OnDisconnected(LoginSession session) {
         lock (mutex) {
             connectingSessions.Remove(session);
-            sessions.Remove(session.AccountId);
+            Release(session);
+        }
+    }
+
+    // Drops the account's entry only while it still names this session: a session of the same account that logged in
+    // after it keeps its entry.
+    public void Release(LoginSession session) {
+        lock (mutex) {
+            if (sessions.TryGetValue(session.AccountId, out LoginSession? current) && current == session) {
+                sessions.Remove(session.AccountId);
+            }
         }
     }
 

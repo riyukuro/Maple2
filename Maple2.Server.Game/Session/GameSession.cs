@@ -830,7 +830,11 @@ public sealed partial class GameSession : Core.Network.Session {
         // Update the client with the latest channel list.
         ChannelsResponse response = World.Channels(new ChannelsRequest());
         Send(ChannelPacket.Load(response.Channels));
-        Send(ServerListPacket.Load(Target.SERVER_NAME, [new IPEndPoint(Target.LoginIp, Target.LoginPort)], response.Channels));
+        int characters;
+        using (GameStorage.Request db = GameStorage.Context()) {
+            characters = db.CountCharacters(AccountId);
+        }
+        Send(ServerListPacket.Load(Target.SERVER_NAME, [new IPEndPoint(Target.LoginIp, Target.LoginPort)], response.Channels, characters));
         if (PortalArrival) {
             PortalArrival = false;
             Player.PortalInvincible();

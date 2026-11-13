@@ -81,7 +81,7 @@ public class LoginHandler : PacketHandler<LoginSession> {
         try {
             switch (command) {
                 case Command.ServerList:
-                    session.ListServers();
+                    session.ListServers(response.AccountId);
                     session.Disconnect();
                     return;
                 case Command.CharacterList:
