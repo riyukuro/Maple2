@@ -127,7 +127,14 @@ public sealed class SurvivalManager {
 
         dict[medal.Id] = medal;
 
-        session.Send(SurvivalPacket.LoadMedals(inventory, equip));
+        // The restored client gets the new skin alone (0x1f, the end sent as the medal list sends it) and the learned
+        // line (0x21); before, the whole list was sent again and no line was shown. The KR client keeps the list.
+        if (MapleSurvivalRules.RestoredClient) {
+            session.Send(MapleSurvivalPacket.SkinAdded((byte) medal.Type, medal.Id, long.MaxValue));
+            session.Send(MapleSurvivalPacket.SkinLearned((byte) medal.Type, medal.Id));
+        } else {
+            session.Send(SurvivalPacket.LoadMedals(inventory, equip));
+        }
     }
 
     public bool Equip(MedalType type, int id) {

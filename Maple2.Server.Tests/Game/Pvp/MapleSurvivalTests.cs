@@ -35,6 +35,9 @@ public class MapleSurvivalTests {
         Assert.That(Hex(MapleSurvivalPacket.OwnKills(3)), Is.EqualTo("1901" + "1A" + "03000000"));
         Assert.That(Hex(MapleSurvivalPacket.Survivors(19, 20)), Is.EqualTo("1901" + "1B" + "13000000" + "14000000" + "00"));
         Assert.That(Hex(MapleSurvivalPacket.InStorm()), Is.EqualTo("1901" + "1D"));
+        Assert.That(Hex(MapleSurvivalPacket.LevelProgress(100, 2, 2)), Is.EqualTo("1901" + "15" + Long(100) + "02000000" + "02000000"));
+        Assert.That(Hex(MapleSurvivalPacket.SkinAdded(1, 0x1e, long.MaxValue)), Is.EqualTo("1901" + "1F" + "01" + "1E000000" + Long(long.MaxValue)));
+        Assert.That(Hex(MapleSurvivalPacket.SkinLearned(2, 0x1e)), Is.EqualTo("1901" + "21" + "02" + "1E000000"));
         // 0x11: 16 ints, 4 floats, the item count.
         string result = Hex(MapleSurvivalPacket.Result([1, 0, 2, 20]));
         Assert.That(result, Is.EqualTo("1901" + "11" + "01000000" + "00000000" + "02000000" + "14000000" + string.Concat(Enumerable.Repeat("00000000", 12))

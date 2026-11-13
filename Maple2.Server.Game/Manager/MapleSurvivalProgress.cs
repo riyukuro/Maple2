@@ -5,6 +5,7 @@ using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager;
@@ -142,7 +143,9 @@ public static class MapleSurvivalProgress {
         return table != null && table.LevelExp.ContainsKey(Math.Max(1, session.Player.Value.Account.SurvivalLevel) + 1);
     }
 
-    // An item's survival exp: the level rewards of the levels reached, then the record (0x17) with the exp gained.
+    // An item's survival exp: the level rewards of the levels reached, then the record (0x17) with the exp gained and
+    // for the restored client the lobby's level and exp (0x15: the record only refreshes the pass window, so the lobby
+    // kept the old level).
     public static void AddItemExp(GameSession session, long gained) {
         MapleSurvivalTable? table = Table(session);
         if (table == null) {
@@ -155,6 +158,9 @@ public static class MapleSurvivalProgress {
         account.SurvivalLevel = level;
         account.SurvivalExp = exp;
         session.Send(SurvivalPacket.UpdateStats(account, gained));
+        if (MapleSurvivalRules.RestoredClient) {
+            session.Send(MapleSurvivalPacket.LevelProgress(exp, level, level));
+        }
     }
 
     private static int SquadSeason(GameSession session) {

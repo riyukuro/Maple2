@@ -71,6 +71,21 @@ public class SurvivalLevelExpTests {
         Assert.That(test.TakeSent(), Has.Some.EqualTo(SurvivalPacket.UpdateStats(account, 2500).ToArray()));
     }
 
+    // The restored client's lobby gets the new level and exp (Survival 0x15); the record (0x17) refreshes only the pass
+    // window. Before, 0x15 was never sent, so the lobby showed the old level until the next lobby send.
+    [Test]
+    public void Use_RestoredClient_SendsTheLobbyLevel() {
+        string? before = Environment.GetEnvironmentVariable("MS2_SURVIVAL_CLIENT");
+        Environment.SetEnvironmentVariable("MS2_SURVIVAL_CLIENT", "1");
+        try {
+            GameSession session = Start();
+            Use(session);
+            Assert.That(test.TakeSent(), Has.Some.EqualTo(MapleSurvivalPacket.LevelProgress(100, 2, 2).ToArray()));
+        } finally {
+            Environment.SetEnvironmentVariable("MS2_SURVIVAL_CLIENT", before);
+        }
+    }
+
     // At the last level the exp stays 0, so the tonic would be lost for nothing (chosen: it is kept); a tonic
     // without its exp is kept too.
     [TestCase("<v SurvivalExp=\"2500\" />", 3)]

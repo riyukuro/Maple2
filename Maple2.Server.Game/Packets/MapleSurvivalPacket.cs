@@ -78,6 +78,36 @@ public static class MapleSurvivalPacket {
         return pWriter;
     }
 
+    // 0x15: the lobby's level, the exp inside it and the level whose reward was given last (the restored reader,
+    // maplesurvival.cpp:502: i64 m_exp, i32 m_level, i32 m_1a, then the lobby refresh; the lobby's next level reward is
+    // m_1a + 1, as for 0x12).
+    public static ByteWriter LevelProgress(long exp, int level, int rewardLevel) {
+        ByteWriter pWriter = Survival(0x15);
+        pWriter.WriteLong(exp);
+        pWriter.WriteInt(level);
+        pWriter.WriteInt(rewardLevel);
+        return pWriter;
+    }
+
+    // 0x1f: a skin added to a slot (0 tail, 1 riding, 2 gliding): the skin and its end (the reader,
+    // maplesurvival.cpp:616, appends it to the slot's list and refreshes the skin window).
+    public static ByteWriter SkinAdded(byte slot, int skinId, long expiry) {
+        ByteWriter pWriter = Survival(0x1f);
+        pWriter.WriteByte(slot);
+        pWriter.WriteInt(skinId);
+        pWriter.WriteLong(expiry);
+        return pWriter;
+    }
+
+    // 0x21: the "skin learned" system line (the reader, maplesurvival.cpp:636: the slot, an int, then
+    // s_maple_survival_learn_skin; GMS formats the item name into it).
+    public static ByteWriter SkinLearned(byte slot, int skinId) {
+        ByteWriter pWriter = Survival(0x21);
+        pWriter.WriteByte(slot);
+        pWriter.WriteInt(skinId);
+        return pWriter;
+    }
+
     // 0x20: a skin slot's equipped skin (0 tail, 1 riding, 2 gliding).
     public static ByteWriter SkinEquipped(byte slot, int skinId) {
         ByteWriter pWriter = Survival(0x20);
