@@ -258,6 +258,22 @@ public class MesoMarketHandlerTests {
         Assert.That(db.GetAllMail(session.CharacterId), Is.Empty);
     }
 
+    // Mode 8 while the adventurer protection is on (here: below its level): code 20, the client's 0x14
+    // (s_adventure_protect_err); nothing is paid or mailed.
+    [Test]
+    public void Buy_RefusedWhileProtected() {
+        GameSession session = Login(tokens: 500);
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { AdventureProtectRequireLevel = 200 });
+        MesoListing listing = OtherListing(BASE, 200);
+
+        Send(session, 8, listing.Id);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(20) }));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(listing.Id), Is.Not.Null);
+    }
+
     // The average price of the window's load follows the sales: 200 until 10 are sold, then the mean price per
     // base price of the sales, and the register range moves with it. A register the client let through with its
     // older average gets the limits with the average of now before the code 16.

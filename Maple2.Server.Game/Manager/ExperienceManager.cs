@@ -236,6 +236,7 @@ public sealed class ExperienceManager {
             session.Field?.Broadcast(JobPacket.Basic(session.Player, session.Config.Skill.SkillInfo));
             session.Stats.Refresh(levelUp: true);
             session.Config.LoadHotBars();
+            session.AdventureProtect.Update();
             session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: Level);
             session.ConditionUpdate(ConditionType.level, targetLong: Level);
 

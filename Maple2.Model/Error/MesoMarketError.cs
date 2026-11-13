@@ -44,6 +44,10 @@ public enum MesoMarketError {
     s_admin_block_velma_msgbox_content = 18,
     [Description("Prohibited because of your Citation.")]
     s_admin_block_velma_ugc_msgbox_content = 19,
+    // The adventurer protection is still on (AdventureProtectRules): the client shows string 0xd56 for code 0x14
+    // (CMesoMarketMan::ShowResultMessage, mesomarketproductcli.cpp:492).
+    [Description("The Adventurer Protection Program is active.")]
+    s_adventure_protect_err = 20,
 
     [Description("System Error: Black Market Meso Trade code={0}")]
     s_mesoMarket_error_unknown = byte.MaxValue,

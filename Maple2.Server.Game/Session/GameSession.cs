@@ -135,6 +135,7 @@ public sealed partial class GameSession : Core.Network.Session {
     public AnimationManager Animation { get; set; } = null!;
     public RideManager Ride { get; set; } = null!;
     public MentoringManager Mentoring { get; set; } = null!;
+    public AdventureProtectManager AdventureProtect { get; set; } = null!;
 
     public GameSession(TcpClient tcpClient, GameServer server, IComponentContext context) : base(tcpClient) {
         this.server = server;
@@ -276,6 +277,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Marriage = new MarriageManager(this);
         Fishing = new FishingManager(this, TableMetadata, ServerTableMetadata);
         Dungeon = new DungeonManager(this);
+        AdventureProtect = new AdventureProtectManager(this);
         Ride = new RideManager(this);
         Mentoring = new MentoringManager(this);
         CommandHandler.RegisterCommands(); // Refresh commands with proper permissions
@@ -490,6 +492,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // Load Quests
         Quest.Load();
         Quest.LoadAllianceMissions();
+        // The adventurer protection state, once the quests are known (Chosen here: no KMS2 order is known for it).
+        AdventureProtect.Load();
         // Send(QuestPacket.LoadQuests(Array.Empty<int>()));
         Achievement.Load();
         // MaidCraftItem

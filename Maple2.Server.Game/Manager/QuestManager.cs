@@ -640,6 +640,7 @@ public sealed class QuestManager {
         quest.State = QuestState.Completed;
         quest.CompletionCount++;
         session.Send(QuestPacket.Complete(quest));
+        session.AdventureProtect.Update();
 
         // The meso the reward line shows: a guild quest's relativeMeso row at the player's level with the guild bonus,
         // else the fixed money.

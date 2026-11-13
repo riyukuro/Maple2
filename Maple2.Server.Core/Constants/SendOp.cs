@@ -297,6 +297,7 @@ public enum SendOp : ushort {
     HideAndSeek = 0x012B,
     MessengerBrowserStamp = 0x012C,
     LimitBreak = 0x012E,
+    AdventureProtect = 0x0131, // byte state, 7: cleared (CSceneStateGame::FUN_14173f7c0)
     HomeBlock = 0x0138,
 
 }

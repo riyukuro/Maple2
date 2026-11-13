@@ -192,6 +192,12 @@ public class MesoMarketHandler : FieldPacketHandler {
     private void HandlePurchase(GameSession session, IByteReader packet) {
         long listingId = packet.ReadLong();
 
+        // The client asks only once its protection state is 7 (AdventureProtectRules); the server checks it again.
+        if (!session.AdventureProtect.Cleared) {
+            session.Send(MesoMarketPacket.Error(s_adventure_protect_err));
+            return;
+        }
+
         if (session.Player.Value.Account.MesoMarketPurchased >= Constant.MesoMarketPurchaseLimitMonth) {
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_maxCountBuy));
             return;
