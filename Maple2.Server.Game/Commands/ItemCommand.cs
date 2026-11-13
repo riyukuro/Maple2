@@ -24,7 +24,7 @@ public class ItemCommand : GameCommand {
 
         var id = new Argument<int>("id", "Id of item to spawn.");
         var amount = new Option<int>(["--amount", "-a"], () => 1, "Amount of the item.");
-        var rarity = new Option<int>(["--rarity", "-r"], () => 1, "Rarity of the item.");
+        var rarity = new Option<int>(["--rarity", "-r"], () => 0, "Rarity of the item (default: the item's own).");
         var drop = new Option<bool>(["--drop"], "Drop item instead of adding to inventory");
         var rollMax = new Option<bool>(["--roll-max"], () => false, "Max roll stats.");
 
@@ -39,7 +39,10 @@ public class ItemCommand : GameCommand {
     private void Handle(InvocationContext ctx, int itemId, int amount, int rarity, bool drop, bool rollMax) {
         if (session.Field is null) return;
         try {
-            rarity = Math.Clamp(rarity, 1, MAX_RARITY);
+            // No rarity given: the item's own, as every other source makes it (ItemDropManager.CreateItem). A fixed
+            // rarity 1 made stackables of another rank (Chaos Onyx, rank 4) a row of their own that never stacks with
+            // the ones from drops and rewards.
+            rarity = rarity > 0 ? Math.Clamp(rarity, 1, MAX_RARITY) : -1;
 
             Item? firstItem = session.Field.ItemDrop.CreateItem(itemId, rarity, rollMax: rollMax);
             if (firstItem == null) {
