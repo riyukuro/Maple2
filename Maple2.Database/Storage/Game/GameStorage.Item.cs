@@ -1,10 +1,13 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Maple2.Database.Extensions;
 using Maple2.Database.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Item = Maple2.Model.Game.Item;
@@ -20,6 +23,18 @@ public partial class GameStorage {
     // data is. Its row stays as it is, and the item is back once the data has it again.
     private bool TryGetItemMetadata(int itemId, [NotNullWhen(true)] out ItemMetadata? metadata) {
         return itemMetadata.TryGet(itemId, out metadata) && PlayedClientItems.CanCreate(metadata);
+    }
+
+    // The values each item object's row was last stored with by a save of this server (SaveItems), kept while the
+    // object lives: a save finding them unchanged does not write the row. A write of the row by another way forgets
+    // them, so the next save writes it. A new object (a load, a Clone) has none: its first save writes its row.
+    private static readonly ConditionalWeakTable<Item, object?[]> StoredRows = new();
+    private static (IClrPropertyGetter Getter, ValueConverter? Converter)[]? ItemColumns;
+
+    private static void ForgetStoredRows(IEnumerable<Item> items) {
+        foreach (Item item in items) {
+            StoredRows.Remove(item);
+        }
     }
 
     public partial class Request {
@@ -167,8 +182,12 @@ public partial class GameStorage {
 
         public bool SaveItems(long ownerId, params Item[] items) => SaveItems(ownerId, items, []);
 
-        // Saves |items| to ownerId and |discard| to owner 0 in one save: both are written or neither.
+        // Saves |items| to ownerId and |discard| to owner 0 in one save: both are written or neither. An item whose row
+        // would be written with the values it was last stored with (by this item object, see StoredRows) is not
+        // written again: a session save wrote every row of the bag, storage and equips each time.
         public bool SaveItems(long ownerId, Item[] items, Item[] discard) {
+            Dictionary<long, EntityEntry<Model.Item>>? tracked = null;
+            var written = new List<(Item Item, object?[] Row)>();
             foreach ((Item item, long owner) in items.Select(item => (item, ownerId)).Concat(discard.Select(item => (item, 0L)))) {
                 if (item.Uid == 0) {
                     continue;
@@ -176,16 +195,68 @@ public partial class GameStorage {
 
                 Model.Item model = item;
                 model.OwnerId = owner;
-                // A row this request created (CreateItem) is still tracked; updating a second instance of it threw,
-                // so a new item that merged in part into a stack was not saved and the add stopped half way.
-                EntityEntry<Model.Item>? tracked = Context.ChangeTracker.Entries<Model.Item>().FirstOrDefault(entry => entry.Entity.Id == model.Id);
-                if (tracked != null) {
-                    tracked.State = EntityState.Detached;
+                object?[] row = RowValues(model);
+                if (StoredRows.TryGetValue(item, out object?[]? stored) && stored.SequenceEqual(row)) {
+                    continue;
                 }
-                Context.Item.Update(model);
+                // A row this request created (CreateItem) is still tracked; updating a second instance of it threw,
+                // so a new item that merged in part into a stack was not saved and the add stopped half way. The
+                // tracked rows are listed once: each lookup ran DetectChanges over every tracked row.
+                tracked ??= TrackedItems();
+                if (tracked.Remove(model.Id, out EntityEntry<Model.Item>? entry)) {
+                    entry.State = EntityState.Detached;
+                }
+                tracked[model.Id] = Context.Item.Update(model);
+                written.Add((item, row));
+            }
+            // Another write pending on this request is saved here as before.
+            if (written.Count == 0 && !Context.ChangeTracker.HasChanges()) {
+                return true;
             }
 
-            return Context.TrySaveChanges();
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+            KeepStoredRows(written);
+            return true;
+        }
+
+        private Dictionary<long, EntityEntry<Model.Item>> TrackedItems() {
+            bool detect = Context.ChangeTracker.AutoDetectChangesEnabled;
+            Context.ChangeTracker.AutoDetectChangesEnabled = false;
+            try {
+                return Context.ChangeTracker.Entries<Model.Item>().ToDictionary(entry => entry.Entity.Id);
+            } finally {
+                Context.ChangeTracker.AutoDetectChangesEnabled = detect;
+            }
+        }
+
+        // The rows written are known stored once the request's transaction commits (dropped on a rollback); in a
+        // transaction this request does not hold (MoveItem's) they are not known, so the next save writes them.
+        private void KeepStoredRows(List<(Item Item, object?[] Row)> written) {
+            if (!IsTransaction && Context.Database.CurrentTransaction != null) {
+                ForgetStoredRows(written.Select(entry => entry.Item));
+                return;
+            }
+            AfterCommit(() => {
+                foreach ((Item item, object?[] row) in written) {
+                    StoredRows.AddOrUpdate(item, row);
+                }
+            });
+        }
+
+        // The values item's row is written with: each column's value, the JSON columns as the text written.
+        private object?[] RowValues(Model.Item model) {
+            ItemColumns ??= Context.Model.FindEntityType(typeof(Model.Item))!.GetProperties()
+                .Select(property => (property.GetGetter(), property.GetValueConverter()))
+                .ToArray();
+            var row = new object?[ItemColumns.Length];
+            for (int i = 0; i < row.Length; i++) {
+                (IClrPropertyGetter getter, ValueConverter? converter) = ItemColumns[i];
+                object? value = getter.GetClrValue(model);
+                row[i] = converter == null || value == null ? value : converter.ConvertToProvider(value);
+            }
+            return row;
         }
 
         // Saves item to toOwnerId only while its row is still owned by fromOwnerId in fromGroup, so a copy of the item
@@ -254,6 +325,7 @@ public partial class GameStorage {
                         return ItemMove.SourceGone; // the transaction is rolled back when it is disposed
                     }
                 }
+                ForgetStoredRows(toDoll.Concat(toCharacter));
                 foreach ((Item item, long ownerId) in toDoll.Select(item => (item, cubeUid)).Concat(toCharacter.Select(item => (item, characterId)))) {
                     Model.Item model = item;
                     model.OwnerId = ownerId;
@@ -293,6 +365,7 @@ public partial class GameStorage {
         }
 
         public bool UpdateItem(Item item) {
+            ForgetStoredRows([item]);
             Model.Item model = item;
             Context.Item.Update(model);
 
