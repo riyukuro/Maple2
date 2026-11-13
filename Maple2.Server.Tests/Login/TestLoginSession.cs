@@ -117,8 +117,11 @@ public sealed class TestLoginSession {
         public readonly List<MigrateInRequest> Arrivals = [];
         public readonly List<PlayerUpdateRequest> PlayerUpdates = [];
 
+        // Characters online on the world (ChannelsResponse.online).
+        public int Online;
+
         public override ChannelsResponse Channels(ChannelsRequest request, CallOptions options) {
-            return new ChannelsResponse { Channels = { 1 } };
+            return new ChannelsResponse { Channels = { 1 }, Online = Online };
         }
 
         public override MigrateInResponse MigrateIn(MigrateInRequest request, CallOptions options) {

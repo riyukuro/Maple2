@@ -135,7 +135,7 @@ public class LoginSession : Core.Network.Session {
             characters = db.CountCharacters(accountId);
         }
         Send(BannerListPacket.Load(Server.GetSystemBanners()));
-        Send(ServerListPacket.Load(Target.SERVER_NAME, [new IPEndPoint(Target.LoginIp, Target.LoginPort)], response.Channels, characters));
+        Send(ServerListPacket.Load(Target.SERVER_NAME, [new IPEndPoint(Target.LoginIp, Target.LoginPort)], response.Channels, characters, response.Online));
     }
 
     public void ListCharacters() {

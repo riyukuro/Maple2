@@ -28,6 +28,10 @@ public static class Target {
 
     public static readonly bool InstancedContent = false;
 
+    // Players a game channel is meant to hold, for the server list's traffic. Neither the client nor the KR data
+    // names a number, so CHANNEL_CAPACITY sets it.
+    public static readonly int ChannelCapacity = 200;
+
     // Address every listener binds to. MS2_BIND_IP unset or not an IP address = loopback only; "0.0.0.0" = all interfaces.
     public static readonly IPAddress BindAddress =
         IPAddress.TryParse(Environment.GetEnvironmentVariable("MS2_BIND_IP"), out IPAddress? bindAddress) ? bindAddress : IPAddress.Loopback;
@@ -87,6 +91,10 @@ public static class Target {
 
         if (bool.TryParse(Environment.GetEnvironmentVariable("INSTANCED_CONTENT"), out bool instancedOverride)) {
             InstancedContent = instancedOverride;
+        }
+
+        if (int.TryParse(Environment.GetEnvironmentVariable("CHANNEL_CAPACITY"), out int channelCapacity) && channelCapacity > 0) {
+            ChannelCapacity = channelCapacity;
         }
     }
 }

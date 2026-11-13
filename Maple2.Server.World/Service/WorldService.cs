@@ -54,6 +54,7 @@ public partial class WorldService : World.WorldBase {
     public override Task<ChannelsResponse> Channels(ChannelsRequest request, ServerCallContext context) {
         var response = new ChannelsResponse();
         response.Channels.AddRange(channelClients.Keys);
+        response.Online = playerLookup.GetOnlinePlayerInfos().Length;
         return Task.FromResult(response);
     }
 }

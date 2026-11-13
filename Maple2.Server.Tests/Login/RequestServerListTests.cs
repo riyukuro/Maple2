@@ -73,4 +73,43 @@ public class RequestServerListTests {
         reader.ReadUnicodeString();
         Assert.That(reader.ReadByte(), Is.EqualTo(byte.MaxValue));
     }
+
+    // The server's traffic is the characters online over what its channels hold, rounded up, so the list's
+    // ServerRenderer draws comfort (0), normal (1-25), busy (26-90) or full (above 90). It was a fixed 100: full.
+    [TestCase(0, 1, 200, 0)]
+    [TestCase(1, 1, 200, 1)]
+    [TestCase(50, 1, 200, 25)]
+    [TestCase(51, 1, 200, 26)]
+    [TestCase(180, 1, 200, 90)]
+    [TestCase(181, 1, 200, 91)]
+    [TestCase(100, 2, 200, 25)]
+    [TestCase(5000, 1, 200, 100)]
+    [TestCase(10, 0, 200, 0)]
+    public void TheTrafficIsTheOnlineCountOverTheCapacity(int online, int channels, int capacity, int expected) {
+        Assert.That(ServerListPacket.TrafficPercent(online, channels, capacity), Is.EqualTo(expected));
+    }
+
+    [TestCase(0)]
+    [TestCase(3)]
+    public void TheServerListSendsTheWorldsTraffic(int online) {
+        var test = new TestLoginSession();
+        test.World.Online = online;
+        LoginSession session = test.Start();
+
+        session.ListServers(test.AccountId);
+
+        byte[] list = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.ServerList);
+        var reader = new ByteReader(list, 2);
+        reader.ReadString();
+        reader.ReadByte();
+        reader.ReadInt();
+        reader.ReadUnicodeString();
+        reader.ReadByte();
+        short addresses = reader.ReadShort();
+        for (int i = 0; i < addresses; i++) {
+            reader.ReadUnicodeString();
+            reader.ReadShort();
+        }
+        Assert.That(reader.ReadInt(), Is.EqualTo(ServerListPacket.TrafficPercent(online, 1, Target.ChannelCapacity)));
+    }
 }

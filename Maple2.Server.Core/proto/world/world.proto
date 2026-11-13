@@ -147,6 +147,8 @@ message ChannelsRequest {}
 
 message ChannelsResponse {
   repeated int32 channels = 1;
+  // Characters online on the world (the server list's traffic).
+  int32 online = 2;
 }
 
 message GuildInfo {

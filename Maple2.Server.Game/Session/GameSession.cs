@@ -994,7 +994,7 @@ public sealed partial class GameSession : Core.Network.Session {
         using (GameStorage.Request db = GameStorage.Context()) {
             characters = db.CountCharacters(AccountId);
         }
-        Send(ServerListPacket.Load(Target.SERVER_NAME, [new IPEndPoint(Target.LoginIp, Target.LoginPort)], response.Channels, characters));
+        Send(ServerListPacket.Load(Target.SERVER_NAME, [new IPEndPoint(Target.LoginIp, Target.LoginPort)], response.Channels, characters, response.Online));
         if (PortalArrival) {
             PortalArrival = false;
             Player.PortalInvincible();

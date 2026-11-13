@@ -21,8 +21,8 @@ public static class ServerListPacket {
     // UIServerListDialog::ReceiveServerList (uiserverlistdialog.cpp:310): the login scene reads the byte after the
     // string as a result (above 0 opens the server list), the dialog as the number of servers. Per server: the id
     // (looked up in the client's server list table), the name, the account's character count on it (the list's
-    // charCnt, uiserverlistdialog.cpp:483), the addresses, the traffic percent and the channels.
-    public static ByteWriter Load(string serverName, IList<IPEndPoint> serverIps, ICollection<int> channels, int characters) {
+    // charCnt, uiserverlistdialog.cpp:483), the addresses, the traffic percent (trafficPercent, :484) and the channels.
+    public static ByteWriter Load(string serverName, IList<IPEndPoint> serverIps, ICollection<int> channels, int characters, int online = 0) {
         var pWriter = Packet.Of(SendOp.ServerList);
         pWriter.WriteString("dev"); // env (Live, Staging, qa, dev)
         pWriter.Write<Command>(Command.Load); // one server
@@ -34,7 +34,7 @@ public static class ServerListPacket {
             pWriter.WriteUnicodeString(endpoint.Address.ToString());
             pWriter.Write<ushort>((ushort) endpoint.Port);
         }
-        pWriter.WriteInt(100); // Const
+        pWriter.WriteInt(TrafficPercent(online, channels.Count, Target.ChannelCapacity));
 
         // Channels
         pWriter.Write<ushort>((ushort) channels.Count);
@@ -44,5 +44,16 @@ public static class ServerListPacket {
         }
 
         return pWriter;
+    }
+
+    // The server's load: the characters online over what its channels hold, rounded up, 0 to 100. The list's
+    // ServerRenderer.setData (uiserverlistdialog.gfx) draws 0 as comfort, 1-25 as normal, 26-90 as busy and above
+    // 90 as full; the fixed 100 sent before showed every server as full.
+    public static int TrafficPercent(int online, int channels, int capacity) {
+        long room = (long) Math.Max(channels, 0) * Math.Max(capacity, 0);
+        if (online <= 0 || room <= 0) {
+            return 0;
+        }
+        return (int) Math.Min(100, (online * 100L + room - 1) / room);
     }
 }
