@@ -164,6 +164,8 @@ public class ItemEnchantManager {
         return RequireFodder[enchants];
     }
 
+    private ConstantsTable Constants => session.ServerTableMetadata.ConstantsTable;
+
     public bool UpdateFodder(long itemUid, bool add) {
         if (upgradeItem == null) {
             return false;
@@ -359,8 +361,11 @@ public class ItemEnchantManager {
                     session.ConditionUpdate(ConditionType.enchant_result, codeLong: (int) EnchantResult.Success, targetLong: upgradeItem.Enchant.Enchants);
                     ChatUtil.SendEnchantAnnouncement(session, upgradeItem);
                 } else {
-                    upgradeItem.Enchant.Charges += FailCharge[enchants];
-                    session.Send(ItemEnchantPacket.Failure(upgradeItem, FailCharge[enchants]));
+                    int gain = ItemEnchantRules.FailChargeGain(upgradeItem.Enchant.Charges, FailCharge[enchants],
+                        Constants.EnchantFailStackTakeMaxCount);
+                    upgradeItem.Enchant.Charges += gain;
+                    // The client shows the last int as the charges gained (s_itemenchant_fail_stack, +{0}).
+                    session.Send(ItemEnchantPacket.Failure(upgradeItem, gain));
                     session.ConditionUpdate(ConditionType.enchant_result, codeLong: (int) EnchantResult.Fail, targetLong: upgradeItem.Enchant.Enchants);
                 }
 

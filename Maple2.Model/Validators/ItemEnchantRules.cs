@@ -20,4 +20,13 @@ public static class ItemEnchantRules {
     public static long CrystalFragmentShortfallFee(int need, int have) {
         return need > have ? (long) (need - have) * CrystalFragmentFee : 0;
     }
+
+    // The fail charges an Ophelia failure adds: the table's gain, up to the KR stock limit
+    // (constants.xml EnchantFailStackTakeMaxCount, 1000). A limit of 0 (no constants row) caps nothing.
+    public static int FailChargeGain(int held, int gain, int takeMax) {
+        if (takeMax <= 0) {
+            return Math.Max(0, gain);
+        }
+        return Math.Clamp(takeMax - held, 0, Math.Max(0, gain));
+    }
 }
