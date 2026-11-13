@@ -12,6 +12,7 @@ using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Items;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Tests.Game;
 using Microsoft.EntityFrameworkCore;
@@ -53,7 +54,8 @@ public class SessionSaveTransactionTests {
         // The managers the test session leaves bare that a full save writes (as DailyReviveCountTests loads the config).
         test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
             [JobCode.Newbie] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
-                [SkillRank.Basic] = [], [SkillRank.Awakening] = [],
+                [SkillRank.Basic] = [],
+                [SkillRank.Awakening] = [],
             }, []),
         }));
         test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
@@ -79,6 +81,66 @@ public class SessionSaveTransactionTests {
         context.Mail.Where(mail => mail.ReceiverId == test.CharacterId).ExecuteDelete();
         context.Item.Where(item => item.OwnerId == test.CharacterId).ExecuteDelete();
         context.ItemStorage.Where(info => info.AccountId == test.AccountId).ExecuteDelete();
+        context.Account.Where(account => account.Id == test.AccountId)
+            .ExecuteUpdate(setters => setters.SetProperty(account => account.VipGoodsPurchases, (IList<Maple2.Database.Model.VipGoodsPurchase>?) null));
+    }
+
+    // A VIP goods purchase whose bonus item row is refused stores neither the meret charge nor the purchase count,
+    // and the session is put back.
+    [Test]
+    public void VipGoodsPurchase_ItemRowRefused_StoresNothing() {
+        BuyVipGoods(refuse: "INSERT INTO `item`");
+
+        Assert.Multiple(() => {
+            Assert.That(StoredVipGoods(), Is.Null);
+            Assert.That(StoredMeret(), Is.EqualTo(1000));
+            Assert.That(session.Currency.Meret, Is.EqualTo(1000));
+            Assert.That(session.Player.Value.Account.VipGoodsPurchases, Is.Empty);
+            Assert.That(session.Item.Inventory.Find(RewardItemId), Is.Empty);
+        });
+    }
+
+    [Test]
+    public void VipGoodsPurchase_Saved_StoresTheCountWithTheCharge() {
+        BuyVipGoods(refuse: null);
+
+        Assert.Multiple(() => {
+            Assert.That(StoredVipGoods()?.Select(entry => (entry.GoodsId, entry.Count)), Is.EqualTo(new[] { (VipGoodsId, 1) }));
+            Assert.That(StoredMeret(), Is.EqualTo(900));
+            Assert.That(session.Item.Inventory.Find(RewardItemId).Sum(item => item.Amount), Is.EqualTo(2));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    private const int VipGoodsId = 2001;
+
+    private void BuyVipGoods(string? refuse) {
+        test.SetTable(new PremiumClubTable(new Dictionary<int, PremiumClubTable.Buff>(), new Dictionary<int, PremiumClubTable.Item>(),
+            new Dictionary<int, PremiumClubTable.Package> {
+                [VipGoodsId] = new(false, 0, 0, 24, 200, 100, false, 2, ResetType.Week, [new PremiumClubTable.Item(RewardItemId, 2, 1, 0)]),
+            }));
+        session.Currency.Meret = 1000;
+        session.SessionSave();
+        Assume.That(StoredMeret(), Is.EqualTo(1000));
+        if (refuse != null) {
+            RefuseOnce(refuse);
+        }
+
+        new PremiumClubHandler { ItemMetadata = null!, TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(4);
+            writer.WriteInt(VipGoodsId);
+        }));
+        hook.Before = null;
+    }
+
+    private long StoredMeret() {
+        using var context = new Ms2Context(plain);
+        return context.Account.AsNoTracking().Single(account => account.Id == test.AccountId).Currency.Meret;
+    }
+
+    private IList<Maple2.Database.Model.VipGoodsPurchase>? StoredVipGoods() {
+        using var context = new Ms2Context(plain);
+        return context.Account.AsNoTracking().Single(account => account.Id == test.AccountId).VipGoodsPurchases;
     }
 
     private long StoredMeso() {

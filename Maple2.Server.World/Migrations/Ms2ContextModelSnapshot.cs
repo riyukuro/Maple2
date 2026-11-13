@@ -108,6 +108,9 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("varchar(255)");
 
+                    b.Property<string>("VipGoodsPurchases")
+                        .HasColumnType("json");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Username")

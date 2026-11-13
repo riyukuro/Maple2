@@ -486,13 +486,25 @@ public class ConfigManager {
     #endregion
 
     #region PremiumClub
+    // The VIP end time after adding hours: from now when the VIP time has ended, else from its end.
+    public static long PremiumTimeAfter(long premiumTime, long hours, DateTime now) =>
+        premiumTime < now.ToEpochSeconds()
+            ? now.AddHours(hours).ToEpochSeconds()
+            : Math.Min(premiumTime.FromEpochSeconds().AddHours(hours).ToEpochSeconds(), long.MaxValue);
+
     public void UpdatePremiumTime(long hours) {
-        if (session.Player.Value.Account.PremiumTime < DateTime.Now.ToEpochSeconds()) {
-            session.Player.Value.Account.PremiumTime = DateTime.Now.AddHours(hours).ToEpochSeconds();
+        bool started = !IsPremiumClubActive();
+        session.Player.Value.Account.PremiumTime = PremiumTimeAfter(session.Player.Value.Account.PremiumTime, hours, DateTime.Now);
+        PremiumTimeChanged(started);
+    }
+
+    // What follows a new account VIP time (already set): the notice, the VIP packet and the copies of the time.
+    // started: the VIP time had ended before.
+    public void PremiumTimeChanged(bool started) {
+        if (started) {
             session.Dungeon.UpdateDungeonEnterLimit();
             session.Send(NoticePacket.Notice(NoticePacket.Flags.Message | NoticePacket.Flags.Alert, StringCode.s_vip_coupon_new_msg));
         } else {
-            session.Player.Value.Account.PremiumTime = Math.Min(session.Player.Value.Account.PremiumTime.FromEpochSeconds().AddHours(hours).ToEpochSeconds(), long.MaxValue);
             session.Send(NoticePacket.Notice(NoticePacket.Flags.Message | NoticePacket.Flags.Alert, StringCode.s_vip_coupon_extend_msg));
         }
 

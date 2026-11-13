@@ -20,6 +20,8 @@ public class Account {
     public IList<int> PrestigeRewardsClaimed { get; set; }
     public long PremiumTime { get; set; }
     public IList<int> PremiumRewardsClaimed { get; set; }
+    // The VIP goods shop's purchase counts (VipGoodsRules).
+    public IList<VipGoodsPurchase> VipGoodsPurchases { get; set; }
     public int MesoMarketListed { get; set; }
     public int MesoMarketPurchased { get; set; }
 
@@ -33,6 +35,7 @@ public class Account {
 
     public Account() {
         PremiumRewardsClaimed = new List<int>();
+        VipGoodsPurchases = new List<VipGoodsPurchase>();
         PrestigeMissions = new List<PrestigeMission>();
         PrestigeRewardsClaimed = new List<int>();
         AdminPermissions = AdminPermissions.None;

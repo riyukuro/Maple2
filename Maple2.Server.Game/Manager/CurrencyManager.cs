@@ -153,6 +153,43 @@ public class CurrencyManager {
         ReportMeretSpent(change);
     }
 
+    // TryTakeMeret, NotifyMeretTaken and ReturnMeret for the red merets.
+    public bool TryTakeGameMeret(long amount, bool notify = true) {
+        if (amount < 0) {
+            return false;
+        }
+        long change;
+        lock (walletLock) {
+            if (Currency.GameMeret < amount) {
+                return false;
+            }
+            if (!notify) {
+                Currency.GameMeret -= amount;
+                return true;
+            }
+            change = SetGameMeretLocked(Currency.GameMeret - amount);
+        }
+        ReportMeretSpent(change);
+        return true;
+    }
+
+    public void NotifyGameMeretTaken(long amount) {
+        lock (walletLock) {
+            session.Send(CurrencyPacket.UpdateMeret(Currency, -amount));
+        }
+        ReportMeretSpent(-amount);
+    }
+
+    public void ReturnGameMeret(long amount) {
+        if (amount <= 0) {
+            return;
+        }
+        lock (walletLock) {
+            Currency.GameMeret += Math.Min(amount, Constant.MaxMeret - Currency.GameMeret);
+            session.Send(CurrencyPacket.UpdateMeret(Currency, 0));
+        }
+    }
+
     private long SetGameMeretLocked(long value) {
         long delta = Math.Min(value, Constant.MaxMeret) - Currency.GameMeret;
         Currency.GameMeret = Math.Min(value, Constant.MaxMeret);

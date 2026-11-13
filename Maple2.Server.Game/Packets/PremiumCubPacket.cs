@@ -41,17 +41,25 @@ public static class PremiumCubPacket {
         return pWriter;
     }
 
-    // The client reads only the sub-type for 3 and 4: UIVIPDialog::FUN_140fb87d0 (uivipdialog.cpp:234) handles 1 and 2 only.
-    public static ByteWriter LoadPackages() {
+    // The VIP goods shop (UIVIPGoodsShopDialog::vfunc_79, uivipgoodsshopdialog.cpp): mode 3 is the purchases left
+    // of each limited goods (the dialog's list is cleared first, a goods with a limit and no entry or 0 is hidden),
+    // mode 4 the goods just bought (the bought message box).
+    public static ByteWriter LoadPackages(ICollection<(int GoodsId, int Remaining)> remaining) {
         var pWriter = Packet.Of(SendOp.PremiumClub);
         pWriter.WriteByte((byte) Command.LoadPackages);
+        pWriter.WriteInt(remaining.Count);
+        foreach ((int goodsId, int left) in remaining) {
+            pWriter.WriteInt(goodsId);
+            pWriter.WriteInt(left);
+        }
 
         return pWriter;
     }
 
-    public static ByteWriter PurchasePackage() {
+    public static ByteWriter PurchasePackage(int goodsId) {
         var pWriter = Packet.Of(SendOp.PremiumClub);
         pWriter.WriteByte((byte) Command.PurchasePackage);
+        pWriter.WriteInt(goodsId);
 
         return pWriter;
     }

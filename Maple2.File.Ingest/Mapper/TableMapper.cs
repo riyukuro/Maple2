@@ -1627,7 +1627,11 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 StartDate: startTime.ToEpochSeconds(),
                 EndDate: endTime.ToEpochSeconds(),
                 Period: package.vipPeriod,
-                Price: package.price < package.salePrice ? package.salePrice : package.price,
+                Price: package.price,
+                SalePrice: package.salePrice,
+                RedMeret: package.priceType == PremiumClubPriceType.RedMeret,
+                BuyLimit: package.buyLimit,
+                BuyLimitResetType: (ResetType) package.buyLimitResetType,
                 BonusItems: items));
         }
 

@@ -23,6 +23,8 @@ internal class Account {
     public IList<int> PrestigeRewardsClaimed { get; set; } = [];
     public long PremiumTime { get; set; }
     public IList<int> PremiumRewardsClaimed { get; set; } = []; // TODO: clear list on daily reset
+    // Null when the account bought no limited VIP goods.
+    public IList<VipGoodsPurchase>? VipGoodsPurchases { get; set; }
     public required AccountCurrency Currency { get; set; }
     public required MarketLimits MarketLimits { get; set; }
 
@@ -65,6 +67,11 @@ internal class Account {
             }).ToList(),
             PremiumTime = other.PremiumTime,
             PremiumRewardsClaimed = other.PremiumRewardsClaimed,
+            VipGoodsPurchases = other.VipGoodsPurchases.Count == 0 ? null : other.VipGoodsPurchases.Select(purchase => new VipGoodsPurchase {
+                GoodsId = purchase.GoodsId,
+                Count = purchase.Count,
+                LastPurchase = purchase.LastPurchase,
+            }).ToList(),
             Currency = new AccountCurrency(),
             MarketLimits = new MarketLimits {
                 MesoListed = other.MesoMarketListed,
@@ -103,6 +110,11 @@ internal class Account {
             }).ToList(),
             PremiumTime = other.PremiumTime,
             PremiumRewardsClaimed = other.PremiumRewardsClaimed,
+            VipGoodsPurchases = other.VipGoodsPurchases?.Select(purchase => new Maple2.Model.Game.VipGoodsPurchase {
+                GoodsId = purchase.GoodsId,
+                Count = purchase.Count,
+                LastPurchase = purchase.LastPurchase,
+            }).ToList() ?? [],
             MesoMarketListed = other.MarketLimits.MesoListed,
             MesoMarketPurchased = other.MarketLimits.MesoPurchased,
             SurvivalLevel = other.SurvivalLevel,
@@ -126,6 +138,7 @@ internal class Account {
         builder.Property(account => account.Currency).HasJsonConversion().IsRequired();
         builder.Property(account => account.MarketLimits).HasJsonConversion().IsRequired();
         builder.Property(account => account.PremiumRewardsClaimed).HasJsonConversion();
+        builder.Property(account => account.VipGoodsPurchases).HasJsonConversion();
         builder.Property(account => account.PrestigeMissions).HasJsonConversion();
         builder.Property(account => account.PrestigeRewardsClaimed).HasJsonConversion();
 
@@ -145,6 +158,12 @@ internal class AccountCurrency {
 internal class MarketLimits {
     public int MesoListed { get; set; }
     public int MesoPurchased { get; set; }
+}
+
+internal class VipGoodsPurchase {
+    public int GoodsId { get; set; }
+    public int Count { get; set; }
+    public long LastPurchase { get; set; }
 }
 
 internal class PrestigeMission {
