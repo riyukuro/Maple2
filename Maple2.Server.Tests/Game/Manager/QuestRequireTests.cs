@@ -120,6 +120,24 @@ public class QuestRequireTests {
         });
     }
 
+    // The login auto start reads the guild's quest npc level: EnterServer starts the auto start quests once the guild
+    // manager is made (a guild quest read a null guild at login before).
+    [TestCase(1, true)]
+    [TestCase(2, false)]
+    [TestCase(null, false)]
+    public void StartAutoQuests_ReadsTheGuildNpcLevel(int? questNpcLevel, bool started) {
+        SetGuild(questNpcLevel);
+        // The first GetQuests loads the (empty) metadata db; the quests registered after it are in its list.
+        _ = session.QuestMetadata.GetQuests();
+        QuestMetadata metadata = TestGameSession.QuestData(GuildQuest);
+        test.Register(metadata with {
+            Basic = metadata.Basic with { AutoStart = true },
+            Require = Require() with { GuildNpcLevel = 1 },
+        });
+        session.Quest.StartAutoQuests();
+        Assert.That(session.Quest.TryGetQuest(GuildQuest, out Quest? quest) && quest.State == QuestState.Started, Is.EqualTo(started));
+    }
+
     // Accepted at quest npc level 1; the guild then upgrades its npc to 2. The quest is no longer offered, but the
     // held one stays in progress and may still be completed (CanComplete reads only its conditions).
     [Test]

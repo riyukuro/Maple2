@@ -52,6 +52,12 @@ public sealed class QuestManager {
         using GameStorage.Request db = session.GameStorage.Context();
         accountValues = db.GetQuests(session.AccountId);
         characterValues = db.GetQuests(session.CharacterId);
+    }
+
+    // The auto start quests the player can start now. Called at login once the guild is loaded: CanStart reads the
+    // guild's quest npc level (require guildNpcLevel), and EnterServer makes the guild manager after this one.
+    public void StartAutoQuests() {
+        using GameStorage.Request db = session.GameStorage.Context();
         Initialize(db);
     }
 

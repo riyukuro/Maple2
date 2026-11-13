@@ -265,6 +265,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Quest = new QuestManager(this);
         Shop = new ShopManager(this);
         Guild = new GuildManager(this);
+        // After the guild: an auto start quest's guildNpcLevel require reads the guild's quest npc.
+        Quest.StartAutoQuests();
         Buddy = new BuddyManager(db, this);
         Item = new ItemManager(db, this, ItemStatsCalc);
         Buffs = new BuffManager(Player);
