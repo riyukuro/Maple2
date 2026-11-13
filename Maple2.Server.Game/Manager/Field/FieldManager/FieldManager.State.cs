@@ -510,7 +510,15 @@ public partial class FieldManager {
         return fieldSpawnPointNpc;
     }
 
+    // Set once a trigger starts a combine spawn group of another map here (a copy map such as 82000000): that map
+    // has no map chests, so this field drops its own and reads no more.
+    private bool combineSpawnFromOtherMap;
+
     public void ToggleCombineSpawn(SpawnGroupMetadata metadata, bool enable) {
+        if (enable && metadata.MapId != MapId && !combineSpawnFromOtherMap) {
+            combineSpawnFromOtherMap = true;
+            StopMapChests();
+        }
         if (!fieldSpawnGroups.TryGetValue(metadata.GroupId, out FieldSpawnGroup? fieldSpawnGroup)) {
             fieldSpawnGroup = new FieldSpawnGroup(this, NextLocalId(), metadata);
             fieldSpawnGroups[metadata.GroupId] = fieldSpawnGroup;
@@ -554,7 +562,7 @@ public partial class FieldManager {
     private void ReadMapChests() {
         mapChestsRead = true;
         if (this is DungeonFieldManager or HomeFieldManager || AchievementMetadata == null
-            || ServerTableMetadata.CombineSpawnTable.Groups.ContainsKey(MapId)) {
+            || ServerTableMetadata.CombineSpawnTable.Groups.ContainsKey(MapId) || combineSpawnFromOtherMap) {
             return;
         }
 
@@ -596,6 +604,16 @@ public partial class FieldManager {
         }
         foreach (int spawnId in MapChestRules.PickWood(woodChestPoints, Random.Shared)) {
             SpawnMapChest(spawnId, MapChestRules.WoodInteractId, MapChestRules.Kind.Wood);
+        }
+    }
+
+    private void StopMapChests() {
+        woodChestPoints = [];
+        goldChestPoints = new Dictionary<int, int>();
+        foreach (FieldInteract chest in fieldChests.Values) {
+            if (chest.Chest != MapChestRules.Kind.None && fieldChests.TryRemove(chest.EntityId, out _)) {
+                Broadcast(InteractObjectPacket.Remove(chest.EntityId));
+            }
         }
     }
 

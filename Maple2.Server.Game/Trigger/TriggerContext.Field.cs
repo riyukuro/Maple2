@@ -483,17 +483,20 @@ public partial class TriggerContext {
 
     public void StartCombineSpawn(int[] groupIds, bool isStart) {
         DebugLog("[StartCombineSpawn] groupIds:{Ids}, isStart:{IsStart}", string.Join(", ", groupIds), isStart);
-        if (!Field.ServerTableMetadata.CombineSpawnTable.Groups.TryGetValue(Field.MapId, out Dictionary<int, SpawnGroupMetadata>? groupDict)) {
-            ErrorLog("[StartCombineSpawn] No group metadata found for map {MapId}", Field.MapId);
-            return;
-        }
+        CombineSpawnTable table = Field.ServerTableMetadata.CombineSpawnTable;
+        var npcSpawns = Field.Entities.NpcSpawns.Select(spawn => spawn.SpawnPointId).ToHashSet();
+        var missing = new List<int>();
         foreach (int groupId in groupIds) {
-            if (!groupDict.TryGetValue(groupId, out SpawnGroupMetadata? group)) {
-                ErrorLog("[StartCombineSpawn] No group metadata found for group {GroupId}", groupId);
+            CombineSpawnRules.Find(table, Field.MapId, groupId, npcSpawns.Contains, Field.Entities.RegionSpawns.ContainsKey, out SpawnGroupMetadata? group);
+            if (group == null) {
+                missing.Add(groupId);
                 continue;
             }
 
             Field.ToggleCombineSpawn(group, isStart);
+        }
+        if (missing.Count > 0) {
+            WarnLog("[StartCombineSpawn] {Count} groups not in the table for this field: {Ids}", missing.Count, string.Join(", ", missing));
         }
     }
 

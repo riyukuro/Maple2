@@ -1,6 +1,7 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using Serilog;
 
@@ -86,15 +87,15 @@ public class FieldSpawnGroup : FieldEntity<SpawnGroupMetadata> {
             spawnIds.Remove(spawnId);
         }
 
-        int totalCount = Math.Clamp(Value.TotalCount, 0, npcs.Count);
-        do {
+        int totalCount = SpawnGroupRules.TotalCount(Value.TotalCount, npcs.Select(entry => entry.Item1.SpawnId));
+        while (spawnIds.Count < totalCount) {
             SpawnNpcMetadata npc = npcs.Get();
             if (spawnIds.Contains(npc.SpawnId)) {
                 continue;
             }
             Field.ToggleNpcSpawnPoint(npc.SpawnId);
             spawnIds.Add(npc.SpawnId);
-        } while (totalCount > spawnIds.Count);
+        }
     }
 
     private void SpawnInteractObjects() {
@@ -109,15 +110,15 @@ public class FieldSpawnGroup : FieldEntity<SpawnGroupMetadata> {
             spawnIds.Remove(spawnId);
         }
 
-        int totalCount = Math.Clamp(Value.TotalCount, 0, interactObjects.Count);
-        do {
+        int totalCount = SpawnGroupRules.TotalCount(Value.TotalCount, interactObjects.Select(entry => entry.Item1.RegionSpawnId));
+        while (spawnIds.Count < totalCount) {
             SpawnInteractObjectMetadata interactObject = interactObjects.Get();
             if (spawnIds.Contains(interactObject.RegionSpawnId)) {
                 continue;
             }
             Field.SpawnInteractObject(interactObject);
             spawnIds.Add(interactObject.RegionSpawnId);
-        } while (totalCount > spawnIds.Count);
+        }
     }
 
     public override void Update(long tickCount) {
