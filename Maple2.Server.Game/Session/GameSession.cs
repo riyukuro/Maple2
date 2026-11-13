@@ -518,7 +518,7 @@ public sealed partial class GameSession : Core.Network.Session {
         // The adventurer protection state, once the quests are known (Chosen here: no KMS2 order is known for it).
         AdventureProtect.Load();
         // An announced shutdown, so the client's countdown notices reach those who enter after it (Chosen here).
-        if (server.ShutdownTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+        if (ShutdownRules.SendAtEntry(Target.LOCALE, server.ShutdownTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
             Send(ShutdownNoticePacket.Time(server.ShutdownTime));
         }
         // Send(QuestPacket.LoadQuests(Array.Empty<int>()));

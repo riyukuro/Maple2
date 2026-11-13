@@ -2,7 +2,9 @@
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
 using Maple2.Model.Enum;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Commands;
 
@@ -17,6 +19,10 @@ public class ShutdownCommand : GameCommand {
     }
 
     private static void Send(InvocationContext ctx, GameSession session, AdminRequest.Types.ShutdownNotice notice, string done) {
+        if (!ShutdownRules.Sent(Target.LOCALE)) {
+            ctx.Console.Out.WriteLine("Shutdown notices are read by the KR client only (LOCALE KR).");
+            return;
+        }
         try {
             AdminResponse response = session.World.Admin(new AdminRequest {
                 RequesterId = session.CharacterId,
@@ -50,10 +56,14 @@ public class ShutdownCommand : GameCommand {
                 return;
             }
             DateTimeOffset time = DateTimeOffset.UtcNow.AddMinutes(minutes);
+            int[] notices = ShutdownRules.NoticesLeft(minutes);
+            string shown = notices.Length == 0
+                ? "the clients show no notice for it (they post one only 30, 15 and 5 minutes before)"
+                : $"the clients will post notices {string.Join(", ", notices)} minutes before";
             Send(ctx, session, new AdminRequest.Types.ShutdownNotice {
                 Kind = 0,
                 Time = time.ToUnixTimeSeconds(),
-            }, $"Shutdown announced for {time.ToLocalTime():yyyy-MM-dd HH:mm}.");
+            }, $"Shutdown announced for {time.ToLocalTime():yyyy-MM-dd HH:mm}; {shown}.");
         }
     }
 

@@ -5,9 +5,11 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Service;
 
@@ -32,6 +34,10 @@ public partial class ChannelService {
     private AdminResponse Alert(AdminRequest.Types.Alert alert, long requesterId) {
         var flag = (NoticePacket.Flags) alert.Flags;
         foreach (GameSession session in server.GetSessions()) {
+            // A session is listed from its connection, before its player is loaded: it gets nothing.
+            if (session.Player is null) {
+                continue;
+            }
             // Avoid disconnecting the requester
             if (session.CharacterId == requesterId && flag.HasFlag(NoticePacket.Flags.Disconnect) ||
                 (session.Player.AdminPermissions == AdminPermissions.Admin ||
@@ -51,11 +57,17 @@ public partial class ChannelService {
     }
 
     // The channel keeps the shutdown time for the players who enter later (GameSession sends it at entry).
+    // KR client only (ShutdownRules); the command refuses under another LOCALE before it gets here.
     private AdminResponse ShutdownNotice(AdminRequest.Types.ShutdownNotice notice) {
-        if (notice.Kind == 0) {
-            server.ShutdownTime = notice.Time;
+        if (!ShutdownRules.Sent(Target.LOCALE)) {
+            return new AdminResponse();
         }
+        server.ShutdownTime = ShutdownRules.Kept(server.ShutdownTime, notice.Kind, notice.Time);
         foreach (GameSession session in server.GetSessions()) {
+            // A session is listed from its connection, before its player is loaded: it gets nothing.
+            if (session.Player is null) {
+                continue;
+            }
             bool staff = session.Player.AdminPermissions.HasFlag(AdminPermissions.GameMaster);
             ByteWriter? packet = ShutdownNoticePacketFor(notice, staff);
             if (packet != null) {
