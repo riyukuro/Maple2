@@ -101,7 +101,10 @@ public record QuestMetadataRequire(
     int Dungeon = 0,
     int UnrequireDungeon = 0,
     int EnterDungeon = 0,
-    int[]? DungeonBeginner = null);
+    int[]? DungeonBeginner = null,
+    // require achievementGrade: with an achievement, 0 needs it completed and a grade needs that grade cleared
+    // (CanAcceptQuest, questdata.cpp:538; QuestRules.AchievementCleared).
+    int AchievementGrade = 0);
 
 public record QuestMetadataReward(
     int Meso,

@@ -96,6 +96,7 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     Quest: data.require.quest,
                     SelectableQuest: data.require.selectableQuest,
                     Achievement: data.require.achievement,
+                    AchievementGrade: data.require.achievementGrade,
                     UnrequiredAchievement: unrequiredAchievement,
                     GearScore: data.require.gearScore,
                     GroupId: data.require.groupID,

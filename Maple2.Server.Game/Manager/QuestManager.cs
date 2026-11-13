@@ -464,14 +464,20 @@ public sealed class QuestManager {
             return false;
         }
 
-        if (require.Achievement > 0 && !session.Achievement.TryGetAchievement(require.Achievement, out _)) {
-            return false;
+        if (require.Achievement > 0) {
+            session.Achievement.TryGetAchievement(require.Achievement, out Achievement? required);
+            if (!QuestRules.AchievementCleared(required, require.AchievementGrade)) {
+                return false;
+            }
         }
 
-        if (require.UnrequiredAchievement != (0, 0)
-            && session.Achievement.TryGetAchievement(require.UnrequiredAchievement.Item1, out Achievement? achievement)
-            && achievement.Grades.ContainsKey(require.UnrequiredAchievement.Item2)) {
-            return false;
+        // The client tests an unrequired achievement only with a grade (questdata.cpp:548).
+        (int unrequiredId, int unrequiredGrade) = require.UnrequiredAchievement;
+        if (unrequiredId != 0 && unrequiredGrade != 0) {
+            session.Achievement.TryGetAchievement(unrequiredId, out Achievement? unrequired);
+            if (QuestRules.AchievementCleared(unrequired, unrequiredGrade)) {
+                return false;
+            }
         }
 
         if (require.Quest.Length > 0) {

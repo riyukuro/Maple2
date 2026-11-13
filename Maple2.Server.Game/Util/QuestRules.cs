@@ -17,6 +17,21 @@ public static class QuestRules {
         return require.MasteryType == MasteryType.Unknown || require.MasteryGrade == 0 || masteryGrade(require.MasteryType) >= require.MasteryGrade;
     }
 
+    // require achievement and achievementGrade (CanAcceptQuest, questdata.cpp:538): grade 0 needs the achievement
+    // completed (vfunc_o10_1, questmanager_2.cpp:398: state 3), a grade needs that grade cleared
+    // (CAchieveManager::IsGradeCleared, achievemanager.cpp:418: a completed achievement at or past the grade, one in
+    // progress past it). The grade is the one the server sends as the achievement's current grade. A started
+    // achievement alone is not enough. unreqAchievement refuses when its grade is cleared by the same test (:548).
+    public static bool AchievementCleared(Achievement? achievement, int grade) {
+        if (achievement == null) {
+            return false;
+        }
+        if (grade == 0) {
+            return achievement.Completed;
+        }
+        return achievement.Completed ? achievement.CurrentGrade >= grade : achievement.CurrentGrade > grade;
+    }
+
     // require guildNpcLevel (CanAcceptQuest, questdata.cpp:569): with a level, the player must be in a guild
     // (vfunc_o10_9) whose quest npc (CGuildInfo::GetNpcLevel(6), 0 without one) is at exactly that level; the guild
     // dailies and weeklies of level 1 and of level 2 are separate groups, so a level-2 guild takes only the latter.
