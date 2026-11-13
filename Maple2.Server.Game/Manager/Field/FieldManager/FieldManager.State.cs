@@ -783,6 +783,8 @@ public partial class FieldManager {
                 RotationAnglesDegrees = boxSpawn.Rotation,
             },
             SpawnId = boxSpawn.Id,
+            // The Add packet says reactable, so it starts so: it is never updated before it is opened.
+            InitialState = InteractState.Reactable,
         };
         fieldChests[interactObject.EntityId] = fieldInteract;
         Broadcast(InteractObjectPacket.Add(fieldInteract.Object));
@@ -802,6 +804,8 @@ public partial class FieldManager {
                 Position = position,
                 RotationAnglesDegrees = rotation,
             },
+            // As a combine spawn group's object: the Add packet says reactable.
+            InitialState = InteractState.Reactable,
         };
         fieldChests[interactObject.EntityId] = fieldInteract;
         Broadcast(InteractObjectPacket.Add(fieldInteract.Object));
