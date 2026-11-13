@@ -989,7 +989,40 @@ public sealed class QuestManager {
     // packets. now: the local time of the period to grant.
     private void GrantDailyQuests(DateTime now) {
         GrantFieldQuest(now);
+        GrantMissionPoints(now);
     }
+
+    // The week's mission point ladder: every mission point mission whose guide band holds the level (KR: 70900001-003
+    // for 1-49, 70900011-013 for 50-99), each one the player can start. Once a week from the Friday start, and not
+    // while a mission point mission is held: a player who reaches level 50 mid-week keeps the old band's ladder until
+    // the next Friday.
+    private void GrantMissionPoints(DateTime now) {
+        Character character = session.Player.Value.Character;
+        DateTime week = DailyQuestGrant.MissionPointWeekStart(now);
+        if (!DailyQuestGrant.Due(character.MissionPointGrantTime, week) || HoldsAny(DailyQuestGrant.IsMissionPoint)) {
+            return;
+        }
+        List<int> granted = [];
+        foreach (QuestMetadata metadata in GrantPool().Where(DailyQuestGrant.IsMissionPoint)) {
+            if (DailyQuestGrant.InBand(metadata.Basic, character.Level) && Start(metadata.Id) == QuestError.none) {
+                granted.Add(metadata.Id);
+            }
+        }
+        if (granted.Count == 0) {
+            return;
+        }
+        character.MissionPointGrantTime = week.ToEpochSeconds();
+        logger.Information("Mission point missions of {CharacterId}: granted {QuestIds}", session.CharacterId, granted);
+    }
+
+    // The quests a grant may start (DailyQuestGrant), in id order, read once.
+    private List<QuestMetadata> GrantPool() {
+        return grantPool ??= session.QuestMetadata.GetQuests()
+            .Where(metadata => DailyQuestGrant.IsMissionPoint(metadata) && PlayedClientQuests.Known(metadata.Basic))
+            .OrderBy(metadata => metadata.Id)
+            .ToList();
+    }
+    private List<QuestMetadata>? grantPool;
 
     // The day's field quest: the day's pick of the field quest group, when the player can start it (level 50,
     // the played client has it). Once a day, and not while a field quest of the day is held.

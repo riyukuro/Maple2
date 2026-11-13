@@ -71,7 +71,9 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     Alliance: (Maple2.Model.Enum.AllianceType) (int) data.basic.alliance,
                     Rank: (int) data.basic.rank,
                     CompletionTicket: data.basic.property != null && data.basic.property.Contains(QuestPropertyType.availablecompletionticket),
-                    GuideType: (int) (data.guide?.guideType ?? 0)
+                    GuideType: (int) (data.guide?.guideType ?? 0),
+                    GuideMinLevel: data.guide?.guideMinLevel ?? 0,
+                    GuideMaxLevel: data.guide?.guideMaxLevel ?? 0
                 ),
                 Require: new QuestMetadataRequire(
                     Level: data.require.level,

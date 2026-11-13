@@ -10,7 +10,7 @@ using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
-// The quests the server grants (DailyQuestGrant): the day's field quest, at login and at the daily reset, once a
+// The quests the server grants (DailyQuestGrant): the day's field quest and the week's mission point ladder, at login and at the daily reset, once a
 // period, only what the player can start.
 public class DailyQuestGrantTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -159,6 +159,130 @@ public class DailyQuestGrantTests {
             Assert.That(db.SaveCharacter(Character), Is.True);
         }
         Assert.That(test.StoredCharacter().FieldQuestGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
+    }
+
+    private static readonly int[] LowLadder = [70900001, 70900002, 70900003];
+    private static readonly int[] HighLadder = [70900011, 70900012, 70900013];
+    private static readonly int[] Ladders = LowLadder.Concat(HighLadder).ToArray();
+
+    private static QuestMetadata MissionPoint(int id, int minLevel, int maxLevel, bool notInPlayedClient = false) {
+        QuestMetadata quest = TestGameSession.QuestData(id, QuestType.DailyMission);
+        return quest with {
+            Basic = quest.Basic with {
+                Repeat = 1, GuideType = QuestDailyReset.GuideMissionPoint, GuideMinLevel = minLevel, GuideMaxLevel = maxLevel,
+                NotInPlayedClient = notInPlayedClient,
+            },
+        };
+    }
+
+    private void RegisterLadders(Func<int, bool>? notInPlayedClient = null) {
+        foreach (int id in LowLadder) {
+            test.Register(MissionPoint(id, 1, 49, notInPlayedClient?.Invoke(id) ?? false));
+        }
+        foreach (int id in HighLadder) {
+            test.Register(MissionPoint(id, 50, 99, notInPlayedClient?.Invoke(id) ?? false));
+        }
+    }
+
+    private static DateTime Week => DailyQuestGrant.MissionPointWeekStart(DateTime.Now);
+
+    [TestCase(50, new[] { 70900011, 70900012, 70900013 })]
+    [TestCase(99, new[] { 70900011, 70900012, 70900013 })]
+    [TestCase(49, new[] { 70900001, 70900002, 70900003 })]
+    [TestCase(1, new[] { 70900001, 70900002, 70900003 })]
+    public void MissionPoint_LoginGrantsTheBandsLadder(int level, int[] expected) {
+        RegisterLadders();
+        Character.Level = (short) level;
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(Ladders), Is.EqualTo(expected));
+        Assert.That(Character.MissionPointGrantTime, Is.EqualTo(Epoch(Week)));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A ladder quest the played client lacks is left out; the rest of the ladder is granted.
+    [Test]
+    public void MissionPoint_NotInPlayedClient() {
+        RegisterLadders(id => id == HighLadder[1]);
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(Ladders), Is.EqualTo(new[] { HighLadder[0], HighLadder[2] }));
+    }
+
+    // Reaching level 50 mid-week keeps the old band's ladder until the next Friday.
+    [Test]
+    public void MissionPoint_MidWeekLevelUpKeepsTheLadder() {
+        RegisterLadders();
+        Character.Level = 49;
+        test.Session.Quest.Load();
+        Assert.That(Held(Ladders), Is.EqualTo(LowLadder));
+
+        Character.Level = 50;
+        test.Session.Quest.Load();
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+
+        Assert.That(Held(Ladders), Is.EqualTo(LowLadder));
+    }
+
+    // Once a week: a relog after the ladder was dropped (abandoned) grants nothing again that week.
+    [Test]
+    public void MissionPoint_OncePerWeek() {
+        RegisterLadders();
+        test.Session.Quest.Load();
+        foreach (int id in HighLadder) {
+            Assert.That(test.Session.Quest.TryGetQuest(id, out Quest? quest) && test.Session.Quest.Remove(quest));
+        }
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(Ladders), Is.Empty);
+    }
+
+    // A reset in a new week grants the ladder; a second reset the same day neither drops it nor grants a second set.
+    [Test]
+    public void MissionPoint_ResetGrantsOnce() {
+        RegisterLadders();
+        Character.MissionPointGrantTime = Epoch(Week.AddDays(-7));
+
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+        Assert.That(Held(Ladders), Is.EqualTo(HighLadder));
+        Assert.That(Character.MissionPointGrantTime, Is.EqualTo(Epoch(Week)));
+
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+        Assert.That(Held(Ladders), Is.EqualTo(HighLadder));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    [Test]
+    public void MissionPoint_GrantIsStored() {
+        RegisterLadders();
+        test.Session.Quest.Load();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveCharacter(Character), Is.True);
+        }
+        Assert.That(test.StoredCharacter().MissionPointGrantTime, Is.EqualTo(Epoch(Week)));
+    }
+
+    // The week starts on Friday: on a Friday it is that day, on a Thursday the Friday before.
+    [TestCase(2026, 11, 13, 13)]
+    [TestCase(2026, 11, 19, 13)]
+    [TestCase(2026, 11, 20, 20)]
+    public void MissionPointWeekStart(int year, int month, int day, int startDay) {
+        Assert.That(DailyQuestGrant.MissionPointWeekStart(new DateTime(year, month, day, 12, 0, 0)),
+            Is.EqualTo(new DateTime(year, month, startDay)));
+    }
+
+    [TestCase(1, 1, 49, true)]
+    [TestCase(49, 1, 49, true)]
+    [TestCase(50, 1, 49, false)]
+    [TestCase(49, 50, 99, false)]
+    [TestCase(99, 50, 99, true)]
+    [TestCase(120, 50, 0, true)]
+    public void InBand(int level, int min, int max, bool inBand) {
+        QuestMetadataBasic basic = TestGameSession.QuestData(1, QuestType.DailyMission).Basic with { GuideMinLevel = min, GuideMaxLevel = max };
+        Assert.That(DailyQuestGrant.InBand(basic, level), Is.EqualTo(inBand));
     }
 
     [TestCase(0L, true)]

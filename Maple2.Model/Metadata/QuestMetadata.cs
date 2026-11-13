@@ -57,7 +57,11 @@ public record QuestMetadataBasic(
     // guide guideType in the client's numbering (CQuestData m_338, Parse_140217a00): 1 level, 2 level_boost,
     // 3 daily_pick_once, 4 daily_pick_repeat, 5 mission_point; 0 none. The daily reset drops daily missions by it
     // (QuestDailyReset).
-    int GuideType = 0);
+    int GuideType = 0,
+    // guide guideMinLevel and guideMaxLevel (CQuestData m_levelRange, questdata.cpp:1452): the levels whose guide
+    // lists the quest, both ends included; 0 for none. The server grants the guide's quests by it (DailyQuestGrant).
+    int GuideMinLevel = 0,
+    int GuideMaxLevel = 0);
 
 public record QuestMetadataRequire(
     short Level,

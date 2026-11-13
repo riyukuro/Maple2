@@ -62,6 +62,7 @@ public class Character {
     // The daily quest grants (DailyQuestGrant): the start of the last period each kind was granted for (seconds,
     // 0 = never).
     public long FieldQuestGrantTime;
+    public long MissionPointGrantTime;
 
     public LimitedStack<int> ReturnMaps = new LimitedStack<int>(3);
     public Vector3 ReturnPosition;
