@@ -339,9 +339,10 @@ public static class SkillUtils {
         if (condition.Event.SkillIds.Length > 0 && !condition.Event.SkillIds.Contains(eventSkillId)) {
             return false;
         }
-        // eventIgnoreSkillID: the client loads it (ownerEventNoSkillID) and never tests it; an event from a listed
-        // skill fails here. Chosen here. KR: 50005300 and 50005301 skip hits of 10400062.
-        if (condition.Event.IgnoreSkillIds.Length > 0 && condition.Event.IgnoreSkillIds.Contains(eventSkillId)) {
+        // eventIgnoreSkillID: the client reads no such field; its twin ownerEventNoSkillID in AdditionalActionAdditional
+        // is loaded and never tested. An event from a listed skill fails here. Chosen here. KR: 50005300 and 50005301
+        // skip hits of 10400062. Null in effect rows from an older ingest.
+        if (condition.Event.IgnoreSkillIds is { Length: > 0 } ignored && ignored.Contains(eventSkillId)) {
             return false;
         }
 

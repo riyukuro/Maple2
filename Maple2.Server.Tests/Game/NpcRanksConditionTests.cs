@@ -158,6 +158,21 @@ public class NpcRanksConditionTests {
         Assert.That(condition.Check(player, player, npc, EventConditionType.OnOwnerAttackHit, 10400061), Is.True);
     }
 
+    // An effect row from an ingest before eventIgnoreSkillID has no such key; it loads as null and ignores nothing.
+    [Test]
+    public void IgnoredSkills_FromAnOlderIngest_AreNull() {
+        var test = new TestGameSession();
+        test.Start();
+        FieldPlayer player = test.Session.Player;
+        var old = System.Text.Json.JsonSerializer.Deserialize<BeginConditionTarget.EventCondition>(
+            "{\"Type\":6,\"IgnoreOwner\":false,\"SkillIds\":[],\"BuffIds\":[]}")!;
+        Assert.That(old.IgnoreSkillIds, Is.Null);
+        BeginCondition condition = Of(null, Sub(EventConditionType.OnOwnerAttackHit) with { Event = old }, null);
+        EffectLogNpc npc = Npc(null, 36, 3);
+        Assert.That(condition.Check(player, player, npc, EventConditionType.OnOwnerAttackHit, 10400062), Is.True);
+        Assert.That(condition.Check(player, player, npc), Is.False, "activate");
+    }
+
     // 10300286 (KR): caster hasBuffID 10300288 and no event, owner eventCondition 16; the caster test borrows event 16
     // and still checks the caster's own buffs.
     [Test]
