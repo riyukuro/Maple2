@@ -199,6 +199,9 @@ public partial class FieldManager : IField {
         Survival = new SurvivalGameField(this, Players.Values);
     }
 
+    // The BonusGame notice wins the bonus_game_reward trigger condition waits for.
+    public BonusGameWins BonusGameWins { get; } = new();
+
     // The Hide and Seek game of a hide-and-seek map (CreateFieldGame HideAndSeek); null before one is made.
     public HideAndSeekField? HideAndSeek { get; private set; }
 

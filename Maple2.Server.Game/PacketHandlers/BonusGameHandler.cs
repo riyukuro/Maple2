@@ -3,6 +3,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -109,6 +110,9 @@ public class BonusGameHandler : FieldPacketHandler {
         session.Send(BonusGamePacket.Spin(rewardedItems));
         session.BonusGameId = 0;
         SendDropNotices(session, wins);
+        if (wins.Any(win => win.Drop.Notice)) {
+            session.Field?.BonusGameWins.Add(session.CharacterId, BonusGameWins.NoticeType);
+        }
     }
 
     // A won item whose BonusGameDrop row has notice="1" is announced with ItemDropNotice (0xBA, client

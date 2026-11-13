@@ -269,8 +269,16 @@ public partial class TriggerContext {
     #endregion
 
     #region Conditions
+    // True once for each BonusGame spin in this field that won a notice row, while its player is in the box (see
+    // BonusGameWins).
     public bool BonusGameReward(int boxId, int type) {
-        return -1 == type;
+        DebugLog("[BonusGameReward] boxId:{BoxId}, type:{Type}", boxId, type);
+        if (!Objects.Boxes.TryGetValue(boxId, out TriggerBox? box)) {
+            return false;
+        }
+        return Field.BonusGameWins.Take(type,
+            characterId => Field.Players.Values.FirstOrDefault(player => player.Value.Character.Id == characterId)?.Position,
+            position => box.Contains(position));
     }
     #endregion
 }
