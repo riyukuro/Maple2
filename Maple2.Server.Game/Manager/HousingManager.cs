@@ -515,6 +515,7 @@ public class HousingManager {
         if (session.Field is null) return;
 
         if (Home.DecorationRewardTimestamp != 0) {
+            session.Send(CubePacket.InteriorCheckInError(InteriorRewardRules.CheckInError(true, false)));
             return;
         }
 
@@ -531,6 +532,7 @@ public class HousingManager {
         tableMetadata.UgcHousingPointRewardTable.Entries.TryGetValue(housingPoint, out UgcHousingPointRewardTable.Entry? reward);
         if (reward is null) {
             logger.Error("Failed to get reward for decoration score {DecorationScore}.", housingPoint);
+            session.Send(CubePacket.InteriorCheckInError(InteriorRewardRules.CheckInError(false, false)));
             return;
         }
 
@@ -559,17 +561,14 @@ public class HousingManager {
     }
 
     public void InteriorReward(byte rewardId) {
-        if (Home.InteriorRewardsClaimed.Contains(rewardId)) {
-            return;
-        }
-
         tableMetadata.MasteryUgcHousingTable.Entries.TryGetValue(rewardId, out MasteryUgcHousingTable.Entry? reward);
-        if (reward == null) {
+        UgcMapError? error = InteriorRewardRules.GradeError(Home.InteriorRewardsClaimed, Home.DecorationLevel, rewardId, reward != null);
+        if (error is null) {
             return;
         }
-
-        Item? rewardItem = session.Field?.ItemDrop.CreateItem(reward.RewardJobItemId);
+        Item? rewardItem = error == UgcMapError.s_ugcmap_ok ? session.Field?.ItemDrop.CreateItem(reward!.RewardJobItemId) : null;
         if (rewardItem == null) {
+            session.Send(CubePacket.InteriorGradeRewardError(error == UgcMapError.s_ugcmap_ok ? UgcMapError.s_ugcmap_take_interior_gift_fail_from_db : error.Value));
             return;
         }
 

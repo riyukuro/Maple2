@@ -642,8 +642,9 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
+        // Another player's home: the check-in's own answer (0x28) with the error the generic one carried.
         if (plot.OwnerId != session.AccountId) {
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_dont_have_ownership));
+            session.Send(CubePacket.InteriorCheckInError(UgcMapError.s_ugcmap_dont_have_ownership));
             return;
         }
 

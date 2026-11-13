@@ -423,11 +423,11 @@ public class TrophyWiringTests {
         // The check-in answer, then the exp trophy, then the level trophy.
         Assert.That(Sent(), Is.EqualTo(new[] { SendOp.ResponseCube, SendOp.Achieve, SendOp.Achieve }));
 
-        // The same day: no second check-in.
+        // The same day: no second check-in, only its refusal (ResponseCube 0x28, cant_take_interior_gift_more).
         CubeHandler().Handle(session, CheckIn());
         Assert.That(test.TrophyCounter(ExpTrophy), Is.EqualTo(score));
         Assert.That(test.TrophyCounter(LevelTrophy), Is.EqualTo(2));
-        Assert.That(Sent(), Is.Empty);
+        Assert.That(Sent(), Is.EqualTo(new[] { SendOp.ResponseCube }));
 
         // The next day (the daily reset clears the timestamp): exp again, the level is unchanged and not sent.
         session.Player.Value.Home.DecorationRewardTimestamp = 0;

@@ -44,7 +44,8 @@ public static class CubePacket {
         IncreaseArea = 37,
         DecreaseArea = 38,
         DesignRankReward = 39,
-        // 40, 41
+        InteriorCheckIn = 40,
+        InteriorGradeReward = 41,
         EnablePermission = 42,
         SetPermission = 43,
         IncreaseHeight = 44,
@@ -471,6 +472,24 @@ public static class CubePacket {
         foreach (int rewardId in home.InteriorRewardsClaimed) {
             pWriter.WriteInt(rewardId);
         }
+
+        return pWriter;
+    }
+
+    // Client: CSceneStateGame::OnResponseCube cases 0x28 and 0x29 (scenestategame.cpp:10635, 10645): one byte, the
+    // error of the daily check-in (0x28) or of a grade reward (0x29), shown with ShowBuildNotice when not 0.
+    public static ByteWriter InteriorCheckInError(UgcMapError error) {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.WriteByte((byte) Command.InteriorCheckIn);
+        pWriter.WriteByte((byte) error);
+
+        return pWriter;
+    }
+
+    public static ByteWriter InteriorGradeRewardError(UgcMapError error) {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.WriteByte((byte) Command.InteriorGradeReward);
+        pWriter.WriteByte((byte) error);
 
         return pWriter;
     }
