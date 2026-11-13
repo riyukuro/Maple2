@@ -207,6 +207,16 @@ public sealed class GameEventManager {
                 continue;
             }
 
+            // The next row's index and the restarted seconds are stored before the mail is made: a stop between the
+            // two loses this row's mail instead of giving it again after the restart.
+            Set(gameEvent.Id, GameEventUserValueType.DTRewardRewardIndex, rewardIndexValue.Int() + 1);
+            Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, entry.StartDuration);
+            if (!Store(gameEvent.Id, GameEventUserValueType.DTRewardRewardIndex)
+                || !Store(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime)) {
+                logger.Error("Failed to store the DTReward index. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
+                continue;
+            }
+
             using GameStorage.Request db = session.GameStorage.Context();
             var mail = new Mail {
                 Type = MailType.System,
@@ -228,9 +238,6 @@ public sealed class GameEventManager {
             }
 
             mail.Items.Add(item);
-
-            Set(gameEvent.Id, GameEventUserValueType.DTRewardRewardIndex, rewardIndexValue.Int() + 1);
-            Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, entry.StartDuration);
             session.Mail.Notify(true);
         }
     }

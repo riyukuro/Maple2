@@ -80,4 +80,25 @@ public class DailyLoginMailTests {
         Assert.That(ServerTableMapper.ReadDailyLoginReward("", "20300322,1,1,0")?.MailId, Is.EqualTo(0));
         Assert.That(ServerTableMapper.ReadDailyLoginReward("180214016", ""), Is.Null);
     }
+
+    // The play-time reward (DTReward): the next row's index is stored with the mail, not at logout, so a restart
+    // after the mail does not give the row again.
+    [Test]
+    public void DtReward_IndexIsStoredWithTheMail() {
+        var test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(Ticket));
+        test.AddEvent(EventId, GameEventType.DTReward, new DTReward([
+            new DTReward.Entry(StartDuration: 0, EndDuration: 1, MailContentId: MailText, Item: new RewardItem(Ticket, 1, 3)),
+            new DTReward.Entry(StartDuration: 0, EndDuration: 600, MailContentId: MailText, Item: new RewardItem(Ticket, 1, 3)),
+        ]));
+        GameSession session = test.Start();
+
+        session.GameEvent.Update(1000);
+
+        Assert.That(Mails(test), Is.EqualTo(new[] { (MailText.ToString(), new[] { Ticket }, 3) }));
+        Dictionary<GameEventUserValueType, string> stored = test.StoredEventValues(EventId);
+        Assert.That(stored.GetValueOrDefault(GameEventUserValueType.DTRewardRewardIndex), Is.EqualTo("1"));
+        Assert.That(stored.GetValueOrDefault(GameEventUserValueType.DTRewardCurrentTime), Is.EqualTo("0"));
+        Assert.That(test.Errors, Is.Empty);
+    }
 }
