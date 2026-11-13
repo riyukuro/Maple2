@@ -799,6 +799,42 @@ public class HousingManager {
             return false;
         }
 
+        // The cube's storage stack, and the expiry the cube will take: the stack's, or for a cube bought here that of
+        // the new item, which the purchase then keeps (AddCube joins only a stack of that expiry).
+        Item? storedItem = null;
+        long expiryTime = 0;
+        if (!plot.IsPlanner) {
+            storedItem = helper == null ? session.Item.Furnishing.GetCube(cube.Id) : null;
+            if (storedItem is { Amount: > 0 }) {
+                expiryTime = storedItem.ExpiryTime;
+            } else {
+                expiryTime = session.Field.ItemDrop.CreateItem(cube.ItemId)?.ExpiryTime ?? 0;
+                cube.ExpiryTime = expiryTime;
+            }
+
+            // Storage must take back the old cube of a replace (RemoveCube refuses it otherwise) and a cube bought here
+            // (it goes to storage once paid). Asked before anything is charged or taken off the plot.
+            bool buying = helper == null && storedItem is not { Amount: > 0 } && shopEntry != null;
+            PlotCube? replaced = isReplace ? there : null;
+            var incoming = new List<UgcMapPackageRules.Stack>();
+            if (replaced != null) {
+                incoming.Add(FurnishingManager.RetrievedStack(replaced));
+            }
+            if (buying) {
+                incoming.Add(new UgcMapPackageRules.Stack(cube.ItemId, cube.Template?.Url, itemMetadata.Housing?.MaidId > 0, 1,
+                    itemMetadata.Property.SlotMax, FurnishingManager.KeptExpiry(itemMetadata, cube.ExpiryTime)));
+            }
+            if (incoming.Count > 0 && !session.Item.Furnishing.StorageTakes(incoming)) {
+                if (replaced != null && !session.Item.Furnishing.CanRetrieve(replaced)) {
+                    Refuse(UgcMapError.s_ugcmap_cant_be_removed);
+                } else {
+                    // No furnishing-storage-full code was found in the client's ugcmap errors: the inventory one.
+                    notify.Send(NoticePacket.Message(StringCode.s_err_inventory_tab_full, NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
+                }
+                return false;
+            }
+        }
+
         // A helper's cube is paid from the budget. Asked before the old cube of a replace is taken off: a
         // refusal after that would leave the cell empty here while the clients still show the old cube.
         if (helper != null && !plot.IsPlanner) {
@@ -816,8 +852,8 @@ public class HousingManager {
             }
         }
 
-        if (isReplace && plot.Cubes.ContainsKey(position)) {
-            RemoveCube(plot, position, out _, helper);
+        if (isReplace && plot.Cubes.ContainsKey(position) && !RemoveCube(plot, position, out _, helper)) {
+            return false;
         }
 
         session.FunctionCubeMetadata.TryGet(itemMetadata.Install.ObjectCubeId, out FunctionCubeMetadata? functionCubeMetadata);
@@ -848,16 +884,6 @@ public class HousingManager {
             return true;
         }
 
-        // The expiry the cube will take: its storage stack's, or for a cube bought here that of the new item, which the
-        // purchase then keeps (AddCube joins only a stack of that expiry).
-        Item? storedItem = helper == null ? session.Item.Furnishing.GetCube(cube.Id) : null;
-        long expiryTime;
-        if (storedItem is { Amount: > 0 }) {
-            expiryTime = storedItem.ExpiryTime;
-        } else {
-            expiryTime = session.Field.ItemDrop.CreateItem(cube.ItemId)?.ExpiryTime ?? 0;
-            cube.ExpiryTime = expiryTime;
-        }
         result = CreateCube(plot, itemMetadata, functionCubeMetadata, cube.Template, position, rotation, expiryTime);
         if (result is null) {
             Refuse(UgcMapError.s_ugcmap_db);
@@ -874,17 +900,10 @@ public class HousingManager {
             storedUid = cube.Id;
         } else {
             // A cube bought here goes to storage only once it is paid: a cube not for sale, or one the player cannot
-            // pay for, leaves no storage item. Room is asked first, so the paid cube is not refused by storage.
+            // pay for, leaves no storage item. Room was asked above, so the paid cube is not refused by storage.
             if (shopEntry is null) {
                 DeleteCube(result);
                 Refuse(UgcMapError.s_err_cannot_buy_limited_item_more);
-                return false;
-            }
-
-            if (!session.Item.Furnishing.StorageTakes([new UgcMapPackageRules.Stack(cube.ItemId, cube.Template?.Url,
-                    itemMetadata.Housing?.MaidId > 0, 1, itemMetadata.Property.SlotMax, FurnishingManager.KeptExpiry(itemMetadata, cube.ExpiryTime))])) {
-                DeleteCube(result);
-                Refuse(UgcMapError.s_ugcmap_not_for_sale);
                 return false;
             }
 

@@ -6,7 +6,9 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Tests.Game.Manager;
@@ -15,7 +17,7 @@ namespace Maple2.Server.Tests.Game.Manager;
 // client's build palette fills from a bag item's expiry) carries it, and the cube row keeps it across a plot save and
 // load. The item id and the expiry are made up.
 public class PlacedCubeExpiryTests {
-    private const int CubeItem = 50800001;
+    private const int CubeItem = 50800001, OtherCubeItem = 50800002;
     private const long Expiry = 1_800_000_000;
 
     private static PlotInfo Info() => new(new UgcMapGroup(1, 0, 0, new UgcMapGroup.Cost(0, 0, 0), new UgcMapGroup.Cost(0, 0, 0),
@@ -184,17 +186,20 @@ public class PlacedCubeExpiryTests {
         Assert.That(plan.NewStacks.Select(add => add.Item.ExpiryTime), Is.EqualTo(new[] { Expiry }));
     }
 
+    private static ItemMetadata Furniture(int id) => TestGameSession.Metadata(id) with {
+        Housing = new ItemMetadataHousing(0, 0, 0, HousingCategory.None, false),
+        Install = new ItemMetadataInstall(true, 0, 0, false, MapAttribute.none),
+    };
+
     private static (TestGameSession Test, GameSession Session, Plot Plot, ItemMetadata Metadata) StartInBuiltHome(
         Dictionary<int, FurnishingShopTable.Entry>? shop = null) {
         var test = new TestGameSession();
         test.SetTable(new UgcHousingPointRewardTable(new Dictionary<int, UgcHousingPointRewardTable.Entry>()));
         test.SetTable(new MasteryUgcHousingTable(new Dictionary<int, MasteryUgcHousingTable.Entry> { [1] = new(1, 0, 0) }));
         test.SetTable(new FurnishingShopTable(shop ?? new Dictionary<int, FurnishingShopTable.Entry>()));
-        ItemMetadata metadata = TestGameSession.Metadata(CubeItem) with {
-            Housing = new ItemMetadataHousing(0, 0, 0, HousingCategory.None, false),
-            Install = new ItemMetadataInstall(true, 0, 0, false, MapAttribute.none),
-        };
+        ItemMetadata metadata = Furniture(CubeItem);
         test.Register(metadata);
+        test.Register(Furniture(OtherCubeItem));
         GameSession session = test.Start();
         session.Housing.InitNewHome("home", null);
         session.Player.Value.Home.SetArea(5);
@@ -224,6 +229,55 @@ public class PlacedCubeExpiryTests {
 
         Assert.That(session.Housing.TryPlaceCube(Cube(metadata, 0), plot, metadata, new Vector3B(-4, -4, 1), 0, out _), Is.False);
         Assert.That(session.Item.Furnishing.GetItem(CubeItem), Is.Null);
+        Assert.That(plot.Cubes, Is.Empty);
+    }
+
+    // Fills the open slots with stacks of the item, each of its own expiry.
+    private static void FillStorage(GameSession session, ItemMetadata metadata) {
+        for (int i = 1; i <= Constant.FurnishingStorageMaxSlot; i++) {
+            if (session.Item.Furnishing.AddStorage(new Maple2.Model.Game.Item(metadata) { ExpiryTime = Expiry + i }, keepExpiry: true) == 0) {
+                break;
+            }
+        }
+        Assert.That(session.Item.Furnishing.StorageTakes([new UgcMapPackageRules.Stack(metadata.Id, null, false, 1, 100, 1)]), Is.False);
+    }
+
+    // A replace takes the old cube back to storage first. With storage full and the old cube joining no stack, the
+    // replace is refused before anything is paid or taken off: the old cube stays placed, the new one (which joins a
+    // stack of its own) is not bought.
+    [Test]
+    public void ReplacingACubeStorageCannotTakeBack_PaysAndMovesNothing() {
+        (TestGameSession test, GameSession session, Plot plot, ItemMetadata metadata) = StartInBuiltHome(
+            new Dictionary<int, FurnishingShopTable.Entry> { [OtherCubeItem] = new(OtherCubeItem, true, FurnishingCurrencyType.Meso, 1000) });
+        session.Currency.Meso = 5000;
+        long uid = session.Item.Furnishing.AddCube(new Maple2.Model.Game.Item(metadata) { ExpiryTime = Expiry });
+        var position = new Vector3B(-4, -4, 1);
+        Assert.That(session.Housing.TryPlaceCube(Cube(metadata, uid), plot, metadata, position, 0, out PlotCube? placed), Is.True);
+        ItemMetadata other = Furniture(OtherCubeItem);
+        long otherUid = session.Item.Furnishing.AddStorage(new Maple2.Model.Game.Item(other));
+        FillStorage(session, metadata);
+        test.TakeSent();
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(other, 0), plot, other, position, 0, out _, isReplace: true), Is.False);
+        Assert.That(plot.Cubes[position], Is.SameAs(placed));
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        Assert.That(session.Item.Furnishing.GetCube(otherUid)?.Amount, Is.EqualTo(1));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A timed cube bought from the palette with storage full (no open slot, and a fresh expiry joins no stack) is
+    // refused as storage full, before it is paid.
+    [Test]
+    public void BuyingWithStorageFull_IsRefusedAsFull_AndPaysNothing() {
+        (TestGameSession test, GameSession session, Plot plot, ItemMetadata metadata) = StartInBuiltHome(
+            new Dictionary<int, FurnishingShopTable.Entry> { [CubeItem] = new(CubeItem, true, FurnishingCurrencyType.Meso, 1000) });
+        session.Currency.Meso = 5000;
+        FillStorage(session, metadata);
+        test.TakeSent();
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(metadata, 0), plot, metadata, new Vector3B(-4, -4, 1), 0, out _), Is.False);
+        Assert.That(test.TakeSentOps(), Does.Contain(SendOp.Notice));
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         Assert.That(plot.Cubes, Is.Empty);
     }
 }

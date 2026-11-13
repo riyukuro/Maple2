@@ -224,8 +224,11 @@ public class FurnishingManager {
         expiryTime > 0 || metadata.Life is not { ExpirationDuration: > 0 } and not { ExpirationTimestamp: > 0 } ? expiryTime : null;
 
     // A cube storage would take back (RetrieveCube), asked before it leaves the plot.
-    public bool CanRetrieve(PlotCube cube) => StorageTakes([new UgcMapPackageRules.Stack(cube.ItemId, cube.Template?.Url,
-        cube.Metadata.Housing?.MaidId > 0, 1, cube.Metadata.Property.SlotMax, KeptExpiry(cube.Metadata, cube.ExpiryTime))]);
+    public bool CanRetrieve(PlotCube cube) => StorageTakes([RetrievedStack(cube)]);
+
+    // The storage piece a placed cube goes back as.
+    public static UgcMapPackageRules.Stack RetrievedStack(PlotCube cube) => new(cube.ItemId, cube.Template?.Url,
+        cube.Metadata.Housing?.MaidId > 0, 1, cube.Metadata.Property.SlotMax, KeptExpiry(cube.Metadata, cube.ExpiryTime));
 
     // Whether storage takes every piece of these furnishing items, each item's amount as TakeMailed adds it (the
     // same rule InventoryManager.Add uses: all of them or none). A furnishing item makes no second stack in storage
