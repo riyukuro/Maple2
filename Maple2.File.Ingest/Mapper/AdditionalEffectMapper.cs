@@ -17,12 +17,16 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
     private readonly CooldownGroupRates groupRates;
     private readonly FinalStatusRows finals;
     private readonly ClientSpecialAbility specialAbility;
+    // The same table for the played levels' own <SpecialAbility> (PlayedAdditionalRows.SpecialAbility), apart so its
+    // Unmapped counts only the final stats' rows; null without a played client.
+    private readonly ClientSpecialAbility? abilities;
     private int finalClientLevels, finalPackLevels;
     private readonly FinalStatusRows.Counts finalCounts = new();
 
     // The played client's own invoke effects and effect groups (PlayedClientAdditionalEffects); empty without a played client.
     private readonly Dictionary<int, PlayedClientAdditionalEffects.Entry> played = [];
-    // The pack's names the played rows write (PlayedAdditionalRows.Written).
+    // The pack's names the played rows write (PlayedAdditionalRows.Written), for the log of the pack's names
+    // neither written nor on PlayedAdditionalRows.PackOnly.
     private readonly IReadOnlySet<string> written = new HashSet<string>();
 
     public AdditionalEffectMapper(M2dReader xmlReader, M2dReader? playedReader = null) {
@@ -36,6 +40,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             played = PlayedClientAdditionalEffects.Read(playedReader.Files.Where(file => PlayedClientAdditionalEffects.IsAdditionalFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available);
             written = PlayedAdditionalRows.Written(played.Values);
+            abilities = new ClientSpecialAbility(playedReader, xmlReader);
             Console.WriteLine($"Additional effects in the played client's data: {played.Count} ({played.Values.Count(entry => entry.GroupId != 0)} in an effect group, " +
                               $"{played.Values.Sum(entry => entry.Levels.Values.Count(invoke => invoke != null))} levels with an invoke effect)");
         }
@@ -67,8 +72,11 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         // Levels with parts that differ but a child the ingest does not read, kept the pack's whole.
         var held = new List<string>();
         var heldBy = new SortedDictionary<string, int>(StringComparer.Ordinal);
-        // The pack's names no played row writes, kept on the played levels (PlayedAdditionalRows.KeepPackOnly).
+        // The pack's names the client has no name for, kept on the played levels (PlayedAdditionalRows.KeepPackOnly),
+        // and the pack's names neither on the list nor written by a played row.
         var keptBy = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        var unlistedBy = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        var listedWritten = PlayedAdditionalRows.PackOnly.Where(written.Contains).Order(StringComparer.Ordinal).ToList();
         foreach ((int id, IList<AdditionalEffectData> datas) in parser.Parse()) {
             packIds.Add(id);
             foreach (AdditionalEffectData data in datas) {
@@ -85,13 +93,18 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                     // final stats stay the pack's (Build with the pack's Status adds no final stats again).
                     var unread = new List<string>();
                     var kept = new HashSet<string>(StringComparer.Ordinal);
+                    var unlisted = new HashSet<string>(StringComparer.Ordinal);
                     System.Xml.XmlElement packRow = Serialized(data);
-                    AdditionalEffectMetadata mapped = Build(id, PlayedOnly(entry, level, unread, packRow, written, kept), mask, metadata.Status);
+                    AdditionalEffectMetadata mapped = Build(id, PlayedOnly(entry, level, unread, packRow, kept, written, unlisted), mask, metadata.Status);
                     foreach (string name in kept) {
                         keptBy[name] = keptBy.GetValueOrDefault(name) + 1;
                     }
+                    foreach (string name in unlisted) {
+                        unlistedBy[name] = unlistedBy.GetValueOrDefault(name) + 1;
+                    }
                     var taken = new List<string>();
-                    metadata = PlayedAdditionalRows.TakeOver(metadata, mapped, unread, entry.Rows[level], packRow, taken, out IReadOnlyList<string> holding);
+                    metadata = PlayedAdditionalRows.TakeOver(metadata, mapped, unread, entry.Rows[level], packRow, taken, out IReadOnlyList<string> holding,
+                        abilities, entry.SpecialAbilities.GetValueOrDefault(level), finals?.Get(id, level) != null);
                     if (taken.Count > 0 && holding.Count > 0) {
                         held.Add($"{id} {level} ({string.Join(" ", holding)})");
                         foreach (string child in holding) {
@@ -119,19 +132,32 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                           $"({string.Join(", ", takenParts.Select(pair => $"{pair.Key} {pair.Value}"))})");
         Console.WriteLine($"Additional effect levels both data sets have kept the pack's for a played child not read: {held.Count} " +
                           $"({string.Join(", ", heldBy.Select(pair => $"{pair.Key} {pair.Value}"))}): {string.Join("; ", held)}");
+        if (abilities != null) {
+            Console.WriteLine($"Played SpecialAbility types without a server stat (rows): " +
+                              $"{(abilities.Unmapped.Count == 0 ? "none" : string.Join(", ", abilities.Unmapped.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => $"{pair.Key} {pair.Value}")))}");
+        }
         Console.WriteLine($"Pack names no played row writes, kept from the pack on the levels both data sets have (levels): " +
-                          $"{string.Join(", ", keptBy.Select(pair => $"{pair.Key} {pair.Value}"))}");
+                          $"{string.Join(", ", keptBy.Select(pair => $"{pair.Key} {pair.Value}"))}; " +
+                          $"on the list but written by a played row: {(listedWritten.Count == 0 ? "none" : string.Join(", ", listedWritten))}; " +
+                          $"neither on the list nor written: {(unlistedBy.Count == 0 ? "none" : string.Join(", ", unlistedBy.Select(pair => $"{pair.Key} {pair.Value}")))}");
         Compare(shared);
 
         // The played client's effects the data pack does not have, where every child of every level is one whose
         // mapping the A/B proved (PlayedAdditionalRows.Gated) and every attribute has a pack name.
-        int own = 0, ownLevels = 0;
+        int own = 0, ownLevels = 0, ownAbilities = 0;
         var left = new SortedDictionary<string, int>(StringComparer.Ordinal);
         foreach ((int id, PlayedClientAdditionalEffects.Entry entry) in played.OrderBy(pair => pair.Key)) {
             if (packIds.Contains(id) || entry.Rows.Count == 0) {
                 continue;
             }
-            IReadOnlyCollection<string> unread = PlayedAdditionalRows.Unread(entry);
+            var unread = PlayedAdditionalRows.Unread(entry).ToList();
+            // The client's <SpecialAbility> is read where every type the client keeps has a server stat and no level
+            // has final stats (Status adds them to the stats it replaces).
+            bool readAbilities = unread.Contains("SpecialAbility") && abilities != null
+                                 && entry.Rows.Keys.All(level => finals?.Get(id, level) == null && Mapped(abilities, entry.SpecialAbilities.GetValueOrDefault(level)));
+            if (readAbilities) {
+                unread.Remove("SpecialAbility");
+            }
             if (unread.Count > 0) {
                 foreach (string reason in unread) {
                     left[reason] = left.GetValueOrDefault(reason) + 1;
@@ -139,14 +165,28 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 continue;
             }
             own++;
+            ownAbilities += readAbilities ? 1 : 0;
             foreach (AdditionalEffectData data in PlayedOnly(entry)) {
                 ownLevels++;
-                yield return Build(id, data, SkillUseDisableMask(id, data.BasicProperty.level, 0));
+                AdditionalEffectMetadata metadata = Build(id, data, SkillUseDisableMask(id, data.BasicProperty.level, 0));
+                if (abilities != null && entry.SpecialAbilities.TryGetValue(data.BasicProperty.level, out Dictionary<string, int>? rows)) {
+                    metadata = metadata with {
+                        Status = PlayedAdditionalRows.WithStats(metadata.Status, PlayedAdditionalRows.SpecialAbilityStats(abilities, rows, new List<string>())),
+                    };
+                }
+                yield return metadata;
             }
         }
-        Console.WriteLine($"Additional effects only the played client has, taken over: {own} ({ownLevels} levels; " +
+        Console.WriteLine($"Additional effects only the played client has, taken over: {own} ({ownLevels} levels; {ownAbilities} with a SpecialAbility read; " +
                           $"{played.Count(pair => !packIds.Contains(pair.Key) && pair.Value.Rows.Count > 0) - own} left out for what the ingest does not map: " +
                           $"{string.Join(", ", left.Select(pair => $"{pair.Key} {pair.Value}"))})");
+    }
+
+    // Whether every type of a played level's <SpecialAbility> rows the client keeps has a server stat.
+    private static bool Mapped(ClientSpecialAbility table, IReadOnlyDictionary<string, int>? rows) {
+        var unmapped = new List<string>();
+        PlayedAdditionalRows.SpecialAbilityStats(table, rows, unmapped);
+        return unmapped.Count == 0;
     }
 
     // The A/B of the mapping: each played level of an effect the pack also has, mapped as an effect only the client
@@ -233,13 +273,15 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         return entry.Rows.Keys.Order().Select(level => PlayedOnly(entry, level));
     }
 
-    // pack: the pack's level as its serializer writes it (Serialized), whose names no played row writes (written)
-    // the played level keeps (PlayedAdditionalRows.KeepPackOnly); kept gets those copied.
+    // pack: the pack's level as its serializer writes it (Serialized), whose names the client has no name for
+    // (PlayedAdditionalRows.PackOnly) the played level keeps (PlayedAdditionalRows.KeepPackOnly); kept gets those
+    // copied, unlisted the pack's names neither listed nor in written (the names the played rows write).
     public static AdditionalEffectData PlayedOnly(PlayedClientAdditionalEffects.Entry entry, short level, ICollection<string>? unread = null,
-                                                  System.Xml.XmlElement? pack = null, IReadOnlySet<string>? written = null, ICollection<string>? kept = null) {
+                                                  System.Xml.XmlElement? pack = null, ICollection<string>? kept = null,
+                                                  IReadOnlySet<string>? written = null, ICollection<string>? unlisted = null) {
         System.Xml.XmlElement row = PlayedAdditionalRows.ToPack(entry.Effect!, entry.Rows[level], level, unread ?? new List<string>());
-        if (pack != null && written != null) {
-            PlayedAdditionalRows.KeepPackOnly(pack, row, written, kept ?? new List<string>());
+        if (pack != null) {
+            PlayedAdditionalRows.KeepPackOnly(pack, row, kept ?? new List<string>(), written, unlisted);
         }
         return Complete(row);
     }

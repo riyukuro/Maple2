@@ -74,6 +74,45 @@ public class PlayedTakeOverTests {
               <Status compulsionEventTypes="2" compulsionEventRate="1" />
             </level>
           </additional>
+          <additional id="10800212" mainType="1">
+            <level level="1">
+              <Basic durationTick="60000" />
+              <SpecialAbility>
+                <v type="offensive_physicaldamage" value="30" />
+                <v type="atpToBap" value="100" />
+                <v type="notInTheTable" value="5" />
+              </SpecialAbility>
+            </level>
+          </additional>
+          <additional id="10800213" mainType="1">
+            <level level="1">
+              <Basic durationTick="60000" />
+            </level>
+          </additional>
+          <additional id="10800214" mainType="1">
+            <level level="1">
+              <Basic durationTick="60000" />
+              <SpecialAbility>
+                <v type="fireDamage" value="10" />
+              </SpecialAbility>
+            </level>
+          </additional>
+          <additional id="10300201">
+            <level level="1">
+              <Basic durationTick="2000" />
+              <Status deathResistanceHP="1" healRecoveryHPRate="0.5" />
+            </level>
+          </additional>
+          <additional id="10300202">
+            <level level="1">
+              <Basic durationTick="2000" />
+            </level>
+          </additional>
+          <additional id="10300203">
+            <level level="1">
+              <Basic durationTick="2000" />
+            </level>
+          </additional>
           <additional id="61100120">
             <level level="1">
               <Basic durationTick="1000" />
@@ -129,12 +168,62 @@ public class PlayedTakeOverTests {
               <MotionProperty abnormalImmuneBreak="5" />
             </level>
             """,
+        [10800212] = """
+            <level><BasicProperty level="1" buffSubType="2" durationTick="12000" />
+              <StatusProperty><SpecialAbility darkdamagerate="0.1" /></StatusProperty>
+            </level>
+            """,
+        [10800213] = """
+            <level><BasicProperty level="1" buffSubType="2" durationTick="12000" />
+              <StatusProperty><SpecialAbility darkdamagerate="0.1" /></StatusProperty>
+            </level>
+            """,
+        [10800214] = """
+            <level><BasicProperty level="1" buffSubType="2" durationTick="12000" />
+              <StatusProperty><SpecialAbility firedamagerate="0.01" /></StatusProperty>
+            </level>
+            """,
+        [10300201] = """
+            <level><BasicProperty level="1" durationTick="1000" />
+              <StatusProperty deathResistanceHP="true" healRecoveryHPRate="0.5" />
+            </level>
+            """,
+        [10300202] = """
+            <level><BasicProperty level="1" durationTick="1000" />
+              <StatusProperty resWapR="0.2" />
+            </level>
+            """,
+        [10300203] = """
+            <level><BasicProperty level="1" durationTick="1000" />
+              <StatusProperty resAspR="0.2" />
+            </level>
+            """,
         [61100120] = """
             <level><BasicProperty level="1" durationTick="1000" />
               <conditionSkill level="1" skillID="61100122" skillTarget="1" />
             </level>
             """,
     };
+
+    // The client's SpecialAbility table (table/specialabilitystringtable.xml), the rows these tests use.
+    private static readonly ClientSpecialAbility Table = new(Xml("""
+        <ms2>
+          <key id="10" option="atpToBap" valueType="2" />
+          <key id="19" option="fireDamage" valueType="2" />
+          <key id="177" option="offensive_physicaldamage" valueType="2" />
+        </ms2>
+        """));
+
+    private static XmlDocument Xml(string text) {
+        var document = new XmlDocument();
+        document.LoadXml(text);
+        return document;
+    }
+
+    private static Dictionary<string, int> Abilities(int id) {
+        Dictionary<int, PlayedClientAdditionalEffects.Entry> played = PlayedClientAdditionalEffects.Read([Xml(Played)], _ => true);
+        return played[id].SpecialAbilities.GetValueOrDefault((short) 1) ?? [];
+    }
 
     private static (AdditionalEffectMetadata Pack, AdditionalEffectMetadata Mapped, List<string> Unread) Levels(int id) {
         (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, _, _) = LevelsWithRow(id);
@@ -159,7 +248,7 @@ public class PlayedTakeOverTests {
         var pack = (AdditionalEffectMetadata) build.Invoke(mapper, [id, packData, 0, null])!;
         var unread = new List<string>();
         XmlElement packRow = AdditionalEffectMapper.Serialized(packData);
-        AdditionalEffectData playedData = AdditionalEffectMapper.PlayedOnly(played[id], 1, unread, packRow, PlayedAdditionalRows.Written(played.Values));
+        AdditionalEffectData playedData = AdditionalEffectMapper.PlayedOnly(played[id], 1, unread, packRow);
         var mapped = (AdditionalEffectMetadata) build.Invoke(mapper, [id, playedData, 0, pack.Status])!;
         return (pack, mapped, unread, played[id].Rows[1], packRow);
     }
@@ -218,8 +307,8 @@ public class PlayedTakeOverTests {
         Assert.That(taken, Is.Empty);
     }
 
-    // Shadow Stance: the client's row trades the pack's 6% shield and 12 s for 60 s and +30 physical damage, a
-    // SpecialAbility the ingest does not read yet, so the level stays the pack's whole.
+    // Shadow Stance: the client's row trades the pack's 6% shield and 12 s for 60 s and +30 physical damage; without
+    // the client's SpecialAbility table, its SpecialAbility is not read, so the level stays the pack's whole.
     [Test]
     public void KeepsALevelWholeWhileAPlayedChildIsNotRead() {
         (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10800211);
@@ -288,5 +377,122 @@ public class PlayedTakeOverTests {
             Assert.That(metadata, Is.SameAs(pack));
             Assert.That(pack.Status.Compulsion, Is.Null);
         });
+    }
+
+    // With the table, Shadow Stance takes the client's +3% physical damage in place of the pack's +10% dark damage,
+    // with its 60 s and no shield.
+    [Test]
+    public void TakesTheClientsSpecialAbility() {
+        (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10800211);
+        var taken = new List<string>();
+        AdditionalEffectMetadata metadata = PlayedAdditionalRows.TakeOver(pack, mapped, unread, row, packRow, taken, out IReadOnlyList<string> holding,
+            Table, Abilities(10800211));
+        Assert.Multiple(() => {
+            Assert.That(holding, Is.Empty);
+            Assert.That(taken, Is.EquivalentTo(new[] { "Basic", "Shield", "SpecialAbility" }));
+            Assert.That(pack.Status.SpecialRates[Maple2.Model.Enum.SpecialAttribute.DarkDamage], Is.EqualTo(0.1f));
+            Assert.That(metadata.Status.SpecialRates.Keys, Is.EqualTo(new[] { Maple2.Model.Enum.SpecialAttribute.OffensivePhysicalDamage }));
+            Assert.That(metadata.Status.SpecialRates[Maple2.Model.Enum.SpecialAttribute.OffensivePhysicalDamage], Is.EqualTo(0.03f));
+            Assert.That(metadata.Property.DurationTick, Is.EqualTo(60000));
+            Assert.That(metadata.Shield, Is.Null);
+        });
+    }
+
+    // A type the client keeps with no server stat (atpToBap) holds the level; one the table lacks the client drops.
+    [Test]
+    public void KeepsALevelWholeWhileASpecialAbilityTypeHasNoStat() {
+        (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10800212);
+        var taken = new List<string>();
+        AdditionalEffectMetadata metadata = PlayedAdditionalRows.TakeOver(pack, mapped, unread, row, packRow, taken, out IReadOnlyList<string> holding,
+            Table, Abilities(10800212));
+        var unmapped = new List<string>();
+        PlayedAdditionalRows.SpecialAbilityStats(Table, Abilities(10800212), unmapped);
+        Assert.Multiple(() => {
+            Assert.That(unmapped, Is.EqualTo(new[] { "atpToBap" }));
+            Assert.That(holding, Is.EqualTo(new[] { "SpecialAbility" }));
+            Assert.That(metadata, Is.SameAs(pack));
+        });
+    }
+
+    // The pack's level has stats and the client's none: the level stays the pack's whole.
+    [Test]
+    public void KeepsALevelWholeWhileOnlyThePackHasStats() {
+        (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10800213);
+        var taken = new List<string>();
+        AdditionalEffectMetadata metadata = PlayedAdditionalRows.TakeOver(pack, mapped, unread, row, packRow, taken, out IReadOnlyList<string> holding,
+            Table, Abilities(10800213));
+        Assert.Multiple(() => {
+            Assert.That(holding, Is.EqualTo(new[] { "SpecialAbility.Pack" }));
+            Assert.That(taken, Is.EquivalentTo(new[] { "Basic", "SpecialAbility" }));
+            Assert.That(metadata, Is.SameAs(pack));
+        });
+    }
+
+    // A level with final stats whose client stats differ stays the pack's whole.
+    [Test]
+    public void KeepsALevelWholeWhileItHasFinalStats() {
+        (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10800211);
+        var taken = new List<string>();
+        AdditionalEffectMetadata metadata = PlayedAdditionalRows.TakeOver(pack, mapped, unread, row, packRow, taken, out IReadOnlyList<string> holding,
+            Table, Abilities(10800211), finalRows: true);
+        Assert.Multiple(() => {
+            Assert.That(holding, Is.EqualTo(new[] { "SpecialAbility.FinalStatus" }));
+            Assert.That(metadata, Is.SameAs(pack));
+        });
+    }
+
+    // The client's fireDamage 10 is the pack's firedamagerate 0.01: the stats stay the pack's, the duration is taken.
+    [Test]
+    public void KeepsTheStatsWhereTheyAreTheSame() {
+        (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10800214);
+        var taken = new List<string>();
+        AdditionalEffectMetadata metadata = PlayedAdditionalRows.TakeOver(pack, mapped, unread, row, packRow, taken, out IReadOnlyList<string> holding,
+            Table, Abilities(10800214));
+        Assert.Multiple(() => {
+            Assert.That(holding, Is.Empty);
+            Assert.That(taken, Is.EqualTo(new[] { "Basic" }));
+            Assert.That(metadata.Status, Is.SameAs(pack.Status));
+            Assert.That(metadata.Property.DurationTick, Is.EqualTo(60000));
+        });
+    }
+
+    // A <Status> the same as the pack's (a flag written 1 by the client and true by the pack's serializer) does not hold.
+    [Test]
+    public void TakesALevelWhoseStatusIsThePacks() {
+        (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10300201);
+        var taken = new List<string>();
+        AdditionalEffectMetadata metadata = PlayedAdditionalRows.TakeOver(pack, mapped, unread, row, packRow, taken, out IReadOnlyList<string> holding);
+        Assert.Multiple(() => {
+            Assert.That(packRow["StatusProperty"]!.GetAttribute("deathResistanceHP"), Is.EqualTo("true"));
+            Assert.That(holding, Is.Empty);
+            Assert.That(taken, Is.EqualTo(new[] { "Basic" }));
+            Assert.That(metadata.Property.DurationTick, Is.EqualTo(2000));
+            Assert.That(metadata.Status.DeathResistanceHp, Is.True);
+        });
+    }
+
+    // The pack's StatusProperty has a resistance the client's level, with no <Status>, lacks: the level holds; one the
+    // client does not read (resAspR) does not hold it.
+    [Test]
+    public void KeepsALevelWholeWhileOnlyThePackHasAStatus() {
+        (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10300202);
+        var taken = new List<string>();
+        AdditionalEffectMetadata metadata = PlayedAdditionalRows.TakeOver(pack, mapped, unread, row, packRow, taken, out IReadOnlyList<string> holding);
+        (AdditionalEffectMetadata aspPack, AdditionalEffectMetadata aspMapped, List<string> aspUnread, XmlElement aspRow, XmlElement aspPackRow) = LevelsWithRow(10300203);
+        AdditionalEffectMetadata asp = PlayedAdditionalRows.TakeOver(aspPack, aspMapped, aspUnread, aspRow, aspPackRow, new List<string>(), out IReadOnlyList<string> aspHolding);
+        Assert.Multiple(() => {
+            Assert.That(holding, Is.EqualTo(new[] { "Status" }));
+            Assert.That(metadata, Is.SameAs(pack));
+            Assert.That(aspHolding, Is.Empty);
+            Assert.That(asp.Property.DurationTick, Is.EqualTo(2000));
+        });
+    }
+
+    // Every name on the pack-only list is one no played row of these tests writes.
+    [Test]
+    public void ThePackOnlyNamesAreNotWritten() {
+        Dictionary<int, PlayedClientAdditionalEffects.Entry> played = PlayedClientAdditionalEffects.Read([Xml(Played)], _ => true);
+        IReadOnlySet<string> written = PlayedAdditionalRows.Written(played.Values);
+        Assert.That(PlayedAdditionalRows.PackOnly.Where(written.Contains), Is.Empty);
     }
 }

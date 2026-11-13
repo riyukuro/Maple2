@@ -113,23 +113,38 @@ public static class PlayedAdditionalRows {
     // too, but a played <Status> that differs from the pack's StatusProperty holds the level (Holding).
     public static readonly IReadOnlySet<string> KeptFromPack = new HashSet<string> { "Skill", "Status", "FinalStatus" };
 
-    // The children of a played level the ingest does not read and the pack does not keep (SpecialAbility, Offensive,
-    // Defensive, Spread, ...): the client runs them with the rest of the row, so the row is taken whole or not at all.
-    // A <Status> holds where one of its attributes has another value than the pack's StatusProperty (packRow, the
-    // pack's level as its serializer writes it) has under that name: the client's compulsion event of 10700193,
-    // 10700196 and 10700281, which the pack's rows lack, would be lost while the level took the client's timing.
-    public static IReadOnlyList<string> Holding(XmlElement row, XmlElement? packRow = null) {
-        return row.ChildNodes.OfType<XmlElement>()
-            .Where(child => !Gated.Contains(child.Name) && (!KeptFromPack.Contains(child.Name) || child.Name == "Status" && StatusDiffers(child, packRow)))
-            .Select(child => child.Name)
-            .Distinct()
-            .Order(StringComparer.Ordinal)
-            .ToList();
+    // The children of a played level the ingest does not read and the pack does not keep (Offensive, Defensive,
+    // Spread, ...; SpecialAbility where it is not read, readsSpecialAbility, SpecialAbility below): the client runs them with the rest
+    // of the row, so the row is taken whole or not at all. A <Status> holds where it and the pack's StatusProperty
+    // (packRow, the pack's level as its serializer writes it) differ on an attribute (StatusDiffers): the client's
+    // compulsion event of 10700193, 10700196 and 10700281, which the pack's rows lack, would be lost while the level
+    // took the client's timing; a level without one holds where the pack's StatusProperty sets an attribute the
+    // client's <Status> has (the client's level has none of it).
+    public static IReadOnlyList<string> Holding(XmlElement row, XmlElement? packRow = null, bool readsSpecialAbility = false) {
+        IEnumerable<string> holding = row.ChildNodes.OfType<XmlElement>()
+            .Where(child => !Gated.Contains(child.Name) && !(readsSpecialAbility && child.Name == "SpecialAbility") && (!KeptFromPack.Contains(child.Name) || child.Name == "Status" && StatusDiffers(child, packRow)))
+            .Select(child => child.Name);
+        if (row["Status"] == null && StatusDiffers(null, packRow)) {
+            holding = holding.Append("Status");
+        }
+        return holding.Distinct().Order(StringComparer.Ordinal).ToList();
     }
 
-    private static bool StatusDiffers(XmlElement status, XmlElement? packRow) {
+    // The attributes of the client's <Status> (AdditionalData::LoadLevel, additionalactionadditional.cpp:1211-1225);
+    // the pack's StatusProperty has them under the same names (resAspR and statChange*, which it has too, the
+    // client does not read).
+    public static readonly IReadOnlySet<string> StatusRead = new HashSet<string>(StringComparer.Ordinal) {
+        "itemRecoveryHPRate", "healRecoveryHPRate", "resWapR", "resBapR", "resCadR", "resAtpR", "resEvpR", "resPenR", "deathResistanceHP",
+        "compulsionEventTypes", "compulsionEventRate", "compulsionEventSkillCodes",
+    };
+
+    // Whether a played <Status> (null for none) and the pack's StatusProperty differ: on an attribute the played row
+    // has, or on one the client reads (StatusRead) the pack's has.
+    private static bool StatusDiffers(XmlElement? status, XmlElement? packRow) {
         XmlElement? pack = packRow?["StatusProperty"];
-        return status.Attributes.OfType<XmlAttribute>().Any(attribute => !Numbers(attribute.Value).SequenceEqual(Numbers(pack?.GetAttribute(attribute.Name) ?? "")));
+        IEnumerable<string> names = (status?.Attributes.OfType<XmlAttribute>().Select(attribute => attribute.Name) ?? [])
+            .Concat(pack?.Attributes.OfType<XmlAttribute>().Select(attribute => attribute.Name).Where(StatusRead.Contains) ?? []);
+        return names.Any(name => !Numbers(status?.GetAttribute(name) ?? "").SequenceEqual(Numbers(pack?.GetAttribute(name) ?? "")));
     }
 
     // A list as the pack's parser reads it ("1,2", "0.1", "true"): numbers and flags (true 1, false 0) by value, other
@@ -149,13 +164,109 @@ public static class PlayedAdditionalRows {
 
     // TakeOver for a level whose played row is row: a level with a holding child stays the pack's whole until that
     // child is read (Shadow Stance 10800211 would lose its shield and last 60 s without the client's +30 physical
-    // damage). taken still gets the parts that differ; holding gets the children that held them back.
+    // damage). taken still gets the parts that differ; holding gets the children that held them back. With the
+    // client's SpecialAbility table (table; abilities, the level's <SpecialAbility> rows), its stats are read too
+    // (SpecialAbility): "SpecialAbility" is taken where they differ from the pack's, or holds the level.
     public static AdditionalEffectMetadata TakeOver(AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, IEnumerable<string> unread, XmlElement row,
-                                                    XmlElement? packRow, ICollection<string> taken, out IReadOnlyList<string> holding) {
-        holding = Holding(row, packRow);
+                                                    XmlElement? packRow, ICollection<string> taken, out IReadOnlyList<string> holding,
+                                                    ClientSpecialAbility? table = null, IReadOnlyDictionary<string, int>? abilities = null, bool finalRows = false) {
+        var hold = Holding(row, packRow, table != null).ToList();
         AdditionalEffectMetadata metadata = TakeOver(pack, mapped, unread, taken);
+        if (table != null) {
+            string? reason = SpecialAbility(table, abilities, pack.Status, finalRows, out AdditionalEffectMetadataStatus? status);
+            if (status != null) {
+                taken.Add("SpecialAbility");
+                metadata = metadata with { Status = status };
+            }
+            if (reason != null) {
+                hold.Add(reason);
+            }
+        }
+        holding = hold.Distinct().Order(StringComparer.Ordinal).ToList();
         return holding.Count > 0 ? pack : metadata;
     }
+
+    // The stats of a played level's <SpecialAbility> rows (abilities, type to value; none for none). The client
+    // keeps a type's row where the table gives it a value type (the 4-byte field at +8 of a table row,
+    // additionalactionadditional.cpp:1240, is SpecialAbilityInfo's m_nValueType, specialability.h:24) and drops the
+    // rest; unmapped gets each type it keeps that has no server stat (ClientSpecialAbility.Add).
+    public static ClientSpecialAbility.Stats SpecialAbilityStats(ClientSpecialAbility table, IReadOnlyDictionary<string, int>? abilities, ICollection<string> unmapped) {
+        var stats = new ClientSpecialAbility.Stats();
+        foreach ((string type, int value) in abilities ?? new Dictionary<string, int>()) {
+            if (value != 0 && table.Rate(type) != null && !table.Add(stats, type, value)) {
+                unmapped.Add(type);
+            }
+        }
+        return stats;
+    }
+
+    // The client's <SpecialAbility> against the pack's stats (pack: the level's status as Build makes it, final stats
+    // added): status gets the pack's with the client's stats in place of its own (values, rates, special values and
+    // rates, damage taken rates; the resistances, compulsion, conversion, recovery rates, immune break and
+    // invincible stay the pack's), null where they are the same. The reason a level holds instead, else null:
+    // - "SpecialAbility": a type the client keeps that has no server stat;
+    // - "SpecialAbility.FinalStatus": the level has final stats (finalRows), which the client writes as its
+    //   SpecialAbility rows, not in one way (AdditionalEffectMapper.Status);
+    // - "SpecialAbility.Pack": the pack has stats and the client's level none.
+    public static string? SpecialAbility(ClientSpecialAbility table, IReadOnlyDictionary<string, int>? abilities, AdditionalEffectMetadataStatus pack, bool finalRows,
+                                         out AdditionalEffectMetadataStatus? status) {
+        var unmapped = new List<string>();
+        ClientSpecialAbility.Stats client = SpecialAbilityStats(table, abilities, unmapped);
+        status = null;
+        if (SameStats(client, pack)) {
+            return unmapped.Count > 0 ? "SpecialAbility" : null;
+        }
+        status = WithStats(pack, client);
+        if (unmapped.Count > 0) {
+            return "SpecialAbility";
+        }
+        if (finalRows) {
+            return "SpecialAbility.FinalStatus";
+        }
+        return Empty(client) ? "SpecialAbility.Pack" : null;
+    }
+
+    // The status with the client's stats in place of its own.
+    public static AdditionalEffectMetadataStatus WithStats(AdditionalEffectMetadataStatus status, ClientSpecialAbility.Stats stats) {
+        return status with {
+            Values = NonZero(stats.Values),
+            Rates = NonZero(stats.Rates),
+            SpecialValues = NonZero(stats.SpecialValues),
+            SpecialRates = NonZero(stats.SpecialRates),
+            PhysicalDamageTakenRate = stats.PhysicalDamageTakenRate,
+            MagicalDamageTakenRate = stats.MagicalDamageTakenRate,
+        };
+    }
+
+    private static bool Empty(ClientSpecialAbility.Stats stats) {
+        return NonZero(stats.Values).Count == 0 && NonZero(stats.Rates).Count == 0 && NonZero(stats.SpecialValues).Count == 0 && NonZero(stats.SpecialRates).Count == 0
+               && Same(stats.PhysicalDamageTakenRate, 0) && Same(stats.MagicalDamageTakenRate, 0);
+    }
+
+    private static bool SameStats(ClientSpecialAbility.Stats client, AdditionalEffectMetadataStatus pack) {
+        return Same(client.Values, pack.Values) && Same(client.Rates, pack.Rates) && Same(client.SpecialValues, pack.SpecialValues)
+               && Same(client.SpecialRates, pack.SpecialRates)
+               && Same(client.PhysicalDamageTakenRate, pack.PhysicalDamageTakenRate) && Same(client.MagicalDamageTakenRate, pack.MagicalDamageTakenRate);
+    }
+
+    private static Dictionary<TKey, long> NonZero<TKey>(IReadOnlyDictionary<TKey, long> values) where TKey : notnull {
+        return values.Where(pair => pair.Value != 0).ToDictionary(pair => pair.Key, pair => pair.Value);
+    }
+
+    private static Dictionary<TKey, float> NonZero<TKey>(IReadOnlyDictionary<TKey, float> values) where TKey : notnull {
+        return values.Where(pair => !Same(pair.Value, 0)).ToDictionary(pair => pair.Key, pair => pair.Value);
+    }
+
+    private static bool Same<TKey>(IReadOnlyDictionary<TKey, long> a, IReadOnlyDictionary<TKey, long> b) where TKey : notnull {
+        return a.Keys.Concat(b.Keys).All(key => a.GetValueOrDefault(key) == b.GetValueOrDefault(key));
+    }
+
+    private static bool Same<TKey>(IReadOnlyDictionary<TKey, float> a, IReadOnlyDictionary<TKey, float> b) where TKey : notnull {
+        return a.Keys.Concat(b.Keys).All(key => Same(a.GetValueOrDefault(key), b.GetValueOrDefault(key)));
+    }
+
+    // Floats the same to the client's thousandths (the pack's 0.03 is the client's 30 / 1000f).
+    private static bool Same(float a, float b) => Math.Abs(a - b) <= 1e-5f * Math.Max(1f, Math.Max(Math.Abs(a), Math.Abs(b)));
 
     // The pack's metadata of a level with each TakenOver part that differs replaced by the played level's (mapped),
     // where none of the level's unread attributes is on that part. taken gets the parts replaced.
@@ -420,34 +531,82 @@ public static class PlayedAdditionalRows {
         }
     }
 
-    // What no played row has a name for keeps the pack's value: each attribute and element of the pack's row
-    // (pack, written back by the pack's serializer) that no played level writes (written) is copied onto the played
-    // level's row (played, ToPack's), so a part that differs only there is not taken and a part taken keeps it (the
-    // pack's beginCondition allowMapleSurvival: the client's <Condition> has no such attribute, and the item buffs
-    // with it would no longer start on a Maple Survival map). A beginCondition (the level's, or a condition skill's)
-    // or one of its sub conditions the played row has not is made for it; a condition skill only where the played
-    // row's skill at the same place is the same skill; no other element is made. kept gets each name copied whose
-    // value is not empty, 0 or false.
-    public static void KeepPackOnly(XmlElement pack, XmlElement played, IReadOnlySet<string> written, ICollection<string> kept) {
-        Keep(pack, () => played, "", written, kept);
+    // The pack's names the client's additional effect schema has no name for (AdditionalData::LoadLevel and its
+    // loaders, additionalactionadditional.cpp; LoadCondition at :1577 and SkillHasBuffCondition::Load,
+    // skilloverlapcompare.cpp:323), so a played row never writes them: "<element>/.../" for an element and
+    // "<element>/.../@<attribute>" for an attribute, the root's children at "<element>/".
+    public static readonly IReadOnlySet<string> PackOnly = new HashSet<string>(StringComparer.Ordinal) {
+        // The serializer's namespaces and the pack's feature tag.
+        "@xmlns:xsd", "@xmlns:xsi", "@feature",
+        // The status and final stats are built from the pack's and the client's rows apart (Build, FinalStatusRows);
+        // the invoke effect is the client's own (PlayedClientAdditionalEffects); the client has no meso guard.
+        "StatusProperty/", "FinalStatusProperty/", "InvokeEffectProperty/", "MesoGuardProperty/",
+        // The client's <Defensive> reads only invincible.
+        "DefensiveProperty/@mapDamageR", "DefensiveProperty/@papDamageR",
+        // The client's <Motion> has none of these.
+        "MotionProperty/@IgnoreOptimalHideInvokeEffect", "MotionProperty/@IgnoreOptimalHideKeepEffect", "MotionProperty/@IgnoreOptimalHideStopEffect",
+        "MotionProperty/@holdWeapon", "MotionProperty/@useFixedZRotation",
+        // The client's <Condition> and the condition skills' conditions: the client tests a buff's count with its
+        // overlap condition (targetCheckRange ... CountSign) and its has-buff lists by id only (SkillHasBuffCondition
+        // reads no level or count compare; SkillOverlapCompare has no caller outside its own file).
+        "beginCondition/@allowMapleSurvival", "beginCondition/@gender", "beginCondition/@invokeEffectFactor", "beginCondition/@level",
+        "beginCondition/@probability", "beginCondition/stat/",
+        "beginCondition/caster/@hasBuffCountCompare", "beginCondition/caster/@hasBuffLevel", "beginCondition/caster/@hasSkillLevel",
+        "beginCondition/owner/@hasBuffCountCompare", "beginCondition/owner/@hasSkillLevel",
+        "beginCondition/target/@eventCondition", "beginCondition/target/@hasBuffCountCompare", "beginCondition/target/@hasSkillLevel",
+        "conditionSkill/@fireCount", "conditionSkill/@overlapCount",
+        "conditionSkill/beginCondition/@allowMapleSurvival", "conditionSkill/beginCondition/@gender",
+        "conditionSkill/beginCondition/@invokeEffectFactor", "conditionSkill/beginCondition/@level", "conditionSkill/beginCondition/stat/",
+        "conditionSkill/beginCondition/caster/@hasBuffCountCompare", "conditionSkill/beginCondition/caster/@hasNotBuffID",
+        "conditionSkill/beginCondition/caster/@hasSkillLevel",
+        "conditionSkill/beginCondition/owner/@hasBuffCountCompare", "conditionSkill/beginCondition/owner/@hasSkillLevel",
+        "conditionSkill/beginCondition/target/@hasBuffCountCompare", "conditionSkill/beginCondition/target/@hasBuffLevel",
+        "conditionSkill/beginCondition/target/@hasSkillLevel",
+        // The splash skills are the pack's (TakeOver keeps them); these are the client's splash rows have not.
+        "splashSkill/@nonTargetActive", "splashSkill/@overlapCount", "splashSkill/beginCondition/",
+    };
+
+    // What the client has no name for keeps the pack's value: each attribute and element of the pack's row (pack,
+    // written back by the pack's serializer) on PackOnly that the played level's row (played, ToPack's) lacks is
+    // copied onto it, so a part that differs only there is not taken and a part taken keeps it (the pack's
+    // beginCondition allowMapleSurvival: the client's <Condition> has no such attribute, and the item buffs with it
+    // would no longer start on a Maple Survival map). A beginCondition (the level's, or a condition skill's) or one
+    // of its sub conditions the played row has not is made for it; a condition skill only where the played row's
+    // skill at the same place is the same skill; no other element is made. kept gets each name copied whose value is
+    // not empty, 0 or false; unlisted (where given) each pack attribute with such a value neither on PackOnly nor in
+    // written (the names the played rows write, Written), which a locale's data would need on the list.
+    public static void KeepPackOnly(XmlElement pack, XmlElement played, ICollection<string> kept, IReadOnlySet<string>? written = null, ICollection<string>? unlisted = null) {
+        Keep(pack, () => played, "", kept, written, unlisted);
     }
 
-    private static void Keep(XmlElement pack, Func<XmlElement?> played, string path, IReadOnlySet<string> written, ICollection<string> kept) {
+    private static void Keep(XmlElement pack, Func<XmlElement?> played, string path, ICollection<string> kept, IReadOnlySet<string>? written, ICollection<string>? unlisted) {
         foreach (XmlAttribute attribute in pack.Attributes) {
-            if (!written.Contains(path + "@" + attribute.Name) && played() is { } target) {
+            string name = path + "@" + attribute.Name;
+            if (!PackOnly.Contains(name)) {
+                if (written != null && !written.Contains(name) && !Default(attribute.Value)) {
+                    unlisted?.Add(name);
+                }
+                continue;
+            }
+            if (played() is { } target && !target.HasAttribute(attribute.Name)) {
                 target.SetAttribute(attribute.Name, attribute.Value);
-                if (attribute.Value is not ("" or "0" or "false" or "False")) {
-                    kept.Add(path + "@" + attribute.Name);
+                if (!Default(attribute.Value)) {
+                    kept.Add(name);
                 }
             }
         }
         var index = new Dictionary<string, int>(StringComparer.Ordinal);
+        HashSet<string>? had = null;
         foreach (XmlElement child in pack.ChildNodes.OfType<XmlElement>().ToList()) {
             int place = index.GetValueOrDefault(child.Name);
             index[child.Name] = place + 1;
             string sub = path + child.Name + "/";
-            if (!written.Contains(sub)) {
+            if (PackOnly.Contains(sub)) {
                 if (played() is { } target) {
+                    had ??= target.ChildNodes.OfType<XmlElement>().Select(element => element.Name).ToHashSet(StringComparer.Ordinal);
+                    if (had.Contains(child.Name)) {
+                        continue;
+                    }
                     target.AppendChild(target.OwnerDocument.ImportNode(child, true));
                     if (child.HasAttributes || child.HasChildNodes) {
                         kept.Add(sub);
@@ -463,9 +622,11 @@ public static class PlayedAdditionalRows {
                     found = Place(played(), child, place, sub);
                 }
                 return found;
-            }, sub, written, kept);
+            }, sub, kept, written, unlisted);
         }
     }
+
+    private static bool Default(string value) => value is "" or "0" or "false" or "False";
 
     // The played row's element for the pack's child at place among its kind, made where it may be.
     private static XmlElement? Place(XmlElement? parent, XmlElement child, int place, string path) {
