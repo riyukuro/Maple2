@@ -17,7 +17,7 @@ using Maple2.Server.Game.Session;
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
 // The event reward claims through their handlers: the attendance gift (Attendance 0), the long-term attendance
-// calendar (EventReward 25, 26, 27) and the stamp card (EventReward 0, 1).
+// calendar (EventReward 25, 26, 27), the stamp card (EventReward 0, 1) and the time run (EventReward 3, 4).
 public class EventRewardClaimTests {
     private const int EventId = 7001;
     private const int ItemA = 20000001;
@@ -566,6 +566,100 @@ public class EventRewardClaimTests {
 
         Assert.That(Held(session, ItemB), Is.EqualTo(3));
         Assert.That(Value(session, GameEventUserValueType.StampRewardsClaimed), Is.EqualTo("1,2"));
+    }
+    #endregion
+
+    #region TimeRunEvent
+    // Two quests of 10 and 20 distance; step rewards at 10 and 30, the final reward at the total (30).
+    private static TimeRunEvent TimeRun() {
+        return new TimeRunEvent(0, [
+            new TimeRunEvent.Quest(QuestA, 10, 1),
+            new TimeRunEvent.Quest(QuestB, 20, 2),
+        ], new Dictionary<int, RewardItem> {
+            [10] = new RewardItem(ItemA, 1, 2),
+            [30] = new RewardItem(ItemB, 1, 3),
+        }, new RewardItem(ItemC, 1, 4));
+    }
+
+    private GameSession LoginTimeRun(params int[] rewarded) {
+        GameSession session = Login(GameEventType.TimeRunEvent, TimeRun());
+        foreach (int questId in rewarded) {
+            test.SetQuest(questId, QuestState.Completed);
+        }
+        return session;
+    }
+
+    private static void ClaimStep(GameSession session, int key) => Reward(session, 4, writer => writer.WriteInt(key));
+
+    private static void ClaimFinal(GameSession session) => Reward(session, 3);
+
+    // 4: the step reward of the next key once its distance is run; 1501 holds the key, then the reply.
+    [Test]
+    public void TimeRun_ClaimStep_GivesTheRewardAndStoresTheKey() {
+        GameSession session = LoginTimeRun(QuestA);
+
+        ClaimStep(session, 10);
+
+        Assert.That(Held(session, ItemA), Is.EqualTo(2));
+        Assert.That(Value(session, GameEventUserValueType.TimeRunStepRewardKey), Is.EqualTo("10"));
+        Assert.That(SentHex()[^2..], Is.EqualTo(new[] {
+            UserValue(session, GameEventUserValueType.TimeRunStepRewardKey),
+            Hex(EventRewardPacket.ClaimTimeRunStepReward(new RewardItem(ItemA, 1, 2))),
+        }));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The client offers a key only once the rewarded quests' distance reaches it.
+    [Test]
+    public void TimeRun_ClaimStepBeyondTheDistance_IsRefused() {
+        GameSession session = LoginTimeRun();
+
+        ClaimStep(session, 10);
+
+        Assert.That(SentHex(), Is.Empty);
+        Assert.That(Held(session, ItemA), Is.EqualTo(0));
+        Assert.That(Value(session, GameEventUserValueType.TimeRunStepRewardKey) ?? "", Is.Empty);
+    }
+
+    // Only the next key after the one taken: a skipped key, the same key again and a key not in the table give nothing.
+    [Test]
+    public void TimeRun_ClaimStepOutOfOrderOrTwice_IsRefused() {
+        GameSession session = LoginTimeRun(QuestA, QuestB);
+
+        ClaimStep(session, 30);
+        ClaimStep(session, 20);
+        Assert.That(Held(session, ItemB), Is.EqualTo(0));
+
+        ClaimStep(session, 10);
+        ClaimStep(session, 10);
+        Assert.That(Held(session, ItemA), Is.EqualTo(2));
+
+        ClaimStep(session, 30);
+        Assert.That(Held(session, ItemB), Is.EqualTo(3));
+        Assert.That(Value(session, GameEventUserValueType.TimeRunStepRewardKey), Is.EqualTo("30"));
+    }
+
+    // 3: the final reward once the whole distance is run, once; 1500 becomes 1.
+    [Test]
+    public void TimeRun_ClaimFinal_NeedsTheWholeDistanceAndIsGivenOnce() {
+        GameSession session = LoginTimeRun(QuestA);
+
+        ClaimFinal(session);
+        Assert.That(SentHex(), Is.Empty);
+        Assert.That(Held(session, ItemC), Is.EqualTo(0));
+
+        test.SetQuest(QuestB, QuestState.Completed);
+        ClaimFinal(session);
+        Assert.That(Held(session, ItemC), Is.EqualTo(4));
+        Assert.That(Value(session, GameEventUserValueType.TimeRunFinalRewardReceived), Is.EqualTo("1"));
+        Assert.That(SentHex()[^2..], Is.EqualTo(new[] {
+            UserValue(session, GameEventUserValueType.TimeRunFinalRewardReceived),
+            Hex(EventRewardPacket.ClaimTimeRunFinalReward(new RewardItem(ItemC, 1, 4))),
+        }));
+
+        ClaimFinal(session);
+        Assert.That(SentHex(), Is.Empty);
+        Assert.That(Held(session, ItemC), Is.EqualTo(4));
     }
     #endregion
 

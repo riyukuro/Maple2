@@ -26,6 +26,10 @@ public enum GameEventUserValueType {
     MapleopolyFreeRollAmount = 801,
     MapleopolyTotalTrips = 802, // unsure
 
+    // Time run (TimeRunEvent), read by its dialog (uitimeruneventdialog.cpp)
+    TimeRunFinalRewardReceived = 1500, // 1 once the final reward is claimed
+    TimeRunStepRewardKey = 1501, // the key (distance) of the last step reward claimed
+
     // Gallery Event
     GalleryCardFlipCount = 1600,
     GalleryClaimReward = 1601,

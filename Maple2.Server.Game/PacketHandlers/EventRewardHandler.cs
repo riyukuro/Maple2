@@ -324,47 +324,64 @@ public class EventRewardHandler : FieldPacketHandler {
         return given;
     }
 
+    // Time run. 4 + int key (uitimeruneventdialog.cpp onClickReward) claims the step reward of that key, sent only
+    // for the next key after the one taken (user value 1501) once the distance run reaches it; 3 (no body,
+    // onClickFinalReward) the final reward, sent only while 1500 is 0 and once the whole distance is run. The
+    // distance is the sum of the rewarded quests' distances (GetEarnedDistance). The client has no reply for a
+    // refusal.
     private void HandleClaimTimeRunStepReward(GameSession session, IByteReader packet) {
-        int steps = packet.ReadInt();
+        int key = packet.ReadInt();
 
         GameEvent? gameEvent = session.FindEvent(GameEventType.TimeRunEvent).FirstOrDefault();
-        if (gameEvent?.Metadata.Data is not TimeRunEvent timeRunEvent) {
+        if (gameEvent?.Metadata.Data is not TimeRunEvent timeRunEvent || session.Field == null) {
             return;
         }
 
-        if (!timeRunEvent.StepRewards.TryGetValue(steps, out RewardItem rewardItem)) {
+        int taken = session.GameEvent.Get(GameEventUserValueType.TimeRunStepRewardKey, gameEvent.Id, gameEvent.EndTime).Int();
+        if (!TimeRunEventRules.CanClaimStep(timeRunEvent, key, taken, questId => QuestCompleted(session, questId))
+            || !timeRunEvent.StepRewards.TryGetValue(key, out RewardItem rewardItem)) {
+            Logger.Debug("ClaimTimeRunStepReward from {CharacterId} refused: key {Key}, taken {Taken}", session.CharacterId, key, taken);
             return;
         }
 
-        Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+        Item? item = session.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
         if (item == null) {
+            Logger.Error("Time run reward: event {EventId} item {ItemId} could not be made", gameEvent.Id, rewardItem.ItemId);
             return;
         }
 
-        if (!session.Item.Inventory.Add(item, true)) {
-            session.Item.MailItem(item);
+        if (!session.Item.AddOrMail(item, true)) {
+            Logger.Error("Time run reward: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
+            return;
         }
-
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.TimeRunStepRewardKey, key);
         session.Send(EventRewardPacket.ClaimTimeRunStepReward(rewardItem));
     }
 
     private void HandleClaimTimeRunFinalReward(GameSession session) {
         GameEvent? gameEvent = session.FindEvent(GameEventType.TimeRunEvent).FirstOrDefault();
-        if (gameEvent?.Metadata.Data is not TimeRunEvent timeRunEvent) {
+        if (gameEvent?.Metadata.Data is not TimeRunEvent timeRunEvent || session.Field == null) {
+            return;
+        }
+
+        int received = session.GameEvent.Get(GameEventUserValueType.TimeRunFinalRewardReceived, gameEvent.Id, gameEvent.EndTime).Int();
+        if (!TimeRunEventRules.CanClaimFinal(timeRunEvent, received, questId => QuestCompleted(session, questId))) {
+            Logger.Debug("ClaimTimeRunFinalReward from {CharacterId} refused: received {Received}", session.CharacterId, received);
             return;
         }
 
         RewardItem rewardItem = timeRunEvent.FinalReward;
-
-        Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+        Item? item = session.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
         if (item == null) {
+            Logger.Error("Time run reward: event {EventId} item {ItemId} could not be made", gameEvent.Id, rewardItem.ItemId);
             return;
         }
 
-        if (!session.Item.Inventory.Add(item, true)) {
-            session.Item.MailItem(item);
+        if (!session.Item.AddOrMail(item, true)) {
+            Logger.Error("Time run reward: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
+            return;
         }
-
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.TimeRunFinalRewardReceived, 1);
         session.Send(EventRewardPacket.ClaimTimeRunFinalReward(rewardItem));
     }
 
