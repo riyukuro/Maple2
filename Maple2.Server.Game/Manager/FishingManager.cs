@@ -31,6 +31,8 @@ public class FishingManager {
     // The cast in progress: whether its fish bites, and the field tick of the bite.
     private bool bite;
     private long biteTick;
+    // The lure buffs held at the cast: the catch's size and lure boxes are theirs, though a buff ends during the wait.
+    private IReadOnlyList<FishTable.Lure> castLures = [];
     private IDictionary<Vector3, FishingTile> tiles = new Dictionary<Vector3, FishingTile>();
 
     private ConstantsTable Constants => serverTableMetadata.ConstantsTable;
@@ -74,7 +76,8 @@ public class FishingManager {
     // Whether a cast is open: started (mode 9) and not yet ended by a catch, a lost reel game or a leave.
     internal bool Casting => selectedTile != null || selectedFish != null;
 
-    internal void Cast(FishingTile tile, FishTable.Fish fish, bool fishBites, long fishBiteTick, bool fightGame) {
+    internal void Cast(FishingTile tile, FishTable.Fish fish, bool fishBites, long fishBiteTick, bool fightGame, IReadOnlyList<FishTable.Lure>? lures = null) {
+        castLures = lures ?? [];
         selectedTile = tile;
         selectedFish = fish;
         bite = fishBites;
@@ -88,6 +91,7 @@ public class FishingManager {
         bite = false;
         biteTick = 0;
         fishFightGame = false;
+        castLures = [];
     }
 
     public FishingError Prepare(long fishingRodUid) {
@@ -213,11 +217,108 @@ public class FishingManager {
         return tiles;
     }
 
-    private WeightedSet<FishTable.Fish> GetFishes(FishTable.Spot spot, LiquidType liquidType) {
+    // The lures among the enabled buffs: a fishLure row for the buff's id and level.
+    internal static List<FishTable.Lure> HeldLures(FishTable table, IEnumerable<(int Id, short Level)> held) {
+        var lures = new List<FishTable.Lure>();
+        foreach ((int id, short level) in held) {
+            if (table.Lures.TryGetValue(id, out IReadOnlyDictionary<short, FishTable.Lure>? levels) && levels.TryGetValue(level, out FishTable.Lure? lure)) {
+                lures.Add(lure);
+            }
+        }
+        return lures;
+    }
+
+    private List<FishTable.Lure> HeldLures() {
+        return HeldLures(serverTableMetadata.FishTable, session.Player.Buffs.EnumerateBuffs()
+            .Where(buff => buff.Enabled)
+            .Select(buff => (buff.Id, buff.Level)));
+    }
+
+    // Whether the fish lives in the liquid: habitat all (the bait fish) lives in any.
+    internal static bool LivesIn(FishTable.Fish fish, LiquidType liquidType) {
+        return fish.FluidHabitat == LiquidType.all || fish.FluidHabitat == liquidType;
+    }
+
+    internal static bool AtSpot(FishTable.Fish fish, FishTable.Spot spot) {
+        return fish.IgnoreSpotMastery || (spot.MinMastery <= fish.Mastery && fish.Mastery <= spot.MaxMastery);
+    }
+
+    // The fish a lure draws out (spawnFish, spawnFishRate): one roll out of 1000 over the held lures' rates in turn
+    // (each KR list adds up to 500 or less; the scale is inferred). A miss, or a fish not in the table, not living in
+    // the liquid or not at the spot, leaves the cast to the spot's boxes.
+    internal static FishTable.Fish? LureFish(FishTable table, IEnumerable<FishTable.Lure> lures, FishTable.Spot spot, LiquidType liquidType, int roll) {
+        foreach (FishTable.Lure lure in lures) {
+            foreach (FishTable.Lure.Spawn spawn in lure.SpawnFishes) {
+                roll -= spawn.Rate;
+                if (roll >= 0) {
+                    continue;
+                }
+                if (table.Fishes.TryGetValue(spawn.FishId, out FishTable.Fish? fish) && LivesIn(fish, liquidType) && AtSpot(fish, spot)) {
+                    return fish;
+                }
+                return null;
+            }
+        }
+        return null;
+    }
+
+    // A box weight under the held lures' spawnRank/spawnProp: each rate for the fish's rank scales it by rate/10000
+    // (90000266: ranks 3 and 4 at 100000, ten times; the scale is inferred).
+    internal static int LureWeight(int weight, FishTable.Fish fish, IEnumerable<FishTable.Lure> lures) {
+        long scaled = weight;
+        foreach (FishTable.Lure.RankRate spawn in lures.SelectMany(lure => lure.Spawns)) {
+            if (spawn.Rank == 0 || spawn.Rank == fish.Rarity) {
+                scaled = scaled * spawn.Rate / 10000;
+            }
+        }
+        return (int) Math.Clamp(scaled, 0, int.MaxValue);
+    }
+
+    // The bite chance out of 10000: the fish's baitProp plus the held lures' catchProp for its rank. The fish's own
+    // catchProp is 10000 on every KR row, so the lure's raise can only be on the bite.
+    internal static int BiteChance(FishTable.Fish fish, IEnumerable<FishTable.Lure> lures) {
+        int chance = fish.BaitProbability;
+        foreach (FishTable.Lure.RankRate rate in lures.SelectMany(lure => lure.Catches)) {
+            if (rate.Rank == 0 || rate.Rank == fish.Rarity) {
+                chance += rate.Rate;
+            }
+        }
+        return Math.Min(chance, 10000);
+    }
+
+    // A size lure (fishSize, fishSizeProp out of 10000) puts the catch in that size class. The classes are the
+    // client's: 0 below the small size's max, 1 below the big size's min, 2 (gold medal) below the big size's max
+    // and 3 (prize) from it; the prize range is the base roll's. One roll counts for every held size lure in turn.
+    internal static int? LureSize(FishTable.Fish fish, IEnumerable<FishTable.Lure> lures, int roll, Random random) {
+        foreach (FishTable.Lure lure in lures) {
+            if (lure.FishSizeProbability <= 0 || roll >= lure.FishSizeProbability) {
+                continue;
+            }
+            switch (lure.FishSizeClass) {
+                case 0:
+                    return random.Next(fish.SmallSize.Min, fish.SmallSize.Max);
+                case 1:
+                    return random.Next(fish.SmallSize.Max, fish.BigSize.Min);
+                case 2:
+                    return random.Next(fish.BigSize.Min, fish.BigSize.Max);
+                case 3:
+                    return random.Next(fish.BigSize.Max, fish.BigSize.Max * 2);
+            }
+        }
+        return null;
+    }
+
+    private WeightedSet<FishTable.Fish> GetFishes(FishTable.Spot spot, LiquidType liquidType, IReadOnlyCollection<FishTable.Lure> lures) {
         if (liquidType == LiquidType.water && spot.LiquidTypes.Contains(LiquidType.seawater)) { // If spot is water and has seawater, it will be seawater
             liquidType = LiquidType.seawater;
         }
         var fishes = new WeightedSet<FishTable.Fish>();
+
+        FishTable.Fish? lureFish = LureFish(serverTableMetadata.FishTable, lures, spot, liquidType, Random.Shared.Next(0, 1000));
+        if (lureFish != null) {
+            fishes.Add(lureFish, 1);
+            return fishes;
+        }
 
         if (serverTableMetadata.FishTable.GlobalFishBoxes.TryGetValue(spot.GlobalFishBoxId, out FishTable.FishBox? globalFishBox)) {
             fishes = CombineBox(fishes, globalFishBox);
@@ -237,15 +338,16 @@ public class FishingManager {
                     continue;
                 }
 
-                if (fish.FluidHabitat != liquidType) {
+                if (!LivesIn(fish, liquidType) || !AtSpot(fish, spot)) {
                     continue;
                 }
 
-                if (!fish.IgnoreSpotMastery && (spot.MinMastery > fish.Mastery || spot.MaxMastery < fish.Mastery)) {
+                // A weight of 0 (the bait fish in the KR boxes) is never caught from the box: only its lure draws it.
+                int lureWeight = LureWeight(weight, fish, lures);
+                if (lureWeight <= 0) {
                     continue;
                 }
-
-                fishes.Add(fish, weight);
+                fishes.Add(fish, lureWeight);
             }
             return fishes;
         }
@@ -277,7 +379,8 @@ public class FishingManager {
             return FishingError.s_fishing_error_notexist_fish;
         }
 
-        WeightedSet<FishTable.Fish> fishes = GetFishes(spotMetadata, block.LiquidType);
+        List<FishTable.Lure> lures = HeldLures();
+        WeightedSet<FishTable.Fish> fishes = GetFishes(spotMetadata, block.LiquidType, lures);
         if (fishes.Count == 0) {
             return FishingError.s_fishing_error_notexist_fish;
         }
@@ -288,7 +391,7 @@ public class FishingManager {
         bool hasAutoFish = session.Player.Buffs.HasBuff(BuffEventType.AutoFish);
 
         // Fishing Success
-        bool fishBites = Random.Shared.Next(0, 10000) < fish.BaitProbability;
+        bool fishBites = Random.Shared.Next(0, 10000) < BiteChance(fish, lures);
         // The reel game belongs to this cast alone: a game won on an earlier cast must not carry over.
         bool fightGame = FishingRules.IsFightGame(fishBites, hasAutoFish, Random.Shared.Next(0, 10000), Constants.fishFightingProp);
         if (fishBites) {
@@ -299,7 +402,7 @@ public class FishingManager {
         }
 
         long fishBiteTick = session.Field.FieldTick + fishingTick;
-        Cast(block, fish, fishBites, fishBiteTick, fightGame);
+        Cast(block, fish, fishBites, fishBiteTick, fightGame, lures);
         session.Send(FishingPacket.Start(fishBiteTick.Truncate32(), fightGame));
 
         return FishingError.none;
@@ -314,8 +417,8 @@ public class FishingManager {
             return FishingError.s_fishing_error_notexist_fish;
         }
 
-        // determine fish size
-        int fishSize = Random.Shared.NextDouble() switch {
+        // determine fish size: a held size lure first, then the base roll.
+        int fishSize = LureSize(selectedFish, castLures, Random.Shared.Next(0, 10000), Random.Shared) ?? Random.Shared.NextDouble() switch {
             >= 0.0 and < 0.025 => Random.Shared.Next(selectedFish.BigSize.Max, selectedFish.BigSize.Max * 2), // prize fish
             >= 0.025 and < 0.03 => Random.Shared.Next(selectedFish.SmallSize.Min, selectedFish.SmallSize.Max),
             >= 0.03 and < 0.15 => Random.Shared.Next(selectedFish.SmallSize.Max, selectedFish.BigSize.Min),

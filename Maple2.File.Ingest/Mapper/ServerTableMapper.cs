@@ -6,6 +6,7 @@ using Maple2.File.IO;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Enum;
 using Maple2.File.Parser.Flat.Convert;
+using Maple2.File.Parser.Tools;
 using Maple2.File.Parser.Xml.Table;
 using Maple2.File.Parser.Xml.Table.Server;
 using Maple2.Model;
@@ -21,6 +22,7 @@ using System.Globalization;
 using System.Numerics;
 using System.Reflection;
 using System.Xml;
+using System.Xml.Serialization;
 using DayOfWeek = System.DayOfWeek;
 using ExpType = Maple2.Model.Enum.ExpType;
 using Fish = Maple2.File.Parser.Xml.Table.Server.Fish;
@@ -2487,6 +2489,63 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         }
     }
 
+    // fishLure.xml: one row per lure buff and level (90000309 has levels 1-3), so the rows are keyed by both. A
+    // catchProp without a catchRank counts for every rank (rank 0). Rows of a disabled feature or another locale
+    // are left out.
+    // FishLureRoot.lure resolves the rows per additionalEffectCode alone, so of a lure's levels it kept one (90000309,
+    // the prize fish lure, has levels 1-3 and only level 3 was left). The rows are resolved per code and level.
+    public static IEnumerable<FishLure> LureRows(FishLureRoot root) {
+        return root.__lure.ResolveFeatureLocale(lure => (lure.additionalEffectCode, lure.additionalEffectLevel));
+    }
+
+    private FishLureRoot ParseFishLureRoot() {
+        var serializer = new XmlSerializer(typeof(FishLureRoot));
+        string xml = Sanitizer.RemoveEmpty(xmlReader.GetString(xmlReader.GetEntry("table/Server/fishLure.xml")));
+        using XmlReader reader = XmlReader.Create(new StringReader(xml));
+        return (FishLureRoot) serializer.Deserialize(reader)!;
+    }
+
+    public static Dictionary<int, IReadOnlyDictionary<short, FishTable.Lure>> MapLures(IEnumerable<FishLure> rows) {
+        var lures = new Dictionary<int, Dictionary<short, FishTable.Lure>>();
+        foreach (FishLure lure in rows) {
+            if (!FeatureLocaleFilter.FeatureEnabled(lure.Feature) || !FeatureLocaleFilter.HasLocale(lure.Locale)) {
+                continue;
+            }
+
+            short level = (short) lure.additionalEffectLevel;
+            if (!lures.TryGetValue(lure.additionalEffectCode, out Dictionary<short, FishTable.Lure>? levels)) {
+                levels = new Dictionary<short, FishTable.Lure>();
+                lures.Add(lure.additionalEffectCode, levels);
+            }
+            levels[level] = new FishTable.Lure(
+                BuffId: lure.additionalEffectCode,
+                BuffLevel: level,
+                Catches: RankRates(lure.catchRank, lure.catchProp),
+                Spawns: RankRates(lure.spawnRank, lure.spawnProp),
+                SpawnFishes: lure.spawnFish.Zip(lure.spawnFishRate, (fishId, rate) => new FishTable.Lure.Spawn(fishId, rate)).ToArray(),
+                FishSizeClass: lure.fishSize,
+                FishSizeProbability: lure.fishSizeProp,
+                GlobalDrop: Drop(lure.globalDropBoxID, lure.globalDropRank, lure.globalDropFishingSpotMastery),
+                IndividualDrop: Drop(lure.individualDropBoxID, lure.individualDropRank, lure.individualDropFishingSpotMastery));
+        }
+        return lures.ToDictionary(entry => entry.Key, entry => (IReadOnlyDictionary<short, FishTable.Lure>) entry.Value);
+
+        static FishTable.Lure.RankRate[] RankRates(int[] ranks, int[] rates) {
+            if (ranks.Length == 0) {
+                return rates.Select(rate => new FishTable.Lure.RankRate(0, rate)).ToArray();
+            }
+            return ranks.Zip(rates, (rank, rate) => new FishTable.Lure.RankRate(rank, rate)).ToArray();
+        }
+
+        static FishTable.Lure.Drop? Drop(int boxId, int rank, int[] mastery) {
+            if (boxId == 0) {
+                return null;
+            }
+            FishTable.Range<int>? range = mastery.Length >= 2 ? new FishTable.Range<int>(mastery[0], mastery[1]) : null;
+            return new FishTable.Lure.Drop(boxId, rank, range);
+        }
+    }
+
     private FishTable ParseFish() {
         // Parse Fish
         var fishes = new Dictionary<int, FishTable.Fish>();
@@ -2539,19 +2598,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 DropRank: spot.spotDropRank ? 1 : 0)); // TODO: Change this from a bool to int
         }
 
-        // Parse Lure
-        var lures = new Dictionary<int, FishTable.Lure>();
-        foreach ((int id, FishLure lure) in parser.ParseFishLure()) {
-            lures.Add(id, new FishTable.Lure(
-                BuffId: lure.fishCode,
-                BuffLevel: (short) lure.additionalEffectLevel,
-                Catches: lure.catchRank.Select((t, i) => new FishTable.Lure.Catch(Rank: t, Probability: lure.catchProp[i])).ToArray(),
-                Spawns: lure.spawnRank.Select((t, i) => new FishTable.Lure.Spawn(FishId: t, Rate: lure.spawnProp[i])).ToArray(),
-                GlobalDropBoxId: lure.globalDropBoxID,
-                GlobalDropRank: lure.globalDropRank,
-                IndividualDropBoxId: lure.individualDropBoxID,
-                IndividualDropRank: lure.individualDropRank));
-        }
+        Dictionary<int, IReadOnlyDictionary<short, FishTable.Lure>> lures = MapLures(LureRows(ParseFishLureRoot()));
 
         // Global Fish Boxes
         Dictionary<int, FishTable.FishBox> globalBoxes = ParseFishBox(parser.ParseGlobalFishBox());
