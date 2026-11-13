@@ -135,6 +135,21 @@ public class PetPaymentHandlerTests {
         Assert.That(Owned(session, ItemTag.MetaCell), Is.EqualTo(0));
     }
 
+    // A paid change binds a pet with a binding rule to the character (the pet page's ask,
+    // tabcontentspetremakeoption.cpp:952-965), and a refused one leaves it unbound. Before, the pet stayed unbound.
+    [Test]
+    public void PetChange_BindsThePet() {
+        GameSession session = Login(meso: 50000, fragments: 150);
+        pet.Transfer = new ItemTransfer(TransferFlag.Bind);
+        Assert.That(Pay(session), Is.True);
+        Assert.That(pet.Transfer.Binding?.CharacterId, Is.EqualTo(test.CharacterId));
+
+        session = Login(meso: 0, fragments: 30);
+        pet.Transfer = new ItemTransfer(TransferFlag.Bind);
+        Assert.That(Pay(session), Is.False);
+        Assert.That(pet.Transfer.Binding, Is.Null);
+    }
+
     [TestCase(30, 70000)]
     [TestCase(0, 100000)]
     public void PetChange_PaysLackingFragmentsInMesoFirst(int fragments, long fee) {

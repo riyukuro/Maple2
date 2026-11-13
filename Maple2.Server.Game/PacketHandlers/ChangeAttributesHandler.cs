@@ -178,6 +178,13 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
                 return false;
             }
+            // A pet's change binds the pet: the pet page asks first when the pet has a binding rule and no binding
+            // (TabContentsPetRemakeOption FUN_140b95280, tabcontentspetremakeoption.cpp:952-965,
+            // s_msg_transfer_bind_pet_remakeoption), as the scroll dialog does for a pet row. Gear is not bound here
+            // (the item dialog does not ask).
+            if (item.Type.IsPet) {
+                session.Item.Bind(item);
+            }
             return true;
         }
     }
