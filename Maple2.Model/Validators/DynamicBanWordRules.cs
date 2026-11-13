@@ -25,6 +25,8 @@ public static class DynamicBanWordRules {
     // Chosen here (the client reads the count as a short).
     public const int MaxWordLength = 50;
     public const int MaxWords = 1000;
+    // A 1-letter word would mask or drop nearly every chat line.
+    public const int MinWordLength = 2;
 
     // 0 for the empty list, the client's version while it holds none.
     public static long Version(IEnumerable<DynamicBanWord> words) {
@@ -75,8 +77,16 @@ public static class DynamicBanWordRules {
         if (string.IsNullOrWhiteSpace(word)) {
             return "The word is empty.";
         }
+        if (word.Trim().Length < MinWordLength) {
+            return $"The word is at least {MinWordLength} letters.";
+        }
         if (word.Length > MaxWordLength || replacement.Length > MaxWordLength) {
             return $"The word and its replacement are at most {MaxWordLength} letters.";
+        }
+        // The client strips the tags of a chat line before the filter (FUN_140d2c650) and puts the replacement in as
+        // it is: a tag in the replacement would go into every matching line, and a word with one never matches.
+        if (word.IndexOfAny(['<', '>']) >= 0 || replacement.IndexOfAny(['<', '>']) >= 0) {
+            return "The word and its replacement cannot hold < or >.";
         }
         if (words.Count >= MaxWords) {
             return $"The list holds {MaxWords} words at most.";

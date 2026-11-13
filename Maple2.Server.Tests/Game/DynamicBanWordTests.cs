@@ -74,6 +74,38 @@ public class DynamicBanWordTests {
         });
     }
 
+    // A 1-letter word would mask or drop nearly every line; the client puts a replacement into the line as it is and
+    // never matches a word with a tag, so < and > are refused in both.
+    [Test]
+    public void RefusesOneLetterWordsAndTags() {
+        DynamicBanWord[] list = [];
+        Assert.Multiple(() => {
+            Assert.That(DynamicBanWordRules.Refusal("a", "", list), Is.EqualTo("The word is at least 2 letters."));
+            Assert.That(DynamicBanWordRules.Refusal(" a ", "", list), Is.EqualTo("The word is at least 2 letters."));
+            Assert.That(DynamicBanWordRules.Refusal("ab", "", list), Is.Null);
+            Assert.That(DynamicBanWordRules.Refusal("ab", "<FONT color='#ff0000'>", list),
+                Is.EqualTo("The word and its replacement cannot hold < or >."));
+            Assert.That(DynamicBanWordRules.Refusal("<b>", "", list), Is.Not.Null);
+            Assert.That(DynamicBanWordRules.Refusal("a>b", "", list), Is.Not.Null);
+            Assert.That(DynamicBanWordRules.Refusal("ab", "x<y", list), Is.Not.Null);
+        });
+    }
+
+    // The entry reply waits while a broadcast holds the gate, so it never sends an older list after a newer one.
+    [Test]
+    public void ServerEntry_WaitsForTheBroadcastGate() {
+        var test = new TestGameSession();
+        test.Start();
+        test.TakeSent();
+        System.Threading.Tasks.Task entry;
+        lock (DynamicBanwordPacket.Gate) {
+            entry = System.Threading.Tasks.Task.Run(() => Enter(test, 12345));
+            Assert.That(entry.Wait(300), Is.False);
+        }
+        Assert.That(entry.Wait(5000), Is.True);
+        Assert.That(Sent(test), Has.Length.EqualTo(1));
+    }
+
     // BannedWordData::Read: int id, int type, unicode word, unicode replacement.
     [Test]
     public void ThePacketsAreTheClientsLayout() {

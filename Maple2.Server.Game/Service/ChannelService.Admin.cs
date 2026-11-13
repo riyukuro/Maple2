@@ -64,18 +64,20 @@ public partial class ChannelService {
     // The ban-word list changed: one packet for every player, the whole list (or a clear when it is empty). A client
     // holding it already reloads the same words. A session without a player gets it at its server entry instead.
     private AdminResponse BanWord() {
-        List<DynamicBanWord> words;
-        using (GameStorage.Request db = gameStorage.Context()) {
-            words = db.GetDynamicBanWords().ToList();
-        }
-        ByteWriter packet = words.Count == 0
-            ? DynamicBanwordPacket.Clear()
-            : DynamicBanwordPacket.Load(DynamicBanWordRules.Version(words), words);
-        foreach (GameSession session in server.GetSessions()) {
-            if (session.Player is null) {
-                continue;
+        lock (DynamicBanwordPacket.Gate) {
+            List<DynamicBanWord> words;
+            using (GameStorage.Request db = gameStorage.Context()) {
+                words = db.GetDynamicBanWords().ToList();
             }
-            session.Send(packet);
+            ByteWriter packet = words.Count == 0
+                ? DynamicBanwordPacket.Clear()
+                : DynamicBanwordPacket.Load(DynamicBanWordRules.Version(words), words);
+            foreach (GameSession session in server.GetSessions()) {
+                if (session.Player is null) {
+                    continue;
+                }
+                session.Send(packet);
+            }
         }
         return new AdminResponse();
     }

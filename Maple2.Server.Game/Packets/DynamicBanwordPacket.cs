@@ -9,6 +9,10 @@ namespace Maple2.Server.Game.Packets;
 
 // The live ban-word list (CDynamicBanWordManager::Read, 0x14034a2c0; DynamicBanWordRules): a byte mode, a long version.
 public static class DynamicBanwordPacket {
+    // Held from reading the list to sending it, by the entry reply and the GM broadcast, so a channel never sends an
+    // older list after a newer one.
+    public static readonly object Gate = new();
+
     // Mode 0: the client drops its list (its version is 0 again).
     public static ByteWriter Clear() {
         var pWriter = Packet.Of(SendOp.DynamicBanword);

@@ -16,13 +16,15 @@ public class DynamicBanwordHandler : PacketHandler<GameSession> {
         // reply (DynamicBanwordPacket) brings it to the GM-kept list (banword command, DynamicBanWordRules): the whole
         // list when the versions differ, a clear when the list is empty, nothing when the client holds it already.
         long version = packet.ReadLong();
-        IList<DynamicBanWord> words;
-        using (GameStorage.Request db = session.GameStorage.Context()) {
-            words = db.GetDynamicBanWords();
-        }
-        ByteWriter? reply = DynamicBanwordPacket.For(version, words);
-        if (reply != null) {
-            session.Send(reply);
+        lock (DynamicBanwordPacket.Gate) {
+            IList<DynamicBanWord> words;
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                words = db.GetDynamicBanWords();
+            }
+            ByteWriter? reply = DynamicBanwordPacket.For(version, words);
+            if (reply != null) {
+                session.Send(reply);
+            }
         }
     }
 }
