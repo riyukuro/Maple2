@@ -119,6 +119,51 @@ public class BagFullRewardTests {
         });
     }
 
+    // A mail of an item row whose move fails leaves no empty mail, and the row keeps its owner and place. Before,
+    // the empty mail stayed in the inbox.
+    [Test]
+    public void MailHeldItem_FailedMove_LeavesNoMail() {
+        GameSession session = Start(TestGameSession.Metadata(Constant.GuildCoinId));
+        StoredItem row;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            row = db.CreateItem(test.CharacterId, session.Field!.ItemDrop.CreateItem(Constant.GuildCoinId)!)!;
+        }
+        short slot = row.Slot;
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Modified
+                                                                               && entry.Entity.GetType().Name == "Item");
+
+        bool mailed = session.Item.MailHeldItem(row);
+        test.FailSave = null;
+
+        using GameStorage.Request reload = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(mailed, Is.False);
+            Assert.That(reload.GetAllMail(test.CharacterId), Is.Empty);
+            Assert.That(row.Slot, Is.EqualTo(slot));
+            Assert.That(reload.GetItemGroups(test.CharacterId, ItemGroup.Default)[ItemGroup.Default].Single().Uid, Is.EqualTo(row.Uid));
+        });
+    }
+
+    // A mail of a new item whose row write fails leaves neither the mail nor an item row. Before, the mail's delete
+    // ran on the failed request and wrote the item row again, owned by the deleted mail.
+    [Test]
+    public void MailItem_FailedCreate_LeavesNoRow() {
+        GameSession session = Start(TestGameSession.Metadata(Constant.GuildCoinId));
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added
+                                                                               && entry.Entity.GetType().Name == "Item");
+
+        bool mailed = session.Item.MailItem(session.Field!.ItemDrop.CreateItem(Constant.GuildCoinId)!);
+        test.FailSave = null;
+
+        using var context = new Ms2Context(test.Options);
+        using GameStorage.Request reload = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(mailed, Is.False);
+            Assert.That(reload.GetAllMail(test.CharacterId), Is.Empty);
+            Assert.That(context.Item.Count(item => item.ItemId == Constant.GuildCoinId), Is.Zero);
+        });
+    }
+
     private GameSession StartBlueprint() {
         GameSession session = Start(TestGameSession.Metadata(Constant.BlueprintId, type: 22, slotMax: 1));
         test.SetTable(new UgcDesignTable(new Dictionary<int, UgcDesignTable.Entry> {

@@ -10,6 +10,7 @@ namespace Maple2.Server.Game.Manager.Items;
 public class ItemManager {
     private readonly GameSession session;
     private readonly ItemStatsCalculator itemStatsCalc;
+    private readonly Serilog.ILogger logger = Serilog.Log.Logger.ForContext<ItemManager>();
 
     public readonly EquipManager Equips;
     public readonly InventoryManager Inventory;
@@ -82,7 +83,7 @@ public class ItemManager {
                 Item? newAdd = db.CreateItem(mail.Id, item);
                 if (newAdd == null) {
                     // No empty mail is left behind when the item could not be created.
-                    db.DeleteMail(mail.Id, session.CharacterId);
+                    DeleteFailedMail(mail.Id);
                     return false;
                 }
                 item = newAdd;
@@ -124,9 +125,13 @@ public class ItemManager {
                 return false;
             }
 
+            (ItemGroup group, short slot) = (item.Group, item.Slot);
             item.Group = ItemGroup.Default;
             item.Slot = -1;
             if (!db.SaveItems(mail.Id, item)) {
+                // No empty mail is left behind, and the item keeps its place for its old owner.
+                (item.Group, item.Slot) = (group, slot);
+                DeleteFailedMail(mail.Id);
                 return false;
             }
 
@@ -138,6 +143,15 @@ public class ItemManager {
             } catch { /* ignored */ }
         }
         return true;
+    }
+
+    // On its own request: the failed write's changes are still tracked by the request that tried it, and its next save
+    // would write them again (the item row moved to, or created for, the deleted mail).
+    private void DeleteFailedMail(long mailId) {
+        using GameStorage.Request db = session.GameStorage.Context();
+        if (!db.DeleteMail(mailId, session.CharacterId)) {
+            logger.Error("Empty mail {MailId} of {CharacterId} not deleted", mailId, session.CharacterId);
+        }
     }
 
     public void Save(GameStorage.Request db) {
