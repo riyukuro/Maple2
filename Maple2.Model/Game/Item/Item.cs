@@ -79,7 +79,17 @@ public class Item : IByteSerializable, IByteDeserializable {
             RemainUses = Metadata.Music.PlayCount;
         }
 
-        // Template? or Blueprint
+        FillSubType();
+    }
+
+    // The client reads an item's ugc, pet, music or gem block by the item's data (CItem::ReadFromStream,
+    // commonfiles/item.cpp), the server writes the one it holds. A row stored without one (the db row's SubType
+    // empty) gets the block its data asks for, so the item is written in the layout the client reads; a row
+    // that holds one keeps it.
+    public void FillSubType() {
+        if (Template != null || Blueprint != null || Pet != null || Music != null || Badge != null) {
+            return;
+        }
         if (Metadata.Mesh != string.Empty || Metadata.Property.Type == 22) {
             Template = new UgcItemLook();
             Blueprint = new ItemBlueprint();

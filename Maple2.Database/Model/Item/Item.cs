@@ -138,6 +138,7 @@ internal class Item {
                 item.Badge = badge;
                 break;
         }
+        item.FillSubType();
 
         return item;
     }
