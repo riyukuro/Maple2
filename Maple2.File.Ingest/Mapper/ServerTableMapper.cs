@@ -884,6 +884,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         var globalPortals = new Dictionary<int, GlobalPortalMetadata>();
         var worldBosses = new Dictionary<int, WorldBossMetadata>();
         var fieldWarEvents = new Dictionary<int, FieldWarEventMetadata>();
+        var fieldInteractEvents = new Dictionary<int, FieldInteractEventMetadata>();
+        int fieldInteractDuplicates = 0;
+        int fieldInteractSkipped = 0;
         foreach ((int id, TimeEventData data) in parser.ParseTimeEventData()) {
             // Type 7: the field war (rows 85000 and 85001, every 2 hours, open 5 minutes). The parser keeps no
             // feature for these rows; the wars of fieldwardata are filtered by theirs, so a locale without them opens none.
@@ -902,6 +905,46 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     RandomTime: new TimeSpan(randomArray[2], randomArray[3], randomArray[4], randomArray[5]),
                     LifeTime: new TimeSpan(lifeArray[2], lifeArray[3], lifeArray[4], lifeArray[5]),
                     GroupId: data.fieldWarGroupID));
+                continue;
+            }
+            // Type 4: the field interact objects. Rows with one id are locale variants; the client keeps the rows
+            // IsElementAvailable allows (tableexporter.cpp), the same here.
+            if (data.type == TimeEventType.FieldInteractObject) {
+                if (!FeatureLocaleFilter.FeatureEnabled(data.Feature) || !FeatureLocaleFilter.HasLocale(data.Locale) || data.interactID == 0) {
+                    continue;
+                }
+                // A row whose times do not read (another locale's data, a later client) is skipped, not the ingest.
+                if (!TryParseDate(data.startTime, out DateTime startTime) || !TryParseDate(data.endTime, out DateTime endTime)
+                    || !TryParseSpan(data.cycleTime, out TimeSpan cycleTime) || !TryParseSpan(data.randomTime, out TimeSpan randomTime)
+                    || !TryParseSpan(data.lifeTime, out TimeSpan lifeTime)) {
+                    fieldInteractSkipped++;
+                    continue;
+                }
+                if (fieldInteractEvents.ContainsKey(id)) {
+                    fieldInteractDuplicates++;
+                }
+                fieldInteractEvents[id] = new FieldInteractEventMetadata(
+                    Id: id,
+                    Probability: data.prob,
+                    StartTime: startTime,
+                    EndTime: endTime,
+                    CycleTime: cycleTime,
+                    RandomTime: randomTime,
+                    LifeTime: lifeTime,
+                    MapIds: data.targetFields,
+                    SpawnPointIds: data.targetSpawnPointIDs,
+                    SpawnTags: data.targetSpawnTags.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).ToArray(),
+                    InteractCount: data.interactCount,
+                    VariableCountByChannel: data.variableCountByChannelCount,
+                    InteractId: data.interactID,
+                    Model: data.interactModel,
+                    Asset: data.interactAsset,
+                    Normal: data.interactNormal,
+                    Reactable: data.interactReactable,
+                    DurationStartHour: data.eventDurationStartHour,
+                    DurationStartMin: data.eventDurationStartMin,
+                    DurationEndHour: data.eventDurationEndHour,
+                    DurationEndMin: data.eventDurationEndMin);
                 continue;
             }
             switch (data.type) {
@@ -965,11 +1008,64 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             }
         }
         Dictionary<int, FieldWarMetadata> fieldWars = ParseFieldWarData();
-        Console.WriteLine($"timeEventData: {fieldWarEvents.Count} field war events, {fieldWars.Count} field wars");
-        return new TimeEventTable(GlobalPortal: globalPortals, WorldBoss: worldBosses, FieldWarEvent: fieldWarEvents, FieldWar: fieldWars);
+        Console.WriteLine($"timeEventData: {fieldWarEvents.Count} field war events, {fieldWars.Count} field wars, "
+                          + $"{fieldInteractEvents.Count} field interact events ({fieldInteractDuplicates} ids kept twice, the last row wins; "
+                          + $"{fieldInteractSkipped} rows skipped, times unreadable)");
+        return new TimeEventTable(GlobalPortal: globalPortals, WorldBoss: worldBosses, FieldWarEvent: fieldWarEvents, FieldWar: fieldWars,
+            FieldInteractEvent: fieldInteractEvents);
 
+        // A type 4 time: year-month-day-hour-minute-second, every part a number and the date a real one.
+        bool TryParseDate(string? time, out DateTime value) {
+            value = default;
+            if (!TryParseParts(time, out int[] parts)) {
+                return false;
+            }
+            try {
+                value = new DateTime(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]);
+                return true;
+            } catch (ArgumentOutOfRangeException) {
+                return false;
+            }
+        }
+
+        // A type 4 span in the same form (the day, hour, minute and second parts); empty: none.
+        bool TryParseSpan(string? time, out TimeSpan value) {
+            value = TimeSpan.Zero;
+            if (string.IsNullOrEmpty(time)) {
+                return true;
+            }
+            if (!TryParseParts(time, out int[] parts)) {
+                return false;
+            }
+            try {
+                value = new TimeSpan(parts[2], parts[3], parts[4], parts[5]);
+                return true;
+            } catch (ArgumentOutOfRangeException) {
+                return false;
+            }
+        }
+
+        bool TryParseParts(string? time, out int[] parts) {
+            parts = [];
+            if (string.IsNullOrWhiteSpace(time)) {
+                return false;
+            }
+            string[] texts = time.Trim().Split(['-', ':']);
+            if (texts.Length != 6) {
+                return false;
+            }
+            parts = new int[6];
+            for (int i = 0; i < 6; i++) {
+                if (!int.TryParse(texts[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out parts[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // year-month-day-hour-minute-second; 201 type 4 rows write the time of day with colons (2099-12-31-00:00:00).
         int[] ParseTimeToArray(string time) {
-            string[] timeArray = time.Split('-');
+            string[] timeArray = time.Split(['-', ':']);
             int[] timeInt = new int[timeArray.Length];
             for (int i = 0; i < timeArray.Length; i++) {
                 timeInt[i] = int.Parse(timeArray[i]);

@@ -6,7 +6,38 @@ public record TimeEventTable(
     // The field war events (timeEventData type 7) and the wars they pick from (the client's table/fieldwardata.xml),
     // both after the feature filter. Null in a table ingested before them.
     IReadOnlyDictionary<int, FieldWarEventMetadata>? FieldWarEvent = null,
-    IReadOnlyDictionary<int, FieldWarMetadata>? FieldWar = null) : ServerTable;
+    IReadOnlyDictionary<int, FieldWarMetadata>? FieldWar = null,
+    // The field interact objects (timeEventData type 4) of the rows the feature and locale keep. Null in a table
+    // ingested before them.
+    IReadOnlyDictionary<int, FieldInteractEventMetadata>? FieldInteractEvent = null) : ServerTable;
+
+// A timeEventData type 4 row: interact objects a field puts on some of its region spawn points, a new set every
+// CycleTime (late by up to RandomTime), each for LifeTime. The points are SpawnPointIds and the points of the map's
+// mapspawntag regions with one of SpawnTags; InteractCount of them hold an object, or VariableCountByChannel of
+// them when it is 0.
+public record FieldInteractEventMetadata(
+    int Id,
+    int Probability,
+    DateTime StartTime,
+    DateTime EndTime,
+    TimeSpan CycleTime,
+    TimeSpan RandomTime,
+    TimeSpan LifeTime,
+    int[] MapIds,
+    int[] SpawnPointIds,
+    string[] SpawnTags,
+    int InteractCount,
+    float VariableCountByChannel,
+    int InteractId,
+    string Model,
+    string Asset,
+    string Normal,
+    string Reactable,
+    // The hours of the day the row runs in (eventDurationStartHour:StartMin to EndHour:EndMin, both 0: all day).
+    int DurationStartHour,
+    int DurationStartMin,
+    int DurationEndHour,
+    int DurationEndMin);
 
 // A field war event: at each run one war of its group opens for LifeTime.
 public record FieldWarEventMetadata(
