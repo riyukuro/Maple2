@@ -1208,9 +1208,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
     // A DailyLoginReward row: value1 the mail content id (empty on a few rows: a mail without a text), value2 the
     // items, "id,count,rank,0" separated by '|'. An item without a readable id, count or rank, or of count 0, is
-    // left out; a row without an item mails nothing and is not read. value3 ("10,1", "50") and value4 ("1") are
-    // not read: nothing says what they are.
-    public static DailyLoginReward? ReadDailyLoginReward(string value1, string value2) {
+    // left out; a row without an item mails nothing and is not read. value3's first field is the lowest level
+    // that gets the mail (chosen here: no client code reads it, and its values, 0, 1, 10, 50 and 60, are levels);
+    // its second field ("10,1") and value4 ("1") are not read: nothing says what they are.
+    public static DailyLoginReward? ReadDailyLoginReward(string value1, string value2, string value3 = "") {
         var items = new List<RewardItem>();
         foreach (string text in value2.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
             string[] fields = text.Split(',', StringSplitOptions.TrimEntries);
@@ -1223,7 +1224,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         if (items.Count == 0) {
             return null;
         }
-        return new DailyLoginReward(MailId: int.TryParse(value1, out int mailId) ? mailId : 0, Items: items.ToArray());
+        int minLevel = int.TryParse(value3.Split(',', 2)[0].Trim(), out int level) && level > 0 ? level : 0;
+        return new DailyLoginReward(MailId: int.TryParse(value1, out int mailId) ? mailId : 0, Items: items.ToArray(), MinLevel: minLevel);
     }
 
     // The time run's rewards in value2's <ms>: a <reward> row per step at its distance, and the <final> row. A row
@@ -1632,7 +1634,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             case GameEventType.CoupleDance:
                 return ReadCoupleDance(value1, value2);
             case GameEventType.DailyLoginReward:
-                return ReadDailyLoginReward(value1, value2);
+                return ReadDailyLoginReward(value1, value2, value3);
             case GameEventType.LoginNotice:
                 return new LoginNotice();
             case GameEventType.Festival:

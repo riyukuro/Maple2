@@ -22,7 +22,7 @@ public class GameEvent : IByteSerializable {
     // "GameEvent{name}") and drops the rest of the list when the name is unknown. These types have no client class.
     public bool SentToClient => Metadata.Data is not (NewUser or ReturnUserCandidate or ActiveUser
         or MapleSurvivalOpenPeriod or ShutdownMapleSurvival or MiniGameBonusReward or SpawnNpcEvent or NpcShopShowItem
-        or CharacterFirstConnectMail or SendMailEvent);
+        or CharacterFirstConnectMail or SendMailEvent or DailyLoginReward);
 
     public bool IsActive() => IsActive(DateTime.Now);
 

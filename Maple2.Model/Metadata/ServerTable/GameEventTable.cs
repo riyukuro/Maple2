@@ -372,9 +372,11 @@ public record Ontime : GameEventData;
 /// </summary>
 /// <param name="MailId">The mail content id (value1), the text the client shows for the mail.</param>
 /// <param name="Items">The items of value2, "id,count,rank,0" separated by '|'.</param>
+/// <param name="MinLevel">The lowest character level that gets the mail (value3's first field).</param>
 public record DailyLoginReward(
     int MailId,
-    RewardItem[] Items) : GameEventData;
+    RewardItem[] Items,
+    int MinLevel = 0) : GameEventData;
 
 public record SaleAutoPlayInstrument(
     int Discount,

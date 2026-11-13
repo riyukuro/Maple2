@@ -22,6 +22,10 @@ public sealed class GameEventManager {
     private readonly object valuesLock = new();
     private long nextUpdateTick;
 
+    // The server's local time; each step reads it once, so that a step across midnight tests and stores its values
+    // against one day (tests set it).
+    internal Func<DateTime> Clock { get; set; } = () => DateTime.Now;
+
     public MapleopolyTurn Mapleopoly { get; } = new();
 
     private readonly ILogger logger = Log.Logger.ForContext<GameEventManager>();
@@ -111,7 +115,9 @@ public sealed class GameEventManager {
     // The values stored for the account instead of the character.
     // Chosen here: an item collection's claim is the account's as well, so that one set of condition items, which
     // stay with the player, is not claimed by every character of the account in turn.
-    public static bool AccountValue(GameEventUserValueType type) => StampValueTypes.Contains(type) || type == GameEventUserValueType.CollectItemGroup;
+    // So is the daily login mail's mark (UpdateDailyLoginReward).
+    public static bool AccountValue(GameEventUserValueType type) => StampValueTypes.Contains(type)
+        || type is GameEventUserValueType.CollectItemGroup or GameEventUserValueType.DailyLoginRewardGiven;
 
     private static readonly GameEventUserValueType[] StampValueTypes = [
         GameEventUserValueType.StampCompleteRewardClaimed,
@@ -166,7 +172,7 @@ public sealed class GameEventManager {
             return;
         }
 
-        DateTime now = DateTime.Now;
+        DateTime now = Clock();
         long nowSeconds = now.ToEpochSeconds();
         // Chosen here: the first step of a session counts one second; the time away is not play time.
         long elapsed = dtRewardStep == 0 ? 1 : nowSeconds - dtRewardStep;
@@ -181,18 +187,18 @@ public sealed class GameEventManager {
                 continue;
             }
 
-            GameEventUserValue rewardIndexValue = Get(GameEventUserValueType.DTRewardRewardIndex, gameEvent.Id, expiry);
+            GameEventUserValue rewardIndexValue = Get(GameEventUserValueType.DTRewardRewardIndex, gameEvent.Id, expiry, nowSeconds);
 
             if (dtReward.Entries.Length <= rewardIndexValue.Int()) {
                 continue;
             }
 
             DTReward.Entry entry = dtReward.Entries[rewardIndexValue.Int()];
-            long current = Get(GameEventUserValueType.DTRewardCurrentTime, gameEvent.Id, expiry).Long();
-            long total = Get(GameEventUserValueType.DTRewardTotalTime, gameEvent.Id, expiry).Long();
+            long current = Get(GameEventUserValueType.DTRewardCurrentTime, gameEvent.Id, expiry, nowSeconds).Long();
+            long total = Get(GameEventUserValueType.DTRewardTotalTime, gameEvent.Id, expiry, nowSeconds).Long();
             (current, total, bool due) = DtRewardStep(current, total, elapsed, entry.EndDuration);
 
-            Get(GameEventUserValueType.DTRewardStartTime, gameEvent.Id, expiry);
+            Get(GameEventUserValueType.DTRewardStartTime, gameEvent.Id, expiry, nowSeconds);
             Set(gameEvent.Id, GameEventUserValueType.DTRewardStartTime, nowSeconds);
             Set(gameEvent.Id, GameEventUserValueType.DTRewardTotalTime, total);
             if (!due) {
@@ -243,10 +249,11 @@ public sealed class GameEventManager {
     }
 
     // The daily login mail (DailyLoginReward): once a day while the event runs, the row's items in one system mail
-    // with the row's mail text. Chosen here: per character, on the first second step in a field of the day (the
-    // server's local day, as the play-time reward's), so a player online at midnight gets the next day's mail
-    // too. The day's mark is stored before the mail is made: a stop between the two loses that day's mail
-    // instead of sending it twice.
+    // with the row's mail text, for a character of at least the row's level (value3). Chosen here: once per account
+    // (the client has no part in this event, so nothing tells), so that a new character of the same account does
+    // not get the day's mail again; on the first second step in a field of the day (the server's local day, as the
+    // play-time reward's), so a player online at midnight gets the next day's mail too. The day's mark is stored
+    // before the mail is made: a stop between the two loses that day's mail instead of sending it twice.
     private void UpdateDailyLoginReward() {
         if (session.Field is null) return;
 
@@ -255,12 +262,15 @@ public sealed class GameEventManager {
             return;
         }
 
-        long expiry = DtRewardExpiry(DateTime.Now);
+        DateTime now = Clock();
+        long nowSeconds = now.ToEpochSeconds();
+        long expiry = DtRewardExpiry(now);
+        short level = session.Player.Value.Character.Level;
         foreach (GameEvent gameEvent in events) {
-            if (gameEvent.Metadata.Data is not DailyLoginReward reward || reward.Items.Length == 0) {
+            if (gameEvent.Metadata.Data is not DailyLoginReward reward || reward.Items.Length == 0 || level < reward.MinLevel) {
                 continue;
             }
-            if (Get(GameEventUserValueType.DailyLoginRewardGiven, gameEvent.Id, expiry).Int() != 0) {
+            if (Get(GameEventUserValueType.DailyLoginRewardGiven, gameEvent.Id, expiry, nowSeconds).Int() != 0) {
                 continue;
             }
             Set(gameEvent.Id, GameEventUserValueType.DailyLoginRewardGiven, 1);
@@ -431,12 +441,18 @@ public sealed class GameEventManager {
     }
 
     public GameEventUserValue Get(GameEventUserValueType type, int eventId, long expirationTime) {
+        return Get(type, eventId, expirationTime, DateTime.Now.ToEpochSeconds());
+    }
+
+    // As above, with the value tested against `now` (epoch seconds): the time the expiration was taken from, so a
+    // step across midnight does not find its own day's value run out and start it again.
+    public GameEventUserValue Get(GameEventUserValueType type, int eventId, long expirationTime, long now) {
         lock (valuesLock) {
-            return GetLocked(type, eventId, expirationTime);
+            return GetLocked(type, eventId, expirationTime, now);
         }
     }
 
-    private GameEventUserValue GetLocked(GameEventUserValueType type, int eventId, long expirationTime) {
+    private GameEventUserValue GetLocked(GameEventUserValueType type, int eventId, long expirationTime, long now) {
         if (!eventValues.TryGetValue(eventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? valueDict)) {
             eventValues.Add(eventId, new Dictionary<GameEventUserValueType, GameEventUserValue> {
                 { type, new GameEventUserValue(type, expirationTime, eventId) },
@@ -445,7 +461,7 @@ public sealed class GameEventManager {
             valueDict.Add(type, new GameEventUserValue(type, expirationTime, eventId));
         }
 
-        if (eventValues[eventId][type].ExpirationTime < DateTime.Now.ToEpochSeconds()) {
+        if (eventValues[eventId][type].ExpirationTime < now) {
             eventValues[eventId][type] = new GameEventUserValue(type, expirationTime, eventId);
         }
 
