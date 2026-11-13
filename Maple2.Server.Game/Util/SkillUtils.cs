@@ -295,6 +295,11 @@ public static class SkillUtils {
             return false;
         }
 
+        // NpcRanks (KR: 7 on 90000499's proc): only an npc of a listed class. No client reader; chosen here.
+        if (condition.NpcClasses is { Length: > 0 } classes && !(target is FieldNpc ranked && classes.Contains(ranked.Value.Metadata.Basic.Class))) {
+            return false;
+        }
+
         // Verify if these conditions are only for player.
         if (target is FieldPlayer player) {
             if (condition.States.Length > 0 && !condition.States.Contains(player.State)) {

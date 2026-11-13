@@ -387,7 +387,8 @@ public static class MapperExtensions {
                 .ToDictionary(pair => pair.Type, pair => pair.Value),
             NpcIds: target.NpcIDs,
             HasNotBuffIds: target.hasNotBuffID,
-            InRange: ParseInRange(target));
+            InRange: ParseInRange(target),
+            NpcClasses: target.NpcRanks is { Length: > 0 } ranks ? ranks : null);
 
         return DefaultBeginConditionTarget.Equals(result) ? null : result;
 

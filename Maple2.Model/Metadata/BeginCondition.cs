@@ -51,7 +51,9 @@ public record BeginConditionTarget(
     // targetCountSign); null when the condition has no range or no sign, as the client sets it.
     BeginConditionTarget.TargetCheck? InRange = null,
     // hasNotBuffOwner: only a HasNotBuffIds buff the condition's owner cast fails the test (SkillUtils).
-    bool HasNotBuffOwned = false
+    bool HasNotBuffOwned = false,
+    // NpcRanks: the condition holds only for an npc whose class is in the list (SkillUtils). Chosen here, FORK.md.
+    int[]? NpcClasses = null
 ) {
     public record HasBuff(int Id, short Level, bool Owned, int Count, CompareType Compare);
 
