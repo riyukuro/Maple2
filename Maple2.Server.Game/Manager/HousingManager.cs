@@ -917,7 +917,8 @@ public class HousingManager {
 
             long itemUid = session.Item.Furnishing.AddCube(cube);
             if (itemUid == 0) {
-                logger.Error("Paid cube {ItemId} could not be added to storage", cube.ItemId);
+                logger.Error("Paid cube {ItemId} could not be added to storage, refunded", cube.ItemId);
+                session.Item.Furnishing.RefundCube(shopEntry);
                 DeleteCube(result);
                 Refuse(UgcMapError.s_ugcmap_db);
                 return false;

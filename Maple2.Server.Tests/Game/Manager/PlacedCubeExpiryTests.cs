@@ -280,4 +280,19 @@ public class PlacedCubeExpiryTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         Assert.That(plot.Cubes, Is.Empty);
     }
+
+    // A paid cube whose storage item cannot be written is refunded.
+    [Test]
+    public void BuyingWhenTheStorageWriteFails_RefundsThePrice() {
+        (TestGameSession test, GameSession session, Plot plot, ItemMetadata metadata) = StartInBuiltHome(
+            new Dictionary<int, FurnishingShopTable.Entry> { [CubeItem] = new(CubeItem, true, FurnishingCurrencyType.Meso, 1000) });
+        session.Currency.Meso = 5000;
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Item>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Added);
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(metadata, 0), plot, metadata, new Vector3B(-4, -4, 1), 0, out _), Is.False);
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        Assert.That(session.Item.Furnishing.GetItem(CubeItem), Is.Null);
+        Assert.That(plot.Cubes, Is.Empty);
+    }
 }

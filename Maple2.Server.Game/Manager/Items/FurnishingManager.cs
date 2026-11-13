@@ -153,6 +153,23 @@ public class FurnishingManager {
         return true;
     }
 
+    // Gives back what PurchaseCube took for this row, when the cube paid for could not be added.
+    public void RefundCube(FurnishingShopTable.Entry furnishingShopMetadata) {
+        if (!furnishingShopMetadata.Buyable || furnishingShopMetadata.Price <= 0) {
+            return;
+        }
+        lock (session.Item) {
+            switch (furnishingShopMetadata.FurnishingTokenType) {
+                case FurnishingCurrencyType.Meso:
+                    session.Currency.Meso += furnishingShopMetadata.Price;
+                    break;
+                case FurnishingCurrencyType.Meret:
+                    session.Currency.Meret += furnishingShopMetadata.Price;
+                    break;
+            }
+        }
+    }
+
     public long AddCube(HeldCube cube) {
         const int amount = 1;
         lock (session.Item) {
