@@ -376,4 +376,15 @@ public class MaidTests {
         Assert.That(MaidRules.ExpiredMatches(null, null, now), Is.True);
         Assert.That(MaidRules.ExpiredMatches(craft, null, now), Is.False);
     }
+
+    // A maid's first talk state: the owner passes the maid_auth pick states (1-3) and never gets the guest greeting
+    // (100, no condition row); a guest passes none and gets 100. Other npcs keep both kinds.
+    [Test]
+    public void MaidPickStatesKeepGuestGreetingForGuests() {
+        List<int> guest = [100];
+        Assert.That(MaidRules.PickStates(true, [1, 2, 3], guest), Is.EqualTo(new[] { 1, 2, 3 }));
+        Assert.That(MaidRules.PickStates(true, [], guest), Is.EqualTo(new[] { 100 }));
+        Assert.That(MaidRules.PickStates(false, [1, 2, 3], guest), Is.EquivalentTo(new[] { 1, 2, 3, 100 }));
+        Assert.That(MaidRules.PickStates(false, [], guest), Is.EqualTo(new[] { 100 }));
+    }
 }

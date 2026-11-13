@@ -322,4 +322,17 @@ public static class MaidRules {
                 break;
         }
     }
+
+    // The first talk state of a maid npc, from its randomPick states (Chosen here: the data gives no rule). Each maid
+    // script has pick states behind maid_auth="1" (the owner's greetings, 1-6 and 9001-9003) and one pick state with
+    // no scriptCondition row, 100, the guest greeting (its choices go to 101-106). No scriptCondition row of any
+    // maid has another maid_auth value, so the data cannot keep 100 from the owner. Here a pick state with no
+    // condition row is used only when no conditioned pick state passes: the owner gets an owner greeting, a guest 100.
+    // Other npcs keep all of them.
+    public static List<T> PickStates<T>(bool maid, List<T> passed, List<T> unconditioned) {
+        if (maid) {
+            return passed.Count > 0 ? passed : unconditioned;
+        }
+        return [.. passed, .. unconditioned];
+    }
 }

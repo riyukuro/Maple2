@@ -29,11 +29,12 @@ public static class NpcTalkUtil {
                 }
 
                 List<ScriptState> scriptStates = [];
+                List<ScriptState> unconditioned = [];
                 session.ServerTableMetadata.ScriptConditionTable.Entries.TryGetValue(metadata.Id, out Dictionary<int, ScriptConditionMetadata>? scriptConditions);
                 // Check if player meets the requirements for each pick script.
                 foreach (ScriptState scriptState in metadata.States.Values.Where(state => state.Pick)) {
                     if (scriptConditions == null) {
-                        scriptStates.Add(scriptState);
+                        unconditioned.Add(scriptState);
                         continue;
                     }
 
@@ -44,7 +45,7 @@ public static class NpcTalkUtil {
                     }
 
                     if (!scriptConditions.TryGetValue(scriptState.Id, out ScriptConditionMetadata? scriptCondition)) {
-                        scriptStates.Add(scriptState);
+                        unconditioned.Add(scriptState);
                         continue;
                     }
 
@@ -53,6 +54,7 @@ public static class NpcTalkUtil {
                     }
                 }
 
+                scriptStates = MaidRules.PickStates(maidUid != 0, scriptStates, unconditioned);
                 return scriptStates.Count == 0 ? null : scriptStates[Random.Shared.Next(scriptStates.Count)];
             case ScriptStateType.Quest:
                 SortedDictionary<int, QuestMetadata> quests = session.Quest.GetAvailableQuests(npcId);
