@@ -71,6 +71,12 @@ public class ItemSocketScrollHandler : FieldPacketHandler {
                 session.Send(ItemSocketScrollPacket.Error(s_itemsocket_scroll_error_server_fail_consume_scroll));
                 return;
             }
+            // The scroll's chance out of 10000 (the server pack's successProb; the dialog shows it, from UseScroll).
+            // A fail has taken the scroll and opens nothing (chosen here: the trade deduction is not applied either).
+            if (!Succeeds(metadata, Random.Shared.Next(10000))) {
+                session.Send(ItemSocketScrollPacket.Unlock(item, false));
+                return;
+            }
 
             bool ruleChanged = Unlock(item, metadata);
             session.Send(ItemSocketScrollPacket.Unlock(item, true));
@@ -89,6 +95,8 @@ public class ItemSocketScrollHandler : FieldPacketHandler {
     // FUN_140635590, as CanListOnBlackMarket) passes with LimitTrade (0x10) and trades left, or else with the Trade
     // bit (4) alone, and it reads the rule from the item's transfer bytes. So a freely tradable accessory becomes
     // untradable too, as the warning says for any accessory (TradeRules.IsTradeable). True when the Trade bit went.
+    public static bool Succeeds(ItemSocketScrollMetadata metadata, int roll) => roll < metadata.SuccessRate;
+
     public static bool Unlock(Item item, ItemSocketScrollMetadata metadata) {
         item.Socket!.UnlockSlots = metadata.SocketCount;
         if (metadata.TradableCountDeduction == 0 || item.Transfer == null) {

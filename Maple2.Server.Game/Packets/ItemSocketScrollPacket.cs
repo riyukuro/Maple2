@@ -25,12 +25,17 @@ public static class ItemSocketScrollPacket {
         return pWriter;
     }
 
+    // FUN_14062a230 (itemsocketsystemutil.cpp): the result byte, the uid and a byte; only a success (1) goes on to the
+    // trade count and the socket. The dialog shows the same "scroll used" box for both (FUN_140f672a0).
     public static ByteWriter Unlock(Item item, bool success) {
         var pWriter = Packet.Of(SendOp.ItemSocketScroll);
         pWriter.Write<Command>(Command.Unlock);
         pWriter.WriteBool(success);
         pWriter.WriteLong(item.Uid);
         pWriter.WriteByte();
+        if (!success) {
+            return pWriter;
+        }
         pWriter.WriteInt(item.Transfer?.RemainTrades ?? 0); // the client stores this as the item's remaining trade count
         pWriter.WriteClass<ItemSocket>(item.Socket ?? ItemSocket.Default);
 

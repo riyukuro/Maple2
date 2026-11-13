@@ -116,6 +116,32 @@ public class ItemSocketScrollHandlerTests {
         });
     }
 
+    // A failed roll takes the scroll, opens nothing and answers mode 2 with result 0, the uid and the byte, which is
+    // all the client reads for a fail (FUN_14062a230). Before, every unlock opened.
+    [Test]
+    public void FailedRoll_TakesTheScrollAndAnswersFail() {
+        GameSession session = Start(successRate: 0);
+        Use(session);
+        byte[] answer = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.ItemSocketScroll);
+        var reader = new ByteReader(answer, 2);
+        Assert.Multiple(() => {
+            Assert.That(reader.ReadByte(), Is.EqualTo(2));
+            Assert.That(reader.ReadByte(), Is.Zero);
+            Assert.That(reader.ReadLong(), Is.EqualTo(gear.Uid));
+            reader.ReadByte();
+            Assert.That(reader.Available, Is.Zero);
+            Assert.That(gear.Socket!.UnlockSlots, Is.Zero);
+            Assert.That(ScrollHeld(session), Is.False);
+        });
+    }
+
+    [TestCase(6999, true)]
+    [TestCase(7000, false)]
+    public void Roll_IsOutOf10000(int roll, bool opens) {
+        var metadata = new ItemSocketScrollMetadata(50, 50, [12], [4], 1, 0, SuccessRate: 7000);
+        Assert.That(ItemSocketScrollHandler.Succeeds(metadata, roll), Is.EqualTo(opens));
+    }
+
     // The dialog shows the int after the uid div 100 as the success chance (FUN_140f67170); it was always 10000.
     [Test]
     public void UseScroll_SendsTheScrollsRate() {
