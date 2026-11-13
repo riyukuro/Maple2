@@ -17,6 +17,7 @@ public partial class WorldService {
 
     private PlayerConfigResponse Get(PlayerConfigRequest.Types.Get get, long requesterId) {
         (List<BuffInfo> buffs, List<SkillCooldownInfo> skillCooldowns, DeathInfo death) = playerConfigLookUp.Retrieve(requesterId);
+        (List<SkillCooldownInfo> pvpHeld, bool pvpStay) = playerConfigLookUp.RetrievePvpHold(requesterId);
         return new PlayerConfigResponse {
             Buffs = {
                 buffs.Select(b => new BuffInfo {
@@ -40,11 +41,14 @@ public partial class WorldService {
                 }),
             },
             DeathInfo = death,
+            PvpHeldCooldowns = { pvpHeld.Select(c => c.Clone()) },
+            PvpStay = pvpStay,
         };
     }
 
     private PlayerConfigResponse Save(PlayerConfigRequest.Types.Save save, long requesterId) {
-        playerConfigLookUp.Save(save.Buffs.ToList(), save.SkillCooldowns.ToList(), save.DeathInfo, requesterId);
+        playerConfigLookUp.Save(save.Buffs.ToList(), save.SkillCooldowns.ToList(), save.DeathInfo, requesterId,
+            save.PvpHeldCooldowns.ToList(), save.PvpStay);
         return new PlayerConfigResponse();
     }
 }

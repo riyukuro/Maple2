@@ -781,6 +781,10 @@ message PlayerConfigRequest {
     repeated BuffInfo buffs = 1;
     repeated SkillCooldownInfo skill_cooldowns = 2;
     DeathInfo death_info = 3;
+    // The town cooldowns a PvP-zone entry ended, held for the way out (PvpCooldownHold), and whether the player is
+    // in a PvP-zone stay.
+    repeated SkillCooldownInfo pvp_held_cooldowns = 4;
+    bool pvp_stay = 5;
   }
 
   message Get { }
@@ -796,6 +800,8 @@ message PlayerConfigResponse {
   repeated BuffInfo buffs = 1;
   repeated SkillCooldownInfo skill_cooldowns = 2;
   DeathInfo death_info = 3;
+  repeated SkillCooldownInfo pvp_held_cooldowns = 4;
+  bool pvp_stay = 5;
 }
 
 message BuffInfo {

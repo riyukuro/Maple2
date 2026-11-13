@@ -35,6 +35,8 @@ public class ConfigManager {
     private readonly IList<long> favoriteDesigners;
     private readonly IDictionary<LapenshardSlot, int> lapenshards;
     private readonly IDictionary<int, SkillCooldown> skillCooldowns;
+    // The town cooldowns a PvP-zone entry ended, put back on the way out.
+    public readonly PvpCooldownHold<SkillCooldown> PvpHold = new(SettledEnd);
     private readonly IDictionary<int, SkillCastRules.LastCast> lastCasts;
     private SkillCastRules.LastMotion? lastMotion;
     public readonly LagBudget Lag = new(); // casts and held-skill iterations that arrive early
@@ -201,13 +203,43 @@ public class ConfigManager {
     #region SkillCooldowns
     public void SetCacheSkillCooldowns(IList<SkillCooldownInfo> cooldowns, long currentTick) {
         foreach (SkillCooldownInfo cooldown in cooldowns) {
-            skillCooldowns[cooldown.SkillId] = new SkillCooldown(cooldown.SkillId, (short) cooldown.SkillLevel) {
-                EndTick = currentTick + cooldown.MsRemaining,
-                GroupId = cooldown.GroupId,
-                Charges = cooldown.Charges,
-                RechargeMs = cooldown.RechargeMs,
-            };
+            skillCooldowns[cooldown.SkillId] = FromCache(cooldown, currentTick);
         }
+    }
+
+    // The PvP-zone hold the cache kept; none after a World restart (an empty list, no stay).
+    public void SetCachePvpHold(IList<SkillCooldownInfo> held, bool stay, long currentTick) {
+        PvpHold.Load(held.Select(cooldown => FromCache(cooldown, currentTick)), cooldown => cooldown.SkillId, stay);
+    }
+
+    public static SkillCooldown FromCache(SkillCooldownInfo cooldown, long currentTick) {
+        return new SkillCooldown(cooldown.SkillId, (short) cooldown.SkillLevel) {
+            EndTick = currentTick + cooldown.MsRemaining,
+            GroupId = cooldown.GroupId,
+            Charges = cooldown.Charges,
+            RechargeMs = cooldown.RechargeMs,
+        };
+    }
+
+    public static SkillCooldownInfo ToCache(SkillCooldown cooldown, long currentTick, long stopTime) {
+        return new SkillCooldownInfo {
+            SkillId = cooldown.SkillId,
+            SkillLevel = cooldown.Level,
+            GroupId = cooldown.GroupId,
+            // Under 0 once it has ended: the World settles the recharge uses of the time away from there.
+            MsRemaining = (int) Math.Clamp(cooldown.EndTick - currentTick, int.MinValue, int.MaxValue),
+            StopTime = stopTime,
+            Charges = cooldown.Charges,
+            RechargeMs = cooldown.RechargeMs,
+        };
+    }
+
+    // The end tick of a kept cooldown at this tick, its recharge uses settled.
+    public static long SettledEnd(SkillCooldown cooldown, long tick) {
+        if (cooldown.RechargeMs > 0) {
+            (cooldown.EndTick, cooldown.Charges) = SkillCastRules.SettleRecharge(cooldown.EndTick, cooldown.Charges, cooldown.RechargeMs, tick);
+        }
+        return cooldown.EndTick;
     }
     public void SaveSkillCooldown(SkillMetadata skill, long startTick) {
         // An accepted cast always starts its cooldown again (it may come up to the slack early); a skill with
@@ -370,9 +402,11 @@ public class ConfigManager {
     public void LoadSkillCooldowns() {
         SettleRecharges(Environment.TickCount64);
         if (session.Field is { } field) {
-            // Entering a PvP zone ends the cooldowns of the skills that clear there (SkillCastRules.PvpZoneClears).
+            // Entering a PvP zone ends the cooldowns of the skills that clear there (SkillCastRules.PvpZoneClears);
+            // the town ones come back on the way out (PvpCooldownHold).
             List<int> cleared = SkillCastRules.PvpZoneClears(field.Metadata.Property.Type, skillCooldowns.Keys,
                 id => field.SkillMetadata.TryGet(id, skillCooldowns[id].Level, out SkillMetadata? skill) && skill.State.ClearCooldownOnPvpZone);
+            PvpHold.EnterMap(field.Metadata.Property.Type == MapType.Pvp, skillCooldowns, cleared, Environment.TickCount64);
             foreach (int skillId in cleared) {
                 SetSkillCooldown(skillId, skillCooldowns[skillId].Level);
             }

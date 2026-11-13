@@ -49,7 +49,7 @@ public class PartyLookupTests {
             FailSoloJoin ? PartyError.s_party_err_full_limit_player : base.JoinSolo(target, info);
 
         public readonly List<Action> VoteTimers = [];
-        protected override void AfterVoteTime(PartyManager manager, Action expire) => VoteTimers.Add(expire);
+        protected internal override void AfterVoteTime(PartyManager manager, Action expire) => VoteTimers.Add(expire);
 
         protected override void RunRoomTask(Action work) {
             if (Async) {

@@ -8,19 +8,28 @@ namespace Maple2.Server.World.Containers;
 
 public class PlayerConfigLookUp {
     private readonly SkillMetadataStorage skillMetadataStorage;
+    // Whether a skill's cooldown runs on in-game time only (its stateAttr useInGameTime); throws for an unknown skill.
+    private readonly Func<int, short, bool> usesGameTime;
 
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<int, BuffInfo>> buffs;
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<int, SkillCooldownInfo>> skillCooldowns;
     private readonly ConcurrentDictionary<long, DeathInfo> deaths;
+    // The town cooldowns held through a PvP-zone stay (the game server's PvpCooldownHold) and whether the stay runs.
+    private readonly ConcurrentDictionary<long, (ConcurrentDictionary<int, SkillCooldownInfo> Held, bool Stay)> pvpHolds = [];
 
-    public PlayerConfigLookUp(SkillMetadataStorage skillMetadataStorage) {
+    public PlayerConfigLookUp(SkillMetadataStorage skillMetadataStorage) : this(skillMetadataStorage, (id, level) =>
+        skillMetadataStorage.TryGet(id, level, out SkillMetadata? skill) ? skill.State.UseInGameTime : throw new InvalidDataException($"Skill not found: {id}")) { }
+
+    internal PlayerConfigLookUp(SkillMetadataStorage skillMetadataStorage, Func<int, short, bool> usesGameTime) {
         this.skillMetadataStorage = skillMetadataStorage;
+        this.usesGameTime = usesGameTime;
         buffs = [];
         skillCooldowns = [];
         deaths = [];
     }
 
-    public void Save(List<BuffInfo> saveBuffs, List<SkillCooldownInfo> skillCooldownInfos, DeathInfo death, long characterId) {
+    public void Save(List<BuffInfo> saveBuffs, List<SkillCooldownInfo> skillCooldownInfos, DeathInfo death, long characterId,
+                     List<SkillCooldownInfo>? pvpHeld = null, bool pvpStay = false) {
         var newBuffList = new ConcurrentDictionary<int, BuffInfo>();
         foreach (BuffInfo buff in saveBuffs) {
             newBuffList.TryAdd(buff.Id, buff);
@@ -34,6 +43,12 @@ public class PlayerConfigLookUp {
         }
 
         skillCooldowns[characterId] = newSkillList;
+
+        var held = new ConcurrentDictionary<int, SkillCooldownInfo>();
+        foreach (SkillCooldownInfo info in pvpHeld ?? []) {
+            held.TryAdd(info.SkillId, info);
+        }
+        pvpHolds[characterId] = (held, pvpStay);
 
         // Save death
         if (!deaths.TryGetValue(characterId, out DeathInfo? _)) {
@@ -49,6 +64,18 @@ public class PlayerConfigLookUp {
         List<SkillCooldownInfo> skillCooldowns = RetrieveSkillCooldowns(characterId, currentTime);
         DeathInfo death = RetrieveDeath(characterId);
         return (buffs, skillCooldowns, death);
+    }
+
+    // The town cooldowns held through the character's PvP-zone stay, run down by the time away like skill_cooldowns,
+    // and whether the stay was still on at the save. Nothing held (a World restart lost it) is an empty list.
+    public (List<SkillCooldownInfo> Held, bool Stay) RetrievePvpHold(long characterId) =>
+        RetrievePvpHold(characterId, DateTime.Now.ToEpochSeconds());
+
+    internal (List<SkillCooldownInfo> Held, bool Stay) RetrievePvpHold(long characterId, long currentTime) {
+        if (!pvpHolds.TryGetValue(characterId, out (ConcurrentDictionary<int, SkillCooldownInfo> Held, bool Stay) hold)) {
+            return ([], false);
+        }
+        return (SettleCooldowns(hold.Held, currentTime), hold.Stay);
     }
 
     private List<BuffInfo> RetrieveBuffs(long characterId, long currentTime) {
@@ -83,14 +110,13 @@ public class PlayerConfigLookUp {
         if (!skillCooldowns.TryGetValue(characterId, out ConcurrentDictionary<int, SkillCooldownInfo>? list)) {
             return [];
         }
+        return SettleCooldowns(list, currentTime);
+    }
 
+    private List<SkillCooldownInfo> SettleCooldowns(ConcurrentDictionary<int, SkillCooldownInfo> list, long currentTime) {
         var removeSkillCooldowns = new List<SkillCooldownInfo>();
         foreach ((int skillId, SkillCooldownInfo skillCooldownInfo) in list) {
-            if (!skillMetadataStorage.TryGet(skillCooldownInfo.SkillId, (short) skillCooldownInfo.SkillLevel, out SkillMetadata? skillMetadata)) {
-                throw new InvalidDataException($"Skill not found: {skillCooldownInfo.SkillId}");
-            }
-
-            if (!skillMetadata.State.UseInGameTime) {
+            if (!usesGameTime(skillCooldownInfo.SkillId, (short) skillCooldownInfo.SkillLevel)) {
                 long msSurpassed = (long) ((currentTime - skillCooldownInfo.StopTime) * TimeSpan.FromSeconds(1).TotalMilliseconds);
                 // A skill with recharge uses gets one use back each time its cooldown ends; the next one then runs
                 // its length again (the game server's SkillCastRules.SettleRecharge).

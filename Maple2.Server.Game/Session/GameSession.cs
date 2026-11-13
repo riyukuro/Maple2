@@ -442,6 +442,7 @@ public sealed partial class GameSession : Core.Network.Session {
             long currentTick = Environment.TickCount64;
             Buffs.SetCacheBuffs(configResponse.Buffs, currentTick);
             Config.SetCacheSkillCooldowns(configResponse.SkillCooldowns, currentTick);
+            Config.SetCachePvpHold(configResponse.PvpHeldCooldowns, configResponse.PvpStay, currentTick);
             Config.SetDeathPenalty(configResponse.DeathInfo, currentTick);
 
         } catch (RpcException ex) {
@@ -1311,6 +1312,10 @@ public sealed partial class GameSession : Core.Network.Session {
                                     RechargeMs = cooldown.RechargeMs,
                                 }),
                         },
+                        PvpHeldCooldowns = {
+                            Config.PvpHold.Held.Values.Select(cooldown => ConfigManager.ToCache(cooldown, fieldTick, stopTime)),
+                        },
+                        PvpStay = Config.PvpHold.InStay,
                         DeathInfo = new DeathInfo {
                             Count = Config.DeathCount,
                             MsRemaining = (int) (Config.DeathPenaltyEndTick - fieldTick),

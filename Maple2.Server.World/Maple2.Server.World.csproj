@@ -27,6 +27,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="Maple2.Server.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
         <ProjectReference Include="..\Maple2.Server.Core\Maple2.Server.Core.csproj" />
     </ItemGroup>
 

@@ -27,6 +27,9 @@ public class BuffManager : IUpdatable {
     public IActor Actor { get; private set; }
     private readonly ConcurrentDictionary<int, List<Buff>> buffs = [];
     public ConcurrentDictionary<int, long> CooldownTimes { get; } = new(); // TODO: Cache this
+    // The town effect cooldowns a PvP-zone entry ended, put back on the way out (kept in the session only, as
+    // CooldownTimes is).
+    public PvpCooldownHold<long> PvpHold { get; } = new((endTick, _) => endTick);
     public ReflectRecord? Reflect;
     private readonly ILogger logger = Log.ForContext<BuffManager>();
 
@@ -601,9 +604,12 @@ public class BuffManager : IUpdatable {
             }
             Remove(buffsToRemove.ToArray());
         }
-        // The effects that clear their cooldown there can come again at once (SkillCastRules.PvpZoneClears).
-        foreach (int id in SkillCastRules.PvpZoneClears(Actor.Field.Metadata.Property.Type, CooldownTimes.Keys,
-                     id => Actor.Field.SkillMetadata.TryGetEffect(id, 1, out AdditionalEffectMetadata? effect) && effect.Property.ClearCooldownOnPvpZone)) {
+        // The effects that clear their cooldown there can come again at once (SkillCastRules.PvpZoneClears); the
+        // town ones come back on the way out (PvpCooldownHold).
+        List<int> cleared = SkillCastRules.PvpZoneClears(Actor.Field.Metadata.Property.Type, CooldownTimes.Keys,
+            id => Actor.Field.SkillMetadata.TryGetEffect(id, 1, out AdditionalEffectMetadata? effect) && effect.Property.ClearCooldownOnPvpZone);
+        PvpHold.EnterMap(Actor.Field.Metadata.Property.Type == MapType.Pvp, CooldownTimes, cleared, Actor.Field.FieldTick);
+        foreach (int id in cleared) {
             CooldownTimes.TryRemove(id, out _);
         }
 
