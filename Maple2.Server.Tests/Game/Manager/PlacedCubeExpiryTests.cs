@@ -3,6 +3,7 @@ using System.Linq;
 using Maple2.Database.Context;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -192,8 +193,9 @@ public class PlacedCubeExpiryTests {
     };
 
     private static (TestGameSession Test, GameSession Session, Plot Plot, ItemMetadata Metadata) StartInBuiltHome(
-        Dictionary<int, FurnishingShopTable.Entry>? shop = null) {
+        Dictionary<int, FurnishingShopTable.Entry>? shop = null, params AchievementMetadata[] trophies) {
         var test = new TestGameSession();
+        test.AddAchievement(trophies);
         test.SetTable(new UgcHousingPointRewardTable(new Dictionary<int, UgcHousingPointRewardTable.Entry>()));
         test.SetTable(new MasteryUgcHousingTable(new Dictionary<int, MasteryUgcHousingTable.Entry> { [1] = new(1, 0, 0) }));
         test.SetTable(new FurnishingShopTable(shop ?? new Dictionary<int, FurnishingShopTable.Entry>()));
@@ -262,6 +264,33 @@ public class PlacedCubeExpiryTests {
         Assert.That(plot.Cubes[position], Is.SameAs(placed));
         Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         Assert.That(session.Item.Furnishing.GetCube(otherUid)?.Amount, Is.EqualTo(1));
+        Assert.That(EditErrors(test), Is.EqualTo(new[] { UgcMapError.s_ugcmap_cant_be_removed }));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The errors of the edit answers sent since the last take (CubePacket.EditError: edit, error, two object ids).
+    private static List<UgcMapError> EditErrors(TestGameSession test) => test.TakeSent()
+        .Where(packet => TestGameSession.Op(packet) == SendOp.ResponseCube && packet.Length == 12)
+        .Select(packet => (UgcMapError) packet[3]).ToList();
+
+    // An owner replace with a cube the player cannot pay for is refused before the old cube is taken off: the client
+    // is sent only the error and keeps showing the old cube, so the old cube stays placed here too.
+    [Test]
+    public void ReplacingWithACubeThePlayerCannotPayFor_LeavesTheOldCube() {
+        (TestGameSession test, GameSession session, Plot plot, ItemMetadata metadata) = StartInBuiltHome(
+            new Dictionary<int, FurnishingShopTable.Entry> { [OtherCubeItem] = new(OtherCubeItem, true, FurnishingCurrencyType.Meso, 1000) });
+        session.Currency.Meso = 500;
+        long uid = session.Item.Furnishing.AddCube(new Maple2.Model.Game.Item(metadata) { ExpiryTime = Expiry });
+        var position = new Vector3B(-4, -4, 1);
+        Assert.That(session.Housing.TryPlaceCube(Cube(metadata, uid), plot, metadata, position, 0, out PlotCube? placed), Is.True);
+        ItemMetadata other = Furniture(OtherCubeItem);
+        test.TakeSent();
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(other, 0), plot, other, position, 0, out _, isReplace: true), Is.False);
+        Assert.That(plot.Cubes[position], Is.SameAs(placed));
+        Assert.That(session.Currency.Meso, Is.EqualTo(500));
+        Assert.That(session.Item.Furnishing.GetItem(OtherCubeItem), Is.Null);
+        Assert.That(EditErrors(test), Is.EqualTo(new[] { UgcMapError.s_err_ugcmap_not_enough_meso_balance }));
         Assert.That(test.Errors, Is.Empty);
     }
 
@@ -294,5 +323,71 @@ public class PlacedCubeExpiryTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         Assert.That(session.Item.Furnishing.GetItem(CubeItem), Is.Null);
         Assert.That(plot.Cubes, Is.Empty);
+    }
+
+    private const int SpendTrophy = 90000001, BuyCubeTrophy = 90000002;
+
+    private static AchievementMetadata[] PurchaseTrophies() => [
+        TestGameSession.Trophy(SpendTrophy, ConditionType.use_merat, [100000]),
+        TestGameSession.Trophy(BuyCubeTrophy, ConditionType.buy_cube, [100000]),
+    ];
+
+    private static void FailItemAdds(TestGameSession test) => test.FailSave = context => context.ChangeTracker
+        .Entries<Maple2.Database.Model.Item>().Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Added);
+
+    // A meret cube whose storage item cannot be written gives the merets back, and the refunded buy counts no
+    // merets spent.
+    [Test]
+    public void BuyingForMeretsWhenTheStorageWriteFails_RefundsAndCountsNothing() {
+        (TestGameSession test, GameSession session, Plot plot, ItemMetadata metadata) = StartInBuiltHome(
+            new Dictionary<int, FurnishingShopTable.Entry> { [CubeItem] = new(CubeItem, true, FurnishingCurrencyType.Meret, 100) },
+            PurchaseTrophies());
+        session.Currency.Meret = 500;
+        FailItemAdds(test);
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(metadata, 0), plot, metadata, new Vector3B(-4, -4, 1), 0, out _), Is.False);
+        Assert.That(session.Currency.Meret, Is.EqualTo(500));
+        Assert.That(test.TrophyCounter(SpendTrophy), Is.Null);
+        Assert.That(session.Item.Furnishing.GetItem(CubeItem), Is.Null);
+        Assert.That(plot.Cubes, Is.Empty);
+    }
+
+    // A refunded meso buy counts no buy_cube mesos.
+    [Test]
+    public void BuyingForMesosWhenTheStorageWriteFails_CountsNoBuyCube() {
+        (TestGameSession test, GameSession session, Plot plot, ItemMetadata metadata) = StartInBuiltHome(
+            new Dictionary<int, FurnishingShopTable.Entry> { [CubeItem] = new(CubeItem, true, FurnishingCurrencyType.Meso, 1000) },
+            PurchaseTrophies());
+        session.Currency.Meso = 5000;
+        FailItemAdds(test);
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(metadata, 0), plot, metadata, new Vector3B(-4, -4, 1), 0, out _), Is.False);
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        Assert.That(test.TrophyCounter(BuyCubeTrophy), Is.Null);
+    }
+
+    // A kept buy counts once its cube is stored: the merets spent for a meret cube, the mesos for a meso cube.
+    [Test]
+    public void BuyingACube_CountsTheSpendOnceStored() {
+        (TestGameSession test, GameSession session, Plot plot, ItemMetadata metadata) = StartInBuiltHome(
+            new Dictionary<int, FurnishingShopTable.Entry> {
+                [CubeItem] = new(CubeItem, true, FurnishingCurrencyType.Meret, 100),
+                [OtherCubeItem] = new(OtherCubeItem, true, FurnishingCurrencyType.Meso, 1000),
+            },
+            PurchaseTrophies());
+        session.Currency.Meret = 500;
+        session.Currency.Meso = 5000;
+        ItemMetadata other = Furniture(OtherCubeItem);
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(metadata, 0), plot, metadata, new Vector3B(-4, -4, 1), 0, out _), Is.True);
+        Assert.That(session.Currency.Meret, Is.EqualTo(400));
+        Assert.That(test.TrophyCounter(SpendTrophy), Is.EqualTo(100));
+        Assert.That(test.TrophyCounter(BuyCubeTrophy), Is.Null);
+
+        Assert.That(session.Housing.TryPlaceCube(Cube(other, 0), plot, other, new Vector3B(-3, -4, 1), 0, out _), Is.True);
+        Assert.That(session.Currency.Meso, Is.EqualTo(4000));
+        Assert.That(test.TrophyCounter(BuyCubeTrophy), Is.EqualTo(1000));
+        Assert.That(test.TrophyCounter(SpendTrophy), Is.EqualTo(100));
+        Assert.That(test.Errors, Is.Empty);
     }
 }

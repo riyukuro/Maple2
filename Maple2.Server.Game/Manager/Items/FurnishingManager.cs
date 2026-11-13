@@ -111,7 +111,27 @@ public class FurnishingManager {
         }
     }
 
-    // False with the error the edit's answer carries (s_ugcmap_ok for none) when the cube is not paid.
+    // The error a buy of this row answers when the player cannot pay its price (s_ugcmap_ok when they can, or when
+    // it is free).
+    public UgcMapError CanPay(FurnishingShopTable.Entry furnishingShopMetadata) {
+        if (furnishingShopMetadata.Price <= 0) {
+            return UgcMapError.s_ugcmap_ok;
+        }
+        long negAmount = -furnishingShopMetadata.Price;
+        lock (session.Item) {
+            return furnishingShopMetadata.FurnishingTokenType switch {
+                FurnishingCurrencyType.Meso when session.Currency.CanAddMeso(negAmount) != negAmount =>
+                    UgcMapError.s_err_ugcmap_not_enough_meso_balance,
+                FurnishingCurrencyType.Meret when session.Currency.CanAddMeret(negAmount) != negAmount =>
+                    UgcMapError.s_err_ugcmap_not_enough_merat_balance,
+                _ => UgcMapError.s_ugcmap_ok,
+            };
+        }
+    }
+
+    // False with the error the edit's answer carries (s_ugcmap_ok for none) when the cube is not paid. Only the price
+    // is taken: the counters a purchase raises (ReportPurchase) wait until the cube is stored, so a refunded buy
+    // (RefundCube) has raised none.
     public bool PurchaseCube(FurnishingShopTable.Entry furnishingShopMetadata, out UgcMapError error) {
         error = UgcMapError.s_ugcmap_ok;
         if (!furnishingShopMetadata.Buyable) {
@@ -123,37 +143,39 @@ public class FurnishingManager {
         }
 
         lock (session.Item) {
-            long negAmount;
+            error = CanPay(furnishingShopMetadata);
+            if (error != UgcMapError.s_ugcmap_ok) {
+                return false;
+            }
             switch (furnishingShopMetadata.FurnishingTokenType) {
                 case FurnishingCurrencyType.Meso:
-                    negAmount = -furnishingShopMetadata.Price;
-                    if (session.Currency.CanAddMeso(negAmount) != negAmount) {
-                        error = UgcMapError.s_err_ugcmap_not_enough_meso_balance;
-                        return false;
-                    }
-
                     session.Currency.Meso -= furnishingShopMetadata.Price;
                     break;
                 case FurnishingCurrencyType.Meret:
-                    negAmount = -furnishingShopMetadata.Price;
-                    if (session.Currency.CanAddMeret(negAmount) != negAmount) {
-                        error = UgcMapError.s_err_ugcmap_not_enough_merat_balance;
-                        return false;
-                    }
-
-                    session.Currency.Meret -= furnishingShopMetadata.Price;
+                    session.Currency.SetMeret(session.Currency.Meret - furnishingShopMetadata.Price, reportSpent: false);
                     break;
             }
-        }
-
-        long mesos = HomeBuildRules.BuyCubeMesos(furnishingShopMetadata.FurnishingTokenType, furnishingShopMetadata.Price);
-        if (mesos > 0) {
-            session.ConditionUpdate(ConditionType.buy_cube, counter: mesos);
         }
         return true;
     }
 
-    // Gives back what PurchaseCube took for this row, when the cube paid for could not be added.
+    // The counters of a paid purchase, once its cube is stored: the merets spent (use_merat, which the Meret setter
+    // reports for other spends) and buy_cube.
+    public void ReportPurchase(FurnishingShopTable.Entry furnishingShopMetadata) {
+        if (!furnishingShopMetadata.Buyable || furnishingShopMetadata.Price <= 0) {
+            return;
+        }
+        if (furnishingShopMetadata.FurnishingTokenType == FurnishingCurrencyType.Meret) {
+            session.Currency.ReportMeretSpent(-furnishingShopMetadata.Price);
+        }
+        long mesos = HomeBuildRules.BuyCubeMesos(furnishingShopMetadata.FurnishingTokenType, furnishingShopMetadata.Price);
+        if (mesos > 0) {
+            session.ConditionUpdate(ConditionType.buy_cube, counter: mesos);
+        }
+    }
+
+    // Gives back what PurchaseCube took for this row, when the cube paid for could not be added. The give-back is
+    // not a meret gain the counters see, and no counter was raised for the buy.
     public void RefundCube(FurnishingShopTable.Entry furnishingShopMetadata) {
         if (!furnishingShopMetadata.Buyable || furnishingShopMetadata.Price <= 0) {
             return;

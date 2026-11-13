@@ -833,6 +833,24 @@ public class HousingManager {
                 }
                 return false;
             }
+
+            // An owner's cube not in storage is bought below, after the old cube of a replace is taken off. Whether it
+            // can be bought and paid for is asked here: a refusal after the old cube is off would leave the cell empty
+            // here while the client, sent only the error, still shows the old cube.
+            if (helper == null && storedItem is not { Amount: > 0 }) {
+                if (shopEntry is null) {
+                    Refuse(UgcMapError.s_err_cannot_buy_limited_item_more);
+                    return false;
+                }
+                if (!shopEntry.Buyable) {
+                    return false;
+                }
+                UgcMapError payError = session.Item.Furnishing.CanPay(shopEntry);
+                if (payError != UgcMapError.s_ugcmap_ok) {
+                    Refuse(payError);
+                    return false;
+                }
+            }
         }
 
         // A helper's cube is paid from the budget. Asked before the old cube of a replace is taken off: a
@@ -923,6 +941,7 @@ public class HousingManager {
                 Refuse(UgcMapError.s_ugcmap_db);
                 return false;
             }
+            session.Item.Furnishing.ReportPurchase(shopEntry);
 
             session.Send(CubePacket.PurchaseCube(session.Player.ObjectId));
             // Now that we have purchased the cube, it must be placeable.

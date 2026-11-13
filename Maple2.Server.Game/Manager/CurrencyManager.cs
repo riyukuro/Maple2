@@ -24,21 +24,26 @@ public class CurrencyManager {
 
     public long Meret {
         get => Currency.Meret;
-        set {
-            if (value < 0) {
-                throw new ArgumentException("Not enough Merets");
-            }
+        set => SetMeret(value, reportSpent: true);
+    }
 
-            long delta = Math.Min(value, Constant.MaxMeret) - Currency.Meret;
-            Currency.Meret = Math.Min(value, Constant.MaxMeret);
-            session.Send(CurrencyPacket.UpdateMeret(Currency, delta));
+    // reportSpent false: the caller reports the spend itself (ReportMeretSpent), once what was bought is kept.
+    public void SetMeret(long value, bool reportSpent) {
+        if (value < 0) {
+            throw new ArgumentException("Not enough Merets");
+        }
+
+        long delta = Math.Min(value, Constant.MaxMeret) - Currency.Meret;
+        Currency.Meret = Math.Min(value, Constant.MaxMeret);
+        session.Send(CurrencyPacket.UpdateMeret(Currency, delta));
+        if (reportSpent) {
             ReportMeretSpent(delta);
         }
     }
 
     // use_merat (trophy 23200041) counts the merets spent: KMS2 sends its update right after each Meret packet with
     // a negative change, the value up by the amount spent.
-    private void ReportMeretSpent(long delta) {
+    public void ReportMeretSpent(long delta) {
         long spent = TrophyReportRules.MeretSpent(delta);
         if (spent > 0) {
             session.ConditionUpdate(ConditionType.use_merat, counter: spent);
