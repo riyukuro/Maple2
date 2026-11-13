@@ -12,6 +12,7 @@ using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -125,6 +126,9 @@ public class ItemUseHandler : FieldPacketHandler {
                 break;
             case ItemFunction.LevelPotion:
                 HandleLevelPotion(session, item);
+                break;
+            case ItemFunction.SurvivalLevelExp:
+                HandleSurvivalLevelExp(session, item);
                 break;
             case ItemFunction.CreateReactor:
                 HandleCreateReactor(session, item);
@@ -730,6 +734,20 @@ public class ItemUseHandler : FieldPacketHandler {
         session.Field.Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
         session.Field.RemoveNpc(fieldNpc.ObjectId, TimeSpan.FromSeconds(lifeSpanSeconds));
         session.Item.Inventory.Consume(item.Uid, 1);
+    }
+
+    // A Royale Experience Tonic (SurvivalLevelExp, <v SurvivalExp="N"/>): the client registers no function for it, so
+    // UseItem (unit_140d1ae30 @0x140d1bd60) sends the plain use. The tonic is taken and its exp added to the survival
+    // level; at the last level (chosen) or without its exp it is kept.
+    private static void HandleSurvivalLevelExp(GameSession session, Item item) {
+        Dictionary<string, string> xmlParameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
+        if (!xmlParameters.TryGetValue("SurvivalExp", out string? value) || !long.TryParse(value, out long exp) || exp <= 0) {
+            return;
+        }
+        if (!MapleSurvivalProgress.CanAddItemExp(session) || !session.Item.Inventory.Consume(item.Uid, 1)) {
+            return;
+        }
+        MapleSurvivalProgress.AddItemExp(session, exp);
     }
 
     private static void HandleLevelPotion(GameSession session, Item item) {

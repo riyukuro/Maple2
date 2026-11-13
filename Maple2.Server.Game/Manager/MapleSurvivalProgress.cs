@@ -125,6 +125,39 @@ public static class MapleSurvivalProgress {
         }
     }
 
+    // The exp with the level rewards of the levels reached.
+    private static void AddExp(GameSession session, MapleSurvivalTable table, ref int level, ref long exp, long gained) {
+        foreach (int reached in SurvivalRules.AddExp(table, ref level, ref exp, gained)) {
+            if (table.LevelRewards.TryGetValue(reached, out IReadOnlyList<MapleSurvivalTable.Reward>? rewards)) {
+                foreach (MapleSurvivalTable.Reward reward in rewards) {
+                    Give(session, reward);
+                }
+            }
+        }
+    }
+
+    // An item's survival exp (SurvivalLevelExp) can be added: there is a level above the account's. At the last
+    // level SurvivalRules.AddExp keeps 0 exp, so the item would add nothing.
+    public static bool CanAddItemExp(GameSession session) {
+        MapleSurvivalTable? table = Table(session);
+        return table != null && table.LevelExp.ContainsKey(Math.Max(1, session.Player.Value.Account.SurvivalLevel) + 1);
+    }
+
+    // An item's survival exp: the level rewards of the levels reached, then the record (0x17) with the exp gained.
+    public static void AddItemExp(GameSession session, long gained) {
+        MapleSurvivalTable? table = Table(session);
+        if (table == null) {
+            return;
+        }
+        Account account = session.Player.Value.Account;
+        int level = Math.Max(1, account.SurvivalLevel);
+        long exp = account.SurvivalExp;
+        AddExp(session, table, ref level, ref exp, gained);
+        account.SurvivalLevel = level;
+        account.SurvivalExp = exp;
+        session.Send(SurvivalPacket.UpdateStats(account, gained));
+    }
+
     private static int SquadSeason(GameSession session) {
         try {
             return SurvivalRules.SeasonAt(session.TableMetadata.SeasonDataTable.SurvivalSquad, DateTime.Now);
@@ -148,13 +181,7 @@ public static class MapleSurvivalProgress {
         int level = levelBefore;
         long exp = expBefore;
         if (table != null) {
-            foreach (int reached in SurvivalRules.AddExp(table, ref level, ref exp, gained)) {
-                if (table.LevelRewards.TryGetValue(reached, out IReadOnlyList<MapleSurvivalTable.Reward>? rewards)) {
-                    foreach (MapleSurvivalTable.Reward reward in rewards) {
-                        Give(session, reward);
-                    }
-                }
-            }
+            AddExp(session, table, ref level, ref exp, gained);
             account.SurvivalLevel = level;
             account.SurvivalExp = exp;
             int seasonId = squad
