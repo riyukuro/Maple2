@@ -14,23 +14,32 @@ public class ItemBoxHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestItemBox;
 
     public override void Handle(GameSession session, IByteReader packet) {
-        int itemId = packet.ReadInt();
-        short unk = packet.ReadShort();
-        int count = packet.ReadInt();
+        (int itemId, short rarity, int count, string selection) = ReadRequest(packet);
         if (!ItemBoxRules.IsOpenCount(count, session.ServerTableMetadata.ConstantsTable.ItemBoxMultiOpenMaxCount)) {
             return;
         }
 
-        Item? item = session.Item.Inventory.Find(itemId).FirstOrDefault();
+        // The client names the box by id and rarity, the two it keeps for the dialog (UIItemMultiOpenBoxDialog
+        // FUN_140c3f9d0 is given the item's id and GetRarity()), so the stack is picked by both.
+        Item? item = session.Item.Inventory.Find(itemId, rarity).FirstOrDefault();
         if (item == null) {
             return;
         }
 
         // A select box's picked rows; ItemBoxManager checks them.
-        string selection = packet.ReadUnicodeString();
 
         ItemBoxError error = session.ItemBox.Open(item, count, selection);
         session.Send(ItemBoxPacket.Open(itemId, session.ItemBox.BoxCount, error));
         session.ItemBox.Reset();
+    }
+
+    // UIItemMultiOpenBoxDialog::vfunc_15 (uiitemmultiopenboxdialog.cpp:137-141): int box id, short rarity, int count,
+    // then the select box's rows as a unicode string.
+    public static (int ItemId, short Rarity, int Count, string Selection) ReadRequest(IByteReader packet) {
+        int itemId = packet.ReadInt();
+        short rarity = packet.ReadShort();
+        int count = packet.ReadInt();
+        string selection = packet.ReadUnicodeString();
+        return (itemId, rarity, count, selection);
     }
 }

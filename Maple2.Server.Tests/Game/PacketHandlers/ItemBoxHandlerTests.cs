@@ -57,12 +57,22 @@ public class ItemBoxHandlerTests {
         }));
     }
 
-    private static void MultiOpen(GameSession session, int count, string selection = "") {
+    // The dialog sends the box's id and rarity (UIItemMultiOpenBoxDialog::vfunc_15).
+    private void MultiOpen(GameSession session, int count, string selection = "") {
         new ItemBoxHandler().Handle(session, TestGameSession.Packet(writer => {
             writer.WriteInt(BoxId);
-            writer.WriteShort();
+            writer.WriteShort((short) box.Rarity);
             writer.WriteInt(count);
             writer.WriteUnicodeString(selection);
+        }));
+    }
+
+    private void MultiOpen(GameSession session, int count, short rarity) {
+        new ItemBoxHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteInt(BoxId);
+            writer.WriteShort(rarity);
+            writer.WriteInt(count);
+            writer.WriteUnicodeString("");
         }));
     }
 
@@ -113,6 +123,18 @@ public class ItemBoxHandlerTests {
 
         Assert.That(test.TakeSent(), Is.Empty);
         Assert.That(Held(session, BoxId), Is.EqualTo(4));
+        Assert.That(Held(session, RewardA), Is.EqualTo(0));
+    }
+
+    // RequestItemBox names the box by id and rarity: no stack of that rarity, nothing is opened or sent.
+    [Test]
+    public void OpenItemBox_MultiOpen_OtherRarityOpensNothing() {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 5);
+
+        MultiOpen(session, 3, (short) (box.Rarity + 1));
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(Held(session, BoxId), Is.EqualTo(5));
         Assert.That(Held(session, RewardA), Is.EqualTo(0));
     }
 
