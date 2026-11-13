@@ -165,7 +165,12 @@ public partial class GameStorage {
             BeginTransaction();
 
             Context.Guild.Update(guild);
-            SaveGuildMembers(guild.Id, guild.Members.Values);
+            // The guild row and its members are written by the one save in SaveGuildMembers: when it fails, the
+            // caller gets false (and undoes what it spent), not the result of a commit with nothing in it.
+            if (!SaveGuildMembers(guild.Id, guild.Members.Values)) {
+                Rollback();
+                return false;
+            }
 
             return Commit();
         }
