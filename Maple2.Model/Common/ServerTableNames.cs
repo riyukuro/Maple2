@@ -29,4 +29,5 @@ public static class ServerTableNames {
     public const string NPC_STAT_FACTOR = "npcStatFactorByPlayerCount.xml";
     public const string MONSTER_EXP = "monsterExpTable.xml";
     public const string ARCADE_REWARD = "arcadeReward.xml";
+    public const string HIDE_AND_SEEK = "hideAndSeek.xml";
 }

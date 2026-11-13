@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
@@ -29,7 +30,7 @@ public class HideAndSeekTests {
             ("RequireUserCount", "2"), ("EnterableSeconds", "60"), ("GameRuleNoticeTick", "10000"), ("ShortOfUserTick", "10000"),
             ("DivideTeamsSeconds", "5"), ("MoveGameAreaTick", "2000"), ("BeInHidingTeamsSeconds", "30"),
             ("LookingForATeamsSeconds", "150"), ("TeamMatchResultTick", "15000"), ("GameExitNoticeTick", "10000"),
-            ("PortalGameAreaID", "10"), ("SeekTeamSkillSetID", "99930041"),
+            ("PortalGameAreaID", "10"), ("SeekTeamSkillSetID", "99930041"), ("SeekTeamInvincibleTick", "20000"),
         ];
         foreach ((string key, string value) in constants) {
             Assert.That(state.SetConstant(key, value, "ALL", "KR"), Is.True, key);
@@ -164,6 +165,152 @@ public class HideAndSeekTests {
         Assert.That(state.Advance(0, 2), Is.EqualTo(HideAndSeekStep.GameRuleNotice));
     }
 
+    // The seekers look (107 s in): a seeker and two hiders turned into 5000-health objects.
+    private static (HideAndSeekState State, long Seeker, long[] Hiders) Seeking() {
+        HideAndSeekState state = Hiding();
+        long seeker = state.Teams.Single(entry => entry.Value == HideAndSeekState.SeekTeam).Key;
+        long[] hiders = state.Teams.Where(entry => entry.Value == HideAndSeekState.HideTeam).Select(entry => entry.Key).ToArray();
+        state.Hide(hiders[0], 99920001, 3, 5000);
+        state.Hide(hiders[1], 99920002, 0, 5000);
+        state.Advance(107_000, 3);
+        Assert.That(state.Step, Is.EqualTo(HideAndSeekStep.LookingForATeams));
+        return (state, seeker, hiders);
+    }
+
+    [Test]
+    public void Hit_TwoSeekHitsCatch_LastCatchSeekersWin() {
+        (HideAndSeekState state, long seeker, long[] hiders) = Seeking();
+        Assert.Multiple(() => {
+            Assert.That(state.Hostile(seeker, hiders[0]), Is.True);
+            Assert.That(state.Hostile(hiders[0], seeker), Is.False);
+            Assert.That(state.Hostile(hiders[0], hiders[1]), Is.False);
+            Assert.That(state.Hit(seeker, hiders[0], 2500, 108_000), Is.EqualTo(new HideAndSeekState.HitResult(2500, 5000, false)));
+            Assert.That(state.Hit(seeker, hiders[0], 2500, 109_000), Is.EqualTo(new HideAndSeekState.HitResult(0, 5000, true)));
+            Assert.That(state.IsCaught(hiders[0]), Is.True);
+            Assert.That(state.Kills(seeker), Is.EqualTo(1));
+            Assert.That(state.Hostile(seeker, hiders[0]), Is.False);
+            Assert.That(state.Hit(seeker, hiders[0], 2500, 110_000), Is.Null);
+            Assert.That(state.Watching(hiders[0]), Is.True);
+            Assert.That(state.Watching(hiders[1]), Is.False);
+            Assert.That(state.Step, Is.EqualTo(HideAndSeekStep.LookingForATeams));
+        });
+        state.Hit(seeker, hiders[1], 5000, 111_000);
+        Assert.Multiple(() => {
+            Assert.That(state.Step, Is.EqualTo(HideAndSeekStep.TeamMatchResult));
+            Assert.That(state.Winner, Is.EqualTo(HideAndSeekState.SeekTeam));
+            Assert.That(state.Kills(seeker), Is.EqualTo(2));
+            Assert.That(state.Watching(hiders[0]), Is.False);
+        });
+    }
+
+    [Test]
+    public void Hit_OnlyWhileSeeking() {
+        HideAndSeekState state = Hiding();
+        long seeker = state.Teams.Single(entry => entry.Value == HideAndSeekState.SeekTeam).Key;
+        long hider = state.Teams.First(entry => entry.Value == HideAndSeekState.HideTeam).Key;
+        state.Hide(hider, 99920001, 0, 5000);
+        Assert.That(state.Hostile(seeker, hider), Is.False);
+        Assert.That(state.Hit(seeker, hider, 2500, 80_000), Is.Null);
+    }
+
+    // The seekers are invincible for SeekTeamInvincibleTick; after it each miss costs a life, the last one ends the
+    // seeking and the hiders win.
+    [Test]
+    public void Miss_AfterInvincibleCostsLives_LastLifeHidersWin() {
+        (HideAndSeekState state, long seeker, long[] hiders) = Seeking();
+        Assert.Multiple(() => {
+            Assert.That(state.Lives(seeker), Is.EqualTo(HideAndSeekState.SeekerLives));
+            Assert.That(state.Miss(seeker, 126_999), Is.Null);
+            Assert.That(state.Miss(hiders[0], 130_000), Is.Null);
+            Assert.That(state.Miss(seeker, 127_000), Is.EqualTo(2));
+            Assert.That(state.Miss(seeker, 128_000), Is.EqualTo(1));
+            Assert.That(state.Step, Is.EqualTo(HideAndSeekStep.LookingForATeams));
+            Assert.That(state.Miss(seeker, 129_000), Is.EqualTo(0));
+            Assert.That(state.Step, Is.EqualTo(HideAndSeekStep.TeamMatchResult));
+            Assert.That(state.Winner, Is.EqualTo(HideAndSeekState.HideTeam));
+            Assert.That(state.Miss(seeker, 130_000), Is.Null);
+        });
+    }
+
+    [Test]
+    public void Watching_NewcomersWhileTheGameRuns() {
+        HideAndSeekState state = Game();
+        Assert.That(state.Watching(9), Is.False);
+        (HideAndSeekState seeking, long seeker, _) = Seeking();
+        Assert.Multiple(() => {
+            Assert.That(seeking.Watching(9), Is.True);
+            Assert.That(seeking.Watching(seeker), Is.False);
+        });
+    }
+
+    // A free prop of the ride's model first; once all are hidden, a ride without a prop.
+    [Test]
+    public void PickRide_FreePropFirst() {
+        HideAndSeekState state = Game();
+        var field = new HideAndSeekTable.Field([99920001, 99920002], new Dictionary<int, IReadOnlyList<int>> { [99920001] = [4, 5] });
+        var random = new Random(2);
+        (int ride1, int prop1) = state.PickRide(field, random);
+        state.Hide(1, ride1, prop1, 5000);
+        (int ride2, int prop2) = state.PickRide(field, random);
+        state.Hide(2, ride2, prop2, 5000);
+        (int ride3, int prop3) = state.PickRide(field, random);
+        Assert.Multiple(() => {
+            Assert.That(new[] { prop1, prop2 }, Is.EquivalentTo(new[] { 4, 5 }));
+            Assert.That(ride1, Is.EqualTo(99920001));
+            Assert.That(ride2, Is.EqualTo(99920001));
+            Assert.That(prop3, Is.EqualTo(0));
+            Assert.That(new[] { 99920001, 99920002 }, Does.Contain(ride3));
+            Assert.That(state.HiddenProps, Is.EquivalentTo(new[] { 4, 5 }));
+        });
+        Assert.That(state.PickRide(new HideAndSeekTable.Field([], new Dictionary<int, IReadOnlyList<int>>()), random), Is.EqualTo((0, 0)));
+    }
+
+    [Test]
+    public void HidePropsPacket() {
+        ByteWriter packet = HideAndSeekPacket.HideProps(new byte[] { 3, 200 });
+        var reader = new ByteReader(packet.ToArray());
+        Assert.Multiple(() => {
+            Assert.That(reader.ReadShort(), Is.EqualTo((short) SendOp.HideAndSeek));
+            Assert.That(reader.ReadByte(), Is.EqualTo(1));
+            Assert.That(reader.ReadByte(), Is.EqualTo(2));
+            Assert.That(reader.ReadByte(), Is.EqualTo(3));
+            Assert.That(reader.ReadByte(), Is.EqualTo(200));
+            Assert.That(packet.Length, Is.EqualTo(6));
+        });
+    }
+
+    [Test]
+    public void LifePackets() {
+        ByteWriter bar = HideAndSeekPacket.LifeBar(4, HideAndSeekField.SeekerBarType, 3, 2, 3);
+        Assert.That(bar.Length, Is.EqualTo(2 + 1 + 4 + 2 + 12));
+        ByteReader reader = Read(bar, 2, 4);
+        Assert.Multiple(() => {
+            Assert.That(reader.ReadShort(), Is.EqualTo(2));
+            Assert.That(reader.ReadInt(), Is.EqualTo(3));
+            Assert.That(reader.ReadInt(), Is.EqualTo(2));
+            Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        });
+        ByteWriter life = HideAndSeekPacket.Life(4, 1, 2);
+        Assert.That(life.Length, Is.EqualTo(2 + 1 + 4 + 8));
+        reader = Read(life, 4, 4);
+        Assert.Multiple(() => {
+            Assert.That(reader.ReadInt(), Is.EqualTo(1));
+            Assert.That(reader.ReadInt(), Is.EqualTo(2));
+        });
+    }
+
+    [Test]
+    public void WatchPacket() {
+        ByteWriter watch = HideAndSeekPacket.Watch(6, 7, true, false);
+        Assert.That(watch.Length, Is.EqualTo(2 + 1 + 4 + 6));
+        ByteReader reader = Read(watch, 7, 6);
+        Assert.Multiple(() => {
+            Assert.That(reader.ReadInt(), Is.EqualTo(7));
+            Assert.That(reader.ReadBool(), Is.True);
+            Assert.That(reader.ReadBool(), Is.False);
+        });
+    }
+
     private static ByteReader Read(ByteWriter packet, byte mode, int objectId) {
         var reader = new ByteReader(packet.ToArray());
         Assert.That(reader.ReadShort(), Is.EqualTo((short) SendOp.HideAndSeek));
@@ -219,6 +366,7 @@ public class HideAndSeekTests {
     [TestCase(HideAndSeekStep.BeInHidingTeams, false)]
     public void SeekerLeaves_GetsSkillSetBack(HideAndSeekStep leaveAt, bool expected) {
         var test = new TestGameSession();
+        test.SetServerTable(new HideAndSeekTable(new Dictionary<int, HideAndSeekTable.Field>()));
         GameSession session = test.Start();
         FieldManager field = session.Field!;
         // The test field is built without its initializers: the trigger user values each step sets, and the portals

@@ -34,6 +34,7 @@ public class ServerTableMetadataStorage {
     private readonly Lazy<NpcStatFactorTable> npcStatFactorTable;
     private readonly Lazy<MonsterExpTable> monsterExpTable;
     private readonly Lazy<ArcadeRewardTable> arcadeRewardTable;
+    private readonly Lazy<HideAndSeekTable> hideAndSeekTable;
 
     public InstanceFieldTable InstanceFieldTable => instanceFieldTable.Value;
     public ScriptConditionTable ScriptConditionTable => scriptConditionTable.Value;
@@ -63,6 +64,7 @@ public class ServerTableMetadataStorage {
     public NpcStatFactorTable NpcStatFactorTable => npcStatFactorTable.Value;
     public MonsterExpTable MonsterExpTable => monsterExpTable.Value;
     public ArcadeRewardTable ArcadeRewardTable => arcadeRewardTable.Value;
+    public HideAndSeekTable HideAndSeekTable => hideAndSeekTable.Value;
 
     public ServerTableMetadataStorage(MetadataContext context) {
         instanceFieldTable = Retrieve<InstanceFieldTable>(context, ServerTableNames.INSTANCE_FIELD);
@@ -93,6 +95,7 @@ public class ServerTableMetadataStorage {
         npcStatFactorTable = Retrieve<NpcStatFactorTable>(context, ServerTableNames.NPC_STAT_FACTOR);
         monsterExpTable = Retrieve<MonsterExpTable>(context, ServerTableNames.MONSTER_EXP);
         arcadeRewardTable = Retrieve<ArcadeRewardTable>(context, ServerTableNames.ARCADE_REWARD);
+        hideAndSeekTable = Retrieve<HideAndSeekTable>(context, ServerTableNames.HIDE_AND_SEEK);
     }
 
     public IEnumerable<GameEvent> GetGameEvents() {

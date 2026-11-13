@@ -527,6 +527,10 @@ public class SkillHandler : FieldPacketHandler {
         record.Position = packet.Read<Vector3>();
         record.Rotation = packet.Read<Vector3>();
 
+        // Hide and Seek: where a seek shot lands decides whether it missed (HideAndSeekField.Landed).
+        if (record.SkillId == Manager.Field.HideAndSeekField.SeekSkillId) {
+            session.Field?.HideAndSeek?.Landed(session.Player, record.Position);
+        }
         session.Field?.AddSkill(record);
     }
 

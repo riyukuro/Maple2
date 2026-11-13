@@ -50,9 +50,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     private readonly string dropFile;
     // MS2_REPLAY_ATTEND_GIFT (AttendGiftReplay): one ended attendance gift event is kept, moved to the ingest day.
     private readonly bool replayAttendGift;
+    // Resource/Exported.m2d: the maps' xblock files (the Hide and Seek props).
+    private readonly M2dReader? exportedReader;
 
-    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null, bool originalDropTable = false, bool replayAttendGift = false) {
+    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null, bool originalDropTable = false, bool replayAttendGift = false, M2dReader? exportedReader = null) {
         this.xmlReader = xmlReader;
+        this.exportedReader = exportedReader;
         this.replayAttendGift = replayAttendGift;
         dropFile = ServerDropTable.FileName(originalDropTable);
         this.playedReader = playedReader;
@@ -172,6 +175,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         yield return new ServerTableMetadata {
             Name = ServerTableNames.ARCADE_REWARD,
             Table = ParseArcadeReward(),
+        };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.HIDE_AND_SEEK,
+            Table = ParseHideAndSeek(),
         };
 
     }
@@ -2738,6 +2745,81 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         }
         return new ArcadeRewardTable(games.ToDictionary(game => game.Key,
             game => (IReadOnlyDictionary<int, ArcadeRewardTable.Entry>) game.Value.Rounds));
+    }
+
+    private HideAndSeekTable ParseHideAndSeek() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/Server/hideAndSeek.xml", StringComparison.OrdinalIgnoreCase));
+        if (entry == null || clientReader == null) {
+            return new HideAndSeekTable(new Dictionary<int, HideAndSeekTable.Field>());
+        }
+        var nifs = new Dictionary<int, string>();
+        foreach ((int id, Maple2.File.Parser.Xml.Riding.Riding riding) in new RidingParser(clientReader).Parse()) {
+            nifs[id] = riding.basic.nif;
+        }
+        HideAndSeekTable table = MapHideAndSeek(xmlReader.GetXmlDocument(entry),
+            row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")),
+            rideId => nifs.GetValueOrDefault(rideId), HideAndSeekProps);
+        Console.WriteLine($"hideAndSeek: {table.Entries.Count} fields, {table.Entries.Values.Sum(field => field.Props.Count)} rides with a prop");
+        return table;
+    }
+
+    // The map's xblock (map/<id>.xml environment xblock name, the first one) -> model name (lower case, the trailing
+    // "_" of xblock model names dropped) -> ObjectSearchIndex of its props.
+    private Dictionary<string, List<int>> HideAndSeekProps(int mapId) {
+        var props = new Dictionary<string, List<int>>();
+        Maple2.File.IO.Crypto.Common.PackFileEntry? mapEntry = clientReader?.Files.FirstOrDefault(file =>
+            file.Name.Equals($"map/{mapId:D8}.xml", StringComparison.OrdinalIgnoreCase));
+        if (mapEntry == null || exportedReader == null) return props;
+        string? xblock = (clientReader!.GetXmlDocument(mapEntry).SelectSingleNode("ms2/environment/xblock") as XmlElement)?.GetAttribute("name");
+        if (string.IsNullOrEmpty(xblock)) return props;
+        Maple2.File.IO.Crypto.Common.PackFileEntry? xblockEntry = exportedReader.Files.FirstOrDefault(file =>
+            file.Name.Equals($"xblock/{xblock}.xblock", StringComparison.OrdinalIgnoreCase));
+        if (xblockEntry == null) return props;
+        return MapXBlockSearchIndex(exportedReader.GetXmlDocument(xblockEntry));
+    }
+
+    public static Dictionary<string, List<int>> MapXBlockSearchIndex(XmlDocument xblock) {
+        var props = new Dictionary<string, List<int>>();
+        foreach (XmlElement entity in xblock.SelectNodes("game/entitySet/entity")!.OfType<XmlElement>()) {
+            var index = entity.SelectSingleNode("property[@name='ObjectSearchIndex']/set") as XmlElement;
+            if (index == null || !int.TryParse(index.GetAttribute("value"), out int value)) continue;
+            string model = entity.GetAttribute("modelName").TrimEnd('_').ToLowerInvariant();
+            if (!props.TryGetValue(model, out List<int>? list)) {
+                props[model] = list = [];
+            }
+            list.Add(value);
+        }
+        return props;
+    }
+
+    // A row of a locale replaces the row without a locale of the same map, in either order; rows the filter drops are
+    // left out. Props lists, per ride of the field, the field's prop indexes of the ride's nif (rides without one are
+    // left out of Props).
+    public static HideAndSeekTable MapHideAndSeek(XmlDocument document, Func<XmlElement, bool> available, Func<int, string?> nifOf,
+                                                  Func<int, Dictionary<string, List<int>>> propsOf) {
+        var rows = new Dictionary<int, (List<int> Rides, bool Localized)>();
+        foreach (XmlElement row in document.SelectNodes("ms2/field")!.OfType<XmlElement>()) {
+            if (!available(row) || !int.TryParse(row.GetAttribute("mapCode"), out int mapId)) continue;
+            bool hasLocale = row.GetAttribute("locale") != "";
+            if (!hasLocale && rows.TryGetValue(mapId, out var known) && known.Localized) continue;
+            List<int> rides = row.GetAttribute("ridingObject").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(id => int.TryParse(id, out int rideId) ? rideId : 0).Where(id => id != 0).ToList();
+            rows[mapId] = (rides, hasLocale);
+        }
+        var entries = new Dictionary<int, HideAndSeekTable.Field>();
+        foreach ((int mapId, (List<int> rides, _)) in rows) {
+            Dictionary<string, List<int>> props = propsOf(mapId);
+            var rideProps = new Dictionary<int, IReadOnlyList<int>>();
+            foreach (int rideId in rides) {
+                string? nif = nifOf(rideId)?.ToLowerInvariant();
+                if (nif != null && props.TryGetValue(nif, out List<int>? indexes)) {
+                    rideProps[rideId] = indexes;
+                }
+            }
+            entries[mapId] = new HideAndSeekTable.Field(rides, rideProps);
+        }
+        return new HideAndSeekTable(entries);
     }
 
     private MonsterExpTable ParseMonsterExp() {

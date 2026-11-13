@@ -522,6 +522,10 @@ public class FieldPlayer : Actor<Player> {
     }
 
     public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
+        // Hide and Seek: a seeker's hit lands on the hider's object, never on the player (HideAndSeekField.Hit).
+        if (caster is FieldPlayer seeker && Field.HideAndSeek?.Hit(seeker, this, damage, attack) == true) {
+            return;
+        }
         if (!TakesDamage(IsDead, Field.FieldTick, invincibleUntil)) {
             if (caster is FieldPlayer && Field.RankDuel != null) {
                 Logger.Information("Rank duel hit on {Target} by {Caster}, skill {SkillId}: not taken (dead {Dead}, invincible {Ms} ms more)",

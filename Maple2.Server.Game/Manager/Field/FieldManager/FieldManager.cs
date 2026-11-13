@@ -203,13 +203,16 @@ public partial class FieldManager : IField {
     public HideAndSeekField? HideAndSeek { get; private set; }
 
     public void StartHideAndSeek(int triggerId) {
+        // A new game (the script's reset) takes back what the old one gave the players still here.
+        HideAndSeek?.Close();
         HideAndSeek = new HideAndSeekField(this, triggerId);
     }
 
     // Whether a player's hostile skills reach another player here: the rank duel's fight, the PvP zone's or the
-    // survival game's.
+    // survival game's, or a Hide and Seek seeker's on a hider.
     public bool PlayerHostile(FieldPlayer caster, FieldPlayer target) {
-        return RankDuel?.Hostile(caster, target) == true || PvpZone?.Hostile(caster, target) == true || Survival?.Hostile(caster, target) == true;
+        return RankDuel?.Hostile(caster, target) == true || PvpZone?.Hostile(caster, target) == true || Survival?.Hostile(caster, target) == true
+               || HideAndSeek?.Hostile(caster, target) == true;
     }
     public int RoomId { get; init; }
     public int DungeonId { get; init; }

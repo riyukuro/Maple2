@@ -919,8 +919,9 @@ public partial class FieldManager {
                     if ((force & 2) != 0) {
                         return prisms.Filter(Mobs.Values.Cast<IActor>().Concat(TargetPlayers), limit, ignore);
                     }
-                    // In a rank duel's fight or a PvP zone the other side's players are hostile too.
-                    if (RankDuel != null || PvpZone != null || Survival != null) {
+                    // In a rank duel's fight or a PvP zone the other side's players are hostile too; in Hide and Seek
+                    // the seekers' skills reach the hiders.
+                    if (RankDuel != null || PvpZone != null || Survival != null || HideAndSeek != null) {
                         return prisms.Filter(Mobs.Values.Cast<IActor>()
                             .Concat(TargetPlayers.Where(player => PlayerHostile(casterPlayer, player))), limit, ignore);
                     }
@@ -1784,6 +1785,7 @@ public partial class FieldManager {
 
         RankDuel?.Enter(added);
         PvpZone?.Enter(added);
+        HideAndSeek?.Arrive(added);
     }
     #endregion Events
 

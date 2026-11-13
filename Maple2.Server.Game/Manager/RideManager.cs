@@ -67,6 +67,21 @@ public sealed class RideManager {
 
     }
 
+    // Hide and Seek: the hider becomes the ride's object (RideOnAction type 3, the client's RideOnActionHideAndSeek,
+    // read with the base fields only). A ride the player is on ends first. The object's health is the game's own
+    // (HideAndSeekState), so the ride's stats are not put on the player.
+    public bool MountObject(RideMetadata metadata) {
+        if (session.Field is null) return false;
+        if (Ride != null) {
+            Dismount(RideOffType.HideAndSeek);
+        }
+
+        var action = new RideOnActionObject(metadata.Id, FieldManager.NextGlobalId());
+        Ride = new Ride(session.Player.ObjectId, metadata, action);
+        session.Field.Broadcast(RidePacket.Start(Ride));
+        return true;
+    }
+
     public void Dismount(RideOffType type) {
         Dismount(RideOffAction.Create(type));
     }
