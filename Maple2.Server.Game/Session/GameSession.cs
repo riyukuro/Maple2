@@ -55,6 +55,9 @@ public sealed partial class GameSession : Core.Network.Session {
     public string PlayerName => FieldEntryRules.LogName(Player?.Value.Character.Name);
     public Guid MachineId { get; private set; }
     private bool preMigrationSaved;
+    // Saves in a row that stored nothing: logged with each failure; the third ends the session (SessionSave).
+    private int failedSaveRun;
+    private const int FailedSaveRunEnd = 3;
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
@@ -1408,12 +1411,18 @@ public sealed partial class GameSession : Core.Network.Session {
         return $"GameSession: {Player?.Value?.Character?.Name} ({CharacterId}) [{State}] // Account: {AccountId}, Machine: {MachineId}, Channel: {Player?.Value?.Character?.Channel}, Map: {Player?.Value?.Character?.MapId}]";
     }
 
+    // Runs once: the save before a migration is not tried again when the session is disposed, since the client was
+    // already sent to the other channel, which may have loaded (and saved) the player by then. A failed save is
+    // logged, and the other channel starts from the last stored state.
     public void MigrationSave() {
         if (preMigrationSaved) return;
+        preMigrationSaved = true;
 
         try {
             AcquireLock(AccountId, 5);
-            preMigrationSaved = Save();
+            if (!Save()) {
+                Logger.Error("MigrationSave: not stored, not tried again AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            }
         } catch (Exception ex) {
             Logger.Error(ex, "MigrationSave failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
         } finally {
@@ -1421,14 +1430,24 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
+    // A session whose saves fail three times in a row is ended: what it gave or took since its last stored save is
+    // in its memory only, and every reward or item it hands out from then on would be one more that the next login
+    // does not know of (a quest reward mailed at once while the quest row is not stored is claimable again). Ending
+    // it is the one step that closes every such path; refusing each reward and item action instead would have to
+    // reach every handler that gives one. The cut takes the lost-connection path: Dispose tries one last full save
+    // (MigrationSave), and the next login starts from the last stored state, whole, with no part written alone.
     public void SessionSave() {
         try {
             AcquireLock(AccountId, 5);
             Save();
         } catch (Exception ex) {
+            failedSaveRun++;
             Logger.Error(ex, "SessionSave failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
         } finally {
             ReleaseLock(AccountId);
+        }
+        if (failedSaveRun >= FailedSaveRunEnd) {
+            Cut();
         }
     }
 
@@ -1449,6 +1468,7 @@ public sealed partial class GameSession : Core.Network.Session {
         try {
             AcquireLock(AccountId);
             using GameStorage.Request db = GameStorage.Context();
+            using var tokens = new RowTokens(Player);
             db.BeginTransaction();
             // The currency and the purchase's rows are stored together or not at all (the request rolls back what it
             // did not commit); the session keeps both, and its next save stores them.
@@ -1461,7 +1481,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 Logger.Error("SavePurchase: purchase rows not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
                 return false;
             }
-            return db.Commit();
+            return tokens.Kept = db.Commit();
         } catch (Exception ex) {
             Logger.Error(ex, "SavePurchase failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return false;
@@ -1471,11 +1491,39 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     // Don't call this directly, since it does not acquire the account lock.
-    // The player row (currency) and every component are stored together or not at all: a save that failed in one of
-    // them (an exception, or a write the database refused) is rolled back whole, so the stored mesos and items stay
-    // in step, and the next save tries again from the session's state.
+    // The player row (currency) and every component are stored together or not at all: each component pays, holds or
+    // gates an item, a currency or a reward (the config's lapenshards, skill and stat points; survival medals; the
+    // home; event, achievement and quest rewards claimed; dungeon records), so storing one without the others would
+    // let a reward be taken twice, or an item be lost, after the next login. A save that failed anywhere (an
+    // exception, or a write the database refused) is rolled back whole; the session keeps its state and the next
+    // save tries again. The saves that failed in a row are counted, and the third ends the session (see SessionSave).
     private bool Save() {
+        bool stored;
+        try {
+            stored = SaveRows();
+        } catch (Exception ex) {
+            // A throw anywhere in the save (a deadlock on a write, the rollback or the commit) is a failed save too.
+            Logger.Error(ex, "Save failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            stored = false;
+        }
+        if (stored) {
+            failedSaveRun = 0;
+        } else {
+            failedSaveRun++;
+            if (failedSaveRun >= FailedSaveRunEnd) {
+                Logger.Fatal("Save: {Count} saves in a row not stored, the session is ended; the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}",
+                    failedSaveRun, AccountId, CharacterId);
+            } else {
+                Logger.Error("Save: not stored ({Count} in a row) AccountId={AccountId} CharacterId={CharacterId}",
+                    failedSaveRun, AccountId, CharacterId);
+            }
+        }
+        return stored;
+    }
+
+    private bool SaveRows() {
         using GameStorage.Request db = GameStorage.Context();
+        using var tokens = new RowTokens(Player);
         db.BeginTransaction();
         if (!db.SavePlayer(Player)) {
             Logger.Error("Save: player not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
@@ -1485,9 +1533,9 @@ public sealed partial class GameSession : Core.Network.Session {
         int failedSaves = db.FailedSaves;
         bool threw = false;
         TrySaveComponent(UgcMarket.Save);
-        TrySaveComponent(Config.Save);
         TrySaveComponent(Shop.Save);
         TrySaveComponent(Item.Save);
+        TrySaveComponent(Config.Save);
         TrySaveComponent(Survival.Save);
         TrySaveComponent(Housing.Save);
         TrySaveComponent(GameEvent.Save);
@@ -1498,7 +1546,7 @@ public sealed partial class GameSession : Core.Network.Session {
             Logger.Error("Save: a component was not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return false;
         }
-        return db.Commit();
+        return tokens.Kept = db.Commit();
 
         void TrySaveComponent(Action<GameStorage.Request> action) {
             try {
@@ -1507,6 +1555,28 @@ public sealed partial class GameSession : Core.Network.Session {
                 threw = true;
                 Logger.Error(ex, "Error saving component for {Player}", PlayerName);
             }
+        }
+    }
+
+    // The player's row versions before a save: SavePlayer and SaveCurrency move them forward when their write is made,
+    // so a save that is then rolled back puts them back (the next save would otherwise start with a conflict).
+    private sealed class RowTokens : IDisposable {
+        private readonly Player player;
+        private readonly DateTime account, character, unlock;
+        public bool Kept;
+
+        public RowTokens(Player player) {
+            this.player = player;
+            account = player.Account.LastModified;
+            character = player.Character.LastModified;
+            unlock = player.Unlock.LastModified;
+        }
+
+        public void Dispose() {
+            if (Kept) return;
+            player.Account.LastModified = account;
+            player.Character.LastModified = character;
+            player.Unlock.LastModified = unlock;
         }
     }
 }

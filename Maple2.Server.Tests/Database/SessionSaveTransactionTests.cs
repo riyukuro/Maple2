@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Linq;
+using System.Reflection;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -23,8 +24,12 @@ namespace Maple2.Server.Tests.Database;
 public class SessionSaveTransactionTests {
     private static readonly string? Connection = Environment.GetEnvironmentVariable("MS2_TEST_GAME_DB");
     private const int ItemId = 50000102;
+    private const int RewardItemId = 50000103;
+    private const int LapenshardId = 41000001;
+    private const int QuestId = 91000999;
 
     private readonly CommandHook hook = new();
+    private readonly CommitHook commit = new();
     private DbContextOptions plain = null!;
     private TestGameSession test = null!;
     private GameSession session => test.Session;
@@ -35,10 +40,13 @@ public class SessionSaveTransactionTests {
             Assert.Ignore("transactions need a real database: set MS2_TEST_GAME_DB");
         }
         hook.Before = null;
+        commit.Fail = false;
         ServerVersion version = ServerVersion.AutoDetect(Connection);
         plain = new DbContextOptionsBuilder().UseMySql(Connection, version).Options;
-        test = new TestGameSession(new DbContextOptionsBuilder().UseMySql(Connection, version).AddInterceptors(hook).Options);
+        test = new TestGameSession(new DbContextOptionsBuilder().UseMySql(Connection, version).AddInterceptors(hook, commit).Options);
         test.Register(TestGameSession.Metadata(ItemId));
+        test.Register(TestGameSession.Metadata(RewardItemId));
+        test.Register(TestGameSession.Metadata(LapenshardId));
         test.Start();
         // The managers the test session leaves bare that a full save writes (as DailyReviveCountTests loads the config).
         test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
@@ -62,7 +70,9 @@ public class SessionSaveTransactionTests {
             return;
         }
         hook.Before = null;
+        commit.Fail = false;
         using var context = new Ms2Context(plain);
+        context.Quest.Where(quest => quest.OwnerId == test.CharacterId && quest.Id == QuestId).ExecuteDelete();
         context.Mail.Where(mail => mail.ReceiverId == test.CharacterId).ExecuteDelete();
         context.Item.Where(item => item.OwnerId == test.CharacterId).ExecuteDelete();
         context.ItemStorage.Where(info => info.AccountId == test.AccountId).ExecuteDelete();
@@ -195,6 +205,216 @@ public class SessionSaveTransactionTests {
             Assert.That(session.Currency.Meso, Is.EqualTo(5000));
             Assert.That(StoredMeso(), Is.EqualTo(5000));
         });
+    }
+
+    // Refuses every command that holds one of the texts, as a database that refuses one row on every try would.
+    private void RefuseAlways(params string[] texts) {
+        hook.Before = command => {
+            if (texts.Any(command.CommandText.Contains)) {
+                throw new InvalidOperationException("write refused");
+            }
+        };
+    }
+
+    private IDictionary<LapenshardSlot, int> StoredLapenshards() {
+        using var context = new Ms2Context(plain);
+        return context.CharacterConfig.AsNoTracking().Single(config => config.CharacterId == test.CharacterId).Lapenshards
+            ?? new Dictionary<LapenshardSlot, int>();
+    }
+
+    private int StoredItems(int itemId) {
+        using var context = new Ms2Context(plain);
+        return context.Item.AsNoTracking().Where(item => item.OwnerId == test.CharacterId && item.ItemId == itemId).Sum(item => item.Amount);
+    }
+
+    private QuestState? StoredQuest(int questId) {
+        using var context = new Ms2Context(plain);
+        return context.Quest.AsNoTracking().Where(quest => quest.OwnerId == test.CharacterId && quest.Id == questId)
+            .Select(quest => (QuestState?) quest.State).SingleOrDefault();
+    }
+
+    private int FailedSaveRun => (int) typeof(GameSession).GetField("failedSaveRun", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(session)!;
+    private bool Ended => (int) typeof(Maple2.Server.Core.Network.Session).GetField("disconnecting", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(session)! == 1;
+
+    // A completion whose quest row is refused pays nothing: the reward items get their rows at once, so the completed
+    // quest row is stored first, and a refused row leaves the quest open with no reward stored or held. It used to be
+    // stored only by the next session save, after the reward rows, so a failed save gave the reward again.
+    [Test]
+    public void Save_QuestRowRefused_RewardNotClaimableTwice() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        QuestMetadata data = TestGameSession.QuestData(QuestId);
+        data = data with { CompleteReward = data.CompleteReward with { EssentialItem = [new QuestMetadataReward.Item(RewardItemId, 1, 2)] } };
+        test.Register(data);
+        Quest quest = test.StartQuest(data);
+        session.SessionSave();
+        Assume.That((StoredQuest(QuestId), test.Errors.Count), Is.EqualTo(((QuestState?) QuestState.Started, 0)));
+        RefuseAlways("UPDATE `quest`");
+
+        Assert.That(session.Quest.Complete(quest), Is.False);
+        session.SessionSave();
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Started));
+            Assert.That(session.Item.Inventory.Find(RewardItemId).Sum(item => item.Amount), Is.EqualTo(0));
+            Assert.That(StoredQuest(QuestId), Is.EqualTo(QuestState.Started));
+            Assert.That(StoredItems(RewardItemId), Is.EqualTo(0));
+        });
+
+        // The database takes the row again: the completion is stored, then paid once, and not again.
+        hook.Before = null;
+        Assert.That(session.Quest.Complete(quest), Is.True);
+        Assert.That((StoredQuest(QuestId), StoredItems(RewardItemId)), Is.EqualTo(((QuestState?) QuestState.Completed, 2)));
+        Assert.That(session.Quest.Complete(quest), Is.False);
+        session.SessionSave();
+        Assert.That((StoredQuest(QuestId), StoredItems(RewardItemId)), Is.EqualTo(((QuestState?) QuestState.Completed, 2)));
+    }
+
+    // A lapenshard taken off while the config row is refused stays worn and gets no item row: the config without the
+    // shard and the shard's item row are stored together. The item row used to be written at once and the config by
+    // the next session save, so a failed save left the shard both worn and in the bag after the next login.
+    [Test]
+    public void Save_ConfigRowRefused_NoLapenshardDuplicate() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        session.Config.SetLapenshard(LapenshardSlot.Red1, LapenshardId);
+        session.SessionSave();
+        Assume.That(StoredLapenshards(), Does.ContainKey(LapenshardSlot.Red1));
+        RefuseAlways("UPDATE `character-config`");
+
+        Assert.That(session.Config.UnequipLapenshard(LapenshardSlot.Red1), Is.False);
+        session.SessionSave();
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(LapenshardId).Count(), Is.EqualTo(0));
+            Assert.That(StoredLapenshards()[LapenshardSlot.Red1], Is.EqualTo(LapenshardId));
+            Assert.That(StoredItems(LapenshardId), Is.EqualTo(0));
+        });
+
+        hook.Before = null;
+        Assert.That(session.Config.UnequipLapenshard(LapenshardSlot.Red1), Is.True);
+        Assert.That((StoredLapenshards().ContainsKey(LapenshardSlot.Red1), StoredItems(LapenshardId)), Is.EqualTo((false, 1)));
+        Assert.That(session.Item.Inventory.Find(LapenshardId).Count(), Is.EqualTo(1));
+    }
+
+    // A refused progress row fails the whole save, and the session keeps its state: two failed saves in a row leave the
+    // session on, a stored save starts the count again, and the third failed save in a row ends the session (the
+    // stored state is the last full save; the session's own memory is not written in part).
+    [Test]
+    public void Save_ThirdFailedSaveInARow_EndsTheSession() {
+        session.Currency.Meso = 4321;
+        session.Config.InstantReviveCount += 1;
+        RefuseAlways("UPDATE `character-config`");
+
+        session.SessionSave();
+        session.SessionSave();
+        Assert.That((FailedSaveRun, Ended, StoredMeso()), Is.EqualTo((2, false, 0L)));
+
+        hook.Before = null;
+        session.SessionSave();
+        Assert.That((FailedSaveRun, Ended, StoredMeso()), Is.EqualTo((0, false, 4321L)));
+
+        session.Currency.Meso = 1234;
+        session.Config.InstantReviveCount += 1;
+        RefuseAlways("UPDATE `character-config`");
+        session.SessionSave();
+        session.SessionSave();
+        Assert.That(Ended, Is.False);
+        session.SessionSave();
+        Assert.Multiple(() => {
+            Assert.That((FailedSaveRun, Ended), Is.EqualTo((3, true)));
+            Assert.That(StoredMeso(), Is.EqualTo(4321));
+            Assert.That(session.Currency.Meso, Is.EqualTo(1234));
+        });
+    }
+
+    // A save that throws out of its transaction (a deadlock on the commit) is a failed save too: it is counted, and
+    // the third in a row ends the session.
+    [Test]
+    public void Save_CommitThrows_CountsAsFailed() {
+        session.Currency.Meso = 4321;
+        commit.Fail = true;
+
+        session.SessionSave();
+        Assert.That((FailedSaveRun, StoredMeso()), Is.EqualTo((1, 0L)));
+        session.SessionSave();
+        session.SessionSave();
+        Assert.That((FailedSaveRun, Ended), Is.EqualTo((3, true)));
+    }
+
+    // The test session skips the save at Dispose; these tests make the one MigrationSave runs.
+    private void AllowMigrationSave() {
+        typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(session, false);
+    }
+
+    // The save at logout (Dispose saves through MigrationSave) with a progress row refused stores nothing: no money
+    // without the progress it was paid with.
+    [Test]
+    public void MigrationSave_ProgressPartRefused_StoresNothing() {
+        session.Currency.Meso = 4321;
+        session.Config.InstantReviveCount += 1;
+        RefuseAlways("UPDATE `character-config`");
+
+        AllowMigrationSave();
+        session.MigrationSave();
+
+        Assert.That(StoredMeso(), Is.EqualTo(0));
+    }
+
+    // A failed save before a migration is not tried again (at Dispose): the client was already sent to the other
+    // channel, which may have loaded the player by then.
+    [Test]
+    public void MigrationSave_Failed_IsNotTriedAgain() {
+        session.Currency.Meso = 4321;
+        RefuseOnce("UPDATE `account`");
+
+        AllowMigrationSave();
+        session.MigrationSave();
+        hook.Before = null;
+        session.MigrationSave();
+
+        Assert.That(StoredMeso(), Is.EqualTo(0));
+    }
+
+    // A rolled-back save puts the row versions back, so the next save starts without a conflict.
+    [Test]
+    public void Save_RolledBack_KeepsRowVersions() {
+        Item item = test.Store(TestGameSession.Metadata(ItemId), 3);
+        Assert.That(session.Item.Inventory.Add(item), Is.True);
+        DateTime account = session.Player.Value.Account.LastModified;
+        DateTime character = session.Player.Value.Character.LastModified;
+        session.Currency.Meso = 4321;
+        RefuseOnce("UPDATE `item`");
+
+        session.SessionSave();
+        hook.Before = null;
+
+        Assert.That((session.Player.Value.Account.LastModified, session.Player.Value.Character.LastModified), Is.EqualTo((account, character)));
+    }
+
+    // A purchase whose rows are refused puts the row versions SaveCurrency moved back.
+    [Test]
+    public void SavePurchase_RolledBack_KeepsRowVersions() {
+        DateTime account = session.Player.Value.Account.LastModified;
+        DateTime character = session.Player.Value.Character.LastModified;
+        session.Currency.Meso = 4321;
+        RefuseOnce("INSERT INTO `mail`");
+
+        session.SavePurchase(db => db.CreateMail(new Mail { ReceiverId = test.CharacterId }));
+        hook.Before = null;
+
+        Assert.That((session.Player.Value.Account.LastModified, session.Player.Value.Character.LastModified), Is.EqualTo((account, character)));
+    }
+
+    private sealed class CommitHook : DbTransactionInterceptor {
+        public bool Fail;
+
+        public override InterceptionResult TransactionCommitting(DbTransaction transaction, TransactionEventData eventData, InterceptionResult result) {
+            if (Fail) {
+                throw new InvalidOperationException("commit refused");
+            }
+            return result;
+        }
     }
 
     private sealed class CommandHook : DbCommandInterceptor {

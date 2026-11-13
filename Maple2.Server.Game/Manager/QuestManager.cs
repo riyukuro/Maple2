@@ -709,11 +709,22 @@ public sealed class QuestManager {
         }
 
         // The order KMS2 sends: the quest's complete packet, the meso, the exp, the items, then what counts the quest.
+        (long endTime, long lastStartTime, long lastEndTime, QuestState state, int completionCount) =
+            (quest.EndTime, quest.LastStartTime, quest.LastEndTime, quest.State, quest.CompletionCount);
         quest.EndTime = DateTime.Now.ToEpochSeconds();
         quest.LastStartTime = 0;
         quest.LastEndTime = 0;
         quest.State = QuestState.Completed;
         quest.CompletionCount++;
+        // The completed row is stored before any reward is paid: the reward items get their rows at once (Inventory.Add,
+        // MailItem), so a completion left to the next session save paid the rewards again after a crash or a failed
+        // save (the stored quest was still open). Not stored: nothing is paid and the quest stays open.
+        long ownerId = quest.Metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
+        if (!session.TrySavePurchase(db => db.SaveQuests(ownerId, [quest]))) {
+            (quest.EndTime, quest.LastStartTime, quest.LastEndTime, quest.State, quest.CompletionCount) =
+                (endTime, lastStartTime, lastEndTime, state, completionCount);
+            return false;
+        }
         session.Send(QuestPacket.Complete(quest));
         session.AdventureProtect.Update();
 

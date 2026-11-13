@@ -2,6 +2,7 @@
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -964,15 +965,32 @@ public class ConfigManager {
             return false;
         }
 
+        lapenshard.Transfer?.Bind(session.Player.Value.Character);
+        if (!session.Item.Inventory.CanAdd(lapenshard)) {
+            session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
+            return false;
+        }
+
         if (!lapenshards.Remove(slot, out lapenshardId)) {
             return false;
         }
 
-        lapenshard.Transfer?.Bind(session.Player.Value.Character);
-        bool success = session.Item.Inventory.Add(lapenshard);
-        if (!success) {
+        // The config without the shard and the shard's item row are stored together or not at all. The item row used
+        // to be written at once (Inventory.Add) and the config only by the next session save, so a crash or a failed
+        // save in between left the shard both worn and in the bag after the next login.
+        lapenshard.Slot = -1;
+        Item? stored = null;
+        if (!session.TrySavePurchase(db => {
+                Save(db);
+                stored = db.CreateItem(session.CharacterId, lapenshard);
+                return stored != null;
+            }) || stored == null) {
             lapenshards[slot] = lapenshardId; // Revert removal
             return false;
+        }
+        if (!session.Item.Inventory.Add(stored)) {
+            // The room was checked above; the stored row is the character's bag item, so the next login has it.
+            Serilog.Log.Logger.ForContext<ConfigManager>().Error("Lapenshard {ItemId} stored but not added to the bag of {CharacterId}", lapenshardId, session.CharacterId);
         }
 
         session.Send(LapenshardPacket.Unequip(slot));

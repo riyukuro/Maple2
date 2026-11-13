@@ -444,6 +444,12 @@ public sealed class TestGameSession {
         var quest = new Quest(QuestData(questId)) { State = state };
         var held = (Dictionary<int, Quest>) typeof(QuestManager).GetField("accountValues", Any)!.GetValue(Session.Quest)!;
         held[questId] = quest;
+        // Its row is stored too, under the owner Complete stores it for (the account for an account quest).
+        long ownerId = quest.Metadata.Basic.Account > 0 ? AccountId : CharacterId;
+        using (GameStorage.Request db = Storage.Context()) {
+            db.DeleteQuest(ownerId, questId);
+            db.CreateQuest(ownerId, quest);
+        }
         return quest;
     }
 
@@ -570,11 +576,15 @@ public sealed class TestGameSession {
         return record;
     }
 
-    // A quest the character has in progress (no row is stored).
+    // A quest the character has in progress, with its row stored as a started quest's is (Complete stores the row).
     public Quest StartQuest(QuestMetadata metadata) {
         var quest = new Quest(metadata) { State = QuestState.Started };
         for (int i = 0; i < metadata.Conditions.Length; i++) {
             quest.Conditions.Add(i, new Quest.Condition(metadata.Conditions[i]));
+        }
+        // The row comes back as null when the storage has no metadata of a test quest; it is stored all the same.
+        using (GameStorage.Request db = Storage.Context()) {
+            db.CreateQuest(metadata.Basic.Account > 0 ? AccountId : CharacterId, quest);
         }
         string values = metadata.Basic.Account > 0 ? "accountValues" : "characterValues";
         ((IDictionary<int, Quest>) typeof(QuestManager).GetField(values, Any)!.GetValue(Session.Quest)!).Add(metadata.Id, quest);
