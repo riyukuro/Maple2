@@ -117,6 +117,9 @@ public class EventBonusCollectTests {
         Assert.That(EventSaleRules.DungeonBonusAmount(amount, rate), Is.EqualTo(expected));
     }
 
+    // Trophies the next StartInRoom registers.
+    private AchievementMetadata[] trophies = [];
+
     // A room whose clear gives 1000 exp, 500 mesos and box 100 (ItemA x1).
     private GameSession StartInRoom(DungeonGroupType group, int rewardCount, params (DungeonBonusReward Data, bool Running)[] events) {
         test = new TestGameSession();
@@ -131,6 +134,7 @@ public class EventBonusCollectTests {
         test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
             new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
         test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        test.AddAchievement(trophies);
         for (int i = 0; i < events.Length; i++) {
             if (events[i].Running) {
                 test.AddEvent(EventId + i, GameEventType.DungeonBonusReward, events[i].Data);
@@ -181,6 +185,26 @@ public class EventBonusCollectTests {
         GameSession session = StartInRoom(DungeonGroupType.raid, 0, (Bonus(Room, meso: 1f, exp: 9f, rolls: 1, boxIds: [EventBox]), true));
 
         Assert.That(Clear(session), Is.EqualTo((0, 0, 0L, 0, 0, false)));
+    }
+
+    // dungeon_reward_group: a clear that gives the room's reward counts with the room's group type as the code
+    // (89000215 code 2, raid); a clear without a reward count left gives no reward, so it does not count.
+    private const int RaidTrophy = 89000215;
+    private const int NormalTrophy = 70700006;
+
+    [TestCase(10, 1L)]
+    [TestCase(0, null)]
+    public void Clear_CountsTheRewardGroupOfTheRoom(int rewardCount, long? raidCounter) {
+        trophies = [
+            TestGameSession.Trophy(RaidTrophy, ConditionType.dungeon_reward_group, [1], codes: [(int) DungeonGroupType.raid]),
+            TestGameSession.Trophy(NormalTrophy, ConditionType.dungeon_reward_group, [3], codes: [(int) DungeonGroupType.normal]),
+        ];
+        GameSession session = StartInRoom(DungeonGroupType.raid, rewardCount);
+        trophies = [];
+        Clear(session);
+
+        Assert.That((test.TrophyCounter(RaidTrophy), test.TrophyCounter(NormalTrophy)), Is.EqualTo((raidCounter, (long?) null)));
+        Assert.That(test.Errors, Is.Empty);
     }
     #endregion
 

@@ -129,6 +129,7 @@ public static class ConditionUtil {
             case ConditionType.dungeon_clear:
             case ConditionType.dungeon_first_clear:
             case ConditionType.dungeon_clear_group:
+            case ConditionType.dungeon_reward_group:
             case ConditionType.dungeon_rank_clear:
             case ConditionType.dungeon_rank:
             case ConditionType.item_design:

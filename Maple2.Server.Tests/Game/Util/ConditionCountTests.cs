@@ -269,6 +269,20 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: (long) groupType), Is.EqualTo(expected));
     }
 
+    // A dungeon reward counts for dungeon_reward_group when the room's group type is the row's code
+    // (70700006 code 1, 89000215 code 2, 70700061 code 9, 70700003 code 10).
+    [TestCase(1, DungeonGroupType.normal, true)]
+    [TestCase(1, DungeonGroupType.raid, false)]
+    [TestCase(2, DungeonGroupType.raid, true)]
+    [TestCase(9, DungeonGroupType.item, true)]
+    [TestCase(10, DungeonGroupType.vip, true)]
+    [TestCase(10, DungeonGroupType.item, false)]
+    public void DungeonRewardGroup_CountsTheListedGroup(int code, DungeonGroupType groupType, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.dungeon_reward_group, 1,
+            new ConditionMetadata.Parameters(Integers: [code]), null);
+        Assert.That(condition.Check(null!, codeLong: (long) groupType), Is.EqualTo(expected));
+    }
+
     // A clear of a ranked room counts for dungeon_rank_clear when the room is the row's code
     // (93000174 "Clear the "Duel on the Deck" Fortress Rumble": 24091005).
     [TestCase(24091005, true)]
