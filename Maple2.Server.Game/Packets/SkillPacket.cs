@@ -63,18 +63,6 @@ public static class SkillPacket {
         return pWriter;
     }
 
-    // Mode 0 of SkillUseFailed; SkillUseFailedPacket.Fail is mode 5 with the same fields.
-    public static ByteWriter Fail(long castUid, int skillId, float cooldownSeconds, SkillCooldown? cooldown, long currentTick) {
-        var pWriter = Packet.Of(SendOp.SkillUseFailed);
-        pWriter.WriteByte();
-        pWriter.WriteLong(castUid);
-        pWriter.WriteInt(skillId);
-        pWriter.WriteByte(); // error
-        pWriter.WriteCooldown(cooldownSeconds, cooldown, currentTick);
-
-        return pWriter;
-    }
-
     // Client: CSceneStateGame::OnStateSkill mode 6 reads int object id, long cast uid, int skill id, int state.
     public static ByteWriter StateSkill(FieldPlayer player, int skillId, long skillCastUid) {
         var pWriter = Packet.Of(SendOp.StateSkill);
