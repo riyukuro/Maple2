@@ -178,6 +178,20 @@ public class PvpLookupTests {
         Assert.That(squadNotices, Is.EquivalentTo(new[] { (1L, 2), (2L, 2) }));
         Assert.That(lookup.ArenaUnregister(1), Is.EqualTo(RankDuelError.NotQueued));
 
+        // A member's logout takes the squad out: the other member gets the unregister and the idle state.
+        lookup.ArenaRegisterSquad([1, 2], 100, 3, 3);
+        squadNotices.Clear();
+        arenaNotices.Clear();
+        lookup.Remove(1);
+        Assert.That(squadNotices, Is.EqualTo(new[] { (2L, 2) }));
+        Assert.That(arenaNotices, Is.EqualTo(new[] { (2L, false, 100) }));
+        Assert.That(lookup.ArenaUnregister(2), Is.EqualTo(RankDuelError.NotQueued));
+        // Leaving the party does the same for every member.
+        lookup.ArenaRegisterSquad([1, 2], 100, 3, 3);
+        squadNotices.Clear();
+        lookup.LeaveSquad(2);
+        Assert.That(squadNotices, Is.EquivalentTo(new[] { (1L, 2), (2L, 2) }));
+
         lookup.ArenaRegisterSquad([1, 2], 100, 3, 3);
         Assert.That(made, Is.Empty);
         lookup.ArenaRegister(7, 100, 3, 3);

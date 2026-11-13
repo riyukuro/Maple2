@@ -63,7 +63,9 @@ public static class MapleSurvivalProgress {
         Account account = session.Player.Value.Account;
         MapleSurvivalTable? table = Table(session);
         MapleSurvivalTable.Period? period = table == null ? null : SurvivalRules.CurrentPeriod(table, DateTime.Now);
-        if (table == null || period == null) {
+        // Without a field (a field change under way) no reward item can be made: the claim is refused, nothing is
+        // marked claimed.
+        if (table == null || period == null || session.Field == null) {
             session.Send(SurvivalPacket.UpdateStats(account));
             return;
         }

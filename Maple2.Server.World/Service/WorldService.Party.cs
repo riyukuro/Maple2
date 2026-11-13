@@ -22,14 +22,18 @@ public partial class WorldService {
             case PartyRequest.PartyOneofCase.Create:
                 return Task.FromResult(CreateParty(request.RequestorId, request.Create));
             case PartyRequest.PartyOneofCase.Disband:
+                // A Maple Survival squad of the party leaves the queue (every member told).
+                pvpLookup.LeaveSquad(request.RequestorId);
                 return Task.FromResult(DisbandParty(request.RequestorId, request.Disband));
             case PartyRequest.PartyOneofCase.Invite:
                 return Task.FromResult(InviteParty(request.RequestorId, request.Invite));
             case PartyRequest.PartyOneofCase.RespondInvite:
                 return Task.FromResult(RespondInviteParty(request.RequestorId, request.RespondInvite));
             case PartyRequest.PartyOneofCase.Leave:
+                pvpLookup.LeaveSquad(request.RequestorId);
                 return Task.FromResult(LeaveParty(request.RequestorId, request.Leave));
             case PartyRequest.PartyOneofCase.Kick:
+                pvpLookup.LeaveSquad(request.Kick.ReceiverId);
                 return Task.FromResult(KickParty(request.RequestorId, request.Kick));
             case PartyRequest.PartyOneofCase.UpdateLeader:
                 return Task.FromResult(UpdatePartyLeader(request.RequestorId, request.UpdateLeader));

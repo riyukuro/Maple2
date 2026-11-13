@@ -109,18 +109,31 @@ public sealed class ArenaQueue {
     public List<ArenaMatch> Pair(long tick) {
         var made = new List<ArenaMatch>();
         foreach (IGrouping<int, Waiter> arena in waiting.GroupBy(waiter => waiter.Arena).ToList()) {
-            // Whole units in the order they came: a unit's members all go into one match. A match takes units until it
-            // holds the arena's count (a squad may take it past the count: chosen, a squad is never split).
+            // Whole units in the order they came: a unit's members all go into one match. A match takes units while they
+            // fit its count (a unit that would go past it waits for the next match), and holds at least two units.
             List<List<Waiter>> order = arena.GroupBy(waiter => waiter.UnitId).Select(unit => unit.ToList())
                 .OrderBy(unit => unit.Min(waiter => waiter.Since)).ToList();
             int size = order[0][0].PlayerCount;
             int fewest = order[0][0].MinPlayers;
-            while (order.Sum(unit => unit.Count) >= size || (order.Sum(unit => unit.Count) >= fewest && tick - order[0].Min(waiter => waiter.Since) >= GatherMs)) {
-                var taken = new List<Waiter>();
-                while (order.Count > 0 && taken.Count < size) {
-                    taken.AddRange(order[0]);
-                    order.RemoveAt(0);
+            while (order.Count >= 2) {
+                var units = new List<List<Waiter>>();
+                int count = 0;
+                foreach (List<Waiter> unit in order) {
+                    if (count + unit.Count > size) {
+                        continue;
+                    }
+                    units.Add(unit);
+                    count += unit.Count;
+                    if (count == size) {
+                        break;
+                    }
                 }
+                bool gathered = count >= fewest && tick - order[0].Min(waiter => waiter.Since) >= GatherMs;
+                if (units.Count < 2 || (count < size && !gathered)) {
+                    break;
+                }
+                List<Waiter> taken = units.SelectMany(unit => unit).ToList();
+                order.RemoveAll(units.Contains);
                 waiting.RemoveAll(taken.Contains);
                 var match = new ArenaMatch {
                     Id = nextMatchId++, Arena = arena.Key, Characters = taken.Select(waiter => waiter.CharacterId).ToList(), CreatedTick = tick,

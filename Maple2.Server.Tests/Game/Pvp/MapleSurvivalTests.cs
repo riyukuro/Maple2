@@ -94,7 +94,7 @@ public class MapleSurvivalTests {
 
     // Squads: members are no enemies; a squad's rank is set when its last member falls (the squads left, plus one) and
     // shared by its members; the game ends with one squad left, whose members (fallen ones too) rank 1. A squad never
-    // splits in the queue, and a squad that would take a match past its count still goes in whole.
+    // splits in the queue.
     [Test]
     public void Squads_HostilityRanksAndQueue() {
         var units = new Dictionary<long, long> { [1] = 1, [2] = 1, [3] = 3, [4] = 4 };
@@ -112,8 +112,8 @@ public class MapleSurvivalTests {
         Assert.That(new SurvivalGameState([1, 2], id => units[id]).Ended, Is.True);
 
         var queue = new ArenaQueue();
-        queue.Register(9, MapleSurvivalRules.Arena, 3, 0, 3, out _);
-        queue.RegisterSquad([5, 6, 8], MapleSurvivalRules.Arena, 3, 1, 3, out List<ArenaMatch> made);
+        queue.Register(9, MapleSurvivalRules.Arena, 4, 0, 4, out _);
+        queue.RegisterSquad([5, 6, 8], MapleSurvivalRules.Arena, 4, 1, 4, out List<ArenaMatch> made);
         Assert.That(made.Single().Characters, Is.EquivalentTo(new long[] { 9, 5, 6, 8 }));
         Assert.That(made.Single().Units[6], Is.EqualTo(5));
     }
@@ -250,11 +250,36 @@ public class MapleSurvivalTests {
         sent = Send(test, session, "22" + "01" + Long(800));
         Assert.That((session.Player.Value.Account.ActiveGoldPass, session.Currency.Meret), Is.EqualTo((true, 200L)));
         Assert.That(sent.Where(packet => packet.StartsWith("1901")).Select(packet => packet[..6]), Is.EqualTo(new[] { "190123", "190117" }));
+        // No field (a field change): refused, nothing claimed.
+        var field = session.Field;
+        session.Field = null;
+        Send(test, session, "23" + "08000000" + "00000000");
+        Assert.That(session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Is.EqualTo(0));
+        session.Field = field;
         sent = Send(test, session, "23" + "08000000" + "00000000");
         Assert.That(sent.Where(packet => packet.StartsWith("1901")).ToList(), Is.EqualTo(new[] {
             "1901" + "23" + "01000000" + "03000000" + "01000000" + "00000000",
             Hex(SurvivalPacket.UpdateStats(session.Player.Value.Account)) }));
         Assert.That(session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Is.EqualTo(3));
+    }
+
+    // A match takes the units that fit its count (a unit that would go past it waits): 18 solo players and a squad of
+    // 4 make no 20-player match; two more solos fill it. A match needs two units.
+    [Test]
+    public void Queue_UnitsFitTheCount() {
+        var queue = new ArenaQueue();
+        for (long id = 1; id <= 18; id++) {
+            queue.Register(id, MapleSurvivalRules.Arena, 20, 0, 20, out _);
+        }
+        queue.RegisterSquad([101, 102, 103, 104], MapleSurvivalRules.Arena, 20, 1, 20, out List<ArenaMatch> made);
+        Assert.That(made, Is.Empty);
+        queue.Register(19, MapleSurvivalRules.Arena, 20, 2, 20, out _);
+        queue.Register(20, MapleSurvivalRules.Arena, 20, 3, 20, out made);
+        Assert.That(made.Single().Characters, Has.Count.EqualTo(20).And.Not.Contains(101L));
+        Assert.That(queue.IsQueued(101), Is.True);
+        var lone = new ArenaQueue();
+        lone.RegisterSquad([1, 2], MapleSurvivalRules.Arena, 2, 0, 2, out made);
+        Assert.That(made, Is.Empty);
     }
 
     // The script's 20 players is the match's own count in a survival match's field only.

@@ -151,15 +151,16 @@ public sealed class PvpLookup : IDisposable {
     public RankDuelError ArenaUnregister(long characterId) {
         List<long> unit;
         RankDuelError error;
+        int arena;
         lock (mutex) {
             unit = arenas.UnitOf(characterId);
+            arena = arenas.QueuedArena(characterId);
             error = arenas.Unregister(characterId);
         }
         // A squad's cancel takes the whole squad out: every member's party window shows it (Party 0x37 false).
         if (error == RankDuelError.none && unit.Count > 1) {
-            foreach (long member in unit) {
-                TryNotify(member, false, 0, 2);
-            }
+            TellSquadOut(unit.Where(member => member != characterId), arena);
+            TryNotify(characterId, false, 0, 2);
         }
         return error;
     }
@@ -303,11 +304,39 @@ public sealed class PvpLookup : IDisposable {
         }
     }
 
-    // A logout: a queued character leaves the queue.
+    // A logout or a channel change: a queued character leaves the queue. A squad member takes its squad out: the
+    // others get the squad's unregister (Party 0x37 false) and the idle state (Survival 0x01).
     public void Remove(long characterId) {
+        List<long> unit;
+        int arena;
         lock (mutex) {
             queue.Remove(characterId);
+            unit = arenas.UnitOf(characterId);
+            arena = arenas.QueuedArena(characterId);
             arenas.Remove(characterId);
+        }
+        TellSquadOut(unit.Where(member => member != characterId), arena);
+    }
+
+    // A party member left or the party broke up: its squad (if queued) leaves the queue, every member told.
+    public void LeaveSquad(long characterId) {
+        List<long> unit;
+        int arena;
+        lock (mutex) {
+            unit = arenas.UnitOf(characterId);
+            arena = arenas.QueuedArena(characterId);
+            if (unit.Count <= 1) {
+                return;
+            }
+            arenas.Remove(characterId);
+        }
+        TellSquadOut(unit, arena);
+    }
+
+    private void TellSquadOut(IEnumerable<long> members, int arena) {
+        foreach (long member in members) {
+            TryNotify(member, false, 0, 2);
+            TryNotify(member, false, arena);
         }
     }
 
