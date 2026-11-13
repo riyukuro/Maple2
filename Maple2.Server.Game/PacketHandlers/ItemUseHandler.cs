@@ -1328,6 +1328,10 @@ public class ItemUseHandler : FieldPacketHandler {
             })) {
             return;
         }
+        // Not taken: the item left the bag between its save and the commit (the bag lock is not held across the
+        // transaction). The player sees the event started and the reply as usual; the row is stored as spent, but the
+        // item where it went keeps its amount in memory, so that place's next save writes the use back and the player
+        // keeps the one item. Not closed here; logged so it is seen.
         if (!taken) {
             Logger.Error("CashAttendEvent {ItemUid}: the start was stored but the item was not taken from the bag of {CharacterId}", item.Uid, session.CharacterId);
         }

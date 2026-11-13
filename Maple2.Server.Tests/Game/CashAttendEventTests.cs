@@ -32,11 +32,11 @@ public class CashAttendEventTests {
             new AttendGift.Require(AttendGiftRequirement.ItemId, requiredItemId, days));
     }
 
-    private GameSession Start(int requiredItemId = ItemId, int days = 92, DateTime? end = null) {
+    private GameSession Start(int requiredItemId = ItemId, int days = 92, DateTime? end = null, int amount = 2) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(RewardId));
         ticket = test.Store(TestGameSession.Metadata(ItemId,
-            function: new ItemMetadataFunction(ItemFunction.CashAttendEvent, "CashAttendEvent", string.Empty, false)), amount: 2);
+            function: new ItemMetadataFunction(ItemFunction.CashAttendEvent, "CashAttendEvent", string.Empty, false)), amount: amount);
         gameEvent = test.AddEvent(EventId, GameEventType.AttendGift, Gift(requiredItemId, days), end: end);
         GameSession session = test.Start();
         // For the session save.
@@ -100,6 +100,35 @@ public class CashAttendEventTests {
         Assert.That(session.SessionSave(), Is.True, string.Join("\n", test.Errors));
         Assert.That(test.StoredEventValues(EventId)[GameEventUserValueType.AttendanceItemStartEnd], Is.EqualTo(end.ToString()));
         Assert.That(test.Row(ticket.Uid)!.Amount, Is.EqualTo(1));
+    }
+
+    // A save that fails stores and changes nothing: the item stays, the event is not started, no reply.
+    [Test]
+    public void Use_FailedSave_KeepsTheItemAndStartsNothing() {
+        GameSession session = Start();
+        test.FailSave = _ => true;
+        Use(session);
+        test.FailSave = null;
+
+        Assert.That(session.Item.Inventory.Get(ticket.Uid)!.Amount, Is.EqualTo(2));
+        Assert.That(test.Row(ticket.Uid)!.Amount, Is.EqualTo(2));
+        Assert.That(StartEnd(session), Is.Null);
+        Assert.That(test.StoredEventValues(EventId).ContainsKey(GameEventUserValueType.AttendanceItemStartEnd), Is.False);
+        Assert.That(test.TakeSent(), Has.None.EqualTo(AttendancePacket.SelectEvent(EventId).ToArray()));
+    }
+
+    // The last item of its stack leaves the bag; its row goes to owner 0 with the start, and the session save after
+    // does not bring it back.
+    [Test]
+    public void Use_LastOfItsStack_LeavesTheBag() {
+        GameSession session = Start(amount: 1);
+        Use(session);
+
+        Assert.That(session.Item.Inventory.Get(ticket.Uid), Is.Null);
+        Assert.That(test.Row(ticket.Uid)!.OwnerId, Is.EqualTo(0));
+        Assert.That(StartEnd(session), Is.Not.Null);
+        Assert.That(session.SessionSave(), Is.True, string.Join("\n", test.Errors));
+        Assert.That(test.Row(ticket.Uid)!.OwnerId, Is.EqualTo(0));
     }
 
     // The start ends with the event when the event ends first.
