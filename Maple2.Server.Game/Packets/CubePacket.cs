@@ -691,10 +691,12 @@ public static class CubePacket {
         return pWriter;
     }
 
+    // CSceneStateGame::OnResponseCube case 0x47 (scenestategame.cpp:10367): int error, 1 or 2, 3 and 4 a notice each.
+    // Not sent: the errors fit only the home summon (RequestCube 30), which no function cube in the data opens.
     public static ByteWriter FunctionCubeError(FunctionCubeError error) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
-        pWriter.Write<Command>(Command.FunctionCubeError);
-        pWriter.Write<FunctionCubeError>(error);
+        pWriter.WriteByte((byte) Command.FunctionCubeError);
+        pWriter.WriteInt((int) error);
 
         return pWriter;
     }
