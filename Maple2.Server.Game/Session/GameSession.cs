@@ -478,7 +478,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // Ugc
         // The cash shop flag KMS2 sends at every login (1, the client's own default).
         Send(CashPacket.Enabled(true));
-        // Gvg
+        // Gvg: the content shutdown flags, cleared and set again at every game server entry (ContentShutdownConfig).
+        Send(GvgPacket.ContentShutdown(ContentShutdownConfig.Contents));
         // Pvp
         Send(StateSyncPacket.SyncNumber(0));
         // SyncWorld
