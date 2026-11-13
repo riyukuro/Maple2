@@ -118,7 +118,7 @@ public class TradeRulesTests {
     }
 
     // The fee the receiver pays (FUN_14087d150): mesos * percent / 100 in whole numbers, times (1 - the receiver's
-    // reduce rate), cut to a whole number and never below 0.
+    // reduce rate), cut to a whole number, never below 0 and never above the mesos.
     [TestCase(1000L, 10, 0f, 100L)]
     [TestCase(1000L, 10, 0.25f, 75L)]
     [TestCase(999L, 10, 0f, 99L)]
@@ -126,6 +126,7 @@ public class TradeRulesTests {
     [TestCase(0L, 10, 0f, 0L)]
     [TestCase(1000L, 10, 1.5f, 0L)]
     [TestCase(1000L, 0, 0f, 0L)]
+    [TestCase(1000L, 10, -20f, 1000L)]
     public void Fee(long mesos, int percent, float rate, long expected) {
         Assert.That(TradeRules.Fee(mesos, percent, rate), Is.EqualTo(expected));
     }

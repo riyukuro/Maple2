@@ -35,14 +35,16 @@ public static class TradeRules {
     // The fee taken from the mesos a trader receives, as the client shows it under the other player's offer
     // (UITradeDialogEx::UpdateFee, FUN_14087d150): mesos * TradeFeePercent / 100 in whole numbers, then times
     // (1 - rate) in float and cut to a whole number, where rate is the receiver's own reduce_meso_trade_fee
-    // (special attribute 0x40, total / 1000). Never below 0.
+    // (special attribute 0x40, total / 1000). Never below 0. Chosen here: never above the mesos either (the client
+    // does not cap it), so a reduction far below 0 cannot take more than the offer and leave the receiver's change
+    // negative after the items have moved.
     public static long Fee(long mesos, int percent, float rate) {
-        if (mesos == 0) {
+        if (mesos <= 0) {
             return 0;
         }
         long fee = mesos * percent / 100;
         fee = (long) (float) (fee * (1.0f - rate));
-        return fee < 0 ? 0 : fee;
+        return Math.Clamp(fee, 0, mesos);
     }
 
     public static bool IsOfferAmount(int amount) {
