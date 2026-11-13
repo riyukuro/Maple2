@@ -206,9 +206,16 @@ public class RevivalHandler : FieldPacketHandler {
         return BuffManager.BlocksRevival(session.Player.Buffs.EnumerateBuffs());
     }
 
-    // Client StateSummonRevive: a dead summon owned by the player asks to revive; the fork has no summon revive state.
+    // Client StateSummonRevive (statesummon.cpp:787): the pet of a dead owner sends this when its 3000 ms state runs
+    // out, from every client that shows the pet; only the owner's own client counts. One hit on the owner's
+    // tombstone, no cost; the Tombstone packet then carries the pet flag.
     private void HandleSummonRevive(GameSession session, IByteReader packet) {
         int objectId = packet.ReadInt();
-        Logger.Debug("Revival of summon {ObjectId} from {CharacterId} not implemented", objectId, session.CharacterId);
+        if (session.Field?.Pets.TryGetValue(objectId, out FieldPet? pet) != true || pet.OwnerId != session.Player.ObjectId) {
+            return;
+        }
+        if (!pet.TryReviveHit(session.Field.FieldTick, out string refusal)) {
+            Logger.Debug("Revival by pet {ObjectId} of {CharacterId} refused: {Refusal}", objectId, session.CharacterId, refusal);
+        }
     }
 }

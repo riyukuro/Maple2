@@ -1,3 +1,4 @@
+﻿using Maple2.Model.Enum;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
@@ -63,5 +64,32 @@ public class TombstoneRulesTests {
     public void HitsOfATombstone_StayInAByte() {
         Assert.That(TombstoneRules.TotalHits(100, 200, 100), Is.EqualTo((byte) 255));
         Assert.That(TombstoneRules.TotalHits(2, 5, 0), Is.EqualTo((byte) 5));
+    }
+
+    // StateSummonRevive sends Revival 3 when the owner is dead and PC::IsRevivalBlocked is false: no death count,
+    // no dark tombstone (both DeathState.Metal), no disableRevivalHere buff.
+    [TestCase(true, true, DeathState.FirstDeath, false, true)]
+    [TestCase(true, true, DeathState.Metal, false, false)]
+    [TestCase(true, true, DeathState.FirstDeath, true, false)]
+    [TestCase(true, false, DeathState.FirstDeath, false, false)] // no tombstone
+    [TestCase(false, true, DeathState.Alive, false, false)]
+    public void PetHelpsTheOwnerUp(bool dead, bool tombstone, DeathState state, bool buff, bool expected) {
+        Assert.That(TombstoneRules.PetHelps(dead, tombstone, state, buff), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void PetHoldsItsStateWhileTheOwnerLiesDead() {
+        Assert.That(TombstoneRules.PetHolds(true, true), Is.True); // also on a metal tombstone: the pet plays Tired_A
+        Assert.That(TombstoneRules.PetHolds(true, false), Is.False);
+        Assert.That(TombstoneRules.PetHolds(false, false), Is.False);
+    }
+
+    [Test]
+    public void PetHitsComeOncePerState() {
+        Assert.That(TombstoneRules.PetHitTooSoon(10_000, 0), Is.False);
+        Assert.That(TombstoneRules.PetHitTooSoon(13_000, 10_000), Is.False);
+        Assert.That(TombstoneRules.PetHitTooSoon(12_500, 10_000), Is.False);
+        Assert.That(TombstoneRules.PetHitTooSoon(12_499, 10_000), Is.True);
+        Assert.That(TombstoneRules.PetHitTooSoon(10_001, 10_000), Is.True);
     }
 }

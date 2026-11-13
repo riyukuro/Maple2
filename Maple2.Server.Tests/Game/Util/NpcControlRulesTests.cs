@@ -225,6 +225,14 @@ public class NpcControlRulesTests {
     }
 
     [Test]
+    public void SummonReviveIsSentWithoutASequence() {
+        // StateSummonRevive (state 48) plays its own motion: Tired_A while the owner cannot revive.
+        Assert.That((byte) ActorState.SummonRevive, Is.EqualTo(48));
+        Assert.That(NpcControlRules.WireSequence(ActorState.SummonRevive, 12), Is.EqualTo(-1));
+        Assert.That(NpcControlRules.WireSequence(ActorState.SummonRevive, 12, null), Is.EqualTo(-1));
+    }
+
+    [Test]
     public void StunValuesOneAndThreeStun() {
         Assert.That(NpcControlRules.Stuns(0), Is.False);
         Assert.That(NpcControlRules.Stuns(1), Is.True);

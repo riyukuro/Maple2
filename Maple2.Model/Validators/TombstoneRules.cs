@@ -1,3 +1,5 @@
+﻿using Maple2.Model.Enum;
+
 namespace Maple2.Model.Validators;
 
 // Tombstone: i32 object id of the dead player, i32 hit count.
@@ -38,5 +40,27 @@ public static class TombstoneRules {
 
     public static byte AfterHit(byte hitsRemaining) {
         return hitsRemaining > 0 ? (byte) (hitsRemaining - 1) : (byte) 0;
+    }
+
+    // A summoned pet helps its dead owner up: the client's StateSummonRevive (statesummon.cpp:787) runs 3000 ms and
+    // then, when the owner is dead and PC::IsRevivalBlocked (pc.cpp:2009) is false, sends Revival 3 with the pet's
+    // object id. IsRevivalBlocked: a death count (RevivalConfirm), the dark tombstone or a buff with
+    // disableRevivalHere; the first two are DeathState.Metal here.
+    public const long PET_HIT_INTERVAL_MS = 3000;
+    // Chosen here: how much sooner than the client's interval a pet hit may come.
+    public const long PET_HIT_SLACK_MS = 500;
+
+    // The pet's revive state holds while its owner lies dead with a tombstone.
+    public static bool PetHolds(bool ownerDead, bool hasTombstone) {
+        return ownerDead && hasTombstone;
+    }
+
+    public static bool PetHelps(bool ownerDead, bool hasTombstone, DeathState state, bool revivalBuff) {
+        return PetHolds(ownerDead, hasTombstone) && state != DeathState.Metal && !revivalBuff;
+    }
+
+    // lastTick 0: no hit by this pet yet.
+    public static bool PetHitTooSoon(long tick, long lastTick) {
+        return lastTick != 0 && tick - lastTick < PET_HIT_INTERVAL_MS - PET_HIT_SLACK_MS;
     }
 }

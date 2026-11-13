@@ -166,6 +166,27 @@ public partial class MovementState {
         SetState(ActorState.Stun);
     }
 
+    // A summoned pet whose owner lies dead stands in StateSummonRevive; the client plays its motion and sends
+    // Revival 3 each time the state's 3000 ms run out (statesummon.cpp:787). Stun and hit come first.
+    public void SetSummonRevive(bool on) {
+        if (on == (State == ActorState.SummonRevive)) {
+            return;
+        }
+        if (!on) {
+            Idle();
+            return;
+        }
+        if (actor.IsDead || IsJumping || State is ActorState.Spawn or ActorState.Regen or ActorState.Stun or ActorState.Hit) {
+            return;
+        }
+
+        CastTask?.Cancel();
+        walkTask?.Cancel();
+        emoteActionTask?.Cancel();
+        Velocity = new Vector3(0, 0, 0);
+        SetState(ActorState.SummonRevive);
+    }
+
     // The fields of the hit entry that has not gone out yet (FieldNpc.Update clears it once sent).
     public NpcControlRules.HitEntry? HitEntry { get; private set; }
     private long hitEndTick;
@@ -295,7 +316,7 @@ public partial class MovementState {
             if (tickCount >= hitEndTick) {
                 Idle();
             }
-        } else if (State != ActorState.Stun && actor.Animation.PlayingSequence != stateSequence) {
+        } else if (State is not (ActorState.Stun or ActorState.SummonRevive) && actor.Animation.PlayingSequence != stateSequence) {
             Idle();
         }
 

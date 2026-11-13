@@ -7,6 +7,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Model.ActorStateComponent;
@@ -54,6 +55,36 @@ public sealed class FieldPet : FieldNpc {
         } else {
             SkinId = Value.Id;
         }
+    }
+
+    private long reviveHitTick;
+
+    // The owner lies dead in this field with a tombstone: the pet stands in its revive state (FieldNpc.Update).
+    public bool OwnerDown => owner != null && owner.Field == Field && TombstoneRules.PetHolds(owner.IsDead, owner.Tombstone != null);
+
+    // Revival 3 from the owner's client: one hit on the owner's tombstone, at most one per the client's interval.
+    public bool TryReviveHit(long tickCount, out string refusal) {
+        refusal = string.Empty;
+        if (owner?.Tombstone is not { } tombstone || owner.Field != Field) {
+            refusal = "owner not down here";
+            return false;
+        }
+        if (!TombstoneRules.PetHelps(owner.IsDead, true, owner.DeathState, BuffManager.BlocksRevival(owner.Buffs.EnumerateBuffs()))) {
+            refusal = "revival blocked";
+            return false;
+        }
+        if (TombstoneRules.PetHitTooSoon(tickCount, reviveHitTick)) {
+            refusal = "too soon";
+            return false;
+        }
+        if (!TombstoneRules.CanHit(tombstone.HitsRemaining)) {
+            refusal = "tombstone broken";
+            return false;
+        }
+
+        reviveHitTick = tickCount;
+        tombstone.Hit(byPet: true);
+        return true;
     }
 
     public override void Update(long tickCount) {

@@ -352,7 +352,10 @@ public class FieldNpc : Actor<Npc> {
             }
             BattleState.Update(tickCount);
             MovementState.SetStunned(TakesStun());
-            isStunned = MovementState.State is ActorState.Stun or ActorState.Hit; // held: no AI, no tasks
+            if (this is FieldPet { OwnerId: not 0 } pet) {
+                MovementState.SetSummonRevive(pet.OwnerDown);
+            }
+            isStunned = MovementState.State is ActorState.Stun or ActorState.Hit or ActorState.SummonRevive; // held: no AI, no tasks
             if (!AiOff && !isStunned) {
                 AiState.Update(tickCount);
                 DoIdleBehavior(tickCount);

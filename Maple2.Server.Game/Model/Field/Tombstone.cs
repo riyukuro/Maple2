@@ -33,7 +33,9 @@ public class Tombstone : IByteSerializable {
     // nothing left and this at 1 the client plays the tombstone hit effect and, for its own player, the
     // event voice (PC::FUN_14165d300); KMS2 sends 0 when the player revives by the dialog.
     public int Hitter { get; private set; }
-    public bool Unknown2 { get; }
+    // Set when the hit was the owner's pet's (Revival 3): the client then puts the owner's pet in its idle state with
+    // sub state 0x11 and plays the pet's sound (OnTombstone, scenestategame.cpp:9644).
+    public bool ByPet { get; private set; }
 
     public Tombstone(FieldPlayer owner, int deathStreak) {
         Owner = owner;
@@ -41,15 +43,17 @@ public class Tombstone : IByteSerializable {
         hitsRemaining = TotalHitCount;
     }
 
-    // One hit by another player.
-    public void Hit() {
+    // One hit by another player, or by the owner's pet.
+    public void Hit(bool byPet = false) {
         Hitter = 1;
+        ByPet = byPet;
         HitsRemaining = TombstoneRules.AfterHit(hitsRemaining);
     }
 
     // The owner revived without the last hit: the packet carries no hitter.
     public void Clear() {
         Hitter = 0;
+        ByPet = false;
         HitsRemaining = 0;
     }
 
@@ -58,6 +62,6 @@ public class Tombstone : IByteSerializable {
         writer.WriteByte(HitsRemaining);
         writer.WriteByte(TotalHitCount);
         writer.WriteInt(Hitter);
-        writer.WriteBool(Unknown2); // true if revived by pet
+        writer.WriteBool(ByPet);
     }
 }

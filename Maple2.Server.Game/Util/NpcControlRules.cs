@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Numerics;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
@@ -24,7 +24,8 @@ public static class NpcControlRules {
     public static ActorState WireState(ActorState state, bool hitEntry) => state == ActorState.Hit && !hitEntry ? ActorState.None : WireState(state);
 
     // A stunned npc is sent with sequence -1.
-    public static short WireSequence(ActorState state, short sequence) => state == ActorState.Stun ? (short) -1 : sequence;
+    // Stun and a pet's revive state (StateSummonRevive picks its own motion) go out without a sequence.
+    public static short WireSequence(ActorState state, short sequence) => state is ActorState.Stun or ActorState.SummonRevive ? (short) -1 : sequence;
 
     public static short WireSequence(ActorState state, short sequence, HitEntry? hit) => state == ActorState.Hit ? hit?.SequenceId ?? -1 : WireSequence(state, sequence);
 
