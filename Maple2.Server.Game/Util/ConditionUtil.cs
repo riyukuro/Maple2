@@ -130,6 +130,11 @@ public static class ConditionUtil {
             case ConditionType.talk_in:
             case ConditionType.npc:
             case ConditionType.npc_lasthit:
+            // The killing blow's variants: the NPC id as the code (22200343 any monster, 21000001-99999999;
+            // 21230022 Alpha Turtle; 21250001-3 a dungeon's boss).
+            case ConditionType.npc_lasthit_buff:
+            case ConditionType.npc_lasthit_time:
+            case ConditionType.npc_timeattack:
             case ConditionType.controller:
             case ConditionType.skill:
             case ConditionType.job:
@@ -336,6 +341,25 @@ public static class ConditionUtil {
             case ConditionType.pvp_win_score:
             case ConditionType.pvp_win_time:
                 if (target.Integers != null && target.Integers.Any(value => longValue <= value)) {
+                    return true;
+                }
+                break;
+            // npc_timeattack: the seconds since the dungeon began, at most the target (21250001-3: the boss of an
+            // adventure dungeon inside 8 minutes, target 480).
+            case ConditionType.npc_timeattack:
+                if (target.Integers != null && target.Integers.Any(value => longValue <= value)) {
+                    return true;
+                }
+                break;
+            // npc_lasthit_time: the killing blow's local time, HH:mm (21230022: Alpha Turtle at 11:59 PM, target "23:59").
+            case ConditionType.npc_lasthit_time:
+                if (target.Strings != null && target.Strings.Contains(stringValue)) {
+                    return true;
+                }
+                break;
+            // npc_lasthit_buff: a buff the killer holds at the killing blow (22200343: while poisoned by Havi, 49116002).
+            case ConditionType.npc_lasthit_buff:
+                if (target.Integers != null && target.Integers.Any(buffId => session.Buffs.EnumerateBuffs(buffId).Count > 0)) {
                     return true;
                 }
                 break;

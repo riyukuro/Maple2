@@ -598,9 +598,15 @@ public class FieldNpc : Actor<Npc> {
         if (GetLastAttacker() is FieldPlayer lastHitter) {
             // The killing blow counts for npc_lasthit, with the NPC id as the code (field boss achievements).
             lastHitter.Session.ConditionUpdate(ConditionType.npc_lasthit, codeLong: Value.Id, targetLong: Field.MapId);
+            lastHitter.Session.ConditionUpdate(ConditionType.npc_lasthit_buff, codeLong: Value.Id);
+            lastHitter.Session.ConditionUpdate(ConditionType.npc_lasthit_time, codeLong: Value.Id,
+                targetString: NpcKillRules.LastHitTime(DateTime.Now));
             lastHitter.RestoreOnKill();
             if (Field is DungeonFieldManager dungeonField) {
                 dungeonField.CountMissions(lastHitter, mission => mission.AddLastHit(Value.Metadata.Id));
+                if (NpcKillRules.TimeAttackSeconds(dungeonField.DungeonRoomRecord.StartTick, Field.FieldTick) is long seconds) {
+                    lastHitter.Session.ConditionUpdate(ConditionType.npc_timeattack, codeLong: Value.Id, targetLong: seconds);
+                }
             }
         }
 

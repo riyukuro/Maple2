@@ -51,6 +51,27 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, targetLong: MapId, codeLong: npcId), Is.EqualTo(expected));
     }
 
+    // npc_lasthit_time (21230022): Alpha Turtle's killing blow at 23:59 local time; another minute or NPC does not count.
+    [TestCase(23000017, "23:59", true)]
+    [TestCase(23000017, "23:58", false)]
+    [TestCase(23000018, "23:59", false)]
+    public void NpcLastHitTime_CountsTheListedMinute(int npcId, string time, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.npc_lasthit_time, 1,
+            new ConditionMetadata.Parameters(Integers: [23000017]), new ConditionMetadata.Parameters(Strings: ["23:59"]));
+        Assert.That(condition.Check(null!, targetString: time, codeLong: npcId), Is.EqualTo(expected));
+    }
+
+    // npc_timeattack (21250001): the dungeon boss inside 480 seconds of the run; later or another NPC does not count.
+    [TestCase(23000100, 300, true)]
+    [TestCase(23000100, 480, true)]
+    [TestCase(23000100, 481, false)]
+    [TestCase(23000055, 300, false)]
+    public void NpcTimeAttack_CountsInsideTheTarget(int npcId, long seconds, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.npc_timeattack, 1,
+            new ConditionMetadata.Parameters(Integers: [23000100]), new ConditionMetadata.Parameters(Integers: [480]));
+        Assert.That(condition.Check(null!, targetLong: seconds, codeLong: npcId), Is.EqualTo(expected));
+    }
+
     // Fusing pets counts for pet_enchant; a row with a code (90000795) names the fused pet's item id.
     [TestCase(61000002, true)]
     [TestCase(61000003, false)]
