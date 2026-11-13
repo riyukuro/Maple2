@@ -183,6 +183,27 @@ public class CurrencyManager {
         return true;
     }
 
+    // The client's currency 10 (HasEnoughCurrency and GetCurrencyAmount, uicommon.cpp:972/1020): the red merets
+    // when they cover the amount, else the plain merets. Each wallet is taken in one step; red tells which one paid.
+    public bool TryTakeRedElseMeret(long amount, out bool red, bool notify = true) {
+        red = TryTakeGameMeret(amount, notify);
+        return red || TryTakeMeret(amount, notify);
+    }
+
+    // Takes a meret cost from the wallet the client checks it against (MeretCost.Wallet); red tells which one paid.
+    public bool TryTakeMerets(MeretCost.Wallet wallet, long amount, out bool red, bool notify = true) {
+        switch (wallet) {
+            case MeretCost.Wallet.Meret:
+                red = false;
+                return TryTakeMeret(amount, notify);
+            case MeretCost.Wallet.Red:
+                red = true;
+                return TryTakeGameMeret(amount, notify);
+            default:
+                return TryTakeRedElseMeret(amount, out red, notify);
+        }
+    }
+
     public void NotifyGameMeretTaken(long amount) {
         lock (walletLock) {
             session.Send(CurrencyPacket.UpdateGameMeret(Currency, -amount));

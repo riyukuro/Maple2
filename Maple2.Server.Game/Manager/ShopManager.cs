@@ -694,18 +694,13 @@ public sealed class ShopManager {
                 break;
             case ShopCurrencyType.Meret:
             case ShopCurrencyType.EventMeret:
-                if (!session.Currency.TryTakeMeret(price)) {
-                    session.Send(ShopPacket.Error(ShopError.s_err_lack_merat));
-                    return false;
-                }
-                break;
             case ShopCurrencyType.GameMeret:
-                if (session.Currency.CanAddGameMeret(-price) != -price) {
+                // EventMeret takes the red merets when they cover the price, else the plain ones; GameMeret
+                // takes red merets only (MeretCost.OfShop).
+                if (!session.Currency.TryTakeMerets(MeretCost.OfShop(cost.Type)!.Value, price, out _)) {
                     session.Send(ShopPacket.Error(ShopError.s_err_lack_merat));
                     return false;
                 }
-
-                session.Currency.ChangeGameMeret(-price);
                 break;
             case ShopCurrencyType.GuildFund:
                 GuildError fundError = session.Guild.SpendFund(price);

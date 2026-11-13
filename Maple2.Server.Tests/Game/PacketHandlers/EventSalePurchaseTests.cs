@@ -231,6 +231,24 @@ public class EventSalePurchaseTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(699));
         Assert.That(session.Player.Value.Character.SkinColor, Is.EqualTo(before));
     }
+
+    // A style fee of shop cost 9 (EventMeret) is paid from the red merets when they cover it, else from the plain
+    // merets; one of 10 (GameMeret) from the red merets only (CanPayFee -> FUN_1403baee0, uicommon.cpp:1020).
+    [TestCase(ShopCurrencyType.EventMeret, 1500, 5000, 500)]
+    [TestCase(ShopCurrencyType.EventMeret, 900, 4000, 900)]
+    [TestCase(ShopCurrencyType.GameMeret, 1500, 5000, 500)]
+    [TestCase(ShopCurrencyType.GameMeret, 900, 5000, 900)]
+    public void SkinChange_TakesTheMeretFeeFromTheWalletTheClientChecks(ShopCurrencyType currency, long red, long meretAfter, long redAfter) {
+        GameSession session = StartInShop(currency);
+        session.Currency.GameMeret = red;
+        test.TakeSent();
+
+        ChangeSkin(session);
+
+        Assert.That(session.Currency.Meret, Is.EqualTo(meretAfter));
+        Assert.That(session.Currency.GameMeret, Is.EqualTo(redAfter));
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+    }
     #endregion
 
     #region SaleUgcDesign

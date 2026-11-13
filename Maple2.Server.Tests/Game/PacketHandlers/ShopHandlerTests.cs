@@ -30,6 +30,8 @@ public class ShopHandlerTests {
     private const int TrevaProductId = 16;
     private const int ValorProductId = 17;
     private const int FurnishingProductId = 18;
+    private const int EventMeretProductId = 19;
+    private const int GameMeretProductId = 20;
     private const int FurnishingItemId = 50400001;
     private const int ShopItemId = 20000001;
     private const int ProductItemId = 20000002;
@@ -65,6 +67,8 @@ public class ShopHandlerTests {
                 [TrevaProductId] = Product(TrevaProductId, price: 25, stock: 0, currency: ShopCurrencyType.Treva),
                 [ValorProductId] = Product(ValorProductId, price: 7, stock: 0, currency: ShopCurrencyType.ValorToken),
                 [FurnishingProductId] = Product(FurnishingProductId, price: 30, stock: 0, itemId: FurnishingItemId),
+                [EventMeretProductId] = Product(EventMeretProductId, price: 40, stock: 0, currency: ShopCurrencyType.EventMeret),
+                [GameMeretProductId] = Product(GameMeretProductId, price: 40, stock: 0, currency: ShopCurrencyType.GameMeret),
             },
         }));
         // The KR grade points of Maple Union and the Royal Guard (2: 10000, 3: 30000, 4: 60000, 5: 120000).
@@ -130,6 +134,26 @@ public class ShopHandlerTests {
         for (int i = 0; i < types.Length; i++) {
             Assert.That(test.TrophyCounter(23200100 + i) ?? 0, Is.EqualTo(i == paid ? price : 0), types[i].ToString());
         }
+    }
+
+    // The client maps shop cost 9 (EventMeret) to its currency 10, the red merets when they cover the price, else the
+    // plain merets, and shop cost 10 (GameMeret) to its currency 9, the red merets only (FUN_1403baee0, uicommon.cpp
+    // :972/1020). One wallet pays the whole price, or nothing is taken.
+    [TestCase(EventMeretProductId, 100, 50, 100, 10)]
+    [TestCase(EventMeretProductId, 100, 30, 60, 30)]
+    [TestCase(EventMeretProductId, 20, 30, 20, 30)]
+    [TestCase(GameMeretProductId, 100, 50, 100, 10)]
+    [TestCase(GameMeretProductId, 100, 30, 100, 30)]
+    public void Buy_TakesTheMeretCostFromTheWalletTheClientChecks(int productId, long meret, long red, long meretAfter, long redAfter) {
+        GameSession session = Login();
+        session.Currency.Meret = meret;
+        session.Currency.GameMeret = red;
+
+        Buy(session, productId, 1);
+
+        Assert.That(session.Currency.Meret, Is.EqualTo(meretAfter));
+        Assert.That(session.Currency.GameMeret, Is.EqualTo(redAfter));
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000));
     }
 
     // A furnishing product goes into furnishing storage, all of it or none (InventoryManager.Add; no second stack of

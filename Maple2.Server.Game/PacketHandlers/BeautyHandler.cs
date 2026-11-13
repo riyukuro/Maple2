@@ -14,6 +14,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using Maple2.Tools.Extensions;
 
@@ -539,15 +540,15 @@ public class BeautyHandler : FieldPacketHandler {
             return true;
         }
 
+        MeretCost.Wallet? wallet = MeretCost.OfShop(cost.CurrencyType);
         long owned = cost.CurrencyType switch {
             ShopCurrencyType.Meso => session.Currency.Meso,
-            ShopCurrencyType.Meret or ShopCurrencyType.EventMeret or ShopCurrencyType.GameMeret => session.Currency.Meret,
+            _ when wallet is { } meretWallet => MeretCost.Owned(meretWallet, session.Currency.Meret, session.Currency.GameMeret, cost.Price),
             ShopCurrencyType.Item => session.Item.Inventory.Find(cost.PaymentItemId).Sum(item => (long) item.Amount),
             _ => ToCurrencyType(cost.CurrencyType) is var type && type != CurrencyType.None ? session.Currency[type] : -1,
         };
         if (!BeautyRules.Affords(owned, cost.Price)) {
-            bool meret = cost.CurrencyType is ShopCurrencyType.Meret or ShopCurrencyType.EventMeret or ShopCurrencyType.GameMeret;
-            session.Send(BeautyPacket.Error(meret ? BeautyError.s_err_lack_merat_ask : BeautyError.lack_currency));
+            session.Send(BeautyPacket.Error(wallet != null ? BeautyError.s_err_lack_merat_ask : BeautyError.lack_currency));
             return false;
         }
         return true;
@@ -608,9 +609,9 @@ public class BeautyHandler : FieldPacketHandler {
                 session.Currency.ChangeMeso(-cost.Price);
                 break;
             case ShopCurrencyType.Meret:
-            case ShopCurrencyType.EventMeret: // TODO: EventMeret?
+            case ShopCurrencyType.EventMeret:
             case ShopCurrencyType.GameMeret:
-                if (!session.Currency.TryTakeMeret(cost.Price)) {
+                if (!session.Currency.TryTakeMerets(MeretCost.OfShop(cost.CurrencyType)!.Value, cost.Price, out _)) {
                     session.Send(BeautyPacket.Error(BeautyError.s_err_lack_merat_ask));
                     return false;
                 }

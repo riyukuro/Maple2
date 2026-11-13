@@ -834,10 +834,10 @@ public class MeretMarketHandler : FieldPacketHandler {
                 }
                 return StringCode.s_empty_string;
             case MeretMarketCurrencyType.RedMeret:
-                if (session.Currency.CanAddGameMeret(-price) != -price) {
+                // Pay type 2 is the client's currency 9, red merets only (FUN_14069c3e0, meratmarketbasketinfo.cpp:217).
+                if (!session.Currency.TryTakeGameMeret(price)) {
                     return StringCode.s_err_lack_merat_red;
                 }
-                session.Currency.ChangeGameMeret(-price);
                 return StringCode.s_empty_string;
             default:
                 return StringCode.s_err_lack_money;

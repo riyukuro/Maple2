@@ -143,6 +143,12 @@ public class UgcHandler : FieldPacketHandler {
         }
     }
 
+    // The client's lack text (ShowLackCurrencyMessage, uicommon.cpp:1083-1105): currencies 3 and 10 share the
+    // plain meret text, 9 has the red one.
+    private static StringCode LackText(UgcUploadPayment.Currency currency) {
+        return currency == UgcUploadPayment.Currency.RedMeret ? StringCode.s_err_lack_merat_red : StringCode.s_err_lack_merat;
+    }
+
     private UgcError UploadItem(GameSession session, IByteReader packet, UgcType ugcType) {
         long itemUid = packet.ReadLong();
         int itemId = packet.ReadInt();
@@ -182,14 +188,15 @@ public class UgcHandler : FieldPacketHandler {
         Item? voucher = useVoucher
             ? session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.FreeDesignCoupon).FirstOrDefault()
             : null;
-        var paid = new UgcPendingFee(session.CharacterId, 0, ugcMetadata.CurrencyType, price, 0);
-        bool canPay = ugcMetadata.CurrencyType switch {
-            MeretMarketCurrencyType.Meso => session.Currency.CanAddMeso(-price) == -price,
-            MeretMarketCurrencyType.Meret => session.Currency.CanAddMeret(-price) == -price,
-            MeretMarketCurrencyType.RedMeret => session.Currency.CanAddGameMeret(-price) == -price,
-            _ => false,
+        UgcUploadPayment.Currency currency = UgcUploadPayment.Of(ugcMetadata.CurrencyType);
+        var paid = new UgcPendingFee(session.CharacterId, 0, MeretMarketCurrencyType.Meso, price, 0);
+        long owned = currency switch {
+            UgcUploadPayment.Currency.Meso => session.Currency.Meso,
+            UgcUploadPayment.Currency.Meret => session.Currency.Meret,
+            UgcUploadPayment.Currency.RedMeret => session.Currency.GameMeret,
+            _ => MeretCost.Owned(MeretCost.Wallet.RedElseMeret, session.Currency.Meret, session.Currency.GameMeret, price),
         };
-        switch (UgcUploadPayment.Decide(useVoucher, voucher != null, ugcMetadata.CurrencyType, canPay)) {
+        switch (UgcUploadPayment.Decide(useVoucher, voucher != null, owned >= price)) {
             case UgcUploadPayment.Result.Voucher:
                 if (!session.Item.Inventory.Consume(voucher!.Uid, 1)) {
                     session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_invalid_item));
@@ -198,39 +205,35 @@ public class UgcHandler : FieldPacketHandler {
                 paid = paid with { VoucherItemId = voucher.Id };
                 break;
             case UgcUploadPayment.Result.Pay:
-                switch (ugcMetadata.CurrencyType) {
-                    case MeretMarketCurrencyType.Meso:
-                        session.Currency.ChangeMeso(-price);
-                        break;
-                    case MeretMarketCurrencyType.Meret:
-                        // Another thread can take merets between the check and here (a wedding hall paid by
-                        // the partner): then answered as the lack branch does.
-                        if (!session.Currency.TryTakeMeret(price)) {
-                            session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
-                            return UgcError.Refused;
-                        }
-                        break;
-                    case MeretMarketCurrencyType.RedMeret:
-                        session.Currency.ChangeGameMeret(-price);
-                        break;
-                    default:
-                        return UgcError.Refused;
+                // Each wallet is taken in one step. Another thread can take from it between the check and here
+                // (a wedding hall paid by the partner): then answered as the lack branch does.
+                if (currency == UgcUploadPayment.Currency.Meso) {
+                    if (!session.Currency.TryTakeMeso(price)) {
+                        return UgcError.s_err_lack_meso;
+                    }
+                    break;
                 }
+                MeretCost.Wallet wallet = currency switch {
+                    UgcUploadPayment.Currency.Meret => MeretCost.Wallet.Meret,
+                    UgcUploadPayment.Currency.RedMeret => MeretCost.Wallet.Red,
+                    _ => MeretCost.Wallet.RedElseMeret,
+                };
+                if (!session.Currency.TryTakeMerets(wallet, price, out bool red)) {
+                    session.Send(NoticePacket.MessageBox(LackText(currency)));
+                    return UgcError.Refused;
+                }
+                // The give-back returns the fee to the wallet that paid it.
+                paid = paid with { Currency = red ? MeretMarketCurrencyType.RedMeret : MeretMarketCurrencyType.Meret };
                 break;
             case UgcUploadPayment.Result.NoVoucher:
                 session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_invalid_item));
                 return UgcError.Refused;
-            case UgcUploadPayment.Result.Lack:
+            default:
                 // Ugc 0 has a text for meso only; the meret texts stay a message box of their own.
-                if (ugcMetadata.CurrencyType == MeretMarketCurrencyType.Meso) {
+                if (currency == UgcUploadPayment.Currency.Meso) {
                     return UgcError.s_err_lack_meso;
                 }
-                session.Send(NoticePacket.MessageBox(ugcMetadata.CurrencyType == MeretMarketCurrencyType.Meret
-                    ? StringCode.s_err_lack_merat
-                    : StringCode.s_err_lack_merat_red));
-                return UgcError.Refused;
-            default:
-                Logger.Error("Unhandled currency type {UgcMetadataCurrencyType}", ugcMetadata.CurrencyType);
+                session.Send(NoticePacket.MessageBox(LackText(currency)));
                 return UgcError.Refused;
         }
 
