@@ -18,7 +18,7 @@ public static class PrestigePacket {
 
     public static ByteWriter Load(Account account) {
         var pWriter = Packet.Of(SendOp.Prestige);
-        pWriter.Write<Command>(Command.Load);
+        pWriter.WriteByte((byte) Command.Load);
         pWriter.WriteLong(account.PrestigeCurrentExp);
         pWriter.WriteInt(account.PrestigeLevel - account.PrestigeLevelsGained);
         pWriter.WriteLong(account.PrestigeExp);
@@ -32,7 +32,7 @@ public static class PrestigePacket {
 
     public static ByteWriter AddExp(long currentExp, long gainedExp) {
         var pWriter = Packet.Of(SendOp.Prestige);
-        pWriter.Write<Command>(Command.AddExp);
+        pWriter.WriteByte((byte) Command.AddExp);
         pWriter.WriteLong(currentExp);
         pWriter.WriteLong(gainedExp);
 
@@ -41,7 +41,7 @@ public static class PrestigePacket {
 
     public static ByteWriter LevelUp(int playerObjectId, int level) {
         var pWriter = Packet.Of(SendOp.Prestige);
-        pWriter.Write<Command>(Command.LevelUp);
+        pWriter.WriteByte((byte) Command.LevelUp);
         pWriter.WriteInt(playerObjectId);
         pWriter.WriteInt(level);
 
@@ -50,7 +50,7 @@ public static class PrestigePacket {
 
     public static ByteWriter ClaimReward(int level) {
         var pWriter = Packet.Of(SendOp.Prestige);
-        pWriter.Write<Command>(Command.ClaimReward);
+        pWriter.WriteByte((byte) Command.ClaimReward);
         pWriter.WriteByte(1);
         pWriter.WriteInt(1); // count
         pWriter.WriteInt(level);
@@ -60,7 +60,7 @@ public static class PrestigePacket {
 
     public static ByteWriter UpdateMissions(Account account) {
         var pWriter = Packet.Of(SendOp.Prestige);
-        pWriter.Write<Command>(Command.UpdateMissions);
+        pWriter.WriteByte((byte) Command.UpdateMissions);
         pWriter.WriteBool(true);
         pWriter.WriteInt(account.PrestigeMissions.Count);
         foreach (PrestigeMission mission in account.PrestigeMissions) {
@@ -72,7 +72,7 @@ public static class PrestigePacket {
 
     public static ByteWriter LoadMissions(Account account) {
         var pWriter = Packet.Of(SendOp.Prestige);
-        pWriter.Write<Command>(Command.LoadMissions);
+        pWriter.WriteByte((byte) Command.LoadMissions);
         pWriter.WriteInt(account.PrestigeMissions.Count);
         foreach (PrestigeMission mission in account.PrestigeMissions) {
             pWriter.WriteClass<PrestigeMission>(mission);
