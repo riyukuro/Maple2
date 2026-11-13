@@ -484,7 +484,7 @@ public class ModelHouseStaleFieldTests {
     // row again, so the row stays a stray, and the next save deletes it. Before, the save cleared every stray it had
     // read, so the row stayed with its item in storage too (a cube twice), and the field was outdated for its life.
     [Test]
-    public void StrayAfterTheCopy_StaysAStray_AndTheNextSaveDeletesIt() {
+    public void StrayAfterTheCopy_IsDeletedAfterTheSwap() {
         (GameSession session, Plot plot) = Start();
         var home = (HomeFieldManager) session.Field!;
         Commit(home, session);
@@ -494,6 +494,29 @@ public class ModelHouseStaleFieldTests {
                 plot.Cubes.Remove(cube.Position);
                 plot.StrayRows.Add(cube.Id);
             }
+        });
+        Commit(home, session);
+        test.FailSave = null;
+        Assert.Multiple(() => {
+            Assert.That(CubeRows(session), Does.Not.Contain(cube.Id));
+            Assert.That(plot.StrayRows, Is.Empty);
+            Assert.That(Outdated(home), Is.False);
+        });
+    }
+
+    // The same, with the delete after the swap failing too: the row stays a stray and the next save deletes it.
+    [Test]
+    public void StrayAfterTheCopy_FailedDelete_TheNextSaveDeletesIt() {
+        (GameSession session, Plot plot) = Start();
+        var home = (HomeFieldManager) session.Field!;
+        Commit(home, session);
+        PlotCube cube = plot.Cubes[new Vector3B(-1, -1, 0)];
+        DuringTheSave(() => {
+            lock (plot.EditLock) {
+                plot.Cubes.Remove(cube.Position);
+                plot.StrayRows.Add(cube.Id);
+            }
+            test.FailSave = context => context.ChangeTracker.Entries<UgcMapCube>().Any(entry => entry.State == EntityState.Deleted);
         });
         Commit(home, session);
         test.FailSave = null;

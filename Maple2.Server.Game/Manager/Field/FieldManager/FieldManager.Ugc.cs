@@ -138,10 +138,18 @@ public partial class FieldManager {
 
             Dictionary<Vector3B, PlotCube> saved = results.ToDictionary(result => result.Position);
             lock (plot.EditLock) {
-                // The stray rows the save deleted are gone. One it wrote again stays a stray (a cube copied, then
-                // removed with a failed delete, has its row rewritten): the next save deletes it.
+                // The stray rows the save deleted are gone. One it wrote again (a cube copied, then removed with a
+                // failed delete, has its row rewritten) is deleted again here, so the row does not outlive this
+                // instance in memory only; if that delete fails too it stays a stray for the next save.
                 HashSet<long> rewritten = saved.Values.Select(result => result.Id).ToHashSet();
                 plot.StrayRows.ExceptWith(rows.Where(id => !rewritten.Contains(id)));
+                foreach (PlotCube stray in saved.Values.Where(result => plot.StrayRows.Contains(result.Id)).ToList()) {
+                    if (db.DeleteCube(stray)) {
+                        plot.StrayRows.Remove(stray.Id);
+                    } else {
+                        logger.Error("Failed to delete stray cube row {CubeId} at position {Position}.", stray.Id, stray.Position);
+                    }
+                }
                 var turned = new List<(PlotCube Cube, float Rotation)>();
                 foreach ((Vector3B position, PlotCube cube) in held) {
                     // Only a cube still held as it was copied is replaced by its saved row.

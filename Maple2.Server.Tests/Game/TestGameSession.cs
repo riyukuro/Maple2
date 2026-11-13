@@ -840,6 +840,7 @@ public sealed class TestGameSession {
         players[fieldPlayer.ObjectId] = fieldPlayer;
         typeof(FieldManager).GetField("<Players>k__BackingField", Any)!.SetValue(field, players);
         typeof(FieldManager).GetField("initialized", Any)!.SetValue(field, true);
+        typeof(FieldManager).GetField("logger", Any)!.SetValue(field, Serilog.Log.Logger.ForContext<FieldManager>());
         // The players on the way in (none) and the lock a retire takes against them.
         typeof(FieldManager).GetField("arriving", Any)!.SetValue(field, new ConcurrentDictionary<int, byte>());
         typeof(FieldManager).GetField("entryLock", Any)!.SetValue(field, new object());
