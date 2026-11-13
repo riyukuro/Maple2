@@ -203,7 +203,9 @@ public class BlackMarketRefusalTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
-    // The deposit is the client's: CalcBlackMarketRegisterDeposit of the total, 1 of 100 rounded up.
+    // The deposit is the client's: CalcBlackMarketRegisterDeposit of the total, 1 of 100 rounded up. The script's
+    // deposit percent is 1, so the old form (total times the percent first) gives the same 31: this checks the
+    // amount and cannot catch the old form while the script stays as it is.
     [Test]
     public void Add_TakesTheClientsDeposit() {
         test = new TestGameSession();

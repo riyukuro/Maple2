@@ -40,9 +40,11 @@ public static class BlackMarketRules {
         return !hasTransfer || TradeRules.IsTradeable(flag, remainTrades, bound);
     }
 
-    // The listings one character may have at once, sold out or expired ones still in the list included: the
-    // register button refuses a 29th with box 0x933 and this number (BlackMarketPageItemRegister::OnClickRegister,
-    // uiblackmarketpage.cpp:1610), and error 21 shows the same box (CBlackMarketMan::FUN_140a21ca0).
+    // The listings one character may have at once: the register button refuses a 29th with box 0x933 and this
+    // number (BlackMarketPageItemRegister::OnClickRegister, uiblackmarketpage.cpp:1610), and error 21 shows the
+    // same box (CBlackMarketMan::FUN_140a21ca0). The server counts the rows it holds, expired ones included; a
+    // sold-out listing's row is deleted at the sale, so it leaves the count at once. The client counts a sold-out
+    // entry until its own list is loaded again, so it refuses first, never later.
     public const int MaxListings = 28;
 
     public static bool CanAddListing(int listed) {
