@@ -301,6 +301,10 @@ public class GuildManager : IDisposable {
             Guild.Funds = GuildRules.AddFund(Guild.Funds, property.CheckInFund, property.FundMax);
             guildExp = Guild.Experience;
             guildFund = Guild.Funds;
+            // Stored now: the guild search (and the guild list of a player outside it) reads the row, so a level
+            // reached here showed the old level and member cap until the World server stopped. A failed save keeps
+            // the gain here for the next save.
+            TrySave();
         }
 
         Broadcast(new GuildRequest {
@@ -480,6 +484,8 @@ public class GuildManager : IDisposable {
             Guild.Funds = GuildRules.AddFund(Guild.Funds, fund, GuildProperty().FundMax);
             guildExp = Guild.Experience;
             guildFund = Guild.Funds;
+            // Stored now, as the check-in.
+            TrySave();
         }
 
         Broadcast(new GuildRequest {

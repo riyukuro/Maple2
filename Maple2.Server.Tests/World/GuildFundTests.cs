@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Maple2.Database.Storage;
@@ -222,5 +223,33 @@ public class GuildFundTests {
         Assert.That(guild.Funds, Is.EqualTo(1000));
         Assert.That(manager.CheckIn(Stranger), Is.Not.EqualTo(GuildError.none));
         Assert.That(guild.Funds, Is.EqualTo(1000));
+    }
+
+    // A check-in that reaches the next level is in the guild's row at once: the guild search reads the row, and
+    // showed the old level and member cap until the World server stopped.
+    [Test]
+    public void CheckIn_IsStored_AndTheSearchSeesIt() {
+        guild.Experience = 69990;
+        guild.Listed = true;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveGuild(guild), Is.True);
+        }
+        guild.Experience = 69995;
+
+        Assert.That(manager.CheckIn(member.CharacterId), Is.EqualTo(GuildError.none));
+
+        using GameStorage.Request read = test.Storage.Context();
+        Guild stored = read.GetGuild(guild.Id)!;
+        Assert.That((stored.Experience, stored.Funds), Is.EqualTo((70000, 130)));
+        Assert.That(read.SearchGuilds(0, "Fund", 10).Single().Experience, Is.EqualTo(70000));
+    }
+
+    [Test]
+    public void AddExpFund_IsStored() {
+        Assert.That(manager.AddExpFund(member.CharacterId, 40, 20), Is.EqualTo(GuildError.none));
+
+        using GameStorage.Request db = test.Storage.Context();
+        Guild stored = db.GetGuild(guild.Id)!;
+        Assert.That((stored.Experience, stored.Funds), Is.EqualTo((40, 120)));
     }
 }
