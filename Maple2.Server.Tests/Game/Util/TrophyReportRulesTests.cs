@@ -45,6 +45,16 @@ public class TrophyReportRulesTests {
         Assert.That(AchievementManager.Advances(ConditionType.interior_level, 3, 3), Is.False);
     }
 
+    // maid_affinity reports the closeness level a maid reached (23500014 "level {0}", values 2 to 10): a second maid
+    // reaching a lower level does not move the trophy back or forward.
+    [Test]
+    public void MaidAffinityKeepsTheHighestLevel() {
+        Assert.That(AchievementManager.KeepsHighest(ConditionType.maid_affinity), Is.True);
+        Assert.That(AchievementManager.Advances(ConditionType.maid_affinity, 4, 5), Is.True);
+        Assert.That(AchievementManager.Advances(ConditionType.maid_affinity, 5, 2), Is.False);
+        Assert.That(AchievementManager.KeepsHighest(ConditionType.maid_profile), Is.False);
+    }
+
     // A home is created when its name is empty. An empty name would create it again (decoration level back to 1),
     // so it is refused; and the creation report of level 1 counts only when the trophy holds nothing yet.
     [Test]

@@ -198,13 +198,25 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                         return;
                     }
                 }
+                int level = found.Level;
                 int gained = MaidRules.Finish(found, recipe, expRate, exps, affinityMax);
                 field.SaveMaid(found);
+                CountReceive(session, found, recipe.ProductItemId, level);
                 session.Send(MaidCraftItemPacket.Remove(maidUid));
                 session.Send(MaidCraftItemPacket.ReceiveResult(MaidRules.CraftReceived));
                 session.Send(MaidCraftItemPacket.Reward(recipe.ProductItemId, amount, rarity, gained));
             }
         });
+    }
+
+    // A received craft counts for maid_get_item with the product (23500009 "Obtain ... from a ... maid {0} time(s)":
+    // one per receive), and a closeness level-up for maid_affinity with the level reached (23500014 "Raise an
+    // assistant's closeness to level {0}", values 2 to 10).
+    private static void CountReceive(GameSession session, Maid maid, int productItemId, int levelBefore) {
+        session.ConditionUpdate(ConditionType.maid_get_item, codeLong: productItemId);
+        if (maid.Level > levelBefore) {
+            session.ConditionUpdate(ConditionType.maid_affinity, counter: maid.Level);
+        }
     }
 
     // Mode 7 (CManufactureManager::SendRequest7): the craft is received now, ready or not, for the merets the dialog
@@ -302,8 +314,10 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 }
                 Logger.Information("Maid craft {RecipeId} of maid {MaidUid} received for {Cost} merets by {CharacterId}",
                     recipeId, maidUid, cost, session.CharacterId);
+                int level = found.Level;
                 int gained = MaidRules.Finish(found, recipe, expRate, exps, affinityMax);
                 field.SaveMaid(found);
+                CountReceive(session, found, recipe.ProductItemId, level);
                 session.Send(MaidCraftItemPacket.Remove(maidUid));
                 session.Send(MaidCraftItemPacket.MeretReceiveResult(MaidRules.CraftReceived));
                 session.Send(MaidCraftItemPacket.Reward(recipe.ProductItemId, amount, rarity, gained));

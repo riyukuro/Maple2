@@ -130,6 +130,14 @@ public class ConditionCountTests {
         Assert.That(condition.Check(null!, codeLong: npcId), Is.EqualTo(expected));
     }
 
+    // A received maid craft counts for maid_get_item with its product (23500009: code 12030049).
+    [TestCase(12030049, true)]
+    [TestCase(12000045, false)]
+    public void MaidGetItem_CountsTheListedProduct(int productItemId, bool expected) {
+        var condition = new ConditionMetadata(ConditionType.maid_get_item, 1, new ConditionMetadata.Parameters(Integers: [12030049]), null);
+        Assert.That(condition.Check(null!, codeLong: productItemId), Is.EqualTo(expected));
+    }
+
     // A hit on a vibrate object counts with its materialTag (70400059 "Hit a tree 20 times": code "wood").
     [TestCase("wood", true)]
     [TestCase("stone", false)]

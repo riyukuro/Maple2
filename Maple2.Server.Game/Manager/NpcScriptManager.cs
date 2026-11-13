@@ -465,6 +465,9 @@ public sealed class NpcScriptManager {
                 int level = maid.Level, oldExp = maid.Exp;
                 MaidRules.AddExp(maid, exp, exps, constants.MaidAffinityMax);
                 changed |= maid.Level != level || maid.Exp != oldExp;
+                if (maid.Level > level) {
+                    session.ConditionUpdate(ConditionType.maid_affinity, counter: maid.Level); // 23500014, the level reached
+                }
             }
             if (salary != null) {
                 changed |= MaidRules.Pay(maid, () => TakeSalary(salary), DateTime.UtcNow.ToEpochSeconds(), constants.PeriodOfMaidEmployment);

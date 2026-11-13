@@ -108,6 +108,7 @@ public static class ConditionUtil {
             case ConditionType.pet_catch_category:
             case ConditionType.pet_enchant:
             case ConditionType.pet_first_collect: // code: the pet item added to the album
+            case ConditionType.maid_get_item: // code: the maid craft's product item (23500009: code 12030049)
             // nurturing_*: the cube pet's stage-1 npc (92000095 "Play with ... in someone's home": code 50400282).
             case ConditionType.nurturing_play:
             case ConditionType.nurturing_eat:

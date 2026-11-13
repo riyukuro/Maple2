@@ -109,10 +109,11 @@ public sealed class AchievementManager {
 
     // The counters that keep the highest count reported instead of adding it. item_remake_option_record and
     // pet_remake_option_record count the changes of a single item ("Change the bonus attributes on a single item {0}
-    // time(s)"): each change reports that item's change count.
+    // time(s)"): each change reports that item's change count. maid_affinity reports the closeness level a maid
+    // reached (23500014 "Raise an assistant's closeness to level {0}").
     public static bool KeepsHighest(ConditionType conditionType) {
         return conditionType is ConditionType.item_gear_score or ConditionType.killcount or ConditionType.interior_level or ConditionType.fame_grade
-            or ConditionType.item_remake_option_record or ConditionType.pet_remake_option_record;
+            or ConditionType.item_remake_option_record or ConditionType.pet_remake_option_record or ConditionType.maid_affinity;
     }
 
     /// <summary>

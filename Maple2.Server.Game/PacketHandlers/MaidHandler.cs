@@ -96,6 +96,7 @@ public class MaidHandler : FieldPacketHandler {
             }
             maid.Profile = profile;
             if (field.SaveMaid(maid)) {
+                session.ConditionUpdate(ConditionType.maid_profile); // 23500015 "Change an assistant's profile {0} time(s)"
                 int objectId = field.GetMaidNpcObjectId(maidUid);
                 session.Send(UserMaidPacket.Property(objectId != 0 ? objectId : npcObjectId));
             }
