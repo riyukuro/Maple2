@@ -363,6 +363,25 @@ public class PlayerConfigPersistTests {
         Assert.That(world.Retrieve(CharacterId, 2000).SkillCooldowns.Single().MsRemaining, Is.EqualTo(30000));
     }
 
+    // A game-time buff is merged by its time left too: the row's 60 s buff stays over the session's 45 s one saved
+    // later (at 2000), whose real-time end would be later.
+    [Test]
+    public void ReadAfterAFailedRead_GameTimeBuffKeepsTheLongerTimeLeft() {
+        var store = new JsonStore();
+        Logout(World(store, inGameTime: true)); // 60 s buff at 1000
+        store.FailLoad = true;
+        long now = 0;
+        PlayerConfigLookUp world = World(store, inGameTime: true, clockMs: () => now);
+        Assert.That(world.Retrieve(CharacterId, 1010).Buffs, Is.Empty);
+        world.Save([new BuffInfo { Id = Buff, Level = 1, MsRemaining = 45000, StopTime = 2000, Enabled = true, Stacks = 1 }],
+            [], new DeathInfo(), CharacterId);
+        store.FailLoad = false;
+        now = PlayerConfigLookUp.LoadRetryMs;
+
+        BuffInfo buff = world.Retrieve(CharacterId, 2000).Buffs.Single();
+        Assert.That((buff.MsRemaining, buff.Stacks), Is.EqualTo((60000, 2)));
+    }
+
     // A session that played on while its row was unread, then reads the row: the cooldown and death penalty it got
     // in the meantime stay (the row's cooldown of the same skill ends sooner), the row's other cooldown and its buff
     // come back, and the merged config is written.
