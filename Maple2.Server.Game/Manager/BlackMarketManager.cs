@@ -67,12 +67,22 @@ public sealed class BlackMarketManager {
             return;
         }
 
+        // An item past its time is not listed; the refusal is answered, the client waits for one.
         if (item.IsExpired()) {
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_disable_registitem, 2));
             return;
         }
 
-        float depositPercent = Lua.CalcBlackMarketRegisterDepositPercent();
-        long depositFee = Lua.CalcBlackMarketRegisterDeposit((long) (price * quantity * depositPercent));
+        using (GameStorage.Request countDb = session.GameStorage.Context()) {
+            if (!BlackMarketRules.CanAddListing(countDb.CountBlackMarketListings(session.CharacterId))) {
+                session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_max_register_item, 2));
+                return;
+            }
+        }
+
+        // The client's deposit is CalcBlackMarketRegisterDeposit of the sale's total (FUN_1401bcdb0,
+        // blackmarketitemoption.cpp:244); the percent is applied inside it.
+        long depositFee = Lua.CalcBlackMarketRegisterDeposit(price * quantity);
 
         if (session.Currency.CanAddMeso(-depositFee) != -depositFee) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_meso, 2));

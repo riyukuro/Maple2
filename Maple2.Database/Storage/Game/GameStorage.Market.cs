@@ -351,6 +351,10 @@ public partial class GameStorage {
             }
         }
 
+        public int CountBlackMarketListings(long characterId) {
+            return Context.BlackMarketListing.Count(listing => listing.CharacterId == characterId);
+        }
+
         public BlackMarketListing? GetBlackMarketListing(long listingId) {
             Model.BlackMarketListing? model = Context.BlackMarketListing.Find(listingId);
             return ToBlackMarketingListing(model);

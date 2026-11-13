@@ -152,6 +152,71 @@ public class BlackMarketRefusalTests {
         Assert.That(test.World.BlackMarketRequests, Is.Empty);
     }
 
+    // An item past its time: the refusal is answered (it used to be dropped without a word, the client left
+    // waiting); no deposit, the stack in the bag.
+    [Test]
+    public void Add_ExpiredItem_Refused() {
+        test = new TestGameSession();
+        Item item = test.Store(metadata, amount: 5);
+        item.ExpiryTime = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds();
+        using (GameStorage.Request save = test.Storage.Context()) {
+            Assert.That(save.SaveItems(test.CharacterId, item), Is.True);
+        }
+        GameSession session = Login(test, 100000);
+
+        Send(test, session, 2, item.Uid, 1000, 2);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_disable_registitem, 2)) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(100000));
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(5));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetBlackMarketListings(test.CharacterId), Is.Empty);
+    }
+
+    // The client lists at most 28 at once (box 0x933 with 28): with 28 listed, sold out or expired ones too, a
+    // 29th is refused with error 21 and nothing is taken; with 27 it is listed.
+    [TestCase(27, false)]
+    [TestCase(28, true)]
+    public void Add_TheListingCap(int listed, bool refused) {
+        test = new TestGameSession();
+        for (int i = 0; i < listed; i++) {
+            List(1, test, days: i % 2 == 0 ? 1 : -1);
+        }
+        Item item = test.Store(metadata, amount: 5);
+        GameSession session = Login(test, 100000);
+
+        Send(test, session, 2, item.Uid, 1000, 2);
+
+        List<string> sent = test.TakeSent().Select(Convert.ToHexString).ToList();
+        string capError = Hex(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_max_register_item, 2));
+        using GameStorage.Request db = test.Storage.Context();
+        if (refused) {
+            Assert.That(sent, Is.EqualTo(new[] { capError }));
+            Assert.That(session.Currency.Meso, Is.EqualTo(100000));
+            Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(5));
+            Assert.That(db.GetBlackMarketListings(test.CharacterId).Count(), Is.EqualTo(listed));
+        } else {
+            Assert.That(sent, Does.Not.Contain(capError));
+            Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(3));
+            Assert.That(db.GetBlackMarketListings(test.CharacterId).Count(), Is.EqualTo(listed + 1));
+        }
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The deposit is the client's: CalcBlackMarketRegisterDeposit of the total, 1 of 100 rounded up.
+    [Test]
+    public void Add_TakesTheClientsDeposit() {
+        test = new TestGameSession();
+        Item item = test.Store(metadata, amount: 5);
+        GameSession session = Login(test, 100000);
+
+        Send(test, session, 2, item.Uid, 1001, 3);
+
+        Assert.That(100000 - session.Currency.Meso, Is.EqualTo(Maple2.Server.Game.LuaFunctions.Lua.CalcBlackMarketRegisterDeposit(3003)));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetBlackMarketListings(test.CharacterId).Single().Deposit, Is.EqualTo(100000 - session.Currency.Meso));
+    }
+
     // The played client's minimum is 100 for the total: 4 at 50 each (200) is listed, as the client sends it.
     [Test]
     public void Add_TheMinimumIsForTheTotal() {

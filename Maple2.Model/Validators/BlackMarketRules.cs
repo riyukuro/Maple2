@@ -40,6 +40,15 @@ public static class BlackMarketRules {
         return !hasTransfer || TradeRules.IsTradeable(flag, remainTrades, bound);
     }
 
+    // The listings one character may have at once, sold out or expired ones still in the list included: the
+    // register button refuses a 29th with box 0x933 and this number (BlackMarketPageItemRegister::OnClickRegister,
+    // uiblackmarketpage.cpp:1610), and error 21 shows the same box (CBlackMarketMan::FUN_140a21ca0).
+    public const int MaxListings = 28;
+
+    public static bool CanAddListing(int listed) {
+        return listed < MaxListings;
+    }
+
     // Mode 5: i64 listing id, i32 count.
     public static bool IsPurchaseCount(int count, int listed) {
         return count > 0 && count <= listed;
