@@ -709,10 +709,13 @@ public class DungeonManager {
             DateTime clearTime = clearTimeStamp.FromEpochSeconds();
             DungeonSeasonTable.Entry? season = session.TableMetadata.DungeonSeasonTable.Current(clearTime);
             if (season != null) {
-                // An ended week still in the record is mailed before this clear's score replaces it.
-                MailSeasonRewards();
+                // An ended week still in the record is mailed before this clear's score replaces it, under the one
+                // lock, so a weekly reset between the two cannot mail this score as the ended week's.
                 DateTime expiry = DungeonScoreRules.SeasonExpiry(clearTime, season.DayOfWeeks, season.StartTime.TimeOfDay, season.EndTime);
-                DungeonScoreRules.ApplySeason(record, score, clearTimeStamp, expiry.ToEpochSeconds());
+                lock (seasonMailLock) {
+                    MailSeasonRewardsLocked();
+                    DungeonScoreRules.ApplySeason(record, score, clearTimeStamp, expiry.ToEpochSeconds());
+                }
             }
         }
         session.Send(DungeonRoomPacket.Update(record));
