@@ -200,17 +200,6 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
 
     private ChangeAttributesScrollError IsCompatibleScroll(Item item, Item scroll, out ItemRemakeScrollMetadata? metadata) {
         metadata = null;
-        if (item.Rarity is < Constant.ChangeAttributesMinRarity or > Constant.ChangeAttributesMaxRarity) {
-            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_rank;
-        }
-        if (!item.Type.IsWeapon && item.Type is { IsArmor: false, IsAccessory: false, IsPet: false }) {
-            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_slot;
-        }
-        if (item.Metadata.Limit.Level < Constant.ChangeAttributesMinLevel) {
-            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_level;
-        }
-
-        // Validate scroll conditions
         if (!int.TryParse(scroll.Metadata.Function?.Parameters, out int remakeId)) {
             return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll_data;
         }
@@ -220,18 +209,27 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
         return ScrollFits(item, metadata);
     }
 
-    // The checks of the scroll's row (the client's FUN_140616170, itemremakescrolldata.cpp:283): after the item
-    // types, rarities and levels, a row without an option value (addOpValue 0) is invalid scroll data (error 11).
+    // The checks of the scroll's row, the client's whole test (FUN_140616170, itemremakescrolldata.cpp:283-355), in its
+    // order and with its codes: no options (3); a pet row (onlyPet) takes any pet (1), another row the item types of its
+    // slot list (4); then the row's rarities (5), its levels (6) and its option value (addOpValue 0: 11). The row alone
+    // decides: before, the attribute dialog's own gate (rarity 4 to 6, level 50, weapon, armor, accessory or pet) came
+    // first, so the rank 3 pet rows (10000040 and 10000097) could never be used, and every row's refusal was 8.
     internal static ChangeAttributesScrollError ScrollFits(Item item, ItemRemakeScrollMetadata metadata) {
+        if (item.Stats == null) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat;
+        }
+        if (metadata.OnlyPet) {
+            if (!item.Type.IsPet) {
+                return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target;
+            }
+        } else if (!metadata.ItemTypes.Contains(item.Type.Type)) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_slot;
+        }
+        if (!metadata.Rarities.Contains(item.Rarity)) {
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_rank;
+        }
         if (item.Metadata.Limit.Level < metadata.MinLevel || item.Metadata.Limit.Level > metadata.MaxLevel) {
-            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_item;
-        }
-        if (!metadata.Rarities.Contains(item.Rarity) || !metadata.ItemTypes.Contains(item.Type.Type) && !metadata.OnlyPet) {
-            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_item;
-        }
-
-        if (metadata.OnlyPet && !item.Type.IsPet) {
-            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_item;
+            return ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_level;
         }
         if (metadata.RollValueType == RollValueType.None) {
             return ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll_data;

@@ -9,7 +9,7 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // The remake scroll's row (ChangeAttributesScrollHandler.ScrollFits): the client refuses a row without an option
 // value (addOpValue 0) as invalid scroll data (error 11) once the item fits its types, rarities and levels.
 public class ChangeAttributesScrollValueTests {
-    private static Item Accessory() => new(TestGameSession.Metadata(11200001), rarity: 4);
+    private static Item Accessory(int rarity = 4) => new(TestGameSession.Metadata(11200001), rarity: rarity) { Stats = new ItemStats() };
 
     private static ItemRemakeScrollMetadata Row(Item item, RollValueType value) {
         short level = (short) item.Metadata.Limit.Level;
@@ -32,11 +32,46 @@ public class ChangeAttributesScrollValueTests {
         Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, Row(item, value)), Is.EqualTo(ChangeAttributesScrollError.none));
     }
 
-    // The item checks come first, as in the client.
+    // The item checks come first, as in the client, each with its own code (FUN_140616170: rank 5).
     [Test]
-    public void NoValue_WrongRarity_ImpossibleItem() {
-        Item item = new(TestGameSession.Metadata(11200001), rarity: 3);
-        Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, Row(item, RollValueType.None)),
-            Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_item));
+    public void NoValue_WrongRarity_ImpossibleRank() {
+        Item item = Accessory(rarity: 3);
+        Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, Row(item, RollValueType.None) with { Rarities = [4] }),
+            Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_rank));
+    }
+
+    // Each refusal has the client's code (itemremakescrolldata.cpp:283-355): the slot list (4), the rarities (5), the
+    // levels (6), a pet row on an item that is no pet (1), an item without options (3). Before, all were 8.
+    [Test]
+    public void Refusals_HaveTheClientsCodes() {
+        Item item = Accessory();
+        ItemRemakeScrollMetadata row = Row(item, RollValueType.Normal);
+        Item bare = new(TestGameSession.Metadata(11200001), rarity: 4);
+        Assert.Multiple(() => {
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, row with { ItemTypes = [13] }),
+                Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_slot));
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, row with { Rarities = [5] }),
+                Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_rank));
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, row with { MinLevel = (short) (row.MaxLevel + 1), MaxLevel = (short) (row.MaxLevel + 1) }),
+                Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_impossible_level));
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(item, row with { OnlyPet = true }),
+                Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target));
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(bare, row),
+                Is.EqualTo(ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_stat));
+        });
+    }
+
+    // The row alone decides: the rank 3 pet rows (10000040, 10000097) take a rank 3 pet of level 50. Before, the
+    // attribute dialog's gate (rarity 4 to 6) refused it first, so those scrolls could never be used.
+    [Test]
+    public void RankThreePetRow_TakesARankThreePet() {
+        Item pet = new(TestGameSession.Metadata(61000001), rarity: 3) { Stats = new ItemStats() };
+        short level = (short) pet.Metadata.Limit.Level;
+        var row = new ItemRemakeScrollMetadata(MinLevel: level, MaxLevel: level, ItemTypes: [], Rarities: [3],
+            RollAttribute: false, RollValueType: RollValueType.Normal, OnlyPet: true);
+        Assert.Multiple(() => {
+            Assert.That(pet.Type.IsPet, Is.True);
+            Assert.That(ChangeAttributesScrollHandler.ScrollFits(pet, row), Is.EqualTo(ChangeAttributesScrollError.none));
+        });
     }
 }
