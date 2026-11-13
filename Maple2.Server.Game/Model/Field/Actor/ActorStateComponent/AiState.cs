@@ -78,6 +78,16 @@ public class AiState {
         return aiStack.Count > 0;
     }
 
+    // A task started from outside the tree (the GM mob-attack cast) holds the AI until it ends. Otherwise the next
+    // Update runs a node whose own cast, at the same BattleAction priority, overrides and cancels it.
+    public void Hold(NpcTask task) {
+        if (currentTask != task) {
+            currentTask?.Cancel();
+        }
+        currentTask = task;
+        currentLimitTick = 0;
+    }
+
     public bool IsWaitingOnTask(long tickCount) {
         if (currentTask is null) {
             return false;

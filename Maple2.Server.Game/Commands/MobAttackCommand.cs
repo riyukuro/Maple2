@@ -78,7 +78,8 @@ public class MobAttackCommand : GameCommand {
             line => gm.Send(NoticePacket.Message(line, true)));
 
         // Cast the skill facing the player
-        mob.CastAiSkill(skillId.Value, skillLevel, faceTarget: 1, facePos: session.Player.Position);
+        // The AI waits for the cast: its own next cast would cancel this one.
+        mob.AiState.Hold(mob.CastAiSkill(skillId.Value, skillLevel, faceTarget: 1, facePos: session.Player.Position));
         ctx.Console.Out.WriteLine($"Mob {mob.Value.Metadata.Name} casting skill {skillId.Value} (level {skillLevel}).");
     }
 }
