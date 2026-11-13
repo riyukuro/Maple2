@@ -38,6 +38,9 @@ internal class Account {
     public DateTime LastModified { get; init; }
 
     public bool Online { get; set; }
+    // The account's session generation: each entry adds one in its load (GameStorage.ClaimSession), and a session's
+    // save writes only while it is still its own (HoldsSession). Not in the game model: only those two write it.
+    public long SessionGen { get; set; }
     public string Permissions { get; set; } = string.Empty;
 
     public ICollection<Character>? Characters { get; set; }

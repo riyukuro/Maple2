@@ -92,6 +92,9 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("json");
 
+                    b.Property<long>("SessionGen")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("SurvivalExp")
                         .HasColumnType("bigint");
 

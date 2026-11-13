@@ -359,6 +359,8 @@ public sealed class TestGameSession {
         Set(session, nameof(GameSession.PlayerInfo), new PlayerInfoStorage(World));
 
         using GameStorage.Request db = Storage.Context();
+        // As EnterServer: the entry claims the account's session before its load (its saves hold it).
+        typeof(GameSession).GetField("sessionGen", Any)!.SetValue(session, db.ClaimSession(AccountId));
         Player player = db.LoadPlayer(AccountId, CharacterId, 1, 1) ?? throw new InvalidOperationException("player not loaded");
         fieldPlayer = Uninitialized<FieldPlayer>();
         GC.SuppressFinalize(fieldPlayer);

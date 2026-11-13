@@ -194,6 +194,37 @@ public class ItemSaveTests {
         Assert.That(loads.Select(load => Stored(load.Item.Uid)?.Amount), Is.All.EqualTo(77));
     }
 
+    // The account entered again on another channel while this session was still saving: the new channel claims the
+    // session and loads (seeding the rows it read), then the old session's save comes, past or without the account
+    // lock. It writes nothing; had it written, the new session's save would skip the row (its values unchanged since
+    // its load) and leave the old session's amount: an item duplicated or lost. The row stays the new session's.
+    [Test]
+    public void SaveAfterAnotherEntry_WritesNothing() {
+        Item item = test.Store(TestGameSession.Metadata(50000336), 2);
+        StartSaving();
+        Assume.That(session.SessionSave(), Is.True, "first save");
+        session.Item.Inventory.Get(item.Uid)!.Amount = 5;
+
+        Item loaded;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.BeginTransaction();
+            db.ClaimSession(test.AccountId);
+            loaded = db.GetItem(item.Uid)!;
+            Assume.That(db.Commit(), Is.True);
+        }
+        Assume.That(loaded.Amount, Is.EqualTo(2));
+
+        Assert.That(session.SessionSave(), Is.False, "the old session's save");
+        Assert.That(Stored(item.Uid)?.Amount, Is.EqualTo(2), "not written by the old session");
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveItems(test.CharacterId, loaded), Is.True);
+        }
+        Assert.Multiple(() => {
+            Assert.That(Stored(item.Uid)?.Amount, Is.EqualTo(2), "the new session's save: its amount");
+            Assert.That(test.Errors, Has.Some.Contains("entered again"));
+        });
+    }
+
     // A created item has no loaded values: its first save writes its row (as an item a mail or the market made).
     [Test]
     public void CreatedItem_FirstSaveWrites() {

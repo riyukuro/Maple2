@@ -259,6 +259,41 @@ public partial class GameStorage {
             return (result.CharacterLastModified, result.AccountLastModified, result.UnlockLastModified);
         }
 
+        // An entry's claim of the account, in its load's transaction before the load reads anything (the old
+        // channel's save that holds the row, see HoldsSession, is waited for, and the load then reads what it
+        // stored). The generation it answers is the session's: its saves write only while the account's is still
+        // that one, so no save of an earlier session writes the account's or character's rows after this load.
+        // 0 when the account is not found.
+        public long ClaimSession(long accountId) {
+            if (Context.Database.IsRelational()) {
+                Context.Database.ExecuteSqlRaw("UPDATE `account` SET `SessionGen` = `SessionGen` + 1 WHERE `Id` = {0}", accountId);
+                return Context.Database.SqlQueryRaw<long>("SELECT `SessionGen` AS `Value` FROM `account` WHERE `Id` = {0}", accountId)
+                    .ToList().FirstOrDefault();
+            }
+            Model.Account? account = Context.Account.Find(accountId);
+            if (account == null) {
+                return 0;
+            }
+            account.SessionGen++;
+            Context.Account.Update(account);
+            Context.SaveChanges();
+            // Not left tracked: the load that follows in this request reads the account as the relational path does.
+            Context.Entry(account).State = EntityState.Detached;
+            return account.SessionGen;
+        }
+
+        // A save's check, first in its transaction (before it writes): the account's generation is still the
+        // session's. The read locks the row until the save ends, so a later entry's claim waits for the save and its
+        // load reads what the save stored; a save after that claim finds another generation and writes nothing.
+        public bool HoldsSession(long accountId, long session) {
+            long current = Context.Database.IsRelational()
+                ? Context.Database.SqlQueryRaw<long>("SELECT `SessionGen` AS `Value` FROM `account` WHERE `Id` = {0} FOR UPDATE", accountId)
+                    .ToList().FirstOrDefault()
+                : Context.Account.AsNoTracking().Where(account => account.Id == accountId)
+                    .Select(account => account.SessionGen).FirstOrDefault();
+            return current == session;
+        }
+
         // We pass in objectId only for Player initialization.
         // entryMails gets the time of the character's last save (its row version before this entry stamps it, epoch
         // seconds) and gives the mails the entry sends; they are stored in the same save as the entry's stamp, so a
@@ -357,6 +392,7 @@ public partial class GameStorage {
                 return false;
             }
             account.Password = dbAccount.Password;
+            account.SessionGen = dbAccount.SessionGen; // not in the game model (ClaimSession)
 
             // A request that already tracks these rows (SaveCurrency reads them tracked, and the Find above tracks
             // too from then on) would refuse a second instance with the same key in Update.

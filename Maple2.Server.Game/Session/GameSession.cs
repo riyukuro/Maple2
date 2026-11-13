@@ -57,6 +57,9 @@ public sealed partial class GameSession : Core.Network.Session {
     private bool preMigrationSaved;
     // The account's and character's item rows, held from an entry that took the account lock (see EnterServer).
     private IDisposable? heldRows;
+    // The account's session generation this entry claimed (GameStorage.ClaimSession): a save writes only while the
+    // account's is still this one. 0 before the load (a session without a load has nothing to save).
+    private long sessionGen;
     // EnterServer finished: the World's cache config (buffs, cooldowns, death) was loaded and the session played, so
     // Dispose stores it back. A refused entry leaves the World's copy as it was.
     private bool entered;
@@ -284,6 +287,10 @@ public sealed partial class GameSession : Core.Network.Session {
             IList<GameEvent> sendMail = FindEvent(GameEventType.SendMail);
             // The resets the rows below hold: read first, with a share lock, in the load's transaction.
             resetsSeen = new ResetsSeen(db.GetResetStamps(ResetWait));
+            // The claim before the load reads anything: a save of the session this one follows that still runs (its
+            // MigrationSave without the lock, or past the lock's 30 s) is waited for, and one that comes later writes
+            // nothing; the rows loaded below stay as read while this session plays.
+            sessionGen = db.ClaimSession(AccountId);
             player = db.LoadPlayer(AccountId, CharacterId, objectId, GameServer.GetChannel(), lastSave =>
                 EventMailRules.ReturnUser(sendMail.Select(gameEvent => gameEvent.Metadata), CharacterId, lastSave,
                     DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
@@ -1762,6 +1769,9 @@ public sealed partial class GameSession : Core.Network.Session {
             using var tokens = new RowTokens(Player);
             // A reset stored since the session's state was read is taken first, so the rows written hold it.
             BeginWithResets(db, TimeSpan.Zero);
+            if (!HoldsSession(db)) {
+                return SaveResult.Failed;
+            }
             // The currency and the purchase's rows are stored together or not at all (the request rolls back what it
             // did not commit); the session keeps both, and its next save stores them.
             if (!db.SaveCurrency(Player)) {
@@ -1817,11 +1827,26 @@ public sealed partial class GameSession : Core.Network.Session {
         return false;
     }
 
+    // A save of a session whose account another entry has claimed since (a relog or channel move that loaded the
+    // player while this session's last save had not run): it writes nothing. The other session loaded the rows
+    // before this save, plays on from them and writes them; written here, a row it does not change after would keep
+    // this session's values while that session holds others (an item lost or doubled).
+    private bool HoldsSession(GameStorage.Request db) {
+        if (db.HoldsSession(AccountId, sessionGen)) {
+            return true;
+        }
+        Logger.Error("Save: the account was entered again since this session's load, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+        return false;
+    }
+
     private bool SaveRows(TimeSpan resetWait) {
         using GameStorage.Request db = GameStorage.Context();
         using var tokens = new RowTokens(Player);
         // A reset stored since the session's state was read is taken first, so the rows written hold it.
         BeginWithResets(db, resetWait);
+        if (!HoldsSession(db)) {
+            return false;
+        }
         if (!db.SavePlayer(Player)) {
             Logger.Error("Save: player not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return false;
