@@ -621,22 +621,23 @@ public class InventoryManager {
         }
     }
 
-    public bool ConsumeItemComponents(IReadOnlyList<ItemComponent> components, int quantityMultiplier = 1) {
+    // keepUid: an item that is not a material (an upgrade's target, taken on its own).
+    public bool ConsumeItemComponents(IReadOnlyList<ItemComponent> components, int quantityMultiplier = 1, long keepUid = 0) {
         lock (session.Item) {
 
             // Check for components
             Dictionary<int, IList<Item>> materialsById = components.ToDictionary(
                 ingredient => ingredient.ItemId,
-                ingredient => Filter(item => item.IsSpendable() && item.Id == ingredient.ItemId && (ingredient.Rarity < 0 || item.Rarity == ingredient.Rarity))
+                ingredient => Filter(item => item.IsSpendable() && item.Uid != keepUid && item.Id == ingredient.ItemId && (ingredient.Rarity < 0 || item.Rarity == ingredient.Rarity))
             );
             var materialsByTag = new Dictionary<ItemTag, IList<Item>>();
             foreach (ItemComponent ingredient in components) {
                 if (materialsByTag.TryGetValue(ingredient.Tag, out IList<Item>? value)) {
-                    foreach (Item item in session.Item.Inventory.Find(ingredient.ItemId, ingredient.Rarity).Where(item => item.IsSpendable())) {
+                    foreach (Item item in session.Item.Inventory.Find(ingredient.ItemId, ingredient.Rarity).Where(item => item.IsSpendable() && item.Uid != keepUid)) {
                         value.Add(item);
                     }
                 } else {
-                    materialsByTag.Add(ingredient.Tag, session.Item.Inventory.Find(ingredient.ItemId, ingredient.Rarity).Where(item => item.IsSpendable()).ToList());
+                    materialsByTag.Add(ingredient.Tag, session.Item.Inventory.Find(ingredient.ItemId, ingredient.Rarity).Where(item => item.IsSpendable() && item.Uid != keepUid).ToList());
                 }
             }
 

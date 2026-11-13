@@ -113,7 +113,8 @@ public class ItemExchangeScroll : FieldPacketHandler {
                 CarryUpgrade(session.ServerTableMetadata.EnchantOptionTable, target, rewardItem);
             }
 
-            if (!session.Item.Inventory.ConsumeItemComponents(scrollMetadata.RequiredItems, quantity)) {
+            // The target is no material: a requirement of the target's id is paid with other items.
+            if (!session.Item.Inventory.ConsumeItemComponents(scrollMetadata.RequiredItems, quantity, target?.Uid ?? 0)) {
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_invalid));
                 return;
             }

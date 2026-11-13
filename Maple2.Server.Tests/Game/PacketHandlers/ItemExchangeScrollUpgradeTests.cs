@@ -26,10 +26,11 @@ public class ItemExchangeScrollUpgradeTests {
     private BagItem scroll = null!;
     private BagItem target = null!;
 
-    private GameSession Start(int targetId = TargetId, int enchants = 3) {
+    private GameSession Start(int targetId = TargetId, int enchants = 3, bool targetAsMaterial = false) {
         test = new TestGameSession();
         test.SetTable(new ItemExchangeScrollTable(new Dictionary<int, ItemExchangeScrollMetadata> {
-            [ScrollId] = new(new ItemComponent(ScrollId, 5, 1, ItemTag.None), new ItemComponent(RewardId, 5, 1, ItemTag.None), 0, 0, [],
+            [ScrollId] = new(new ItemComponent(ScrollId, 5, 1, ItemTag.None), new ItemComponent(RewardId, 5, 1, ItemTag.None), 0, 0,
+                targetAsMaterial ? [new ItemComponent(TargetId, 5, 1, ItemTag.None)] : [],
                 Type: ItemExchangeScrollType.Upgrade, MaxGrade: 10, RequireEquip: new ItemComponent(TargetId, 5, 1, ItemTag.None)),
         }));
         var enchantOptions = new Dictionary<int, EnchantOptionMetadata>();
@@ -139,6 +140,20 @@ public class ItemExchangeScrollUpgradeTests {
         GameSession session = Start(enchants: enchants);
         Exchange(session);
         Assert.That(Answers(), Is.EqualTo(new[] { ((byte) 2, (short) answer) }));
+    }
+
+    // A requirement of the target's own id is not paid with the target: alone, it is refused and nothing is taken.
+    // Before, the target went as the material, then its own Consume threw after the scroll's materials were gone.
+    [Test]
+    public void TargetIsNoMaterial() {
+        GameSession session = Start(targetAsMaterial: true);
+        Exchange(session);
+        Assert.Multiple(() => {
+            Assert.That(Answers(), Is.EqualTo(new[] { ((byte) 2, (short) ItemExchangeScrollError.s_itemslot_exchange_count_invalid) }));
+            Assert.That(Held(session, target), Is.True);
+            Assert.That(Held(session, scroll), Is.True);
+            Assert.That(session.Item.Inventory.Find(RewardId), Is.Empty);
+        });
     }
 
     // The target slot answers an item the row does not take with its code instead of the cost.
