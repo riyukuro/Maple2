@@ -189,6 +189,20 @@ public class GemstoneUpgradeHandlerTests {
         Assert.That(session.Item.Inventory.Filter(item => item.Id == 40220131).Sum(item => item.Amount), Is.EqualTo(0));
     }
 
+    // A copy the character cannot use (PC::CanUseItem, pc.cpp:4683: bound to another character) is not counted,
+    // as the client's counts skip it (inventory.cpp:798, 845): the upgrade is refused and nothing is taken.
+    [Test]
+    public void BoundToAnotherCharacter_IsNotCounted() {
+        GameSession session = Start(SureRates);
+        Item held = session.Item.Inventory.Get(dust.Uid)!;
+        held.Transfer = new ItemTransfer(binding: new ItemBinding(test.CharacterId + 1, "other"));
+
+        Send(session, 4);
+
+        Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(40200001));
+        Assert.That(session.Item.Inventory.Get(dust.Uid)!.Amount, Is.EqualTo(100));
+    }
+
     [Test]
     public void Rate_NoListIsSure() {
         Assert.That(ItemSocketRules.GemstoneUpgradeRate(1, 3, null, null), Is.EqualTo(100));

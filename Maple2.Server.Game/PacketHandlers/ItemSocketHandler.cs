@@ -11,6 +11,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using static Maple2.Model.Error.ItemSocketError;
 
@@ -662,7 +663,9 @@ public class ItemSocketHandler : FieldPacketHandler {
 
         // The stacks each cost is taken from, picked now and taken under the same lock. The excluded item (the gem
         // being upgraded) counts one less, as the client counts it (CItem::vfunc_4 with SetExcluded). Only crystal
-        // fragments (FUN_140526320, string tag 0x60) may be short, paid at 1000 mesos each.
+        // fragments (FUN_140526320, string tag 0x60) may be short, paid at 1000 mesos each. A copy the character
+        // cannot use (PC::CanUseItem: expired, premium club only, bound to another character) is not counted, as
+        // the client's id and tag counts skip it (inventory.cpp:798, 845).
         public static SocketPrice? Check(GameSession session, IEnumerable<SocketCost> price, Item? excluded) {
             var picks = new List<(long, int)>();
             var used = new Dictionary<long, int>();
@@ -672,7 +675,7 @@ public class ItemSocketHandler : FieldPacketHandler {
                     continue;
                 }
                 int remaining = cost.Amount;
-                foreach (Item item in session.Item.Inventory.Filter(item => item.IsSpendable() && cost.Matches(item))) {
+                foreach (Item item in session.Item.Inventory.Filter(item => item.IsSpendable() && cost.Matches(item) && PcItemUse.CanUseItem(session, item))) {
                     int free = item.Amount - used.GetValueOrDefault(item.Uid) - (excluded != null && item.Uid == excluded.Uid ? 1 : 0);
                     int take = Math.Min(free, remaining);
                     if (take <= 0) {

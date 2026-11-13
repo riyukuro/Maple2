@@ -223,8 +223,8 @@ public class SkillHandler : FieldPacketHandler {
         if (condition.Weapon is { Length: > 0 } weapons) {
             Item? right = session.Item.Equips.Get(EquipSlot.RH);
             Item? left = session.Item.Equips.Get(EquipSlot.LH);
-            (int heldRight, int heldLeft) = SkillCastRules.HandTypes(right?.Type.Type ?? 0, right?.Uid ?? 0, right == null || CanUseItem(session, right),
-                left?.Type.Type ?? 0, left?.Uid ?? 0, left == null || CanUseItem(session, left));
+            (int heldRight, int heldLeft) = SkillCastRules.HandTypes(right?.Type.Type ?? 0, right?.Uid ?? 0, right == null || PcItemUse.CanUseItem(session, right),
+                left?.Type.Type ?? 0, left?.Uid ?? 0, left == null || PcItemUse.CanUseItem(session, left));
             WeaponActionTable.Action? held = session.TableMetadata.WeaponActionTable.Held(heldRight, heldLeft);
             if (SkillCastRules.WeaponRefuses(weapons.Select(weapon => ((int) weapon.LeftHand.Type, (int) weapon.RightHand.Type)).ToArray(), held)) {
                 Logger.Debug("Cast refused, skill {SkillId} needs another weapon than {Left}/{Right} (action {Action})", record.SkillId,
@@ -242,13 +242,6 @@ public class SkillHandler : FieldPacketHandler {
             }
         }
         return true;
-    }
-
-    // PC::CanUseItem (pc.cpp:4683) as far as the server keeps it: not expired (pets excepted), a premium-club item
-    // only with premium club, not bound to another character (ItemRemakeRules.LockItemUsable).
-    private static bool CanUseItem(GameSession session, Item item) {
-        return ItemRemakeRules.LockItemUsable(SetItemRules.Expired(item.ExpiryTime, DateTime.Now.ToEpochSeconds(), item.Pet != null),
-            item.Metadata.Limit.RequireVip, session.Config.IsPremiumClubActive(), item.Transfer?.Binding?.CharacterId ?? 0, session.CharacterId);
     }
 
     private void HandlePoint(GameSession session, IByteReader packet) {
