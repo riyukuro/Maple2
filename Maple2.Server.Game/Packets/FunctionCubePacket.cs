@@ -20,6 +20,12 @@ public static class FunctionCubePacket {
         NurturingError = 13,
     }
 
+    // The client reads a cube's state and the byte after it only for a cube id it holds (CFunctionCubeService::
+    // ReadCubeState); an unknown id ends the record after the id. The client holds every placed function cube under
+    // "4_<cell>" (all install objects are item subtypes 5, 6 and 7, object code 4), the id InteractCube sends,
+    // except tree and animated cubes placed while it is in the decor planner (home plot mode 1). A planner field is a
+    // new instance whose cubes start empty and only its owner enters it, so the list below never names such a cube;
+    // a single Add or Update for one only leaves its tail unread at the end of the packet.
     public static ByteWriter SendCubes(ICollection<FieldFunctionInteract> cubes) {
         var pWriter = Packet.Of(SendOp.FunctionCube);
         pWriter.Write<Command>(Command.SendCubes);
