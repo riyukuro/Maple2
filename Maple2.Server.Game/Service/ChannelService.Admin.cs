@@ -1,9 +1,11 @@
 ﻿using Grpc.Core;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.Service;
@@ -17,6 +19,8 @@ public partial class ChannelService {
                 return Task.FromResult(AddStringBoard(request.AddStringBoard));
             case AdminRequest.RequestOneofCase.RemoveStringBoard:
                 return Task.FromResult(RemoveStringBoard(request.RemoveStringBoard));
+            case AdminRequest.RequestOneofCase.AccountBlock:
+                return Task.FromResult(UpdateAccountBlock(request.AccountBlock));
             default:
                 return Task.FromResult(new AdminResponse());
         }
@@ -40,6 +44,33 @@ public partial class ChannelService {
             session.Send(NoticePacket.Notice(flag, new InterfaceText(alert.Message), (short) alert.Duration));
         }
 
+        return new AdminResponse();
+    }
+
+    // The account's session on this channel reloads its restrictions and tells the client (AdminBlock 0x62).
+    private AdminResponse UpdateAccountBlock(AdminRequest.Types.AccountBlock change) {
+        GameSession? session = server.GetSessionByAccountId(change.AccountId);
+        if (session == null) {
+            return new AdminResponse();
+        }
+
+        using (GameStorage.Request db = gameStorage.Context()) {
+            session.AccountBlocks = db.GetAccountBlocks(change.AccountId).ToArray();
+        }
+        switch (change.Mode) {
+            case 0:
+                AccountBlock? added = session.AccountBlocks.FirstOrDefault(block => block.Id == change.BlockId);
+                if (added != null) {
+                    session.Send(AdminBlockPacket.Load([added]));
+                }
+                break;
+            case 1:
+                session.Send(AdminBlockPacket.Remove(change.BlockId));
+                break;
+            case 2:
+                session.Send(AdminBlockPacket.SetExpiry(change.BlockId, change.Kind, change.ExpiryTime, change.Delta));
+                break;
+        }
         return new AdminResponse();
     }
 

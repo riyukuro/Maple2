@@ -172,6 +172,10 @@ public class GroupChatHandler : FieldPacketHandler {
         if (!GroupChatRules.TextValid(message) || !session.GroupChats.ContainsKey(groupChatId)) {
             return;
         }
+        // CGroupChatManager::SendGroupChatMode10 checks the chat restriction before it sends.
+        if (UserChatHandler.RefuseBlockedChat(session)) {
+            return;
+        }
 
         try {
             World.GroupChat(new GroupChatRequest {

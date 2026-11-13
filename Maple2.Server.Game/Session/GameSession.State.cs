@@ -65,6 +65,10 @@ public partial class GameSession {
     // The chat spam restriction (FastChat and SameChat constants) of this player's lines.
     public readonly ChatRestriction ChatRestriction = new();
 
+    // The account's live restrictions (AdminBlock 0x62), loaded at server entry and replaced whole when a GM changes
+    // one.
+    public volatile AccountBlock[] AccountBlocks = [];
+
     public long ReportCooldown = 0;
 
     public bool CanHold() {

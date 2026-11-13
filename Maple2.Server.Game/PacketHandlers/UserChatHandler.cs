@@ -5,6 +5,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -38,6 +39,12 @@ public class UserChatHandler : FieldPacketHandler {
         // Handle ChatCommands
         if (message.StartsWith('/')) {
             session.CommandHandler.Invoke(message[1..]);
+            return;
+        }
+
+        // The client checks its restrictions (FindBlockedAction(2)) before it sends any chat line; the whisper reject
+        // is its own answer, not a line.
+        if (type != ChatType.WhisperReject && RefuseBlockedChat(session)) {
             return;
         }
 
@@ -98,6 +105,16 @@ public class UserChatHandler : FieldPacketHandler {
         }
 
         session.ConditionUpdate(ConditionType.chat, targetLong: session.Field.MapId);
+    }
+
+    // A live restriction that blocks chat (kind 2 Penalty, kind 6) refuses the line with the client's own text.
+    internal static bool RefuseBlockedChat(GameSession session) {
+        StringCode? refusal = AccountBlockRules.ChatRefusal(session.AccountBlocks ?? [], DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        if (refusal == null) {
+            return false;
+        }
+        session.Send(ChatPacket.Alert(refusal.Value));
+        return true;
     }
 
     // The channel int of a player's own line (normal, party, guild, whisper): KMS2 sends the sender's channel from a

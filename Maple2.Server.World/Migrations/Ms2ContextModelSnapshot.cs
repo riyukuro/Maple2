@@ -116,6 +116,39 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("account", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.AccountBlock", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("ExpiryTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("IssuerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("StartTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.ToTable("account-block", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.AccountEventValue", b =>
                 {
                     b.Property<long>("AccountId")

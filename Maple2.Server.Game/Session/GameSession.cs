@@ -431,6 +431,10 @@ public sealed partial class GameSession : Core.Network.Session {
         // KMS2 sends it at every login, after the guild, club and buddy lists and before the home blocks.
         Send(UserConditionEventPacket.Load());
         Send(HomeBlockPacket.Load(db.GetHomeBlocks(AccountId)));
+        // The account's restrictions, at every server entry (Chosen here: where in the login sequence; the client
+        // replaces its record of each kind, so a resend does no harm).
+        AccountBlocks = db.GetAccountBlocks(AccountId).ToArray();
+        Send(AdminBlockPacket.Load(AccountBlocks));
         IList<Maid> maids = db.GetMaids(AccountId);
         Send(UserMaidPacket.List(maids));
         // The crafts of those maids, keyed by the maid uid (CManufactureManager).

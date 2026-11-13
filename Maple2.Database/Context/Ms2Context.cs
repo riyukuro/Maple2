@@ -59,6 +59,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<BossClearMember> BossClearMember { get; set; } = null!;
     internal DbSet<PlayerReport> PlayerReports { get; set; } = null!;
     internal DbSet<Ban> Ban { get; set; } = null!;
+    internal DbSet<AccountBlock> AccountBlock { get; set; } = null!;
     internal DbSet<HomeBlock> HomeBlock { get; set; } = null!;
     internal DbSet<HomeCommend> HomeCommend { get; set; } = null!;
     internal DbSet<Mentoring> Mentoring { get; set; } = null!;
@@ -124,6 +125,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
         modelBuilder.Entity<BossClear>(Maple2.Database.Model.BossClear.Configure);
         modelBuilder.Entity<BossClearMember>(Maple2.Database.Model.BossClearMember.Configure);
         modelBuilder.Entity<Ban>(Maple2.Database.Model.Ban.Configure);
+        modelBuilder.Entity<AccountBlock>(Maple2.Database.Model.AccountBlock.Configure);
         modelBuilder.Entity<HomeBlock>(Maple2.Database.Model.HomeBlock.Configure);
         modelBuilder.Entity<HomeCommend>(Maple2.Database.Model.HomeCommend.Configure);
         modelBuilder.Entity<Mentoring>(Maple2.Database.Model.Mentoring.Configure);
