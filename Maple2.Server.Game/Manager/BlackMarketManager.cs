@@ -113,7 +113,16 @@ public sealed class BlackMarketManager {
         var error = (BlackMarketError) response.Error;
         if (error != BlackMarketError.none) {
             session.Send(BlackMarketPacket.Error(error, 2));
-            CreateRefundErrorMail(item, depositFee);
+            // The row is taken back with the item and the deposit mailed, in one transaction: a row left behind is
+            // loaded by World at its next start and could be bought, moving the refunded item to the buyer. A request
+            // of its own: the listing's request still tracks the rows it wrote.
+            using GameStorage.Request takeDb = session.GameStorage.Context();
+            if (takeDb.TakeBlackMarketListing(listing.Id, session.CharacterId, taken => RefundErrorMail(taken.Item.Id, depositFee), out _) == null) {
+                // The row and its item stay listed, as World will load them; the seller can take them back.
+                logger.Error("Failed to take back black market listing {ListingId} that World refused", listing.Id);
+                return;
+            }
+            session.Mail.Notify(true);
             return;
         }
 
@@ -335,12 +344,12 @@ public sealed class BlackMarketManager {
         return mail;
     }
 
-    private void CreateRefundErrorMail(Item item, long refund) {
+    private Mail RefundErrorMail(int itemId, long refund) {
         var mail = new Mail {
             ReceiverId = session.CharacterId,
             Type = MailType.BlackMarketFail,
             TitleArgs = [
-                ("item", $"{item.Id}"),
+                ("item", $"{itemId}"),
             ],
             Meso = refund,
         };
@@ -348,6 +357,11 @@ public sealed class BlackMarketManager {
         mail.SetTitle(StringCode.s_blackmarket_mail_to_fail_add_title);
         mail.SetContent(StringCode.s_blackmarket_mail_to_fail_add_content);
         mail.SetSenderName(StringCode.s_blackmarket_mail_to_sender);
+        return mail;
+    }
+
+    private void CreateRefundErrorMail(Item item, long refund) {
+        Mail? mail = RefundErrorMail(item.Id, refund);
 
         using GameStorage.Request db = session.GameStorage.Context();
         mail = db.CreateMail(mail);

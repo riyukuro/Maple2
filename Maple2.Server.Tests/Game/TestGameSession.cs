@@ -661,12 +661,13 @@ public sealed class TestGameSession {
             return response;
         }
 
-        // The black market's world side: every listing change is accepted.
+        // The black market's world side: every listing change is answered with BlackMarketAnswer (none: accepted).
         public readonly List<BlackMarketRequest> BlackMarketRequests = [];
+        public int BlackMarketAnswer;
 
         public override BlackMarketResponse BlackMarket(BlackMarketRequest request, CallOptions options) {
             BlackMarketRequests.Add(request);
-            return new BlackMarketResponse();
+            return new BlackMarketResponse { Error = BlackMarketAnswer };
         }
 
         // The other players the world knows; a character that was not added is not found.

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -53,21 +54,7 @@ public class BlackMarketRefusalTests {
     // A listing of amount items; by another account unless a seller is given.
     private BlackMarketListing List(int amount, TestGameSession? seller = null, int days = 1) {
         test.Register(metadata);
-        // An item row names its owner by id alone. The server's tables number their rows in ranges of their own;
-        // the test store numbers every table from 1, so the listing and mail ids are moved clear of the
-        // characters' and of each other.
-        using (var context = new Ms2Context(test.Options)) {
-            var rows = Enumerable.Range(0, 30).Select(_ => new Maple2.Database.Model.BlackMarketListing()).ToArray();
-            context.BlackMarketListing.AddRange(rows);
-            context.SaveChanges();
-            context.BlackMarketListing.RemoveRange(rows);
-            context.SaveChanges();
-        }
-        using (GameStorage.Request db = test.Storage.Context()) {
-            for (int i = 0; i < 60; i++) {
-                db.CreateMail(new Mail { ReceiverId = 999999 });
-            }
-        }
+        MoveIdsClear();
         Item item;
         using (GameStorage.Request db = test.Storage.Context()) {
             item = db.CreateItem(0, new Item(metadata, amount: amount)) ?? throw new InvalidOperationException("item row not created");
@@ -81,6 +68,24 @@ public class BlackMarketRefusalTests {
                 Price = Price,
                 Quantity = amount,
             }) ?? throw new InvalidOperationException("listing row not created");
+        }
+    }
+
+    // An item row names its owner by id alone. The server's tables number their rows in ranges of their own; the
+    // test store numbers every table from 1, so the listing and mail ids are moved clear of the characters' and of
+    // each other.
+    private void MoveIdsClear() {
+        using (var context = new Ms2Context(test.Options)) {
+            var rows = Enumerable.Range(0, 30).Select(_ => new Maple2.Database.Model.BlackMarketListing()).ToArray();
+            context.BlackMarketListing.AddRange(rows);
+            context.SaveChanges();
+            context.BlackMarketListing.RemoveRange(rows);
+            context.SaveChanges();
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            for (int i = 0; i < 60; i++) {
+                db.CreateMail(new Mail { ReceiverId = 999999 });
+            }
         }
     }
 
@@ -161,6 +166,31 @@ public class BlackMarketRefusalTests {
         Assert.That((listing.Price, listing.Quantity), Is.EqualTo((50L, 4)));
         Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Not.Contain(Hex(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_fail_register, 2))));
+    }
+
+    // World refuses the new listing: the error, the row is taken back, and the item and the deposit are mailed to
+    // the seller (the row used to stay, and World loaded it at its next start, to be bought with the refunded item).
+    [Test]
+    public void Add_RefusedByWorld_LeavesNoRow() {
+        test = new TestGameSession();
+        test.World.BlackMarketAnswer = (int) BlackMarketError.s_blackmarket_error_fail_register;
+        MoveIdsClear();
+        Item item = test.Store(metadata, amount: 5);
+        GameSession session = Login(test, 100000);
+
+        Send(test, session, 2, item.Uid, 1000, 2);
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Select(Convert.ToHexString), Does.Contain(Hex(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_fail_register, 2))));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetBlackMarketListings(test.CharacterId), Is.Empty, string.Join("\n", test.Errors));
+        Mail mail = db.GetAllMail(session.CharacterId).Single();
+        // The deposit taken from the purse comes back in the mail.
+        Assert.That(session.Currency.Meso, Is.LessThan(100000));
+        Assert.That((mail.Type, mail.Meso), Is.EqualTo((MailType.BlackMarketFail, 100000 - session.Currency.Meso)));
+        Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(2));
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(3));
+        Assert.That(test.Errors, Is.Empty);
     }
 
     // A take-back refused (another character's listing, or none): the error; the listing stays, nothing is mailed.
