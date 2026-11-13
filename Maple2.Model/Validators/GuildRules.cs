@@ -563,4 +563,22 @@ public static class GuildRules {
         }
         return last;
     }
+
+    // The mail to an applicant whose guild request a member rejected (Guild 84 with accepted 0). Guild 48, which
+    // the applicant gets, only drops the request from its list (OnPacketMyJoinRequestRemoved, guildmanager.cpp:3006)
+    // and shows no text; the client's string table has the mail for it: s_guild_search_join_reject_mail_sender,
+    // _title and _content, the title and the text each with the guild's name as {0}.
+    public static Mail RejectedApplicationMail(long applicantId, string guildName) {
+        string name = System.Security.SecurityElement.Escape(guildName) ?? string.Empty;
+        var mail = new Mail {
+            ReceiverId = applicantId,
+            Type = MailType.System,
+            TitleArgs = [("str", name)],
+            ContentArgs = [("str", name)],
+        };
+        mail.SetSenderName(StringCode.s_guild_search_join_reject_mail_sender);
+        mail.SetTitle(StringCode.s_guild_search_join_reject_mail_title);
+        mail.SetContent(StringCode.s_guild_search_join_reject_mail_content);
+        return mail;
+    }
 }

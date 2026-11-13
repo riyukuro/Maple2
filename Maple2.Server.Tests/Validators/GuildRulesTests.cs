@@ -1,5 +1,8 @@
+using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Tests.Validators;
 
@@ -136,5 +139,26 @@ public class GuildRulesTests {
     [TestCase(int.MaxValue - 5, 50, 5_000_000_000L, int.MaxValue)]
     public void AddFund_StopsAtTheFundMax(int funds, int add, long fundMax, int expected) {
         Assert.That(GuildRules.AddFund(funds, add, fundMax), Is.EqualTo(expected));
+    }
+
+    // Guild 84 with accepted 0: the applicant's mail is the client's reject mail, with the guild's name as the
+    // {0} of the title and the text, read back as Mail::Read gets it.
+    [Test]
+    public void RejectedApplicationMail_IsTheClientRejectMail() {
+        Mail mail = GuildRules.RejectedApplicationMail(7, "A&B");
+        Assert.That(mail.ReceiverId, Is.EqualTo(7));
+
+        var writer = new ByteWriter();
+        writer.WriteClass<Mail>(mail);
+        var reader = new ByteReader(writer.Buffer, 0);
+        Assert.That(reader.ReadByte(), Is.EqualTo((byte) MailType.System));
+        reader.ReadLong(); // id
+        Assert.That(reader.ReadLong(), Is.EqualTo(0), "no sender character");
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("""<ms2><v key="s_guild_search_join_reject_mail_sender" /></ms2>"""));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("""<ms2><v key="s_guild_search_join_reject_mail_title" /></ms2>"""));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("""<ms2><v key="s_guild_search_join_reject_mail_content" /></ms2>"""));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("""<ms2><v str="A&amp;B" /></ms2>"""));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("""<ms2><v str="A&amp;B" /></ms2>"""));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0), "no items");
     }
 }

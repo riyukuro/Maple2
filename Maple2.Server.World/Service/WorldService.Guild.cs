@@ -438,6 +438,18 @@ public partial class WorldService {
             NotifyApplicationsRemoved(open, exceptGuildId: respond.GuildId);
         } else if (!db.DeleteGuildApplication(row.Id)) {
             return new GuildResponse { Error = (int) GuildError.s_guild_err_unknown };
+        } else {
+            Mail? mail = db.CreateMail(GuildRules.RejectedApplicationMail(applicantId, manager.Guild.Name));
+            if (mail == null) {
+                logger.Error("Guild {GuildId} reject mail to {CharacterId} could not be written", respond.GuildId, applicantId);
+            } else if (MailNotifyRules.Notify(applicant) && channelClients.TryGetClient(applicant.Channel, out ChannelClient? mailClient)) {
+                try {
+                    mailClient.MailNotification(new MailNotificationRequest {
+                        CharacterId = applicantId,
+                        MailId = mail.Id,
+                    });
+                } catch (RpcException) { /* the mail is listed at the next look */ }
+            }
         }
 
         manager.BroadcastToApplicationHandlers(new ChannelGuildRequest {
