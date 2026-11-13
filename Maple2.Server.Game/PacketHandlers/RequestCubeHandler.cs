@@ -268,10 +268,11 @@ public class RequestCubeHandler : FieldPacketHandler {
 
     private void HandleBuyPlot(GameSession session, IByteReader packet) {
         int plotNumber = packet.ReadInt();
-        packet.ReadInt(); // ApartmentNumber?
+        int concept = packet.ReadInt(); // the model house of the first purchase, -1 = empty (HousingManager.ConceptTemplate)
 
         if (session.Housing.BuyPlot(plotNumber)) {
             session.Send(CubePacket.ConfirmBuyPlot());
+            session.Housing.InitHomeForConcept(concept);
         }
     }
 

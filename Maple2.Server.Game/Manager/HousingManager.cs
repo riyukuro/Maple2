@@ -392,6 +392,33 @@ public class HousingManager {
         db.SavePlotInfo(Home.Indoor);
     }
 
+    // The concept of a plot purchase (RequestCube 2): the model house dialog (uiugcmodelhousedialog.gfx, opened by
+    // UIRealEstateDialog::SendRequestCubeMode2 for a player with no plot, uirealestatedialog.cpp:404-425) sends 0, 1 or
+    // 2 for its three model houses (m_concept0..2) and -1 for its empty house (m_empty), through
+    // UIUGCModelHouseDialog's OnHomeConcept (uiugcmodelhousedialog.cpp:76-91). Model house c is the exported UGC map
+    // c + 1 (exportedugcmap/1.xml to 3.xml), as for the same dialog's RequestHome 3 (HomeHandler.HandleWarp).
+    // Chosen here: any other value is taken as -1, the empty house.
+    public static string? ConceptTemplate(int concept) {
+        return concept is >= 0 and <= 2 ? (concept + 1).ToString() : null;
+    }
+
+    // A bought plot's concept builds the buyer's indoor home when it has no name yet (never made), the same as the
+    // dialog's RequestHome 3 path; a home that already has a name is left as it is. Nothing is placed on the outdoor
+    // plot. The template's cubes are free, as for a new home made by RequestHome 3.
+    public bool InitHomeForConcept(int concept) {
+        if (!string.IsNullOrEmpty(Home.Indoor.Name)) {
+            return false;
+        }
+
+        ExportedUgcMapMetadata? template = null;
+        string? name = ConceptTemplate(concept);
+        if (name != null) {
+            session.MapMetadata.TryGetExportedUgc(name, out template);
+        }
+        InitNewHome(session.Player.Value.Character.Name, template);
+        return true;
+    }
+
     public void InitNewHome(string characterName, ExportedUgcMapMetadata? template) {
         Home.NewHomeDefaults(characterName);
         // A new home is at decoration level 1: the first report of interior_level (see InteriorCheckIn). The trophy
