@@ -26,7 +26,9 @@ public sealed class NpcScriptManager {
     public NpcTalkType TalkType;
     public NpcTalkButton Button;
 
-    private readonly CinematicEventScript[] eventScripts = [];
+    // The enchant dialog's lines (the npc script's enchant master state). A talk with a field npc (NpcTalk 4) reads them
+    // from that npc's script on its first enchant event.
+    private CinematicEventScript[] eventScripts = [];
 
     public ScriptState? State { get; set; }
     public int Index { get; private set; } = 0;
@@ -516,6 +518,9 @@ public sealed class NpcScriptManager {
     #region EnchantTalk
     public void EnchantResultScript(ScriptEventType eventType, EnchantResult result = EnchantResult.None, ItemEnchantError error = ItemEnchantError.s_itemenchant_unknown_err, int enchantLevel = 0, short rarity = 0, int failCount = 0) {
         int eventId = 0;
+        if (eventScripts.Length == 0 && Npc != null) {
+            eventScripts = EnchantEvents(session, Npc.Value.Id);
+        }
 
         if (!session.ServerTableMetadata.ScriptEventConditionTable.Entries.TryGetValue(eventType, out Dictionary<int, ScriptEventConditionMetadata>? scriptDict)) {
             return;
@@ -554,6 +559,17 @@ public sealed class NpcScriptManager {
         }
 
         return true;
+    }
+
+    // The lines of an npc's enchant master state (ConstantsTable.EnchantMasterScriptID, 31): the dialog opened from a
+    // talk with a field npc sends its events in NpcTalk 4 (UIItemModifyDialogBase::vfunc_85), and the client shows the
+    // reply (NpcTalk 4 Update) in the open talk (UITalkManager::OnTalkPacket mode 4) as for NpcTalk 6.
+    public static CinematicEventScript[] EnchantEvents(GameSession session, int npcId) {
+        if (!session.ScriptMetadata.TryGet(npcId, out ScriptMetadata? script) ||
+            !script.States.TryGetValue(session.ServerTableMetadata.ConstantsTable.EnchantMasterScriptID, out ScriptState? state)) {
+            return [];
+        }
+        return state.Contents.FirstOrDefault()?.Events ?? [];
     }
 
     private void RunEventScript(int eventId) {
