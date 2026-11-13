@@ -308,6 +308,24 @@ public class PlayerConfigPersistTests {
         Assert.That(store.Loads, Is.EqualTo(2));
     }
 
+    // The merged death penalty is the higher count with the later end: a session of more deaths whose penalty ends
+    // sooner than the row's does not cut the row's short.
+    [Test]
+    public void ReadAfterAFailedRead_DeathPenaltyKeepsTheLaterEnd() {
+        var store = new JsonStore();
+        Logout(World(store)); // count 2, ends at 1020
+        store.FailLoad = true;
+        long now = 0;
+        PlayerConfigLookUp world = World(store, clockMs: () => now);
+        Assert.That(world.Retrieve(CharacterId, 1010).SkillCooldowns, Is.Empty);
+        world.Save([], [], new DeathInfo { Count = 3, MsRemaining = 1000, StopTime = 1010 }, CharacterId); // ends at 1011
+        store.FailLoad = false;
+        now = PlayerConfigLookUp.LoadRetryMs;
+
+        DeathInfo death = world.Retrieve(CharacterId, 1010).Death;
+        Assert.That((death.Count, death.MsRemaining), Is.EqualTo((3, 10000)));
+    }
+
     // A session that played on while its row was unread, then reads the row: the cooldown and death penalty it got
     // in the meantime stay (the row's cooldown of the same skill ends sooner), the row's other cooldown and its buff
     // come back, and the merged config is written.

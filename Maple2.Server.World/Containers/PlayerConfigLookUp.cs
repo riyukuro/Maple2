@@ -214,8 +214,8 @@ public class PlayerConfigLookUp {
     }
 
     // Merges a stored row into the memory copy of a character: per buff and per (held) cooldown the one that ends
-    // later is kept, and one only the row has is added; of the death penalties the one of more deaths (the later end
-    // when even). Whether a PvP-zone stay runs is the memory copy's (the session's newest save).
+    // later is kept, and one only the row has is added; the death penalty keeps the higher count and the later end of
+    // the two (a merge never shortens it). Whether a PvP-zone stay runs is the memory copy's (the session's newest save).
     private void MergeStored(long characterId, PlayerConfigSave save, DeathInfo storedDeath) {
         ConcurrentDictionary<int, BuffInfo> buffList = buffs.GetOrAdd(characterId, _ => []);
         foreach (BuffInfo stored in save.Buffs.Select(ToInfo)) {
@@ -228,10 +228,16 @@ public class PlayerConfigLookUp {
         MergeCooldowns(hold.Held, save.PvpHeldCooldowns);
 
         DeathInfo? death = deaths.GetValueOrDefault(characterId);
-        if (death == null || storedDeath.Count > death.Count ||
-            (storedDeath.Count == death.Count && EndMs(storedDeath.StopTime, storedDeath.MsRemaining) > EndMs(death.StopTime, death.MsRemaining))) {
+        if (death == null) {
             deaths[characterId] = storedDeath;
+            return;
         }
+        DeathInfo later = EndMs(storedDeath.StopTime, storedDeath.MsRemaining) > EndMs(death.StopTime, death.MsRemaining) ? storedDeath : death;
+        deaths[characterId] = new DeathInfo {
+            Count = Math.Max(death.Count, storedDeath.Count),
+            StopTime = later.StopTime,
+            MsRemaining = later.MsRemaining,
+        };
     }
 
     private static void MergeCooldowns(ConcurrentDictionary<int, SkillCooldownInfo> list, IEnumerable<PlayerConfigCooldown> stored) {
