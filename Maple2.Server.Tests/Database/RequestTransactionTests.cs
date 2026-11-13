@@ -24,6 +24,7 @@ public class RequestTransactionTests {
     private GameStorage storage = null!;
     private DbContextOptions plain = null!;
     private readonly CommandHook hook = new();
+    private readonly RollbackHook rollbackHook = new();
     private long account;
     private long character;
     private readonly List<long> itemUids = [];
@@ -35,13 +36,14 @@ public class RequestTransactionTests {
             Assert.Ignore("transactions need a real database: set MS2_TEST_GAME_DB");
         }
         hook.Before = null;
+        rollbackHook.Refuse = false;
         itemUids.Clear();
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(ItemId));
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { MailExpiryDays = 30 });
         ServerVersion version = ServerVersion.AutoDetect(Connection);
         plain = new DbContextOptionsBuilder().UseMySql(Connection, version).Options;
-        DbContextOptions options = new DbContextOptionsBuilder().UseMySql(Connection, version).AddInterceptors(hook).Options;
+        DbContextOptions options = new DbContextOptionsBuilder().UseMySql(Connection, version).AddInterceptors(hook, rollbackHook).Options;
         object items = typeof(GameStorage).GetField("itemMetadata", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(test.Storage)!;
         storage = new GameStorage(options, (ItemMetadataStorage) items, test.MapMetadata, null!, null!, test.TableMetadata,
             test.ServerTableMetadata, NullLogger<GameStorage>.Instance, null!);
@@ -231,6 +233,47 @@ public class RequestTransactionTests {
             Assert.That(Listings(), Is.Empty);
             Assert.That(ItemOwner(item.Uid), Is.EqualTo(character));
         });
+    }
+
+    // The item's save fails and so does the rollback (a lost connection fails both): the mail is not sent and the
+    // call returns its failure, so the caller still refunds (it used to throw, past the black market's refund mail).
+    [Test]
+    public void MailWhoseRollbackFailsReturnsTheFailure() {
+        Item item = CreateItem();
+        hook.Before = command => {
+            if (command.CommandText.Contains("UPDATE `item`")) {
+                throw new InvalidOperationException("update refused");
+            }
+        };
+        rollbackHook.Refuse = true;
+
+        Mail? sent = null;
+        Assert.DoesNotThrow(() => {
+            using GameStorage.Request db = storage.Context();
+            var mail = new Mail { ReceiverId = account };
+            mail.Items.Add(item);
+            sent = db.CreateMail(mail);
+        });
+        hook.Before = null;
+        rollbackHook.Refuse = false;
+
+        Assert.Multiple(() => {
+            Assert.That(sent, Is.Null);
+            Assert.That(Mails(account), Is.Empty);
+            Assert.That(ItemOwner(item.Uid), Is.EqualTo(character));
+        });
+    }
+
+    private sealed class RollbackHook : DbTransactionInterceptor {
+        public bool Refuse;
+
+        public override InterceptionResult TransactionRollingBack(DbTransaction transaction, TransactionEventData eventData,
+                                                                  InterceptionResult result) {
+            if (Refuse) {
+                throw new InvalidOperationException("rollback refused");
+            }
+            return result;
+        }
     }
 
     private sealed class CommandHook : DbCommandInterceptor {

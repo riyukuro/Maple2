@@ -30,16 +30,28 @@ public abstract class DatabaseRequest<TContext>(TContext context, ILogger logger
 
     // Ends an open transaction without its writes, so the request can go on outside it. The tracked entities are
     // dropped too: a failed save leaves its changes pending, and the request's next save would write them again
-    // (an item moved to a mail that was rolled back).
+    // (an item moved to a mail that was rolled back). A rollback that fails (the connection was lost, as the save
+    // that failed may have been) is logged, not thrown: the database drops a transaction that was never committed,
+    // and the caller still takes its failure path (the black market's refund of the deposit).
     public void Rollback() {
         if (transaction == null) {
             return;
         }
 
-        transaction.Rollback();
-        transaction.Dispose();
+        IDbContextTransaction open = transaction;
         transaction = null;
-        Context.ChangeTracker.Clear();
+        try {
+            open.Rollback();
+        } catch (Exception ex) {
+            Logger.LogError(ex, "Rollback failed; the uncommitted transaction is dropped");
+        } finally {
+            try {
+                open.Dispose();
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Disposing a transaction that was not rolled back failed");
+            }
+            Context.ChangeTracker.Clear();
+        }
     }
 
     public bool SaveChanges() {
@@ -49,11 +61,7 @@ public abstract class DatabaseRequest<TContext>(TContext context, ILogger logger
     // A transaction still open here was not committed: a failure return or an exception left it, so its writes are
     // undone. (It used to be committed here, which kept the first writes of a call that had failed half way.)
     public void Dispose() {
-        try {
-            Rollback();
-        } catch (Exception ex) {
-            Logger.LogError(ex, "Rollback of an uncommitted transaction failed");
-        }
+        Rollback();
         Context.Dispose();
     }
 }
