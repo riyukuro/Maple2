@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Model;
 
 namespace Maple2.Server.Game.Util;
 
@@ -10,6 +11,23 @@ public static class SkillCastRules {
     // Chosen here: a use that comes up to this long before the cooldown's end is still taken, so a client whose
     // clock runs a little ahead is not refused. KMS2 takes a second use 4.0 s after the first on a 5 s cooldown.
     public const long CooldownSlackMs = 1500;
+
+    // linkSkillID (skillactionadditional.h:19, parsed at skillleveldata.cpp:346) names the skill whose learned
+    // level an effect's skill takes: buff 10400291 heals half of Healing Prayer 10400071 per level, and splash
+    // 10400187's rates follow 10400281's tooltip per level. Chosen here: with no link, or a caster that has not
+    // learned the linked skill (an npc, another job), the effect keeps the level the data names.
+    public static short LinkedLevel(short dataLevel, int linkId, Func<int, short?> learnedLevel) {
+        if (linkId == 0) {
+            return dataLevel;
+        }
+        short? level = learnedLevel(linkId);
+        return level is > 0 ? level.Value : dataLevel;
+    }
+
+    // The learned level of the skill for a player caster, null for any other caster.
+    public static short? LearnedLevel(IActor caster, int skillId) {
+        return caster is FieldPlayer player ? player.Session.Config.Skill.SkillInfo.GetMainSkill(skillId)?.Level : null;
+    }
 
     public static bool RefusedDead(bool isDead, bool allowDead) => isDead && !allowDead;
 

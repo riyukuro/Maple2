@@ -852,7 +852,8 @@ public partial class FieldManager {
         Debug.Assert(effect.Splash != null, "Cannot add non-splash skill to field");
 
         foreach (SkillEffectMetadata.Skill skill in effect.Skills) {
-            if (!SkillMetadata.TryGet(skill.Id, skill.Level, out SkillMetadata? metadata)) {
+            short level = SkillCastRules.LinkedLevel(skill.Level, skill.LinkId, id => SkillCastRules.LearnedLevel(caster, id));
+            if (!SkillMetadata.TryGet(skill.Id, level, out SkillMetadata? metadata)) {
                 continue;
             }
 

@@ -88,10 +88,11 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
         if (effect.Condition?.RandomCast == true) {
             int index = Random.Shared.Next(effect.Skills.Length);
-            owner.Buffs.AddBuff(caster, owner, effect.Skills[index].Id, effect.Skills[index].Level, startTick, stacks: effect.Condition.OverlapCount, notifyField: notifyField, type: type);
+            SkillEffectMetadata.Skill picked = effect.Skills[index];
+            owner.Buffs.AddBuff(caster, owner, picked.Id, SkillCastRules.LinkedLevel(picked.Level, picked.LinkId, id => SkillCastRules.LearnedLevel(caster, id)), startTick, stacks: effect.Condition.OverlapCount, notifyField: notifyField, type: type);
         } else {
             foreach (SkillEffectMetadata.Skill skill in effect.Skills) {
-                owner.Buffs.AddBuff(caster, owner, skill.Id, skill.Level, startTick, stacks: effect.Condition!.OverlapCount, notifyField: notifyField, type: type);
+                owner.Buffs.AddBuff(caster, owner, skill.Id, SkillCastRules.LinkedLevel(skill.Level, skill.LinkId, id => SkillCastRules.LearnedLevel(caster, id)), startTick, stacks: effect.Condition!.OverlapCount, notifyField: notifyField, type: type);
             }
         }
     }
