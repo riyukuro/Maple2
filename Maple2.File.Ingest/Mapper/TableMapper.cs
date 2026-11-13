@@ -70,6 +70,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.ITEM_ENCHANT_TRANSFORM, Table = ParseItemEnchantTransform() };
         yield return new TableMetadata { Name = TableNames.CHARACTER_ABILITY, Table = ParseCharacterAbility() };
         yield return new TableMetadata { Name = TableNames.CLUB_BUFF, Table = ParseClubBuff() };
+        yield return new TableMetadata { Name = TableNames.ENCHANT_SCROLL_RECIPE, Table = ParseEnchantScrollRecipe() };
         yield return new TableMetadata { Name = TableNames.FAME, Table = ParseFame() };
         yield return new TableMetadata { Name = TableNames.DARK_STREAM, Table = ParseDarkStream() };
         yield return new TableMetadata { Name = TableNames.ARCADE_GAME, Table = ParseArcadeGame() };
@@ -313,6 +314,68 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 AdditionalEffectLevel: int.Parse(node.GetAttribute("additionalEffectLevel").Trim(), CultureInfo.InvariantCulture));
         }
         return results;
+    }
+
+    // The parser has no reader for this table, so the rows are read as XML. The client skips the rows its
+    // feature or locale filter refuses (IsElementAvailable) and a row without a reward scroll, and keys the
+    // rest by id (CEnchantScrollTable::LoadRecipes, CEnchantScrollRecipe::Read). The played client's file wins
+    // when it has one: the KMS2 data pack carries the file without rows.
+    private EnchantScrollRecipeTable ParseEnchantScrollRecipe() {
+        foreach (M2dReader? reader in new[] { playedReader, xmlReader }) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name == "table/enchantscrollrecipe.xml");
+            if (reader == null || entry == null) {
+                continue;
+            }
+            return new EnchantScrollRecipeTable(ReadEnchantScrollRecipes(reader.GetXmlDocument(entry)));
+        }
+        return new EnchantScrollRecipeTable(new Dictionary<int, EnchantScrollRecipeTable.Entry>());
+    }
+
+    public static Dictionary<int, EnchantScrollRecipeTable.Entry> ReadEnchantScrollRecipes(XmlDocument document, Func<XmlElement, bool>? available = null) {
+        available ??= node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+        var results = new Dictionary<int, EnchantScrollRecipeTable.Entry>();
+        XmlNodeList? nodes = document.SelectNodes("/ms2/recipe");
+        if (nodes == null) {
+            return results;
+        }
+
+        foreach (XmlElement node in nodes.OfType<XmlElement>()) {
+            if (!available(node)) {
+                continue;
+            }
+
+            ItemComponent? scroll = ParseItemEntry(node.GetAttribute("rewardScroll"));
+            if (scroll == null) {
+                continue;
+            }
+
+            var requiredItems = new List<ItemComponent>();
+            var rewardItems = new List<ItemComponent>();
+            for (int i = 1; i <= 5; i++) {
+                if (ParseItemEntry(node.GetAttribute($"requireItem{i}")) is { } required) requiredItems.Add(required);
+                if (ParseItemEntry(node.GetAttribute($"rewardItem{i}")) is { } reward) rewardItems.Add(reward);
+            }
+
+            int id = ParseIntOr(node.GetAttribute("id"));
+            results[id] = new EnchantScrollRecipeTable.Entry(
+                Id: id,
+                RecipeType: ParseIntOr(node.GetAttribute("recipeType")),
+                Slot: ParseIntOr(node.GetAttribute("slot")),
+                RewardScroll: scroll,
+                RequiredMeso: ParseIntOr(node.GetAttribute("requireMeso")),
+                RequiredItems: requiredItems,
+                RewardItems: rewardItems);
+        }
+        return results;
+
+        static int ParseIntOr(string value) => string.IsNullOrWhiteSpace(value) ? 0 : int.Parse(value.Trim(), CultureInfo.InvariantCulture);
+        static ItemComponent? ParseItemEntry(string value) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                return null;
+            }
+            string[] parts = value.Split(',').Select(part => part.Trim()).ToArray();
+            return parts.Length < 3 ? null : ParseMasteryIngredient(parts);
+        }
     }
 
     // The parser reads neither file, so both are read as XML.

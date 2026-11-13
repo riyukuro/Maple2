@@ -206,11 +206,77 @@ public class EnchantScrollHandler : FieldPacketHandler {
         return metadata.Enchants.Length > 0 && metadata.ItemTypes.Length > 0 && metadata.Rarities.Length > 0;
     }
 
-    // Client UIMasteryDialog::OnCastingFinished: a manufacturing recipe finished casting.
-    // Magic scroll recipes go through Mastery 2 instead. The reply the client expects for this
-    // mode is not known, so the craft is not run here.
+    // Client UIMasteryDialog::OnCastingFinished: a magic scroll recipe (craft kind 1, CEnchantScrollRecipe) of
+    // the mastery window's scroll tab finished casting; a mastery recipe (kind 0) goes through Mastery 2. The
+    // client sends one of these per craft of a repeat and checks the meso and the ingredients itself first
+    // (CraftMagicScroll, GetMaxCraftCount kind 1), so a refusal here gets no answer.
     private void HandleManufacture(GameSession session, IByteReader packet) {
         int recipeId = packet.ReadInt();
-        Logger.Debug("Manufacture of recipe {RecipeId} from {CharacterId} not implemented", recipeId, session.CharacterId);
+        if (!TableMetadata.EnchantScrollRecipeTable.Entries.TryGetValue(recipeId, out EnchantScrollRecipeTable.Entry? recipe)) {
+            return;
+        }
+
+        // The meso is taken first and given back when the ingredients are short, so a meso change on another
+        // thread cannot leave the ingredients taken and the meso not.
+        if (!session.Currency.TryTakeMeso(recipe.RequiredMeso, notify: false)) {
+            return;
+        }
+
+        bool consumed;
+        lock (session.Item) {
+            consumed = ConsumeIngredients(session, recipe.RequiredItems);
+        }
+        if (!consumed) {
+            session.Currency.ReturnMeso(recipe.RequiredMeso);
+            return;
+        }
+        session.Currency.NotifyMeso();
+
+        var given = new List<(int, short)>();
+        IEnumerable<ItemComponent> rewards = recipe.RewardScroll == null ? recipe.RewardItems : recipe.RewardItems.Prepend(recipe.RewardScroll);
+        foreach (ItemComponent reward in rewards) {
+            Item? item = session.Field?.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
+            if (item == null) {
+                continue;
+            }
+
+            given.Add((item.Id, (short) item.Rarity));
+            if (!session.Item.Inventory.Add(item, true)) {
+                session.Item.MailItem(item);
+            }
+        }
+        // Client OnEnchantScroll mode 4: the notice of the items made, then the mastery window is refreshed.
+        session.Send(EnchantScrollPacket.Reward(given));
+    }
+
+    // The client counts an ingredient with a tag by its tag (any item of the tag, any rank), one without a tag
+    // by its id (GetMaxCraftCount kind 1), and needs the row's count once per craft.
+    private bool ConsumeIngredients(GameSession session, IReadOnlyList<ItemComponent> ingredients) {
+        var materials = new List<(int Amount, List<Item> Items)>();
+        foreach (ItemComponent ingredient in ingredients) {
+            List<Item> items = (ingredient.Tag != ItemTag.None
+                ? session.Item.Inventory.Find(ingredient.Tag)
+                : session.Item.Inventory.Find(ingredient.ItemId)).ToList();
+            if (items.Sum(item => (long) item.Amount) < ingredient.Amount) {
+                return false;
+            }
+            materials.Add((ingredient.Amount, items));
+        }
+
+        foreach ((int amount, List<Item> items) in materials) {
+            int remaining = amount;
+            foreach (Item item in items) {
+                int consume = Math.Min(remaining, item.Amount);
+                if (!session.Item.Inventory.Consume(item.Uid, consume)) {
+                    Logger.Error("Failed to consume magic scroll ingredient {ItemUid} of {CharacterId}", item.Uid, session.CharacterId);
+                    return false;
+                }
+                remaining -= consume;
+                if (remaining <= 0) {
+                    break;
+                }
+            }
+        }
+        return true;
     }
 }

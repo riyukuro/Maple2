@@ -96,7 +96,8 @@ public static class EnchantScrollPacket {
         return pWriter;
     }
 
-    // Don't know what this is used for
+    // Client SceneStateGame OnEnchantScroll mode 4: i32 count, then per item made i32 id and u16 rank (the
+    // notice of a magic scroll craft).
     public static ByteWriter Reward(ICollection<(int, short)> entries) {
         var pWriter = Packet.Of(SendOp.EnchantScroll);
         pWriter.Write<Command>(Command.Reward);

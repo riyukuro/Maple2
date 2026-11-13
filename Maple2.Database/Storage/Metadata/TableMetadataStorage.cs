@@ -12,6 +12,7 @@ public class TableMetadataStorage {
     private readonly Lazy<ItemEnchantTransformTable> itemEnchantTransformTable;
     private readonly Lazy<CharacterAbilityTable> characterAbilityTable;
     private readonly Lazy<ClubBuffTable> clubBuffTable;
+    private readonly Lazy<EnchantScrollRecipeTable> enchantScrollRecipeTable;
     private readonly Lazy<FameTable> fameTable;
     private readonly Lazy<DarkStreamTable> darkStreamTable;
     private readonly Lazy<ArcadeGameTable> arcadeGameTable;
@@ -99,6 +100,7 @@ public class TableMetadataStorage {
     public ItemEnchantTransformTable ItemEnchantTransformTable => itemEnchantTransformTable.Value;
     public CharacterAbilityTable CharacterAbilityTable => characterAbilityTable.Value;
     public ClubBuffTable ClubBuffTable => clubBuffTable.Value;
+    public EnchantScrollRecipeTable EnchantScrollRecipeTable => enchantScrollRecipeTable.Value;
     public FameTable FameTable => fameTable.Value;
     public DarkStreamTable DarkStreamTable => darkStreamTable.Value;
     public ArcadeGameTable ArcadeGameTable => arcadeGameTable.Value;
@@ -187,6 +189,7 @@ public class TableMetadataStorage {
         itemEnchantTransformTable = Retrieve<ItemEnchantTransformTable>(context, TableNames.ITEM_ENCHANT_TRANSFORM);
         characterAbilityTable = Retrieve<CharacterAbilityTable>(context, TableNames.CHARACTER_ABILITY);
         clubBuffTable = Retrieve<ClubBuffTable>(context, TableNames.CLUB_BUFF);
+        enchantScrollRecipeTable = Retrieve<EnchantScrollRecipeTable>(context, TableNames.ENCHANT_SCROLL_RECIPE);
         fameTable = Retrieve<FameTable>(context, TableNames.FAME);
         darkStreamTable = Retrieve<DarkStreamTable>(context, TableNames.DARK_STREAM);
         arcadeGameTable = Retrieve<ArcadeGameTable>(context, TableNames.ARCADE_GAME);

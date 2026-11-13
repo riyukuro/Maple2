@@ -30,6 +30,7 @@ public class TableMetadata {
 [JsonDerivedType(typeof(ItemEnchantTransformTable), typeDiscriminator: "itemenchanttransform")]
 [JsonDerivedType(typeof(CharacterAbilityTable), typeDiscriminator: "characterability")]
 [JsonDerivedType(typeof(ClubBuffTable), typeDiscriminator: "clubbuff")]
+[JsonDerivedType(typeof(EnchantScrollRecipeTable), typeDiscriminator: "enchantscrollrecipe")]
 [JsonDerivedType(typeof(FameTable), typeDiscriminator: "fame")]
 [JsonDerivedType(typeof(DarkStreamTable), typeDiscriminator: "darkstream")]
 [JsonDerivedType(typeof(ArcadeGameTable), typeDiscriminator: "arcadeGame")]
