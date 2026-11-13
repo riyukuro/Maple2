@@ -39,6 +39,7 @@ public class DungeonManager {
     private Party? Party => session.Party.Party;
 
     private readonly ILogger logger = Log.Logger.ForContext<DungeonManager>();
+    private readonly object seasonMailLock = new();
 
     // When this session began: the client's kept open periods are the events it has seen since.
     private readonly DateTime loginTime = DateTime.Now;
@@ -90,10 +91,18 @@ public class DungeonManager {
     // The weekly season reward. When a season week has ended with scores (DungeonScoreRules.FinishedWeeks), the
     // week's total (SeasonTotal) picks the season's reward (DungeonSeason::GetReward), mailed with the season's
     // systemMailID; the week's scores are then set to 0 (the client shows CurrentRecord only before its expiry, so
-    // nothing it shows changes). Run at login and at the weekly reset; a week that ended while the player was
-    // offline is mailed at the next login. The season of a week is the one holding the second before its end.
-    // A week whose reward item cannot be made keeps its scores and is tried again.
+    // nothing it shows changes). Run at login, at the weekly reset and before a season rank clear writes its score
+    // (a week that ended while the player was online would otherwise lose its score to the new week's); a week that
+    // ended while the player was offline is mailed at the next login. The season of a week is the one holding the
+    // second before its end. A week whose reward item cannot be made keeps its scores and is tried again. One run at
+    // a time (the reset and a clear come on different threads), and a mailed week's scores are 0, so it goes once.
     public void MailSeasonRewards() {
+        lock (seasonMailLock) {
+            MailSeasonRewardsLocked();
+        }
+    }
+
+    private void MailSeasonRewardsLocked() {
         FieldManager? field = session.Field;
         if (field == null) {
             return;
@@ -700,6 +709,8 @@ public class DungeonManager {
             DateTime clearTime = clearTimeStamp.FromEpochSeconds();
             DungeonSeasonTable.Entry? season = session.TableMetadata.DungeonSeasonTable.Current(clearTime);
             if (season != null) {
+                // An ended week still in the record is mailed before this clear's score replaces it.
+                MailSeasonRewards();
                 DateTime expiry = DungeonScoreRules.SeasonExpiry(clearTime, season.DayOfWeeks, season.StartTime.TimeOfDay, season.EndTime);
                 DungeonScoreRules.ApplySeason(record, score, clearTimeStamp, expiry.ToEpochSeconds());
             }
