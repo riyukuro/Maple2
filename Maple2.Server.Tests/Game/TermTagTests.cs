@@ -104,7 +104,10 @@ public class TermTagTests {
         (finished, running) = state.Split(table, 3000);
         Assert.That(finished, Is.EqualTo(new[] { Old }));
         Assert.That(running, Is.EqualTo(new[] { Cats with { Start = 2500, End = 3500 } }));
-        Assert.That(state.Find(table, "catterm"), Is.EqualTo(Cats with { Start = 2500, End = 3500 }));
+        // The client's term map is keyed by the exact name (gamerule.cpp:1323); the GM command matches any case.
+        Assert.That(state.Find(table, "catterm"), Is.Null);
+        Assert.That(state.Find(table, "CatTerm"), Is.EqualTo(Cats with { Start = 2500, End = 3500 }));
+        Assert.That(state.Find(table, "catterm", StringComparison.OrdinalIgnoreCase), Is.EqualTo(Cats with { Start = 2500, End = 3500 }));
         Assert.That(state.Find(table, "None"), Is.Null);
     }
 
@@ -178,17 +181,42 @@ public class TermTagTests {
             test.TakeSent();
         }
 
-        server.SendTermEnds(started.End - 1);
+        server.SendTermEdges(gm.ServerTableMetadata.TermTagTable, started.End - 1);
         Assert.That(tests[0].TakeSent(), Is.Empty);
 
-        server.SendTermEnds(started.End);
+        server.SendTermEdges(gm.ServerTableMetadata.TermTagTable, started.End);
         foreach (TestGameSession test in tests) {
             Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(TermTagPacket.End([started])) }));
         }
 
-        server.SendTermEnds(started.End + 60);
+        server.SendTermEdges(gm.ServerTableMetadata.TermTagTable, started.End + 60);
         Assert.That(tests[0].TakeSent(), Is.Empty);
         Assert.That(tests[1].TakeSent(), Is.Empty);
+    }
+
+    // A table term starts and ends in the online clients when its start and end pass (TermTag mode 1, then 2), each
+    // once; the first pass takes the terms as the players loaded them and sends nothing.
+    [Test]
+    public void TableTerm_StartsAndEndsWhenItsEdgesPass() {
+        var table = new TermTagTable(new Dictionary<int, TermTagTable.Entry> { [153] = Cats, [7] = Old with { Start = 500 } });
+        (GameServer server, TestGameSession[] tests) = Channel(table);
+        var sent = new List<string>();
+        void Tick(long now) {
+            server.SendTermEdges(table, now);
+            sent.Add(string.Join(",", tests[1].TakeSent().Select(Convert.ToHexString)));
+            tests[0].TakeSent();
+        }
+
+        Tick(600);
+        Tick(999);
+        Tick(1000);
+        Tick(1500);
+        Tick(2000);
+        Tick(2600);
+
+        Assert.That(sent, Is.EqualTo(new[] {
+            "", "", Hex(TermTagPacket.Start([Cats])), "", Hex(TermTagPacket.End([Old with { Start = 500 }, Cats])), "",
+        }));
     }
 
     // A second start of a running term ends the running one first: the client's start does not replace a term it

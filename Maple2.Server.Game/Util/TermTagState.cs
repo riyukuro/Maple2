@@ -8,8 +8,9 @@ namespace Maple2.Server.Game.Util;
 public sealed class TermTagState {
     private readonly object mutex = new();
     private readonly Dictionary<int, TermTagTable.Entry> overrides = [];
-    // The GM-started terms whose end the clients have not been sent yet.
-    private readonly HashSet<int> unended = [];
+    // Per term, whether the online clients hold it as running (the edges sent so far); null until the first Edges
+    // call, which takes the terms as they are (the players in the channel got them in their entry load).
+    private Dictionary<int, bool>? sent;
 
     public (List<TermTagTable.Entry> Finished, List<TermTagTable.Entry> Running) Split(TermTagTable table, long now) {
         var finished = new List<TermTagTable.Entry>();
@@ -21,36 +22,43 @@ public sealed class TermTagState {
         return (finished, running);
     }
 
-    // The term of this name (the table row, or this channel's GM change of it).
-    public TermTagTable.Entry? Find(TermTagTable table, string name) {
-        return Terms(table).FirstOrDefault(entry => string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase));
+    // The term of this name (the table row, or this channel's GM change of it). The client's term map is keyed by
+    // the exact name (CGameRule::GetTermTag, an unordered_map of CStringW with a byte hash, gamerule.cpp:1323 and
+    // gamerule.h:43), so the content gates match case-sensitively; the GM command passes OrdinalIgnoreCase.
+    public TermTagTable.Entry? Find(TermTagTable table, string name, StringComparison comparison = StringComparison.Ordinal) {
+        return Terms(table).FirstOrDefault(entry => string.Equals(entry.Name, name, comparison));
     }
 
     public static bool Running(TermTagTable.Entry entry, long now) => entry.Start <= now && now < entry.End;
 
-    // A GM change of a term. A term set running (a start) is ended in the clients by Expired once its end passes;
-    // one set ended was sent its end with the change.
+    // A GM change of a term. The command sends its edge with the change, so Edges sends none for it.
     public void Set(TermTagTable.Entry entry, long now) {
         lock (mutex) {
             overrides[entry.Id] = entry;
-            if (Running(entry, now)) {
-                unended.Add(entry.Id);
-            } else {
-                unended.Remove(entry.Id);
+            if (sent != null) {
+                sent[entry.Id] = Running(entry, now);
             }
         }
     }
 
-    // The GM-started terms whose end has passed since the last call, each once: their end goes to the clients.
-    public List<TermTagTable.Entry> Expired(long now) {
+    // The terms that started or ended since the last call, each edge once: a table term whose start or end passes
+    // while players are online, and the end of a GM-started term. The client registers a term on its start and
+    // removes it on its end (TermTagManagerCli::OnStart/OnEnd, unit_140ad5f00_termtagmanagercli.cpp:62, :76).
+    public (List<TermTagTable.Entry> Started, List<TermTagTable.Entry> Ended) Edges(TermTagTable table, long now) {
+        var started = new List<TermTagTable.Entry>();
+        var ended = new List<TermTagTable.Entry>();
         lock (mutex) {
-            List<TermTagTable.Entry> expired = unended.Select(id => overrides[id]).Where(entry => entry.End <= now)
-                .OrderBy(entry => entry.Id).ToList();
-            foreach (TermTagTable.Entry entry in expired) {
-                unended.Remove(entry.Id);
+            bool first = sent == null;
+            sent ??= [];
+            foreach (TermTagTable.Entry entry in Terms(table)) {
+                bool running = Running(entry, now);
+                bool was = sent.GetValueOrDefault(entry.Id);
+                sent[entry.Id] = running;
+                if (first || running == was) continue;
+                (running ? started : ended).Add(entry);
             }
-            return expired;
         }
+        return (started, ended);
     }
 
     private List<TermTagTable.Entry> Terms(TermTagTable table) {

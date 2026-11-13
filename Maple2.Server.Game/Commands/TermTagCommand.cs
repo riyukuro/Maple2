@@ -12,7 +12,7 @@ namespace Maple2.Server.Game.Commands;
 // "termtag": starts or ends a term of the TermTag table on this channel (TermTagPacket start/end to its players; the
 // players who enter later get it in their load). The client opens term-gated content, e.g. the nurturing cubes of
 // the NurturingQuestTag constant, only while the term runs. A started term is ended in the online clients when its
-// end passes (GameServer.SendTermEnds), the same as "termtag end".
+// end passes (GameServer.SendTermEdges), the same as "termtag end". Names match in any case here.
 public class TermTagCommand : GameCommand {
     public TermTagCommand(GameSession session) : base(AdminPermissions.EventManagement, "termtag", "Start or end an event term on this channel.") {
         AddCommand(new ListCommand(session));
@@ -55,7 +55,7 @@ public class TermTagCommand : GameCommand {
                 ctx.Console.Out.WriteLine("Minutes must be positive.");
                 return;
             }
-            TermTagTable.Entry? entry = session.TermTags.Find(session.ServerTableMetadata.TermTagTable, name);
+            TermTagTable.Entry? entry = session.TermTags.Find(session.ServerTableMetadata.TermTagTable, name, StringComparison.OrdinalIgnoreCase);
             if (entry == null) {
                 ctx.Console.Out.WriteLine($"No term {name} in the TermTag table.");
                 return;
@@ -86,7 +86,7 @@ public class TermTagCommand : GameCommand {
 
         private void Handle(InvocationContext ctx, string name) {
             long now = Now();
-            TermTagTable.Entry? entry = session.TermTags.Find(session.ServerTableMetadata.TermTagTable, name);
+            TermTagTable.Entry? entry = session.TermTags.Find(session.ServerTableMetadata.TermTagTable, name, StringComparison.OrdinalIgnoreCase);
             if (entry == null || !TermTagState.Running(entry, now)) {
                 ctx.Console.Out.WriteLine($"No running term {name}.");
                 return;

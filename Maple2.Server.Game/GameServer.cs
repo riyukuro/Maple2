@@ -67,7 +67,7 @@ public class GameServer : Server<GameSession> {
         gameEvents = new ChannelGameEvents<GameSession>(eventCache, DateTime.Now);
         eventEdgeTimer = new Timer(_ => {
             SendEventEdges(DateTime.Now);
-            SendTermEnds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            SendTermEdges(serverTableMetadataStorage.TermTagTable, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
@@ -231,14 +231,17 @@ public class GameServer : Server<GameSession> {
     }
 
     // The day-of-week and time-of-day edges of the events (ChannelGameEvents.Tick), to the sessions that loaded them.
-    // A term a GM started ends in the online clients when its end passes (TermTag mode 2, as "termtag end" sends);
-    // the players who enter later get it as finished in their load.
-    public void SendTermEnds(long now) {
-        List<TermTagTable.Entry> expired = TermTags.Expired(now);
-        if (expired.Count == 0) {
-            return;
+    // A term starts or ends in the online clients when its start or end passes (TermTag mode 1 or 2, as the
+    // "termtag" command sends): a table term, or a GM-started one at its end. The players who enter later get it in
+    // their load. Ends go first, as the command's restart sends them.
+    public void SendTermEdges(TermTagTable table, long now) {
+        (List<TermTagTable.Entry> started, List<TermTagTable.Entry> ended) = TermTags.Edges(table, now);
+        if (ended.Count > 0) {
+            Broadcast(TermTagPacket.End(ended));
         }
-        Broadcast(TermTagPacket.End(expired));
+        if (started.Count > 0) {
+            Broadcast(TermTagPacket.Start(started));
+        }
     }
 
     public void SendEventEdges(DateTime now) {

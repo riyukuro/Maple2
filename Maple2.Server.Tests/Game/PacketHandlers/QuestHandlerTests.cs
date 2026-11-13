@@ -794,6 +794,50 @@ public class QuestHandlerTests {
         Assert.That(session.Quest.CanStart(metadata), Is.False);
     }
 
+    // An event quest held from an earlier run of its term (started before the running run began) is taken again, in
+    // progress or completed and without a repeat: the client offers it when the held start time is not within the
+    // term (questdata.cpp:366-369, before the state). One held from this run is not.
+    [TestCase(QuestState.Completed, true, true)]
+    [TestCase(QuestState.Started, true, true)]
+    [TestCase(QuestState.Completed, false, false)]
+    public void Start_AnEventQuestOncePerRunOfItsTerm(QuestState state, bool earlierRun, bool taken) {
+        var prepared = new TestGameSession();
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        prepared.SetServerTable(new TermTagTable(new Dictionary<int, TermTagTable.Entry> { [1] = new(1, "tag", now - 3600, now + 3600) }));
+        GameSession session = Login(prepared: prepared);
+        QuestMetadata metadata = Data() with { Basic = Data().Basic with { EventTag = "tag" } };
+        test.Register(metadata);
+        Quest quest = test.StartQuest(metadata);
+        quest.State = state;
+        quest.StartTime = earlierRun ? now - 7200 : now - 60;
+
+        QuestError error = session.Quest.Start(QuestId);
+
+        Assert.Multiple(() => {
+            Assert.That(error, Is.EqualTo(taken ? QuestError.none : QuestError.s_quest_error_accept_fail));
+            Assert.That(quest.State, Is.EqualTo(taken ? QuestState.Started : state));
+            Assert.That(quest.StartTime, taken ? Is.AtLeast(now) : Is.EqualTo(now - 60));
+        });
+    }
+
+    // A held event quest is expired (its completion gives invalid_date) when no term of its tag is known, or when it
+    // was started outside the running run (CQuestCommon::GetEndTime gives 0, questdata.cpp:278-284); not when it was
+    // started within it. The tag matches the term name in its case, as the client's map does (gamerule.cpp:1323).
+    [TestCase("tag", 60, false)]
+    [TestCase("tag", 7200, true)]
+    [TestCase("Tag", 60, true)]
+    [TestCase("other", 60, true)]
+    public void IsExpired_AnEventQuestOutsideItsTerm(string termName, int startedAgo, bool expired) {
+        var prepared = new TestGameSession();
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        prepared.SetServerTable(new TermTagTable(new Dictionary<int, TermTagTable.Entry> { [1] = new(1, termName, now - 3600, now + 3600) }));
+        GameSession session = Login(prepared: prepared);
+        Quest quest = test.StartQuest(Data() with { Basic = Data().Basic with { EventTag = "tag" } });
+        quest.StartTime = now - startedAgo;
+
+        Assert.That(session.Quest.IsExpired(quest), Is.EqualTo(expired));
+    }
+
     // Quest 26 (the world map's exploration reward): the round's item, "id,grade,count" of fieldMission.xml as the
     // client reads it (ItemEntity), is given in its count, once, after that many field missions are completed.
     // Made-up round and count.

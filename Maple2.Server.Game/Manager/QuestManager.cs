@@ -224,9 +224,10 @@ public sealed class QuestManager {
     /// Starts a new quest (or prexisting if repeatable).
     /// </summary>
     public QuestError Start(int questId, bool bypassRequirements = false) {
-        // A quest already held is started again only when it is completed and its repeat allows it (CanStartAgain).
+        // A quest already held is started again only when it is completed and its repeat allows it (CanStartAgain),
+        // or when it is an event quest held from another run of its term (HeldFromAnotherTerm).
         TryGetQuest(questId, out Quest? held);
-        if (held != null && !CanStartAgain(held)) {
+        if (held != null && !CanStartAgain(held) && !HeldFromAnotherTerm(held)) {
             return QuestError.s_quest_error_accept_fail;
         }
 
@@ -698,6 +699,18 @@ public sealed class QuestManager {
     public static bool CanStartAgain(Quest quest) {
         return quest.State == QuestState.Completed && quest.Metadata.Basic.Type != QuestType.GuildQuest
                && QuestRules.CanStartAgain(quest.Metadata.Basic.Repeat, quest.Metadata.Basic.ResetWeekday, quest.StartTime, DateTime.Now);
+    }
+
+    // An event quest held (in progress or completed) from outside the running run of its term: the client offers it
+    // again whatever its state and repeat (CQuestManagerCommon::vfunc_o10_21 returns 1 when the held start time is
+    // not within the term, questdata.cpp:366-369, before it looks at the state), once per run of the term.
+    public bool HeldFromAnotherTerm(Quest quest) {
+        string tag = quest.Metadata.Basic.EventTag;
+        if (string.IsNullOrEmpty(tag) || quest.StartTime == 0 || StampQuests().Contains(quest.Id)) {
+            return false;
+        }
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return Term(tag) is { } term && TermTagState.Running(term, now) && !TermTagState.Running(term, quest.StartTime);
     }
 
     // QuestRules.IsExpired with the quest's term: the channel's term tag of its event tag (CQuestCommon::GetEndTime,
@@ -1290,7 +1303,8 @@ public sealed class QuestManager {
 
         // Get any new quests that can be started
         foreach (QuestMetadata metadata in allQuests) {
-            if (TryGetQuest(metadata.Id, out Quest? quest) && quest.State == QuestState.Completed && !CanStartAgain(quest)) {
+            if (TryGetQuest(metadata.Id, out Quest? quest) && quest.State == QuestState.Completed && !CanStartAgain(quest)
+                && !HeldFromAnotherTerm(quest)) {
                 continue;
             }
 
