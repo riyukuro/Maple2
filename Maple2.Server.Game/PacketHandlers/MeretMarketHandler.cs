@@ -524,7 +524,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
-        (long AccountId, long CharacterId, string Name)? receiver = string.IsNullOrWhiteSpace(receiverName) ? null : db.FindCharacterByName(receiverName);
+        (long AccountId, long CharacterId, string Name)? receiver = string.IsNullOrWhiteSpace(receiverName) ? null : db.FindCharacterByName(receiverName, skipPendingDelete: true);
         if (receiver == null) {
             return PurchaseErrorGiftNoUser;
         }
@@ -544,12 +544,21 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         long receiverId = receiver.Value.CharacterId;
-        Mail? mail = DeliverGift(
+        (Mail? mail, bool undoFailed) = DeliverGift(
             writeMail: () => WriteGiftMail(db, receiverId, session.PlayerName, message, item),
             pay: () => Pay(session, price, MeretMarketCurrencyType.Meret) == StringCode.s_empty_string,
             recordSale: () => UgcMarketManager.RecordSale(db, ugcItem) != null,
             refund: () => session.Currency.Meret += price,
-            undoMail: written => db.DeleteMail(written.Id, receiverId));
+            undoMail: written => {
+                // The failed save's rows are still tracked here and would fail the delete too.
+                db.DiscardChanges();
+                return db.DeleteMail(written.Id, receiverId);
+            });
+        if (undoFailed) {
+            // The receiver keeps the mail; when the merets were taken they stay taken, so the gift is paid for.
+            Logger.Error("Unable to take back gift mail of listing {ListingId} to {CharacterId} from {BuyerId}, paid: {Paid}",
+                ugcItem.Id, receiverId, session.CharacterId, mail != null);
+        }
         if (mail == null) {
             Logger.Error("Unable to deliver gift {ListingId} to {CharacterId}", ugcItem.Id, receiverId);
             return PurchaseErrorUnknown;
@@ -574,22 +583,26 @@ public class MeretMarketHandler : FieldPacketHandler {
     }
 
     // The order of a gift: the mail with its item is written first, so nothing is charged when it cannot be; a
-    // payment or a sale that fails after that takes the mail back (and gives back what was paid).
-    internal static Mail? DeliverGift(Func<Mail?> writeMail, Func<bool> pay, Func<bool> recordSale, Action refund, Action<Mail> undoMail) {
+    // payment or a sale that fails after that takes the mail back, and what was paid is given back only once the
+    // mail is gone. A mail that cannot be taken back after the payment keeps the payment: the gift is delivered and
+    // paid for (only the seller's sale record is missing), and the caller logs it. Returns the delivered mail, null
+    // when nothing was delivered, and whether a take-back failed.
+    internal static (Mail? Mail, bool UndoFailed) DeliverGift(Func<Mail?> writeMail, Func<bool> pay, Func<bool> recordSale, Action refund, Func<Mail, bool> undoMail) {
         Mail? mail = writeMail();
         if (mail == null) {
-            return null;
+            return (null, false);
         }
         if (!pay()) {
-            undoMail(mail);
-            return null;
+            return (null, !undoMail(mail));
         }
         if (!recordSale()) {
+            if (!undoMail(mail)) {
+                return (mail, true);
+            }
             refund();
-            undoMail(mail);
-            return null;
+            return (null, false);
         }
-        return mail;
+        return (mail, false);
     }
 
     // The gift mail: from s_meratmarket_gift_mail_sender, titled with the item, the content with the buyer's name
@@ -617,6 +630,8 @@ public class MeretMarketHandler : FieldPacketHandler {
         item.Slot = -1;
         Item? row = db.CreateItem(written.Id, item);
         if (row == null) {
+            // The failed item row is still tracked and would fail the delete; dropped, the mail goes.
+            db.DiscardChanges();
             db.DeleteMail(written.Id, receiverId);
             return null;
         }

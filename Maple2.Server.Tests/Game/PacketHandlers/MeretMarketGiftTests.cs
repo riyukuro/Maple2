@@ -182,6 +182,46 @@ public class MeretMarketGiftTests {
         AssertRefused(0xA6);
     }
 
+    // A character whose deletion has begun takes no gift.
+    [Test]
+    public void AGiftToACharacterBeingDeleted_IsRefused() {
+        using (GameStorage.Request db = buyerTest.Storage.Context()) {
+            Assert.That(db.UpdateDelete(receiverTest.AccountId, receiverTest.CharacterId, DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds()), Is.True);
+        }
+
+        Buy(List(sellerTest.AccountId), receiverName, PayMeret);
+        AssertRefused(0xA6);
+    }
+
+    // The echoed record after the 41 bytes: the gift flag, the receiver, the message, the price, a byte and the pay type.
+    private static (bool Gift, string Receiver, string Message, long Price, byte PayType) Echo(byte[] answer) {
+        var reader = new ByteReader(answer, 3 + 41);
+        bool gift = reader.ReadBool();
+        string receiver = reader.ReadUnicodeString();
+        string message = reader.ReadUnicodeString();
+        long price = reader.ReadLong();
+        reader.ReadByte();
+        return (gift, receiver, message, price, reader.ReadByte());
+    }
+
+    [Test]
+    public void AGift_EchoesTheReceiverAndPayType() {
+        Buy(List(sellerTest.AccountId), receiverName, PayMeret);
+
+        byte[] answer = Answer();
+        Assert.That(answer[2], Is.EqualTo(0x1E));
+        Assert.That(Echo(answer), Is.EqualTo((true, receiverName, "for you", 3000L, PayMeret)));
+    }
+
+    [Test]
+    public void ARefusedGift_EchoesTheReceiverAndPayType() {
+        Buy(List(sellerTest.AccountId), receiverName, PayMeso);
+
+        byte[] answer = Answer();
+        Assert.That(answer[2], Is.EqualTo(0x1F));
+        Assert.That(Echo(answer), Is.EqualTo((true, receiverName, "for you", 3000L, PayMeso)));
+    }
+
     [Test]
     public void AGiftToTheBuyersOwnAccount_IsRefused() {
         using (GameStorage.Request db = buyerTest.Storage.Context()) {
@@ -220,37 +260,56 @@ public class MeretMarketGiftTests {
     #region DeliverGift
     private readonly List<string> steps = [];
 
-    private Mail? Deliver(bool mailWritten, bool paid, bool saleStored) {
+    private (Mail? Mail, bool UndoFailed) Deliver(bool mailWritten, bool paid, bool saleStored, bool undone = true) {
         return MeretMarketHandler.DeliverGift(
             writeMail: () => { steps.Add("mail"); return mailWritten ? new Mail() : null; },
             pay: () => { steps.Add("pay"); return paid; },
             recordSale: () => { steps.Add("sale"); return saleStored; },
             refund: () => steps.Add("refund"),
-            undoMail: _ => steps.Add("undo"));
+            undoMail: _ => { steps.Add("undo"); return undone; });
     }
 
     // A mail that cannot be written charges nothing.
     [Test]
     public void DeliverGift_MailNotWritten_NothingIsPaid() {
-        Assert.That(Deliver(false, true, true), Is.Null);
+        Assert.That(Deliver(false, true, true), Is.EqualTo(((Mail?) null, false)));
         Assert.That(steps, Is.EqualTo(new[] { "mail" }));
     }
 
     [Test]
     public void DeliverGift_NotPaid_TheMailIsTakenBack() {
-        Assert.That(Deliver(true, false, true), Is.Null);
+        Assert.That(Deliver(true, false, true), Is.EqualTo(((Mail?) null, false)));
         Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "undo" }));
     }
 
+    // Nothing was paid, so nothing is given back; the failed take-back is reported.
     [Test]
-    public void DeliverGift_SaleNotStored_RefundsAndTakesTheMailBack() {
-        Assert.That(Deliver(true, true, false), Is.Null);
-        Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "sale", "refund", "undo" }));
+    public void DeliverGift_NotPaid_TakeBackFails_IsReported() {
+        Assert.That(Deliver(true, false, true, undone: false), Is.EqualTo(((Mail?) null, true)));
+        Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "undo" }));
+    }
+
+    // The merets come back only after the mail is gone.
+    [Test]
+    public void DeliverGift_SaleNotStored_TakesTheMailBackThenRefunds() {
+        Assert.That(Deliver(true, true, false), Is.EqualTo(((Mail?) null, false)));
+        Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "sale", "undo", "refund" }));
+    }
+
+    // The receiver keeps the mail: the payment is kept, so the gift is paid for.
+    [Test]
+    public void DeliverGift_SaleNotStored_TakeBackFails_KeepsThePayment() {
+        (Mail? mail, bool undoFailed) = Deliver(true, true, false, undone: false);
+        Assert.That(mail, Is.Not.Null);
+        Assert.That(undoFailed, Is.True);
+        Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "sale", "undo" }));
     }
 
     [Test]
     public void DeliverGift_AllWritten_KeepsTheMail() {
-        Assert.That(Deliver(true, true, true), Is.Not.Null);
+        (Mail? mail, bool undoFailed) = Deliver(true, true, true);
+        Assert.That(mail, Is.Not.Null);
+        Assert.That(undoFailed, Is.False);
         Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "sale" }));
     }
     #endregion

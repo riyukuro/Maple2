@@ -124,11 +124,15 @@ public partial class GameStorage {
                 .ToDictionary(character => character.Id, character => character.AccountId);
         }
 
-        public (long AccountId, long CharacterId, string Name)? FindCharacterByName(string name) {
+        // skipPendingDelete: a character whose deletion has begun (a delete time is set) is not found.
+        public (long AccountId, long CharacterId, string Name)? FindCharacterByName(string name, bool skipPendingDelete = false) {
             var found = Context.Character.Where(character => character.Name.ToLower() == name.ToLower())
-                .Select(character => new { character.Id, character.AccountId, character.Name })
+                .Select(character => new { character.Id, character.AccountId, character.Name, character.DeleteTime })
                 .FirstOrDefault();
-            return found == null ? null : (found.AccountId, found.Id, found.Name);
+            if (found == null || skipPendingDelete && found.DeleteTime.ToEpochSeconds() > 0) {
+                return null;
+            }
+            return (found.AccountId, found.Id, found.Name);
         }
 
         public long GetCharacterId(string name) {

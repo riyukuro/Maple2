@@ -54,6 +54,12 @@ public partial class GameStorage {
             this.game = game;
         }
 
+        // Drops what this request tracks: a save that failed leaves its rows added or changed here, and the next
+        // save of the request would try them again and fail as well.
+        public void DiscardChanges() {
+            Context.ChangeTracker.Clear();
+        }
+
         private static PlayerInfo BuildPlayerInfo(Model.Character character, string permissions, UgcMap indoor, UgcMap? outdoor, AchievementInfo achievementInfo, long guildId, string guildName, long premiumTime, IList<long> clubs) {
             if (outdoor == null) {
                 return new PlayerInfo(character, indoor.Name, achievementInfo, clubs) {
