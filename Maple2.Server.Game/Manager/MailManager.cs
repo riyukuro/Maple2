@@ -56,6 +56,7 @@ public sealed class MailManager {
 
     public void Load() {
         lock (inbox) {
+            DropExpired();
             session.Send(MailPacket.StartList());
             foreach (ImmutableList<Mail> batch in inbox.Values.Batch(BATCH_SIZE)) {
                 session.Send(MailPacket.Load(batch));
@@ -149,6 +150,7 @@ public sealed class MailManager {
                 }
             }
 
+            DropExpired();
             lastFetch = DateTime.Now;
             if (inbox.Count <= 0) {
                 return false;
@@ -156,6 +158,27 @@ public sealed class MailManager {
 
             lastReceivedMail = inbox.Keys[inbox.Count - 1];
             return newMail;
+        }
+    }
+
+    // An expired mail is deleted with what is left on it (DeleteMail). The client hides a mail once it is expired
+    // (CMailInfo::IsExpired) but still counts it in the list's pages of 14 (UIMailListDialog::RefreshMailList), so
+    // kept expired mails left gaps in the pages, and nothing on them can be collected any more (error 21).
+    // Under the inbox lock.
+    private void DropExpired() {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        List<long> expired = inbox.Values.Where(mail => MailRules.IsExpired(mail, now)).Select(mail => mail.Id).ToList();
+        if (expired.Count == 0) {
+            return;
+        }
+
+        using GameStorage.Request db = session.GameStorage.Context();
+        foreach (long mailId in expired) {
+            if (!db.DeleteMail(mailId, session.CharacterId)) {
+                logger.Warning("Expired mail {MailId} not deleted", mailId);
+                continue;
+            }
+            inbox.Remove(mailId);
         }
     }
 

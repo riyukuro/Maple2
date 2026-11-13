@@ -1,3 +1,4 @@
+using System;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -41,15 +42,47 @@ public class MailCollectTests {
         });
     }
 
-    // A mail to the player with the items attached, in the player's inbox.
-    private long Mail(GameSession session, params StoredItem[] items) {
+    // A mail that ran out is deleted with its attachment when the inbox is fetched (the login's count) and when the
+    // list is opened (mode 0); the list leaves it out. It stayed in the list for good: the client hides it but counts
+    // it in the pages, and its attachment could not be collected any more.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ExpiredMail_IsDeletedWithItsAttachment(bool atLoad) {
+        GameSession session = Start();
+        StoredItem meso = session.Field!.ItemDrop.CreateItem(MesoItem)!;
+        long live = Mail(session, 0);
+        long expiry = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + (atLoad ? 2 : -60);
+        long expired = Mail(session, expiry, meso);
+        if (atLoad) {
+            using (GameStorage.Request db = test.Storage.Context()) {
+                Assert.That(db.GetMail(expired, test.CharacterId), Is.Not.Null);
+            }
+            System.Threading.Thread.Sleep(2500);
+        }
+        test.TakeSent();
+
+        session.Mail.Load();
+
+        using GameStorage.Request reload = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(reload.GetMail(expired, test.CharacterId), Is.Null);
+            Assert.That(reload.GetMail(live, test.CharacterId), Is.Not.Null);
+            Assert.That(reload.GetAllItems(expired), Is.Empty);
+            Assert.That(session.Mail.Collect(expired), Is.EqualTo(MailError.mail_not_found));
+        });
+    }
+
+    private long Mail(GameSession session, params StoredItem[] items) => Mail(session, 0, items);
+
+    // A mail to the player with the items attached, in the player's inbox; expiry 0 is the default.
+    private long Mail(GameSession session, long expiry, params StoredItem[] items) {
         long mailId;
         using (GameStorage.Request db = test.Storage.Context()) {
             // Items are owned by a character, account or mail id; the in-memory database starts each range at 1, so
             // one mail id is used up first (as BagSplitTests).
             db.CreateMail(new Mail { ReceiverId = test.CharacterId + 1, Type = MailType.System, Title = "t", Content = "c" });
         }
-        var mail = new Mail { ReceiverId = test.CharacterId, Type = MailType.System, Title = "t", Content = "c" };
+        var mail = new Mail { ReceiverId = test.CharacterId, Type = MailType.System, Title = "t", Content = "c", ExpiryTime = expiry };
         foreach (StoredItem item in items) {
             using GameStorage.Request db = test.Storage.Context();
             mail.Items.Add(db.CreateItem(0, item)!);
