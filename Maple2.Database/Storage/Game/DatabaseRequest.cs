@@ -12,6 +12,18 @@ public abstract class DatabaseRequest<TContext>(TContext context, ILogger logger
 
     private IDbContextTransaction? transaction;
     public bool IsTransaction => transaction != null;
+    private readonly List<Action> afterCommit = [];
+
+    // Runs action once the open transaction is committed: memory that may only change when the writes are kept (the
+    // bag's delete list). It is dropped when the transaction is rolled back or disposed uncommitted. Without an open
+    // transaction a write that returned true is already kept, so action runs at once.
+    public void AfterCommit(Action action) {
+        if (transaction == null) {
+            action();
+            return;
+        }
+        afterCommit.Add(action);
+    }
 
     public void BeginTransaction() {
         transaction = Context.Database.BeginTransaction();
@@ -25,6 +37,11 @@ public abstract class DatabaseRequest<TContext>(TContext context, ILogger logger
         transaction.Commit();
         transaction.Dispose();
         transaction = null; // transaction is completed.
+        Action[] committed = afterCommit.ToArray();
+        afterCommit.Clear();
+        foreach (Action action in committed) {
+            action();
+        }
         return true;
     }
 
@@ -40,6 +57,7 @@ public abstract class DatabaseRequest<TContext>(TContext context, ILogger logger
 
         IDbContextTransaction open = transaction;
         transaction = null;
+        afterCommit.Clear();
         try {
             open.Rollback();
         } catch (Exception ex) {

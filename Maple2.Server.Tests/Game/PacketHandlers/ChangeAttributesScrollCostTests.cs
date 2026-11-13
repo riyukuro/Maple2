@@ -22,7 +22,7 @@ public class ChangeAttributesScrollCostTests {
     }
 
     // An expired scroll is refused and the lock item stays in the bag, and later moves keep its row. Before, the lock
-    // item was taken (its row went on the bag's delete list, which is never emptied) and given back as a copy with its
+    // item was taken (its row went on the bag's delete list, which was never emptied then) and given back as a copy with its
     // uid: the bag's copy wrote the row back at each save while it stayed, but once the item left the bag (here to
     // the storage, as Deposit and the storage's close do) the next save of the bag deleted the stored item.
     [Test]

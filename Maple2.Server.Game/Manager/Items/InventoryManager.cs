@@ -325,6 +325,10 @@ public class InventoryManager {
                 session.Send(ItemInventoryPacket.Error(s_err_inventory));
                 return false;
             }
+            // An item that comes back to the bag with a uid on the delete list (taken, then given back as a copy with
+            // its uid) is no longer deleted: the entry stayed, and once the item left the bag again (stored, traded,
+            // mailed) the next save of the bag wrote its row to owner 0.
+            Forget(add.Uid);
 
             bool mergedAway = add.Amount == 0;
             if (mergedAway && !commit) {
@@ -920,6 +924,9 @@ public class InventoryManager {
 
         // Full remove of item
         if (items.Remove(uid, out removed)) {
+            // It leaves the bag to a new owner (the caller writes it there), so an entry of its uid left on the
+            // delete list must not write the row to owner 0 at the next save.
+            Forget(uid);
             if (notify) {
                 session.Send(ItemInventoryPacket.Remove(uid));
             }
@@ -989,9 +996,28 @@ public class InventoryManager {
         }
     }
 
+    private void Forget(long uid) {
+        if (uid != 0) {
+            delete.RemoveAll(item => item.Uid == uid);
+        }
+    }
+
+    // The list keeps what this save wrote until the save is kept: an entry is taken off once its write to owner 0 is
+    // committed (at once without a transaction, at the commit of the session save's transaction), so a save that fails
+    // or is rolled back writes it again next time. Before, the list was never emptied. Chosen here: an entry is taken
+    // off by reference, so the same item put on the list again between this save and its commit is taken off too.
     public void Save(GameStorage.Request db) {
         lock (session.Item) {
-            db.SaveItems(0, delete.ToArray());
+            Item[] discarded = delete.ToArray();
+            if (discarded.Length > 0 && db.SaveItems(0, discarded)) {
+                db.AfterCommit(() => {
+                    lock (session.Item) {
+                        foreach (Item item in discarded) {
+                            delete.Remove(item);
+                        }
+                    }
+                });
+            }
             foreach (ItemCollection tab in tabs.Values) {
                 db.SaveItems(session.CharacterId, tab.ToArray());
             }
