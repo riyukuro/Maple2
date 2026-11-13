@@ -72,21 +72,32 @@ public class ItemSocketScrollHandler : FieldPacketHandler {
                 return;
             }
 
-            Unlock(item, metadata);
+            bool ruleChanged = Unlock(item, metadata);
             session.Send(ItemSocketScrollPacket.Unlock(item, true));
+            if (ruleChanged) {
+                // The unlock answer carries only the trade count (FUN_14062a230 sets it with SetTransferCount); the
+                // item's update gives the client the rule without the Trade bit.
+                session.Send(ItemInventoryPacket.UpdateItem(item));
+            }
         }
     }
 
     // The scroll opens its socket count. A scroll with tradableCountDeduction (a bool in the client's
     // CItemSocketScrollData) makes the item untradable: UIItemSocketScrollDialog::FUN_140f66680 warns with
     // s_itemsocket_scroll_tradableCountDeduction_desc ("accessories with unlocked sockets are untradable"). The item
-    // loses all its trades left, not one: with none left, a limit-trade item is no longer tradable (the client's
-    // CItemTransfer::HasTradeCountLeft, TradeRules.IsTradeable).
-    public static void Unlock(Item item, ItemSocketScrollMetadata metadata) {
+    // loses all its trades left, not one, and its trade rule bit: the client's tradable test (CItemTransfer
+    // FUN_140635590, as CanListOnBlackMarket) passes with LimitTrade (0x10) and trades left, or else with the Trade
+    // bit (4) alone, and it reads the rule from the item's transfer bytes. So a freely tradable accessory becomes
+    // untradable too, as the warning says for any accessory (TradeRules.IsTradeable). True when the Trade bit went.
+    public static bool Unlock(Item item, ItemSocketScrollMetadata metadata) {
         item.Socket!.UnlockSlots = metadata.SocketCount;
-        if (metadata.TradableCountDeduction != 0 && item.Transfer != null) {
-            item.Transfer.RemainTrades = 0;
+        if (metadata.TradableCountDeduction == 0 || item.Transfer == null) {
+            return false;
         }
+        item.Transfer.RemainTrades = 0;
+        bool hadTrade = item.Transfer.Flag.HasFlag(TransferFlag.Trade);
+        item.Transfer.Flag &= ~TransferFlag.Trade;
+        return hadTrade;
     }
 
     private static ItemSocketScrollError IsCompatibleScroll(Item item, ItemSocketScrollMetadata metadata) {
