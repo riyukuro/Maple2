@@ -36,7 +36,7 @@ public class SkillTargetHitsTests {
     private static List<int> Pay(SkillHitBudget budget, long attackUid, SkillMetadataAttack attack, IReadOnlyList<MagicPath>? paths,
         params (int Id, byte Ordinal)[] hits) {
         var paid = new List<int>();
-        if (!budget.TakeTarget(attackUid, 0, attack.Arrow.BounceCount, SkillHitRules.TargetRounds(attack, paths))) {
+        if (!budget.TakeTarget(attackUid, 0, attack.Arrow.BounceCount, SkillHitRules.TargetRounds(attack, paths), hits.Length)) {
             return paid;
         }
         SkillHitShape shape = SkillHitRules.Shape(attack, paths);
@@ -112,12 +112,46 @@ public class SkillTargetHitsTests {
         SkillHitBudget budget = Cast((1, 0));
         Assert.That(Pay(budget, 1, attack, paths, (101, 0), (102, 1)), Is.EqualTo(new[] { 101, 102 }));
         Assert.That(Pay(budget, 1, attack, paths, (103, 2)), Is.EqualTo(new[] { 103 }));
-        Assert.That(Pay(budget, 1, attack, paths, (104, 2)), Is.Empty, "the wrong number");
-        Assert.That(Pay(budget, 1, attack, paths, (101, 3)), Is.Empty, "an object it pierced");
         // Back from the move's end: counted from 0 again, the same objects once more; once only.
         Assert.That(Pay(budget, 1, attack, paths, (101, 0), (102, 1)), Is.EqualTo(new[] { 101, 102 }));
         Assert.That(Pay(budget, 1, attack, paths, (103, 2), (101, 3)), Is.EqualTo(new[] { 103 }));
-        Assert.That(Pay(budget, 1, attack, paths, (104, 0)), Is.Empty, "it comes back once");
+        Assert.That(Pay(budget, 1, attack, paths, (101, 0)), Is.Empty, "it comes back once");
+        Assert.That(Pay(budget, 1, attack, paths, (104, 8)), Is.Empty, "a number past its most");
+    }
+
+    [Test]
+    public void DroppedPacketKeepsTheArrowsLaterHits() {
+        // A pierce with bounce count 4 whose second packet the server never took (late, or past the cap): the
+        // numbers after it skip one. Before, every later hit of the arrow was refused for the wrong number.
+        SkillMetadataAttack attack = Attack(1, SkillTargetType.Owner, methodType: 1, bounceType: BounceType.Pierce, bounceCount: 4);
+        MagicPath[] paths = [Path()];
+        SkillHitBudget budget = Cast((1, 0));
+        Assert.That(Pay(budget, 1, attack, paths, (101, 0)), Is.EqualTo(new[] { 101 }));
+        Assert.That(Pay(budget, 1, attack, paths, (103, 2)), Is.EqualTo(new[] { 103 }), "102 at 1 dropped");
+        Assert.That(Pay(budget, 1, attack, paths, (104, 3)), Is.EqualTo(new[] { 104 }));
+
+        // A boomerang that lost its last packet out (102 at 1) and its first packet back (102 at 0): its next hit
+        // back, 101 at 1, is the way back though its number is not below the server's.
+        SkillMetadataAttack boomerang = Attack(1, SkillTargetType.Owner, methodType: 1, bounceType: BounceType.Boomerang, bounceCount: 8);
+        SkillHitBudget back = Cast((1, 0));
+        Assert.That(Pay(back, 1, boomerang, paths, (101, 0)), Is.EqualTo(new[] { 101 }));
+        Assert.That(Pay(back, 1, boomerang, paths, (101, 1)), Is.EqualTo(new[] { 101 }), "back");
+        Assert.That(Pay(back, 1, boomerang, paths, (101, 2)), Is.Empty, "once back");
+    }
+
+    [Test]
+    public void PacketsWithoutHitsUseNothing() {
+        // A repiercing pierce in a crowd past its piercingAttackMaxTargetCount: the client clamps the hits to 0
+        // and still sends the packet (magicdata.cpp:1925-1946), each tick. Before, each one used up a packet of the
+        // 3 x 7 the arrow may send, and the re-hits after the interval were refused.
+        SkillMetadataAttack attack = Attack(1, SkillTargetType.Owner, methodType: 1, bounceType: BounceType.Pierce, bounceCount: 2);
+        MagicPath[] paths = [Path(interval: 300, maxTargets: 2)];
+        SkillHitBudget budget = Cast((1, 0));
+        for (int i = 0; i < 50; i++) {
+            Assert.That(budget.TakeTarget(1, 0, attack.Arrow.BounceCount, SkillHitRules.TargetRounds(attack, paths), hits: 0), Is.True, $"empty packet {i}");
+        }
+        Assert.That(Pay(budget, 1, attack, paths, (101, 0)), Is.EqualTo(new[] { 101 }));
+        Assert.That(budget.TakeTarget(9, 0, attack.Arrow.BounceCount, hits: 0), Is.False, "not declared");
     }
 
     [Test]

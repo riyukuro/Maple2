@@ -54,6 +54,20 @@ public static class SkillHitRules {
         return Vector3.Distance(impact, cast) > ImpactReach(rangeDistance);
     }
 
+    // Whether a target packet's impact position drops the packet: past ImpactReach from the cast, except for an arrow
+    // whose paths have a distance or a fixed fire point: its impact is the step's last point, held by its paths'
+    // reach instead (ReachTooFar, which follows a fixed start and a boomerang coming back to its owner).
+    public static bool ImpactRefused(Vector3 impact, Vector3 cast, Vector3 owner, SkillMetadataAttack attack, IReadOnlyList<MagicPath>? paths) {
+        if (!ImpactTooFar(impact, cast, attack.Range.Distance)) {
+            return false;
+        }
+        if (attack.AttackMethodType != 1 || paths is not { Count: > 0 }
+            || !paths.Any(path => path.FireFixed != Vector3.Zero || path.Distance > 0 || path.NonTargetMoveDistance > 0)) {
+            return true;
+        }
+        return ReachTooFar(impact, cast, attack.Arrow, paths, owner);
+    }
+
     public static bool TooLate(long tick, long windowTick) => tick - windowTick > HitWindowMs;
 
     // How the client writes the hits of an attack's target packets (CMagic, magicdata.cpp:2063): an attack with
@@ -126,10 +140,13 @@ public static class SkillHitRules {
     // cast's rotation. Chosen here: within this of either.
     public const float FacingMargin = 90f;
     // An arrow's packet carries the step it hit on: its last and its current point. KMS2 steps are at most 139 long
-    // and 0.1 s of the path's velocity. Chosen here: a step of at most this long at the fastest of the paths.
+    // and 0.1 s of the path's velocity, but the client does not clamp a step (magicdata.cpp:980, the time since its
+    // last frame), so a frame hitch makes one as long as the hitch. Chosen here: a step longer than this at the
+    // fastest of the paths is logged, never refused (both ends are held by ImpactTooFar and ReachTooFar).
     public const float StepSeconds = 0.25f;
-    // Two packets of one arrow: its current point moves at most the velocity for the time between them and this
-    // long more, for packets that arrive bunched after a late one (chosen here).
+    // Two packets of one arrow: its current point moves at most the velocity for the time between their arrivals
+    // and this long more. Arrival times are the server's, so a packet held up by the link makes the next one look
+    // fast: logged, never refused (chosen here).
     public const long StepArrivalAllowanceMs = 500;
 
     // Whether a region packet's facing is near the cast's rotation or the player's synced facing (degrees).
@@ -191,20 +208,26 @@ public static class SkillHitRules {
         return velocity;
     }
 
-    // Whether an arrow's step is longer than one step of its fastest path (not checked when no path moves).
+    // Whether an arrow's step is longer than one step of its fastest path (not checked when no path moves). Log only:
+    // a frame hitch makes such a step.
     public static bool StepTooLong(Vector3 last, Vector3 current, float velocity) {
         return velocity > 0 && Vector3.Distance(last, current) > velocity * StepSeconds + TargetMargin;
     }
 
     // Whether an arrow's point lies further from the cast than its paths fly: the longest path's distance (or
     // nonTargetMoveDistance) from its fire offset, and for a chain or range bounce each link's bounce radius (a link
-    // starts where the one before it hit, BounceChain.PicksAround). Not checked when no path has a distance.
-    public static bool ReachTooFar(Vector3 point, Vector3 cast, SkillMetadataArrow arrow, IReadOnlyList<MagicPath>? paths) {
+    // starts where the one before it hit, BounceChain.PicksAround). Not checked when no path has a distance, or when
+    // a path fires from a fixed world point (the client's start is that point, magicdata.cpp:1411). A boomerang's
+    // way back homes on its owner (:1386), so its point may also lie that far from the owner's position now.
+    public static bool ReachTooFar(Vector3 point, Vector3 cast, SkillMetadataArrow arrow, IReadOnlyList<MagicPath>? paths, Vector3 owner) {
         if (paths is not { Count: > 0 }) {
             return false;
         }
         float reach = 0;
         foreach (MagicPath path in paths) {
+            if (path.FireFixed != Vector3.Zero) {
+                return false;
+            }
             reach = MathF.Max(reach, MathF.Max(path.Distance, path.NonTargetMoveDistance) + path.FireOffset.Length() + path.ControlEndOffsetValue.Length());
         }
         if (reach <= 0) {
@@ -213,7 +236,23 @@ public static class SkillHitRules {
         if (arrow.BounceType is BounceType.Chain or BounceType.Range) {
             reach += Math.Max(0, arrow.BounceCount) * Math.Max(0, arrow.BounceRadius);
         }
-        return Vector3.Distance(point, cast) > reach + TargetMargin;
+        if (Vector3.Distance(point, cast) <= reach + TargetMargin) {
+            return false;
+        }
+        return arrow.BounceType != BounceType.Boomerang || Vector3.Distance(point, owner) > reach + TargetMargin;
+    }
+
+    // What an arrow packet's points refuse its hits for: only a current point past the paths' reach (ReachTooFar).
+    // The step's length (StepTooLong) and the speed since the packet before (SkillHitBudget.TakeStep) are logged by
+    // the handler, never refused: a frame hitch and a held-up packet make both.
+    public static HitRefusal ArrowRefusal(Vector3 current, Vector3 cast, Vector3 owner, SkillMetadataArrow arrow, IReadOnlyList<MagicPath>? paths) {
+        return ReachTooFar(current, cast, arrow, paths, owner) ? HitRefusal.Reach : HitRefusal.None;
+    }
+
+    // Where a region's area stands: the owner's position the packet carries (impactPosition2, magicdata.cpp:1831),
+    // when it lies within CastReach of the server's player position; the server's position otherwise.
+    public static Vector3 RegionCentre(Vector3 owner, Vector3 player) {
+        return Vector3.Distance(owner, player) <= CastReach ? owner : player;
     }
 
     // The most attacks an attack point packet declares for an attack.
@@ -247,15 +286,13 @@ public enum HitRefusal {
     None,
     Undeclared, // no attack declared under the uid
     NotTarget, // a targeted attack naming another object
-    Ordinal, // an arrow's hit with the wrong number before it, or a region's with any
+    Ordinal, // a region's hit with a number before it (only an arrow's carry one)
     Again, // the attack hit the object before
     Full, // the attack hit its most objects
     PointGroup, // the point group hit the object this cast
     NoActor, // no actor the range takes (FieldManager.FindTargets)
     Facing, // a region packet's facing far from the cast's and the player's
-    Step, // an arrow packet's step longer than its path moves in one
     Reach, // an arrow packet's point further from the cast than its paths fly
-    Speed, // an arrow's point moved faster than its path between two packets
     Outside, // the object stands outside the attack's area (SkillHitRules.RegionArea, ArrowArea)
 }
 
@@ -277,6 +314,7 @@ public sealed class SkillHitBudget {
         public readonly int TargetId = targetId;
         public int Uses;
         public HashSet<int>? Hit;
+        public int Next; // the number the arrow's next hit carries at least
         public bool Returned;
         public bool Stepped;
         public Vector3 Point;
@@ -350,9 +388,14 @@ public sealed class SkillHitBudget {
     }
 
     // rounds: how many times the attack's arrow may send its 1 + bounceCount packets (SkillHitRules.TargetRounds).
-    public bool TakeTarget(long attackUid, byte attackPoint, int bounceCount, int rounds = 1) {
+    // hits: the packet's hit count; a packet without hits (the client clamps a crowd to piercingAttackMaxTargetCount
+    // and still sends, magicdata.cpp:1925) pays nothing and uses up nothing.
+    public bool TakeTarget(long attackUid, byte attackPoint, int bounceCount, int rounds = 1, int hits = 1) {
         if (!attacks.TryGetValue(attackUid, out Attack? attack) || attack.AttackPoint != attackPoint) {
             return false;
+        }
+        if (hits <= 0) {
+            return true;
         }
         if (attack.Uses >= (1 + Math.Max(0, bounceCount)) * Math.Max(1, rounds)) {
             return false;
@@ -363,8 +406,8 @@ public sealed class SkillHitBudget {
     }
 
     // An arrow packet's current point for the attack's uid: false when it moved further from the one before than the
-    // velocity covers in the time between them (SkillHitRules.StepArrivalAllowanceMs more). The point is kept either
-    // way.
+    // velocity covers in the time between their arrivals (SkillHitRules.StepArrivalAllowanceMs more). The point is
+    // kept either way. Log only: a packet the link held up makes the next one look fast.
     public bool TakeStep(long attackUid, Vector3 point, long tick, float velocity) {
         if (!attacks.TryGetValue(attackUid, out Attack? attack)) {
             return false;
@@ -405,19 +448,33 @@ public sealed class SkillHitBudget {
             return HitRefusal.None;
         }
 
-        if (ordinal != hit.Count) {
-            if (!shape.Returns || attack.Returned || ordinal != 0) {
-                return HitRefusal.Ordinal;
-            }
+        // The client's number is the count of different objects the arrow hit before (m_map1D8), never its most. It
+        // only tells a boomerang's way back (both maps cleared, FUN_141460700): the first number below the one the
+        // hit before left. A number off the server's count is not refused: a packet the server dropped (late, or
+        // past the packet cap) held the hits between, and the number cannot tell that from a cheat; Max and Again
+        // bound what the arrow pays.
+        if (ordinal >= shape.Max) {
+            return HitRefusal.Full;
+        }
+        if (ordinal < attack.Next && shape.Returns && !attack.Returned) {
             attack.Returned = true;
             hit.Clear();
         }
         if (hit.Count >= shape.Max) {
             return HitRefusal.Full;
         }
-        if (!hit.Add(objectId) && !shape.Repierce) {
+        bool added = hit.Add(objectId);
+        if (!added && !shape.Repierce && shape.Returns && !attack.Returned) {
+            // A boomerang that hits an object again without re-piercing is on its way back, though the number did
+            // not show it (the packets that started the way back were dropped).
+            attack.Returned = true;
+            hit.Clear();
+            added = hit.Add(objectId);
+        }
+        if (!added && !shape.Repierce) {
             return HitRefusal.Again;
         }
+        attack.Next = ordinal + (added ? 1 : 0);
         return HitRefusal.None;
     }
 

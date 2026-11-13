@@ -50,10 +50,12 @@ public class ConfigManager {
     public readonly LagBudget MoveLag = new(); // position syncs that arrive early
     public readonly ClockRate CastClock = new(ClockRate.CastBoundMs, ClockRate.CastBackMs);
     public readonly ClockRate SyncClock = new(ClockRate.SyncBoundMs);
-    // The log-only lines of the cast checks and of the attack point checks; the lines of the target packet hits skipped.
+    // The log-only lines of the cast checks and of the attack point checks; the lines of the target packet hits skipped;
+    // the log-only lines of the arrow step checks.
     public readonly LogGate CastLog = new();
     public readonly LogGate PointLog = new();
     public readonly LogGate HitLog = new();
+    public readonly LogGate StepLog = new();
     private long heldCastUid;
     private long heldAttackSpeed;
     private readonly IDictionary<string, int> statLimits;

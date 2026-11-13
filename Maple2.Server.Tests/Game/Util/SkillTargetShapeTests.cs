@@ -100,16 +100,16 @@ public class SkillTargetShapeTests {
         Assert.That(SkillHitRules.StepTooLong(Vector3.Zero, new Vector3(0, 300, 0), velocity), Is.True);
         Assert.That(SkillHitRules.StepTooLong(Vector3.Zero, new Vector3(0, 3000, 0), 0), Is.False, "no path moves");
         // The reach: the path's 800 and the margin from the cast.
-        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 900, 0), Vector3.Zero, Arrow(), paths), Is.False);
-        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1000, 0), Vector3.Zero, Arrow(), paths), Is.True);
-        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1000, 0), Vector3.Zero, Arrow(), null), Is.False, "no path");
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 900, 0), Vector3.Zero, Arrow(), paths, Vector3.Zero), Is.False);
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1000, 0), Vector3.Zero, Arrow(), paths, Vector3.Zero), Is.True);
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1000, 0), Vector3.Zero, Arrow(), null, Vector3.Zero), Is.False, "no path");
         // A chain of 2 links of radius 500 reaches 1000 further (10300071).
-        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1900, 0), Vector3.Zero, Arrow(BounceType.Chain, 2, 500), paths), Is.False);
-        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 2000, 0), Vector3.Zero, Arrow(BounceType.Chain, 2, 500), paths), Is.True);
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1900, 0), Vector3.Zero, Arrow(BounceType.Chain, 2, 500), paths, Vector3.Zero), Is.False);
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 2000, 0), Vector3.Zero, Arrow(BounceType.Chain, 2, 500), paths, Vector3.Zero), Is.True);
         // A range bounce starts its links where the one before hit, too.
-        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1400, 0), Vector3.Zero, Arrow(BounceType.Range, 1, 500), paths), Is.False);
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1400, 0), Vector3.Zero, Arrow(BounceType.Range, 1, 500), paths, Vector3.Zero), Is.False);
         // A non-targeted arrow flies its nonTargetMoveDistance.
-        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1400, 0), Vector3.Zero, Arrow(), [Path(500, 800) with { NonTargetMoveDistance = 1300 }]), Is.False);
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1400, 0), Vector3.Zero, Arrow(), [Path(500, 800) with { NonTargetMoveDistance = 1300 }], Vector3.Zero), Is.False);
     }
 
     [Test]
@@ -124,5 +124,60 @@ public class SkillTargetShapeTests {
         Assert.That(budget.TakeStep(1, new Vector3(0, 6000, 0), 200, 500), Is.False);
         // The point is kept: from 6000 on.
         Assert.That(budget.TakeStep(1, new Vector3(0, 6100, 0), 300, 500), Is.True);
+    }
+
+    [Test]
+    public void LagAndFrameHitchesRefuseNoHit() {
+        // A pierce at 1000 a second hits A at 0 and B at 1.0 s, 1000 further; A's packet was held 0.8 s, so the two
+        // arrive 0.2 s apart. The speed check sees 850 at most, 1000 moved: logged only, the points are in reach.
+        MagicPath[] paths = [Path(1000, 2000)];
+        var budget = new SkillHitBudget();
+        Assert.That(budget.TakePoint(0, 0, held: false, count: 1, tick: 0), Is.True);
+        budget.Declare(1, 0, 0);
+        Assert.That(budget.TakeStep(1, new Vector3(0, 500, 0), 800, 1000), Is.True);
+        Assert.That(budget.TakeStep(1, new Vector3(0, 1500, 0), 1000, 1000), Is.False, "looks fast");
+        Assert.That(SkillHitRules.ArrowRefusal(new Vector3(0, 1500, 0), Vector3.Zero, Vector3.Zero, Arrow(), paths), Is.EqualTo(HitRefusal.None));
+        // A 0.5 s frame hitch at 1500 a second: one step of 750 (the client does not clamp it, magicdata.cpp:980).
+        MagicPath[] fast = [Path(1500, 2000)];
+        Assert.That(SkillHitRules.StepTooLong(new Vector3(0, 250, 0), new Vector3(0, 1000, 0), 1500), Is.True, "logged");
+        Assert.That(SkillHitRules.ArrowRefusal(new Vector3(0, 1000, 0), Vector3.Zero, Vector3.Zero, Arrow(), fast), Is.EqualTo(HitRefusal.None));
+        Assert.That(SkillHitRules.ArrowRefusal(new Vector3(0, 2500, 0), Vector3.Zero, Vector3.Zero, Arrow(), fast), Is.EqualTo(HitRefusal.Reach));
+    }
+
+    [Test]
+    public void ReachFollowsFixedStartsAndAReturningBoomerang() {
+        MagicPath[] paths = [Path(500, 800)];
+        // A path that fires from a fixed world point starts there, not at the cast (magicdata.cpp:1411): not checked.
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 5000, 0), Vector3.Zero, Arrow(), [paths[0] with { FireFixed = new Vector3(0, 5000, 0) }], Vector3.Zero), Is.False);
+        // A boomerang's way back homes on its owner, who ran 1500 on: its point near the owner is in reach.
+        Vector3 owner = new(0, 1500, 0);
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1600, 0), Vector3.Zero, Arrow(BounceType.Boomerang, 2), paths, owner), Is.False);
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 1600, 0), Vector3.Zero, Arrow(), paths, owner), Is.True, "a pierce does not come back");
+        Assert.That(SkillHitRules.ReachTooFar(new Vector3(0, 2600, 0), Vector3.Zero, Arrow(BounceType.Boomerang, 2), paths, owner), Is.True);
+    }
+
+    [Test]
+    public void ArrowImpactFollowsItsPathsReach() {
+        // The impact bound (3 times the range distance, or it and 750) holds a region; an arrow's impact is its
+        // step's last point, held by its paths' reach: a fixed start far from the cast, a boomerang back at its owner.
+        SkillMetadataAttack region = Region(SkillRegion.Box, 500, 100);
+        SkillMetadataAttack arrow = region with { AttackMethodType = 1, Arrow = Arrow(BounceType.Boomerang, 2) };
+        MagicPath[] paths = [Path(500, 800)];
+        Vector3 owner = new(0, 1500, 0);
+        Assert.That(SkillHitRules.ImpactRefused(new Vector3(0, 1600, 0), Vector3.Zero, owner, region, paths), Is.True, "a region");
+        Assert.That(SkillHitRules.ImpactRefused(new Vector3(0, 1600, 0), Vector3.Zero, owner, arrow, paths), Is.False, "back at the owner");
+        Assert.That(SkillHitRules.ImpactRefused(new Vector3(0, 3000, 0), Vector3.Zero, owner, arrow, paths), Is.True);
+        Assert.That(SkillHitRules.ImpactRefused(new Vector3(0, 5000, 0), Vector3.Zero, Vector3.Zero, arrow,
+            [paths[0] with { FireFixed = new Vector3(0, 5000, 0) }]), Is.False, "a fixed start");
+        Assert.That(SkillHitRules.ImpactRefused(new Vector3(0, 1600, 0), Vector3.Zero, owner, arrow, null), Is.True, "no path");
+    }
+
+    [Test]
+    public void RegionStandsAtTheOwnerPositionThePacketCarries() {
+        // The client's region writer searches around the owner's position it sends (magicdata.cpp:1831); the
+        // server takes it when it is near its own player position.
+        Vector3 player = new(0, 0, 0);
+        Assert.That(SkillHitRules.RegionCentre(new Vector3(0, 200, 0), player), Is.EqualTo(new Vector3(0, 200, 0)));
+        Assert.That(SkillHitRules.RegionCentre(new Vector3(0, 2000, 0), player), Is.EqualTo(player), "too far: the server's");
     }
 }

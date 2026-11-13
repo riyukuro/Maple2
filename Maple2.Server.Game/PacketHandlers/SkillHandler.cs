@@ -398,14 +398,16 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Error("Invalid AttackPoint({AttackPoint}) for {Record}", attackPoint, record);
             return;
         }
+        byte count = packet.ReadByte();
+        packet.ReadInt(); // the cast's TickSync count so far (CSkillRecord::m_nSendCount), not used here
 
         // A target packet pays damage only for an attack its cast declared for this attack point, once (a bouncing
         // arrow once per target it can reach, again on a boomerang's way back and after each piercing interval), in
         // time and with the impact near the cast (SkillHitRules). Anything else is dropped without damage.
         session.Field.TableMetadata.MagicPathTable.Entries.TryGetValue(record.Attack.MagicPathId, out IReadOnlyList<MagicPath>? paths);
         if (record.Hits.TooLate(session.Field.FieldTick)
-            || SkillHitRules.ImpactTooFar(impactPosition, record.CastPosition, record.Attack.Range.Distance)
-            || !record.Hits.TakeTarget(targetUid, attackPoint, record.Attack.Arrow.BounceCount, SkillHitRules.TargetRounds(record.Attack, paths))) {
+            || SkillHitRules.ImpactRefused(impactPosition, record.CastPosition, session.Player.Position, record.Attack, paths)
+            || !record.Hits.TakeTarget(targetUid, attackPoint, record.Attack.Arrow.BounceCount, SkillHitRules.TargetRounds(record.Attack, paths), count)) {
             Logger.Debug("Target packet dropped: attack {AttackUid} AttackPoint={AttackPoint} impact {Impact}: {Record}",
                 targetUid, attackPoint, impactPosition, record);
             return;
@@ -414,9 +416,6 @@ public class SkillHandler : FieldPacketHandler {
         record.TargetUid = targetUid;
         record.ImpactPosition = impactPosition;
         record.Direction = direction;
-
-        byte count = packet.ReadByte();
-        packet.ReadInt(); // the cast's TickSync count so far (CSkillRecord::m_nSendCount), not used here
 
         if (session.Player.DebugSkills) {
             session.Send(NoticePacket.Message($"Skill.Attack.Damage: {skillUid}; AttackPoint: {attackPoint}"));
@@ -437,27 +436,27 @@ public class SkillHandler : FieldPacketHandler {
 
         // Where the client's writer searched: a region (FUN_141464d00) at the owner's position turned to its facing,
         // which the server checks against its own player position and the cast's or synced facing; an arrow
-        // (FUN_141465b30) on its step from the last point to the current one, which must be a step its paths can
-        // make, from a point they reach, at their speed since the packet before. An object off the area, or any
-        // object of a packet whose area is off, is skipped (SkillHitRules.TargetMargin and the others).
+        // (FUN_141465b30) on its step from the last point to the current one, from a point its paths reach. An object
+        // off the area, or any object of a packet whose area is off, is skipped (SkillHitRules.TargetMargin and the
+        // others). The step's length and the arrow's speed between two packets are logged only: a frame hitch on the
+        // client and a packet the link held up make both, and Reach already holds the points.
         HitRefusal packetRefusal = HitRefusal.None;
         Prism area;
         if (shape.Arrow) {
             float velocity = SkillHitRules.Velocity(paths);
-            if (SkillHitRules.StepTooLong(impactPosition, impactPosition2, velocity)) {
-                packetRefusal = HitRefusal.Step;
-            } else if (SkillHitRules.ReachTooFar(impactPosition2, record.CastPosition, record.Attack.Arrow, paths)) {
-                packetRefusal = HitRefusal.Reach;
-            }
-            if (!record.Hits.TakeStep(targetUid, impactPosition2, session.Field.FieldTick, velocity) && packetRefusal == HitRefusal.None) {
-                packetRefusal = HitRefusal.Speed;
+            packetRefusal = SkillHitRules.ArrowRefusal(impactPosition2, record.CastPosition, session.Player.Position, record.Attack.Arrow, paths);
+            bool longStep = SkillHitRules.StepTooLong(impactPosition, impactPosition2, velocity);
+            bool fast = !record.Hits.TakeStep(targetUid, impactPosition2, session.Field.FieldTick, velocity);
+            if ((longStep || fast) && session.Config.StepLog.Count(session.Field.FieldTick) is > 0 and int unloggedSteps) {
+                Logger.Information("Arrow step past its path's speed (logged only): step {Step} from {Last} to {Current}, long {Long}, fast since the packet before {Fast}, {Unlogged} since the last line, attack {AttackUid} of {Player}: {Record}",
+                    Vector3.Distance(impactPosition, impactPosition2), impactPosition, impactPosition2, longStep, fast, unloggedSteps, targetUid, session.PlayerName, record);
             }
             area = SkillHitRules.ArrowArea(record.Attack.Arrow, impactPosition, impactPosition2, direction);
         } else {
             if (!SkillHitRules.FacingNear(direction.Z, record.Rotation.Z, session.Player.Rotation.Z)) {
                 packetRefusal = HitRefusal.Facing;
             }
-            area = SkillHitRules.RegionArea(record.Attack, session.Player.Position, direction.Z);
+            area = SkillHitRules.RegionArea(record.Attack, SkillHitRules.RegionCentre(impactPosition2, session.Player.Position), direction.Z);
         }
 
         int refused = 0;
