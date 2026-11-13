@@ -6,6 +6,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
 
@@ -37,6 +38,9 @@ public class FishingCastTests {
         typeof(GameSession).GetMethod("LeaveField", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, null);
 
         Assert.That(session.Fishing.Casting, Is.False);
+        // The next field (map 0, no fishing spot): a cast kept over the move would get past the cast check to the
+        // spot lookup and answer notexist_fish; with the cast ended the catch stops at the cast check.
+        session.Field = (FieldManager) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager));
         Assert.That(session.Fishing.Catch(true), Is.EqualTo(FishingError.s_fishing_error_system_error));
     }
 }
