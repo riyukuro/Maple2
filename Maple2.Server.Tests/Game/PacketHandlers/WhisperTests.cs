@@ -112,6 +112,22 @@ public class WhisperTests {
         Assert.That(request.Whisper.RecipientId, Is.EqualTo(recipient.CharacterId));
     }
 
+    // The client sends the text after "/w name" as typed (uimessenger.cpp:4377-4440): a leading "/" is the line's, not
+    // a command.
+    [Test]
+    public void Whisper_StartingWithASlashIsDeliveredAndNotRun() {
+        RecipientOnline();
+
+        Whisper(recipient.PlayerName, "/help");
+
+        Assert.That(Chat(recipientTest), Is.EqualTo(new[] {
+            Hex(ChatPacket.Whisper(sender.AccountId, sender.CharacterId, sender.PlayerName, "/help", sender.Player.Value.Character.Picture)),
+        }));
+        Assert.That(Chat(senderTest), Is.EqualTo(new[] {
+            Hex(ChatPacket.Whisper(0, 0, recipient.PlayerName, "/help")),
+        }));
+    }
+
     // The name is matched without case, and the own copy shows the name as the character has it.
     [Test]
     public void Whisper_FindsTheNameInAnyCase() {

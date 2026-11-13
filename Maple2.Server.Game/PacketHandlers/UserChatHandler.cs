@@ -36,8 +36,9 @@ public class UserChatHandler : FieldPacketHandler {
         long clubId = packet.ReadLong();
         ICollection<long> itemUids = LinkedItemUids(session, message);
 
-        // Handle ChatCommands
-        if (message.StartsWith('/')) {
+        // Handle ChatCommands. A whisper or club line is the text after the client's own "/w name" or "/club name"
+        // (UIMessenger, uimessenger.cpp:4377-4440), sent as typed, so a "/" there is part of the line.
+        if (message.StartsWith('/') && type != ChatType.WhisperTo && type != ChatType.Club) {
             session.CommandHandler.Invoke(message[1..]);
             return;
         }
