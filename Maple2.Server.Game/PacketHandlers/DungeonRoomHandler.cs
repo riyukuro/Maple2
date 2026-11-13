@@ -150,7 +150,12 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
             session.Send(DungeonRoomPacket.Error(error.Value));
             return;
         }
-        session.Migrate(hallFieldId);
+        Character character = session.Player.Value.Character;
+        session.Migrate(hallFieldId, beforeMove: () => {
+            if (DungeonHallRules.KeepsReturnPosition(session.Field?.MapId ?? 0, character.ReturnMaps.Peek())) {
+                character.ReturnPosition = session.Player.Position;
+            }
+        });
     }
 
     private void HandleReset(GameSession session) {

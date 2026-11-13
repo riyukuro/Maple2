@@ -54,4 +54,13 @@ public class DungeonHallRulesTests {
         Assert.That(error, Is.EqualTo(DungeonRoomError.s_room_dungeon_CantEnterInDungeon));
         Assert.That((int) error!.Value, Is.EqualTo(0x10));
     }
+
+    [Test]
+    public void ReturnPositionKeptOnlyOnTheReturnMap() {
+        // Pressed on an open field that is its own return map: the hall's exit leads back to that spot.
+        Assert.That(DungeonHallRules.KeepsReturnPosition(2000062, 2000062), Is.True);
+        // Pressed in another hall or a field returning to a town: the spot is on another map.
+        Assert.That(DungeonHallRules.KeepsReturnPosition(63000047, 2000062), Is.False);
+        Assert.That(DungeonHallRules.KeepsReturnPosition(0, 0), Is.False);
+    }
 }
