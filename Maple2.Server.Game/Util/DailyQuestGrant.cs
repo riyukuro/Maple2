@@ -5,8 +5,8 @@ using Maple2.Model.Metadata;
 namespace Maple2.Server.Game.Util;
 
 // The quests no client UI accepts, which the server grants (FORK.md "Daily quest grants"): the daily field quest
-// (questType 8), the week's mission point ladder (questType 3, guide mission_point) and the day's daily missions
-// (questType 3, guide daily_pick_once/daily_pick_repeat). The client's quest-accept check leaves them out (FUN_140746e60, questdata.cpp:673) and its pages only
+// (questType 8), the week's mission point ladder (questType 3, guide mission_point), the day's daily missions
+// (questType 3, guide daily_pick_once/daily_pick_repeat) and a married player's wedding missions (questType 10). The client's quest-accept check leaves them out (FUN_140746e60, questdata.cpp:673) and its pages only
 // claim them, so a player holds one only when the server starts it. The grant runs at login and at the daily reset;
 // each kind is granted once per period, kept as the start of the last period granted (Character), so a relog, a
 // second reset or an abandon in the same period grants nothing again.
@@ -41,6 +41,18 @@ public static class DailyQuestGrant {
     // Chosen here: the daily missions granted a day in each group whose band holds the level. No client table gives
     // a count (FORK.md "Daily quest grants").
     public const int DailyMissionsPerGroup = 1;
+
+    // A wedding mission: questType 10. The wedding page lists every held one (UIWeddingPageMission::UpdateQuestList,
+    // uiweddingpage.cpp:447), with no filter and no limit.
+    public static bool IsWeddingMission(QuestMetadata metadata) {
+        return metadata.Basic.Type == QuestType.WeddingMission;
+    }
+
+    // Chosen here: the wedding missions granted a day (FORK.md "Daily quest grants").
+    public const int WeddingMissionsPerDay = 3;
+
+    // The seed index of the wedding missions in DailyMissionOrder, after the six daily mission groups.
+    public const int WeddingMissionSeedIndex = DailyMissionGroups;
 
     // The candidates of a group in the order the character tries them on the day: id order shuffled by the seed of
     // the character, the day and the group (AllianceMissions.Seed), so a relog or a second reset picks the same.

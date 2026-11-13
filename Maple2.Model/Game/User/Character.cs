@@ -64,6 +64,7 @@ public class Character {
     public long FieldQuestGrantTime;
     public long MissionPointGrantTime;
     public long DailyMissionGrantTime;
+    public long WeddingMissionGrantTime;
 
     public LimitedStack<int> ReturnMaps = new LimitedStack<int>(3);
     public Vector3 ReturnPosition;

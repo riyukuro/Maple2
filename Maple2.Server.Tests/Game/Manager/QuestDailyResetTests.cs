@@ -29,7 +29,7 @@ public class QuestDailyResetTests {
         test.Start();
         // These tests are of the drop: every grant period counts as granted (DailyQuestGrantTests).
         Character character = test.Session.Player.Value.Character;
-        character.FieldQuestGrantTime = character.MissionPointGrantTime = character.DailyMissionGrantTime = long.MaxValue;
+        character.FieldQuestGrantTime = character.MissionPointGrantTime = character.DailyMissionGrantTime = character.WeddingMissionGrantTime = long.MaxValue;
         test.TakeSent();
     }
 

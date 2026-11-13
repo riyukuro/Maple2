@@ -71,6 +71,7 @@ internal class Character {
                 FieldQuestGrant = other.FieldQuestGrantTime,
                 MissionPointGrant = other.MissionPointGrantTime,
                 DailyMissionGrant = other.DailyMissionGrantTime,
+                WeddingMissionGrant = other.WeddingMissionGrantTime,
             },
             Currency = new CharacterCurrency(),
             Mastery = new Mastery() {
@@ -130,6 +131,7 @@ internal class Character {
             FieldQuestGrantTime = other.Cooldown.FieldQuestGrant,
             MissionPointGrantTime = other.Cooldown.MissionPointGrant,
             DailyMissionGrantTime = other.Cooldown.DailyMissionGrant,
+            WeddingMissionGrantTime = other.Cooldown.WeddingMissionGrant,
             DeleteTime = other.DeleteTime.ToEpochSeconds(),
             Channel = other.Channel,
             ReturnChannel = other.ReturnChannel,
@@ -197,6 +199,7 @@ internal class Cooldown {
     public long FieldQuestGrant { get; set; }
     public long MissionPointGrant { get; set; }
     public long DailyMissionGrant { get; set; }
+    public long WeddingMissionGrant { get; set; }
 }
 
 internal class CharacterCurrency {

@@ -10,7 +10,7 @@ using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
-// The quests the server grants (DailyQuestGrant): the day's field quest, the week's mission point ladder and the day's daily missions, at login and at the daily reset, once a
+// The quests the server grants (DailyQuestGrant): the day's field quest, the week's mission point ladder, the day's daily missions and a married player's wedding missions, at login and at the daily reset, once a
 // period, only what the player can start.
 public class DailyQuestGrantTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
@@ -432,6 +432,135 @@ public class DailyQuestGrantTests {
         Assert.That(Order(1, today), Is.EquivalentTo(quests.Select(q => q.Id)));
         Assert.That(Order(2, today), Is.Not.EqualTo(Order(1, today)));
         Assert.That(Order(1, today.AddDays(1)), Is.Not.EqualTo(Order(1, today)));
+    }
+
+    private static readonly int[] WeddingMissions = Enumerable.Range(0, 8).Select(i => 72000001 + i).ToArray();
+
+    private void RegisterWeddingMissions(Func<int, bool>? notInPlayedClient = null) {
+        foreach (int id in WeddingMissions) {
+            QuestMetadata quest = TestGameSession.QuestData(id, QuestType.WeddingMission);
+            test.Register(quest with {
+                Basic = quest.Basic with {
+                    Repeat = 1, GuideType = QuestDailyReset.GuideDailyPickRepeat, GuideMinLevel = 1, GuideMaxLevel = 99,
+                    NotInPlayedClient = notInPlayedClient?.Invoke(id) ?? false,
+                },
+            });
+        }
+    }
+
+    private void Marry(MaritalStatus status = MaritalStatus.Married) {
+        test.Session.Marriage.Marriage = new Marriage {
+            Id = 1, Status = status, Partner1 = new MarriagePartner(), Partner2 = new MarriagePartner(),
+        };
+    }
+
+    // The first count wedding missions in the character's order of the day, among those not left out.
+    private int[] WeddingPicks(int count = DailyQuestGrant.WeddingMissionsPerDay, Func<int, bool>? leftOut = null) {
+        IEnumerable<QuestMetadata> candidates = WeddingMissions.Where(id => leftOut?.Invoke(id) != true)
+            .Select(id => test.Session.QuestMetadata.TryGet(id, out QuestMetadata? metadata) ? metadata! : throw new InvalidOperationException());
+        return DailyQuestGrant.DailyMissionOrder(candidates, test.Session.CharacterId, DateTime.Today, DailyQuestGrant.WeddingMissionSeedIndex)
+            .Take(count).Select(metadata => metadata.Id).Order().ToArray();
+    }
+
+    [TestCase(MaritalStatus.Married)]
+    [TestCase(MaritalStatus.DivorceFiledByGroom)]
+    [TestCase(MaritalStatus.DivorceFiledByBride)]
+    public void WeddingMission_MarriedGetsThree(MaritalStatus status) {
+        RegisterWeddingMissions();
+        Marry(status);
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(WeddingMissions), Is.EqualTo(WeddingPicks()));
+        Assert.That(Held(WeddingMissions), Has.Length.EqualTo(3));
+        Assert.That(Character.WeddingMissionGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // Single or engaged: none, and the day stays to be granted (a marriage the same day gets them at the next login).
+    [TestCase(MaritalStatus.Single)]
+    [TestCase(MaritalStatus.Engaged)]
+    public void WeddingMission_NotMarriedNone(MaritalStatus status) {
+        RegisterWeddingMissions();
+        Marry(status);
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(WeddingMissions), Is.Empty);
+        Assert.That(Character.WeddingMissionGrantTime, Is.Zero);
+
+        Marry();
+        test.Session.Quest.Load();
+        Assert.That(Held(WeddingMissions), Is.EqualTo(WeddingPicks()));
+    }
+
+    // A mission the played client lacks is skipped: the next one in the day's order takes its place.
+    [Test]
+    public void WeddingMission_NotInPlayedClientNextInOrder() {
+        RegisterWeddingMissions();
+        int skipped = WeddingPicks()[0];
+        SetUp();
+        RegisterWeddingMissions(id => id == skipped);
+        Marry();
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(WeddingMissions), Is.EqualTo(WeddingPicks(leftOut: id => id == skipped)));
+    }
+
+    // A relog, or a relog after one was dropped (abandoned), grants no other set that day; a wedding mission already
+    // held counts as granted.
+    [Test]
+    public void WeddingMission_OncePerDay() {
+        RegisterWeddingMissions();
+        Marry();
+        test.Session.Quest.Load();
+        int[] first = Held(WeddingMissions);
+
+        test.Session.Quest.Load();
+        Assert.That(Held(WeddingMissions), Is.EqualTo(first));
+
+        Assert.That(test.Session.Quest.TryGetQuest(first[0], out Quest? quest) && test.Session.Quest.Remove(quest));
+        test.Session.Quest.Load();
+        Assert.That(Held(WeddingMissions), Is.EqualTo(first.Skip(1).ToArray()));
+    }
+
+    [Test]
+    public void WeddingMission_HeldCountsAsGranted() {
+        RegisterWeddingMissions();
+        Marry();
+        test.Session.QuestMetadata.TryGet(WeddingMissions.First(id => !WeddingPicks().Contains(id)), out QuestMetadata? metadata);
+        test.StartQuest(metadata!).StartTime = Epoch(DateTime.Now);
+
+        test.Session.Quest.Load();
+
+        Assert.That(WeddingPicks().Where(id => test.Session.Quest.TryGetQuest(id, out _)), Is.Empty);
+    }
+
+    // The reset of a new day grants the day's three after the 0x26 drop; a second reset drops them and grants none.
+    [Test]
+    public void WeddingMission_ResetGrantsOnce() {
+        RegisterWeddingMissions();
+        Marry();
+        Character.WeddingMissionGrantTime = Epoch(DateTime.Today.AddDays(-1));
+
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+        Assert.That(Held(WeddingMissions), Is.EqualTo(WeddingPicks()));
+
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+        Assert.That(Held(WeddingMissions), Is.Empty);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    [Test]
+    public void WeddingMission_GrantIsStored() {
+        RegisterWeddingMissions();
+        Marry();
+        test.Session.Quest.Load();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SaveCharacter(Character), Is.True);
+        }
+        Assert.That(test.StoredCharacter().WeddingMissionGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
     }
 
     [TestCase(0L, true)]

@@ -991,6 +991,37 @@ public sealed class QuestManager {
         GrantFieldQuest(now);
         GrantMissionPoints(now);
         GrantDailyMissions(now);
+        GrantWeddingMissions(now);
+    }
+
+    // The day's wedding missions of a married player: WeddingMissionsPerDay of the wedding missions whose guide band
+    // holds the level and the player can start, in the character's order of the day. Only while the marriage counts
+    // wedding exp (married, or a divorce filed and not yet done; MarriageExpRules); once a day, and not while a
+    // wedding mission is held. A player who marries during the day gets them at the next login or reset.
+    private void GrantWeddingMissions(DateTime now) {
+        Character character = session.Player.Value.Character;
+        DateTime day = now.Date;
+        Marriage marriage = session.Marriage.Marriage;
+        if (marriage.Id == 0 || !MarriageExpRules.CountsWeddingExp(marriage.Status)
+            || !DailyQuestGrant.Due(character.WeddingMissionGrantTime, day) || HoldsAny(DailyQuestGrant.IsWeddingMission)) {
+            return;
+        }
+        IEnumerable<QuestMetadata> candidates = GrantPool().Where(metadata => DailyQuestGrant.IsWeddingMission(metadata)
+            && DailyQuestGrant.InBand(metadata.Basic, character.Level));
+        List<int> granted = [];
+        foreach (QuestMetadata metadata in DailyQuestGrant.DailyMissionOrder(candidates, session.CharacterId, day, DailyQuestGrant.WeddingMissionSeedIndex)) {
+            if (granted.Count >= DailyQuestGrant.WeddingMissionsPerDay) {
+                break;
+            }
+            if (Start(metadata.Id) == QuestError.none) {
+                granted.Add(metadata.Id);
+            }
+        }
+        if (granted.Count == 0) {
+            return;
+        }
+        character.WeddingMissionGrantTime = day.ToEpochSeconds();
+        logger.Information("Wedding missions of {CharacterId}: granted {QuestIds}", session.CharacterId, granted);
     }
 
     // The day's daily missions: in each guideGroup, DailyMissionsPerGroup of the group's daily missions whose guide
@@ -1054,7 +1085,8 @@ public sealed class QuestManager {
     // The quests a grant may start (DailyQuestGrant), in id order, read once.
     private List<QuestMetadata> GrantPool() {
         return grantPool ??= session.QuestMetadata.GetQuests()
-            .Where(metadata => (DailyQuestGrant.IsMissionPoint(metadata) || DailyQuestGrant.IsDailyMission(metadata)) && PlayedClientQuests.Known(metadata.Basic))
+            .Where(metadata => (DailyQuestGrant.IsMissionPoint(metadata) || DailyQuestGrant.IsDailyMission(metadata) || DailyQuestGrant.IsWeddingMission(metadata))
+                               && PlayedClientQuests.Known(metadata.Basic))
             .OrderBy(metadata => metadata.Id)
             .ToList();
     }
