@@ -17,7 +17,7 @@ public static class SkillDamagePacket {
         Heal = 4,
         Region = 5,
         Tile = 6,
-        Unknown7 = 7,
+        GrabRelease = 7,
         Unknown8 = 8,
     }
 
@@ -156,11 +156,12 @@ public static class SkillDamagePacket {
         return pWriter;
     }
 
-    // Client: CSceneStateGame::FUN_14171e860 (scenestategame.cpp:7128): int target id, int count, count x int player object id.
-    public static ByteWriter Unknown7(int targetId, ICollection<int> playerObjectIds) {
+    // Client: CSceneStateGame::FUN_14171e860 (scenestategame.cpp:7128): int grabber object id, int count, count x int
+    // player object id. Each named player still held in a grab (state 43) by that grabber goes back to state 1.
+    public static ByteWriter GrabRelease(int grabberId, ICollection<int> playerObjectIds) {
         var pWriter = Packet.Of(SendOp.SkillDamage);
-        pWriter.Write<Command>(Command.Unknown7);
-        pWriter.WriteInt(targetId);
+        pWriter.WriteByte((byte) Command.GrabRelease);
+        pWriter.WriteInt(grabberId);
         pWriter.WriteInt(playerObjectIds.Count);
         foreach (int objectId in playerObjectIds) {
             pWriter.WriteInt(objectId);

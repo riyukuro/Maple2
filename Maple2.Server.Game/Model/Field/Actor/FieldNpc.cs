@@ -582,6 +582,7 @@ public class FieldNpc : Actor<Npc> {
 
         SequenceCounter++;
         Field.Broadcast(NpcControlPacket.Dead(this));
+        GrabReleaseRules.OnGrabberDeath(Field, ObjectId);
         // After RemoveSummons: 44 battleEnd trees summon at the death.
         AiState.RunDeathBattleEnd();
 
