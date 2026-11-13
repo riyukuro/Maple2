@@ -73,7 +73,8 @@ public class TradeHandler : FieldPacketHandler {
         }
 
         if (session.Trade != null) {
-            session.Send(TradePacket.Error(s_trade_error_trading_now));
+            // KMS2 answers a second request while the first still waits with mode 14 (s_trade_already_requested).
+            session.Send(session.Trade.IsPendingRequestOf(session) ? TradePacket.AlreadyRequest() : TradePacket.Error(s_trade_error_trading_now));
             return;
         }
 

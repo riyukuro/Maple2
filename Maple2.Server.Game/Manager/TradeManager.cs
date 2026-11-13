@@ -99,6 +99,13 @@ public class TradeManager : IDisposable {
         }
     }
 
+    // True while |caller|'s own request is waiting for the other player's answer.
+    public bool IsPendingRequestOf(GameSession caller) {
+        lock (mutex) {
+            return state is TradeState.Requested or TradeState.Acknowledged && caller == sender.Session;
+        }
+    }
+
     // The trade's two players; nobody else may act on it.
     public bool IsTrader(GameSession caller) => caller == sender.Session || caller == receiver.Session;
 

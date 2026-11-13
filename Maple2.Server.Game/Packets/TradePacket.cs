@@ -135,7 +135,7 @@ public static class TradePacket {
 
     public static ByteWriter AlreadyRequest() {
         var pWriter = Packet.Of(SendOp.Trade);
-        pWriter.Write<Command>(Command.AlreadyRequest);
+        pWriter.WriteByte((byte) Command.AlreadyRequest);
 
         return pWriter;
     }
