@@ -74,7 +74,8 @@ public class MapleSurvivalHandler : FieldPacketHandler {
                     return;
                 }
             default:
-                // The season record (5) and the others are not served.
+                // The season record (5) is not served: the client's RequestSeasonRecord (maplesurvival.cpp:382) has no
+                // caller, and the lobby sends the season (0x16) and the record (0x17) by itself. The others are not served.
                 return;
         }
     }
