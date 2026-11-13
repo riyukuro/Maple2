@@ -51,6 +51,11 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private int clientTargetCountsTaken;
     private int clientTargetCountsZero;
     private int rangePointMismatches;
+    // The played client's motion sequence speeds, move distances and splash life ticks
+    // (PlayedClientSkills.ReadMotionTimings); empty without a played client.
+    private readonly Dictionary<(int Skill, short Level, int Motion), PlayedClientSkills.MotionTiming> clientMotions = [];
+    private int clientMotionsTaken;
+    private int motionPointMismatches;
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -96,6 +101,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientRanges = PlayedClientSkills.ReadAttackRanges(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill attacks in the played client's skill data (range and target count): {clientRanges.Count}");
+            clientMotions = PlayedClientSkills.ReadMotionTimings(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
+            Console.WriteLine($"Skill motions in the played client's skill data: {clientMotions.Count}");
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -143,14 +151,14 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         SpRate: level.recoveryProperty.spRate),
                     Skills: level.conditionSkill.Select(skill => skill.Convert()).ToArray(),
                     Motions: level.motion.Select((motion, motionIndex) => new SkillMetadataMotion(
-                        new SkillMetadataMotionProperty(
+                        WithClientMotion(id, level.value, motionIndex, string.Join(",", motion.attack.Select(attack => attack.point)), new SkillMetadataMotionProperty(
                             SequenceName: motion.motionProperty.sequenceName,
                             SequenceSpeed: motion.motionProperty.sequenceSpeed,
                             MoveDistance: motion.motionProperty.movedistance,
                             FaceTarget: motion.motionProperty.faceTarget,
                             MoveType: moveTypes.Get(id, level.value, motionIndex),
                             SplashLifeTick: motion.motionProperty.splashLifeTick,
-                            SplashInvokeCoolTick: motion.motionProperty.splashInvokeCoolTick),
+                            SplashInvokeCoolTick: motion.motionProperty.splashInvokeCoolTick)),
                         Attacks: motion.attack.Select((attack, attackIndex) => new SkillMetadataAttack(
                             Point: attack.point,
                             PointGroup: attack.pointGroupID,
@@ -299,6 +307,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientRanges.Count > 0) {
             Console.WriteLine($"Skill attacks given the played client's range shape over the data pack's: {clientRangesTaken}, target count: {clientTargetCountsTaken} ({rangePointMismatches} with another point at that place, the data pack's kept; {clientTargetCountsZero} with no client target count, the data pack's kept)");
         }
+        if (clientMotions.Count > 0) {
+            Console.WriteLine($"Skill motions given the played client's sequence speed, move distance and splash life tick over the data pack's: {clientMotionsTaken} ({motionPointMismatches} with other attack points at that place, the data pack's kept)");
+        }
     }
 
     // The played client's type where it has the attack at that place with the same point, else the data pack's.
@@ -341,6 +352,27 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         SkillMetadataRange taken = PlayedClientSkills.WithShape(pack, played);
         if (taken != pack) {
             clientRangesTaken++;
+        }
+        return taken;
+    }
+
+    // The played client's sequence speed, move distance and splash life tick where it has the motion at that place with
+    // the same attack points in the same order, else the data pack's; the rest of the motion is the data pack's.
+    private SkillMetadataMotionProperty WithClientMotion(int id, short level, int motion, string points, SkillMetadataMotionProperty pack) {
+        if (!clientMotions.TryGetValue((id, level, motion), out PlayedClientSkills.MotionTiming? played)) {
+            return pack;
+        }
+        if (played.Points != points) {
+            motionPointMismatches++;
+            return pack;
+        }
+        SkillMetadataMotionProperty taken = pack with {
+            SequenceSpeed = played.SequenceSpeed,
+            MoveDistance = played.MoveDistance,
+            SplashLifeTick = played.SplashLifeTick,
+        };
+        if (taken != pack) {
+            clientMotionsTaken++;
         }
         return taken;
     }

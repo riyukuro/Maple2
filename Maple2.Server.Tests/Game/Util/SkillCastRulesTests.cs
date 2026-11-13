@@ -823,6 +823,29 @@ public class SkillCastRulesTests {
         Assert.That(PlayedClientSkills.WithTargetCount(5, 1), Is.EqualTo(1));
     }
 
+    [Test]
+    public void MotionTimingIsTheClients() {
+        // Motions as the played client gives them (SkillMotionData::Load reads sequenceSpeed, movedistance and
+        // splashLifeTick from the <motion>, 1, 0 and 0 when not given): 10100171 plays at 1.15 where the data pack says 1,
+        // 10700273 moves 0 where the data pack says 400, and 10400292's region stays 8000 ms. The motion's attack points
+        // come along in order.
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="10100171"><level value="1"><motion sequenceName="Knight_FinishBlow_01_A" sequenceSpeed="1.15"><attack point="p0" /><attack point="p1" /></motion></level></skill>
+              <skill id="10700273"><level value="1"><motion sequenceName="Thief_ChaseSlash_01_A"><attack point="p0" /></motion></level></skill>
+              <skill id="10400292"><level value="1"><motion /><motion splashLifeTick="8000" movedistance="50"><attack point="p0" /></motion></level></skill>
+            </ms2>
+            """);
+        Dictionary<(int Skill, short Level, int Motion), PlayedClientSkills.MotionTiming> read = PlayedClientSkills.ReadMotionTimings([document]);
+        Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short, int), PlayedClientSkills.MotionTiming> {
+            [(10100171, 1, 0)] = new(1.15f, 0, 0, "p0,p1"),
+            [(10700273, 1, 0)] = new(1, 0, 0, "p0"),
+            [(10400292, 1, 0)] = new(1, 0, 0, ""),
+            [(10400292, 1, 1)] = new(1, 50, 8000, "p0"),
+        }));
+    }
+
     private static (int, int, bool) Kept(PlayedClientSkills.Entry entry) => (entry.MainType, entry.RechargeMaxCount, entry.RechargeShared);
 
     [Test]
