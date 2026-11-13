@@ -78,4 +78,34 @@ public class ItemEnchantKrRulesTests {
             Assert.That(test.Errors, Is.Empty);
         });
     }
+
+    // Below rarity 4 (EnchantEquipIngredientOpenRank) the grades from +11 ask for no copies: the stage asks for
+    // none and the try goes ahead without them.
+    [Test]
+    public void Ophelia_BelowTheOpenRankNeedsNoCopies() {
+        GameSession session = Login(3, new ItemEnchant(enchants: 10));
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        byte[] stage = test.TakeSent().Last(p => (SendOp) (p[0] | p[1] << 8) == SendOp.ItemEnchant);
+        // The stage ends with the copies required: item id, rarity, count.
+        var tail = new ByteReader(stage, stage.Length - 10);
+        Assert.Multiple(() => {
+            Assert.That(tail.ReadInt(), Is.EqualTo(0));
+            Assert.That(tail.ReadShort(), Is.EqualTo(0));
+            Assert.That(tail.ReadInt(), Is.EqualTo(0));
+        });
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
+        Assert.That(Held(session, ItemTag.Onix), Is.LessThan(30000));
+    }
+
+    // At rarity 4 the copies stay asked for.
+    [Test]
+    public void Ophelia_AtTheOpenRankNeedsCopies() {
+        GameSession session = Login(4, new ItemEnchant(enchants: 10));
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        test.TakeSent();
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.False);
+        Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(30000));
+    }
 }

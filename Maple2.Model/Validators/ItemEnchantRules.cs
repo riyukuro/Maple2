@@ -29,4 +29,11 @@ public static class ItemEnchantRules {
         }
         return Math.Clamp(takeMax - held, 0, Math.Max(0, gain));
     }
+
+    // Whether an enchant to targetLevel asks for copies of the item (equip ingredients): KR constants.xml opens
+    // them at EnchantEquipIngredientOpenLevel 11 for items of EnchantEquipIngredientOpenRank 4 and above. A limit
+    // of 0 (no constants row) opens them at every level and rarity; the grade table decides then.
+    public static bool FodderOpen(int targetLevel, int rarity, int openLevel, int openRank) {
+        return targetLevel >= openLevel && rarity >= openRank;
+    }
 }

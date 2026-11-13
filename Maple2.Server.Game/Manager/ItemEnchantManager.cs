@@ -161,10 +161,20 @@ public class ItemEnchantManager {
                 rates.Success = MaxRate;
                 break;
         }
-        return RequireFodder[enchants];
+        return RequiredFodder(enchants);
     }
 
     private ConstantsTable Constants => session.ServerTableMetadata.ConstantsTable;
+
+    // The copies the next grade asks for: none below the KR open level and rarity (FodderOpen).
+    private int RequiredFodder(int enchants) {
+        return FodderOpen(enchants) ? RequireFodder[enchants] : 0;
+    }
+
+    private bool FodderOpen(int enchants) {
+        return upgradeItem != null && ItemEnchantRules.FodderOpen(enchants + 1, upgradeItem.Rarity,
+            Constants.EnchantEquipIngredientOpenLevel, Constants.EnchantEquipIngredientOpenRank);
+    }
 
     public bool UpdateFodder(long itemUid, bool add) {
         if (upgradeItem == null) {
@@ -172,7 +182,7 @@ public class ItemEnchantManager {
         }
 
         int enchants = Math.Clamp(upgradeItem.Enchant?.Enchants ?? 0, 0, 14);
-        if (FodderRate[enchants] <= 0) {
+        if (FodderRate[enchants] <= 0 || !FodderOpen(enchants)) {
             return false; // If adding fodder does not improve rate, restrict it.
         }
 
@@ -184,7 +194,7 @@ public class ItemEnchantManager {
             }
 
             // Can't go over 30% rate with fodders
-            if (Type is EnchantType.Ophelia && fodders.Count >= RequireFodder[enchants] && rates.Success + rates.Fodder >= MaxFodderRate) {
+            if (Type is EnchantType.Ophelia && fodders.Count >= RequiredFodder(enchants) && rates.Success + rates.Fodder >= MaxFodderRate) {
                 NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.max_fodder);
                 return false;
             }
@@ -217,7 +227,7 @@ public class ItemEnchantManager {
 
         switch (Type) {
             case EnchantType.Ophelia:
-                int extra = fodderWeight - RequireFodder[enchants];
+                int extra = fodderWeight - RequiredFodder(enchants);
                 int maxFodder = Math.Max(0, MaxFodderRate - rates.Success);
                 rates.Fodder = Math.Clamp(extra * FodderRate[enchants], 0, maxFodder);
 
@@ -319,7 +329,7 @@ public class ItemEnchantManager {
             return false;
         }
         int enchants = Math.Clamp(upgradeItem.Enchant.Enchants, 0, 14);
-        if (!force && fodderWeight < RequireFodder[enchants]) {
+        if (!force && fodderWeight < RequiredFodder(enchants)) {
             // The client shows a line for error 3 (OnItemEnchant mode 12, scenestategame.cpp:6196); the
             // smith's line alone needs an open talk script.
             session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
