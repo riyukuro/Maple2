@@ -20,7 +20,7 @@ public static class BuddyEmotePacket {
 
     public static ByteWriter Invite(int emoteId, Player sender) {
         var pWriter = Packet.Of(SendOp.BuddyEmote);
-        pWriter.Write<Command>(Command.Invite);
+        pWriter.WriteByte((byte) Command.Invite);
         pWriter.WriteInt(emoteId);
         pWriter.WriteLong(sender.Character.Id);
         pWriter.WriteUnicodeString(sender.Character.Name);
@@ -31,7 +31,7 @@ public static class BuddyEmotePacket {
     // You sent {0} an invitation to participate in a buddy emote.
     public static ByteWriter InviteConfirm(long receiverId) {
         var pWriter = Packet.Of(SendOp.BuddyEmote);
-        pWriter.Write<Command>(Command.InviteConfirm);
+        pWriter.WriteByte((byte) Command.InviteConfirm);
         pWriter.WriteLong(receiverId);
 
         return pWriter;
@@ -39,15 +39,15 @@ public static class BuddyEmotePacket {
 
     public static ByteWriter Error(BuddyEmoteError error) {
         var pWriter = Packet.Of(SendOp.BuddyEmote);
-        pWriter.Write<Command>(Command.Error);
-        pWriter.Write<BuddyEmoteError>(error);
+        pWriter.WriteByte((byte) Command.Error);
+        pWriter.WriteByte((byte) error);
 
         return pWriter;
     }
 
     public static ByteWriter Accept(int emoteId, long receiverId) {
         var pWriter = Packet.Of(SendOp.BuddyEmote);
-        pWriter.Write<Command>(Command.Accept);
+        pWriter.WriteByte((byte) Command.Accept);
         pWriter.WriteInt(emoteId);
         pWriter.WriteLong(receiverId);
 
@@ -56,7 +56,7 @@ public static class BuddyEmotePacket {
 
     public static ByteWriter Decline(int emoteId, long receiverId) {
         var pWriter = Packet.Of(SendOp.BuddyEmote);
-        pWriter.Write<Command>(Command.Decline);
+        pWriter.WriteByte((byte) Command.Decline);
         pWriter.WriteInt(emoteId);
         pWriter.WriteLong(receiverId);
 
@@ -67,12 +67,12 @@ public static class BuddyEmotePacket {
     // random effects are drawn from, so both players must get the same value.
     public static ByteWriter Start(int emoteId, long senderId, long receiverId, in Vector3 senderPosition, in Vector3 senderRotation, int effectSeed) {
         var pWriter = Packet.Of(SendOp.BuddyEmote);
-        pWriter.Write<Command>(Command.Start);
+        pWriter.WriteByte((byte) Command.Start);
         pWriter.WriteInt(emoteId);
         pWriter.WriteLong(senderId);
         pWriter.WriteLong(receiverId);
-        pWriter.Write<Vector3>(senderPosition);
-        pWriter.Write<Vector3>(senderRotation);
+        WriteVector(pWriter, senderPosition);
+        WriteVector(pWriter, senderRotation);
         pWriter.WriteInt(effectSeed);
 
         return pWriter;
@@ -80,10 +80,16 @@ public static class BuddyEmotePacket {
 
     public static ByteWriter Cancel(int emoteId, long characterId) {
         var pWriter = Packet.Of(SendOp.BuddyEmote);
-        pWriter.Write<Command>(Command.Cancel);
+        pWriter.WriteByte((byte) Command.Cancel);
         pWriter.WriteInt(emoteId);
         pWriter.WriteLong(characterId);
 
         return pWriter;
+    }
+
+    private static void WriteVector(ByteWriter pWriter, in Vector3 vector) {
+        pWriter.WriteFloat(vector.X);
+        pWriter.WriteFloat(vector.Y);
+        pWriter.WriteFloat(vector.Z);
     }
 }
