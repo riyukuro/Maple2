@@ -143,6 +143,9 @@ public class PlayerCommand : GameCommand {
                 session.Player.Value.Character.Level = level;
                 session.Field?.Broadcast(LevelUpPacket.LevelUp(session.Player));
                 session.Stats.Refresh(levelUp: true);
+                // The prestige stat points are held below AdventureLevelStartLevel (uiadventureleveldialog.cpp:483),
+                // so a level set across it counts them again, as a level up does.
+                session.Config.RecountPrestigeStatPoints();
 
                 session.ConditionUpdate(ConditionType.level, targetLong: level);
                 session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: level);

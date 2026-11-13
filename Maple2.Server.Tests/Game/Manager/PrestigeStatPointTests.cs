@@ -1,7 +1,10 @@
 ﻿using System.Collections.Generic;
+using System.CommandLine;
+using System.CommandLine.IO;
 using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Commands;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.Manager;
@@ -54,5 +57,19 @@ public class PrestigeStatPointTests {
         session.Exp.PrestigeLevelUp(4);
 
         Assert.That(Points, Is.EqualTo(3));
+    }
+
+    // The GM level command sets the level directly; it counts the points again as a level up does, both ways.
+    [Test]
+    public void LevelCommand_CountsAgain() {
+        GameSession session = Start(50);
+        session.Exp.PrestigeLevelUp(4);
+        Assert.That(Points, Is.EqualTo(3));
+
+        Assert.That(new PlayerCommand(session, null!).Invoke(["level", "30"], new TestConsole()), Is.EqualTo(0));
+        Assert.That(Points, Is.EqualTo(0), "set below the level: held again");
+
+        Assert.That(new PlayerCommand(session, null!).Invoke(["level", "60"], new TestConsole()), Is.EqualTo(0));
+        Assert.That(Points, Is.EqualTo(3), "set to the level or above: counted");
     }
 }
