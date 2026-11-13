@@ -27,6 +27,8 @@ public class VipGoodsShopTests {
     private const int ComingId = 2005;
     private const int NoBonusId = 2006;
     private const int RedLimitedId = 2007;
+    private const int OldDbId = 2008;
+    private const int NoSalePriceId = 2009;
     private const int UnknownItemId = 50999999;
     private const int BonusItemId = 50000104;
 
@@ -53,6 +55,9 @@ public class VipGoodsShopTests {
                 // A bonus item with no metadata: CreateItem makes nothing.
                 [NoBonusId] = Package(10, items: new PremiumClubTable.Item(UnknownItemId, 1, 1, 0)),
                 [RedLimitedId] = Package(40, red: true, buyLimit: 3),
+                // As read from a metadata db ingested before the sale price and limit: NA 3001 (one per account).
+                [OldDbId] = new(false, 0, 0, 720, 490, 0, false, null, ResetType.Default, []),
+                [NoSalePriceId] = new(false, 0, 0, 24, 30, 0, false, 0, ResetType.Default, []),
             }));
         test.Start();
         test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
@@ -330,6 +335,42 @@ public class VipGoodsShopTests {
             Assert.That(Sent(4), Is.Empty);
             Assert.That(session.Currency.GameMeret, Is.EqualTo(39));
             Assert.That(StoredAccount().VipGoodsPurchases, Is.Empty);
+        });
+    }
+
+    // A metadata db ingested before the limit: nothing is sold (not for 0 merets, not without the limit).
+    [Test]
+    public void Purchase_OldMetadataDb_ChangesNothing() {
+        long premiumTime = StoredAccount().PremiumTime;
+
+        Buy(OldDbId);
+        Buy(OldDbId);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.PremiumClub), Is.Empty);
+            Assert.That(session.Currency.Meret, Is.EqualTo(1000));
+            Assert.That(StoredMerets(), Is.EqualTo((1000L, 500L)));
+            Assert.That(StoredAccount().PremiumTime, Is.EqualTo(premiumTime));
+            Assert.That(StoredAccount().VipGoodsPurchases, Is.Empty);
+        });
+    }
+
+    // The old db's goods is not listed in mode 3 either.
+    [Test]
+    public void Load_OldMetadataDb_NotListed() {
+        Load();
+
+        Assert.That(ReadList(Sent(3).Single()).Select(entry => entry.GoodsId), Has.No.Member(OldDbId));
+    }
+
+    // A goods without a sale price charges its price, as before; it is not given for free.
+    [Test]
+    public void Purchase_NoSalePrice_ChargesThePrice() {
+        Buy(NoSalePriceId);
+
+        Assert.Multiple(() => {
+            Assert.That(Sent(4), Has.Count.EqualTo(1));
+            Assert.That(StoredMerets(), Is.EqualTo((970L, 500L)));
         });
     }
 }

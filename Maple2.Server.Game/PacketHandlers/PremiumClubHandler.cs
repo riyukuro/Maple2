@@ -101,7 +101,7 @@ public class PremiumClubHandler : FieldPacketHandler {
         return TableMetadata.PremiumClubTable.Packages
             .Where(entry => entry.Value.BuyLimit > 0 && Listed(entry.Value))
             .OrderBy(entry => entry.Key)
-            .Select(entry => (entry.Key, VipGoodsRules.Remaining(account.VipGoodsPurchases, entry.Key, entry.Value.BuyLimit,
+            .Select(entry => (entry.Key, VipGoodsRules.Remaining(account.VipGoodsPurchases, entry.Key, entry.Value.BuyLimit!.Value,
                 entry.Value.BuyLimitResetType, now)))
             .ToList();
     }
@@ -121,17 +121,24 @@ public class PremiumClubHandler : FieldPacketHandler {
             return;
         }
 
+        // A metadata db ingested before the price and limit fields: its limit is unknown, so nothing is sold.
+        if (premiumMetadata.BuyLimit is null) {
+            Logger.Error("VIP goods {GoodsId}: the metadata db has no purchase limit (ingested before it), re-ingest; purchase refused", packageId);
+            return;
+        }
+
         DateTime now = DateTime.Now;
         Account account = session.Player.Value.Account;
-        if (premiumMetadata.BuyLimit > 0 && VipGoodsRules.Remaining(account.VipGoodsPurchases, packageId, premiumMetadata.BuyLimit,
+        if (premiumMetadata.BuyLimit > 0 && VipGoodsRules.Remaining(account.VipGoodsPurchases, packageId, premiumMetadata.BuyLimit.Value,
                 premiumMetadata.BuyLimitResetType, now) <= 0) {
             // The dialog hides the goods once it has the count.
             session.Send(PremiumCubPacket.LoadPackages(Remaining(account, now)));
             return;
         }
 
-        // The client bills the sale price, in red merets for priceType 1 (GetPayType 1 -> pay type 9).
-        long price = premiumMetadata.SalePrice;
+        // The client bills the sale price, in red merets for priceType 1 (GetPayType 1 -> pay type 9). A goods without
+        // one charges its price, as before (no locale has salePrice 0 with a price), so it is never given for free.
+        long price = premiumMetadata.SalePrice > 0 ? premiumMetadata.SalePrice : premiumMetadata.Price;
         if (premiumMetadata.RedMeret ? session.Currency.CanAddGameMeret(-price) != -price : session.Currency.CanAddMeret(-price) != -price) {
             session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message,
                 premiumMetadata.RedMeret ? StringCode.s_err_lack_merat_red : StringCode.s_err_lack_merat));
