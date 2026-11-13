@@ -1557,6 +1557,7 @@ public sealed class QuestManager {
 
         using GameStorage.Request db = session.GameStorage.Context();
         bool lastQuestFound = false;
+        var completed = new HashSet<int>();
         foreach (IGrouping<int, QuestMetadata> chapterQuests in chapterQuestsGroups.OrderBy(q => q.Key)) {
             if (lastQuestFound) {
                 break;
@@ -1573,6 +1574,7 @@ public sealed class QuestManager {
                     quest.State = QuestState.Completed;
                     quest.CompletionCount++;
                     quest.EndTime = DateTime.Now.ToEpochSeconds();
+                    completed.Add(quest.Id);
                     continue;
                 }
 
@@ -1600,6 +1602,7 @@ public sealed class QuestManager {
                     continue;
                 }
                 Add(epicQuest);
+                completed.Add(epicQuest.Id);
                 TryJobAdvance(epicQuest.Id);
                 CompleteChapter(epicQuest.Id, true);
 
@@ -1610,8 +1613,13 @@ public sealed class QuestManager {
             }
         }
 
-        //TODO: Start and load fame quests
         Load();
+        // The fame board's lists (Quest 0x1F/0x20, questmanager_2.cpp:1145): a completed quest that opens them (the pick
+        // methods' reloadOnComplete, 91000015 and 50101050 in KR, both epic quests a potion completes) makes them again,
+        // as Complete does. After Load, as at login: the lists after the quest states.
+        if (completed.Count > 0 && session.TableMetadata.FameTable.PickMethods.Any(method => completed.Contains(method.ReloadOnComplete))) {
+            LoadAllianceMissions();
+        }
     }
 
     // Quest sub-type 18: the portal of a started quest, asked for again from the quest's NPC.
