@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Xml;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -16,6 +18,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Tools.Scheduler;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 namespace Maple2.Server.Tests.Game;
@@ -443,5 +446,137 @@ public class TriggerCinematicTests : TriggerTestBase {
         Assert.That((reader.ReadInt(), reader.ReadString(), reader.ReadUnicodeString(), reader.ReadInt()), Is.EqualTo((11000064, "Lennon_normal", "hi", 3000)));
         reader.ReadByte();
         Assert.That(reader.Available, Is.EqualTo(0));
+    }
+}
+
+public class TriggerFieldStateTests : TriggerTestBase {
+    private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+    // Box 1 holds the player at the origin, box 2 is far off.
+    private static readonly Ms2TriggerBox Near = new(Vector3.Zero, new Vector3(300, 300, 300), 1, true);
+    private static readonly Ms2TriggerBox Far = new(new Vector3(5000, 0, 0), new Vector3(300, 300, 300), 2, true);
+
+    private void StartWithBoxes(params Ms2Trigger[] triggers) {
+        Start([Near, Far, .. triggers]);
+        test.Session.Player.Position = Vector3.Zero;
+        test.Session.Player.TagId = 1;
+        foreach (string name in new[] { "fieldPortals", "fieldBreakables", "fieldLiftables", "fieldSkills" }) {
+            FieldInfo info = typeof(FieldManager).GetField(name, Any)!;
+            info.SetValue(Field, Activator.CreateInstance(info.FieldType));
+        }
+        typeof(FieldManager).GetField("triggerBreakable", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldBreakable>());
+    }
+
+    // play_system_sound_in_box (4808): the players in the boxes hear it, and with no box everyone does.
+    [Test]
+    public void PlaySystemSoundInBox_PlayersInTheBoxes() {
+        StartWithBoxes();
+
+        Action("""<action name="play_system_sound_in_box" sound="System_Far_01" box_ids="2" />""");
+        Assert.That(Sent(SendOp.PlaySystemSound), Is.Empty);
+
+        Action("""<action name="play_system_sound_in_box" sound="System_Near_01" box_ids="2,1" />""");
+        Assert.That(Sent(SendOp.PlaySystemSound).Single().ReadUnicodeString(), Is.EqualTo("System_Near_01"));
+
+        Action("""<action name="play_system_sound_in_box" sound="System_All_01" />""");
+        Assert.That(Sent(SendOp.PlaySystemSound).Single().ReadUnicodeString(), Is.EqualTo("System_All_01"));
+    }
+
+    // count_users (4025): the players in the box against the count (by default at least that many), a missing box
+    // only passes negated, and a tag counts only the players with it.
+    [Test]
+    public void CountUsers_InTheBox() {
+        StartWithBoxes();
+
+        Assert.That(Condition("""<condition name="count_users" box_id="1" min_users="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="count_users" box_id="1" min_users="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="count_users" box_id="2" min_users="1" />"""), Is.False);
+        Assert.That(Condition("""<condition name="count_users" box_id="2" min_users="1" negate="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="count_users" box_id="9" min_users="0" />"""), Is.False);
+        Assert.That(Condition("""<condition name="count_users" box_id="1" min_users="1" user_tag_id="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="count_users" box_id="1" min_users="1" user_tag_id="1" />"""), Is.True);
+    }
+
+    // quest_user_detected (1844): a player in the boxes with the quest in a listed state (3 = completed).
+    [Test]
+    public void QuestUserDetected_CompletedInTheBox() {
+        StartWithBoxes();
+        test.SetQuest(100, QuestState.Completed);
+
+        Assert.That(Condition("""<condition name="quest_user_detected" box_ids="1" quest_ids="100" quest_states="3" />"""), Is.True);
+        Assert.That(Condition("""<condition name="quest_user_detected" box_ids="2" quest_ids="100" quest_states="3" />"""), Is.False);
+        Assert.That(Condition("""<condition name="quest_user_detected" box_ids="1" quest_ids="101" quest_states="3" />"""), Is.False);
+        Assert.That(Condition("""<condition name="quest_user_detected" box_ids="1" quest_ids="100" quest_states="3" negate="1" />"""), Is.False);
+    }
+
+    // detect_liftable_object (4257): a placed liftable of the item inside one of the boxes.
+    [Test]
+    public void DetectLiftableObject_ItemInTheBox() {
+        StartWithBoxes();
+        Field.AddLiftable("aa", new Liftable(30000611, 1, 0, 0, 0, "", "", "", "", false, new Vector3(10, 0, 0), Vector3.Zero));
+
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="30000611" />"""), Is.True);
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="2" item_id="30000611" />"""), Is.False);
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="30000612" />"""), Is.False);
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="30000611" negate="1" />"""), Is.False);
+    }
+
+    // set_portal (2292): the portal takes the switches and the field is told (FieldPortal Update: id, visible,
+    // enabled, minimap).
+    [Test]
+    public void SetPortal_UpdatesThePortal() {
+        StartWithBoxes();
+        FieldPortal portal = Field.SpawnPortal(new Portal(3, 2000001, 1, PortalType.Field, PortalActionType.Touch, Vector3.Zero, Vector3.Zero,
+            new Vector3(100, 100, 100), 0, 0, false, false, false));
+        test.TakeSent();
+
+        Action("""<action name="set_portal" portal_id="3" visible="1" enable="1" minimap_visible="0" />""");
+
+        Assert.That((portal.Visible, portal.Enabled, portal.MinimapVisible), Is.EqualTo((true, true, false)));
+        ByteReader reader = Sent(SendOp.FieldPortal).Single();
+        Assert.That((reader.ReadByte(), reader.ReadInt(), reader.ReadBool(), reader.ReadBool(), reader.ReadBool()), Is.EqualTo(((byte) 2, 3, true, true, false)));
+    }
+
+    // set_breakable (2606): the breakables named by trigger id show or hide, sent in one batch.
+    [Test]
+    public void SetBreakable_ShowsByTriggerId() {
+        StartWithBoxes();
+        FieldBreakable breakable = Field.AddBreakable("bb", new BreakableActor(false, 7001, 1000, 1000, 0, Vector3.Zero, Vector3.Zero))!;
+        test.TakeSent();
+
+        Action("""<action name="set_breakable" trigger_ids="7001" enable="1" />""");
+
+        Assert.That(breakable.State, Is.EqualTo(BreakableState.Show));
+        // The state change sends its own Update (1), then the action sends the batch (0) of what it set.
+        ByteReader[] sent = Sent(SendOp.Breakable).ToArray();
+        Assert.That(sent.Select(r => r.ReadByte()), Is.EqualTo(new byte[] { 1, 0 }));
+        Assert.That((sent[1].ReadInt(), sent[1].ReadString()), Is.EqualTo((1, "bb")));
+
+        Action("""<action name="set_breakable" trigger_ids="7001" enable="0" />""");
+        Assert.That(breakable.State, Is.EqualTo(BreakableState.Hide));
+    }
+
+    // set_skill (36171): an enabled trigger skill is placed as a region skill of the field; disabled, it is taken
+    // off again.
+    [Test]
+    public void SetSkill_AddsThenRemoves() {
+        StartWithBoxes(new Ms2TriggerSkill(70000001, 1, new Vector3(10, 0, 0), Vector3.Zero, 801, false, 1));
+        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", Any)!.GetValue(skills)!;
+        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(70000001, (short) 1), new SkillMetadata(70000001, 1, null, property, null!, null!)]);
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, skills);
+        var actor = (FieldActor) RuntimeHelpers.GetUninitializedObject(typeof(FieldActor));
+        GC.SuppressFinalize(actor);
+        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), Any)!.SetValue(Field, actor);
+
+        Action("""<action name="set_skill" trigger_ids="801" enable="1" />""");
+        ByteReader added = Sent(SendOp.RegionSkill).Single();
+        Assert.That(added.ReadByte(), Is.EqualTo(0));
+        int objectId = added.ReadInt();
+
+        Action("""<action name="set_skill" trigger_ids="801" enable="0" />""");
+        ByteReader removed = Sent(SendOp.RegionSkill).Single();
+        Assert.That((removed.ReadByte(), removed.ReadInt()), Is.EqualTo(((byte) 1, objectId)));
     }
 }
