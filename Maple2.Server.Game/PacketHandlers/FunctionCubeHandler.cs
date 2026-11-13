@@ -226,15 +226,18 @@ public class FunctionCubeHandler : FieldPacketHandler {
 
         session.Item.Inventory.Consume(hasItem.Uid, amount: 1);
 
+        // A pet without rewardItemByFeeding (item 0, e.g. 50800002) is fed without a drop.
         RewardItem rewardFeedItem = nurturing.NurturingMetadata.RewardFeed;
-        Item? rewardItem = session.Field.ItemDrop.CreateItem(rewardFeedItem.ItemId, rarity: rewardFeedItem.Rarity, amount: rewardFeedItem.Amount);
-        if (rewardItem is null) {
-            Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, fieldCube.InteractCube.Metadata.Id);
-            return;
-        }
+        if (rewardFeedItem.ItemId != 0) {
+            Item? rewardItem = session.Field.ItemDrop.CreateItem(rewardFeedItem.ItemId, rarity: rewardFeedItem.Rarity, amount: rewardFeedItem.Amount);
+            if (rewardItem is null) {
+                Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, fieldCube.InteractCube.Metadata.Id);
+                return;
+            }
 
-        // drop the item
-        session.Field.DropItem(fieldCube.Position, fieldCube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
+            // drop the item
+            session.Field.DropItem(fieldCube.Position, fieldCube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
+        }
         long exp = nurturing.Exp;
         nurturing.Feed(Constants.NurturingEatGrowth);
         db.RecordNurturing(session.AccountId, session.AccountId, fieldCube.InteractCube, played: false);
@@ -278,20 +281,26 @@ public class FunctionCubeHandler : FieldPacketHandler {
         }
 
         RewardItem rewardPlay = nurturing.NurturingMetadata.Feed;
-        Item? rewardItem = session.Field.ItemDrop.CreateItem(rewardPlay.ItemId, rarity: rewardPlay.Rarity, amount: rewardPlay.Amount);
-        if (rewardItem is null) {
-            Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, cube.Value.Id);
-            return;
-        }
+        if (rewardPlay.ItemId != 0) {
+            Item? rewardItem = session.Field.ItemDrop.CreateItem(rewardPlay.ItemId, rarity: rewardPlay.Rarity, amount: rewardPlay.Amount);
+            if (rewardItem is null) {
+                Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, cube.Value.Id);
+                return;
+            }
 
-        // drop the item
-        session.Field.DropItem(cube.Position, cube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
+            // drop the item
+            session.Field.DropItem(cube.Position, cube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
+        }
 
         db.RecordNurturing(session.AccountId, plot.OwnerId, cube.InteractCube, played: true);
 
         session.Field.Broadcast(FunctionCubePacket.UpdateFunctionCube(cube.InteractCube));
         SendDailyRecord(session, db, cube, plot.OwnerId);
 
+        // The owner's mail carries the feeding gift (rewardItemByFeeding); a pet without one sends no mail.
+        if (nurturing.NurturingMetadata.RewardFeed.ItemId == 0) {
+            return;
+        }
         Mail? mail = CreateOwnerMail(session, plot.OwnerId, nurturing.NurturingMetadata);
 
         if (mail == null) {

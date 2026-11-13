@@ -20,15 +20,16 @@ public class FunctionCubeMapper : TypeMapper<FunctionCubeMetadata> {
             FunctionCube functionCube = functionCubeRoot.FunctionCube;
 
             ConfigurableCube? configurableCube = functionCubeRoot.ConfigurableCube;
+            InteractCubeControlType controlType = Enum.TryParse(functionCube.ControlType, out InteractCubeControlType parsed) ? parsed : InteractCubeControlType.None;
             yield return new FunctionCubeMetadata(
                 Id: id,
                 RecipeId: functionCube.receipeID,
                 ConfigurableCubeType: configurableCube is not null ? (ConfigurableCubeType) configurableCube.id : ConfigurableCubeType.None,
                 DefaultState: (InteractCubeState) functionCube.DefaultState,
-                ControlType: Enum.TryParse(functionCube.ControlType, out InteractCubeControlType controlType) ? controlType : InteractCubeControlType.None,
+                ControlType: controlType,
                 AutoStateChange: functionCube.AutoStateChange,
                 AutoStateChangeTime: functionCube.AutoStateChangeTime,
-                Nurturing: ParseNurturing(functionCube.nurturing)
+                Nurturing: ParseNurturing(controlType, functionCube.nurturing)
             ) {
                 // Every cube parses with an empty doll node; only the mannequins open the doll window.
                 FittingDoll = functionCube.UseUiFunction.ToString() == "FittingDoll" && functionCube.fittingdoll is { } doll
@@ -38,37 +39,45 @@ public class FunctionCubeMapper : TypeMapper<FunctionCubeMetadata> {
         }
     }
 
-    private static FunctionCubeMetadata.NurturingData? ParseNurturing(Nurturing? functionCubeNurturing) {
-        if (functionCubeNurturing is null || functionCubeNurturing.rewardItem.Length == 0 || functionCubeNurturing.rewardItemByFeeding.Length == 0) {
+    // Client: ObjectData (commonfiles/objectdata.cpp:321-378) reads the nurturing node of any object; the cube is a
+    // pet when its ControlType is Nurturing (0xd, IsNurturingControlType). rewardItem and rewardItemByFeeding are
+    // taken only as a list of exactly 3 (id, rarity, amount) and stay item 0 otherwise: 50400283, 50800001/2/3/5/6
+    // have no rewardItemByFeeding and are still pets. Every object parses with an empty node, so a cube of another
+    // control type, or one without growth stages, has no nurturing.
+    public static FunctionCubeMetadata.NurturingData? ParseNurturing(InteractCubeControlType controlType, Nurturing? functionCubeNurturing) {
+        if (controlType != InteractCubeControlType.Nurturing || functionCubeNurturing is null) {
+            return null;
+        }
+        FunctionCubeMetadata.NurturingData.Growth[] growth = ParseRequiredGrowth(functionCubeNurturing);
+        if (growth.Length == 0) {
             return null;
         }
         return new FunctionCubeMetadata.NurturingData(
-            Feed: new RewardItem(
-                itemId: functionCubeNurturing.rewardItem[0],
-                rarity: (short) functionCubeNurturing.rewardItem[1],
-                amount: functionCubeNurturing.rewardItem[2]
-            ),
-            RewardFeed: new RewardItem(
-                itemId: functionCubeNurturing.rewardItemByFeeding[0],
-                rarity: (short) functionCubeNurturing.rewardItemByFeeding[1],
-                amount: functionCubeNurturing.rewardItemByFeeding[2]
-            ),
-            RequiredGrowth: ParseRequiredGrowth(functionCubeNurturing),
-            QuestTag: functionCubeNurturing.nurturingQuestTag
+            Feed: ParseReward(functionCubeNurturing.rewardItem),
+            RewardFeed: ParseReward(functionCubeNurturing.rewardItemByFeeding),
+            RequiredGrowth: growth,
+            QuestTag: functionCubeNurturing.nurturingQuestTag ?? string.Empty
         ) {
             PetNpcIds = functionCubeNurturing.pluralNpcID ?? [],
         };
 
-        FunctionCubeMetadata.NurturingData.Growth[] ParseRequiredGrowth(Nurturing nurturing) {
+        static RewardItem ParseReward(int[]? values) {
+            return values is { Length: 3 } ? new RewardItem(itemId: values[0], rarity: (short) values[1], amount: values[2]) : new RewardItem(0, 0, 0);
+        }
+
+        // A stage needs its growth and its 3 reward values (requiredGrowth and rewardItemByGrowth, read by stage).
+        static FunctionCubeMetadata.NurturingData.Growth[] ParseRequiredGrowth(Nurturing nurturing) {
+            int[] required = nurturing.requiredGrowth ?? [];
+            int[] rewards = nurturing.rewardItemByGrowth ?? [];
             List<FunctionCubeMetadata.NurturingData.Growth> result = [];
-            for (int i = 0; i < nurturing.rewardItemByGrowth.Length; i += 3) {
+            for (int i = 0; i + 2 < rewards.Length && i / 3 < required.Length; i += 3) {
                 result.Add(new FunctionCubeMetadata.NurturingData.Growth(
-                    Exp: nurturing.requiredGrowth[i / 3],
+                    Exp: required[i / 3],
                     Stage: (short) (i / 3 + 1),
                     Reward: new RewardItem(
-                        itemId: nurturing.rewardItemByGrowth[i],
-                        rarity: (short) nurturing.rewardItemByGrowth[i + 1],
-                        amount: nurturing.rewardItemByGrowth[i + 2]
+                        itemId: rewards[i],
+                        rarity: (short) rewards[i + 1],
+                        amount: rewards[i + 2]
                     )
                 ));
             }
