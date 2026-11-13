@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Context;
+using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -379,6 +380,7 @@ public class MentorHandlerTests {
 
         Assert.That(Mentor(otherTest), Is.EqualTo(new[] {
             Hex(MentorPacket.MenteeInvitations(Entry(other, id, session))), "0300000000", "0F00000000",
+            AttendDate(0, 0), // the mentee's attend streak, none claimed yet
         }));
 
         Send(other, Accept, writer => writer.WriteLong(id));
@@ -468,5 +470,76 @@ public class MentorHandlerTests {
                 Channel = channel,
             });
         }
+    }
+
+    private const byte Reward = 0;
+
+    private static string AttendDate(int level, long next) => Hex(MentorPacket.AttendDate(level, next));
+
+    private static long NextMidnight() => DateTime.Now.Date.AddDays(1).ToEpochSeconds();
+
+    // The reward page's button (Mentor 0): the first day's coin, the streak level and the next midnight (Mentor 10).
+    [Test]
+    public void AttendReward_GivesTheDaysCoinOnce() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        Mentor(test);
+
+        Send(session, Reward);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { AttendDate(1, NextMidnight()) }));
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(100));
+
+        Send(session, Reward);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { AttendDate(1, NextMidnight()) }));
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(100));
+    }
+
+    // The streak is stored at once, so the next login sends it (Mentor 10 after the lists).
+    [Test]
+    public void AttendReward_TheStoredStreakIsSentAtLogin() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        Send(session, Reward);
+        Mentor(test);
+
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.GetEventUserValues(session.CharacterId).Select(value => (value.Type, value.Value)),
+                Is.EquivalentTo(new[] {
+                    (GameEventUserValueType.MentoringAttendLevel, "1"),
+                    (GameEventUserValueType.MentoringAttendNext, NextMidnight().ToString()),
+                }));
+        }
+        session.Mentoring.Load();
+        Assert.That(Mentor(test).Last(), Is.EqualTo(AttendDate(1, NextMidnight())));
+    }
+
+    [Test]
+    public void AttendReward_OnlyAMenteeInASeason() {
+        Login(season: true);
+        Send(session, RegisterMentor);
+        Mentor(test);
+        Send(session, Reward);
+        Assert.That(Mentor(test), Is.Empty);
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(0));
+
+        Login(season: false);
+        Send(session, Reward);
+        session.Mentoring.Load();
+        Assert.That(Mentor(test).Any(packet => packet.StartsWith("0A")), Is.False);
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(0));
+    }
+
+    // At the token cap the claim gives nothing and keeps the day (Mentor 16, 9).
+    [Test]
+    public void AttendReward_AtTheTokenCapIsRefused() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        session.Currency.Change(CurrencyType.MenteeToken, session.ServerTableMetadata.ConstantsTable.MenteeTokenMax);
+        Mentor(test);
+
+        Send(session, Reward);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.FullEarnCoin) }));
+        Send(session, Reward);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.FullEarnCoin) }));
     }
 }

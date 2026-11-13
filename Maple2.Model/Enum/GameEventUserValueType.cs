@@ -63,6 +63,11 @@ public enum GameEventUserValueType {
     // (GameEventUserValue::ReadVariable) and reads this one nowhere.
     ArcadeOpenRewardCount = 2400,
 
+    // Mentee attend reward (ReturnUser season): the streak level and the next claim time, sent as Mentor 10. Not
+    // KMS2 values; the client keeps any type in its list and reads these nowhere.
+    MentoringAttendLevel = 2410,
+    MentoringAttendNext = 2411,
+
     // Long-term attendance (LongTermAttendGift), read by its dialog (uilongtermattendgiftdialog.cpp)
     LongTermAttendClaimedDays = 2700, // claimed reward days, "5,11,20"
     LongTermAttendPoints = 2701,

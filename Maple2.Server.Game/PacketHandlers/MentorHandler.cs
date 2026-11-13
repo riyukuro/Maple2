@@ -52,7 +52,7 @@ public class MentorHandler : FieldPacketHandler {
     }
 
     private void HandleReward(GameSession session) {
-        session.Send(MentorPacket.Unknown12());
+        session.Mentoring.ClaimAttendReward();
     }
 
     private void HandleAssignMentee(GameSession session) {
@@ -84,8 +84,8 @@ public class MentorHandler : FieldPacketHandler {
     private void HandleLoad(GameSession session) {
         session.Mentoring.SendRequests();
         session.Send(MentorPacket.Load());
+        session.Mentoring.SendAttend();
         //session.Send(MentorPacket.MyList());
-        //  session.Send(MentorPacket.LoginPoints());
         //  session.Send(MentorPacket.DailyPoints());
         //  session.Send(MentorPacket.Unknown12());
         //   session.Send(MentorPacket.Unknown15(10));

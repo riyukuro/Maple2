@@ -1,4 +1,5 @@
-﻿using Maple2.Database.Storage;
+﻿using Maple2.Database.Extensions;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -8,6 +9,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.World.Service;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Util.Sync;
 using System.Collections.Concurrent;
 using Maple2.Server.Core.Sync;
@@ -28,7 +30,8 @@ public class MentoringManager : IDisposable {
 
     // The running ReturnUser season. Without one the client's menu does not open the mentoring dialogs, and no
     // request or pair is stored or sent.
-    private ReturnUser? Season => session.FindEvent(GameEventType.ReturnUser).FirstOrDefault()?.Metadata.Data as ReturnUser;
+    private ReturnUser? Season => SeasonEvent?.Metadata.Data as ReturnUser;
+    private GameEvent? SeasonEvent => session.FindEvent(GameEventType.ReturnUser).FirstOrDefault();
 
     // The partners whose login and logout are pushed as Mentor 15 (the online flag last sent for each).
     // A listener stops once its partner's entry is removed or replaced.
@@ -111,6 +114,55 @@ public class MentoringManager : IDisposable {
         session.Send(MentorPacket.MyList(pairs));
         session.Send(MentorPacket.PairOnline(pairs));
         ListenPartners(pairs);
+        SendAttend();
+    }
+
+    // The mentee's attend streak and next claim time (Mentor 10), kept per season. Only a mentee has the reward
+    // page (UIMentoringDialog::GetTabs, role 2).
+    public void SendAttend() {
+        GameEvent? season = SeasonEvent;
+        if (season?.Metadata.Data is not ReturnUser || Role != MentorRole.Mentee) {
+            return;
+        }
+        (int level, long next) = Attend(season);
+        session.Send(MentorPacket.AttendDate(level, next));
+    }
+
+    // The reward page's button (Mentor 0): the mentee coin of the streak day, once per day. A claim before its time
+    // only resends the date, which disables the button again. At the token cap nothing is given (Mentor 16, 9).
+    public void ClaimAttendReward() {
+        GameEvent? season = SeasonEvent;
+        if (season?.Metadata.Data is not ReturnUser || Role != MentorRole.Mentee) {
+            return;
+        }
+        (int level, long next) = Attend(season);
+        DateTime now = DateTime.Now;
+        if (!MentoringAttend.Available(next, now.ToEpochSeconds())) {
+            session.Send(MentorPacket.AttendDate(level, next));
+            return;
+        }
+        if (session.Currency[CurrencyType.MenteeToken] >= session.ServerTableMetadata.ConstantsTable.MenteeTokenMax) {
+            session.Send(MentorPacket.Error(MentorError.FullEarnCoin));
+            return;
+        }
+
+        (int coin, int newLevel, long newNext) = MentoringAttend.Claim(level, next, now);
+        session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringAttendLevel, newLevel);
+        session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringAttendNext, newNext);
+        // Stored at once, before the coin: a lost session must not give the day's coin twice.
+        if (!session.GameEvent.Store(season.Id, GameEventUserValueType.MentoringAttendLevel)
+            || !session.GameEvent.Store(season.Id, GameEventUserValueType.MentoringAttendNext)) {
+            logger.Warning("Mentoring attend of {CharacterId} not stored", session.CharacterId);
+            return;
+        }
+        session.Currency.Change(CurrencyType.MenteeToken, coin);
+        session.Send(MentorPacket.AttendDate(newLevel, newNext));
+    }
+
+    private (int Level, long Next) Attend(GameEvent season) {
+        int level = session.GameEvent.Get(GameEventUserValueType.MentoringAttendLevel, season.Id, season.EndTime).Int();
+        long next = session.GameEvent.Get(GameEventUserValueType.MentoringAttendNext, season.Id, season.EndTime).Long();
+        return (level, next);
     }
 
     // The mentee page's list request (Mentor 2).

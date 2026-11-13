@@ -19,7 +19,7 @@ public static class MentorPacket {
         DeclineMentorInvite = 7,
         AssignMentor = 8,
         Load = 9,
-        LoginPoints = 10,
+        AttendDate = 10,
         DailyPoints = 11,
         Unknown12 = 12,
         ReceiveMenteeInvite = 14,
@@ -119,11 +119,13 @@ public static class MentorPacket {
         return pWriter;
     }
 
-    public static ByteWriter LoginPoints() {
+    // CMentoringManager::OnSetDate (Unk_MentorValuePacket): the mentee's attend streak level and the time from which
+    // the next attend reward can be claimed.
+    public static ByteWriter AttendDate(int level, long next) {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.WriteByte((byte) Command.LoginPoints);
-        pWriter.WriteInt(100); // points received
-        pWriter.WriteLong(DateTime.Now.AddDays(-0).ToEpochSeconds());
+        pWriter.WriteByte((byte) Command.AttendDate);
+        pWriter.WriteInt(level);
+        pWriter.WriteLong(next);
 
         return pWriter;
     }
