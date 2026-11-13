@@ -4,11 +4,13 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
@@ -113,6 +115,66 @@ public class BagFullRewardTests {
         Assert.Multiple(() => {
             Assert.That(BagSplitTests.Held(session, Constant.GuildCoinId), Is.Zero);
             Assert.That(Mailed(Constant.GuildCoinId), Is.EqualTo(7));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    private GameSession StartBlueprint() {
+        GameSession session = Start(TestGameSession.Metadata(Constant.BlueprintId, type: 22, slotMax: 1));
+        test.SetTable(new UgcDesignTable(new Dictionary<int, UgcDesignTable.Entry> {
+            [Constant.BlueprintId] = new(1, MeretMarketCurrencyType.Meret, 300, 0, 0),
+        }));
+        test.EnterHome();
+        session.Currency.Meret = 1000;
+        test.TakeSent();
+        return session;
+    }
+
+    private void CreateBlueprint(GameSession session) =>
+        new RequestCubeHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(63)));
+
+    private int LayoutRows() {
+        using var context = new Ms2Context(test.Options);
+        return context.HomeLayout.Count();
+    }
+
+    // A blueprint with a full bag: refused with the bag's notice before anything is paid or written. Before, the
+    // merets were taken first and the blueprint and its layout row were lost.
+    [Test]
+    public void CreateBlueprint_FullBag_TakesNothing() {
+        GameSession session = StartBlueprint();
+        FullBag(session, session.Field!.ItemDrop.CreateItem(Constant.BlueprintId)!);
+        test.TakeSent();
+
+        CreateBlueprint(session);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(1000));
+            Assert.That(LayoutRows(), Is.Zero);
+            Assert.That(session.Item.Inventory.Find(Constant.BlueprintId).Count(item => !item.IsLocked), Is.Zero);
+            Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.ItemInventory }));
+        });
+    }
+
+    // With room: the answer carries the uid of the item in the bag, the item the upload then works on. Before, it
+    // carried 0 (the add put a copy with the new row's uid in the bag), so the client could not find the item.
+    [Test]
+    public void CreateBlueprint_AnswersWithTheBagItemsUid() {
+        GameSession session = StartBlueprint();
+
+        CreateBlueprint(session);
+
+        StoredItem held = session.Item.Inventory.Find(Constant.BlueprintId).Single();
+        byte[] answer = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.ResponseCube);
+        var reader = new ByteReader(answer, 2);
+        Assert.Multiple(() => {
+            Assert.That(held.Uid, Is.Not.Zero);
+            Assert.That(reader.ReadByte(), Is.EqualTo(63));
+            Assert.That(reader.ReadByte(), Is.EqualTo(1));
+            Assert.That(reader.ReadLong(), Is.EqualTo(held.Uid));
+            Assert.That(session.StagedUgcItem, Is.SameAs(held));
+            Assert.That(session.Currency.Meret, Is.EqualTo(700));
+            Assert.That(LayoutRows(), Is.EqualTo(1));
             Assert.That(test.Errors, Is.Empty);
         });
     }

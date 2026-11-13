@@ -858,54 +858,77 @@ public class RequestCubeHandler : FieldPacketHandler {
 
         long blueprintCost = design.CreatePrice;
 
-        long negAmount = -1 * blueprintCost;
-        if (session.Currency.CanAddMeret(negAmount) != negAmount) {
-            session.Send(CubePacket.Error(UgcMapError.s_err_ugcmap_not_enough_meso_balance));
-            return;
-        }
+        // Nothing is paid or written before the bag is known to take the blueprint: the merets were taken first and
+        // a full bag lost them, with the layout row saved for no item.
+        lock (session.Item) {
+            Item? item = session.Field?.ItemDrop.CreateItem(Constant.BlueprintId);
+            if (item is null) {
+                return;
+            }
+            if (!session.Item.Inventory.CanAdd(item)) {
+                session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
+                return;
+            }
 
-        session.Currency.Meret -= blueprintCost;
+            long negAmount = -1 * blueprintCost;
+            if (session.Currency.CanAddMeret(negAmount) != negAmount) {
+                session.Send(CubePacket.Error(UgcMapError.s_err_ugcmap_not_enough_meso_balance));
+                return;
+            }
 
-        Item? item = session.Field?.ItemDrop.CreateItem(Constant.BlueprintId);
-        if (item is null) {
-            return;
-        }
+            Home home = session.Player.Value.Home;
+            byte area = home.PlannerArea;
+            byte height = home.PlannerHeight;
+            using GameStorage.Request db = session.GameStorage.Context();
 
-        Home home = session.Player.Value.Home;
-        byte area = home.PlannerArea;
-        byte height = home.PlannerHeight;
-        using GameStorage.Request db = session.GameStorage.Context();
+            var homeLayout = new HomeLayout(0, "Blueprint", area, height, DateTimeOffset.Now, plot.Cubes.Values.ToList()) {
+                Background = home.Background,
+                Lighting = home.Lighting,
+                Camera = home.Camera,
+            };
+            HomeLayout? layout = db.SaveHomeLayout(homeLayout);
+            if (layout is null) {
+                Logger.Error("Failed to save layout for {AccountId}", session.AccountId);
+                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
+                return;
+            }
 
-        var homeLayout = new HomeLayout(0, "Blueprint", area, height, DateTimeOffset.Now, plot.Cubes.Values.ToList()) {
-            Background = home.Background,
-            Lighting = home.Lighting,
-            Camera = home.Camera,
-        };
-        HomeLayout? layout = db.SaveHomeLayout(homeLayout);
-        if (layout is null) {
-            Logger.Error("Failed to save layout for {AccountId}", session.AccountId);
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
-            return;
-        }
+            item.Blueprint = new ItemBlueprint {
+                BlueprintUid = layout.Uid,
+                Width = home.PlannerArea,
+                Length = home.PlannerArea,
+                Height = home.PlannerHeight,
+                CreationTime = DateTimeOffset.Now,
+                AccountId = session.AccountId,
+                CharacterId = session.CharacterId,
+                CharacterName = session.PlayerName,
+            };
 
-        item.Blueprint = new ItemBlueprint {
-            BlueprintUid = layout.Uid,
-            Width = home.PlannerArea,
-            Length = home.PlannerArea,
-            Height = home.PlannerHeight,
-            CreationTime = DateTimeOffset.Now,
-            AccountId = session.AccountId,
-            CharacterId = session.CharacterId,
-            CharacterName = session.PlayerName,
-        };
+            // The answer carries the bag item's uid and the client looks the item up by it (CUgcManager::FUN_14188ff10,
+            // ugcmanager_4.cpp:3939-3942); the add of a new item puts a copy with the new row's uid in the bag, so the
+            // answer sent uid 0 and the staged item was not the bag's. The row is made here and that item added.
+            Item? created = db.CreateItem(session.CharacterId, item);
+            if (created is null) {
+                db.RemoveHomeLayout(layout);
+                Logger.Error("Failed to create blueprint item for {CharacterId}", session.CharacterId);
+                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
+                return;
+            }
 
-        if (session.Item.Inventory.Add(item, notifyNew: true)) {
+            session.Currency.Meret -= blueprintCost;
+            // The room was checked under the same lock, so the add takes it; should it not, the paid item goes by mail.
+            if (!session.Item.Inventory.Add(created, notifyNew: true, commit: true)) {
+                if (!session.Item.MailHeldItem(created)) {
+                    Logger.Error("Blueprint {Uid} of {CharacterId} was neither added nor mailed", created.Uid, session.CharacterId);
+                }
+                return;
+            }
             // create_blueprint (23500025 "Create a blueprint once").
             session.ConditionUpdate(ConditionType.create_blueprint);
-        }
 
-        session.StagedUgcItem = item;
-        session.Send(CubePacket.CreateBlueprint(item.Uid, item.Blueprint!));
+            session.StagedUgcItem = created;
+            session.Send(CubePacket.CreateBlueprint(created.Uid, created.Blueprint!));
+        }
     }
 
     private void HandleSaveBlueprint(GameSession session, IByteReader packet) {
