@@ -60,8 +60,13 @@ public partial class GameStorage {
                 return null;
             }
 
+            // A member whose row is not saved fails the whole club: a club stored without some of its members
+            // would be loaded so (and the failed row, still pending, failed every later member's save too).
             foreach (PlayerInfo info in members) {
-                CreateClubMember(club.Id, info);
+                if (CreateClubMember(club.Id, info) == null) {
+                    Rollback();
+                    return null;
+                }
             }
 
             return Commit() ? GetClub(provider, club.Id) : null;

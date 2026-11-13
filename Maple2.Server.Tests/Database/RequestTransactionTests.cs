@@ -5,11 +5,13 @@ using System.Linq;
 using System.Reflection;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Server.Tests.Game;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
+using Club = Maple2.Model.Game.Club.Club;
 
 namespace Maple2.Server.Tests.Database;
 
@@ -261,6 +263,50 @@ public class RequestTransactionTests {
             Assert.That(sent, Is.Null);
             Assert.That(Mails(account), Is.Empty);
             Assert.That(ItemOwner(item.Uid), Is.EqualTo(character));
+        });
+    }
+
+    private sealed class Players(Dictionary<long, PlayerInfo> infos) : IPlayerInfoProvider {
+        public PlayerInfo? GetPlayerInfo(long id) => infos.GetValueOrDefault(id);
+    }
+
+    private static PlayerInfo Info(long characterId, string name) {
+        return new PlayerInfo(new CharacterInfo(characterId - 1, characterId, name, "", "", Gender.Male, Job.Newbie, 20), "",
+            new AchievementInfo(), []);
+    }
+
+    // The second member's row is refused: no club is made, and none is stored (it used to be stored with its
+    // leader alone).
+    [Test]
+    public void ClubWhoseMemberSaveFailsIsNotCreated() {
+        // The club rows name real characters.
+        long leader = new TestGameSession(plain).CharacterId, second = new TestGameSession(plain).CharacterId;
+        string name = $"t{character % 100_000_000}";
+        var infos = new Dictionary<long, PlayerInfo> {
+            [leader] = Info(leader, "Leader"),
+            [second] = Info(second, "Second"),
+        };
+        int inserts = 0;
+        hook.Before = command => {
+            if (command.CommandText.Contains("INSERT INTO `club-member`") && ++inserts == 2) {
+                throw new InvalidOperationException("insert refused");
+            }
+        };
+
+        Club? club;
+        using (GameStorage.Request db = storage.Context()) {
+            club = db.CreateClub(new Players(infos), name, leader, infos.Values.ToList());
+        }
+        hook.Before = null;
+
+        using var check = new Ms2Context(plain);
+        long[] stored = check.Club.Where(row => row.Name == name).Select(row => row.Id).ToArray();
+        check.ClubMember.Where(member => stored.Contains(member.ClubId)).ExecuteDelete();
+        check.Club.Where(row => row.Name == name).ExecuteDelete();
+        Assert.Multiple(() => {
+            Assert.That(inserts, Is.EqualTo(2));
+            Assert.That(club, Is.Null);
+            Assert.That(stored, Is.Empty);
         });
     }
 
