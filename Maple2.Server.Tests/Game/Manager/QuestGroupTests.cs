@@ -53,6 +53,18 @@ public class QuestGroupTests {
         quest.StartTime = new DateTimeOffset(start).ToUnixTimeSeconds();
     }
 
+    // The stored quests are already the client's by feature (the ingest's filter), so without a played client every
+    // grouped quest is a member, in id order; with one, a quest it lacks is not.
+    [TestCase(false, new[] { 7300001, 7300002, 7300003 })]
+    [TestCase(true, new[] { 7300001, 7300003 })]
+    public void Groups_WithAndWithoutPlayedClient(bool marked, int[] expected) {
+        QuestMetadata unknown = Daily(7300002, GroupId);
+        unknown = unknown with { Basic = unknown.Basic with { NotInPlayedClient = marked } };
+        Dictionary<int, int[]> groups = QuestMetadataStorage.Groups([Daily(7300003, GroupId), unknown, Daily(7300001, GroupId), Daily(7400001)]);
+        Assert.That(groups.Keys, Is.EqualTo(new[] { GroupId }));
+        Assert.That(groups[GroupId], Is.EqualTo(expected));
+    }
+
     [Test]
     public void GroupPicks_IsTheClientPick() {
         Assert.That(session.Quest.GroupPicks(GroupId, DateTime.Now), Is.EqualTo(new[] { Picked() }));

@@ -57,10 +57,18 @@ public class QuestMetadataStorage(MetadataContext context) : MetadataStorage<int
     // require groupID: the ids of a group's quests the played client has, in id order, as the client's group list
     // (QuestDataTable m_390, built from its id-ordered quest map, questdata.cpp:2421; locked quests too).
     public IReadOnlyList<int> GetGroup(int groupId) {
-        groups ??= GetQuests().Where(quest => quest.Require.GroupId != 0 && PlayedClientQuests.Known(quest.Basic))
+        groups ??= Groups(GetQuests());
+        return groups.TryGetValue(groupId, out int[]? ids) ? ids : [];
+    }
+
+    // The group lists of the stored quests. The ingest's feature filter already leaves out the quests of features the
+    // client turns off (the client keeps a quest only when its feature is on, QuestDataTable::LoadQuestData,
+    // questdata.cpp:1797), so the lists are the client's without a played client too (KR: the same 513 grouped
+    // quests either way); with one, a quest it lacks (NotInPlayedClient) is left out as well.
+    public static Dictionary<int, int[]> Groups(IEnumerable<QuestMetadata> quests) {
+        return quests.Where(quest => quest.Require.GroupId != 0 && PlayedClientQuests.Known(quest.Basic))
             .GroupBy(quest => quest.Require.GroupId)
             .ToDictionary(group => group.Key, group => group.Select(quest => quest.Id).Order().ToArray());
-        return groups.TryGetValue(groupId, out int[]? ids) ? ids : [];
     }
 
     public IEnumerable<QuestMetadata> GetQuestsByNpc(int npcId) {
