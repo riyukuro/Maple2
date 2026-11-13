@@ -1571,6 +1571,11 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return ReadCoupleDance(value1, value2);
             case GameEventType.LoginNotice:
                 return new LoginNotice();
+            case GameEventType.Festival:
+                // GameEventFestival::vfunc_2 reads value1 and value2 as unsigned numbers (FUN_140718200).
+                return new Festival(
+                    Value1: int.TryParse(value1, out int festivalValue1) ? festivalValue1 : 0,
+                    UseType: int.TryParse(value2, out int festivalUseType) ? festivalUseType : 0);
             case GameEventType.FieldEffect:
                 return new FieldEffect(
                     MapIds: value1.Split(',').Select(int.Parse).ToArray(),

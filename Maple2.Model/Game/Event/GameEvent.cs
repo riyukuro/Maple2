@@ -183,6 +183,12 @@ public class GameEvent : IByteSerializable {
                 // GameEventGuildVsGameOpen reads only the base event's id.
                 writer.WriteInt(Id);
                 break;
+            case Festival festival:
+                // GameEvent::vfunc_4 reads the id, then FestivalContext::Read two bytes.
+                writer.WriteInt(Id);
+                writer.WriteByte((byte) festival.Value1);
+                writer.WriteByte((byte) festival.UseType);
+                break;
             case FieldEffect fieldEffect:
                 writer.WriteInt(Id);
                 writer.WriteByte((byte) fieldEffect.MapIds.Length);

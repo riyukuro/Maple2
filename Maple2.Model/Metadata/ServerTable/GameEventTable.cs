@@ -157,6 +157,14 @@ public record FieldEffect(
     string Effect) : GameEventData;
 
 /// <summary>
+/// GameEventFestival: value1 and value2 as numbers (FestivalContext m_18 and m_1c), a byte each on the wire.
+/// A FestivalEvent item whose itemUseType is not 0 is used only while a festival with that UseType runs.
+/// </summary>
+public record Festival(
+    int Value1,
+    int UseType) : GameEventData;
+
+/// <summary>
 /// Lets players place reactors (CreateReactor items) whose reactor.xml row names this event.
 /// MapIds: the fields a reactor may be placed in. DailyCount: the client refuses a placement once its
 /// counter for the event reaches it.
@@ -565,6 +573,7 @@ public record LoginNotice : GameEventData;
 [JsonDerivedType(typeof(ActiveUser), "ActiveUser")]
 [JsonDerivedType(typeof(LoginNotice), "LoginNotice")]
 [JsonDerivedType(typeof(FieldEffect), "FieldEffect")]
+[JsonDerivedType(typeof(Festival), "Festival")]
 [JsonDerivedType(typeof(QuestTag), "QuestTag")]
 [JsonDerivedType(typeof(Reactor), "Reactor")]
 [JsonDerivedType(typeof(WorldmapIcon), "WorldmapIcon")]
