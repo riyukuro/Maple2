@@ -874,11 +874,18 @@ public partial class FieldManager {
                     return prisms.Filter(TargetPlayers, limit, ignore);
             }
         }
+        // A player's buffs may widen what the skill takes (forceApplyTarget, as the client's target filter
+        // FilterTarget ORs it into the query): bit 2 adds the friendly players to a hostile skill (a boss's charm
+        // makes the holder hit its allies), bit 1 adds the mobs to a friendly one.
+        int force = caster is FieldPlayer { Buffs: not null } forcePlayer ? forcePlayer.Buffs.ForceApplyTarget() : 0;
         switch (targetType) {
             case ApplyTargetType.Friendly:
                 if (caster is FieldNpc) {
                     return prisms.Filter(Mobs.Values, limit, ignore);
                 } else if (caster is FieldPlayer) {
+                    if ((force & 1) != 0) {
+                        return prisms.Filter(TargetPlayers.Cast<IActor>().Concat(Mobs.Values), limit, ignore);
+                    }
                     return prisms.Filter(TargetPlayers, limit, ignore);
                 }
                 Log.Debug("Unhandled ApplyTargetType:{Entity} for {caster.GetType()}", targetType, caster.GetType());
@@ -891,7 +898,9 @@ public partial class FieldManager {
                     // The players and the friendly npcs the monster fights (a barrier a script waits on to fall).
                     return prisms.Filter(TargetPlayers.Cast<IActor>().Concat(Npcs.Values.Where(npc => FightsNpc(monster, npc))), limit, ignore);
                 } else if (caster is FieldPlayer casterPlayer) {
-                    //TODO Include other players if PVP is Active
+                    if ((force & 2) != 0) {
+                        return prisms.Filter(Mobs.Values.Cast<IActor>().Concat(TargetPlayers), limit, ignore);
+                    }
                     // In a rank duel's fight or a PvP zone the other side's players are hostile too.
                     if (RankDuel != null || PvpZone != null || Survival != null) {
                         return prisms.Filter(Mobs.Values.Cast<IActor>()

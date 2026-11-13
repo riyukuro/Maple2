@@ -390,6 +390,20 @@ public class BuffManager : IUpdatable {
 
     public int SkillUseDisableMask() => SkillUseDisableMask(EnumerateBuffs());
 
+    // The forceApplyTarget bits of the enabled buffs held, OR'd (AdditionalCliList::FUN_140972a00): the target kinds the
+    // holder's skills take on top of their own (1 hostile, 2 friendly). A charm (40500014, 5 s) gives 2.
+    public static int ForceApplyTarget(IEnumerable<Buff> held) {
+        int bits = 0;
+        foreach (Buff buff in held) {
+            if (buff.Enabled) {
+                bits |= buff.Metadata.Property.ForceApplyTarget;
+            }
+        }
+        return bits;
+    }
+
+    public int ForceApplyTarget() => ForceApplyTarget(EnumerateBuffs());
+
     // The share the enabled buffs held cut from the cooldowns of a cooldown group (SkillCastRules.GroupReduceRate).
     public float CooldownGroupRate(int groupId) {
         return Util.SkillCastRules.GroupReduceRate(EnumerateBuffs().Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property.CooldownGroupRates), groupId);

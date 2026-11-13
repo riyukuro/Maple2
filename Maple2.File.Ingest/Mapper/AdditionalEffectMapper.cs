@@ -92,7 +92,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                         IgnoreReduceTime: data.BasicProperty.ignoreReduceTimeCondition,
                         ClearCooldownOnPvpZone: data.BasicProperty.clearCooldownFromPVPZone,
                         SuperArmor: data.MotionProperty.superArmor,
-                        SuperArmorApplyField: data.MotionProperty.superArmorApplyFieldType),
+                        SuperArmorApplyField: data.MotionProperty.superArmorApplyFieldType,
+                        ForceApplyTarget: data.BasicProperty.forceApplyTarget),
                     Consume: new AdditionalEffectMetadataConsume(
                         HpRate: data.ConsumeProperty.hpRate,
                         SpRate: data.ConsumeProperty.spRate),

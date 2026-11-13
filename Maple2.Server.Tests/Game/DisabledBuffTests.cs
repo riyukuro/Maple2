@@ -11,7 +11,7 @@ namespace Maple2.Server.Tests.Game;
 // A held buff whose begin condition fails (Buff.Enabled false) counts for no stat, resistance, invoke, invincible or
 // stun, as the client's sums skip a buff without m_bEnabled (AdditionalCliList::FUN_140972a00).
 public class DisabledBuffTests {
-    private static readonly AdditionalEffectMetadataProperty Property = new(BuffType.Buff, BuffSubType.Status, BuffCategory.None,
+    internal static readonly AdditionalEffectMetadataProperty Property = new(BuffType.Buff, BuffSubType.Status, BuffCategory.None,
         BuffEventType.None, 0, 1000, 0, 0, 1, false, false, false, false, false, false, false, 0, 0, 0, 0, 0,
         BuffKeepCondition.TimerDuration, default, default, 0);
 
