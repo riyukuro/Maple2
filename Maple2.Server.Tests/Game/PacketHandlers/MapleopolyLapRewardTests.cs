@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
+using Maple2.Database.Context;
 using Maple2.File.Ingest.Mapper;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -45,7 +47,28 @@ public class MapleopolyLapRewardTests {
         Assert.That(Held(session, EveryLap), Is.EqualTo(2));
         Assert.That(Held(session, FirstLap), Is.EqualTo(3));
         Assert.That(session.GameEvent.Peek(GameEventUserValueType.MapleopolyTotalTrips, EventId), Is.EqualTo("1"));
+        // Stored with the lap reward, not at logout: a mailed lap reward must not be given again after a restart.
+        using (var context = new Ms2Context(test.Options)) {
+            Assert.That(context.GameEventUserValue
+                .Where(value => value.CharacterId == test.CharacterId && value.EventId == EventId && value.Type == GameEventUserValueType.MapleopolyTotalTrips)
+                .Select(value => value.Value).FirstOrDefault(), Is.EqualTo("1"));
+        }
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The time run's value2: the step rows at their distances and the final row (the CN row has both, KR only the final).
+    [Test]
+    public void TimeRun_IngestReadsTheStepRewards() {
+        var xml = new XmlDocument();
+        xml.LoadXml("<ms><reward distance=\"20\" itemID=\"59200323\" grade=\"1\" count=\"1\" /><reward distance=\"80\" itemID=\"40400068\" grade=\"3\" count=\"2\" /><final itemID=\"20301043\" grade=\"1\" count=\"1\" /></ms>");
+
+        (Dictionary<int, RewardItem> steps, RewardItem? final) = ServerTableMapper.ReadTimeRunRewards(xml.FirstChild!);
+
+        Assert.That(steps, Is.EquivalentTo(new Dictionary<int, RewardItem> {
+            [20] = new RewardItem(59200323, 1, 1),
+            [80] = new RewardItem(40400068, 3, 2),
+        }));
+        Assert.That(final, Is.EqualTo(new RewardItem(20301043, 1, 1)));
     }
 
     // The KR rows write the amount as count (<v round="5" itemID="20303095" count="10" />) and no rank.

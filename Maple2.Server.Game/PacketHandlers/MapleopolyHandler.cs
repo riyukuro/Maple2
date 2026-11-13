@@ -178,6 +178,9 @@ public class MapleopolyHandler : FieldPacketHandler {
     private void RewardNewTrips(GameSession session, GameEvent gameEvent, int totalNewTrips) {
         int trips = session.GameEvent.Get(GameEventUserValueType.MapleopolyTotalTrips, gameEvent.Id, gameEvent.EndTime).Int();
         var blueMarble = (gameEvent.Metadata.Data as BlueMarble)!;
+        if (trips >= totalNewTrips) {
+            return;
+        }
         while (trips < totalNewTrips) {
             trips++;
 
@@ -194,6 +197,11 @@ public class MapleopolyHandler : FieldPacketHandler {
         }
 
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyTotalTrips, trips);
+        // Stored with the lap rewards, not at logout: a reward may sit in a stored mail already (a full bag), and
+        // a lap count lost with the session would pay the lap again after a restart.
+        if (!session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.MapleopolyTotalTrips)) {
+            Logger.Error("Mapleopoly: the lap count of event {EventId} by {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
+        }
     }
 
     private void GiveTripReward(GameSession session, ItemComponent reward) {

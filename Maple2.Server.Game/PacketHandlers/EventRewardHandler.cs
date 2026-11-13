@@ -355,6 +355,7 @@ public class EventRewardHandler : FieldPacketHandler {
             return;
         }
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.TimeRunStepRewardKey, key);
+        StoreClaim(session, gameEvent.Id, GameEventUserValueType.TimeRunStepRewardKey);
         session.Send(EventRewardPacket.ClaimTimeRunStepReward(rewardItem));
     }
 
@@ -382,6 +383,7 @@ public class EventRewardHandler : FieldPacketHandler {
             return;
         }
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.TimeRunFinalRewardReceived, 1);
+        StoreClaim(session, gameEvent.Id, GameEventUserValueType.TimeRunFinalRewardReceived);
         session.Send(EventRewardPacket.ClaimTimeRunFinalReward(rewardItem));
     }
 
@@ -492,8 +494,9 @@ public class EventRewardHandler : FieldPacketHandler {
 
         // This uid sets up what board layout the user will have.
         GameEventUserValue uid = session.GameEvent.Get(GameEventUserValueType.BingoUid, gameEvent.Id, gameEvent.EndTime);
-        if (!int.TryParse(uid.Value, out int seed)) {
-            seed = Random.Shared.Next();
+        // The client draws no board for seed 0 (UIBingoEventDialog), so a 0 is drawn again too.
+        if (!int.TryParse(uid.Value, out int seed) || seed == 0) {
+            seed = Random.Shared.Next(1, int.MaxValue);
             session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.BingoUid, seed);
         }
 
@@ -567,6 +570,7 @@ public class EventRewardHandler : FieldPacketHandler {
 
         rewardsClaimedList.Add(index);
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.BingoRewardsClaimed, string.Join(',', rewardsClaimedList));
+        StoreClaim(session, gameEvent.Id, GameEventUserValueType.BingoRewardsClaimed);
 
         foreach (RewardItem rewardItem in bingoEvent.Rewards[index].Items) {
             Item? item = session.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
@@ -580,5 +584,13 @@ public class EventRewardHandler : FieldPacketHandler {
         }
         session.Send(EventRewardPacket.ClaimBingoReward(bingoEvent.Rewards[index].Items));
         session.Send(EventRewardPacket.UpdateBingo(checkedNumbers.Value, rewardsClaimed.Value));
+    }
+
+    // A claim is stored with its reward, not at logout: the reward may sit in a stored mail already (a full bag),
+    // and a claim lost with the session would pay again after a restart.
+    private void StoreClaim(GameSession session, int eventId, GameEventUserValueType type) {
+        if (!session.GameEvent.Store(eventId, type)) {
+            Logger.Error("The claim {Type} of event {EventId} by {CharacterId} was not stored", type, eventId, session.CharacterId);
+        }
     }
 }

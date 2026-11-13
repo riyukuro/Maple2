@@ -661,6 +661,22 @@ public class EventRewardClaimTests {
         Assert.That(SentHex(), Is.Empty);
         Assert.That(Held(session, ItemC), Is.EqualTo(4));
     }
+
+    // A claim is stored with its reward (here a mailed one, the bag is full), not at logout: a server stop before
+    // the save must not pay it again.
+    [Test]
+    public void TimeRun_Claims_AreStoredWithTheReward() {
+        GameSession session = Login(GameEventType.TimeRunEvent, TimeRun(), fullBag: true);
+        test.SetQuest(QuestA, QuestState.Completed);
+        test.SetQuest(QuestB, QuestState.Completed);
+
+        ClaimStep(session, 10);
+        Assert.That(Stored(GameEventUserValueType.TimeRunStepRewardKey), Is.EqualTo("10"));
+
+        ClaimFinal(session);
+        Assert.That(Stored(GameEventUserValueType.TimeRunFinalRewardReceived), Is.EqualTo("1"));
+        Assert.That(test.Errors, Is.Empty);
+    }
     #endregion
 
     #region BingoEvent
@@ -759,7 +775,39 @@ public class EventRewardClaimTests {
         Assert.That(Value(session, GameEventUserValueType.BingoRewardsClaimed), Is.EqualTo("0"));
         Assert.That(test.Errors, Is.Empty);
     }
+
+    [Test]
+    public void Bingo_ClaimRow_IsStoredWithTheReward() {
+        GameSession session = LoginBingo();
+        foreach (int number in FirstRow) {
+            Cross(session, CashPencil, number);
+        }
+
+        ClaimBingo(session, 0);
+
+        Assert.That(Held(session, ItemB), Is.EqualTo(1));
+        Assert.That(Stored(GameEventUserValueType.BingoRewardsClaimed), Is.EqualTo("0"));
+    }
+
+    // The client draws no board for seed 0 (UIBingoEventDialog): opening the board draws a new seed.
+    [Test]
+    public void Bingo_OpenWithSeedZero_DrawsANewSeed() {
+        GameSession session = LoginBingo();
+        session.GameEvent.Set(EventId, GameEventUserValueType.BingoUid, 0);
+
+        Reward(session, 20);
+
+        Assert.That(int.Parse(Value(session, GameEventUserValueType.BingoUid)!), Is.Not.EqualTo(0));
+    }
     #endregion
+
+    // The stored row of the event's user value, null when none is stored.
+    private string? Stored(GameEventUserValueType type) {
+        using var context = new Ms2Context(test.Options);
+        return context.GameEventUserValue
+            .Where(value => value.CharacterId == test.CharacterId && value.EventId == EventId && value.Type == type)
+            .Select(value => value.Value).FirstOrDefault();
+    }
 
     // Stored user value rows of the event, ending with it.
     private void Insert(TestGameSession target, List<(GameEventUserValueType Type, string Value)> rows) {

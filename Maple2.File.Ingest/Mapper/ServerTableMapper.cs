@@ -1192,6 +1192,28 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         return new GameEventTable(results);
     }
 
+    // The time run's rewards in value2's <ms>: a <reward> row per step at its distance, and the <final> row. A row
+    // without a readable item id, count or grade is skipped; the first row of a distance counts.
+    public static (Dictionary<int, RewardItem> Steps, RewardItem? Final) ReadTimeRunRewards(XmlNode ms) {
+        var steps = new Dictionary<int, RewardItem>();
+        RewardItem? final = null;
+        foreach (XmlNode node in ms.ChildNodes) {
+            if (node.Name is not ("reward" or "final")
+                || !int.TryParse(node.Attributes?["itemID"]?.Value, out int itemId)
+                || !int.TryParse(node.Attributes?["count"]?.Value, out int count)
+                || !short.TryParse(node.Attributes?["grade"]?.Value, out short grade)) {
+                continue;
+            }
+            var item = new RewardItem(itemId: itemId, amount: count, rarity: grade);
+            if (node.Name == "final") {
+                final ??= item;
+            } else if (int.TryParse(node.Attributes?["distance"]?.Value, out int distance)) {
+                steps.TryAdd(distance, item);
+            }
+        }
+        return (steps, final);
+    }
+
     // A gameEvent row of the server's table: its times (written to the minute or to the second, 634 KR rows),
     // part times and days, with the event's data as read.
     public static GameEventMetadata MapGameEvent(int id, GameEvent data, GameEventType eventType, GameEventData eventData) {
@@ -1750,18 +1772,11 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 if (value2Xml.FirstChild is not { Name: "ms" }) {
                     return null;
                 }
-                XmlNode? rewardNode = value2Xml.FirstChild.FirstChild;
-                if (rewardNode == null) {
-                    return null;
-                }
-
-                if (!int.TryParse(rewardNode.Attributes?["itemID"]?.Value, out int timerunEventItemId)) {
-                    return null;
-                }
-                if (!int.TryParse(rewardNode.Attributes?["count"]?.Value, out int timerunEventItemCount)) {
-                    return null;
-                }
-                if (!short.TryParse(rewardNode.Attributes?["grade"]?.Value, out short timerunEventItemGrade)) {
+                // value2 holds the step rewards (<reward distance=..>, one per distance) and the final reward
+                // (<final>), the rows GameEventTimeRunEvent reads. Every KR and NA row has only the final reward;
+                // CN 700001 has four steps.
+                (Dictionary<int, RewardItem> stepRewards, RewardItem? finalReward) = ReadTimeRunRewards(value2Xml.FirstChild);
+                if (finalReward == null) {
                     return null;
                 }
 
@@ -1771,11 +1786,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new TimeRunEvent(
                     StartItemId: startTimeRunEventItemId,
                     Quests: quests.ToArray(),
-                    StepRewards: new Dictionary<int, RewardItem>(), // No step rewards were added in the metadata.
-                    FinalReward: new RewardItem(
-                        itemId: timerunEventItemId,
-                        amount: timerunEventItemCount,
-                        rarity: timerunEventItemGrade));
+                    StepRewards: stepRewards,
+                    FinalReward: finalReward.Value);
             case GameEventType.LongTermAttendGift:
                 // Read only for the replay: with the switch off the type is not stored, as before.
                 return replayAttendGift ? LongTermAttendGiftReader.Parse(value1, value2) : null;
