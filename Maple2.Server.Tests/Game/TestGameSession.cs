@@ -399,6 +399,7 @@ public sealed class TestGameSession {
         session.Quest = quest;
         var marriage = Uninitialized<MarriageManager>();
         typeof(MarriageManager).GetField("session", Any)!.SetValue(marriage, session);
+        typeof(MarriageManager).GetField("logger", Any)!.SetValue(marriage, Serilog.Log.Logger.ForContext<MarriageManager>());
         marriage.Marriage = Marriage.Default;
         session.Marriage = marriage;
         session.Guild = Uninitialized<GuildManager>();

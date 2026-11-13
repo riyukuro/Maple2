@@ -1,4 +1,5 @@
-﻿using Maple2.Database.Extensions;
+﻿using System.Diagnostics.CodeAnalysis;
+using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -877,15 +878,10 @@ public sealed class MarriageManager {
             return WeddingError.s_wedding_result_err_same_field;
         }
 
-        if (!PayWeddingHall(partner, hallData, change: false, 0, out WeddingError payError)) {
+        WeddingHall reservation = UnconfirmedReservation;
+        if (!PayWeddingHall(partner, hallData, change: false, 0, db => db.CreateWeddingHall(reservation, Marriage),
+                out WeddingHall? weddingHall, out WeddingError payError)) {
             return payError;
-        }
-
-        using GameStorage.Request db = session.GameStorage.Context();
-        WeddingHall? weddingHall = db.CreateWeddingHall(UnconfirmedReservation, Marriage);
-        if (weddingHall == null) {
-            logger.Error("Failed to create wedding hall for {CharacterId}", session.CharacterId);
-            return WeddingError.s_wedding_result_err_system;
         }
 
         WeddingHall = weddingHall;
@@ -900,31 +896,53 @@ public sealed class MarriageManager {
         return WeddingError.s_wedding_propose_ok;
     }
 
-    // The payer is the partner who sent the reservation, so the coupon is the one their ReserveHall picked.
-    private bool PayWeddingHall(FieldPlayer partner, WeddingPackage.HallData hallData, bool change, long differenceCost, out WeddingError error) {
+    // The payer is the partner who sent the reservation, so the coupon is the one their ReserveHall picked. The
+    // payer's merets and the hall row (storeHall) are stored together under the payer's account lock, through the
+    // payer's own session (TrySavePurchase), or not at all: a hall that is not stored takes no merets and no coupon
+    // (the merets used to be taken from the payer's session and never stored, and kept when the hall failed). This
+    // runs on the field thread, where both partners' wedding packets and the payer's other field packets run.
+    private bool PayWeddingHall(FieldPlayer partner, WeddingPackage.HallData hallData, bool change, long differenceCost,
+                                Func<GameStorage.Request, WeddingHall?> storeHall, [NotNullWhen(true)] out WeddingHall? stored, out WeddingError error) {
         MarriageManager payer = partner.Session.Marriage;
         long couponUid = change ? 0 : payer.couponItemUid;
         (long cost, bool gifts) = WeddingHallPayRules.Pay(change, couponUid != 0, hallData.MeretCost, differenceCost);
-        if (couponUid != 0) {
-            if (!partner.Session.Item.Inventory.Consume(couponUid, 1)) {
-                error = WeddingError.s_wedding_result_lack_coupon;
-                return false;
-            }
-            payer.couponItemUid = 0;
+        stored = null;
+        if (couponUid != 0 && partner.Session.Item.Inventory.Get(couponUid) == null) {
+            error = WeddingError.s_wedding_result_lack_coupon;
+            return false;
+        }
+        if (cost > 0 && partner.Session.Currency.CanAddMeret(-cost) != -cost) {
+            error = WeddingError.s_wedding_result_err_lack_meratal;
+            return false;
         }
 
+        // The stored currency is the session's: it is taken from the player for the save, and shown (the Meret
+        // update, the merets spent) once the save is done.
+        Currency currency = partner.Value.Currency;
+        currency.Meret -= cost;
+        WeddingHall? hall = null;
+        bool saved = partner.Session.TrySavePurchase(db => (hall = storeHall(db)) != null);
+        currency.Meret += cost;
+        if (!saved || hall == null) {
+            logger.Error("Wedding hall not stored, nothing paid: payer {CharacterId}, cost {Cost}", partner.Value.Character.Id, cost);
+            error = WeddingError.s_wedding_result_err_system;
+            return false;
+        }
         if (cost > 0) {
-            if (partner.Session.Currency.CanAddMeret(-cost) != -cost) {
-                error = WeddingError.s_wedding_result_err_lack_meratal;
-                return false;
-            }
             partner.Session.Currency.Meret -= cost;
+        }
+        if (couponUid != 0) {
+            if (!partner.Session.Item.Inventory.Consume(couponUid, 1)) {
+                logger.Error("Wedding hall {HallId} stored, but its coupon {Uid} was not used up", hall.Id, couponUid);
+            }
+            payer.couponItemUid = 0;
         }
 
         if (gifts) {
             MailReservationGifts(partner, hallData);
         }
 
+        stored = hall;
         error = WeddingError.none;
         return true;
     }
@@ -1177,19 +1195,16 @@ public sealed class MarriageManager {
 
         long differenceCost = GetWeddingHallChangeCost(currentHallData, hallData);
 
-        if (!PayWeddingHall(partner, hallData, change: true, differenceCost, out WeddingError payError)) {
+        // The changed hall is stored as a new row that keeps the guests of the old one; the read of the
+        // guests, the delete and the new row are one transaction under the old row's lock, the payment's.
+        WeddingHall before = WeddingHall;
+        WeddingHall reservation = UnconfirmedReservation;
+        if (!PayWeddingHall(partner, hallData, change: true, differenceCost, db => db.ChangeWeddingHall(before.Id, reservation, Marriage),
+                out WeddingHall? weddingHall, out WeddingError payError)) {
             return payError;
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
-        // The changed hall is stored as a new row that keeps the guests of the old one; the read of the
-        // guests, the delete and the new row are one transaction under the old row's lock.
-        WeddingHall before = WeddingHall;
-        WeddingHall? weddingHall = db.ChangeWeddingHall(WeddingHall.Id, UnconfirmedReservation, Marriage);
-        if (weddingHall == null) {
-            logger.Error("Failed to change wedding hall for {CharacterId}. Hall Id: {WeddingHallId}", session.CharacterId, WeddingHall.Id);
-            return WeddingError.s_wedding_result_err_system;
-        }
 
         WeddingHall = weddingHall;
         partner.Session.Marriage.WeddingHall = weddingHall;

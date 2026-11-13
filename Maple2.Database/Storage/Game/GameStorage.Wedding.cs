@@ -240,8 +240,13 @@ public partial class GameStorage {
             };
         }
 
+        // Inside a transaction the request already holds (the payment's), the row is stored in it, and the caller
+        // commits or rolls back both.
         public WeddingHall? CreateWeddingHall(WeddingHall hall, Marriage marriage) {
-            BeginTransaction();
+            bool own = !IsTransaction;
+            if (own) {
+                BeginTransaction();
+            }
 
             Model.WeddingHall model = hall;
             model.MarriageId = marriage.Id;
@@ -249,11 +254,13 @@ public partial class GameStorage {
             model.CreationTime = DateTime.Now;
             Context.WeddingHall.Add(model);
             if (!SaveChanges()) {
-                Rollback();
+                if (own) {
+                    Rollback();
+                }
                 return null;
             }
 
-            return Commit() ? GetWeddingHall(marriage) : null;
+            return !own || Commit() ? GetWeddingHall(marriage) : null;
         }
 
         public WeddingHall? GetWeddingHall(Marriage marriage) {
@@ -318,9 +325,11 @@ public partial class GameStorage {
         // The old row is locked as in AddWeddingGuests for the read of its guests, the delete and the insert,
         // so an invitation is stored either before the change (and is carried over) or finds the old hall gone
         // (and is refused, unpaid). Null when the old hall is gone or the save failed; nothing is changed then.
+        // Inside a transaction the request already holds (the payment's), the change is made in it, and the caller
+        // commits or rolls back both.
         public WeddingHall? ChangeWeddingHall(long hallId, WeddingHall hall, Marriage marriage) {
             try {
-                using (IDbContextTransaction transaction = Context.Database.BeginTransaction()) {
+                using (IDbContextTransaction? transaction = IsTransaction ? null : Context.Database.BeginTransaction()) {
                     Context.Database.ExecuteSqlRaw("SELECT `Id` FROM `wedding-hall` WHERE `Id` = {0} FOR UPDATE", hallId);
                     Model.WeddingHall? old = Context.WeddingHall.Find(hallId);
                     if (old == null) {
@@ -343,7 +352,7 @@ public partial class GameStorage {
                         return null;
                     }
 
-                    transaction.Commit();
+                    transaction?.Commit();
                 }
                 return GetWeddingHall(marriage);
             } catch (Exception ex) {
