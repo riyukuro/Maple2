@@ -413,6 +413,27 @@ public sealed class QuestManager {
             }
         }
 
+        // The requires below gate accepting only: a quest already held stays held when one stops holding later (the
+        // guild's quest npc changes level, the player leaves the guild, the day rolls over), as the client keeps it.
+        // progressQuest and unrequire (questdata.cpp:501-517): the client's IsQuestActive is state 1 (started) and
+        // IsQuestRewarded state 2 (completed).
+        if (require.ProgressQuest != null && require.ProgressQuest.Any(questId => questId != 0 && !HasState(questId, QuestState.Started))) {
+            return false;
+        }
+
+        if (require.Unrequire != null && require.Unrequire.Any(questId => questId != 0
+                && (HasState(questId, QuestState.Started) || HasState(questId, QuestState.Completed)))) {
+            return false;
+        }
+
+        if (!QuestRules.MeetsGuildNpcLevel(require.GuildNpcLevel, session.Guild.Guild != null, session.Guild.NpcLevel(GuildNpcType.Quest))) {
+            return false;
+        }
+
+        if (!QuestRules.OnWeekday(require.Weekdays, DateTime.Now)) {
+            return false;
+        }
+
         if (require.GroupId != 0 && !GroupPicks(require.GroupId, DateTime.Now).Contains(metadata.Id)) {
             return false;
         }
@@ -423,6 +444,8 @@ public sealed class QuestManager {
 
         return require.SelectableQuest.Length <= 0 || SelectableQuests(require.SelectableQuest);
     }
+
+    private bool HasState(int questId, QuestState state) => TryGetQuest(questId, out Quest? quest) && quest.State == state;
 
     // The quests of a group the client accepts now (QuestGroupPick): the pick over the group's quests in id order,
     // seeded by the first one's repeat.

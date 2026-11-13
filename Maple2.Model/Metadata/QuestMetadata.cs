@@ -75,7 +75,16 @@ public record QuestMetadataRequire(
     int MasteryGrade = 0,
     // require unrequireGroup: the quest is not accepted while a picked quest of one of these groups is in progress,
     // or completed and not yet repeatable (CQuestManagerCommon::CanAcceptQuest, questdata.cpp:520).
-    int[]? UnrequireGroup = null);
+    int[]? UnrequireGroup = null,
+    // require unrequire: refused while one of these quests is in progress or completed; progressQuest: every one of
+    // these must be in progress (CanAcceptQuest, questdata.cpp:501-517).
+    int[]? Unrequire = null,
+    int[]? ProgressQuest = null,
+    // require guildNpcLevel: the player's guild must have its quest npc at exactly this level, so no guild refuses
+    // (CanAcceptQuest, questdata.cpp:569). 0 checks nothing.
+    int GuildNpcLevel = 0,
+    // require dayOfWeek: the local weekday, 1 Sunday to 7 Saturday, must be listed (vfunc_o10_21, questdata.cpp:342).
+    int[]? Weekdays = null);
 
 public record QuestMetadataReward(
     int Meso,

@@ -86,7 +86,11 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                     FameGrade: data.require.fameGrade,
                     MasteryType: (Maple2.Model.Enum.MasteryType) (int) data.require.masteryType,
                     MasteryGrade: data.require.masteryGrade,
-                    UnrequireGroup: data.require.unrequireGroup.Length > 0 ? data.require.unrequireGroup : null
+                    UnrequireGroup: data.require.unrequireGroup.Length > 0 ? data.require.unrequireGroup : null,
+                    Unrequire: data.require.unrequire.Length > 0 ? data.require.unrequire : null,
+                    ProgressQuest: data.require.progressQuest.Length > 0 ? data.require.progressQuest : null,
+                    GuildNpcLevel: data.require.guildNpcLevel,
+                    Weekdays: data.require.dayOfWeek.Length > 0 ? data.require.dayOfWeek.Select(day => (int) day).ToArray() : null
                 ),
                 AcceptReward: Convert(data.acceptReward),
                 CompleteReward: Convert(data.completeReward),

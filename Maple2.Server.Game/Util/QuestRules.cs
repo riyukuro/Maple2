@@ -17,6 +17,17 @@ public static class QuestRules {
         return require.MasteryType == MasteryType.Unknown || require.MasteryGrade == 0 || masteryGrade(require.MasteryType) >= require.MasteryGrade;
     }
 
+    // require guildNpcLevel (CanAcceptQuest, questdata.cpp:569): with a level, the player must be in a guild
+    // (vfunc_o10_9) whose quest npc (CGuildInfo::GetNpcLevel(6), 0 without one) is at exactly that level; the guild
+    // dailies and weeklies of level 1 and of level 2 are separate groups, so a level-2 guild takes only the latter.
+    public static bool MeetsGuildNpcLevel(int required, bool inGuild, int questNpcLevel) =>
+        required == 0 || inGuild && questNpcLevel == required;
+
+    // require dayOfWeek (vfunc_o10_21, questdata.cpp:342): the CMsTime weekday (GetDayOfWeek, tm_wday + 1: 1 is
+    // Sunday) of the local time must be listed; no list accepts any day.
+    public static bool OnWeekday(int[]? weekdays, DateTime now) =>
+        weekdays == null || weekdays.Contains((int) now.DayOfWeek + 1);
+
     // A completed quest that may be started again, the client's own rule (CQuestManagerCommon::vfunc_o10_21,
     // commonfiles/questdata.cpp:376): repeat 0 never; 2 (daily) not on the calendar day the quest was last
     // started; 3 (weekly) not before the start of the reset weekday after the last start (NextWeekdayStart,
