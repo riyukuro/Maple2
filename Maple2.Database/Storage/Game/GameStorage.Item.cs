@@ -4,6 +4,7 @@ using Maple2.Database.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Item = Maple2.Model.Game.Item;
@@ -38,10 +39,12 @@ public partial class GameStorage {
         // row's new amount would not be part of the save.
         public Item? SplitItem(long ownerId, Item item, int amount) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+            // A source row that is gone gives no piece: writing one anyway made an item from nothing.
             Model.Item? source = Context.Item.Find(item.Uid);
-            if (source != null) {
-                source.Amount = item.Amount - amount;
+            if (source == null) {
+                return null;
             }
+            source.Amount = item.Amount - amount;
 
             Model.Item model = item;
             model.Amount = amount;
@@ -162,16 +165,24 @@ public partial class GameStorage {
                 .ToList()!;
         }
 
-        public bool SaveItems(long ownerId, params Item[] items) {
-            var models = new Model.Item[items.Length];
-            for (int i = 0; i < items.Length; i++) {
-                if (items[i].Uid == 0) {
+        public bool SaveItems(long ownerId, params Item[] items) => SaveItems(ownerId, items, []);
+
+        // Saves |items| to ownerId and |discard| to owner 0 in one save: both are written or neither.
+        public bool SaveItems(long ownerId, Item[] items, Item[] discard) {
+            foreach ((Item item, long owner) in items.Select(item => (item, ownerId)).Concat(discard.Select(item => (item, 0L)))) {
+                if (item.Uid == 0) {
                     continue;
                 }
 
-                models[i] = items[i];
-                models[i].OwnerId = ownerId;
-                Context.Item.Update(models[i]);
+                Model.Item model = item;
+                model.OwnerId = owner;
+                // A row this request created (CreateItem) is still tracked; updating a second instance of it threw,
+                // so a new item that merged in part into a stack was not saved and the add stopped half way.
+                EntityEntry<Model.Item>? tracked = Context.ChangeTracker.Entries<Model.Item>().FirstOrDefault(entry => entry.Entity.Id == model.Id);
+                if (tracked != null) {
+                    tracked.State = EntityState.Detached;
+                }
+                Context.Item.Update(model);
             }
 
             return Context.TrySaveChanges();

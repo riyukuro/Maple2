@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -156,6 +157,107 @@ public class BagSplitTests {
             Assert.That(test.Errors, Is.Empty);
         });
     }
+
+    // A failed save of an attachment's move into the bag changes nothing, in memory or, read back, in the database:
+    // the mail keeps it and the bag stays as it was, with it in an open slot or merged into a stack of 30. The bag
+    // kept it while its row stayed the mail's, so a crash before the next character save gave it twice.
+    [TestCase(0)]
+    [TestCase(30)]
+    public void MailCollect_FailedMove_KeepsTheAttachmentInTheMail(int stack) {
+        GameSession session = Start();
+        if (stack > 0) {
+            Assert.That(session.Item.Inventory.Add(Make(session, stack), commit: true), Is.True);
+        }
+        long mailId = Mail(session, Make(session, 50));
+        test.FailSave = ItemUpdate();
+
+        MailError collected = session.Mail.Collect(mailId);
+        test.FailSave = null;
+
+        using GameStorage.Request reload = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(collected, Is.EqualTo(MailError.s_mail_error_receiveitem_to_inven));
+            Assert.That(reload.GetMail(mailId, test.CharacterId)!.Items.Sum(item => item.Amount), Is.EqualTo(50));
+            Assert.That(BagRows(reload), Is.EqualTo(stack));
+            Assert.That(Held(session, Stackable), Is.EqualTo(stack));
+        });
+        // Collected again with the save working, it is given once.
+        Assert.That(session.Mail.Collect(mailId), Is.EqualTo(MailError.none));
+        using GameStorage.Request after = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(after.GetMail(mailId, test.CharacterId)!.Items, Is.Empty);
+            Assert.That(BagRows(after), Is.EqualTo(stack + 50));
+            Assert.That(Held(session, Stackable), Is.EqualTo(stack + 50));
+        });
+    }
+
+    // A new item that merges into a stack and whose save fails: the stack is as it was and the item's new row is given
+    // back (owner 0), so the caller mailing or dropping it again does not leave a second copy with the character.
+    [Test]
+    public void Add_NewItemFailedMergeSave_GivesTheNewRowBack() {
+        GameSession session = Start();
+        Assert.That(session.Item.Inventory.Add(Make(session, 30), commit: true), Is.True);
+        StoredItem add = Make(session, 50);
+        test.FailSave = ItemUpdate();
+
+        bool result = session.Item.Inventory.Add(add, commit: true);
+        test.FailSave = null;
+
+        using GameStorage.Request reload = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(result, Is.False);
+            Assert.That(add.Amount, Is.EqualTo(50));
+            Assert.That(Held(session, Stackable), Is.EqualTo(30));
+            Assert.That(BagRows(reload), Is.EqualTo(30));
+        });
+    }
+
+    // A new item of 80 next to a stack of 30: 70 merge, 10 open a slot, and the database has the same after a reload.
+    [Test]
+    public void Add_NewItemPartlyMerged_SavesBothRows() {
+        GameSession session = Start();
+        Assert.That(session.Item.Inventory.Add(Make(session, 30), commit: true), Is.True);
+
+        bool result = session.Item.Inventory.Add(Make(session, 80), commit: true);
+
+        using GameStorage.Request reload = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(result, Is.True);
+            Assert.That(Held(session, Stackable), Is.EqualTo(110));
+            Assert.That(BagRows(reload), Is.EqualTo(110));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A split of an item whose row is gone writes no piece: the piece was an item made from nothing.
+    [Test]
+    public void SplitItem_OfAMissingRow_WritesNothing() {
+        GameSession session = Start();
+        StoredItem gone = Make(session, 250);
+        typeof(StoredItem).GetProperty(nameof(StoredItem.Uid))!.SetValue(gone, 987654321L);
+
+        StoredItem? piece;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            piece = db.SplitItem(test.CharacterId, gone, 100);
+        }
+
+        using GameStorage.Request reload = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(piece, Is.Null);
+            Assert.That(BagRows(reload), Is.Zero);
+        });
+    }
+
+    // Fails the first save that updates an item row.
+    private static Func<DbContext, bool> ItemUpdate() {
+        int saves = 0;
+        return context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Modified
+                                                                    && entry.Entity.GetType().Name == "Item") && ++saves == 1;
+    }
+
+    private int BagRows(GameStorage.Request reload) =>
+        reload.GetItemGroups(test.CharacterId, ItemGroup.Default).TryGetValue(ItemGroup.Default, out List<StoredItem>? rows)
+            ? rows.Where(item => item.Id == Stackable).Sum(item => item.Amount) : 0;
 
     // A mail to the player with the items attached, in the player's inbox.
     private long Mail(GameSession session, params StoredItem[] items) {

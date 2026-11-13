@@ -312,6 +312,8 @@ public class InventoryManager {
                 justCreated = true;
             }
 
+            int amountBefore = add.Amount;
+            short slotBefore = add.Slot;
             IList<(Item, int Added)> result = items.Add(add, stack: true);
             if (result.Count == 0) {
                 // A failed add leaves an item that already had a row as it was (ItemCollection.Add changes nothing
@@ -324,21 +326,47 @@ public class InventoryManager {
                 return false;
             }
 
-            if (add.Amount == 0) {
-                Discard(add, commit);
+            bool mergedAway = add.Amount == 0;
+            if (mergedAway && !commit) {
+                Discard(add);
             }
 
             if (commit) {
-                // The stacks the item merged into changed too. An item merged away completely was already
-                // discarded above and is not saved back to the character. A just-created item was written
-                // with its full amount; when part of it merged into stacks, save its lowered amount as well,
-                // or the merged part exists twice in the database until the next character save.
+                // The stacks the item merged into changed too. An item merged away completely is discarded in the
+                // same save. A just-created item was written with its full amount; when part of it merged into
+                // stacks, save its lowered amount as well, or the merged part exists twice in the database until
+                // the next character save.
                 List<Item> changed = result.Select(entry => entry.Item1).Where(item => item.Uid != add.Uid).ToList();
                 if (add.Amount > 0 && (!justCreated || changed.Count > 0)) {
                     changed.Add(add);
                 }
-                if (changed.Count > 0) {
-                    db.SaveItems(session.CharacterId, changed.ToArray());
+                // A failed save changes nothing in memory either: the item goes back to its row's owner (a mail
+                // attachment stays in the mail, its row is still the mail's) and the caller gets false. The bag
+                // keeping it while the row stayed the mail's gave the item twice after a crash before the next
+                // character save. A just-created row is given back to owner 0, because the caller mails or drops
+                // the item again as a new row.
+                if ((changed.Count > 0 || mergedAway) && !db.SaveItems(session.CharacterId, changed.ToArray(), mergedAway ? [add] : [])) {
+                    foreach ((Item item, int added) in result) {
+                        if (item.Uid == add.Uid) {
+                            items.Remove(add.Uid, out _);
+                        } else {
+                            item.Amount -= added;
+                        }
+                    }
+                    add.Amount = amountBefore;
+                    add.Slot = slotBefore;
+                    if (justCreated) {
+                        using GameStorage.Request undo = session.GameStorage.Context();
+                        if (!undo.SaveItems(0, add)) {
+                            logger.Error("Item {ItemId} x{Amount}: the row {Uid} made for a failed add was not given back", add.Id, add.Amount, add.Uid);
+                        }
+                    }
+                    logger.Error("Item {ItemId} x{Amount}: the bag add was not saved", add.Id, amountBefore);
+                    session.Send(ItemInventoryPacket.Error(s_err_inventory));
+                    return false;
+                }
+                if (mergedAway) {
+                    CountDestroyed(add);
                 }
             }
 
@@ -950,6 +978,10 @@ public class InventoryManager {
         } else {
             delete.Add(item);
         }
+        CountDestroyed(item);
+    }
+
+    private void CountDestroyed(Item item) {
         lock (session.Item) {
             if (item.Type is { IsSkin: false, IsHair: false, IsDecal: false, IsEar: false, IsFace: false }) {
                 session.ConditionUpdate(ConditionType.item_destroy, codeLong: item.Id);
