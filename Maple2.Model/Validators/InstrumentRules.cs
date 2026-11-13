@@ -1,5 +1,17 @@
 namespace Maple2.Model.Validators;
 
+// PlayInstrument 17, the compose result. After it sends a compose (8), the client's score writer locks its movie; a
+// composed score (8) or one of these results unlocks it (UIWriteMusicDialog::OnMakeScoreResult). Any other value
+// leaves the writer locked.
+public enum ComposeResult : byte {
+    // Unlocks the writer: the player can fix the score and send it again.
+    Retry = 8,
+    // Unlocks the writer and ends the writing (its mode 0): the score item cannot be written.
+    Close = 10,
+    // Unlocks the writer and shows text 0x8b7, the text the client gives a banned word in its search inputs.
+    BannedWord = 0x10,
+}
+
 public static class InstrumentRules {
     // The client's score writer refuses a score that plays for less than two seconds.
     public const int MinScoreLengthMs = 2000;
@@ -40,5 +52,19 @@ public static class InstrumentRules {
             }
         }
         return mml.Length <= noteLengthMax + tabs && lengthMs >= MinScoreLengthMs;
+    }
+
+    // The result a refused compose sends, or null when the score can be composed. The item must be a blank score
+    // with uses left (Close); the title is checked against the server's ban list (BannedWord), which can hold a
+    // word the client's filter passed; then the client's own checks (Retry).
+    public static ComposeResult? ComposeRefusal(bool scoreUsable, bool composed, string title, Func<string, bool> isBanned,
+                                                string mml, int noteLengthMax, int lengthMs) {
+        if (!scoreUsable || composed) {
+            return ComposeResult.Close;
+        }
+        if (!string.IsNullOrWhiteSpace(title) && isBanned(title)) {
+            return ComposeResult.BannedWord;
+        }
+        return IsComposable(title, isBanned, mml, noteLengthMax, lengthMs) ? null : ComposeResult.Retry;
     }
 }

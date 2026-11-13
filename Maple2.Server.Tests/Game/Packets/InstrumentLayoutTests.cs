@@ -4,6 +4,7 @@ using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Model;
@@ -139,15 +140,15 @@ public class InstrumentLayoutTests {
 
     // Mode 14: i32 player object id; mode 17: u8 compose result.
     [Test]
-    public void FireworksIsIdAndUnknownIsOneByte() {
+    public void FireworksIsIdAndComposeResultIsOneByte() {
         ByteWriter writer = InstrumentPacket.Fireworks(0x0D2F22);
         ByteReader reader = Open(writer, 14);
         Assert.That(reader.ReadInt(), Is.EqualTo(0x0D2F22));
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
 
-        writer = InstrumentPacket.Unknown(3);
+        writer = InstrumentPacket.ComposeResult(ComposeResult.BannedWord);
         reader = Open(writer, 17);
-        Assert.That(reader.ReadByte(), Is.EqualTo(3));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0x10));
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 }

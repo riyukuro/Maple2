@@ -40,6 +40,25 @@ public class InstrumentRulesTests {
         Assert.That(Compose(title, mml, length, noteLengthMax), Is.EqualTo(expected));
     }
 
+    // The client unlocks its score writer only for the results 8, 10 and 0x10 (UIWriteMusicDialog::OnMakeScoreResult).
+    [Test]
+    public void ComposeResultsAreTheOnesTheClientUnlocksOn() {
+        Assert.That((byte) ComposeResult.Retry, Is.EqualTo(8));
+        Assert.That((byte) ComposeResult.Close, Is.EqualTo(10));
+        Assert.That((byte) ComposeResult.BannedWord, Is.EqualTo(0x10));
+    }
+
+    [TestCase(true, false, "Song", "cdefg", 2000, null)]
+    [TestCase(false, false, "Song", "cdefg", 2000, ComposeResult.Close)] // no blank score with uses left
+    [TestCase(true, true, "Song", "cdefg", 2000, ComposeResult.Close)] // already composed
+    [TestCase(true, false, "a bad song", "cdefg", 2000, ComposeResult.BannedWord)]
+    [TestCase(true, false, "Song", "cdefg", 1999, ComposeResult.Retry)]
+    [TestCase(true, false, "", "cdefg", 2000, ComposeResult.Retry)]
+    [TestCase(true, false, "Song", "", 2000, ComposeResult.Retry)]
+    public void ComposeRefusal(bool usable, bool composed, string title, string mml, int length, ComposeResult? expected) {
+        Assert.That(InstrumentRules.ComposeRefusal(usable, composed, title, Banned, mml, 5, length), Is.EqualTo(expected));
+    }
+
     // A played score counts from the start to the stop, and no longer than the score.
     [TestCase(-5, 60000, 0)]
     [TestCase(0, 60000, 0)]

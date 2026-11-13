@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -21,7 +22,7 @@ public static class InstrumentPacket {
         RemainingUse = 9,
         ViewScore = 10,
         Fireworks = 14,
-        Unknown = 17,
+        ComposeResult = 17,
     }
 
     public static ByteWriter StartImprovise(FieldInstrument instrument) {
@@ -129,10 +130,11 @@ public static class InstrumentPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown(byte value) {
+    // The refusal of a compose (8): the client unlocks its score writer.
+    public static ByteWriter ComposeResult(ComposeResult result) {
         var pWriter = Packet.Of(SendOp.PlayInstrument);
-        pWriter.Write<Command>(Command.Unknown);
-        pWriter.WriteByte(value);
+        pWriter.Write<Command>(Command.ComposeResult);
+        pWriter.WriteByte((byte) result);
 
         return pWriter;
     }

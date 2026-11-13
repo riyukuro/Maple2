@@ -259,13 +259,10 @@ public class InstrumentHandler : FieldPacketHandler {
 
     private void HandleComposeScore(GameSession session, IByteReader packet) {
         long scoreUid = packet.ReadLong();
-        if (!TryGetScore(session, scoreUid, out Item? score) || score.Music == null) {
-            return;
-        }
-
-        if (score.Music.AuthorId != 0) {
-            Logger.Warning("CustomMusicScore {Uid} has already been composed", score.Uid);
-            return;
+        bool usable = TryGetScore(session, scoreUid, out Item? score) && score.Music != null;
+        bool composed = usable && score!.Music!.AuthorId != 0;
+        if (composed) {
+            Logger.Warning("CustomMusicScore {Uid} has already been composed", score!.Uid);
         }
 
         int length = packet.ReadInt();
@@ -273,13 +270,12 @@ public class InstrumentHandler : FieldPacketHandler {
         string title = packet.ReadUnicodeString();
         string mml = packet.ReadString();
 
-        // The client's score writer makes these checks before it sends; a score that fails them was not written there.
-        int noteLengthMax = score.Metadata.Music?.NoteLengthMax ?? 0;
-        if (!InstrumentRules.IsComposable(title, BanWordStorage.ContainsBannedWord, mml, noteLengthMax, length)) {
-            if (!string.IsNullOrWhiteSpace(title) && BanWordStorage.ContainsBannedWord(title)) {
-                // The server's list can hold a word the client's filter passed.
-                session.Send(NoticePacket.MessageBox(StringCode.s_ban_check_err_any));
-            }
+        // A refusal answers with 17, which unlocks the client's score writer (it stays locked otherwise).
+        int noteLengthMax = score?.Metadata.Music?.NoteLengthMax ?? 0;
+        ComposeResult? refusal = InstrumentRules.ComposeRefusal(usable, composed, title,
+            BanWordStorage.ContainsBannedWord, mml, noteLengthMax, length);
+        if (refusal != null || score?.Music == null) {
+            session.Send(InstrumentPacket.ComposeResult(refusal ?? ComposeResult.Close));
             return;
         }
 
