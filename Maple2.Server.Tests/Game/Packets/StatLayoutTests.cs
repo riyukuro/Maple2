@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -153,5 +153,49 @@ public class StatLayoutTests {
         Assert.That(spirit.Available, Is.EqualTo(0));
 
         Assert.That(StatsPacket.Updates(npc, []), Is.Empty);
+    }
+
+    // The client's stat 29 is bap and 30 bap_pet (statstringtable.xml); the panel's Bonus Attack row reads 0x1d
+    // (uipcinfodialog.cpp:965). The server's BonusAtk and PetBonusAtk (33, 34) go out there.
+    [Test]
+    public void OwnerForm_BonusAttackAtClientStat29() {
+        Stats stats = Sample();
+        stats[BasicAttribute.BonusAtk].AddTotal(4120);
+        stats[BasicAttribute.PetBonusAtk].AddTotal(70);
+        var writer = new ByteWriter();
+        writer.WriteAllStats(stats);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        Assert.That(reader.ReadByte(), Is.EqualTo(0x23));
+        var totals = new long[0x23];
+        for (int type = 0; type < 0x23; type++) {
+            for (int i = 0; i < 3; i++) {
+                long value = type == 4 ? reader.ReadLong() : reader.ReadInt();
+                if (i == 0) {
+                    totals[type] = value;
+                }
+            }
+        }
+        Assert.That(totals[29], Is.EqualTo(4120));
+        Assert.That(totals[30], Is.EqualTo(70));
+        Assert.That(totals[33], Is.EqualTo(0));
+        Assert.That(totals[34], Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ListForm_BonusAttackTypeIs29() {
+        FieldPlayer player = Player();
+        ByteReader reader = Reader(StatsPacket.Update(player, BasicAttribute.BonusAtk), player.ObjectId);
+        Assert.That(reader.ReadByte(), Is.EqualTo(1));
+        Assert.That(reader.ReadByte(), Is.EqualTo(29));
+        reader = Reader(StatsPacket.Update(player, BasicAttribute.PetBonusAtk, BasicAttribute.Strength), player.ObjectId);
+        Assert.That(reader.ReadByte(), Is.EqualTo(2));
+        Assert.That(reader.ReadByte(), Is.EqualTo(30));
+    }
+
+    [Test]
+    public void ClientStatRoundTrips() {
+        for (int id = 0; id < 0x23; id++) {
+            Assert.That(StatsPacket.ClientStat(StatsPacket.ServerStat((byte) id)), Is.EqualTo(id));
+        }
     }
 }
