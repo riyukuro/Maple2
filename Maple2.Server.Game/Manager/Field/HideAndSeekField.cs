@@ -213,6 +213,12 @@ public sealed class HideAndSeekField {
 
     public void Leave(FieldPlayer player) {
         lock (mutex) {
+            // A seeker leaving while the seekers look (portal, exit, channel change, logout) gets the seek skill set
+            // taken back first: TeamMatchResult's mode 6 goes only to the seekers still here, and the client keeps the
+            // set's quick-slot layout locked until a mode 6.
+            if (state.Step == HideAndSeekStep.LookingForATeams && state.TeamOf(player.Value.Character.Id) == HideAndSeekState.SeekTeam) {
+                player.Session.Send(HideAndSeekPacket.RemoveSkillSet(player.ObjectId, state.Int("SeekTeamSkillSetID")));
+            }
             HideAndSeekStep? next = state.Remove(player.Value.Character.Id, field.FieldTick);
             if (next != null) {
                 Enter(next.Value);

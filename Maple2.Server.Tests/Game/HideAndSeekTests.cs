@@ -1,10 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
@@ -206,6 +210,44 @@ public class HideAndSeekTests {
             Assert.That(reader.ReadInt(), Is.EqualTo(0));
             Assert.That(reader.ReadInt(), Is.EqualTo(0));
             Assert.That(reader.ReadInt(), Is.EqualTo(0));
+        });
+    }
+
+    // A seeker who leaves the field while the seekers look gets the seek skill set back (mode 6) on the way out; one
+    // who leaves before (while the hiders hide) never had it and gets none.
+    [TestCase(HideAndSeekStep.LookingForATeams, true)]
+    [TestCase(HideAndSeekStep.BeInHidingTeams, false)]
+    public void SeekerLeaves_GetsSkillSetBack(HideAndSeekStep leaveAt, bool expected) {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        FieldManager field = session.Field!;
+        // The test field is built without its initializers: the trigger user values each step sets, and the portals
+        // the moves look up (none: the players stay).
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        FieldInfo userValues = typeof(FieldManager).GetField(nameof(FieldManager.UserValues))!;
+        if (userValues.GetValue(field) == null) {
+            userValues.SetValue(field, new TriggerUserValues());
+        }
+        FieldInfo portals = typeof(FieldManager).GetField("fieldPortals", any)!;
+        if (portals.GetValue(field) == null) {
+            portals.SetValue(field, new System.Collections.Concurrent.ConcurrentDictionary<int, FieldPortal>());
+        }
+        field.StartHideAndSeek(1);
+        HideAndSeekField game = field.HideAndSeek!;
+        game.Constant("SeekTeamSkillSetID", "99930041", "ALL");
+        for (int i = 0; i < 20 && game.Step != leaveAt; i++) {
+            game.Update(field.FieldTick);
+        }
+        Assert.That(game.Step, Is.EqualTo(leaveAt));
+        FieldPlayer player = session.Player;
+        test.TakeSent();
+
+        game.Leave(player);
+        byte[] removeSkillSet = HideAndSeekPacket.RemoveSkillSet(player.ObjectId, 99930041).ToArray();
+        List<byte[]> sent = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.HideAndSeek && packet[2] == 6).ToList();
+        Assert.Multiple(() => {
+            Assert.That(sent, expected ? Is.EqualTo(new[] { removeSkillSet }) : Is.Empty);
+            Assert.That(game.Step, Is.EqualTo(HideAndSeekStep.TeamMatchResult));
         });
     }
 }
