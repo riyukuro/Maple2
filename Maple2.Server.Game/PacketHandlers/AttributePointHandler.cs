@@ -27,9 +27,12 @@ public class AttributePointHandler : FieldPacketHandler {
     }
 
     private void HandleIncrement(GameSession session, IByteReader packet) {
-        BasicAttribute type = BasicAttributeIds.ServerStat(packet.ReadByte());
+        byte stat = packet.ReadByte();
         // The client sends the amount: 1 from the plus button, or the number typed into the stat dialog.
         int amount = packet.ReadInt();
+        if (!BasicAttributeIds.TryServerStat(stat, out BasicAttribute type)) {
+            return; // no stat of the client's table
+        }
         session.Config.AllocateStatPoint(type, amount);
     }
 

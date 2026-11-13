@@ -70,8 +70,8 @@ public class ChangeAttributesHandler : FieldPacketHandler {
     private void HandleChange(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
         packet.ReadLong();
-        List<ItemRemakeRules.Lock> locks = ItemRemakeRules.ReadLocks(packet);
-        if (!ItemRemakeRules.LocksAllowed(locks.Count)) {
+        List<ItemRemakeRules.Lock>? locks = ItemRemakeRules.ReadLocks(packet);
+        if (locks == null || !ItemRemakeRules.LocksAllowed(locks.Count)) {
             session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
             return;
         }

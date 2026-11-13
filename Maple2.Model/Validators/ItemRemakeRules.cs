@@ -11,16 +11,26 @@ namespace Maple2.Model.Validators;
 public static class ItemRemakeRules {
     public readonly record struct Lock(bool Special, short Attribute);
 
-    public static List<Lock> ReadLocks(IByteReader packet) {
+    // Null when a basic option's id is outside the client's stat table (every option is still read).
+    public static List<Lock>? ReadLocks(IByteReader packet) {
         byte count = packet.ReadByte();
         var locks = new List<Lock>(count);
+        bool valid = true;
         for (int i = 0; i < count; i++) {
             bool special = packet.ReadBool();
             short attribute = packet.ReadShort();
+            if (special) {
+                locks.Add(new Lock(true, attribute));
+                continue;
+            }
             // A basic option's id is the client's stat id; the lock keeps the server's (BasicAttributeIds).
-            locks.Add(new Lock(special, special ? attribute : (short) BasicAttributeIds.ServerStat(attribute)));
+            if (BasicAttributeIds.TryServerStat(attribute, out BasicAttribute type)) {
+                locks.Add(new Lock(false, (short) type));
+            } else {
+                valid = false;
+            }
         }
-        return locks;
+        return valid ? locks : null;
     }
 
     // One lock item keeps one option; a request that keeps more is refused whole.

@@ -176,6 +176,9 @@ public class BlackMarketHandler : FieldPacketHandler {
         if (stat.Value.Special) {
             return key;
         }
-        return (stat.Value with { Stat = (int) BasicAttributeIds.ServerStat(stat.Value.Stat) }).Key;
+        if (!BasicAttributeIds.TryServerStat(stat.Value.Stat, out BasicAttribute type)) {
+            return null; // no stat of the client's table
+        }
+        return (stat.Value with { Stat = (int) type }).Key;
     }
 }

@@ -23,7 +23,7 @@ public class ItemRemakeRulesTests {
         var reader = new ByteReader(writer.ToArray(), 0);
         Assert.That(reader.ReadLong(), Is.EqualTo(9001));
         Assert.That(reader.ReadLong(), Is.EqualTo(9002));
-        List<ItemRemakeRules.Lock> locks = ItemRemakeRules.ReadLocks(reader);
+        List<ItemRemakeRules.Lock> locks = ItemRemakeRules.ReadLocks(reader)!;
         Assert.That(locks, Has.Count.EqualTo(count));
         for (int i = 0; i < count; i++) {
             Assert.That(locks[i], Is.EqualTo(new ItemRemakeRules.Lock(i % 2 == 1, (short) (20 + i))));
@@ -49,7 +49,7 @@ public class ItemRemakeRulesTests {
         reader.ReadLong();
         reader.ReadLong();
         Assert.That(reader.ReadBool(), Is.True);
-        List<ItemRemakeRules.Lock> locks = ItemRemakeRules.ReadLocks(reader);
+        List<ItemRemakeRules.Lock> locks = ItemRemakeRules.ReadLocks(reader)!;
         Assert.That(locks, Is.EqualTo(new[] { new ItemRemakeRules.Lock(true, 7), new ItemRemakeRules.Lock(false, 8) }));
         Assert.That(reader.Available, Is.EqualTo(0));
     }

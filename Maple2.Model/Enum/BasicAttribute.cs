@@ -54,7 +54,22 @@ public static class BasicAttributeIds {
         _ => (byte) attribute,
     };
 
-    // The server stat of a client stat id (the inverse of ClientStat).
+    // The client's basic stats are ids 0..34: its stat table holds 0x23 of them and refuses any id past that
+    // (commonfiles stat.cpp: the table is resized to 0x23 when read, and each lookup refuses an index >= 0x23).
+    public const int ClientStatCount = 0x23;
+
+    // The server stat of a client stat id from a packet; false for an id outside the client's table.
+    public static bool TryServerStat(int id, out BasicAttribute attribute) {
+        if (id < 0 || id >= ClientStatCount) {
+            attribute = default;
+            return false;
+        }
+        attribute = ServerStat(id);
+        return true;
+    }
+
+    // The server stat of a client stat id (the inverse of ClientStat), for an id already in 0..34; a packet's id goes
+    // through TryServerStat.
     public static BasicAttribute ServerStat(int id) => id switch {
         29 => BasicAttribute.BonusAtk,
         30 => BasicAttribute.PetBonusAtk,

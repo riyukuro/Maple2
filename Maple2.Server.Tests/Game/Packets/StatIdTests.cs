@@ -111,7 +111,7 @@ public class StatIdTests {
         writer.WriteShort(29);
         writer.WriteByte(1);
         writer.WriteShort(29);
-        List<ItemRemakeRules.Lock> locks = ItemRemakeRules.ReadLocks(new ByteReader(writer.ToArray(), 0));
+        List<ItemRemakeRules.Lock> locks = ItemRemakeRules.ReadLocks(new ByteReader(writer.ToArray(), 0))!;
         Assert.That(locks[0], Is.EqualTo(new ItemRemakeRules.Lock(false, (short) BasicAttribute.BonusAtk)));
         Assert.That(locks[1], Is.EqualTo(new ItemRemakeRules.Lock(true, 29)));
     }
@@ -123,5 +123,75 @@ public class StatIdTests {
         Assert.That(BlackMarketHandler.ServerStatKey(1030), Is.EqualTo(1000 + (int) BasicAttribute.PetBonusAtk));
         Assert.That(BlackMarketHandler.ServerStatKey(1015), Is.EqualTo(1000 + (int) BasicAttribute.Accuracy));
         Assert.That(BlackMarketHandler.ServerStatKey(11029), Is.EqualTo(11029));
+    }
+
+    // The client's stat table has ids 0..34; an id past it is no stat (it is not cast to the byte enum: 285 is not 29).
+    [TestCase(-1)]
+    [TestCase(35)]
+    [TestCase(255)]
+    [TestCase(256)]
+    [TestCase(285)]
+    public void PacketStatId_OutsideTheClientsTable_IsRefused(int id) {
+        Assert.That(BasicAttributeIds.TryServerStat(id, out _), Is.False);
+    }
+
+    [TestCase(0, BasicAttribute.Strength)]
+    [TestCase(29, BasicAttribute.BonusAtk)]
+    [TestCase(33, BasicAttribute.Damage)]
+    [TestCase(34, BasicAttribute.Unknown)]
+    public void PacketStatId_InTheClientsTable(int id, BasicAttribute expected) {
+        Assert.That(BasicAttributeIds.TryServerStat(id, out BasicAttribute type), Is.True);
+        Assert.That(type, Is.EqualTo(expected));
+    }
+
+    // A kept basic option outside the table refuses the whole request; the bytes are still read. A special option's
+    // id is not a basic stat id and is kept as it is.
+    [TestCase(285)]
+    [TestCase(256)]
+    [TestCase(35)]
+    public void Lock_OutsideTheClientsTable_RefusesTheLocks(int id) {
+        var writer = new ByteWriter();
+        writer.WriteByte(2);
+        writer.WriteByte(1);
+        writer.WriteShort((short) id);
+        writer.WriteByte(0);
+        writer.WriteShort((short) id);
+        var reader = new ByteReader(writer.ToArray(), 0);
+        Assert.That(ItemRemakeRules.ReadLocks(reader), Is.Null);
+        Assert.That(reader.Available, Is.EqualTo(0));
+
+        var special = new ByteWriter();
+        special.WriteByte(1);
+        special.WriteByte(1);
+        special.WriteShort((short) id);
+        Assert.That(ItemRemakeRules.ReadLocks(new ByteReader(special.ToArray(), 0)), Is.EqualTo(new[] { new ItemRemakeRules.Lock(true, (short) id) }));
+    }
+
+    // A valid basic lock next to a bad one does not save the request; the last id, 34, is a stat.
+    [Test]
+    public void Lock_ValidNextToOutside_StillRefused_LastIdKept() {
+        var writer = new ByteWriter();
+        writer.WriteByte(2);
+        writer.WriteByte(0);
+        writer.WriteShort(34);
+        writer.WriteByte(0);
+        writer.WriteShort(35);
+        Assert.That(ItemRemakeRules.ReadLocks(new ByteReader(writer.ToArray(), 0)), Is.Null);
+
+        var last = new ByteWriter();
+        last.WriteByte(1);
+        last.WriteByte(0);
+        last.WriteShort(34);
+        Assert.That(ItemRemakeRules.ReadLocks(new ByteReader(last.ToArray(), 0)), Is.EqualTo(new[] { new ItemRemakeRules.Lock(false, (short) BasicAttribute.Unknown) }));
+        Assert.That(BlackMarketHandler.ServerStatKey(1034), Is.EqualTo(1000 + (int) BasicAttribute.Unknown));
+    }
+
+    // A basic search key whose stat is outside the table is dropped (285 and 1285 are not bap 29 and 1029).
+    [TestCase(35)]
+    [TestCase(285)]
+    [TestCase(1285)]
+    [TestCase(1999)]
+    public void BlackMarketKey_OutsideTheClientsTable_IsDropped(int key) {
+        Assert.That(BlackMarketHandler.ServerStatKey(key), Is.Null);
     }
 }

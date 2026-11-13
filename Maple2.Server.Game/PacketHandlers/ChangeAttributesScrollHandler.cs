@@ -46,8 +46,8 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
         packet.ReadLong();
         packet.ReadByte();
 
-        List<ItemRemakeRules.Lock> locks = ItemRemakeRules.ReadLocks(packet);
-        if (!ItemRemakeRules.LocksAllowed(locks.Count)) {
+        List<ItemRemakeRules.Lock>? locks = ItemRemakeRules.ReadLocks(packet);
+        if (locks == null || !ItemRemakeRules.LocksAllowed(locks.Count)) {
             session.Send(ChangeAttributesScrollPacket.Error(ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake));
             return;
         }
