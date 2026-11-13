@@ -15,6 +15,8 @@ public static class ReactorRules {
     // reactors one field holds.
     public const long NoTimeLimitMs = 10 * 60 * 1000;
     public const int MaxPerField = 100;
+    // CReactor::FUN_140b79490/FUN_140b79a10 read the connected players behind a u8 count.
+    public const int MaxConnected = byte.MaxValue;
 
     public enum Step {
         Stay,

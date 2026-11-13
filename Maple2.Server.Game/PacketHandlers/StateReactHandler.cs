@@ -41,6 +41,10 @@ public class StateReactHandler : FieldPacketHandler {
         if (!ReactorRules.CanReact(state.Type, reactor.IsConnected(session.CharacterId))) {
             return;
         }
+        // A full connect state takes nobody more, before any item is taken (ReactorRules.MaxConnected).
+        if (state.Type == ReactorStateType.Connect && reactor.ConnectedCount >= ReactorRules.MaxConnected) {
+            return;
+        }
         if (!ReactorEvent.Check(session, reactor.Metadata, out GameEvent? gameEvent)) {
             return;
         }

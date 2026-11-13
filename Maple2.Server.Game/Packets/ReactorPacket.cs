@@ -3,6 +3,7 @@ using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Packets;
 
@@ -78,8 +79,11 @@ public static class ReactorPacket {
     private static void WriteState(this IByteWriter writer, int stateIndex, long stateTime, ICollection<long> characterIds, int unknown) {
         writer.WriteInt(stateIndex);
         writer.WriteLong(stateTime);
-        writer.WriteByte((byte) characterIds.Count);
-        foreach (long characterId in characterIds) {
+        // The client reads a u8 count; StateReactHandler keeps the set at MaxConnected, and the count never
+        // claims more ids than are written.
+        int count = Math.Min(characterIds.Count, ReactorRules.MaxConnected);
+        writer.WriteByte((byte) count);
+        foreach (long characterId in characterIds.Take(count)) {
             writer.WriteLong(characterId);
         }
         writer.WriteInt(unknown);

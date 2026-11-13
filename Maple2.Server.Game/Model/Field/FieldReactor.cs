@@ -44,6 +44,14 @@ public class FieldReactor : IUpdatable {
         }
     }
 
+    public int ConnectedCount {
+        get {
+            lock (connected) {
+                return connected.Count;
+            }
+        }
+    }
+
     public bool IsConnected(long characterId) {
         lock (connected) {
             return connected.Contains(characterId);
