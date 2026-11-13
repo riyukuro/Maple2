@@ -197,6 +197,15 @@ public sealed class UgcMarketManager {
         session.Send(MeretMarketPacket.LoadDesignerItems(playerInfo, designerItems));
     }
 
+    // The account's own listings, in any state: the client's product list (m_products), which it caps at 100
+    // (FUN_140ebc4a0 before the register dialog opens and before it sends).
+    public int ListingCount => items.Count;
+
+    // A design already listed by the account (IsAlreadyListed: FindProductByDesignUid on the item's design uid).
+    public bool IsDesignListed(long designUid) {
+        return designUid != 0 && items.Values.Any(listing => listing.Look.Id == designUid);
+    }
+
     public bool TryGetItem(long id, [NotNullWhen(true)] out UgcMarketItem? item) {
         return items.TryGetValue(id, out item);
     }

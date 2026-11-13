@@ -75,8 +75,9 @@ public static class UgcMarketRules {
         return (min, Math.Max(min, max));
     }
 
-    public static long ClampPrice((long Min, long Max) range, long price) {
-        return Math.Clamp(price, range.Min, range.Max);
+    // The dialog only sends a price inside its range (errPriceMsg); any other is refused.
+    public static bool InRange((long Min, long Max) range, long price) {
+        return price >= range.Min && price <= range.Max;
     }
 
     // A listing can be bought while it is on sale: active, its sale time not over, and a price that takes nothing

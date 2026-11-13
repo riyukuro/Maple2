@@ -9,6 +9,7 @@ namespace Maple2.Server.Game.Packets;
 
 public static class MeretMarketPacket {
     private enum Command : byte {
+        Error = 0,
         LoadPersonalListings = 11,
         LoadSales = 12,
         ListItem = 13,
@@ -89,6 +90,24 @@ public static class MeretMarketPacket {
         foreach (SoldUgcMarketItem item in items) {
             pWriter.WriteClass<SoldUgcMarketItem>(item);
         }
+
+        return pWriter;
+    }
+
+    // Client reader: CMeratMarketMan::OnErrorReply (meratmarketman.cpp:2804), mode 0x00, ErrorPacket::Read
+    // (meratmarketbasketinfo.cpp:2817): the mode of the refused request, the error (MeretMarketError), the
+    // product key (a premium id and a UGC id), a long and a byte (1: the blueprint market dialog). The client
+    // shows the error's message, clears what the request's mode had shown (HandleErrorByRequestKind; nothing
+    // for a register or a resale) and ends its pending purchase wait.
+    public static ByteWriter Error(byte kind, int error, int premiumId = 0, long ugcId = 0, long value = 0, bool blueprint = false) {
+        var pWriter = Packet.Of(SendOp.MeretMarket);
+        pWriter.Write<Command>(Command.Error);
+        pWriter.WriteByte(kind);
+        pWriter.WriteInt(error);
+        pWriter.WriteInt(premiumId);
+        pWriter.WriteLong(ugcId);
+        pWriter.WriteLong(value);
+        pWriter.WriteBool(blueprint);
 
         return pWriter;
     }
@@ -386,4 +405,17 @@ public static class MeretMarketPacket {
         }
     }
     #endregion
+}
+
+// The error codes of MeretMarket 0x00 and the message OnErrorReply shows for each.
+public static class MeretMarketError {
+    public const int Common = 0x68; // s_meratmarket_error_common with the code
+    public const int NotSale = 0x77; // s_meratmarket_error_not_sale
+    public const int RegisterLimit = 0x79; // s_meratmarket_myshop_limit_register_count (100)
+    public const int RegisterPrice = 0x7D; // s_meratmarket_error_register_price
+    public const int InvalidCategory = 0x82; // s_meratmarket_register_invalid_category with the code
+    public const int LackMerat = 0x88; // the "not enough merets" box that offers the charge page (ShowLackMeratAsk)
+    public const int AlreadySale = 0x8E; // s_meratmarket_error_already_sale
+    public const int AlreadyListed = 0x98; // s_meratmarket_register_error_add_already
+    public const int DisableUgcItem = 0x9A; // s_meratmarket_error_register_disable_ugcitem
 }

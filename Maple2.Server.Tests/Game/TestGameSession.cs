@@ -385,6 +385,8 @@ public sealed class TestGameSession {
         // No condition type is throttled here: every counted update is sent.
         typeof(QuestManager).GetField("throttleStates", Any)!.SetValue(quest, new HashSet<ConditionType>());
         session.Config = Uninitialized<ConfigManager>();
+        // No favorite designer: what the meret market manager reads.
+        typeof(ConfigManager).GetField("favoriteDesigners", Any)!.SetValue(session.Config, new List<long>());
         session.Quest = quest;
         var marriage = Uninitialized<MarriageManager>();
         typeof(MarriageManager).GetField("session", Any)!.SetValue(marriage, session);
@@ -401,6 +403,8 @@ public sealed class TestGameSession {
         // An empty friend and block list: what a mail send reads.
         session.Buddy = new BuddyManager(db, session);
         session.BlackMarket = new BlackMarketManager(session);
+        // The account's listings, read from the db at Start.
+        session.UgcMarket = new UgcMarketManager(session);
         session.Shop = new ShopManager(session);
         session.ItemMerge = new ItemMergeManager(session);
         typeof(GameSession).GetField(nameof(GameSession.DismantleStaging), Any)!.SetValue(session, new (long Uid, int Amount)[100]);

@@ -168,24 +168,46 @@ public class MeretMarketHandler : FieldPacketHandler {
         string description = packet.ReadUnicodeString();
         packet.ReadLong(); // the fee the dialog worked out; the server charges its own
 
+        // A refusal answers MeretMarket 0x00 with the client's own code, in the order the register dialog checks
+        // before it sends (uimeratmarketregisterdialog.cpp:966): already listed, not a design it may list, 100
+        // listings, then the fee.
+        void Refuse(int error) => session.Send(MeretMarketPacket.Error((byte) Command.ListItem, error, ugcId: itemUid));
+
         Item? item = GetUgcItem(itemUid);
         // A survival match item may not be listed (SurvivalItemRules); the dialog gets the "cannot register this item"
-        // box. Chosen here.
+        // message. Chosen here.
         if (item != null && SurvivalItemRules.IsMatchOnly(item.Metadata)) {
-            session.Send(NoticePacket.MessageBox(StringCode.s_meratmarket_error_register_disable_ugcitem));
+            Refuse(MeretMarketError.DisableUgcItem);
             return;
         }
         if (item?.Template == null || item.Template.Id == 0) {
+            Refuse(MeretMarketError.DisableUgcItem);
+            return;
+        }
+
+        if (session.UgcMarket.IsDesignListed(item.Template.Id)) {
+            Refuse(MeretMarketError.AlreadyListed);
             return;
         }
 
         // The dialog only offers a design the player made (CItem 0x140526060 on the look's owner ids).
         if (item.Template.AccountId != session.AccountId) {
+            Refuse(MeretMarketError.DisableUgcItem);
+            return;
+        }
+
+        if (session.UgcMarket.ListingCount >= MaxListings) {
+            Refuse(MeretMarketError.RegisterLimit);
             return;
         }
 
         if (!TableMetadata.MeretMarketCategoryTable.Entries.TryGetValue((int) MeretMarketSection.Ugc, out IReadOnlyDictionary<int, MeretMarketCategoryTable.Tab>? tab)) {
-            // Invalid UGC Item
+            Refuse(MeretMarketError.InvalidCategory);
+            return;
+        }
+
+        if (!UgcMarketRules.InRange(SellPriceRange(item.Metadata.Id), price)) {
+            Refuse(MeretMarketError.RegisterPrice);
             return;
         }
 
@@ -193,9 +215,8 @@ public class MeretMarketHandler : FieldPacketHandler {
 
         bool score = item.Type.IsMusicScore;
         long listingFee = UgcMarketRules.RegisterFee(session.UgcMarket.ActiveListingCount(), score, promote, Constants.UGCShopAdFeeMerat, Target.LOCALE == "CN");
-        StringCode stringCode = Pay(session, listingFee, MeretMarketCurrencyType.Meret);
-        if (stringCode != StringCode.s_empty_string) {
-            session.Send(NoticePacket.MessageBox(stringCode));
+        if (Pay(session, listingFee, MeretMarketCurrencyType.Meret) != StringCode.s_empty_string) {
+            Refuse(MeretMarketError.LackMerat);
             return;
         }
 
@@ -211,7 +232,7 @@ public class MeretMarketHandler : FieldPacketHandler {
             PromotionEndTime = promote ? DateTime.Now.AddHours(Constants.UGCShopAdHour).ToEpochSeconds() : 0,
             ListingEndTime = DateTime.Now.AddDays(Constants.UGCShopSaleDay).ToEpochSeconds(),
             CreationTime = DateTime.Now.ToEpochSeconds(),
-            Price = UgcMarketRules.ClampPrice(SellPriceRange(item.Metadata.Id), price),
+            Price = price,
             TabId = tabId,
         };
 
@@ -220,6 +241,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         if (marketItem == null) {
             Logger.Error("Failed to create UGC market item: {ItemUid}", itemUid);
             session.Currency.Meret += listingFee; // nothing was listed: the fee goes back
+            Refuse(MeretMarketError.Common);
             return;
         }
         session.SavePurchase();
@@ -246,21 +268,32 @@ public class MeretMarketHandler : FieldPacketHandler {
         string description = packet.ReadUnicodeString();
         packet.ReadLong(); // the fee the dialog worked out; the server charges its own
 
-        if (!session.UgcMarket.TryGetItem(ugcMarketItemId, out UgcMarketItem? item) || item.ListingEndTime > DateTime.Now.ToEpochSeconds()) {
+        void Refuse(int error) => session.Send(MeretMarketPacket.Error((byte) Command.RelistItem, error, ugcId: ugcMarketItemId));
+
+        if (!session.UgcMarket.TryGetItem(ugcMarketItemId, out UgcMarketItem? item)) {
+            Refuse(MeretMarketError.NotSale);
+            return;
+        }
+        // The resale form is only offered for a listing whose time ran out (OnClickRemoveSale, state 3).
+        if (item.ListingEndTime > DateTime.Now.ToEpochSeconds()) {
+            Refuse(MeretMarketError.AlreadySale);
+            return;
+        }
+        if (!UgcMarketRules.InRange(SellPriceRange(item.ItemMetadata.Id), price)) {
+            Refuse(MeretMarketError.RegisterPrice);
             return;
         }
 
         bool score = new ItemType(item.ItemMetadata.Id).IsMusicScore;
         long listingFee = UgcMarketRules.RegisterFee(session.UgcMarket.ActiveListingCount(), score, promote, Constants.UGCShopAdFeeMerat, Target.LOCALE == "CN");
-        StringCode stringCode = Pay(session, listingFee, MeretMarketCurrencyType.Meret);
-        if (stringCode != StringCode.s_empty_string) {
-            session.Send(NoticePacket.MessageBox(stringCode));
+        if (Pay(session, listingFee, MeretMarketCurrencyType.Meret) != StringCode.s_empty_string) {
+            Refuse(MeretMarketError.LackMerat);
             return;
         }
 
         (long Price, long PromotionEndTime, long ListingEndTime, UgcMarketListingStatus Status, string Description, string[] Tags) before =
             (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.Description, item.Tags);
-        item.Price = UgcMarketRules.ClampPrice(SellPriceRange(item.ItemMetadata.Id), price);
+        item.Price = price;
         item.PromotionEndTime = promote ? DateTime.Now.AddHours(Constants.UGCShopAdHour).ToEpochSeconds() : 0;
         item.ListingEndTime = DateTime.Now.AddDays(Constants.UGCShopSaleDay).ToEpochSeconds();
         item.Status = UgcMarketListingStatus.Active;
@@ -272,12 +305,16 @@ public class MeretMarketHandler : FieldPacketHandler {
             // Not stored: the listing stays as it was and the fee goes back.
             (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.Description, item.Tags) = before;
             session.Currency.Meret += listingFee;
+            Refuse(MeretMarketError.Common);
             return;
         }
         session.SavePurchase();
 
         session.Send(MeretMarketPacket.RelistItem(item));
     }
+
+    // The client's own listing cap (FUN_140ebc4a0, the 0x79 message).
+    private const int MaxListings = 100;
 
     // The register dialog's price range for an item (GetSellPriceRange).
     private (long Min, long Max) SellPriceRange(int itemId) {

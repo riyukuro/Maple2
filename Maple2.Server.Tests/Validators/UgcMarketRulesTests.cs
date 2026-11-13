@@ -83,13 +83,14 @@ public class UgcMarketRulesTests {
         Assert.That(UgcMarketRules.PriceRange(constantMin, constantMax, designMin, designMax, score, cn), Is.EqualTo((min, max)));
     }
 
-    [TestCase(-500, 100)]
-    [TestCase(0, 100)]
-    [TestCase(100, 100)]
-    [TestCase(4000, 4000)]
-    [TestCase(long.MaxValue, 10000)]
-    public void ClampPrice_IntoRange(long price, long expected) {
-        Assert.That(UgcMarketRules.ClampPrice((100, 10000), price), Is.EqualTo(expected));
+    [TestCase(-500, false)]
+    [TestCase(99, false)]
+    [TestCase(100, true)]
+    [TestCase(4000, true)]
+    [TestCase(10000, true)]
+    [TestCase(long.MaxValue, false)]
+    public void InRange_TheDialogsRange(long price, bool expected) {
+        Assert.That(UgcMarketRules.InRange((100, 10000), price), Is.EqualTo(expected));
     }
 
     [TestCase(true, 2000, 1000, 300, true)]
