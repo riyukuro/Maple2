@@ -150,7 +150,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 SuperArmor: data.MotionProperty.superArmor,
                 SuperArmorApplyField: data.MotionProperty.superArmorApplyFieldType,
                 ForceApplyTarget: data.BasicProperty.forceApplyTarget,
-                AttackPossible: AttackPossible(data.BasicProperty)),
+                AttackPossible: AttackPossible(data.BasicProperty),
+                PvpOnOff: data.BasicProperty.pvpOnOff),
             Consume: new AdditionalEffectMetadataConsume(
                 HpRate: data.ConsumeProperty.hpRate,
                 SpRate: data.ConsumeProperty.spRate),

@@ -588,6 +588,10 @@ public class FieldPlayer : Actor<Player> {
                 Field.PvpZone.Damage(attacker, this, taken);
             }
         }
+        // The hit of another player that takes the last health on a pk field (FieldManager.PkKill).
+        if (caster is FieldPlayer pker && KilledByHit(healthBefore, Stats.Values[BasicAttribute.Health].Current)) {
+            Field.PkKill(pker, this);
+        }
         if (caster is not FieldPlayer) {
             // Boom Boom Ocean: a hit by a skill the game scores (the field's projectiles), when it lands.
             if (damage.Targets.TryGetValue(ObjectId, out DamageRecordTarget? hitRecord)

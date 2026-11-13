@@ -219,10 +219,45 @@ public partial class FieldManager : IField {
     }
 
     // Whether a player's hostile skills reach another player here: the rank duel's fight, the PvP zone's or the
-    // survival game's, or a Hide and Seek seeker's on a hider.
+    // survival game's, a Hide and Seek seeker's on a hider, or the open PvP of a pk field. On a pk field the client's
+    // rule (pc.cpp:3112) also vetoes any of them: no one is hostile to themselves, to a party member, or when either
+    // side holds a pvpOnOff buff. Under KR that covers the survival game on the Mushtopia maps.
     public bool PlayerHostile(FieldPlayer caster, FieldPlayer target) {
+        bool pk = PkField;
+        if (pk && !PkFieldRules.Hostile(caster == target, caster.Session.Party.Id, target.Session.Party.Id,
+                caster.Buffs.PvpOnOff, target.Buffs.PvpOnOff)) {
+            return false;
+        }
         return RankDuel?.Hostile(caster, target) == true || PvpZone?.Hostile(caster, target) == true || Survival?.Hostile(caster, target) == true
-               || HideAndSeek?.Hostile(caster, target) == true;
+               || HideAndSeek?.Hostile(caster, target) == true || (pk && !FieldGameRuns);
+    }
+
+    private bool PkField => Metadata.Property?.PkMode == true;
+
+    // A pk field's open PvP past the vetoes above (PkFieldRules: the party ids and the buff sums the buff managers
+    // keep, so a hit reads one bool). Under KR the pk fields are 03000059, Mushtopia (82000000, 82000001, 82000006,
+    // 82000012) and test maps. Chosen here: while a field game runs (a PvP zone, survival, rank duel or Hide and Seek)
+    // only its own rule makes players hostile, so the survival game's fallen players and onlookers stay out of it;
+    // the client's rule takes no field game into account.
+    private bool FieldGameRuns => PvpZone != null || Survival != null || RankDuel != null || HideAndSeek != null;
+
+    // A player killed another on a pk field outside the field's games (a PvP zone, survival, rank duel or Hide and
+    // Seek count their own kills): shadow_world_kill for the killer and shadow_world_die for the victim (trophies
+    // 21300001 and 21300002), and the kill log. The client shows no text of its own for it; chosen here: the field
+    // gets mode 0 (killer and victim names, the kill log dialog), the killer s_shadowworld_kill_log_kill with the
+    // victim's name and the victim s_shadowworld_kill_log_die with the killer's name (mode 1).
+    public bool PkKill(FieldPlayer killer, FieldPlayer victim) {
+        if (!PkField || killer == victim || FieldGameRuns) {
+            return false;
+        }
+        string killerName = killer.Value.Character.Name;
+        string victimName = victim.Value.Character.Name;
+        killer.Session.ConditionUpdate(ConditionType.shadow_world_kill);
+        victim.Session.ConditionUpdate(ConditionType.shadow_world_die);
+        Broadcast(PlayerKillNoticePacket.Kill(killerName, victimName));
+        killer.Session.Send(PlayerKillNoticePacket.Notice(new InterfaceText(StringCode.s_shadowworld_kill_log_kill, victimName)));
+        victim.Session.Send(PlayerKillNoticePacket.Notice(new InterfaceText(StringCode.s_shadowworld_kill_log_die, killerName)));
+        return true;
     }
     public int RoomId { get; init; }
     public int DungeonId { get; init; }

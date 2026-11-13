@@ -369,6 +369,9 @@ public class BuffManager : IUpdatable {
         }
         return false;
     }
+    // An enabled buff held has pvpOnOff, as the client's buff sum takes it (AdditionalCliList::FUN_140972a00,
+    // additionalcli_2.cpp:1081): kept with the other sums, so the hit path reads it without walking the buffs.
+    public bool PvpOnOff => Sums().PvpOnOff;
     // The type of that hit: InvincibleReflection when the buff's invincible value is 2.
     public DamageType InvincibleHitType => Sums().InvincibleReflect ? DamageType.InvincibleReflection : DamageType.Invincible;
 

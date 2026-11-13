@@ -22,6 +22,9 @@ public sealed class BuffSums {
     public int StunBreak { get; } = -1;
     // One of them has deathResistanceHP (the Berserker's Raging Soul, 10200221): damage leaves its holder at 1 health.
     public bool DeathResistance { get; }
+    // One of them has pvpOnOff (the shadow world's entry protection 70000032, and 70000029): on a pk field the holder
+    // and the other players are not hostile to each other (PC::vfunc_122, pc.cpp:3112).
+    public bool PvpOnOff { get; }
     // The damage taken rates of the buffs held (DefensiveProperty papDamageR, mapDamageR), each times its stack count.
     public float PhysicalDamageTaken { get; }
     public float MagicalDamageTaken { get; }
@@ -43,6 +46,7 @@ public sealed class BuffSums {
                 StunBreak = Math.Max(StunBreak, property.ImmuneBreak);
             }
             DeathResistance |= metadata.Status.DeathResistanceHp;
+            PvpOnOff |= metadata.Property?.PvpOnOff == true;
             InvincibleReflect |= metadata.Status.Invincible && metadata.Status.InvincibleReflect;
             PhysicalDamageTaken += Model.Buff.ByStacks(metadata.Status.PhysicalDamageTakenRate, stacks);
             MagicalDamageTaken += Model.Buff.ByStacks(metadata.Status.MagicalDamageTakenRate, stacks);
