@@ -271,10 +271,11 @@ public class MesoMarketHandler : FieldPacketHandler {
         // or the price back in the wallet with the mesos mailed. A sale that is not stored, or whose wallet is not,
         // writes nothing and the price is given back.
         (Mail Buyer, Mail Seller)? mails = null;
-        bool stored = false;
+        bool stored = false, gone = false, resetRunning = false;
         try {
             (Mail buyerMail, Mail sellerMail) = PurchaseMails(session, listing, Constants.MesoMarketIconType);
-            stored = session.TrySavePurchase(save => (mails = save.SellMesoListing(listingId, buyerMail, sellerMail)) != null);
+            stored = session.TrySavePurchase(save => (mails = save.SellMesoListing(listingId, buyerMail, sellerMail, out gone)) != null,
+                () => gone, out resetRunning);
         } finally {
             if (!stored) {
                 mails = null;
@@ -282,7 +283,15 @@ public class MesoMarketHandler : FieldPacketHandler {
             }
         }
         if (mails == null) {
-            SendSoldOut(session, listingId);
+            // Only a listing that is gone (another buyer or its owner was first) is answered sold out: the client drops
+            // the row on 17 (CMesoMarketMan::OnBuyResult). A sale refused while it is still for sale keeps its row: 4
+            // (s_mesoMarket_error_alreadyDbWork) while a reset is being stored, the player can buy a few seconds later;
+            // 2 (errorDB) for a failed save.
+            if (gone) {
+                SendSoldOut(session, listingId);
+            } else {
+                session.Send(MesoMarketPacket.Error(resetRunning ? s_mesoMarket_error_alreadyDbWork : s_mesoMarket_error_errorDB));
+            }
             return;
         }
         Paid(session, payment.Value, listing.Price);

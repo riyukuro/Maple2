@@ -1963,10 +1963,18 @@ public sealed partial class GameSession : Core.Network.Session {
         return result == SaveResult.Stored;
     }
 
+    // TrySavePurchase whose rows may be refused for a reason that is no failure (refused answers true then: a listing
+    // another buyer took first); such a refusal is logged as information, not as an error.
+    public bool TrySavePurchase(Func<GameStorage.Request, bool> alsoSave, Func<bool> refused, out bool resetRunning) {
+        SaveResult result = PurchaseSave(alsoSave, refused);
+        resetRunning = result == SaveResult.ResetRunning;
+        return result == SaveResult.Stored;
+    }
+
     // The session still plays on the field (a try again queued on the field's queue runs only then).
     public bool PlaysOn(FieldManager field) => TimedSaveDue(field);
 
-    private SaveResult PurchaseSave(Func<GameStorage.Request, bool> alsoSave) {
+    private SaveResult PurchaseSave(Func<GameStorage.Request, bool> alsoSave, Func<bool>? refused = null) {
         try {
             AcquireLock(AccountId);
             using GameStorage.Request db = GameStorage.Context();
@@ -1984,7 +1992,11 @@ public sealed partial class GameSession : Core.Network.Session {
             }
             int failed = db.FailedSaves;
             if (!alsoSave(db) || db.FailedSaves != failed) {
-                Logger.Error("SavePurchase: purchase rows not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                if (refused?.Invoke() == true) {
+                    Logger.Information("SavePurchase: purchase refused, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                } else {
+                    Logger.Error("SavePurchase: purchase rows not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                }
                 return SaveResult.Failed;
             }
             return (tokens.Kept = db.Commit()) ? SaveResult.Stored : SaveResult.Failed;

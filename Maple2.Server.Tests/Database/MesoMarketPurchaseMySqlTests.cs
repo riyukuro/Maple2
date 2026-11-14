@@ -106,7 +106,8 @@ public class MesoMarketPurchaseMySqlTests {
     }
 
     // The mails' write fails after the listing's delete and the wallet's write: all of it is rolled back. The
-    // price comes back to the session's wallet, and the answer is the sold-out one.
+    // price comes back to the session's wallet, and the answer is 2 (errorDB): the listing is still for sale, so the
+    // client keeps its row.
     [Test]
     public void Buy_FailedSaveStoresNothing() {
         MesoListing listing = Listing();
@@ -119,7 +120,31 @@ public class MesoMarketPurchaseMySqlTests {
         Assert.That(Stored(listing.Id), Is.EqualTo((500L, true, 0)));
         Assert.That(session.Player.Value.Account.MesoMarketPurchased, Is.EqualTo(0));
         Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.MesoMarket)
-            .Select(packet => Convert.ToHexString(packet)[4..6]), Is.EqualTo(new[] { "08" }));
+            .Select(packet => Convert.ToHexString(packet)[4..]), Is.EqualTo(new[] { "00" + Convert.ToHexString(BitConverter.GetBytes(2)) }));
+    }
+
+    // A buy while a reset is being stored (its server-info row held, as RunReset holds it) is refused at once, writes
+    // nothing, gives the price back, and is answered 4 (alreadyDbWork): the listing stays for sale and in the
+    // client's list, and the buy works once the reset is done.
+    [Test]
+    public void Buy_WhileAResetIsStored_AnswersFour() {
+        MesoListing listing = Listing();
+
+        using (var hold = new Ms2Context(plain)) {
+            using var transaction = hold.Database.BeginTransaction();
+            hold.Database.ExecuteSqlRaw("INSERT INTO `server-info` (`Key`, `LastModified`) VALUES ({0}, {1}) ON DUPLICATE KEY UPDATE `LastModified` = VALUES(`LastModified`)",
+                "DailyReset", DateTime.Now);
+            Buy(listing.Id);
+        }
+
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
+        Assert.That(Stored(listing.Id), Is.EqualTo((500L, true, 0)));
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.MesoMarket)
+            .Select(packet => Convert.ToHexString(packet)[4..]), Is.EqualTo(new[] { "00" + Convert.ToHexString(BitConverter.GetBytes(4)) }));
+        Assert.That(test.Errors, Is.Empty);
+
+        Buy(listing.Id);
+        Assert.That(Stored(listing.Id), Is.EqualTo((80L, false, 2)));
     }
 
     // Fails a save that adds a mail: the sale's second write, after the listing's delete.

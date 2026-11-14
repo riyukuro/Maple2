@@ -69,10 +69,14 @@ public partial class GameStorage {
         // changes (the listing is gone, another buyer or its owner was first, or a save failed). The listing's
         // row is deleted first, so the request that loses a race stops before it has written anything. Inside a
         // transaction the request already holds (a purchase save that stores the buyer's wallet with the sale), the
-        // sale is part of it: it commits or rolls back with the wallet.
-        public (Maple2.Model.Game.Mail Buyer, Maple2.Model.Game.Mail Seller)? SellMesoListing(long listingId, Maple2.Model.Game.Mail buyerMail, Maple2.Model.Game.Mail sellerMail) {
+        // sale is part of it: it commits or rolls back with the wallet. gone: the listing was not there to sell (not
+        // found, or its delete found it deleted meanwhile: a race lost), not a failed save.
+        public (Maple2.Model.Game.Mail Buyer, Maple2.Model.Game.Mail Seller)? SellMesoListing(long listingId, Maple2.Model.Game.Mail buyerMail, Maple2.Model.Game.Mail sellerMail,
+                                                                                         out bool gone) {
+            gone = false;
             Model.MesoListing? listing = Context.MesoMarket.Find(listingId);
             if (listing == null) {
+                gone = true;
                 return null;
             }
 
@@ -87,8 +91,15 @@ public partial class GameStorage {
             SoldMesoListing soldListing = listing;
             using IDbContextTransaction? transaction = Context.Database.CurrentTransaction == null ? Context.Database.BeginTransaction() : null;
             Context.MesoMarket.Remove(listing);
-            if (!Context.TrySaveChanges()) {
+            try {
+                Context.SaveChanges();
+            } catch (DbUpdateConcurrencyException) {
+                gone = true; // deleted by another request since the Find
                 return null; // the transaction is rolled back when it is disposed
+            } catch (Exception ex) {
+                Console.WriteLine($"> Failed {Context.ContextId}");
+                Console.WriteLine(ex);
+                return null;
             }
             Context.MesoMarketSold.Add(soldListing);
             Context.Mail.Add(buyer);

@@ -259,8 +259,8 @@ public class MesoMarketHandlerTests {
         Assert.That(session.Player.Value.Account.MesoMarketPurchased, Is.EqualTo(1));
     }
 
-    // Mode 8 whose sale is not stored: the tokens taken for it come back, the answer is the sold-out one, and the
-    // month's count stays.
+    // Mode 8 whose sale is not stored: the tokens taken for it come back, the answer is 2 (errorDB, the client keeps
+    // the row of the listing still for sale), and the month's count stays.
     [Test]
     public void Buy_RefusedSaveGivesTheTokensBack() {
         GameSession session = Login(tokens: 500);
@@ -270,7 +270,7 @@ public class MesoMarketHandlerTests {
         Send(session, 8, listing.Id);
         test.FailSave = null;
 
-        Assert.That(Sent(), Is.EqualTo(new[] { "08" + Int(17) + Long(listing.Id) + Int(0) }));
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(2) }));
         Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
         Assert.That(session.Player.Value.Account.MesoMarketPurchased, Is.EqualTo(0));
         using GameStorage.Request db = test.Storage.Context();
@@ -337,7 +337,7 @@ public class MesoMarketHandlerTests {
         Assert.That(db.GetMesoListing(listing.Id), Is.Not.Null);
     }
 
-    // A meret sale that is not stored gives the merets back (no meret spent) and answers sold out.
+    // A meret sale that is not stored gives the merets back (no meret spent) and answers 2 (errorDB).
     [TestCase(3)]
     [TestCase(9)]
     public void Buy_RefusedSaveGivesTheMeretsBack(int payType) {
@@ -352,7 +352,7 @@ public class MesoMarketHandlerTests {
         Send(session, 8, listing.Id);
         test.FailSave = null;
 
-        Assert.That(Sent(), Is.EqualTo(new[] { "08" + Int(17) + Long(listing.Id) + Int(0) }));
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(2) }));
         Assert.That((session.Currency.Meret, session.Currency.GameMeret), Is.EqualTo((500L, 500L)));
         Assert.That(test.TrophyCounter(23200041), Is.Null);
     }
@@ -400,8 +400,8 @@ public class MesoMarketHandlerTests {
         Assert.That(context.Account.Single(account => account.Id == session.AccountId).Currency.MesoToken, Is.EqualTo(80));
     }
 
-    // The wallet's write fails: the sale is not stored either (no mail, the listing still for sale), and the price
-    // comes back.
+    // The wallet's write fails: the sale is not stored either (no mail, the listing still for sale), the price comes
+    // back, and the answer is 2, which keeps the client's row.
     [Test]
     public void Buy_FailedWalletSaveStoresNothing() {
         GameSession session = Login(tokens: 500);
@@ -412,7 +412,7 @@ public class MesoMarketHandlerTests {
         Send(session, 8, listing.Id);
         test.FailSave = null;
 
-        Assert.That(Sent(), Is.EqualTo(new[] { "08" + Int(17) + Long(listing.Id) + Int(0) }));
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(2) }));
         Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
         using GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetMesoListing(listing.Id), Is.Not.Null);
@@ -544,12 +544,6 @@ public class MesoMarketHandlerTests {
         }));
     }
 
-    private const string LostRaceLog = "SavePurchase: purchase rows not saved";
-
-    private static int LostRace(IEnumerable<string> errors) => errors.Count(error => error.StartsWith(LostRaceLog));
-
-    private static IEnumerable<string> OtherErrors(IEnumerable<string> errors) => errors.Where(error => !error.StartsWith(LostRaceLog));
-
     // Two buyers at once on one listing: one pays and gets the one mail, the other gets the sold-out answer and
     // keeps its tokens; the seller is paid once.
     [Test]
@@ -577,9 +571,8 @@ public class MesoMarketHandlerTests {
                 : otherTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.MesoMarket).Select(packet => Convert.ToHexString(packet)[4..]).ToList();
             Assert.That(loser, Is.EqualTo(new[] { soldOut }), $"round {round}");
             Assert.That((paid[0] == 0 ? first : other).Player.Value.Account.MesoMarketPurchased, Is.EqualTo(0), $"round {round}");
-            // The loser's purchase save fails at the listing's delete and says so; nothing else is logged.
-            Assert.That(LostRace(paid[0] == 0 ? test.Errors : otherTest.Errors), Is.LessThanOrEqualTo(1), $"round {round}");
-            Assert.That(OtherErrors(test.Errors.Concat(otherTest.Errors)), Is.Empty, $"round {round}");
+            // A lost race is no failed save: nothing is logged as an error.
+            Assert.That(test.Errors.Concat(otherTest.Errors), Is.Empty, $"round {round}");
         }
     }
 
@@ -611,9 +604,7 @@ public class MesoMarketHandlerTests {
             Assert.That(db.GetAllMail(buyer.CharacterId).Sum(mail => mail.Meso), Is.EqualTo(paid == 0 ? 0 : BASE), $"round {round}");
             Assert.That(owner.Currency.Meso, Is.EqualTo(paid == 0 ? BASE : 0), $"round {round}");
             Assert.That(db.GetAllMail(owner.CharacterId).Sum(mail => mail.Meret), Is.EqualTo(paid == 0 ? 0 : 190), $"round {round}");
-            // A buyer that lost to the take-back fails its purchase save at the listing's delete and says so.
-            Assert.That(LostRace(buyerTest.Errors), Is.EqualTo(0).Or.EqualTo(paid == 0 ? 1 : 0), $"round {round}");
-            Assert.That(OtherErrors(test.Errors.Concat(buyerTest.Errors)), Is.Empty, $"round {round}");
+            Assert.That(test.Errors.Concat(buyerTest.Errors), Is.Empty, $"round {round}");
         }
     }
 
