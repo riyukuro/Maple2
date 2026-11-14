@@ -14,9 +14,11 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
@@ -140,9 +142,13 @@ public class PcBangTests {
 
     private TestGameSession test = null!;
 
-    private void StartSession(params string[] off) {
+    private void StartSession(params string[] off) => StartSession(null, off);
+
+    // before: rows the character has when the session starts.
+    private void StartSession(Action<TestGameSession>? before, params string[] off) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(20302777), TestGameSession.Metadata(70100009));
+        before?.Invoke(test);
         test.SetServerTable(Kr);
         if (off.Length > 0) {
             test.SetFeaturesOff(off);
@@ -238,6 +244,69 @@ public class PcBangTests {
         Assert.That(stored!.Day, Is.EqualTo(day));
         Assert.That(stored.Claimed, Is.EqualTo(4));
         Assert.That(stored.Gifts, Is.EqualTo(new[] { 1 }));
+    }
+
+    // The inventory's bank button (RequestHomeBank kind 2), which the client enables at a PC bang without premium.
+    [Test]
+    public void InventoryBankAtPcBang() {
+        StartSession();
+        test.Session.Player.Value.Account.PremiumTime = 0;
+        var handler = new HomeBankHandler { ServerTableMetadata = test.ServerTableMetadata };
+        handler.Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(2)));
+        Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.HomeBank));
+
+        test.Session.PcBang.SetGrade(1);
+        test.TakeSent();
+        handler.Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(2)));
+        Assert.That(test.TakeSentOps(), Does.Contain(SendOp.HomeBank));
+    }
+
+    // A PC bang item (<PCBang PCBang="1"/>, CItemData::IsPCBangItem): the client uses it only at a PC bang
+    // (PC::CanUseItem pc.cpp:4689; GetItemRequirementError error 6, inventory.cpp:1594) and puts it on only there
+    // (invenslot.cpp:2090).
+    private static ItemMetadata PcBangItem(int id, EquipSlot? slot = null) {
+        ItemMetadata metadata = TestGameSession.Metadata(id, slot, type: slot == null ? 2 : 1, slotMax: slot == null ? 100 : 1);
+        return metadata with { Limit = metadata.Limit with { RequirePcBang = true } };
+    }
+
+    [Test]
+    public void PcBangItemUsedOnlyAtPcBang() {
+        Item stored = null!, storedSword = null!;
+        StartSession(before: t => {
+            stored = t.Store(PcBangItem(20000001), amount: 3);
+            storedSword = t.Store(PcBangItem(13200106, EquipSlot.RH));
+        });
+        Item potion = test.Session.Item.Inventory.Get(stored.Uid)!;
+        Item sword = test.Session.Item.Inventory.Get(storedSword.Uid)!;
+        Assert.Multiple(() => {
+            Assert.That(ItemUseHandler.UseAllowed(test.Session, potion), Is.False);
+            Assert.That(PcItemUse.CanUseItem(test.Session, potion), Is.False);
+            Assert.That(EquipManager.ValidateEquipItem(test.Session, sword), Is.EqualTo(StringCode.s_item_err_puton_pcbang));
+        });
+
+        test.Session.PcBang.SetGrade(1);
+        Assert.Multiple(() => {
+            Assert.That(ItemUseHandler.UseAllowed(test.Session, potion), Is.True);
+            Assert.That(PcItemUse.CanUseItem(test.Session, potion), Is.True);
+            Assert.That(EquipManager.ValidateEquipItem(test.Session, sword), Is.EqualTo(StringCode.s_empty_string));
+        });
+    }
+
+    // A worn PC bang item counts (its stats, its set piece) only at a PC bang, and a grade change into or out of a
+    // PC bang re-counts the worn items (the client's grade setter re-evaluates the equipment, equipment.cpp:2958).
+    [Test]
+    public void WornPcBangItemCountsOnlyAtPcBang() {
+        var pcBangItem = new Item(PcBangItem(13200106, EquipSlot.RH));
+        var other = new Item(TestGameSession.Metadata(13200001, EquipSlot.RH, type: 1, slotMax: 1));
+        Assert.Multiple(() => {
+            Assert.That(StatsManager.Counted(pcBangItem, 0, false, pcBang: false, 77, 10), Is.False);
+            Assert.That(StatsManager.Counted(pcBangItem, 0, false, pcBang: true, 77, 10), Is.True);
+            Assert.That(StatsManager.Counted(other, 0, false, pcBang: false, 77, 10), Is.True);
+            Assert.That(PcBangManager.RecountsWorn(0, 1, [pcBangItem]), Is.True);
+            Assert.That(PcBangManager.RecountsWorn(1, 0, [other, pcBangItem]), Is.True);
+            Assert.That(PcBangManager.RecountsWorn(1, 2, [pcBangItem]), Is.False);
+            Assert.That(PcBangManager.RecountsWorn(0, 1, [other]), Is.False);
+        });
     }
 
     [Test]

@@ -78,7 +78,9 @@ public sealed class PcBangManager {
     }
 
     // A new grade: the play so far is folded with the old one, the field sees the grade (0xB5), the grade's buffs
-    // replace the old ones and the dialog gets the status.
+    // replace the old ones and the dialog gets the status. Entering or leaving a PC bang re-counts the worn PC bang
+    // items (their stats and set pieces): the client's grade setter re-evaluates the equipment (FUN_1411e7610,
+    // equipment.cpp:2958 turns a PC bang item on or off).
     public void SetGrade(int grade) {
         if (!On) {
             return;
@@ -96,9 +98,16 @@ public sealed class PcBangManager {
                 session.Player.Buffs.Remove(buffId, session.Player.ObjectId);
             }
             RefreshBuffs();
+            if (RecountsWorn(old, grade, session.Item.Equips.Gear.Values.Concat(session.Item.Equips.Outfit.Values))) {
+                session.Stats.Refresh();
+            }
         }
         SendStatus();
     }
+
+    // Only entering or leaving a PC bang (grade 0 to above or back) changes what a PC bang item counts for.
+    internal static bool RecountsWorn(int old, int grade, IEnumerable<Item> worn) =>
+        (old > 0) != (grade > 0) && worn.Any(item => item.Metadata.Limit.RequirePcBang);
 
     // The grade's buffs (field entry, a grade change).
     public void RefreshBuffs() {

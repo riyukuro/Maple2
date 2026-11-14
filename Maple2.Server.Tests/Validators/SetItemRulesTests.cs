@@ -51,6 +51,18 @@ public class SetItemRulesTests {
         Assert.That(SetItemRules.Counted(false, false, false, boundTo: 77, characterId: 77, 0, 10), Is.True);
     }
 
+    // A PC bang item counts only at a PC bang (pc.cpp:4689), asked before the premium club.
+    [Test]
+    public void Counted_PcBangItemOnlyAtPcBang() {
+        Assert.Multiple(() => {
+            Assert.That(SetItemRules.Counted(false, false, false, 0, 77, 0, 10, requirePcBang: true, pcBang: false), Is.False);
+            Assert.That(SetItemRules.Counted(false, false, false, 0, 77, 0, 10, requirePcBang: true, pcBang: true), Is.True);
+            Assert.That(SetItemRules.Counted(false, true, false, 0, 77, 0, 10, requirePcBang: true, pcBang: true), Is.False);
+            Assert.That(SetItemRules.Counted(false, false, false, 0, 77, 0, 10, requirePcBang: false, pcBang: false), Is.True);
+            Assert.That(ItemRemakeRules.LockItemUsable(false, false, false, 0, 77, requirePcBang: true, pcBang: false), Is.False);
+        });
+    }
+
     [Test]
     public void Counted_OverLevelItemIsNot() {
         Assert.That(SetItemRules.Counted(false, false, false, 0, 77, levelLimit: 50, level: 49), Is.False);

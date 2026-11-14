@@ -443,12 +443,17 @@ public class EquipManager {
         }
     }
 
+    // The client's put-on checks (FUN_14140dea0, invenslot.cpp:2084) refuse a PC bang item away from a PC bang with
+    // notice s_item_err_puton_pcbang (its premium-club refusal is a by-key string with no code to send).
     public static StringCode ValidateEquipItem(GameSession session, Item item) {
         if (item.Metadata.Limit.Level > session.Player.Value.Character.Level) {
             return StringCode.s_item_err_puton_low_level;
         }
         if (item.IsExpired()) {
             return StringCode.s_item_err_puton_expired;
+        }
+        if (item.Metadata.Limit.RequirePcBang && session.PcBang.Grade <= 0) {
+            return StringCode.s_item_err_puton_pcbang;
         }
         if (item.Metadata.Limit.JobLimits.Length > 0 && !item.Metadata.Limit.JobLimits.Contains(session.Player.Value.Character.Job.Code())) {
             return StringCode.s_item_err_puton_job;

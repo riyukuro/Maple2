@@ -27,7 +27,7 @@ public class HomeBankHandler : FieldPacketHandler {
         long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var home = session.Field as HomeFieldManager;
         bool premium = HomeConvenienceRules.IsPremium(session.Player.Value.Account.PremiumTime, time);
-        if (!HomeConvenienceRules.IsBankKindAllowed(kind, premium, home != null && home.OwnerId == session.AccountId)) {
+        if (!HomeConvenienceRules.IsBankKindAllowed(kind, premium, session.PcBang.Grade > 0, home != null && home.OwnerId == session.AccountId)) {
             return;
         }
         // Both buttons share the one cooltime: the client checks it before either request and stores the answer's time.

@@ -104,7 +104,8 @@ public record ItemMetadataLimit(
     bool RequireWedding,
     int GlamorForgeCount,
     JobCode[] JobLimits,
-    JobCode[] JobRecommends);
+    JobCode[] JobRecommends,
+    bool RequirePcBang = false); // <PCBang PCBang="1"/>, client ItemData::IsPCBangItem
 
 public record ItemMetadataSkill(
     int Id,

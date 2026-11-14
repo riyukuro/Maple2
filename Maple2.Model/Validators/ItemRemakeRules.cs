@@ -98,10 +98,12 @@ public static class ItemRemakeRules {
         tag == lockTag && (lockRarity == 0 || rarity == lockRarity);
 
     // The client counts only lock items the character can use (Unk_Inventory::FUN_140a5f7b0, inventory.cpp:835, with
-    // PC::CanUseItem): not expired, a premium-club item only for a premium-club account, not bound to another
-    // character. The same test as a worn set piece's (SetItemRules.Counted) without its level limit.
-    public static bool LockItemUsable(bool expired, bool requireVip, bool vip, long boundTo, long characterId) =>
-        SetItemRules.Counted(expired, requireVip, vip, boundTo, characterId, 0, 0);
+    // PC::CanUseItem): not expired, a PC bang item only at a PC bang, a premium-club item only for a premium-club
+    // account, not bound to another character. The same test as a worn set piece's (SetItemRules.Counted) without
+    // its level limit.
+    public static bool LockItemUsable(bool expired, bool requireVip, bool vip, long boundTo, long characterId,
+                                      bool requirePcBang = false, bool pcBang = false) =>
+        SetItemRules.Counted(expired, requireVip, vip, boundTo, characterId, 0, 0, requirePcBang, pcBang);
 
     // The client keeps an attribute change of gear and one of a pet apart (conditionutil.cpp registers
     // item_remake_option 0xe1 and pet_remake_option 0xe3): "Attempt to change an item's attributes through

@@ -349,9 +349,11 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         int lockRarity = ItemRemakeRules.LockRarity(changeItem.Type.IsPet, changeItem.Rarity,
             session.ServerTableMetadata.FeatureTable.IsOn(ItemRemakeRules.LockRarityFeature));
         bool vip = session.Config.IsPremiumClubActive();
+        bool pcBang = session.PcBang.Grade > 0;
         bool pet = lockTag == ItemTag.LockItemOptionPet;
         return session.Item.Inventory.Filter(item => ItemRemakeRules.IsLockItem(lockTag.Value, lockRarity, item.Metadata.Property.Tag, item.Rarity)
-            && ItemRemakeRules.LockItemUsable(item.IsExpired(), item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, session.CharacterId)
+            && ItemRemakeRules.LockItemUsable(item.IsExpired(), item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, session.CharacterId,
+                item.Metadata.Limit.RequirePcBang, pcBang)
             && (!pet || (item.Uid == ingredientUid && ItemRemakeRules.CandyLocks(item.Metadata.Function?.Type, item.Metadata.Function?.Parameters) > 0)),
             null).FirstOrDefault();
     }

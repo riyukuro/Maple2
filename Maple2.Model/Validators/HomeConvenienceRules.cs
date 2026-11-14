@@ -15,13 +15,13 @@ public static class HomeConvenienceRules {
     }
 
     // Kind 1 is the home dialog's button, kind 2 the inventory's bank button, which the client enables for premium
-    // members and for a character whose PC cafe level is above 0. The server has no PC cafe: it sends that level as 0
-    // in the field add record and never sends the packet that sets it, so premium is the only way in.
-    // The home dialog is the panel of the player's own home, so kind 1 needs that home, like the doctor.
-    public static bool IsBankKindAllowed(byte kind, bool premium, bool inOwnHome) {
+    // members and for a character at a PC bang (UIInventoryDialog's bank button: PC::FUN_141658f30, PC bang grade
+    // above 0, or PC::IsVip). The home dialog is the panel of the player's own home, so kind 1 needs that home, like
+    // the doctor.
+    public static bool IsBankKindAllowed(byte kind, bool premium, bool pcBang, bool inOwnHome) {
         return kind switch {
             BankFromHome => inOwnHome,
-            BankFromInventory => premium,
+            BankFromInventory => premium || pcBang,
             _ => false,
         };
     }

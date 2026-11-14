@@ -37,17 +37,21 @@ public class ItemUseHandler : FieldPacketHandler {
     #endregion
 
     // The checks an item use passes before its function runs: not expired (pets and maid furnishings excepted), a
-    // premium-club item only with premium club, a shadow world item only in the shadow world. RequestItemBox runs them
-    // too (ItemBoxHandler). A locked item is used like any other: the client's UseItem (@0x140d1bd60) does not
-    // ask the item lock, which (CItemLockManager::CanUseItem) guards only the trade, the black market, the shop sell, the
-    // drop/destroy and the dismantle.
+    // PC bang item only at a PC bang, a premium-club item only with premium club, a shadow world item only in the
+    // shadow world. RequestItemBox runs them too (ItemBoxHandler). A locked item is used like any other: the
+    // client's UseItem (@0x140d1bd60) does not ask the item lock, which (CItemLockManager::CanUseItem) guards only
+    // the trade, the black market, the shop sell, the drop/destroy and the dismantle.
     public static bool UseAllowed(GameSession session, Item item) {
         if (!ItemLockRules.ExpiryAllowsUse(item.IsExpired(), item.Metadata.Property.Type, MaidRules.MaidId(item.Metadata, false))) {
             return false;
         }
-        // The item's requirements (Unk_Inventory::GetItemRequirementError @0x140a65860): its gender, its job and its level.
+        // The item's requirements (Unk_Inventory::GetItemRequirementError @0x140a65860): a PC bang item only at a PC bang
+        // (error 6, asked first), its gender, its job and its level.
         Character character = session.Player.Value.Character;
         ItemMetadataLimit limit = item.Metadata.Limit;
+        if (limit.RequirePcBang && session.PcBang.Grade <= 0) {
+            return false;
+        }
         if (limit.Gender != Gender.All && limit.Gender != character.Gender) {
             return false;
         }

@@ -269,7 +269,9 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     RequireWedding: data.limit.wedding,
                     GlamorForgeCount: itemExtractionTryCount.GetValueOrDefault(id),
                     JobLimits: data.limit.jobLimit.Select(job => (JobCode) job).ToArray(),
-                    JobRecommends: data.limit.recommendJobs.Select(job => (JobCode) job).ToArray()
+                    JobRecommends: data.limit.recommendJobs.Select(job => (JobCode) job).ToArray(),
+                    // CItemData reads <PCBang PCBang="..."/> as a bool (itemdata.cpp:375).
+                    RequirePcBang: (data.PCBang?.PCBangValue ?? 0) != 0
                 ),
                 Skill: skill,
                 Function: function,

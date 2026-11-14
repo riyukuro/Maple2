@@ -251,11 +251,17 @@ public class StatsManager {
     // An item the client does not count gives it no stats either (SetItemRules.GivesStats).
     private static Func<Item, int, bool> Gives(FieldPlayer player, long now) {
         bool vip = player.Session.Config.IsPremiumClubActive();
+        bool pcBang = player.Session.PcBang.Grade > 0;
         long characterId = player.Value.Character.Id;
         int characterLevel = player.Value.Character.Level;
-        return (item, layer) => SetItemRules.GivesStats(layer, SetItemRules.Counted(SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null),
-            item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel));
+        return (item, layer) => SetItemRules.GivesStats(layer, Counted(item, now, vip, pcBang, characterId, characterLevel));
     }
+
+    // SetItemRules.Counted for a worn item of this character.
+    internal static bool Counted(Item item, long now, bool vip, bool pcBang, long characterId, int characterLevel) =>
+        SetItemRules.Counted(SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null),
+            item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel,
+            item.Metadata.Limit.RequirePcBang, pcBang);
 
     // The effects of the worn gear and its gems (AddItemBuffs) leave with the stats: a worn item that runs out (or
     // otherwise stops counting) keeps its place, but the client rebuilds its abilities from the items it can use only
@@ -360,12 +366,12 @@ public class StatsManager {
     private List<SetBonusMetadata> RefreshSetEffects(FieldPlayer player) {
         long now = DateTime.Now.ToEpochSeconds();
         bool vip = player.Session.Config.IsPremiumClubActive();
+        bool pcBang = player.Session.PcBang.Grade > 0;
         long characterId = player.Value.Character.Id;
         int characterLevel = player.Value.Character.Level;
         // Only the items the client counts (SetItemRules.Counted).
         int[][] Pieces(IEnumerable<Item> worn) {
-            return worn.Where(item => SetItemRules.Counted(SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null),
-                    item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel))
+            return worn.Where(item => Counted(item, now, vip, pcBang, characterId, characterLevel))
                 .Select(item => item.Metadata.Property.SetOptionIds).ToArray();
         }
         List<SetBonusMetadata> bonuses = SetItemRules.Bonuses([

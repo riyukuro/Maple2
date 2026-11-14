@@ -24,11 +24,16 @@ public static class SetItemRules {
     // Whether a worn item counts as a set piece. The client counts it only when the character can use it
     // (PC::CanUseItem, pc.cpp:4683) at its level (CItem::CanUseAtLevel, item.cpp:653; equipment.cpp:3000-3004):
     // not expired (CItem::FUN_140528980, item.cpp:1717: an expiry time that has passed, pets excepted),
-    // a premium-club item only for a premium-club account (pc.cpp:4691), not bound to another character
+    // a PC bang item only at a PC bang (CItem::FUN_14052a2d0 with PC::FUN_141658f30, pc.cpp:4689: PC bang grade
+    // above 0), a premium-club item only for a premium-club account (pc.cpp:4691), not bound to another character
     // (FUN_1406343b0, itemsocketsystemutil.cpp:2534), and the item's level limit not above the character's
     // level (CItemData::IsLevelAllowed, itemdata.cpp:618).
-    public static bool Counted(bool expired, bool requireVip, bool vip, long boundTo, long characterId, int levelLimit, int level) {
+    public static bool Counted(bool expired, bool requireVip, bool vip, long boundTo, long characterId, int levelLimit, int level,
+                               bool requirePcBang = false, bool pcBang = false) {
         if (expired) {
+            return false;
+        }
+        if (requirePcBang && !pcBang) {
             return false;
         }
         if (requireVip && !vip) {
