@@ -99,11 +99,10 @@ public class TaxiHandler : FieldPacketHandler {
 
         int cost = Lua.CalcTaxiCharge(mapCount, (ushort) session.Player.Value.Character.Level);
 
-        if (session.Currency.Meso < cost) {
+        if (!session.Currency.TryTakeMeso(cost)) {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_meso));
             return;
         }
-        session.Currency.ChangeMeso(-cost);
 
         session.ConditionUpdate(ConditionType.taxiuse);
         session.ConditionUpdate(ConditionType.taxifee, counter: cost);
@@ -141,12 +140,10 @@ public class TaxiHandler : FieldPacketHandler {
             premium, session.FindEvent(GameEventType.FreeAirTaxi).Count > 0);
 
         if (cost > 0) {
-            if (session.Currency.Meso < cost) {
+            if (!session.Currency.TryTakeMeso(cost)) {
                 session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_meso));
                 return;
             }
-
-            session.Currency.ChangeMeso(-cost);
         }
 
         session.Send(session.PrepareField(mapId)
