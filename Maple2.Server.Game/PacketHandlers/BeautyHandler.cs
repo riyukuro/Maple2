@@ -471,9 +471,7 @@ public class BeautyHandler : FieldPacketHandler {
             _ => 0,
         };
 
-        session.Send(session.PrepareField(mapId, portalId: portalId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(mapId, portalId: portalId));
     }
 
     private void HandleConfirmRandomHair(GameSession session, IByteReader packet) {

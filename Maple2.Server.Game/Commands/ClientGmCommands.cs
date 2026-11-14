@@ -43,9 +43,7 @@ public class MoveFieldCommand : GameCommand {
             return;
         }
 
-        session.Send(session.PrepareField(map.Id)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(map.Id));
         ctx.ExitCode = 0;
     }
 }

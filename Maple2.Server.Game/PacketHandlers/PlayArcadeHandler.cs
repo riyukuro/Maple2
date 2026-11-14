@@ -65,8 +65,6 @@ public class PlayArcadeHandler : FieldPacketHandler {
             || session.Player.IsDead || session.Player.InBattle || session.Field.MapId == game.TargetField) {
             return;
         }
-        session.Send(session.PrepareField(game.TargetField)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(game.TargetField));
     }
 }

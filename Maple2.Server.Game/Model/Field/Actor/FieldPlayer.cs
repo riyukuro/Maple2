@@ -737,9 +737,7 @@ public class FieldPlayer : Actor<Player> {
 
         // Handle revival return to different map
         if (!instant && Field.Metadata.Property.RevivalReturnId != 0 && Field.Metadata.Property.RevivalReturnId != Field.Metadata.Id) {
-            Session.Send(Session.PrepareField(Field.Metadata.Property.RevivalReturnId)
-                ? FieldEnterPacket.Request(Session.Player)
-                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            Session.SendFieldEnter(Session.PrepareField(Field.Metadata.Property.RevivalReturnId));
             return true;
         }
 

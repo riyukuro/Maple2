@@ -108,9 +108,7 @@ public class TaxiHandler : FieldPacketHandler {
         session.ConditionUpdate(ConditionType.taxifee, counter: cost);
         Vector3 position = entities.Taxi.Position.Offset(-VectorExtensions.BLOCK_SIZE, entities.Taxi.Rotation);
         Vector3 rotation = entities.Taxi.Rotation;
-        session.Send(session.PrepareField(mapId, position: position, rotation: rotation)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(mapId, position: position, rotation: rotation));
     }
 
     // The client never sends mode 2 (its RequestTaxi senders use modes 0, 1, 3, 4 and 5); it took no payment, so it
@@ -148,9 +146,7 @@ public class TaxiHandler : FieldPacketHandler {
             }
         }
 
-        session.Send(session.PrepareField(mapId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(mapId));
     }
 
     public const string VipAirTaxiFeature = "VIPAirTaxi";
@@ -174,9 +170,7 @@ public class TaxiHandler : FieldPacketHandler {
             return;
         }
 
-        session.Send(session.PrepareField(mapId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(mapId));
     }
 
     private void HandleDiscoverTaxi(GameSession session) {

@@ -324,9 +324,7 @@ public class QuestHandler : FieldPacketHandler {
             return;
         }
 
-        session.Send(session.PrepareField(quest.Metadata.GoToNpc.MapId, portalId: quest.Metadata.GoToNpc.PortalId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(quest.Metadata.GoToNpc.MapId, portalId: quest.Metadata.GoToNpc.PortalId));
     }
 
     // The alliance of the talk npc: its kind is an alliance's officerNpcKind (CFameTable::GetAllianceByNpc,
@@ -367,9 +365,7 @@ public class QuestHandler : FieldPacketHandler {
             return;
         }
 
-        session.Send(session.PrepareField(basic.ProgressMaps![0])
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(basic.ProgressMaps![0]));
     }
 
     // QuestUserFindAction::vfunc_2 (actionkeyobject.cpp:3035): the quest id, then the character id of the
@@ -448,9 +444,7 @@ public class QuestHandler : FieldPacketHandler {
             return;
         }
 
-        session.Send(session.PrepareField(metadata.GoToMapId, metadata.GoToPortalId, session.CharacterId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(metadata.GoToMapId, metadata.GoToPortalId, session.CharacterId));
     }
 
     // CQuestManager::SendQuestMode20 (questmanager_2.cpp:1795): the quest id and the box's kind, 3 after the
@@ -464,9 +458,7 @@ public class QuestHandler : FieldPacketHandler {
             return;
         }
 
-        session.Send(session.PrepareField(dispatch.MapId, portalId: dispatch.PortalId == 0 ? -1 : dispatch.PortalId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(dispatch.MapId, portalId: dispatch.PortalId == 0 ? -1 : dispatch.PortalId));
     }
 
     private void HandleRemoteComplete(GameSession session, IByteReader packet, byte mode) {
@@ -545,9 +537,7 @@ public class QuestHandler : FieldPacketHandler {
         session.Quest.StartAutoQuests();
         Logger.Information("Epic restart of {CharacterId} in event {EventId}: {Count} quests removed", session.CharacterId, gameEvent.Id, removed.Count);
 
-        session.Send(session.PrepareField(restart.MapId, restart.PortalId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(restart.MapId, restart.PortalId));
     }
 
     // CQuestManager::SendQuestMode15 (questmanager_2.cpp:1766): one field id, sent from the world map's mission attack
@@ -563,7 +553,7 @@ public class QuestHandler : FieldPacketHandler {
         }
 
         if (!session.PrepareField(mapId)) {
-            session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            session.SendFieldEnter(false);
             return;
         }
         session.Quest.CountMissionAttack();
@@ -577,7 +567,7 @@ public class QuestHandler : FieldPacketHandler {
         }
 
         if (!session.PrepareField(Constants.FameContentsSkyFortressGotoMapID, Constants.FameContentsSkyFortressGotoPortalID)) {
-            session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            session.SendFieldEnter(false);
             return;
         }
         // The trophy condition skyfortress_system: the trophy 22500040's description (achievedescription.xml

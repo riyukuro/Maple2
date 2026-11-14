@@ -78,9 +78,7 @@ public partial class TriggerContext {
                 continue;
             }
 
-            player.Session.Send(player.Session.PrepareField(mapId, portalId)
-                ? FieldEnterPacket.Request(player)
-                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            player.Session.SendFieldEnter(player.Session.PrepareField(mapId, portalId));
         }
     }
 
@@ -120,9 +118,7 @@ public partial class TriggerContext {
         }
 
         foreach (FieldPlayer player in PlayersInBox(boxId)) {
-            player.Session.Send(player.Session.PrepareField(mapId, portalId)
-                ? FieldEnterPacket.Request(player)
-                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            player.Session.SendFieldEnter(player.Session.PrepareField(mapId, portalId));
         }
     }
 

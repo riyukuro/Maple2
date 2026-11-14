@@ -68,9 +68,7 @@ public class WorldChampionHandler : FieldPacketHandler {
         if (session.Field.MapId == season.MapId) {
             return;
         }
-        session.Send(session.PrepareField(season.MapId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(season.MapId));
     }
 
     // At login, the reward mails of the seasons ended in the reward days (constants worldChampionRewardDays) the

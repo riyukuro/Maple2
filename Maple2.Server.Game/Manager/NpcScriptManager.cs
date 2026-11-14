@@ -292,9 +292,7 @@ public sealed class NpcScriptManager {
         }
 
         if (JobCondition.MoveMapId > 0) {
-            session.Send(session.PrepareField(JobCondition.MoveMapId, portalId: JobCondition.MovePortalId > 0 ? JobCondition.MovePortalId : -1)
-                ? FieldEnterPacket.Request(session.Player)
-                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            session.SendFieldEnter(session.PrepareField(JobCondition.MoveMapId, portalId: JobCondition.MovePortalId > 0 ? JobCondition.MovePortalId : -1));
         }
     }
 
@@ -463,9 +461,7 @@ public sealed class NpcScriptManager {
         }
 
         if (scriptFunction.MoveMapId > 0) {
-            session.Send(session.PrepareField(scriptFunction.MoveMapId, portalId: scriptFunction.MovePortalId > 0 ? scriptFunction.MovePortalId : -1)
-                ? FieldEnterPacket.Request(session.Player)
-                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            session.SendFieldEnter(session.PrepareField(scriptFunction.MoveMapId, portalId: scriptFunction.MovePortalId > 0 ? scriptFunction.MovePortalId : -1));
         }
     }
 

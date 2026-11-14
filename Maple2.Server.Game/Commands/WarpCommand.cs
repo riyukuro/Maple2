@@ -43,9 +43,7 @@ public class WarpCommand : GameCommand {
             }
 
             ctx.Console.Out.WriteLine($"Warping to '{map.Name}' ({map.Id})");
-            session.Send(session.PrepareField(map.Id, portalId)
-                ? FieldEnterPacket.Request(session.Player)
-                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            session.SendFieldEnter(session.PrepareField(map.Id, portalId));
 
             ctx.ExitCode = 0;
         } catch (SystemException ex) {
@@ -89,9 +87,7 @@ public class GotoCommand : GameCommand {
                 if (mapIndex >= 0 && mapIndex < results.Count && mapIndex != -1) {
                     MapMetadata choosenMap = results[mapIndex];
                     ctx.Console.Out.WriteLine($"Warping to '{choosenMap.Name}' ({choosenMap.Id})");
-                    session.Send(session.PrepareField(choosenMap.Id, -1)
-                        ? FieldEnterPacket.Request(session.Player)
-                        : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+                    session.SendFieldEnter(session.PrepareField(choosenMap.Id, -1));
 
                     ctx.ExitCode = 0;
                     return;
@@ -111,9 +107,7 @@ public class GotoCommand : GameCommand {
 
                 MapMetadata map = results.First();
                 ctx.Console.Out.WriteLine($"Warping to '{map.Name}' ({map.Id})");
-                session.Send(session.PrepareField(map.Id, -1)
-                    ? FieldEnterPacket.Request(session.Player)
-                    : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+                session.SendFieldEnter(session.PrepareField(map.Id, -1));
 
                 ctx.ExitCode = 0;
             } catch (SystemException ex) {

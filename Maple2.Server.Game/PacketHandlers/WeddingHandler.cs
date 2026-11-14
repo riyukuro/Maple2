@@ -340,7 +340,7 @@ public class WeddingHandler : FieldPacketHandler {
         }
 
         if (!session.PrepareField(mapId, out FieldManager? field, ownerId: marriageId)) {
-            session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            session.SendFieldEnter(false);
             return;
         }
 

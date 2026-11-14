@@ -41,8 +41,6 @@ public class EnterEventFieldHandler : FieldPacketHandler {
                 return;
         }
 
-        session.Send(session.PrepareField(fieldPopup!.MapId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(fieldPopup!.MapId));
     }
 }

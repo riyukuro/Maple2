@@ -152,9 +152,7 @@ public class RoomTimer : IUpdatable {
 
         foreach ((int objectId, FieldPlayer player) in field.Players) {
             int returnMapId = player.Session.ReturnMapId();
-            player.Session.Send(player.Session.PrepareField(returnMapId, returnMapId)
-                ? FieldEnterPacket.Request(player)
-                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            player.Session.SendFieldEnter(player.Session.PrepareField(returnMapId, returnMapId));
         }
 
         logger.Debug("Room timer expired, disposing field {FieldId}", field.MapId);

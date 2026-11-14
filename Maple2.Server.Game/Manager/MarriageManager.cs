@@ -782,9 +782,7 @@ public sealed class MarriageManager {
             return;
         }
 
-        session.Send(session.PrepareField(session.ServerTableMetadata.ConstantsTable.WeddingDivorceFieldID)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(session.ServerTableMetadata.ConstantsTable.WeddingDivorceFieldID));
     }
     #endregion
 

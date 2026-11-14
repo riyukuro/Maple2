@@ -1541,8 +1541,6 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        session.Send(session.PrepareField(mapId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(session.PrepareField(mapId));
     }
 }

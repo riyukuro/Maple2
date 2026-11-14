@@ -867,18 +867,14 @@ public partial class FieldManager : IField {
                 return false;
             case PortalType.LeaveDungeon:
                 //TODO: Migrate back to original channel
-                session.Send(session.PrepareFieldByPortal(session.ReturnMapId())
-                    ? FieldEnterPacket.Request(session.Player)
-                    : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+                session.SendFieldEnter(session.PrepareFieldByPortal(session.ReturnMapId()));
                 return true;
             case PortalType.DungeonReturnToLobby:
                 if (this is not DungeonFieldManager dungeonField || dungeonField.Lobby is null) {
                     logger.Warning("DungeonReturnToLobby portal used in non-dungeon map {MapId}", MapId);
                     return false;
                 }
-                session.Send(session.PrepareFieldByPortal(dungeonField.Lobby.MapId, portalId: 2, roomId: dungeonField.Lobby.RoomId)
-                    ? FieldEnterPacket.Request(session.Player)
-                    : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+                session.SendFieldEnter(session.PrepareFieldByPortal(dungeonField.Lobby.MapId, portalId: 2, roomId: dungeonField.Lobby.RoomId));
                 return true;
             case PortalType.Quest:
                 session.Field?.RemovePortal(fieldPortal.ObjectId);
@@ -933,9 +929,7 @@ public partial class FieldManager : IField {
         // too made each move by portal count twice.
         bool entered = session.PrepareFieldByPortal(srcPortal.TargetMapId, portalId: srcPortal.TargetPortalId, roomId: fieldPortal.RoomId);
 
-        session.Send(entered
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(entered);
         return true;
     }
 
@@ -984,9 +978,7 @@ public partial class FieldManager : IField {
                 fieldPortal.RoomEntered--;
             }
         }
-        session.Send(entered
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(entered);
         return entered;
     }
 
@@ -1143,7 +1135,7 @@ public partial class FieldManager : IField {
             logger.Information("OX quiz of {HostCharacterId}: {CharacterId} could not move in; the entry fee of {Fee} mesos was given back",
                 ox.HostCharacterId, session.CharacterId, fee);
         }
-        session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        session.SendFieldEnter(false);
         return true;
     }
 

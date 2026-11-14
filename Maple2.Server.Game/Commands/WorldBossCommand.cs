@@ -213,9 +213,7 @@ public class WorldBossCommand : GameCommand {
             }
 
             bool success = session.PrepareField(targetMap);
-            session.Send(success
-                ? Packets.FieldEnterPacket.Request(session.Player)
-                : Packets.FieldEnterPacket.Error(Maple2.Model.Error.MigrationError.s_move_err_default));
+            session.SendFieldEnter(success);
 
             if (success) {
                 ctx.Console.Out.WriteLine($"Warping to map {targetMap} for boss {metadataId}.");

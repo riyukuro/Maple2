@@ -75,9 +75,7 @@ public class MoveEventFieldHandler : FieldPacketHandler {
                 session.Send(MoveEventFieldPacket.Refuse(MoveEventFieldPacket.NO_EVENT));
                 return;
             case EventFieldRules.Result.Move:
-                session.Send(session.PrepareField(fieldId)
-                    ? FieldEnterPacket.Request(session.Player)
-                    : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+                session.SendFieldEnter(session.PrepareField(fieldId));
                 return;
         }
     }

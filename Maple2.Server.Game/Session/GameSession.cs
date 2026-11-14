@@ -746,8 +746,23 @@ public sealed partial class GameSession : Core.Network.Session {
         return PrepareFieldInternal(mapId, out newField, portalId, ownerId, roomId, position, rotation);
     }
 
+    // Set by a field change that became a move to another server (a dungeon left for a map outside it): the move
+    // is answered by GameToGame or its error box (CNetworkService::OnGameToGame), so no FieldEnter error follows.
+    private bool fieldChangeMigrated;
+
+    // The answer to a field change on this server: FieldEnter's request, or its error unless the change was handed
+    // to the World server as a move and answered there.
+    public void SendFieldEnter(bool prepared) {
+        if (prepared) {
+            Send(FieldEnterPacket.Request(Player));
+        } else if (!fieldChangeMigrated) {
+            Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        }
+    }
+
     private bool PrepareFieldInternal(int mapId, out FieldManager? newField, int portalId, long ownerId, int roomId, in Vector3 position, in Vector3 rotation) {
         PortalArrival = false;
+        fieldChangeMigrated = false;
         // If entering home without instanceKey set, default to own home.
         if (mapId == Player.Value.Home.Indoor.MapId && ownerId == 0) {
             ownerId = AccountId;
@@ -778,6 +793,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 Dungeon.LeaveStage();
             } else {
                 Migrate(mapId);
+                fieldChangeMigrated = true;
                 newField = null;
                 return false;
             }
@@ -1060,9 +1076,7 @@ public sealed partial class GameSession : Core.Network.Session {
         // The OX quiz stadium's way out (its portals, the host's leave, the script's MoveAllUser) is the host's home,
         // where the event's portal led in from.
         if (Field?.UgcOx is { } ox) {
-            Send(PrepareField(ox.HomeMapId, ownerId: ox.HostAccountId)
-                ? FieldEnterPacket.Request(Player)
-                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            SendFieldEnter(PrepareField(ox.HomeMapId, ownerId: ox.HostAccountId));
             return;
         }
 
@@ -1096,9 +1110,7 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         // If returning to a map, pass in the spawn point.
-        Send(PrepareField(mapId, position: position)
-            ? FieldEnterPacket.Request(Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        SendFieldEnter(PrepareField(mapId, position: position));
     }
 
     // Environment.TickCount64 of the last minute counted for play time (ConditionType.playtime); the session's start

@@ -78,7 +78,7 @@ public static class PlayerWarpUtil {
 
         if (kind == GoToKind.Field) {
             if (!session.PrepareField(playerInfo.MapId, ownerId: ownerId, roomId: warpResponse.RoomId, position: position)) {
-                session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
+                session.SendFieldEnter(false);
                 return false;
             }
             session.Send(FieldEnterPacket.Request(session.Player));
