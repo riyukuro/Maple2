@@ -31,11 +31,15 @@ public class ItemBoxHandlerTests {
 
     // The box in the bag, and drop box 100 = two groups: RewardA x3 | RewardB x1.
     private GameSession Login(ItemFunction function, string parameters, int amount, int rewardSlotMax = 100, short[]? tabCount = null,
-                              int otherRarityAmount = 0, int keys = 0, bool requireVip = false) {
+                              int otherRarityAmount = 0, int keys = 0, bool requireVip = false,
+                              Func<ItemMetadataLimit, ItemMetadataLimit>? limit = null) {
         test = new TestGameSession();
         ItemMetadata boxMetadata = TestGameSession.Metadata(BoxId, function: new ItemMetadataFunction(function, function.ToString(), parameters, false));
         if (requireVip) {
             boxMetadata = boxMetadata with { Limit = boxMetadata.Limit with { RequireVip = true } };
+        }
+        if (limit != null) {
+            boxMetadata = boxMetadata with { Limit = limit(boxMetadata.Limit) };
         }
         test.Register(TestGameSession.Metadata(RewardA, slotMax: rewardSlotMax), TestGameSession.Metadata(RewardB, slotMax: rewardSlotMax));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
@@ -214,6 +218,23 @@ public class ItemBoxHandlerTests {
         Assert.That(Convert.ToHexString(test.TakeSent().Single()),
             Is.EqualTo(Hex(ItemBoxPacket.Open(BoxId, 0, ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail))));
         Assert.That(Held(session, BoxId), Is.EqualTo(5));
+    }
+
+    // A box the player's gender, job or level may not use stays shut (GetItemRequirementError); a beginner counts as
+    // a knight, and a job list naming the beginner allows every job.
+    [TestCase(Gender.Female, 0, new JobCode[0], false)]
+    [TestCase(Gender.All, 0, new[] { JobCode.Wizard }, false)]
+    [TestCase(Gender.All, 2, new JobCode[0], false)]
+    [TestCase(Gender.Male, 1, new[] { JobCode.Knight }, true)]
+    [TestCase(Gender.All, 0, new[] { JobCode.Newbie, JobCode.Wizard }, true)]
+    public void OpenItemBox_UseNeedsTheBoxRequirements(Gender gender, int level, JobCode[] jobs, bool opens) {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 2,
+            limit: old => old with { Gender = gender, Level = level, JobLimits = jobs });
+        session.Player.Value.Character.Level = 1;
+
+        Use(session);
+
+        Assert.That(Held(session, BoxId), Is.EqualTo(opens ? 1 : 2));
     }
 
     [TestCase(0)]

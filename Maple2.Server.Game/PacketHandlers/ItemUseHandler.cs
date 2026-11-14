@@ -45,10 +45,34 @@ public class ItemUseHandler : FieldPacketHandler {
         if (!ItemLockRules.ExpiryAllowsUse(item.IsExpired(), item.Metadata.Property.Type, MaidRules.MaidId(item.Metadata, false))) {
             return false;
         }
-        if (item.Metadata.Limit.RequireVip && session.Player.Value.Account.PremiumTime < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+        // The item's requirements (Unk_Inventory::GetItemRequirementError @0x140a65860): its gender, its job and its level.
+        Character character = session.Player.Value.Character;
+        ItemMetadataLimit limit = item.Metadata.Limit;
+        if (limit.Gender != Gender.All && limit.Gender != character.Gender) {
+            return false;
+        }
+        if (!JobAllowed(limit.JobLimits, character.Job.Code())) {
+            return false;
+        }
+        if (limit.Level > character.Level) {
+            return false;
+        }
+        if (limit.RequireVip && session.Player.Value.Account.PremiumTime < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
             return false;
         }
         return item.Metadata.Function?.OnlyShadowWorld != true || session.Field?.Metadata.Property.Continent == Continent.ShadowWorld;
+    }
+
+    // ItemLimit::IsJobAllowed (@0x140545c80): no job is allowed nothing, a beginner counts as a
+    // knight, and a limit list that is empty or names job 0 or the beginner allows every job.
+    public static bool JobAllowed(JobCode[] limits, JobCode job) {
+        if (job == JobCode.None) {
+            return false;
+        }
+        if (job == JobCode.Newbie) {
+            job = JobCode.Knight;
+        }
+        return limits.Length == 0 || limits.Any(limit => limit is JobCode.None or JobCode.Newbie || limit == job);
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
