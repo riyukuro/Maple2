@@ -745,6 +745,37 @@ public partial class GameStorage {
             return true;
         }
 
+        // The account's prestige level, its exp and the missions' gained levels, stored on their own so a level is in the
+        // database before its item is given.
+        public bool SavePrestigeProgress(Player player) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.Account? account = Context.Account.Find(player.Account.Id);
+            if (account == null) {
+                return false;
+            }
+
+            account.PrestigeLevel = player.Account.PrestigeLevel;
+            account.PrestigeLevelsGained = player.Account.PrestigeLevelsGained;
+            account.PrestigeExp = player.Account.PrestigeExp;
+            account.PrestigeCurrentExp = player.Account.PrestigeCurrentExp;
+            account.PrestigeMissions = player.Account.PrestigeMissions.Select(mission => new Model.PrestigeMission {
+                Id = mission.Id,
+                GainedLevels = mission.GainedLevels,
+                Awarded = mission.Awarded,
+            }).ToList();
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(player.Character.Id);
+            if (updated != null) {
+                player.Account.LastModified = updated.Value.AccountLastModified;
+                player.Character.LastModified = updated.Value.CharacterLastModified;
+            }
+            return true;
+        }
+
         // The character's claimed mastery reward boxes (the unlock row's MasteryRewardsClaimed), stored on their own
         // so a claim is in the database before its box is given.
         public bool SaveMasteryRewardsClaimed(Player player) {

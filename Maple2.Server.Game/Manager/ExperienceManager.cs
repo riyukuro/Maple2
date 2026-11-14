@@ -369,14 +369,21 @@ public sealed class ExperienceManager {
         }
         session.Send(PrestigePacket.LoadMissions(session.Player.Value.Account));
 
+        // The level is in the database before its items are given (they get their rows at once), so a crash between
+        // them cannot give a level's item again when the exp is earned a second time; the level stayed in memory until
+        // the next save. A refused store does not take back a level already earned and shown: its items are given as
+        // before, and the next save stores the level.
+        if (!session.TrySavePurchase(db => db.SavePrestigeProgress(session.Player))) {
+            Log.Logger.Warning("Prestige level {Level} not stored before its items, the next save stores it", PrestigeLevel);
+        }
         for (int i = 0; i < amount; i++) {
             Item? item = session.Field?.ItemDrop.CreateItem(Constants.AdventureLevelLvUpRewardItem);
             if (item == null) {
                 break;
             }
 
-            if (!session.Item.Inventory.Add(item, true)) {
-                session.Item.MailItem(item);
+            if (!session.Item.Inventory.Add(item, true, commit: true) && !session.Item.MailItem(item)) {
+                Log.Logger.Error("Prestige level {Level} item {ItemId} x{Amount} neither added nor mailed", PrestigeLevel, item.Id, item.Amount);
             }
         }
 

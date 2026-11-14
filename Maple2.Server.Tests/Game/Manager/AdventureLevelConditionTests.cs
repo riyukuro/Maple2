@@ -67,6 +67,32 @@ public class AdventureLevelConditionTests {
         Assert.That(test.Errors, Is.Empty);
         Assert.That(test.TrophyCounter(trophy), Is.EqualTo(12));
     }
+    // A prestige level is stored before its items are given (they get their rows at once): a crash after the items
+    // cannot leave the level unstored, to be earned and given again. Before, the level stayed in memory until the
+    // next save.
+    [Test]
+    public void PrestigeLevelUp_TheLevelIsStoredWithItsItems() {
+        var test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(30001133));
+        test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        test.SetTable(new PrestigeLevelAbilityTable(new Dictionary<int, PrestigeLevelAbilityMetadata>()));
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { AdventureLevelStartLevel = 50, AdventureLevelLimit = 100, characterMaxLevel = 99 });
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        PacketHandlers.ProgressionOrderTests.LoadConfig(test, session);
+        session.Player.Value.Character.Level = 50;
+        session.Exp.PrestigeLevel = 9;
+        session.Exp.PrestigeCurrentExp = 5;
+
+        session.Exp.PrestigeLevelUp(2);
+
+        Assert.That(session.Item.Inventory.Find(30001133).Sum(item => item.Amount), Is.EqualTo(2));
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        Player stored = db.LoadPlayer(test.AccountId, test.CharacterId, 1, 1)!;
+        Assert.That((stored.Account.PrestigeLevel, stored.Account.PrestigeCurrentExp), Is.EqualTo((11, 5L)));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // Prestige 2 (level up): the client finds the PC by its object id and sets the level and plays the effect for
     // any PC in the field, so another player in the field gets it too, with the levelling player's object id.
     [Test]
