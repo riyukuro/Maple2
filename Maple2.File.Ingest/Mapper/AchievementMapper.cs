@@ -34,15 +34,11 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
             : PlayedClientAchievements.LockStates(
                 playedReader.Files.Where(file => PlayedClientAchievements.IsAchieveFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
                 RowAvailable);
-        // The data pack's trophies, then the played client's trophies that the pack does not have, from the played
-        // client's own achieve files: the client lists every trophy of its achieve data in the trophy window. KR Live:
-        // 21 such trophies (21300103-112 among them), 26 with DungeonOS04 on (its 21300113-117).
         M2dReader? played = playedReader;
         int playedOnly = 0;
         var unread = new List<int>();
-        IEnumerable<(int Id, string Name, AchieveData Data)> trophies = QuestMapper.PackThenPlayed(parser.Parse(),
-            played == null || playedStates.Count == 0 ? null : () => PlayedTrophies(played, unread),
-            trophy => trophy.Id, playedStates.Keys.ToHashSet(), () => playedOnly++);
+        IEnumerable<(int Id, string Name, AchieveData Data)> trophies = PlayedOnlyAdded(parser.Parse(),
+            played == null ? null : () => PlayedTrophies(played, unread), trophy => trophy.Id, playedStates, () => playedOnly++);
         foreach ((int id, string name, AchieveData data) in trophies) {
             var grades = new Dictionary<int, AchievementMetadataGrade>();
             foreach (Grade grade in data.grade) {
@@ -90,6 +86,17 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
                               + (unread.Count == 0 ? "" : $"; played files the parser cannot read: {string.Join(",", unread)}"));
         }
     }
+
+    // The data pack's trophies, then the played client's trophies that the pack yields no row for, from the played
+    // client's own achieve files: the client lists every trophy of its achieve data in the trophy window. A played
+    // trophy is taken when its id is in playedStates (LockStates: the client has an available row for it); the pack's
+    // trophy wins where the pack yields one. The pack yields none for an id it lacks and for one whose rows the
+    // feature/locale filter drops all of (KR Live 92000139: the pack's only row is locale NA, the client's is KR). KR
+    // Live: 21 trophies added (21300103-112 among them), 26 with DungeonOS04 on (its 21300113-117). No played client
+    // (empty playedStates or no reader): the pack's trophies alone.
+    public static IEnumerable<T> PlayedOnlyAdded<T>(IEnumerable<T> pack, Func<IEnumerable<T>>? played, Func<T, int> id,
+            IReadOnlyDictionary<int, bool> playedStates, Action? playedOnly) =>
+        QuestMapper.PackThenPlayed(pack, playedStates.Count == 0 ? null : played, id, playedStates.Keys.ToHashSet(), playedOnly);
 
     // The played pack's trophies, read the way AchieveParser.Parse reads a pack (parser 2.3.7), one file at a time: a
     // file the parser cannot read (KR Live: achieve/22200019.xml, condition item_collect_script_function) is skipped and

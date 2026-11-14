@@ -63,4 +63,31 @@ public class PlayedClientAchievementsTests {
             Assert.That(PlayedClientAchievements.IsAchieveFile("table/achieve.xml"), Is.False);
         });
     }
+
+    // The ingest adds the played client's trophies the data pack yields no row for (KR Live 21300105), by the played
+    // client's lock states: a trophy whose played rows the filter drops all of (feature off) is not added, and the pack's
+    // row wins where the pack has one. A pack file with no available row (KR Live 92000139, an NA-only row) yields
+    // nothing, so the played row is taken.
+    [Test]
+    public void Ingest_AddsThePlayedTrophiesThePackLacks() {
+        Dictionary<int, bool> states = PlayedClientAchievements.LockStates([
+            File("""<achieves id="22200019" />"""),
+            File("""<achieves id="21300105" />"""),
+            File("""<achieves id="92000139" />"""),
+            File("""<achieves id="21300113" feature="Off" />"""),
+        ], Available);
+        var pack = new[] { (22200019, "pack") };
+        var played = new[] { (22200019, "played"), (21300105, "played"), (92000139, "played"), (21300113, "played") };
+        int playedOnly = 0;
+
+        var trophies = Maple2.File.Ingest.Mapper.AchievementMapper.PlayedOnlyAdded(pack, () => played, trophy => trophy.Item1, states,
+            () => playedOnly++).ToList();
+
+        Assert.Multiple(() => {
+            Assert.That(trophies, Is.EqualTo(new[] { (22200019, "pack"), (21300105, "played"), (92000139, "played") }));
+            Assert.That(playedOnly, Is.EqualTo(2));
+            Assert.That(Maple2.File.Ingest.Mapper.AchievementMapper.PlayedOnlyAdded(pack, () => played, trophy => trophy.Item1,
+                new Dictionary<int, bool>(), null), Is.EqualTo(pack));
+        });
+    }
 }
