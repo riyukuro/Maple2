@@ -108,11 +108,29 @@ public class BreakableCastTests {
         Scene scene = Start();
         FieldManager field = scene.Test.Session.Field!;
         typeof(FieldManager).GetField("fieldSkills", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldSkill>());
+        typeof(FieldManager).GetField("removedSkills", Any)!.SetValue(field, new ConcurrentDictionary<int, (FieldSkill, long)>());
         if (ownRegion) {
             var region = new FieldSkill(field, 900, scene.Test.Session.Player, scene.Record.Metadata, 1000, Vector3.Zero);
             ((ConcurrentDictionary<int, FieldSkill>) typeof(FieldManager).GetField("fieldSkills", Any)!.GetValue(field)!)[900] = region;
         }
         return Hit(scene, 0, skillId, level) == BreakableState.Break;
+    }
+
+    // Nearly every region is removed on the first tick after its last fire, before the client's tags of that fire
+    // meet anything: a removed region of the player still breaks within the hit window, not after it.
+    [TestCase(1000, ExpectedResult = true)]
+    [TestCase(6000, ExpectedResult = false)]
+    public bool ARegionJustRemovedStillBreaksTheBox(long sinceRemoved) {
+        Scene scene = Start();
+        FieldManager field = scene.Test.Session.Field!;
+        var skills = new ConcurrentDictionary<int, FieldSkill>();
+        typeof(FieldManager).GetField("fieldSkills", Any)!.SetValue(field, skills);
+        typeof(FieldManager).GetField("removedSkills", Any)!.SetValue(field, new ConcurrentDictionary<int, (FieldSkill, long)>());
+        skills[900] = new FieldSkill(field, 900, scene.Test.Session.Player, scene.Record.Metadata, 1000, Vector3.Zero);
+        long tick = field.FieldTick;
+        field.RemoveSkill(900);
+        typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(field, tick + sinceRemoved);
+        return Hit(scene, 0) == BreakableState.Break;
     }
 
     [TestCase(78, SkillId, (short) 1)]

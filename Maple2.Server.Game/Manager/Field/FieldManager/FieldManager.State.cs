@@ -74,6 +74,8 @@ public partial class FieldManager {
     private readonly ConcurrentDictionary<int, FieldPlayerSpawnPoint> fieldPlayerSpawnPoints = new();
     private readonly ConcurrentDictionary<int, FieldSpawnGroup> fieldSpawnGroups = new();
     private readonly ConcurrentDictionary<int, FieldSkill> fieldSkills = new();
+    // The regions removed lately with the field tick of their removal (HasFieldSkill).
+    private readonly ConcurrentDictionary<int, (FieldSkill Skill, long RemovedTick)> removedSkills = new();
     private readonly ConcurrentDictionary<int, FieldSkill> cubeSkills = new();
     private readonly ConcurrentDictionary<int, FieldPortal> fieldPortals = new();
 
@@ -84,8 +86,21 @@ public partial class FieldManager {
     public IEnumerable<FieldSkill> DebugFieldSkills => fieldSkills.Values;
 
     // Whether a region skill the caster placed, of this skill and level, is still in the field.
+    // A region removed within the hit window (SkillHitRules.HitWindowMs) still counts: nearly every region is
+    // removed on the first tick after its last fire, before the client's tags of that fire have met anything.
     public bool HasFieldSkill(IActor caster, int skillId, short level) {
-        return fieldSkills.Values.Any(skill => skill.Caster == caster && skill.Value.Id == skillId && skill.Value.Level == level);
+        bool Matches(FieldSkill skill) => skill.Caster == caster && skill.Value.Id == skillId && skill.Value.Level == level;
+        if (fieldSkills.Values.Any(Matches)) {
+            return true;
+        }
+        foreach ((int objectId, (FieldSkill skill, long removedTick)) in removedSkills) {
+            if (SkillHitRules.TooLate(FieldTick, removedTick)) {
+                removedSkills.TryRemove(objectId, out _);
+            } else if (Matches(skill)) {
+                return true;
+            }
+        }
+        return false;
     }
     public IEnumerable<FieldSkill> DebugCubeSkills => cubeSkills.Values;
 
@@ -1415,7 +1430,14 @@ public partial class FieldManager {
     }
 
     public void RemoveSkill(int objectId) {
-        if (fieldSkills.Remove(objectId, out _)) {
+        if (fieldSkills.Remove(objectId, out FieldSkill? removed)) {
+            // drop the ones past the hit window here too, so a field nobody breaks anything in keeps only 5 s of them
+            foreach ((int oldId, (_, long removedTick)) in removedSkills) {
+                if (SkillHitRules.TooLate(FieldTick, removedTick)) {
+                    removedSkills.TryRemove(oldId, out _);
+                }
+            }
+            removedSkills[objectId] = (removed, FieldTick);
             Broadcast(RegionSkillPacket.Remove(objectId));
         }
     }
