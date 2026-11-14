@@ -3,7 +3,9 @@ using System.Linq;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
+using Maple2.Model.Game;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -17,6 +19,8 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class BuddyBlockTwoSessionTests {
     private const byte Request = 2;
     private const byte Block = 5;
+    private const byte Unblock = 6;
+    private const byte Cancel = 17;
 
     private TestGameSession playerTest = null!;
     private TestGameSession otherTest = null!;
@@ -64,6 +68,41 @@ public class BuddyBlockTwoSessionTests {
             writer.WriteUnicodeString("hello");
             writer.WriteUnicodeString("text");
         }));
+    }
+
+    private void Invite(GameSession session, string name) {
+        buddyHandler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(Request);
+            writer.WriteUnicodeString(name);
+            writer.WriteUnicodeString("hi");
+        }));
+    }
+
+    private void SendById(GameSession session, byte command, long entryId) {
+        buddyHandler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(command);
+            writer.WriteLong(entryId);
+        }));
+    }
+
+    private BuddyEntry Entry(long ownerId, long buddyId) {
+        using GameStorage.Request db = playerTest.Storage.Context();
+        return db.ListBuddies(ownerId).Single(entry => entry.BuddyId == buddyId);
+    }
+
+    // The Unblock answers: (entry id, result).
+    private static (long, byte)[] Unblocks(TestGameSession test) => Of(test, SendOp.Buddy)
+        .Where(packet => packet[2] == Unblock)
+        .Select(packet => (BitConverter.ToInt64(packet, 4), packet[3]))
+        .ToArray();
+
+    private void UnblockOk(long entryId) {
+        playerTest.TakeSent();
+        SendById(player, Unblock, entryId);
+
+        Assert.That(Unblocks(playerTest), Is.EqualTo(new[] { (entryId, (byte) 0) }));
+        Assert.That(player.Buddy.IsBlocked(other.CharacterId), Is.False);
+        Assert.That(Rows(player.CharacterId, other.CharacterId), Is.EqualTo(0));
     }
 
     private int Rows(long ownerId, long buddyId) {
@@ -138,5 +177,56 @@ public class BuddyBlockTwoSessionTests {
         Assert.That(playerTest.World.MailNotifications, Is.Empty);
         using GameStorage.Request db = playerTest.Storage.Context();
         Assert.That(db.GetSentMail(player.CharacterId), Is.Empty);
+    }
+
+    // A cancelled request leaves the list: a block by name then makes a block row, and the unblock removes it (it
+    // used to take the cancelled entry, whose row was gone, and the unblock answered s_buddy_err_unknown).
+    [Test]
+    public void RequestCancelBlockUnblock() {
+        Invite(player, other.PlayerName);
+        long requestId = Entry(player.CharacterId, other.CharacterId).Id;
+        SendById(player, Cancel, requestId);
+        Assert.That(Rows(player.CharacterId, other.CharacterId), Is.EqualTo(0));
+        Assert.That(Rows(other.CharacterId, player.CharacterId), Is.EqualTo(0));
+
+        BlockByName(player, other.PlayerName);
+        BuddyEntry block = Entry(player.CharacterId, other.CharacterId);
+        Assert.That(block.Type, Is.EqualTo(BuddyType.Blocked));
+        Assert.That(block.Id, Is.Not.EqualTo(requestId));
+        Assert.That(player.Buddy.IsBlocked(other.CharacterId), Is.True);
+
+        UnblockOk(block.Id);
+    }
+
+    // An entry whose row is gone (one left by a cancel before the fix) is not converted: the block makes a new row.
+    [Test]
+    public void BlockByName_EntryWithoutARowMakesANewRow() {
+        Invite(player, other.PlayerName);
+        BuddyEntry request = Entry(player.CharacterId, other.CharacterId);
+        using (GameStorage.Request db = playerTest.Storage.Context()) {
+            Assert.That(db.RemoveBuddy(request, Entry(other.CharacterId, player.CharacterId)), Is.True);
+        }
+
+        BlockByName(player, other.PlayerName);
+        BuddyEntry block = Entry(player.CharacterId, other.CharacterId);
+        Assert.That(block.Type, Is.EqualTo(BuddyType.Blocked));
+        Assert.That(player.Buddy.IsBlocked(other.CharacterId), Is.True);
+
+        UnblockOk(block.Id);
+    }
+
+    // The block list read at login unblocks as the one made in the session.
+    [Test]
+    public void BlockRelogUnblock() {
+        BlockByName(player, other.PlayerName);
+        long blockId = Entry(player.CharacterId, other.CharacterId).Id;
+
+        player.Buddy.Dispose();
+        using (GameStorage.Request db = playerTest.Storage.Context()) {
+            player.Buddy = new BuddyManager(db, player);
+        }
+        Assert.That(player.Buddy.IsBlocked(other.CharacterId), Is.True);
+
+        UnblockOk(blockId);
     }
 }

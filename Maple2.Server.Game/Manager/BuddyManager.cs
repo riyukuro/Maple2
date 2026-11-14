@@ -386,21 +386,32 @@ public class BuddyManager : IDisposable {
         }
 
         try {
+            long receiverId = 0;
+            Buddy? self = null;
+            if (buddies.Remove(entryId, out Buddy? existing)) {
+                EndListen(existing);
+
+                receiverId = existing.Info.CharacterId;
+                existing.SetType(BuddyType.Blocked);
+                existing.Message = message;
+                // Its own context: a failed update stays queued in the context it ran in.
+                using GameStorage.Request updateDb = session.GameStorage.Context();
+                if (updateDb.UpdateBuddy(existing)) {
+                    self = existing;
+                    blocked[self.Id] = self;
+                    session.Send(BuddyPacket.Block(self.Id, self.Info.Name, self.Message));
+                    session.Send(BuddyPacket.UpdateInfo(self));
+                } else {
+                    // The entry had no row any more: a new block row is made below, as for a player not on the list.
+                    logger.Warning("Block: entry {EntryId} had no row; a new one is made", existing.Id);
+                }
+            }
+
             using GameStorage.Request db = session.GameStorage.Context();
-            long receiverId;
-            if (buddies.Remove(entryId, out Buddy? self)) {
-                EndListen(self);
-
-                receiverId = self.Info.CharacterId;
-                self.SetType(BuddyType.Blocked);
-                self.Message = message;
-                db.UpdateBuddy(self);
-
-                blocked[self.Id] = self;
-                session.Send(BuddyPacket.Block(self.Id, self.Info.Name, self.Message));
-                session.Send(BuddyPacket.UpdateInfo(self));
-            } else {
-                receiverId = db.GetCharacterId(name);
+            if (self == null) {
+                if (receiverId == 0) {
+                    receiverId = db.GetCharacterId(name);
+                }
                 if (receiverId == default) {
                     session.Send(BuddyPacket.Block(error: s_buddy_err_miss_id));
                     return;
@@ -578,6 +589,10 @@ public class BuddyManager : IDisposable {
                 return;
             }
 
+            // The rows are gone and the client drops its entry on result 0: the list drops it too, else a block by name
+            // later took this dead entry (its row update failed unseen) and the unblock then found no row.
+            buddies.Remove(entryId);
+            EndListen(self);
             session.Send(BuddyPacket.Cancel(self));
             BuddyResponse _ = Notify(new BuddyRequest {
                 ReceiverId = receiverId,
