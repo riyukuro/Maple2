@@ -363,6 +363,12 @@ public record GuildVsGameOpen : GameEventData;
 /// </summary>
 public record GuildChampionship : GameEventData;
 
+/// <summary>
+/// The free air taxi's time (GameEventFreeAirTaxi: OnStart adds the event to CGameRule's free air taxi list, its end
+/// removes it). While one runs the client rides to a visited field with no ticket and no fare. No values.
+/// </summary>
+public record FreeAirTaxi : GameEventData;
+
 
 /// <summary>
 /// Closes Maple Survival (Mushking Royale)
@@ -648,6 +654,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(MapleSurvivalOpenPeriod), "MapleSurvivalOpenPeriod")]
 [JsonDerivedType(typeof(GuildVsGameOpen), "GuildVsGameOpen")]
 [JsonDerivedType(typeof(GuildChampionship), "GuildChampionship")]
+[JsonDerivedType(typeof(FreeAirTaxi), "FreeAirTaxi")]
 [JsonDerivedType(typeof(ShutdownMapleSurvival), "ShutdownMapleSurvival")]
 [JsonDerivedType(typeof(Ontime), "Ontime")]
 [JsonDerivedType(typeof(DailyLoginReward), "DailyLoginReward")]

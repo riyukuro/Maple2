@@ -26,6 +26,15 @@ public class TaxiRulesTests {
         Assert.That(TaxiRules.CanMesoRide(visited, premium), Is.EqualTo(expected));
     }
 
+    // Premium club and a running FreeAirTaxi event each make the meso ride free; it took the fare during the event.
+    [TestCase(31500, false, false, 31500)]
+    [TestCase(31500, true, false, 0)]
+    [TestCase(31500, false, true, 0)]
+    [TestCase(31500, true, true, 0)]
+    public void MesoFare(long fare, bool premium, bool freeAirTaxi, long expected) {
+        Assert.That(TaxiRules.MesoFare(fare, premium, freeAirTaxi), Is.EqualTo(expected));
+    }
+
     [TestCase(false, true, 1)]
     [TestCase(true, true, 1)]
     [TestCase(false, false, 0)]

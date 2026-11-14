@@ -26,6 +26,13 @@ public static class TaxiRules {
         return visited || premium;
     }
 
+    // The meso fare a mode 3 ride takes. Premium club rides free, and so does any ride while a FreeAirTaxi event runs:
+    // the client then sends mode 3 to a visited field with no ticket and shows no fare (CGameRule::IsFreeAirTaxiActive,
+    // checked before the walkie-talkie in FUN_140b030b0).
+    public static long MesoFare(long fare, bool premium, bool freeAirTaxi) {
+        return premium || freeAirTaxi ? 0 : fare;
+    }
+
     // The walkie-talkies one ride takes, 0 when the item cannot reach the field (s_err_cash_taxi_need_advanced_ticket:
     // a plain walkie-talkie only reaches a visited field).
     public static int TicketCost(bool advanced, bool visited) {

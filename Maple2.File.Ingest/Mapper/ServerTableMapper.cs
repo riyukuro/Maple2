@@ -1853,6 +1853,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new GuildVsGameOpen();
             case GameEventType.GuildChampionship:
                 return new GuildChampionship();
+            case GameEventType.FreeAirTaxi:
+                return new FreeAirTaxi();
             case GameEventType.ShutdownMapleSurvival:
                 return new ShutdownMapleSurvival();
             case GameEventType.LevelUpPackage:

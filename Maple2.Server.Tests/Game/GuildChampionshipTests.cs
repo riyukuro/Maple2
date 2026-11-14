@@ -48,6 +48,22 @@ public class GuildChampionshipTests {
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
     }
 
+    // The FreeAirTaxi row (KR 130001 to 130003) was dropped at ingest too; GameEventFreeAirTaxi reads only the id.
+    [Test]
+    public void GameEvent_FreeAirTaxiIsTheIdOnly() {
+        var metadata = new GameEventMetadata(130003, GameEventType.FreeAirTaxi, new DateTime(2022, 7, 7),
+            new DateTime(2100, 1, 1), TimeSpan.Zero, TimeSpan.Zero, [], new FreeAirTaxi(), "", "", "", "");
+        var gameEvent = new GameEvent(metadata);
+        Assert.That(gameEvent.SentToClient, Is.True);
+        var writer = new ByteWriter();
+        gameEvent.WriteTo(writer);
+        var reader = new ByteReader(writer.Buffer, 0);
+
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("FreeAirTaxi"));
+        Assert.That(reader.ReadInt(), Is.EqualTo(130003));
+        Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
     #region Packets
     private static ByteReader Guild(ByteWriter writer, byte command) {
         var reader = new ByteReader(writer.Buffer, 0);

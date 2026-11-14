@@ -128,9 +128,11 @@ public class TaxiHandler : FieldPacketHandler {
             return; // the client offers merets or advanced walkie-talkies for a field never visited
         }
 
-        long cost = TaxiRules.AirFare(Lua.CalcAirTaxiCharge((ushort) session.Player.Value.Character.Level), AirTaxiReduceRate(session));
+        long cost = TaxiRules.MesoFare(
+            TaxiRules.AirFare(Lua.CalcAirTaxiCharge((ushort) session.Player.Value.Character.Level), AirTaxiReduceRate(session)),
+            premium, session.FindEvent(GameEventType.FreeAirTaxi).Count > 0);
 
-        if (!premium) {
+        if (cost > 0) {
             if (session.Currency.Meso < cost) {
                 session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_meso));
                 return;
