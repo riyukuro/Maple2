@@ -123,6 +123,34 @@ public class ItemDismantleHandlerTests {
         Assert.That(session.Item.Inventory.Find(Onyx).Sum(item => item.Amount), Is.EqualTo(6));
     }
 
+    // A staged item cannot be staged again after an earlier slot was emptied: the duplicate check stopped at the
+    // first empty slot, so the second stage took slot 0 and the preview counted the item twice.
+    [Test]
+    public void Stage_OfAStagedItemBehindAnEmptySlotIsRefused() {
+        GameSession session = Login(rarity: 3);
+        Item other = test.Store(TestGameSession.Metadata(11400002, EquipSlot.CL, type: 1));
+        Assert.That(session.Item.Inventory.Add(other, commit: true), Is.True);
+        Stage(session);
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteInt(-1);
+            writer.WriteLong(other.Uid);
+            writer.WriteInt(1);
+        }));
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(2);
+            writer.WriteLong(gear.Uid);
+        }));
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteInt(-1);
+            writer.WriteLong(other.Uid);
+            writer.WriteInt(1);
+        }));
+
+        Assert.That(session.DismantleStaging.Count(staged => staged.Uid == other.Uid), Is.EqualTo(1));
+    }
+
     // Two confirms in a row: the second finds nothing staged, answers with result 5 and gives nothing more.
     [Test]
     public void Confirm_TwiceBreaksTheItemOnce() {

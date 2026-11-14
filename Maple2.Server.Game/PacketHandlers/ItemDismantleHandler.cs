@@ -90,11 +90,14 @@ public class ItemDismantleHandler : FieldPacketHandler {
             return;
         }
 
+        // A staged item is staged once: the check runs over every slot, since a removed item leaves an
+        // empty slot before the later ones.
+        if (session.DismantleStaging.Any(staged => staged.Uid == itemUid)) {
+            return;
+        }
+
         for (short slot = 0; slot < session.DismantleStaging.Length; slot++) {
             if (session.DismantleStaging[slot] != default) {
-                if (session.DismantleStaging[slot].Uid == itemUid) {
-                    return;
-                }
                 continue;
             }
 
