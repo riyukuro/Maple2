@@ -75,8 +75,8 @@ public class Buff : IUpdatable, IByteSerializable {
     }
 
     // A buff without an end (keepCondition 99) procs only when its level has an interval, and then on that interval
-    // for as long as it is held: no end tick and no count limit stop it. The client only reads the interval
-    // (additionalactionadditional.cpp:599 is its one use of activeByIntervalTick), so these ticks are the server's.
+    // for as long as it is held: no end tick and no count limit stop it. The client only loads the interval
+    // (additionalactionadditional.cpp:1056) and never ticks on it, so these ticks are the server's.
     // In the KR data 104 effects are such: 63 cast an interval skill (10200231 every second, 60126002
     // every 3.5 s), 23 a splash skill, 3 recover (51000001 every minute, 70000201 every second) and 2 deal
     // dot damage (50000436 every 0.5 s); 14 have none of these. Without an interval such a buff never procs.
