@@ -111,6 +111,22 @@ public class MoveSaveQueueTests {
         Assert.That(session.MigrationSaved, Is.True);
     }
 
+    // A change queued on a field that is then disposed (a room whose time ran out) is never run there: the receive
+    // thread reads on at once, not after the wait's cap.
+    [Test]
+    public void QueuedOnADisposedField_TheReceiveThreadReadsOn() {
+        var test = new TestGameSession();
+        GameSession session = Unsaved(test);
+        FieldManager field = session.Field!;
+        ProcessPackets(field);
+
+        Task<bool> queued = QueueAwaited(session, field, new ChannelHandler { World = test.World }, writer => writer.WriteShort(1));
+        Assert.That(queued.Wait(200), Is.False);
+        typeof(FieldManager).GetProperty("Disposed", Any)!.SetValue(field, true);
+        Ends(queued);
+        Assert.That(test.World.Moves, Is.Empty);
+    }
+
     // A claim sent right after the channel change is not handled: the change's save is made.
     [Test]
     public void AfterTheMoveSave_LaterPacketsAreDropped() {
