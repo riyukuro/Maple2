@@ -556,4 +556,95 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
     #endregion
+    #region dialogue (NpcTalkHandler.BeginTalk, a talk's start)
+    private FieldNpc TalkNpc(int id) {
+        var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 0, false, 0, 0, 0, 0, [], [], 0);
+        var metadata = new NpcMetadata(id, "npc", "", null!, null!, basic, null!, null!, null!, null!, null!, null!, null, null!);
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        typeof(Actor<Npc>).GetField("<Value>k__BackingField", Any)!.SetValue(npc, new Npc(metadata, null));
+        typeof(FieldNpc).GetField(nameof(FieldNpc.SpawnAnimation), Any)!.SetValue(npc, "spawn");
+        return npc;
+    }
+
+    // 80010042: <condition type="dialogue" code="11000005" value="1" />, a talk with the npc of the code counts; a
+    // talk with another npc does not.
+    [Test]
+    public void Dialogue_80010042_ATalkWithTheNpc() {
+        Start();
+        test.SetServerTable(new ScriptConditionTable(new Dictionary<int, Dictionary<int, ScriptConditionMetadata>>()));
+        test.SetServerTable(new ScriptFunctionTable(new Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>>()));
+        Quest quest = StartQuest(Condition(ConditionType.dialogue, 1, ["11000005"], []));
+
+        NpcTalkHandler.BeginTalk(test.Session, TalkNpc(11000006));
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        NpcTalkHandler.BeginTalk(test.Session, TalkNpc(11000005));
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
+    #region riding (FieldPlayer.OnStateSync, a ride's distance)
+    // 40001880: <condition type="riding" value="500" />, each meter (150 units) moved in state Ride counts; the same
+    // distance on foot does not.
+    [Test]
+    public void Riding_40001880_EachMeterRidden() {
+        Start();
+        FieldPlayer player = test.Session.Player;
+        player.Value.Character.MapId = Field.MapId;
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(player, Field);
+        typeof(FieldPlayer).GetField("stateSyncDistanceTracking", Any)!.SetValue(player, new Dictionary<ActorState, float>());
+        // The map's bounds hold the player, so the syncs are not moved back (HoldTimeTrophyTests).
+        typeof(MapEntityMetadata).GetField("<BoundingBox>k__BackingField", Any)!.SetValue(Field.Entities,
+            new Maple2.Tools.Collision.Prism(new Maple2.Tools.Collision.Circle(Vector2.Zero, 100000), -100000, 200000));
+        Quest quest = StartQuest(Condition(ConditionType.riding, 500, [], []));
+        Vector3 start = player.Position;
+        void Sync(ActorState state, float x) => player.OnStateSync(new StateSync { State = state, Position = start + new Vector3(x, 0, 0) });
+
+        Sync(ActorState.Walk, 0);
+        Sync(ActorState.Walk, 100);
+        Sync(ActorState.Walk, 200);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Sync(ActorState.Ride, 200);
+        Sync(ActorState.Ride, 300);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Sync(ActorState.Ride, 400);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(player.Position.X, Is.EqualTo(start.X + 400));
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
+    #region item_move (FieldManager.PlaceCube, a liftable put down)
+    // 10001060: <condition type="item_move" code="30000030" value="3" target="400" />, the liftable item of the code
+    // put down on a target box of the target counts; one put down off the box, or another item, does not.
+    [Test]
+    public void ItemMove_10001060_TheLiftableOnItsTargetBox() {
+        Start();
+        Field.Plots[0] = new Plot(new UgcMapGroup(0, 0, 0, new UgcMapGroup.Cost(0, 0, 0), new UgcMapGroup.Cost(0, 0, 0),
+            new UgcMapGroup.Limits(0, 0, 0, 0, 0, 0)));
+        Vector3B box = new(3, 0, 0), other = new(4, 0, 0);
+        typeof(MapEntityMetadata).GetField("<LiftableTargetBoxes>k__BackingField", Any)!.SetValue(Field.Entities,
+            new Dictionary<Vector3B, LiftableTargetBox> {
+                [box] = new(Vector3.Zero, Vector3.Zero, false, 400),
+                [other] = new(Vector3.Zero, Vector3.Zero, false, 400),
+            });
+        test.Register(TestGameSession.Metadata(30000030), TestGameSession.Metadata(30000031));
+        FieldInfo liftables = typeof(FieldManager).GetField("fieldLiftables", Any)!;
+        liftables.SetValue(Field, Activator.CreateInstance(liftables.FieldType));
+        Quest quest = StartQuest(Condition(ConditionType.item_move, 3, ["30000030"], ["400"]));
+        void Put(int itemId, Vector3B position) {
+            var cube = new LiftableCube(new Liftable(itemId, 1, 0, 0, 0, "", "", "", "", false, Vector3.Zero, Vector3.Zero));
+            test.Session.HeldCube = cube;
+            Field.PlaceCube(test.Session, cube, position, 0);
+        }
+
+        Put(30000030, new Vector3B(1, 0, 0));
+        Put(30000031, other);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Put(30000030, box);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
 }
