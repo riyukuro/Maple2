@@ -63,6 +63,13 @@ public static class InteractRules {
     // KMS2 sends no state update (4) for the end of a telescope or a UI object: it stays usable.
     public static bool KeepsState(InteractType type) => type is InteractType.Telescope or InteractType.Ui;
 
+    // The page an object opens when used: its <webOpen> when the url is a maview page (served by our web server).
+    // Chosen here: a url to another site (a few KR rows with kind 0, the CN rows with kind 2) opens nothing, those
+    // sites are not ours.
+    public static (byte Kind, string Url)? WebOpen(byte kind, string? url) {
+        return url != null && url.StartsWith("maview:", StringComparison.Ordinal) ? (kind, url) : null;
+    }
+
     // What KMS2 answers the end of an interaction with, after the object's state update if its state changes:
     // InteractObject 5 (the interaction) and 13 (the result). A mesh object gets the result alone; a telescope,
     // a UI object and a gathered object get both; the other kinds get neither.

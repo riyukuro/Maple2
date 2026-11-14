@@ -193,6 +193,11 @@ public class InteractObjectHandler : FieldPacketHandler {
                 break;
         }
 
+        // A ranking board in town (e.g. 50000001 maview:/Rank/Guild) or a news board opens its page.
+        if (InteractRules.WebOpen(interact.Value.WebOpen?.Type ?? 0, interact.Value.WebOpen?.Url) is (byte kind, string url)) {
+            session.Send(WebOpenPacket.Open(kind, url));
+        }
+
         if (interact.Chest == MapChestRules.Kind.None) {
             DropItems(session, interact);
         }

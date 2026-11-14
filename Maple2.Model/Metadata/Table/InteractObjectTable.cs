@@ -20,7 +20,14 @@ public record InteractObjectMetadata(
     InteractObjectMetadataUi? Ui = null,
     // The row's <validate interactionDistance>: how near the client must be to start or keep using the object
     // (stateinteractdata.cpp:382, worldservice_1.cpp:4567). 0 when not ingested.
-    float InteractionDistance = 0);
+    float InteractionDistance = 0,
+    // The row's <webOpen type url>: the page the server opens on the client when the object is used (WebOpen 0x9b);
+    // null when the row has no url.
+    InteractObjectMetadataWebOpen? WebOpen = null);
+
+// The page of an object's <webOpen>: the WebOpen kind (0 the system browser, 1 the maview browser, 2 the adventure
+// bar; CSceneStateGame::OnWebOpen) and the url, e.g. 1 "maview:/Rank/Guild" for the guild ranking boards in town.
+public record InteractObjectMetadataWebOpen(byte Type, string Url);
 
 // The page a Ui object opens (<ui swf value>): the swf's type name and its parameter, e.g. CardReverseGameDialog with
 // the BonusGame id of its deck.
