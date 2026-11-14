@@ -90,6 +90,29 @@ public class ItemEnchantStageTests {
         });
     }
 
+    // Enchant pressed without the stones the grade costs: the refusal comes from the material check, which sends
+    // error 3 itself; the client gets it once (before, the caller sent it a second time).
+    [Test]
+    public void EnchantWithoutTheStones_SendsError3Once() {
+        var test = new TestGameSession();
+        Item gear = test.Store(TestGameSession.Metadata(11400001, EquipSlot.CL, type: 1));
+        test.SetServerTable(new EnchantOptionTable(new Dictionary<int, EnchantOptionMetadata>()));
+        test.SetServerTable(new ScriptEventConditionTable(new Dictionary<ScriptEventType, Dictionary<int, ScriptEventConditionMetadata>>()));
+        GameSession session = test.Start();
+        session.NpcScript = new NpcScriptManager(session, [new CinematicEventScript(1, [new ScriptContent("select", "", "")])]);
+        session.Item.GetGear(gear.Uid)!.Rarity = 4; // an epic costs Onyx Crystals, of which the player has none
+        session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid);
+        test.TakeSent();
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.False);
+
+        string error = System.Convert.ToHexString(Maple2.Server.Game.Packets.ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient).ToArray());
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(System.Convert.ToHexString).Count(hex => hex == error), Is.EqualTo(1));
+            Assert.That(session.Item.GetGear(gear.Uid)!.Enchant!.Enchants, Is.EqualTo(0));
+        });
+    }
+
     // The result event (talk event 3) comes after the try has spent the stage: the line is picked by the try's result
     // and the item's level after it. A success to +1 has no level row in KR, so it gets the success default (2100).
     [Test]

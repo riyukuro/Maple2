@@ -338,8 +338,8 @@ public class ItemEnchantManager {
             return false;
         }
 
+        // ConsumeMaterial sends error 3 itself at each refusal; the client gets it once.
         if (!force && !ConsumeMaterial()) {
-            session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_lack_ingredient);
             return false;
         }
@@ -472,6 +472,7 @@ public class ItemEnchantManager {
         lock (session.Item) {
             // Validate charges, fodder, catalyst
             if (upgradeItem.Enchant.Charges < useCharges) {
+                session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
                 return false;
             }
             // Each copy is looked at again: it can be gone, locked or changed since it was added.
