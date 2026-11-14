@@ -568,7 +568,9 @@ public class ItemUseHandler : FieldPacketHandler {
         // One lock over the checks and the change.
         lock (session.Item) {
             // The client refuses both by itself: the wedding state with its own text, the worn items with this one.
-            if (!GenderChangeRules.WeddingAllows(session.Marriage.Marriage.Status)) {
+            // It asks the wedding state only while the Wedding feature is on (ChangeGender @0x140d22dd0, id 0x104).
+            if (session.ServerTableMetadata.FeatureTable.IsOn(WeddingHandler.Feature)
+                && !GenderChangeRules.WeddingAllows(session.Marriage.Marriage.Status)) {
                 session.Send(NoticePacket.MessageBox(StringCode.s_change_gender_result_failed));
                 return;
             }

@@ -138,6 +138,21 @@ public class GenderVoucherHandlerTests {
         AssertRefused(session, StringCode.s_change_gender_result_failed);
     }
 
+    // With the Wedding feature off the client does not ask the wedding state, so a married character can change.
+    [Test]
+    public void Use_WeddingStateNotAskedWithWeddingOff() {
+        GameSession session = Login();
+        test.SetFeaturesOff(WeddingHandler.Feature);
+        session.Marriage.Marriage.Status = MaritalStatus.Married;
+        test.TakeSent();
+
+        Use(session);
+
+        Assert.That(session.Player.Value.Character.Gender, Is.EqualTo(Gender.Female));
+        Assert.That(session.Item.Inventory.Get(voucher.Uid), Is.Null);
+        Assert.That(test.StoredCharacter().Gender, Is.EqualTo(Gender.Female));
+    }
+
     [Test]
     public void Use_RefusedWhileGenderLimitedClothesAreWorn() {
         GameSession session = Login();
