@@ -108,9 +108,9 @@ public class ItemEnchantManager {
         }
 
         Item? item = session.Item.GetGear(itemUid);
-        // The client's own test (itemenchantlimittable.cpp:185): an item at the last grade or limit broken
-        // is not staged. Without it the grade passed the last row of every table.
-        if (item == null || !ItemEnchantRules.CanEnchant(item.Metadata.Limit.EnableEnchant, item.Enchant?.Enchants ?? 0, item.LimitBreak?.Level ?? 0)) {
+        // The client's own test (itemenchantlimittable.cpp:185): an item at the last grade, limit broken or with a
+        // time limit is not staged. Without it the grade passed the last row of every table.
+        if (item == null || !ItemEnchantRules.CanEnchant(item.Metadata.Limit.EnableEnchant, item.Enchant?.Enchants ?? 0, item.LimitBreak?.Level ?? 0, item.ExpiryTime)) {
             session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_invalid_item));
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_invalid_item);
             return false;
@@ -335,7 +335,7 @@ public class ItemEnchantManager {
 
         upgradeItem.Enchant ??= new ItemEnchant();
         // The staged item may have reached the last grade by the enchant before this one.
-        if (!ItemEnchantRules.CanEnchant(upgradeItem.Metadata.Limit.EnableEnchant, upgradeItem.Enchant.Enchants, upgradeItem.LimitBreak?.Level ?? 0)) {
+        if (!ItemEnchantRules.CanEnchant(upgradeItem.Metadata.Limit.EnableEnchant, upgradeItem.Enchant.Enchants, upgradeItem.LimitBreak?.Level ?? 0, upgradeItem.ExpiryTime)) {
             session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_invalid_item));
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_invalid_item);
             return false;
@@ -409,7 +409,7 @@ public class ItemEnchantManager {
                 // What was staged is spent: a request that follows without a new stage pays the cost of the
                 // item's grade as it is now, at that grade's rate, with no fodder and no charges. The last grade
                 // has no next cost (the tables end with it): nothing stays staged.
-                if (ItemEnchantRules.CanEnchant(upgradeItem.Metadata.Limit.EnableEnchant, upgradeItem.Enchant.Enchants, upgradeItem.LimitBreak?.Level ?? 0)) {
+                if (ItemEnchantRules.CanEnchant(upgradeItem.Metadata.Limit.EnableEnchant, upgradeItem.Enchant.Enchants, upgradeItem.LimitBreak?.Level ?? 0, upgradeItem.ExpiryTime)) {
                     Prepare();
                 } else {
                     Reset();

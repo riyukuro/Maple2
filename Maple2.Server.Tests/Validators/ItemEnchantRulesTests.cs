@@ -4,15 +4,18 @@ using Maple2.PacketLib.Tools;
 namespace Maple2.Server.Tests.Validators;
 
 public class ItemEnchantRulesTests {
-    [TestCase(true, 0, 0, true)]
-    [TestCase(true, 14, 0, true)]
-    [TestCase(true, 15, 0, false)]
-    [TestCase(true, 16, 0, false)]
-    [TestCase(true, -1, 0, false)]
-    [TestCase(true, 3, 1, false)]
-    [TestCase(false, 0, 0, false)]
-    public void CanEnchant(bool enable, int enchants, int limitBreak, bool expected) {
-        Assert.That(ItemEnchantRules.CanEnchant(enable, enchants, limitBreak), Is.EqualTo(expected));
+    [TestCase(true, 0, 0, 0L, true)]
+    [TestCase(true, 14, 0, 0L, true)]
+    [TestCase(true, 15, 0, 0L, false)]
+    [TestCase(true, 16, 0, 0L, false)]
+    [TestCase(true, -1, 0, 0L, false)]
+    [TestCase(true, 3, 1, 0L, false)]
+    [TestCase(false, 0, 0, 0L, false)]
+    // An item with a time limit, running or not (the client tests expiry > 0, not the time).
+    [TestCase(true, 0, 0, 1L, false)]
+    [TestCase(true, 0, 0, 4102444800L, false)]
+    public void CanEnchant(bool enable, int enchants, int limitBreak, long expiry, bool expected) {
+        Assert.That(ItemEnchantRules.CanEnchant(enable, enchants, limitBreak, expiry), Is.EqualTo(expected));
     }
 
     [TestCase(20, 20, 0L)]

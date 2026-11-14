@@ -47,6 +47,20 @@ public class ItemEnchantRefusalTests {
             .ToDictionary(cost => cost.Tag, cost => cost.Amount);
     }
 
+    // An item with a time limit is not staged, for either kind (the client lists and stages none:
+    // itemenchantlimittable.cpp:194 refuses any item whose expiry is set): s_itemenchant_invalid_item.
+    [TestCase(EnchantType.Ophelia)]
+    [TestCase(EnchantType.Peachy)]
+    public void Stage_TimedItemRefused(EnchantType type) {
+        GameSession session = Login(30000, 30000, 30000, 1000000);
+        session.Item.Inventory.Get(gear.Uid)!.ExpiryTime = System.DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
+
+        Assert.That(session.ItemEnchant.StageItem(type, gear.Uid), Is.False);
+
+        Assert.That(test.TakeSentOps(), Has.Member(SendOp.ItemEnchant));
+        Assert.That(session.Item.Inventory.Get(gear.Uid)!.Enchant?.Enchants ?? 0, Is.EqualTo(0));
+    }
+
     // A catalyst is lacking: nothing is taken and the grade stays.
     [TestCase(0, 30000, 30000, 0)] // no onyx
     [TestCase(30000, 30000, 0, 0)] // no fragments and no meso for them

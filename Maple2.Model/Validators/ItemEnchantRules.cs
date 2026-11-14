@@ -7,9 +7,10 @@ public static class ItemEnchantRules {
     public const int MaxGrade = 15;
 
     // The client's test before it lists or stages an item (itemenchantlimittable.cpp:185): the item can be
-    // enchanted at all, is not limit broken, and is below the last grade.
-    public static bool CanEnchant(bool enableEnchant, int enchants, int limitBreakLevel) {
-        return enableEnchant && limitBreakLevel <= 0 && enchants is >= 0 and < MaxGrade;
+    // enchanted at all, has no expiry (any item with a time limit, expired or not: CItem::FUN_140525c60 is
+    // expiry > 0), is not limit broken, and is below the last grade.
+    public static bool CanEnchant(bool enableEnchant, int enchants, int limitBreakLevel, long expiryTime) {
+        return enableEnchant && expiryTime <= 0 && limitBreakLevel <= 0 && enchants is >= 0 and < MaxGrade;
     }
 
     // Mesos per Crystal Fragment the player is short of. The client's ingredient list
