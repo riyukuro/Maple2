@@ -81,6 +81,8 @@ public partial class TriggerContext {
 
     public static bool CanFailDungeon(Maple2.Model.Enum.DungeonState state) => state == Maple2.Model.Enum.DungeonState.None;
 
+    // The feature attr is applied by the ingest: an action whose feature is off is not in the script, so an action that
+    // runs has its feature on (02000410: the DungeonRankBalance_01 and _02 copies, only one of them is kept).
     public void DungeonMissionComplete(string feature, int missionId) {
         DebugLog("[DungeonMissionComplete] missionId:{MissionId}, feature:{Feature}", missionId, feature);
 
