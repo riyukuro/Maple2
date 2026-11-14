@@ -23,6 +23,27 @@ public static class EventSaleRules {
         return rate;
     }
 
+    // The running MasteryReward events' rate for a mastery in a map: their rates add up
+    // (CGameEventValueMasteryReward::GetRate, commonfiles/gameeventvalue.cpp:546), up to int.MaxValue.
+    public static int MasteryRewardRate(IEnumerable<GameEvent> events, MasteryType type, int mapId) {
+        long rate = 0;
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is MasteryRewardEvent reward && reward.Type == (int) type
+                && reward.Rates.TryGetValue(mapId, out int mapRate) && mapRate > 0) {
+                rate += mapRate;
+            }
+        }
+        return (int) Math.Min(rate, int.MaxValue);
+    }
+
+    // A mastery gain with the running MasteryReward events' share for the map, up to int.MaxValue.
+    public static int MasteryWithEvent(int gain, IEnumerable<GameEvent> events, MasteryType type, int mapId) {
+        if (gain <= 0) {
+            return gain;
+        }
+        return (int) Math.Min(gain + EventBonus(gain, MasteryRewardRate(events, type, mapId)), int.MaxValue);
+    }
+
     // The extra share an exp event adds to a gain: gain * rate / 10000, cut to 32 bits unsigned as the shared rule
     // (CGameRule::CalcAdventureLevelBonusExp, commonfiles/gamerule.cpp:612); 0 for no event or no gain. The prestige
     // exp event (AdventureLevelBonusExpRate) and the guild exp event (GuildExp, whose client only shows the rate as

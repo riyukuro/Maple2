@@ -241,6 +241,12 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(Id);
                 writer.WriteBool(mesoRevival.PcBangOnly);
                 break;
+            case MasteryRewardEvent masteryReward:
+                // GameEventMasteryReward::vfunc_4: the type and the field list after the id.
+                writer.WriteInt(Id);
+                writer.WriteInt(masteryReward.Type);
+                writer.WriteUnicodeString(masteryReward.Fields);
+                break;
             case FreeAirTaxi:
                 // GameEventFreeAirTaxi reads only the base event's id (gameeventbase.cpp:196).
                 writer.WriteInt(Id);

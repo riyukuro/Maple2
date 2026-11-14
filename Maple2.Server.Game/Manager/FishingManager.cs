@@ -506,6 +506,9 @@ public class FishingManager {
         (float expFactor, float masteryFactor) = SpecialEffectRules.FishingFactors(
             session.Buffs.TakeSpecialEffects(SpecialEffectRules.Fishing, effect => SpecialEffectRules.FishingApplies(effect, prizeFish)));
         masteryExp = (int) (masteryExp * masteryFactor);
+        // A running MasteryReward event for fishing in this map adds its share (the catch notice shows the total).
+        masteryExp = EventSaleRules.MasteryWithEvent(masteryExp, session.FindEvent(GameEventType.MasteryReward),
+            MasteryType.Fishing, session.Field?.MapId ?? 0);
 
         if (masteryExp != 0) {
             session.Mastery[MasteryType.Fishing] += masteryExp;

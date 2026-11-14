@@ -1941,6 +1941,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventSaleReader.TransferItemBound(value1);
             case GameEventType.MesoRevival:
                 return EventSaleReader.MesoRevival(value1);
+            case GameEventType.MasteryReward:
+                return EventXmlReader.MasteryReward(value1, value2);
             case GameEventType.ShutdownMapleSurvival:
                 return new ShutdownMapleSurvival();
             case GameEventType.LevelUpPackage:

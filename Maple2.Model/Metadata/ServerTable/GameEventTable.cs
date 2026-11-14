@@ -388,6 +388,19 @@ public record TransferItemBound(
 public record MesoRevival(
     bool PcBangOnly) : GameEventData;
 
+/// <summary>
+/// The mastery reward (GameEventMasteryReward, commonfiles/gameevent.cpp:3417): value1 is the mastery type (_wtoi; KR
+/// uses 1 fishing and 2 music), value2 an XML list &lt;ms2&gt;&lt;v fieldID rate/&gt;&lt;/ms2&gt; of the maps and
+/// their rates in 1/10000 (CGameEventValueMasteryReward::Load, gameeventvalue.cpp:561: the first rate of a map counts,
+/// a zero id or rate is skipped). The rates of the running events add up for a map (GetRate); the gain of that mastery
+/// there grows by its share. The client reads the row but does not use the rate; the packet carries the id, the type
+/// and value2 as it is.
+/// </summary>
+public record MasteryRewardEvent(
+    int Type,
+    string Fields,
+    IReadOnlyDictionary<int, int> Rates) : GameEventData;
+
 
 /// <summary>
 /// Closes Maple Survival (Mushking Royale)
@@ -762,6 +775,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(PetMastery), "PetMastery")]
 [JsonDerivedType(typeof(TransferItemBound), "TransferItemBound")]
 [JsonDerivedType(typeof(MesoRevival), "MesoRevival")]
+[JsonDerivedType(typeof(MasteryRewardEvent), "MasteryReward")]
 [JsonDerivedType(typeof(BlackMarketFeeDiscount), "BlackMarketFeeDiscount")]
 [JsonDerivedType(typeof(LevelUpPackage), "LevelUpPackage")]
 [JsonDerivedType(typeof(DungeonEnterTimeLimit), "DungeonEnterTimeLimit")]

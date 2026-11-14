@@ -323,6 +323,30 @@ public static class EventXmlReader {
         return int.TryParse(element.GetAttribute(name), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? Math.Max(value, 0) : 0;
     }
 
+    // MasteryReward: value1 the mastery type (_wtoi), value2 <ms2><v fieldID rate/></ms2> with the root of any name
+    // (CGameEventValueMasteryReward::Load, commonfiles/gameeventvalue.cpp:561): the first rate of a map counts, a zero
+    // or unreadable id or rate is skipped (a rate above int.MaxValue would be negative in the client's int; skipped
+    // too). A row without a type or a rate is not stored (the client's OnStart loads nothing for type 0).
+    public static MasteryRewardEvent? MasteryReward(string? value1, string? value2) {
+        if (!int.TryParse(value1?.Trim(), out int type) || type <= 0) {
+            return null;
+        }
+        XmlElement? root = AnyRoot(value2);
+        if (root == null) {
+            return null;
+        }
+
+        var rates = new Dictionary<int, int>();
+        foreach (XmlElement element in root.ChildNodes.OfType<XmlElement>().Where(element => element.Name == "v")) {
+            if (!uint.TryParse(element.GetAttribute("fieldID").Trim(), out uint fieldId) || fieldId is 0 or > int.MaxValue
+                || !uint.TryParse(element.GetAttribute("rate").Trim(), out uint rate) || rate is 0 or > int.MaxValue) {
+                continue;
+            }
+            rates.TryAdd((int) fieldId, (int) rate);
+        }
+        return rates.Count > 0 ? new MasteryRewardEvent(type, value2!, rates) : null;
+    }
+
     private static float Rate(string text) {
         return float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float rate) && float.IsFinite(rate) && rate > 0f ? rate : 0f;
     }
