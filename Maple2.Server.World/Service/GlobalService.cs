@@ -2,7 +2,11 @@
 using Maple2.Database.Model;
 using Maple2.Database.Storage;
 using Maple2.Model.Game;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
+using Maple2.Server.Core.Constants;
+using Maple2.Server.World;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using ILogger = Serilog.ILogger;
@@ -13,12 +17,17 @@ namespace Maple2.Server.Global.Service;
 
 public partial class GlobalService : Global.GlobalBase {
     private readonly GameStorage gameStorage;
+    // Maintenance and a full server (LoginGateRules); none in tests that check the account only.
+    private readonly ILoginGate? gate;
 
     private readonly ILogger logger = Log.Logger.ForContext<GlobalService>();
     private static readonly object createLock = new();
 
-    public GlobalService(GameStorage gameStorage) {
+    public GlobalService(GameStorage gameStorage) : this(gameStorage, null) { }
+
+    public GlobalService(GameStorage gameStorage, ILoginGate? gate) {
         this.gameStorage = gameStorage;
+        this.gate = gate;
     }
 
     // A ban's times are stored in UTC (CreateBan); the database gives them back with no kind.
@@ -72,7 +81,7 @@ public partial class GlobalService : Global.GlobalBase {
 
             Account? created = CreateAccount(username, password, machineId, out account);
             if (created != null) {
-                return Task.FromResult(new LoginResponse { AccountId = created.Id });
+                return Task.FromResult(Refused(created) ?? new LoginResponse { AccountId = created.Id });
             }
             // Another login made the account first: it is checked below as an existing one.
         }
@@ -110,7 +119,33 @@ public partial class GlobalService : Global.GlobalBase {
             });
         }
 
+        if (Refused(account) is { } refused) {
+            return Task.FromResult(refused);
+        }
+
         return Task.FromResult(new LoginResponse { AccountId = account.Id });
+    }
+
+    private LoginResponse? Refused(Account account) {
+        if (gate == null) {
+            return null;
+        }
+        string? maintenance = gate.Maintenance;
+        (int online, int channels) = gate.Load();
+        LoginGateRules.Refusal refusal = LoginGateRules.Check(AdminLevel.IsGm(account.AdminPermissions), maintenance != null,
+            gate.AccountOnline(account.Id), online, channels, Target.ChannelCapacity);
+        return refusal switch {
+            LoginGateRules.Refusal.Maintenance => new LoginResponse {
+                Code = LoginResponse.Types.Code.Maintenance,
+                Message = maintenance,
+                AccountId = account.Id,
+            },
+            LoginGateRules.Refusal.Full => new LoginResponse {
+                Code = LoginResponse.Types.Code.FullServer,
+                AccountId = account.Id,
+            },
+            _ => null,
+        };
     }
 
     // The client may open two login connections at once, and both find no account for a new name. The creates are

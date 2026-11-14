@@ -10,6 +10,7 @@ using Maple2.Model.Validators;
 using Maple2.Server.Channel.Service;
 using Maple2.Server.Core.Helpers;
 using Maple2.Server.World.Containers;
+using Maple2.Server.World.Service;
 using Maple2.Server.Core.Sync;
 using Maple2.Tools.Extensions;
 using Maple2.Tools.Scheduler;
@@ -20,7 +21,7 @@ using LoginClient = Maple2.Server.Login.Service.Login.LoginClient;
 
 namespace Maple2.Server.World;
 
-public class WorldServer {
+public class WorldServer : ILoginGate {
     #region Autofac Autowired
     private readonly GameStorage gameStorage;
     private readonly ChannelClientLookup channelClients;
@@ -46,6 +47,9 @@ public class WorldServer {
     private readonly object noticeMutex = new();
     private bool noticeBanner;
     private bool noticeLogin;
+    // The maintenance text (LoginGateRules): set by the GM maintenance command, MAINTENANCE_MESSAGE turns it on at
+    // start. Not stored: a world restart goes back to the environment's.
+    private string? maintenance;
     private static int _globalIdCounter;
 
     private readonly ILogger logger = Log.ForContext<WorldServer>();
@@ -70,6 +74,8 @@ public class WorldServer {
         memoryStringBoards = [];
         noticeBanner = Environment.GetEnvironmentVariable("NOTICE_BANNER") == "1";
         noticeLogin = Environment.GetEnvironmentVariable("NOTICE_LOGIN") == "1";
+        string? maintenanceMessage = Environment.GetEnvironmentVariable("MAINTENANCE_MESSAGE");
+        maintenance = string.IsNullOrWhiteSpace(maintenanceMessage) ? null : maintenanceMessage;
 
         // World initialization: set all characters offline and cleanup unowned items
         using GameStorage.Request db = gameStorage.Context();
@@ -688,6 +694,22 @@ public class WorldServer {
         lock (noticeMutex) {
             return (noticeBanner, noticeLogin);
         }
+    }
+
+    public string? Maintenance => Volatile.Read(ref maintenance);
+
+    // null ends the maintenance.
+    public void SetMaintenance(string? message) {
+        Volatile.Write(ref maintenance, string.IsNullOrWhiteSpace(message) ? null : message);
+    }
+
+    public (int Online, int Channels) Load() {
+        HashSet<int> channels = channelClients.Keys.ToHashSet();
+        return (WorldService.OnlineOn(playerInfoLookup.GetOnlinePlayerInfos().Select(player => player.Channel), channels), channels.Count);
+    }
+
+    public bool AccountOnline(long accountId) {
+        return playerInfoLookup.TryGetByAccountId(accountId, out _);
     }
 
     // The config after a notice request (NoticeRules.Apply).

@@ -470,6 +470,14 @@ message AdminRequest {
   // database and sends it to every player (DynamicBanword 0x124).
   message BanWord {}
 
+  // The maintenance (LoginGateRules, kept by the world server): logins other than GM accounts are refused with the
+  // client's maintenance box and this text. action: 0 off, 1 on with message, 2 status only. The answer carries the
+  // text (empty: no maintenance).
+  message Maintenance {
+    int32 action = 1;
+    string message = 2;
+  }
+
   int64 requester_id = 1;
   oneof request {
     Alert alert = 2;
@@ -480,6 +488,7 @@ message AdminRequest {
     ShutdownNotice shutdown_notice = 7;
     Notice notice = 8;
     BanWord ban_word = 9;
+    Maintenance maintenance = 10;
   }
 }
 
@@ -489,6 +498,8 @@ message AdminResponse {
   // The notice config after a Notice request.
   bool notice_banner = 3;
   bool notice_login = 4;
+  // The maintenance text after a Maintenance request (empty: none).
+  string maintenance = 5;
 }
 
 message DisconnectRequest {

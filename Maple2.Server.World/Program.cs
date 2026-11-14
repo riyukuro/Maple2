@@ -98,6 +98,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(autofac => {
     // Register WorldServer and inject dependencies
     autofac.RegisterType<WorldServer>()
         .AsSelf()
+        .As<ILoginGate>()
         .OnActivated(e => {
             var channelLookup = e.Context.Resolve<ChannelClientLookup>();
             var playerInfoLookup = e.Context.Resolve<PlayerInfoLookup>();

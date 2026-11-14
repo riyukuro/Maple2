@@ -19,6 +19,8 @@ public partial class WorldService {
                 return Task.FromResult(ListStringBoards());
             case AdminRequest.RequestOneofCase.Notice:
                 return Task.FromResult(Notice(request));
+            case AdminRequest.RequestOneofCase.Maintenance:
+                return Task.FromResult(Maintenance(request.Maintenance));
             default:
                 return Task.FromResult(new AdminResponse());
         }
@@ -77,6 +79,26 @@ public partial class WorldService {
         response.NoticeBanner = banner;
         response.NoticeLogin = login;
         return response;
+    }
+
+    // The maintenance (LoginGateRules): read by the login check (GlobalService) at each login. Players in game stay.
+    private AdminResponse Maintenance(AdminRequest.Types.Maintenance maintenance) {
+        switch (maintenance.Action) {
+            case 0:
+                worldServer.SetMaintenance(null);
+                break;
+            case 1:
+                if (string.IsNullOrWhiteSpace(maintenance.Message)) {
+                    return new AdminResponse { Error = 1, Message = "The maintenance needs a message.", Maintenance = worldServer.Maintenance ?? string.Empty };
+                }
+                worldServer.SetMaintenance(maintenance.Message);
+                break;
+            case 2:
+                break;
+            default:
+                return new AdminResponse { Error = 1, Message = $"Unknown maintenance action {maintenance.Action}", Maintenance = worldServer.Maintenance ?? string.Empty };
+        }
+        return new AdminResponse { Maintenance = worldServer.Maintenance ?? string.Empty };
     }
 
     private AdminResponse AddStringBoard(AdminRequest.Types.AddStringBoard add) {
