@@ -99,13 +99,17 @@ public static class PlayedClientRooms {
             if (node is not XmlElement row || !available(row) || !int.TryParse(row.GetAttribute("dungeonRoomID"), out int id)) {
                 continue;
             }
-            boxes[id] = row.GetAttribute("findHelperRewardDropBoxIds")
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(value => int.TryParse(value, out int box) ? box : 0)
-                .Where(box => box != 0)
-                .ToArray();
+            boxes[id] = BoxIds(row.GetAttribute("findHelperRewardDropBoxIds"));
         }
         return boxes;
+    }
+
+    // A comma list of box ids (XmlTokenList), box 0 left out.
+    private static int[] BoxIds(string value) {
+        return value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(text => int.TryParse(text, out int box) ? box : 0)
+            .Where(box => box != 0)
+            .ToArray();
     }
 
     // The room's rules the played client reads from its own row (DungeonRoom::Load, commonfiles/dungeonroom.cpp:382-431)
@@ -116,7 +120,12 @@ public static class PlayedClientRooms {
     // and ClientListedRows puts the client row's attributes over the NA row, so an attribute only the NA row sets
     // stayed: KR rooms whose client shows the meret revive had it closed (59, NA limitMeratRevival), the meso revive
     // closed (7: 23040003, 23100001, the guild raids 26001001-26005001), a gear limit (6: 20008001 1500) and a
-    // minimum party (29006001: 4). Of two available rows of a room the one select keeps is read, as the client's
+    // minimum party (29006001: 4). The row's durationSeconds is the room's time (DurationTick, in ms): the parser of
+    // the NA table knows only its durationTick, so the 33 KR rows with a time had none and their rooms no clock (the
+    // NA rows that share a room set the same 900 s, but 23006003 and 23010003 are 1200 s in KR). Its
+    // rewardLimitedDropBoxIds2 the client appends to the room's rewardLimitedDropBoxIds as the reward list its room
+    // window shows (m_rewardDropBoxIds, dungeonroom.cpp:391-395); the parser dropped it, so the 41 KR rooms with one
+    // (boxes 20001002 or 20001001 in 26 of them) gave the clear without it. Of two available rows of a room the one select keeps is read, as the client's
     // table load keeps the one CFeatureManager::SelectFeatureElement picks (FUN_14028faa0, commonutil.cpp:1748; the
     // ingest passes PlayedNpcStats.SelectFeatureElement). KMS2 has no such duplicate today.
     public static Dictionary<int, PlayedRoomRules> Rules(XmlDocument roomTable, Func<XmlElement, bool> available,
@@ -144,7 +153,9 @@ public static class PlayedClientRooms {
                 PartyOnly: IsOn(row.GetAttribute("isPartyOnly")),
                 DisableMesoRevival: IsOn(row.GetAttribute("limitMesoRevival")),
                 DisableMeretRevival: IsOn(row.GetAttribute("limitMeratRevival")),
-                MaxRevivalCount: Number(row, "defaultRevivalLimitCount"));
+                MaxRevivalCount: Number(row, "defaultRevivalLimitCount"),
+                DurationTick: (int) Math.Min(Math.Max(Number(row, "durationSeconds"), 0) * 1000L, int.MaxValue),
+                LimitedDropBoxIds2: BoxIds(row.GetAttribute("rewardLimitedDropBoxIds2")));
         }
         return rules;
     }
@@ -167,4 +178,6 @@ public record PlayedRoomRules(
     bool PartyOnly,
     bool DisableMesoRevival,
     bool DisableMeretRevival,
-    int MaxRevivalCount);
+    int MaxRevivalCount,
+    int DurationTick = 0,
+    int[]? LimitedDropBoxIds2 = null);

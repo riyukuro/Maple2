@@ -2438,7 +2438,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 PartyOnly: dungeon.isPartyOnly,
                 DisableMesoRevival: dungeon.limitMesoRevival,
                 DisableMeretRevival: dungeon.limitMeratRevival,
-                MaxRevivalCount: dungeon.defaultRevivalLimitCount);
+                MaxRevivalCount: dungeon.defaultRevivalLimitCount,
+                DurationTick: dungeon.durationTick);
             dungeons.Add(id, new DungeonRoomMetadata(
                 Id: dungeon.dungeonRoomID,
                 Level: dungeon.dungeonLevel,
@@ -2446,7 +2447,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 GroupType: (DungeonGroupType) dungeon.groupType,
                 CooldownType: DungeonRoomRules.CooldownType(rules.CooldownValue), // the client ignores cooldownType
                 CooldownValue: rules.CooldownValue, // a day number, Sunday 1
-                DurationTick: dungeon.durationTick,
+                DurationTick: rules.DurationTick,
                 LobbyFieldId: dungeon.lobbyFieldID,
                 FieldIds: dungeon.fieldIDs,
                 Reward: new DungeonRoomRewardMetadata(
@@ -2456,7 +2457,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                     Exp: dungeon.rewardExp,
                     ExpRate: dungeon.rewardExpRate,
                     Meso: dungeon.rewardMeso,
-                    LimitedDropBoxIds: dungeon.rewardLimitedDropBoxIds,
+                    // rewardLimitedDropBoxIds2 follows, as in the client's reward list (PlayedClientRooms.Rules).
+                    LimitedDropBoxIds: dungeon.rewardLimitedDropBoxIds.Concat(rules.LimitedDropBoxIds2 ?? []).ToArray(),
                     UnlimitedDropBoxIds: dungeon.rewardUnlimitedDropBoxIds,
                     UnionRewardId: dungeon.unionRewardID,
                     SeasonRankRewardId: dungeon.seasonRankRewardID,

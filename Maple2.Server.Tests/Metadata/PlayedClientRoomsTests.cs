@@ -137,14 +137,37 @@ public class PlayedClientRoomsTests {
             (a, b) => PlayedNpcStats.SelectFeatureElement(a, b, _ => 0, "KR"));
 
         Assert.That(rules.Keys.OrderBy(id => id), Is.EqualTo(new[] { 4, 5, 26001001, 27003001 }));
-        Assert.That(rules[26001001], Is.EqualTo(new PlayedRoomRules(RewardCount: 1, CooldownValue: 6, MinUserCount: 4, MaxUserCount: 10,
+        Assert.That(rules[26001001] with { LimitedDropBoxIds2 = null }, Is.EqualTo(new PlayedRoomRules(RewardCount: 1, CooldownValue: 6, MinUserCount: 4, MaxUserCount: 10,
             GearScore: 2630, MinLevel: 50, PartyOnly: true, DisableMesoRevival: false, DisableMeretRevival: false, MaxRevivalCount: 3)));
-        Assert.That(rules[27003001], Is.EqualTo(new PlayedRoomRules(RewardCount: 4, CooldownValue: 6, MinUserCount: 0, MaxUserCount: 10,
+        Assert.That(rules[27003001] with { LimitedDropBoxIds2 = null }, Is.EqualTo(new PlayedRoomRules(RewardCount: 4, CooldownValue: 6, MinUserCount: 0, MaxUserCount: 10,
             GearScore: 14000, MinLevel: 60, PartyOnly: false, DisableMesoRevival: true, DisableMeretRevival: false, MaxRevivalCount: 3)));
         // Of two rows of a room the client keeps the one SelectFeatureElement picks: with one feature and one locale
         // the first, otherwise the one of the client's locale.
         Assert.That(rules[4].RewardCount, Is.EqualTo(2));
         Assert.That(rules[4].DisableMesoRevival, Is.False);
         Assert.That(rules[5].RewardCount, Is.EqualTo(7));
+    }
+
+    // Shaped like KMS2 rows 23006003 (1200 s, box 20001002 after its own) and 26001001 (no time, box 390000081):
+    // durationSeconds is the room's time in ms, rewardLimitedDropBoxIds2 its second box list; a row without them
+    // has neither.
+    [Test]
+    public void Rules_ReadTheRoomTimeAndTheSecondBoxList() {
+        XmlDocument rooms = Table("""
+            <dungeonRoom dungeonRoomID="23006003" durationSeconds="1200" timerType="clock" rewardLimitedDropBoxIds="23200007" rewardLimitedDropBoxIds2="20001002" />
+            <dungeonRoom dungeonRoomID="26001001" rewardLimitedDropBoxIds="390000071" rewardLimitedDropBoxIds2="390000081, 0,x" />
+            <dungeonRoom dungeonRoomID="3" />
+            <dungeonRoom dungeonRoomID="4" durationSeconds="-5" />
+            """);
+
+        Dictionary<int, PlayedRoomRules> rules = PlayedClientRooms.Rules(rooms, Available, (a, _) => a);
+
+        Assert.That(rules[23006003].DurationTick, Is.EqualTo(1200000));
+        Assert.That(rules[23006003].LimitedDropBoxIds2, Is.EqualTo(new[] { 20001002 }));
+        Assert.That(rules[26001001].DurationTick, Is.EqualTo(0));
+        Assert.That(rules[26001001].LimitedDropBoxIds2, Is.EqualTo(new[] { 390000081 }));
+        Assert.That(rules[3].DurationTick, Is.EqualTo(0));
+        Assert.That(rules[3].LimitedDropBoxIds2, Is.Empty);
+        Assert.That(rules[4].DurationTick, Is.EqualTo(0));
     }
 }
