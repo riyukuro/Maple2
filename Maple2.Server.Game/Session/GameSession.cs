@@ -975,6 +975,8 @@ public sealed partial class GameSession : Core.Network.Session {
 
         Send(PremiumCubPacket.Activate(Player.ObjectId, Player.Value.Account.PremiumTime));
         Send(PremiumCubPacket.LoadItems(Player.Value.Account.PremiumRewardsClaimed));
+        // The quest "map" condition: one count per field entry, whatever the way in (a portal, a warp, a login). Chosen
+        // here: the client does not show when the server counts it.
         ConditionUpdate(ConditionType.map, codeLong: Player.Value.Character.MapId);
         ConditionUpdate(ConditionType.job_change, codeLong: (int) Player.Value.Character.Job.Code());
         if (Field is HomeFieldManager home

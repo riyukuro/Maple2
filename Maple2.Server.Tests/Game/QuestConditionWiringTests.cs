@@ -270,4 +270,92 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
     #endregion
+    #region map (a portal move)
+    private static MapMetadata LimitedMap(int id) =>
+        TestGameSession.Map(id) with { Limit = new MapMetadataLimit(0, 0, 0, 0, [], true, true, true, true, true, true, true) };
+
+    // A channel's field factory that already runs the given field.
+    private static FieldManager.Factory RunningFactory(TestGameSession test, FieldManager running) {
+        var factory = (FieldManager.Factory) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager.Factory));
+        void Set(string name, object value) => typeof(FieldManager.Factory).GetField(name, Any)!.SetValue(factory, value);
+        Set("mapLocks", new ConcurrentDictionary<int, SemaphoreSlim>());
+        Set("fields", new ConcurrentDictionary<int, ConcurrentDictionary<int, FieldManager>> {
+            [running.MapId] = new ConcurrentDictionary<int, FieldManager> { [0] = running },
+        });
+        Set("<ServerTableMetadata>k__BackingField", test.ServerTableMetadata);
+        return factory;
+    }
+
+    // 10001001: <condition type="map" code="02000062" />. A portal move into the map is one entry: the portal
+    // itself does not count, the field entry that follows does (GameSession.EnterField counts every entry, a portal's
+    // included). Before, the portal counted too, so a move by portal counted twice.
+    [Test]
+    public void Map_10001001_APortalMoveIsNotCountedByThePortal() {
+        Start();
+        test.EnterMap(LimitedMap(2000062));
+        FieldManager target = test.Session.Field!;
+        test.EnterMap(LimitedMap(2000001));
+        SetSkills();
+        typeof(Maple2.Server.Game.Session.GameSession).GetField("<FieldFactory>k__BackingField", Any)!
+            .SetValue(test.Session, RunningFactory(test, target));
+        // The two fields' entity tables and locks (the test fields leave them unset).
+        foreach (FieldManager field in new[] { target, Field }) {
+            foreach (FieldInfo info in typeof(FieldManager).GetFields(Any)) {
+                if (info.GetValue(field) == null
+                    && (info.FieldType == typeof(object) || info.FieldType.IsGenericType
+                        && info.FieldType.GetGenericTypeDefinition() == typeof(ConcurrentDictionary<,>))) {
+                    info.SetValue(field, Activator.CreateInstance(info.FieldType));
+                }
+            }
+        }
+        // What a field change clears on the session (the uninitialized session skips the field initializers).
+        void SetSession(string name, object value) =>
+            typeof(Maple2.Server.Game.Session.GameSession).GetField(name, Any)!.SetValue(test.Session, value);
+        SetSession(nameof(test.Session.ItemLockStaging), new long[1]);
+        SetSession(nameof(test.Session.DismantleStaging), new (long, int)[1]);
+        SetSession(nameof(test.Session.InteractStarted), new HashSet<string>());
+        SetSession(nameof(test.Session.CubeStarted), new HashSet<string>());
+        SetSession(nameof(test.Session.Scheduler), new Maple2.Tools.Scheduler.EventQueue(Serilog.Log.Logger));
+        FieldPortal portal = Field.SpawnPortal(new Portal(3, 2000062, 1, PortalType.Field, PortalActionType.Touch, Vector3.Zero, Vector3.Zero,
+            Vector3.Zero, 0, 0, true, true, true));
+        Quest quest = StartQuest(Condition(ConditionType.map, 1, ["02000062"], []));
+
+        // The arrival portal (1) is not one of the map's: the player comes in at the default place.
+        var entities = (MapEntityMetadata) RuntimeHelpers.GetUninitializedObject(typeof(MapEntityMetadata));
+        typeof(MapEntityMetadata).GetField("<Portals>k__BackingField", Any)!.SetValue(entities, new Dictionary<int, Portal>());
+        typeof(FieldManager).GetField("<Entities>k__BackingField", Any)!.SetValue(target, entities);
+        typeof(FieldManager).GetField("<FieldInstance>k__BackingField", Any)!.SetValue(target,
+            new InstanceFieldMetadata(0, InstanceType.none, 0, false, 0, false, 0, 0, 0, 0));
+        test.SetTable(new PrestigeLevelAbilityTable(new Dictionary<int, PrestigeLevelAbilityMetadata>()));
+        test.SetTable(new CharacterAbilityTable(new Dictionary<int, CharacterAbilityTable.Entry>()));
+        test.SetTable(new PremiumClubTable(new Dictionary<int, PremiumClubTable.Buff>(), new Dictionary<int, PremiumClubTable.Item>(),
+            new Dictionary<int, PremiumClubTable.Package>()));
+        test.SetTable(new InsigniaTable(new Dictionary<int, InsigniaTable.Entry>()));
+        // The config's empty tables the arrival's buff refresh reads (lapenshards, abilities and the like).
+        foreach (FieldInfo info in typeof(ConfigManager).GetFields(Any)) {
+            if (info.GetValue(test.Session.Config) != null || !info.FieldType.IsGenericType) {
+                continue;
+            }
+            Type type = info.FieldType;
+            Type generic = type.GetGenericTypeDefinition();
+            if (generic == typeof(IDictionary<,>) || generic == typeof(IReadOnlyDictionary<,>)) {
+                type = typeof(Dictionary<,>).MakeGenericType(type.GetGenericArguments());
+            } else if (generic == typeof(IList<>) || generic == typeof(ICollection<>) || generic == typeof(IReadOnlyList<>)) {
+                type = typeof(List<>).MakeGenericType(type.GetGenericArguments());
+            }
+            if (!type.IsInterface && type.GetConstructor(Type.EmptyTypes) != null) {
+                info.SetValue(test.Session.Config, Activator.CreateInstance(type));
+            }
+        }
+        typeof(GuildManager).GetField("session", Any)!.SetValue(test.Session.Guild, test.Session); // no guild
+        Field.Players.Clear(); // the leave of the old field is not what is asked here
+        typeof(FieldPlayer).GetField("scheduler", Any)!.SetValue(test.Session.Player, new Maple2.Tools.Scheduler.EventQueue(Serilog.Log.Logger));
+        Assert.That(Field.UsePortal(test.Session, portal.Value.Id, ""), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Field, Is.SameAs(target));
+            Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        });
+    }
+    #endregion
 }

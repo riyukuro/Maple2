@@ -918,12 +918,10 @@ public partial class FieldManager : IField {
             return true;
         }
 
-        // The "map" condition counts a portal that was taken, not one whose entry was refused. A portal to a
-        // room (a bonus map) leads into that room, not into the map's shared field.
+        // A portal to a room (a bonus map) leads into that room, not into the map's shared field. The quest "map"
+        // condition is counted by the field entry that follows (GameSession.EnterField), not here: a count here
+        // too made each move by portal count twice.
         bool entered = session.PrepareFieldByPortal(srcPortal.TargetMapId, portalId: srcPortal.TargetPortalId, roomId: fieldPortal.RoomId);
-        if (entered) {
-            session.ConditionUpdate(ConditionType.map, codeLong: srcPortal.TargetMapId);
-        }
 
         session.Send(entered
             ? FieldEnterPacket.Request(session.Player)
@@ -969,10 +967,9 @@ public partial class FieldManager : IField {
             RemovePortal(fieldPortal.ObjectId);
         }
 
+        // The "map" condition is counted by the field entry that follows (GameSession.EnterField).
         bool entered = session.PrepareFieldByPortal(roomField.MapId, roomId: roomField.RoomId);
-        if (entered) {
-            session.ConditionUpdate(ConditionType.map, codeLong: roomField.MapId);
-        } else {
+        if (!entered) {
             lock (fieldPortal) {
                 fieldPortal.RoomEntered--;
             }
