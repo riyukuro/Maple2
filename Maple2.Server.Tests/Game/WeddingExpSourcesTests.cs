@@ -145,4 +145,24 @@ public class WeddingExpSourcesTests {
         Assert.That(db.AddMarriageExp(marriageId, partnerId, MarriageExpRules.Attendance, 0, MarriageExpLimit.none, now), Is.False);
         Assert.That(StoredLog(), Is.EqualTo(new[] { (MarriageExpType.AttendanceBride, 5L) }));
     }
+
+    // A writer whose request read the marriage before another one wrote to its log (the groom's mission on one
+    // channel, the bride's first entry of the day on another) writes on the log as it is under the row's lock: both
+    // lines are kept. Before, the mission and the charm wrote the log they had read, and the other line was lost.
+    [Test]
+    public void AStaleRead_KeepsTheOtherWritersLine() {
+        Marry(true, DateTime.Now.AddDays(-1));
+        using GameStorage.Request groom = test.Storage.Context();
+        // The groom's request holds the row from its own first write.
+        Assert.That(groom.AddWeddingMissionExp(marriageId, test.CharacterId, 40, DateTime.Now), Is.True);
+        using (GameStorage.Request bride = test.Storage.Context()) {
+            Assert.That(bride.AddMarriageExp(marriageId, partnerId, MarriageExpRules.Attendance, 5, MarriageExpLimit.day, DateTime.Now), Is.True);
+        }
+
+        Assert.That(groom.AddWeddingExpItem(marriageId, test.CharacterId, 350, null, DateTime.Now), Is.True);
+
+        Assert.That(StoredLog(), Is.EquivalentTo(new[] {
+            (MarriageExpType.AttendanceBride, 5L), (MarriageExpType.WeddingMissionGroom, 40L), (MarriageExpType.weddingExpItem, 350L),
+        }));
+    }
 }

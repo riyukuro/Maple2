@@ -103,55 +103,36 @@ public partial class GameStorage {
         // A wedding mission's intimacy (quest weddingExp) added to the marriage's exp log by one partner, under the
         // type of that partner by the stored order. Refused unless the marriage counts it and the character is in it.
         public bool AddWeddingMissionExp(long marriageId, long characterId, long amount, DateTime time) {
-            Model.Marriage? model = Context.Marriage.Find(marriageId);
-            if (model == null || amount <= 0 || !MarriageExpRules.CountsWeddingExp(model.Status)
-                || (model.Partner1Id != characterId && model.Partner2Id != characterId)) {
-                return false;
-            }
-
-            model.ExpHistory = new List<Model.MarriageExp>(model.ExpHistory) {
-                new() {
-                    Type = MarriageExpRules.WeddingMission(characterId, model.Partner1Id),
-                    Amount = amount,
-                    Time = time,
-                },
-            };
-            Context.Marriage.Update(model);
-            return Context.TrySaveChanges();
+            return AppendMarriageExp(marriageId, characterId, amount, time,
+                model => MarriageExpRules.WeddingMission(characterId, model.Partner1Id));
         }
 
         // A Blessing Charm used by one partner (function WeddingExpItem): its line by the stored order, refused like a
         // wedding mission's and while this partner's last use is younger than the cooldown.
         public bool AddWeddingExpItem(long marriageId, long characterId, long amount, TimeSpan? cooldown, DateTime time) {
-            Model.Marriage? model = Context.Marriage.Find(marriageId);
-            if (model == null || amount <= 0 || !MarriageExpRules.CountsWeddingExp(model.Status)
-                || (model.Partner1Id != characterId && model.Partner2Id != characterId)) {
-                return false;
-            }
-
-            MarriageExpType type = MarriageExpRules.WeddingExpItem(characterId, model.Partner1Id);
-            if (!MarriageExpRules.Ready(model.ExpHistory.Select(exp => (exp.Type, exp.Time)), type, cooldown, time)) {
-                return false;
-            }
-
-            model.ExpHistory = new List<Model.MarriageExp>(model.ExpHistory) {
-                new() {
-                    Type = type,
-                    Amount = amount,
-                    Time = time,
-                },
-            };
-            Context.Marriage.Update(model);
-            return Context.TrySaveChanges();
+            return AppendMarriageExp(marriageId, characterId, amount, time, model => {
+                MarriageExpType type = MarriageExpRules.WeddingExpItem(characterId, model.Partner1Id);
+                return MarriageExpRules.Ready(model.ExpHistory.Select(exp => (exp.Type, exp.Time)), type, cooldown, time) ? type : null;
+            });
         }
 
         // One entry of a reward row in the marriage's exp log: the line of characterId by the stored order (line picks
         // it; 0 with a couple line such as the wedding's), refused unless the marriage counts exp, the character is in
-        // it and the line is due by the row's limit (MarriageExpRules.Due). The log is read and written under the
-        // row's lock, so two partners' entries at the same moment are both kept. Inside an open transaction (the vow)
-        // it writes in that one; else in its own.
+        // it and the line is due by the row's limit (MarriageExpRules.Due).
         public bool AddMarriageExp(long marriageId, long characterId, Func<long, long, MarriageExpType> line, long amount,
                 MarriageExpLimit limit, DateTime time) {
+            return AppendMarriageExp(marriageId, characterId, amount, time, model => {
+                MarriageExpType type = line(characterId, model.Partner1Id);
+                return MarriageExpRules.Due(model.ExpHistory.Select(exp => (exp.Type, exp.Time)), type, limit, time) ? type : null;
+            });
+        }
+
+        // Every writer of the exp log goes through here: the log is read and written under the marriage row's lock, so
+        // two entries written at the same moment (the partners on two channels, a mission and a game entry) are both
+        // kept. Refused unless the marriage counts exp and characterId is a partner (0: a couple line); pick gives the
+        // entry's type from the locked row, or null to refuse. Inside an open transaction (the vow, a charm's purchase
+        // save) it writes in that one; else in its own.
+        private bool AppendMarriageExp(long marriageId, long characterId, long amount, DateTime time, Func<Model.Marriage, MarriageExpType?> pick) {
             if (amount <= 0) {
                 return false;
             }
@@ -165,15 +146,16 @@ public partial class GameStorage {
                 if (model == null) {
                     return false;
                 }
-                if (own != null) {
+                // A row this request read before the lock may be stale; one with changes of its own not yet saved is
+                // kept as it is.
+                if (Context.Entry(model).State == EntityState.Unchanged) {
                     Context.Entry(model).Reload();
                 }
                 if (!MarriageExpRules.CountsWeddingExp(model.Status)
                     || (characterId != 0 && model.Partner1Id != characterId && model.Partner2Id != characterId)) {
                     return false;
                 }
-                MarriageExpType type = line(characterId, model.Partner1Id);
-                if (!MarriageExpRules.Due(model.ExpHistory.Select(exp => (exp.Type, exp.Time)), type, limit, time)) {
+                if (pick(model) is not MarriageExpType type) {
                     return false;
                 }
 
@@ -190,9 +172,7 @@ public partial class GameStorage {
                     Context.ChangeTracker.Clear();
                     return false;
                 }
-                if (own != null) {
-                    own.Commit();
-                }
+                own?.Commit();
                 return true;
             } finally {
                 own?.Dispose();
