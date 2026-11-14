@@ -32,9 +32,14 @@ public partial class WorldService {
             case PartyRequest.PartyOneofCase.Leave:
                 pvpLookup.LeaveSquad(request.RequestorId);
                 return Task.FromResult(LeaveParty(request.RequestorId, request.Leave));
-            case PartyRequest.PartyOneofCase.Kick:
-                pvpLookup.LeaveSquad(request.Kick.ReceiverId);
-                return Task.FromResult(KickParty(request.RequestorId, request.Kick));
+            case PartyRequest.PartyOneofCase.Kick: {
+                // Only a kick the party took (the leader's, of a member) takes the member out of a squad's queue.
+                PartyResponse response = KickParty(request.RequestorId, request.Kick);
+                if (response.Error == 0) {
+                    pvpLookup.LeaveSquad(request.Kick.ReceiverId);
+                }
+                return Task.FromResult(response);
+            }
             case PartyRequest.PartyOneofCase.UpdateLeader:
                 return Task.FromResult(UpdatePartyLeader(request.RequestorId, request.UpdateLeader));
             case PartyRequest.PartyOneofCase.ReadyCheck:
