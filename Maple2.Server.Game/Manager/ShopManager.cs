@@ -193,22 +193,16 @@ public sealed class ShopManager {
         instancedShop = new Shop(metadata) {
             RestockTime = data.RestockTime,
             RestockCount = data.RestockCount,
-            Items = GetShopItems(metadata),
         };
 
-        if (!TryGetShopItemData(instancedShop.Id, out IDictionary<int, CharacterShopItemData>? dataDictionary)) {
-            dataDictionary = CreateShopItemData(instancedShop);
-        }
-
-        foreach ((int shopItemId, CharacterShopItemData itemData) in dataDictionary) {
-            if (!instancedShop.Items.TryGetValue(shopItemId, out ShopItem? shopItem)) {
-                continue;
-            }
-
-            instancedShop.Items[shopItemId] = new ShopItem(shopItem.Metadata) {
-                Item = itemData.Item,
-                StockPurchased = itemData.StockPurchased,
-            };
+        // Until the restock the shop keeps the products it rolled, with their stored items and bought counts. Before,
+        // a login rolled the list anew: a product of the new roll had no stored row, so its buys were not counted and
+        // its stock never ran out, and the list changed on every login.
+        if (TryGetShopItemData(instancedShop.Id, out IDictionary<int, CharacterShopItemData>? dataDictionary)) {
+            instancedShop.Items = StoredShopItems(metadata, dataDictionary);
+        } else {
+            instancedShop.Items = GetShopItems(metadata);
+            CreateShopItemData(instancedShop);
         }
 
         instancedShops[instancedShop.Id] = instancedShop;
@@ -299,6 +293,27 @@ public sealed class ShopManager {
             }
         }
 
+        return items;
+    }
+
+    // The stored products of a rolled shop that its table still has, and that a running NpcShopShowItem event does not
+    // hide (as GetShopItems leaves them out).
+    private SortedDictionary<int, ShopItem> StoredShopItems(ShopMetadata metadata, IDictionary<int, CharacterShopItemData> stored) {
+        var items = new SortedDictionary<int, ShopItem>();
+        if (!session.ServerTableMetadata.ShopItemTable.Entries.TryGetValue(metadata.Id, out Dictionary<int, ShopItemMetadata>? allShopItems)) {
+            return items;
+        }
+        IReadOnlySet<int> hidden = ShopShowItemRules.Hidden(session.ServerTableMetadata.GameEventTable.Entries.Values, metadata.Id, DateTime.Now);
+        HashSet<int> shown = ShopShowItemRules.Filter(allShopItems.Values, hidden).Select(product => product.Id).ToHashSet();
+        foreach ((int shopItemId, CharacterShopItemData itemData) in stored) {
+            if (!shown.Contains(shopItemId) || !allShopItems.TryGetValue(shopItemId, out ShopItemMetadata? product)) {
+                continue;
+            }
+            items[shopItemId] = new ShopItem(product) {
+                Item = itemData.Item,
+                StockPurchased = itemData.StockPurchased,
+            };
+        }
         return items;
     }
 

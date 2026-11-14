@@ -1133,4 +1133,34 @@ public class ShopHandlerTests {
         session.Instrument = null;
         return sold;
     }
+    // A rolled shop (reset on, a day's restock) keeps the products it rolled until the restock: a login before it
+    // shows the stored list with its bought counts. Before, a login rolled the list anew, and a product of the new roll
+    // had no stored row, so its buys were never counted and its stock never ran out.
+    [Test]
+    public void Login_BeforeTheRestock_KeepsTheRolledListAndItsBuys() {
+        const int NewProductId = 30;
+        restockData = new ShopRestockData(ResetType.Day, ShopCurrencyType.Meso, ShopCurrencyType.Meso, 1, 20, 0, false, false, false);
+        enableReset = true;
+        GameSession session = Login(meso: 100000);
+        Buy(session, StockProductId, 50);
+
+        // A product the table gets after the roll (it would be in a new roll).
+        Dictionary<int, ShopItemMetadata> products = test.Session.ServerTableMetadata.ShopItemTable.Entries[ShopId];
+        products[NewProductId] = Product(NewProductId, price: 10, stock: 1);
+        test.SetServerTable(new ShopItemTable(new Dictionary<int, Dictionary<int, ShopItemMetadata>> { [ShopId] = products }));
+
+        session.Shop = new ShopManager(session);
+        session.Shop.Load(ShopId);
+        test.TakeSent();
+        long meso = session.Currency.Meso;
+
+        Buy(session, NewProductId, 1);
+        Buy(session, StockProductId, 1);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(meso), "the new product is not in the stored list; the bought-out product stays bought out");
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Shop).Select(Convert.ToHexString).ToList(), Is.EqualTo(new[] {
+            Hex(ShopPacket.Error(ShopError.s_err_invalid_item)),
+            Hex(ShopPacket.Error(ShopError.s_err_lack_shopitem)),
+        }));
+    }
 }
