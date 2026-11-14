@@ -226,6 +226,29 @@ public class ArcadeEventSessionTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // A reward whose rows cannot be written is not given, not listed and does not count (one transaction with the
+    // count, EventClaim). Before, the count was stored first and kept, and the items lost.
+    [Test]
+    public void End_UnwrittenRewardIsNotCounted() {
+        Start(withEvent: true);
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Added
+                                                                               && entry.Entity.GetType().Name == "Item");
+        ByteReader result;
+        try {
+            result = EndGame();
+        } finally {
+            test.FailSave = null;
+        }
+        Assert.Multiple(() => {
+            Assert.That(result.ReadByte(), Is.EqualTo(0));
+            Assert.That(Held(), Is.EqualTo(0));
+            Assert.That(ArcadeEvent.RewardCount(session, session.FindEvent(900501)!), Is.EqualTo(0));
+            Assert.That(test.StoredEventValues(900501).ContainsKey(GameEventUserValueType.ArcadeOpenRewardCount), Is.False);
+        });
+        Assert.That(EndGame().ReadByte(), Is.EqualTo(1));
+        Assert.That(Held(), Is.EqualTo(10));
+    }
+
     // Without the event (an event arcade entered by a warp), the end gives no event reward.
     [Test]
     public void End_NoEventNoReward() {

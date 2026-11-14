@@ -187,21 +187,25 @@ public partial class FieldManager {
         if (due.Length == 0) {
             return given;
         }
-        if (!ArcadeEvent.AddReward(player.Session, gameEvent)) {
-            logger.Error("Arcade event {EventId}: the count of {CharacterId} was not stored", gameEvent.Id, player.Value.Character.Id);
-        }
+        // The items and the day's count are stored in one transaction (EventClaim); when it is not, nothing is given
+        // or counted and the result lists none. Before, the count was stored alone first and each item given after
+        // it, so an item whose write failed was lost with the count kept. A row that cannot be made is left out.
+        var items = new List<Item>();
+        var made = new List<RewardItem>();
         foreach (RewardItem rewardItem in due) {
             Item? item = ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
             if (item == null) {
                 logger.Error("Arcade event {EventId}: item {ItemId} could not be made", gameEvent.Id, rewardItem.ItemId);
                 continue;
             }
-            if (player.Session.Item.AddOrMail(item, true)) {
-                given.Add(rewardItem);
-            } else {
-                logger.Error("Arcade event {EventId}: item {ItemId} went to neither bag nor mail", gameEvent.Id, rewardItem.ItemId);
-            }
+            items.Add(item);
+            made.Add(rewardItem);
         }
+        if (EventClaim.Give(player.Session, items, [ArcadeEvent.NextRewardCount(player.Session, gameEvent)]) == null) {
+            logger.Error("Arcade event {EventId}: reward of {CharacterId} not stored, not given", gameEvent.Id, player.Value.Character.Id);
+            return given;
+        }
+        given.AddRange(made);
         return given;
     }
 }

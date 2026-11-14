@@ -251,10 +251,11 @@ public class TreeWateringSessionTests {
         Assert.That(Held(WaterRewardId), Is.EqualTo(0));
     }
 
-    // A reward neither the bag nor the mail can write is logged with its item; the watering still counts. Before,
-    // the result was not read and the reward was lost with no trace.
+    // A reward whose row cannot be written is not given and the watering does not count (one transaction with the
+    // count, EventClaim), logged with its item; no reply is sent. Before, the count was stored first and kept, and
+    // the reward lost.
     [Test]
-    public void Water_UnwrittenRewardIsLogged() {
+    public void Water_UnwrittenRewardIsNotCounted() {
         Start();
         test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added
                                                                                && entry.Entity.GetType().Name == "Item");
@@ -269,10 +270,15 @@ public class TreeWateringSessionTests {
             test.FailSave = null;
         }
         Assert.Multiple(() => {
-            Assert.That(reply, Is.EqualTo(((byte) 2, (byte) 0, new[] { 1, 2 })));
+            Assert.That(reply, Is.Null);
             Assert.That(Held(WaterRewardId), Is.Zero);
+            Assert.That(TreeWateringEvent.Count(session, session.FindEvent(EventId)!, TreeWateringEvent.Action.Water), Is.Zero);
+            Assert.That(test.StoredEventValues(EventId).ContainsKey(GameEventUserValueType.TreeWateringCount), Is.False);
             Assert.That(errors.Count(line => line.Contains("reward " + WaterRewardId)), Is.EqualTo(1));
         });
+        // The next watering, stored, gives the reward and counts 1.
+        Assert.That(Send(TreeWateringEvent.Action.Water), Is.EqualTo(((byte) 2, (byte) 0, new[] { 1, 2 })));
+        Assert.That(Held(WaterRewardId), Is.EqualTo(1));
     }
 
     private sealed class ErrorLines(List<string> errors) : Serilog.Core.ILogEventSink {

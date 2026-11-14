@@ -60,10 +60,9 @@ public static class TreeWateringEvent {
         return session.GameEvent.Get(CountType(action), gameEvent.Id, DateTime.Now.Date.AddDays(1).ToEpochSeconds()).Int();
     }
 
-    // Stored at once, not at logout: the reward may sit in a stored mail already, and a lost session must not
-    // give it again. False when the database refused it.
-    public static bool AddCount(GameSession session, GameEvent gameEvent, Action action) {
-        session.GameEvent.Set(gameEvent.Id, CountType(action), Count(session, gameEvent, action) + 1);
-        return session.GameEvent.Store(gameEvent.Id, CountType(action));
+    // The count one up, as the claim's mark: stored in one transaction with the reward (EventClaim), so a lost
+    // session neither gives the reward again nor keeps a count without it.
+    public static EventClaim.Mark NextCount(GameSession session, GameEvent gameEvent, Action action) {
+        return EventClaim.Of(gameEvent.Id, CountType(action), Count(session, gameEvent, action) + 1);
     }
 }

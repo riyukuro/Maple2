@@ -35,7 +35,9 @@ public class TreeWateringHandler : FieldPacketHandler {
                 session.Send(TreeWateringPacket.Water(result));
                 return;
             }
-            Reward(session, gameEvent, tree.WaterReward, action);
+            if (!Reward(session, gameEvent, tree.WaterReward, action)) {
+                return;
+            }
             // The splash_plant trophies name the event's water pot as the code (92000091 20301391 ... 92000149 30001431).
             session.ConditionUpdate(ConditionType.splash_plant, codeLong: tree.WaterPotItemId);
             session.Send(TreeWateringPacket.Water(result, waterCount + 1, tree.WaterLimit));
@@ -51,27 +53,31 @@ public class TreeWateringHandler : FieldPacketHandler {
             session.Send(TreeWateringPacket.Emotion(emotion.Value));
             return;
         }
-        Reward(session, gameEvent, tree.EmotionReward, action);
+        if (!Reward(session, gameEvent, tree.EmotionReward, action)) {
+            return;
+        }
         session.Send(TreeWateringPacket.Emotion(emotion.Value, emotionCount + 1, tree.EmotionLimit));
     }
 
-    // The count goes up first, so a reward that cannot be made is not given again.
-    private void Reward(GameSession session, GameEvent gameEvent, RewardItem reward, TreeWateringEvent.Action action) {
-        if (!TreeWateringEvent.AddCount(session, gameEvent, action)) {
-            Logger.Error("Tree watering event {EventId}: the count of {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
+    // The count and the reward are stored in one transaction (EventClaim): false, with nothing given and the count
+    // unchanged, when it was not stored; no reply is sent then. Before, the count was stored alone first and the
+    // reward given after it, so a reward whose write failed was lost with its count kept. A reward that cannot be
+    // made still counts, as before, so it is not tried again.
+    private bool Reward(GameSession session, GameEvent gameEvent, RewardItem reward, TreeWateringEvent.Action action) {
+        var items = new List<Item>();
+        if (reward.ItemId != 0 && reward.Amount > 0) {
+            Item? item = session.Field?.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
+            if (item == null) {
+                Logger.Error("Tree watering event {EventId}: reward {ItemId} could not be made", gameEvent.Id, reward.ItemId);
+            } else {
+                items.Add(item);
+            }
         }
-        if (reward.ItemId == 0 || reward.Amount <= 0) {
-            return;
-        }
-        Item? item = session.Field?.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
-        if (item == null) {
-            return;
-        }
-        // A reward the bag and the mail both refuse (only a failed write) is logged; its count is already up, so it
-        // is not given again. Before, its result was not read and the reward was lost with no trace.
-        if (!session.Item.AddOrMail(item, true)) {
-            Logger.Error("Tree watering event {EventId}: reward {ItemId} x{Amount} of {CharacterId} neither added nor mailed",
+        if (EventClaim.Give(session, items, [TreeWateringEvent.NextCount(session, gameEvent, action)]) == null) {
+            Logger.Error("Tree watering event {EventId}: reward {ItemId} x{Amount} of {CharacterId} not stored, not given",
                 gameEvent.Id, reward.ItemId, reward.Amount, session.CharacterId);
+            return false;
         }
+        return true;
     }
 }

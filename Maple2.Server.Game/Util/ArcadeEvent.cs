@@ -42,10 +42,9 @@ public static class ArcadeEvent {
         return session.GameEvent.Get(GameEventUserValueType.ArcadeOpenRewardCount, gameEvent.Id, DateTime.Now.Date.AddDays(1).ToEpochSeconds()).Int();
     }
 
-    // Stored at once, not at logout: the reward may sit in a stored mail already, and a lost session must not
-    // give it again. False when the database refused it.
-    public static bool AddReward(GameSession session, GameEvent gameEvent) {
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.ArcadeOpenRewardCount, RewardCount(session, gameEvent) + 1);
-        return session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.ArcadeOpenRewardCount);
+    // The day's count one up, as the claim's mark: stored in one transaction with the reward (EventClaim), so a
+    // lost session neither gives the reward again nor keeps a count without it.
+    public static EventClaim.Mark NextRewardCount(GameSession session, GameEvent gameEvent) {
+        return EventClaim.Of(gameEvent.Id, GameEventUserValueType.ArcadeOpenRewardCount, RewardCount(session, gameEvent) + 1);
     }
 }
