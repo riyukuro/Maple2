@@ -100,10 +100,10 @@ public class HomeActionHandler : FieldPacketHandler {
     private void HandleQuiz(GameSession session, IByteReader packet) {
         byte type = packet.ReadByte();
         switch (type) {
-            case 0: // long quiz id, int, int
-                packet.ReadLong();
-                packet.ReadInt();
-                packet.ReadInt();
+            case 0: // the create dialog's settings: i64 fee, i32 max, i32 share
+                UgcOxRules.Settings settings = UgcOxRules.ReadSettings(packet);
+                Logger.Debug("HomeAction Quiz settings from {CharacterId}: fee {Fee}, max {Max}, share {Share}",
+                    session.CharacterId, settings.Fee, settings.Max, settings.Share);
                 break;
             case 5: // int, int
                 packet.ReadInt();
