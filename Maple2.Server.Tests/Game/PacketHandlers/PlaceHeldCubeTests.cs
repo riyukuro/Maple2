@@ -21,6 +21,7 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class PlaceHeldCubeTests {
     private const int Cube = 50200911, OtherCube = 50200912, House = 50200913, TemplateCube = 50200914, TrophyCube = 50200915, CategoryCube = 50200916;
     private const int QuestCube = 50400341; // the install_item code of KR 80000631
+    private const int RedCushion = 50200108; // the install_item code of KR 90000661
     private const int Trophy = 23100098; // made up
     private TestGameSession test = null!;
 
@@ -40,6 +41,7 @@ public class PlaceHeldCubeTests {
             [TemplateCube] = new(TemplateCube, true, FurnishingCurrencyType.Meso, 1000),
             [TrophyCube] = new(TrophyCube, true, FurnishingCurrencyType.Meso, 1000),
             [QuestCube] = new(QuestCube, true, FurnishingCurrencyType.Meso, 1000),
+            [RedCushion] = new(RedCushion, true, FurnishingCurrencyType.Meso, 1000),
             [CategoryCube] = new(CategoryCube, true, FurnishingCurrencyType.Meso, 1000),
         }));
         // No construct row: a place gives no decorating exp unless a test sets one (ConstructExpTests below).
@@ -47,7 +49,7 @@ public class PlaceHeldCubeTests {
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>()));
         ItemMetadata house = Furnishing(House);
         test.Register(Furnishing(Cube), Furnishing(OtherCube), house with { Property = house.Property with { Type = 6, SubType = 4 } },
-            Furnishing(TemplateCube) with { Mesh = "ugc_mesh" }, Furnishing(QuestCube),
+            Furnishing(TemplateCube) with { Mesh = "ugc_mesh" }, Furnishing(QuestCube), Furnishing(RedCushion),
             Furnishing(TrophyCube) with { Housing = new ItemMetadataHousing(Trophy, 1, 0, HousingCategory.None, false) },
             Furnishing(CategoryCube) with { Housing = new ItemMetadataHousing(0, 0, 0, HousingCategory.None, false) { CategoryIndex = 3 } });
         test.AddAchievement(TestGameSession.Trophy(Trophy, ConditionType.home_goto, [1, 2]));
@@ -278,6 +280,25 @@ public class PlaceHeldCubeTests {
         Replace(session, OtherCube, OtherCube);
 
         Assert.That(plot.Cubes.Values.Select(cube => cube.ItemId), Is.EqualTo(new[] { OtherCube }));
+    }
+
+    // KR 90000661: <condition type="install_item" code="50200108" value="1" />. The client sends a replace (15) for the
+    // same confirm as a place when the cell holds another cube (cubecraft_2.cpp:1007-1033); the replace counts as the
+    // place. A refused replace does not.
+    [Test]
+    public void InstallItem_90000661_AReplaceCounts() {
+        (GameSession session, _) = StartInHome();
+        Quest quest = test.StartQuest(TestGameSession.QuestData(90000661) with {
+            Conditions = [new ConditionMetadata(ConditionType.install_item, 1, new ConditionMetadata.Parameters(Integers: [RedCushion]), null)],
+        });
+        Place(session, Cube, Cube);
+
+        Replace(session, 0, RedCushion);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Replace(session, RedCushion, RedCushion);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
 
     // The client sends a whole angle (cubecraft_2.cpp:991-995): a NaN or infinite one is refused with

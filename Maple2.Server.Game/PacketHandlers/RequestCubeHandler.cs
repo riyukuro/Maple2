@@ -11,6 +11,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -408,6 +409,11 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
+        // A replace is the client's place onto a taken cell (the same confirm, cubecraft_2.cpp:1007-1033), so it counts
+        // as a place: the owner's decoration score trophy and the placer's install_item. It counted for neither.
+        if (!plot.IsPlanner) {
+            owner.ConditionUpdate(ConditionType.interior_point, counter: HousingManager.DecorationScore(plot));
+        }
         session.Field.Broadcast(CubePacket.ReplaceCube(session.Player.ObjectId, placedCube));
 
         if (plot.MapId is not Constant.DefaultHomeMapId) {
@@ -421,6 +427,7 @@ public class RequestCubeHandler : FieldPacketHandler {
                 },
             });
         }
+        session.ConditionUpdate(ConditionType.install_item, codeLong: cubeItem.ItemId);
     }
 
     private void HandleLiftupObject(GameSession session, IByteReader packet) {
