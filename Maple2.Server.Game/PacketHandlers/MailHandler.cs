@@ -168,6 +168,9 @@ public class MailHandler : FieldPacketHandler {
 
     private static void HandleDelete(GameSession session, IByteReader packet) {
         int count = packet.ReadInt();
+        if (!MailRules.BulkCountFits(count, session.Mail.ListCount)) {
+            return;
+        }
 
         for (int i = 0; i < count; i++) {
             long mailId = packet.ReadLong();
@@ -178,6 +181,9 @@ public class MailHandler : FieldPacketHandler {
 
     private static void HandleBulkRead(GameSession session, IByteReader packet) {
         int count = packet.ReadInt();
+        if (!MailRules.BulkCountFits(count, session.Mail.ListCount)) {
+            return;
+        }
 
         for (int i = 0; i < count; i++) {
             long mailId = packet.ReadLong();
@@ -192,6 +198,9 @@ public class MailHandler : FieldPacketHandler {
 
     private static void HandleBulkCollect(GameSession session, IByteReader packet) {
         int count = packet.ReadInt();
+        if (!MailRules.BulkCountFits(count, session.Mail.ListCount)) {
+            return;
+        }
 
         for (int i = 0; i < count; i++) {
             long mailId = packet.ReadLong();

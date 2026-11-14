@@ -76,4 +76,11 @@ public static class MailRules {
     public static bool BulkSkips(MailError error) {
         return error is MailError.s_mail_error_alreadyread or MailError.s_mail_error_already_receive;
     }
+
+    // A bulk delete, read or collect names mails from the client's list, which holds only mails the server sent
+    // (MailManager.ListCount), so a larger or negative count is refused whole (chosen here) instead of looking up
+    // each id.
+    public static bool BulkCountFits(int count, int listCount) {
+        return count >= 0 && count <= listCount;
+    }
 }

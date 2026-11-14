@@ -54,6 +54,8 @@ public class MailGoneHandlerTests {
         using (GameStorage.Request db = test.Storage.Context()) {
             mailId = db.CreateMail(new Mail { ReceiverId = test.CharacterId, Type = MailType.System, Title = "t", Content = "c" })?.Id
                      ?? throw new InvalidOperationException("mail row not created");
+            // A second inbox mail, so the bulk count of 2 is within the client's list (MailRules.BulkCountFits).
+            db.CreateMail(new Mail { ReceiverId = test.CharacterId, Type = MailType.System, Title = "t", Content = "c" });
         }
         GameSession session = test.Start();
         test.TakeSent();

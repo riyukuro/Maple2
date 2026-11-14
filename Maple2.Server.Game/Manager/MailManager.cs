@@ -25,6 +25,8 @@ public sealed class MailManager {
     // Under lock(inbox): the World's mail notifications (ChannelService.MailNotification, a gRPC thread) fetch into it
     // while the session's handlers read, delete and collect.
     private readonly SortedList<long, Mail> inbox;
+    // Under lock(inbox): expired mails DropExpired took out of the inbox this session.
+    private int droppedExpired;
 
     private readonly ILogger logger = Log.ForContext<MailManager>();
 
@@ -86,6 +88,16 @@ public sealed class MailManager {
                 session.Send(MailPacket.Load(batch));
             }
             session.Send(MailPacket.EndList());
+        }
+    }
+
+    // The most mails the client's list can hold: the inbox and the expired mails dropped since login, which the
+    // client keeps on its list (hidden) as no delete is sent for them.
+    public int ListCount {
+        get {
+            lock (inbox) {
+                return inbox.Count + droppedExpired;
+            }
         }
     }
 
@@ -219,6 +231,7 @@ public sealed class MailManager {
                 continue;
             }
             inbox.Remove(mailId);
+            droppedExpired++;
         }
     }
 
