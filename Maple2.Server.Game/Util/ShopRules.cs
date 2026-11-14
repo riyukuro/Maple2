@@ -35,6 +35,28 @@ public static class ShopRules {
         };
     }
 
+    // The restock time of a shop that never restocks (reset type 99, Unlimited, or a type the server does not know): the
+    // first second of the year 3000. The time is stored as a database DateTime, which long.MaxValue does not fit: the
+    // first opening of such a shop threw and the shop did not open (the KR event shops 226, 260, 266, 270, 276 and 280
+    // have reset type 99 and no fixed time). The client reads no time for type 99 (UIShopDialog::UpdateSerial).
+    public const long NoRestockTime = 32503680000;
+
+    // The client offers the instant restock (Shop 9, UIShopDialog::ResetList) only through the reset button, which it
+    // shows with the shop's reset on, a reset type other than 99 (Unlimited) and the hide flag (DisableInstantRestock)
+    // off (UIShopDialog, uishopdialog.cpp:912-920 and :2391-2394).
+    public static bool CanInstantRestock(bool enableReset, ResetType resetType, bool disableInstantRestock) {
+        return enableReset && resetType != ResetType.Unlimited && !disableInstantRestock;
+    }
+
+    // The star point event runs while a StarShop event names an npc the client knows (IsStarPointEventActive,
+    // meratmarketbasketinfo.cpp:2574). Without it the client refuses, with s_shop_no_star_point_event, every buy, buy
+    // back and sale in a star point shop (frame 2, UIShopDialog::HasStarEvent, uishopdialog.cpp:2690, asked by BuyProduct
+    // :2425 and CanSellItem :2088) and a product paid in star points in any shop (CNpcShopProductCli::CheckStarPointEvent,
+    // npcshopproductbase.cpp:504).
+    public static bool StarEventActive(IEnumerable<int> starShopNpcIds, Func<int, bool> npcExists) {
+        return starShopNpcIds.Any(npcId => npcId != 0 && npcExists(npcId));
+    }
+
     public static bool RestockDue(long fixedRestockTime, long restockTime, long now) {
         return fixedRestockTime == 0 && restockTime < now;
     }

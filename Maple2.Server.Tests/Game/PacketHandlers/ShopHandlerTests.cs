@@ -22,6 +22,7 @@ using Maple2.Server.World.Service;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -42,6 +43,7 @@ public class ShopHandlerTests {
     private const int EventMeretProductId = 19;
     private const int GameMeretProductId = 20;
     private const int GuildFundProductId = 21;
+    private const int StarPointProductId = 22;
     private const long GuildId = 39990009;
     private const int FurnishingItemId = 50400001;
     private const int ShopItemId = 20000001;
@@ -53,7 +55,17 @@ public class ShopHandlerTests {
     // The shop's restock rule; a test of the instant restock sets it before Login.
     private ShopRestockData restockData = new(ResetType.Default, ShopCurrencyType.Meso, ShopCurrencyType.Meso, 0, 0, 0, false, true, false);
     private bool enableReset;
+    private ShopFrameType frameType;
     private Action? beforeStart;
+
+    // NUnit keeps one fixture for all its tests: the shop's settings start anew for each.
+    [SetUp]
+    public void ResetShop() {
+        restockData = new ShopRestockData(ResetType.Default, ShopCurrencyType.Meso, ShopCurrencyType.Meso, 0, 0, 0, false, true, false);
+        enableReset = false;
+        frameType = ShopFrameType.Default;
+        beforeStart = null;
+    }
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
@@ -69,7 +81,7 @@ public class ShopHandlerTests {
         test = new TestGameSession();
         test.AddAchievement(trophies);
         test.SetServerTable(new ShopTable(new Dictionary<int, ShopMetadata> {
-            [ShopId] = new(ShopId, 0, "shop", default, false, false, false, false, false, false, false, 0, enableReset,
+            [ShopId] = new(ShopId, 0, "shop", frameType, false, false, false, false, false, false, false, 0, enableReset,
                 restockData),
         }));
         test.SetServerTable(new ShopItemTable(new Dictionary<int, Dictionary<int, ShopItemMetadata>> {
@@ -85,6 +97,7 @@ public class ShopHandlerTests {
                 [EventMeretProductId] = Product(EventMeretProductId, price: 40, stock: 0, currency: ShopCurrencyType.EventMeret),
                 [GameMeretProductId] = Product(GameMeretProductId, price: 40, stock: 0, currency: ShopCurrencyType.GameMeret),
                 [GuildFundProductId] = Product(GuildFundProductId, price: 500, stock: 0, currency: ShopCurrencyType.GuildFund),
+                [StarPointProductId] = Product(StarPointProductId, price: 5, stock: 0, currency: ShopCurrencyType.StarPoint),
             },
         }));
         // The KR grade points of Maple Union and the Royal Guard (2: 10000, 3: 30000, 4: 60000, 5: 120000).
@@ -386,6 +399,7 @@ public class ShopHandlerTests {
     [TestCase(100f, ExpectedResult = true)]
     [TestCase(1000f, ExpectedResult = false)]
     public bool Refresh_OfATalkShopNeedsItsNpcInTalkRange(float distance) {
+        enableReset = true;
         GameSession session = Login();
         TalkShop(session, distance);
 
@@ -891,6 +905,7 @@ public class ShopHandlerTests {
     [TestCase(100, 900)]
     public void InstantRestock_PaysThePriceAndRefusesANegativeOne(int price, int treva) {
         restockData = new ShopRestockData(ResetType.Default, ShopCurrencyType.Treva, ShopCurrencyType.Treva, 0, 0, price, false, false, false);
+        enableReset = true;
         GameSession session = Login();
         test.SetServerTable(new ConstantsTable(KarmaTokenMax: 30000));
         session.Currency[CurrencyType.Treva] = 1000;
@@ -901,6 +916,98 @@ public class ShopHandlerTests {
         }));
 
         Assert.That(session.Currency[CurrencyType.Treva], Is.EqualTo(treva));
+    }
+
+    // The client sends the instant restock only from the reset button, shown with the shop's reset on, a reset type
+    // other than 99 and the hide flag off (uishopdialog.cpp:912-920); otherwise nothing is paid. Before, only the hide
+    // flag was asked.
+    [TestCase(true, ResetType.Default, false, ExpectedResult = 900)]
+    [TestCase(false, ResetType.Default, false, ExpectedResult = 1000)]
+    [TestCase(true, ResetType.Unlimited, false, ExpectedResult = 1000)]
+    [TestCase(true, ResetType.Default, true, ExpectedResult = 1000)]
+    public long InstantRestock_OnlyWhereTheClientShowsTheButton(bool reset, ResetType resetType, bool hidden) {
+        restockData = new ShopRestockData(resetType, ShopCurrencyType.Treva, ShopCurrencyType.Treva, 0, 0, 100, false, hidden, false);
+        enableReset = reset;
+        GameSession session = Login();
+        test.SetServerTable(new ConstantsTable(KarmaTokenMax: 30000));
+        session.Currency[CurrencyType.Treva] = 1000;
+
+        Restock(session, 100);
+
+        return session.Currency[CurrencyType.Treva];
+    }
+
+    // A shop with its reset on and reset type 99 (the KR event shops 226 and 260 to 280) opens and is stored with a
+    // time the database holds. Before, its first opening threw on long.MaxValue and the shop did not open.
+    [Test]
+    public void Load_OfAShopThatNeverRestocks_Opens() {
+        restockData = new ShopRestockData(ResetType.Unlimited, ShopCurrencyType.Meso, ShopCurrencyType.Meso, 0, 0, 0, false, true, false);
+        enableReset = true;
+        GameSession session = Login();
+
+        session.Shop.Load(ShopId);
+
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(packet => TestGameSession.Op(packet)), Does.Contain(SendOp.Shop));
+            Assert.That(db.GetCharacterShopData(test.CharacterId, ShopId)!.RestockTime, Is.EqualTo(ShopRules.NoRestockTime));
+        });
+    }
+
+    private const int StarNpcId = 11003775;
+
+    // A star point shop (frame 2) with or without a StarShop event, the event's npc known to the server or not.
+    private GameSession StarShopLogin(ShopFrameType frame, int? eventNpcId) {
+        frameType = frame;
+        beforeStart = () => {
+            if (eventNpcId != null) {
+                test.AddEvent(1, GameEventType.StarShop, new StarShop(eventNpcId.Value), DateTime.Now.AddDays(-1), DateTime.Now.AddDays(1));
+            }
+        };
+        GameSession session = Login();
+        typeof(GameSession).GetField("<NpcMetadata>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session,
+            TriggerNpcSpawnTests.NpcTable(TriggerNpcSpawnTests.Npc(StarNpcId, 0)));
+        return session;
+    }
+
+    // The client buys and sells in a star point shop only while the StarShop event names an npc it knows
+    // (UIShopDialog::HasStarEvent with IsStarPointEventActive) and refuses with s_shop_no_star_point_event; other
+    // frames do not ask. Before, the server sold and bought there with no event. (An unknown npc: ShopRulesTests.)
+    [TestCase(ShopFrameType.Star, StarNpcId, ExpectedResult = true)]
+    [TestCase(ShopFrameType.Star, null, ExpectedResult = false)]
+    [TestCase(ShopFrameType.Star, 0, ExpectedResult = false)]
+    [TestCase(ShopFrameType.Default, null, ExpectedResult = true)]
+    public bool StarShop_BuysAndSellsOnlyWhileTheEventRuns(ShopFrameType frame, int? eventNpcId) {
+        GameSession session = StarShopLogin(frame, eventNpcId);
+
+        Buy(session, ProductId, 1);
+        bool bought = session.Item.Inventory.Find(ProductItemId).Any();
+        List<byte[]> sent = test.TakeSent();
+        Sell(session, bagItem.Uid, 5);
+        bool sold = session.Item.Inventory.Get(bagItem.Uid) == null;
+        sent.AddRange(test.TakeSent());
+
+        Assert.Multiple(() => {
+            Assert.That(sold, Is.EqualTo(bought));
+            Assert.That(session.Currency.Meso, Is.EqualTo(bought ? 10000 - 30 + 350 : 10000));
+            Assert.That(sent.Select(Convert.ToHexString).Count(hex => hex == Hex(ShopPacket.Error(ShopError.s_shop_no_star_point_event))),
+                Is.EqualTo(bought ? 0 : 2));
+        });
+        return bought;
+    }
+
+    // A product paid in star points needs the event in any shop (CNpcShopProductCli::CheckStarPointEvent).
+    [Test]
+    public void StarPointProduct_NeedsTheEvent() {
+        GameSession session = StarShopLogin(ShopFrameType.Default, null);
+
+        Buy(session, StarPointProductId, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_shop_no_star_point_event)) }));
+        });
     }
 
     // The restock part the shop packet ends with (Shop.WriteTo): the cost's currency, the excess currency, the

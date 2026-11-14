@@ -80,4 +80,19 @@ public class ShopRulesTests {
         Assert.That(ShopRules.TrySellTotal(unitPrice, quantity, owned, out long total), Is.True);
         Assert.That(total, Is.EqualTo(expected));
     }
+
+    // IsStarPointEventActive: a running StarShop event whose npc is nonzero and known.
+    [TestCase(new int[0], ExpectedResult = false)]
+    [TestCase(new[] { 0 }, ExpectedResult = false)]
+    [TestCase(new[] { 2 }, ExpectedResult = false)]
+    [TestCase(new[] { 2, 1 }, ExpectedResult = true)]
+    public bool StarEventActive_NeedsAKnownNpc(int[] npcIds) => ShopRules.StarEventActive(npcIds, npcId => npcId == 1);
+
+    // The reset button: the reset on, type 99 not, the hide flag off.
+    [TestCase(true, ResetType.Day, false, ExpectedResult = true)]
+    [TestCase(false, ResetType.Day, false, ExpectedResult = false)]
+    [TestCase(true, ResetType.Unlimited, false, ExpectedResult = false)]
+    [TestCase(true, ResetType.Day, true, ExpectedResult = false)]
+    public bool CanInstantRestock_AsTheButton(bool enableReset, ResetType resetType, bool hidden) =>
+        ShopRules.CanInstantRestock(enableReset, resetType, hidden);
 }

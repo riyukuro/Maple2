@@ -357,8 +357,20 @@ public sealed class ShopManager {
         return characterShopItemData[shop.Id];
     }
 
+    // See ShopRules.StarEventActive: a star point shop, or a product paid in star points, needs a running StarShop
+    // event whose npc exists.
+    private bool StarEventOpen(ShopCurrencyType? cost = null) {
+        if (activeShop!.Metadata.FrameType != ShopFrameType.Star && cost != ShopCurrencyType.StarPoint) {
+            return true;
+        }
+        return ShopRules.StarEventActive(
+            session.FindEvent(GameEventType.StarShop).Select(gameEvent => gameEvent.Metadata.Data is StarShop starShop ? starShop.NpcId : 0),
+            npcId => session.NpcMetadata.TryGet(npcId, out _));
+    }
+
     public void InstantRestock() {
-        if (!ShopOpen() || activeShop.RestockData.DisableInstantRestock) {
+        if (!ShopOpen() || !ShopRules.CanInstantRestock(activeShop.Metadata.EnableReset, activeShop.RestockData.ResetType,
+                activeShop.RestockData.DisableInstantRestock)) {
             return;
         }
 
@@ -463,10 +475,10 @@ public sealed class ShopManager {
             case ResetType.Month:
                 return new DateTime(now.Year, now.Month, 1, 0, 0, 0).AddMonths(1).ToEpochSeconds();
             case ResetType.Unlimited:
-                return long.MaxValue;
+                return ShopRules.NoRestockTime;
             default:
                 logger.Error("Unknown restock interval {Interval}", metadata.RestockData.ResetType);
-                return long.MaxValue;
+                return ShopRules.NoRestockTime;
         }
     }
 
@@ -476,8 +488,8 @@ public sealed class ShopManager {
             ResetType.Day => DateTime.Now.AddDays(1).ToEpochSeconds(),
             ResetType.Week => DateTime.Now.AddDays(7).ToEpochSeconds(),
             ResetType.Month => DateTime.Now.AddMonths(1).ToEpochSeconds(),
-            ResetType.Unlimited => long.MaxValue,
-            _ => long.MaxValue,
+            ResetType.Unlimited => ShopRules.NoRestockTime,
+            _ => ShopRules.NoRestockTime,
         };
     }
 
@@ -485,6 +497,11 @@ public sealed class ShopManager {
     public void Buy(int shopItemId, int quantity, int shopId) {
         // The client names the shop of its window (UIShopDialog::SendPurchase); a buy for another shop is dropped.
         if (!ShopOpen() || shopId != activeShop.Id) {
+            return;
+        }
+
+        if (!StarEventOpen()) {
+            session.Send(ShopPacket.Error(ShopError.s_shop_no_star_point_event));
             return;
         }
 
@@ -496,6 +513,11 @@ public sealed class ShopManager {
 
         if (shopItem.Metadata.RestrictedBuyData?.CanBuy(DateTime.Now) == false) {
             session.Send(ShopPacket.Error(ShopError.s_err_invalid_item_cannot_buy_by_period));
+            return;
+        }
+
+        if (!StarEventOpen(shopItem.Metadata.Cost.Type)) {
+            session.Send(ShopPacket.Error(ShopError.s_shop_no_star_point_event));
             return;
         }
 
@@ -608,6 +630,11 @@ public sealed class ShopManager {
             return;
         }
 
+        if (!StarEventOpen()) {
+            session.Send(ShopPacket.Error(ShopError.s_shop_no_star_point_event));
+            return;
+        }
+
         // The bag lock is held from the room and meso checks to the meso take, so an item or meso change made under it
         // on another thread cannot come between them (the take would throw with the item given). The save comes after
         // the lock: a session save takes the account lock and then the bag lock, so this takes them in that order too.
@@ -659,6 +686,11 @@ public sealed class ShopManager {
 
         if (activeShop.Metadata.IsOnlySell) {
             session.Send(ShopPacket.Error(ShopError.s_msg_cant_sell_to_only_sell_shop));
+            return;
+        }
+
+        if (!StarEventOpen()) {
+            session.Send(ShopPacket.Error(ShopError.s_shop_no_star_point_event));
             return;
         }
 
