@@ -763,4 +763,25 @@ public class TradeHandlerTests {
             Assert.That(taker.Trade, Is.Null, $"round {round}");
         }
     }
+
+    // The client offers no item without transfer data (InvenSlot::TryAddToTrade, invenslot.cpp:1682); the server
+    // refuses it too and it stays in the bag. Before, such an item was taken as tradeable.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void AddItem_NoTransferDataStays(bool noTransfer) {
+        if (noTransfer) {
+            giver.Item.Inventory.Get(item.Uid)!.Transfer = null;
+        }
+
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(3);
+            writer.WriteInt(0);
+        });
+
+        Assert.Multiple(() => {
+            Assert.That(giver.Item.Inventory.Get(item.Uid) != null, Is.EqualTo(noTransfer));
+            Assert.That(takerTest.TakeSent(), noTransfer ? Is.Empty : Is.Not.Empty);
+        });
+    }
 }

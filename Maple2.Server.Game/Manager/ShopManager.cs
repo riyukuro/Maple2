@@ -666,6 +666,17 @@ public sealed class ShopManager {
         if (item == null) {
             return;
         }
+        // The client sells no summoned pet (RequestSellItem, itemugcmesh.cpp:1091, its own notice
+        // s_err_cannot_sell_petitem_summon) and no score being played (UIShopDialog::CanSellItem, uishopdialog.cpp:2099,
+        // s_play_instrument_cant_destory_score): both stay in the bag while in use.
+        if (session.Pet?.Pet.Uid == item.Uid) {
+            session.Send(ShopPacket.Error(ShopError.s_err_cannot_sell_petitem_summon));
+            return;
+        }
+        if (session.Instrument?.Score?.Uid == item.Uid) {
+            session.Send(ShopPacket.Error(ShopError.s_err_cannot_sell_item, 5));
+            return;
+        }
 
         bool hasGem = item.Socket?.Sockets.Any(gem => gem != null && gem.ItemId != 0) ?? false;
         if (!ShopRules.CanSell(item.Metadata.Limit.ShopSell, item.IsLocked, item.UnlockTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), hasGem) || SurvivalItemRules.IsMatchOnly(item.Metadata)) {

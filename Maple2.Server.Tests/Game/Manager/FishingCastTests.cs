@@ -43,4 +43,27 @@ public class FishingCastTests {
         session.Field = (FieldManager) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager));
         Assert.That(session.Fishing.Catch(true), Is.EqualTo(FishingError.s_fishing_error_system_error));
     }
+
+    // Fishing 0 names the rod; the client starts it from the item use (itemfunctiondispatch.cpp:1326) after the item
+    // use checks, so an expired rod (or one of another gender, job, level) gets the invalid item answer. Before, an
+    // expired rod fished.
+    [TestCase(false, ExpectedResult = FishingError.s_fishing_error_notexist_fish)]
+    [TestCase(true, ExpectedResult = FishingError.s_fishing_error_invalid_item)]
+    public FishingError Prepare_AnExpiredRodIsRefused(bool expired) {
+        var test = new TestGameSession();
+        test.SetTable(new FishingRodTable(new Dictionary<int, FishingRodTable.Entry> { [1] = new(32000001, 0, 0, 0) }));
+        test.SetServerTable(new FishTable(new Dictionary<int, FishTable.Fish>(), new Dictionary<int, FishTable.Spot>(),
+            new Dictionary<int, IReadOnlyDictionary<short, FishTable.Lure>>(), new Dictionary<int, FishTable.FishBox>(),
+            new Dictionary<int, FishTable.FishBox>()));
+        var stored = test.Store(TestGameSession.Metadata(32000001, type: 1, slotMax: 1,
+            function: new ItemMetadataFunction(ItemFunction.FishingRod, "FishingRod", "1", false)));
+        GameSession session = test.Start();
+        typeof(FieldManager).GetField("<AccelerationStructure>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.Field, new Maple2.Model.Game.Field.FieldAccelerationStructure());
+        session.Fishing = new FishingManager(session, test.TableMetadata, test.ServerTableMetadata);
+        if (expired) {
+            session.Item.Inventory.Get(stored.Uid)!.ExpiryTime = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds();
+        }
+        return session.Fishing.Prepare(stored.Uid);
+    }
 }

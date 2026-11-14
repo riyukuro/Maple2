@@ -204,7 +204,12 @@ public class TradeManager : IDisposable {
                     return;
                 }
                 if (SurvivalItemRules.IsMatchOnly(offered.Metadata)) { Refused(caller, offered, "survival match item"); return; }
-                if (offered.Transfer != null && !TradeRules.IsTradeable(offered.Transfer.Flag, offered.Transfer.RemainTrades, offered.Transfer.Binding != null)) {
+                // An item without transfer data is not offered either (TryAddToTrade, invenslot.cpp:1682).
+                if (offered.Transfer == null) {
+                    Refused(caller, offered, "no transfer data");
+                    return;
+                }
+                if (!TradeRules.IsTradeable(offered.Transfer.Flag, offered.Transfer.RemainTrades, offered.Transfer.Binding != null)) {
                     Refused(caller, offered, $"transfer {offered.Transfer.Flag}, {offered.Transfer.RemainTrades} trades left, bound {offered.Transfer.Binding != null}");
                     return;
                 }

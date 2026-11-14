@@ -7,6 +7,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Tools;
@@ -110,6 +111,12 @@ public class FishingManager {
         }
         // A PC bang rod only at a PC bang (CanUseBait; the client sends nothing then).
         if (session.PcBang.Refuses(rodItem)) {
+            return FishingError.s_fishing_error_invalid_item;
+        }
+        // The rod is used as an item (the FishingRod function, itemfunctiondispatch.cpp:1326), which the client starts
+        // only after the item use checks (invenslot.cpp:852, FUN_14140dea0): an expired rod, one of another job or
+        // gender, above the level, a PC bang or premium-club rod without them sends no Fishing 0.
+        if (!ItemUseHandler.UseAllowed(session, rodItem)) {
             return FishingError.s_fishing_error_invalid_item;
         }
         if (!int.TryParse(rodItem.Metadata.Function?.Parameters, out int rodCode) || !tableMetadata.FishingRodTable.Entries.TryGetValue(rodCode, out FishingRodTable.Entry? rodMetadata)) {

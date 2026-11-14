@@ -31,7 +31,11 @@ public class StateSkillHandler : FieldPacketHandler {
         long itemUid = packet.ReadLong();
 
         // A state skill not taken is answered with SkillUseFailed 6, so the client leaves the state it entered.
-        if (itemUid != 0 && session.Item.Inventory.Get(itemUid) == null) {
+        // The item is the quick slot's (CSkillSystem::FUN_141764e30, skillslot.cpp:2092): one the player holds at a
+        // level the item allows; a glide takes only a glider (FUN_14176a8c0, skillslot.cpp:3155: the item's glide id,
+        // CItemData::GetGlideItemId, is 0 for an item not of type 5 and has no glide data).
+        Item? item = itemUid != 0 ? session.Item.Inventory.Get(itemUid) : null;
+        if (itemUid != 0 && !StateItemAllowed(item, state, session.Player.Value.Character.Level)) {
             Refuse(session, skillCastUid, skillId, state, null);
             return; // Invalid item
         }
@@ -60,6 +64,15 @@ public class StateSkillHandler : FieldPacketHandler {
         cast.StateNextTick = SkillCastRules.NextStateTick(session.Field.FieldTick);
         session.Player.ActiveSkills.Add(cast, session.Field.FieldTick, SkillHitRules.CastKeepMs(metadata, session.Field.TableMetadata.MagicPathTable.Entries));
         session.Field.Broadcast(SkillPacket.StateSkill(session.Player, skillId, skillCastUid));
+    }
+
+    public const int GliderType = 5;
+
+    public static bool StateItemAllowed(Item? item, ActorState state, short level) {
+        if (item == null || item.Metadata.Limit.Level > level) {
+            return false;
+        }
+        return state != ActorState.Glide || item.Metadata.Property.Type == GliderType;
     }
 
     private static void Refuse(GameSession session, long castUid, int skillId, ActorState state, SkillMetadata? metadata, SkillCooldown? blocking = null) {

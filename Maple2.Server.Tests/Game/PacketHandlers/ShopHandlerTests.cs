@@ -972,4 +972,39 @@ public class ShopHandlerTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(300000));
         Assert.That(session.Currency[CurrencyType.Treva], Is.EqualTo(990));
     }
+
+    // The client sells no summoned pet (RequestSellItem, its notice s_err_cannot_sell_petitem_summon) and no score
+    // being played (UIShopDialog::CanSellItem); the server refuses both, the item stays and no meso is paid. Before,
+    // both were sold while in use.
+    [TestCase("none", ExpectedResult = true)]
+    [TestCase("pet", ExpectedResult = false)]
+    [TestCase("score", ExpectedResult = false)]
+    public bool Sell_AnItemInUseIsRefused(string inUse) {
+        GameSession session = Login();
+        Item held = session.Item.Inventory.Get(bagItem.Uid)!;
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+        if (inUse == "pet") {
+            var fieldPet = (FieldPet) RuntimeHelpers.GetUninitializedObject(typeof(FieldPet));
+            typeof(FieldPet).GetField(nameof(FieldPet.Pet), any)!.SetValue(fieldPet, held);
+            var manager = (PetManager) RuntimeHelpers.GetUninitializedObject(typeof(PetManager));
+            typeof(PetManager).GetField("pet", any)!.SetValue(manager, fieldPet);
+            session.Pet = manager;
+        } else if (inUse == "score") {
+            var instrument = (FieldInstrument) RuntimeHelpers.GetUninitializedObject(typeof(FieldInstrument));
+            instrument.Score = held;
+            session.Instrument = instrument;
+        }
+
+        Sell(session, bagItem.Uid, 5);
+
+        bool sold = session.Item.Inventory.Get(bagItem.Uid) == null;
+        Assert.That(session.Currency.Meso, Is.EqualTo(sold ? 10000 + 350 : 10000));
+        if (inUse == "pet") {
+            Assert.That(test.TakeSent().Select(packet => Convert.ToHexString(packet)),
+                Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_cannot_sell_petitem_summon)) }));
+        }
+        session.Pet = null;
+        session.Instrument = null;
+        return sold;
+    }
 }
