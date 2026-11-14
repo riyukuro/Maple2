@@ -271,7 +271,9 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     JobLimits: data.limit.jobLimit.Select(job => (JobCode) job).ToArray(),
                     JobRecommends: data.limit.recommendJobs.Select(job => (JobCode) job).ToArray(),
                     // CItemData reads <PCBang PCBang="..."/> as a bool (itemdata.cpp:375).
-                    RequirePcBang: (data.PCBang?.PCBangValue ?? 0) != 0
+                    RequirePcBang: (data.PCBang?.PCBangValue ?? 0) != 0,
+                    // ItemLimit::disableJobLimit, read by ItemLimit::IsJobAllowed (itemdatastruct.cpp:694); null when empty.
+                    DisableJobLimits: data.limit.disableJobLimit.Length == 0 ? null : data.limit.disableJobLimit.Select(job => (JobCode) job).ToArray()
                 ),
                 Skill: skill,
                 Function: function,

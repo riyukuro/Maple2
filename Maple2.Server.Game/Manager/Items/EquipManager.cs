@@ -448,8 +448,8 @@ public class EquipManager {
 
     // The client's checks before it sends an equip (Unk_Inventory::RequestEquipItem, inventory.cpp:1242, through
     // GetItemUseError and GetItemRequirementError, :1578-1601), in its order: an expired item (a maid furnishing
-    // excepted), a PC bang item away from a PC bang, the gender (CItemData::IsGenderAllowed: 2 is either, notice
-    // s_err_gender), the job (ItemLimit::IsJobAllowed: a beginner counts as a knight, a list naming job 0 or the
+    // excepted; the shared expiry check also excepts a pet, item type 11, which has no equip slot), a PC bang item away from a PC bang, the gender (CItemData::IsGenderAllowed: 2 is either, notice
+    // s_err_gender), the job (ItemLimit::IsJobAllowed: a job in disableJobLimit is refused, a beginner counts as a knight, a list naming job 0 or the
     // beginner allows all), the level, a premium-club item without premium club, a wedding item unless married (also
     // with a divorce filed, WeddingManager::IsInProgress). The premium-club and wedding refusals are by-key strings with
     // no code to send, so a packet the client would not send gets s_item_err_puton for them. A binding to another
@@ -467,7 +467,7 @@ public class EquipManager {
         if (limit.Gender != Gender.All && limit.Gender != character.Gender) {
             return StringCode.s_err_gender;
         }
-        if (!ItemUseHandler.JobAllowed(limit.JobLimits, character.Job.Code())) {
+        if (!ItemUseHandler.JobAllowed(limit, character.Job.Code())) {
             return StringCode.s_item_err_puton_job;
         }
         if (limit.Level > character.Level) {

@@ -222,7 +222,7 @@ public class ItemEquipHandlerTests {
 
     // The client's equip checks (RequestEquipItem, inventory.cpp:1242) refuse an item of the other gender, a
     // premium-club item without premium club, a wedding item unless married, an item of another job and an expired one
-    // (a pet or a maid furnishing excepted); the server refuses such a packet too, the item stays in the bag and nothing
+    // (a maid furnishing excepted); the server refuses such a packet too, the item stays in the bag and nothing
     // is worn. Before, the gender, premium-club and wedding items were worn, and a beginner's or an all-jobs list item
     // was refused.
     private TestGameSession Start(ItemMetadata metadata, out Item item, Action<GameSession>? setup = null) {

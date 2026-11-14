@@ -55,7 +55,7 @@ public class ItemUseHandler : FieldPacketHandler {
         if (limit.Gender != Gender.All && limit.Gender != character.Gender) {
             return false;
         }
-        if (!JobAllowed(limit.JobLimits, character.Job.Code())) {
+        if (!JobAllowed(limit, character.Job.Code())) {
             return false;
         }
         if (limit.Level > character.Level) {
@@ -77,16 +77,19 @@ public class ItemUseHandler : FieldPacketHandler {
     public static bool DeadMayUse(ItemFunction? function) =>
         function is ItemFunction.OpenItemBox or ItemFunction.OpenItemBoxLullu or ItemFunction.OpenItemBoxLulluSimple;
 
-    // ItemLimit::IsJobAllowed (@0x140545c80): no job is allowed nothing, a beginner counts as a
-    // knight, and a limit list that is empty or names job 0 or the beginner allows every job.
-    public static bool JobAllowed(JobCode[] limits, JobCode job) {
-        if (job == JobCode.None) {
+    // ItemLimit::IsJobAllowed (@0x140545c80, itemdatastruct.cpp:690): no job is allowed nothing, a job in
+    // disableJobLimit is refused (tested before a beginner counts as a knight: KR's 7 items with the list name the
+    // beginner), then a beginner counts as a knight, and a limit list that is empty or names job 0 or the beginner
+    // allows every job.
+    public static bool JobAllowed(ItemMetadataLimit limit, JobCode job) {
+        if (job == JobCode.None || limit.DisableJobLimits?.Contains(job) == true) {
             return false;
         }
         if (job == JobCode.Newbie) {
             job = JobCode.Knight;
         }
-        return limits.Length == 0 || limits.Any(limit => limit is JobCode.None or JobCode.Newbie || limit == job);
+        JobCode[] limits = limit.JobLimits;
+        return limits.Length == 0 || limits.Any(entry => entry is JobCode.None or JobCode.Newbie || entry == job);
     }
 
     public override void Handle(GameSession session, IByteReader packet) {

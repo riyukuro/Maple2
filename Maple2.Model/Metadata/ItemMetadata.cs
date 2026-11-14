@@ -105,7 +105,8 @@ public record ItemMetadataLimit(
     int GlamorForgeCount,
     JobCode[] JobLimits,
     JobCode[] JobRecommends,
-    bool RequirePcBang = false); // <PCBang PCBang="1"/>, client ItemData::IsPCBangItem
+    bool RequirePcBang = false, // <PCBang PCBang="1"/>, client ItemData::IsPCBangItem
+    JobCode[]? DisableJobLimits = null); // <limit disableJobLimit="..."/>: jobs refused whatever JobLimits says
 
 public record ItemMetadataSkill(
     int Id,
