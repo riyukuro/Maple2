@@ -1018,8 +1018,11 @@ public class FieldPlayer : Actor<Player> {
             return false;
         }
 
-        if (metadata.Data.Consume.Meso > 0) {
-            Session.Currency.ChangeMeso(-metadata.Data.Consume.Meso);
+        // Checked above, taken here in one step before any other cost: the cast runs on the field's thread, and a
+        // take on the session's thread in between refuses the cast as the check would have.
+        if (metadata.Data.Consume.Meso > 0 && !Session.Currency.TryTakeMeso(metadata.Data.Consume.Meso)) {
+            Logger.Error("Not enough meso to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
+            return false;
         }
         PayCastStats(spiritCost, staminaCost);
         if (hpToConsume > 0) {
