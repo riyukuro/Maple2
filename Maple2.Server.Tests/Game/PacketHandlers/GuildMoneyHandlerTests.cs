@@ -448,4 +448,22 @@ public class GuildMoneyHandlerTests {
 
         Assert.That(Hex(GuildPacket.NotifyUpdateEmblem("Leader", "emblem")), Is.EqualTo(Hex(expected)));
     }
+
+    // Guild 74 (u8, i64 last match time) and 75 (u8 alone) are answered only while GuildChampionship is on; with it
+    // off the client has no PvP history page and both requests are dropped.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void PvpRequests_FollowTheFeature(bool featureOn) {
+        Join();
+        if (!featureOn) {
+            test.SetFeaturesOff(GuildHandler.PvpFeature);
+        }
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(74);
+            writer.WriteLong(0);
+        }));
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(75)));
+
+        Assert.That(GuildAnswers(), Has.Length.EqualTo(featureOn ? 2 : 0));
+    }
 }

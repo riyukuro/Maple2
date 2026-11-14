@@ -789,11 +789,19 @@ public class GuildHandler : PacketHandler<GameSession> {
         session.Send(GuildPacket.SendMail());
     }
 
+    // The client asks for the history and the season only from the PvP history page (UIGuildDialog::CreatePvpHistoryPage),
+    // which needs IsGuildChampionshipOpen; GameEventGuildChampionship::OnStart (gameevent.cpp:3109) opens it only with
+    // GuildChampionship (id 0x110) on. With the feature off both requests are dropped.
+    public const string PvpFeature = "GuildChampionship";
+
     // CGuildManager::RequestPvpHistoryAndSeason (guildmanager.cpp:1144): sent when the guild PvP tab opens,
     // with the end time (fb8) of the newest match the client holds; the client adds the rows it gets, so only
     // the guild's matches after that time are sent.
     private void HandlePvpHistory(GameSession session, IByteReader packet) {
         long lastTime = packet.ReadLong();
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(PvpFeature)) {
+            return;
+        }
         Guild? guild = session.Guild.Guild;
         if (guild == null) {
             return; // Not in a guild.
@@ -805,6 +813,9 @@ public class GuildHandler : PacketHandler<GameSession> {
     // CGuildManager::RequestPvpHistoryAndSeason (guildmanager.cpp:1152): no body; sent once per login, after
     // the history request. Until the answer comes the client does not draw the season part of the tab.
     private void HandlePvpSeason(GameSession session) {
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(PvpFeature)) {
+            return;
+        }
         Guild? guild = session.Guild.Guild;
         if (guild == null) {
             return; // Not in a guild.
