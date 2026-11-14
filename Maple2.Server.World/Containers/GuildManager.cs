@@ -5,6 +5,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Server.Channel.Service;
 using Maple2.Tools.Extensions;
@@ -322,11 +323,17 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
-    // The guild exp after a gain: a running GuildExp event adds its share (the highest rate when several run), and
-    // the exp stops at int.MaxValue.
+    // The guild exp after a gain: a running GuildExp event adds its share, and the exp stops at int.MaxValue. When
+    // several run, the one that started last gives the rate: the client keeps one rate, set by each GuildExp event as
+    // it starts (GameEventGuildExp::OnStart -> CGameEventValueGuildExp::SetRate), and the guild dialog shows that one.
+    // (The client also clears it when any of them ends; the server keeps the rate of the ones still running.)
     private int AddExp(int experience, int gain) {
-        int rate = EventSaleRules.HighestRate(ServerTableMetadata.GetGameEvents()
-            .Where(gameEvent => gameEvent.Metadata.Type == GameEventType.GuildExp && gameEvent.IsActive(DateTime.Now)));
+        GameEvent? latest = ServerTableMetadata.GetGameEvents()
+            .Where(gameEvent => gameEvent.Metadata.Type == GameEventType.GuildExp && gameEvent.IsActive(DateTime.Now))
+            .OrderByDescending(gameEvent => gameEvent.Metadata.StartTime)
+            .ThenByDescending(gameEvent => gameEvent.Id)
+            .FirstOrDefault();
+        int rate = latest?.Metadata.Data is EventRate eventRate ? eventRate.Rate : 0;
         long total = (long) experience + Math.Max(gain, 0) + EventSaleRules.EventBonus(gain, rate);
         return (int) Math.Min(total, int.MaxValue);
     }

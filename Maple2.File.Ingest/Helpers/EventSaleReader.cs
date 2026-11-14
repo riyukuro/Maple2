@@ -54,8 +54,8 @@ public static class EventSaleReader {
 
     // value1 the kinds (1 a capture, 2 the rest), value2 their rates (GameEventPetMastery::vfunc_2,
     // commonfiles/gameevent.cpp:4019): lists of one length, the last place of a kind counts, other kinds are left out.
-    // Lists that differ, a place that is not a number or no positive rate give no event (the client's would add
-    // nothing).
+    // Lists that differ, a place that is not a number, a negative rate or no positive rate give no event (the client's
+    // would add nothing, or take exp away).
     public static PetMastery? PetMastery(string? value1, string? value2) {
         string[] kinds = Split(value1);
         string[] rates = Split(value2);
@@ -75,7 +75,10 @@ public static class EventSaleReader {
                 other = rate;
             }
         }
-        return capture > 0 || other > 0 ? new PetMastery(Math.Max(capture, 0), Math.Max(other, 0)) : null;
+        if (capture < 0 || other < 0) {
+            return null;
+        }
+        return capture > 0 || other > 0 ? new PetMastery(capture, other) : null;
     }
 
     // value1: the bonus (GameEventFindDungeonHelperBonus, commonfiles/gameevent.cpp:4560).

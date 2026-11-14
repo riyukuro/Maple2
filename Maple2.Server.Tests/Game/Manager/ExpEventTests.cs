@@ -88,6 +88,8 @@ public class ExpEventTests {
             Assert.That(EventSaleReader.PetMastery("1", "x"), Is.Null);
             Assert.That(EventSaleReader.PetMastery("3", "10000"), Is.Null);
             Assert.That(EventSaleReader.PetMastery("1", "0"), Is.Null);
+            Assert.That(EventSaleReader.PetMastery("1,2", "5000,-100"), Is.Null); // a negative rate drops the row
+            Assert.That(EventSaleReader.PetMastery("1,1", "-100,5000"), Is.EqualTo(new PetMastery(5000, 0))); // overridden
         });
     }
 

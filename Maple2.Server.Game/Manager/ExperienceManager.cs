@@ -324,6 +324,9 @@ public sealed class ExperienceManager {
     private void GainPrestigeExp(long amount) {
         // A running AdventureLevelBonusExpRate event adds its share; the client names the gain with the event's text
         // (s_msg_take_event_additional) while the event runs. The highest rate counts (the client's rate map).
+        // The bonus is added before the daily factor below: the client has no part of this sum (the server sends the
+        // total), so the order is the server's choice; the event then widens the gain the factor sees, as a bigger
+        // gain would.
         amount += EventSaleRules.EventBonus(amount, EventSaleRules.HighestRate(session.FindEvent(GameEventType.AdventureLevelBonusExpRate)));
         // The day's first level's worth counts in full, the rest at AdventureLevelFactor (a gain that crosses it is split).
         long gainedToday = PrestigeCurrentExp - PrestigeExp + (PrestigeLevelsGained * (long) Constants.AdventureLevelLvUpExp);

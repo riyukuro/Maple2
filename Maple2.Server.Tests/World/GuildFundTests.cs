@@ -380,7 +380,8 @@ public class GuildFundTests {
         var events = new Dictionary<int, GameEventMetadata>();
         foreach ((int rate, bool over) in rates) {
             int id = 20180 + events.Count;
-            events[id] = new GameEventMetadata(id, GameEventType.GuildExp, DateTime.Now.AddDays(over ? -9 : -1),
+            // Each later row starts a minute later.
+            events[id] = new GameEventMetadata(id, GameEventType.GuildExp, DateTime.Now.AddDays(over ? -9 : -1).AddMinutes(events.Count),
                 DateTime.Now.AddDays(over ? -2 : 1), TimeSpan.Zero, TimeSpan.Zero, [], new EventRate(rate), "", "", "", "");
         }
         test.SetServerTable(new GameEventTable(events));
@@ -401,8 +402,18 @@ public class GuildFundTests {
         Assert.That((guild.Experience, db.GetGuild(guild.Id)!.Experience), Is.EqualTo((exp, exp)));
     }
 
+    // The rate is the one of the event that started last, as the client's single rate (the guild dialog shows it).
     [Test]
-    public void AddExpFund_GuildExpEvent_HighestRateAndTheAddedExp() {
+    public void AddExpFund_GuildExpEvent_TheLastStartedRateCounts() {
+        SetGuildExpEvents((10000, false), (2500, false));
+
+        Assert.That(manager.AddExpFund(member.CharacterId, 40, 0, out int addedExp, out _), Is.EqualTo(GuildError.none));
+
+        Assert.That((addedExp, guild.Experience), Is.EqualTo((50, 50)));
+    }
+
+    [Test]
+    public void AddExpFund_GuildExpEvent_LastStartedRunningRateAndTheAddedExp() {
         SetGuildExpEvents((2500, false), (10000, false), (30000, true));
 
         Assert.That(manager.AddExpFund(member.CharacterId, 40, 0, out int addedExp, out int addedFund), Is.EqualTo(GuildError.none));
