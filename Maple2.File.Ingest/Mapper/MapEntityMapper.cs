@@ -221,7 +221,7 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                             case IMS2BreakableActor breakable:
                                 int.TryParse(breakable.additionGlobalDropBoxId, out int globalDropBoxId);
                                 yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                    Block = new BreakableActor(actor.IsVisible, (int) breakable.TriggerBreakableID, breakable.hideTimer, breakable.resetTimer, globalDropBoxId, breakable.Position, breakable.Rotation),
+                                    Block = new BreakableActor(actor.IsVisible, (int) breakable.TriggerBreakableID, breakable.hideTimer, breakable.resetTimer, globalDropBoxId, breakable.Position, breakable.Rotation, breakable.moveTimeOffset),
                                 };
                                 continue;
                         }

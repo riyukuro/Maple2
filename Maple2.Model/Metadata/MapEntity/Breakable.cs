@@ -20,5 +20,6 @@ public record BreakableActor(
     int ResetTime,
     int GlobalDropBoxId,
     Vector3 Position,
-    Vector3 Rotation)
+    Vector3 Rotation,
+    float MoveTimeOffset = 0)
 : MapBlock;

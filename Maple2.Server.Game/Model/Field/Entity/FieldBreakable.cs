@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 
@@ -20,6 +21,11 @@ public class FieldBreakable : FieldEntity<BreakableActor> {
     // (breakableobject.cpp:391). The client starts moving (m_nSyncA = 1, breakableobject.cpp:137).
     public bool Moving { get; private set; } = true;
     public int FreezeTick { get; private set; }
+    // The packet's added time (m_nSyncB): the client adds it to the cycle's clock (nTime, breakableobject.cpp:382).
+    // Each restart takes the time it stood stopped off it, so the platform goes on from where it stopped instead of
+    // jumping ahead by the stopped time (mod the cycle).
+    public int AddedTime { get; private set; }
+    private int stoppedAt;
     // The entity's moveTimeOffset in ms: the client adds it to the server tick of the cycle (breakableobject.cpp:382).
     private readonly int moveTimeOffset;
 
@@ -30,14 +36,22 @@ public class FieldBreakable : FieldEntity<BreakableActor> {
     }
 
     // set_breakable: starts or stops the move cycle. A stop freezes the cycle where it is now on the client's clock
-    // (the server tick it got from TimeSync plus the offset).
-    public bool SetMoving(bool moving) {
+    // (the server tick it got from TimeSync plus the offset and the added time); a start resumes it from there.
+    public bool SetMoving(bool moving) => SetMoving(moving, Environment.TickCount);
+
+    public bool SetMoving(bool moving, int now) {
         if (Moving == moving) {
             return false;
         }
 
         Moving = moving;
-        FreezeTick = moving ? 0 : Environment.TickCount + moveTimeOffset;
+        if (moving) {
+            AddedTime = BreakableCycle.Resume(AddedTime, stoppedAt, now);
+            FreezeTick = 0;
+        } else {
+            stoppedAt = now;
+            FreezeTick = BreakableCycle.Clock(now, moveTimeOffset, AddedTime);
+        }
         Field.Broadcast(BreakablePacket.Update(this));
         return true;
     }

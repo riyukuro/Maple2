@@ -435,7 +435,7 @@ public partial class FieldManager {
     // broken by the triggers and by hits the same way, keyed by their entity id as the client names them.
     public void AddMapBreakables() {
         foreach ((Guid guid, BreakableActor breakable) in Entities.BreakableActors) {
-            AddBreakable(guid.ToString("N"), breakable);
+            AddBreakable(guid.ToString("N"), breakable, (int) MathF.Round(breakable.MoveTimeOffset * 1000));
         }
         foreach ((Guid guid, Breakable breakable) in Entities.Breakables) {
             AddBreakable(guid.ToString("N"), new BreakableActor(breakable.Visible, breakable.Id, breakable.HideTime, breakable.ResetTime,

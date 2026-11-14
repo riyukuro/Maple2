@@ -835,8 +835,13 @@ public class TriggerFieldStateTests : TriggerTestBase {
 
         Action("""<action name="set_breakable" trigger_ids="7001" enable="1" />""");
         ByteReader moving = Sent(SendOp.Breakable).Single();
-        Assert.That((moving.ReadByte(), moving.ReadString(), moving.ReadByte(), moving.ReadBool(), moving.ReadInt(), moving.ReadInt()),
-            Is.EqualTo(((byte) 1, "bb", (byte) BreakableState.Hide, true, 0, 0)));
+        Assert.That((moving.ReadByte(), moving.ReadString(), moving.ReadByte(), moving.ReadBool()),
+            Is.EqualTo(((byte) 1, "bb", (byte) BreakableState.Hide, true)));
+        // The added time takes the stopped span off (BreakableCycle.Resume): at most 0, and the freeze point is cleared.
+        int added = moving.ReadInt();
+        Assert.That(added, Is.EqualTo(breakable.AddedTime));
+        Assert.That(added, Is.InRange(-5000, 0));
+        Assert.That(moving.ReadInt(), Is.EqualTo(0));
     }
 
     // set_visible_breakable_object (1164): the named breakables take the flag, sent in one batch (0) of each with

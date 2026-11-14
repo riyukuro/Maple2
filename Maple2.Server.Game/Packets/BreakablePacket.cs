@@ -34,12 +34,12 @@ public static class BreakablePacket {
 
     // name, state, the move flag, a time added to the move cycle and the cycle point a stopped one holds
     // (CSceneStateGame::OnBreakable, scenestategame.cpp:3667; CBreakableObject::Update, breakableobject.cpp:382-392).
-    // The added time is 0: the cycle runs on the server tick the client already has.
+    // The added time takes the stopped spans out of the cycle (FieldBreakable.AddedTime).
     private static void WriteBreakable(ByteWriter pWriter, FieldBreakable breakable) {
         pWriter.WriteString(breakable.EntityId);
         pWriter.WriteByte((byte) breakable.State);
         pWriter.WriteBool(breakable.Moving);
-        pWriter.WriteInt(0);
+        pWriter.WriteInt(breakable.AddedTime);
         pWriter.WriteInt(breakable.FreezeTick);
     }
 }

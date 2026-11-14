@@ -56,4 +56,22 @@ public class BreakableRulesTests {
         breakable.SetVisible(false);
         Assert.That(BreakableRules.CanBreak(breakable.State), Is.True);
     }
+
+    // KR 02000011_bf: the lever holds its platform 30 s on a 20 s cycle. Stopped at tick 100000 with offset 2000,
+    // the client holds clock 102000; restarted at 130000 the added time is -30000, so the clock goes on from 102000
+    // instead of jumping to 132000 (10 s further along the path).
+    [Test]
+    public void Cycle_ARestartGoesOnFromTheStop() {
+        int frozen = BreakableCycle.Clock(100000, 2000, 0);
+        int added = BreakableCycle.Resume(0, 100000, 130000);
+        Assert.Multiple(() => {
+            Assert.That(frozen, Is.EqualTo(102000));
+            Assert.That(added, Is.EqualTo(-30000));
+            Assert.That(BreakableCycle.Clock(130000, 2000, added), Is.EqualTo(frozen));
+            // A second stop and start add up.
+            Assert.That(BreakableCycle.Resume(added, 140000, 145000), Is.EqualTo(-35000));
+            // The tick wraps as the client's unsigned clock does.
+            Assert.That(BreakableCycle.Clock(int.MaxValue, 1, 0), Is.EqualTo(int.MinValue));
+        });
+    }
 }
