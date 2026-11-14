@@ -261,6 +261,35 @@ public class FittingDollDestroyTests {
         AssertKept();
     }
 
+    private List<string> TakeOff() {
+        new FittingDollHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(7);
+            writer.WriteLong(doll.Uid);
+            writer.WriteByte((byte) EquipSlot.CL);
+        }));
+        return test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.FittingDoll).Select(Convert.ToHexString).ToList();
+    }
+
+    // A take-off (mode 7) of an item whose gem is bound to another character is refused as the client refuses it
+    // (FUN_140a66200 kind 2), whether the gem's character is in the account or not; a free gem is no binding.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void TakeOff_GemBoundToAnotherCharacter_IsRefused(bool inAccount) {
+        Start(() => 0, () => [NewCharacter(inAccount ? test.AccountId : OtherAccount)]);
+        Assert.That(TakeOff(), Is.EqualTo(new[] { Error(0x12) }));
+        AssertKept();
+    }
+
+    [Test]
+    public void TakeOff_OwnOrFreeGems_TakesTheItem() {
+        Start(() => test.CharacterId, () => [0, test.CharacterId]);
+        Assert.That(TakeOff(), Is.EqualTo(new[] { PutOff() }));
+        Assert.Multiple(() => {
+            Assert.That(doll.Items, Is.Empty);
+            Assert.That(Row(top.Uid)?.Owner, Is.EqualTo(test.CharacterId));
+        });
+    }
+
     [Test]
     public void SecondDestroyOfTheSameItemIsRefused() {
         Start(() => NewCharacter(OtherAccount));

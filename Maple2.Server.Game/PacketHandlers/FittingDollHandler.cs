@@ -292,8 +292,11 @@ public class FittingDollHandler : FieldPacketHandler {
                 if (!doll.Items.TryGetValue(slot, out Item? item)) {
                     return FittingDollRules.Error.InvalidItem;
                 }
-                // Another character of the account may not take an item bound to the character that put it on.
-                if (FittingDollRules.BoundToOther(item.Transfer?.Binding, session.CharacterId)) {
+                // Another character of the account may not take an item bound to the character that put it on, nor
+                // one with an unlocked gem bound to another character: the client takes off neither (FUN_140a66200,
+                // inventory.cpp:1661, through FittingDollRules.BindingOwner). It lets a gemless skin through only while
+                // a TransferItemBound game event sets CGameRule::m_transferItemBound, which the server never sends.
+                if (FittingDollRules.BindingOwner(item, session.CharacterId).CharacterId != 0) {
                     return FittingDollRules.Error.InvalidBinding;
                 }
                 // The client refuses a take-off into a full inventory the same way (FittingDollPC::FUN_14121c9d0).
