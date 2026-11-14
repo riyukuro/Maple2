@@ -43,6 +43,19 @@ public static partial class ClientPriceConstants {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
+    // Prices the client defines in code (Client::Constants, its Define calls) and keeps when its table/constants.xml
+    // has no row that passes the locale and feature filter. The server pack's row must not win there: the KR client
+    // table has no MeratAirTaxiPrice row, so the world map's box asks 390 merets while the server pack's KR row says 90.
+    // Only a price key the server pack sets and the client table lacks needs an entry here (KR packs: this one).
+    private static readonly (string Key, string Value)[] ClientBuiltIn = [
+        ("MeratAirTaxiPrice", "390"),
+    ];
+
+    // The client's price values: its built-in ones, replaced by its table's rows (in file order, filtered).
+    public static Dictionary<string, string> SelectClient(IEnumerable<(string Key, string Value)> rows) {
+        return Select(ClientBuiltIn.Concat(rows));
+    }
+
     // rows: (key, value) in file order, already filtered by locale and feature. A later row replaces an earlier one.
     public static Dictionary<string, string> Select(IEnumerable<(string Key, string Value)> rows) {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

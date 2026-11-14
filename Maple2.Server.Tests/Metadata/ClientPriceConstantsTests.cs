@@ -99,6 +99,24 @@ public class ClientPriceConstantsTests {
         Assert.That(smaller.Single().ServerValue, Is.EqualTo("20"));
     }
 
+    // The meret air taxi: the KR client table has no row, so the client asks its built-in 390 (the server pack's KR
+    // row is 90); a client row, where a table has one, wins over the built-in value.
+    [Test]
+    public void SelectClient_BuiltInPriceWinsOverTheServerPack() {
+        List<ClientPriceConstants.Override> noRow = ClientPriceConstants.Differences(
+            ClientPriceConstants.Select([("MeratAirTaxiPrice", "90")]), ClientPriceConstants.SelectClient([("MaxChatLength", "100")]));
+        Assert.That(noRow.Single().Key, Is.EqualTo("MeratAirTaxiPrice"));
+        Assert.That(noRow.Single().ClientValue, Is.EqualTo("390"));
+        Assert.That(noRow.Single().ServerValue, Is.EqualTo("90"));
+
+        List<ClientPriceConstants.Override> clientRow = ClientPriceConstants.Differences(
+            ClientPriceConstants.Select([("MeratAirTaxiPrice", "90")]), ClientPriceConstants.SelectClient([("MeratAirTaxiPrice", "15")]));
+        Assert.That(clientRow.Single().ClientValue, Is.EqualTo("15"));
+
+        Assert.That(ClientPriceConstants.Differences(
+            ClientPriceConstants.Select([("MeratAirTaxiPrice", "390")]), ClientPriceConstants.SelectClient([])), Is.Empty);
+    }
+
     [Test]
     public void Select_LaterRowReplacesEarlier() {
         Dictionary<string, string> rows = ClientPriceConstants.Select([("MeratAirTaxiPrice", "90"), (" meratairtaxiprice ", "15")]);

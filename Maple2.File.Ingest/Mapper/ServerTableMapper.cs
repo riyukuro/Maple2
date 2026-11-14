@@ -3906,19 +3906,22 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         Dictionary<string, string> ClientPriceRows() {
             // The data folder's pack first, then the played client's: a later row replaces an earlier one, so
             // the played client's row wins where it has one.
+            // With no client table read, the client's prices are not known: the server pack's rows stay.
             var rows = new List<(string, string)>();
+            bool read = false;
             foreach (M2dReader? reader in new[] { clientReader, playedReader }) {
                 Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name == "table/constants.xml");
                 if (reader == null || entry == null) {
                     continue;
                 }
+                read = true;
                 foreach (XmlNode node in reader.GetXmlDocument(entry).SelectNodes("ms2/v")!) {
                     if (node is not XmlElement row) continue;
                     if (!FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(row.GetAttribute("locale"))) continue;
                     rows.Add((row.GetAttribute("key"), row.GetAttribute("value")));
                 }
             }
-            return ClientPriceConstants.Select(rows);
+            return read ? ClientPriceConstants.SelectClient(rows) : ClientPriceConstants.Select(rows);
         }
 
         string CleanInput(string input, string propName, Type type) {
