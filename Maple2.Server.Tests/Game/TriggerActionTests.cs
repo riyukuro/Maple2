@@ -786,6 +786,18 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.False);
     }
 
+    // add_buff without ignore_player and is_skill_set (237 and 221 KR rows) buffs the players in the boxes: the
+    // effects those rows give are player effects (70000019's experience rate, RemoveOnLogout ones), though the trigger
+    // definition gives both flags the default True.
+    [Test]
+    public void AddBuff_WithoutTheFlagsBuffsThePlayers() {
+        StartWithBoxes();
+        WithEffect(70000107);
+
+        Action("""<action name="add_buff" box_ids="1" skill_id="70000107" level="1" />""");
+        Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.True);
+    }
+
     // A map the client never played: the move is refused with a notice and the field-enter error.
     private void AddUnplayedMap(int id) {
         test.AddMap(TestGameSession.Map(id, notInPlayedClient: true) with {
