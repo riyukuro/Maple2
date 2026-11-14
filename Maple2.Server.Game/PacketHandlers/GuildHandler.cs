@@ -223,7 +223,9 @@ public class GuildHandler : PacketHandler<GameSession> {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_not_enough_level));
             return;
         }
-        if (session.Currency.CanAddMeso(-Constants.GuildCreatePrice) != -Constants.GuildCreatePrice) {
+        // The price is taken here, without a packet, and given back on every refusal below: the World's answer
+        // takes a while, and a take on another thread meanwhile (a trade) could leave too little for the guild.
+        if (!session.Currency.TryTakeMeso(Constants.GuildCreatePrice, notify: false)) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_no_money));
             return;
         }
@@ -238,10 +240,12 @@ public class GuildHandler : PacketHandler<GameSession> {
             GuildResponse response = World.Guild(request);
             var error = (GuildError) response.Error;
             if (error != GuildError.none) {
+                session.Currency.ReturnMeso(Constants.GuildCreatePrice, notify: false);
                 session.Send(GuildPacket.Error(error));
                 return;
             }
             if (response.InfoCase != GuildResponse.InfoOneofCase.Guild) {
+                session.Currency.ReturnMeso(Constants.GuildCreatePrice, notify: false);
                 session.Send(GuildPacket.Error(GuildError.s_guild_err_null_guild));
                 return;
             }
@@ -252,10 +256,11 @@ public class GuildHandler : PacketHandler<GameSession> {
             // (CGuildManager::OnPacketMemberJoined) updates the member the load brought and redraws the
             // guild window.
             if (!session.Guild.SetGuild(response.Guild)) {
+                session.Currency.ReturnMeso(Constants.GuildCreatePrice, notify: false);
                 return;
             }
             session.Send(GuildPacket.Created(guildName));
-            session.Currency.ChangeMeso(-Constants.GuildCreatePrice);
+            session.Currency.NotifyMeso();
 
             session.Guild.Load();
             GuildMember? founder = session.Guild.GetMember(session.CharacterId);
@@ -266,6 +271,7 @@ public class GuildHandler : PacketHandler<GameSession> {
             // The founder is the guild's first member: "Join a guild" (70300010) counts for it too.
             session.ConditionUpdate(ConditionType.guild_join);
         } catch (RpcException ex) {
+            session.Currency.ReturnMeso(Constants.GuildCreatePrice, notify: false);
             Logger.Error(ex, "Failed to create guild: {Name}", guildName);
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
         }
@@ -1221,15 +1227,13 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
 
         long cost = (long) Constants.guildDonateMeso * count;
-        if (cost <= 0 || session.Currency.Meso < cost) {
+        // Order: the meso is taken first (checked and taken in one step), World adds and saves the fund, and
+        // only a refusal that World itself answered gives the meso back. An RPC error leaves it taken, because
+        // World may have added the fund before the call failed: the guild can not get fund without meso.
+        if (cost <= 0 || !session.Currency.TryTakeMeso(cost)) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_no_money));
             return;
         }
-
-        // Order: the meso is taken first, World adds and saves the fund, and only a refusal that World
-        // itself answered gives the meso back. An RPC error leaves it taken, because World may have added
-        // the fund before the call failed: the guild can not get fund without meso.
-        session.Currency.ChangeMeso(-cost);
         try {
             GuildResponse response = World.Guild(new GuildRequest {
                 RequestorId = session.CharacterId,

@@ -306,6 +306,54 @@ public class GuildMoneyHandlerTests {
         Assert.That(Hex(GuildPacket.Created("Guild")), Is.EqualTo(Hex(created)));
     }
 
+    // A spend on another thread while the World founds the guild (a trade takes every meso left): the price was
+    // taken before the World was asked, so only the rest could go, and the guild is founded with its price paid.
+    // Before, the price was taken after the World's answer; that take threw on the empty balance, and the guild
+    // stood unpaid.
+    [Test]
+    public void Create_ASpendWhileTheWorldAnswersCannotSkipThePrice() {
+        Join(inGuild: false);
+        session.Currency.Meso = 5000;
+        test.World.AddPlayer(session.AccountId, session.CharacterId, "Founder");
+        long spent = -1;
+        test.World.GuildWorld = request => {
+            long left = session.Currency.Meso;
+            spent = session.Currency.TryTakeMeso(left, notify: false) ? left : 0;
+            return new GuildResponse {
+                Guild = new GuildInfo {
+                    Id = 7,
+                    Name = request.Create.GuildName,
+                    Emblem = "",
+                    Notice = "",
+                    Members = { new GuildInfo.Types.Member { CharacterId = session.CharacterId, Message = "", Rank = 0, JoinTime = 1000 } },
+                },
+            };
+        };
+        test.TakeSent();
+
+        Create("Guild");
+
+        Assert.That(spent, Is.EqualTo(5000 - CreatePrice));
+        Assert.That(session.Currency.Meso, Is.EqualTo(0));
+        Assert.That(session.Guild.Guild, Is.Not.Null);
+        self = session.Guild.Guild!.Members[session.CharacterId];
+    }
+
+    // A refusal by the World after the price was taken gives it back: the balance is as before, as is the answer.
+    [Test]
+    public void Create_RefusedByTheWorldGivesThePriceBack() {
+        Join(inGuild: false);
+        session.Currency.Meso = 5000;
+        test.World.GuildWorld = _ => throw new RpcException(new Status(StatusCode.Unavailable, "down"));
+        test.TakeSent();
+
+        Create("Guild");
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        Assert.That(test.TakeSent().Any(packet => TestGameSession.Op(packet) == SendOp.Meso), Is.False);
+        Assert.That(session.Guild.Guild, Is.Null);
+    }
+
     // Another member's check-in as a member sees it, in the order KMS2 sends it: the guild's exp (50) and fund
     // (51), the member's contribution (53: name, the amount, the week's and the whole sum) and check-in time (36).
     [Test]

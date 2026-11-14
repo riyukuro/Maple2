@@ -485,7 +485,11 @@ public class GuildManager : IDisposable {
             return error;
         }
 
-        session.Currency.ChangeMeso(-charge);
+        // Checked above against the balance, taken here in one step: a take on another thread in between
+        // answers as the check would have.
+        if (!session.Currency.TryTakeMeso(charge)) {
+            return GuildError.s_guild_err_no_money;
+        }
         session.Player.Buffs.AddBuff(session.Player, session.Player, row!.Id, row.Level, field.FieldTick,
             durationMs: (int) Math.Min(row.Duration * 60000L, int.MaxValue));
         session.Send(GuildPacket.UsePersonalBuff(buffId));
