@@ -9,6 +9,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Web.Controllers;
 using Maple2.Tools.Extensions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Maple2.Server.Tests.Database;
@@ -21,11 +22,17 @@ public class RankDuelRankingTests {
     private const int NextSeason = 205002;
     private GameStorage storage = null!;
 
+    private readonly RaceArchive race = new();
+
     [SetUp]
     public void SetUp() {
         DbContextOptions options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(race)
             .Options;
+        race.Options = options;
+        race.CharacterId = 0;
+        race.Saves = 0;
         storage = new GameStorage(options, null!, null!, null!, null!, null!, null!, NullLogger<GameStorage>.Instance, null!);
     }
 
@@ -175,6 +182,53 @@ public class RankDuelRankingTests {
         Assert.That(PersonalRank(GameRankingType.PvpPersonalPreviousSeason, Season, ids[0]), Is.EqualTo(205));
         Assert.That(PersonalRank(GameRankingType.PvpPersonalPreviousSeason, Season, ids[1]), Is.EqualTo(204));
         Assert.That(PersonalRank(GameRankingType.PvpPersonalPreviousSeason, Season, ids[204]), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Save_ArchiveRaced_SecondTrySeesTheSeasonRow() {
+        long alpha = CreateCharacter("alpha");
+        Fight(alpha, Season, 1400);
+        // Another save writes alpha's closed-season row after this save checked for it: the first try fails on the
+        // row's key, the second stages again, skips the row and saves the new season.
+        race.CharacterId = alpha;
+        race.Season = Season;
+        race.Saves = 0;
+        Fight(alpha, NextSeason, 1050);
+
+        Assert.That(race.Saves, Is.EqualTo(2));
+        Assert.That(ReadBoard(Board(GameRankingType.PvpPreviousSeason, Season), GameRankingType.PvpPreviousSeason),
+            Is.EqualTo(new[] { (1, alpha, "alpha", 1300, 1400) }));
+        Assert.That(ReadBoard(Board(GameRankingType.Pvp, NextSeason), GameRankingType.Pvp),
+            Is.EqualTo(new[] { (1, alpha, "alpha", 1050, 1050) }));
+    }
+
+    // On the first save after it is armed, writes the closed-season row of CharacterId through another context (the
+    // other save of the race), with a standing of its own to tell it from this save's.
+    private sealed class RaceArchive : SaveChangesInterceptor {
+        public DbContextOptions Options = null!;
+        public long CharacterId;
+        public int Season;
+        public int Saves;
+        private DbContext? racing;
+
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
+            if (CharacterId == 0 || eventData.Context is not { } context || context == racing) {
+                return result;
+            }
+            Saves++;
+            if (Saves == 1) {
+                using var other = new Maple2.Database.Context.Ms2Context(Options);
+                racing = other;
+                other.RankDuelSeasonRecord.Add(new Maple2.Database.Model.RankDuelSeasonRecord {
+                    CharacterId = CharacterId,
+                    Season = Season,
+                    Rating = 1300,
+                    BestRating = 1400,
+                });
+                other.SaveChanges();
+            }
+            return result;
+        }
     }
 
     [Test]
