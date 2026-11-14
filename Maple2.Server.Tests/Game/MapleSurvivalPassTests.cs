@@ -18,17 +18,23 @@ public class MapleSurvivalPassTests {
     private const int BonusItemId = 20000995;
     private TestGameSession test = null!;
 
-    private static MapleSurvivalTable Table() => new(
+    // An item id no item table has (a reward item the played pack lacks).
+    private const int MissingItemId = 29999999;
+
+    // freeLevel1: the free pass rewards of level 1 (survivalRewardID 1).
+    private static MapleSurvivalTable Table(IReadOnlyList<MapleSurvivalTable.Reward>? freeLevel1 = null) => new(
         new Dictionary<int, MapleSurvivalTable.Period> { [1] = new(1, 1, new DateTime(2018, 8, 22), new DateTime(2099, 1, 1), PassPrice) },
         new Dictionary<int, long> { [1] = 0, [2] = 2400 },
         new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>(),
-        new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>(),
+        new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>> {
+            [1] = new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>> { [1] = freeLevel1 ?? [] },
+        },
         new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>());
 
     // The pass mode (SurvivalContents03 on), 5000 merets.
-    private GameSession Start(MapleSurvivalPassBundle? bundle = null, bool passShutdown = false) {
+    private GameSession Start(MapleSurvivalPassBundle? bundle = null, bool passShutdown = false, MapleSurvivalTable? table = null) {
         test = new TestGameSession();
-        test.SetTable(Table());
+        test.SetTable(table ?? Table());
         test.Register(TestGameSession.Metadata(BonusItemId));
         if (bundle != null) {
             test.AddEvent(930001, GameEventType.MapleSurvivalPassBundle, bundle);
@@ -96,6 +102,29 @@ public class MapleSurvivalPassTests {
     }
 
     // The bundle buy takes value2 merets, activates the pass and gives the bonus item (1).
+    // A pass reward whose item cannot be made (KR has no item for most of the NA pass items) is logged and left out;
+    // the level's other rewards still go and the level is claimed.
+    [Test]
+    public void ClaimPass_MissingItem_GivesTheRest() {
+        GameSession session = Start(table: Table([
+            new MapleSurvivalTable.Reward("item", [MissingItemId], [1], [1]),
+            new MapleSurvivalTable.Reward("item", [BonusItemId], [1], [2]),
+        ]));
+        session.Player.Value.Account.SurvivalLevel = 1;
+        Assert.DoesNotThrow(() => MapleSurvivalProgress.ClaimPass(session, 1, 0));
+        Assert.That(session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Is.EqualTo(1));
+        Assert.That(Amount(session, BonusItemId), Is.EqualTo(2));
+        Assert.That(Amount(session, MissingItemId), Is.EqualTo(0));
+    }
+
+    // A bundle whose bonus item cannot be made is refused before the merets are taken: nothing is bought.
+    [Test]
+    public void BuyPass_Bundle_MissingBonusItem_Refused() {
+        GameSession session = Start(new MapleSurvivalPassBundle(700, 1500, MissingItemId));
+        MapleSurvivalProgress.BuyPass(session, true, 1500);
+        Assert.That((session.Player.Value.Account.ActiveGoldPass, session.Currency.Meret), Is.EqualTo((false, 5000L)));
+    }
+
     [Test]
     public void BuyPass_Bundle_GivesTheBonusItem() {
         GameSession session = Start(new MapleSurvivalPassBundle(700, 1500, BonusItemId));

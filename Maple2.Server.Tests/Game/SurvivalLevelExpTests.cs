@@ -20,23 +20,25 @@ public class SurvivalLevelExpTests {
     private Item tonic = null!;
 
     // Level 2 at 2400, level 3 at 4320 more (the last); reaching level 2 gives its level reward.
-    private static MapleSurvivalTable Table() {
+    private static MapleSurvivalTable Table(int missingItemId = 0) {
         var reward = new MapleSurvivalTable.Reward("item", [RewardId], [1], [1]);
+        IReadOnlyList<MapleSurvivalTable.Reward> rewards = missingItemId == 0 ? [reward]
+            : [new MapleSurvivalTable.Reward("item", [missingItemId], [1], [1]), reward];
         return new MapleSurvivalTable(
             new Dictionary<int, MapleSurvivalTable.Period> { [1] = new(1, 1, new DateTime(2018, 8, 22), new DateTime(2099, 1, 1), 800) },
             new Dictionary<int, long> { [1] = 0, [2] = 2400, [3] = 4320 },
-            new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>> { [2] = [reward] },
+            new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>> { [2] = rewards },
             new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>(),
             new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>());
     }
 
     // The level-reward mode (SurvivalContents03 off, as on KR Live) unless passMode.
-    private GameSession Start(string parameters = "<v SurvivalExp=\"2500\" />", int level = 1, long exp = 0, bool passMode = false) {
+    private GameSession Start(string parameters = "<v SurvivalExp=\"2500\" />", int level = 1, long exp = 0, bool passMode = false, int missingItemId = 0) {
         test = new TestGameSession();
         if (!passMode) {
             test.SetFeaturesOff(Maple2.Model.Game.Pvp.SurvivalRules.PassFeature);
         }
-        test.SetTable(Table());
+        test.SetTable(Table(missingItemId));
         test.Register(TestGameSession.Metadata(RewardId));
         tonic = test.Store(TestGameSession.Metadata(ItemId,
             function: new ItemMetadataFunction(ItemFunction.SurvivalLevelExp, "SurvivalLevelExp", parameters, false), type: 10), amount: 2);
@@ -94,6 +96,19 @@ public class SurvivalLevelExpTests {
         session.Survival = new Maple2.Server.Game.Manager.SurvivalManager(session);
         Maple2.Server.Game.Manager.MapleSurvivalProgress.Result(session, 1, 1, 5, 60, out items);
         Assert.That((session.Player.Value.Account.SurvivalLevel, items.Count, Amount(session, RewardId)), Is.EqualTo((2, 0, 0)));
+    }
+
+    // A level reward whose item cannot be made (an item the played pack lacks) is logged and left out; the level's
+    // other rewards still go and are listed, and the level is reached.
+    [Test]
+    public void GameResult_MissingItem_GivesTheRest() {
+        GameSession session = Start(missingItemId: 29999999);
+        session.Survival = new Maple2.Server.Game.Manager.SurvivalManager(session);
+        List<Maple2.Server.Game.Manager.MapleSurvivalProgress.ResultItem> items = null!;
+        Assert.DoesNotThrow(() => Maple2.Server.Game.Manager.MapleSurvivalProgress.Result(session, 1, 1, 5, 60, out items));
+        Assert.That(session.Player.Value.Account.SurvivalLevel, Is.EqualTo(2));
+        Assert.That(items, Is.EqualTo(new[] { new Maple2.Server.Game.Manager.MapleSurvivalProgress.ResultItem(RewardId, 1, 1) }));
+        Assert.That((Amount(session, RewardId), Amount(session, 29999999)), Is.EqualTo((1, 0)));
     }
 
     // In the pass mode (SurvivalContents03 on) the level reached gives no level reward: its pass rewards are claimed.
