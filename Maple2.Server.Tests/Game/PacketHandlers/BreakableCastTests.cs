@@ -42,8 +42,10 @@ public class BreakableCastTests {
         typeof(FieldManager).GetField("triggerBreakable", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldBreakable>());
         FieldBreakable box = field.AddBreakable("box", new BreakableActor(true, 0, 1000, 1000, 0, Vector3.Zero, Vector3.Zero))!;
 
-        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack));
-        var motion = new SkillMetadataMotion(null!, [attack], new Dictionary<string, byte>());
+        // Attack point 0 has a brokenOffence, attack point 1 has none: the client makes a breakable area of 0 only.
+        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with { BrokenOffence = 1 };
+        var noBreak = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack));
+        var motion = new SkillMetadataMotion(null!, [attack, noBreak], new Dictionary<string, byte>());
         var level = (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with {
             Motions = [motion],
         };
@@ -64,21 +66,22 @@ public class BreakableCastTests {
     }
 
     // The attack point's packet, declaring tags attacks.
-    private static void AttackPoint(Scene scene, int tags = 1) {
-        Assert.That(scene.Record.Hits.TakePoint(0, 0, held: false, count: tags, scene.Test.Session.Field!.FieldTick), Is.True);
+    private static void AttackPoint(Scene scene, int tags = 1, byte attackPoint = 0) {
+        Assert.That(scene.Record.Hits.TakePoint(attackPoint, 0, held: false, count: tags, scene.Test.Session.Field!.FieldTick), Is.True);
         for (int i = 0; i < tags; i++) {
-            scene.Record.Hits.Declare(1000 + i, 0, 0);
+            scene.Record.Hits.Declare(1000 + i, attackPoint, 0);
         }
     }
 
-    private static BreakableState Hit(Scene scene, long castUid = CastUid, int skillId = SkillId, short level = 1) {
+    private static BreakableState Hit(Scene scene, long castUid = CastUid, int skillId = SkillId, short level = 1,
+                                      byte motionPoint = 0, byte attackPoint = 0) {
         new BreakableHandler { SkillMetadata = scene.Storage }.Handle(scene.Test.Session, TestGameSession.Packet(writer => {
             writer.WriteString("box");
             writer.WriteLong(castUid);
             writer.WriteInt(skillId);
             writer.WriteShort(level);
-            writer.WriteByte(0);
-            writer.WriteByte(0);
+            writer.WriteByte(motionPoint);
+            writer.WriteByte(attackPoint);
         }));
         return scene.Box.State;
     }
@@ -140,5 +143,41 @@ public class BreakableCastTests {
         Scene scene = Start();
         AttackPoint(scene);
         Assert.That(Hit(scene, castUid, skillId, level), Is.Not.EqualTo(BreakableState.Break));
+    }
+
+    // The player cast three more skills before the cast's magic met the box: the pending queue dropped the cast, and
+    // the client still sends the hit with its uid, so the box breaks.
+    [Test]
+    public void ACastPushedOutOfThePendingQueueStillBreaks() {
+        Scene scene = Start();
+        AttackPoint(scene);
+        for (long uid = CastUid + 1; uid <= CastUid + 3; uid++) {
+            scene.Test.Session.Player.ActiveSkills.Add(new SkillRecord(scene.Record.Metadata, uid, scene.Test.Session.Player));
+        }
+        Assert.That(scene.Test.Session.Player.ActiveSkills.Get(CastUid), Is.Null, "no longer pending");
+        Assert.That(Hit(scene), Is.EqualTo(BreakableState.Break));
+    }
+
+    // An attack point whose brokenOffence is 0, or one the skill does not have, makes no breakable area in the client.
+    [TestCase((byte) 0, (byte) 1)]
+    [TestCase((byte) 0, (byte) 2)]
+    [TestCase((byte) 1, (byte) 0)]
+    public void AnAttackWithNoBrokenOffenceIsRefused(byte motionPoint, byte attackPoint) {
+        Scene scene = Start();
+        AttackPoint(scene, attackPoint: attackPoint);
+        Assert.That(Hit(scene, motionPoint: motionPoint, attackPoint: attackPoint), Is.Not.EqualTo(BreakableState.Break));
+    }
+
+    // A region's hit is held to the same rule: its attack point 1 has no brokenOffence.
+    [TestCase((byte) 0, ExpectedResult = true)]
+    [TestCase((byte) 1, ExpectedResult = false)]
+    public bool ARegionsAttackNeedsABrokenOffence(byte attackPoint) {
+        Scene scene = Start();
+        FieldManager field = scene.Test.Session.Field!;
+        var skills = new ConcurrentDictionary<int, FieldSkill>();
+        typeof(FieldManager).GetField("fieldSkills", Any)!.SetValue(field, skills);
+        typeof(FieldManager).GetField("removedSkills", Any)!.SetValue(field, new ConcurrentDictionary<int, (FieldSkill, long)>());
+        skills[900] = new FieldSkill(field, 900, scene.Test.Session.Player, scene.Record.Metadata, 1000, Vector3.Zero);
+        return Hit(scene, 0, attackPoint: attackPoint) == BreakableState.Break;
     }
 }

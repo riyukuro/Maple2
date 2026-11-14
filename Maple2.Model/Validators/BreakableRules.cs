@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Validators;
 
@@ -15,6 +16,17 @@ public static class BreakableRules {
     // (sameSkill), after the cast's attack point packets declared at least one tag (pointAttacks).
     public static bool FromCast(bool castKnown, bool sameSkill, int pointAttacks) {
         return castKnown && sameSkill && pointAttacks > 0;
+    }
+
+    // The client registers a breakable area only for an attack whose brokenOffence is not 0
+    // (WorldService::FUN_141bc3470, worldservice_1.cpp:4206), so no hit comes from any other attack point. A point the
+    // skill does not have names no attack the client could have made an area of.
+    public static bool AttackBreaks(SkillMetadata? skill, byte motionPoint, byte attackPoint) {
+        if (skill == null || motionPoint >= skill.Data.Motions.Length) {
+            return false;
+        }
+        SkillMetadataAttack[] attacks = skill.Data.Motions[motionPoint].Attacks;
+        return attackPoint < attacks.Length && attacks[attackPoint].BrokenOffence != 0;
     }
 }
 

@@ -34,12 +34,16 @@ public class BreakableHandler : FieldPacketHandler {
         // the cast is one of the player's, the skill is its own, and its attack point's packet declared a tag.
         // A region skill's hit (SkillDamage Target with the server flag, scenestategame.cpp:5567) makes its tags with
         // uid 0 and the region's skill, owned by the local player: the player's region of that skill is in the field.
-        SkillRecord? record = session.Player.ActiveSkills.Get(skillUid);
+        // The cast is looked up among the player's recent casts, not the three pending ones: the client keeps a cast's
+        // areas after the player cast again, so a magic still on its way names a cast the pending queue has dropped.
+        SkillRecord? record = session.Player.ActiveSkills.GetRecent(skillUid);
         bool fromRegion = skillUid == 0 && session.Field?.HasFieldSkill(session.Player, skillId, level) == true;
-        if (!fromRegion && !BreakableRules.FromCast(record != null, record?.SkillId == skillId && record.Level == level,
-                record?.Hits.PointAttacks(attackPoint) ?? 0)) {
-            // Information: a legitimate hit refused here (a cast pushed out of the 3-cast queue before its magic
-            // landed) shows in a playtest's log.
+        SkillMetadata? skill = fromRegion
+            ? SkillMetadata.TryGet(skillId, level, out SkillMetadata? regionSkill) ? regionSkill : null
+            : record?.Metadata;
+        if ((!fromRegion && !BreakableRules.FromCast(record != null, record?.SkillId == skillId && record.Level == level,
+                record?.Hits.PointAttacks(attackPoint) ?? 0))
+            || !BreakableRules.AttackBreaks(skill, motionPoint, attackPoint)) {
             Logger.Information("Breakable {EntityId} refused: cast {SkillUid} skill {SkillId} level {Level} point {MotionPoint},{AttackPoint}",
                 entityId, skillUid, skillId, level, motionPoint, attackPoint);
             return;

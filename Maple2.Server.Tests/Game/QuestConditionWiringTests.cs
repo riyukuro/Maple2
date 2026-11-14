@@ -824,7 +824,8 @@ public class QuestConditionWiringTests : TriggerTestBase {
             info.SetValue(Field, Activator.CreateInstance(info.FieldType));
         }
         SkillMetadata cast = CastSkill(10000001);
-        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack));
+        // An attack with a brokenOffence: the client makes a breakable area of no other (worldservice_1.cpp:4206).
+        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with { BrokenOffence = 1 };
         SkillMetadata skill = cast with {
             Data = cast.Data with { Motions = [cast.Data.Motions[0] with { Attacks = [attack] }] },
         };
