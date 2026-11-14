@@ -99,6 +99,7 @@ public sealed class PetManager : IDisposable {
             if (level != oldLevel) {
                 session.Send(PetPacket.LevelUp(OwnerId, Pet));
                 session.Player.Stats.Refresh();
+                SendItemUpdate();
             }
         }
     }
@@ -299,6 +300,19 @@ public sealed class PetManager : IDisposable {
         ItemPet.RenameRemaining = 0;
 
         session.Send(PetPacket.Rename(OwnerId, ItemPet));
+        SendItemUpdate();
+    }
+
+    // The field's copies of the summoned pet (the owner's stat window counts its stats by its level) take the pet item
+    // again (ResponsePet 21). Sent after a change to the summoned pet's level, name, evolution or options.
+    public void SendItemUpdate() {
+        session.Field?.Broadcast(PetPacket.ItemUpdate(OwnerId, Pet));
+    }
+
+    public static void SendItemUpdate(GameSession session, Item pet) {
+        if (session.Pet is { } manager && manager.Pet.Uid == pet.Uid) {
+            manager.SendItemUpdate();
+        }
     }
 
     public void UpdatePotionConfig(PetPotionConfig[] potionConfig) {

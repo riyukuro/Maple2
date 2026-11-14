@@ -293,6 +293,7 @@ public class PetHandler : FieldPacketHandler {
                 if (session.Pet?.Pet.Uid == pet.Uid) {
                     // The summoned pet's stats count in the owner's totals.
                     session.Player.Stats.Refresh();
+                    PetManager.SendItemUpdate(session, pet);
                 }
             }
             session.Send(PetPacket.FusionCount(character.PetFusionCount));
@@ -374,6 +375,7 @@ public class PetHandler : FieldPacketHandler {
             if (session.Pet?.Pet.Uid == pet.Uid) {
                 // The summoned pet's stats count in the owner's totals.
                 session.Player.Stats.Refresh();
+                PetManager.SendItemUpdate(session, pet);
             }
         }
     }
@@ -429,6 +431,7 @@ public class PetHandler : FieldPacketHandler {
             int before = pet.Pet.EvolvePoints;
             pet.Pet.EvolvePoints = (int) Math.Min(total, int.MaxValue);
             session.Send(PetPacket.EvolvePoints(session.Player.ObjectId, pet));
+            PetManager.SendItemUpdate(session, pet);
             // 23100387-23100390 "Gain {0} evolution point(s) with a normal pet": the points gained, by the pet's rarity.
             session.ConditionUpdate(ConditionType.pet_evolution_point_by_rank, counter: pet.Pet.EvolvePoints - before, codeLong: pet.Rarity);
         }

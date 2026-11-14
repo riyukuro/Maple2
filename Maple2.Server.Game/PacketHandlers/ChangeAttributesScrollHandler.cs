@@ -6,6 +6,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -211,6 +212,7 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
             if (Keep(session, item, pending.Stats)) {
                 session.Stats.Refresh();
             }
+            PetManager.SendItemUpdate(session, item);
             session.ChangeAttributesScrollItem = null;
             session.Send(ChangeAttributesScrollPacket.SelectItem(item));
         }

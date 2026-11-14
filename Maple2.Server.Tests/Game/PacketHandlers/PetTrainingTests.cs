@@ -97,9 +97,12 @@ public class PetTrainingTests {
         Assert.That(Kits(session), Is.EqualTo(1));
         List<byte[]> sent = test.TakeSent();
         Assert.That(BindSent(sent, inBag: false), Is.True);
+        // The summoned pet's level up also refreshes the field's copy of it (ResponsePet 21); a pet in the bag has none
+        // (Training_GivesTheExpAndCompletes).
         Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.ResponsePet).Select(Convert.ToHexString), Is.EqualTo(new[] {
             Convert.ToHexString(PetPacket.Fusion(session.Player.ObjectId, pet).ToArray()),
             Convert.ToHexString(PetPacket.LevelUp(session.Player.ObjectId, pet).ToArray()),
+            Convert.ToHexString(PetPacket.ItemUpdate(session.Player.ObjectId, pet).ToArray()),
             Convert.ToHexString(PetPacket.TrainingComplete().ToArray()),
         }));
     }

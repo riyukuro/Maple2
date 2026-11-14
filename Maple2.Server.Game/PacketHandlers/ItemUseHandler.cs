@@ -1294,6 +1294,7 @@ public class ItemUseHandler : FieldPacketHandler {
                 if (session.Pet?.Pet.Uid == pet.Uid) {
                     // The summoned pet's stats count in the owner's totals.
                     session.Player.Stats.Refresh();
+                    PetManager.SendItemUpdate(session, pet);
                 }
             }
             session.Send(PetPacket.TrainingComplete());
@@ -1335,6 +1336,7 @@ public class ItemUseHandler : FieldPacketHandler {
                 session.Send(PetPacket.LevelUp(session.Player.ObjectId, pet));
                 // The summoned pet's stats count in the owner's totals.
                 session.Player.Stats.Refresh();
+                PetManager.SendItemUpdate(session, pet);
             }
         }
     }

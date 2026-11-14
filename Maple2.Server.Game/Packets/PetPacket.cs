@@ -29,7 +29,7 @@ public static class PetPacket {
         EvolvePoints = 18,
         Error = 19,
         MasterSnare = 20,
-        Unknown21 = 21,
+        ItemUpdate = 21,
     }
 
     public static ByteWriter Summon(FieldPet pet) {
@@ -240,9 +240,14 @@ public static class PetPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown21(int ownerId, Item pet) {
+    // Client reader: CPetManager::FUN_140c8afa0 (petmanager.cpp:1058, mode 21: int owner object id, then the pet item
+    // as in Summon): the owner's PC, with a pet out, reads it into its summoned pet copy (PC::ReadPetItem) and recounts
+    // the equipment stats (CEquipment::FUN_1411e7660), which add the summoned pet's stats by its level. The reader
+    // takes no uid, so it is only sent for the summoned pet (PetManager.SendItemUpdate). Modes 10, 11, 17 and 18 change
+    // only the inventory copy.
+    public static ByteWriter ItemUpdate(int ownerId, Item pet) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
-        pWriter.Write<Command>(Command.Unknown21);
+        pWriter.Write<Command>(Command.ItemUpdate);
         pWriter.WriteInt(ownerId);
         pWriter.WritePetItem(pet);
 

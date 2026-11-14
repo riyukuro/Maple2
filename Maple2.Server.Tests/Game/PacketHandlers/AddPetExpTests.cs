@@ -83,6 +83,7 @@ public class AddPetExpTests {
         Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.ResponsePet).Select(Convert.ToHexString), Is.EqualTo(new[] {
             Convert.ToHexString(PetPacket.Fusion(session.Player.ObjectId, pet).ToArray()),
             Convert.ToHexString(PetPacket.LevelUp(session.Player.ObjectId, pet).ToArray()),
+            Convert.ToHexString(PetPacket.ItemUpdate(session.Player.ObjectId, pet).ToArray()),
         }));
     }
 

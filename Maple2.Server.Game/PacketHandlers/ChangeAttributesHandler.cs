@@ -5,6 +5,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Packets;
@@ -271,6 +272,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             if (CountsInStats(session, itemUid)) {
                 session.Stats.Refresh();
             }
+            PetManager.SendItemUpdate(session, item);
         }
     }
 
