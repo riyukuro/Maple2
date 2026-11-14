@@ -218,6 +218,12 @@ public class AttendanceHandler : FieldPacketHandler {
             session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_lackMerat));
             return;
         }
+        // The mesos the same way: held here without a packet, given back when the gift fails.
+        long mesoPrice = step == AttendanceRules.PayStep.Meso ? attendGift.Pay!.Price : 0;
+        if (mesoPrice > 0 && !session.Currency.TryTakeMeso(mesoPrice, notify: false)) {
+            session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_payAttend_result_lackMoney));
+            return;
+        }
 
         // The gift first: the price is taken and the bought day counted only when the mail is stored,
         // so a failed gift costs nothing. The coupon was tested above, so its consume does not fail.
@@ -227,7 +233,11 @@ public class AttendanceHandler : FieldPacketHandler {
                     session.Item.Inventory.Consume(couponUid, 1);
                     break;
                 case AttendanceRules.PayStep.Meso:
-                    session.Currency.ChangeMeso(-(attendGift.Pay!.Price));
+                    if (mesoPrice > 0) {
+                        session.Currency.NotifyMeso();
+                    } else {
+                        session.Currency.ChangeMeso(-attendGift.Pay!.Price);
+                    }
                     break;
                 case AttendanceRules.PayStep.Meret:
                     if (meretPrice > 0) {
@@ -241,6 +251,9 @@ public class AttendanceHandler : FieldPacketHandler {
         });
         if (!given && meretPrice > 0) {
             session.Currency.ReturnMeret(meretPrice);
+        }
+        if (!given && mesoPrice > 0) {
+            session.Currency.ReturnMeso(mesoPrice, notify: false); // no meso packet was sent for the take
         }
     }
 }
