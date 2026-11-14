@@ -27,6 +27,9 @@ public class WorldBossManager : IDisposable {
         // KMS2 sends every player one "boss appeared" row per channel (WorldShareInfo), not only its own channel's.
         int[] channels = ChannelClients.Keys.OrderBy(channel => channel).ToArray();
         foreach ((int channelId, ChannelClient channelClient) in ChannelClients) {
+            // The instanced-content channel's players (in dungeons) get the rows too; the boss spawns on the player
+            // channels only.
+            bool instanced = ChannelClients.IsInstanced(channelId);
             try {
                 channelClient.TimeEvent(new TimeEventRequest {
                     AnnounceWorldBoss = new TimeEventRequest.Types.AnnounceWorldBoss {
@@ -35,10 +38,13 @@ public class WorldBossManager : IDisposable {
                         EndTick = Boss.EndTick,
                         NextSpawnTimestamp = Boss.NextSpawnTimestamp,
                         Channels = { channels },
+                        NoSpawn = instanced,
                     },
                 });
 
-                AliveChannels.TryAdd(channelId, 0);
+                if (!instanced) {
+                    AliveChannels.TryAdd(channelId, 0);
+                }
             } catch (RpcException rpcException) {
                 if (rpcException.StatusCode == StatusCode.Unavailable) {
                     Log.Warning("Channel {Channel} unavailable when announcing field boss {BossId}", channelId, Boss.MetadataId);

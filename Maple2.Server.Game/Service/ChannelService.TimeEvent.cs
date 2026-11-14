@@ -86,7 +86,10 @@ public partial class ChannelService {
             session.Send(LegionBattlePacket.Next(boss.MetadataId, npcId, boss.NextSpawnTimestamp));
         }
 
-        // Spawn the boss NPC in each target map
+        // Spawn the boss NPC in each target map, on a player channel only (GetField would make the map's field).
+        if (boss.NoSpawn) {
+            return new TimeEventResponse();
+        }
         foreach (int targetMapId in metadata.TargetMapIds) {
             FieldManager? field = server.GetField(targetMapId);
             field?.SpawnWorldBoss(metadata, boss.EventId);

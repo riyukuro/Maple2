@@ -25,6 +25,9 @@ public class GlobalPortalManager : IDisposable {
 
     public readonly int[] RoomIds;
     private readonly object mutex = new();
+    // Each channel call of a join is bounded: the joins wait on one another (the lock), so a channel that hangs
+    // must not hold every later join.
+    private static readonly TimeSpan CallTimeout = TimeSpan.FromSeconds(5);
 
 
     public GlobalPortalManager(GlobalPortalMetadata metadata, int id, long endTick) {
@@ -82,8 +85,8 @@ public class GlobalPortalManager : IDisposable {
     }
 
     // The room of entry index a player joins, 0 when there is none. The entry's room takes players up to its map's
-    // instancefield maxCount; at the cap, or when the room is gone (never made, or the channel no longer has it), a
-    // new room is made and kept for the next joins. Joins run on the World service's threads, one at a time here,
+    // instancefield maxCount; at the cap, or when there is none (never made), a new room is made and kept for the
+    // next joins; a room the channel no longer has comes back made again under a new id, which is kept. Joins run on the World service's threads, one at a time here,
     // so two joins at the cap do not each make a room (the later one overwriting the first, which went on filling).
     // A map without an instancefield row has no cap: its room takes everyone.
     public int Join(int mapId, int index) {
@@ -98,7 +101,12 @@ public class GlobalPortalManager : IDisposable {
                         MapId = mapId,
                         RoomId = RoomIds[index],
                     },
-                }).Field;
+                }, deadline: DateTime.UtcNow.Add(CallTimeout)).Field;
+                // A room the channel no longer has is made again under a new id (FieldManager.Factory GetInternal,
+                // FieldEntryRules.MakesMissingRoom): that new room is the entry's room from now on.
+                if (room != null && room.RoomId != RoomIds[index]) {
+                    RoomIds[index] = room.RoomId;
+                }
                 bool full = room != null
                             && ServerTableMetadata.InstanceFieldTable.Entries.TryGetValue(mapId, out InstanceFieldMetadata? instanceField)
                             && GlobalPortalRules.RoomFull(room.PlayerIds.Count, instanceField.MaxCount);
@@ -108,7 +116,7 @@ public class GlobalPortalManager : IDisposable {
                             MapId = mapId,
                             RoomId = 0,
                         },
-                    }).Field;
+                    }, deadline: DateTime.UtcNow.Add(CallTimeout)).Field;
                     if (created == null) {
                         Log.Error("Global portal {PortalId}: no room of map {MapId} made on channel {Channel}", Portal.MetadataId, mapId, Channel);
                         return 0;

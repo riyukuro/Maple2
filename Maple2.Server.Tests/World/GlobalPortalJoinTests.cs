@@ -26,13 +26,15 @@ public class GlobalPortalJoinTests {
     private const int MapId = 2000001;
     private const int Cap = 3;
 
-    // A channel with rooms of the map: GetField with room 0 makes room 100, 101, ...; with a room id it answers the
-    // room and its players, or no field when the room is gone. Every other request is recorded.
+    // A channel with rooms of the map, as the Game server's GetField: room 0 makes room 100, 101, ...; a room id it has
+    // answers that room and its players; a room id it no longer has makes a new room under a new id (the factory's
+    // MakesMissingRoom). Every other request is recorded, and the deadline of each call.
     private sealed class FakeChannel : ChannelClient {
         private readonly object mutex = new();
         public readonly Dictionary<int, int> Players = [];
         public readonly List<int> Made = [];
         public readonly List<TimeEventRequest> Requests = [];
+        public readonly List<DateTime?> Deadlines = [];
         public int GetFieldDelayMs;
 
         public override TimeEventResponse TimeEvent(TimeEventRequest request, CallOptions options) {
@@ -44,13 +46,12 @@ public class GlobalPortalJoinTests {
             }
             Thread.Sleep(GetFieldDelayMs);
             lock (mutex) {
+                Deadlines.Add(options.Deadline);
                 int roomId = request.GetField.RoomId;
-                if (roomId == 0) {
+                if (roomId == 0 || !Players.ContainsKey(roomId)) {
                     roomId = 100 + Made.Count;
                     Made.Add(roomId);
                     Players[roomId] = 0;
-                } else if (!Players.ContainsKey(roomId)) {
-                    return new TimeEventResponse();
                 }
                 var field = new Maple2.Server.Channel.Service.FieldInfo { MapId = request.GetField.MapId, RoomId = roomId };
                 field.PlayerIds.Add(Enumerable.Range(1, Players[roomId]).Select(id => (long) id));
@@ -66,10 +67,10 @@ public class GlobalPortalJoinTests {
         }
     }
 
-    private static void AddChannel(ChannelClientLookup lookup, int id, ChannelClient client) {
+    private static void AddChannel(ChannelClientLookup lookup, int id, ChannelClient client, bool instanced = false) {
         Type channelType = typeof(ChannelClientLookup).GetNestedType("Channel", BindingFlags.NonPublic)!;
         object channel = Activator.CreateInstance(channelType, Any, null,
-            [Enum.Parse(typeof(ChannelClientLookup).GetNestedType("ChannelStatus", BindingFlags.NonPublic)!, "Active"), id, false, new IPEndPoint(IPAddress.Loopback, 0), client, null, (ushort) 0, 0], null)!;
+            [Enum.Parse(typeof(ChannelClientLookup).GetNestedType("ChannelStatus", BindingFlags.NonPublic)!, "Active"), id, instanced, new IPEndPoint(IPAddress.Loopback, 0), client, null, (ushort) 0, 0], null)!;
         var channels = (System.Collections.IDictionary) typeof(ChannelClientLookup).GetField("channels", Any)!.GetValue(lookup)!;
         channels[id] = channel;
     }
@@ -132,8 +133,14 @@ public class GlobalPortalJoinTests {
         (GlobalPortalManager manager, FakeChannel channel) = Manager();
         channel.Players.Remove(100);
 
+        // The channel makes the room again under a new id; that room is the entry's from now on, so the next join
+        // finds it and does not get a room of its own (before, the gone id was kept and each join made one).
         Assert.That(manager.Join(MapId, 0), Is.EqualTo(101));
         Assert.That(manager.RoomIds[0], Is.EqualTo(101));
+        Assert.That(manager.Join(MapId, 0), Is.EqualTo(101));
+        Assert.That(channel.Made, Is.EqualTo(new[] { 100, 101 }));
+        // Each call of a join has a deadline.
+        Assert.That(channel.Deadlines.Skip(1), Is.All.Not.Null);
     }
 
     // A map without an instancefield row has no cap: its room takes everyone.
@@ -185,13 +192,17 @@ public class GlobalPortalJoinTests {
     }
 
     // The world boss announce names the player channels, so each channel sends a "boss appeared" row for every one.
+    // The instanced-content channel gets the announce for its players, without the spawn, and is not a channel the
+    // boss is alive on.
     [Test]
     public void WorldBossAnnounce_NamesThePlayerChannels() {
         var channels = new ChannelClientLookup();
         var first = new FakeChannel();
         var second = new FakeChannel();
+        var instanced = new FakeChannel();
         AddChannel(channels, 2, second);
         AddChannel(channels, 1, first);
+        AddChannel(channels, 3, instanced, instanced: true);
         var metadata = new WorldBossMetadata(1000, 100, DateTime.MinValue, DateTime.MaxValue, TimeSpan.FromHours(1), TimeSpan.Zero,
             TimeSpan.FromMinutes(5), [MapId], [100], [23000013], 1000, true, false, 1, false, false);
         var manager = new WorldBossManager(metadata, 1, 0, 0) {
@@ -200,9 +211,11 @@ public class GlobalPortalJoinTests {
 
         manager.Announce();
 
-        foreach (FakeChannel channel in new[] { first, second }) {
+        foreach (FakeChannel channel in new[] { first, second, instanced }) {
             TimeEventRequest.Types.AnnounceWorldBoss announce = channel.Requests.Single(request => request.AnnounceWorldBoss != null).AnnounceWorldBoss;
             Assert.That(announce.Channels, Is.EqualTo(new[] { 1, 2 }));
+            Assert.That(announce.NoSpawn, Is.EqualTo(channel == instanced));
         }
+        Assert.That(manager.AliveChannels.Keys.OrderBy(channel => channel), Is.EqualTo(new[] { 1, 2 }));
     }
 }

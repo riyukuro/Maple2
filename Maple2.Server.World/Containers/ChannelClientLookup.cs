@@ -120,6 +120,11 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
         return channel >= 0 && channels.ContainsKey(channel);
     }
 
+    // An instanced-content channel (it runs dungeons only, not a channel of the server list).
+    public bool IsInstanced(int channel) {
+        return channels.TryGetValue(channel, out Channel? entry) && entry.InstancedContent;
+    }
+
     // A channel of the server list the World has, active or not; an instanced-content channel is not one.
     public bool HasListedChannel(int channel) {
         return channels.TryGetValue(channel, out Channel? entry) && !entry.InstancedContent;

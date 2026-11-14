@@ -528,6 +528,9 @@ message TimeEventRequest {
     int64 next_spawn_timestamp = 4;
     // The player channels the boss is announced on: each channel sends one "boss appeared" row per channel.
     repeated int32 channels = 5;
+    // An instanced-content channel (dungeons only) sends the rows to its players but spawns no boss: its target
+    // maps are open fields, not made there.
+    bool no_spawn = 6;
   }
 
   message CloseWorldBoss {
