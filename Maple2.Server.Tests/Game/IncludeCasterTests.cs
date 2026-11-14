@@ -118,4 +118,16 @@ public class IncludeCasterTests {
         buffs[Charm] = [charm];
         Assert.That(Targets(scene, scene.A, Splash()).First(), Is.EqualTo(scene.A.ObjectId));
     }
+
+    // A player's snare (93000002: cylinder 150, includeCaster 1, applyTarget 8) searches wild pets only: the client's
+    // hungry mob query never returns the player, so with no wild pet near it takes no one (it was the player, first).
+    [Test]
+    public void HungryMobRange_NeverTakesThePlayer() {
+        Scene scene = Start();
+        typeof(FieldManager).GetField("<Pets>k__BackingField", Any)!.SetValue(scene.Field, new ConcurrentDictionary<int, FieldPet>());
+        Assert.Multiple(() => {
+            Assert.That(Targets(scene, scene.A, Splash(apply: ApplyTargetType.HungryMobs)), Is.Empty);
+            Assert.That(Targets(scene, scene.A, Splash(IncludeCasterType.Last, ApplyTargetType.HungryMobs)), Is.Empty);
+        });
+    }
 }

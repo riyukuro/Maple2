@@ -162,8 +162,12 @@ public static class SkillCastRules {
         return (endTick - (keptMs - nowMs), nowMs);
     }
 
-    // A cast takes its item once, however often its cost is asked for.
-    public static bool ConsumesItem(bool useItem, bool itemConsumed) => useItem && !itemConsumed;
+    // A cast takes its item once, however often its cost is asked for. The pet taming main types (17 a snare,
+    // 18 a candy, 19 a master snare; the client's item skill list, SkillData::FUN_1407e9d70) carry no useItem in
+    // the server's skill data, yet each throw or snare is one item of a stack: chosen here, their cast takes it too.
+    public static bool ConsumesItem(bool useItem, int mainType, bool itemConsumed) => (useItem || PetTamingItem(mainType)) && !itemConsumed;
+
+    public static bool PetTamingItem(int mainType) => mainType is 17 or 18 or 19;
 
     // The target's resistance against an attack counted by this attack stat.
     public static BasicAttribute ResistanceOf(BasicAttribute attack) {

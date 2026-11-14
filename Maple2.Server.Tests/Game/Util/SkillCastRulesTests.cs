@@ -112,9 +112,20 @@ public class SkillCastRulesTests {
 
     [Test]
     public void ItemIsTakenOncePerCast() {
-        Assert.That(SkillCastRules.ConsumesItem(true, false), Is.True);
-        Assert.That(SkillCastRules.ConsumesItem(true, true), Is.False);
-        Assert.That(SkillCastRules.ConsumesItem(false, false), Is.False);
+        Assert.That(SkillCastRules.ConsumesItem(true, 5, false), Is.True);
+        Assert.That(SkillCastRules.ConsumesItem(true, 5, true), Is.False);
+        Assert.That(SkillCastRules.ConsumesItem(false, 5, false), Is.False);
+    }
+
+    // Candy (94000001, main type 18), master snare (94000005, 19) and snare (93000001, 17) carry no useItem, yet
+    // each cast takes one of the stack; 14 (an emotion) takes none.
+    [Test]
+    public void PetTamingCast_TakesItsItem() {
+        Assert.That(SkillCastRules.ConsumesItem(false, 18, false), Is.True);
+        Assert.That(SkillCastRules.ConsumesItem(false, 19, false), Is.True);
+        Assert.That(SkillCastRules.ConsumesItem(false, 17, false), Is.True);
+        Assert.That(SkillCastRules.ConsumesItem(false, 17, true), Is.False);
+        Assert.That(SkillCastRules.ConsumesItem(false, 14, false), Is.False);
     }
 
     [Test]

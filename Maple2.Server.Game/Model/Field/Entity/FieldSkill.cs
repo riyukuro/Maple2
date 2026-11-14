@@ -149,6 +149,11 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
 
         // Check Activation for OnlySensingActive
         if (!Active) {
+            if (tickCount > endTick) {
+                FireCount = 0;
+                NextTick = long.MaxValue;
+                return;
+            }
             foreach (SkillMetadataMotion motion in Value.Data.Motions) {
                 foreach (SkillMetadataAttack attack in motion.Attacks) {
                     float skillAngle = UseDirection ? Rotation.Z : 0;
@@ -162,13 +167,14 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                 }
             }
 
+            // Not reached yet: it keeps looking until its life ends (a snare, 93000002, has no interval), and a
+            // look that finds no one takes none of its fires.
             NextTick = Field.FieldTick + Interval;
-            goto end;
+            return;
         }
 
     activated:
         Fire();
-    end:
         if (Interval == 0) {
             FireCount = 0;
             NextTick = long.MaxValue;

@@ -1366,6 +1366,11 @@ public partial class FieldManager {
     // The same filter leaves out a hidden caster unless the flags have bit 4 (TargetSource).
     // Chosen here: a range of no kind or of the hungry mobs keeps the caster as before.
     private static bool TakesCaster(IActor caster, SkillMetadataRange range) {
+        // The client adds the caster only when its target query returns it (basecollision.cpp:240-300): the hungry
+        // mob query returns wild pets alone, so a player's snare (93000002, includeCaster 1) never takes its player.
+        if (range.ApplyTarget == ApplyTargetType.HungryMobs) {
+            return caster is FieldPet { OwnerId: 0 };
+        }
         int flags = (int) range.ApplyTarget | ForceApplyTarget(caster);
         if ((flags & 4) == 0 && IsHidden(caster)) {
             return false;
