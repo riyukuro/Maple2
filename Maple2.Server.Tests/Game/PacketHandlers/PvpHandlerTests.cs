@@ -63,6 +63,17 @@ public class PvpHandlerTests {
         Assert.That(Send(test, session, "0E"), Is.EqualTo(new[] { "B600" + "0E" }));
     }
 
+    // With PvPRankingDuelMode off in the server's feature table (no arena map) the register is refused before the
+    // World is asked: the failed box, state 0.
+    [Test]
+    public void RankDuelRegister_FeatureOff_IsRefused() {
+        TestGameSession test = NewTest();
+        GameSession session = test.Start();
+        test.SetFeaturesOff("PvPRankingDuelMode");
+        Assert.That(Send(test, session, "0E"), Is.EqualTo(new[] { "B600" + "10" + "00" }));
+        Assert.That(test.World.PvpRequests, Is.Empty);
+    }
+
     // A dead player is refused before the World is asked: the failed box, state 0.
     [TestCase("0E")]
     [TestCase("10")]

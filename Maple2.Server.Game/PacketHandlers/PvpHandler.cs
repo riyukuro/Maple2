@@ -85,7 +85,9 @@ public class PvpHandler : FieldPacketHandler {
             session.Send(PvpPacket.RankDuelInArenaField());
             return;
         }
-        if (!CanLeave(session)) {
+        // The rank duel arenas are the maps of the PvPRankingDuelMode feature (KR level 13): with the feature off in the
+        // operator's feature.xml there is no arena to fight in, so the register is refused before the World is asked.
+        if (!CanLeave(session) || !session.ServerTableMetadata.FeatureTable.IsOn(RankDuelFeature)) {
             session.Send(PvpPacket.RankDuelMatchFailed());
             return;
         }
@@ -98,6 +100,9 @@ public class PvpHandler : FieldPacketHandler {
             session.Send(PvpPacket.RankDuelMatchFailed());
         }
     }
+
+    // The feature.xml name of the rank duel arenas' environments (map/65010001.xml to 65010010.xml).
+    public const string RankDuelFeature = "PvPRankingDuelMode";
 
     // Whether a player takes the rank duel's observe offer (Pvp 0x19): one its join would not refuse.
     public static bool TakesObserveOffer(GameSession session) {
