@@ -23,6 +23,17 @@ public static class EventSaleRules {
         return rate;
     }
 
+    // The extra share an exp event adds to a gain: gain * rate / 10000, cut to 32 bits unsigned as the shared rule
+    // (CGameRule::CalcAdventureLevelBonusExp, commonfiles/gamerule.cpp:612); 0 for no event or no gain. The prestige
+    // exp event (AdventureLevelBonusExpRate) and the guild exp event (GuildExp, whose client only shows the rate as
+    // a multiplier: UIGuildDialog, uiguilddialog.cpp:504) use it.
+    public static long EventBonus(long gain, int rate) {
+        if (gain <= 0 || rate <= 0) {
+            return 0;
+        }
+        return (uint) ((Int128) gain * rate / FullRate);
+    }
+
     // Whether a running TransferItemBound event lets item move to another character: the event's flag is on, the
     // item has a skin type and no gem in any socket (the client refuses a skin with a gem with its own text, reason 2
     // of Unk_Inventory::FUN_140a66200, inventory.cpp:1673, and the same test in StoreSlot::vfunc_26).

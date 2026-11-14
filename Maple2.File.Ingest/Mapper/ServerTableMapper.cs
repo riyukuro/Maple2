@@ -1987,7 +1987,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             case GameEventType.GuildSkillSale:
             case GameEventType.GuildPersonalSkillSale:
             case GameEventType.SaleEnchant:
+            case GameEventType.GuildExp:
+            case GameEventType.MasteryReduce:
+            case GameEventType.AdventureLevelBonusExpRate:
                 return EventSaleReader.Rate(value1);
+            case GameEventType.PetMastery:
+                return EventSaleReader.PetMastery(value1, value2);
             case GameEventType.BlackMarketFeeDiscount:
                 return EventSaleReader.FeeRate(value1);
             default:

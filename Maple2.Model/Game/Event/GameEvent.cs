@@ -424,6 +424,12 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(Id);
                 writer.WriteInt(eventRate.Rate);
                 break;
+            case PetMastery petMastery:
+                // GameEventPetMastery::vfunc_4: the capture rate, then the other rate.
+                writer.WriteInt(Id);
+                writer.WriteInt(petMastery.CaptureRate);
+                writer.WriteInt(petMastery.OtherRate);
+                break;
             case BlackMarketFeeDiscount feeDiscount:
                 // GameEventBlackMarketFeeDiscount::vfunc_4: the rate, then the start and end time the fee notice shows.
                 writer.WriteInt(Id);

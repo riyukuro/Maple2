@@ -414,6 +414,14 @@ public record SaleAutoFishing(
 public record EventRate(
     int Rate) : GameEventData;
 
+// The pet taming mastery event (GameEventPetMastery, commonfiles/gameevent.cpp:4010): value1 the kinds, value2 their
+// rates in 1/10000, comma lists of one length; kind 1 is a capture's mastery, kind 2 the other pet taming mastery (the
+// last place of a kind counts). The client keeps the highest of each (CGameRule::SetPetMasteryRate) and names a pet
+// taming mastery gain with the event's text (s_pettaming_mastery_event, scenestategame.cpp:3960).
+public record PetMastery(
+    int CaptureRate,
+    int OtherRate) : GameEventData;
+
 // The black market fee event (GameEventBlackMarketFeeDiscount, commonfiles/gameevent.cpp:1283): value1 is the fee
 // rate in 1/10000 that replaces the normal one while the event runs (GetBlackMarketCostRate,
 // commonfiles/blackmarketitemoption.cpp:233). The client asserts on a rate outside 0..10000; 0 is a free sale.
@@ -741,6 +749,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(SaleAutoPlayInstrument), "SaleAutoPlayInstrument")]
 [JsonDerivedType(typeof(SaleAutoFishing), "SaleAutoFishing")]
 [JsonDerivedType(typeof(EventRate), "EventRate")]
+[JsonDerivedType(typeof(PetMastery), "PetMastery")]
 [JsonDerivedType(typeof(TransferItemBound), "TransferItemBound")]
 [JsonDerivedType(typeof(BlackMarketFeeDiscount), "BlackMarketFeeDiscount")]
 [JsonDerivedType(typeof(LevelUpPackage), "LevelUpPackage")]

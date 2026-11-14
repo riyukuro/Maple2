@@ -322,6 +322,15 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // The guild exp after a gain: a running GuildExp event adds its share (the highest rate when several run), and
+    // the exp stops at int.MaxValue.
+    private int AddExp(int experience, int gain) {
+        int rate = EventSaleRules.HighestRate(ServerTableMetadata.GetGameEvents()
+            .Where(gameEvent => gameEvent.Metadata.Type == GameEventType.GuildExp && gameEvent.IsActive(DateTime.Now)));
+        long total = (long) experience + Math.Max(gain, 0) + EventSaleRules.EventBonus(gain, rate);
+        return (int) Math.Min(total, int.MaxValue);
+    }
+
     public GuildError CheckIn(long requestorId) {
         // The table's attend row (KR: 10).
         int contribution = ContributionOf(GuildContributionKind.Attend);
@@ -349,7 +358,7 @@ public class GuildManager : IDisposable {
         int guildFund;
         lock (guildLock) {
             GuildTable.Property property = GuildProperty();
-            Guild.Experience += property.CheckInExp;
+            Guild.Experience = AddExp(Guild.Experience, property.CheckInExp);
             // The fund stops at the level's ceiling, as a donation is refused above it.
             Guild.Funds = GuildRules.AddFund(Guild.Funds, property.CheckInFund, property.FundMax);
             guildExp = Guild.Experience;
@@ -534,8 +543,9 @@ public class GuildManager : IDisposable {
         int guildExp;
         int guildFund;
         lock (guildLock) {
-            addedExp = Math.Max(exp, 0);
-            Guild.Experience += addedExp;
+            int oldExp = Guild.Experience;
+            Guild.Experience = AddExp(oldExp, Math.Max(exp, 0));
+            addedExp = Guild.Experience - oldExp;
             int oldFund = Guild.Funds;
             Guild.Funds = GuildRules.AddFund(Guild.Funds, fund, GuildProperty().FundMax);
             addedFund = Math.Max(Guild.Funds - oldFund, 0);

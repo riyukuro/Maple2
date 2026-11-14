@@ -373,4 +373,52 @@ public class GuildFundTests {
             Assert.That(StoredFunds(), Is.EqualTo(fundsLeft));
         });
     }
+
+    // A running GuildExp event (KR 20180: 10000, twice the exp) adds its share to the check-in's exp and to an exp
+    // gain (quest, trigger, guild vs game), the highest rate when two run; an ended one adds nothing.
+    private void SetGuildExpEvents(params (int Rate, bool Over)[] rates) {
+        var events = new Dictionary<int, GameEventMetadata>();
+        foreach ((int rate, bool over) in rates) {
+            int id = 20180 + events.Count;
+            events[id] = new GameEventMetadata(id, GameEventType.GuildExp, DateTime.Now.AddDays(over ? -9 : -1),
+                DateTime.Now.AddDays(over ? -2 : 1), TimeSpan.Zero, TimeSpan.Zero, [], new EventRate(rate), "", "", "", "");
+        }
+        test.SetServerTable(new GameEventTable(events));
+    }
+
+    [TestCase(0, false, 5)]
+    [TestCase(10000, false, 10)]
+    [TestCase(10000, true, 5)]
+    [TestCase(5000, false, 7)]
+    public void CheckIn_GuildExpEventAddsItsShare(int rate, bool over, int exp) {
+        if (rate > 0) {
+            SetGuildExpEvents((rate, over));
+        }
+
+        Assert.That(manager.CheckIn(member.CharacterId), Is.EqualTo(GuildError.none));
+
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That((guild.Experience, db.GetGuild(guild.Id)!.Experience), Is.EqualTo((exp, exp)));
+    }
+
+    [Test]
+    public void AddExpFund_GuildExpEvent_HighestRateAndTheAddedExp() {
+        SetGuildExpEvents((2500, false), (10000, false), (30000, true));
+
+        Assert.That(manager.AddExpFund(member.CharacterId, 40, 0, out int addedExp, out int addedFund), Is.EqualTo(GuildError.none));
+
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That((addedExp, addedFund, guild.Experience, db.GetGuild(guild.Id)!.Experience), Is.EqualTo((80, 0, 80, 80)));
+    }
+
+    // The guild exp stops at int.MaxValue; the added exp is what was really added.
+    [Test]
+    public void AddExpFund_GuildExpEvent_StopsAtTheIntCeiling() {
+        SetGuildExpEvents((10000, false));
+        guild.Experience = int.MaxValue - 50;
+
+        Assert.That(manager.AddExpFund(member.CharacterId, 40, 0, out int addedExp, out _), Is.EqualTo(GuildError.none));
+
+        Assert.That((addedExp, guild.Experience), Is.EqualTo((50, int.MaxValue)));
+    }
 }
