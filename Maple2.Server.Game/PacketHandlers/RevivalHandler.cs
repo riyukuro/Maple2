@@ -113,6 +113,13 @@ public class RevivalHandler : FieldPacketHandler {
             return;
         }
 
+        // The fee is held here without a packet (the revive sends packets, and a spend on another thread could
+        // come in between) and given back when the revive does not happen; the packet goes out after the revive.
+        if (!useVoucher && !session.Currency.TryTakeMeso(cost, notify: false)) {
+            Logger.Debug("Instant revive refused for {CharacterId}: {Refusal}", session.CharacterId, MesoReviveRefusal.LackMeso);
+            return;
+        }
+
         // The count goes up first: the revive sends it. Paid only once the revive has happened. The free
         // revive of a home field leaves the count alone.
         bool counts = RevivalRules.CountsTowardDailyMax(homeField && !useVoucher);
@@ -123,6 +130,9 @@ public class RevivalHandler : FieldPacketHandler {
             if (counts) {
                 session.Config.InstantReviveCount--;
             }
+            if (!useVoucher) {
+                session.Currency.ReturnMeso(cost, notify: false);
+            }
             return;
         }
         session.Player.Tombstone = null;
@@ -131,7 +141,7 @@ public class RevivalHandler : FieldPacketHandler {
                 session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
             }
         } else {
-            session.Currency.ChangeMeso(-cost);
+            session.Currency.NotifyMeso();
         }
     }
 

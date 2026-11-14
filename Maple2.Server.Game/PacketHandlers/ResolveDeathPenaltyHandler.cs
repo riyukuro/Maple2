@@ -29,11 +29,11 @@ public class ResolveDeathPenaltyHandler : FieldPacketHandler {
 
         int mode = session.Field.Metadata.Property.Continent == Continent.ShadowWorld ? 1 : 0;
         int cost = Lua.CalcResolvePenaltyPrice((ushort) session.Player.Value.Character.Level, session.Config.DeathCount, mode);
-        if (session.Currency.Meso < cost) {
+        // Checked and taken in one step: a spend elsewhere cannot leave the fee unpaid.
+        if (!session.Currency.TryTakeMeso(cost)) {
             return;
         }
 
-        session.Currency.ChangeMeso(-cost);
         session.Config.UpdateDeathPenalty(0);
         session.ConditionUpdate(ConditionType.resolve_panelty);
     }

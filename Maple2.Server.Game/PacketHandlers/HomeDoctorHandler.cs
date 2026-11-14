@@ -38,12 +38,12 @@ public class HomeDoctorHandler : FieldPacketHandler {
         }
 
         int cost = Lua.CalcResolvePenaltyPrice((ushort) session.Player.Value.Character.Level, session.Config.DeathCount, 0);
-        if (session.Currency.Meso < cost) {
+        // Checked and taken in one step: a spend elsewhere cannot leave the fee unpaid.
+        if (!session.Currency.TryTakeMeso(cost)) {
             return;
         }
 
         session.Player.Value.Character.DoctorCooldown = time;
-        session.Currency.ChangeMeso(-cost);
         session.Config.UpdateDeathPenalty(0);
         session.Send(HomeDoctor(time));
         session.ConditionUpdate(ConditionType.home_doctor);
