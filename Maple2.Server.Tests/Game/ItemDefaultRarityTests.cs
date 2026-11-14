@@ -62,12 +62,13 @@ public class ItemDefaultRarityTests {
         Assert.That(session.Field!.ItemDrop.CreateItem(40220131, rarity: 2)!.Rarity, Is.EqualTo(2));
     }
 
-    // A stackable row stored at rarity 1 (made before the rule) loads at its rank, which its next save stores; gear
-    // and an item whose constant is a rarity keep the stored 1 (Item.LoadedRarity).
+    // A stackable row stored at rarity 1 (made before the rule) loads at its default rarity, which its next save
+    // stores; gear keeps the stored 1 (Item.LoadedRarity).
     [TestCase(13, 4, 40220131, 100, 4)] // a gem
     [TestCase(19, 3, 37030001, 999, 3)] // a type 19 catalyst
     [TestCase(2, 4, 40220131, 1, 1)] // not stacked
-    [TestCase(2, 4, 3, 100, 1)] // a constant of 1 to 6
+    [TestCase(2, 4, 3, 100, 3)] // a constant of 1 to 6 gives it (was 1)
+    [TestCase(2, 4, 1, 100, 1)] // a constant of 1
     public void StoredAtRarityOne_StackableLoadsAtItsRank(int type, int rank, int constant, int slotMax, int loaded) {
         test = new TestGameSession();
         Item stored = test.Store(Ranked(40220131, type, rank, constant, slotMax));
@@ -125,5 +126,36 @@ public class ItemDefaultRarityTests {
         Assert.That(held, Has.Length.EqualTo(1));
         Assert.That(held[0].Uid, Is.EqualTo(stored.Uid));
         Assert.That(held[0].Amount, Is.EqualTo(5));
+    }
+
+    // Chaos Onyx 40100024 as KR has it: rank 4, option constant 4, black market only, trade rarity 4. A row the old GM
+    // item command made at rarity 1 (x245, flag 4) loads at 4 with its flag, a new copy stacks onto it, and the next
+    // save stores rarity 4: one row (it was two, the old one kept at 1).
+    [Test]
+    public void StoredAtRarityOne_ConstantRarityStackableJoinsANewCopy() {
+        test = new TestGameSession();
+        ItemMetadata onyx = Ranked(40100024, 15, 4, 4, 9999);
+        onyx = onyx with { Limit = onyx.Limit with { TransferType = TransferType.BlackMarketOnly, TradeMaxRarity = 4 } };
+        Item stored = StoreOld(onyx, 245);
+        Assert.That(stored.Transfer!.Flag, Is.EqualTo(TransferFlag.Trade));
+        GameSession session = Started(onyx);
+
+        Item held = session.Item.Inventory.Filter(item => item.Uid == stored.Uid).Single();
+        Assert.That(held.Rarity, Is.EqualTo(4));
+        Assert.That(held.Transfer!.Flag, Is.EqualTo(TransferFlag.Trade));
+        Item? made = session.Field!.ItemDrop.CreateItem(40100024, amount: 2);
+        Assert.That(made, Is.Not.Null);
+        Assert.That(made!.Rarity, Is.EqualTo(4));
+        Assert.That(session.Item.Inventory.Add(made), Is.True);
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == 40100024).Select(item => (item.Uid, item.Amount)).ToArray(),
+            Is.EqualTo(new[] { (stored.Uid, 247) }));
+
+        using (GameStorage.Request write = test.Storage.Context()) {
+            session.Item.Save(write);
+        }
+        using GameStorage.Request db = test.Storage.Context();
+        Item saved = db.GetItem(stored.Uid)!;
+        Assert.That(saved.Rarity, Is.EqualTo(4));
+        Assert.That(saved.Amount, Is.EqualTo(247));
     }
 }

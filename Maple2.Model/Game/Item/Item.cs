@@ -267,13 +267,13 @@ public class Item : IByteSerializable, IByteDeserializable {
         return metadata.Property.Rank is > 0 and < 7 ? metadata.Property.Rank.Value : 1;
     }
 
-    // The rarity a stored item is loaded with. A stackable item (a gem, a type 19 catalyst) whose option constant is
-    // no rarity and that is stored at 1 was made before DefaultRarity, at 1; it loads at its default rarity, which its
-    // next save stores, so it stacks with the copies made since and a gem upgrade that takes it by id and rank counts
-    // it. Other rows keep theirs: gear is not stacked, and a stored rarity of 1 may be the one its source named.
+    // The rarity a stored item is loaded with. A stackable item (a gem, a type 19 catalyst, a Chaos Onyx of constant 4)
+    // stored at 1 was made before DefaultRarity or by the GM item command before it took the default, at 1; it loads at
+    // its default rarity, which its next save stores, so it stacks with the copies made since and a gem upgrade that
+    // takes it by id and rank counts it. Gear keeps its stored rarity: it is not stacked, and its 1 may be the one its
+    // source named.
     public static int LoadedRarity(int stored, ItemMetadata metadata) =>
-        stored == 1 && metadata.Property.SlotMax > 1 && metadata.Option?.ConstantId is not (> 0 and < 7)
-            ? DefaultRarity(metadata) : stored;
+        stored == 1 && metadata.Property.SlotMax > 1 ? DefaultRarity(metadata) : stored;
 
     // The transfer flag a stored item is loaded with: a row whose rarity LoadedRarity raised takes its rule's flag at
     // that rarity when its flag is still the one its rule gave at the stored rarity (nothing changed it since), as a
