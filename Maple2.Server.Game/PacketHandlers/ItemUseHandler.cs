@@ -794,7 +794,11 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        ICollection<FieldPortal> portals = session.Field.GetPortals();
+        // A quest portal is sent to its owner only (FieldQuestPortal), so another player's is not in this client's
+        // field and does not count here.
+        List<FieldPortal> portals = session.Field.GetPortals()
+            .Where(portal => portal is not FieldQuestPortal questPortal || questPortal.Owner == session.Player)
+            .ToList();
         Vector3 position = session.Player.Position;
         bool inPortalBox = portals.Any(portal => PortalRules.InBox(position, portal.Position, portal.Rotation, portal.Value.Dimension, portal.Value.Offset, 0));
         int namedPortals = portals.Count(portal => !string.IsNullOrEmpty(portal.OwnerName));

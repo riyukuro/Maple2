@@ -396,12 +396,16 @@ public class ItemFunctionUseTests {
     }
 
     // 20301053 opens a portal to field 81000001 for 180 s, for up to 20 players, and is used up. The test has no such
-    // field, so the walk through the portal stops at the field factory with the move error.
-    [Test]
-    public void OpenMassive_OpensThePortalAndIsUsedUp() {
+    // field, so the walk through the portal stops at the field factory with the move error. It opens with 9
+    // owner-named portals in the field (one below the client's limit), and in another player's quest portal, which
+    // the opener's client does not have (a quest portal is sent to its owner only).
+    [TestCase("none")]
+    [TestCase("nineNamedPortals")]
+    [TestCase("othersQuestPortal")]
+    public void OpenMassive_OpensThePortalAndIsUsedUp(string present) {
         Item item = Login(20301053, ItemFunction.OpenMassive, "<v fieldID=\"81000001\" portalDurationTick=\"180000\" maxCount=\"20\" />");
-        typeof(FieldManager).GetField("fieldPortals", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(session.Field, new ConcurrentDictionary<int, FieldPortal>());
+        var portals = new ConcurrentDictionary<int, FieldPortal>();
+        typeof(FieldManager).GetField("fieldPortals", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Field, portals);
         var factory = (FieldManager.Factory) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager.Factory));
         typeof(FieldManager.Factory).GetField("<MapMetadata>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(factory, test.MapMetadata);
@@ -409,6 +413,21 @@ public class ItemFunctionUseTests {
             .SetValue(factory, Serilog.Log.Logger);
         typeof(FieldManager).GetField("<FieldFactory>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(session.Field, factory);
+        switch (present) {
+            case "nineNamedPortals":
+                // Ids apart from the field's own (NextLocalId), so the walk uses the portal the item opens.
+                for (int i = 1; i < OpenMassive.MaxNamedPortals; i++) {
+                    portals[1000 + i] = MassivePortal(1000 + i, session.Player.Position + new System.Numerics.Vector3(5000 * i, 0, 0), "owner");
+                }
+                break;
+            case "othersQuestPortal":
+                var other = (FieldPlayer) RuntimeHelpers.GetUninitializedObject(typeof(FieldPlayer));
+                portals[1001] = new FieldQuestPortal(other, session.Field!, 0x2001, MassivePortal(1001, session.Player.Position, "").Value) {
+                    Position = session.Player.Position,
+                    Rotation = System.Numerics.Vector3.Zero,
+                };
+                break;
+        }
 
         Use(item, "");
 
@@ -418,8 +437,11 @@ public class ItemFunctionUseTests {
         Assert.That(sent.Last(), Is.EqualTo(Hex(FieldEnterPacket.Error(MigrationError.s_move_err_default))));
     }
 
-    // The client opens no massive portal for a dead player, standing in a portal's box, or with 10 owner-named portals
-    // in the field (UIMessageBox::HandleOpenMassiveButton): the server opens none either and keeps the item.
+    // The client opens no massive portal outside a plain field (a dungeon or a room), for a dead player, standing in a
+    // portal's box, or with 10 owner-named portals in the field (UIMessageBox::HandleOpenMassiveButton): the server
+    // opens none either and keeps the item.
+    [TestCase("dungeon")]
+    [TestCase("room")]
     [TestCase("dead")]
     [TestCase("inPortalBox")]
     [TestCase("tenNamedPortals")]
@@ -428,6 +450,11 @@ public class ItemFunctionUseTests {
         var portals = new ConcurrentDictionary<int, FieldPortal>();
         typeof(FieldManager).GetField("fieldPortals", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Field, portals);
         switch (refusal) {
+            case "dungeon":
+            case "room":
+                typeof(FieldManager).GetField("<FieldType>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .SetValue(session.Field, refusal == "dungeon" ? FieldType.Dungeon : FieldType.Random);
+                break;
             case "dead":
                 typeof(FieldPlayer).GetField("isDead", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Player, true);
                 break;
