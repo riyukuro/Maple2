@@ -217,9 +217,15 @@ public class CurrencyManager {
         if (amount <= 0) {
             return;
         }
+        long over;
         lock (walletLock) {
-            Currency.GameMeret += Math.Min(amount, Constant.MaxMeret - Currency.GameMeret);
+            long room = Constant.MaxMeret - Currency.GameMeret;
+            over = Math.Max(0, amount - room);
+            Currency.GameMeret += amount - over;
             session.Send(CurrencyPacket.UpdateGameMeret(Currency, 0));
+        }
+        if (over > 0) {
+            logger.Warning("Red meret give-back of {Amount} for {CharacterId} over the cap by {Over}", amount, session.CharacterId, over);
         }
     }
 

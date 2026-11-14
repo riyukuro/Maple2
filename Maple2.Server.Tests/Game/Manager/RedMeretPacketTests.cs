@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -112,5 +113,20 @@ public class RedMeretPacketTests {
             Assert.That(sum, Is.EqualTo(30));
             Assert.That(Long(sent[0], 4), Is.EqualTo(30));
         });
+    }
+
+    // A give-back past the cap stops at the cap (the part over it is logged, as ReturnMeret's).
+    [Test]
+    public void ReturnGameMeret_StopsAtTheCap() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        session.Currency.GameMeret = Constant.MaxMeret - 5;
+        test.TakeSent();
+
+        session.Currency.ReturnGameMeret(15);
+        List<byte[]> back = test.TakeSent();
+
+        Assert.That(session.Currency.GameMeret, Is.EqualTo(Constant.MaxMeret));
+        Assert.That((Long(back[0], 0), Long(back[0], 1)), Is.EqualTo((Constant.MaxMeret, 0L)));
     }
 }
