@@ -64,6 +64,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private int clientArrowsTaken;
     private int arrowPointMismatches;
     private int pushPointMismatches;
+    // The played client's skills and levels as its SkillData::Load takes them (PlayedClientSkills.SelectSkills), to add
+    // the levels and skills the data pack lacks (PlayedClientSkills.BuildLevel); empty without a played client.
+    private readonly Dictionary<int, (System.Xml.XmlElement Skill, List<(short Value, System.Xml.XmlElement Level)> Levels)> playedSkills = [];
 
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
@@ -118,6 +121,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientArrows = PlayedClientSkills.ReadAttackArrows(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill attacks in the played client's skill data (arrow): {clientArrows.Count}");
+            playedSkills = PlayedClientSkills.SelectSkills(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
         }
         moveTypes = new SkillMoveTypes(xmlReader);
         Console.WriteLine($"Skill motions with a move type: {moveTypes.Count} ({moveTypes.Conflicts} given two types)");
@@ -134,7 +139,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         List<long> magicPaths = [];
         List<long> cubeMagicPaths = [];
         int clientAdded = 0, clientUnmatched = 0, clientSkills = 0, clientNotBuffOwned = 0;
+        int playedLevelsAdded = 0, playedSkillsAdded = 0, playedConditionRows = 0;
+        var packIds = new HashSet<int>();
         foreach ((int id, string name, SkillData data) in parser.Parse()) {
+            packIds.Add(id);
             if (data.basic == null) continue; // Old_JobChange_01
             PlayedClientSkills.Entry? client = played.TryGetValue(id, out PlayedClientSkills.Entry entry) ? entry : null;
             Debug.Assert(data.basic.kinds.groupIDs.Length <= 1);
@@ -243,21 +251,17 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     OnlyManualActiveSplash: level.splashManualActiveProperty?.onlyManualActiveSplash == true
                 ));
 
-            // The played client's effects of a level or attack that the data pack's rows lack (PlayedClientActionAdditionals).
-            bool clientAddedHere = false;
-            foreach (short value in levels.Keys.ToArray()) {
-                if (!clientEffects.TryGetValue((id, value), out PlayedClientActionAdditionals.LevelUses? uses)) {
-                    continue;
+            // The played client's levels of the skill that the data pack lacks (PlayedClientSkills.BuildLevel).
+            if (playedSkills.TryGetValue(id, out var playedSkill)) {
+                foreach ((short value, System.Xml.XmlElement level) in playedSkill.Levels) {
+                    if (value >= 1 && levels.TryAdd(value, PlayedClientSkills.BuildLevel(playedSkill.Skill, level))) {
+                        playedLevelsAdded++;
+                    }
                 }
-                levels[value] = PlayedClientActionAdditionals.MarkNotBuffOwned(levels[value], uses, out int marked);
-                clientNotBuffOwned += marked;
-                levels[value] = PlayedClientActionAdditionals.Merge(levels[value], uses, (effectId, level) => packEffects.Contains((effectId, level)),
-                    out int added, out int unmatched);
-                clientAdded += added;
-                clientUnmatched += unmatched;
-                clientAddedHere |= added > 0;
             }
-            if (clientAddedHere) clientSkills++;
+
+            // The played client's effects of a level or attack that the data pack's rows lack (PlayedClientActionAdditionals).
+            AddClientEffects(id, levels, ref clientAdded, ref clientUnmatched, ref clientSkills, ref clientNotBuffOwned);
 
             yield return new StoredSkillMetadata(
                 Id: id,
@@ -299,6 +303,36 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                 Levels: levels
             );
         }
+        // The played client's skills that the data pack lacks: the client casts them and fires them from other skills'
+        // attacks like any other (PlayedClientSkills.BuildLevel, BuildProperty, BuildState).
+        Dictionary<int, string> names = playedSkills.Count > 0 ? parser.LoadSkillNames() : [];
+        foreach ((int id, (System.Xml.XmlElement skill, List<(short Value, System.Xml.XmlElement Level)> playedLevels)) in playedSkills.OrderBy(entry => entry.Key)) {
+            if (packIds.Contains(id)) {
+                continue;
+            }
+            var levels = new Dictionary<short, SkillMetadataLevel>();
+            foreach ((short value, System.Xml.XmlElement level) in playedLevels) {
+                if (value >= 1) {
+                    levels.TryAdd(value, PlayedClientSkills.BuildLevel(skill, level));
+                }
+            }
+            if (levels.Count == 0) {
+                continue;
+            }
+            AddClientEffects(id, levels, ref clientAdded, ref clientUnmatched, ref clientSkills, ref clientNotBuffOwned);
+            playedSkillsAdded++;
+            playedLevelsAdded += levels.Count;
+            playedConditionRows += PlayedClientSkills.UnreadConditionRows(skill);
+            yield return new StoredSkillMetadata(
+                Id: id,
+                Name: names.GetValueOrDefault(id, string.Empty),
+                Property: PlayedClientSkills.BuildProperty(skill, levels.Keys.Max()),
+                State: PlayedClientSkills.BuildState(id, skill),
+                Levels: levels);
+        }
+        if (playedSkills.Count > 0) {
+            Console.WriteLine($"Skills and levels added from the played client's skill data: {playedSkillsAdded} skills, {playedLevelsAdded} levels ({playedConditionRows} condition rows of the added skills with no place in the server's condition)");
+        }
         if (clientEffects.Count > 0) {
             Console.WriteLine($"Skill effects added from the played client's skill data: {clientAdded} in {clientSkills} skills ({clientUnmatched} attack effects with no attack of their point)");
             Console.WriteLine($"Effect buff tests given hasNotBuffOwner from the played client's skill data: {clientNotBuffOwned}");
@@ -330,6 +364,25 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientMotions.Count > 0) {
             Console.WriteLine($"Skill motions given the played client's sequence name, sequence speed, move distance and splash life tick over the data pack's: {clientMotionsTaken} ({motionPointMismatches} with other attack points, or another motion count in the level and another sequence, at that place, the data pack's kept)");
         }
+    }
+
+    // The played client's effects of a level or attack that the data pack's rows lack (PlayedClientActionAdditionals).
+    private void AddClientEffects(int id, Dictionary<short, SkillMetadataLevel> levels, ref int clientAdded, ref int clientUnmatched,
+            ref int clientSkills, ref int clientNotBuffOwned) {
+        bool clientAddedHere = false;
+        foreach (short value in levels.Keys.ToArray()) {
+            if (!clientEffects.TryGetValue((id, value), out PlayedClientActionAdditionals.LevelUses? uses)) {
+                continue;
+            }
+            levels[value] = PlayedClientActionAdditionals.MarkNotBuffOwned(levels[value], uses, out int marked);
+            clientNotBuffOwned += marked;
+            levels[value] = PlayedClientActionAdditionals.Merge(levels[value], uses, (effectId, level) => packEffects.Contains((effectId, level)),
+                out int added, out int unmatched);
+            clientAdded += added;
+            clientUnmatched += unmatched;
+            clientAddedHere |= added > 0;
+        }
+        if (clientAddedHere) clientSkills++;
     }
 
     // The played client's type where it has the attack at that place with the same point, else the data pack's.

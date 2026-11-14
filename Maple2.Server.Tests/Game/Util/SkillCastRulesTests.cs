@@ -426,15 +426,29 @@ public class SkillCastRulesTests {
     [Test]
     public void RunebladeCastsItsTreeAtLevel13() {
         AssertRunebladeCasts(new Dictionary<int, short> {
-            [10900001] = 3, [10900061] = 2, [10900081] = 1, [10900031] = 2, [10900151] = 1, [10900071] = 1,
+            [10900001] = 3,
+            [10900061] = 2,
+            [10900081] = 1,
+            [10900031] = 2,
+            [10900151] = 1,
+            [10900071] = 1,
         });
     }
 
     [Test]
     public void RunebladeCastsItsTreeAtLevel30() {
         AssertRunebladeCasts(new Dictionary<int, short> {
-            [10900001] = 5, [10900061] = 4, [10900081] = 3, [10900031] = 4, [10900151] = 3, [10900071] = 3, [10900011] = 2,
-            [10900111] = 2, [10900091] = 1, [10900121] = 1, [10900021] = 1,
+            [10900001] = 5,
+            [10900061] = 4,
+            [10900081] = 3,
+            [10900031] = 4,
+            [10900151] = 3,
+            [10900071] = 3,
+            [10900011] = 2,
+            [10900111] = 2,
+            [10900091] = 1,
+            [10900121] = 1,
+            [10900021] = 1,
         });
     }
 
@@ -1033,6 +1047,92 @@ public class SkillCastRulesTests {
             Assert.That(SkillCastRules.StartOf([Motion("Attack_01_A")], () => true), Is.EqualTo(SkillCastRules.CastStart.Play));
             Assert.That(SkillCastRules.StartOf([Motion("Attack_01_A")], () => false), Is.EqualTo(SkillCastRules.CastStart.Cancel));
             Assert.That(SkillCastRules.StartOf([Motion(""), Motion("Attack_01_A")], () => false), Is.EqualTo(SkillCastRules.CastStart.Cancel));
+        });
+    }
+
+    [Test]
+    public void PlayedOnlyLevelIsBuiltAsTheClientLoadsIt() {
+        // Made-up rows. What the level does not give is the client loaders' default: sequence speed 1 and faceTarget 1
+        // (SkillMotionData), direction 3 (SkillAttackData, kept as null), count 1, hit speed 1 and push probability 1
+        // (SkillDamage), fire count 1 and chain distance 150 (SkillActionSkill), whose rows are all splash ones.
+        var document = new XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="300" originID="299">
+                <basic mainType="4">
+                  <kinds rangeType="2" element="3" groupIDs="7" unrideOnUse="1" />
+                  <ui attackType="1" />
+                  <stateAttr battle="1" superArmor="3" cooldownGroupID="12" rechargeMaxCount="2" rechargeShareOrigin="1" clearCooldownFromPVPZone="1" />
+                  <condition onlyBattleRidingState="1" defaultRechargingCooldownTime="1.5">
+                    <requireMapCodes code="2000001" /><weapon lh="0" rh="32" /><requireEffect code="5" />
+                  </condition>
+                </basic>
+                <level value="2" cooldown="7500" sp="15" meso="100">
+                  <detectProperty distance="300" />
+                  <motion sequenceName="Attack_01_A" movedistance="50" faceTarget="0">
+                    <attack point="p0" targetCount="3" direction="1" compulsionType="1,3" splashActiveSkillID="301">
+                      <range rangeType="box" distance="150" width="80" includeCaster="1" applyTarget="1" castTarget="2"
+                             targetSelectType="1" targetHasBuffID="400" targetHasNotBuffID="401" applyTargetIgnoreNpcRanks="1,2" />
+                      <damage rate="1.25" value="5000000000" push="1" pushdistance="100" />
+                      <actionSkill skillID="301,302" level="2,3" delay="200" chain="1" />
+                    </attack>
+                    <attack point="p0"><range targetHasBuffID="500" /><actionSkill skillID="303" level="1" linkSkillID="304" fireCount="2" chainDistance="90" /></attack>
+                  </motion>
+                </level>
+              </skill>
+            </ms2>
+            """);
+        XmlElement skill = (XmlElement) document.SelectSingleNode("ms2/skill")!;
+        XmlElement level = (XmlElement) skill.SelectSingleNode("level")!;
+        SkillMetadataLevel built = PlayedClientSkills.BuildLevel(skill, level);
+        SkillMetadataProperty property = PlayedClientSkills.BuildProperty(skill, 2);
+        SkillMetadataState state = PlayedClientSkills.BuildState(300, skill);
+        Assert.Multiple(() => {
+            Assert.That(property.RangeType, Is.EqualTo((RangeType) 2));
+            Assert.That(property.Element, Is.EqualTo((Element) 3));
+            Assert.That(property.AttackType, Is.EqualTo((AttackType) 1));
+            Assert.That((property.SkillGroup, property.MaxLevel, property.MainType, property.UnrideOnUse), Is.EqualTo((7, (short) 2, 4, true)));
+            Assert.That((state.InBattle, state.SuperArmor, state.CooldownGroupId, state.RechargeMaxCount, state.RechargeShared, state.ClearCooldownOnPvpZone),
+                Is.EqualTo((true, (SuperArmor) 3, 12, 2, true, true)));
+
+            Assert.That(built.Condition.CooldownTime, Is.EqualTo(7.5f));
+            Assert.That((built.Condition.Level, built.Condition.Probability, built.Condition.Gender), Is.EqualTo((1, 1f, Gender.All)));
+            Assert.That((built.Condition.OnlyOnBattleMount, built.Condition.AllowOnBattleMount, built.Condition.RechargeGap), Is.EqualTo((true, false, 1.5f)));
+            Assert.That(built.Condition.Maps, Is.EqualTo(new[] { 2000001 }));
+            Assert.That(built.Condition.Weapon.Select(weapon => (weapon.LeftHand.Type, weapon.RightHand.Type)), Is.EqualTo(new[] { (0, 32) }));
+            Assert.That(PlayedClientSkills.UnreadConditionRows(skill), Is.EqualTo(1));
+            Assert.That(built.Consume.Meso, Is.EqualTo(100));
+            Assert.That(built.Consume.Stat, Is.EqualTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.Spirit] = 15 }));
+            Assert.That((built.Detect.IncludeCaster, built.Detect.Distance), Is.EqualTo((false, 300f)));
+
+            SkillMetadataMotion motion = built.Motions.Single();
+            Assert.That(motion.MotionProperty.SequenceName, Is.EqualTo("Attack_01_A"));
+            Assert.That((motion.MotionProperty.SequenceSpeed, motion.MotionProperty.MoveDistance, motion.MotionProperty.FaceTarget), Is.EqualTo((1f, 50f, false)));
+            Assert.That(motion.AttackPoints, Is.EqualTo(new Dictionary<string, byte> { ["p0"] = byte.MaxValue }), "a point named twice");
+
+            SkillMetadataAttack first = motion.Attacks[0];
+            Assert.That((first.TargetCount, first.Direction), Is.EqualTo((3, (int?) 1)));
+            Assert.That(first.CompulsionTypes, Is.EqualTo(new[] { (CompulsionType) 1, (CompulsionType) 3 }));
+            Assert.That(first.SplashActiveSkillIds, Is.EqualTo(new[] { 301 }));
+            Assert.That(first.Range.Type, Is.EqualTo(PlayedClientSkills.ShapeType("box")));
+            Assert.That((first.Range.Distance, first.Range.Width), Is.EqualTo((150f, 80f)));
+            Assert.That((first.Range.IncludeCaster, first.Range.ApplyTarget, first.Range.CastTarget),
+                Is.EqualTo(((IncludeCasterType) 1, (ApplyTargetType) 1, (SkillTargetType) 2)));
+            Assert.That((first.Range.Select?.Mode, first.Range.Select?.BuffId, first.Range.HasNotBuffId), Is.EqualTo(((int?) 1, (int?) 400, 401)));
+            Assert.That(first.Range.IgnoreNpcClasses, Is.EqualTo(new[] { 1, 2 }));
+            Assert.That((first.Damage.Count, first.Damage.Rate, first.Damage.HitSpeed, first.Damage.Value), Is.EqualTo((1, 1.25f, 1f, 5000000000L)));
+            Assert.That((first.Damage.Push?.Distance, first.Damage.Push?.Probability), Is.EqualTo(((float?) 100f, (float?) 1f)));
+            SkillEffectMetadata splash = first.Skills.Single();
+            Assert.That(splash.Skills.Select(entry => (entry.Id, entry.Level)), Is.EqualTo(new[] { (301, (short) 2), (302, (short) 3) }));
+            Assert.That((splash.FireCount, splash.Condition, splash.Splash?.Delay, splash.Splash?.Chain?.Distance), Is.EqualTo((1, (SkillEffectMetadataCondition?) null, (int?) 200, (float?) 150f)));
+
+            SkillMetadataAttack second = motion.Attacks[1];
+            Assert.That((second.Direction, second.Range.Select, second.Range.HasNotBuffId), Is.EqualTo(((int?) null, (SkillMetadataRangeSelect?) null, 0)),
+                "the buff fields are read only with a targetSelectType");
+            Assert.That((second.Damage.Count, second.Damage.Push), Is.EqualTo((1, (SkillMetadataPush?) null)));
+            SkillEffectMetadata linked = second.Skills.Single();
+            Assert.That(linked.Skills.Select(entry => (entry.Id, entry.Level, entry.LinkId)), Is.EqualTo(new[] { (303, (short) 1, 304) }));
+            Assert.That((linked.FireCount, linked.Splash?.Chain), Is.EqualTo((2, (SkillEffectMetadataChain?) null)));
         });
     }
 }

@@ -17,7 +17,7 @@ namespace Maple2.Model.Metadata;
 // - attackMethodType of each <attack> (SkillAttackData::Load, 0 when not given): the data pack gives it for 2 skills
 //   only. The client's search of an attack of type 1 takes neither the range offset nor its z rotation
 //   (SkillLevelData::FUN_1408043f0); see ReadAttackMethods.
-public static class PlayedClientSkills {
+public static partial class PlayedClientSkills {
     public const string SkillFolder = "skilldata/";
 
     public readonly record struct Entry(int MainType, int RechargeMaxCount, bool RechargeShared, (int LeftHand, int RightHand)[] Weapons);
