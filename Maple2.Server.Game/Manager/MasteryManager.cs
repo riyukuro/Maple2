@@ -99,12 +99,8 @@ public class MasteryManager {
     /// <param name="currentLevel">The new current level of the mastery after the increase.</param>
     /// <param name="deltaLevel">The delta by which the mastery level has changed.</param>
     private void HandleMasteryLevelChange(MasteryType type, int currentLevel, int deltaLevel) {
-        if (deltaLevel == 0) {
-            return;
-        }
-
-        if (deltaLevel < 0) {
-            session.ConditionUpdate(ConditionType.set_mastery_grade, codeLong: (int) type);
+        // The mastery never goes down (the setter clamps it to the old value), so only a rise is counted.
+        if (deltaLevel <= 0) {
             return;
         }
 
@@ -116,7 +112,11 @@ public class MasteryManager {
                 session.ConditionUpdate(ConditionType.music_play_grade, counter: deltaLevel);
                 return;
             default:
-                session.ConditionUpdate(ConditionType.mastery_grade, codeLong: (int) type);
+                // mastery_grade counts each grade gained (23100238-23100241 "Master Miner (1)": grades 1 to 13, a
+                // rise of two grades counts two); set_mastery_grade is the grade reached (23100330 "Master Miner (2)":
+                // grades 14 and 15 of mining), kept as the highest.
+                session.ConditionUpdate(ConditionType.mastery_grade, counter: deltaLevel, codeLong: (int) type);
+                session.ConditionUpdate(ConditionType.set_mastery_grade, counter: currentLevel, codeLong: (int) type);
                 return;
         }
     }
