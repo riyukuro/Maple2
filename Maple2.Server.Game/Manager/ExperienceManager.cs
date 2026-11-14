@@ -1,6 +1,5 @@
 ﻿using Maple2.Model;
 using Maple2.Model.Enum;
-using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -182,7 +181,7 @@ public sealed class ExperienceManager {
         character.ConstructExpCount = paidToday + 1;
         character.ConstructExpTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         if (step == ConstructExpRules.Step.OverTime) {
-            session.Send(CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_err_ugcmap_construct_exp_overtime, session.Player.ObjectId));
+            session.Send(CubePacket.ConstructExpOverTime());
             return;
         }
         AddExp(ExpType.construct);

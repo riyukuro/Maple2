@@ -62,7 +62,8 @@ public static class CubePacket {
         RemoveBuildPermission = 58,
         LoadBuildPermission = 59,
         // Blueprint stuff:
-        // 60, 61, 63, 64, 67, 69
+        // 60, 63, 64, 67, 69
+        ConstructExp = 61,
         UpdateHomeAreaAndHeight = 62,
         CreateBlueprint = 63,
         SaveBlueprint = 64,
@@ -129,6 +130,17 @@ public static class CubePacket {
         pWriter.WriteByte((byte) error);
         pWriter.WriteInt(objectId); // Owner
         pWriter.WriteInt(objectId); // Player
+        return pWriter;
+    }
+
+    // The decorating exp notice (ResponseCube 0x3d, scenestategame.cpp:10821): the error byte, and for 100 a sub byte;
+    // the client shows ShowBuildNotice(100) (s_err_ugcmap_construct_exp_overtime) when the sub is not 0, or with sub 0
+    // only once after its ugc map info load. Sent once a day, at the first place past the count, so the sub is 1.
+    public static ByteWriter ConstructExpOverTime() {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.Write<Command>(Command.ConstructExp);
+        pWriter.WriteByte((byte) UgcMapError.s_err_ugcmap_construct_exp_overtime);
+        pWriter.WriteByte(1);
         return pWriter;
     }
 

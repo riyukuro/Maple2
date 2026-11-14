@@ -42,6 +42,8 @@ public class EventSalePurchaseTests {
         test.SetTable(new FurnishingShopTable(new Dictionary<int, FurnishingShopTable.Entry> {
             [Cube] = new(Cube, true, currency, 1000),
         }));
+        // A placed cube reads the construct row (decorating exp); none here, so a place gives no exp.
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>()));
         test.Register(TestGameSession.Metadata(Cube) with {
             Housing = new ItemMetadataHousing(0, 0, 0, HousingCategory.None, false, Filter: Filter),

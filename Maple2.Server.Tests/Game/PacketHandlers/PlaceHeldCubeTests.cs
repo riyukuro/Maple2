@@ -40,6 +40,8 @@ public class PlaceHeldCubeTests {
             [TrophyCube] = new(TrophyCube, true, FurnishingCurrencyType.Meso, 1000),
             [QuestCube] = new(QuestCube, true, FurnishingCurrencyType.Meso, 1000),
         }));
+        // No construct row: a place gives no decorating exp unless a test sets one (ConstructExpTests below).
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>()));
         ItemMetadata house = Furnishing(House);
         test.Register(Furnishing(Cube), Furnishing(OtherCube), house with { Property = house.Property with { Type = 6, SubType = 4 } },
@@ -267,4 +269,65 @@ public class PlaceHeldCubeTests {
         Assert.That(plot.Cubes, Has.Count.EqualTo(1));
         Assert.That(session.Currency.Meso, Is.EqualTo(4000));
     }
+
+    // Decorating exp: the construct row's curve at the decorator's level for each placed cube, up to
+    // ConstructExpMaxCount a day; the first place past it gets ResponseCube 0x3d [100][1], later ones nothing.
+    private void WithConstructExp(GameSession session, int maxPerDay) {
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> { [ExpType.construct] = new(1, 1f) }));
+        test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
+            [1] = Enumerable.Range(1, 99).ToDictionary(level => level, level => level * 10L),
+        }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { ConstructExpMaxCount = maxPerDay });
+        session.Player.Value.Character.Level = 50;
+    }
+
+    private static readonly string OverTime = Convert.ToHexString(CubePacket.ConstructExpOverTime().ToArray());
+
+    [Test]
+    public void APlace_PaysTheConstructExpUpToTheDailyCount() {
+        (GameSession session, Plot plot) = StartInHome();
+        WithConstructExp(session, maxPerDay: 1);
+        long exp = session.Player.Value.Character.Exp;
+
+        Place(session, Cube, Cube, new Vector3B(-1, -1, 1));
+        List<string> first = test.TakeSent().Select(Convert.ToHexString).ToList();
+        long paid = session.Player.Value.Character.Exp - exp;
+        Place(session, Cube, Cube, new Vector3B(-2, -1, 1));
+        List<string> second = test.TakeSent().Select(Convert.ToHexString).ToList();
+        Place(session, Cube, Cube, new Vector3B(-3, -1, 1));
+        List<string> third = test.TakeSent().Select(Convert.ToHexString).ToList();
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes, Has.Count.EqualTo(3));
+            Assert.That(paid, Is.EqualTo(500));
+            Assert.That(session.Player.Value.Character.Exp - exp, Is.EqualTo(500));
+            Assert.That(first, Has.None.EqualTo(OverTime));
+            Assert.That(second.Count(packet => packet == OverTime), Is.EqualTo(1));
+            Assert.That(third, Has.None.EqualTo(OverTime));
+            Assert.That(session.Player.Value.Character.ConstructExpCount, Is.EqualTo(2));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    [Test]
+    public void APlannerPlace_PaysNoConstructExp() {
+        (GameSession session, Plot plot) = StartInHome();
+        WithConstructExp(session, maxPerDay: 1);
+        plot.PlotMode = PlotMode.DecorPlanner;
+        long exp = session.Player.Value.Character.Exp;
+
+        Place(session, Cube, Cube);
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes, Has.Count.EqualTo(1));
+            Assert.That(session.Player.Value.Character.Exp, Is.EqualTo(exp));
+            Assert.That(session.Player.Value.Character.ConstructExpCount, Is.EqualTo(0));
+        });
+    }
+
+    // ResponseCube 0x3d: the error byte 100, then the sub byte the client tests before it shows the notice.
+    [Test]
+    public void TheOverTimeNotice_IsResponseCube0x3dWithError100()
+        => Assert.That(CubePacket.ConstructExpOverTime().ToArray()[2..], Is.EqualTo(new byte[] { 0x3d, 100, 1 }));
 }
