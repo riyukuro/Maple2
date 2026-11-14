@@ -127,6 +127,28 @@ public class PlotChargeTests {
         Assert.That(session.Player.Value.Home.Outdoor!.ExpiryTime, Is.GreaterThan(expiry.AddDays(29).ToUnixTimeSeconds()));
     }
 
+    // An extension is taken within 30 days of the expiry (s_ugcmap_not_extension_date before). The check took the
+    // expiry as the server's local time less the UTC clock, off by the server's UTC offset: west of UTC a plot an hour
+    // past the 30 days was extended, east of it one an hour inside them was refused.
+    [TestCase(-1, true)]
+    [TestCase(1, false)]
+    public void ExtendPlot_OnlyWithin30DaysOfTheExpiry(int hoursPast30Days, bool extended) {
+        Assume.That(TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow), Is.Not.EqualTo(TimeSpan.Zero), "the host is on UTC");
+        DateTimeOffset expiry = DateTimeOffset.UtcNow.AddDays(30).AddHours(hoursPast30Days);
+        (GameSession session, Plot plot) = Start(Mesos, expiry: expiry);
+        using (var context = new Ms2Context(test.Options)) {
+            context.UgcMap.Single(row => row.Id == plot.Id).OwnerId = session.AccountId;
+            context.SaveChanges();
+        }
+        plot.OwnerId = session.AccountId;
+        plot.ExpiryTime = expiry.ToUnixTimeSeconds();
+        session.Housing.SetPlot(plot);
+
+        session.Housing.ExtendPlot();
+        Assert.That(session.Currency.Meso, Is.EqualTo(extended ? 4600 : 5000));
+        Assert.That(session.Player.Value.Home.Outdoor!.ExpiryTime > expiry.ToUnixTimeSeconds(), Is.EqualTo(extended));
+    }
+
     // A plot a day past its expiry is not forfeited (World takes an expired plot back, and the storage refuses it):
     // the player gets the expiry error, not a database error, and the row stays.
     [Test]

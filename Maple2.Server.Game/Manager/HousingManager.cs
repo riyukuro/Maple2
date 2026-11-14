@@ -313,7 +313,9 @@ public class HousingManager {
             return;
         }
 
-        if (Home.Outdoor.ExpiryTime.FromEpochSeconds() - DateTime.UtcNow > TimeSpan.FromDays(30)) {
+        // Both sides in epoch seconds: FromEpochSeconds gives the local time, which less the UTC clock was off by the
+        // server's UTC offset.
+        if (Home.Outdoor.ExpiryTime - DateTimeOffset.UtcNow.ToUnixTimeSeconds() > (long) TimeSpan.FromDays(30).TotalSeconds) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_extension_date));
             return;
         }
