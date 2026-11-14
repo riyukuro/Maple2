@@ -229,5 +229,39 @@ public class UserConditionEventTests {
         });
     }
 
+    // Two user condition events each keep their own done row (a row per event and type, as the table's key): the
+    // character config reads past them, the login reads both, and the save and a second login keep both.
+    [Test]
+    public void UserCondition_TwoEventsRows_LoadSaveAndRelog() {
+        const int otherEvent = EventId + 1;
+        const long end = 4102491600;
+        TestGameSession test = Test();
+        test.AddEvent(otherEvent, GameEventType.UserCondition, new UserCondition(3, "https://example.com/"));
+        var done = new GameEventUserValue(GameEventUserValueType.UserConditionDone, end, EventId);
+        done.SetValue("1,2,7");
+        var empty = new GameEventUserValue(GameEventUserValueType.UserConditionDone, end, otherEvent);
+        using (var db = test.Storage.Context()) {
+            Assert.That(db.SaveGameEventUserValues(test.CharacterId, [done, empty]), Is.True);
+        }
+
+        for (int login = 0; login < 2; login++) {
+            GameSession session = test.Start();
+            using var db = test.Storage.Context();
+            Assert.DoesNotThrow(() => db.LoadCharacterConfig(test.CharacterId));
+            Assert.That(session.GameEvent.Peek(GameEventUserValueType.UserConditionDone, EventId), Is.EqualTo("1,2,7"));
+            Assert.That(session.GameEvent.Peek(GameEventUserValueType.UserConditionDone, otherEvent), Is.EqualTo(""));
+            session.GameEvent.Save(db);
+        }
+
+        using (var db = test.Storage.Context()) {
+            Assert.That(db.GetEventUserValues(test.CharacterId).Select(value => (value.EventId, value.Type, value.Value)).OrderBy(value => value.EventId),
+                Is.EqualTo(new[] {
+                    (EventId, GameEventUserValueType.UserConditionDone, "1,2,7"),
+                    (otherEvent, GameEventUserValueType.UserConditionDone, ""),
+                }));
+        }
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     private static UserConditionEventTable UserConditionEventTable(XmlDocument document) => TableMapper.UserConditionEvents(document);
 }

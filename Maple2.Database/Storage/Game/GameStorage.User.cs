@@ -18,7 +18,6 @@ using SkillTab = Maple2.Model.Game.SkillTab;
 using SkillPoint = Maple2.Model.Game.SkillPoint;
 using Wardrobe = Maple2.Model.Game.Wardrobe;
 using Mail = Maple2.Model.Game.Mail;
-using GameEventUserValue = Maple2.Model.Game.GameEventUserValue;
 using Home = Maple2.Model.Game.Home;
 using HomeLayout = Maple2.Database.Model.HomeLayout;
 
@@ -657,10 +656,6 @@ public partial class GameStorage {
                     .Select<Model.SkillTab, SkillTab>(tab => tab)
                     .ToList(),
             };
-
-            Dictionary<GameEventUserValueType, GameEventUserValue> eventValues = Context.GameEventUserValue.Where(value => value.CharacterId == characterId)
-                .Select<Model.GameEventUserValue, GameEventUserValue>(value => value)
-                .ToDictionary(value => value.Type, value => value);
 
             var skillPoint = new SkillPoint();
             if (config.SkillPoint != null) {
