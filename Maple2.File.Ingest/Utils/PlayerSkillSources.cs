@@ -17,6 +17,9 @@ namespace Maple2.File.Ingest.Utils;
 /// </summary>
 public static class PlayerSkillSources {
     // SkillData::FUN_1407e9f30 returns false for these main types: the skill needs no learning.
+    // Main type 12 (hold, 20000031) is not among them and only its own jump reaches it, so it is NoPlayerSource and a
+    // state skill 0x21 of it is refused. That is the client's rule too: it enters a hold directly (HoldAction::vfunc_2,
+    // actionkeyobject.cpp:2273; StateSkill::FUN_1417f0070, stateskill.cpp:2815), never through UseStateSkill.
     public static readonly HashSet<int> NoLearnMainTypes = [1, 3, 4, 5, 7, 10, 11, 13, 14, 15, 17, 18, 19];
 
     // The constants.xml keys whose value is a skill the client casts by id.
