@@ -617,6 +617,34 @@ public static class SkillCastRules {
         return null;
     }
 
+    // An item skill's recovery on a full pool (CSkillSystem::FUN_14176a8c0, skillslot.cpp:3059-3082): for each effect
+    // of the level's own list (actionAdditional; the pack's level conditionSkill, the same ids for every KR item skill),
+    // in order, the first pool the effect recovers (health, else spirit, else stamina, by value or rate) is tested,
+    // and a full one refuses the use: answer 8, 9 or 10. An effect that recovers nothing is skipped. null: none
+    // refuses. Each pool is (current, total).
+    public static int? RecoveryFullRefusal(IEnumerable<AdditionalEffectMetadataRecovery?> recoveries, (long Current, long Total) health,
+            (long Current, long Total) spirit, (long Current, long Total) stamina) {
+        foreach (AdditionalEffectMetadataRecovery? recovery in recoveries) {
+            if (recovery == null) {
+                continue;
+            }
+            if (recovery.HpValue != 0 || recovery.HpRate != 0) {
+                if (health.Total <= health.Current) {
+                    return 8;
+                }
+            } else if (recovery.SpValue != 0 || recovery.SpRate != 0) {
+                if (spirit.Total <= spirit.Current) {
+                    return 9;
+                }
+            } else if (recovery.EpValue != 0 || recovery.EpRate != 0) {
+                if (stamina.Total <= stamina.Current) {
+                    return 10;
+                }
+            }
+        }
+        return null;
+    }
+
     // Every skill of every job's tree, main and sub.
     public static HashSet<int> TreeSkills(JobTable jobTable) {
         var skills = new HashSet<int>();

@@ -1396,4 +1396,25 @@ public class SkillCastRulesTests {
             Assert.That(PlayedClientSkills.ClientMotions(level, 1), Is.Null, "the same motion count pairs by place");
         });
     }
+
+    // KR item skills: 90000032 (health 200), 90000333 (spirit 70), 90000334 (health 3410 and spirit 50: only health is
+    // tested, as the client tests the first pool an effect recovers), and an effect with no recovery (90000900).
+    [Test]
+    public void RecoveryFullRefusal_IsTheClientsAnswer() {
+        static AdditionalEffectMetadataRecovery Rec(long hp = 0, float hpRate = 0, long sp = 0, long ep = 0) =>
+            new(0, hp, hpRate, 0, sp, 0, 0, ep, 0, false);
+        (long, long) full = (100, 100), notFull = (99, 100);
+        Assert.Multiple(() => {
+            Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(hp: 200)], full, notFull, notFull), Is.EqualTo(8));
+            Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(hp: 200)], notFull, full, full), Is.Null);
+            Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(hpRate: 0.25f)], full, notFull, notFull), Is.EqualTo(8));
+            Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(sp: 70)], notFull, full, notFull), Is.EqualTo(9));
+            Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(ep: 10)], notFull, notFull, full), Is.EqualTo(10));
+            Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(hp: 3410, sp: 50)], notFull, full, notFull), Is.Null, "health first, spirit not tested");
+            Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(hp: 3410, sp: 50)], full, notFull, notFull), Is.EqualTo(8));
+            Assert.That(SkillCastRules.RecoveryFullRefusal([null, Rec()], full, full, full), Is.Null, "no recovery");
+            Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(sp: 70), Rec(hp: 200)], full, notFull, notFull), Is.EqualTo(8), "every effect is tested");
+            Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(hp: 200)], (120, 100), notFull, notFull), Is.EqualTo(8), "over the total");
+        });
+    }
 }

@@ -121,6 +121,10 @@ public static class SkillCastCheck {
         if (!useItem) {
             return HandsAndSpiritAllow(session, record);
         }
+        if (RecoveryFull(session, record) is { } full) {
+            Logger.Debug("Cast refused, item skill {SkillId}: the client's check answers {Answer} for a full pool", record.SkillId, full);
+            return false;
+        }
         if (!condition.Check(session.Player, session.Player, session.Player)) {
             return false;
         }
@@ -145,6 +149,17 @@ public static class SkillCastCheck {
             Logger.Information("Cast not refused (log only), skill {SkillId} of {Player}, {Reason} ({Count} since the last line)", record.SkillId, session.PlayerName, early, unlogged);
         }
         return true;
+    }
+
+    // The recovery effects of an item skill's level, tested against the caster's pools (SkillCastRules.RecoveryFullRefusal).
+    private static int? RecoveryFull(GameSession session, SkillRecord record) {
+        IEnumerable<AdditionalEffectMetadataRecovery?> recoveries = record.Metadata.Data.Skills
+            .SelectMany(effect => effect.Skills)
+            .Select(skill => session.SkillMetadata.TryGetEffect(skill.Id, skill.Level, out AdditionalEffectMetadata? metadata) ? metadata.Recovery : null);
+        Stats stats = session.Player.Stats.Values;
+        return SkillCastRules.RecoveryFullRefusal(recoveries, Pool(stats, BasicAttribute.Health), Pool(stats, BasicAttribute.Spirit), Pool(stats, BasicAttribute.Stamina));
+
+        static (long, long) Pool(Stats stats, BasicAttribute attribute) => (stats[attribute].Current, stats[attribute].Total);
     }
 
     // A job skill's weapon condition and spirit threshold (an item skill's own condition checks both).
