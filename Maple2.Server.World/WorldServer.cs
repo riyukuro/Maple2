@@ -423,12 +423,12 @@ public class WorldServer : ILoginGate {
 
             manager.CreateFields();
 
-            Task.Factory.StartNew(() => {
-                Thread.Sleep(data.LifeTime);
+            // Closed by the scheduler at the end of its life (a pool thread slept through it before).
+            scheduler.Schedule(() => {
                 if (globalPortalLookup.TryGet(out GlobalPortalManager? globalPortalManager) && globalPortalManager.Portal.Id == eventId) {
                     globalPortalLookup.Dispose();
                 }
-            });
+            }, data.LifeTime);
         }
 
         DateTime nextRunTime = startTime + data.CycleTime;

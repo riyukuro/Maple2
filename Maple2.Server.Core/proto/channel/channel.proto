@@ -526,6 +526,8 @@ message TimeEventRequest {
     int32 event_id = 2;
     int64 end_tick = 3;
     int64 next_spawn_timestamp = 4;
+    // The player channels the boss is announced on: each channel sends one "boss appeared" row per channel.
+    repeated int32 channels = 5;
   }
 
   message CloseWorldBoss {

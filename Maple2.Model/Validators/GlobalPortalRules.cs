@@ -21,6 +21,10 @@ public static class GlobalPortalRules {
     // enter below it. 0 is no limit.
     public static bool LevelAllowed(int level, int minLevel) => minLevel <= 0 || level >= minLevel;
 
+    // A global portal room at its map's instancefield maxCount takes no more: the next join gets a new room. A maxCount
+    // of 0 is no cap.
+    public static bool RoomFull(int players, int maxCount) => maxCount > 0 && players >= maxCount;
+
     // The button index of an enter request names a field of the row.
     public static bool EntryValid(int index, int entryCount) => index >= 0 && index < entryCount && index < CaptionCount;
 }

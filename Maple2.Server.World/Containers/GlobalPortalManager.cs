@@ -2,6 +2,7 @@
 using Maple2.Database.Storage;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Channel.Service;
 using Serilog;
 using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
@@ -23,6 +24,7 @@ public class GlobalPortalManager : IDisposable {
     public int Channel;
 
     public readonly int[] RoomIds;
+    private readonly object mutex = new();
 
 
     public GlobalPortalManager(GlobalPortalMetadata metadata, int id, long endTick) {
@@ -64,56 +66,75 @@ public class GlobalPortalManager : IDisposable {
             }
         }
 
+        // Each channel on its own: one that is down does not keep the announce from the channels after it.
         foreach ((int channelId, ChannelClient channelClient) in ChannelClients) {
-            channelClient.TimeEvent(new TimeEventRequest {
-                AnnounceGlobalPortal = new TimeEventRequest.Types.AnnounceGlobalPortal {
-                    MetadataId = Portal.MetadataId,
-                    EventId = Portal.Id,
-                },
-            });
+            try {
+                channelClient.TimeEvent(new TimeEventRequest {
+                    AnnounceGlobalPortal = new TimeEventRequest.Types.AnnounceGlobalPortal {
+                        MetadataId = Portal.MetadataId,
+                        EventId = Portal.Id,
+                    },
+                });
+            } catch (Exception e) {
+                Log.Error(e, "Global portal {PortalId}: announce not sent to channel {Channel}", Portal.MetadataId, channelId);
+            }
         }
     }
 
-    public void Join(int mapId, int index) {
+    // The room of entry index a player joins, 0 when there is none. The entry's room takes players up to its map's
+    // instancefield maxCount; at the cap, or when the room is gone (never made, or the channel no longer has it), a
+    // new room is made and kept for the next joins. Joins run on the World service's threads, one at a time here,
+    // so two joins at the cap do not each make a room (the later one overwriting the first, which went on filling).
+    // A map without an instancefield row has no cap: its room takes everyone.
+    public int Join(int mapId, int index) {
         if (!ChannelClients.TryGetClient(Channel, out ChannelClient? client)) {
-            return;
+            return 0;
         }
 
-        // Check if current field has reached capacity. If so, create a new field.
-        GlobalPortalMetadata.Field globalPortalMetadata = Portal.Metadata.Entries[index];
-        TimeEventResponse response = client.TimeEvent(new TimeEventRequest {
-            GetField = new TimeEventRequest.Types.GetField {
-                MapId = globalPortalMetadata.MapId,
-                RoomId = RoomIds[index],
-            },
-        });
-
-        if (!ServerTableMetadata.InstanceFieldTable.Entries.TryGetValue(mapId, out InstanceFieldMetadata? instanceFieldMetadata)) {
-            return;
-        }
-
-        if (response.Field.PlayerIds.Count >= instanceFieldMetadata.MaxCount) {
-            TimeEventResponse? createResponse = client.TimeEvent(new TimeEventRequest {
-                GetField = new TimeEventRequest.Types.GetField {
-                    MapId = mapId,
-                    RoomId = 0,
-                },
-            });
-
-            if (createResponse.Field == null) {
-                return;
+        lock (mutex) {
+            try {
+                FieldInfo? room = RoomIds[index] == 0 ? null : client.TimeEvent(new TimeEventRequest {
+                    GetField = new TimeEventRequest.Types.GetField {
+                        MapId = mapId,
+                        RoomId = RoomIds[index],
+                    },
+                }).Field;
+                bool full = room != null
+                            && ServerTableMetadata.InstanceFieldTable.Entries.TryGetValue(mapId, out InstanceFieldMetadata? instanceField)
+                            && GlobalPortalRules.RoomFull(room.PlayerIds.Count, instanceField.MaxCount);
+                if (room == null || full) {
+                    FieldInfo? created = client.TimeEvent(new TimeEventRequest {
+                        GetField = new TimeEventRequest.Types.GetField {
+                            MapId = mapId,
+                            RoomId = 0,
+                        },
+                    }).Field;
+                    if (created == null) {
+                        Log.Error("Global portal {PortalId}: no room of map {MapId} made on channel {Channel}", Portal.MetadataId, mapId, Channel);
+                        return 0;
+                    }
+                    RoomIds[index] = created.RoomId;
+                }
+                return RoomIds[index];
+            } catch (Exception e) {
+                Log.Error(e, "Global portal {PortalId}: join of map {MapId} failed on channel {Channel}", Portal.MetadataId, mapId, Channel);
+                return 0;
             }
-            RoomIds[index] = createResponse.Field.RoomId;
         }
     }
 
     public void Dispose() {
+        // Each channel on its own, as the announce.
         foreach ((int channelId, ChannelClient channelClient) in ChannelClients) {
-            channelClient.TimeEvent(new TimeEventRequest {
-                CloseGlobalPortal = new TimeEventRequest.Types.CloseGlobalPortal {
-                    EventId = Portal.MetadataId,
-                },
-            });
+            try {
+                channelClient.TimeEvent(new TimeEventRequest {
+                    CloseGlobalPortal = new TimeEventRequest.Types.CloseGlobalPortal {
+                        EventId = Portal.MetadataId,
+                    },
+                });
+            } catch (Exception e) {
+                Log.Error(e, "Global portal {PortalId}: close not sent to channel {Channel}", Portal.MetadataId, channelId);
+            }
         }
     }
 }

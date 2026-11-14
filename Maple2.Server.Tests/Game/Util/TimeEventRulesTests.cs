@@ -80,4 +80,13 @@ public class TimeEventRulesTests {
     public void BossLeavesAtClose_OnlyWhenItWasIdleAtTheWarning(long lastDamageTick, long nowTick, bool expected) {
         Assert.That(TimeEventRules.BossLeavesAtClose(lastDamageTick, nowTick, TimeSpan.FromMinutes(4), WorldRules.BossLeaveDelay), Is.EqualTo(expected));
     }
+
+    // One "boss appeared" row per channel the World server named, in channel order; none named is this channel alone.
+    [Test]
+    public void BossRowChannels_OnePerAnnouncedChannel() {
+        Assert.Multiple(() => {
+            Assert.That(TimeEventRules.BossRowChannels([3, 1, 2], 2), Is.EqualTo(new short[] { 1, 2, 3 }));
+            Assert.That(TimeEventRules.BossRowChannels([], 4), Is.EqualTo(new short[] { 4 }));
+        });
+    }
 }

@@ -77,8 +77,10 @@ public partial class WorldService {
             return new TimeEventResponse();
         }
 
-        manager.Join(fieldMetadata.MapId, portal.Index);
-        int roomId = manager.RoomIds[portal.Index];
+        int roomId = manager.Join(fieldMetadata.MapId, portal.Index);
+        if (roomId == 0) {
+            return new TimeEventResponse();
+        }
         return new TimeEventResponse {
             GlobalPortalInfo = new GlobalPortalInfo {
                 Channel = manager.Channel,

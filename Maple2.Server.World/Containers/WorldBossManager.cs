@@ -24,6 +24,8 @@ public class WorldBossManager : IDisposable {
     public void RemoveChannel(int channel) => AliveChannels.TryRemove(channel, out _);
 
     public void Announce() {
+        // KMS2 sends every player one "boss appeared" row per channel (WorldShareInfo), not only its own channel's.
+        int[] channels = ChannelClients.Keys.OrderBy(channel => channel).ToArray();
         foreach ((int channelId, ChannelClient channelClient) in ChannelClients) {
             try {
                 channelClient.TimeEvent(new TimeEventRequest {
@@ -32,6 +34,7 @@ public class WorldBossManager : IDisposable {
                         EventId = Boss.Id,
                         EndTick = Boss.EndTick,
                         NextSpawnTimestamp = Boss.NextSpawnTimestamp,
+                        Channels = { channels },
                     },
                 });
 

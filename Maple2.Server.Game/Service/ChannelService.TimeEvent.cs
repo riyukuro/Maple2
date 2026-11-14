@@ -75,11 +75,14 @@ public partial class ChannelService {
 
         int npcId = metadata.NpcIds.Length > 0 ? metadata.NpcIds[0] : 0;
         int mapId = metadata.TargetMapIds.Length > 0 ? metadata.TargetMapIds[0] : 0;
-        short channel = GameServer.GetChannel();
         long spawnTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        // One row per channel the World server announced the boss on (KMS2), this channel's alone when it named none.
+        short[] channels = TimeEventRules.BossRowChannels(boss.Channels, GameServer.GetChannel());
 
         foreach (GameSession session in server.GetSessions()) {
-            session.Send(WorldShareInfoPacket.BossAlive(npcId, mapId, channel, spawnTimestamp, true));
+            foreach (short channel in channels) {
+                session.Send(WorldShareInfoPacket.BossAlive(npcId, mapId, channel, spawnTimestamp, true));
+            }
             session.Send(LegionBattlePacket.Next(boss.MetadataId, npcId, boss.NextSpawnTimestamp));
         }
 
