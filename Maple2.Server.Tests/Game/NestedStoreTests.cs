@@ -65,6 +65,35 @@ public class NestedStoreTests {
         Assert.That(nested, Is.Empty);
     }
 
+    // A refused purchase is a failed one for its caller: its undo runs.
+    [Test]
+    public void ARefusedNestedPurchase_RunsItsUndo() {
+        bool undone = false;
+
+        Assert.That(session.TrySavePurchase(_ => {
+            session.TrySavePurchase(_ => true, () => undone = true);
+            return true;
+        }), Is.True);
+        Assert.That((undone, nested.Count), Is.EqualTo((true, 1)));
+    }
+
+    // A store queued by AfterStore inside a store runs once the outer one gave its lock back: not nested.
+    [Test]
+    public void AStoreAfterStoreQueued_RunsAfterTheOuterStore_NotNested() {
+        int acquired = test.World.Acquired, released = test.World.Released;
+        bool? inner = null;
+
+        Assert.That(session.TrySavePurchase(_ => {
+            session.AfterStore(() => inner = session.TrySavePurchase(_ => true));
+            return true;
+        }), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(inner, Is.True);
+            Assert.That(nested, Is.Empty);
+            Assert.That((test.World.Acquired - acquired, test.World.Released - released), Is.EqualTo((2, 2)));
+        });
+    }
+
     // Another session's store inside this one's takes another account's lock: not nested.
     [Test]
     public void AnotherSessionsStoreInside_IsNotNested() {
