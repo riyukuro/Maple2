@@ -266,6 +266,19 @@ public class DailyQuestGrantTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // The ladder shows only in the daily mission window (UIDailyMissionDialog::RefreshLevelGuide), which the client
+    // keeps shut while the DailyMission feature is off (FUN_140bffff0); then nothing is granted.
+    [Test]
+    public void MissionPoint_FeatureOff_GrantsNothing() {
+        RegisterLadders();
+        test.SetFeaturesOff("DailyMission");
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(Ladders), Is.Empty);
+        Assert.That(Character.MissionPointGrantTime, Is.Zero);
+    }
+
     // A ladder quest the played client lacks is left out; the rest of the ladder is granted.
     [Test]
     public void MissionPoint_NotInPlayedClient() {
@@ -392,6 +405,19 @@ public class DailyQuestGrantTests {
         Assert.That(Held(DailyMissions), Is.EqualTo(Enumerable.Range(0, 6).Select(group => DailyPick(group)).Order().ToArray()));
         Assert.That(Character.DailyMissionGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The daily missions show only in the daily mission window, shut while the DailyMission feature is off
+    // (UIDailyMissionDialog::FUN_140bffff0; type 3 quests go to their own list, questmanager_2.cpp:846).
+    [Test]
+    public void DailyMission_FeatureOff_GrantsNothing() {
+        RegisterDailyMissions();
+        test.SetFeaturesOff("DailyMission");
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(DailyMissions), Is.Empty);
+        Assert.That(Character.DailyMissionGrantTime, Is.Zero);
     }
 
     // Below 50 only the groups with a band that holds the level get one: three a day.

@@ -1138,10 +1138,15 @@ public sealed class QuestManager {
 
     // The quests the server grants (DailyQuestGrant), at login after the login drop and at the daily reset after its
     // packets. now: the local time of the period to grant.
+    // The mission point ladder and the daily missions (questType 3, guide 3-5) show only in the daily mission window,
+    // which the client keeps shut while the DailyMission feature is off (UIDailyMissionDialog::FUN_140bffff0); then
+    // they are not granted. The level guide quests (guide 1-2, the levelup window) do not depend on it.
     private void GrantDailyQuests(DateTime now) {
         GrantFieldQuest(now);
-        GrantMissionPoints(now);
-        GrantDailyMissions(now);
+        if (session.ServerTableMetadata.FeatureTable.IsOn("DailyMission")) {
+            GrantMissionPoints(now);
+            GrantDailyMissions(now);
+        }
         GrantWeddingMissions(now);
     }
 
