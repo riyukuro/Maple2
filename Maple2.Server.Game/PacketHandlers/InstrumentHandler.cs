@@ -246,21 +246,24 @@ public class InstrumentHandler : FieldPacketHandler {
         long startTick = Environment.TickCount64;
         var started = new List<GameSession>();
         foreach ((long characterId, PartyMember member) in session.Party.Party.Members) {
-            // The staged score was checked when the member got ready; it may have been played out since.
             if (!session.FindSession(characterId, out GameSession? memberSession) ||
                 memberSession.Field == null ||
                 !memberSession.EnsembleReady ||
-                memberSession.Instrument != null ||
-                memberSession.StagedInstrumentItem == null ||
+                memberSession.Instrument != null) {
+                continue;
+            }
+
+            // A ready member this start skips (another map or room, a staged score played out or gone since the
+            // member got ready, an instrument that does not start) is in the client's wait (0x80) with no start
+            // to come: it gets 6, as the leader does, and is no longer ready.
+            if (memberSession.StagedInstrumentItem == null ||
                 memberSession.StagedScoreItem == null ||
                 !TryGetScore(memberSession, memberSession.StagedScoreItem.Uid, out Item? stagedScore) ||
                 stagedScore != memberSession.StagedScoreItem ||
                 memberSession.Player.Value.Character.MapId != session.Player.Value.Character.MapId ||
-                memberSession.Player.Value.Character.RoomId != session.Player.Value.Character.RoomId) {
-                continue;
-            }
-
-            if (!TryUseInstrument(memberSession, memberSession.StagedInstrumentItem.Uid, startTick, true, out memberSession.Instrument)) {
+                memberSession.Player.Value.Character.RoomId != session.Player.Value.Character.RoomId ||
+                !TryUseInstrument(memberSession, memberSession.StagedInstrumentItem.Uid, startTick, true, out memberSession.Instrument)) {
+                CancelReady(memberSession);
                 continue;
             }
             started.Add(memberSession);
@@ -289,7 +292,8 @@ public class InstrumentHandler : FieldPacketHandler {
                 memberSession.ConditionUpdate(ConditionType.music_play_score, codeLong: memberScore.Id, targetLong: memberSession.Field.MapId);
             }
         }
-        if (!started.Contains(session)) {
+        // The leader is one of the party's members, so the loop above has cancelled a leader it skipped.
+        if (!started.Contains(session) && session.EnsembleReady) {
             CancelReady(session);
         }
     }

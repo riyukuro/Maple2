@@ -207,6 +207,35 @@ public class EnsembleConditionTests {
         Assert.That(guest.EnsembleReady, Is.False);
     }
 
+    // A ready member whom the leader's start skips (here the staged score was used up after the member got ready, or
+    // the member is in another room of the map) gets the cancel and is no longer ready; the leader plays alone. Before,
+    // the member got nothing and stayed in the client's wait.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SkippedReadyMember_GetsTheCancel(bool otherRoom) {
+        Party(0);
+        (long guestInstrument, long guestScore) = Items(guestTest);
+        (long leaderInstrument, long leaderScore) = Items(leaderTest);
+        Send(guestTest, 5, guestInstrument, guestScore);
+        Assume.That(guest.EnsembleReady, Is.True);
+        guestTest.TakeSent();
+        if (otherRoom) {
+            guest.Player.Value.Character.RoomId = leader.Player.Value.Character.RoomId + 1;
+        } else {
+            guest.Item.Inventory.Get(guestScore, InventoryType.FishingMusic)!.RemainUses = 0;
+        }
+
+        Send(leaderTest, 5, leaderInstrument, leaderScore);
+
+        byte[] cancel = Maple2.Server.Game.Packets.InstrumentPacket.LeaveEnsemble().ToArray();
+        Assert.That(guest.Instrument, Is.Null);
+        Assert.That(guestTest.TakeSent().Count(packet => packet.SequenceEqual(cancel)), Is.EqualTo(1));
+        Assert.That(guest.EnsembleReady, Is.False);
+        Assert.That(guest.StagedScoreItem, Is.Null);
+        Assert.That(leader.Instrument?.Ensemble, Is.False, "the leader plays alone");
+        Assert.That(leaderTest.TakeSent().Any(packet => packet.SequenceEqual(cancel)), Is.False);
+    }
+
     // Two ready members are an ensemble: both starts carry the flag and count the ensemble, not the solo score.
     [Test]
     public void TwoReady_PlayAnEnsemble() {
