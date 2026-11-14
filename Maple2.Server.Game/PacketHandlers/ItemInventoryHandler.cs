@@ -5,6 +5,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Core.Packets;
@@ -124,13 +125,22 @@ public class ItemInventoryHandler : FieldPacketHandler {
             return;
         }
 
+        // A pet whose bag holds items: the client sends the request and shows the server's error 31
+        // (s_err_cannot_destroy_petitem_hasitem); the bag's rows would be left with no pet.
+        if (InventoryManager.PetBagHasItems(drop)) {
+            session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_cannot_destroy_petitem_hasitem));
+            return;
+        }
+
         if (drop.Metadata.Property.DisableDrop) {
             session.Send(NoticePacket.Notice(NoticePacket.Flags.MessageBox, StringCode.s_item_err_drop));
             return;
         }
 
+        // Mode 4 sends the count chosen in the client, also for an item that does not land (an expired one: the
+        // client's CanDestroy has no expiry test); only that count is destroyed, not the whole stack.
         bool toField = amount > 0 && IsFieldDrop(drop);
-        if (!session.Item.Inventory.Remove(uid, out drop, toField ? amount : -1)) {
+        if (!session.Item.Inventory.Remove(uid, out drop, amount)) {
             return;
         }
 

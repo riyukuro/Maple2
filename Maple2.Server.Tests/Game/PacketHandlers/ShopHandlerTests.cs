@@ -1105,6 +1105,7 @@ public class ShopHandlerTests {
     [TestCase("none", ExpectedResult = true)]
     [TestCase("pet", ExpectedResult = false)]
     [TestCase("score", ExpectedResult = false)]
+    [TestCase("petbag", ExpectedResult = false)]
     public bool Sell_AnItemInUseIsRefused(string inUse) {
         GameSession session = Login();
         Item held = session.Item.Inventory.Get(bagItem.Uid)!;
@@ -1119,6 +1120,9 @@ public class ShopHandlerTests {
             var instrument = (FieldInstrument) RuntimeHelpers.GetUninitializedObject(typeof(FieldInstrument));
             instrument.Score = held;
             session.Instrument = instrument;
+        } else if (inUse == "petbag") {
+            // A pet whose bag holds items: error 31, its bag's rows would be left with no pet.
+            held.Pet = new ItemPet { HasItems = true };
         }
 
         Sell(session, bagItem.Uid, 5);
@@ -1128,6 +1132,9 @@ public class ShopHandlerTests {
         if (inUse == "pet") {
             Assert.That(test.TakeSent().Select(packet => Convert.ToHexString(packet)),
                 Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_cannot_sell_petitem_summon)) }));
+        } else if (inUse == "petbag") {
+            Assert.That(test.TakeSent().Select(packet => Convert.ToHexString(packet)),
+                Is.EqualTo(new[] { Hex(ItemInventoryPacket.Error(ItemInventoryError.s_err_cannot_destroy_petitem_hasitem)) }));
         }
         session.Pet = null;
         session.Instrument = null;

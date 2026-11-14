@@ -726,6 +726,11 @@ public sealed class ShopManager {
             session.Send(ShopPacket.Error(ShopError.s_err_cannot_sell_item, 5));
             return;
         }
+        // Nor a pet whose bag holds items (the client does not test it; the bag's rows would be left with no pet).
+        if (Items.InventoryManager.PetBagHasItems(item)) {
+            session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_cannot_destroy_petitem_hasitem));
+            return;
+        }
 
         bool hasGem = item.Socket?.Sockets.Any(gem => gem != null && gem.ItemId != 0) ?? false;
         if (!ShopRules.CanSell(item.Metadata.Limit.ShopSell, item.IsLocked, item.UnlockTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), hasGem) || SurvivalItemRules.IsMatchOnly(item.Metadata)) {

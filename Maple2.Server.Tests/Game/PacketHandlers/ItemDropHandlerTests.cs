@@ -86,6 +86,38 @@ public class ItemDropHandlerTests {
         Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(5));
     }
 
+    // A pet whose bag holds items is kept with error 31 (s_err_cannot_destroy_petitem_hasitem); its bag's rows
+    // would be left with no pet.
+    [Test]
+    public void PetWithBagItems_StaysInTheBag() {
+        GameSession session = Start();
+        session.Item.Inventory.Get(stack.Uid)!.Pet = new ItemPet { HasItems = true };
+
+        DropAll(session);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Convert.ToHexString(ItemInventoryPacket.Error(ItemInventoryError.s_err_cannot_destroy_petitem_hasitem).ToArray()),
+        }));
+        Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(5));
+
+        session.Item.Inventory.Get(stack.Uid)!.Pet!.HasItems = false;
+        DropAll(session);
+        Assert.That(session.Item.Inventory.Get(stack.Uid), Is.Null);
+    }
+
+    // Mode 4 for an item that does not land (no trade bit: an expired one, which the client's CanDestroy lets
+    // through) destroys the count the client sent, not the whole stack.
+    [Test]
+    public void ItemThatDoesNotLand_DestroysOnlyTheSentCount() {
+        GameSession session = Start();
+        session.Item.Inventory.Get(stack.Uid)!.Transfer = new ItemTransfer(TransferFlag.None);
+
+        Drop(session, 2);
+
+        Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(3));
+        Assert.That(Ground(session), Is.Empty);
+    }
+
     // A count of 0 or below dropped the whole stack.
     [Test]
     public void CountBelowOne_DropsNothing() {

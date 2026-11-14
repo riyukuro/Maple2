@@ -239,6 +239,15 @@ public partial class GameStorage {
             return LoadItems(Context.Item.Where(item => item.OwnerId == accountId && item.Group == ItemGroup.Default));
         }
 
+        // The ones of ownerIds that own a bag row (a pet's bag is keyed by the pet's uid, PetManager).
+        public HashSet<long> OwnersWithItems(ICollection<long> ownerIds) {
+            if (ownerIds.Count == 0) {
+                return [];
+            }
+            return Context.Item.Where(item => ownerIds.Contains(item.OwnerId) && item.Group == ItemGroup.Default)
+                .Select(item => item.OwnerId).Distinct().ToHashSet();
+        }
+
         public List<Item> GetSavedHairs(long characterId) {
             return LoadItems(Context.Item.Where(item => item.OwnerId == characterId && item.Group == ItemGroup.SavedHair));
         }

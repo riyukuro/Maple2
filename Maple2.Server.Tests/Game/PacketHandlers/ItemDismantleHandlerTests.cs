@@ -129,6 +129,7 @@ public class ItemDismantleHandlerTests {
         if (skinBreakOff) {
             test.SetFeaturesOff(ItemDismantleHandler.SkinBreakFeature);
         }
+        GiveABreakRow(session);
         Stage(session);
         return test.TakeSent().Any(p => Convert.ToHexString(p).StartsWith(Hex(ItemDismantlePacket.Stage(gear.Uid, 0, 1))));
     }
@@ -278,6 +279,71 @@ public class ItemDismantleHandlerTests {
 
         Stage(session);
         Assert.That(session.DismantleStaging.Any(staged => staged.Uid == gear.Uid), Is.False);
+    }
+
+    // A gemstone in a socket refuses the item (CItemSocket::CheckGemsBreakable): not staged, and a gem put in after
+    // the stage keeps it at the confirm. The dismantle took the gems with it.
+    [Test]
+    public void ItemWithAGem_IsNeitherStagedNorBroken() {
+        GameSession session = Login(rarity: 3);
+        Stage(session);
+        Item item = session.Item.Inventory.Get(gear.Uid)!;
+        item.Socket = new ItemSocket(1, 1);
+        item.Socket.Sockets[0] = new ItemGemstone(40000001, stats: new ItemStats());
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Not.Null);
+        Assert.That(session.Item.Inventory.Find(Onyx), Is.Empty);
+
+        Stage(session);
+        Assert.That(session.DismantleStaging.Any(staged => staged.Uid == gear.Uid), Is.False);
+    }
+
+    // A pet whose bag holds items: error 31 at the stage, and kept at the confirm.
+    [Test]
+    public void PetWithBagItems_IsNeitherStagedNorBroken() {
+        GameSession session = Login(rarity: 3);
+        Stage(session);
+        session.Item.Inventory.Get(gear.Uid)!.Pet = new ItemPet { HasItems = true };
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+        Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Not.Null);
+        test.TakeSent();
+
+        Stage(session);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(ItemInventoryPacket.Error(Maple2.Model.Error.ItemInventoryError.s_err_cannot_destroy_petitem_hasitem)),
+        }));
+        Assert.That(session.DismantleStaging.Any(staged => staged.Uid == gear.Uid), Is.False);
+    }
+
+    // An outfit with no break table row and no script reward (skin type 6: a count of 0) is not staged
+    // (CItemBreakManager::HasBreakReward); with a row it is.
+    [TestCase(false, ExpectedResult = false)]
+    [TestCase(true, ExpectedResult = true)]
+    public bool Stage_OutfitNeedsABreakReward(bool row) {
+        GameSession session = Login(3, EquipSlot.CL, 1, 1, true, metadata => metadata with {
+            Property = metadata.Property with { SkinType = 6 },
+        });
+        if (row) {
+            GiveABreakRow(session);
+        }
+        test.TakeSent();
+        Stage(session);
+        return session.DismantleStaging.Any(staged => staged.Uid == gear.Uid);
+    }
+
+    // A break table row for the gear (an outfit then has a reward in every locale).
+    private void GiveABreakRow(GameSession session) {
+        test.SetTable(new ItemBreakTable(new Dictionary<int, IReadOnlyList<ItemBreakTable.Ingredient>> {
+            [gear.Id] = [new ItemBreakTable.Ingredient(Onyx, 1)],
+        }));
+        handler = new ItemDismantleHandler { ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata };
+        Open(session, 1);
+        test.TakeSent();
     }
 
     // The Green Hoods donation box (dialog type 2, map 02000422 interact 10001313).

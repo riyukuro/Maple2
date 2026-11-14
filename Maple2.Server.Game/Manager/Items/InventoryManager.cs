@@ -50,7 +50,22 @@ public class InventoryManager {
             }
         }
         MailOverflow(overflow);
+        LoadPetBags(db);
     }
+
+    // ItemPet.HasItems says whether the pet's bag holds items (the pets tab's evolve and fusion refuse such a fodder,
+    // and the destroy, dismantle and sell refuse such a pet, since the bag's rows would be left with no pet). Nothing
+    // kept it before, so it is read from the bag rows at load and written when the pet is put away (PetManager).
+    private void LoadPetBags(GameStorage.Request db) {
+        List<Item> pets = tabs[InventoryType.Pets].Where(item => item.Pet != null).ToList();
+        HashSet<long> withItems = db.OwnersWithItems(pets.Select(item => item.Uid).ToList());
+        foreach (Item pet in pets) {
+            pet.Pet!.HasItems = withItems.Contains(pet.Uid);
+        }
+    }
+
+    // The pet's bag holds items (LoadPetBags): it cannot be destroyed, dismantled, sold or fed to another pet.
+    public static bool PetBagHasItems(Item item) => item.Pet?.HasItems == true;
 
     // An item row the tab has no slot for at load: the tab is taken from the item data (Item.Inventory), so an ingest
     // that puts an item in another tab (PlayedClientItems.ClientType) can bring more items to a tab than it has slots,

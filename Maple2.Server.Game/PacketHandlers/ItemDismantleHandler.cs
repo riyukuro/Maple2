@@ -1,12 +1,14 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.LuaFunctions;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -90,7 +92,14 @@ public class ItemDismantleHandler : FieldPacketHandler {
         long itemUid = packet.ReadLong();
         int amount = packet.ReadInt();
         Item? item = session.Item.Inventory.Get(itemUid);
-        if (item == null || !Breakable(session, item)) {
+        if (item == null) {
+            return;
+        }
+        if (InventoryManager.PetBagHasItems(item)) {
+            session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_cannot_destroy_petitem_hasitem));
+            return;
+        }
+        if (!CanBreak(session, item)) {
             return;
         }
         if (!DismantleRules.CanStage(amount, item.Amount, item.IsLockedOrUnlocking(), itemUid, session.Pet?.Pet.Uid ?? 0)) {
@@ -156,6 +165,32 @@ public class ItemDismantleHandler : FieldPacketHandler {
             session.ServerTableMetadata.FeatureTable.IsOn(SkinBreakFeature),
             !string.IsNullOrEmpty(item.Metadata.Mesh) && item.Socket is { UnlockSlots: 0 });
 
+    // CItemBreakManager::TryAddItem's tests past the lock and the stage: a gemstone in one of the sockets refuses any
+    // item (CItemSocket::CheckGemsBreakable, s_itembreak_usedgemstone_item, before CanBreakItem), then CanBreakItem
+    // (Breakable, and HasBreakReward for an item that is not a gacha's). The dismantle took the gems with the item, and
+    // an item with no reward for nothing. A pet whose bag holds items is refused too (the client does not test it; its
+    // bag's rows would be left with no pet). The stage, the auto-add and the confirm all test it.
+    private bool CanBreak(GameSession session, Item item) =>
+        !HasGem(item) && Breakable(session, item) && HasBreakReward(item) && !InventoryManager.PetBagHasItems(item);
+
+    private static bool HasGem(Item item) => item.Socket?.Sockets.Any(gem => gem != null && gem.ItemId != 0) == true;
+
+    // CItemBreakManager::HasBreakReward: an item with no skin type has a reward (gear gives onyx); an outfit needs
+    // a non-empty break table row or a count above 0 from the script's calcMeratSkinItemBreakReward (CLua adds count
+    // rows whatever their amount; skin type 99 passes with an amount of 0). A gacha's item passes before it
+    // (CanBreakItem's FUN_140531510).
+    private bool HasBreakReward(Item item) {
+        if (item.GachaDismantleId != 0 || item.Metadata.Property.SkinType == 0) {
+            return true;
+        }
+        if (TableMetadata.ItemBreakTable.Entries.TryGetValue(item.Id, out IReadOnlyList<ItemBreakTable.Ingredient>? ingredients) && ingredients.Count > 0) {
+            return true;
+        }
+        (_, int count, _, _, _) = Lua.CalcMeratSkinItemBreakReward(
+            (ushort) item.Metadata.Limit.Level, item.Rarity, 0, item.Metadata.Property.SkinType);
+        return count > 0;
+    }
+
     private static bool CanDonate(GameSession session, Item item) {
         return DismantleRules.CanDonate(
             Breakable(session, item),
@@ -168,7 +203,8 @@ public class ItemDismantleHandler : FieldPacketHandler {
         }
 
         lock (session.Item) {
-            // The item can have changed since it was staged (locked, split, its pet summoned): drop those slots.
+            // The item can have changed since it was staged (locked, split, its pet summoned, a gem put in): drop
+            // those slots.
             for (short slot = 0; slot < session.DismantleStaging.Length; slot++) {
                 (long uid, int amount) = session.DismantleStaging[slot];
                 if (uid == 0) {
@@ -176,6 +212,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 }
                 Item? item = session.Item.Inventory.Get(uid);
                 if (item == null || !DismantleRules.CanStage(amount, item.Amount, item.IsLockedOrUnlocking(), uid, session.Pet?.Pet.Uid ?? 0)
+                        || !CanBreak(session, item)
                         || session.DismantleType == DONATION_TYPE && !CanDonate(session, item)) {
                     session.DismantleStaging[slot] = default;
                 }
@@ -288,7 +325,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 }
 
                 // The same rule as Stage, for every type (pets had none before).
-                if (item.IsLocked || !Breakable(session, item)) {
+                if (item.IsLocked || !CanBreak(session, item)) {
                     continue;
                 }
                 if (session.DismantleType == DONATION_TYPE && !CanDonate(session, item)) {
