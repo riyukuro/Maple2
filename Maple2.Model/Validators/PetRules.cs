@@ -27,6 +27,19 @@ public static class PetRules {
         return summoned && petLevel is > 0 ? petLevel.Value : npcLevel;
     }
 
+    // The rarity of a captured pet from the wild pet's taming rank (1-100, FieldAddPet): the client's own grade of
+    // that rank, the lua calc_TamingPetRank (3 from 95, 2 from 70, else 1) that picks the wild pet's grade effect.
+    // The snares' texts (63100000 on) name normal, rare, exceptional and epic captures, epic at a very low chance;
+    // no data gives that chance, so only the top rank (1 in 100) is epic. No capture is legendary.
+    public const int TopTamingRank = 100;
+
+    public static int CaptureRarity(int tamingRank) {
+        if (tamingRank >= TopTamingRank) {
+            return 4;
+        }
+        return tamingRank >= 95 ? 3 : tamingRank >= 70 ? 2 : 1;
+    }
+
     // RequestPet 16 (another player's pet): the popup names the pet the owner has summoned; a pet that was put
     // away or switched since then is not shown.
     public static bool IsShownPet(long? summonedUid, long requestedUid) {

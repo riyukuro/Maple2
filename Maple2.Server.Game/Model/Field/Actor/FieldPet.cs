@@ -194,8 +194,7 @@ public sealed class FieldPet : FieldNpc {
     }
 
     private void DropItem(IActor capturer) {
-        // TODO: Determine rarity of pet drop
-        int rarity = TamingRank / 25 + 1;
+        int rarity = PetRules.CaptureRarity(TamingRank);
 
         using GameStorage.Request db = Field.GameStorage.Context();
         Item? pet = Pet.Mutate(Pet.Metadata, rarity);
@@ -206,7 +205,9 @@ public sealed class FieldPet : FieldNpc {
             return;
         }
 
-        FieldItem fieldItem = Field.SpawnItem(this, pet, ItemDropKind.Pet, FieldItem.DefaultDurationMs);
+        // The drop is the capturer's: only their client is told of it, and no one else may pick it up.
+        long receiverId = capturer is FieldPlayer { Session.CharacterId: var id } ? id : 0;
+        FieldItem fieldItem = Field.SpawnItem(this, pet, ItemDropKind.Pet, FieldItem.DefaultDurationMs, receiverId);
         if (capturer is FieldPlayer player) {
             // The capture counts for the pet catch conditions: the pet's item id (94000006 "Capture $item:61000153$").
             player.Session.ConditionUpdate(ConditionType.pet_catch_id, codeLong: pet.Id);

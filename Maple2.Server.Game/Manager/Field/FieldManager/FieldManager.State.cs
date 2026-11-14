@@ -380,7 +380,8 @@ public partial class FieldManager {
         return fieldPortal;
     }
 
-    public FieldItem SpawnItem(IActor owner, Item item, short dropKind = ItemDropKind.PlayerDrop, long msDuration = FieldItem.PlayerDropDurationMs) {
+    public FieldItem SpawnItem(IActor owner, Item item, short dropKind = ItemDropKind.PlayerDrop, long msDuration = FieldItem.PlayerDropDurationMs,
+                           long receiverId = 0) {
         lock (item) {
             using GameStorage.Request db = GameStorage.Context();
             db.SaveItems(0, item);
@@ -390,6 +391,7 @@ public partial class FieldManager {
             Owner = owner,
             Position = owner.Position,
             Rotation = owner.Rotation,
+            ReceiverId = receiverId,
             Type = DropType.Player,
             DropKind = dropKind,
         };

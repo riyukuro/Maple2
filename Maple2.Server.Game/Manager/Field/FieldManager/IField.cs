@@ -72,7 +72,8 @@ public interface IField : IDisposable {
     public void SetRoomTimer(RoomTimerType type, int duration); //TODO: MOVE THIS TO RANDOM ONLY
 
 
-    public FieldItem SpawnItem(IActor owner, Item item, short dropKind = ItemDropKind.PlayerDrop, long msDuration = FieldItem.PlayerDropDurationMs);
+    public FieldItem SpawnItem(IActor owner, Item item, short dropKind = ItemDropKind.PlayerDrop, long msDuration = FieldItem.PlayerDropDurationMs,
+                               long receiverId = 0);
     public FieldItem SpawnItem(Vector3 position, Vector3 rotation, Item item, IFieldEntity? owner = null, long characterId = 0, bool fixedPosition = false,
                                short dropKind = ItemDropKind.None, long msDuration = 0);
 

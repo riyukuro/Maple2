@@ -106,4 +106,16 @@ public class PetRulesTests {
     public void FieldLevel_WithoutPetData_IsTheNpcLevel() {
         Assert.That(PetRules.FieldLevel(true, null, 7), Is.EqualTo(7));
     }
+
+    [Test]
+    public void CaptureRarityIsTheClientsTamingGrade() {
+        // calc_TamingPetRank: 3 from 95, 2 from 70, else 1; the rank is 1-100, and the top rank is an epic capture.
+        Assert.That(PetRules.CaptureRarity(1), Is.EqualTo(1));
+        Assert.That(PetRules.CaptureRarity(69), Is.EqualTo(1));
+        Assert.That(PetRules.CaptureRarity(70), Is.EqualTo(2));
+        Assert.That(PetRules.CaptureRarity(94), Is.EqualTo(2));
+        Assert.That(PetRules.CaptureRarity(95), Is.EqualTo(3));
+        Assert.That(PetRules.CaptureRarity(99), Is.EqualTo(3));
+        Assert.That(PetRules.CaptureRarity(100), Is.EqualTo(4));
+    }
 }
