@@ -234,8 +234,9 @@ public sealed class UgcMarketManager {
             LoadDesignerItems(characterId);
             return;
         }
-        // The client keeps 16 bookmarks and drops a 17th unread (CMeratMarketMan::AddBookMark, 0x140d56a40), but
-        // sends the add without counting (OnClickBookMark), so the cap is the server's: a 17th is not stored.
+        // The client keeps 16 bookmarks: AddBookMark (0x140d56a40) does not keep a 17th, though OnBookMarkAdded still
+        // reads its listings. It sends the add without counting (OnClickBookMark), so the cap is the server's: a 17th
+        // is not stored and gets no answer.
         if (favoriteDesigners.Count >= MaxDesigners) {
             return;
         }
