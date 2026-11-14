@@ -160,7 +160,8 @@ public class RideHandler : FieldPacketHandler {
         if (other.Session.Ride.Ride == null) {
             return;
         }
-        if (!RideShare.InJoinReach(session.Player.Position, other.Position)) {
+        if (!RideShare.InJoinReach(session.Player.Position, other.Position,
+                session.ServerTableMetadata.ConstantsTable.FindHoldTargetRange)) {
             Logger.Debug("Ride join of {OwnerId} out of reach", otherId);
             return;
         }

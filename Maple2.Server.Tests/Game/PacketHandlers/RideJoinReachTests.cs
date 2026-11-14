@@ -87,6 +87,18 @@ public class RideJoinReachTests {
         });
     }
 
+    // The hold range is the ingested FindHoldTargetRange: a locale with a longer one boards from farther away.
+    [Test]
+    public void AJoinWithinTheTablesHoldRange_IsSeated() {
+        (TestGameSession owner, TestGameSession joiner) = Start(1100);
+        joiner.SetServerTable(joiner.ServerTableMetadata.ConstantsTable with { FindHoldTargetRange = 1000f });
+        Join(joiner, owner.Session.Player.ObjectId);
+        Assert.Multiple(() => {
+            Assert.That(joiner.Session.Ride.Ride, Is.SameAs(owner.Session.Ride.Ride));
+            Assert.That(owner.Session.Ride.Ride!.Passengers, Is.EqualTo(new[] { 2 }));
+        });
+    }
+
     // With RideShareAuthority on, the client asks to board only a friend's, a party member's or a guildmate's mount
     // (MyPC::FUN_1415279d0); a stranger's request is refused.
     [Test]
