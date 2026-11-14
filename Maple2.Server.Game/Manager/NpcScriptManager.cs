@@ -211,6 +211,15 @@ public sealed class NpcScriptManager {
         return true;
     }
 
+    /// <summary>
+    /// Whether the talk's page has the pick: an index into its choices on a choice page, anything on another page
+    /// (Next and Close send 0). False without a page.
+    /// </summary>
+    public bool HasPick(int pick) {
+        CinematicContent? content = State?.Contents.ElementAtOrDefault(Index);
+        return content != null && (content.Distractors.Length == 0 || (uint) pick < (uint) content.Distractors.Length);
+    }
+
     private ScriptState? NextState(int pick) {
         if (State == null) {
             return null;
@@ -373,7 +382,8 @@ public sealed class NpcScriptManager {
 
         if (!session.ServerTableMetadata.ScriptFunctionTable.Entries.TryGetValue(metadata!.Id, out Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>? scriptFunctions) ||
             !scriptFunctions.TryGetValue(State.Id, out Dictionary<int, ScriptFunctionMetadata>? functions) ||
-            !functions.TryGetValue(State.Contents.ElementAt(Index).FunctionId, out ScriptFunctionMetadata? scriptFunction)) {
+            State.Contents.ElementAtOrDefault(Index) is not { } content ||
+            !functions.TryGetValue(content.FunctionId, out ScriptFunctionMetadata? scriptFunction)) {
             return;
         }
 

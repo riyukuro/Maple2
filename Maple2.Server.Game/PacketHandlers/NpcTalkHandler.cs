@@ -103,6 +103,12 @@ public class NpcTalkHandler : FieldPacketHandler {
             Logger.Debug("Talk dropped: no field");
             return;
         }
+        // The client opens a talk only from player states 1, 2, 0xb, 0xf and 0x21 (UITalkManager::FUN_141b1fcf0,
+        // client/ms2/uitalkcinematic.cpp:1413), none of them dead, so a dead player gets no answer.
+        if (session.Player.IsDead) {
+            Logger.Debug("Talk dropped: the player is dead");
+            return;
+        }
         int objectId = packet.ReadInt();
         if (!session.Field.Npcs.TryGetValue(objectId, out FieldNpc? npc)) {
             Logger.Debug("Talk to object {ObjectId} dropped: no such npc in map {MapId}", objectId, session.Field.MapId);
@@ -233,12 +239,22 @@ public class NpcTalkHandler : FieldPacketHandler {
     }
 
     private void HandleContinue(GameSession session, IByteReader packet) {
-        session.NpcScript?.ProcessScriptFunction(false);
         // Not talking to an Npc.
         if (session.NpcScript == null) {
             return;
         }
         int pick = packet.ReadInt();
+        // The page's end function runs only for a pick the page has: the client passes the index it is given on
+        // unchecked (client/ms2/cinematiccomponent.cpp:721 and :781 call SendNpcTalkMode2(nSelect)), and a pick past
+        // the page's choices closes the talk, so it must not run the page's function first. A negative pick on the
+        // select list closes the same way.
+        if (session.NpcScript.TalkType.HasFlag(NpcTalkType.Select) ? pick < 0 : !session.NpcScript.HasPick(pick)) {
+            session.Send(NpcTalkPacket.Close());
+            session.NpcScript.Npc?.StopTalk();
+            session.NpcScript = null;
+            return;
+        }
+        session.NpcScript.ProcessScriptFunction(false);
 
         /* The ordering is
         / Quests
@@ -247,14 +263,8 @@ public class NpcTalkHandler : FieldPacketHandler {
         int addedOptions = 0;
         if (session.NpcScript.TalkType.HasFlag(NpcTalkType.Select)) {
             // The client sends 0 or an index into its list (UITalkManager::SendNpcTalkMode2); a negative pick
-            // passed the checks below and threw in the quest lookup. It ends the talk, as an unknown pick does on
-            // a plain talk, so a resend cannot run the script's function again.
-            if (pick < 0) {
-                session.Send(NpcTalkPacket.Close());
-                session.NpcScript.Npc?.StopTalk();
-                session.NpcScript = null;
-                return;
-            }
+            // passed the checks below and threw in the quest lookup. It ended the talk above, as an unknown pick
+            // does on a plain talk, so a resend cannot run the script's function again.
             if (session.NpcScript.TalkType.HasFlag(NpcTalkType.Quest)) {
                 addedOptions += session.NpcScript.Quests.Count;
                 // Picked quest

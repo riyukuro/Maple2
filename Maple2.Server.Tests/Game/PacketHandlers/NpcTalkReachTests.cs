@@ -75,6 +75,18 @@ public class NpcTalkReachTests {
         });
     }
 
+    // The client opens a talk only from player states 1, 2, 0xb, 0xf and 0x21 (UITalkManager::FUN_141b1fcf0), none
+    // of them dead: a dead player's talk, even within reach, gets no answer.
+    [Test]
+    public void ADeadPlayer_GetsNoAnswer() {
+        (TestGameSession test, GameSession session) = Start(100);
+        typeof(FieldPlayer).GetField("isDead", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Player, true);
+        Assert.Multiple(() => {
+            Assert.That(Talk(test, session), Is.Empty);
+            Assert.That(session.NpcScript, Is.Null);
+        });
+    }
+
     [Test]
     public void Reach_IsTheConstantPlusTheRadius() {
         Assert.Multiple(() => {
