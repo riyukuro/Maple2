@@ -77,6 +77,8 @@ public class CharacterDeleteClubTests {
         Assert.That(Stored(characterId), Is.False);
     }
 
+    // The refusal of a character in its wait comes in the wait's answer (CharacterList 5), which keeps the client's
+    // final delete panel (CharacterManagementHandler.DeleteRefused).
     [Test]
     public void Delete_AWorldRefusalKeepsTheCharacter() {
         long characterId = PendingCharacter();
@@ -86,7 +88,7 @@ public class CharacterDeleteClubTests {
         Delete(characterId);
 
         Assert.That(test.TakeSent().Select(Convert.ToHexString),
-            Is.EqualTo(new[] { Convert.ToHexString(CharacterListPacket.DeleteEntry(characterId, CharacterDeleteError.s_char_err_destroy).ToArray()) }));
+            Is.EqualTo(new[] { Convert.ToHexString(CharacterListPacket.BeginDelete(characterId, 1, CharacterDeleteError.s_char_err_destroy).ToArray()) }));
         Assert.That(Stored(characterId), Is.True);
     }
 }

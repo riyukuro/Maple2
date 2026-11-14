@@ -8,6 +8,7 @@ using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -348,7 +349,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         // Delete already pending
         if (character.DeleteTime != default) {
             if (character.DeleteTime <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
-                DeleteCharacter(session, db, characterId);
+                DeleteCharacter(session, db, characterId, character.DeleteTime);
             } else {
                 session.Send(CharacterListPacket.BeginDelete(characterId, character.DeleteTime,
                     s_char_err_next_delete_char_date));
@@ -364,7 +365,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
                 session.Send(CharacterListPacket.BeginDelete(characterId, character.DeleteTime, s_char_err_destroy));
             }
         } else {
-            DeleteCharacter(session, db, characterId);
+            DeleteCharacter(session, db, characterId, character.DeleteTime);
         }
     }
 
@@ -412,17 +413,17 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         }
 
         if (db.GetBlackMarketListings(characterId).Any()) {
-            session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_black_market_count));
+            session.Send(DeleteRefused(characterId, character.DeleteTime, s_char_err_black_market_count));
             return false;
         }
 
         if (db.GetMyMesoListingsByCharacterId(characterId).Any()) {
-            session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_meso_market_count));
+            session.Send(DeleteRefused(characterId, character.DeleteTime, s_char_err_meso_market_count));
             return false;
         }
 
         if (db.GetAllMail(characterId).Any(mail => mail.ReadTime == 0)) {
-            session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_unread_mail));
+            session.Send(DeleteRefused(characterId, character.DeleteTime, s_char_err_unread_mail));
             return false;
         }
 
@@ -430,21 +431,21 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         long guildId = db.GetGuildId(characterId);
         if (guildId != 0) {
             if (db.GetGuild(guildId)?.LeaderCharacterId == characterId) {
-                session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_guild_master));
+                session.Send(DeleteRefused(characterId, character.DeleteTime, s_char_err_guild_master));
                 return false;
             }
 
-            session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_guild));
+            session.Send(DeleteRefused(characterId, character.DeleteTime, s_char_err_guild));
             return false;
         }
 
         if (db.GetUgcListingsByCharacterId(characterId).Any()) {
-            session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_ugc_market));
+            session.Send(DeleteRefused(characterId, character.DeleteTime, s_char_err_ugc_market));
             return false;
         }
 
         if (character.MarriageInfo.Status != MaritalStatus.Single) {
-            session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_wedding));
+            session.Send(DeleteRefused(characterId, character.DeleteTime, s_char_err_wedding));
             return false;
         }
 
@@ -454,7 +455,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         if (character.DeleteTime == default && db.OwnsOutdoorPlot(session.AccountId)) {
             (_, IList<Character>? characters) = db.ListCharacters(session.AccountId);
             if (characters == null || !characters.Any(other => other.Id != characterId && other.DeleteTime == default)) {
-                session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_exist_ugc_map));
+                session.Send(DeleteRefused(characterId, character.DeleteTime, s_char_err_exist_ugc_map));
                 return false;
             }
         }
@@ -462,7 +463,18 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         return true;
     }
 
-    private void DeleteCharacter(LoginSession session, GameStorage.Request db, long characterId) {
+    // A refused delete. The answer to a character in its wait is the wait's answer (CharacterList 5) with the error:
+    // the client shows the error and keeps the character's panel ready for the final delete or its cancel
+    // (UICharacterListDialog mode 5). The delete answer (mode 2) with an error zeroes the client's timer and closes
+    // that panel but keeps the character's delete time, and the client starts no character with one (OnGameStart):
+    // the character could then be neither started nor restored until the list was loaded again.
+    private static ByteWriter DeleteRefused(long characterId, long deleteTime, CharacterDeleteError error) {
+        return deleteTime != default
+            ? CharacterListPacket.BeginDelete(characterId, deleteTime, error)
+            : CharacterListPacket.DeleteEntry(characterId, error);
+    }
+
+    private void DeleteCharacter(LoginSession session, GameStorage.Request db, long characterId, long deleteTime) {
         // The world takes the character out of its clubs first (the other members get Club 0x1c, a leader hands the
         // club on): the club rows name the character, so deleting it first would take a led club with it.
         try {
@@ -472,17 +484,17 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             });
             if (response.Error != 0) {
                 Logger.Warning("Delete of character {CharacterId}: the world could not take it out of its clubs ({Error})", characterId, response.Error);
-                session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_destroy));
+                session.Send(DeleteRefused(characterId, deleteTime, s_char_err_destroy));
                 return;
             }
         } catch (RpcException ex) {
             Logger.Warning("Delete of character {CharacterId}: the world was not reached ({Status})", characterId, ex.StatusCode);
-            session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_destroy));
+            session.Send(DeleteRefused(characterId, deleteTime, s_char_err_destroy));
             return;
         }
 
         if (!db.DeleteCharacter(session.AccountId, characterId)) {
-            session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_destroy));
+            session.Send(DeleteRefused(characterId, deleteTime, s_char_err_destroy));
             return;
         }
 

@@ -139,6 +139,43 @@ public class CharacterDeleteWaitTests {
         });
     }
 
+    // A final delete after the wait that a block refuses (unread mail): the error comes in the wait's answer
+    // (CharacterList 5) with the delete time, which the client shows and keeps the final delete panel. In the delete
+    // answer (mode 2) the client closed that panel but kept the delete time, so the character could be neither
+    // started nor restored until the list was loaded again.
+    [Test]
+    public void AFinalDeleteRefusedAfterTheWaitKeepsTheWaitAnswer() {
+        long deleteTime = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.UpdateDelete(test.AccountId, test.CharacterId, deleteTime), Is.True);
+            Assert.That(db.CreateMail(new Mail { ReceiverId = test.CharacterId }), Is.Not.Null);
+        }
+
+        Send(4, test.CharacterId);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Convert.ToHexString(CharacterListPacket.BeginDelete(test.CharacterId, deleteTime, s_char_err_unread_mail).ToArray()),
+            }));
+            Assert.That(Row(test.CharacterId), Is.EqualTo((true, deleteTime)));
+        });
+    }
+
+    // The delete button of a character with no wait that a block refuses: the delete answer (mode 2) as before, the
+    // client's list has no delete time for it.
+    [Test]
+    public void ADeleteWithNoWaitRefusedKeepsTheDeleteAnswer() {
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.CreateMail(new Mail { ReceiverId = test.CharacterId }), Is.Not.Null);
+        }
+
+        Send(2, test.CharacterId);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Convert.ToHexString(CharacterListPacket.DeleteEntry(test.CharacterId, s_char_err_unread_mail).ToArray()),
+        }));
+    }
+
     // The delete button (CharacterManagement 2) of a character with no wait still starts it or deletes.
     [Test]
     public void ADeleteWithNoWaitIsStillTaken() {
