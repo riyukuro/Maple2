@@ -2957,7 +2957,31 @@ public class TableMapper : TypeMapper<TableMetadata> {
             groups[groupId] = group;
         }
 
-        return new MaidTable(results, exps, recipes, groups);
+        // The server pack's table/Server/MaidRecipeSvr.xml <recipe/>: the jackpot of each recipe the client lists (the
+        // client has no jackpot table; its reward page only shows the flag the server sends). Its other columns
+        // (socket data ids, JackpotMood, ImmediatelyCompleteFee) are not used.
+        var jackpotRates = new Dictionary<int, float>();
+        if (serverReader != null) {
+            int jackpots = 0;
+            foreach (XmlElement row in MaidRows(serverReader, "table/Server/MaidRecipeSvr.xml", "ms2/recipe")) {
+                if (!MaidRowAvailable(row) || !int.TryParse(row.GetAttribute("Id"), out int id) || !recipes.TryGetValue(id, out MaidTable.Recipe? recipe)) continue;
+                MaidTable.Jackpot? jackpot = MaidTable.JackpotRow(row.GetAttribute);
+                if (jackpot == null) continue;
+                recipes[id] = recipe with { Jackpot = jackpot };
+                jackpots++;
+            }
+
+            // table/Server/MaidGradeInfo.xml <Grade Grade JackpotRate/>: the jackpot factor of a maid grade. The
+            // Feel*Rate columns are not used.
+            foreach (XmlElement row in MaidRows(serverReader, "table/Server/MaidGradeInfo.xml", "ms2/Grade")) {
+                if (MaidTable.GradeRow(row.GetAttribute("Grade"), row.GetAttribute("JackpotRate")) is var (grade, rate)) {
+                    jackpotRates[grade] = rate;
+                }
+            }
+            Console.WriteLine($"Maid jackpots: {jackpots} recipes, {jackpotRates.Count} grade rates");
+        }
+
+        return new MaidTable(results, exps, recipes, groups, jackpotRates);
     }
 
     // The played client's string/<language>/stringcommon.xml (else the data pack's): the inventory tab names.

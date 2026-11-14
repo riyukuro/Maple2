@@ -20,8 +20,9 @@ namespace Maple2.Server.Game.PacketHandlers;
 // The maid craft dialog's requests (UIManufactureDialog, client/ms2/ui/uimanufacturedialog.cpp), each for a maid of the
 // owner's home, named by its uid. Mode 4 starts a recipe of table/maidrecipe.xml, 6 receives a finished product, 7
 // receives it at once for merets (the cost is the client's Lua calcManufactureCompleteByMerat of the seconds left), 10
-// cancels a craft. Mode 5 is the dialog's debug craft, for AdminPermissions.Debug. Mode 8 is never sent (no caller of
-// CManufactureManager::SendRequest8) and 9, the jackpot receive, is not handled: its rates are server-only. All maid
+// cancels a craft. Mode 5 is the dialog's debug craft and 9 its debug jackpot receive, both for AdminPermissions.Debug.
+// Mode 8 is never sent (no caller of CManufactureManager::SendRequest8). A receive (6 or 7) gives the recipe's jackpot
+// instead of its product at the server pack's rate (MaidRules.JackpotChance), answered with CraftJackpot. All maid
 // and inventory changes run on the field thread of the maid's field, after the maid is found still placed there and
 // owned by the requester.
 public class MaidCraftItemHandler : FieldPacketHandler {
@@ -32,6 +33,7 @@ public class MaidCraftItemHandler : FieldPacketHandler {
         DebugCraft = 5,
         Receive = 6,
         MeretReceive = 7,
+        JackpotReceive = 9,
         Cancel = 10,
     }
 
@@ -42,6 +44,9 @@ public class MaidCraftItemHandler : FieldPacketHandler {
     private ConstantsTable Constants => ServerTableMetadata.ConstantsTable;
     // ReSharper restore All
     #endregion
+
+    // The jackpot roll, a number in [0, 1); a jackpot when below the chance.
+    internal Func<double> Roll { get; init; } = Random.Shared.NextDouble;
 
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
@@ -55,7 +60,12 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 }
                 return;
             case Command.Receive:
-                HandleReceive(session, packet);
+                HandleReceive(session, packet, false);
+                return;
+            case Command.JackpotReceive:
+                if (MaidRules.CanDebugCraft(session.Player.AdminPermissions)) {
+                    HandleReceive(session, packet, true);
+                }
                 return;
             case Command.MeretReceive:
                 HandleMeretReceive(session, packet);
@@ -162,7 +172,12 @@ public class MaidCraftItemHandler : FieldPacketHandler {
         });
     }
 
-    private void HandleReceive(GameSession session, IByteReader packet) {
+    // Mode 6, and mode 9 with |debug|. Mode 9 is the dialog's onRecieveJackpot (UIManufactureDialog::OnRecieveJackpot),
+    // a debug-mode button like the debug craft's; SendRequest9 checks only that the maid has a craft, not that it is
+    // ready (SendRequest6 answers 0xd itself then), and its answer is MaidCraftItem 9, read as the receive result.
+    // Chosen here: mode 9 receives the craft ready or not and always gives the recipe's jackpot (its product when it
+    // has none).
+    private void HandleReceive(GameSession session, IByteReader packet, bool debug) {
         long maidUid = packet.ReadLong();
         FieldManager? field = session.Field;
         Maid? found = field?.GetMaid(maidUid);
@@ -179,16 +194,16 @@ public class MaidCraftItemHandler : FieldPacketHandler {
             }
             long now = DateTime.UtcNow.ToEpochSeconds();
             RefreshCraft(session, field, found);
-            int result = MaidRules.ReceiveResult(found, now);
+            int result = debug ? MaidRules.IsCrafting(found) ? MaidRules.CraftReceived : MaidRules.CraftNoRecord : MaidRules.ReceiveResult(found, now);
             if (result != MaidRules.CraftReceived) {
-                session.Send(MaidCraftItemPacket.ReceiveResult(result));
+                session.Send(ReceiveAnswer(debug, result));
                 return;
             }
             MaidTable.Recipe? recipe = table.Recipes?.GetValueOrDefault(found.CraftRecipeId);
             if (recipe == null) {
                 return; // the recipe left the table: the craft stays until it is cancelled
             }
-            Item? product = field.ItemDrop.CreateItem(recipe.ProductItemId, recipe.ProductRank, recipe.ProductCount);
+            (Item? product, bool jackpot) = MakeProduct(session, field, found, table, recipe, debug);
             if (product == null) {
                 return;
             }
@@ -203,9 +218,9 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 (int recipeId, long start, int duration) = (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration);
                 if (!field.SetMaidCraft(found, 0, 0, 0)) {
                     SendRecord(session, found);
-                    int? failed = MaidRules.FailedReceiveResult(found, now);
+                    int? failed = debug ? MaidRules.IsCrafting(found) ? null : MaidRules.CraftNoRecord : MaidRules.FailedReceiveResult(found, now);
                     if (failed != null) {
-                        session.Send(MaidCraftItemPacket.ReceiveResult(failed.Value));
+                        session.Send(ReceiveAnswer(debug, failed.Value));
                     }
                     return;
                 }
@@ -216,12 +231,12 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                         // Part of the product is in the bag: the craft stays received, as a second receive would
                         // give the whole product again.
                         Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: product {ItemId} only partly added",
-                            recipeId, maidUid, recipe.ProductItemId);
+                            recipeId, maidUid, product.Id);
                     } else {
                         // The bag took nothing: the craft is stored again, to be received later.
                         if (!field.SetMaidCraft(found, recipeId, start, duration)) {
                             Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: product {ItemId} not added and the craft not restored",
-                                recipeId, maidUid, recipe.ProductItemId);
+                                recipeId, maidUid, product.Id);
                         }
                         return;
                     }
@@ -229,19 +244,48 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 int level = found.Level;
                 int gained = MaidRules.Finish(found, recipe, expRate, exps, affinityMax);
                 field.SaveMaid(found);
-                CountReceive(session, found, recipe.ProductItemId, level);
+                CountReceive(session, found, product.Id, level, jackpot);
                 session.Send(MaidCraftItemPacket.Remove(maidUid));
-                session.Send(MaidCraftItemPacket.ReceiveResult(MaidRules.CraftReceived));
-                session.Send(MaidCraftItemPacket.Reward(recipe.ProductItemId, amount, rarity, gained));
+                session.Send(ReceiveAnswer(debug, jackpot ? MaidRules.CraftJackpot : MaidRules.CraftReceived));
+                session.Send(MaidCraftItemPacket.Reward(product.Id, amount, rarity, gained, jackpot));
             }
         });
     }
 
+    private static ByteWriter ReceiveAnswer(bool debug, int result) {
+        return debug ? MaidCraftItemPacket.JackpotReceiveResult(result) : MaidCraftItemPacket.ReceiveResult(result);
+    }
+
+    // What a receive of recipe gives: its jackpot when |forceJackpot| or the roll is below MaidRules.JackpotChance,
+    // else its product. A jackpot item the server cannot make (missing from the item data) gives the product.
+    private (Item? Product, bool Jackpot) MakeProduct(GameSession session, FieldManager field, Maid maid, MaidTable table,
+                                                      MaidTable.Recipe recipe, bool forceJackpot) {
+        MaidTable.Jackpot? jackpot = recipe.Jackpot;
+        if (jackpot != null && (forceJackpot || Roll() < MaidRules.JackpotChance(recipe, table.JackpotRates, Grade(session, maid)))) {
+            Item? item = field.ItemDrop.CreateItem(jackpot.ItemId, jackpot.Rank, jackpot.Count);
+            if (item != null) {
+                return (item, true);
+            }
+            Logger.Warning("Maid recipe {RecipeId}: no jackpot item {ItemId}, the product given", recipe.Id, jackpot.ItemId);
+        }
+        return (field.ItemDrop.CreateItem(recipe.ProductItemId, recipe.ProductRank, recipe.ProductCount), false);
+    }
+
+    // The maid's grade for MaidGradeInfo.xml: the rarity of its furnishing item (inferred, see MaidRules.JackpotChance);
+    // 0 when the item is not in the item data.
+    private static int Grade(GameSession session, Maid maid) {
+        return session.ItemMetadata.TryGet(maid.ItemId, out ItemMetadata? metadata) ? Item.DefaultRarity(metadata) : 0;
+    }
+
     // A received craft counts for maid_get_item with the product (23500009 "Obtain ... from a ... maid {0} time(s)":
     // one per receive), and a closeness level-up for maid_affinity with the level reached (23500014 "Raise an
-    // assistant's closeness to level {0}", values 2 to 10).
-    private static void CountReceive(GameSession session, Maid maid, int productItemId, int levelBefore) {
+    // assistant's closeness to level {0}", values 2 to 10). A jackpot also counts once for maid_jackpot (no KR trophy
+    // or quest lists it, so it carries no code).
+    private static void CountReceive(GameSession session, Maid maid, int productItemId, int levelBefore, bool jackpot) {
         session.ConditionUpdate(ConditionType.maid_get_item, codeLong: productItemId);
+        if (jackpot) {
+            session.ConditionUpdate(ConditionType.maid_jackpot);
+        }
         if (maid.Level > levelBefore) {
             session.ConditionUpdate(ConditionType.maid_affinity, counter: maid.Level);
         }
@@ -278,7 +322,7 @@ public class MaidCraftItemHandler : FieldPacketHandler {
             if (recipe == null) {
                 return; // the recipe left the table: the craft stays until it is cancelled
             }
-            Item? product = field.ItemDrop.CreateItem(recipe.ProductItemId, recipe.ProductRank, recipe.ProductCount);
+            (Item? product, bool jackpot) = MakeProduct(session, field, found, table, recipe, false);
             if (product == null) {
                 return;
             }
@@ -346,10 +390,10 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                         session.Currency.ChangeMeret(cost);
                     }
                     Logger.Warning("Maid craft {RecipeId} of maid {MaidUid}: product {ItemId} not added whole, {Cost} merets given back to {CharacterId}",
-                        recipeId, maidUid, recipe.ProductItemId, cost, session.CharacterId);
+                        recipeId, maidUid, product.Id, cost, session.CharacterId);
                     if (!back) {
                         Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: product {ItemId} not taken back after a failed meret receive",
-                            recipeId, maidUid, recipe.ProductItemId);
+                            recipeId, maidUid, product.Id);
                         return;
                     }
                     if (!field.SetMaidCraft(found, recipeId, start, duration)) {
@@ -363,10 +407,10 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 int level = found.Level;
                 int gained = MaidRules.Finish(found, recipe, expRate, exps, affinityMax);
                 field.SaveMaid(found);
-                CountReceive(session, found, recipe.ProductItemId, level);
+                CountReceive(session, found, product.Id, level, jackpot);
                 session.Send(MaidCraftItemPacket.Remove(maidUid));
-                session.Send(MaidCraftItemPacket.MeretReceiveResult(MaidRules.CraftReceived));
-                session.Send(MaidCraftItemPacket.Reward(recipe.ProductItemId, amount, rarity, gained));
+                session.Send(MaidCraftItemPacket.MeretReceiveResult(jackpot ? MaidRules.CraftJackpot : MaidRules.CraftReceived));
+                session.Send(MaidCraftItemPacket.Reward(product.Id, amount, rarity, gained, jackpot));
             }
         });
     }

@@ -175,6 +175,9 @@ public static class MaidRules {
     // The results the client shows by number (CManufactureManager::GetMaidText).
     public const int CraftStarted = 1;
     public const int CraftReceived = 2;
+    // A receive that gave the recipe's jackpot (GetMaidText case 3, the jackpot text and sounds); the dialog treats it
+    // as a receive (FUN_1412e7170 refreshes on 2 and 3).
+    public const int CraftJackpot = 3;
     public const int CraftCancelled = 4;
     public const int CraftNoRecord = 7;
     public const int CraftNotEnough = 8;
@@ -295,6 +298,21 @@ public static class MaidRules {
     public static int? FailedReceiveResult(Maid maid, long now) {
         int result = ReceiveResult(maid, now);
         return result == CraftReceived ? null : result;
+    }
+
+    // The chance (0..1) that a receive of recipe gives its jackpot: the recipe's JackpotRate (MaidRecipeSvr.xml) times
+    // the JackpotRate of the maid's grade (MaidGradeInfo.xml; 1 for a grade it does not list, KR lists 0 to 6). Both
+    // tables are the server pack's. The client loads MaidGradeInfo (CMaidGradeJockpotTable::Load @0x1406847c0,
+    // commonfiles/maidgradejockpottable.cpp:112), but nothing calls its rate getter (GetJackpotRate @0x140684b00,
+    // which answers 0 for an unlisted grade), so the client rolls no jackpot of its own. Inferred here:
+    // the grade is the maid furnishing's rarity (grades 0 to 6 as rarities); JackpotMood and the Feel*Rate columns
+    // are not used, as nothing says how they apply.
+    public static double JackpotChance(MaidTable.Recipe recipe, IReadOnlyDictionary<int, float>? gradeRates, int grade) {
+        if (recipe.Jackpot == null) {
+            return 0;
+        }
+        float gradeRate = gradeRates != null && gradeRates.TryGetValue(grade, out float rate) ? rate : 1f;
+        return Math.Clamp((double) recipe.Jackpot.Rate * gradeRate, 0, 1);
     }
 
     // A received or cancelled craft leaves the maid free.

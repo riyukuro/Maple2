@@ -16,6 +16,7 @@ public static class MaidCraftItemPacket {
         CraftResult = 4,
         ReceiveResult = 6,
         MeretReceiveResult = 7,
+        JackpotReceiveResult = 9,
         CancelResult = 10,
         Reward = 11,
     }
@@ -67,6 +68,14 @@ public static class MaidCraftItemPacket {
         return pWriter;
     }
 
+    // The answer to the debug jackpot receive (mode 9): the client reads it as the receive result.
+    public static ByteWriter JackpotReceiveResult(int result) {
+        var pWriter = Packet.Of(SendOp.MaidCraftItem);
+        pWriter.WriteByte((byte) Command.JackpotReceiveResult);
+        pWriter.WriteInt(result);
+        return pWriter;
+    }
+
     public static ByteWriter CancelResult(int result) {
         var pWriter = Packet.Of(SendOp.MaidCraftItem);
         pWriter.WriteByte((byte) Command.CancelResult);
@@ -75,9 +84,10 @@ public static class MaidCraftItemPacket {
     }
 
     // The reward page (FUN_1412e6c30): the product, its count and rarity, the maid exp gained, then the bonus, the
-    // jackpot flag and the merat flag. No jackpot receive is handled and no bonus is given, so those three are always 0
-    // (the merat flag only changes the bonus line, which a bonus of 0 does not show).
-    public static ByteWriter Reward(int itemId, int amount, int rarity, int exp) {
+    // jackpot flag (nonzero: the page's jackpot line, string 0x7b9 instead of 0x7b8) and the merat flag. No bonus is
+    // given, so the bonus and the merat flag are always 0 (the merat flag only changes the bonus line, which a bonus of 0
+    // does not show).
+    public static ByteWriter Reward(int itemId, int amount, int rarity, int exp, bool jackpot = false) {
         var pWriter = Packet.Of(SendOp.MaidCraftItem);
         pWriter.WriteByte((byte) Command.Reward);
         pWriter.WriteInt(itemId);
@@ -85,7 +95,7 @@ public static class MaidCraftItemPacket {
         pWriter.WriteByte((byte) rarity);
         pWriter.WriteInt(exp);
         pWriter.WriteInt(0);
-        pWriter.WriteByte(0);
+        pWriter.WriteByte((byte) (jackpot ? 1 : 0));
         pWriter.WriteByte(0);
         return pWriter;
     }
