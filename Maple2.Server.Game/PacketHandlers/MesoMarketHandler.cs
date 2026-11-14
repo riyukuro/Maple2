@@ -248,22 +248,31 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Currency[CurrencyType.MesoToken] < listing.Price) {
+        // The tokens are taken before the sale and given back when it is not stored: the old take after the sale threw
+        // when the tokens were spent on another thread meanwhile (a shop, a beauty salon), with the sale and its mails
+        // already stored, mesos for nothing.
+        if (!session.Currency.TryTake(CurrencyType.MesoToken, listing.Price)) {
             session.Send(MesoMarketPacket.Error(s_err_lack_meso_makret_token_ask));
             return;
         }
 
         // The listing's end and both mails are one save: a sale without its mails would lose the buyer's meso or
         // the seller's price.
-        (Mail buyerMail, Mail sellerMail) = PurchaseMails(session, listing);
-        (Mail Buyer, Mail Seller)? mails = db.SellMesoListing(listingId, buyerMail, sellerMail);
+        (Mail Buyer, Mail Seller)? mails = null;
+        try {
+            (Mail buyerMail, Mail sellerMail) = PurchaseMails(session, listing);
+            mails = db.SellMesoListing(listingId, buyerMail, sellerMail);
+        } finally {
+            if (mails == null) {
+                session.Currency.Change(CurrencyType.MesoToken, listing.Price);
+            }
+        }
         if (mails == null) {
             SendSoldOut(session, listingId);
             return;
         }
 
         session.Player.Value.Account.MesoMarketPurchased++;
-        session.Currency.Change(CurrencyType.MesoToken, -listing.Price);
 
         foreach (Mail mail in new[] { mails.Value.Buyer, mails.Value.Seller }) {
             try {

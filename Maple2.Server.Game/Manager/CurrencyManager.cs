@@ -438,6 +438,25 @@ public class CurrencyManager {
         Report(condition, change);
     }
 
+    // Takes amount from the wallet of the type in one step when that much is held, as Change with -amount; false and
+    // nothing changed when it is not. A take that a later step can refuse (a sale saved after it) goes first, so a
+    // spend on another thread between the check and the take cannot leave the sale stored and the take refused.
+    public bool TryTake(CurrencyType type, long amount) {
+        if (amount < 0) {
+            throw new ArgumentOutOfRangeException(nameof(amount), amount, "A take is not negative.");
+        }
+        long change;
+        ConditionType? condition;
+        lock (walletLock) {
+            if (this[type] < amount) {
+                return false;
+            }
+            change = SetLocked(type, this[type] - amount, out condition);
+        }
+        Report(condition, change);
+        return true;
+    }
+
     // A gain is counted by its condition (get_honor_token and the like) after the lock is let go. The balance packet
     // is sent under the lock (SetLocked), as the meso and meret packets are: each carries the whole balance, and one
     // sent after the lock could reach the client after a later change's packet, showing a stale balance. Chosen here:

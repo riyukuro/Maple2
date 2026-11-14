@@ -149,6 +149,38 @@ public class MesoMarketHandlerTests {
         Assert.That(db.GetMesoListing(other.Id), Is.Not.Null);
     }
 
+    // Mode 6 when the wallet cannot hold the listing's mesos (MaxMeso): the unknown error, the listing stays and the
+    // wallet is unchanged; with room for them the take-back goes through.
+    [Test]
+    public void TakeBack_RefusedWhenTheWalletIsFull() {
+        GameSession session = Login();
+        MesoListing own;
+        using (GameStorage.Request create = test.Storage.Context()) {
+            own = create.CreateMesoListing(new MesoListing(TimeSpan.FromDays(2)) {
+                AccountId = session.AccountId,
+                CharacterId = session.CharacterId,
+                Amount = BASE,
+                Price = 200,
+            })!;
+        }
+        session.Currency.Meso = Constant.MaxMeso - BASE + 1;
+        test.TakeSent();
+
+        Send(session, 6, own.Id);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(byte.MaxValue) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(Constant.MaxMeso - BASE + 1));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.GetMesoListing(own.Id), Is.Not.Null);
+        }
+
+        session.Currency.Meso = Constant.MaxMeso - BASE;
+        test.TakeSent();
+        Send(session, 6, own.Id);
+        Assert.That(Sent(), Is.EqualTo(new[] { "06" + Int(0) + Long(own.Id) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(Constant.MaxMeso));
+    }
+
     // Mode 7: the listings in the amount range, cheapest first, each with its own flag.
     [Test]
     public void Search_ListsTheRange() {
@@ -193,6 +225,55 @@ public class MesoMarketHandlerTests {
         Assert.That(seller.ContentArgs.Select(arg => arg.Value), Is.EqualTo(new[] { "10000000", "420", "21", "5", "399" }));
         Assert.That(test.World.MailNotifications.Select(request => request.CharacterId),
             Is.EquivalentTo(new[] { session.CharacterId, OTHER_CHARACTER }));
+    }
+
+    // Mode 8 with the tokens spent elsewhere while the sale is saved (a shop on another thread): the buy took them
+    // first, so the other spend is the one refused, and the buyer pays for the mesos it is mailed.
+    [Test]
+    public void Buy_TokensSpentDuringTheSale() {
+        GameSession session = Login(tokens: 500);
+        MesoListing listing = OtherListing(2 * BASE, 420);
+        bool spent = false;
+        bool tried = false;
+        test.FailSave = _ => {
+            if (!tried) {
+                tried = true;
+                try {
+                    session.Currency.Change(CurrencyType.MesoToken, -500);
+                    spent = true;
+                } catch (ArgumentException) { }
+            }
+            return false;
+        };
+
+        Send(session, 8, listing.Id);
+        test.FailSave = null;
+
+        Assert.That((tried, spent), Is.EqualTo((true, false)));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(80));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(listing.Id), Is.Null);
+        Assert.That(db.GetAllMail(session.CharacterId).Single().Meso, Is.EqualTo(2 * BASE));
+        Assert.That(session.Player.Value.Account.MesoMarketPurchased, Is.EqualTo(1));
+    }
+
+    // Mode 8 whose sale is not stored: the tokens taken for it come back, the answer is the sold-out one, and the
+    // month's count stays.
+    [Test]
+    public void Buy_RefusedSaveGivesTheTokensBack() {
+        GameSession session = Login(tokens: 500);
+        MesoListing listing = OtherListing(2 * BASE, 420);
+        test.FailSave = _ => true;
+
+        Send(session, 8, listing.Id);
+        test.FailSave = null;
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "08" + Int(17) + Long(listing.Id) + Int(0) }));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
+        Assert.That(session.Player.Value.Account.MesoMarketPurchased, Is.EqualTo(0));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(listing.Id), Is.Not.Null);
+        Assert.That(db.GetAllMail(session.CharacterId), Is.Empty);
     }
 
     // Mode 8 on a listing that is gone: mode 8 with code 17, on which the client drops the row from its list.
