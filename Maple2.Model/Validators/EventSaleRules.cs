@@ -23,8 +23,9 @@ public static class EventSaleRules {
         return rate;
     }
 
-    // Whether a running ShutdownSkillItem event lists the item (the client's shutdown map, filled at each event's
-    // start, MyPC::FUN_141525580, client/ms2/mypc.cpp:2507). Chosen here: any running event that lists it stops it.
+    // Whether a running ShutdownSkillItem event lists the item (MyPC::FUN_141525580, client/ms2/mypc.cpp:2507). The
+    // client counts the events per id (CShutdownEventKeyCountMap::SetShutdown and ResetShutdown,
+    // placeholder/cshutdownevent.h:30), so an item stays stopped while any running event lists it.
     public static bool SkillItemShutdown(IEnumerable<GameEvent> events, int itemId) {
         foreach (GameEvent gameEvent in events) {
             if (gameEvent.Metadata.Data is ShutdownSkillItem shutdown && Array.BinarySearch(shutdown.ItemIds, itemId) >= 0) {
