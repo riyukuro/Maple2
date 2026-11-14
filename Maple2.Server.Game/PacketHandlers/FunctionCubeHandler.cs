@@ -131,6 +131,12 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 if (fieldInteract.InteractCube.State is InteractCubeState.InUse && fieldInteract.InteractCube.InteractingCharacterId != session.CharacterId) {
                     return;
                 }
+                // The client sends this use from the cube's action key (CFunctionCubeObject::vfunc_8,
+                // functioncubeobject.cpp:615), so only for a cube by the character; a use from across the map toggled
+                // any furniture or switch of the field and counted for the controller condition each time.
+                if (!InteractRules.InReach(session.Player.Position, fieldInteract.Position, InteractRules.OtherReach)) {
+                    return;
+                }
 
                 bool isInDefaultState = fieldInteract.InteractCube.State == fieldInteract.InteractCube.Metadata.DefaultState;
                 long tick = Environment.TickCount64;

@@ -558,18 +558,25 @@ public class RequestCubeHandler : FieldPacketHandler {
 
     private void HandleDecreaseArea(GameSession session) {
         if (session.Field is null || !InOwnHome(session)) return;
+        // The client sends this only when its area table has a smaller step (uihomeresizedialog.cpp, OnShrinkArea);
+        // a decrease that does not change the area (at the minimum, or a save that failed) removes no cube.
         int newArea;
         if (session.Player.Value.Home.IsPlanner) {
             newArea = session.Player.Value.Home.PlannerArea - 1;
-            if (session.Player.Value.Home.SetPlannerArea(newArea)) {
-                session.Field.Broadcast(CubePacket.DecreaseArea((byte) newArea));
+            if (!session.Player.Value.Home.SetPlannerArea(newArea)) {
+                return;
             }
         } else {
             newArea = session.Player.Value.Home.Area - 1;
-            if (session.Player.Value.Home.SetArea(newArea) && session.Housing.SaveHome()) {
-                session.Field.Broadcast(CubePacket.DecreaseArea((byte) newArea));
+            if (!session.Player.Value.Home.SetArea(newArea)) {
+                return;
+            }
+            if (!session.Housing.SaveHome()) {
+                session.Player.Value.Home.SetArea(newArea + 1);
+                return;
             }
         }
+        session.Field.Broadcast(CubePacket.DecreaseArea((byte) newArea));
 
         Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
@@ -609,18 +616,25 @@ public class RequestCubeHandler : FieldPacketHandler {
 
     private void HandleDecreaseHeight(GameSession session) {
         if (session.Field is null || !InOwnHome(session)) return;
+        // As the area: at the minimum height (3) SetHeight keeps the height, and the cubes of the top layer stayed in
+        // bounds but were taken off the plot.
         int newHeight;
         if (session.Player.Value.Home.IsPlanner) {
             newHeight = session.Player.Value.Home.PlannerHeight - 1;
-            if (session.Player.Value.Home.SetPlannerHeight(newHeight)) {
-                session.Field.Broadcast(CubePacket.DecreaseHeight((byte) newHeight));
+            if (!session.Player.Value.Home.SetPlannerHeight(newHeight)) {
+                return;
             }
         } else {
             newHeight = session.Player.Value.Home.Height - 1;
-            if (session.Player.Value.Home.SetHeight(newHeight) && session.Housing.SaveHome()) {
-                session.Field.Broadcast(CubePacket.DecreaseHeight((byte) newHeight));
+            if (!session.Player.Value.Home.SetHeight(newHeight)) {
+                return;
+            }
+            if (!session.Housing.SaveHome()) {
+                session.Player.Value.Home.SetHeight(newHeight + 1);
+                return;
             }
         }
+        session.Field.Broadcast(CubePacket.DecreaseHeight((byte) newHeight));
 
         Plot? plot = session.Housing.GetOwnFieldPlot();
         if (plot == null) {
