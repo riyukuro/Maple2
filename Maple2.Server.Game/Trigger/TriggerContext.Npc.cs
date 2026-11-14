@@ -164,8 +164,11 @@ public partial class TriggerContext {
         DebugLog("[SetDialogue] type:{Type}, spawnId:{SpawnId}, script:{Script}, delay:{Delay}, arg5:{Arg5}, align:{Align}",
             type, spawnId, script, delay, arg5, align);
 
+        // arg5 is the balloon's start delay in seconds (KR 02000013_bf im_542: a second balloon of the same npc with
+        // arg5 2 after a first of time 2); the client keeps each actor's balloons with their own start, now + delay
+        // (UICutSceneCinematic 0x141909eb0). The type 2 talk has no delay field.
         if (spawnId == 0) {
-            SendOwnBalloon(script, delay * 1000, 0);
+            SendOwnBalloon(script, delay * 1000, arg5 * 1000);
             return;
         }
 
@@ -175,7 +178,7 @@ public partial class TriggerContext {
                 return;
             }
 
-            Broadcast(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, npc.ObjectId, script, delay * 1000, 0));
+            Broadcast(CinematicPacket.BalloonTalk(CinematicPacket.BalloonText.Trigger, npc.ObjectId, script, delay * 1000, arg5 * 1000));
             return;
         }
 

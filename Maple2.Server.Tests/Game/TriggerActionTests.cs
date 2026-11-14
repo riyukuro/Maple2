@@ -1151,6 +1151,29 @@ public class TriggerNpcTests : TriggerTestBase {
             Is.EqualTo(((byte) 6, 11000001, "11000001", "def", 2000)));
     }
 
+    // set_dialogue arg5 (750 KR uses not 0) is the balloon's start delay in seconds: KR 02000013_bf im_542 gives spawn
+    // 1101 two balloons of time 2 in one onEnter, the second with arg5 2, so it shows when the first ends. The client
+    // keeps each actor's balloons in a list with their own start, now + delay in ms (UICutSceneCinematic
+    // 0x141909eb0). Before, arg5 was dropped and both balloons showed at once. Spawn 0 (10 uses, e.g. 52000045_qd
+    // main_01) delays the player's own balloon the same way; type 2 (3 uses) has no delay field in its packet.
+    [Test]
+    public void SetDialogue_Arg5DelaysTheBalloon() {
+        Mob(9001, 1101);
+
+        Action("""<action name="set_dialogue" arg5="0" type="1" spawn_id="1101" script="$02000013_BF__IM_542__0$" time="2" />""");
+        Action("""<action name="set_dialogue" arg5="2" type="1" spawn_id="1101" script="$02000013_BF__IM_542__1$" time="2" />""");
+        Assert.That(Sent(SendOp.Cinematic).Select(b => (b.ReadByte(), b.ReadByte(), b.ReadInt(), b.ReadUnicodeString(), b.ReadInt(), b.ReadInt())),
+            Is.EqualTo(new[] {
+                ((byte) 8, (byte) 0, 9001, "$02000013_BF__IM_542__0$", 2000, 0),
+                ((byte) 8, (byte) 0, 9001, "$02000013_BF__IM_542__1$", 2000, 2000),
+            }));
+
+        Action("""<action name="set_dialogue" arg5="2" type="1" spawn_id="0" script="$52000045_QD__MAIN_01__9$" time="3" />""");
+        ByteReader own = Sent(SendOp.Cinematic).Single();
+        Assert.That((own.ReadByte(), own.ReadByte(), own.ReadInt(), own.ReadUnicodeString(), own.ReadInt(), own.ReadInt()),
+            Is.EqualTo(((byte) 8, (byte) 0, test.Session.Player.ObjectId, "$52000045_QD__MAIN_01__9$", 3000, 2000)));
+    }
+
     // add_balloon_talk (584): a balloon of the Trigger table over the spawn point's npc, with the duration and delay in
     // ms; spawn id 0 (94 of the KR uses) puts it over each player's own character. A spawn point without an npc sends
     // nothing.
