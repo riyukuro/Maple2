@@ -203,6 +203,37 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // KR AI_Alex_AnchorLizard.xml: <node name="select" prob="9999,1000,0"> whose first child has cooltime="999999999"
+    // (its comment: first time only) and whose last has weight 0 (KR AI_SkyFortress_Mason.xml: prob="99999,0"). The
+    // first child runs once; with it on its cooltime the select falls back to the child of weight 0.
+    [Test]
+    public void Select_CooltimeOnce_ThenTheZeroWeightChild() {
+        var once = new SetValueNode("SetValue", [], "Once", 1, 0, 999999999, true, false);
+        Spawn([new SelectNode("select", [once, SetValue("Fallback", 1, isModify: true)], [9999, 0], false)]);
+        Run();
+        Assert.That(npc.AiExtraData["Once"], Is.EqualTo(1));
+        Assert.That(npc.AiExtraData.ContainsKey("Fallback"), Is.False);
+
+        Run(3);
+        Assert.That(npc.AiExtraData["Once"], Is.EqualTo(1), "the first child is on its cooltime");
+        Assert.That(npc.AiExtraData["Fallback"], Is.EqualTo(3));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // KR AI_GigantikaHead.xml: <node name="select" prob="1,1,1,1,1,1"> of six summon spots, then <node name="RemoveMe" />.
+    // One child of the select runs, once, and then the node after the select.
+    [Test]
+    public void Select_OneChildOnce_ThenTheNextSibling() {
+        Spawn([
+            new SelectNode("select", [SetValue("Summon", 1, isModify: true), SetValue("Summon", 1, isModify: true)], [1, 1], false),
+            SetValue("After", 1),
+        ]);
+        Run();
+        Assert.That(npc.AiExtraData["Summon"], Is.EqualTo(1));
+        Assert.That(npc.AiExtraData.GetValueOrDefault("After"), Is.EqualTo(1));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // KR AI_Alex_AnchorLizard.xml: <condition name="hpOver" value="40"> then <condition name="true"> (its comment: 40%
     // and below). At 40% health hpOver 40 still passes; at 39% the true branch runs.
     [Test]

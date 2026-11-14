@@ -415,7 +415,7 @@ public class AiState {
 
             ProcessNode((dynamic) entry);
 
-            if (node.Entries.Length > 0 && aiStack.Last().Node is not SelectNode && aiStack.Last().Node != node && CanEvaluateNode(node.Entries[0])) {
+            if (node.Entries.Length > 0 && node is not SelectNode && aiStack.Last().Node != node && CanEvaluateNode(node.Entries[0])) {
                 Push(node);
             }
 
@@ -596,13 +596,8 @@ public class AiState {
 
         (Entry entry, int index) selected = weightedEntries.Get();
 
-        aiStack[aiStack.Count - 1] = new StackEntry {
-            Node = node,
-            Index = selected.index,
-            LockIndex = true,
-        };
-
-        Push(selected.entry);
+        // The picked child runs once, with its children, and then the select's next sibling (KR
+        // AI_GigantikaHead.xml: a select of one summon spot, then RemoveMe).
         Process(selected.entry);
     }
 
