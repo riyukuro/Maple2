@@ -172,6 +172,9 @@ public class AiState {
 
         foreach (var node in reservedNodes.ToList()) {
             if (ProcessCondition((dynamic) node)) {
+                if (KeepsBattle(node)) {
+                    actor.BattleState.KeepBattle = true;
+                }
                 aiStack.Clear();
                 reservedNodes.Remove(node);
                 Push(node);
@@ -382,9 +385,33 @@ public class AiState {
         return $"{entry.Name}_{entry.GetHashCode()}";
     }
 
+    // isKeepBattle holds the battle, on every node and condition that has it (KR: on 186 move, 153 SetValue, 82 buff,
+    // 65 teleport, 51 say, 43 target, 34 trace, 10 TriggerSetUserValue, 9 summon and 1 conditions nodes, and on 5
+    // extraData and 4 skillRange conditions). The skill, standby, jump, SetSlaveValue, SetMasterValue,
+    // SetValueRangeTarget, HideVibrateAll and RemoveSlaves handlers set it themselves.
+    private static bool KeepsBattle(Entry entry) => entry switch {
+        MoveNode node => node.IsKeepBattle,
+        SetValueNode node => node.IsKeepBattle,
+        BuffNode node => node.IsKeepBattle,
+        TeleportNode node => node.IsKeepBattle,
+        SayNode node => node.IsKeepBattle,
+        TargetNode node => node.IsKeepBattle,
+        TraceNode node => node.IsKeepBattle,
+        TriggerSetUserValueNode node => node.IsKeepBattle,
+        SummonNode node => node.IsKeepBattle,
+        ConditionsNode node => node.IsKeepBattle,
+        ExtraDataCondition condition => condition.IsKeepBattle,
+        SkillRangeCondition condition => condition.IsKeepBattle,
+        _ => false,
+    };
+
     private void Process(Entry entry) {
         if (entry is Node node) {
             actor.AppendDebugMessage($"> Node: {entry.Name}\n");
+
+            if (KeepsBattle(entry)) {
+                actor.BattleState.KeepBattle = true;
+            }
 
             ProcessNode((dynamic) entry);
 
@@ -522,6 +549,10 @@ public class AiState {
         }
 
         actor.AppendDebugMessage($"+ Condition: '{passed.Name}'\n");
+
+        if (KeepsBattle(passed)) {
+            actor.BattleState.KeepBattle = true;
+        }
 
         Push(passed);
     }

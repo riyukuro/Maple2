@@ -116,4 +116,37 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(CurrentTask, Is.InstanceOf<MovementState.NpcMoveTargetDistanceTask>());
         Assert.That(((MovementState.NpcMoveTargetDistanceTask) CurrentTask!).Distance, Is.EqualTo(430));
     }
+
+    // KR AI_Witch2CerberosTrainer_PaterA.xml: <node name="teleport" pos="-2700, -1800, 2750" isKeepBattle="true"> (its
+    // children then target a far player, 300 to 1300 away). The node holds the battle; one without the flag does not.
+    [Test]
+    public void Teleport_IsKeepBattle_HoldsTheBattle() {
+        Spawn([new TeleportNode("teleport", [], new Vector3(-2700, -1800, 2750), 0, Vector3.Zero, 0, 0, 0, true)]);
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(npc.Position, Is.EqualTo(new Vector3(-2700, -1800, 2750)));
+        Assert.That(npc.BattleState.KeepBattle, Is.True);
+
+        Spawn([new TeleportNode("teleport", [], new Vector3(-2700, -1800, 2750), 0, Vector3.Zero, 0, 0, 0, false)]);
+        npc.AiState.Update(Field.FieldTick);
+        Assert.That(npc.BattleState.KeepBattle, Is.False);
+    }
+
+    // KR BossDungeon/EyeOfLapenta/AI_YuperiaRbladerDark.xml: <condition name="extraData" isKeepBattle="true"
+    // key="SpecialPattern" value="2"> in a conditions node, its branch setting SpecialPattern 3 (the standby before it
+    // left out, as a standby holds the battle by itself). The passing condition holds the battle.
+    [Test]
+    public void ExtraDataCondition_IsKeepBattle_HoldsTheBattle() {
+        var condition = new ExtraDataCondition("extraData", [SetValue("SpecialPattern", 3)], "SpecialPattern", 2, AiConditionOp.Equal, true);
+        Spawn([new ConditionsNode("conditions", [], [condition], 0, 0, false)]);
+        npc.AiExtraData["SpecialPattern"] = 2;
+        for (int i = 0; i < 3; i++) {
+            npc.AiState.Update(Field.FieldTick);
+        }
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(npc.AiExtraData["SpecialPattern"], Is.EqualTo(3), "the branch ran");
+        Assert.That(npc.BattleState.KeepBattle, Is.True);
+    }
 }
