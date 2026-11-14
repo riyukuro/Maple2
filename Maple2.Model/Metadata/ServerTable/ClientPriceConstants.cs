@@ -51,9 +51,12 @@ public static partial class ClientPriceConstants {
         ("MeratAirTaxiPrice", "390"),
     ];
 
-    // The client's price values: its built-in ones, replaced by its table's rows (in file order, filtered).
-    public static Dictionary<string, string> SelectClient(IEnumerable<(string Key, string Value)> rows) {
-        return Select(ClientBuiltIn.Concat(rows));
+    // The client's price values. data: the data folder's client table rows; played: the played client's table rows
+    // (MS2_PLAYED_CLIENT_XML), null when no such table was read. The built-in values belong to the client that is
+    // played: they replace the data folder's rows and its own table's rows replace them. With no played table, the
+    // data folder's pack is that client, so its rows replace the built-in ones. Rows in file order, filtered.
+    public static Dictionary<string, string> SelectClient(IEnumerable<(string Key, string Value)> data, IEnumerable<(string Key, string Value)>? played) {
+        return played == null ? Select(ClientBuiltIn.Concat(data)) : Select(data.Concat(ClientBuiltIn).Concat(played));
     }
 
     // rows: (key, value) in file order, already filtered by locale and feature. A later row replaces an earlier one.

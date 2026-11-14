@@ -3878,7 +3878,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         // Prices: the client's own row for this locale wins, so the server takes what the client's box shows.
         foreach (ClientPriceConstants.Override price in ClientPriceConstants.Differences(ClientPriceConstants.Select(serverRows), ClientPriceRows())) {
             if (!propertyLookup.TryGetValue(price.Key, out PropertyInfo? property)) continue;
-            Console.WriteLine($"constants: {property.Name} = {price.ClientValue} from the client table (server pack: {price.ServerValue ?? "no row"})");
+            Console.WriteLine($"constants: {property.Name} = {price.ClientValue} from the client (server pack: {price.ServerValue ?? "no row"})");
             GenericHelper.SetValue(property, constants, CleanInput(price.ClientValue, property.Name, property.PropertyType));
         }
         return constants;
@@ -3906,22 +3906,29 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         Dictionary<string, string> ClientPriceRows() {
             // The data folder's pack first, then the played client's: a later row replaces an earlier one, so
             // the played client's row wins where it has one.
+            // The client's built-in prices go between the two (ClientPriceConstants.SelectClient).
             // With no client table read, the client's prices are not known: the server pack's rows stay.
-            var rows = new List<(string, string)>();
-            bool read = false;
-            foreach (M2dReader? reader in new[] { clientReader, playedReader }) {
-                Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name == "table/constants.xml");
-                if (reader == null || entry == null) {
-                    continue;
-                }
-                read = true;
-                foreach (XmlNode node in reader.GetXmlDocument(entry).SelectNodes("ms2/v")!) {
-                    if (node is not XmlElement row) continue;
-                    if (!FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(row.GetAttribute("locale"))) continue;
-                    rows.Add((row.GetAttribute("key"), row.GetAttribute("value")));
-                }
+            List<(string, string)>? data = TableRows(clientReader);
+            List<(string, string)>? played = TableRows(playedReader);
+            if (data == null && played == null) {
+                return new Dictionary<string, string>();
             }
-            return read ? ClientPriceConstants.SelectClient(rows) : ClientPriceConstants.Select(rows);
+            return ClientPriceConstants.SelectClient(data ?? [], played);
+        }
+
+        // The pack's table/constants.xml rows that pass the locale and feature filter; null when it has no such table.
+        List<(string, string)>? TableRows(M2dReader? reader) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name == "table/constants.xml");
+            if (reader == null || entry == null) {
+                return null;
+            }
+            var rows = new List<(string, string)>();
+            foreach (XmlNode node in reader.GetXmlDocument(entry).SelectNodes("ms2/v")!) {
+                if (node is not XmlElement row) continue;
+                if (!FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(row.GetAttribute("locale"))) continue;
+                rows.Add((row.GetAttribute("key"), row.GetAttribute("value")));
+            }
+            return rows;
         }
 
         string CleanInput(string input, string propName, Type type) {

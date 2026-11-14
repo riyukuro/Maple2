@@ -99,22 +99,32 @@ public class ClientPriceConstantsTests {
         Assert.That(smaller.Single().ServerValue, Is.EqualTo("20"));
     }
 
-    // The meret air taxi: the KR client table has no row, so the client asks its built-in 390 (the server pack's KR
-    // row is 90); a client row, where a table has one, wins over the built-in value.
+    // The meret air taxi: the played KR client's table has no row, so the client asks its built-in 390, while the
+    // server pack and the data folder's client table say 90; a played client row, where its table has one, wins.
     [Test]
     public void SelectClient_BuiltInPriceWinsOverTheServerPack() {
         List<ClientPriceConstants.Override> noRow = ClientPriceConstants.Differences(
-            ClientPriceConstants.Select([("MeratAirTaxiPrice", "90")]), ClientPriceConstants.SelectClient([("MaxChatLength", "100")]));
+            ClientPriceConstants.Select([("MeratAirTaxiPrice", "90")]),
+            ClientPriceConstants.SelectClient([("MeratAirTaxiPrice", "90")], [("MaxChatLength", "100")]));
         Assert.That(noRow.Single().Key, Is.EqualTo("MeratAirTaxiPrice"));
         Assert.That(noRow.Single().ClientValue, Is.EqualTo("390"));
         Assert.That(noRow.Single().ServerValue, Is.EqualTo("90"));
 
-        List<ClientPriceConstants.Override> clientRow = ClientPriceConstants.Differences(
-            ClientPriceConstants.Select([("MeratAirTaxiPrice", "90")]), ClientPriceConstants.SelectClient([("MeratAirTaxiPrice", "15")]));
-        Assert.That(clientRow.Single().ClientValue, Is.EqualTo("15"));
+        List<ClientPriceConstants.Override> playedRow = ClientPriceConstants.Differences(
+            ClientPriceConstants.Select([("MeratAirTaxiPrice", "90")]),
+            ClientPriceConstants.SelectClient([("MeratAirTaxiPrice", "90")], [("MeratAirTaxiPrice", "15")]));
+        Assert.That(playedRow.Single().ClientValue, Is.EqualTo("15"));
 
         Assert.That(ClientPriceConstants.Differences(
-            ClientPriceConstants.Select([("MeratAirTaxiPrice", "390")]), ClientPriceConstants.SelectClient([])), Is.Empty);
+            ClientPriceConstants.Select([("MeratAirTaxiPrice", "390")]), ClientPriceConstants.SelectClient([], [])), Is.Empty);
+    }
+
+    // With no played client pack the data folder's pack is the client: its row wins over the built-in value, and
+    // with no row there the built-in value stands.
+    [Test]
+    public void SelectClient_NoPlayedPack_DataFolderIsTheClient() {
+        Assert.That(ClientPriceConstants.SelectClient([("MeratAirTaxiPrice", "90")], null)["MeratAirTaxiPrice"], Is.EqualTo("90"));
+        Assert.That(ClientPriceConstants.SelectClient([("MaxChatLength", "100")], null)["MeratAirTaxiPrice"], Is.EqualTo("390"));
     }
 
     [Test]
