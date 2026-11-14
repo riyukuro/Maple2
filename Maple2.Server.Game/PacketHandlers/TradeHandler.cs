@@ -136,7 +136,11 @@ public class TradeHandler : FieldPacketHandler {
     private static void HandleAccept(GameSession session, IByteReader packet) {
         long characterId = packet.ReadLong();
 
-        session.Trade?.Accept(session);
+        // The client has no mode that closes a request box, so a request that ended while the box was up (the
+        // requester left the field or logged out) is told here, when the box is accepted.
+        if (session.Trade?.Accept(session) != true) {
+            session.Send(TradePacket.Error(s_trade_error_system));
+        }
     }
 
     // The requester's character id. The request box's decline (uimessagebox.cpp:1507) follows Acknowledge, so the
@@ -163,7 +167,7 @@ public class TradeHandler : FieldPacketHandler {
             return;
         }
 
-        trade.Dispose();
+        trade.Cancel(session);
     }
 
     private static void HandleAddItem(GameSession session, IByteReader packet) {

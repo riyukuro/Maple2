@@ -110,11 +110,11 @@ public class TradeManager : IDisposable {
     // The trade's two players; nobody else may act on it.
     public bool IsTrader(GameSession caller) => caller == sender.Session || caller == receiver.Session;
 
-    // Called by |receiver| to accept trade request.
-    public void Accept(GameSession caller) {
+    // Called by |receiver| to accept trade request. False when the request is over (or |caller| is not the one asked).
+    public bool Accept(GameSession caller) {
         lock (mutex) {
             if (state != TradeState.Acknowledged || !IsReceiver(caller)) {
-                return;
+                return false;
             }
 
             state = TradeState.Started;
@@ -122,6 +122,19 @@ public class TradeManager : IDisposable {
             sender.Session.Send(TradePacket.StartTrade(receiver.Session.CharacterId));
             receiver.Session.Send(TradePacket.StartTrade(sender.Session.CharacterId));
         }
+        return true;
+    }
+
+    // Trade 7, sent by the client only when its trade window closes (UITradeDialogEx::vfunc_67), which a started
+    // trade opened. It ends a started trade; a request still waiting is not the window's, so a 7 from the window of
+    // an earlier trade, closed after that trade ended, leaves a newer request alone.
+    public void Cancel(GameSession caller) {
+        lock (mutex) {
+            if (state < TradeState.Started || !IsTrader(caller)) {
+                return;
+            }
+        }
+        Dispose();
     }
 
     // Called by |receiver| when it cannot show the trade request.

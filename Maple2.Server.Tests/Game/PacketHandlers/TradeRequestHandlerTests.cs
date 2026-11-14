@@ -88,4 +88,57 @@ public class TradeRequestHandlerTests {
         Assert.That(Request(giverTest, taker.CharacterId), Is.EqualTo(new[] { Hex(TradePacket.Error(s_trade_error_trading_now)) }));
         Assert.That(giver.Trade, Is.SameAs(trade));
     }
+
+    private List<string> Send(TestGameSession from, byte mode, long characterId = -1) {
+        handler.Handle(from.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(mode);
+            if (characterId >= 0) {
+                writer.WriteLong(characterId);
+            }
+        }));
+        return from.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Trade).Select(Convert.ToHexString).ToList();
+    }
+
+    // The client sends 7 only when its trade window closes, so a 7 left over from an earlier trade's window does not
+    // end a request that is still waiting.
+    [Test]
+    public void ACancelWhileTheRequestWaits_LeavesIt() {
+        Assert.That(Send(giverTest, 7), Is.Empty);
+        Assert.That(trade.Acknowledge(taker), Is.True);
+        giverTest.TakeSent();
+        Assert.That(Send(takerTest, 7), Is.Empty);
+
+        Assert.Multiple(() => {
+            Assert.That(giver.Trade, Is.SameAs(trade));
+            Assert.That(taker.Trade, Is.SameAs(trade));
+            Assert.That(trade.Accept(taker), Is.True);
+        });
+    }
+
+    [Test]
+    public void ACancelOfAStartedTrade_EndsIt() {
+        Assert.That(trade.Acknowledge(taker), Is.True);
+        Assert.That(trade.Accept(taker), Is.True);
+        giverTest.TakeSent();
+        takerTest.TakeSent();
+
+        Assert.That(Send(giverTest, 7), Does.Contain(Hex(TradePacket.EndTrade(false))));
+        Assert.Multiple(() => {
+            Assert.That(giver.Trade, Is.Null);
+            Assert.That(taker.Trade, Is.Null);
+            Assert.That(takerTest.TakeSent().Select(Convert.ToHexString), Does.Contain(Hex(TradePacket.EndTrade(false))));
+        });
+    }
+
+    // A request that ended while the other player's box was up (the requester left the field): accepting the box
+    // tells the player the trade failed instead of nothing.
+    [Test]
+    public void AnAcceptAfterTheRequestEnded_IsTradeFailed() {
+        Assert.That(trade.Acknowledge(taker), Is.True);
+        trade.Dispose();
+        giverTest.TakeSent();
+
+        Assert.That(Send(takerTest, 3, giver.CharacterId), Is.EqualTo(new[] { Hex(TradePacket.Error(s_trade_error_system)) }));
+        Assert.That(giverTest.TakeSent(), Is.Empty);
+    }
 }
