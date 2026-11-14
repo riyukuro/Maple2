@@ -390,6 +390,35 @@ public class TriggerScriptConditionTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="wait_tick" wait_tick="60000" />"""), Is.False);
     }
 
+    // wait_and_reset_tick (7): true once the wait is over since the state began or the last pass, which starts the
+    // wait again.
+    [Test]
+    public void WaitAndResetTick_StartsTheWaitAgain() {
+        Start();
+        context.StartTick = Environment.TickCount64 - 5000;
+
+        Assert.That(Condition("""<condition name="wait_and_reset_tick" wait_tick="60000" />"""), Is.False);
+        Assert.That(Condition("""<condition name="wait_and_reset_tick" wait_tick="1000" />"""), Is.True);
+        Assert.That(Condition("""<condition name="wait_and_reset_tick" wait_tick="1000" />"""), Is.False);
+    }
+
+    // user_count (12), dungeon_id (14), dungeon_level (12), is_playing_maple_survival (6) on a plain field of one
+    // player: the count is the field's players; no dungeon id is 0; outside a raid room the level reads 3 (chaos);
+    // no survival game runs.
+    [Test]
+    public void FieldConditions_OnAPlainField() {
+        Start();
+
+        Assert.That(Condition("""<condition name="user_count" check_count="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="user_count" check_count="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="dungeon_id" dungeon_id="0" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_id" dungeon_id="23001001" />"""), Is.False);
+        Assert.That(Condition("""<condition name="dungeon_level" level="3" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_level" level="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="is_playing_maple_survival" />"""), Is.False);
+        Assert.That(Condition("""<condition name="is_playing_maple_survival" negate="true" />"""), Is.True);
+    }
+
     // random_condition (5821): the state's weights split one roll. Four rows of 25 (as in KR trigger 02000066_bf
     // alon.xml): a roll of 60 falls in the third share. 99 and 1: a roll of 99.5 takes the 1.
     [TestCase(60f, new[] { 25f, 25f, 25f, 25f }, 2)]
@@ -615,6 +644,52 @@ public class TriggerFieldStateTests : TriggerTestBase {
         // An operator the enum lacks (the dev map 99999912 writes ">=") is the default, at least that many.
         Assert.That(Condition("""<condition name="count_users" box_id="1" min_users="1" operator="&gt;=" />"""), Is.True);
         Assert.That(Condition("""<condition name="count_users" box_id="1" min_users="2" operator="&gt;=" />"""), Is.False);
+    }
+
+    // user_detected (3232): a living player in one of the boxes, of the job when job_code is not 0 (KR writes it as the
+    // number, "01" too); a box id that starts with "!" negates, as negate does.
+    [Test]
+    public void UserDetected_InTheBox() {
+        StartWithBoxes();
+
+        Assert.That(Condition("""<condition name="user_detected" box_ids="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="user_detected" box_ids="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="user_detected" box_ids="2,1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="user_detected" box_ids="9" />"""), Is.False);
+        Assert.That(Condition("""<condition name="user_detected" box_ids="1" negate="1" />"""), Is.False);
+        Assert.That(Condition("""<condition name="user_detected" box_ids="!2" />"""), Is.True);
+        Assert.That(Condition("""<condition name="user_detected" box_ids="1" job_code="01" />"""), Is.True);
+        Assert.That(Condition("""<condition name="user_detected" box_ids="1" job_code="10" />"""), Is.False);
+        Assert.That(Condition("""<condition name="user_detected" box_ids="1" job_code="0" />"""), Is.True);
+
+        typeof(FieldPlayer).GetField("isDead", Any)!.SetValue(test.Session.Player, true);
+        Assert.That(Condition("""<condition name="user_detected" box_ids="1" />"""), Is.False);
+    }
+
+    // The state's one condition, read as the trigger cache reads it (all_of and any_one take their group).
+    private ICondition StateCondition(string xml) {
+        var document = new XmlDocument();
+        document.LoadXml("<ms2><state name=\"Wait\">" + xml + "</state><state name=\"End\" /></ms2>");
+        return TriggerCache.ParseTrigger("test", "test", document).States[0].Conditions.Single();
+    }
+
+    // all_of (196) holds only when every inner condition does; any_one (64) when one does; always (3800) and true
+    // move on at once.
+    [Test]
+    public void Groups_AllOfAnyOneAlways() {
+        StartWithBoxes();
+        const string inBox = """<condition name="user_detected" box_ids="1" />""";
+        const string outOfBox = """<condition name="user_detected" box_ids="2" />""";
+        string Group(string name, params string[] inner) =>
+            $"<condition name=\"{name}\"><group>{string.Concat(inner)}</group><transition state=\"End\" /></condition>";
+
+        Assert.That(StateCondition(Group("all_of", inBox, inBox)).Evaluate(context), Is.True);
+        Assert.That(StateCondition(Group("all_of", inBox, outOfBox)).Evaluate(context), Is.False);
+        Assert.That(StateCondition(Group("all_of", outOfBox, inBox)).Evaluate(context), Is.False);
+        Assert.That(StateCondition(Group("any_one", outOfBox, inBox)).Evaluate(context), Is.True);
+        Assert.That(StateCondition(Group("any_one", outOfBox, outOfBox)).Evaluate(context), Is.False);
+        Assert.That(Condition("""<condition name="always" />"""), Is.True);
+        Assert.That(Condition("""<condition name="true" />"""), Is.True);
     }
 
     // quest_user_detected (1844): a player in the boxes with the quest in a listed state (3 = completed).
