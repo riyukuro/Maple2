@@ -6,6 +6,7 @@ using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Global.Service;
 using Maple2.Server.Login.Session;
+using Maple2.Server.World.Service;
 using GlobalClient = Maple2.Server.Global.Service.Global.GlobalClient;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
@@ -50,6 +51,10 @@ public class LoginHandler : PacketHandler<LoginSession> {
             session.Disconnect();
             return;
         }
+
+        // The tokens of a client this login replaces end first: one it holds would else get it into a game session
+        // that the kick below does not see yet (still loading), next to this login's own select.
+        World.EndTokens(new EndTokensRequest { AccountId = response.AccountId });
 
         // Account is already logged into login server.
         if (session.Server.GetSession(response.AccountId, out LoginSession? existing) && existing != session) {

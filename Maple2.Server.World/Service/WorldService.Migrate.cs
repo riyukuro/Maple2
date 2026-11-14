@@ -113,6 +113,21 @@ public partial class WorldService {
         return firstChannel();
     }
 
+    // A login of the account ends the tokens of the client it replaces: a token that client holds would else let it
+    // into a game session the login's kick did not see (not loaded yet), next to the new login's own select.
+    public override Task<EndTokensResponse> EndTokens(EndTokensRequest request, ServerCallContext context) {
+        lock (TokenIssue) {
+            var key = new AccountTokenKey(request.AccountId);
+            if (tokenCache.TryGetValue(key, out ulong[]? live) && live != null) {
+                foreach (ulong token in live) {
+                    tokenCache.Remove(token);
+                }
+            }
+            tokenCache.Remove(key);
+        }
+        return Task.FromResult(new EndTokensResponse());
+    }
+
     public override Task<MigrateInResponse> MigrateIn(MigrateInRequest request, ServerCallContext context) {
         TokenEntry data;
         // Under the issue lock from the read to the remove: a token issued in between would else end this one only
@@ -129,16 +144,17 @@ public partial class WorldService {
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, "Mismatched machineId for account"));
             }
 
+            // The entry ends every token of the account: two moves of one game session (a field warp next to the
+            // client's own move) leave two tokens, and the one the client did not use would else let a second
+            // session of the character in until it expires.
             tokenCache.Remove(request.Token);
             var key = new AccountTokenKey(data.AccountId);
             if (tokenCache.TryGetValue(key, out ulong[]? live) && live != null) {
-                ulong[] rest = live.Where(token => token != request.Token).ToArray();
-                if (rest.Length == 0) {
-                    tokenCache.Remove(key);
-                } else {
-                    tokenCache.Set(key, rest, AuthExpiry);
+                foreach (ulong token in live) {
+                    tokenCache.Remove(token);
                 }
             }
+            tokenCache.Remove(key);
         }
         return Task.FromResult(new MigrateInResponse {
             CharacterId = data.CharacterId,

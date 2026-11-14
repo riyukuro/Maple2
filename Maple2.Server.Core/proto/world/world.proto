@@ -12,6 +12,8 @@ service World {
   rpc MigrateOut(MigrateOutRequest) returns (MigrateOutResponse);
   // Migrate into a server.
   rpc MigrateIn(MigrateInRequest) returns (MigrateInResponse);
+  // End every live move token of an account (a login of the account: the tokens of the client it replaces).
+  rpc EndTokens(EndTokensRequest) returns (EndTokensResponse);
   // Cross field
   rpc Field(maple2.FieldRequest) returns (maple2.FieldResponse);
   // Retrieve information about channels.
@@ -122,6 +124,12 @@ message MigrateOutResponse {
   int32 channel = 3;
   fixed64 token = 4;
 }
+
+message EndTokensRequest {
+  int64 account_id = 1;
+}
+
+message EndTokensResponse {}
 
 message MigrateInRequest {
   int64 account_id = 1;

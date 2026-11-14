@@ -111,7 +111,7 @@ public sealed class TestLoginSession {
 
     public List<SendOp> TakeSentOps() => TakeSent().Select(TestGameSession.Op).ToList();
 
-    private static void SetField(object target, string name, object value) {
+    public static void SetField(object target, string name, object value) {
         for (Type? type = target.GetType(); type != null; type = type.BaseType) {
             FieldInfo? field = type.GetField(name, Any | BindingFlags.DeclaredOnly);
             if (field != null) {
@@ -137,6 +137,14 @@ public sealed class TestLoginSession {
         public override MigrateInResponse MigrateIn(MigrateInRequest request, CallOptions options) {
             Arrivals.Add(request);
             return new MigrateInResponse();
+        }
+
+        // The accounts whose move tokens a login ended, in order.
+        public readonly List<long> EndedTokens = [];
+
+        public override EndTokensResponse EndTokens(EndTokensRequest request, CallOptions options) {
+            EndedTokens.Add(request.AccountId);
+            return new EndTokensResponse();
         }
 
         // Thrown by MigrateOut after the move is recorded, as the world server refuses a move.

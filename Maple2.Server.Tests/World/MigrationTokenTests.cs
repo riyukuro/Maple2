@@ -9,7 +9,7 @@ namespace Maple2.Server.Tests.World;
 // token stayed valid until it was used or expired: a token left unused (a character picked by another login of the
 // account before the first one arrived, the client closed on the way) still let a second game session of the
 // account in next to the first one. A move of a game session ends none: two moves of one session can overlap, and
-// the client goes with the first one it was sent.
+// the client goes with either; the entry with one ends the other. A login of the account (EndTokens) ends them all.
 public class MigrationTokenTests {
     private static readonly Guid Machine = Guid.NewGuid();
 
@@ -50,15 +50,22 @@ public class MigrationTokenTests {
         });
     }
 
-    // A field's warp next to the client's own move: the client goes with the first GameToGame, and is let in.
+    // A field's warp next to the client's own move: the token the client goes with is let in, whichever it is, and
+    // the other ends (a second connect with it would be a second session of the character).
     [Test]
-    public void TwoMovesOfAGameSession_BothStayLive() {
+    public void TwoMovesOfAGameSession_EitherEnters_TheOtherEnds() {
         WorldService world = World();
         ulong first = Out(world, 1, 11, select: false);
         ulong second = Out(world, 1, 11, select: false);
 
         Assert.That(In(world, 1, first).CharacterId, Is.EqualTo(11));
-        Assert.That(In(world, 1, second).CharacterId, Is.EqualTo(11));
+        Assert.That(Assert.Throws<RpcException>(() => In(world, 1, second))!.StatusCode, Is.EqualTo(StatusCode.Unauthenticated));
+
+        ulong third = Out(world, 1, 11, select: false);
+        ulong fourth = Out(world, 1, 11, select: false);
+
+        Assert.That(In(world, 1, fourth).CharacterId, Is.EqualTo(11));
+        Assert.That(Assert.Throws<RpcException>(() => In(world, 1, third))!.StatusCode, Is.EqualTo(StatusCode.Unauthenticated));
     }
 
     // A game move after a select, then another select: the second select ends the game move too.
@@ -90,5 +97,23 @@ public class MigrationTokenTests {
 
         Assert.Throws<RpcException>(() => In(world, 1, first));
         Assert.That(In(world, 1, Out(world, 1, 12)).CharacterId, Is.EqualTo(12));
+    }
+
+    // A login of the account ends the tokens a client it replaces holds; another account's stay.
+    [Test]
+    public void ALogin_EndsTheAccountsTokens() {
+        WorldService world = World();
+        ulong selected = Out(world, 1, 11);
+        ulong moving = Out(world, 1, 11, select: false);
+        ulong other = Out(world, 2, 21);
+
+        world.EndTokens(new EndTokensRequest { AccountId = 1 }, null!);
+
+        Assert.Multiple(() => {
+            Assert.That(Assert.Throws<RpcException>(() => In(world, 1, selected))!.StatusCode, Is.EqualTo(StatusCode.Unauthenticated));
+            Assert.That(Assert.Throws<RpcException>(() => In(world, 1, moving))!.StatusCode, Is.EqualTo(StatusCode.Unauthenticated));
+            Assert.That(In(world, 2, other).CharacterId, Is.EqualTo(21));
+            Assert.That(In(world, 1, Out(world, 1, 12)).CharacterId, Is.EqualTo(12));
+        });
     }
 }
