@@ -70,8 +70,22 @@ public class Buff : IUpdatable, IByteSerializable {
         Stack(stacks, true);
         NextProcTick = FirstProcTick(metadata.Property, startTick, IntervalTick);
         UpdateEnabled(false);
-        canProc = metadata.Property.KeepCondition != BuffKeepCondition.UnlimitedDuration;
+        canProc = CanProcAtStart(metadata.Property);
         canExpire = metadata.Property.KeepCondition != BuffKeepCondition.UnlimitedDuration && EndTick >= startTick;
+    }
+
+    // A buff without an end (keepCondition 99) procs only when its level has an interval, and then on that interval
+    // for as long as it is held: no end tick and no count limit stop it. The client only reads the interval
+    // (additionalactionadditional.cpp:599 is its one use of activeByIntervalTick), so these ticks are the server's.
+    // In the KR data 104 effects are such: 63 cast an interval skill (10200231 every second, 60126002
+    // every 3.5 s), 23 a splash skill, 3 recover (51000001 every minute, 70000201 every second) and 2 deal
+    // dot damage (50000436 every 0.5 s); 14 have none of these. Without an interval such a buff never procs.
+    public static bool ProcsWithoutEnd(AdditionalEffectMetadataProperty property) {
+        return property.KeepCondition == BuffKeepCondition.UnlimitedDuration && property.IntervalTick > 0;
+    }
+
+    public static bool CanProcAtStart(AdditionalEffectMetadataProperty property) {
+        return property.KeepCondition != BuffKeepCondition.UnlimitedDuration || ProcsWithoutEnd(property);
     }
 
     // dotCondition 0 procs as soon as the delay is over (dots, recovery and splash land on the add), 1 waits one
@@ -160,7 +174,7 @@ public class Buff : IUpdatable, IByteSerializable {
         EndTick = endTick;
         ProcCount = 0;
         NextProcTick = FirstProcTick(Metadata.Property, startTick, IntervalTick);
-        canProc = Metadata.Property.KeepCondition != BuffKeepCondition.UnlimitedDuration;
+        canProc = CanProcAtStart(Metadata.Property);
         return true;
     }
 
@@ -239,7 +253,7 @@ public class Buff : IUpdatable, IByteSerializable {
         if (!wasEnabled) {
             NextProcTick = ResumedProcTick(NextProcTick, Metadata.Property.IntervalTick > 0 ? IntervalTick : 0, tickCount);
             // Its schedule's next proc past its end is not had: the timer ends it, as Proc does for the last slot.
-            if (!ResumedCanProc(NextProcTick, EndTick)) {
+            if (!ProcsWithoutEnd(Metadata.Property) && !ResumedCanProc(NextProcTick, EndTick)) {
                 canProc = false;
             }
         }
@@ -308,6 +322,9 @@ public class Buff : IUpdatable, IByteSerializable {
         ApplySplash();
 
         NextProcTick += IntervalTick;
+        if (ProcsWithoutEnd(Metadata.Property)) {
+            return;
+        }
         if (NextProcTick > EndTick || ProcCount >= ProcLimit(Metadata.Property, EndTick - StartTick, IntervalTick)) {
             canProc = false;
         }

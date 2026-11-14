@@ -251,6 +251,39 @@ public class BuffAttributeTests {
         Assert.That(Held(), Is.EqualTo(new[] { 10100061 }));
     }
 
+    // A buff without an end that has an interval procs on it for as long as it is held, with no count limit:
+    // 60126002 (KR: keepCondition 99, intervalTick 3500, an interval skill) procs at the add and every 3.5 s after.
+    // Without an interval it never procs.
+    [TestCase(3500, 29)]
+    [TestCase(0, 0)]
+    public void UnlimitedDuration_ProcsOnItsInterval(int interval, int procs) {
+        Start(MapType.None, Effect(60126002, Plain with { DurationTick = 0, IntervalTick = interval, KeepCondition = BuffKeepCondition.UnlimitedDuration }) with { Dot = new AdditionalEffectMetadataDot(null, null) });
+        Add(60126002, tick: 1000);
+
+        for (long tick = 1000; tick <= 100000; tick += 500) {
+            Buffs.Update(tick);
+        }
+
+        Assert.That(Held(), Is.EqualTo(new[] { 60126002 }));
+        Assert.That(Only(60126002).ProcCount, Is.EqualTo(procs));
+    }
+
+    // A dotCondition-1 one waits one interval first. 70000201 (KR: keepCondition 99, intervalTick 1000, dotCondition 1).
+    [Test]
+    public void UnlimitedDuration_DotCondition1WaitsAnInterval() {
+        Start(MapType.None, Effect(70000201, Plain with {
+            DurationTick = 0, IntervalTick = 1000, KeepCondition = BuffKeepCondition.UnlimitedDuration, DotCondition = BuffDotCondition.OnInterval,
+        }) with { Dot = new AdditionalEffectMetadataDot(null, null) });
+        Add(70000201, tick: 1000);
+        Buff buff = Only(70000201);
+
+        Buffs.Update(1999);
+        Assert.That(buff.ProcCount, Is.EqualTo(0));
+        Buffs.Update(2000);
+        Buffs.Update(3000);
+        Assert.That(buff.ProcCount, Is.EqualTo(2));
+    }
+
     // A higher level replaces the held buff; a lower one stacks on the held level. 10200032 (KR: maxBuffCount 10).
     [TestCase((short) 2, (short) 2, 1)]
     [TestCase((short) 1, (short) 2, 2)]
