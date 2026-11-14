@@ -204,23 +204,47 @@ public class MeretMarketShopTests {
         Assert.That(SaleStored(sale), Is.False);
     }
 
-    // The merets of a failed collect were spent before they could be taken back: the sale goes, stored with the
-    // wallet, and cannot be collected again.
-    [Test]
-    public void CollectProfit_SpentBeforeTheFailedSave_RemovesTheSale() {
+    // A collect whose save fails while the merets are spent before they can be taken back (the spend runs inside the
+    // failing save here): the sale goes, the client is told as for a collect, and the removal is stored with the
+    // wallet. With failsTwice the removal's own save fails too; it comes back on the field's queue and stores then.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void CollectProfit_SpentBeforeTheFailedSave_RemovesTheSale(bool failsTwice) {
         long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());
         long sale = CreateSale(listing, 350, DateTime.Now.AddDays(-Constant.UGCShopProfitDelayDays - 1));
         Start();
-        session.Currency.ChangeMeret(350);
+        int saves = 0;
+        test.FailSave = context => {
+            if (!context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "SoldUgcMarketItem")) {
+                return false;
+            }
+            saves++;
+            if (saves == 1) {
+                session.Currency.Meret = 100;
+            }
+            return saves == 1 || (failsTwice && saves == 2);
+        };
+        int queued = session.Field!.Scheduler.Count;
 
-        session.UgcMarket.ProfitSpentBeforeSave(sale);
-        Assert.That(SaleStored(sale), Is.False);
-        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
-            Assert.That(context.Account.Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(1350));
+        List<byte[]> sent = IdRequest(20, sale);
+        Assert.That(sent, Has.Count.EqualTo(2), "CollectProfit and UpdateProfit");
+        Assert.That(session.Currency.Meret, Is.EqualTo(100));
+        Assert.That(IdRequest(20, sale), Is.Empty, "not collected again");
+        Assert.That(SaleStored(sale), Is.EqualTo(failsTwice));
+
+        if (failsTwice) {
+            var timed = (System.Collections.IList) typeof(Maple2.Tools.Scheduler.EventQueue)
+                .GetField("timedEvents", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .GetValue(session.Field!.Scheduler)!;
+            Assert.That(session.Field!.Scheduler.Count, Is.EqualTo(queued + 1));
+            object retry = timed.Cast<object>().Last();
+            var task = (Action) retry.GetType().GetField("task", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(retry)!;
+            timed.Remove(retry);
+            task();
+            Assert.That(SaleStored(sale), Is.False);
         }
-        test.TakeSent();
-        Assert.That(IdRequest(20, sale), Is.Empty);
-        Assert.That(session.Currency.Meret, Is.EqualTo(1350));
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(context.Account.Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(100));
     }
 
     [Test]

@@ -5,6 +5,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Serilog;
@@ -151,7 +152,7 @@ public sealed class UgcMarketManager {
         if (!session.TrySavePurchase(db => db.DeleteSoldUgcMarketItem(id))) {
             // The profit was not stored: it goes back out of the wallet, which is no meret spent (use_merat).
             if (!session.Currency.TryTakeMeret(sale.Profit, reportSpent: false)) {
-                ProfitSpentBeforeSave(id);
+                ProfitSpentBeforeSave(sale);
                 return;
             }
             logger.Error("Unable to collect profit and delete SoldUgcMarketItem {Id}.", id);
@@ -166,17 +167,31 @@ public sealed class UgcMarketManager {
         session.Send(MeretMarketPacket.UpdateProfit(SalesTotal(items.Values)));
     }
 
-    // A collect whose save failed while its merets were spent already: the profit stays paid, so the sale goes. Its
-    // removal is stored with the wallet (TrySavePurchase), as the collect's own save would have; if that fails as
-    // well the sale is still dropped from this session and the error is logged.
-    internal void ProfitSpentBeforeSave(long id) {
-        sales.Remove(id);
-        bool stored = session.TrySavePurchase(db => db.DeleteSoldUgcMarketItem(id));
-        logger.Error("Profit of SoldUgcMarketItem {Id} spent before its failed save; removal stored: {Stored}.", id, stored);
-        if (stored) {
+    // A collect whose save failed while its merets were spent already: the profit stays paid, so the sale goes, and
+    // the client is told as for a collect (CollectProfit, UpdateProfit). Its removal is stored with the wallet
+    // (TrySavePurchase), as the collect's own save would have; a save that fails again is tried every 2 s while the
+    // session stays on the field, so that the sale does not come back at the next login.
+    private static readonly TimeSpan SpentRemovalRetryDelay = TimeSpan.FromSeconds(2);
+
+    private void ProfitSpentBeforeSave(SoldUgcMarketItem sale) {
+        sales.Remove(sale.Id);
+        logger.Error("Profit of SoldUgcMarketItem {Id} spent before its failed save; the sale is removed.", sale.Id);
+        StoreSpentRemoval(sale.Id, session.Field);
+        session.Send(MeretMarketPacket.CollectProfit(sale.Id, sale.Profit));
+        session.Send(MeretMarketPacket.UpdateProfit(SalesTotal(items.Values)));
+    }
+
+    private void StoreSpentRemoval(long id, FieldManager? field) {
+        if (session.TrySavePurchase(db => db.DeleteSoldUgcMarketItem(id))) {
             using GameStorage.Request db = session.GameStorage.Context();
             LoadSalesCounts(db);
+            return;
         }
+        if (field == null || session.Field != field) {
+            logger.Error("Removal of SoldUgcMarketItem {Id} not stored; the session left the field.", id);
+            return;
+        }
+        field.Scheduler.Schedule(() => StoreSpentRemoval(id, field), SpentRemovalRetryDelay);
     }
 
     public void RemoveListing(long id) {
