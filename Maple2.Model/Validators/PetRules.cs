@@ -8,6 +8,12 @@ public static class PetRules {
         return fieldUsePet && requiredLevel <= level;
     }
 
+    // The auto-potion window has two rows (uiitemautouseoptiondialog.cpp, DAT_1439ed000) and writes one entry per
+    // row (Unk_PetOptions::Write); a longer list never comes from the client and is refused, not stored.
+    public const int PotionRows = 2;
+
+    public static bool IsPotionCount(int count) => count <= PotionRows;
+
     // What a summoned pet adds to its owner's stat on top of the pet item's own values: the item's constant
     // value times the pet's option factor, cut to an int, for every pet level above the first
     // (CEquipment::FUN_1411e76c0, equipment.cpp:3037-3040; FUN_1406198a0, itemremakescrolldata.cpp:933).

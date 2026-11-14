@@ -103,8 +103,31 @@ public class PetHandler : FieldPacketHandler {
         }
 
         long petUid = packet.ReadLong();
+        // The client asks only its own state and the field's pet flag before a switch (mypc.cpp FUN_14152b8d0),
+        // so the server weighs the next pet first: one that is not in the pet bag, or that the field or the
+        // character's level refuses, leaves the summoned pet out instead of putting it away for nothing.
+        if (!CanSwitchTo(session, petUid)) {
+            return;
+        }
+
         session.Pet.Dispose();
         SummonPet(session, petUid);
+        if (session.Pet == null) {
+            // Nothing came out after all (no spawn point): the old pet's stats leave the owner's totals.
+            session.Player.Stats.Refresh();
+        }
+    }
+
+    internal static bool CanSwitchTo(GameSession session, long petUid) {
+        if (session.Field == null) {
+            return false;
+        }
+
+        lock (session.Item) {
+            Item? next = session.Item.Inventory.Get(petUid, InventoryType.Pets);
+            return next != null
+                && PetRules.CanSummon(session.Field.Metadata.Limit.Pet, next.Metadata.Limit.Level, session.Player.Value.Character.Level);
+        }
     }
 
     private void HandleRename(GameSession session, IByteReader packet) {
@@ -131,6 +154,9 @@ public class PetHandler : FieldPacketHandler {
         }
 
         byte count = packet.ReadByte();
+        if (!PetRules.IsPotionCount(count)) {
+            return;
+        }
 
         var config = new PetPotionConfig[count];
         for (int i = 0; i < count; i++) {
