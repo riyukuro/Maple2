@@ -173,6 +173,11 @@ public class FieldNpc : Actor<Npc> {
                 continue;
             }
 
+            long? health = AiSummon.InheritedHealth(node.Option, Stats.Values[BasicAttribute.Health].Current, summon.Stats.Values[BasicAttribute.Health].Total);
+            if (health is not null) {
+                summon.Stats.Values[BasicAttribute.Health].Current = health.Value;
+            }
+
             bool slave = AiSummon.LeavesWithSummoner(node.Master);
             if (slave) {
                 summon.Master = this;
@@ -258,6 +263,8 @@ public class FieldNpc : Actor<Npc> {
     // KeepAlive: an npc whose health another server keeps (the world champion, WorldChampionSync) is not killed here.
     public bool NoDie => this is not FieldPet && (KeepAlive || Value.Metadata.Basic.HasPropertyTag("no_die"));
     public bool KeepAlive { get; set; }
+    // The health an AI MinimumHp node holds the npc at against damage (NpcTargetRules.FloorChange); 0 for none.
+    public long MinimumHealth { get; set; }
     // Called with the player and the damage of each hit a player deals.
     public Action<FieldPlayer, long>? PlayerDamageCallback { get; set; }
     private long lastCorpseBroadcastTick;

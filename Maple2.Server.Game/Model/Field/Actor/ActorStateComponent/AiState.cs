@@ -409,6 +409,10 @@ public class AiState {
         if (entry is Node node) {
             actor.AppendDebugMessage($"> Node: {entry.Name}\n");
 
+            if (!AiNodeProb.Runs(AiNodeProb.Of(entry), Random.Shared)) {
+                return;
+            }
+
             if (KeepsBattle(entry)) {
                 actor.BattleState.KeepBattle = true;
             }
@@ -501,7 +505,8 @@ public class AiState {
 
     private void ProcessNode(StandbyNode node) {
         IActor? faceTarget = AiStandbyFace.FacesTarget(node.FaceTarget) ? actor.BattleState.Target : null;
-        NpcTask task = actor.MovementState.TryStandby(faceTarget, false);
+        // animation: the sequence the npc stands in (KR: 1711 standby nodes, e.g. Attack_Idle_B, Parking_01).
+        NpcTask task = actor.MovementState.TryStandby(faceTarget, false, node.Animation ?? string.Empty, node.FacePos);
 
         if (node.IsKeepBattle) {
             actor.BattleState.KeepBattle = true;
@@ -689,17 +694,11 @@ public class AiState {
         SetNodeTask(task, node.Limit);
     }
 
+    // MinimumHp sets the floor damage cannot take the npc under (NpcTargetRules.FloorChange): hpPercent of its
+    // full health, and none for a bare node (hpPercent 0). KR: 77 nodes with a percent, 49 bare, in the phase bosses
+    // (AI_Archeon, AI_GigantikaTail, AI_Madria_Colosseum). The node heals nothing.
     private void ProcessNode(MinimumHpNode node) {
-        Stat health = actor.Stats.Values[BasicAttribute.Health];
-        float currentHpPercent = ((float) health.Current / (float) health.Total) * 100f;
-
-        if (currentHpPercent > node.HpPercent) {
-            return;
-        }
-
-        // Heal back to node.HpPercent
-        long newHp = (long) ((node.HpPercent / 100) * health.Total);
-        actor.Stats.Values[BasicAttribute.Health].Current = Math.Clamp(newHp, 0, health.Total);
+        actor.MinimumHealth = (long) (node.HpPercent / 100f * actor.Stats.Values[BasicAttribute.Health].Total);
     }
 
     private void ProcessNode(BuffNode node) {

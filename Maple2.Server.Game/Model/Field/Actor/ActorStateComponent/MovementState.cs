@@ -100,11 +100,12 @@ public partial class MovementState {
         };
     }
 
-    public NpcTask TryStandby(IActor? target, bool isIdle, string sequence = "") {
+    public NpcTask TryStandby(IActor? target, bool isIdle, string sequence = "", Vector3 facePos = default) {
         NpcTaskPriority priority = isIdle ? NpcTaskPriority.IdleAction : NpcTaskPriority.BattleStandby;
 
         return new NpcStandbyTask(actor.TaskState, this, sequence, priority, isIdle) {
             Target = target,
+            FacePos = facePos,
         };
     }
 
@@ -275,6 +276,10 @@ public partial class MovementState {
         if (hasIdleA) {
             if (actor.Animation.TryPlaySequence(sequence, aniSpeed, AnimationType.Misc)) {
                 stateSequence = actor.Animation.PlayingSequence;
+            } else if (!setAttackIdle && sequence != "Idle_A" && sequence != "Attack_Idle_A") {
+                // A standby animation the npc does not have (one AI file serves several models) falls back to the
+                // default idle instead of leaving the npc in its last sequence.
+                Idle();
             } else if (setAttackIdle && actor.Animation.TryPlaySequence("Idle_A", aniSpeed, AnimationType.Misc)) {
                 stateSequence = actor.Animation.PlayingSequence;
             }

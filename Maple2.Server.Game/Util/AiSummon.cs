@@ -63,6 +63,17 @@ public static class AiSummon {
 
     // master="None" (288 nodes) is a summon with no master: it stays when the summoner goes. Every other node
     // (no master attribute, or master="Slave") leaves with its summoner.
+    // option="masterHP" (62 summon nodes in npc AI files: the Gigantika, Kandura, Madria and Balrog phase bodies,
+    // each summoning its next body before RemoveMe): the summon takes over its summoner's health as it is (KR
+    // AI_TurkaHoodForce_Phase01.xml comments masterHP as inheriting the summoner's HP value unchanged), within its own
+    // full health and at least 1. Null without the option: the summon keeps its own full health.
+    public static long? InheritedHealth(NodeSummonOption[] option, long summonerHealth, long summonTotal) {
+        if (Array.IndexOf(option, NodeSummonOption.MasterHp) < 0) {
+            return null;
+        }
+        return Math.Clamp(summonerHealth, Math.Min(1, summonTotal), summonTotal);
+    }
+
     public static bool LeavesWithSummoner(NodeSummonMaster master) => master != NodeSummonMaster.None;
 
     // A slave is a summon that leaves with its summoner. The SlaveCount conditions and the RemoveSlaves node read the

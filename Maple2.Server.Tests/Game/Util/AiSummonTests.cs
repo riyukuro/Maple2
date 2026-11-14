@@ -212,4 +212,18 @@ public class AiSummonTests {
             Assert.That(AiSummon.ValueTargets(Array.Empty<int>(), true, random), Is.Empty);
         });
     }
+
+    // KR AI_GigantikaTail_phase_1.xml summons its next body with option="masterHP,hitDamage" and then RemoveMe; the
+    // phases share one full health (1104012854, npc 23001001 to 23001003). The next body starts at the health the
+    // last one had; without masterHP (Madria's second summon, group 992) a summon keeps its own full health.
+    [Test]
+    public void MasterHp_TheSummonTakesOverTheSummonersHealth() {
+        Assert.Multiple(() => {
+            Assert.That(AiSummon.InheritedHealth([NodeSummonOption.MasterHp, NodeSummonOption.HitDamage], 99361157, 1104012854), Is.EqualTo(99361157));
+            Assert.That(AiSummon.InheritedHealth([NodeSummonOption.MasterHp], 2000, 1000), Is.EqualTo(1000));
+            Assert.That(AiSummon.InheritedHealth([NodeSummonOption.MasterHp], 0, 1000), Is.EqualTo(1));
+            Assert.That(AiSummon.InheritedHealth([], 500, 1000), Is.Null);
+            Assert.That(AiSummon.InheritedHealth([NodeSummonOption.LinkHp], 500, 1000), Is.Null);
+        });
+    }
 }

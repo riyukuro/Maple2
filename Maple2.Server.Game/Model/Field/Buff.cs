@@ -430,7 +430,11 @@ public class Buff : IUpdatable, IByteSerializable {
         var targetUpdated = new List<BasicAttribute>(3);
         long healthBefore = Owner.Stats.Values[BasicAttribute.Health].Current;
         if (record.HpAmount != 0) {
-            Owner.Stats.Values[BasicAttribute.Health].Add(NpcTargetRules.HealthChange(Owner.Stats.Values[BasicAttribute.Health].Current, record.HpAmount, Owner is FieldNpc { NoDie: true } || Owner.Buffs.DeathResistance));
+            long healthChange = NpcTargetRules.HealthChange(Owner.Stats.Values[BasicAttribute.Health].Current, record.HpAmount, Owner is FieldNpc { NoDie: true } || Owner.Buffs.DeathResistance);
+            if (Owner is FieldNpc { MinimumHealth: > 0 } floored) {
+                healthChange = NpcTargetRules.FloorChange(Owner.Stats.Values[BasicAttribute.Health].Current, healthChange, floored.MinimumHealth);
+            }
+            Owner.Stats.Values[BasicAttribute.Health].Add(healthChange);
             targetUpdated.Add(BasicAttribute.Health);
             if (record.HpAmount < 0 && Owner is FieldPlayer player) {
                 player.DelayHpRegen();

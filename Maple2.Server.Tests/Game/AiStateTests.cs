@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -26,7 +27,7 @@ public class AiStateTests : TriggerTestBase {
 
     private FieldNpc npc = null!;
 
-    private FieldNpc Spawn(Entry[] battle, Condition[]? reserved = null, Vector3? position = null) {
+    private FieldNpc Spawn(Entry[] battle, Condition[]? reserved = null, Vector3? position = null, string[]? sequences = null) {
         Start();
         typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
@@ -36,7 +37,7 @@ public class AiStateTests : TriggerTestBase {
             new InstanceFieldMetadata(0, InstanceType.none, 0, false, 0, true, 0, 0, 0, 0));
         test.Register(TestGameSession.Metadata(30000071), TestGameSession.Metadata(50300014), TestGameSession.Metadata(30000084));
         test.SetServerTable(new NpcStatFactorTable(new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyDictionary<int, NpcStatFactorMetadata>>>()));
-        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, NpcTable(Npc(NpcId)));
+        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, NpcTable(sequences ?? [], Npc(NpcId)));
         typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field,
             AiTable(new AiMetadata(AiPath, reserved ?? [], battle, [], [])));
         SetTick(1_000_000);
@@ -63,7 +64,7 @@ public class AiStateTests : TriggerTestBase {
             new NpcMetadataDead(0, 0, 0, 0, 0), null, new NpcMetadataLookAtTarget("", false, false));
     }
 
-    private static NpcMetadataStorage NpcTable(params NpcMetadata[] npcs) {
+    private static NpcMetadataStorage NpcTable(string[] sequences, params NpcMetadata[] npcs) {
         var storage = (NpcMetadataStorage) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadataStorage));
         var cache = new LRUCache<int, NpcMetadata>(100, 5);
         foreach (NpcMetadata metadata in npcs) {
@@ -71,7 +72,8 @@ public class AiStateTests : TriggerTestBase {
         }
         typeof(MetadataStorage<int, NpcMetadata>).GetField("Cache", Any)!.SetValue(storage, cache);
         var animations = new LRUCache<string, AnimationMetadata>(10, 1);
-        animations.AddReplace("test_model", new AnimationMetadata("test_model", new Dictionary<string, AnimationSequenceMetadata>()));
+        animations.AddReplace("test_model", new AnimationMetadata("test_model",
+            sequences.Select((name, i) => new AnimationSequenceMetadata(name, (short) (i + 1), 1, [])).ToDictionary(sequence => sequence.Name)));
         typeof(NpcMetadataStorage).GetField("AniCache", Any)!.SetValue(storage, animations);
         typeof(NpcMetadataStorage).GetField("tagLookup", Any)!.SetValue(storage, new Dictionary<string, HashSet<int>>());
         typeof(NpcMetadataStorage).GetField("subTagLookup", Any)!.SetValue(storage, new Dictionary<string, HashSet<int>>());
@@ -108,6 +110,53 @@ public class AiStateTests : TriggerTestBase {
 
     private static StandbyNode Standby(int limit, int faceTarget = 1, bool keepBattle = false) =>
         new("standby", [], limit, 0, "", Vector3.Zero, faceTarget, 0, 0, keepBattle);
+
+    private static StandbyNode Standby(int limit, string animation, Vector3 facePos, int faceTarget) =>
+        new("standby", [], limit, 0, animation, facePos, faceTarget, 0, 0, true);
+
+    private static readonly string[] ParadeCar = ["Idle_A", "Attack_Idle_A", "Parking_01"];
+
+    // KR AI_CarParadeBlackbeanBroken.Normal.xml: <node name="standby" limit="1200" facePos="5400, -4800, 1510"
+    // faceTarget="0" animation="Parking_01" isKeepBattle="true" />. The car stands in its Parking_01 sequence (1711
+    // standby rows name an animation) turned to the spot (614 rows have a facePos), not to its target.
+    [Test]
+    public void Standby_AnimationAndFacePos() {
+        Spawn([Standby(1200, "Parking_01", new Vector3(5400, -4800, 1510), 0)], sequences: ParadeCar);
+        npc.AiState.Update(Field.FieldTick);
+        npc.TaskState.Update(Field.FieldTick);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(npc.Animation.PlayingSequence?.Name, Is.EqualTo("Parking_01"));
+        Vector3 expected = Vector3.Normalize(new Vector3(5400 - 1000, -4800, 0));
+        Vector3 front = npc.Transform.FrontAxis;
+        Assert.That(Vector3.Normalize(new Vector3(front.X, front.Y, 0)).X, Is.EqualTo(expected.X).Within(1e-3));
+        Assert.That(Vector3.Normalize(new Vector3(front.X, front.Y, 0)).Y, Is.EqualTo(expected.Y).Within(1e-3));
+    }
+
+    // KR AI_HalloweenCarriage.xml: <node name="standby" limit="5000" faceTarget="1" facePos="-3600,-3750,750" />.
+    // With both set the spot wins, as on the skill node (its cast turns to facePos before its target).
+    [Test]
+    public void Standby_FacePosWinsOverFaceTarget() {
+        Spawn([Standby(5000, "", new Vector3(-3600, -3750, 750), 1)], sequences: ParadeCar);
+        npc.AiState.Update(Field.FieldTick);
+        npc.TaskState.Update(Field.FieldTick);
+
+        Vector3 expected = Vector3.Normalize(new Vector3(-3600 - 1000, -3750, 0));
+        Vector3 front = npc.Transform.FrontAxis;
+        Assert.That(Vector3.Normalize(new Vector3(front.X, front.Y, 0)).Y, Is.EqualTo(expected.Y).Within(1e-3));
+    }
+
+    // KR AI_None_StatueAnimal02.xml: <node name="standby" limit="300" faceTarget="1" animation="Attack_Idle_B" ... />
+    // (328 standby rows name Attack_Idle_B). An AI file can serve several models: one without the sequence stands in
+    // its default idle, here the battle idle, instead of nothing.
+    [Test]
+    public void Standby_AnimationTheModelLacks_PlaysTheDefaultIdle() {
+        Spawn([Standby(1000, "Attack_Idle_B", Vector3.Zero, 1)], sequences: ParadeCar);
+        npc.AiState.Update(Field.FieldTick);
+        npc.TaskState.Update(Field.FieldTick);
+
+        Assert.That(npc.Animation.PlayingSequence?.Name, Is.EqualTo(npc.BattleState.InBattle ? "Attack_Idle_A" : "Idle_A"));
+    }
 
     private static SetValueNode SetValue(string key, int value, bool isModify = false, bool keepBattle = false) =>
         new("SetValue", [], key, value, 0, 0, isModify, keepBattle);
@@ -147,6 +196,26 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(CurrentTask, Is.Not.InstanceOf<MovementState.NpcMoveTargetDistanceTask>());
         Assert.That(npc.MovementState.State, Is.Not.EqualTo(ActorState.Walk));
         Assert.That(npc.Position, Is.EqualTo(start));
+    }
+
+    // KR BossDungeon/Archeon/Boss/AI_Archeon.xml: the phase standby runs <MinimumHp hpPercent="84" /> (health that
+    // does not fall below 84%); a later branch runs a bare <MinimumHp /> and then hpPercent="59". The node sets the
+    // floor without healing, and the bare node clears it.
+    [Test]
+    public void MinimumHp_SetsTheDamageFloorAndBareClearsIt() {
+        Spawn([new MinimumHpNode("MinimumHp", [], 84)]);
+        long total = npc.Stats.Values[BasicAttribute.Health].Total;
+        npc.Stats.Values[BasicAttribute.Health].Current = total / 2;
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(npc.MinimumHealth, Is.EqualTo((long) (84 / 100f * total)));
+        Assert.That(npc.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(total / 2));
+
+        Spawn([new MinimumHpNode("MinimumHp", [], 84), new MinimumHpNode("MinimumHp", [], 0)]);
+        npc.AiState.Update(Field.FieldTick);
+        npc.AiState.Update(Field.FieldTick);
+        Assert.That(npc.MinimumHealth, Is.EqualTo(0));
     }
 
     // KR AI_Witch2CerberosTrainer_PaterA.xml: <node name="teleport" pos="-2700, -1800, 2750" isKeepBattle="true"> (its

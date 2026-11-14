@@ -1,4 +1,4 @@
-using Maple2.Model.Validators;
+﻿using Maple2.Model.Validators;
 
 namespace Maple2.Server.Tests.Validators;
 
@@ -35,6 +35,20 @@ public class NpcTargetRulesTests {
     [TestCase(100, 50, true, 50)]
     public void HealthChange_NoDieHoldsHealthAtOne(long current, long change, bool noDie, long expected) {
         Assert.That(NpcTargetRules.HealthChange(current, change, noDie), Is.EqualTo(expected));
+    }
+
+    // KR AI_Archeon.xml <MinimumHp hpPercent="84" />, commented as health that does not fall below 84% whatever the
+    // attack: on a 1000-health npc a hit of 500 from full stops at 840, a hit at 850 takes 10, one at the floor takes
+    // nothing. Healing and a cleared floor (bare <MinimumHp />, 0) pass unchanged.
+    [TestCase(1000, -500, 840, -160)]
+    [TestCase(850, -500, 840, -10)]
+    [TestCase(840, -500, 840, 0)]
+    [TestCase(800, -500, 840, 0)]
+    [TestCase(1000, -100, 840, -100)]
+    [TestCase(900, 50, 840, 50)]
+    [TestCase(1000, -500, 0, -500)]
+    public void FloorChange_DamageStopsAtTheFloor(long current, long change, long floor, long expected) {
+        Assert.That(NpcTargetRules.FloorChange(current, change, floor), Is.EqualTo(expected));
     }
 
     // A Dummy model without a shown bar is a script marker; a Dummy with a bar is an object to guard.

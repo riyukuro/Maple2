@@ -180,7 +180,11 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 DamageDealers.TryAdd(caster.ObjectId, record);
             }
             record.AddDamage(DamageType.Normal, positiveDamage);
-            Stats.Values[BasicAttribute.Health].Add(NpcTargetRules.HealthChange(Stats.Values[BasicAttribute.Health].Current, damageAmount, this is FieldNpc { NoDie: true } || attack.Damage.ConstDamageByTargetHp > 0 || (Buffs.DeathResistance && caster is not FieldPlayer { DeathPower: true })));
+            long healthChange = NpcTargetRules.HealthChange(Stats.Values[BasicAttribute.Health].Current, damageAmount, this is FieldNpc { NoDie: true } || attack.Damage.ConstDamageByTargetHp > 0 || (Buffs.DeathResistance && caster is not FieldPlayer { DeathPower: true }));
+            if (this is FieldNpc { MinimumHealth: > 0 } floored) {
+                healthChange = NpcTargetRules.FloorChange(Stats.Values[BasicAttribute.Health].Current, healthChange, floored.MinimumHealth);
+            }
+            Stats.Values[BasicAttribute.Health].Add(healthChange);
             Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Health));
             OnDamageReceived(caster, positiveDamage);
         }

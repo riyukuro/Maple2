@@ -1,4 +1,4 @@
-namespace Maple2.Model.Validators;
+﻿namespace Maple2.Model.Validators;
 
 // A monster's target. A monster fights the living: when its target dies it lets go of it (it stops casting at it
 // and, with nobody else to fight, goes back to its patrol), and it does not pick a dead actor as a new target. The
@@ -33,6 +33,18 @@ public static class NpcTargetRules {
             return change;
         }
         return Math.Max(change, Math.Min(0, 1 - current));
+    }
+
+    // The health change an npc takes under an AI MinimumHp floor (minimumHealth, 0 for none): damage stops at the
+    // floor and does not go past it, however strong the hit. KR AI_Archeon.xml comments its <MinimumHp hpPercent="84" />
+    // as health that does not fall below 84% whatever the attack; a phase's own hpLess condition then runs with the
+    // health on the floor, and a bare <MinimumHp /> (hpPercent 0) lifts it for the next phase. Health already at or
+    // under the floor takes no damage.
+    public static long FloorChange(long current, long change, long minimumHealth) {
+        if (minimumHealth <= 0 || change >= 0) {
+            return change;
+        }
+        return Math.Max(change, Math.Min(0, minimumHealth - current));
     }
 
     // An AI node with isKeepBattle keeps the npc in battle, and its target, when the target is only out of sight
