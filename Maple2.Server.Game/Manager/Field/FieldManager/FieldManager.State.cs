@@ -1589,6 +1589,18 @@ public partial class FieldManager {
         return fieldPortal;
     }
 
+    // The home OX quiz event's portal (type UgcOx) at the host's place: the client's use of it sends HomeAction 10
+    // sub 5, and its RequestMoveField after the s2c 5 box comes back to UsePortal. The look is the event portal's.
+    public FieldPortal SpawnUgcOxPortal(FieldPlayer host) {
+        var portal = new Portal(NextLocalId(), UgcOxRules.StadiumMapId, UgcOxRules.SpectatorPortalId, PortalType.UgcOx, PortalActionType.Interact,
+            host.Position, host.Rotation, new Vector3(200, 200, 250), 0, 0, true, false, true);
+        FieldPortal fieldPortal = SpawnPortal(portal);
+        fieldPortal.Model = "Eff_Com_Portal_E";
+        fieldPortal.OwnerName = host.Value.Character.Name;
+        Broadcast(PortalPacket.Add(fieldPortal));
+        return fieldPortal;
+    }
+
     // plot: the plot the cube is placed in, which owns a mannequin's items; without it no mannequin is set up.
     public FieldFunctionInteract? AddFieldFunctionInteract(PlotCube cube, Plot? plot = null) {
         if (cube.Interact == null) {
@@ -2149,6 +2161,12 @@ public partial class FieldManager {
         Arena?.Enter(added);
         PvpZone?.Enter(added);
         HideAndSeek?.Arrive(added);
+        // The OX quiz stadium: the newcomer sees the event's stage (the welcome dialog, or the running round).
+        if (UgcOx is { Open: true } ox) {
+            added.Session.Send(Model.Widget.OxQuizUgcWidget.Stage(ox, ox.Phase == UgcOxPhase.Welcome
+                ? HomeActionPacket.UgcOxStageStep.Welcome
+                : HomeActionPacket.UgcOxStageStep.Round));
+        }
     }
     #endregion Events
 

@@ -15,7 +15,7 @@ using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
-public class HomeActionHandler : FieldPacketHandler {
+public partial class HomeActionHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.HomeAction;
 
     private enum Command : byte {
@@ -92,34 +92,6 @@ public class HomeActionHandler : FieldPacketHandler {
         }
     }
 
-    // Not handled: the OX quiz event of a home (an event with an entry fee, its own map, a host and questions).
-    // Reads what the client writes for each of its sub-types. Client writers: 1, 3 and 5 in
-    // unit_140dfef30_ugcoxevent.cpp (FUN_140dff2b0, FUN_140dff210, FUN_140dff580), 7 uiquizoxwelcomedialog.cpp:97,
-    // 10 uiquizhostdialog.cpp:136, 11 uiquizoxselectdialog.cpp:80. The server has none of the event; the
-    // client's own refusal (s_ugcox_create_fail_shutdown) hangs on a content switch, not on an answer.
-    private void HandleQuiz(GameSession session, IByteReader packet) {
-        byte type = packet.ReadByte();
-        switch (type) {
-            case 0: // the create dialog's settings: i64 fee, i32 max, i32 share
-                UgcOxRules.Settings settings = UgcOxRules.ReadSettings(packet);
-                Logger.Debug("HomeAction Quiz settings from {CharacterId}: fee {Fee}, max {Max}, share {Share}",
-                    session.CharacterId, settings.Fee, settings.Max, settings.Share);
-                break;
-            case 5: // int, int
-                packet.ReadInt();
-                packet.ReadInt();
-                break;
-            case 10: // the host's question
-                packet.ReadUnicodeString();
-                break;
-            case 11: // the answer: 1 = O, 0 = X
-                packet.ReadByte();
-                break;
-            // 1, 2, 3, 7, 8, 9, 16, 17, 18: no fields
-        }
-        Logger.Debug("HomeAction Quiz {Type} from {CharacterId}", type, session.CharacterId);
-    }
-
     private static void HandleSurvey(GameSession session, IByteReader packet) {
         if (session.Field is not HomeFieldManager homeField) {
             return;
@@ -170,42 +142,42 @@ public class HomeActionHandler : FieldPacketHandler {
 
         switch (mode) {
             case BallUpdateCommand.Move: {
-                // Sent by the ball's owner only: position, linear velocity, angular velocity.
-                Vector3 coord = packet.Read<Vector3>();
-                Vector3 velocity = packet.Read<Vector3>();
-                Vector3 angularVelocity = packet.Read<Vector3>();
+                    // Sent by the ball's owner only: position, linear velocity, angular velocity.
+                    Vector3 coord = packet.Read<Vector3>();
+                    Vector3 velocity = packet.Read<Vector3>();
+                    Vector3 angularVelocity = packet.Read<Vector3>();
 
-                FieldGuideObject? guideObject = session.GuideObject;
-                if (guideObject?.Value is not BallGuideObject || guideObject.ObjectId != objectId) {
-                    Logger.Warning("Ball not found");
-                    return;
-                }
-
-                guideObject.Position = coord;
-                session.Field?.Broadcast(HomeActionPacket.UpdateBall(guideObject, velocity, angularVelocity), session);
-                break;
-            }
-            case BallUpdateCommand.Hit: {
-                // Sent by any player who touches a ball: force, then the direction from the ball to that player.
-                // Only the ball's owner applies it, so the ball is looked up among all players.
-                Vector3 force = packet.Read<Vector3>();
-                Vector3 direction = packet.Read<Vector3>();
-                if (session.Field is null) {
-                    return;
-                }
-                if (!float.IsFinite(force.LengthSquared()) || !float.IsFinite(direction.LengthSquared())) {
-                    return;
-                }
-
-                foreach (FieldPlayer fieldPlayer in session.Field.Players.Values) {
-                    FieldGuideObject? ball = fieldPlayer.Session.GuideObject;
-                    if (ball?.Value is BallGuideObject && ball.ObjectId == objectId) {
-                        fieldPlayer.Session.Send(HomeActionPacket.HitBall(ball, force, direction));
+                    FieldGuideObject? guideObject = session.GuideObject;
+                    if (guideObject?.Value is not BallGuideObject || guideObject.ObjectId != objectId) {
+                        Logger.Warning("Ball not found");
                         return;
                     }
+
+                    guideObject.Position = coord;
+                    session.Field?.Broadcast(HomeActionPacket.UpdateBall(guideObject, velocity, angularVelocity), session);
+                    break;
                 }
-                break;
-            }
+            case BallUpdateCommand.Hit: {
+                    // Sent by any player who touches a ball: force, then the direction from the ball to that player.
+                    // Only the ball's owner applies it, so the ball is looked up among all players.
+                    Vector3 force = packet.Read<Vector3>();
+                    Vector3 direction = packet.Read<Vector3>();
+                    if (session.Field is null) {
+                        return;
+                    }
+                    if (!float.IsFinite(force.LengthSquared()) || !float.IsFinite(direction.LengthSquared())) {
+                        return;
+                    }
+
+                    foreach (FieldPlayer fieldPlayer in session.Field.Players.Values) {
+                        FieldGuideObject? ball = fieldPlayer.Session.GuideObject;
+                        if (ball?.Value is BallGuideObject && ball.ObjectId == objectId) {
+                            fieldPlayer.Session.Send(HomeActionPacket.HitBall(ball, force, direction));
+                            return;
+                        }
+                    }
+                    break;
+                }
         }
     }
 

@@ -17,6 +17,7 @@ public static class HomeActionPacket {
         Survey = 5,
         PortalCube = 6,
         Ball = 7,
+        UgcOx = 10,
         Roll = 11,
         NoticeCube = 12,
     }
@@ -29,6 +30,32 @@ public static class HomeActionPacket {
         Start = 4,
         Answer = 5,
         End = 6,
+    }
+
+    // HomeAction 10, the home OX quiz event: the sub-types the client reads (FUN_140dff600).
+    private enum UgcOxCommand : byte {
+        Fees = 0,
+        Promote = 1,
+        Confirm = 2,
+        Created = 4,
+        Move = 5,
+        HostDialog = 12,
+        Stage = 13,
+    }
+
+    // The steps sub 13 carries: Welcome opens the welcome dialog (with the start button for the host), Round the
+    // round's dialogs; any other step closes them.
+    public enum UgcOxStageStep : byte {
+        Close = 0,
+        Welcome = 10,
+        Round = 11,
+    }
+
+    // The modes of sub 12 with an effect in the client: InputQuiz enables the question input, SelectAnswer opens
+    // the O/X select dialog.
+    public enum UgcOxHostMode : byte {
+        InputQuiz = 1,
+        SelectAnswer = 3,
     }
 
     private enum BallCommand : byte {
@@ -238,6 +265,102 @@ public static class HomeActionPacket {
         pWriter.WriteLong(guideObject.CharacterId);
         pWriter.Write<Vector3>(force);
         pWriter.Write<Vector3>(direction);
+
+        return pWriter;
+    }
+
+    // Sub 0: the fees the create dialog offers; the client takes the first one as the host fee text.
+    public static ByteWriter UgcOxFees(IReadOnlyList<int> fees) {
+        var pWriter = Packet.Of(SendOp.HomeAction);
+        pWriter.WriteByte((byte) HomeActionCommand.UgcOx);
+        pWriter.WriteByte((byte) UgcOxCommand.Fees);
+        pWriter.WriteByte((byte) fees.Count);
+        foreach (int fee in fees) {
+            pWriter.WriteInt(fee);
+        }
+
+        return pWriter;
+    }
+
+    // Sub 1: the promote tooltip and its cooldown. The leading byte has no effect the client shows (U4); 0 here.
+    public static ByteWriter UgcOxPromote(int promoted, int cooldownLeftMs, int total, int cooldownMs) {
+        var pWriter = Packet.Of(SendOp.HomeAction);
+        pWriter.WriteByte((byte) HomeActionCommand.UgcOx);
+        pWriter.WriteByte((byte) UgcOxCommand.Promote);
+        pWriter.WriteByte();
+        pWriter.WriteInt(promoted);
+        pWriter.WriteInt(cooldownLeftMs);
+        pWriter.WriteInt(total);
+        pWriter.WriteInt(cooldownMs);
+
+        return pWriter;
+    }
+
+    // Sub 2: the "create the portal?" box; the client answers it with c2s 3.
+    public static ByteWriter UgcOxConfirm(string hostName, long fee, int max, int share) {
+        var pWriter = Packet.Of(SendOp.HomeAction);
+        pWriter.WriteByte((byte) HomeActionCommand.UgcOx);
+        pWriter.WriteByte((byte) UgcOxCommand.Confirm);
+        pWriter.WriteUnicodeString(hostName);
+        pWriter.WriteLong(fee);
+        pWriter.WriteInt(max);
+        pWriter.WriteInt(share);
+
+        return pWriter;
+    }
+
+    // Sub 4: the event is made; the client enables the owner bar and shows s_ugcox_create_complete with the fee.
+    public static ByteWriter UgcOxCreated(long fee, int promoted, int cooldownLeftMs, int total, int cooldownMs) {
+        var pWriter = Packet.Of(SendOp.HomeAction);
+        pWriter.WriteByte((byte) HomeActionCommand.UgcOx);
+        pWriter.WriteByte((byte) UgcOxCommand.Created);
+        pWriter.WriteLong(fee);
+        pWriter.WriteInt(promoted);
+        pWriter.WriteInt(cooldownLeftMs);
+        pWriter.WriteInt(total);
+        pWriter.WriteInt(cooldownMs);
+
+        return pWriter;
+    }
+
+    // Sub 5: the way into the stadium, a portal of the home. The host (hostAccountId is its own account id) moves at
+    // once; anyone else gets the fee box first. Both then send RequestMoveField mode 0 with this map and portal.
+    public static ByteWriter UgcOxMove(int mapId, int portalId, long hostAccountId, string hostName, long fee, int max, int share) {
+        var pWriter = Packet.Of(SendOp.HomeAction);
+        pWriter.WriteByte((byte) HomeActionCommand.UgcOx);
+        pWriter.WriteByte((byte) UgcOxCommand.Move);
+        pWriter.WriteInt(mapId);
+        pWriter.WriteInt(portalId);
+        pWriter.WriteLong(hostAccountId);
+        pWriter.WriteUnicodeString(hostName);
+        pWriter.WriteLong(fee);
+        pWriter.WriteInt(max);
+        pWriter.WriteInt(share);
+
+        return pWriter;
+    }
+
+    // Sub 12: the host dialog's mode; count above 1 enables its finish button.
+    public static ByteWriter UgcOxHostDialog(UgcOxHostMode mode, byte count) {
+        var pWriter = Packet.Of(SendOp.HomeAction);
+        pWriter.WriteByte((byte) HomeActionCommand.UgcOx);
+        pWriter.WriteByte((byte) UgcOxCommand.HostDialog);
+        pWriter.WriteByte((byte) mode);
+        pWriter.WriteByte(count);
+
+        return pWriter;
+    }
+
+    // Sub 13: the stage everyone in the stadium sees (the prize dialog, the round), the host's dialogs by step.
+    public static ByteWriter UgcOxStage(long hostAccountId, UgcOxStageStep step, byte round, long prize1, long prize2) {
+        var pWriter = Packet.Of(SendOp.HomeAction);
+        pWriter.WriteByte((byte) HomeActionCommand.UgcOx);
+        pWriter.WriteByte((byte) UgcOxCommand.Stage);
+        pWriter.WriteLong(hostAccountId);
+        pWriter.WriteByte((byte) step);
+        pWriter.WriteByte(round);
+        pWriter.WriteLong(prize1);
+        pWriter.WriteLong(prize2);
 
         return pWriter;
     }

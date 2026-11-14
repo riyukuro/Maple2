@@ -15,6 +15,7 @@ public partial class TriggerContext {
         DebugLog("[CreateWidget] type:{Type}", type);
         var widget = type switch {
             "OxQuiz" => new OxQuizWidget(Field),
+            "OxQuizUGC" => new OxQuizUgcWidget(Field),
             "SceneMovie" => new SceneMovieWidget(Field),
             "Guide" => new GuideWidget(Field),
             "SurvivalContents" => new SurvivalContentsWidget(Field),

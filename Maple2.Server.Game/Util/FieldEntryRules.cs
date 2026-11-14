@@ -115,9 +115,15 @@ public static class FieldEntryRules {
     }
 
     // Whether a room asked for by id that does not run is made new: not on a rank duel map, whose rooms are made
-    // only for a match.
+    // only for a match, nor on the OX quiz stadium, whose rooms are made only for a home's event.
     public static bool MakesMissingRoom(int mapId, IReadOnlyCollection<int> rankDuelMaps) {
-        return !rankDuelMaps.Contains(mapId);
+        return !rankDuelMaps.Contains(mapId) && mapId != UgcOxRules.StadiumMapId;
+    }
+
+    // A login on the OX quiz stadium (the character logged out in an event): its room is gone or not its own, so
+    // the character goes to its return field, as on a rank duel map.
+    public static bool UgcOxStadiumWithoutEvent(int mapId) {
+        return mapId == UgcOxRules.StadiumMapId;
     }
 
     // A rank duel map entered without a match room (a login on the map saved when the character logged out in

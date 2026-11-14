@@ -66,6 +66,10 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         switch (item.Metadata.Function?.Type) {
+            case ItemFunction.OpenUGCEvent:
+                // The OX quiz host ticket: the create dialog of the home OX quiz event (HomeActionHandler).
+                HomeActionHandler.OpenUgcOx(session);
+                break;
             case ItemFunction.BlueprintImport:
                 HandleBlueprintImport(session, item);
                 break;

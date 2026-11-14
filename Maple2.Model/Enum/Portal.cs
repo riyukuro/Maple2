@@ -11,6 +11,7 @@ public enum PortalType : byte {
     InHome = 11,
     LeaveDungeon = 13,
     ContentsGuide = 15,
+    UgcOx = 16, // The home OX quiz event's stadium portal (the client's portal type 0x10 sends HomeAction 10 sub 5)
 }
 
 public enum PortalActionType {

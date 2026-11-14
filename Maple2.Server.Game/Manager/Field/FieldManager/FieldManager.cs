@@ -99,6 +99,13 @@ public partial class FieldManager : IField {
         RankDuel = new RankDuelField(this, matchId, first, second, Environment.TickCount64, onEnd, onObservable);
     }
 
+    // The home OX quiz event this stadium room was made for (Factory.CreateUgcOxStadium); null in every other field.
+    public UgcOxEvent? UgcOx { get; private set; }
+
+    public void SetUgcOx(UgcOxEvent ox) {
+        UgcOx = ox;
+    }
+
     // The individual arena match this field was made for (Factory.CreateArena); null in every other field.
     public ArenaMatchField? Arena { get; private set; }
 
@@ -821,6 +828,8 @@ public partial class FieldManager : IField {
         // MoveByPortal (same map)
         Portal srcPortal = fieldPortal;
         switch (srcPortal.Type) {
+            case PortalType.UgcOx:
+                return EnterUgcOx(session);
             case PortalType.InHome:
                 Plot? fieldPlot = session.Housing.GetFieldPlot();
                 PlotCube? cubePortal = fieldPlot?.Cubes.Values.FirstOrDefault(x => x.Interact?.PortalSettings is not null && x.Interact.PortalSettings.PortalObjectId == fieldPortal.ObjectId);
@@ -1096,6 +1105,28 @@ public partial class FieldManager : IField {
             }
             Broadcast(VibratePacket.Attack(vibrate.Id.Id, record));
         }
+    }
+
+    // The OX quiz portal of a home (RequestMoveField mode 0 after the client's s2c 5 box): into the event's stadium,
+    // first come first served up to the host's most entrants. The host comes back through it after a pause.
+    private bool EnterUgcOx(GameSession session) {
+        if (this is not HomeFieldManager home || FieldFactory.FindUgcOx(home.OwnerId) is not { } ox) {
+            return false;
+        }
+        UgcOxEnter enter = ox.Enter(session.CharacterId);
+        switch (enter) {
+            case UgcOxEnter.Full:
+                session.Send(NoticePacket.Message(StringCode.s_ugcox_enter_fail_full));
+                return false;
+            case UgcOxEnter.Closed:
+                // The game started: the client has no text for a closed entry, so the use is refused without one.
+                return false;
+        }
+        logger.Information("OX quiz of {HostCharacterId}: {CharacterId} enters ({Enter})", ox.HostCharacterId, session.CharacterId, enter);
+        session.Send(session.PrepareFieldByPortal(UgcOxRules.StadiumMapId, UgcOxRules.SpectatorPortalId, ox.StadiumRoomId)
+            ? FieldEnterPacket.Request(session.Player)
+            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        return true;
     }
 
     private static Home? GetHome(GameSession session, FieldPortal fieldPortal) {

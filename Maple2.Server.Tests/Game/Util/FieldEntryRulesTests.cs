@@ -165,6 +165,15 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.MakesMissingRoom(2000062, RankDuelField.Maps), Is.True);
     }
 
+    // An OX quiz stadium room that is gone is not made again either: a stadium without its event runs no game, and
+    // a login on the stadium goes to the return field.
+    [Test]
+    public void MissingRoom_NotMadeOnTheOxStadium() {
+        Assert.That(FieldEntryRules.MakesMissingRoom(UgcOxRules.StadiumMapId, RankDuelField.Maps), Is.False);
+        Assert.That(FieldEntryRules.UgcOxStadiumWithoutEvent(UgcOxRules.StadiumMapId), Is.True);
+        Assert.That(FieldEntryRules.UgcOxStadiumWithoutEvent(2000062), Is.False);
+    }
+
     // A rank duel field takes its duelists until it has sent them out.
     [Test]
     public void RankDuelField_RunsUntilClosed() {

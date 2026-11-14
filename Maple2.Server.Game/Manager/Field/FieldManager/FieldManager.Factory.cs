@@ -8,6 +8,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Util;
 using Serilog;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
@@ -298,6 +299,61 @@ public partial class FieldManager {
                 return field;
             } finally {
                 mapLock.Release();
+            }
+        }
+
+        // The home OX quiz events of this channel (Key: the host's account id, the same as its home's owner id).
+        private readonly ConcurrentDictionary<long, UgcOxEvent> ugcOxEvents = [];
+
+        // A new room of the OX quiz stadium for this event; the event is registered under its host. Null when the
+        // stadium cannot be made.
+        public FieldManager? CreateUgcOxStadium(UgcOxEvent ox) {
+            SemaphoreSlim mapLock = GetMapLock(UgcOxRules.StadiumMapId);
+            mapLock.Wait();
+            try {
+                FieldManager? field = Create(UgcOxRules.StadiumMapId);
+                if (field == null) {
+                    return null;
+                }
+                field.SetUgcOx(ox);
+                ox.StadiumRoomId = field.RoomId;
+                ugcOxEvents[ox.HostAccountId] = ox;
+                return field;
+            } finally {
+                mapLock.Release();
+            }
+        }
+
+        // The open event this host runs. An event whose stadium is gone (disposed when it stayed empty) or which
+        // ended is taken out here, with its portal in the host's home.
+        public UgcOxEvent? FindUgcOx(long hostAccountId) {
+            if (!ugcOxEvents.TryGetValue(hostAccountId, out UgcOxEvent? ox)) {
+                return null;
+            }
+            if (ox.Open && FindUgcOxStadium(ox) != null) {
+                return ox;
+            }
+            RemoveUgcOx(ox);
+            return null;
+        }
+
+        // The stadium room of this event, while it runs.
+        public FieldManager? FindUgcOxStadium(UgcOxEvent ox) {
+            if (!fields.TryGetValue(UgcOxRules.StadiumMapId, out ConcurrentDictionary<int, FieldManager>? rooms)
+                || !rooms.TryGetValue(ox.StadiumRoomId, out FieldManager? field)) {
+                return null;
+            }
+            return !field.Disposed && field.UgcOx == ox ? field : null;
+        }
+
+        // Takes the event out (once): its portal leaves the host's home.
+        public void RemoveUgcOx(UgcOxEvent ox) {
+            if (!ugcOxEvents.TryRemove(new KeyValuePair<long, UgcOxEvent>(ox.HostAccountId, ox))) {
+                return;
+            }
+            HomeFieldManager? home = FindHome(ox.HostAccountId);
+            if (home != null && ox.HomePortalObjectId != 0) {
+                home.RemovePortal(ox.HomePortalObjectId);
             }
         }
 
@@ -624,8 +680,9 @@ public partial class FieldManager {
             }
 
             if (roomId == 0 && !mapFields.IsEmpty) {
-                // A rank duel's field is entered only by its match (with its room id).
-                FieldManager? firstField = mapFields.Values.FirstOrDefault(mapField => mapField.RankDuel is null && mapField.Arena is null);
+                // A rank duel's field is entered only by its match (with its room id), an OX quiz stadium only by its
+                // event's portal.
+                FieldManager? firstField = mapFields.Values.FirstOrDefault(mapField => mapField.RankDuel is null && mapField.Arena is null && mapField.UgcOx is null);
                 if (firstField != null) {
                     return firstField;
                 }

@@ -98,6 +98,8 @@ public partial class TriggerContext {
 
     public void MoveUser(int mapId, int portalId, int boxId) {
         DebugLog("[MoveUser] mapId:{MapId}, portalId:{PortalId}, boxId:{BoxId}", mapId, portalId, boxId);
+        // The OX quiz stadium's script names the other OX maps; there they mean the stadium itself.
+        mapId = UgcOxRules.MoveUserMap(Field.MapId, mapId);
         if (mapId == 0) {
             foreach (FieldPlayer player in PlayersInBox(boxId)) {
                 player.Session.ReturnField();

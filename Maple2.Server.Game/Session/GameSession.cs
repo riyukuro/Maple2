@@ -363,9 +363,12 @@ public sealed partial class GameSession : Core.Network.Session {
         // character left the match by logging out): a rank duel field is entered only through its match.
         bool roomRuns = migrationType == MigrationType.PvpMatch ? server.HasPvpMatch(roomId) : server.HasDungeon(roomId);
         bool roomGone = FieldEntryRules.ArrivesInReturnField(migrationType, roomRuns);
-        if (roomGone || (roomId == 0 && FieldEntryRules.RankDuelMapWithoutMatch(fieldId, PvpMatchMaps.All(TableMetadata)))) {
+        bool stadiumLogin = roomId == 0 && FieldEntryRules.UgcOxStadiumWithoutEvent(fieldId);
+        if (roomGone || stadiumLogin || (roomId == 0 && FieldEntryRules.RankDuelMapWithoutMatch(fieldId, PvpMatchMaps.All(TableMetadata)))) {
             if (roomGone) {
                 Logger.Warning("Character:{CharacterId} arrives for dungeon or match Room:{RoomId} which is gone, enters the return field", characterId, roomId);
+            } else if (stadiumLogin) {
+                Logger.Information("Character:{CharacterId} logs in on the OX quiz stadium without its event, enters the return field", characterId);
             } else {
                 Logger.Information("Character:{CharacterId} logs in on rank duel map {MapId} without its match, enters the return field", characterId, fieldId);
             }
@@ -709,6 +712,8 @@ public sealed partial class GameSession : Core.Network.Session {
     // field change on this server included (the client sends it only when the window opens or closes); a new
     // session (a channel change) starts with it closed.
     public bool DpsMeterOpen;
+    // The home OX quiz settings the host chose (HomeAction 10 sub 0), until the confirm box's yes (sub 3).
+    public UgcOxRules.Settings? UgcOxPending;
 
     public bool PrepareFieldByPortal(int mapId, int portalId = -1, int roomId = 0) {
         bool prepared = PrepareFieldInternal(mapId, out _, portalId, 0, roomId, default, default);
@@ -1017,6 +1022,15 @@ public sealed partial class GameSession : Core.Network.Session {
         Player player = Player.Value;
         if (player.Home.IsHomeSetup && !Player.Field.Plots.IsEmpty && (Player.Session.Housing.GetFieldPlot()?.IsPlanner ?? false)) {
             MigrateToPlanner(PlotMode.Normal);
+            return;
+        }
+
+        // The OX quiz stadium's way out (its portals, the host's leave, the script's MoveAllUser) is the host's home,
+        // where the event's portal led in from.
+        if (Field?.UgcOx is { } ox) {
+            Send(PrepareField(ox.HomeMapId, ownerId: ox.HostAccountId)
+                ? FieldEnterPacket.Request(Player)
+                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
             return;
         }
 
@@ -1548,6 +1562,12 @@ public sealed partial class GameSession : Core.Network.Session {
             });
 
             Party.CheckDisband();
+        }
+
+        // A host that leaves the channel (a logout, a channel change) ends its OX quiz event: the stadium script runs
+        // its cancel.
+        if (Player != null && FieldFactory?.FindUgcOx(AccountId) is { } ugcOx && ugcOx.Cancel()) {
+            Logger.Information("OX quiz host {CharacterId} left the channel, event canceled", CharacterId);
         }
 
         // The character was never loaded (an arrival with a used or unknown token): there is nothing to save.
