@@ -19,15 +19,15 @@ public static class WeddingPacket {
         Reserve = 13,
         ConfirmReservation = 15,
         RequestCancelReservation = 16,
-        DeclinedCancelReservation = 17,
+        NoRefundCancelOffer = 17,
         AcceptCancelReservation = 19,
-        ChangeReservationRequest = 20,
-        AcceptReservationChange = 22,
+        ReservationChangeRequest = 20,
+        ReservationChanged = 22,
         InvitationClear = 23,
         Ticket = 24,
         InvitationRemove = 25,
-        SearchInvitee = 27,
-        SendInvite = 29,
+        InvitationFound = 27,
+        InvitationOk = 29,
         MutualAgree = 30,
         MutualCancel = 31,
         OwnProfile = 35,
@@ -36,7 +36,7 @@ public static class WeddingPacket {
 
     public static ByteWriter UpdateMarriage(Marriage marriage) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.UpdateMarriage);
+        pWriter.WriteByte((byte) Command.UpdateMarriage);
         pWriter.WriteClass<Marriage>(marriage);
 
         return pWriter;
@@ -76,7 +76,7 @@ public static class WeddingPacket {
     // not-found notice.
     public static ByteWriter InvitationFound(long accountId, long characterId, string name) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.WriteByte((byte) Command.SearchInvitee);
+        pWriter.WriteByte((byte) Command.InvitationFound);
         pWriter.WriteLong(accountId);
         pWriter.WriteLong(characterId);
         pWriter.WriteUnicodeString(name);
@@ -88,14 +88,14 @@ public static class WeddingPacket {
     // invitations were sent, and the invitation dialog closes.
     public static ByteWriter InvitationOk() {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.WriteByte((byte) Command.SendInvite);
+        pWriter.WriteByte((byte) Command.InvitationOk);
 
         return pWriter;
     }
 
     public static ByteWriter Error(WeddingError error) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.Error);
+        pWriter.WriteByte((byte) Command.Error);
         // The client reads the result as one byte and nothing after it (WeddingManager::OnResult).
         pWriter.WriteByte((byte) error);
 
@@ -113,7 +113,7 @@ public static class WeddingPacket {
 
     public static ByteWriter Proposal(string name, long characterId) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.Proposal);
+        pWriter.WriteByte((byte) Command.Proposal);
         pWriter.WriteLong(characterId);
         pWriter.WriteUnicodeString(name);
 
@@ -122,7 +122,7 @@ public static class WeddingPacket {
 
     public static ByteWriter Engaged(Marriage marriage) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.Engaged);
+        pWriter.WriteByte((byte) Command.Engaged);
         pWriter.WriteClass<Marriage>(marriage);
 
         return pWriter;
@@ -130,7 +130,7 @@ public static class WeddingPacket {
 
     public static ByteWriter Reserve(WeddingHall hall) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.Reserve);
+        pWriter.WriteByte((byte) Command.Reserve);
         pWriter.WriteClass<WeddingHall>(hall);
 
         return pWriter;
@@ -138,7 +138,7 @@ public static class WeddingPacket {
 
     public static ByteWriter ConfirmReservation(WeddingHall hall) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.ConfirmReservation);
+        pWriter.WriteByte((byte) Command.ConfirmReservation);
         pWriter.WriteClass<WeddingHall>(hall);
 
         return pWriter;
@@ -146,15 +146,18 @@ public static class WeddingPacket {
 
     public static ByteWriter RequestCancelReservation() {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.RequestCancelReservation);
+        pWriter.WriteByte((byte) Command.RequestCancelReservation);
 
         return pWriter;
     }
 
-    public static ByteWriter DeclinedCancelReservation(WeddingError reply) {
+    // Client: WeddingManager::OnReservationChangeRequest (0x11, weddingmanager.cpp:617) reads a short reason: 10 (the
+    // partner said no) and 0x22 (the partner is not there) open the box that offers the cancel without a refund, whose
+    // yes is Wedding 0x11; any other reason shows nothing.
+    public static ByteWriter NoRefundCancelOffer(WeddingError reason) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.DeclinedCancelReservation);
-        pWriter.Write<WeddingError>(reply);
+        pWriter.WriteByte((byte) Command.NoRefundCancelOffer);
+        pWriter.WriteShort((short) reason);
 
         return pWriter;
     }
@@ -162,23 +165,27 @@ public static class WeddingPacket {
     // Client: WeddingManager::OnReservationCancel (0x13) reads nothing: it drops the ticket and shows the notice.
     public static ByteWriter AcceptCancelReservation() {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.AcceptCancelReservation);
+        pWriter.WriteByte((byte) Command.AcceptCancelReservation);
 
         return pWriter;
     }
 
-    public static ByteWriter ChangeReservationRequest(WeddingHall hall, long differenceCost) {
+    // Client: WeddingManager::OnMode14 (0x14, weddingmanager.cpp:870): the hall ticket and a long cost, shown in the
+    // partner's yes/no box of the change; the answer is Wedding 0x15.
+    public static ByteWriter ReservationChangeRequest(WeddingHall hall, long differenceCost) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.ChangeReservationRequest);
+        pWriter.WriteByte((byte) Command.ReservationChangeRequest);
         pWriter.WriteClass<WeddingHall>(hall);
         pWriter.WriteLong(differenceCost);
 
         return pWriter;
     }
 
-    public static ByteWriter AcceptReservationChange(WeddingHall hall, long differenceCost) {
+    // Client: WeddingManager::OnMode16 (0x16, weddingmanager.cpp:890): the new hall ticket, kept as the own ticket,
+    // and a long cost, shown in the change notice.
+    public static ByteWriter ReservationChanged(WeddingHall hall, long differenceCost) {
         var pWriter = Packet.Of(SendOp.Wedding);
-        pWriter.Write<Command>(Command.AcceptReservationChange);
+        pWriter.WriteByte((byte) Command.ReservationChanged);
         pWriter.WriteClass<WeddingHall>(hall);
         pWriter.WriteLong(differenceCost);
 

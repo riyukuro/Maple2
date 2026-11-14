@@ -1254,7 +1254,7 @@ public sealed class MarriageManager {
     // The partner who reserved gets the no-refund box; only its answer (Wedding 0x11) cancels without a coupon.
     private void OfferNoRefund(WeddingError reason) {
         noRefundHall = WeddingHall.Id;
-        session.Send(WeddingPacket.DeclinedCancelReservation(reason));
+        session.Send(WeddingPacket.NoRefundCancelOffer(reason));
     }
 
     // The answer of the partner asked by Wedding 0x10 (9 yes, 10 no). Only a cancel this partner was asked for counts.
@@ -1463,7 +1463,7 @@ public sealed class MarriageManager {
         partnerPlayer.Session.Marriage.changeAskedBy = session.CharacterId;
         partnerPlayer.Session.Marriage.changeAskedHall = WeddingHall.Id;
 
-        partnerPlayer.Session.Send(WeddingPacket.ChangeReservationRequest(hall, cost));
+        partnerPlayer.Session.Send(WeddingPacket.ReservationChangeRequest(hall, cost));
         return WeddingError.s_wedding_result_send_wedding_hall_reservation_change;
     }
 
@@ -1524,8 +1524,8 @@ public sealed class MarriageManager {
         if (WeddingInviteRules.ChangeMail(before, weddingHall)) {
             MailGuests(db, weddingHall, weddingHall.GuestList.Keys, WeddingGuestMail.Change);
         }
-        session.Send(WeddingPacket.AcceptReservationChange(WeddingHall, differenceCost));
-        partner.Session.Send(WeddingPacket.AcceptReservationChange(WeddingHall, differenceCost));
+        session.Send(WeddingPacket.ReservationChanged(WeddingHall, differenceCost));
+        partner.Session.Send(WeddingPacket.ReservationChanged(WeddingHall, differenceCost));
         // "Change your wedding hall reservation {0} times" (23100425): both of the couple, as the reservation.
         session.ConditionUpdate(ConditionType.wedding_hall_change);
         partner.Session.ConditionUpdate(ConditionType.wedding_hall_change);
