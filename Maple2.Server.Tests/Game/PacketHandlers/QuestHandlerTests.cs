@@ -9,6 +9,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
@@ -663,6 +664,52 @@ public class QuestHandlerTests {
             Assert.That(session.NpcScript.State?.Id, Is.EqualTo(41));
             Assert.That(Enumerable.Range(0, 4).Select(i => quest.Conditions[i].Counter), Is.EqualTo(new long[] { 1, 1, 0, 1 }));
         });
+    }
+
+    // NpcTalk 7 opens a quest's script at the talking npc. The client sends only the quest it has just accepted
+    // there or the following quest of one it has just completed there; another quest's talk is refused, as its
+    // script's functions run in it. Before, any quest id opened its accept talk (100) at any npc.
+    [TestCase("unrelated", null)]
+    [TestCase("held", 200)]
+    [TestCase("following", 100)]
+    public void QuestTalk_OpensOnlyAQuestOfThisNpc(string kind, int? opened) {
+        GameSession session = Login();
+        test.SetServerTable(new ScriptConditionTable(new Dictionary<int, Dictionary<int, ScriptConditionMetadata>>()));
+        test.SetServerTable(new ScriptFunctionTable(new Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>>()));
+        int questId = QuestId;
+        switch (kind) {
+            case "unrelated":
+                questId = QuestId + 1;
+                QuestMetadata other = TestGameSession.QuestData(questId);
+                test.Register(other with { Basic = other.Basic with { StartNpc = Npc + 1, CompleteNpc = Npc + 1 } });
+                break;
+            case "held":
+                Started(met: false);
+                break;
+            case "following":
+                Started().State = QuestState.Completed;
+                questId = QuestId + 1;
+                QuestMetadata next = TestGameSession.QuestData(questId);
+                test.Register(next with {
+                    Basic = next.Basic with { StartNpc = Npc + 1, CompleteNpc = Npc + 1 },
+                    Require = next.Require with { Quest = [QuestId] },
+                });
+                break;
+        }
+        test.Register(new ScriptMetadata(questId, ScriptType.Quest, new Dictionary<int, ScriptState> {
+            [100] = State(100),
+            [200] = State(200),
+        }));
+        session.NpcScript = new NpcScriptManager(session, TalkNpc(Npc), null, null, NpcTalkType.Talk);
+
+        var talk = new NpcTalkHandler { NpcMetadata = null!, ScriptMetadata = null!, ServerTableMetadata = test.ServerTableMetadata };
+        talk.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(7);
+            writer.WriteInt(questId);
+            writer.WriteShort(0);
+        }));
+
+        Assert.That(session.NpcScript?.State?.Id, Is.EqualTo(opened));
     }
 
     // A field npc of the given id with no movement state to play the talk on.

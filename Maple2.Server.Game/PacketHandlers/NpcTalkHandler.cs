@@ -345,6 +345,13 @@ public class NpcTalkHandler : FieldPacketHandler {
             session.Send(NpcTalkPacket.Close());
             return;
         }
+        // Another quest's script is not this npc's to open: its talk runs the script's functions.
+        if (!OpensAt(session, npc.Value.Id, questId)) {
+            session.Send(NpcTalkPacket.Close());
+            npc.StopTalk();
+            session.NpcScript = null;
+            return;
+        }
         if (!session.ScriptMetadata.TryGet(questId, out ScriptMetadata? metadata)) {
             session.Send(NpcTalkPacket.Respond(npc, NpcTalkType.None, default));
             session.NpcScript = null;
@@ -357,6 +364,24 @@ public class NpcTalkHandler : FieldPacketHandler {
         if (!session.NpcScript.BeginQuest()) {
             session.NpcScript = null;
         }
+    }
+
+    // The client sends NpcTalk 7 from the talk scene only: the quest it has just accepted at this npc
+    // (CQuestAcceptCinematicComponent::SendQuestAccept, cinematiccomponent.cpp:587, short 2) or the following quest of
+    // the one it has just completed here (CQuestCompleteCinematicComponent::vfunc_2, cinematiccomponent.cpp:648,
+    // short 0). So the quest is one this npc offers now, one held and not done whose start or complete npc it is, or
+    // one that can start and requires a quest completed at this npc.
+    internal static bool OpensAt(GameSession session, int npcId, int questId) {
+        if (session.Quest.TryGetQuest(questId, out Quest? held) && held.State != QuestState.Completed
+            && (held.Metadata.Basic.StartNpc == npcId || held.Metadata.Basic.CompleteNpc == npcId)) {
+            return true;
+        }
+        if (session.Quest.GetAvailableQuests(npcId).ContainsKey(questId)) {
+            return true;
+        }
+        return session.QuestMetadata.TryGet(questId, out QuestMetadata? next) && session.Quest.CanStart(next)
+            && next.Require.Quest.Any(id => session.Quest.TryGetQuest(id, out Quest? done) && done.State == QuestState.Completed
+                && done.Metadata.Basic.CompleteNpc == npcId);
     }
 
     private void HandleAcceptAllianceQuest(GameSession session, IByteReader packet) {
