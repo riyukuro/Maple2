@@ -32,6 +32,10 @@ public class GuildRaidClearTests {
             Received.Release();
             return new GuildResponse();
         }
+
+        // The clear's records are stored under the account lock.
+        public override LockResponse AcquireLock(LockRequest request, CallOptions options) => new();
+        public override LockResponse ReleaseLock(LockRequest request, CallOptions options) => new();
     }
 
     private TestGameSession test = null!;

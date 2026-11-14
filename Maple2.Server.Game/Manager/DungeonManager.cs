@@ -195,60 +195,84 @@ public class DungeonManager {
             return;
         }
 
-        bool changed = false;
         foreach (IGrouping<long, DungeonRecord> week in weeks) {
+            Item? item = null;
+            int systemMailId = 0;
             DungeonSeasonTable.Entry? season = session.TableMetadata.DungeonSeasonTable.Current(week.Key.FromEpochSeconds().AddSeconds(-1));
             if (season != null) {
                 int total = DungeonScoreRules.SeasonTotal(week.Select(record => record.CurrentRecord), season.MaxSeasonScore);
                 DungeonSeasonTable.Reward? reward = season.GetReward(total);
-                if (reward != null && reward.ItemId != 0 && !MailSeasonReward(field, season, reward)) {
-                    continue;
+                if (reward != null && reward.ItemId != 0) {
+                    item = MakeRewardItem(field, reward.ItemId, reward.Grade, reward.Count, season.SystemMailId);
+                    if (item == null) {
+                        continue;
+                    }
+                    systemMailId = season.SystemMailId;
                 }
             }
-            foreach (DungeonRecord record in week) {
-                record.CurrentRecord = 0;
+            // The mail and the week's scores set to 0 are stored together: a mail stored before the scores let a
+            // crash in between mail the week again at the next login. Refused, both stay as they were (tried again
+            // at the next run).
+            DungeonRecord[] records = week.ToArray();
+            short[] scores = records.Select(record => record.CurrentRecord).ToArray();
+            Mail? mail = null;
+            if (!session.TrySavePurchase(db => {
+                foreach (DungeonRecord record in records) {
+                    record.CurrentRecord = 0;
+                }
+                return db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, records)
+                    && (item == null || (mail = StoreRewardMail(db, item, systemMailId)) != null);
+            })) {
+                for (int i = 0; i < records.Length; i++) {
+                    records[i].CurrentRecord = scores[i];
+                }
+                logger.Error("Season reward of the week ending {Week} not stored for {CharacterId}", week.Key, session.CharacterId);
+                continue;
             }
-            changed = true;
-        }
-        if (changed) {
-            using GameStorage.Request db = session.GameStorage.Context();
-            db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray());
+            NotifyMail(mail);
         }
     }
 
-    private bool MailSeasonReward(FieldManager field, DungeonSeasonTable.Entry season, DungeonSeasonTable.Reward reward) =>
-        MailReward(field, reward.ItemId, reward.Grade, reward.Count, season.SystemMailId);
-
-    // A system mail (systemMailId, an id of string/systemmailcontent) with one reward item. False when the item cannot
-    // be made or the mail cannot be stored, so the caller can try again later.
-    private bool MailReward(FieldManager field, int itemId, int grade, int count, int systemMailId) {
+    // A reward item for a system mail (systemMailId, an id of string/systemmailcontent); null when it cannot be made.
+    private Item? MakeRewardItem(FieldManager field, int itemId, int grade, int count, int systemMailId) {
         Item? item = field.ItemDrop.CreateItem(itemId, grade, count);
         if (item == null) {
             logger.Warning("Dungeon reward item {ItemId} (system mail {SystemMailId}) could not be made", itemId, systemMailId);
-            return false;
         }
-        using GameStorage.Request db = session.GameStorage.Context();
+        return item;
+    }
+
+    // The system mail with its one item, in the caller's request (stored with what marks the reward given); null when
+    // the mail or its item is refused, and the caller's store then fails whole.
+    private Mail? StoreRewardMail(GameStorage.Request db, Item item, int systemMailId) {
         Mail? mail = db.CreateMail(new Mail {
             Type = MailType.System,
             ReceiverId = session.CharacterId,
             Content = systemMailId.ToString(),
         });
         if (mail == null) {
-            return false;
+            return null;
         }
         Item? added = db.CreateItem(mail.Id, item);
         if (added == null) {
-            logger.Error("Dungeon reward item {ItemId} could not be added to mail {MailId}", itemId, mail.Id);
-            return true; // the mail exists; a retry would send a second one
+            logger.Error("Dungeon reward item {ItemId} could not be added to mail {MailId}", item.Id, mail.Id);
+            return null;
         }
         mail.Items.Add(added);
+        return mail;
+    }
+
+    // After the commit: the mailbox's new mail notice.
+    private void NotifyMail(Mail? mail) {
+        if (mail == null) {
+            return;
+        }
         try {
             session.World.MailNotification(new MailNotificationRequest {
                 CharacterId = session.CharacterId,
                 MailId = mail.Id,
             });
         } catch { /* ignored */ }
-        return true;
     }
 
     public void ResetWeeklyClears() {
@@ -795,7 +819,20 @@ public class DungeonManager {
         // result anew, so a later end with no count left shows no earlier lines and fires no reward condition.
         UserRecord.ClearResult();
         List<Action> grants = [];
+        Dictionary<int, DungeonRecord> before = CopyRecords();
         CalculateRewards(clearTimestamp, withRookie, grants);
+        // The counts this clear took (the room's, its reward room's, the helper room's) are in the database before
+        // any reward of it exists: the items are rows at once (Inventory.Add, a mail), and a crash before the next
+        // session save kept the counts unspent, so the clear could be paid again. A refused store gives nothing:
+        // the counts go back as they were, and the result names no reward. Conditions the counting already fired
+        // (a first clear) stay.
+        if (!session.TrySavePurchase(db => db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray()))) {
+            logger.Error("Dungeon {DungeonId}: the clear's records of {CharacterId} not stored, no reward given", Metadata.Id, session.CharacterId);
+            RestoreRecords(before);
+            grants.Clear();
+            UserRecord.ClearResult();
+            session.Send(DungeonRoomPacket.Load(Records));
+        }
         if (UserRecord.IsDungeonSuccess) {
             UpdateRankScore(clearTimestamp);
         }
@@ -900,21 +937,57 @@ public class DungeonManager {
         RankRewards.TryGetValue(entry.Id, out DungeonRankReward? reward);
         int maxRank = entry.Items.Max(item => item.Rank);
         int given = -1;
+        List<(Item Item, int SystemMailId)> mails = [];
         foreach (int next in DungeonScoreRules.RankRewardRanks(reward?.RankClaimed ?? 0, reward?.ExpiryTimestamp ?? 0, now, rank, maxRank)) {
             DungeonRankRewardTable.Entry.Item? item = entry.Items.FirstOrDefault(item => item.Rank == next);
-            if (item != null && item.ItemId != 0 && !MailReward(field, item.ItemId, -1, 1, item.SystemMailId)) {
-                break;
+            if (item != null && item.ItemId != 0) {
+                Item? made = MakeRewardItem(field, item.ItemId, -1, 1, item.SystemMailId);
+                if (made == null) {
+                    break;
+                }
+                mails.Add((made, item.SystemMailId));
             }
             given = next;
         }
         if (given < 0) {
             return;
         }
-        reward ??= new DungeonRankReward(entry.Id);
-        reward.RankClaimed = given;
-        reward.ExpiryTimestamp = expiry;
-        RankRewards[entry.Id] = reward;
-        session.Send(DungeonRoomPacket.RankReward(reward));
+
+        // The mails and the ranks given are stored together (the ranks with the player's unlock row): mails stored
+        // before the count let a crash in between mail the same ranks again at the next clear. The count goes into
+        // memory inside the store, under the account lock, so a session save in between does not write the old one;
+        // a refused store puts the old one back and mails nothing (tried again at the next clear).
+        var claimed = new DungeonRankReward(entry.Id) {
+            RankClaimed = given,
+            ExpiryTimestamp = expiry,
+        };
+        List<Mail> stored = [];
+        if (!session.TrySavePurchase(db => {
+            RankRewards[entry.Id] = claimed;
+            if (!db.SaveDungeonRankRewards(session.Player)) {
+                return false;
+            }
+            foreach ((Item item, int systemMailId) in mails) {
+                Mail? mail = StoreRewardMail(db, item, systemMailId);
+                if (mail == null) {
+                    return false;
+                }
+                stored.Add(mail);
+            }
+            return true;
+        })) {
+            if (reward != null) {
+                RankRewards[entry.Id] = reward;
+            } else {
+                RankRewards.Remove(entry.Id);
+            }
+            logger.Error("Rank reward {RewardId} rank {Rank} not stored for {CharacterId}", entry.Id, given, session.CharacterId);
+            return;
+        }
+        foreach (Mail mail in stored) {
+            NotifyMail(mail);
+        }
+        session.Send(DungeonRoomPacket.RankReward(claimed));
     }
 
     // grants: what gives the rewards the record names, run after the result is sent.
@@ -978,10 +1051,14 @@ public class DungeonManager {
             GetClearDungeonRewards();
             // "Collect a reward from any dungeon" (70700002): a clear that still had a reward count left. The dungeon room
             // goes along as the code; the rows that name a dungeon match it by room id / 1000 (ConditionUtil).
-            session.ConditionUpdate(ConditionType.dungeon_reward, codeLong: Lobby.DungeonId);
             // The same reward by the room's group type (dungeon_reward_group: 70700006 code 1 normal, 89000215 code 2
-            // raid, 70700061 code 9 item, 70700003 code 10 vip).
-            session.ConditionUpdate(ConditionType.dungeon_reward_group, codeLong: (long) Metadata.GroupType);
+            // raid, 70700061 code 9 item, 70700003 code 10 vip). With the grants: only a clear whose counts are stored.
+            int dungeonId = Lobby.DungeonId;
+            DungeonGroupType groupType = Metadata.GroupType;
+            grants.Add(() => {
+                session.ConditionUpdate(ConditionType.dungeon_reward, codeLong: dungeonId);
+                session.ConditionUpdate(ConditionType.dungeon_reward_group, codeLong: (long) groupType);
+            });
         }
 
         // Chosen here: the helper boxes' items after the room's and before the weekly reward.
@@ -1430,6 +1507,40 @@ public class DungeonManager {
         record.UnionCooldownTimestamp = account.UnionCooldownTimestamp;
         record.UnionSubCooldownTimestamp = account.UnionSubCooldownTimestamp;
         record.ExtraCooldownTimestamp = account.ExtraCooldownTimestamp;
+    }
+
+    // The records as they are, to put back when a store that took counts is refused (RestoreRecords).
+    private Dictionary<int, DungeonRecord> CopyRecords() => Records.ToDictionary(pair => pair.Key, pair => {
+        var copy = new DungeonRecord(pair.Key);
+        CopyRecord(pair.Value, copy);
+        return copy;
+    });
+
+    // Back into the same record objects (the clear's code holds them); a record made since is dropped.
+    private void RestoreRecords(Dictionary<int, DungeonRecord> copies) {
+        foreach (int id in Records.Keys.ToList()) {
+            if (copies.TryGetValue(id, out DungeonRecord? copy)) {
+                CopyRecord(copy, Records[id]);
+            } else {
+                Records.Remove(id);
+            }
+        }
+    }
+
+    private static void CopyRecord(DungeonRecord from, DungeonRecord to) {
+        to.UnionSubClears = from.UnionSubClears;
+        to.UnionClears = from.UnionClears;
+        to.UnionSubCooldownTimestamp = from.UnionSubCooldownTimestamp;
+        to.UnionCooldownTimestamp = from.UnionCooldownTimestamp;
+        to.CooldownTimestamp = from.CooldownTimestamp;
+        to.ClearTimestamp = from.ClearTimestamp;
+        to.TotalClears = from.TotalClears;
+        to.LifetimeRecord = from.LifetimeRecord;
+        to.CurrentRecord = from.CurrentRecord;
+        to.ExtraSubClears = from.ExtraSubClears;
+        to.ExtraClears = from.ExtraClears;
+        to.ExtraCooldownTimestamp = from.ExtraCooldownTimestamp;
+        to.Flag = from.Flag;
     }
 
     public bool Save(GameStorage.Request db) {

@@ -742,6 +742,32 @@ public partial class GameStorage {
             return true;
         }
 
+        /// <summary>
+        /// Writes only the character's dungeon season rank rewards given (the unlock row's DungeonRankRewards), with the
+        /// rewards' mails in the same request (DungeonManager.GiveRankRewards). Callers hold the account lock.
+        /// </summary>
+        public bool SaveDungeonRankRewards(Player player) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            CharacterUnlock? unlock = Context.CharacterUnlock.Find(player.Character.Id);
+            if (unlock == null) {
+                return false;
+            }
+
+            unlock.DungeonRankRewards = player.Unlock.DungeonRankRewards.Values
+                .Select<Maple2.Model.Game.Dungeon.DungeonRankReward, DungeonRankReward>(reward => reward)
+                .ToDictionary(reward => reward.Id);
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(player.Character.Id);
+            if (updated != null) {
+                player.Unlock.LastModified = updated.Value.UnlockLastModified;
+            }
+            return true;
+        }
+
         // The account's claimed prestige rank rewards and its prestige missions, stored at a claim before its item is
         // given (as SavePcBang).
         public bool SavePrestigeClaims(Player player) {
