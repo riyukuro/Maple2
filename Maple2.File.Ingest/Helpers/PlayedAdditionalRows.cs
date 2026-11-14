@@ -555,6 +555,10 @@ public static class PlayedAdditionalRows {
                                 unread.Add("Status." + attribute.Name);
                             }
                         }
+                        // The client reads no child of <Status>: one is listed, so the effect is not taken over without it.
+                        foreach (XmlElement sub in child.ChildNodes.OfType<XmlElement>()) {
+                            unread.Add("Status/" + sub.Name);
+                        }
                         root.AppendChild(status);
                         break;
                     }

@@ -519,6 +519,8 @@ public class PlayedTakeOverTests {
 
     // A level both have keeps the pack's StatusProperty whole: the client's <Status> (evasion compulsion type 2, which
     // the pack's level lacks) is not written over it, as Build takes the pack's status and TakeOver the compulsion.
+    // A guard of ToPack's StatusProperty with FromPack: before both, ToPack wrote no StatusProperty and Keep copied the
+    // pack's (pack-only), so the old code gives the same row and this test passes on it.
     [Test]
     public void ALevelBothHaveKeepsThePacksStatus() {
         (_, _, _, _, XmlElement packRow) = LevelsWithRow(10700193);

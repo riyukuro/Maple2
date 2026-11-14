@@ -137,4 +137,15 @@ public class PlayedAdditionalRowsTests {
             Assert.That(row["StatusProperty"]!.GetAttribute("compulsionEventRate"), Is.EqualTo("1"));
         });
     }
+
+    // The client reads only attributes of <Status> (additionalactionadditional.cpp:1211-1225): a child element of it is
+    // listed, so the effect is not taken over without it (before: dropped with nothing unread).
+    [Test]
+    public void ListsAChildOfTheStatus() {
+        const string played = """<ms2><additional id="10800059" mainType="1" skillGroupType="1"><level level="1"><Basic durationTick="1000" /><Status compulsionEventTypes="2" compulsionEventRate="1"><stat str="10" /></Status></level></additional></ms2>""";
+        var document = new XmlDocument();
+        document.LoadXml(played);
+        Dictionary<int, PlayedClientAdditionalEffects.Entry> entries = PlayedClientAdditionalEffects.Read([document], _ => true);
+        Assert.That(PlayedAdditionalRows.Unread(entries[10800059]), Is.EquivalentTo(new[] { "Status/stat" }));
+    }
 }
