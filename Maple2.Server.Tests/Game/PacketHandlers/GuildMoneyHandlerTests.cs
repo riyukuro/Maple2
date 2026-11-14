@@ -449,7 +449,7 @@ public class GuildMoneyHandlerTests {
         Assert.That(Hex(GuildPacket.NotifyUpdateEmblem("Leader", "emblem")), Is.EqualTo(Hex(expected)));
     }
 
-    // Guild 74 (u8, i64 last match time) and 75 (u8 alone) are answered only while GuildChampionship is on; with it
+    // Guild 74 (u8, i64 last match time) and 75 (u8 alone) are answered only while GuildPvP is on; with it
     // off the client has no PvP history page and both requests are dropped.
     [TestCase(true)]
     [TestCase(false)]

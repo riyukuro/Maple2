@@ -791,8 +791,8 @@ public class GuildHandler : PacketHandler<GameSession> {
 
     // The client asks for the history and the season only from the PvP history page (UIGuildDialog::CreatePvpHistoryPage),
     // which needs IsGuildChampionshipOpen; GameEventGuildChampionship::OnStart (gameevent.cpp:3109) opens it only with
-    // GuildChampionship (id 0x110) on. With the feature off both requests are dropped.
-    public const string PvpFeature = "GuildChampionship";
+    // feature 0x110 on, named GuildPvP (featuremanager.cpp:674). With the feature off both requests are dropped.
+    public const string PvpFeature = "GuildPvP";
 
     // CGuildManager::RequestPvpHistoryAndSeason (guildmanager.cpp:1144): sent when the guild PvP tab opens,
     // with the end time (fb8) of the newest match the client holds; the client adds the rows it gets, so only
