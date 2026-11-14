@@ -32,7 +32,7 @@ public class ItemBoxHandlerTests {
     // The box in the bag, and drop box 100 = two groups: RewardA x3 | RewardB x1.
     private GameSession Login(ItemFunction function, string parameters, int amount, int rewardSlotMax = 100, short[]? tabCount = null,
                               int otherRarityAmount = 0, int keys = 0, bool requireVip = false,
-                              Func<ItemMetadataLimit, ItemMetadataLimit>? limit = null) {
+                              Func<ItemMetadataLimit, ItemMetadataLimit>? limit = null, int rewardA = RewardA) {
         test = new TestGameSession();
         ItemMetadata boxMetadata = TestGameSession.Metadata(BoxId, function: new ItemMetadataFunction(function, function.ToString(), parameters, false));
         if (requireVip) {
@@ -41,11 +41,11 @@ public class ItemBoxHandlerTests {
         if (limit != null) {
             boxMetadata = boxMetadata with { Limit = limit(boxMetadata.Limit) };
         }
-        test.Register(TestGameSession.Metadata(RewardA, slotMax: rewardSlotMax), TestGameSession.Metadata(RewardB, slotMax: rewardSlotMax));
+        test.Register(TestGameSession.Metadata(rewardA, slotMax: rewardSlotMax), TestGameSession.Metadata(RewardB, slotMax: rewardSlotMax));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
             [DropBoxId] = function == ItemFunction.SelectItemBox
-                ? TestGameSession.DropBox([(RewardA, 3), (RewardB, 1)])
-                : TestGameSession.DropBox([(RewardA, 3)], [(RewardB, 1)]),
+                ? TestGameSession.DropBox([(rewardA, 3), (RewardB, 1)])
+                : TestGameSession.DropBox([(rewardA, 3)], [(RewardB, 1)]),
         }));
         test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
             new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
@@ -135,6 +135,21 @@ public class ItemBoxHandlerTests {
         Assert.That(sent.Select(TestGameSession.Op).Distinct(), Is.EqualTo(new[] { SendOp.ItemInventory }));
         Assert.That(Held(session, BoxId), Is.EqualTo(1));
         Assert.That(Held(session, RewardA), Is.EqualTo(3));
+        Assert.That(Held(session, RewardB), Is.EqualTo(1));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The item box meso rate (SpecialAttribute.ItemBoxRewardMeso, +100% here) raises the mesos a box gives; its
+    // items are unchanged.
+    [Test]
+    public void OpenItemBox_Use_ItemBoxMesoRateRaisesTheMesos() {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 2, rewardA: 90000001);
+        session.Player.Stats.Values[SpecialAttribute.ItemBoxRewardMeso].AddTotal(1000);
+        long mesoBefore = session.Currency.Meso;
+
+        Use(session);
+
+        Assert.That(session.Currency.Meso - mesoBefore, Is.EqualTo(6));
         Assert.That(Held(session, RewardB), Is.EqualTo(1));
         Assert.That(test.Errors, Is.Empty);
     }

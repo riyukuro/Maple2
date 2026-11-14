@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Model;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -102,7 +103,11 @@ public class ItemBoxManager {
 
     // Adds an item that came out of the box. A drop row with isAnnounce is announced to the world with the box's
     // name and a link to the inventory item that took it; an item that goes to the mail instead is not announced.
+    // The item box meso rate (SpecialAttribute.ItemBoxRewardMeso) raises the mesos a box gives.
     private bool AddFromBox(Item box, Item newItem) {
+        if (newItem.IsMeso()) {
+            newItem.Amount = KillRate.Apply(newItem.Amount, session.Player.Stats.Values[SpecialAttribute.ItemBoxRewardMeso].Multiplier());
+        }
         Item? target = null;
         if (!session.Item.Inventory.Add(newItem, true, onAdded: added => target ??= added)) {
             return false;

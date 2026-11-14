@@ -148,6 +148,23 @@ public class DungeonResultTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // The dungeon meso rate (SpecialAttribute.DungeonRewardMeso, +30% here) raises the clear's meso; the result
+    // names the raised amount and the exp is unchanged.
+    [Test]
+    public void DungeonMesoRate_RaisesTheClearsMeso() {
+        var test = new TestGameSession();
+        GameSession session = StartInRoom(test, 10);
+        session.Player.Stats.Values[SpecialAttribute.DungeonRewardMeso].AddTotal(300);
+        long mesoBefore = session.Currency.Meso;
+
+        session.Dungeon.CompleteDungeon(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+        DungeonUserRecord record = session.Dungeon.UserRecord!;
+        Assert.That((record.Rewards[DungeonRewardType.Meso], record.Rewards[DungeonRewardType.Exp]), Is.EqualTo((650, 1000)));
+        Assert.That(session.Currency.Meso - mesoBefore, Is.EqualTo(650));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // A clear that reaches a weekly step: the step's exp and meso come after the result and the clear's own, with
     // the weekly message code (1146), and the result names them in its bonus list with bit 9.
     [Test]

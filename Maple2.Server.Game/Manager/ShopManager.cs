@@ -656,6 +656,9 @@ public sealed class ShopManager {
             session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
             return;
         }
+        // The shop sell rate (SpecialAttribute.ShopBuyingMeso, s_item_opt_sa_improve_shop_buying_meso) raises the sale.
+        // The buy-back entry keeps the raised price, so a sale bought back gains nothing.
+        sellPrice = KillRate.Apply(sellPrice, session.Player.Stats.Values[SpecialAttribute.ShopBuyingMeso].Multiplier());
 
         if (session.Currency.CanAddMeso(sellPrice) != sellPrice) {
             logger.Error("Could not add {sellPrice} meso(s) to player {CharacterId}", sellPrice, session.CharacterId);

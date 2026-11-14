@@ -863,6 +863,9 @@ public class DungeonManager {
                 meso = (int) Math.Min((long) meso + EventSaleRules.DungeonBonusAmount(meso, bonus.MesoRate), int.MaxValue);
                 UserRecord.Flag |= DungeonBonusFlag.Event;
             }
+            // The dungeon meso rate (SpecialAttribute.DungeonRewardMeso) raises the clear's meso, event bonus included;
+            // the result dialog names the raised amount.
+            meso = KillRate.Apply(meso, session.Player.Stats.Values[SpecialAttribute.DungeonRewardMeso].Multiplier());
             UserRecord.Rewards[DungeonRewardType.Exp] = exp;
             UserRecord.Rewards[DungeonRewardType.Meso] = meso;
             // The clear's prestige exp: the dialog names the table's amount, as KMS2 sends it whatever the character

@@ -337,6 +337,25 @@ public class ShopHandlerTests {
         Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(5));
     }
 
+    // The shop sell rate (SpecialAttribute.ShopBuyingMeso, +20% here) raises the sale; the buy back costs the raised
+    // price, so selling and buying back gains nothing.
+    [Test]
+    public void ShopSellRate_RaisesTheSaleAndTheBuyBackPrice() {
+        GameSession session = Login();
+        session.Player.Stats.Values[SpecialAttribute.ShopBuyingMeso].AddTotal(200);
+
+        Sell(session, bagItem.Uid, 5);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000 + 420));
+        int entryId = BitConverter.ToInt32(test.TakeSent()[1], 5);
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteInt(entryId);
+        }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+        Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(5));
+    }
+
     [Test]
     public void BuyBack_WithoutMesosKeepsTheEntry() {
         GameSession session = Login();
