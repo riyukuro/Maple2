@@ -47,7 +47,8 @@ public partial class GameStorage {
         public int Pending;
     }
 
-    private static ref long RowWrite(long uid) => ref RowWrites[(int) ((ulong) uid * 0x9E3779B97F4A7C15UL >> 46)];
+    // unchecked: the Debug build checks overflow, and this hash multiply wraps on purpose.
+    private static ref long RowWrite(long uid) => ref RowWrites[(int) (unchecked((ulong) uid * 0x9E3779B97F4A7C15UL) >> 46)];
 
     // Moves row uid's stamp on: a stamp is never set twice to one value, so values kept at an earlier one no longer count.
     // The stamp only rises: a write that took its clock value before another one's stores it only while it is higher
