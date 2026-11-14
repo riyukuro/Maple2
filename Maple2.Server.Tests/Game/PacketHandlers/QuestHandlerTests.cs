@@ -63,6 +63,33 @@ public class QuestHandlerTests {
         return session;
     }
 
+    // A login whose config is loaded from the database, for a claim that stores it (the exploration round).
+    private GameSession ConfigLogin() {
+        GameSession session = Login();
+        test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
+            [JobCode.Newbie] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
+                [SkillRank.Basic] = [], [SkillRank.Awakening] = [],
+            }, []),
+        }));
+        test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            session.Config = new ConfigManager(db, session);
+        }
+        test.TakeSent();
+        return session;
+    }
+
+    private static int ExplorationPoints(ConfigManager config) {
+        var attributes = (StatAttributes) typeof(ConfigManager).GetField("statAttributes", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(config)!;
+        return attributes.Sources[AttributePointSource.Exploration];
+    }
+
+    // The exploration progress stored in the character's config row.
+    private int StoredExploration(GameSession session) {
+        using GameStorage.Request db = test.Storage.Context();
+        return new ConfigManager(db, session).ExplorationProgress;
+    }
+
     // A started quest with its one condition met or open.
     private Quest Started(bool met = true, bool remote = true, int remoteMap = 0, QuestType type = QuestType.EpicQuest) {
         Quest quest = test.StartQuest(Data(remote: remote, remoteMap: remoteMap, type: type));
@@ -1022,7 +1049,7 @@ public class QuestHandlerTests {
     [TestCase(5, 10)]
     [TestCase(4, 0)]
     public void FieldMission_GivesTheRoundsItemCount(int completed, int expected) {
-        GameSession session = Login();
+        GameSession session = ConfigLogin();
         test.SetTable(new FieldMissionTable(new Dictionary<int, FieldMissionTable.Entry> {
             [5] = new(5, new ItemComponent(RewardId, 1, 10, ItemTag.None), 0),
         }));
@@ -1044,12 +1071,64 @@ public class QuestHandlerTests {
         });
     }
 
+    // The round and its stat points are stored before its item is given: a crash after the item cannot leave the
+    // round unclaimed in the database. Before, the progress stayed in memory until the next save.
+    [Test]
+    public void FieldMission_TheRoundIsStoredWithItsItem() {
+        GameSession session = ConfigLogin();
+        test.SetTable(new FieldMissionTable(new Dictionary<int, FieldMissionTable.Entry> {
+            [5] = new(5, new ItemComponent(RewardId, 1, 10, ItemTag.None), 2),
+        }));
+        for (int i = 0; i < 5; i++) {
+            test.StartQuest(TestGameSession.QuestData(QuestId + 1 + i, QuestType.FieldMission)).State = QuestState.Completed;
+        }
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(26);
+            writer.WriteInt(5);
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session), Is.EqualTo(10));
+            Assert.That(StoredExploration(session), Is.EqualTo(5));
+            Assert.That(ExplorationPoints(session.Config), Is.EqualTo(2));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A save that fails gives nothing: no item, no stat points, the round still to claim.
+    [Test]
+    public void FieldMission_AFailedSaveGivesNothing() {
+        GameSession session = ConfigLogin();
+        test.SetTable(new FieldMissionTable(new Dictionary<int, FieldMissionTable.Entry> {
+            [5] = new(5, new ItemComponent(RewardId, 1, 10, ItemTag.None), 2),
+        }));
+        for (int i = 0; i < 5; i++) {
+            test.StartQuest(TestGameSession.QuestData(QuestId + 1 + i, QuestType.FieldMission)).State = QuestState.Completed;
+        }
+        int points = ExplorationPoints(session.Config);
+        test.FailSave = _ => true;
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(26);
+            writer.WriteInt(5);
+        }));
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session), Is.EqualTo(0));
+            Assert.That(session.Config.ExplorationProgress, Is.EqualTo(0));
+            Assert.That(StoredExploration(session), Is.EqualTo(0));
+            Assert.That(ExplorationPoints(session.Config), Is.EqualTo(points));
+        });
+    }
+
     // KR kr_fieldmission.xml rounds 5 (an item) and 10: the client claims the round after the last one claimed
     // (CQuestManager::GetNextRound), so with 10 missions completed a claim of round 10 before round 5 gives
     // nothing; then 5 and 10 each give theirs. Made-up items.
     [Test]
     public void FieldMission_TakesOnlyTheNextRound() {
-        GameSession session = Login();
+        GameSession session = ConfigLogin();
         test.SetTable(new FieldMissionTable(new Dictionary<int, FieldMissionTable.Entry> {
             [10] = new(10, new ItemComponent(RewardId, 1, 3, ItemTag.None), 0),
             [5] = new(5, new ItemComponent(RewardId, 1, 1, ItemTag.None), 0),
@@ -1075,7 +1154,7 @@ public class QuestHandlerTests {
     // CFieldMissionTable::GetNextRound finds no round after it and sends none, so a claim of 10 gives nothing.
     [Test]
     public void FieldMission_AfterAClaimedRoundOutsideTheTableTakesNone() {
-        GameSession session = Login();
+        GameSession session = ConfigLogin();
         test.SetTable(new FieldMissionTable(new Dictionary<int, FieldMissionTable.Entry> {
             [10] = new(10, new ItemComponent(RewardId, 1, 3, ItemTag.None), 0),
             [5] = new(5, new ItemComponent(RewardId, 1, 1, ItemTag.None), 0),

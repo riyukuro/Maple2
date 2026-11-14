@@ -1777,20 +1777,40 @@ public sealed class QuestManager {
             return;
         }
 
-        session.Config.ExplorationProgress = metadata.MissionCount;
+        // The round and its stat points are in the database before its item is given, so a crash between them
+        // cannot give the round twice (the progress stayed in memory until the next save). A failed save takes both
+        // back and gives nothing; the client may send the round again.
+        int previous = session.Config.ExplorationProgress;
+        bool applied = false;
+        if (!session.TrySavePurchase(db => {
+            applied = true;
+            session.Config.ExplorationProgress = metadata.MissionCount;
+            if (metadata.StatPoints > 0) {
+                session.Config.AddStatPoint(AttributePointSource.Exploration, metadata.StatPoints, send: false);
+            }
+            session.Config.Save(db);
+            return true;
+        })) {
+            if (applied) {
+                session.Config.ExplorationProgress = previous;
+                if (metadata.StatPoints > 0) {
+                    session.Config.AddStatPoint(AttributePointSource.Exploration, -metadata.StatPoints, send: false);
+                }
+            }
+            logger.Warning("Exploration round {Mission} not stored, nothing given", mission);
+            return;
+        }
         session.Send(QuestPacket.UpdateExploration(session.Config.ExplorationProgress));
 
         if (metadata.Item != null) {
             Item? item = session.Field?.ItemDrop.CreateItem(metadata.Item.ItemId, metadata.Item.Rarity, metadata.Item.Amount);
-            if (item != null) {
-                if (!session.Item.Inventory.Add(item, true)) {
-                    session.Item.MailItem(item);
-                }
+            if (item != null && !session.Item.Inventory.Add(item, true, commit: true) && !session.Item.MailItem(item)) {
+                logger.Error("Exploration round {Mission} item {ItemId} x{Amount} neither added nor mailed", mission, item.Id, item.Amount);
             }
         }
 
         if (metadata.StatPoints > 0) {
-            session.Config.AddStatPoint(AttributePointSource.Exploration, metadata.StatPoints);
+            session.Config.AddStatPoint(AttributePointSource.Exploration, 0);
         }
     }
 

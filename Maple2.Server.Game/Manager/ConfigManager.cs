@@ -613,9 +613,12 @@ public class ConfigManager {
         session.Send(AttributePointPacket.Sources(statAttributes));
     }
 
-    public void AddStatPoint(AttributePointSource source, int amount) {
+    // send false: the points of a save not yet committed, sent by a later AddStatPoint (an amount of 0 sends only).
+    public void AddStatPoint(AttributePointSource source, int amount, bool send = true) {
         statAttributes.Sources[source] += amount;
-        session.Send(AttributePointPacket.Sources(statAttributes));
+        if (send) {
+            session.Send(AttributePointPacket.Sources(statAttributes));
+        }
     }
 
     public void LoadSkillPoints() {
