@@ -389,6 +389,13 @@ public record MesoRevival(
     bool PcBangOnly) : GameEventData;
 
 /// <summary>
+/// <summary>
+/// The rank duel valor token event (RankDuelReward; KR 7 rows, Sundays, value1 10000): value1 is the rate in 1/10000
+/// added to the valor tokens of a rank duel's result. The client has no class for it (the list leaves it out); the
+/// server raises the grade's reward by gain * rate / 10000 before the week's cap.
+/// </summary>
+public record RankDuelRewardRate(int Rate) : GameEventData;
+
 /// The mastery reward (GameEventMasteryReward, commonfiles/gameevent.cpp:3417): value1 is the mastery type (_wtoi; KR
 /// uses 1 fishing and 2 music), value2 an XML list &lt;ms2&gt;&lt;v fieldID rate/&gt;&lt;/ms2&gt; of the maps and
 /// their rates in 1/10000 (CGameEventValueMasteryReward::Load, gameeventvalue.cpp:561: the first rate of a map counts,
@@ -775,6 +782,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(PetMastery), "PetMastery")]
 [JsonDerivedType(typeof(TransferItemBound), "TransferItemBound")]
 [JsonDerivedType(typeof(MesoRevival), "MesoRevival")]
+[JsonDerivedType(typeof(RankDuelRewardRate), "RankDuelRewardRate")]
 [JsonDerivedType(typeof(MasteryRewardEvent), "MasteryReward")]
 [JsonDerivedType(typeof(BlackMarketFeeDiscount), "BlackMarketFeeDiscount")]
 [JsonDerivedType(typeof(LevelUpPackage), "LevelUpPackage")]

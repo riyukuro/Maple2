@@ -23,6 +23,17 @@ public static class EventSaleRules {
         return rate;
     }
 
+    // The running RankDuelReward events' highest rate (server-only; chosen like the client's rate events), 0 when none.
+    public static int RankDuelRewardRate(IEnumerable<GameEvent> events) {
+        int rate = 0;
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is RankDuelRewardRate eventRate && eventRate.Rate > rate) {
+                rate = eventRate.Rate;
+            }
+        }
+        return rate;
+    }
+
     // The running MasteryReward events' rate for a mastery in a map: their rates add up
     // (CGameEventValueMasteryReward::GetRate, commonfiles/gameeventvalue.cpp:546), up to int.MaxValue.
     public static int MasteryRewardRate(IEnumerable<GameEvent> events, MasteryType type, int mapId) {

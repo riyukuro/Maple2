@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 
 namespace Maple2.Model.Game.Pvp;
 
@@ -68,8 +69,10 @@ public static class RankDuelRules {
     // winnerRating or loserRating; the valor tokens are the grade's winnerReward or loserReward, as far as the
     // grade's weeklyRewardMax leaves room this week (the dialog's gauge, UIRankPvPDialog::UpdateOwnRecord).
     // Chosen here: the rating does not go below 0; a duelist who left or never came gets the rating change but no
-    // tokens (rewarded = false).
-    public static RankDuelChange Apply(RankDuelRecord record, RankDuelGradeTable table, bool won, int opponentJob, bool rewarded) {
+    // tokens (rewarded = false). A running RankDuelReward event (eventRate, 1/10000) raises the grade's reward by
+    // reward * rate / 10000 before the week's room is taken, so the gauge holds.
+    public static RankDuelChange Apply(RankDuelRecord record, RankDuelGradeTable table, bool won, int opponentJob, bool rewarded,
+                                       int eventRate = 0) {
         RankDuelGradeTable.Grade? grade = GradeOf(table, record.Rating);
         int change = grade == null ? 0 : won ? grade.WinnerRating : grade.LoserRating;
         int rating = Math.Max(0, record.Rating + change);
@@ -80,7 +83,9 @@ public static class RankDuelRules {
         int reward = 0;
         if (rewarded && grade != null) {
             int room = Math.Max(0, grade.WeeklyRewardMax - record.WeeklyReward);
-            reward = Math.Min(won ? grade.WinnerReward : grade.LoserReward, room);
+            long gain = won ? grade.WinnerReward : grade.LoserReward;
+            gain += EventSaleRules.EventBonus(gain, eventRate);
+            reward = (int) Math.Min(gain, room);
             record.WeeklyReward += reward;
         }
 

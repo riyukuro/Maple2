@@ -354,8 +354,10 @@ public sealed class RankDuelField {
             var records = new Dictionary<long, RankDuelRecord>();
             foreach ((long characterId, bool won) in new[] { (winner, true), (loser, false) }) {
                 RankDuelRecord record = RankDuelStanding.Load(db, characterId, season);
-                bool here = field.TryGetPlayerById(characterId, out _);
-                changes[characterId] = RankDuelRules.Apply(record, grades, won, JobOf(db, won ? loser : winner), here);
+                bool here = field.TryGetPlayerById(characterId, out FieldPlayer? present);
+                // The running RankDuelReward events' highest rate raises the valor tokens (only one here gets any).
+                int eventRate = present == null ? 0 : EventSaleRules.RankDuelRewardRate(present.Session.FindEvent(GameEventType.RankDuelReward));
+                changes[characterId] = RankDuelRules.Apply(record, grades, won, JobOf(db, won ? loser : winner), here, eventRate);
                 records[characterId] = record;
             }
             // Both records in one save: when it fails neither changes, and nobody is rewarded.

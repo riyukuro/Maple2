@@ -2029,6 +2029,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventSaleReader.Rate(value1);
             case GameEventType.PetMastery:
                 return EventSaleReader.PetMastery(value1, value2);
+            case GameEventType.RankDuelReward:
+                return EventSaleReader.RankDuelReward(value1);
             case GameEventType.BlackMarketFeeDiscount:
                 return EventSaleReader.FeeRate(value1);
             default:

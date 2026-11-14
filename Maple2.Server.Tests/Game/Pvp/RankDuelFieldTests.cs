@@ -56,10 +56,13 @@ public class RankDuelFieldTests {
     }
 
     // A, B and a bystander (C) in A's field, which is made a rank duel field for A and B.
-    private static Duel Start(int season = 90) {
+    // beforeStart runs on A and B before their login (the events they are to see).
+    private static Duel Start(int season = 90, Action<TestGameSession>? beforeStart = null) {
         var a = new TestGameSession();
+        beforeStart?.Invoke(a);
         a.Start();
         var b = new TestGameSession(a.Options);
+        beforeStart?.Invoke(b);
         b.Start();
         var c = new TestGameSession(a.Options);
         c.Start();
@@ -226,6 +229,29 @@ public class RankDuelFieldTests {
 
         System.Threading.SpinWait.SpinUntil(() => duel.Ended.Count > 0, 2000);
         Assert.That(duel.Ended, Is.EqualTo(new[] { 7 }));
+    }
+
+    // A running RankDuelReward event (KR: Sundays, value1 10000) doubles each duelist's grade reward (10 to 20) and
+    // the week's count with it; an ended one adds nothing.
+    [TestCase(false, 20)]
+    [TestCase(true, 10)]
+    public void Death_RankDuelRewardEvent_RaisesTheTokens(bool ended, int expected) {
+        Duel duel = Start(beforeStart: test =>
+            test.AddEvent(10071, GameEventType.RankDuelReward, new RankDuelRewardRate(10000), end: ended ? DateTime.Now.AddDays(-1) : null));
+        Fight(duel);
+        WinRound(duel, duel.PlayerB);
+        long tokensA = duel.A.Session.Currency[CurrencyType.ValorToken];
+        long tokensB = duel.B.Session.Currency[CurrencyType.ValorToken];
+
+        duel.Field.RankDuel!.Death(duel.PlayerB);
+
+        using (GameStorage.Request db = duel.A.Storage.Context()) {
+            Assert.That(db.GetRankDuelRecord(duel.A.CharacterId).WeeklyReward, Is.EqualTo(expected));
+            Assert.That(db.GetRankDuelRecord(duel.B.CharacterId).WeeklyReward, Is.EqualTo(expected));
+        }
+        Assert.That(duel.A.Session.Currency[CurrencyType.ValorToken], Is.EqualTo(tokensA + expected));
+        Assert.That(duel.B.Session.Currency[CurrencyType.ValorToken], Is.EqualTo(tokensB + expected));
+        System.Threading.SpinWait.SpinUntil(() => duel.Ended.Count > 0, 2000);
     }
 
     // A win where the loser's hits took no health from the winner: the winner gets the perfect intro (Pvp 31) in

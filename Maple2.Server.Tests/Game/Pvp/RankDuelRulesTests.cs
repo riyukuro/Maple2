@@ -1,8 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.File.Ingest.Helpers;
+using Maple2.Model.Enum;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 
 namespace Maple2.Server.Tests.Game.Pvp;
 
@@ -52,6 +56,40 @@ public class RankDuelRulesTests {
         Assert.That(RankDuelRules.Apply(record, Grades, true, 10, true), Is.EqualTo(new RankDuelChange(1030, 30, 5)));
         Assert.That(record.WeeklyReward, Is.EqualTo(600));
         Assert.That(RankDuelRules.Apply(record, Grades, false, 10, true), Is.EqualTo(new RankDuelChange(1020, -10, 0)));
+    }
+
+    // A RankDuelReward event's rate raises the grade's reward before the week's room: 10 at 10000 is 20, at 2500 12
+    // (12.5 cut); the room still caps it, and one not rewarded gets nothing.
+    [TestCase(10000, 0, true, 20)]
+    [TestCase(2500, 0, true, 12)]
+    [TestCase(0, 0, true, 10)]
+    [TestCase(10000, 590, true, 10)]
+    [TestCase(10000, 600, true, 0)]
+    [TestCase(10000, 0, false, 0)]
+    [TestCase(int.MaxValue, 0, true, 600)]
+    public void Apply_RewardEvent(int eventRate, int weekly, bool rewarded, int expected) {
+        var record = new RankDuelRecord { Rating = 1000, WeeklyReward = weekly };
+        Assert.That(RankDuelRules.Apply(record, Grades, true, 10, rewarded, eventRate).Reward, Is.EqualTo(expected));
+        Assert.That(record.WeeklyReward, Is.EqualTo(weekly + expected));
+    }
+
+    [Test]
+    public void RewardEvent_HighestRateReaderAndNotListed() {
+        var test = new TestGameSession();
+        GameEvent low = test.AddEvent(1, GameEventType.RankDuelReward, new RankDuelRewardRate(2500));
+        GameEvent high = test.AddEvent(2, GameEventType.RankDuelReward, new RankDuelRewardRate(10000));
+        Assert.Multiple(() => {
+            Assert.That(EventSaleRules.RankDuelRewardRate([low, high]), Is.EqualTo(10000));
+            Assert.That(EventSaleRules.RankDuelRewardRate([]), Is.EqualTo(0));
+            // The client has no class for the type: the event list leaves it out.
+            Assert.That(high.SentToClient, Is.False);
+            Assert.That(EventSaleReader.RankDuelReward("10000"), Is.EqualTo(new RankDuelRewardRate(10000)));
+            Assert.That(EventSaleReader.RankDuelReward(" 5000 "), Is.EqualTo(new RankDuelRewardRate(5000)));
+            Assert.That(EventSaleReader.RankDuelReward("0"), Is.Null);
+            Assert.That(EventSaleReader.RankDuelReward("-1"), Is.Null);
+            Assert.That(EventSaleReader.RankDuelReward(null), Is.Null);
+            Assert.That(EventSaleReader.RankDuelReward("x"), Is.Null);
+        });
     }
 
     // One who left or never came: the rating change, no tokens.

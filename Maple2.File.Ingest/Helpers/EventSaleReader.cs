@@ -55,6 +55,11 @@ public static class EventSaleReader {
         return int.TryParse(value1?.Trim(), out int rate) && rate is >= 0 and <= 10000 ? new BlackMarketFeeDiscount(rate) : null;
     }
 
+    // RankDuelReward: the rate in value1, positive; else no event.
+    public static RankDuelRewardRate? RankDuelReward(string? value1) {
+        return int.TryParse(value1?.Trim(), out int rate) && rate > 0 ? new RankDuelRewardRate(rate) : null;
+    }
+
     public static EventRate? Rate(string? value1) {
         return int.TryParse(value1?.Trim(), out int rate) && rate > 0 ? new EventRate(rate) : null;
     }
