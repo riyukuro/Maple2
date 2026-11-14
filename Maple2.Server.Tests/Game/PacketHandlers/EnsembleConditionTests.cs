@@ -149,4 +149,41 @@ public class EnsembleConditionTests {
         Assert.That((leaderQuests[0].Conditions[0].Counter, guestQuests[0].Conditions[0].Counter), Is.EqualTo((10, 10)));
         Assert.That((leaderQuests[1].Conditions[0].Counter, guestQuests[1].Conditions[0].Counter), Is.EqualTo((0, 0)));
     }
+
+    // A leader whose party has no other ready member plays the score alone: the start is a solo play (StartScore's
+    // ensemble flag off, the client's solo state 0x7f), so it counts the score's music_play_score and no ensemble
+    // condition, and its stop no play_ensenble_time. Before, the leader alone counted an ensemble.
+    [Test]
+    public void LeaderAlone_PlaysSolo() {
+        (Quest[] leaderQuests, _) = Party(7,
+            Condition(ConditionType.music_play_ensemble, 1, []),
+            Condition(ConditionType.music_play_score, 1, []),
+            Condition(ConditionType.play_ensenble_time, 300, ["2000001"]));
+
+        Items(guestTest);
+        (long leaderInstrument, long leaderScore) = Items(leaderTest);
+        Send(leaderTest, 5, leaderInstrument, leaderScore);
+
+        Assert.That(leader.Instrument?.Ensemble, Is.False);
+        Assert.That(guest.Instrument, Is.Null);
+        Item score = leader.Item.Inventory.Get(leaderScore, InventoryType.FishingMusic)!;
+        byte[] start = Maple2.Server.Game.Packets.InstrumentPacket.StartScore(leader.Instrument!, score).ToArray();
+        Assert.That(leaderTest.TakeSent().Any(packet => packet.SequenceEqual(start)), Is.True, "the solo start is sent");
+        leader.Instrument!.StartTick -= 10_500;
+        Send(leaderTest, 4);
+        Assert.That(leaderQuests.Select(quest => quest.Conditions[0].Counter), Is.EqualTo(new[] { 0, 1, 0 }));
+    }
+
+    // Two ready members are an ensemble: both starts carry the flag and count the ensemble, not the solo score.
+    [Test]
+    public void TwoReady_PlayAnEnsemble() {
+        (Quest[] leaderQuests, Quest[] guestQuests) = Party(0,
+            Condition(ConditionType.music_play_ensemble, 1, []),
+            Condition(ConditionType.music_play_score, 1, []));
+
+        Ensemble();
+
+        Assert.That(leaderQuests.Select(quest => quest.Conditions[0].Counter), Is.EqualTo(new[] { 1, 0 }));
+        Assert.That(guestQuests.Select(quest => quest.Conditions[0].Counter), Is.EqualTo(new[] { 1, 0 }));
+    }
 }

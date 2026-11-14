@@ -239,6 +239,7 @@ public class InstrumentHandler : FieldPacketHandler {
 
         // Store tick to ensure all members instruments have the same start tick
         long startTick = Environment.TickCount64;
+        var started = new List<GameSession>();
         foreach ((long characterId, PartyMember member) in session.Party.Party.Members) {
             // The staged score was checked when the member got ready; it may have been played out since.
             if (!session.FindSession(characterId, out GameSession? memberSession) ||
@@ -257,16 +258,31 @@ public class InstrumentHandler : FieldPacketHandler {
             if (!TryUseInstrument(memberSession, memberSession.StagedInstrumentItem.Uid, startTick, true, out memberSession.Instrument)) {
                 continue;
             }
+            started.Add(memberSession);
+        }
 
+        // An ensemble needs two players: a leader started alone plays the score solo. StartScore's flag is the
+        // client's ensemble mark (CInstrumentManager::OnPerformStart: pc state 0x81 with it, 0x7f, a solo play,
+        // without), so the leader's client shows a solo play, and the play counts as one (music_play_score, no
+        // ensemble condition, no play_ensenble_time at its stop).
+        bool ensemble = started.Count >= 2;
+        foreach (GameSession memberSession in started) {
+            Item memberScore = memberSession.StagedScoreItem!;
+            FieldInstrument instrument = memberSession.Instrument!;
+            instrument.Ensemble = ensemble;
             // The score in play: a player who enters the field is sent it, and it gives its own mastery at the stop.
-            memberSession.Instrument.Score = memberSession.StagedScoreItem;
+            instrument.Score = memberScore;
             // One start per ready: the next ensemble needs a new request of the member.
             memberSession.EnsembleReady = false;
-            memberSession.StagedScoreItem.RemainUses--;
-            memberSession.Field.Broadcast(InstrumentPacket.StartScore(memberSession.Instrument, memberSession.StagedScoreItem));
-            memberSession.Send(InstrumentPacket.RemainUses(memberSession.StagedScoreItem.Uid, memberSession.StagedScoreItem.RemainUses));
-            memberSession.ConditionUpdate(ConditionType.music_play_ensemble);
-            memberSession.ConditionUpdate(ConditionType.music_play_ensemble_in, codeLong: memberSession.Field.MapId, targetLong: memberSession.Field.MapId);
+            memberScore.RemainUses--;
+            memberSession.Field!.Broadcast(InstrumentPacket.StartScore(instrument, memberScore));
+            memberSession.Send(InstrumentPacket.RemainUses(memberScore.Uid, memberScore.RemainUses));
+            if (ensemble) {
+                memberSession.ConditionUpdate(ConditionType.music_play_ensemble);
+                memberSession.ConditionUpdate(ConditionType.music_play_ensemble_in, codeLong: memberSession.Field.MapId, targetLong: memberSession.Field.MapId);
+            } else {
+                memberSession.ConditionUpdate(ConditionType.music_play_score, codeLong: memberScore.Id, targetLong: memberSession.Field.MapId);
+            }
         }
     }
 
