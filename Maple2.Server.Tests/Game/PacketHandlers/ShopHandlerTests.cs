@@ -59,6 +59,8 @@ public class ShopHandlerTests {
     private bool enableReset;
     private ShopFrameType frameType;
     private Action? beforeStart;
+    // The store of Login's session: null for the in-memory one (the MySQL test sets it).
+    private DbContextOptions? storeOptions;
 
     // NUnit keeps one fixture for all its tests: the shop's settings start anew for each.
     [SetUp]
@@ -67,6 +69,7 @@ public class ShopHandlerTests {
         enableReset = false;
         frameType = ShopFrameType.Default;
         beforeStart = null;
+        storeOptions = null;
     }
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
@@ -84,7 +87,7 @@ public class ShopHandlerTests {
     }
 
     private GameSession Login(long meso = 10000, params AchievementMetadata[] trophies) {
-        test = new TestGameSession();
+        test = new TestGameSession(storeOptions);
         test.AddAchievement(trophies);
         test.SetServerTable(new ShopTable(new Dictionary<int, ShopMetadata> {
             [ShopId] = new(ShopId, 0, "shop", frameType, false, false, false, false, false, false, false, 0, enableReset,
@@ -592,43 +595,105 @@ public class ShopHandlerTests {
         Assert.That(session.Item.Inventory.Find(20000003), Is.Empty);
     }
 
-    // A buy back whose bag write fails: the entry is listed again with its id and no meso is taken. Before, the
-    // mesos were taken and the item, out of the list and not in the bag, was lost.
-    [Test]
-    public void BuyBack_FailedWriteKeepsTheEntryAndTheMesos() {
+    // A buy back whose store fails (the item's row or the wallet): the entry stays listed and no meso is taken, and
+    // the answer is the error with no notice. Before, the bag's write came first and the wallet was stored after it.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void BuyBack_NotStoredKeepsTheEntryAndTheMesos(bool wallet) {
         GameSession session = Login();
         Sell(session, bagItem.Uid, 5);
         int entryId = BitConverter.ToInt32(test.TakeSent()[1], 5);
+        SaveShop(session);
         long mesos = session.Currency.Meso;
-        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "Item");
+        long stored = StoredMeso();
+        test.FailSave = wallet ? WalletSave : context => context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "Item");
 
-        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
-            writer.WriteByte(3);
-            writer.WriteInt(entryId);
-        }));
+        BuyBack(session, entryId);
         test.FailSave = null;
 
-        List<byte[]> sent = test.TakeSent();
         Assert.Multiple(() => {
             Assert.That(session.Currency.Meso, Is.EqualTo(mesos));
+            // With the item's write failing, the in-memory store kept the wallet written before it (no transaction).
+            if (wallet) {
+                Assert.That(StoredMeso(), Is.EqualTo(stored));
+            }
             Assert.That(session.Item.Inventory.Find(20000003), Is.Empty);
-            Assert.That(sent.Select(packet => (TestGameSession.Op(packet), Sub(packet))), Is.EqualTo(new[] {
-                // The give-back sends the balance (the price was taken without a packet).
-                (SendOp.Shop, (byte) 8), (SendOp.ItemInventory, (byte) 13), (SendOp.Meso, sent[2][2]), (SendOp.Shop, (byte) 7),
-            }));
-            Assert.That(Convert.ToHexString(sent[1]), Is.EqualTo(Hex(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory))));
-            Assert.That(BitConverter.ToInt32(sent[3], 5), Is.EqualTo(entryId));
+            Assert.That(ItemOwner(bagItem.Uid), Is.EqualTo(0));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_no_notice, BuyBackCommand)) }));
         });
 
-        // Bought back again with the write working, it comes back once.
-        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
-            writer.WriteByte(3);
-            writer.WriteInt(entryId);
-        }));
+        // Bought back again with the store working, it comes back once, stored with the wallet.
+        BuyBack(session, entryId);
         Assert.Multiple(() => {
             Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(5));
             Assert.That(session.Currency.Meso, Is.EqualTo(mesos - 350));
+            Assert.That(StoredMeso(), Is.EqualTo(mesos - 350));
+            Assert.That(ItemOwner(bagItem.Uid), Is.EqualTo(test.CharacterId));
         });
+    }
+
+    // A buy back stores the item's row back to the character with the wallet, before the bag shows it.
+    [Test]
+    public void BuyBack_StoresTheItemWithTheWallet() {
+        GameSession session = Login();
+        Sell(session, bagItem.Uid, 5);
+        int entryId = BitConverter.ToInt32(test.TakeSent()[1], 5);
+        SaveShop(session);
+        Assert.That(ItemOwner(bagItem.Uid), Is.EqualTo(0));
+
+        BuyBack(session, entryId);
+
+        Assert.Multiple(() => {
+            Assert.That(StoredMeso(), Is.EqualTo(10000));
+            Assert.That(ItemOwner(bagItem.Uid), Is.EqualTo(test.CharacterId));
+        });
+    }
+
+    // The session save of the shop and the wallet: the buy-back entries' rows go to owner 0.
+    private void SaveShop(GameSession session) {
+        using (GameStorage.Request db = test.Storage.Context()) {
+            session.Shop.Save(db);
+        }
+        session.SavePurchase();
+    }
+
+    // The bought count the open shop shows for a product.
+    private static int? Purchased(GameSession session, int productId) {
+        var shop = (Shop?) typeof(ShopManager).GetField("activeShop", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Shop);
+        return shop != null && shop.Items.TryGetValue(productId, out ShopItem? item) ? item.StockPurchased : null;
+    }
+
+    private void BuyBack(GameSession session, int entryId) {
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteInt(entryId);
+        }));
+    }
+
+    private static bool WalletSave(DbContext context) =>
+        context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Modified && entry.Entity is Maple2.Database.Model.Account or Maple2.Database.Model.Character);
+
+    private long StoredMeso() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Character.AsNoTracking().Single(row => row.Id == test.CharacterId).Currency.Meso;
+    }
+
+    private long? ItemOwner(long uid) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Item.AsNoTracking().SingleOrDefault(row => row.Id == uid)?.OwnerId;
+    }
+
+    // Item rows of an item id: (owner, amount).
+    private List<(long Owner, int Amount)> ItemRows(int itemId) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Item.AsNoTracking().Where(row => row.ItemId == itemId).AsEnumerable().Select(row => (row.OwnerId, row.Amount)).ToList();
+    }
+
+    // The stored bought count of a product (null: no row).
+    private int? StoredStock(int productId) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.CharacterShopItemData.AsNoTracking().SingleOrDefault(row => row.ShopId == ShopId && row.ShopItemId == productId)?.StockPurchased;
     }
 
     // The buy back runs under the bag lock from its room check to the meso take, so an item or meso change made under
@@ -1234,23 +1299,129 @@ public class ShopHandlerTests {
     // A rolled shop (reset on, a day's restock) keeps the products it rolled until the restock: a login before it
     // shows the stored list with its bought counts. Before, a login rolled the list anew, and a product of the new roll
     // had no stored row, so its buys were never counted and its stock never ran out.
-    // A shop without a reset stores its bought count in a row made at the first buy. When that row cannot be stored,
-    // the buy still counts on the shown product, so its limit holds while the shop is open; before, it sold on.
+    // A shop without a reset stores its bought count in a row made at the first buy, in the buy's transaction. When
+    // that row cannot be stored, nothing is bought and nothing paid. Before, the buy went through with its count
+    // kept only in memory, lost at the next login.
     [Test]
-    public void Buy_FromAShopWithoutAReset_CountsWhenItsRowIsNotStored() {
+    public void Buy_FromAShopWithoutAReset_WhoseRowIsNotStored_BuysNothing() {
         GameSession session = Login();
         test.FailSave = context => context.ChangeTracker.Entries()
             .Any(entry => entry.State == EntityState.Added && entry.Entity.GetType().Name == "CharacterShopItemData");
 
         Buy(session, StockProductId, 50);
-        Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 50 * 20));
-        test.TakeSent();
-        Buy(session, StockProductId, 1);
+        test.FailSave = null;
 
         Assert.Multiple(() => {
+            // The stored wallet: the in-memory store has no transaction to roll back (see
+            // Buy_WhoseStockRowFails_StoresNothing_MySql).
+            Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+            Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
+            Assert.That(Purchased(session, StockProductId), Is.Zero);
+            Assert.That(StoredStock(StockProductId), Is.Null);
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { NoNotice }));
+        });
+
+        // With the store working, the row is made and the stock counted.
+        Buy(session, StockProductId, 50);
+        test.TakeSent();
+        Buy(session, StockProductId, 1);
+        Assert.Multiple(() => {
             Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 50 * 20));
+            Assert.That(StoredStock(StockProductId), Is.EqualTo(50));
             Assert.That(test.TakeSent().Select(Convert.ToHexString),
                 Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_lack_shopitem, BuyCommand)) }));
+        });
+    }
+
+    // The wallet, the payment items' rows and the bought stock are stored in one transaction before the item is given:
+    // a buy whose wallet cannot be stored gives nothing, takes nothing and counts no stock. Before, the item was given
+    // and the stock counted first, the wallet stored after (a crash in between kept the item with the price unpaid).
+    [TestCase(StockProductId)]
+    [TestCase(TrevaProductId)]
+    [TestCase(GameMeretProductId)]
+    [TestCase(ItemCostProductId)]
+    public void Buy_WhoseWalletIsNotStored_GivesNothing(int productId) {
+        Item payment = null!;
+        beforeStart = () => payment = test.Store(TestGameSession.Metadata(PaymentItemId), amount: 5);
+        GameSession session = Login();
+        test.SetServerTable(new ConstantsTable(HonorTokenMax: 30000, KarmaTokenMax: 30000));
+        session.Currency[CurrencyType.Treva] = 100;
+        session.Currency.GameMeret = 100;
+        session.SavePurchase();
+        test.TakeSent();
+        test.FailSave = WalletSave;
+
+        Buy(session, productId, 1);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+            Assert.That(StoredMeso(), Is.EqualTo(10000));
+            Assert.That(session.Currency[CurrencyType.Treva], Is.EqualTo(100));
+            Assert.That(session.Currency.GameMeret, Is.EqualTo(100));
+            Assert.That(session.Item.Inventory.Get(payment.Uid)?.Amount, Is.EqualTo(5));
+            Assert.That(ItemRows(PaymentItemId), Is.EqualTo(new[] { (test.CharacterId, 5) }));
+            Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
+            Assert.That(ItemRows(ProductItemId), Is.Empty);
+            Assert.That(Purchased(session, StockProductId), Is.Zero);
+            Assert.That(StoredStock(StockProductId), Is.Null);
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Contain(NoNotice));
+        });
+    }
+
+    // A stored buy: the wallet, the payment rows and the stock row hold it at once.
+    [TestCase(StockProductId)]
+    [TestCase(ItemCostProductId)]
+    public void Buy_StoresThePaymentAndTheStockWithTheBuy(int productId) {
+        Item payment = null!;
+        beforeStart = () => payment = test.Store(TestGameSession.Metadata(PaymentItemId), amount: 5);
+        GameSession session = Login();
+
+        Buy(session, productId, 1);
+
+        bool items = productId == ItemCostProductId;
+        Assert.Multiple(() => {
+            Assert.That(StoredMeso(), Is.EqualTo(items ? 10000 : 10000 - 20));
+            Assert.That(session.Item.Inventory.Get(payment.Uid)?.Amount, Is.EqualTo(items ? 2 : 5));
+            Assert.That(ItemRows(PaymentItemId), Is.EqualTo(new[] { (test.CharacterId, items ? 2 : 5) }));
+            Assert.That(StoredStock(StockProductId), Is.EqualTo(items ? null : 1));
+            Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(1));
+        });
+    }
+
+    // A stored buy whose item can be neither added nor mailed (both writes fail): the price is given back and the
+    // bought stock uncounted, both stored, and the answer is the error with no notice (an error log names the
+    // character, the item and the price). Before, it was logged and the price kept.
+    [TestCase(StockProductId)]
+    [TestCase(TrevaProductId)]
+    [TestCase(ItemCostProductId)]
+    public void Buy_WhoseItemIsNeitherAddedNorMailed_GivesThePriceBack(int productId) {
+        Item payment = null!;
+        beforeStart = () => payment = test.Store(TestGameSession.Metadata(PaymentItemId), amount: 5);
+        GameSession session = Login();
+        test.SetServerTable(new ConstantsTable(HonorTokenMax: 30000, KarmaTokenMax: 30000));
+        session.Currency[CurrencyType.Treva] = 100;
+        session.SavePurchase();
+        test.TakeSent();
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added
+            && (entry.Entity is Maple2.Database.Model.Mail || entry.Entity is Maple2.Database.Model.Item { ItemId: ProductItemId }));
+
+        Buy(session, productId, 1);
+        test.FailSave = null;
+
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+            Assert.That(StoredMeso(), Is.EqualTo(10000));
+            Assert.That(session.Currency[CurrencyType.Treva], Is.EqualTo(100));
+            Assert.That(session.Item.Inventory.Find(PaymentItemId).Sum(item => item.Amount), Is.EqualTo(5));
+            Assert.That(ItemRows(PaymentItemId).Where(row => row.Owner == test.CharacterId).Sum(row => row.Amount), Is.EqualTo(5));
+            Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
+            Assert.That(ItemRows(ProductItemId), Is.Empty);
+            Assert.That(db.GetAllMail(test.CharacterId), Is.Empty);
+            Assert.That(Purchased(session, StockProductId), Is.Zero);
+            Assert.That(StoredStock(StockProductId), Is.EqualTo(productId == StockProductId ? 0 : null));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Contain(NoNotice));
         });
     }
 
@@ -1280,5 +1451,49 @@ public class ShopHandlerTests {
             Hex(ShopPacket.Error(ShopError.s_err_invalid_item, BuyCommand)),
             Hex(ShopPacket.Error(ShopError.s_err_lack_shopitem, BuyCommand)),
         }));
+    }
+    // On MySQL the buy's wallet and stock row are one transaction (the in-memory store cannot show it): a stock row
+    // whose insert fails (here a row already stored under the product's key) leaves the stored wallet as it was, and
+    // the buy gives nothing. Runs only when MS2_TEST_GAME_DB holds the connection string of a scratch MySQL game
+    // database.
+    [Test]
+    public void Buy_WhoseStockRowFails_StoresNothing_MySql() {
+        string? connection = Environment.GetEnvironmentVariable("MS2_TEST_GAME_DB");
+        if (connection == null) {
+            Assert.Ignore("the purchase save's rollback needs a real database: set MS2_TEST_GAME_DB");
+        }
+        ServerVersion version = ServerVersion.AutoDetect(connection);
+        storeOptions = new DbContextOptionsBuilder().UseMySql(connection, version).Options;
+        IDisposable? held = null;
+        beforeStart = () => held = GameStorage.HoldOwners(test.AccountId, test.CharacterId);
+        try {
+            GameSession session = Login();
+            Assume.That(session.SavePurchase(), Is.True, "the wallet stored before the buy");
+            using (var context = new Maple2.Database.Context.Ms2Context(storeOptions)) {
+                Maple2.Database.Model.Shop.CharacterShopItemData row = new CharacterShopItemData {
+                    ShopId = ShopId,
+                    ShopItemId = StockProductId,
+                    Item = new Item(TestGameSession.Metadata(ProductItemId)),
+                    StockPurchased = 7,
+                };
+                row.OwnerId = test.CharacterId;
+                context.CharacterShopItemData.Add(row);
+                context.SaveChanges();
+            }
+
+            Buy(session, StockProductId, 2);
+
+            Assert.Multiple(() => {
+                Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+                Assert.That(StoredMeso(), Is.EqualTo(10000));
+                Assert.That(StoredStock(StockProductId), Is.EqualTo(7));
+                Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
+                Assert.That(ItemRows(ProductItemId), Is.Empty);
+                Assert.That(Purchased(session, StockProductId), Is.Zero);
+                Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { NoNotice }));
+            });
+        } finally {
+            held?.Dispose();
+        }
     }
 }

@@ -379,6 +379,7 @@ public class MeretMarketPremiumTests {
             Assert.That(StoredMeret(), Is.EqualTo(4900));
             Assert.That(ItemRows(), Is.EqualTo(new[] { (mail.Id, 1) }));
             Assert.That(Owned(), Is.Zero);
+            Assert.That(test.World.MailNotifications.Select(notice => notice.MailId), Is.EqualTo(new[] { mail.Id }));
         });
     }
 }

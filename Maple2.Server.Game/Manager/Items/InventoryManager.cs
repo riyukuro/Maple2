@@ -1178,6 +1178,25 @@ public class InventoryManager {
         }
     }
 
+    // The stacks ConsumeItemComponents([itemId at rarity, amount]) would take, in its order, each with the amount taken
+    // from it and its rarity, without taking them; null when the bag holds fewer. For a payment whose rows are written
+    // in the purchase's transaction (SaveConsumed per stack, ConsumeStored once it committed).
+    public List<(long Uid, int Amount, int Rarity)>? PlanConsume(int itemId, int rarity, int amount) {
+        lock (session.Item) {
+            var plan = new List<(long Uid, int Amount, int Rarity)>();
+            int remaining = amount;
+            foreach (Item item in Filter(item => item.IsSpendable() && item.Id == itemId && (rarity < 0 || item.Rarity == Item.ClientRarity(item.Metadata, rarity)))) {
+                if (remaining <= 0) {
+                    break;
+                }
+                int take = Math.Min(remaining, item.Amount);
+                plan.Add((item.Uid, take, item.Rarity));
+                remaining -= take;
+            }
+            return remaining > 0 ? null : plan;
+        }
+    }
+
     // Writes the row of bag item uid as Consume(uid, amount) leaves it (the stack's lower amount, or the last ones given
     // up: owner 0, as Save stores a removed item), in db's transaction; memory is not changed. For a use whose other
     // rows are stored at once (a worn lapenshard, a stored wedding hall): the caller calls ConsumeStored once db

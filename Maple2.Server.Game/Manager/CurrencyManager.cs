@@ -531,6 +531,22 @@ public class CurrencyManager {
         return true;
     }
 
+    // Gives back a TryTake(type, amount) whose purchase was not stored: added in one step as a gain is, with the balance
+    // packet, but not counted by the gain's condition (get_honor_token and the like), since nothing was gained. The
+    // give-back stops at the currency's cap as every gain does; a part over it is logged.
+    public void Return(CurrencyType type, long amount) {
+        if (amount <= 0) {
+            return;
+        }
+        long change;
+        lock (walletLock) {
+            change = SetLocked(type, Sum(this[type], amount), out _);
+        }
+        if (change < amount) {
+            logger.Warning("{Type} give-back of {Amount} for {CharacterId} over the cap by {Over}", type, amount, session.CharacterId, amount - change);
+        }
+    }
+
     // A gain is counted by its condition (get_honor_token and the like) after the lock is let go. The balance packet
     // is sent under the lock (SetLocked), as the meso and meret packets are: each carries the whole balance, and one
     // sent after the lock could reach the client after a later change's packet, showing a stale balance. Chosen here:

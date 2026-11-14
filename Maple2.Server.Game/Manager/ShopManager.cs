@@ -607,7 +607,60 @@ public sealed class ShopManager {
             return;
         }
 
-        if (!Pay(shopItem.Metadata.Cost, price, toGuildStorage ? new RewardItem(item.Id, (short) item.Rarity, item.Amount) : default, BuyCommand)) {
+        if (toGuildStorage) {
+            BuyFromGuildFund(shopItem, item, quantity, price);
+            return;
+        }
+
+        // The price is taken in memory first (held: its balance packet waits), then the wallet, the payment items' rows
+        // and the bought stock are stored in one transaction; the item is given only once that is kept. A store that
+        // fails gives the price back and gives nothing, so a crash at any point never leaves a free item; a crash after
+        // the commit and before the item's write loses the item (the accepted cost). Before, the item was added and the
+        // stock counted first and the wallet stored after, so a crash in between kept the item with the price unpaid.
+        if (HoldPayment(shopItem.Metadata.Cost, price, BuyCommand) is not { } held) {
+            return;
+        }
+        if (!session.TrySavePurchase(db => SavePayment(db, held) && (shopItem.StockCount <= 0 || SaveStock(db, shopItem, quantity)))) {
+            ReleasePayment(held);
+            logger.Error("Shop {ShopId} buy of item {ItemId} x{Amount} for {CharacterId} not stored; the price {Price} {Currency} is given back",
+                activeShop.Id, item.Id, item.Amount, session.CharacterId, price, shopItem.Metadata.Cost.Type);
+            session.Send(ShopPacket.Error(ShopError.s_err_no_notice, BuyCommand));
+            return;
+        }
+        SettlePayment(held);
+
+        // The room was checked above, so only a failed item write leaves it out of the bag: then it goes by mail. When
+        // the mail is refused too, the price is given back and the bought stock uncounted, stored on their own.
+        if (!session.Item.AddOrMail(item, true, commit: true)) {
+            logger.Error("Shop {ShopId} item {ItemId} x{Amount} bought by {CharacterId} for {Price} {Currency} was neither added nor mailed; the price is given back",
+                activeShop.Id, item.Id, item.Amount, session.CharacterId, price, shopItem.Metadata.Cost.Type);
+            RefundPayment(held);
+            if (shopItem.StockCount > 0) {
+                CountStock(shopItem, -quantity);
+            }
+            SaveStockRow(shopItem);
+            session.Send(ShopPacket.Error(ShopError.s_err_no_notice, BuyCommand));
+            return;
+        }
+        // KMS2 order: the payment, the item, the bought count, then the result.
+        if (shopItem.StockCount > 0) {
+            session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));
+        }
+        session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price, false));
+        CountBuyCondition(shopItem, price);
+    }
+
+    // A product paid from the guild fund: the World takes the fund and stores the product in the guild storage in one
+    // save, so only the bought stock is stored here, after it.
+    private void BuyFromGuildFund(ShopItem shopItem, Item item, int quantity, int price) {
+        GuildError fundError = session.Guild.SpendFund(price, new RewardItem(item.Id, (short) item.Rarity, item.Amount));
+        if (fundError != GuildError.none) {
+            session.Send(ShopPacket.Error(FundBuyError(fundError), BuyCommand));
+            if (FundBuyError(fundError) == ShopError.s_err_no_notice) {
+                // The World's own failure, or its answer lost (the buy may be stored: the storage list then
+                // shows it), not a refusal: the guild's unknown error, not the "master only" notice.
+                session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+            }
             return;
         }
 
@@ -618,29 +671,80 @@ public sealed class ShopManager {
                 UpdateUnresetStockCount(activeShop.Metadata, shopItem, quantity);
             }
         }
-
-        // The room was checked above, so only a failed item write leaves part of it out of the bag: that part
-        // (the amount the item keeps) goes by mail, as it is paid for.
-        if (!toGuildStorage && !session.Item.AddOrMail(item, true, commit: true)) {
-            logger.Error("Shop {ShopId} item {ItemId} x{Amount} was paid for and neither added nor mailed", activeShop.Id, item.Id, item.Amount);
-        }
-        // KMS2 order: the payment, the item, the bought count, then the result.
         if (shopItem.StockCount > 0) {
             session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));
         }
-        session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price, toGuildStorage));
-        // The mesos, Treva or Valor Tokens paid in an NPC shop count for shop_buy, shop_buy_karma_token or
-        // shop_buy_honor_token (trophies 23200004, 23200014, 23200012).
+        // The result's last flag shows the client's storage notice (UIShopDialog::ReadPurchaseResult, uishopdialog.cpp:1841).
+        session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price, true));
+        CountBuyCondition(shopItem, price);
+        SaveStockRow(shopItem);
+    }
+
+    // The mesos, Treva or Valor Tokens paid in an NPC shop count for shop_buy, shop_buy_karma_token or
+    // shop_buy_honor_token (trophies 23200004, 23200014, 23200012).
+    private void CountBuyCondition(ShopItem shopItem, int price) {
         if (ShopRules.BuyCondition(shopItem.Metadata.Cost.Type) is { } buyCondition && price > 0) {
             session.ConditionUpdate(buyCondition, counter: price);
         }
+    }
 
-        // Store the paid price and the bought stock now, not only at the next session save.
-        if (shopItem.StockCount > 0 && TryGetSavedStockRow(activeShop.Id, shopItem.Id, out long stockOwnerId, out CharacterShopItemData? stockRow)) {
+    // Stores the wallet with the product's stock row when the session save stores that row (see Save), now rather
+    // than at the next session save.
+    private void SaveStockRow(ShopItem shopItem) {
+        if (shopItem.StockCount > 0 && TryGetSavedStockRow(activeShop!.Id, shopItem.Id, out long stockOwnerId, out CharacterShopItemData? stockRow)) {
             session.SavePurchase(db => db.SaveCharacterShopItemData(stockOwnerId, [stockRow]));
         } else {
             session.SavePurchase();
         }
+    }
+
+    // Counts quantity (less when negative) on the shown product and its stock row in memory.
+    private void CountStock(ShopItem shopItem, int quantity) {
+        shopItem.StockPurchased += quantity;
+        if (TryGetShopItemData(activeShop!.Id, out IDictionary<int, CharacterShopItemData>? data) &&
+            data.TryGetValue(shopItem.Id, out CharacterShopItemData? itemData)) {
+            itemData.StockPurchased += quantity;
+        }
+    }
+
+    // Writes the bought stock in db's transaction. The counts change in memory at once (the row is written from them)
+    // and go back when the transaction ends without a commit. A shop without a reset makes the product's row at its
+    // first buy, in the same transaction, and lists it once that is committed: a row that cannot be made fails the
+    // purchase. (Before, the buy went through without its row, and the count was lost at the next login.)
+    private bool SaveStock(GameStorage.Request db, ShopItem shopItem, int quantity) {
+        ShopMetadata metadata = activeShop!.Metadata;
+        bool hasRow = TryGetShopItemData(metadata.Id, out IDictionary<int, CharacterShopItemData>? data) && data.ContainsKey(shopItem.Id);
+        if (metadata.EnableReset || hasRow) {
+            CountStock(shopItem, quantity);
+            db.AfterEnd(() => { }, () => CountStock(shopItem, -quantity));
+            return !TryGetSavedStockRow(metadata.Id, shopItem.Id, out long ownerId, out CharacterShopItemData? row)
+                   || db.SaveCharacterShopItemData(ownerId, [row]);
+        }
+
+        long rowOwnerId = metadata.RestockData.AccountWide ? session.AccountId : session.CharacterId;
+        CharacterShopItemData? created = db.CreateCharacterShopItemData(rowOwnerId, new CharacterShopItemData {
+            ShopId = metadata.Id,
+            ShopItemId = shopItem.Id,
+            Item = shopItem.Item,
+            StockPurchased = shopItem.StockPurchased + quantity,
+        });
+        if (created == null) {
+            logger.Error("Failed to create stock data for shop {ShopId} item {ShopItemId}", metadata.Id, shopItem.Id);
+            return false;
+        }
+        shopItem.StockPurchased += quantity;
+        db.AfterEnd(() => {
+            if (!TryGetShopItemData(metadata.Id, out IDictionary<int, CharacterShopItemData>? rows)) {
+                rows = new Dictionary<int, CharacterShopItemData>();
+                if (metadata.RestockData.AccountWide) {
+                    accountShopItemData[metadata.Id] = rows;
+                } else {
+                    characterShopItemData[metadata.Id] = rows;
+                }
+            }
+            rows[shopItem.Id] = created;
+        }, () => shopItem.StockPurchased -= quantity);
+        return true;
     }
 
     // The stock row of a shop item and its owner, when the session save stores that shop's rows (see Save).
@@ -670,11 +774,13 @@ public sealed class ShopManager {
             return;
         }
 
-        // The bag lock is held from the room and meso checks to the meso take, so an item or meso change made under it
-        // on another thread cannot come between them (the take would throw with the item given). The save comes after
-        // the lock: a session save takes the account lock and then the bag lock, so this takes them in that order too.
+        // The bag lock is held from the room and meso checks to the meso take and the entry's removal, so an item or
+        // meso change made under it on another thread cannot come between them. The store comes after the lock: a
+        // purchase save takes the account lock and then the bag lock, so this takes them in that order too.
+        BuyBackItem? buyBackItem;
+        long sends;
         lock (session.Item) {
-            if (!buyBackItems.TryGetValue(id, out BuyBackItem? buyBackItem)) {
+            if (!buyBackItems.TryGetValue(id, out buyBackItem)) {
                 session.Send(ShopPacket.Error(ShopError.s_err_invalid_item, BuyBackCommand));
                 return;
             }
@@ -684,35 +790,42 @@ public sealed class ShopManager {
                 return;
             }
 
-            // The price is checked and taken in one step before the item is given; its packet is sent after the add.
-            // Before, a meso change made between the check and the take (on another thread, or while the add ran)
-            // made the take throw with the item given and no meso taken.
+            // The price is checked and taken in one step, held (its packet is sent once the buy back is stored).
+            // Before, a meso change made between the check and the take made the take throw with the item given.
+            sends = session.Currency.MesoSends;
             if (!session.Currency.TryTakeMeso(buyBackItem.Price, notify: false)) {
                 session.Send(ShopPacket.Error(ShopError.s_err_lack_meso, BuyBackCommand));
                 return;
             }
+            buyBackItems.Remove(id);
+        }
 
-            if (!buyBackItems.Remove(id)) {
-                session.Currency.ReturnMeso(buyBackItem.Price);
-                logger.Error("Failed to remove buyback item {Id}", id);
-                session.Send(ShopPacket.Error(ShopError.s_err_no_notice, BuyBackCommand));
-                return;
+        // The item's row goes back to the character with the wallet in one transaction; the bag takes it once that
+        // is kept. A store that fails lists the entry again and gives the mesos back, as they were (nothing was sent).
+        // Before, the bag's own write came first and the wallet was stored after, so a crash in between kept the item
+        // with the mesos unpaid.
+        Item item = buyBackItem.Item;
+        if (!session.TrySavePurchase(db => db.SaveItems(session.CharacterId, item))) {
+            lock (session.Item) {
+                buyBackItems[id] = buyBackItem;
+                session.Currency.ReturnHeldMeso(buyBackItem.Price, sends);
             }
+            logger.Error("Buy back of item {Uid} for {CharacterId} not stored; the entry and the price {Price} are kept",
+                item.Uid, session.CharacterId, buyBackItem.Price);
+            session.Send(ShopPacket.Error(ShopError.s_err_no_notice, BuyBackCommand));
+            return;
+        }
+
+        lock (session.Item) {
             // KMS2 order: the entry leaves the list, the item comes back, then the mesos are taken.
             session.Send(ShopPacket.RemoveBuyBackItem(id));
-            if (!session.Item.Inventory.Add(buyBackItem.Item, true, commit: true)) {
-                // The bag's write failed (its room was checked above; the add sent the bag's notice): the entry is listed
-                // again and no meso is taken. Before, the mesos were taken and the item, out of the list and not in the
-                // bag, was lost. Chosen here: the entry comes back with its id, listed as a sale lists it (Shop 7).
-                buyBackItems[id] = buyBackItem;
-                session.Currency.ReturnMeso(buyBackItem.Price);
-                session.Send(ShopPacket.LoadBuyBackItem(buyBackItem));
-                logger.Error("Buy back of item {Uid} not written for {CharacterId}", buyBackItem.Item.Uid, session.CharacterId);
-                return;
+            // Its room was checked above; a bag filled meanwhile, or a failed write, sends the row by mail.
+            if (!session.Item.Inventory.Add(item, true, commit: true) && !session.Item.MailHeldItem(item)) {
+                logger.Error("Bought-back item {Uid} ({ItemId} x{Amount}) of {CharacterId}, paid {Price}, stored to the character but neither added nor mailed",
+                    item.Uid, item.Id, item.Amount, session.CharacterId, buyBackItem.Price);
             }
             session.Currency.NotifyMeso();
         }
-        session.SavePurchase();
     }
 
     public void Sell(long itemUid, int quantity) {
@@ -796,51 +909,44 @@ public sealed class ShopManager {
         session.Currency.ChangeMeso(sellPrice);
     }
 
-    // `guildProduct`: the product the guild fund pays for, stored in the guild storage with the fund.
-    // `command`: the command its error answers (BuyCommand for a buy).
-    private bool Pay(ShopCost cost, int price, RewardItem guildProduct = default, byte command = 0) {
+    // A shop price taken in memory and not yet stored (HoldPayment): the purchase's transaction stores it (SavePayment),
+    // then SettlePayment sends it, or ReleasePayment gives it back when the transaction was not kept. RefundPayment
+    // gives back a stored one. Meso, Merets: the take's packet waits for SettlePayment. Currency: TryTake sends it at
+    // once. Items: nothing is taken until the transaction writes their rows (Stacks: the planned stacks).
+    private sealed record HeldPayment(ShopCurrencyType Type, int Price, long MesoSends, bool Red, CurrencyType Currency,
+                                      int ItemId, List<(long Uid, int Amount, int Rarity)>? Stacks);
+
+    // Takes the price in memory (see HeldPayment), or answers the lack with command's error and returns null.
+    private HeldPayment? HoldPayment(ShopCost cost, int price, byte command) {
         switch (cost.Type) {
             case ShopCurrencyType.Meso:
-                if (!session.Currency.TryTakeMeso(price)) {
+                long sends = session.Currency.MesoSends;
+                if (!session.Currency.TryTakeMeso(price, notify: false)) {
                     session.Send(ShopPacket.Error(ShopError.s_err_lack_meso, command));
-                    return false;
+                    return null;
                 }
-                break;
+                return new HeldPayment(cost.Type, price, sends, false, CurrencyType.None, 0, null);
             case ShopCurrencyType.Meret:
             case ShopCurrencyType.EventMeret:
             case ShopCurrencyType.GameMeret:
                 // EventMeret takes the red merets when they cover the price, else the plain ones; GameMeret
                 // takes red merets only (MeretCost.OfShop).
-                if (!session.Currency.TryTakeMerets(MeretCost.OfShop(cost.Type)!.Value, price, out _)) {
+                if (!session.Currency.TryTakeMerets(MeretCost.OfShop(cost.Type)!.Value, price, out bool red, notify: false)) {
                     session.Send(ShopPacket.Error(ShopError.s_err_lack_merat, command));
-                    return false;
+                    return null;
                 }
-                break;
-            case ShopCurrencyType.GuildFund:
-                GuildError fundError = session.Guild.SpendFund(price, guildProduct);
-                if (fundError != GuildError.none) {
-                    session.Send(ShopPacket.Error(FundBuyError(fundError), command));
-                    if (FundBuyError(fundError) == ShopError.s_err_no_notice) {
-                        // The World's own failure, or its answer lost (the buy may be stored: the storage list then
-                        // shows it), not a refusal: the guild's unknown error, not the "master only" notice.
-                        session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
-                    }
-                    return false;
-                }
-                break;
+                return new HeldPayment(cost.Type, price, 0, red, CurrencyType.None, 0, null);
             case ShopCurrencyType.Item:
                 // The client counts the payment item at its item data's rank, any rank when that is 0 (GetMaxAffordableCount,
                 // npcshopproductbase.cpp:475: Unk_Inventory::FUN_140a5f180 with GetItemRank, inventory.cpp:782); the
                 // server took copies of any rarity, also ones the client did not count.
                 int rank = session.ItemMetadata.TryGet(cost.ItemId, out ItemMetadata? payment) ? payment.Property.Rank ?? 0 : 0;
-                var ingredient = new ItemComponent(cost.ItemId, rank > 0 ? rank : -1, price, ItemTag.None);
-                if (!session.Item.Inventory.ConsumeItemComponents([
-                        ingredient,
-                    ])) {
+                List<(long Uid, int Amount, int Rarity)>? stacks = session.Item.Inventory.PlanConsume(cost.ItemId, rank > 0 ? rank : -1, price);
+                if (stacks == null) {
                     session.Send(ShopPacket.Error(ShopError.s_err_lack_payment_item, command, cost.ItemId));
-                    return false;
+                    return null;
                 }
-                break;
+                return new HeldPayment(cost.Type, price, 0, false, CurrencyType.None, cost.ItemId, stacks);
             default:
                 CurrencyType currencyType = cost.Type switch {
                     ShopCurrencyType.ValorToken => CurrencyType.ValorToken,
@@ -859,11 +965,120 @@ public sealed class ShopManager {
                     // Code 11 shows the lack notice of the currency kind in the last int (0: mesos). Chosen
                     // here: the kind is the payment type's number.
                     session.Send(ShopPacket.Error(ShopError.s_err_lack_meso, command, (int) cost.Type));
-                    return false;
+                    return null;
+                }
+                return new HeldPayment(cost.Type, price, 0, false, currencyType, 0, null);
+        }
+    }
+
+    // Takes the price at once, stored by the next session save (the instant restock). The guild fund is spent by the
+    // World.
+    private bool Pay(ShopCost cost, int price) {
+        if (cost.Type == ShopCurrencyType.GuildFund) {
+            GuildError fundError = session.Guild.SpendFund(price, default);
+            if (fundError != GuildError.none) {
+                session.Send(ShopPacket.Error(FundBuyError(fundError)));
+                if (FundBuyError(fundError) == ShopError.s_err_no_notice) {
+                    session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+                }
+                return false;
+            }
+            return true;
+        }
+        if (HoldPayment(cost, price, 0) is not { } held) {
+            return false;
+        }
+        foreach ((long uid, int amount, _) in held.Stacks ?? []) {
+            if (!session.Item.Inventory.Consume(uid, amount)) {
+                logger.Error("Payment item {Uid} x{Amount} of {CharacterId} not taken", uid, amount, session.CharacterId);
+            }
+        }
+        SettlePayment(held);
+        return true;
+    }
+
+    // Writes the payment items' rows as the take leaves them in db's transaction, and takes them from the bag once it
+    // is committed (the wallet is stored by the purchase save itself). False when a stack no longer holds its part.
+    private bool SavePayment(GameStorage.Request db, HeldPayment held) {
+        if (held.Stacks == null) {
+            return true;
+        }
+        foreach ((long uid, int amount, _) in held.Stacks) {
+            if (!session.Item.Inventory.SaveConsumed(db, uid, amount)) {
+                return false;
+            }
+        }
+        db.AfterCommit(() => {
+            foreach ((long uid, int amount, _) in held.Stacks) {
+                if (!session.Item.Inventory.ConsumeStored(uid, amount)) {
+                    logger.Error("Payment item {Uid} x{Amount} stored as taken but not in the bag of {CharacterId}", uid, amount, session.CharacterId);
+                }
+            }
+        });
+        return true;
+    }
+
+    // Sends a held take once its purchase is stored.
+    private void SettlePayment(HeldPayment held) {
+        switch (held.Type) {
+            case ShopCurrencyType.Meso:
+                session.Currency.NotifyMeso();
+                break;
+            case ShopCurrencyType.Meret:
+            case ShopCurrencyType.EventMeret:
+            case ShopCurrencyType.GameMeret:
+                if (held.Red) {
+                    session.Currency.NotifyGameMeretTaken(held.Price);
+                } else {
+                    session.Currency.NotifyMeretTaken(held.Price);
                 }
                 break;
         }
-        return true;
+    }
+
+    // Gives back a held take whose purchase was not stored (the payment items were not taken).
+    private void ReleasePayment(HeldPayment held) {
+        switch (held.Type) {
+            case ShopCurrencyType.Meso:
+                session.Currency.ReturnHeldMeso(held.Price, held.MesoSends);
+                break;
+            case ShopCurrencyType.Meret:
+            case ShopCurrencyType.EventMeret:
+            case ShopCurrencyType.GameMeret:
+                if (held.Red) {
+                    session.Currency.ReturnGameMeret(held.Price);
+                } else {
+                    session.Currency.ReturnMeret(held.Price);
+                }
+                break;
+            case ShopCurrencyType.Item:
+                break;
+            default:
+                session.Currency.Return(held.Currency, held.Price);
+                break;
+        }
+    }
+
+    // Gives back a stored and sent payment (the bought item could be neither added nor mailed). Payment items come
+    // back as new copies of the rarities taken, to the bag or else by mail; one that cannot be given is logged.
+    private void RefundPayment(HeldPayment held) {
+        switch (held.Type) {
+            case ShopCurrencyType.Meso:
+                session.Currency.ReturnMeso(held.Price);
+                break;
+            case ShopCurrencyType.Item:
+                foreach ((_, int amount, int rarity) in held.Stacks ?? []) {
+                    Item? copy = session.Item.CreateItem(held.ItemId, rarity, amount);
+                    if (copy == null || !session.Item.AddOrMail(copy, true, commit: true)) {
+                        logger.Error("Payment item {ItemId} x{Amount} (rarity {Rarity}) could not be given back to {CharacterId}",
+                            held.ItemId, amount, rarity, session.CharacterId);
+                    }
+                }
+                break;
+            default:
+                ReleasePayment(held);
+                break;
+        }
     }
 
     private bool RemoveBuyBackItem() {
