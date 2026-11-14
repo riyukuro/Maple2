@@ -111,8 +111,10 @@ public class FieldPlayer : Actor<Player> {
     public FieldEntity? StandingOnBlock { get; set; }
 
     public Tombstone? Tombstone { get; set; }
-    // The tick of the last spirit and stamina orb this player's hits dropped (NpcHitRewardRules), by orb item id.
-    public readonly Dictionary<int, long> HitRewardOrbTicks = new();
+    // The tick of the last spirit and stamina orb this player's hits dropped (NpcHitRewardRules). Hits land from the
+    // session thread and the field thread: longs read and written with Interlocked; a race can at worst drop one orb early.
+    public long SpiritOrbTick;
+    public long StaminaOrbTick;
     // Pk field kills since this player's last death in the field (FieldManager.PkKill's streak notices).
     public int PkStreak { get; set; }
 

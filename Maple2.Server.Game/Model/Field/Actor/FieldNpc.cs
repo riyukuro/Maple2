@@ -905,15 +905,15 @@ public class FieldNpc : Actor<Npc> {
             if (rate <= 0) {
                 continue;
             }
-            player.HitRewardOrbTicks.TryGetValue(itemId, out long lastDropTick);
-            if (!NpcHitRewardRules.Drops(lastDropTick, now, rate, Random.Shared.NextDouble())) {
+            ref long lastDropTick = ref itemId == NpcHitRewardRules.SpiritOrbItemId ? ref player.SpiritOrbTick : ref player.StaminaOrbTick;
+            if (!NpcHitRewardRules.Drops(Interlocked.Read(ref lastDropTick), now, rate, Random.Shared.NextDouble())) {
                 continue;
             }
             Item? orb = Field.ItemDrop.CreateItem(itemId, amount: NpcHitRewardRules.OrbAmount);
             if (orb == null) {
                 continue;
             }
-            player.HitRewardOrbTicks[itemId] = now;
+            Interlocked.Exchange(ref lastDropTick, now);
             NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
             float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);

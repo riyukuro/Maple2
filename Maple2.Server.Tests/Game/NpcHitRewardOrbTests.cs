@@ -35,8 +35,6 @@ public class NpcHitRewardOrbTests : TriggerTestBase {
         Start();
         typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
         typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
-        // The fixture's actor is not constructed: its orb ticks are set here.
-        typeof(FieldPlayer).GetField(nameof(FieldPlayer.HitRewardOrbTicks))!.SetValue(test.Session.Player, new Dictionary<int, long>());
         typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
         typeof(FieldManager).GetField("fieldBreakables", Any)!.SetValue(Field, new ConcurrentDictionary<string, FieldBreakable>());
         typeof(FieldManager).GetField("<FieldInstance>k__BackingField", Any)!.SetValue(Field,
@@ -67,7 +65,7 @@ public class NpcHitRewardOrbTests : TriggerTestBase {
         });
 
         // Once the cooldown has passed, the next hit drops another.
-        player.HitRewardOrbTicks[NpcHitRewardRules.SpiritOrbItemId] -= NpcHitRewardRules.CooldownMs;
+        player.SpiritOrbTick -= NpcHitRewardRules.CooldownMs;
         npc.RecordDamage(player, 10);
         Assert.That(Ground(Field).Count, Is.EqualTo(2));
     }
