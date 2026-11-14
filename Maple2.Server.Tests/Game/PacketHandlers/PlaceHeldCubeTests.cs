@@ -7,6 +7,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.PacketHandlers;
@@ -18,7 +19,7 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // a place with nothing held, or of another item than the one held, is refused with 0x0A s_ugcmap_null_cube_item_info
 // and places and takes nothing. The item ids are made up.
 public class PlaceHeldCubeTests {
-    private const int Cube = 50200911, OtherCube = 50200912, House = 50200913, TemplateCube = 50200914, TrophyCube = 50200915;
+    private const int Cube = 50200911, OtherCube = 50200912, House = 50200913, TemplateCube = 50200914, TrophyCube = 50200915, CategoryCube = 50200916;
     private const int QuestCube = 50400341; // the install_item code of KR 80000631
     private const int Trophy = 23100098; // made up
     private TestGameSession test = null!;
@@ -39,6 +40,7 @@ public class PlaceHeldCubeTests {
             [TemplateCube] = new(TemplateCube, true, FurnishingCurrencyType.Meso, 1000),
             [TrophyCube] = new(TrophyCube, true, FurnishingCurrencyType.Meso, 1000),
             [QuestCube] = new(QuestCube, true, FurnishingCurrencyType.Meso, 1000),
+            [CategoryCube] = new(CategoryCube, true, FurnishingCurrencyType.Meso, 1000),
         }));
         // No construct row: a place gives no decorating exp unless a test sets one (ConstructExpTests below).
         test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
@@ -46,7 +48,8 @@ public class PlaceHeldCubeTests {
         ItemMetadata house = Furnishing(House);
         test.Register(Furnishing(Cube), Furnishing(OtherCube), house with { Property = house.Property with { Type = 6, SubType = 4 } },
             Furnishing(TemplateCube) with { Mesh = "ugc_mesh" }, Furnishing(QuestCube),
-            Furnishing(TrophyCube) with { Housing = new ItemMetadataHousing(Trophy, 1, 0, HousingCategory.None, false) });
+            Furnishing(TrophyCube) with { Housing = new ItemMetadataHousing(Trophy, 1, 0, HousingCategory.None, false) },
+            Furnishing(CategoryCube) with { Housing = new ItemMetadataHousing(0, 0, 0, HousingCategory.None, false) { CategoryIndex = 3 } });
         test.AddAchievement(TestGameSession.Trophy(Trophy, ConditionType.home_goto, [1, 2]));
         GameSession session = test.Start();
         session.Housing.InitNewHome("home", null);
@@ -166,6 +169,31 @@ public class PlaceHeldCubeTests {
         Place(session, TrophyCube, TrophyCube);
         Assert.That(plot.Cubes, Has.Count.EqualTo(1));
         Assert.That(session.Currency.Meso, Is.EqualTo(4000));
+    }
+
+    // HousingLevelhurdle on: a cube whose category needs a housing level above the builder's is locked until the home
+    // reaches it; off, the category is not read.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ACategoryCube_IsLockedBelowTheCategoryLevel(bool hurdle) {
+        (GameSession session, Plot plot) = StartInHome();
+        test.SetTable(new UgcCubeCategoryTable(new Dictionary<int, int> { [3] = 2 }));
+        if (!hurdle) {
+            test.SetFeaturesOff(CubeEditRules.LevelHurdleFeature);
+            Place(session, CategoryCube, CategoryCube);
+            Assert.That(plot.Cubes, Has.Count.EqualTo(1));
+            return;
+        }
+        Place(session, CategoryCube, CategoryCube);
+        byte[] refusal = CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_ugcmap_cube_lock, session.Player.ObjectId).ToArray();
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(refusal) }));
+            Assert.That(plot.Cubes, Is.Empty);
+        });
+
+        session.Player.Value.Home.DecorationLevel = 2;
+        Place(session, CategoryCube, CategoryCube);
+        Assert.That(plot.Cubes, Has.Count.EqualTo(1));
     }
 
     // A layout or package apply places a locked cube too, as the client checks the lock only on a player's place.

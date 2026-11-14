@@ -43,17 +43,19 @@ public static class CubeEditRules {
     // trophy rows give level 1 to 9). cleared is the trophy owner's.
     // While feature HousingLevelhurdle (id 219, 0xdb; off in the KR and NA feature.xml) is on, the client also locks a
     // cube whose housing interiorLevel is above the housing level: its own in its home or on a plot (ResponseCube 0x27),
-    // the home owner's (0x37) for a build helper. hurdleLevel is that level while the feature is on, else null. The
-    // client's second check, the cube category's interior require level (UGCCubeCategoryTable), is left out: that
-    // table is not ingested.
+    // the home owner's (0x37) for a build helper. hurdleLevel is that level while the feature is on, else null.
+    // For a builder's own build the client also locks a cube whose category (housing categoryIndex) needs a housing
+    // level above it (UGCCubeCategoryTable requireHousingLevel); a category with no row is no lock. A helper's check
+    // has no category step (it tests the interior level a second time). categoryLevel is that row's level for an own
+    // build, else null.
     public const string LevelHurdleFeature = "HousingLevelhurdle";
 
     public static UgcMapError CubeLock(ItemMetadataHousing? housing, FurnishingCurrencyType? currency, Func<int, int, bool> cleared,
-                                       long? hurdleLevel = null) {
+                                       long? hurdleLevel = null, int? categoryLevel = null) {
         if (housing == null || currency == FurnishingCurrencyType.Meret) {
             return UgcMapError.s_ugcmap_ok;
         }
-        if (hurdleLevel != null && housing.InteriorLevel > hurdleLevel) {
+        if (hurdleLevel != null && (housing.InteriorLevel > hurdleLevel || categoryLevel > hurdleLevel)) {
             return UgcMapError.s_ugcmap_cube_lock;
         }
         if (housing.TrophyId > 0 && !cleared(housing.TrophyId, housing.TrophyLevel)) {

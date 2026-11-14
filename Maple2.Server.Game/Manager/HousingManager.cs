@@ -764,10 +764,14 @@ public class HousingManager {
         // layouts place their cubes without them. The trophies and the housing level are this manager's session's: the
         // builder's own, or for a helper the home owner's.
         tableMetadata.FurnishingShopTable.Entries.TryGetValue(cube.ItemId, out FurnishingShopTable.Entry? shopEntry);
-        UgcMapError cubeLock = byPlayer
-            ? CubeEditRules.CubeLock(itemMetadata.Housing, shopEntry?.FurnishingTokenType, (id, grade) => session.Achievement.HasAchievement(id, grade),
-                session.ServerTableMetadata.FeatureTable.IsOn(CubeEditRules.LevelHurdleFeature) ? Home.DecorationLevel : null)
-            : UgcMapError.s_ugcmap_ok;
+        UgcMapError cubeLock = UgcMapError.s_ugcmap_ok;
+        if (byPlayer) {
+            bool hurdle = session.ServerTableMetadata.FeatureTable.IsOn(CubeEditRules.LevelHurdleFeature);
+            int? categoryLevel = hurdle && helper == null && itemMetadata.Housing != null
+                && tableMetadata.UgcCubeCategoryTable.RequireLevels.TryGetValue(itemMetadata.Housing.CategoryIndex, out int level) ? level : null;
+            cubeLock = CubeEditRules.CubeLock(itemMetadata.Housing, shopEntry?.FurnishingTokenType, (id, grade) => session.Achievement.HasAchievement(id, grade),
+                hurdle ? Home.DecorationLevel : null, categoryLevel);
+        }
         if (cubeLock != UgcMapError.s_ugcmap_ok) {
             Refuse(cubeLock);
             return false;

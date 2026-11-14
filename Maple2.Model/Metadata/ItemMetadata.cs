@@ -149,7 +149,8 @@ public record ItemMetadataHousing(
     HousingCategory HousingCategory,
     bool IsNotAllowedInBlueprint,
     int MaidId = 0, // <maid maidID>: the maid the furnishing places (MaidTable), 0 for other furnishings
-    int Filter = 100 // <housing filter>, 100 when not given as in the client (citemdata.h:255): the key a SaleHousing event's rows name (EventSaleRules.HousingPrice)
+    int Filter = 100, // <housing filter>, 100 when not given as in the client (citemdata.h:255): the key a SaleHousing event's rows name (EventSaleRules.HousingPrice)
+    int CategoryIndex = 10000 // <housing categoryIndex>, 10000 when not given as in the client (citemdata.h:210): the UgcCubeCategoryTable row of the cube lock
 );
 
 public record ItemMetadataInstall(

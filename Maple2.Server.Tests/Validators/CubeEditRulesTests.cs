@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using System.Linq;
+using System.Xml;
+using Maple2.File.Ingest.Mapper;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Metadata;
@@ -77,6 +80,34 @@ public class CubeEditRulesTests {
     public void CubeLock_LevelHurdle(int interiorLevel, long? hurdleLevel, FurnishingCurrencyType currency, UgcMapError expected) {
         var housing = new ItemMetadataHousing(0, 0, interiorLevel, HousingCategory.None, false);
         Assert.That(CubeEditRules.CubeLock(housing, currency, (_, _) => true, hurdleLevel), Is.EqualTo(expected));
+    }
+
+    // An own build also locks a cube whose category needs a housing level above the builder's (categoryLevel, the
+    // category row's requireHousingLevel); with the hurdle off the category is not read either.
+    [TestCase(1, 4L, 5, UgcMapError.s_ugcmap_cube_lock)]
+    [TestCase(1, 4L, 4, UgcMapError.s_ugcmap_ok)]
+    [TestCase(1, 4L, null, UgcMapError.s_ugcmap_ok)]
+    [TestCase(1, null, 5, UgcMapError.s_ugcmap_ok)]
+    [TestCase(5, 4L, 1, UgcMapError.s_ugcmap_cube_lock)]
+    public void CubeLock_CategoryLevel(int interiorLevel, long? hurdleLevel, int? categoryLevel, UgcMapError expected) {
+        var housing = new ItemMetadataHousing(0, 0, interiorLevel, HousingCategory.None, false);
+        Assert.That(CubeEditRules.CubeLock(housing, FurnishingCurrencyType.Meso, (_, _) => true, hurdleLevel, categoryLevel), Is.EqualTo(expected));
+    }
+
+    // The category table reader: a row without requireHousingLevel needs level 1, and of two rows of one category
+    // the later one is kept (UGCCubeCategoryTable::LoadInteriors).
+    [Test]
+    public void CategoryTableRows() {
+        var document = new XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <list categoryIndex="1" requireHousingLevel="2" housingBonusCount="1" housingBonusPoint="5" />
+              <list categoryIndex="7" />
+              <list categoryIndex="1" requireHousingLevel="3" />
+            </ms2>
+            """);
+        Dictionary<int, int> rows = TableMapper.ReadUgcCubeCategories(document);
+        Assert.That(rows, Is.EquivalentTo(new Dictionary<int, int> { [1] = 3, [7] = 1 }));
     }
 
     [Test]

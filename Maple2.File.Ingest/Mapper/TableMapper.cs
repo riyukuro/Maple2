@@ -70,6 +70,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.ITEM_ENCHANT_TRANSFORM, Table = ParseItemEnchantTransform() };
         yield return new TableMetadata { Name = TableNames.CHARACTER_ABILITY, Table = ParseCharacterAbility() };
         yield return new TableMetadata { Name = TableNames.CLUB_BUFF, Table = ParseClubBuff() };
+        yield return new TableMetadata { Name = TableNames.UGC_CUBE_CATEGORY, Table = ParseUgcCubeCategory() };
         yield return new TableMetadata { Name = TableNames.ENCHANT_SCROLL_RECIPE, Table = ParseEnchantScrollRecipe() };
         yield return new TableMetadata { Name = TableNames.FAME, Table = ParseFame() };
         yield return new TableMetadata { Name = TableNames.DARK_STREAM, Table = ParseDarkStream() };
@@ -291,6 +292,24 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return results;
 
         int ParseIntOr(string value) => string.IsNullOrEmpty(value) ? 0 : int.Parse(value, CultureInfo.InvariantCulture);
+    }
+
+    // The parser has no reader for this table, so the rows are read as XML.
+    private UgcCubeCategoryTable ParseUgcCubeCategory() {
+        return new UgcCubeCategoryTable(ReadUgcCubeCategories(xmlReader.GetXmlDocument(xmlReader.GetEntry("table/ugccubedefaultcategory.xml"))));
+    }
+
+    // Each <list>: categoryIndex (0 when not given) and requireHousingLevel (1 when not given, the Interior default,
+    // ugccubecategorytable.cpp:99), as UGCCubeCategoryTable::LoadInteriors reads them; a later row replaces an earlier one.
+    public static Dictionary<int, int> ReadUgcCubeCategories(XmlDocument document) {
+        var results = new Dictionary<int, int>();
+        foreach (XmlElement node in document.SelectNodes("/ms2/list")?.OfType<XmlElement>() ?? []) {
+            string category = node.GetAttribute("categoryIndex");
+            string level = node.GetAttribute("requireHousingLevel");
+            results[string.IsNullOrEmpty(category) ? 0 : int.Parse(category, CultureInfo.InvariantCulture)] =
+                string.IsNullOrEmpty(level) ? 1 : int.Parse(level, CultureInfo.InvariantCulture);
+        }
+        return results;
     }
 
     // The parser has no reader for this table, so the rows are read as XML. The client reads every row and
