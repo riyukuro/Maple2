@@ -49,9 +49,12 @@ public class RegionHitApplyTests : TriggerTestBase {
 
     // The region of a magnetic bomb (10600062) at one fire point, cast by the session's player from casterPosition,
     // hits the npc: the npc's entry and the hits its movement got.
-    private (DamageRecordTarget Hit, List<NpcControlRules.HitSource> Queued) Fire(FieldNpc npc, Vector3 casterPosition, SkillMetadataAttack attack) {
-        FieldPlayer caster = test.Session.Player;
-        caster.Position = casterPosition;
+    private (DamageRecordTarget Hit, List<NpcControlRules.HitSource> Queued) Fire(FieldNpc npc, Vector3 casterPosition, SkillMetadataAttack attack,
+            IActor? casterOverride = null) {
+        IActor caster = casterOverride ?? test.Session.Player;
+        if (casterOverride is null) {
+            test.Session.Player.Position = casterPosition;
+        }
         var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
         var skill = new SkillMetadata(10600062, 1, null, property, null!, null!);
         var region = new FieldSkill(Field, 900, caster, skill, 1100, new Vector3(100, 0, 0)) { Position = new Vector3(100, 0, 0) };
@@ -114,6 +117,19 @@ public class RegionHitApplyTests : TriggerTestBase {
             Assert.That(queued, Is.Empty);
             Assert.That(landed.Damage, Is.EqualTo(new[] { (DamageType.Normal, 0L) }));
         });
+    }
+
+    // A trap's attack without damage (cast by the field's own actor, which has no stats): no roll, a hit of 0 each time.
+    [Test]
+    public void ATrapHitWithoutDamageAlwaysLands() {
+        FieldNpc npc = SpawnMob(new Vector3(400, 0, 0));
+        var trap = new FieldActor(Field, 1, Field.Metadata, null!);
+        Assert.That(trap.Stats.Values[BasicAttribute.Accuracy].Total, Is.EqualTo(0));
+        for (int i = 0; i < 20; i++) {
+            (DamageRecordTarget hit, List<NpcControlRules.HitSource> queued) = Fire(npc, Vector3.Zero, Attack(0, 4), trap);
+            Assert.That(hit.Damage, Is.EqualTo(new[] { (DamageType.Normal, 0L) }));
+            Assert.That(queued, Is.Empty);
+        }
     }
 
     // A damaging type 4 hit pulls the npc onto the fire point.
