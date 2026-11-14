@@ -130,8 +130,8 @@ public class MailModeTests {
 
     // The same mail in a second inbox of the same session, loaded before the first collect: the collect reads the mail
     // again from storage, so the second inbox gives nothing and answers already collected. This is one process under
-    // one item lock; two game servers collecting at once are kept apart only by login, which never leaves a character
-    // live in two sessions (UpdateMail writes the row unconditionally).
+    // one item lock. Two game servers collecting at once are kept apart by login, and for the mail's own mesos and
+    // merets also by the conditional collect write (CollectMail_OfTwoWritersFromOneRead_KeepsTheFirst).
     [Test]
     public void Collect_FromASecondInboxOfTheSameSession_GivesNothing() {
         Begin();
