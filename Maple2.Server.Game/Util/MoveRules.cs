@@ -20,8 +20,8 @@ public static class MoveRules {
     public const long LogEveryMs = 10000;
 
     // The height is not counted: a fall is faster than any move on the ground.
-    public static bool TooFar(Vector3 from, Vector3 to) {
-        return Vector2.Distance(new Vector2(from.X, from.Y), new Vector2(to.X, to.Y)) > MaxDistance;
+    public static bool TooFar(Vector3 from, Vector3 to, float maxDistance = MaxDistance) {
+        return Vector2.Distance(new Vector2(from.X, from.Y), new Vector2(to.X, to.Y)) > maxDistance;
     }
 }
 
@@ -31,6 +31,16 @@ public sealed class MoveWindow {
     private readonly object mutex = new();
     private long nextLog = long.MinValue;
     private int unlogged;
+    private int fast;
+
+    // How many positions were further than the bound so far.
+    public int Fast {
+        get {
+            lock (mutex) {
+                return fast;
+            }
+        }
+    }
 
     private readonly Queue<(int Tick, Vector3 Position, long Now)> samples = new();
     private long granted; // the time drawn from the lag budget for the positions leaving the window now
@@ -67,9 +77,10 @@ public sealed class MoveWindow {
     // tick: the client's tick of the position. now: the server's clock. lag: the budget for positions that arrive
     // early; with none the client's ticks alone count. clockFast: the client's ticks run fast (ClockRate), so
     // nothing is drawn and the arrivals alone count.
-    public Vector3? Add(int tick, Vector3 position, long now, LagBudget? lag = null, bool clockFast = false) {
+    // maxDistance: the bound for this window (a ride's is RideSpeed.MaxDistance).
+    public Vector3? Add(int tick, Vector3 position, long now, LagBudget? lag = null, bool clockFast = false, float maxDistance = MoveRules.MaxDistance) {
         lock (mutex) {
-            return AddLocked(tick, position, now, lag, clockFast);
+            return AddLocked(tick, position, now, lag, clockFast, maxDistance);
         }
     }
 
@@ -92,7 +103,7 @@ public sealed class MoveWindow {
         return true;
     }
 
-    private Vector3? AddLocked(int tick, Vector3 position, long now, LagBudget? lag, bool clockFast) {
+    private Vector3? AddLocked(int tick, Vector3 position, long now, LagBudget? lag, bool clockFast, float maxDistance) {
         if (now < graceUntil) {
             samples.Clear();
             return null;
@@ -115,9 +126,10 @@ public sealed class MoveWindow {
         }
 
         Vector3? from = null;
-        if (samples.Count > 0 && MoveRules.TooFar(samples.Peek().Position, position)) {
+        if (samples.Count > 0 && MoveRules.TooFar(samples.Peek().Position, position, maxDistance)) {
             from = samples.Peek().Position;
             samples.Clear();
+            fast++;
         }
         samples.Enqueue((tick, position, now));
         return from;

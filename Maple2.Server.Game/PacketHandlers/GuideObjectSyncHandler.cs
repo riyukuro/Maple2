@@ -39,13 +39,18 @@ public class GuideObjectSyncHandler : FieldPacketHandler {
 
     // After the kind: u8 count, then per record the UserSync record and one i32, the client's tick.
     // Null for no record or for a record the other clients' reader would fail on.
-    public static StateSync[]? ReadRecords(IByteReader packet) {
+    public static StateSync[]? ReadRecords(IByteReader packet) => ReadRecords(packet, out _);
+
+    // ticks: the client's tick of each record.
+    public static StateSync[]? ReadRecords(IByteReader packet, out int[] ticks) {
+        ticks = [];
         byte segments = packet.ReadByte();
         if (segments == 0) {
             return null;
         }
 
         var stateSyncs = new StateSync[segments];
+        int[] recordTicks = new int[segments];
         for (int i = 0; i < segments; i++) {
             var playerState = packet.Peek<ActorState>();
             StateSync stateSync = playerState switch {
@@ -63,9 +68,10 @@ public class GuideObjectSyncHandler : FieldPacketHandler {
             }
             stateSyncs[i] = stateSync;
 
-            packet.ReadInt(); // ClientTicks
+            recordTicks[i] = packet.ReadInt(); // ClientTicks
         }
 
+        ticks = recordTicks;
         return stateSyncs;
     }
 }

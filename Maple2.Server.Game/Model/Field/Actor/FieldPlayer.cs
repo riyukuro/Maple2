@@ -30,6 +30,7 @@ public class FieldPlayer : Actor<Player> {
 
     public Vector3 LastGroundPosition;
     public readonly MoveWindow Moves = new(); // the positions the client synced in the last second
+    public readonly MoveWindow RideMoves = new(); // the same for its RideSync positions, by the ride's speed
 
     public override StatsManager Stats => Session.Stats;
     public override BuffManager Buffs => Session.Buffs;

@@ -415,6 +415,7 @@ public sealed class TestGameSession {
         typeof(Actor<Player>).GetField("<Transform>k__BackingField", Any)!.SetValue(fieldPlayer, new Maple2.Tools.VectorMath.Transform());
         // The moves the client synced: a server move (MoveByPortal) starts them again.
         typeof(FieldPlayer).GetField(nameof(FieldPlayer.Moves), Any)!.SetValue(fieldPlayer, new MoveWindow());
+        typeof(FieldPlayer).GetField(nameof(FieldPlayer.RideMoves), Any)!.SetValue(fieldPlayer, new MoveWindow());
         Set(session, nameof(GameSession.Player), fieldPlayer);
         // The objects and cubes whose interaction the session began.
         typeof(GameSession).GetField(nameof(GameSession.InteractStarted), Any)!.SetValue(session, new HashSet<string>());

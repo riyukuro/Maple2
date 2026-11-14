@@ -6,6 +6,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -24,9 +25,23 @@ public class RideSyncHandler : FieldPacketHandler {
             return;
         }
 
-        StateSync[]? stateSyncs = ReadRecords(packet);
+        StateSync[]? stateSyncs = ReadRecords(packet, out int[] ticks);
         if (stateSyncs == null) {
             return;
+        }
+
+        // As UserSync: a move further than the ride goes in that time is only logged (RideSpeed, MoveWindow).
+        Ride ride = session.Ride.Ride;
+        float maxDistance = RideSpeed.MaxDistance(ride.Metadata.Speed,
+            session.Player.Stats.Values[SpecialAttribute.RidingSpeed].Multiplier(),
+            session.Player.Stats.Values[SpecialAttribute.RidingRunSpeed].Multiplier());
+        long now = Environment.TickCount64;
+        for (int i = 0; i < stateSyncs.Length; i++) {
+            if (session.Player.RideMoves.Add(ticks[i], stateSyncs[i].Position, now, session.Config.MoveLag, session.Config.SyncClock.IsFast(now), maxDistance) is { } from
+                && session.Player.RideMoves.CountFast(now) is > 0 and int count) {
+                Logger.Information("Fast ride: player {Player} ({CharacterId}) on ride {RideId} from {From} to {To} beyond {Max} ({Count} since the last line)",
+                    session.PlayerName, session.CharacterId, ride.Metadata.Id, from, stateSyncs[i].Position, maxDistance, count);
+            }
         }
 
         using (var buffer = new PoolByteWriter()) {
@@ -41,12 +56,14 @@ public class RideSyncHandler : FieldPacketHandler {
     // u8 count, then per record the same virtual record writer, so a record of a state with extras (couple
     // emotion, rps, couple dance, wedding emotion) carries them here too, and the client's tick.
     // Null for no record or for a record the other clients' reader would fail on.
-    public static StateSync[]? ReadRecords(IByteReader packet) {
+    public static StateSync[]? ReadRecords(IByteReader packet) => ReadRecords(packet, out _);
+
+    public static StateSync[]? ReadRecords(IByteReader packet, out int[] ticks) {
         packet.ReadByte(); // Unknown
         packet.ReadInt(); // ServerTicks
         packet.ReadInt(); // ClientTicks
 
-        StateSync[]? stateSyncs = GuideObjectSyncHandler.ReadRecords(packet);
+        StateSync[]? stateSyncs = GuideObjectSyncHandler.ReadRecords(packet, out ticks);
         if (stateSyncs == null) {
             return null;
         }
