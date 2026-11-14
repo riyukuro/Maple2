@@ -136,4 +136,13 @@ public class SurvivalConditionTests {
         var condition = new ConditionMetadata(type, 1, new ConditionMetadata.Parameters(Integers: codes), null);
         Assert.That(condition.Check(null!, codeLong: code), Is.EqualTo(expected));
     }
+
+    // survival_kill_outside: the victim farther than the sight range from the killer (3D); no range, no limit.
+    [TestCase(450f, 0f, 0f, 451f, true)]
+    [TestCase(450f, 300f, 300f, 300f, true)]
+    [TestCase(450f, 450f, 0f, 0f, false)]
+    [TestCase(null, 9000f, 0f, 0f, false)]
+    public void KillOutsideSight_FartherThanTheRange(float? range, float x, float y, float z, bool expected) {
+        Assert.That(SurvivalConditions.KillOutsideSight(System.Numerics.Vector3.Zero, new System.Numerics.Vector3(x, y, z), range), Is.EqualTo(expected));
+    }
 }

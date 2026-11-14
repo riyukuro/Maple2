@@ -1,3 +1,4 @@
+using System.Numerics;
 using Maple2.Model.Enum;
 
 namespace Maple2.Model.Game.Pvp;
@@ -232,5 +233,13 @@ public static class SurvivalConditions {
             }
         }
         return raises;
+    }
+
+    // survival_kill_outside (21300070 "Defeat a player outside your field of vision in Mushking Royale"): the client
+    // limits sight while the field has a SightRange property (the survival maps' script sets range 3) and a point is
+    // outside it when it is farther from the player than the range, in 3D (WorldService::IsOutsideSightRange,
+    // worldservice_1.cpp:7956). The kill counts when the victim fell that far from the killer.
+    public static bool KillOutsideSight(Vector3 killer, Vector3 victim, float? sightRange) {
+        return sightRange is { } range && Vector3.Distance(killer, victim) > range;
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -80,5 +81,41 @@ public class SurvivalKillLogTests {
 
         Assert.That(a.Errors, Is.Empty);
         Assert.That((a.TrophyCounter(21300052), a.TrophyCounter(21300053)), Is.EqualTo(((long?) 1, (long?) null)));
+    }
+
+    // KR 21300070 "Defeat a player outside your field of vision in Mushking Royale": survival_kill_outside value 1. The
+    // survival script limits sight (SightRange range 3: 450); the kill counts when the victim fell farther from the
+    // killer than that (the client's IsOutsideSightRange, 3D), not within it nor without the limit.
+    [TestCase(true, 500f, 1L)]
+    [TestCase(true, 400f, null)]
+    [TestCase(false, 5000f, null)]
+    public void Kill_21300070_CountsAVictimOutsideTheSight(bool sightLimited, float distance, long? expected) {
+        MapMetadata map = TestGameSession.Map(82000000);
+        var a = new TestGameSession();
+        a.AddMap(map);
+        a.AddAchievement(TestGameSession.Trophy(21300070, Maple2.Model.Enum.ConditionType.survival_kill_outside, [1]));
+        a.Start();
+        a.EnterMap(map);
+        var b = new TestGameSession(a.Options);
+        b.Start();
+        FieldManager field = a.Session.Field!;
+        typeof(Maple2.Server.Game.Model.Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(b.Session.Player, 2);
+        field.Players[2] = b.Session.Player;
+        b.Session.Field = field;
+        typeof(FieldManager).GetField(nameof(FieldManager.Widgets))!.SetValue(field, new Dictionary<string, Maple2.Server.Game.Model.Widget.Widget>());
+        if (sightLimited) {
+            System.Reflection.FieldInfo properties = typeof(FieldManager).GetField("fieldProperties", Any)!;
+            properties.SetValue(field, properties.GetValue(field) ?? new System.Collections.Concurrent.ConcurrentDictionary<Maple2.Model.Enum.FieldProperty, IFieldProperty>());
+            field.AddFieldProperty(new FieldPropertySightRange { Range = 450 });
+        }
+        a.Session.Player.Position = new Vector3(0, 0, 0);
+        b.Session.Player.Position = new Vector3(distance, 0, 0);
+        var game = new SurvivalGameField(field, [a.Session.Player, b.Session.Player]);
+
+        game.Damage(a.Session.Player, b.Session.Player, 0);
+        game.Death(b.Session.Player);
+
+        Assert.That(a.Errors, Is.Empty);
+        Assert.That(a.TrophyCounter(21300070), Is.EqualTo(expected));
     }
 }

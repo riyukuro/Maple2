@@ -26,4 +26,13 @@ public class WorldChampionConditionTests {
             Assert.That(Damage("5").Check(session, codeLong: 5), Is.True);
         });
     }
+
+    // KR quest 80000448 "attack the Mushking once": worldchampion_hit value 1 with no code, so any hit counts.
+    [Test]
+    public void Hit_HasNoCode() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        var hit = new ConditionMetadata(ConditionType.worldchampion_hit, 1, new string[0].ConvertCodes(), new string[0].ConvertCodes(), 0, 0);
+        Assert.That(hit.Check(session), Is.True);
+    }
 }

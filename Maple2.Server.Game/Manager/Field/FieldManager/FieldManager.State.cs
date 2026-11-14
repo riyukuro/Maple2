@@ -1487,6 +1487,11 @@ public partial class FieldManager {
         Broadcast(FieldPropertyPacket.Remove(fieldProperty));
     }
 
+    // The sight radius of the field's SightRange property, or null when sight is not limited (no default is added; a
+    // field built without its properties, as in tests, has none).
+    public float? SightRange => fieldProperties != null && fieldProperties.TryGetValue(FieldProperty.SightRange, out IFieldProperty? property)
+        && property is FieldPropertySightRange sightRange ? sightRange.Range : null;
+
     public IFieldProperty GetFieldProperty(FieldProperty type) {
         if (fieldProperties.TryGetValue(type, out IFieldProperty? fieldProperty)) {
             return fieldProperty;

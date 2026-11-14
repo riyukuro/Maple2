@@ -151,7 +151,10 @@ public sealed class SurvivalGameField {
         if (killer != 0) {
             field.Broadcast(MapleSurvivalPacket.KillFeed(names.GetValueOrDefault(killer, string.Empty), names.GetValueOrDefault(characterId, string.Empty), 0, state.Alive));
             // The kill's trophies for the killer (21300052 "Defeat {0} players in Mushking Royale using ...": code the
-            // killing hit's skill; 21300072 "Defeat two players simultaneously").
+            // killing hit's skill; 21300072 "Defeat two players simultaneously"; 21300070, the victim outside the
+            // killer's sight where it fell).
+            bool outsideSight = field.TryGetPlayerById(killer, out FieldPlayer? killerAt) && field.TryGetPlayerById(characterId, out FieldPlayer? victimAt)
+                && SurvivalConditions.KillOutsideSight(killerAt.Position, victimAt.Position, field.SightRange);
             after.Add(() => {
                 if (!field.TryGetPlayerById(killer, out FieldPlayer? player)) {
                     return;
@@ -162,6 +165,9 @@ public sealed class SurvivalGameField {
                 }
                 if (doubleKill) {
                     player.Session.ConditionUpdate(ConditionType.survival_double_kill);
+                }
+                if (outsideSight) {
+                    player.Session.ConditionUpdate(ConditionType.survival_kill_outside);
                 }
             });
         }

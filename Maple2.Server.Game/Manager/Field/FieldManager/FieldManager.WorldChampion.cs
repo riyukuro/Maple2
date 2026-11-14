@@ -78,12 +78,14 @@ public partial class FieldManager {
     }
 
     // A player hit the champion: the damage goes to the World server and counts for the season's trophies
-    // (worldchampion_damage, code the season).
+    // (worldchampion_damage, code the season); each hit counts once for worldchampion_hit (KR quest 80000448, "attack
+    // the Mushking once", no code).
     private void WorldChampionDamaged(FieldNpc npc, FieldPlayer player, long amount) {
         if (WorldChampion == null || npc.ObjectId != WorldChampion.ObjectId) {
             return;
         }
         WorldChampion.Damaged(npc.ObjectId, player.Session.AccountId, player.Session.CharacterId, amount);
         player.Session.ConditionUpdate(ConditionType.worldchampion_damage, counter: amount, codeLong: WorldChampion.Season);
+        player.Session.ConditionUpdate(ConditionType.worldchampion_hit);
     }
 }
