@@ -63,6 +63,9 @@ public partial class GameSession {
     // Whether the current npc talk opened the treasure map appraise free (OpenDialog ItemTreasureMapDialog "free"):
     // only then may an appraise roll the map's free box. Each new talk (NpcScriptManager) starts without it.
     public bool TreasureMapFree;
+    // The npc whose talk opened a beauty dialog (OpenDialog BeautyShopDialog or BeautyStyleDialog): the only npc a
+    // Beauty shop open may name. Each new talk (NpcScriptManager) starts with none; the open takes it.
+    public int BeautyNpcOffered;
 
     // The card game (CardReverseGameDialog) of the Ui object last used: its deck, cost and picks left.
     public CardReverseGame? CardReverseGame;

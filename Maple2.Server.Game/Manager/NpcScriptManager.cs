@@ -39,6 +39,7 @@ public sealed class NpcScriptManager {
         // A new talk offers no roulette until it opens one (BonusGameHandler.HandleLoad).
         session.BonusGameOffered = 0;
         session.TreasureMapFree = false;
+        session.BeautyNpcOffered = 0;
         Npc = npc;
         this.metadata = metadata;
         TalkType = talkType;
@@ -65,6 +66,7 @@ public sealed class NpcScriptManager {
         this.session = session;
         session.BonusGameOffered = 0;
         session.TreasureMapFree = false;
+        session.BeautyNpcOffered = 0;
         this.eventScripts = eventScripts;
     }
 
@@ -400,6 +402,9 @@ public sealed class NpcScriptManager {
             }
             if (TreasureMapRules.IsDialog(scriptFunction.UiName)) {
                 session.TreasureMapFree = TreasureMapRules.IsFree(scriptFunction.UiArg);
+            }
+            if (Maple2.Server.Game.PacketHandlers.BeautyHandler.IsShopDialog(scriptFunction.UiName) && Npc != null) {
+                session.BeautyNpcOffered = Npc.Value.Id;
             }
         }
 

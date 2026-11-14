@@ -45,8 +45,10 @@ public class BeautyShopTypeTests {
         return storage;
     }
 
-    // Beauty 0 from npc 1000 of shop 600: the npc id, then the type byte.
-    private BeautyShopType? Open(BeautyShopMetadata shop, string? uiArg, BeautyShopType sent, string uiName = "BeautyShopDialog") {
+    // Beauty 0 from npc 1000 of shop 600: the npc id, then the type byte. offered: the npc whose talk opened the beauty
+    // dialog (npc 1000 unless given).
+    private BeautyShopType? Open(BeautyShopMetadata shop, string? uiArg, BeautyShopType sent, string uiName = "BeautyShopDialog",
+                                 int offered = 1000) {
         const int npcId = 1000;
         test = new TestGameSession();
         test.SetServerTable(new BeautyShopTable(new Dictionary<int, BeautyShopMetadata> { [shop.Id] = shop }));
@@ -57,10 +59,13 @@ public class BeautyShopTypeTests {
         test.SetServerTable(new ScriptFunctionTable(functions));
         GameSession session = test.Start();
         session.Beauty = new BeautyManager(session);
+        session.BeautyNpcOffered = offered;
         test.TakeSent();
 
         new BeautyHandler {
-            ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata, NpcMetadata = NpcTable(Npc(npcId, shop.Id)),
+            ItemMetadata = session.ItemMetadata,
+            TableMetadata = test.TableMetadata,
+            NpcMetadata = NpcTable(Npc(npcId, shop.Id)),
             ServerTableMetadata = test.ServerTableMetadata,
         }.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(0);
@@ -98,5 +103,28 @@ public class BeautyShopTypeTests {
     [TestCase(BeautyShopCategory.Face, false, BeautyShopType.Save, BeautyShopType.Default)]
     public void WithoutAFunctionTheRowsType(BeautyShopCategory category, bool random, BeautyShopType sent, BeautyShopType type) {
         Assert.That(Open(Shop(600, category, random), null, sent), Is.EqualTo(type));
+    }
+
+    // The client sends the open only from the talk whose OpenDialog named a beauty dialog, with that talk's npc: a
+    // shop of another npc, or one with no such talk, is not opened, and the open takes the offer.
+    [TestCase(1001)]
+    [TestCase(0)]
+    public void OnlyTheTalksNpcOpensItsShop(int offered) {
+        Assert.That(Open(Shop(504, BeautyShopCategory.Hair), "hair,style", BeautyShopType.Default, offered: offered), Is.Null);
+        Assert.That(test.Session.BeautyNpcOffered, Is.Zero);
+    }
+
+    [Test]
+    public void TheOpenTakesTheOffer() {
+        Assert.That(Open(Shop(504, BeautyShopCategory.Hair), "hair,style", BeautyShopType.Default), Is.EqualTo(BeautyShopType.Default));
+        Assert.That(test.Session.BeautyNpcOffered, Is.Zero);
+    }
+
+    [TestCase("BeautyShopDialog", true)]
+    [TestCase("beautystyledialog", true)]
+    [TestCase("ItemEnchantDialog", false)]
+    [TestCase(null, false)]
+    public void TheDialogsThatOfferAShop(string? uiName, bool offers) {
+        Assert.That(BeautyHandler.IsShopDialog(uiName), Is.EqualTo(offers));
     }
 }

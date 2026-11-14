@@ -104,9 +104,19 @@ public class BeautyHandler : FieldPacketHandler {
         }
     }
 
+    // The client sends the open only from the talk whose OpenDialog named a beauty dialog, with that talk's npc
+    // (UITalkManager::OpenTalkDialog, uitalkcinematic.cpp:1357-1399); a shop of another npc, or one opened with no
+    // such talk, is not opened. The offer is taken: a second open needs a new talk.
     private void HandleShop(GameSession session, IByteReader packet) {
         int npcId = packet.ReadInt();
         packet.ReadByte(); // the dialog type the client opened; the server takes it from the npc's own data (ShopType)
+
+        int offered = session.BeautyNpcOffered;
+        session.BeautyNpcOffered = 0;
+        if (npcId == 0 || npcId != offered) {
+            Logger.Debug("Beauty shop of npc {NpcId} not offered (talk offered {Offered})", npcId, offered);
+            return;
+        }
 
         if (!NpcMetadata.TryGet(npcId, out NpcMetadata? metadata)) {
             return;
@@ -186,6 +196,11 @@ public class BeautyHandler : FieldPacketHandler {
     // A BeautyStyleDialog function opens the style save dialog, type 4 (OpenBeautyStyleDialog, :1341). The names are
     // compared case-insensitively, as the client does (:1186).
     // Chosen here: an npc with no such function takes its shop row's type (random 2; skin, dye and mirror 3; else 1).
+    // The npc talk dialogs that open a beauty shop (GetDialogIdByKind, uitalkcinematic.cpp:1186, case-insensitive).
+    public static bool IsShopDialog(string? uiName) =>
+        string.Equals(uiName, "BeautyShopDialog", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(uiName, "BeautyStyleDialog", StringComparison.OrdinalIgnoreCase);
+
     public static BeautyShopType ShopType(ScriptFunctionTable functions, int npcId, BeautyShopMetadata shop) {
         ScriptFunctionMetadata? dialog = functions.Entries.TryGetValue(npcId, out Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>? states)
             ? states.Values.SelectMany(function => function.Values)
