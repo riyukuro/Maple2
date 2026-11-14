@@ -1454,6 +1454,14 @@ public class GuildManager : IDisposable {
         var rating = new GuildRequest.Types.PvpRating { Pvp = pvp, Won = won, Opponent = match.NameB };
         rating.Counts.AddRange(counts);
         Broadcast(new GuildRequest { PvpRating = rating }, member => member.Info.Online);
+        // A match that pays is worth the table's winPvp or losePvp row to each of this guild's payable fighters (the
+        // fighters who get the reward), after the guild's lock: AddContribution takes it.
+        if (reward) {
+            string kind = won ? GuildContributionKind.WinPvp : GuildContributionKind.LosePvp;
+            foreach (long characterId in payable.Distinct().Where(Guild.Members.ContainsKey)) {
+                AddContribution(characterId, kind);
+            }
+        }
         return (score, delta, reward);
     }
 

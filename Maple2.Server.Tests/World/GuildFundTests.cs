@@ -308,4 +308,33 @@ public class GuildFundTests {
         Assert.That(manager.AddContribution(member.CharacterId, 0), Is.Not.EqualTo(GuildError.none));
         Assert.That((member.WeeklyContribution, member.TotalContribution), Is.EqualTo((12, 12)));
     }
+
+    // A championship match that pays is worth the table's winPvp or losePvp row (made-up 11 and 4) to each of this
+    // guild's payable fighters, once each; a fighter of the other guild gets nothing here.
+    [TestCase(true, 11)]
+    [TestCase(false, 4)]
+    public void EndPvp_PayableFightersGetTheirContribution(bool won, int expected) {
+        SetContributions(new Dictionary<string, int> { [GuildContributionKind.WinPvp] = 11, [GuildContributionKind.LosePvp] = 4 });
+        long[] fighters = [master.CharacterId, member.CharacterId, Stranger];
+
+        (_, _, bool reward) = manager.EndPvp(new GuildPvpMatch(), won, fought: true, point: 10, fighters,
+            [master.CharacterId, master.CharacterId, Stranger], DateTime.Now);
+
+        Assert.That(reward, Is.True);
+        Assert.That((master.WeeklyContribution, master.TotalContribution), Is.EqualTo((expected, expected)));
+        Assert.That(StoredContribution(), Is.EqualTo((expected, expected)));
+        Assert.That(member.TotalContribution, Is.EqualTo(0)); // fought, but not payable
+    }
+
+    // A match that does not pay (no fought round) gives no contribution.
+    [Test]
+    public void EndPvp_WithoutTheRewardGivesNoContribution() {
+        SetContributions(new Dictionary<string, int> { [GuildContributionKind.WinPvp] = 11 });
+
+        (_, _, bool reward) = manager.EndPvp(new GuildPvpMatch(), won: true, fought: false, point: 10, [master.CharacterId],
+            [master.CharacterId], DateTime.Now);
+
+        Assert.That(reward, Is.False);
+        Assert.That(master.TotalContribution, Is.EqualTo(0));
+    }
 }
