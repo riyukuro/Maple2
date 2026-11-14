@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
+using Maple2.Model.Game;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Login.PacketHandlers;
 using Maple2.Server.Login.Session;
@@ -84,6 +85,57 @@ public class CharacterDeleteWaitTests {
                 Convert.ToHexString(CharacterListPacket.DeleteEntry(test.CharacterId, s_char_err_no_destroy_wait).ToArray()),
             }));
             Assert.That(Row(test.CharacterId), Is.EqualTo((true, 0L)));
+        });
+    }
+
+    // The delete's own blocks answer first (unread mail: error 7), as for the delete button; error 8 only when
+    // nothing blocks the delete.
+    [Test]
+    public void AFinalDeleteWithNoWaitGetsTheDeleteBlockFirst() {
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.CreateMail(new Mail { ReceiverId = test.CharacterId }), Is.Not.Null);
+        }
+
+        Send(4, test.CharacterId);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Convert.ToHexString(CharacterListPacket.DeleteEntry(test.CharacterId, s_char_err_unread_mail).ToArray()),
+            }));
+            Assert.That(Row(test.CharacterId), Is.EqualTo((true, 0L)));
+        });
+    }
+
+    // The final delete of a character whose wait has passed deletes it.
+    [Test]
+    public void AFinalDeleteOfADueWaitDeletes() {
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.UpdateDelete(test.AccountId, test.CharacterId, DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds()), Is.True);
+        }
+
+        Send(4, test.CharacterId);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Convert.ToHexString(CharacterListPacket.DeleteEntry(test.CharacterId).ToArray()),
+            }));
+            Assert.That(Row(test.CharacterId).Stored, Is.False);
+        });
+    }
+
+    // The final delete of a character still in wait: its delete time with error 10, the character kept.
+    [Test]
+    public void AFinalDeleteBeforeTheWaitEndsKeepsTheCharacter() {
+        SetPending(test.CharacterId);
+        long deleteTime = Row(test.CharacterId).DeleteTime;
+
+        Send(4, test.CharacterId);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Convert.ToHexString(CharacterListPacket.BeginDelete(test.CharacterId, deleteTime, s_char_err_next_delete_char_date).ToArray()),
+            }));
+            Assert.That(Row(test.CharacterId), Is.EqualTo((true, deleteTime)));
         });
     }
 
