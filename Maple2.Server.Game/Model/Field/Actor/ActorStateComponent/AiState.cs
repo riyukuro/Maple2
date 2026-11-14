@@ -407,9 +407,10 @@ public class AiState {
             return;
         }
 
-        float distance = 0;
+        // Walk until the target is within till (KR: "trace up to distance 430"), else within the skill's reach.
+        float distance = node.Till > 0 ? node.Till : 0;
 
-        if (node.SkillIdx != 0) {
+        if (node.Till <= 0 && node.SkillIdx != 0) {
             SkillMetadata? skill = TryGetSkill(node.SkillIdx);
 
             if (skill is null) {
