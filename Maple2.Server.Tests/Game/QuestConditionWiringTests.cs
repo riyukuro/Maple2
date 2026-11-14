@@ -834,6 +834,45 @@ public class QuestConditionWiringTests : TriggerTestBase {
         });
     }
     #endregion
+    #region pet_catch_id, pet_catch_category (FieldPet.DropItem, a wild pet caught)
+    // 94000006: <condition type="pet_catch_id" code="61000153" value="2">, a catch of the pet of the item counts;
+    // 70600038: <condition type="pet_catch_category" code="5" value="1" />, a catch of a pet of the collection
+    // group. A catch of another pet, of another group, counts for neither.
+    [Test]
+    public void PetCatch_94000006_70600038_TheCaughtPet() {
+        StartField(2000001, Npc(21000001), Npc(21000002));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> { [ExpType.petTaming] = new(1, 1f) }));
+        test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
+            [1] = Enumerable.Range(1, 99).ToDictionary(level => level, level => level * 10L),
+        }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long> { [ExpType.petTaming] = 15000 }));
+        test.Register(TestGameSession.Metadata(61000153), TestGameSession.Metadata(61000154));
+        Quest byId = StartQuest(Condition(ConditionType.pet_catch_id, 2, ["61000153"], []));
+        Quest byGroup = test.StartQuest(TestGameSession.QuestData(QuestId + 1) with {
+            Conditions = [Condition(ConditionType.pet_catch_category, 1, ["5"], [])],
+        });
+        void Catch(int itemId, int npcId, int group) {
+            Assert.That(Field.NpcMetadata.TryGet(npcId, out NpcMetadata? npc), Is.True);
+            var petMetadata = (PetMetadata) RuntimeHelpers.GetUninitializedObject(typeof(PetMetadata)) with {
+                Id = npcId, NpcId = npcId, CollectGroup = group,
+            };
+            Item item = Field.ItemDrop.CreateItem(itemId)!;
+            var pet = new FieldPet(Field, 900 + npcId % 100, Field.Navigation.AddAgent(npc!, new Vector3(100, 0, 0)), new Npc(npc!, null),
+                item, petMetadata, string.Empty) { Origin = new Vector3(100, 0, 0) };
+            typeof(FieldPet).GetMethod("DropItem", Any)!.Invoke(pet, [test.Session.Player]);
+        }
+
+        Catch(61000154, 21000002, 3);
+        Assert.That(byId.Conditions[0].Counter + byGroup.Conditions[0].Counter, Is.EqualTo(0));
+        Catch(61000153, 21000001, 5);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.Multiple(() => {
+            Assert.That(byId.Conditions[0].Counter, Is.EqualTo(1));
+            Assert.That(byGroup.Conditions[0].Counter, Is.EqualTo(1));
+        });
+    }
+    #endregion
     #region item_move (FieldManager.PlaceCube, a liftable put down)
     // 10001060: <condition type="item_move" code="30000030" value="3" target="400" />, the liftable item of the code
     // put down on a target box of the target counts; one put down off the box, or another item, does not.
