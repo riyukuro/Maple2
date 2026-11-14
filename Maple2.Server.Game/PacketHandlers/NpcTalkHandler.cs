@@ -67,8 +67,28 @@ public class NpcTalkHandler : FieldPacketHandler {
                 HandleTalkAlliance(session);
                 return;
             case Command.Custom:
+                HandleCustom(session, packet);
                 return;
         }
+    }
+
+    /// <summary>
+    /// The choice picked on a page of a talk script the server sent (button set 19,
+    /// CCustomSelectableDistractorCinematicComponent::vfunc_1, client/ms2/cinematiccomponent.cpp:754): the talk's npc
+    /// id and the choice index. The client shows that button set only for a script from s2c NpcTalk mode 10
+    /// (GetTalkButtonSet, commonfiles/talkscript.cpp:866), which this server does not send, and it waits for no
+    /// answer (no pending flag, unlike mode 2). So the pick is read and logged, nothing else.
+    /// </summary>
+    private void HandleCustom(GameSession session, IByteReader packet) {
+        (int npcId, int pick) = ReadCustom(packet);
+        Logger.Debug("Custom talk pick {Pick} for npc {NpcId} ignored: no server-sent talk script (talking to {TalkNpc})",
+            pick, npcId, session.NpcScript?.Npc?.Value.Id);
+    }
+
+    public static (int NpcId, int Pick) ReadCustom(IByteReader packet) {
+        int npcId = packet.ReadInt();
+        int pick = packet.ReadInt();
+        return (npcId, pick);
     }
 
     private void HandleClose(GameSession session) {
