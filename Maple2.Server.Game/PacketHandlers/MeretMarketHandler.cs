@@ -330,19 +330,20 @@ public class MeretMarketHandler : FieldPacketHandler {
     // description is at most 200 characters.
     internal const int MaxDescription = 200;
     // The tag line comes from the dialog's three tag inputs (m_inputTag1..3), each capped at the UgcTagLengthMax
-    // constant (SetTagInputMaxChars(GetTagInputLimit()), uimeratmarketregisterdialog.cpp:332, 478, 1100; KR 6).
+    // constant (SetTagInputMaxChars(GetTagInputLimit()), uimeratmarketregisterdialog.cpp:332, 478, 1100; KR 6), and
+    // joined with ", " (the movie's split word). An input may itself hold commas, so the line is not split here.
     internal const int MaxTags = 3;
+    internal const string TagSeparator = ", ";
 
     private bool TextsAllowed(string tagText, string description) {
         return description.Length <= MaxDescription && TagsAllowed(tagText, Constants.UgcTagLengthMax)
             && !BanWordStorage.ContainsBannedWord(tagText) && !BanWordStorage.ContainsBannedWord(description);
     }
 
-    // Before, the tag line had no length at all: a changed client stored and showed any length. Empty parts and the
-    // spaces around a tag are not counted; a constant of 0 (not ingested) leaves the length unchecked.
+    // Before, the tag line had no length at all: a changed client stored and showed any length. The line is held to
+    // what the dialog can send, three full inputs and two separators; a constant of 0 (not ingested) leaves it unchecked.
     internal static bool TagsAllowed(string tagText, int maxTagLength) {
-        string[] tags = tagText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return tags.Length <= MaxTags && (maxTagLength <= 0 || tags.All(tag => tag.Length <= maxTagLength));
+        return maxTagLength <= 0 || tagText.Length <= MaxTags * maxTagLength + (MaxTags - 1) * TagSeparator.Length;
     }
 
     private void HandleRelistItem(GameSession session, IByteReader packet) {

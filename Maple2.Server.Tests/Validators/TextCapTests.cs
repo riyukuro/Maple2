@@ -7,20 +7,19 @@ namespace Maple2.Server.Tests.Validators;
 // Text caps taken from the client's own input limits (the client constants UgcTagLengthMax, MaidNameLengthMax and
 // MaidDescLengthMax, KR 6, 12 and 16).
 public class TextCapTests {
-    // The design market's tag line: the register dialog's three tag inputs, each at most UgcTagLengthMax.
+    // The design market's tag line: the register dialog's three tag inputs, each at most UgcTagLengthMax, joined
+    // with ", ". A comma typed inside one input is the player's text, not a fourth tag.
     [TestCase("", ExpectedResult = true)]
-    [TestCase("cat,hat,dog", ExpectedResult = true)]
-    [TestCase("abcdef, ghijkl ,", ExpectedResult = true)]
-    [TestCase("a,b,c,d", ExpectedResult = false)]
-    [TestCase("abcdefg", ExpectedResult = false)]
+    [TestCase("cat, hat, dog", ExpectedResult = true)]
+    [TestCase("abcdef, ghijkl, mnopqr", ExpectedResult = true)]
+    [TestCase("a,b,c, d", ExpectedResult = true)]
+    [TestCase("abcdef, ghijkl, mnopqrs", ExpectedResult = false)]
+    [TestCase("abcdefghijklmnopqrstuvw", ExpectedResult = false)]
     public bool MarketTags_ThreeOfTheClientsLength(string tagText) => MeretMarketHandler.TagsAllowed(tagText, 6);
 
     [Test]
     public void MarketTags_NoConstant_LengthUnchecked() {
-        Assert.Multiple(() => {
-            Assert.That(MeretMarketHandler.TagsAllowed(new string('a', 50), 0), Is.True);
-            Assert.That(MeretMarketHandler.TagsAllowed("a,b,c,d", 0), Is.False, "still three tags");
-        });
+        Assert.That(MeretMarketHandler.TagsAllowed(new string('a', 50), 0), Is.True);
     }
 
     // A maid profile's texts: each at most the larger of the two limits the dialog gives its movie.
