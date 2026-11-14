@@ -252,6 +252,20 @@ public class AiSummonTests {
     // Every KR linkHP npc (23000120-23000135) is no_die: each hit is floored at 1 health on its member, but two such
     // hits on two copies in one share would add up past 0 and kill the group without its hpLess 1 phase step. The
     // link floors at its highest member floor (1 for no_die, an AI MinimumHp floor) instead.
+    // A player's hit runs on its session thread while the field shares the link: a hit of 300 that lands after the
+    // share read a member at 5000 (now 4700) stays on top of the shared value 4000, and the next share passes it on.
+    [Test]
+    public void LinkHp_AHitDuringAShareIsKept() {
+        Assert.Multiple(() => {
+            Assert.That(AiSummon.KeepLateChange(4000, 5000, 4700, 10000), Is.EqualTo(3700));
+            Assert.That(AiSummon.KeepLateChange(4000, 5000, 5000, 10000), Is.EqualTo(4000));
+            Assert.That(AiSummon.KeepLateChange(100, 5000, 0, 10000), Is.EqualTo(0));
+            Assert.That(AiSummon.KeepLateChange(9900, 5000, 5500, 10000), Is.EqualTo(10000));
+            // The next share takes the late hit: Seen is 4000, the member reads 3700.
+            Assert.That(AiSummon.SharedHealth(4000, 10000, [(3700, 4000), (4000, 4000)]), Is.EqualTo(3700));
+        });
+    }
+
     [Test]
     public void LinkHp_DamageStopsAtTheMembersFloor() {
         const long total = 61888412906;

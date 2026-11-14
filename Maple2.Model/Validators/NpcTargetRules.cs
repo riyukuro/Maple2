@@ -35,6 +35,15 @@ public static class NpcTargetRules {
         return Math.Max(change, Math.Min(0, 1 - current));
     }
 
+    // The floor health of a MinimumHp node: percent of the full health, rounded down (no float rounding of a large
+    // total); none for a bare node.
+    public static long MinimumHealth(float percent, long total) {
+        if (percent <= 0 || total <= 0) {
+            return 0;
+        }
+        return (long) Math.Floor(percent * (double) total / 100);
+    }
+
     // The health change an npc takes under an AI MinimumHp floor (minimumHealth, 0 for none): damage stops at the
     // floor and does not go past it, however strong the hit. KR AI_Archeon.xml comments its <MinimumHp hpPercent="84" />
     // as health that does not fall below 84% whatever the attack; a phase's own hpLess condition then runs with the

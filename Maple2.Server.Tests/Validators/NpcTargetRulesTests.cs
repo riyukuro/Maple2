@@ -51,6 +51,17 @@ public class NpcTargetRulesTests {
         Assert.That(NpcTargetRules.FloorChange(current, change, floor), Is.EqualTo(expected));
     }
 
+    // A MinimumHp floor is its percent of the full health, rounded down. KR boss totals reach tens of billions, where
+    // a float product (84 / 100f * total) lands about 1000 health off: 30000000000 at 84% is 25200000000 exactly.
+    [TestCase(84f, 30000000000L, 25200000000L)]
+    [TestCase(84f, 100L, 84L)]
+    [TestCase(59f, 999L, 589L)]
+    [TestCase(0f, 30000000000L, 0L)]
+    [TestCase(50f, 0L, 0L)]
+    public void MinimumHealth_ThePercentOfTheFullHealth(float percent, long total, long expected) {
+        Assert.That(NpcTargetRules.MinimumHealth(percent, total), Is.EqualTo(expected));
+    }
+
     // KR AI_ZakumBrown CurseZakumArms: rank 1 is the player who dealt the body the most damage, rank 2 the second.
     // Equal totals go to the lower object id; a rank nobody holds (or a dealer with no damage) gives 0.
     [TestCase(1, 12)]

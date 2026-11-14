@@ -12,6 +12,8 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
+using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.Util;
 using static Maple2.Server.Game.Model.ActorStateComponent.TaskState;
 using static Maple2.Model.Metadata.AiMetadata;
 
@@ -209,12 +211,60 @@ public class AiStateTests : TriggerTestBase {
         npc.AiState.Update(Field.FieldTick);
 
         Assert.That(test.Errors, Is.Empty);
-        Assert.That(npc.MinimumHealth, Is.EqualTo((long) (84 / 100f * total)));
+        Assert.That(npc.MinimumHealth, Is.EqualTo(total * 84 / 100));
         Assert.That(npc.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(total / 2));
+        // The floor follows the full health: a doubled total doubles it.
+        npc.Stats.Values[BasicAttribute.Health].AddTotal(total);
+        Assert.That(npc.MinimumHealth, Is.EqualTo(total * 2 * 84 / 100));
 
         Spawn([new MinimumHpNode("MinimumHp", [], 84), new MinimumHpNode("MinimumHp", [], 0)]);
         npc.AiState.Update(Field.FieldTick);
         npc.AiState.Update(Field.FieldTick);
+        Assert.That(npc.MinimumHealth, Is.EqualTo(0));
+    }
+
+    // The floor holds on the damage paths: a skill hit (Actor.ApplyDamage) and a dot tick (Buff.ApplyDotDamage) of
+    // 5000 on 100 health stop at the 84% floor. A new AI file (an AI swap) starts without the old file's floor.
+    [Test]
+    public void MinimumHp_HoldsHitsAndDotTicksUntilTheAiChanges() {
+        Spawn([new MinimumHpNode("MinimumHp", [], 84)]);
+        npc.AiState.Update(Field.FieldTick);
+        Stat health = npc.Stats.Values[BasicAttribute.Health];
+        Assert.That(npc.MinimumHealth, Is.EqualTo(84));
+
+        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
+        var skill = new SkillMetadata(1, 1, null, property, null!, null!);
+        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with {
+            CompulsionTypes = [],
+            Damage = new SkillMetadataDamage(Count: 1, Rate: 0, HitSpeed: 0, HitDelay: 0, IsConstDamage: true, Value: 5000,
+                DamageByTargetMaxHp: 0, SuperArmorBreak: false, Push: null),
+        };
+        npc.ApplyDamage(test.Session.Player, new DamageRecord(skill, attack), attack);
+        Assert.That(health.Current, Is.EqualTo(84));
+
+        health.Current = 90;
+        AdditionalEffectMetadata poison = DisabledBuffTests.Effect(1) with {
+            Dot = new AdditionalEffectMetadataDot(new AdditionalEffectMetadataDot.DotDamage(AttackType.None, Element.None, UseGrade: false,
+                Rate: 0, HpValue: 5000, SpValue: 0, EpValue: 0, DamageByTargetMaxHp: 0, RecoverHpByDamage: 0, IsConstDamage: true, NotKill: false), null),
+        };
+        Buff tick = DisabledBuffTests.Held(poison, true);
+        typeof(Buff).GetField("<Caster>k__BackingField", Any)!.SetValue(tick, test.Session.Player);
+        typeof(Buff).GetField("<Owner>k__BackingField", Any)!.SetValue(tick, npc);
+        typeof(Buff).GetMethod("ApplyDotDamage", Any)!.Invoke(tick, null);
+        Assert.That(health.Current, Is.EqualTo(84));
+
+        // The hit's reaction is not under test (the test field has no map property): it leaves the queue first.
+        var hits = (NpcControlRules.PendingHits) typeof(MovementState).GetField("pendingHits", Any)!.GetValue(npc.MovementState)!;
+        hits.Apply((_, _) => true);
+        typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field,
+            AiTable(new AiMetadata(AiPath, [], [new MinimumHpNode("MinimumHp", [], 84)], [], []), new AiMetadata("AI_StateTest2.xml", [], [], [], [])));
+        npc.RequestAiFile("AI_StateTest2.xml");
+        // The npc's first update ends its spawn state; the swap runs on the next.
+        npc.Update(Field.FieldTick + 1);
+        npc.Update(Field.FieldTick + 2);
+        Assert.That(npc.PendingAiFile, Is.Null);
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(npc.MinimumHpPercent, Is.EqualTo(0));
         Assert.That(npc.MinimumHealth, Is.EqualTo(0));
     }
 
@@ -225,7 +275,7 @@ public class AiStateTests : TriggerTestBase {
         Spawn([new SuicideNode("suicide", [])]);
         Assert.That(Field.NpcMetadata.TryGet(NpcId, out NpcMetadata? metadata), Is.True);
         FieldNpc owner = Field.SpawnNpc(metadata!, new Vector3(1200, 0, 0), Vector3.Zero)!;
-        owner.MinimumHealth = 50;
+        owner.MinimumHpPercent = 50;
         var link = new HealthLink(owner);
         link.Add(npc);
         PropertyInfo linkProperty = typeof(FieldNpc).GetProperty(nameof(FieldNpc.HealthLink))!;

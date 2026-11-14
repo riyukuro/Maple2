@@ -698,7 +698,7 @@ public class AiState {
     // full health, and none for a bare node (hpPercent 0). KR: 77 nodes with a percent, 49 bare, in the phase bosses
     // (AI_Archeon, AI_GigantikaTail, AI_Madria_Colosseum). The node heals nothing.
     private void ProcessNode(MinimumHpNode node) {
-        actor.MinimumHealth = (long) (node.HpPercent / 100f * actor.Stats.Values[BasicAttribute.Health].Total);
+        actor.MinimumHpPercent = node.HpPercent;
     }
 
     private void ProcessNode(BuffNode node) {
@@ -823,7 +823,7 @@ public class AiState {
 
     private void ProcessNode(SuicideNode node) {
         // A linkHP member leaves its link first, so the link's damage floor does not undo the node (HealthLink.Leave).
-        actor.HealthLink?.Leave(actor);
+        actor.LeaveHealthLink();
         actor.Stats.Values[BasicAttribute.Health].Current = 0;
     }
 

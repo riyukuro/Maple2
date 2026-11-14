@@ -47,8 +47,8 @@ public sealed class HealthLink {
 
     public void Share() {
         lock (members) {
-            IReadOnlyList<(long Current, long Seen)> changes = members
-                .Select(member => (member.Npc.Stats.Values[BasicAttribute.Health].Current, member.Seen)).ToList();
+            Dictionary<FieldNpc, long> read = members.ToDictionary(member => member.Npc, member => member.Npc.Stats.Values[BasicAttribute.Health].Current);
+            IReadOnlyList<(long Current, long Seen)> changes = members.Select(member => (read[member.Npc], member.Seen)).ToList();
             members.RemoveAll(member => member.Npc.IsDead || !member.Npc.Field.Mobs.ContainsKey(member.Npc.ObjectId) && !member.Npc.Field.Npcs.ContainsKey(member.Npc.ObjectId));
             // The floor of the members that stay: a dead or gone member's own floor no longer holds the link.
             shared = AiSummon.SharedHealth(shared, owner.Stats.Values[BasicAttribute.Health].Total, changes,
@@ -57,8 +57,11 @@ public sealed class HealthLink {
                 FieldNpc npc = members[i].Npc;
                 Stat health = npc.Stats.Values[BasicAttribute.Health];
                 long value = Math.Min(shared, health.Total);
-                if (health.Current != value) {
-                    health.Current = value;
+                // A player's hit lands on the session thread, outside this lock: one taken since the read above stays
+                // on top of the shared value, and the next Share passes it on (Seen is the shared value).
+                long current = AiSummon.KeepLateChange(value, read[npc], health.Current, health.Total);
+                if (health.Current != current) {
+                    health.Current = current;
                     npc.Field.Broadcast(StatsPacket.Update(npc, BasicAttribute.Health));
                 }
                 members[i] = (npc, value);

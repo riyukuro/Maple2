@@ -93,6 +93,12 @@ public static class AiSummon {
         return Math.Clamp(shared + change, 0, Math.Max(ownerTotal, 0));
     }
 
+    // The health a linked member is set to by a share: the shared value (value), plus any change it took after the
+    // share read it (read, now). A player's hit runs on its session thread while the field shares, so it may land in
+    // between; it stays on the member, whose Seen is the shared value, and goes into the next share.
+    public static long KeepLateChange(long value, long read, long now, long total) =>
+        Math.Clamp(value + (now - read), 0, Math.Max(total, 0));
+
     // A linked member's own floor for SharedHealth.
     public static long MemberFloor(bool noDie, long minimumHealth) => Math.Max(noDie ? 1 : 0, minimumHealth);
 

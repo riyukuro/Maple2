@@ -90,6 +90,12 @@ public class FieldNpc : Actor<Npc> {
     // The npcs this one shares its health with (summon option linkHP); null when it shares with none.
     public HealthLink? HealthLink { get; private set; }
 
+    // A member that ends itself (an AI Suicide node) leaves its link, and no longer points at it.
+    public void LeaveHealthLink() {
+        HealthLink?.Leave(this);
+        HealthLink = null;
+    }
+
     // Set by an AI ride node: the npc ids of the slave this npc rides (its car); null when not riding.
     public int[]? RideNpcIds { get; set; }
     // The car position last taken and where that put this npc (a navmesh snap may leave it off the car's point):
@@ -272,7 +278,10 @@ public class FieldNpc : Actor<Npc> {
     public bool NoDie => this is not FieldPet && (KeepAlive || Value.Metadata.Basic.HasPropertyTag("no_die"));
     public bool KeepAlive { get; set; }
     // The health an AI MinimumHp node holds the npc at against damage (NpcTargetRules.FloorChange); 0 for none.
-    public long MinimumHealth { get; set; }
+    // The AI MinimumHp node's percent (0 for none). The floor follows the npc's current full health, so a later
+    // change of its total moves the floor with it.
+    public float MinimumHpPercent { get; set; }
+    public long MinimumHealth => NpcTargetRules.MinimumHealth(MinimumHpPercent, Stats.Values[BasicAttribute.Health].Total);
     // Called with the player and the damage of each hit a player deals.
     public Action<FieldPlayer, long>? PlayerDamageCallback { get; set; }
     private long lastCorpseBroadcastTick;
@@ -414,6 +423,8 @@ public class FieldNpc : Actor<Npc> {
             string? aiFile = Interlocked.Exchange(ref pendingAiFile, null);
             if (aiFile != null) {
                 AiState = new AiState(this, aiFile);
+                // The floor belongs to the AI that set it: a new AI file starts without one.
+                MinimumHpPercent = 0;
             }
             BattleState.Update(tickCount);
             MovementState.SetStunned(TakesStun());
