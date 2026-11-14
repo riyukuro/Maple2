@@ -349,6 +349,21 @@ public class PcBangTests {
         Assert.That(test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.SetPcBang)[^1], Is.EqualTo(0));
     }
 
+    // The top bar's PC bang button (UIUpperHudDialog::SendPcBangBonus) writes 0, 1: the info comes back with the
+    // dialog to open, at any grade. The daily reset's request (OnResetBonus) writes 0, 0 and leaves it as it is.
+    [Test]
+    public void TopBarButtonOpensDialog() {
+        StartSession();
+        Send(writer => { writer.WriteByte(0); writer.WriteByte(1); });
+        List<byte[]> sent = PcBangSent();
+        Assert.That(sent, Has.Count.EqualTo(1));
+        Assert.That((sent[0][2], sent[0][3]), Is.EqualTo(((byte) 0, (byte) 0))); // Info, grade 0
+        Assert.That(sent[0][^1], Is.EqualTo(1)); // open
+
+        Send(writer => { writer.WriteByte(0); writer.WriteByte(0); });
+        Assert.That(PcBangSent().Single()[^1], Is.EqualTo(0));
+    }
+
     [Test]
     public void FeatureOff() {
         StartSession(PcBangRules.Feature);
