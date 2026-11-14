@@ -106,4 +106,20 @@ public class ItemClientRarityTests {
         using GameStorage.Request read = test.Storage.Context();
         Assert.That(read.GetItem(stored.Uid)!.Rarity, Is.EqualTo(6));
     }
+
+    // A row that names a ranked id at another rarity (KR: bonus game 30000869 consumes it at 1, client rank 4; the
+    // exchange recipe scrolls 36000386-36000390 at 3, client rank 4) still takes the copies, which are all held at the
+    // client rank: the rarity a row asks for is the one a copy made from it has.
+    [Test]
+    public void ARowAtThePackRarity_TakesTheCopiesAtTheClientRank() {
+        test = new TestGameSession();
+        ItemMetadata ticket = Ranked(30000869, 3, 4) with { Property = Ranked(30000869, 3, 4).Property with { Rank = 1, SlotMax = 100 } };
+        Item stored = test.Store(ticket, amount: 3);
+        GameSession session = Started(ticket);
+        Assert.That(session.Item.Inventory.Get(stored.Uid)!.Rarity, Is.EqualTo(4));
+
+        Assert.That(session.Item.Inventory.Find(30000869, 1).Select(item => item.Uid), Is.EqualTo(new[] { stored.Uid }));
+        Assert.That(session.Item.Inventory.ConsumeItemComponents([new ItemComponent(30000869, 1, 2, ItemTag.None)]), Is.True);
+        Assert.That(session.Item.Inventory.Get(stored.Uid)!.Amount, Is.EqualTo(1));
+    }
 }

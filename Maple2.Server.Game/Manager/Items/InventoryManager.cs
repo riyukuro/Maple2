@@ -629,7 +629,7 @@ public class InventoryManager {
             // Check for components
             Dictionary<int, IList<Item>> materialsById = components.ToDictionary(
                 ingredient => ingredient.ItemId,
-                ingredient => Filter(item => item.IsSpendable() && item.Uid != keepUid && item.Id == ingredient.ItemId && (ingredient.Rarity < 0 || item.Rarity == ingredient.Rarity))
+                ingredient => Filter(item => item.IsSpendable() && item.Uid != keepUid && item.Id == ingredient.ItemId && (ingredient.Rarity < 0 || item.Rarity == Item.ClientRarity(item.Metadata, ingredient.Rarity)))
             );
             var materialsByTag = new Dictionary<ItemTag, IList<Item>>();
             foreach (ItemComponent ingredient in components) {
@@ -866,6 +866,11 @@ public class InventoryManager {
                 yield break;
             }
 
+            // Every copy of an id the played client ranks is held at that rank (Item.ClientRarity), so a row naming
+            // the id at another rarity (KR: the exchange recipe scrolls 36000386-36000390 at 3, client rank 4) means it.
+            if (rarity >= 0) {
+                rarity = Item.ClientRarity(metadata, rarity);
+            }
             InventoryType type = metadata.Inventory();
             if (!tabs.TryGetValue(type, out ItemCollection? items)) {
                 session.Send(ItemInventoryPacket.Error(s_item_err_not_active_tab));
