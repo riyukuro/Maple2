@@ -19,6 +19,32 @@ using Maple2.Tools.Extensions;
 namespace Maple2.Server.Game.Packets;
 
 public static class FieldPacket {
+    // OnAddUser (scenestategame.cpp:11200): bool riding, then the RideOnAction and the passengers as u8 n,
+    // n x (i32 rider object id, u8 seat), the map the Join packet fills (PCBase::FUN_141676670). Only the owner rides:
+    // a passenger shares the owner's Ride but is drawn on the owner's seat, so it writes no mount of its own.
+    internal static void WriteRide(IByteWriter writer, int objectId, Ride? ride) {
+        bool owner = ride != null && ride.OwnerId == objectId;
+        writer.WriteBool(owner);
+        if (!owner) {
+            return;
+        }
+
+        writer.WriteClass<RideOnAction>(ride!.Action);
+        int count = 0;
+        foreach (int passenger in ride.Passengers) {
+            if (passenger != 0) {
+                count++;
+            }
+        }
+        writer.WriteByte((byte) count);
+        for (int seat = 0; seat < ride.Passengers.Length; seat++) {
+            if (ride.Passengers[seat] != 0) {
+                writer.WriteInt(ride.Passengers[seat]);
+                writer.WriteByte((byte) seat);
+            }
+        }
+    }
+
     public static ByteWriter AddPlayer(GameSession session) {
         Player player = session.Player;
 
@@ -40,12 +66,7 @@ public static class FieldPacket {
 
         pWriter.Write<SkinColor>(player.Character.SkinColor);
         pWriter.WriteUnicodeString(player.Character.Picture);
-        pWriter.WriteBool(session.Ride.Ride != null);
-        if (session.Ride.Ride != null) {
-            pWriter.WriteClass<RideOnAction>(session.Ride.Ride.Action);
-
-            pWriter.WriteByte(); // Unknown Count for Loop
-        }
+        WriteRide(pWriter, player.ObjectId, session.Ride.Ride);
 
         pWriter.WriteInt();
         pWriter.WriteLong(DateTimeOffset.UtcNow.ToUnixTimeSeconds()); // ???
