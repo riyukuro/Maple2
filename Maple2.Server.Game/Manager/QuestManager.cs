@@ -1838,8 +1838,10 @@ public sealed class QuestManager {
         if (metadata.StatPoints > 0) {
             session.Config.AddStatPoint(AttributePointSource.Exploration, 0);
         }
-        // The client shows the round's skill points itself (CFieldMission::Complete, s_reward_notify_skill_point);
-        // the sources packet adds them to the points it counts.
+        // The claim's answer (Quest 0x1a) shows only an item round. The client shows a skill or stat point round's
+        // notice itself, when the field mission that reaches the round completes (CFieldMission::Complete @0x140d72df0,
+        // unnamed/unit_140d72a60_questmissionclasses.cpp: s_reward_notify_skill_point, _sub_1 for awakening points);
+        // the sources packet adds the points to those it counts.
         if (metadata.SkillPoints > 0) {
             session.Config.LoadSkillPoints();
         }

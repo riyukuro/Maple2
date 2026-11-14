@@ -1216,6 +1216,41 @@ public class QuestHandlerTests {
         });
     }
 
+    // The item value as the client splits it (Tokenize skips empty tokens, ItemEntity defaults rarity and amount to
+    // 1, a fourth token is ignored) and every number as sscanf %d / _wtoi reads it (leading digits; none is 0).
+    [Test]
+    public void FieldMission_ReadsNumbersAsTheClient() {
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+                <round mission="5" type="item" value="20000028" />
+                <round mission="10" type="item" value="20000028,3" />
+                <round mission="15" type="item" value="20000028,,4,5" />
+                <round mission="20" type="item" value=",20000028, 2,7abc," />
+                <round mission="25" type="item" value="" />
+                <round mission="30abc" type="statPoint" value="3abc" />
+                <round mission=" 35" type="skillPoint" value="3.5" subJobLevel="1x" />
+                <round mission="40" type="skillPoint" value="x" subJobLevel="-1" />
+                <round mission="45" type="statPoint" value="99999999999" />
+            </ms2>
+            """);
+
+        Dictionary<int, FieldMissionTable.Entry> rows = Maple2.File.Ingest.Mapper.TableMapper.ReadFieldMissions(document);
+
+        Assert.That(rows.Keys.Order(), Is.EqualTo(new[] { 5, 10, 15, 20, 25, 30, 35, 40, 45 }));
+        Assert.Multiple(() => {
+            Assert.That(rows[5].Item, Is.EqualTo(new ItemComponent(20000028, 1, 1, ItemTag.None)));
+            Assert.That(rows[10].Item, Is.EqualTo(new ItemComponent(20000028, 3, 1, ItemTag.None)));
+            Assert.That(rows[15].Item, Is.EqualTo(new ItemComponent(20000028, 4, 5, ItemTag.None)));
+            Assert.That(rows[20].Item, Is.EqualTo(new ItemComponent(20000028, 2, 7, ItemTag.None)));
+            Assert.That(rows[25], Is.EqualTo(new FieldMissionTable.Entry(25, null, 0)));
+            Assert.That(rows[30], Is.EqualTo(new FieldMissionTable.Entry(30, null, 3)));
+            Assert.That(rows[35], Is.EqualTo(new FieldMissionTable.Entry(35, null, 0, 3, 1)));
+            Assert.That(rows[40], Is.EqualTo(new FieldMissionTable.Entry(40, null, 0, 0, 0)));
+            Assert.That(rows[45], Is.EqualTo(new FieldMissionTable.Entry(45, null, int.MaxValue)));
+        });
+    }
+
     // A skillPoint round gives its points to its job rank, stored with the round, and the sources packet goes out
     // once the round is stored. A round with no reward after it is still claimed, so the next round is taken too.
     [Test]

@@ -2220,7 +2220,10 @@ public class TableMapper : TypeMapper<TableMetadata> {
     // Each <round>: mission (the round, a later row of the same round replaces it), type item / statPoint /
     // skillPoint (any case; anything else is a round with no reward) and value: "id,rarity,amount" for an item, else
     // the points. A skillPoint round's subJobLevel 1 gives awakening points, anything else base job points (the
-    // client's reward starts at the base job and only 0 and 1 change it).
+    // client's reward starts at the base job and only 0 and 1 change it). Numbers are read as the client reads them:
+    // an int attribute by sscanf %d (QueryIntAttribute), the item value split on ',' with empty tokens skipped and
+    // each token by _wtoi (ItemEntity::vfunc_1 @0x14026ad60, FUN_140274fc0 @0x140274fc0): the first three tokens give
+    // id, rarity and amount, a missing rarity or amount stays 1 (ItemEntity ctor @0x14026ab50).
     public static Dictionary<int, FieldMissionTable.Entry> ReadFieldMissions(XmlDocument document) {
         var results = new Dictionary<int, FieldMissionTable.Entry>();
         XmlNodeList? nodes = document.SelectNodes("/ms2/round");
@@ -2229,7 +2232,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
 
         foreach (XmlElement node in nodes.OfType<XmlElement>()) {
-            int mission = Int(node.GetAttribute("mission"));
+            int mission = LeadingInt(node.GetAttribute("mission"));
             string type = node.GetAttribute("type");
             string value = node.GetAttribute("value");
             ItemComponent? item = null;
@@ -2237,21 +2240,43 @@ public class TableMapper : TypeMapper<TableMetadata> {
             int skillPoints = 0;
             short skillRank = 0;
             if (type.Equals("item", StringComparison.OrdinalIgnoreCase)) {
-                string[] parts = value.Split(',');
-                if (parts.Length == 3) {
-                    item = new ItemComponent(ItemId: Int(parts[0]), Rarity: Int(parts[1]), Amount: Int(parts[2]), Tag: ItemTag.None);
+                string[] parts = value.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 0) {
+                    item = new ItemComponent(ItemId: LeadingInt(parts[0]), Rarity: parts.Length > 1 ? LeadingInt(parts[1]) : 1,
+                        Amount: parts.Length > 2 ? LeadingInt(parts[2]) : 1, Tag: ItemTag.None);
                 }
             } else if (type.Equals("statPoint", StringComparison.OrdinalIgnoreCase)) {
-                statPoints = Int(value);
+                statPoints = LeadingInt(value);
             } else if (type.Equals("skillPoint", StringComparison.OrdinalIgnoreCase)) {
-                skillPoints = Int(value);
-                skillRank = (short) (Int(node.GetAttribute("subJobLevel")) == 1 ? 1 : 0);
+                skillPoints = LeadingInt(value);
+                skillRank = (short) (LeadingInt(node.GetAttribute("subJobLevel")) == 1 ? 1 : 0);
             }
             results[mission] = new FieldMissionTable.Entry(mission, item, statPoints, skillPoints, skillRank);
         }
         return results;
+    }
 
-        static int Int(string text) => int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int result) ? result : 0;
+    // sscanf %d / _wtoi: leading white space, an optional sign, then the digits up to the first other character
+    // ("3abc" and "3.5" are 3); no digit is 0. An out of range value is clamped.
+    public static int LeadingInt(string? text) {
+        if (text == null) {
+            return 0;
+        }
+        int i = 0;
+        while (i < text.Length && char.IsWhiteSpace(text[i])) {
+            i++;
+        }
+        bool negative = false;
+        if (i < text.Length && (text[i] == '+' || text[i] == '-')) {
+            negative = text[i] == '-';
+            i++;
+        }
+        long value = 0;
+        for (; i < text.Length && text[i] >= '0' && text[i] <= '9'; i++) {
+            value = Math.Min(value * 10 + (text[i] - '0'), (long) int.MaxValue + 1);
+        }
+        value = negative ? -value : value;
+        return (int) Math.Clamp(value, int.MinValue, int.MaxValue);
     }
 
     private WorldMapTable ParseWorldMapTable() {
