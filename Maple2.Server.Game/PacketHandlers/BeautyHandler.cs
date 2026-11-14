@@ -242,7 +242,9 @@ public class BeautyHandler : FieldPacketHandler {
     private void HandleCreateBeauty(GameSession session, IByteReader packet) {
         (_, bool useVoucher, int itemId, _) = BeautyRules.ReadCreate(packet);
 
-        if (session.BeautyShop == null) {
+        // A random shop's dialog sends sub-type 7 for its rows, never 3 (uibeautyshopdialog.cpp:1840-1856), and the style
+        // save dialog (type 4) sends only 16-21: a 3 there chose a row of the random pool at the row's own fee.
+        if (session.BeautyShop == null || session.BeautyShop.Type is BeautyShopType.Random or BeautyShopType.Save) {
             return;
         }
 

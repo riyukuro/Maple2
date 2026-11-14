@@ -82,4 +82,17 @@ public class BeautyShopLockTests {
         Buy();
         Assert.That((Wears(), session.Currency.Meso), Is.EqualTo((true, 4000)));
     }
+
+    // A random shop's dialog sends sub-type 7 for its rows and the style save dialog sends 16-21; neither sends 3.
+    [TestCase(BeautyShopType.Random, false)]
+    [TestCase(BeautyShopType.Save, false)]
+    [TestCase(BeautyShopType.Default, true)]
+    public void AnItemIsSoldOnlyInAShopWhoseDialogSendsTheRequest(BeautyShopType type, bool sold) {
+        Start(0, 0, 0);
+        session.BeautyShop = new BeautyShop(session.BeautyShop!.Metadata, session.BeautyShop.Items) { Type = type };
+
+        Buy();
+
+        Assert.That((Wears(), session.Currency.Meso), Is.EqualTo((sold, sold ? 4000 : 5000)));
+    }
 }
