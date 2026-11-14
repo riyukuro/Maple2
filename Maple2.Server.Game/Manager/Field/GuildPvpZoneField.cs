@@ -318,6 +318,25 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
         return string.Join(":", fighters.Select(id => $"{id},{(fighterNames.TryGetValue(id, out string? name) ? name : string.Empty)}"));
     }
 
+    // TakeFighterReward, with the day's count stored in the database (with the session's currency, as a purchase)
+    // before the reward item's row is made: a crash after the item cannot give the count back. A count that is not
+    // stored is not taken and pays nothing.
+    private bool TakeStoredFighterReward(FieldPlayer player, bool fighter, bool guildPaid, DateTime now) {
+        Character character = player.Value.Character;
+        int day = character.GuildPvpRewardDay;
+        int count = character.GuildPvpRewardCount;
+        if (!Maple2.Model.Game.GuildPvp.TakeFighterReward(character, fighter, guildPaid, now)) {
+            return false;
+        }
+        if (player.Session.TrySavePurchase(db => db.SaveCooldown(player.Value))) {
+            return true;
+        }
+        character.GuildPvpRewardDay = day;
+        character.GuildPvpRewardCount = count;
+        logger.Warning("Guild PvP reward count of {CharacterId} not stored, not paid", character.Id);
+        return false;
+    }
+
     // The World counted the match (a winner): each player of the two guilds here gets the result window. The reward
     // (PvpGuildRewardItem, mailed when the bag is full) and guild_championship of the season go only to the match's
     // fighters, once each, only for a guild the World pays (Reward: a fought match under its daily cap) and while
@@ -341,7 +360,7 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
             long characterId = player.Value.Character.Id;
             GuildResponse.Types.PvpScore row = guildId == winnerRow.GuildId ? winnerRow : loserRow;
             bool fighter = fighters.Contains(characterId) && paid.Add(characterId);
-            bool rewarded = Maple2.Model.Game.GuildPvp.TakeFighterReward(player.Value.Character, fighter, row.Reward, now);
+            bool rewarded = TakeStoredFighterReward(player, fighter, row.Reward, now);
             int count = !rewarded ? 0 : guildId == winnerRow.GuildId ? constants.PvpGuildRewardWinnerCount : constants.PvpGuildRewardLoserCount;
             player.Session.Send(PvpPacket.GuildResult(winnerSide, loserSide, count));
             if (seasonId > 0 && rewarded) {

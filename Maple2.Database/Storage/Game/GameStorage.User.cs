@@ -578,6 +578,31 @@ public partial class GameStorage {
         }
 
         /// <summary>
+        /// Writes only the character's cooldowns and daily counts (a daily capped reward's count), so the count is
+        /// stored before the reward it allows is given. Callers hold the account lock.
+        /// </summary>
+        public bool SaveCooldown(Player player) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.Character? character = Context.Character.Find(player.Character.Id);
+            if (character == null) {
+                return false;
+            }
+
+            character.Cooldown = Model.Character.CooldownOf(player.Character);
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(character.Id);
+            if (updated != null) {
+                player.Account.LastModified = updated.Value.AccountLastModified;
+                player.Character.LastModified = updated.Value.CharacterLastModified;
+            }
+            return true;
+        }
+
+        /// <summary>
         /// Writes only the account's meso market counts (the listings of the day, the purchases of the month), together
         /// with the listing or the sale that counts. Callers hold the account lock.
         /// </summary>

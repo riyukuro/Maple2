@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Xml;
+using Maple2.Database.Context;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
@@ -16,6 +17,7 @@ using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.Game.Util;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -165,5 +167,33 @@ public class MiniGameExtraRewardTests {
         session.Player.Position = new Vector3(5000, 0, 0);
         action.Execute(context);
         Assert.That(session.Currency.Meso - before, Is.EqualTo(Meso));
+    }
+
+    private int StoredCount() {
+        using var context = new Ms2Context(test.Options);
+        return context.Character.AsNoTracking().Single(row => row.Id == session.CharacterId).Cooldown.MassiveExtraRewardCount;
+    }
+
+    // The day's count is in the database before the reward is given, so a crash after the reward's item rows cannot
+    // give the count back. A count that could not be stored pays nothing and is not taken.
+    [Test]
+    public void UserOpen_CountStoredBeforeTheReward() {
+        Start();
+        long before = session.Currency.Meso;
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Character>().Any(entry => entry.State == EntityState.Modified);
+        StartRecord();
+        GiveReward(UserOpen);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(before));
+        Assert.That(Character.MassiveExtraRewardCount, Is.EqualTo(0));
+        Assert.That(StoredCount(), Is.EqualTo(0));
+        Assert.That(Notices(), Is.Empty);
+
+        test.FailSave = null;
+        StartRecord();
+        GiveReward(UserOpen);
+
+        Assert.That(session.Currency.Meso - before, Is.EqualTo(Meso));
+        Assert.That((Character.MassiveExtraRewardCount, StoredCount()), Is.EqualTo((1, 1)));
     }
 }

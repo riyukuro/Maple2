@@ -1322,11 +1322,18 @@ public class GuildHandler : FieldPacketHandler {
         }
 
         long cost = (long) Constants.guildDonateMeso * count;
-        // Order: the meso is taken first (checked and taken in one step), World adds and saves the fund, and
-        // only a refusal that World itself answered gives the meso back. An RPC error leaves it taken, because
-        // World may have added the fund before the call failed: the guild can not get fund without meso.
+        // Order: the meso is taken first (checked and taken in one step) and stored (as a purchase), World adds and
+        // saves the fund, and only a refusal that World itself answered gives the meso back. The taken meso is
+        // stored before World is asked, so a crash after World saved the fund cannot leave the meso unpaid. An RPC
+        // error leaves it taken, because World may have added the fund before the call failed: the guild can not
+        // get fund without meso.
         if (cost <= 0 || !session.Currency.TryTakeMeso(cost)) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_no_money));
+            return;
+        }
+        if (!session.TrySavePurchase(_ => true)) {
+            session.Currency.ChangeMeso(cost);
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
             return;
         }
         try {
@@ -1341,6 +1348,7 @@ public class GuildHandler : FieldPacketHandler {
             var error = (GuildError) response.Error;
             if (error != GuildError.none) {
                 session.Currency.ChangeMeso(cost);
+                session.SavePurchase();
                 session.Send(GuildPacket.Error(error));
                 return;
             }

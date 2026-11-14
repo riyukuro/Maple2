@@ -32,6 +32,29 @@ internal class Character {
     public DateTime CreationTime { get; set; }
     public DateTime LastModified { get; init; }
 
+    // The character's cooldowns and daily counts, as the row stores them (also written alone by SaveCooldown).
+    public static Cooldown CooldownOf(Maple2.Model.Game.Character other) {
+        return new Cooldown {
+            Doctor = other.DoctorCooldown,
+            Storage = other.StorageCooldown,
+            AbilityReset = other.AbilityResetTime,
+            PetFusionCount = other.PetFusionCount,
+            PetFusionTime = other.PetFusionTime,
+            MassiveExtraRewardCount = other.MassiveExtraRewardCount,
+            MassiveExtraRewardTime = other.MassiveExtraRewardTime,
+            ConstructExpCount = other.ConstructExpCount,
+            ConstructExpTime = other.ConstructExpTime,
+            GuildPvpRewardDay = other.GuildPvpRewardDay,
+            GuildPvpRewardCount = other.GuildPvpRewardCount,
+            MissionAttackCount = other.MissionAttackCount,
+            MissionAttackTime = other.MissionAttackTime,
+            FieldQuestGrant = other.FieldQuestGrantTime,
+            MissionPointGrant = other.MissionPointGrantTime,
+            DailyMissionGrant = other.DailyMissionGrantTime,
+            WeddingMissionGrant = other.WeddingMissionGrantTime,
+        };
+    }
+
     [return: NotNullIfNotNull(nameof(other))]
     public static implicit operator Character?(Maple2.Model.Game.Character? other) {
         return other == null ? null : new Character {
@@ -64,25 +87,7 @@ internal class Character {
                 ReturnY = other.ReturnPosition.Y,
                 ReturnZ = other.ReturnPosition.Z,
             },
-            Cooldown = new Cooldown {
-                Doctor = other.DoctorCooldown,
-                Storage = other.StorageCooldown,
-                AbilityReset = other.AbilityResetTime,
-                PetFusionCount = other.PetFusionCount,
-                PetFusionTime = other.PetFusionTime,
-                MassiveExtraRewardCount = other.MassiveExtraRewardCount,
-                MassiveExtraRewardTime = other.MassiveExtraRewardTime,
-                ConstructExpCount = other.ConstructExpCount,
-                ConstructExpTime = other.ConstructExpTime,
-                GuildPvpRewardDay = other.GuildPvpRewardDay,
-                GuildPvpRewardCount = other.GuildPvpRewardCount,
-                MissionAttackCount = other.MissionAttackCount,
-                MissionAttackTime = other.MissionAttackTime,
-                FieldQuestGrant = other.FieldQuestGrantTime,
-                MissionPointGrant = other.MissionPointGrantTime,
-                DailyMissionGrant = other.DailyMissionGrantTime,
-                WeddingMissionGrant = other.WeddingMissionGrantTime,
-            },
+            Cooldown = CooldownOf(other),
             Currency = new CharacterCurrency(),
             Mastery = new Mastery() {
                 Alchemy = other.Mastery.Alchemy,

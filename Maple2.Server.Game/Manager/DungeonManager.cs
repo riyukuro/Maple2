@@ -1405,7 +1405,7 @@ public class DungeonManager {
         record.ExtraCooldownTimestamp = account.ExtraCooldownTimestamp;
     }
 
-    public void Save(GameStorage.Request db) {
-        db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray());
+    public bool Save(GameStorage.Request db) {
+        return db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray());
     }
 }

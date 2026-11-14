@@ -219,6 +219,50 @@ public class GuildMoneyHandlerTests {
         Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildError.s_guild_err_unknown)) }));
     }
 
+    private long StoredMeso() {
+        using var context = new Ms2Context(test.Options);
+        return context.Character.AsNoTracking().Single(row => row.Id == session.CharacterId).Currency.Meso;
+    }
+
+    // The taken meso is in the database before the World adds and saves the fund: a crash after the World's save
+    // cannot leave the fund added and the meso unpaid. A World refusal stores the meso given back.
+    [Test]
+    public void Donate_TheTakenMesoIsStoredBeforeTheWorldIsAsked() {
+        Join();
+        session.Currency.Meso = 50000;
+        long storedWhenAsked = -1;
+        test.World.GuildWorld = request => {
+            storedWhenAsked = StoredMeso();
+            return new GuildResponse { DonationCount = request.Donate.Count, DonationTime = 123456 };
+        };
+
+        Donate(2);
+
+        Assert.That(storedWhenAsked, Is.EqualTo(30000));
+
+        test.World.GuildWorld = _ => new GuildResponse { Error = (int) GuildError.s_guild_err_unknown };
+        Donate(1);
+
+        Assert.That((session.Currency.Meso, StoredMeso()), Is.EqualTo((30000L, 30000L)));
+    }
+
+    // The taken meso could not be stored: the meso comes back, the World is not asked and the player gets the error.
+    [Test]
+    public void Donate_MesoNotStoredAsksNoWorld() {
+        Join();
+        session.Currency.Meso = 50000;
+        test.World.GuildWorld = request => new GuildResponse { DonationCount = request.Donate.Count, DonationTime = 123456 };
+        test.TakeSent();
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Character>().Any(entry => entry.State == EntityState.Modified);
+
+        Donate(2);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(50000));
+        Assert.That(test.World.GuildRequests, Is.Empty);
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildError.s_guild_err_unknown)) }));
+        test.Errors.Clear();
+    }
+
     // The call to the world fails without an answer: the world may have added the fund, so the meso stays taken
     // (the guild cannot get fund without meso) and the player gets the error.
     [Test]

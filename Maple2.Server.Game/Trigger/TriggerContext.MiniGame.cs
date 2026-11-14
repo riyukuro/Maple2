@@ -138,7 +138,9 @@ public partial class TriggerContext {
     }
 
     // The user-opened games' extra reward, userMassiveExtraRewardMax times a day; past that the clear pays nothing
-    // more. The count is stored before the reward is given, so a failure cannot pay twice.
+    // more. The count is stored in the database (with the session's currency, as a purchase) before the reward is
+    // given, so a crash after the reward's item rows cannot give the day's count back; a count that is not stored
+    // pays nothing and is not taken.
     private static void GiveExtraReward(GameSession session, MiniGameUserRecord record, int rewardId) {
         Character character = session.Player.Value.Character;
         int maxPerDay = session.ServerTableMetadata.ConstantsTable.userMassiveExtraRewardMax;
@@ -153,8 +155,16 @@ public partial class TriggerContext {
             return;
         }
 
+        int oldCount = character.MassiveExtraRewardCount;
+        long oldTime = character.MassiveExtraRewardTime;
         character.MassiveExtraRewardCount = paidToday + 1;
         character.MassiveExtraRewardTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (!session.TrySavePurchase(db => db.SaveCooldown(session.Player.Value))) {
+            character.MassiveExtraRewardCount = oldCount;
+            character.MassiveExtraRewardTime = oldTime;
+            Log.Logger.Warning("MiniGameGiveReward: extra reward count of {CharacterId} not stored, not paid", session.CharacterId);
+            return;
+        }
         record.Add(session.GetRewardContent(rewardId));
         (int a, int b) = MiniGameClearRules.NoticeArgs(paidToday + 1, maxPerDay);
         session.Send(PlayerHostPacket.MiniGameRewardReceive(a, b));
