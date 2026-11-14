@@ -297,17 +297,30 @@ public static class QuestRules {
         NoMetadata,
         NotHeld,
         Completed,
+        NotListed,
         NotInClient,
         Unmet,
         InventoryFull,
     }
 
-    public static RemoteClaim RemoteClaimCheck(bool hasMetadata, Quest? held, bool knownToClient, bool conditionsMet) {
+    // The quests a page may claim with its mode. Every 0x18 sender lists daily missions (type 3) only: the daily
+    // mission page's tabs and level guide (RefreshRecommendList, RefreshLevelGuide: held type-3 quests) and the level-up
+    // guide (CollectType3QuestsByGuideType 1 and 2). Any other quest is completed at its npc (Quest 4), so a 0x18 for
+    // it is a claim no page shows. The event, mentoring and wedding claims (0x1b, 0x1d, 0x27) keep the checks below.
+    public const byte RemoteCompleteMode = 0x18;
+
+    public static bool RemoteClaimListed(byte mode, QuestType type) =>
+        mode != RemoteCompleteMode || type == QuestType.DailyMission;
+
+    public static RemoteClaim RemoteClaimCheck(bool hasMetadata, Quest? held, bool knownToClient, bool conditionsMet, bool listed = true) {
         if (held == null) {
             return hasMetadata ? RemoteClaim.NotHeld : RemoteClaim.NoMetadata;
         }
         if (held.State == QuestState.Completed) {
             return RemoteClaim.Completed;
+        }
+        if (!listed) {
+            return RemoteClaim.NotListed;
         }
         if (!knownToClient) {
             return RemoteClaim.NotInClient;

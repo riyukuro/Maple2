@@ -30,8 +30,9 @@ public class QuestHandlerTests {
     private QuestHandler handler = null!;
 
     // A quest of the popup talk: accepted and completed without an npc on the field.
-    private static QuestMetadata Data(bool acceptItem = false, bool remote = true, int remoteMap = 0, int repeat = 0) {
-        QuestMetadata data = TestGameSession.QuestData(QuestId);
+    private static QuestMetadata Data(bool acceptItem = false, bool remote = true, int remoteMap = 0, int repeat = 0,
+        QuestType type = QuestType.EpicQuest) {
+        QuestMetadata data = TestGameSession.QuestData(QuestId, type);
         return data with {
             Basic = data.Basic with { CompleteNpc = Npc, Forfeitable = true, Repeat = repeat },
             RemoteAccept = new QuestRemoteAccept(QuestRemoteType.Popup, 0),
@@ -60,8 +61,8 @@ public class QuestHandlerTests {
     }
 
     // A started quest with its one condition met or open.
-    private Quest Started(bool met = true, bool remote = true, int remoteMap = 0) {
-        Quest quest = test.StartQuest(Data(remote: remote, remoteMap: remoteMap));
+    private Quest Started(bool met = true, bool remote = true, int remoteMap = 0, QuestType type = QuestType.EpicQuest) {
+        Quest quest = test.StartQuest(Data(remote: remote, remoteMap: remoteMap, type: type));
         quest.Conditions[0].Counter = met ? 1 : 0;
         return quest;
     }
@@ -80,6 +81,14 @@ public class QuestHandlerTests {
             writer.WriteInt(questId);
             writer.WriteInt(npcObjectId);
             writer.WriteInt(0);
+        }));
+    }
+
+    // A page's claim button (Quest 0x18, 0x1b, 0x1d, 0x27): the mode and the quest id.
+    private void Claim(GameSession session, byte mode) {
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(mode);
+            writer.WriteInt(QuestId);
         }));
     }
 
@@ -109,6 +118,33 @@ public class QuestHandlerTests {
             Assert.That(quest.State, Is.EqualTo(QuestState.Started));
             Assert.That(session.Currency.Meso, Is.EqualTo(meso));
             Assert.That(Held(session), Is.EqualTo(0));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // Quest 0x18 comes from the daily mission page and the level-up guide, which list daily missions only: a daily
+    // mission due is completed, any other quest due stays in progress with the refusal text (it is completed at
+    // its npc). The event claim (0x1b) keeps taking an event quest.
+    [TestCase((byte) 0x18, QuestType.DailyMission, true)]
+    [TestCase((byte) 0x18, QuestType.EpicQuest, false)]
+    [TestCase((byte) 0x18, QuestType.WorldQuest, false)]
+    [TestCase((byte) 0x18, QuestType.EventQuest, false)]
+    [TestCase((byte) 0x18, QuestType.GuildQuest, false)]
+    [TestCase((byte) 0x1b, QuestType.EventQuest, true)]
+    public void Claim_CompletesOnlyTheQuestsItsPagesList(byte mode, QuestType type, bool completed) {
+        GameSession session = Login();
+        Quest quest = Started(remote: false, type: type);
+        long meso = session.Currency.Meso;
+
+        Claim(session, mode);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(completed ? QuestState.Completed : QuestState.Started));
+            Assert.That(session.Currency.Meso, Is.EqualTo(completed ? meso + 100 : meso));
+            Assert.That(Held(session), Is.EqualTo(completed ? 2 : 0));
+            if (!completed) {
+                Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Error(QuestError.s_quest_error_consume_fail) }));
+            }
             Assert.That(test.Errors, Is.Empty);
         });
     }

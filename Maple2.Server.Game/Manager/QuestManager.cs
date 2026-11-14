@@ -783,13 +783,15 @@ public sealed class QuestManager {
     }
 
     /// <summary>
-    /// Quest 0x18, the claim button of the daily mission page and the level guide: completes the held quest when the
-    /// client and the server agree it is due (QuestRules.RemoteClaimCheck), else says why.
+    /// Quest 0x18, the claim button of the daily mission page and the level guide (and 0x1b, 0x1d, 0x27, the event,
+    /// mentoring and wedding claims): completes the held quest when a page of that mode lists it and the client and
+    /// the server agree it is due (QuestRules.RemoteClaimCheck), else says why.
     /// </summary>
-    public QuestRules.RemoteClaim RemoteComplete(int questId) {
+    public QuestRules.RemoteClaim RemoteComplete(int questId, byte mode = QuestRules.RemoteCompleteMode) {
         TryGetQuest(questId, out Quest? quest);
         QuestRules.RemoteClaim claim = QuestRules.RemoteClaimCheck(session.QuestMetadata.TryGet(questId, out _), quest,
-            quest != null && PlayedClientQuests.Known(quest.Metadata.Basic), quest != null && CanComplete(quest));
+            quest != null && PlayedClientQuests.Known(quest.Metadata.Basic), quest != null && CanComplete(quest),
+            quest == null || QuestRules.RemoteClaimListed(mode, quest.Metadata.Basic.Type));
         if (claim != QuestRules.RemoteClaim.Done) {
             return claim;
         }

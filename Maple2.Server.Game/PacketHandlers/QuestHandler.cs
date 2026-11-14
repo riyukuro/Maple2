@@ -100,7 +100,7 @@ public class QuestHandler : FieldPacketHandler {
             case Command.ClaimWeddingQuestReward:
                 // The reward buttons of the daily mission, level-up package, time-run event, mentoring and
                 // wedding pages. Each page marks a row as taken once the quest's state is completed.
-                HandleRemoteComplete(session, packet);
+                HandleRemoteComplete(session, packet, (byte) command);
                 return;
             case Command.CompleteFieldMission:
                 HandleCompleteFieldMission(session, packet);
@@ -467,10 +467,10 @@ public class QuestHandler : FieldPacketHandler {
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
     }
 
-    private void HandleRemoteComplete(GameSession session, IByteReader packet) {
+    private void HandleRemoteComplete(GameSession session, IByteReader packet, byte mode) {
         int questId = packet.ReadInt();
 
-        QuestRules.RemoteClaim claim = session.Quest.RemoteComplete(questId);
+        QuestRules.RemoteClaim claim = session.Quest.RemoteComplete(questId, mode);
         if (claim == QuestRules.RemoteClaim.Done) {
             return;
         }

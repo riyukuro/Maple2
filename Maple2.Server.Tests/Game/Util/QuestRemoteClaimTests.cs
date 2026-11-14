@@ -42,11 +42,30 @@ public class QuestRemoteClaimTests {
         Assert.That(QuestRules.RemoteClaimCheck(true, Held(state), known, met), Is.EqualTo(expected));
     }
 
+    [TestCase(QuestState.Started, QuestRules.RemoteClaim.NotListed)]
+    [TestCase(QuestState.Completed, QuestRules.RemoteClaim.Completed)] // a second click, as above
+    public void Claim_NotListed(QuestState state, QuestRules.RemoteClaim expected) {
+        Assert.That(QuestRules.RemoteClaimCheck(true, Held(state), true, true, listed: false), Is.EqualTo(expected));
+    }
+
+    // 0x18 lists daily missions only (the daily mission page and the level-up guide); 0x1b, 0x1d and 0x27 keep any type.
+    [TestCase((byte) 0x18, QuestType.DailyMission, true)]
+    [TestCase((byte) 0x18, QuestType.EpicQuest, false)]
+    [TestCase((byte) 0x18, QuestType.FieldMission, false)]
+    [TestCase((byte) 0x18, QuestType.MentoringMission, false)]
+    [TestCase((byte) 0x1b, QuestType.EventQuest, true)]
+    [TestCase((byte) 0x1d, QuestType.MentoringMission, true)]
+    [TestCase((byte) 0x27, QuestType.WeddingMission, true)]
+    public void Claim_Listed(byte mode, QuestType type, bool listed) {
+        Assert.That(QuestRules.RemoteClaimListed(mode, type), Is.EqualTo(listed));
+    }
+
     [TestCase(QuestRules.RemoteClaim.Done, false)]
     [TestCase(QuestRules.RemoteClaim.InventoryFull, false)] // the inventory error is the answer
     [TestCase(QuestRules.RemoteClaim.Completed, false)] // a second click before the Complete packet
     [TestCase(QuestRules.RemoteClaim.NoMetadata, true)]
     [TestCase(QuestRules.RemoteClaim.NotHeld, true)]
+    [TestCase(QuestRules.RemoteClaim.NotListed, true)]
     [TestCase(QuestRules.RemoteClaim.NotInClient, true)]
     [TestCase(QuestRules.RemoteClaim.Unmet, true)]
     public void Refusal_Answer(QuestRules.RemoteClaim claim, bool answered) {
