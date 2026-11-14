@@ -56,7 +56,10 @@ public class EnsembleConditionTests {
         foreach (TestGameSession test in new[] { leaderTest, guestTest }) {
             test.Store(TestGameSession.Metadata(InstrumentItemId, type: 6,
                 function: new ItemMetadataFunction(ItemFunction.OpenInstrument, "OpenInstrument", $"{InstrumentId}", false)));
-            test.Store(TestGameSession.Metadata(ScoreItemId, type: 6));
+            // A ready-made score of 60 s (every KR one has a playTime; a score without one counts no time).
+            test.Store(TestGameSession.Metadata(ScoreItemId, type: 6) with {
+                Music = new ItemMetadataMusic(10, 1, 1, false, 0, string.Empty, 60000),
+            });
             test.SetTable(new InstrumentTable(new Dictionary<int, InstrumentMetadata> {
                 [InstrumentId] = new(InstrumentId, 0, 1, 1, 1, 0),
             }));

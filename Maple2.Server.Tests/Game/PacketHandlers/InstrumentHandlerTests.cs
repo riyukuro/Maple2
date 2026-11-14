@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Maple2.Database.Context;
+using Maple2.Database.Storage;
 using Maple2.File.Ingest;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -9,6 +11,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -20,13 +23,13 @@ public class InstrumentHandlerTests {
 
     private TestGameSession test = null!;
 
-    private GameSession Start(long expiryTime, out Item instrument, int scoreItemId = 0) {
+    private GameSession Start(long expiryTime, out Item instrument, int scoreItemId = 0, ItemMetadata? scoreData = null) {
         test = new TestGameSession();
         ItemMetadata metadata = TestGameSession.Metadata(InstrumentItemId, type: 6,
             function: new ItemMetadataFunction(ItemFunction.OpenInstrument, "OpenInstrument", $"{InstrumentId}", false));
         Item stored = test.Store(metadata);
         if (scoreItemId != 0) {
-            test.Store(TestGameSession.Metadata(scoreItemId, type: 6));
+            test.Store(scoreData ?? TestGameSession.Metadata(scoreItemId, type: 6));
         }
         test.SetTable(new InstrumentTable(new Dictionary<int, InstrumentMetadata> {
             [InstrumentId] = new(InstrumentId, 0, 1, 1, 1, 0),
@@ -96,6 +99,57 @@ public class InstrumentHandlerTests {
 
         Assert.That(session.Instrument?.Score, Is.SameAs(score));
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(counted));
+    }
+    // The play dialog's score slot takes no blank written score (uiplayinstrumentdialog.cpp, CItem::FUN_140525730:
+    // a custom-note score with no author), so a start with one plays nothing and spends no use; a written one plays.
+    [TestCase(null, false)]
+    [TestCase("", false)]
+    [TestCase("writer", true)]
+    public void StartScore_RefusesABlankWrittenScore(string? author, bool plays) {
+        ItemMetadata scoreData = TestGameSession.Metadata(35100001, type: 6) with {
+            Music = new ItemMetadataMusic(10, 1, 100, true, 3000, string.Empty, 0),
+        };
+        GameSession session = Start(DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600, out Item instrument, scoreData.Id, scoreData);
+        Item score = session.Item.Inventory.Filter(item => item.Id == scoreData.Id, InventoryType.FishingMusic).Single();
+        score.RemainUses = 5;
+        score.Music = author == null ? null : new ItemCustomMusicScore { Author = author, Title = "song", Length = 2500, Mml = "cdefg" };
+
+        new InstrumentHandler { TableMetadata = test.TableMetadata, BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteLong(instrument.Uid);
+            writer.WriteLong(score.Uid);
+        }));
+
+        Assert.That(session.Instrument != null, Is.EqualTo(plays));
+        Assert.That(score.RemainUses, Is.EqualTo(plays ? 4 : 5));
+    }
+    // PlayInstrument 8 (compose): the length must be the one the client computes from the notes (cdefg: five quarter
+    // notes at tempo 120, 2.5 s), give or take 1 ms; another length is refused (17, 8) and the score stays blank.
+    [TestCase(2500, true)]
+    [TestCase(2501, true)]
+    [TestCase(2502, false)]
+    [TestCase(3_600_000, false)]
+    public void ComposeScore_TakesOnlyTheLengthTheNotesPlayFor(int length, bool composed) {
+        ItemMetadata scoreData = TestGameSession.Metadata(35100001, type: 6) with {
+            Music = new ItemMetadataMusic(10, 1, 100, true, 3000, string.Empty, 0),
+        };
+        GameSession session = Start(DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600, out _, scoreData.Id, scoreData);
+        Item score = session.Item.Inventory.Filter(item => item.Id == scoreData.Id, InventoryType.FishingMusic).Single();
+        score.RemainUses = 5;
+        score.Music = new ItemCustomMusicScore();
+        var words = new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+
+        new InstrumentHandler { TableMetadata = test.TableMetadata, BanWordStorage = new BanWordStorage(words) }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(8);
+            writer.WriteLong(score.Uid);
+            writer.WriteInt(length);
+            writer.WriteInt(1); // the instrument category
+            writer.WriteUnicodeString("song");
+            writer.WriteString("cdefg");
+        }));
+
+        Assert.That(score.Music!.Author, composed ? Is.Not.Empty : Is.Empty);
+        Assert.That(score.Music.Length, Is.EqualTo(composed ? length : 0));
     }
     // A home's music row (HomePermission 3): the client sends no play where it stops the player
     // (CubeMapInformationService::FUN_1410c3cd0, checked before modes 0, 3 and 5); the server refuses one too.

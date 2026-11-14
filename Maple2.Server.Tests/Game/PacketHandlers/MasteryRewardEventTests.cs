@@ -101,7 +101,7 @@ public class MasteryRewardEventTests {
         Assert.That(Convert.ToHexString(writer.ToArray()), Does.Contain("71110100" + "02000000"));
     }
 
-    // A score played alone (PlayInstrument 3, then 4) in the event's map: the score without music data gives 1 mastery,
+    // A score played alone (PlayInstrument 3, then 4) in the event's map: a 60 s score giving 1 mastery a second, up to 1, gives 1,
     // the music event at 10000 doubles it; a fishing event or another map adds nothing.
     [TestCase(2, Map, 2)]
     [TestCase(1, Map, 1)]
@@ -110,7 +110,9 @@ public class MasteryRewardEventTests {
         var test = new TestGameSession();
         test.Store(TestGameSession.Metadata(InstrumentItemId, type: 6,
             function: new ItemMetadataFunction(ItemFunction.OpenInstrument, "OpenInstrument", $"{InstrumentId}", false)));
-        test.Store(TestGameSession.Metadata(ScoreItemId, type: 6));
+        test.Store(TestGameSession.Metadata(ScoreItemId, type: 6) with {
+            Music = new ItemMetadataMusic(10, 1, 1, false, 0, string.Empty, 60000),
+        });
         test.SetTable(new InstrumentTable(new Dictionary<int, InstrumentMetadata> {
             [InstrumentId] = new(InstrumentId, 0, 1, 1, 1, 0),
         }));

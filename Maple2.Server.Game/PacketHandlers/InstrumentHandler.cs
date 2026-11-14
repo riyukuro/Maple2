@@ -145,7 +145,7 @@ public class InstrumentHandler : FieldPacketHandler {
 
         long itemUid = packet.ReadLong();
         long scoreUid = packet.ReadLong();
-        if (!TryGetScore(session, scoreUid, out Item? score)) {
+        if (!TryGetScore(session, scoreUid, out Item? score) || IsBlank(score)) {
             return;
         }
         if (!TryUseInstrument(session, itemUid, Environment.TickCount64, false, out session.Instrument)) {
@@ -182,7 +182,8 @@ public class InstrumentHandler : FieldPacketHandler {
 
         // The prestige exp comes with the exp (ExperienceManager.AddExp): the reason s_msg_take_play_instrument_exp reads the
         // server table's Exp_MusicMasteryLv1 row, 250 in KR, the same for all four levels.
-        // The time counts up to the score's own length: a stop that comes late gives no more than the whole score.
+        // The time counts up to the score's own length: a stop that comes late gives no more than the whole score,
+        // and a score without a length gives nothing.
         int scoreLength = score?.Music?.Length > 0 ? score.Music.Length : score?.Metadata.Music?.PlayTime ?? 0;
         long totalTickTime = InstrumentRules.PlayedMs(Environment.TickCount64 - session.Instrument.StartTick, scoreLength);
         // A running MasteryReward event for music in this map adds its share of the whole gain, doubled or not.
@@ -224,7 +225,7 @@ public class InstrumentHandler : FieldPacketHandler {
 
         long itemUid = packet.ReadLong();
         long scoreUid = packet.ReadLong();
-        if (!TryGetScore(session, scoreUid, out Item? score) || MusicBlocked(session)) {
+        if (!TryGetScore(session, scoreUid, out Item? score) || IsBlank(score) || MusicBlocked(session)) {
             return;
         }
 
@@ -294,9 +295,14 @@ public class InstrumentHandler : FieldPacketHandler {
         string mml = packet.ReadString();
 
         // A refusal answers with 17, which unlocks the client's score writer (it stays locked otherwise).
+        // The client times the mml with the category's percussion (an unknown category is refused before it sends).
         int noteLengthMax = score?.Metadata.Music?.NoteLengthMax ?? 0;
+        InstrumentMetadata? category = TableMetadata.InstrumentTable.Entries.Values.FirstOrDefault(entry => entry.Category == (int) instrument);
         ComposeResult? refusal = InstrumentRules.ComposeRefusal(usable, composed, title,
-            BanWordStorage.ContainsBannedWord, mml, noteLengthMax, length);
+            BanWordStorage.ContainsBannedWord, mml, noteLengthMax, length, category?.PercussionId ?? 0);
+        if (refusal == null && category == null) {
+            refusal = ComposeResult.Retry;
+        }
         if (refusal != null || score?.Music == null) {
             session.Send(InstrumentPacket.ComposeResult(refusal ?? ComposeResult.Close));
             return;
@@ -378,6 +384,8 @@ public class InstrumentHandler : FieldPacketHandler {
     // A home whose music row stops the player (HomePermissionRules.Blocks): the client sends no play there
     // (CInstrumentManager, the FUN_141bdb660(3) check before 0, 3 and 5), so the server refuses one too.
     internal static bool MusicBlocked(GameSession session) => HomeRowCheck.Blocks(session, HomePermission.Music);
+
+    private static bool IsBlank(Item score) => InstrumentRules.IsBlankScore(score.Metadata.Music?.IsCustomNote == true, score.Music?.Author);
 
     private bool TryGetScore(GameSession session, long scoreUid, [NotNullWhen(true)] out Item? score) {
         score = session.Item.Inventory.Get(scoreUid, InventoryType.FishingMusic);

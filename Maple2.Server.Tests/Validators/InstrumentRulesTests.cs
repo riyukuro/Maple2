@@ -23,19 +23,26 @@ public class InstrumentRulesTests {
         string readTitle = packet.ReadUnicodeString();
         string readMml = packet.ReadString();
         Assert.That(packet.Available, Is.EqualTo(0));
-        return InstrumentRules.IsComposable(readTitle, Banned, readMml, noteLengthMax, readLength);
+        return InstrumentRules.IsComposable(readTitle, Banned, readMml, noteLengthMax, readLength, 0);
     }
 
-    [TestCase("Song", "cdefg", 2000, 5, true)]
-    [TestCase("Song", "cdefg", 1999, 5, false)] // under two seconds
-    [TestCase("Song", "cdefgh", 2000, 5, true)] // the client allows the item's limit plus one per tab
-    [TestCase("Song", "cdefghi", 2000, 5, false)]
-    [TestCase("Song", "cde:fg:a", 2000, 5, true)] // three tabs: 5 + 3
-    [TestCase("Song", "cde:fg:ab", 2000, 5, false)]
+    // Quarter notes at the default tempo 120: 500 ms each.
+    [TestCase("Song", "cdefg", 2500, 5, true)]
+    [TestCase("Song", "cdef", 2000, 5, true)]
+    [TestCase("Song", "cde", 1500, 5, false)] // under two seconds
+    [TestCase("Song", "cdefgh", 2500, 5, true)] // the client allows the item's limit plus one per tab
+    [TestCase("Song", "cdefghi", 2500, 5, false)]
+    [TestCase("Song", "cde:fg:a", 1500, 5, false)] // three tabs: 5 + 3, as long as the longest (1.5 s)
+    [TestCase("Song", "l2cde:fg:a", 3000, 7, true)]
+    [TestCase("Song", "l2cde:fg:ab", 3000, 7, false)]
+    [TestCase("Song", "cdefg", 2501, 5, true)] // the client's tick sum may truncate 1 ms off
+    [TestCase("Song", "cdefg", 2499, 5, true)]
+    [TestCase("Song", "cdefg", 2502, 5, false)] // a length the mml does not play for
+    [TestCase("Song", "cdefg", 3600000, 5, false)]
     [TestCase("Song", "", 2000, 5, false)]
-    [TestCase("", "cdefg", 2000, 5, false)]
-    [TestCase("   ", "cdefg", 2000, 5, false)]
-    [TestCase("a bad song", "cdefg", 2000, 5, false)]
+    [TestCase("", "cdefg", 2500, 5, false)]
+    [TestCase("   ", "cdefg", 2500, 5, false)]
+    [TestCase("a bad song", "cdefg", 2500, 5, false)]
     public void ComposeChecks(string title, string mml, int length, int noteLengthMax, bool expected) {
         Assert.That(Compose(title, mml, length, noteLengthMax), Is.EqualTo(expected));
     }
@@ -48,15 +55,15 @@ public class InstrumentRulesTests {
         Assert.That((byte) ComposeResult.BannedWord, Is.EqualTo(0x10));
     }
 
-    [TestCase(true, false, "Song", "cdefg", 2000, null)]
-    [TestCase(false, false, "Song", "cdefg", 2000, ComposeResult.Close)] // no blank score with uses left
-    [TestCase(true, true, "Song", "cdefg", 2000, ComposeResult.Close)] // already composed
-    [TestCase(true, false, "a bad song", "cdefg", 2000, ComposeResult.BannedWord)]
+    [TestCase(true, false, "Song", "cdefg", 2500, null)]
+    [TestCase(false, false, "Song", "cdefg", 2500, ComposeResult.Close)] // no blank score with uses left
+    [TestCase(true, true, "Song", "cdefg", 2500, ComposeResult.Close)] // already composed
+    [TestCase(true, false, "a bad song", "cdefg", 2500, ComposeResult.BannedWord)]
     [TestCase(true, false, "Song", "cdefg", 1999, ComposeResult.Retry)]
-    [TestCase(true, false, "", "cdefg", 2000, ComposeResult.Retry)]
+    [TestCase(true, false, "", "cdefg", 2500, ComposeResult.Retry)]
     [TestCase(true, false, "Song", "", 2000, ComposeResult.Retry)]
     public void ComposeRefusal(bool usable, bool composed, string title, string mml, int length, ComposeResult? expected) {
-        Assert.That(InstrumentRules.ComposeRefusal(usable, composed, title, Banned, mml, 5, length), Is.EqualTo(expected));
+        Assert.That(InstrumentRules.ComposeRefusal(usable, composed, title, Banned, mml, 5, length, 0), Is.EqualTo(expected));
     }
 
     // A played score counts from the start to the stop, and no longer than the score.
@@ -64,7 +71,7 @@ public class InstrumentRulesTests {
     [TestCase(0, 60000, 0)]
     [TestCase(30000, 60000, 30000)]
     [TestCase(90000, 60000, 60000)]
-    [TestCase(90000, 0, 90000)] // a score without a length
+    [TestCase(90000, 0, 0)] // a score without a length (a blank written score) counts nothing
     public void PlayedMs_StopsAtTheScoreLength(long elapsed, int length, long expected) {
         Assert.That(InstrumentRules.PlayedMs(elapsed, length), Is.EqualTo(expected));
     }

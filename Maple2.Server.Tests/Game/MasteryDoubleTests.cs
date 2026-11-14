@@ -157,7 +157,7 @@ public class MasteryDoubleTests {
         Assert.That(session.Mastery[MasteryType.Fishing] - before, Is.EqualTo(fish.MasteryExp * factor));
     }
 
-    // A score's stop (PlayInstrument 4) gives its mastery, 1 for a score without music rows; performing double mastery
+    // A score's stop (PlayInstrument 4) gives its mastery, here 1; performing double mastery
     // (113) at 100% doubles it. A running MasteryReward event for the map adds its share after the double, rounded
     // down: half of 2 is 1, half of 1 is 0 (were the event first, the double of 1 + 0 would give 2, not 3).
     [TestCase(1000L, 0, 2)]
@@ -169,7 +169,10 @@ public class MasteryDoubleTests {
         test = new TestGameSession();
         Item instrument = test.Store(TestGameSession.Metadata(instrumentItemId, type: 6,
             function: new ItemMetadataFunction(ItemFunction.OpenInstrument, "OpenInstrument", "1", false)));
-        Item score = test.Store(TestGameSession.Metadata(scoreItemId, type: 6));
+        // A ready-made score of 60 s (every KR one has a playTime) giving 1 mastery a second, up to 1.
+        Item score = test.Store(TestGameSession.Metadata(scoreItemId, type: 6) with {
+            Music = new ItemMetadataMusic(10, 1, 1, false, 0, string.Empty, 60000),
+        });
         test.SetTable(new InstrumentTable(new Dictionary<int, InstrumentMetadata> { [1] = new(1, 0, 1, 1, 1, 0) }));
         test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> { [ExpType.musicMastery1] = new(1, 1f) }));
         test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
