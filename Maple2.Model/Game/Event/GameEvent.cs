@@ -723,8 +723,10 @@ public class GameEvent : IByteSerializable {
                 writer.WriteString(tree.EmotionDayEffect);
                 break;
             case SaleAutoPlayInstrument instrument:
+                // GameEventSaleAutoPlayInstrument::vfunc_4 (commonfiles/gameevent.cpp): the discount the client keeps
+                // (CGameRule m_700), then the auto action content the event's packages come from.
                 writer.WriteInt(Id);
-                writer.WriteInt();
+                writer.WriteInt(instrument.Discount);
                 writer.WriteUnicodeString(instrument.ContentType);
                 break;
         }
