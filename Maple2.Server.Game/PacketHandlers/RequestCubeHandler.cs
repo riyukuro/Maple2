@@ -396,6 +396,14 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
+        // The client replaces a cell with the cube it holds, as for a place (Unk_PCCubeCraft::ConfirmPlacement,
+        // cubecraft_2.cpp:1007-1033); a replace with nothing held, or of another item than the one held, replaced
+        // any cube with any furnishing. Refused with the place's answer, s_ugcmap_null_cube_item_info.
+        if (session.HeldCube is not PlotCube held || held.ItemId != cubeItem.ItemId) {
+            session.Send(CubePacket.EditError(CubePacket.Edit.Replace, UgcMapError.s_ugcmap_null_cube_item_info, session.Player.ObjectId));
+            return;
+        }
+
         if (!owner.Housing.TryPlaceCube(cubeItem, plot, metadata, position, rotation, out PlotCube? placedCube, isReplace: true, helper: owner == session ? null : session, byPlayer: true)) {
             return;
         }
@@ -753,12 +761,10 @@ public class RequestCubeHandler : FieldPacketHandler {
 
         Home home = session.Player.Value.Home;
 
-        // blueprint load
-        if (slot is 0) {
-            ApplyStagedBlueprint(session, plot);
-            return;
-        }
-
+        // The client sends 48 only from the bill of a saved layout (UIUGCCubeBillDialog::SendRequestCube kind 1,
+        // uiugccubebilldialog.cpp:216, :256) with the layout's id, slot 0 included; a blueprint is confirmed with 70
+        // and its item uid (kind 3). Slot 0 applied the staged blueprint, unchecked against the item, instead of the
+        // layout saved in slot 0.
         HomeLayout? layout = home.Layouts.FirstOrDefault(homeLayout => homeLayout.Id == slot);
         if (layout is null) {
             Logger.Error("Failed to find layout {Slot} for {AccountId}", slot, session.AccountId);

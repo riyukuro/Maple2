@@ -54,22 +54,28 @@ public class PlaceHeldCubeTests {
         return (session, plot);
     }
 
-    private void Place(GameSession session, int held, int placed, Vector3B? position = null, long uid = 0) {
+    private void Place(GameSession session, int held, int placed, Vector3B? position = null, long uid = 0, float rotation = 0, byte command = 10) {
         session.HeldCube = null;
         if (held != 0) {
             session.ItemMetadata.TryGet(held, out ItemMetadata? metadata);
             session.HeldCube = new PlotCube(metadata!) { Type = PlotCube.CubeType.Construction };
         }
         new RequestCubeHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => {
-            writer.WriteByte(10);
+            writer.WriteByte(command);
             writer.Write<Vector3B>(position ?? new Vector3B(-1, -1, 1));
             writer.WriteInt(placed);
             writer.WriteLong(uid);
             writer.WriteLong(0);
             writer.WriteBool(false);
-            writer.WriteFloat(0);
+            writer.WriteFloat(rotation);
+            if (command == 16) {
+                writer.WriteByte(0); // the side the cube is attached to
+            }
         }));
     }
+
+    // RequestCube 15 or 16 at the cell of a placed Cube.
+    private void Replace(GameSession session, int held, int replaced, byte command = 15) => Place(session, held, replaced, command: command);
 
     private void AssertRefused(GameSession session, Plot plot) {
         byte[] refusal = CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_ugcmap_null_cube_item_info, session.Player.ObjectId).ToArray();
@@ -211,6 +217,47 @@ public class PlaceHeldCubeTests {
 
         Assert.That(test.Errors, Is.Empty);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
+    // RequestCube 15 and 16 replace a cell with the held cube too (cubecraft_2.cpp:1007-1033, :1299-1318): a replace
+    // with nothing held, or of another item than the one held, is refused with 0x0F s_ugcmap_null_cube_item_info and
+    // leaves the placed cube. It replaced the cube with any furnishing.
+    [TestCase(0, (byte) 15, TestName = "Replace_NothingHeld_IsRefused")]
+    [TestCase(Cube, (byte) 15, TestName = "Replace_AnotherItemHeld_IsRefused")]
+    [TestCase(0, (byte) 16, TestName = "ReplaceAttached_NothingHeld_IsRefused")]
+    public void Replace_WithoutTheHeldItem_IsRefused(int held, byte command) {
+        (GameSession session, Plot plot) = StartInHome();
+        Place(session, Cube, Cube);
+        test.TakeSent();
+
+        Replace(session, held, OtherCube, command);
+
+        byte[] refusal = CubePacket.EditError(CubePacket.Edit.Replace, UgcMapError.s_ugcmap_null_cube_item_info, session.Player.ObjectId).ToArray();
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(refusal) }));
+            Assert.That(plot.Cubes.Values.Select(cube => cube.ItemId), Is.EqualTo(new[] { Cube }));
+            Assert.That(session.Currency.Meso, Is.EqualTo(4000));
+        });
+    }
+
+    [Test]
+    public void Replace_TheHeldItem_Replaces() {
+        (GameSession session, Plot plot) = StartInHome();
+        Place(session, Cube, Cube);
+
+        Replace(session, OtherCube, OtherCube);
+
+        Assert.That(plot.Cubes.Values.Select(cube => cube.ItemId), Is.EqualTo(new[] { OtherCube }));
+    }
+
+    // The client sends a whole angle (cubecraft_2.cpp:991-995): a NaN or infinite one is refused with
+    // s_ugcmap_null_cube_item_info and nothing is placed or paid. It was stored with the cube.
+    [TestCase(float.NaN, TestName = "Place_NaNRotation_IsRefused")]
+    [TestCase(float.PositiveInfinity, TestName = "Place_InfiniteRotation_IsRefused")]
+    public void Place_NonFiniteRotation_IsRefused(float rotation) {
+        (GameSession session, Plot plot) = StartInHome();
+        Place(session, Cube, Cube, rotation: rotation);
+        AssertRefused(session, plot);
     }
 
     [Test]

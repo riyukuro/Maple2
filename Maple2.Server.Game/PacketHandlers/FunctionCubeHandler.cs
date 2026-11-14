@@ -218,13 +218,13 @@ public class FunctionCubeHandler : FieldPacketHandler {
         FunctionCubeMetadata.NurturingData.Growth requiredGrowth = nurturing.NurturingMetadata.RequiredGrowth.First(x => x.Stage == nurturing.ClaimedGiftForStage);
         // Claim reward
         if (nurturing.Exp >= requiredGrowth.Exp) {
-            nurturing.ClaimedGiftForStage++;
-
+            // The gift is made first: a gift that cannot be made leaves the stage unclaimed.
             Item? rewardStageItem = session.Field.ItemDrop.CreateItem(requiredGrowth.Reward.ItemId, rarity: requiredGrowth.Reward.Rarity, amount: requiredGrowth.Reward.Amount);
             if (rewardStageItem is null) {
                 Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, fieldCube.InteractCube.Metadata.Id);
                 return;
             }
+            nurturing.ClaimedGiftForStage++;
             // drop the item
             session.Field.DropItem(fieldCube.Position, fieldCube.Rotation, rewardStageItem, owner: session.Player, characterId: session.CharacterId);
             db.UpdateNurturing(session.AccountId, fieldCube.InteractCube);
@@ -250,18 +250,21 @@ public class FunctionCubeHandler : FieldPacketHandler {
             return;
         }
 
-        session.Item.Inventory.Consume(hasItem.Uid, amount: 1);
-
-        // A pet without rewardItemByFeeding (item 0, e.g. 50800002) is fed without a drop.
+        // A pet without rewardItemByFeeding (item 0, e.g. 50800002) is fed without a drop. The drop is made before
+        // the feed is taken: a drop that cannot be made keeps the feed and the pet unfed.
         RewardItem rewardFeedItem = nurturing.NurturingMetadata.RewardFeed;
+        Item? rewardItem = null;
         if (rewardFeedItem.ItemId != 0) {
-            Item? rewardItem = session.Field.ItemDrop.CreateItem(rewardFeedItem.ItemId, rarity: rewardFeedItem.Rarity, amount: rewardFeedItem.Amount);
+            rewardItem = session.Field.ItemDrop.CreateItem(rewardFeedItem.ItemId, rarity: rewardFeedItem.Rarity, amount: rewardFeedItem.Amount);
             if (rewardItem is null) {
                 Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, fieldCube.InteractCube.Metadata.Id);
                 return;
             }
-
-            // drop the item
+        }
+        if (!session.Item.Inventory.Consume(hasItem.Uid, amount: 1)) {
+            return;
+        }
+        if (rewardItem is not null) {
             session.Field.DropItem(fieldCube.Position, fieldCube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
         }
         long exp = nurturing.Exp;
@@ -295,6 +298,18 @@ public class FunctionCubeHandler : FieldPacketHandler {
             return;
         }
 
+        // The drop (the pet's feed item) is made before the play counts: a drop that cannot be made leaves the pet
+        // unplayed, so the play conditions are not counted for a play that is not recorded.
+        RewardItem rewardPlay = nurturing.NurturingMetadata.Feed;
+        Item? rewardItem = null;
+        if (rewardPlay.ItemId != 0) {
+            rewardItem = session.Field.ItemDrop.CreateItem(rewardPlay.ItemId, rarity: rewardPlay.Rarity, amount: rewardPlay.Amount);
+            if (rewardItem is null) {
+                Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, cube.Value.Id);
+                return;
+            }
+        }
+
         long exp = nurturing.Exp;
         if (!nurturing.Play(session.AccountId, Constants.NurturingPlayGrowth, Constants.NurturingPlayMaxGrowth)) {
             return;
@@ -306,15 +321,7 @@ public class FunctionCubeHandler : FieldPacketHandler {
             session.ConditionUpdate(ConditionType.nurturing_growth, counter: nurturing.Exp - exp, codeLong: trophyCode);
         }
 
-        RewardItem rewardPlay = nurturing.NurturingMetadata.Feed;
-        if (rewardPlay.ItemId != 0) {
-            Item? rewardItem = session.Field.ItemDrop.CreateItem(rewardPlay.ItemId, rarity: rewardPlay.Rarity, amount: rewardPlay.Amount);
-            if (rewardItem is null) {
-                Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, cube.Value.Id);
-                return;
-            }
-
-            // drop the item
+        if (rewardItem is not null) {
             session.Field.DropItem(cube.Position, cube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
         }
 
@@ -361,6 +368,14 @@ public class FunctionCubeHandler : FieldPacketHandler {
             return null;
         }
 
+        // The gift is made before the mail: a gift that cannot be made sends no empty mail.
+        RewardItem rewardPlay = nurturing.RewardFeed;
+        Item? rewardItem = session.Field?.ItemDrop.CreateItem(rewardPlay.ItemId, rarity: rewardPlay.Rarity, amount: rewardPlay.Amount);
+        if (rewardItem is null) {
+            Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, rewardPlay.ItemId);
+            return null;
+        }
+
         var mail = new Mail(Constants.MailExpiryDays) {
             ReceiverId = ownerId,
             Type = MailType.System,
@@ -371,13 +386,6 @@ public class FunctionCubeHandler : FieldPacketHandler {
         mail = db.CreateMail(mail);
         if (mail is null) {
             Logger.Error("Failed to create mail for account {0}", session.AccountId);
-            return null;
-        }
-
-        RewardItem rewardPlay = nurturing.RewardFeed;
-        Item? rewardItem = session.Field?.ItemDrop.CreateItem(rewardPlay.ItemId, rarity: rewardPlay.Rarity, amount: rewardPlay.Amount);
-        if (rewardItem is null) {
-            Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, rewardPlay.ItemId);
             return null;
         }
 

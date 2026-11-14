@@ -747,6 +747,16 @@ public class HousingManager {
         CubePacket.Edit edit = isReplace ? CubePacket.Edit.Replace : CubePacket.Edit.Place;
         void Refuse(UgcMapError error) => notify.Send(CubePacket.EditError(edit, error, notify.Player.ObjectId));
 
+        // The client sends a whole angle in degrees, a multiple of 90 unless the cube is attached
+        // (Unk_PCCubeCraft::ConfirmPlacement, cubecraft_2.cpp:991-995); a NaN or infinite angle was stored with the
+        // cube and sent to everyone who enters the home. Chosen here: refused as a cube with no item info.
+        if (!float.IsFinite(rotation)) {
+            if (byPlayer) {
+                Refuse(UgcMapError.s_ugcmap_null_cube_item_info);
+            }
+            return false;
+        }
+
         // The client checks these when a player confirms a placement (cubecraft_2.cpp:954-968); package installs and
         // layouts place their cubes without them. The trophies are this manager's session's: the builder's own, or for
         // a helper the home owner's.
