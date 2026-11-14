@@ -216,6 +216,26 @@ public static partial class PlayedClientSkills {
         return result;
     }
 
+    // The data pack's rows of a client attack or level (its conditionSkill rows: splashes and effects, on hit or on
+    // damage) that name a skill or effect the client's row has, in order: the ids of its <actionSkill> rows (the
+    // splashes it fires, SkillActionSkill::Load) and of its <actionAdditional> rows (the effects it gives,
+    // SkillActionAdditional). A row none of whose ids the client has is left out, as the client neither fires nor
+    // gives it, and goes to dropped; a row the client has at another level stays (the levels are WithClientSplashes'
+    // and the effect merge's).
+    public static SkillEffectMetadata[] WithoutRowsClientLacks(XmlElement client, IEnumerable<SkillEffectMetadata> pack, List<SkillEffectMetadata> dropped) {
+        HashSet<int> ids = Children(client, "actionSkill").SelectMany(row => Tokens(row, "skillID"))
+            .Concat(Children(client, "actionAdditional").SelectMany(row => Tokens(row, "additionalID"))).ToHashSet();
+        var kept = new List<SkillEffectMetadata>();
+        foreach (SkillEffectMetadata row in pack) {
+            if (row.Skills.Length == 0 || row.Skills.Any(skill => ids.Contains(skill.Id))) {
+                kept.Add(row);
+            } else {
+                dropped.Add(row);
+            }
+        }
+        return kept.ToArray();
+    }
+
     // The client attack's <actionSkill> rows (BuildSplash) none of whose skills is fired by the data pack's rows of
     // the attack: the splashes the client fires that the data pack's attack lacks.
     public static SkillEffectMetadata[] MissingSplashes(XmlElement attack, IEnumerable<SkillEffectMetadata> pack) {
@@ -226,8 +246,8 @@ public static partial class PlayedClientSkills {
 
     // The data pack's splash rows of an attack, each with the values of the client attack's <actionSkill> row of the
     // same skills, in order (BuildSplash: fire count, levels and links, interval, delay and the splash flags), where
-    // the client has one; its begin condition stays the data pack's, as the client's row has none. Changed counts the
-    // rows that took other values.
+    // the client has one (a splash row has no begin condition, TriggerSkill.Convert). Changed counts the rows that
+    // took other values.
     public static SkillEffectMetadata[] WithClientSplashes(XmlElement attack, IReadOnlyList<SkillEffectMetadata> pack, out int changed) {
         List<SkillEffectMetadata> client = Children(attack, "actionSkill").Select(BuildSplash).ToList();
         var result = new SkillEffectMetadata[pack.Count];

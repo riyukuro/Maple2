@@ -1205,7 +1205,7 @@ public class SkillCastRulesTests {
     }
 
     // A paired attack's splash row takes the client's row of the same skills (10100191: the client's p0 fires
-    // 10100192 6 times at 500 ms, the data pack's row 2 times at 2000 ms), keeping the data pack's begin condition.
+    // 10100192 6 times at 500 ms, the data pack's row 2 times at 2000 ms).
     [Test]
     public void PlayedClientSplashes_TakeTheClientsValues() {
         var document = new System.Xml.XmlDocument();
@@ -1231,9 +1231,48 @@ public class SkillCastRulesTests {
             Assert.That(taken[0].Splash!.Delay, Is.EqualTo(0), "the client's row has no delay");
             Assert.That(taken[0].Splash!.ImmediateActive, Is.True);
             Assert.That(taken[0].Splash!.UseDirection, Is.True);
-            Assert.That(taken[0].Condition, Is.SameAs(condition), "the data pack's begin condition stays");
+            Assert.That(taken[0].Condition, Is.SameAs(condition), "the row's condition is not replaced");
             Assert.That(taken[1], Is.SameAs(pack[1]), "no client row of its skills");
             Assert.That(taken[2], Is.SameAs(pack[2]), "not a splash row");
+        });
+    }
+
+    // A paired attack or a level keeps only the data pack's link rows whose skills the client's attack or level names
+    // (10700001 level 1: the client's p1 attack fires no additional effect, the data pack's fires 10700001 there too;
+    // 10800151: the client's level adds 10800151, the data pack's level 10800151 to 10800155). A row kept by its id
+    // with another level (taken over by the client's values elsewhere) and a row without skills stay.
+    [Test]
+    public void PlayedClientLinks_DropRowsTheClientLacks() {
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <skill>
+              <level value="1">
+                <motion sequenceName="Attack_01_A"><attack point="p0"><actionAdditional additionalID="10700001" level="1" /></attack><attack point="p1" /></motion>
+              </level>
+              <level value="2"><actionAdditional additionalID="10800151" level="2" skillTarget="1" /><actionSkill skillID="10800160" level="1" /></level>
+            </skill>
+            """);
+        var levels = document.DocumentElement!.ChildNodes.OfType<System.Xml.XmlElement>().ToArray();
+        System.Xml.XmlElement[] attacks = PlayedClientSkills.MotionAttacks(levels[0], 0, 1)!;
+        var condition = (SkillEffectMetadataCondition) System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(SkillEffectMetadataCondition));
+        SkillEffectMetadata Row(params int[] ids) => new(1, ids.Select(id => new SkillEffectMetadata.Skill(id, 1)).ToArray(), condition, null);
+
+        SkillEffectMetadata[] p0 = [Row(10700001)], p1 = [Row(10700001), Row()];
+        var dropped = new List<SkillEffectMetadata>();
+        SkillEffectMetadata[] keptP0 = PlayedClientSkills.WithoutRowsClientLacks(attacks[0], p0, dropped);
+        SkillEffectMetadata[] keptP1 = PlayedClientSkills.WithoutRowsClientLacks(attacks[1], p1, dropped);
+        Assert.Multiple(() => {
+            Assert.That(keptP0, Is.EqualTo(p0));
+            Assert.That(keptP1, Is.EqualTo(new[] { p1[1] }), "the row without skills stays");
+            Assert.That(dropped, Is.EqualTo(new[] { p1[0] }));
+        });
+
+        SkillEffectMetadata[] level = [Row(10800151), Row(10800152), Row(10800153, 10800151), Row(10800160), Row(10800155)];
+        dropped.Clear();
+        SkillEffectMetadata[] kept = PlayedClientSkills.WithoutRowsClientLacks(levels[1], level, dropped);
+        Assert.Multiple(() => {
+            Assert.That(kept, Is.EqualTo(new[] { level[0], level[2], level[3] }), "level 1 rows of 10800151 stay against the client's level 2 row; a row naming one of the client's skills stays");
+            Assert.That(dropped, Is.EqualTo(new[] { level[1], level[4] }));
         });
     }
 

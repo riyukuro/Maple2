@@ -58,6 +58,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private int motionPointMismatches;
     // The data pack attacks put in the played client's order (MotionAttacks).
     private int clientAttacksMoved, clientAttacksBuilt, packAttacksDropped, clientSplashesAdded, clientSplashValues, clientMotionListsTaken;
+    // The data pack's link rows the played client lacks, left out (DropLinksClientLacks): skill, level, motion and
+    // attack (-1 for the level's own rows) and the row's skill ids.
+    private readonly List<(int Skill, short Level, int Motion, int Attack, string Ids)> linksDropped = [];
     // The played client's attack pushes (PlayedClientSkills.ReadAttackPushes); empty without a played client.
     private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (PlayedClientSkills.AttackPush Push, string Point)> clientPushes = [];
     private int clientPushesTaken;
@@ -239,7 +242,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     Recovery: new SkillMetadataRecovery(
                         SpValue: level.recoveryProperty.spValue,
                         SpRate: level.recoveryProperty.spRate),
-                    Skills: level.conditionSkill.Select(skill => skill.Convert()).ToArray(),
+                    Skills: LevelSkills(id, level),
                     Motions: Motions(id, level),
                     Upgrade: level.upgrade == null ? null : new SkillMetadataUpgrade(
                         Level: level.upgrade.level,
@@ -372,6 +375,11 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         }
         if (playedSkills.Count > 0) {
             Console.WriteLine($"Skill attacks put in the played client's order: {clientAttacksMoved} data pack attacks at another place, {clientAttacksBuilt} built from the client's row, {packAttacksDropped} data pack attacks the client lacks left out; {clientSplashesAdded} splash rows of the client's attacks added, {clientSplashValues} given the client's values; {clientMotionListsTaken} levels given the client's motions (another motion count)");
+            int attackRows = linksDropped.Count(row => row.Attack >= 0), levelRows = linksDropped.Count - attackRows;
+            Console.WriteLine($"Data pack link rows the played client lacks left out: {attackRows} attack rows in {linksDropped.Where(row => row.Attack >= 0).Select(row => row.Skill).Distinct().Count()} skills, {levelRows} level rows in {linksDropped.Where(row => row.Attack < 0).Select(row => row.Skill).Distinct().Count()} skills");
+            foreach ((int skill, short value, int motionIndex, int attackIndex, string ids) in linksDropped) {
+                Console.WriteLine(attackIndex < 0 ? $"  link left out: {skill} level {value} -> {ids}" : $"  link left out: {skill} level {value} motion {motionIndex} attack {attackIndex} -> {ids}");
+            }
         }
         if (clientMotions.Count > 0) {
             Console.WriteLine($"Skill motions given the played client's sequence name, sequence speed, move distance and splash life tick over the data pack's: {clientMotionsTaken} ({motionPointMismatches} with other attack points, or another motion count in the level and another sequence, at that place, the data pack's kept)");
@@ -502,6 +510,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                 attack = attack with { Skills = taken };
                 clientSplashValues += changed;
             }
+            attack = DropLinksClientLacks(id, level, motionIndex, i, client[i], attack);
             SkillEffectMetadata[] splashes = PlayedClientSkills.MissingSplashes(client[i], attack.Skills.Concat(attack.SkillsOnDamage));
             if (splashes.Length > 0) {
                 attack = attack with { Skills = [.. attack.Skills, .. splashes] };
@@ -513,6 +522,42 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         points = PlayedClientSkills.AttackPoints(clientPoints);
         return attacks;
     }
+
+    // A paired attack without the data pack's link rows (on hit and on damage) the client's attack lacks
+    // (PlayedClientSkills.WithoutRowsClientLacks), each logged in linksDropped.
+    private SkillMetadataAttack DropLinksClientLacks(int id, short level, int motionIndex, int attackIndex, System.Xml.XmlElement client, SkillMetadataAttack attack) {
+        var dropped = new List<SkillEffectMetadata>();
+        SkillEffectMetadata[] skills = PlayedClientSkills.WithoutRowsClientLacks(client, attack.Skills, dropped);
+        SkillEffectMetadata[] onDamage = PlayedClientSkills.WithoutRowsClientLacks(client, attack.SkillsOnDamage, dropped);
+        if (dropped.Count == 0) {
+            return attack;
+        }
+        LogDropped(id, level, motionIndex, attackIndex, dropped);
+        return attack with { Skills = skills, SkillsOnDamage = onDamage };
+    }
+
+    // A level's own link rows: the data pack's, without the ones the played client's level lacks where the client
+    // has the level (PlayedClientSkills.WithoutRowsClientLacks over the level's <actionAdditional> and <actionSkill>
+    // rows; the client reads only the former, the latter are counted as the client's too, so nothing it names is
+    // left out).
+    private SkillEffectMetadata[] LevelSkills(int id, SkillLevelData level) {
+        SkillEffectMetadata[] pack = level.conditionSkill.Select(skill => skill.Convert()).ToArray();
+        if (!playedSkills.TryGetValue(id, out var playedSkill)
+            || playedSkill.Levels.FirstOrDefault(entry => entry.Value == level.value).Level is not { } clientLevel) {
+            return pack;
+        }
+        var dropped = new List<SkillEffectMetadata>();
+        SkillEffectMetadata[] kept = PlayedClientSkills.WithoutRowsClientLacks(clientLevel, pack, dropped);
+        LogDropped(id, level.value, -1, -1, dropped);
+        return kept;
+    }
+
+    private void LogDropped(int id, short level, int motionIndex, int attackIndex, List<SkillEffectMetadata> dropped) {
+        foreach (SkillEffectMetadata row in dropped) {
+            linksDropped.Add((id, level, motionIndex, attackIndex, string.Join(",", row.Skills.Select(skill => $"{skill.Id}/{skill.Level}"))));
+        }
+    }
+
     // A data pack attack, with the played client's values of the client attack at that place in the motion
     // (attackIndex) where the client has one; its target order is the data pack's attack's (packIndex).
     private SkillMetadataAttack PackAttack(int id, short level, int motionIndex, int attackIndex, int packIndex, SkillAttackData attack) {
