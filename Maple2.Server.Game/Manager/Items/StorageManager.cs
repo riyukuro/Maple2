@@ -212,13 +212,12 @@ public sealed class StorageManager : IDisposable {
                 return;
             }
 
-            long negAmount = -amount;
-            if (session.Currency.CanAddMeso(negAmount) != negAmount) {
+            // Checked and taken in one step: a take on another thread between a check and the take made it throw.
+            if (!session.Currency.TryTakeMeso(amount)) {
                 session.Send(StorageInventoryPacket.Error(s_store_err_deposit_invalid_money));
                 return;
             }
 
-            session.Currency.ChangeMeso(-amount);
             mesos += amount;
             session.Send(StorageInventoryPacket.UpdateMesos(mesos));
         }
@@ -254,10 +253,15 @@ public sealed class StorageManager : IDisposable {
         }
 
         lock (session.Item) {
-            // A withdrawal is taken back from the bag only as far as the bag still holds it.
-            long back = deposited < 0 ? -Math.Min(-deposited, session.Currency.Meso) : deposited;
+            // A withdrawal is taken back from the bag only as far as the bag still holds it (read and taken in one
+            // step, so a spend meanwhile cannot make the take throw).
+            long back = deposited < 0 ? -session.Currency.TakeMesoUpTo(-deposited) : deposited;
             mesos -= back;
-            session.Currency.ChangeMeso(back);
+            if (deposited < 0) {
+                session.Currency.NotifyMeso();
+            } else {
+                session.Currency.ChangeMeso(back);
+            }
             session.Send(StorageInventoryPacket.UpdateMesos(mesos));
             session.Send(StorageInventoryPacket.Error(s_store_err_code));
         }
