@@ -979,9 +979,13 @@ public class FieldNpc : Actor<Npc> {
     }
 
     private void DropIndividualLoot(FieldPlayer player) {
+        DropIndividualLoot(player, Value.Metadata.DropInfo.IndividualDropBoxIds);
+    }
+
+    private void DropIndividualLoot(FieldPlayer player, IEnumerable<int> boxIds) {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
         var individualDrops = new List<Item>();
-        foreach (int individualDropId in dropInfo.IndividualDropBoxIds) {
+        foreach (int individualDropId in boxIds) {
             individualDrops.AddRange(Field.ItemDrop.GetIndividualDropItems(player.Session, player.Value.Character.Level, individualDropId));
         }
 
@@ -1051,6 +1055,11 @@ public class FieldNpc : Actor<Npc> {
         // Death drops, boss or mob: each damage dealer gets its own, locked to it. KMS2 sends them as type 0 with the
         // dealer's character id; in a party only the members who dealt damage get one.
         SendKillNotices();
+        // The running NpcEventDrop rows this npc matches: their drop boxes once for each dealer, not again for a world
+        // boss kill's extra drops.
+        NpcMetadataBasic basic = Value.Metadata.Basic;
+        int[] eventDropIds = NpcEventDropRules.DropIds(Field.ServerTableMetadata.GameEventTable.Entries.Values, Value.Metadata.Id,
+            basic.Level, basic.Class, Field.MapId, DateTime.Now);
         foreach (KeyValuePair<int, DamageRecordTarget> damageDealer in DamageDealers) {
             if (!Field.TryGetPlayer(damageDealer.Key, out FieldPlayer? player)) {
                 continue;
@@ -1058,6 +1067,7 @@ public class FieldNpc : Actor<Npc> {
 
             DropGlobalLoot(player);
             DropIndividualLoot(player);
+            DropIndividualLoot(player, eventDropIds);
             for (int extra = WorldBossExtraDrops(player, WorldBossDeathCallback != null); extra > 0; extra--) {
                 DropGlobalLoot(player);
                 DropIndividualLoot(player);

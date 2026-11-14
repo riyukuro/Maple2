@@ -184,7 +184,9 @@ public class GameEvent : IByteSerializable {
                 break;
             case LoginNotice:
             case FinishPayback:
-                // GameEventLoginNotice and GameEventFinishPayback have no reader of their own: GameEvent::vfunc_4 reads the id.
+            case NpcEventDrop:
+                // GameEventLoginNotice, GameEventFinishPayback and GameEventNpcEventDrop have no reader of their own:
+                // GameEvent::vfunc_4 reads the id.
                 writer.WriteInt(Id);
                 break;
             case ItemBox itemBox:

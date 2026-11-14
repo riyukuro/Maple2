@@ -188,6 +188,45 @@ public static class EventXmlReader {
         return new SpawnNpcEvent(fieldId, spawnPointId, npcId, Math.Max(shopId, 0));
     }
 
+    // value1 <ms2><v .../></ms2>: the root's first element, whatever their names, as the client reads it
+    // (GameEventNpcEventDrop::vfunc_2). A row without that element or without a drop box id is not stored. An
+    // eventTags name the client does not know is 0 (no tag condition); npcRank is a number (the npc's class).
+    public static NpcEventDrop? NpcEventDrop(string? value1) {
+        XmlElement? drop = AnyRoot(value1)?.ChildNodes.OfType<XmlElement>().FirstOrDefault();
+        if (drop == null) {
+            return null;
+        }
+        int[] dropIds = Ids(drop.GetAttribute("dropId"));
+        if (dropIds.Length == 0) {
+            return null;
+        }
+        ushort.TryParse(drop.GetAttribute("minLevel"), out ushort minLevel);
+        ushort.TryParse(drop.GetAttribute("maxLevel"), out ushort maxLevel);
+        uint.TryParse(drop.GetAttribute("fieldId"), out uint fieldId);
+        int.TryParse(drop.GetAttribute("npcRank"), out int npcRank);
+        bool isShow = string.Equals(drop.GetAttribute("isShow"), "true", StringComparison.OrdinalIgnoreCase)
+                      || drop.GetAttribute("isShow") == "1";
+        int eventTag = drop.GetAttribute("eventTags").Trim().ToLowerInvariant() switch {
+            "field_boss" => 1,
+            "field_elite" => 2,
+            "dungeon_boss" => 3,
+            "dungeon_elite" => 4,
+            "event_boss" => 5,
+            _ => 0,
+        };
+        return new NpcEventDrop(unchecked((short) minLevel), unchecked((short) maxLevel), unchecked((int) fieldId),
+            Math.Max(npcRank, 0), Ids(drop.GetAttribute("customNpcId")), isShow, dropIds, eventTag);
+    }
+
+    // A comma list of ids; an entry that is not a positive number is skipped.
+    private static int[] Ids(string text) {
+        return text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(token => int.TryParse(token, out int id) ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+    }
+
     // The burning levelup's values (GameEventBurningLevelup::vfunc_2, commonfiles/gameevent.cpp:5923). value1's
     // root must have a first element, whose attributes are read whatever its name; a row without it is not stored
     // (the client reads nothing else of it). value2's root must have a first element too, and its <v> items are

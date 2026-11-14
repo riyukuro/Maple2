@@ -716,6 +716,22 @@ public record SpawnNpcEvent(
     int NpcId,
     int ShopId) : GameEventData;
 
+// Event drops from npc kills (GameEventNpcEventDrop::vfunc_2, commonfiles/gameevent.cpp:2141): value1
+// <ms2><v minLevel maxLevel fieldId npcRank customNpcId isShow dropId eventTags/></ms2>, the root's first element read
+// whatever its name. While the event runs, a killed npc that matches gives each of its damage dealers the items of
+// the dropId individual drop boxes (NpcEventDropRules). 0 or empty is no condition. EventTag is the client's tag
+// number (field_boss 1, field_elite 2, dungeon_boss 3, dungeon_elite 4, event_boss 5). The client reads only the id
+// of this event (no reader of its own) and keeps the context for the server's game rule.
+public record NpcEventDrop(
+    short MinLevel,
+    short MaxLevel,
+    int FieldId,
+    int NpcRank,
+    int[] NpcIds,
+    bool IsShow,
+    int[] DropIds,
+    int EventTag) : GameEventData;
+
 // Tree watering (GameEventTreeWatering::ReadTreeWateringData, commonfiles/gameevent.cpp:5664). value1 is
 // <ms2><tree_step><step step begin end/>...</tree_step><emotion_day><time begin end/>...</emotion_day></ms2>, value2
 // <ms2><watering_reward MaxRewardCountDaily itemID grade count/><emotion_reward .../></ms2>, value3
@@ -871,6 +887,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(TreeWatering), "TreeWatering")]
 [JsonDerivedType(typeof(MiniGameBonusReward), "MiniGameBonusReward")]
 [JsonDerivedType(typeof(SpawnNpcEvent), "SpawnNpc")]
+[JsonDerivedType(typeof(NpcEventDrop), "NpcEventDrop")]
 [JsonDerivedType(typeof(NpcShopShowItem), "NpcShopShowItem")]
 [JsonDerivedType(typeof(CharacterFirstConnectMail), "CharacterFirstConnect")]
 [JsonDerivedType(typeof(SendMailEvent), "SendMail")]
