@@ -95,10 +95,8 @@ public sealed class ShopManager {
         if (activeShop == null || talkNpc == null) {
             return activeShop != null;
         }
-        float radius = talkNpc.Value.Metadata.Property?.Capsule?.Radius ?? 0f;
         bool stays = session.Field != null && session.Field.Npcs.TryGetValue(talkNpc.ObjectId, out FieldNpc? npc) && npc == talkNpc
-            && InteractRules.InReach(session.Player.Position, talkNpc.Position,
-                InteractRules.TalkReach(session.ServerTableMetadata.ConstantsTable.TalkableDistance, radius));
+            && talkNpc.InTalkRange(session.Player.Position, session.ServerTableMetadata.ConstantsTable.TalkableDistance);
         if (!stays) {
             logger.Debug("Shop {ShopId} closed: its npc {NpcId} is gone or out of talk range", activeShop.Id, talkNpc.Value.Id);
             ClearActiveShop();

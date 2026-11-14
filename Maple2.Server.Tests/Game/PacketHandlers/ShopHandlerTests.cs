@@ -292,9 +292,9 @@ public class ShopHandlerTests {
     }
 
     // A shop opened by an npc talk, the npc standing in the player's field at the given distance.
-    private FieldNpc TalkShop(GameSession session, float distance) {
+    private FieldNpc TalkShop(GameSession session, float distance, string[]? propertyTags = null) {
         const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 1, false, 0, 0, 0, 0, [], [], 0);
+        var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 1, false, 0, 0, 0, 0, [], [], 0, PropertyTags: propertyTags);
         var metadata = new NpcMetadata(11000001, "npc", "", null!, null!, basic, null!, null!, null!, null!, null!, null!, null, null!);
         var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
         typeof(Actor<Npc>).GetField("<Value>k__BackingField", any)!.SetValue(npc, new Npc(metadata, null));
@@ -339,6 +339,59 @@ public class ShopHandlerTests {
         Sell(session, bagItem.Uid, 1);
 
         return session.Item.Inventory.Find(bagItem.Id).Sum(item => item.Amount);
+    }
+
+    // An npc with the ignore_talk_distance tag is in talk range anywhere in the field (the client's IsInTalkRange).
+    [Test]
+    public void Buy_FromATalkShopWhoseNpcIgnoresTalkDistance() {
+        GameSession session = Login();
+        TalkShop(session, 5000f, [FieldNpc.IgnoreTalkDistanceTag]);
+
+        Buy(session, ProductId, 1);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(9970));
+    }
+
+    // A field change takes the player away from the npc: the shop is closed.
+    [Test]
+    public void Buy_FromATalkShopAfterAFieldChangeDoesNothing() {
+        GameSession session = Login();
+        FieldNpc npc = TalkShop(session, 100f);
+        test.EnterMap(TestGameSession.Map(2000001));
+        session.Player.Position = npc.Position;
+
+        Buy(session, ProductId, 1);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+    }
+
+    // The buy back and the list refresh (Shop 3, Shop 10) close the shop the same way.
+    [TestCase(100f, ExpectedResult = 5)]
+    [TestCase(1000f, ExpectedResult = 0)]
+    public int BuyBack_FromATalkShopNeedsItsNpcInTalkRange(float distance) {
+        GameSession session = Login();
+        FieldNpc npc = TalkShop(session, 100f);
+        Sell(session, bagItem.Uid, 5);
+        int entryId = BitConverter.ToInt32(test.TakeSent()[1], 5);
+        npc.Position = session.Player.Position + new Vector3(distance, 0, 0);
+
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteInt(entryId);
+        }));
+
+        return session.Item.Inventory.Find(20000003).Sum(item => item.Amount);
+    }
+
+    [TestCase(100f, ExpectedResult = true)]
+    [TestCase(1000f, ExpectedResult = false)]
+    public bool Refresh_OfATalkShopNeedsItsNpcInTalkRange(float distance) {
+        GameSession session = Login();
+        TalkShop(session, distance);
+
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(10)));
+
+        return test.TakeSent().Exists(packet => TestGameSession.Op(packet) == SendOp.Shop);
     }
 
     // A shop opened without an npc (an item, a system shop) has no talk to keep.

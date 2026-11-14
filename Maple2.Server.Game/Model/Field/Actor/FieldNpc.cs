@@ -81,6 +81,18 @@ public class FieldNpc : Actor<Npc> {
     // The shop a SpawnNpc game event gives this npc instead of its own, 0 for none (EventNpcRules.ShopId).
     public int EventShopId { get; set; }
 
+    // Whether a player at this place may talk to the npc: within its talk reach, or anywhere for an npc with the
+    // ignore_talk_distance property tag (the client's IsInTalkRange; KR: the colosseum MCs).
+    public bool InTalkRange(Vector3 player, int talkableDistance) {
+        if (Value.Metadata.Basic.HasPropertyTag(IgnoreTalkDistanceTag)) {
+            return true;
+        }
+        float radius = Value.Metadata.Property?.Capsule?.Radius ?? 0f;
+        return InteractRules.InReach(player, Position, InteractRules.TalkReach(talkableDistance, radius));
+    }
+
+    public const string IgnoreTalkDistanceTag = "ignore_talk_distance";
+
     // Npcs this npc summoned with an AI summon node, by the node's group.
     private readonly List<(int Group, FieldNpc Npc, bool LeavesWithSummoner)> summons = [];
 

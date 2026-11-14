@@ -93,9 +93,8 @@ public class NpcTalkHandler : FieldPacketHandler {
             Logger.Debug("Talk to npc {ObjectId} ({NpcId}) dropped: quest mask hides it", objectId, npc.Value.Id);
             return;
         }
-        // Nor does it talk to an npc out of its talk reach (InteractRules.TalkReach).
-        float radius = npc.Value.Metadata.Property?.Capsule?.Radius ?? 0f;
-        if (!InteractRules.InReach(session.Player.Position, npc.Position, InteractRules.TalkReach(Constants.TalkableDistance, radius))) {
+        // Nor does it talk to an npc out of its talk reach (InteractRules.TalkReach, FieldNpc.InTalkRange).
+        if (!npc.InTalkRange(session.Player.Position, Constants.TalkableDistance)) {
             Logger.Debug("Talk to npc {ObjectId} ({NpcId}) dropped: out of reach, player {Player}, npc {Npc}",
                 objectId, npc.Value.Id, session.Player.Position, npc.Position);
             return;
