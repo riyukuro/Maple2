@@ -1,3 +1,5 @@
+using Maple2.File.Ingest.Mapper;
+using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using NUnit.Framework;
 
@@ -24,5 +26,26 @@ public class ModifyEffectDurationTests {
         Assert.That(Buff.ModifiedEndTick(15000, 10000, 1f, -8f), Is.EqualTo(10000));
         // An end already past counts as no time left.
         Assert.That(Buff.ModifiedEndTick(9000, 10000, 2f, 0f), Is.EqualTo(10000));
+    }
+
+    [Test]
+    public void ALongTimeLeftKeepsItsMilliseconds() {
+        // Ten hours and 1 ms left, factor 1: a float product would round to a multiple of 2 ms.
+        const long left = 36_000_001;
+        Assert.That(Buff.ModifiedEndTick(10000 + left, 10000, 1f, 0f), Is.EqualTo(10000 + left));
+    }
+
+    [Test]
+    public void TheIngestFillsAMissingListAsTheClientDoes() {
+        AdditionalEffectMetadataUpdate.ModifyDuration[] factorsOnly = AdditionalEffectMapper.ModifyDurations([50003000], [2f], []);
+        AdditionalEffectMetadataUpdate.ModifyDuration[] valuesOnly = AdditionalEffectMapper.ModifyDurations([50003000], [], [8f]);
+        AdditionalEffectMetadataUpdate.ModifyDuration[] both = AdditionalEffectMapper.ModifyDurations([50003000, 50003001], [2f, 1f], [0f, -3f]);
+        AdditionalEffectMetadataUpdate.ModifyDuration[] neither = AdditionalEffectMapper.ModifyDurations([50003000, 50003001], [2f], [8f]);
+        Assert.Multiple(() => {
+            Assert.That(factorsOnly, Is.EqualTo(new[] { new AdditionalEffectMetadataUpdate.ModifyDuration(50003000, 2f, 0f) }));
+            Assert.That(valuesOnly, Is.EqualTo(new[] { new AdditionalEffectMetadataUpdate.ModifyDuration(50003000, 1f, 8f) }));
+            Assert.That(both[1], Is.EqualTo(new AdditionalEffectMetadataUpdate.ModifyDuration(50003001, 1f, -3f)));
+            Assert.That(neither, Is.Empty);
+        });
     }
 }

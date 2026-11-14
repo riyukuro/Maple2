@@ -467,7 +467,7 @@ public class Buff : IUpdatable, IByteSerializable {
 
     public static long ModifiedEndTick(long endTick, long tickCount, float factor, float seconds) {
         long left = Math.Max(0, endTick - tickCount);
-        return tickCount + Math.Max(0, (long) (left * factor + seconds * 1000));
+        return tickCount + Math.Max(0, (long) (left * (double) factor + seconds * 1000.0));
     }
 
     public void UpdateEndTime(int modifyValue) {

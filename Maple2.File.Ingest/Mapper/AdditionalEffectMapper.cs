@@ -472,10 +472,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         }
 
         ModifyEffectDurationProperty modify = data.ModifyEffectDurationProperty;
-        var modifyDuration = new AdditionalEffectMetadataUpdate.ModifyDuration[modify.effectCodes.Length];
-        for (int i = 0; i < modifyDuration.Length; i++) {
-            modifyDuration[i] = new AdditionalEffectMetadataUpdate.ModifyDuration(modify.effectCodes[i], modify.durationFactors[i], modify.durationValues[i]);
-        }
+        AdditionalEffectMetadataUpdate.ModifyDuration[] modifyDuration = ModifyDurations(modify.effectCodes, modify.durationFactors, modify.durationValues);
 
         return new AdditionalEffectMetadataUpdate(
             Cancel: cancelEffect,
@@ -483,6 +480,22 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             ImmuneCategories: Array.ConvertAll(data.ImmuneEffectProperty.immuneBuffCategories, category => (BuffCategory) category),
             ResetCooldown: data.ResetSkillCoolDownTimeProperty.skillCodes,
             Duration: modifyDuration);
+    }
+
+    // As the client reads <ModifyEffectDuration> (additionalactionadditional.cpp:1136-1180): factors without values
+    // give (factor, 0), values without factors (1, value). When neither list has one entry per code the client
+    // refuses the level; here the level keeps no duration change. Before, a missing list threw at ingest.
+    public static AdditionalEffectMetadataUpdate.ModifyDuration[] ModifyDurations(int[] codes, float[] factors, float[] values) {
+        bool hasFactors = factors.Length == codes.Length;
+        bool hasValues = values.Length == codes.Length;
+        if (!hasFactors && !hasValues) {
+            return [];
+        }
+        var result = new AdditionalEffectMetadataUpdate.ModifyDuration[codes.Length];
+        for (int i = 0; i < codes.Length; i++) {
+            result[i] = new AdditionalEffectMetadataUpdate.ModifyDuration(codes[i], hasFactors ? factors[i] : 1f, hasValues ? values[i] : 0f);
+        }
+        return result;
     }
 
     private static AdditionalEffectMetadataReflect Convert(ReflectProperty reflect) {
