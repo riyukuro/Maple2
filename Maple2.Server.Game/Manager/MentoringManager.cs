@@ -170,7 +170,8 @@ public class MentoringManager : IDisposable {
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             long lastSave = session.EntryLastSave;
             // A return already kept for this season (from a window, or from an earlier entry) is stored on the season's
-            // row too, so it lasts to the season's end when the event was extended after it was stored.
+            // row too. When the season was extended after a return was stored, the loaded value already follows the
+            // new end (EventValueRules.FollowSeason, on each load); the database row keeps the end it was stored with.
             if (Returning(returnUser.DateInactiveSince, returnUser.DaysInactive, lastSave, now)
                 || session.GameEvent.HasValue(GameEventUserValueType.MentoringReturnUser, returnUser.SeasonId.ToString(), now)) {
                 StoreReturn(season.Id, season.EndTime, returnUser.SeasonId);
@@ -198,8 +199,9 @@ public class MentoringManager : IDisposable {
         });
     }
 
-    // The return for `seasonNumber`, kept on the event `eventId` until `until`; stored at once. A stored return is
-    // kept to the later end when the event (or the season a window names) was extended after it was stored.
+    // The return for `seasonNumber`, kept on the event `eventId` until `until`; stored at once. A value that already
+    // holds this season to `until` or later is not stored again; a value loaded past its stored end through
+    // FollowSeason is such a value, so its row keeps the old end and is followed again at the next load.
     private void StoreReturn(int eventId, long until, int seasonNumber) {
         GameEventUserValue value = session.GameEvent.Get(GameEventUserValueType.MentoringReturnUser, eventId, until);
         string text = seasonNumber.ToString();
