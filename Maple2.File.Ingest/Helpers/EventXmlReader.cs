@@ -227,6 +227,25 @@ public static class EventXmlReader {
         return (distinct ? ids.Distinct() : ids).ToArray();
     }
 
+    // value1 <ms2><key id name/>...</ms2>: every element of the root, whatever the names, as the client reads it
+    // (GameEventCustomTriggerString::vfunc_2). An element without an id is skipped, a repeated id keeps its last
+    // name (CRBMap::SetAt). A row with no id is not stored.
+    public static CustomTriggerString? CustomTriggerString(string? value1) {
+        XmlElement? root = AnyRoot(value1);
+        if (root == null) {
+            return null;
+        }
+        var strings = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (XmlElement element in root.ChildNodes.OfType<XmlElement>()) {
+            string id = element.GetAttribute("id");
+            if (id.Length == 0) {
+                continue;
+            }
+            strings[id] = element.GetAttribute("name");
+        }
+        return strings.Count == 0 ? null : new CustomTriggerString(new Dictionary<string, string>(strings));
+    }
+
     // The burning levelup's values (GameEventBurningLevelup::vfunc_2, commonfiles/gameevent.cpp:5923). value1's
     // root must have a first element, whose attributes are read whatever its name; a row without it is not stored
     // (the client reads nothing else of it). value2's root must have a first element too, and its <v> items are

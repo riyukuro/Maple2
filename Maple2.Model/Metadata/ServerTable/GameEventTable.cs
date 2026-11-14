@@ -732,6 +732,14 @@ public record NpcEventDrop(
     int[] DropIds,
     int EventTag) : GameEventData;
 
+// Trigger script texts replaced while the event runs (GameEventCustomTriggerString::vfunc_2, commonfiles/gameevent.cpp:
+// 5536): value1 <ms2><key id name/>...</ms2>, each element of the root whatever its name; an element without an id is
+// skipped and a repeated id keeps its last name. Strings maps the trigger string id to the name. The client's
+// GameEventCustomTriggerStringCli::OnStart sets each id's text in its custom server string group (from the name, through
+// its game event strings) and vfunc_6 removes them at the end (client/ms2/gameeventcli.cpp:1078).
+public record CustomTriggerString(
+    IReadOnlyDictionary<string, string> Strings) : GameEventData;
+
 // Tree watering (GameEventTreeWatering::ReadTreeWateringData, commonfiles/gameevent.cpp:5664). value1 is
 // <ms2><tree_step><step step begin end/>...</tree_step><emotion_day><time begin end/>...</emotion_day></ms2>, value2
 // <ms2><watering_reward MaxRewardCountDaily itemID grade count/><emotion_reward .../></ms2>, value3
@@ -888,6 +896,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(MiniGameBonusReward), "MiniGameBonusReward")]
 [JsonDerivedType(typeof(SpawnNpcEvent), "SpawnNpc")]
 [JsonDerivedType(typeof(NpcEventDrop), "NpcEventDrop")]
+[JsonDerivedType(typeof(CustomTriggerString), "CustomTriggerString")]
 [JsonDerivedType(typeof(NpcShopShowItem), "NpcShopShowItem")]
 [JsonDerivedType(typeof(CharacterFirstConnectMail), "CharacterFirstConnect")]
 [JsonDerivedType(typeof(SendMailEvent), "SendMail")]

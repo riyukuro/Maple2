@@ -182,6 +182,16 @@ public class GameEvent : IByteSerializable {
                     writer.WriteInt(questId);
                 }
                 break;
+            case CustomTriggerString customTriggerString:
+                // GameEventCustomTriggerString::vfunc_4 reads the id (GameEvent::vfunc_4), then its CRBMap<CStringW,
+                // CStringW>: a count and each key and value (gameevent.cpp:473). The keys go in the map's own order.
+                writer.WriteInt(Id);
+                writer.WriteInt(customTriggerString.Strings.Count);
+                foreach ((string key, string value) in customTriggerString.Strings.OrderBy(entry => entry.Key, StringComparer.Ordinal)) {
+                    writer.WriteUnicodeString(key);
+                    writer.WriteUnicodeString(value);
+                }
+                break;
             case LoginNotice:
             case FinishPayback:
             case NpcEventDrop:
