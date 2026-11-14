@@ -234,11 +234,11 @@ public sealed class TestGameSession {
     }
 
     // A row of the character: in the bag (group Default), or worn (group Gear/Outfit with the slot).
-    public Item Store(ItemMetadata metadata, int amount = 1, ItemGroup group = ItemGroup.Default, EquipSlot slot = EquipSlot.Unknown) {
+    public Item Store(ItemMetadata metadata, int amount = 1, ItemGroup group = ItemGroup.Default, EquipSlot slot = EquipSlot.Unknown, int rarity = 1) {
         Register(metadata);
         Item item;
         using (GameStorage.Request create = Storage.Context()) {
-            item = create.CreateItem(CharacterId, new Item(metadata, amount: amount)) ?? throw new InvalidOperationException("item row not created");
+            item = create.CreateItem(CharacterId, new Item(metadata, rarity, amount)) ?? throw new InvalidOperationException("item row not created");
         }
         if (group != ItemGroup.Default) {
             item.Group = group;

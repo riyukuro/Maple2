@@ -44,6 +44,8 @@ public class ShopHandlerTests {
     private const int GameMeretProductId = 20;
     private const int GuildFundProductId = 21;
     private const int StarPointProductId = 22;
+    private const int ItemCostProductId = 23;
+    private const int PaymentItemId = 20000004;
     private const long GuildId = 39990009;
     private const int FurnishingItemId = 50400001;
     private const int ShopItemId = 20000001;
@@ -74,10 +76,10 @@ public class ShopHandlerTests {
     private static readonly string NoNotice = Hex(ShopPacket.Error(ShopError.s_err_no_notice, BuyCommand));
 
     private static ShopItemMetadata Product(int id, int price, int stock, short sellUnit = 1, ShopItemMetadata.QuestAlliance? fame = null,
-                                            ShopCurrencyType currency = ShopCurrencyType.Meso, int itemId = ProductItemId) {
+                                            ShopCurrencyType currency = ShopCurrencyType.Meso, int itemId = ProductItemId, int costItemId = 0) {
         var requirements = new ShopItemMetadata.Requirement(0, new ShopItemMetadata.Achievement(0, 0), new ShopItemMetadata.Championship(0, 0),
             new ShopItemMetadata.GuildNpc(default, 0), fame ?? new ShopItemMetadata.QuestAlliance(default, 0));
-        return new ShopItemMetadata(id, ShopId, itemId, 1, new ShopCost { Type = currency, Amount = price }, stock, "", requirements,
+        return new ShopItemMetadata(id, ShopId, itemId, 1, new ShopCost { Type = currency, ItemId = costItemId, Amount = price }, stock, "", requirements,
             null, sellUnit, default, "", false, false, 10000, false);
     }
 
@@ -102,6 +104,7 @@ public class ShopHandlerTests {
                 [GameMeretProductId] = Product(GameMeretProductId, price: 40, stock: 0, currency: ShopCurrencyType.GameMeret),
                 [GuildFundProductId] = Product(GuildFundProductId, price: 500, stock: 0, currency: ShopCurrencyType.GuildFund),
                 [StarPointProductId] = Product(StarPointProductId, price: 5, stock: 0, currency: ShopCurrencyType.StarPoint),
+                [ItemCostProductId] = Product(ItemCostProductId, price: 3, stock: 0, currency: ShopCurrencyType.Item, costItemId: PaymentItemId),
             },
         }));
         // The KR grade points of Maple Union and the Royal Guard (2: 10000, 3: 30000, 4: 60000, 5: 120000).
@@ -508,6 +511,68 @@ public class ShopHandlerTests {
         Assert.That(test.TakeSent().Select(Convert.ToHexString),
             Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_no_notice, BuyBackCommand)) }));
         Assert.That(session.Currency.Meso, Is.EqualTo(10350));
+    }
+
+    // The client counts a payment item at its item data's rank (GetMaxAffordableCount, npcshopproductbase.cpp:475,
+    // with GetItemRank): the buy takes copies of that rank only, and copies of another rank do not pay. Before, any
+    // rank was taken, the other rank's copies first here.
+    [Test]
+    public void Buy_PaidWithAnItem_TakesCopiesOfItsRankOnly() {
+        ItemMetadata payment = TestGameSession.Metadata(PaymentItemId);
+        payment = payment with { Property = payment.Property with { Rank = 4 } };
+        Item other = null!;
+        Item ranked = null!;
+        beforeStart = () => {
+            other = test.Store(payment, amount: 5, rarity: 2);
+            ranked = test.Store(payment, amount: 5, rarity: 4);
+        };
+        GameSession session = Login();
+
+        Buy(session, ItemCostProductId, 1);
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Get(other.Uid)?.Amount, Is.EqualTo(5));
+            Assert.That(session.Item.Inventory.Get(ranked.Uid)?.Amount, Is.EqualTo(2));
+        });
+        test.TakeSent();
+
+        Buy(session, ItemCostProductId, 1);
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Does.Contain(Hex(ShopPacket.Error(ShopError.s_err_lack_payment_item, BuyCommand, PaymentItemId))));
+            Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Get(other.Uid)?.Amount, Is.EqualTo(5));
+            Assert.That(session.Item.Inventory.Get(ranked.Uid)?.Amount, Is.EqualTo(2));
+        });
+    }
+
+    // A full buy-back list drops its oldest entry by id. The entries' added time is in seconds, so the old rule
+    // (the earliest time) dropped the first entry the list enumerated, which after a buy back was the newest one.
+    [Test]
+    public void Sell_WithAFullBuyBackList_DropsTheOldestEntry() {
+        Item stack = null!;
+        beforeStart = () => {
+            ItemMetadata sold = TestGameSession.Metadata(20000005);
+            stack = test.Store(sold with { Property = sold.Property with { SellPrices = [70, 0, 0, 0, 0, 0] } }, amount: 20);
+        };
+        GameSession session = Login();
+        var entries = new List<int>();
+        for (int i = 0; i < Constant.MaxBuyBackItems; i++) {
+            Sell(session, stack.Uid, 1);
+            entries.Add(BitConverter.ToInt32(test.TakeSent()[1], 5));
+        }
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteInt(entries[0]);
+        }));
+        Sell(session, stack.Uid, 1);
+        test.TakeSent();
+
+        Sell(session, stack.Uid, 1);
+
+        List<string> sent = test.TakeSent().Select(Convert.ToHexString).ToList();
+        Assert.That(sent, Does.Contain(Hex(ShopPacket.RemoveBuyBackItem(entries[1]))));
+        Assert.That(sent.Count(hex => hex.StartsWith(Hex(ShopPacket.RemoveBuyBackItem(0))[..6])), Is.EqualTo(1));
     }
 
     [Test]
@@ -1169,6 +1234,26 @@ public class ShopHandlerTests {
     // A rolled shop (reset on, a day's restock) keeps the products it rolled until the restock: a login before it
     // shows the stored list with its bought counts. Before, a login rolled the list anew, and a product of the new roll
     // had no stored row, so its buys were never counted and its stock never ran out.
+    // A shop without a reset stores its bought count in a row made at the first buy. When that row cannot be stored,
+    // the buy still counts on the shown product, so its limit holds while the shop is open; before, it sold on.
+    [Test]
+    public void Buy_FromAShopWithoutAReset_CountsWhenItsRowIsNotStored() {
+        GameSession session = Login();
+        test.FailSave = context => context.ChangeTracker.Entries()
+            .Any(entry => entry.State == EntityState.Added && entry.Entity.GetType().Name == "CharacterShopItemData");
+
+        Buy(session, StockProductId, 50);
+        Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 50 * 20));
+        test.TakeSent();
+        Buy(session, StockProductId, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 50 * 20));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_lack_shopitem, BuyCommand)) }));
+        });
+    }
+
     [Test]
     public void Login_BeforeTheRestock_KeepsTheRolledListAndItsBuys() {
         const int NewProductId = 30;

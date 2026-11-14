@@ -358,6 +358,7 @@ public sealed class ShopManager {
             if (shop.RestockData.ResetType != ResetType.Default) {
                 data = db.CreateCharacterShopItemData(ownerId, data);
                 if (data == null) {
+                    logger.Error("Failed to store shop {ShopId} product {ShopItemId} for {OwnerId}", shop.Id, id, ownerId);
                     continue;
                 }
             }
@@ -434,13 +435,14 @@ public sealed class ShopManager {
         session.Send(ShopPacket.LoadItems(activeShop.Items.Values));
     }
 
+    // The shown product counts the buy even when its row was not stored (CreateShopItemData skips a failed insert),
+    // so its limit holds while this shop instance lives; before, such a product sold without a limit until the restock.
     private void UpdateStockCount(int shopId, ShopItem shopItem, int quantity) {
-        if (!TryGetShopItemData(shopId, out IDictionary<int, CharacterShopItemData>? data) ||
-            !data.TryGetValue(shopItem.Id, out CharacterShopItemData? itemData)) {
-            return;
-        }
-        itemData.StockPurchased += quantity;
         shopItem.StockPurchased += quantity;
+        if (TryGetShopItemData(shopId, out IDictionary<int, CharacterShopItemData>? data) &&
+            data.TryGetValue(shopItem.Id, out CharacterShopItemData? itemData)) {
+            itemData.StockPurchased += quantity;
+        }
     }
 
     // Stock bought from a shop without a reset: one row per bought item, created on the first purchase and
@@ -454,6 +456,9 @@ public sealed class ShopManager {
                 characterShopItemData[metadata.Id] = data;
             }
         }
+        // The shown product counts the buy even when its row cannot be created, so its limit holds while the shop is
+        // open; a later row starts at the product's count. Before, such a buy was not counted at all.
+        shopItem.StockPurchased += quantity;
         if (!data.TryGetValue(shopItem.Id, out CharacterShopItemData? itemData)) {
             using GameStorage.Request db = session.GameStorage.Context();
             long ownerId = metadata.RestockData.AccountWide ? session.AccountId : session.CharacterId;
@@ -461,15 +466,16 @@ public sealed class ShopManager {
                 ShopId = metadata.Id,
                 ShopItemId = shopItem.Id,
                 Item = shopItem.Item,
+                StockPurchased = shopItem.StockPurchased,
             });
             if (itemData == null) {
                 logger.Error("Failed to create stock data for shop {ShopId} item {ShopItemId}", metadata.Id, shopItem.Id);
                 return;
             }
             data[shopItem.Id] = itemData;
+            return;
         }
         itemData.StockPurchased += quantity;
-        shopItem.StockPurchased += quantity;
     }
 
     private bool IsUnresetShop(int shopId) {
@@ -823,7 +829,11 @@ public sealed class ShopManager {
                 }
                 break;
             case ShopCurrencyType.Item:
-                var ingredient = new ItemComponent(cost.ItemId, -1, price, ItemTag.None);
+                // The client counts the payment item at its item data's rank, any rank when that is 0 (GetMaxAffordableCount,
+                // npcshopproductbase.cpp:475: Unk_Inventory::FUN_140a5f180 with GetItemRank, inventory.cpp:782); the
+                // server took copies of any rarity, also ones the client did not count.
+                int rank = session.ItemMetadata.TryGet(cost.ItemId, out ItemMetadata? payment) ? payment.Property.Rank ?? 0 : 0;
+                var ingredient = new ItemComponent(cost.ItemId, rank > 0 ? rank : -1, price, ItemTag.None);
                 if (!session.Item.Inventory.ConsumeItemComponents([
                         ingredient,
                     ])) {
@@ -858,7 +868,8 @@ public sealed class ShopManager {
 
     private bool RemoveBuyBackItem() {
         while (buyBackItems.Count >= Constant.MaxBuyBackItems) {
-            BuyBackItem? item = buyBackItems.Values.MinBy(entry => entry.AddedTime);
+            // The oldest entry by id (ids rise with each sale); the added time is in seconds and ties.
+            BuyBackItem? item = buyBackItems.Values.MinBy(entry => entry.Id);
             if (item == null) {
                 logger.Error("Failed to remove buyback item");
                 return false;
