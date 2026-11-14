@@ -26,6 +26,10 @@ public enum GameEventUserValueType {
     MapleopolyFreeRollAmount = 801,
     MapleopolyTotalTrips = 802, // unsure
 
+    // Epic quest restart (EpicRestart): 1 once the character has restarted, read by the game menu's restart button
+    // (uigamemenudialog.cpp FUN_14193c000, user value 0x44c of the event: s_quest_epic_restart_restarted).
+    EpicRestartDone = 1100,
+
     // Item box (ItemBox): the day (yyyymmdd, server time) the box was last taken; the open box dialog
     // (uiitemeventopenboxdialog.cpp) stays closed while it is today or later.
     ItemBoxReceivedDay = 1400,

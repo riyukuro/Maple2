@@ -1261,6 +1261,77 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         return results;
     }
 
+    // The epic quest restart (EpicRestart): value1 names the server table of the kept quests, read from the overlay or
+    // the server pack; a row whose table is not there, or whose value2 names no map, is dropped (with a line): a restart
+    // that keeps nothing would take the job and world quests too.
+    private EpicRestart? ReadEpicRestart(string value1, string value2, string value3) {
+        if (string.IsNullOrWhiteSpace(value1)) {
+            Console.WriteLine("EpicRestart: no except table in value1, row dropped");
+            return null;
+        }
+        string path = $"table/Server/{value1.Trim()}";
+        XmlDocument? document = null;
+        string? text = overlay.Read(path);
+        if (text != null) {
+            document = new XmlDocument();
+            document.LoadXml(text);
+        } else {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+                file.Name.Equals(path, StringComparison.OrdinalIgnoreCase));
+            if (entry != null) {
+                document = xmlReader.GetXmlDocument(entry);
+            }
+        }
+        if (document == null) {
+            Console.WriteLine($"EpicRestart: no {path}, row dropped");
+            return null;
+        }
+        EpicRestart? result = MapEpicRestart(value1, value2, value3, document);
+        if (result == null) {
+            Console.WriteLine($"EpicRestart: value2 \"{value2}\" names no map, row dropped");
+        }
+        return result;
+    }
+
+    // value2 "map,portal" and value3 the barred fields as the client splits them (XmlSplit on ","); the table's
+    // <quest questID="a"/> and <quest questID="a-b"/> rows. A quest row that does not read is skipped.
+    public static EpicRestart? MapEpicRestart(string value1, string value2, string value3, XmlDocument document) {
+        static int[] Numbers(string text) => text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => int.TryParse(part, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number) ? number : 0)
+            .ToArray();
+        int[] destination = Numbers(value2);
+        if (destination.Length == 0 || destination[0] <= 0) {
+            return null;
+        }
+
+        var ids = new SortedSet<int>();
+        var ranges = new List<EpicRestart.Range>();
+        foreach (XmlElement node in document.DocumentElement?.ChildNodes.OfType<XmlElement>() ?? []) {
+            if (node.Name != "quest") {
+                continue;
+            }
+            string[] parts = node.GetAttribute("questID").Split('-', StringSplitOptions.TrimEntries);
+            if (parts.Length == 1 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int id)) {
+                ids.Add(id);
+            } else if (parts.Length == 2
+                       && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int min)
+                       && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int max)
+                       && min <= max) {
+                ranges.Add(new EpicRestart.Range(min, max));
+            }
+        }
+
+        return new EpicRestart(
+            ExceptTable: value1,
+            Destination: value2,
+            BarredFields: value3,
+            MapId: destination[0],
+            PortalId: destination.Length > 1 ? destination[1] : 0,
+            BarredMapIds: Numbers(value3).Where(mapId => mapId > 0).ToArray(),
+            ExceptQuestIds: ids.ToArray(),
+            ExceptRanges: ranges.ToArray());
+    }
+
     private GameEventTable ParseGameEventTable() {
         var results = new Dictionary<int, GameEventMetadata>();
         DateTime now = AttendGiftReplay.IngestNow();
@@ -2013,6 +2084,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventXmlReader.MasteryReward(value1, value2);
             case GameEventType.ShutdownMapleSurvival:
                 return new ShutdownMapleSurvival();
+            case GameEventType.EpicRestart:
+                return ReadEpicRestart(value1, value2, value3);
             case GameEventType.LevelUpPackage:
                 // No item: the client's menu answers that the event is not valid.
                 if (!int.TryParse(value1, out int packageItemId) || packageItemId == 0) {

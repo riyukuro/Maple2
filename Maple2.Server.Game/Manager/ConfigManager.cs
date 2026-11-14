@@ -798,6 +798,28 @@ public class ConfigManager {
         session.Stats.Refresh();
     }
 
+    // The epic quest restart (EpicRestart) takes back the chapter book's points (QuestManager.CompleteChapter: skill
+    // points of the Chapter source, stat points of the Quest source); completing the chapters again gives them again.
+    // Chosen here: spent stat points beyond what is left are all given back, as the client's reset does, without
+    // its notice.
+    public void ResetChapterPoints() {
+        foreach (short rank in skillPoints[SkillPointSource.Chapter].Ranks.Keys.ToList()) {
+            skillPoints[SkillPointSource.Chapter][rank] = 0;
+        }
+        statAttributes.Sources[AttributePointSource.Quest] = 0;
+        session.Send(SkillPointPacket.Sources(skillPoints));
+        session.Send(AttributePointPacket.Sources(statAttributes));
+
+        if (statAttributes.UsedPoints <= statAttributes.TotalPoints) {
+            return;
+        }
+        foreach (BasicAttribute type in statAttributes.Allocation.Attributes) {
+            statAttributes.Allocation[type] = 0;
+        }
+        session.Send(AttributePointPacket.Allocation(statAttributes));
+        session.Stats.Refresh();
+    }
+
     public void ResetStatPoints() {
         // The client sends a reset only with points spent (CStatPointManager::RequestReset).
         if (statAttributes.UsedPoints == 0) {

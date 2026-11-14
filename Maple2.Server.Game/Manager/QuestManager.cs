@@ -1482,6 +1482,25 @@ public sealed class QuestManager {
         return Remove(quest);
     }
 
+    // The epic quest restart (EpicRestart): every epic quest of the character the event does not keep is deleted,
+    // done or not, and the client drops each with Quest 5 (questId, 0), its forced removal (questmanager_2.cpp:1053:
+    // RemoveQuest(id, 1); the abandon and expiry modes keep a rewarded quest). The removed ids.
+    public List<int> ResetEpicQuests(Func<int, bool> kept) {
+        var removed = new List<int>();
+        foreach (Quest quest in characterValues.Values.ToList()) {
+            if (quest.Metadata.Basic.Type != QuestType.EpicQuest || quest.Metadata.Basic.Account > 0 || kept(quest.Id)) {
+                continue;
+            }
+            if (!Remove(quest)) {
+                logger.Error("Failed to delete quest {QuestId} for the epic restart of {CharacterId}", quest.Id, session.CharacterId);
+                continue;
+            }
+            session.Send(QuestPacket.Reset(quest.Id));
+            removed.Add(quest.Id);
+        }
+        return removed;
+    }
+
     public bool Remove(Quest quest) {
         using GameStorage.Request db = session.GameStorage.Context();
         if (quest.Metadata.Basic.Account > 0) {

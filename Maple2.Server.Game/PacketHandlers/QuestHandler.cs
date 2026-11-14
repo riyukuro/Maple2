@@ -4,6 +4,7 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -157,10 +158,8 @@ public class QuestHandler : FieldPacketHandler {
                 HandleAllianceAll(session, false);
                 break;
             case Command.EpicRestart:
-                // UIGameMenuDialog::SendQuest (uigamemenudialog.cpp:2294): no body. Not handled: the client
-                // sends it only while an epic quest restart event runs (FUN_14193c000, :1947), and the server
-                // has no such game event.
-                Logger.Debug("Quest {Command} from {CharacterId}", command, session.CharacterId);
+                // UIGameMenuDialog::SendQuest (uigamemenudialog.cpp:2294): no body.
+                HandleEpicRestart(session);
                 break;
             case Command.SkyFortressMission:
                 HandleSkyFortressMission(session, packet);
@@ -498,6 +497,56 @@ public class QuestHandler : FieldPacketHandler {
     // to the field.
     // Chosen here: the player arrives at the field's default spawn (the packet names no portal); a refused attack gets
     // no answer and is not counted; the attack is counted only once the move is prepared, and a failed move is not.
+    // The epic quest restart (EpicRestart). The game menu sends it while the event runs, after its own checks
+    // (FUN_14193c000, uigamemenudialog.cpp:1946): not restarted yet (user value 1100 of the event), not on a field of
+    // the event's value3. The server checks the same, then marks the restart done (stored at once: once per
+    // character), deletes the epic quests the event's table does not keep, takes back the chapter book's points, and
+    // moves the character to value2's map and portal. Chosen here: the skills are reset (both ranks, as the job
+    // reset does) only when the stored tree no longer passes the client's check with the points left; the auto start
+    // quests start again at once.
+    private void HandleEpicRestart(GameSession session) {
+        if (session.Field is null) return;
+
+        GameEvent? gameEvent = session.FindEvent(GameEventType.EpicRestart)
+            .Where(found => found.Metadata.Data is EpicRestart)
+            .MaxBy(found => (found.StartTime, found.Id));
+        if (gameEvent?.Metadata.Data is not EpicRestart restart) {
+            Logger.Information("Epic restart from {CharacterId} without a running event", session.CharacterId);
+            return;
+        }
+        if (EpicRestart.Done(session.GameEvent.Peek(GameEventUserValueType.EpicRestartDone, gameEvent.Id))) {
+            Logger.Information("Epic restart from {CharacterId}: already restarted in event {EventId}", session.CharacterId, gameEvent.Id);
+            return;
+        }
+        if (restart.Barred(session.Field.MapId)) {
+            Logger.Information("Epic restart from {CharacterId} on barred map {MapId}", session.CharacterId, session.Field.MapId);
+            return;
+        }
+
+        session.GameEvent.Get(GameEventUserValueType.EpicRestartDone, gameEvent.Id, gameEvent.EndTime);
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.EpicRestartDone, 1);
+        if (!session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.EpicRestartDone)) {
+            Logger.Error("Failed to store the epic restart of {CharacterId} in event {EventId}", session.CharacterId, gameEvent.Id);
+            return;
+        }
+
+        List<int> removed = session.Quest.ResetEpicQuests(restart.Kept);
+        session.Config.ResetChapterPoints();
+        Maple2.Server.Game.Manager.SkillManager skills = session.Config.Skill;
+        if (skills.Check(skills.Tree()) != JobSkillError.None) {
+            skills.ResetSkills();
+            session.Send(JobPacket.Reset(session.Player, skills.SkillInfo));
+            session.Config.UpdateHotbarSkills();
+            skills.UpdatePassiveBuffs();
+        }
+        session.Quest.StartAutoQuests();
+        Logger.Information("Epic restart of {CharacterId} in event {EventId}: {Count} quests removed", session.CharacterId, gameEvent.Id, removed.Count);
+
+        session.Send(session.PrepareField(restart.MapId, restart.PortalId)
+            ? FieldEnterPacket.Request(session.Player)
+            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+    }
+
     private void HandleSkyFortressMission(GameSession session, IByteReader packet) {
         int mapId = packet.ReadInt();
         if (!session.Quest.CanMissionAttack(mapId)) {

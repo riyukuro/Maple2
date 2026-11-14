@@ -155,22 +155,8 @@ public class JobHandler : FieldPacketHandler {
             sent.Add((skillId, level, learned));
         }
 
-        SkillInfo info = session.Config.Skill.SkillInfo;
-        var current = new List<JobSkillState>();
-        foreach (SkillRank rank in new[] { SkillRank.Basic, SkillRank.Awakening }) {
-            foreach (SkillType type in Enum.GetValues<SkillType>()) {
-                foreach (SkillInfo.Skill skill in info.GetMainSkills(type, rank)) {
-                    current.Add(new JobSkillState(skill.Id, rank, skill.BaseLevel, skill.MaxLevel, skill.Level));
-                }
-            }
-        }
-
-        List<JobSkillState> tree = JobSkillRules.Apply(current, sent);
-        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
-        JobSkillError error = JobSkillRules.Check(tree, session.Player.Value.Character.Level,
-            constants.SkillPointLimitLevel1, constants.SkillPointLimitLevel2, session.Config.ExtraSkillPoints(),
-            (skillId, level) => session.SkillMetadata.TryGet(skillId, level, out SkillMetadata? metadata) ? metadata.Data.Upgrade : null,
-            questId => session.Quest.TryGetQuest(questId, out Quest? quest) && quest.State == QuestState.Completed);
+        List<JobSkillState> tree = JobSkillRules.Apply(session.Config.Skill.Tree(), sent);
+        JobSkillError error = session.Config.Skill.Check(tree);
         if (error != JobSkillError.None) {
             Logger.Information("Job skill tree refused ({Error}) for {CharacterId}", error, session.CharacterId);
             return;

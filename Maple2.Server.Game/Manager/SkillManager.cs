@@ -201,6 +201,28 @@ public class SkillManager {
     }
     #endregion
 
+    // The main skills of both ranks as they are stored, the tree JobSkillRules checks.
+    public List<JobSkillState> Tree() {
+        var current = new List<JobSkillState>();
+        foreach (SkillRank rank in new[] { SkillRank.Basic, SkillRank.Awakening }) {
+            foreach (SkillType type in Enum.GetValues<SkillType>()) {
+                foreach (SkillInfo.Skill skill in SkillInfo.GetMainSkills(type, rank)) {
+                    current.Add(new JobSkillState(skill.Id, rank, skill.BaseLevel, skill.MaxLevel, skill.Level));
+                }
+            }
+        }
+        return current;
+    }
+
+    // The client's own check of a tree (JobSkillRules.Check) against the character's level, extra points and
+    // completed quests now.
+    public JobSkillError Check(IReadOnlyCollection<JobSkillState> tree) {
+        return JobSkillRules.Check(tree, session.Player.Value.Character.Level,
+            Constants.SkillPointLimitLevel1, Constants.SkillPointLimitLevel2, session.Config.ExtraSkillPoints(),
+            (skillId, level) => session.SkillMetadata.TryGet(skillId, level, out SkillMetadata? metadata) ? metadata.Data.Upgrade : null,
+            questId => session.Quest.TryGetQuest(questId, out Quest? quest) && quest.State == QuestState.Completed);
+    }
+
     public void ResetSkills(SkillRank rank = SkillRank.Both) {
         foreach (SkillType type in Enum.GetValues(typeof(SkillType))) {
             foreach (SkillInfo.Skill skill in SkillInfo.GetMainSkills(type, rank)) {

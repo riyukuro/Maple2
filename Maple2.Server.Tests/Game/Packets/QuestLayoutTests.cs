@@ -68,7 +68,7 @@ public class QuestLayoutTests {
     [Test]
     public void RemoveAndTracking() {
         Assert.Multiple(() => {
-            Assert.That(Body(QuestPacket.Unknown5()), Is.EqualTo(new byte[] { 0x05, 0, 0, 0, 0, 0, 0, 0, 0 }));
+            Assert.That(Body(QuestPacket.Reset(7)), Is.EqualTo(new byte[] { 0x05, 0x07, 0, 0, 0, 0, 0, 0, 0 }));
             Assert.That(Body(QuestPacket.Abandon(7)), Is.EqualTo(new byte[] { 0x06, 0x07, 0, 0, 0 }));
             Assert.That(Body(QuestPacket.Expired([7, 8])), Is.EqualTo(new byte[] { 0x07, 0x02, 0, 0, 0, 0x07, 0, 0, 0, 0x08, 0, 0, 0 }));
             Assert.That(Body(QuestPacket.SetTracking(7, true)), Is.EqualTo(new byte[] { 0x09, 0x07, 0, 0, 0, 0x01 }));

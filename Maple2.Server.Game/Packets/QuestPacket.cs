@@ -17,7 +17,7 @@ public static class QuestPacket {
         Start = 2,
         Update = 3,
         Complete = 4,
-        Unknown5 = 5,
+        Reset = 5,
         Abandon = 6,
         Expired = 7,
         SetTracking = 9,
@@ -91,11 +91,13 @@ public static class QuestPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown5() {
+    // CQuestManager mode 5 (questmanager_2.cpp:1050): the quest id and a result; result 0 removes the quest even when
+    // it was rewarded (RemoveQuest(id, 1)).
+    public static ByteWriter Reset(int questId) {
         var pWriter = Packet.Of(SendOp.Quest);
-        pWriter.Write<Command>(Command.Unknown5);
-        pWriter.WriteInt();
-        pWriter.WriteInt();
+        pWriter.Write<Command>(Command.Reset);
+        pWriter.WriteInt(questId);
+        pWriter.WriteInt(0);
 
         return pWriter;
     }

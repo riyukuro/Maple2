@@ -277,6 +277,15 @@ public class GameEvent : IByteSerializable {
                     writer.WriteInt(mapId);
                 }
                 break;
+            case EpicRestart epicRestart:
+                // GameEventEpicRestart::vfunc_4 (commonfiles/gameevent.cpp): the id, the end time, then the three
+                // values as narrow strings.
+                writer.WriteInt(Id);
+                writer.WriteLong(EndTime);
+                writer.WriteString(epicRestart.ExceptTable);
+                writer.WriteString(epicRestart.Destination);
+                writer.WriteString(epicRestart.BarredFields);
+                break;
             case WorldmapIcon worldmapIcon:
                 writer.WriteInt(Id);
                 writer.WriteUnicodeString(worldmapIcon.Xml);

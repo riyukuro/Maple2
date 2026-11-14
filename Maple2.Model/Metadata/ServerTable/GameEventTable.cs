@@ -481,6 +481,31 @@ public record LevelUpPackage(
     int ItemId,
     string QuestIds) : GameEventData;
 
+// The epic quest restart (GameEventEpicRestart, commonfiles/gameevent.cpp:2476). The client gets the three values as
+// the row writes them (CGameRule::SetEpicRestart, gamerule.cpp:2029): value1 the server table of the quests the
+// restart keeps (table/Server/{value1}), value2 "map,portal" the restart moves to, value3 the fields the restart
+// button refuses (s_quest_epic_restart_invalid_field). The kept quests are read from value1's table: single ids and
+// "a-b" ranges, ends included (FUN_14047c380 tests a set and ranges the same way).
+public record EpicRestart(
+    string ExceptTable,
+    string Destination,
+    string BarredFields,
+    int MapId,
+    int PortalId,
+    int[] BarredMapIds,
+    int[] ExceptQuestIds,
+    EpicRestart.Range[] ExceptRanges) : GameEventData {
+    public record Range(int Min, int Max);
+
+    // The restart button refuses a field of value3 (FUN_14047c530).
+    public bool Barred(int mapId) => BarredMapIds.Contains(mapId);
+
+    // The character has restarted in this event: the menu reads user value 1100 as a number, not 0.
+    public static bool Done(string? value) => int.TryParse(value, out int done) && done != 0;
+
+    public bool Kept(int questId) => ExceptQuestIds.Contains(questId) || ExceptRanges.Any(range => questId >= range.Min && questId <= range.Max);
+}
+
 // The hours a time-limited dungeon room is open (GameEventDungeonEnterTimeLimit, commonfiles/gameevent.cpp:2323):
 // value1 is an xml list of dungeonID and rangeTime "hh:mm-hh:mm".
 public record DungeonEnterTimeLimit(
@@ -808,6 +833,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(MasteryRewardEvent), "MasteryReward")]
 [JsonDerivedType(typeof(BlackMarketFeeDiscount), "BlackMarketFeeDiscount")]
 [JsonDerivedType(typeof(LevelUpPackage), "LevelUpPackage")]
+[JsonDerivedType(typeof(EpicRestart), "EpicRestart")]
 [JsonDerivedType(typeof(DungeonEnterTimeLimit), "DungeonEnterTimeLimit")]
 [JsonDerivedType(typeof(DungeonOpenPeriod), "DungeonOpenPeriod")]
 [JsonDerivedType(typeof(SaleUgcDesign), "SaleUgcDesign")]
