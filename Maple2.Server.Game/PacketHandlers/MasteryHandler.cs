@@ -28,6 +28,20 @@ public class MasteryHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
+    // Both requests come only from the mastery window (uimasterydialog.cpp:507/522/589), which lists gathering,
+    // farming, alchemy and cooking only with MasterySecond on and pet taming only with PetBattle on
+    // (UIMasteryDialog::UpdateSubTabs and FUN_140eb86b0, :667-683, :1823-1841).
+    public const string SecondFeature = "MasterySecond";
+
+    public static string? FeatureOf(MasteryType type) => type switch {
+        MasteryType.Gathering or MasteryType.Farming or MasteryType.Alchemist or MasteryType.Cooking => SecondFeature,
+        MasteryType.PetTaming => PetHandler.ComposeFeature,
+        _ => null,
+    };
+
+    private static bool Offered(GameSession session, MasteryType type) =>
+        FeatureOf(type) is not { } feature || session.ServerTableMetadata.FeatureTable.IsOn(feature);
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
         switch (command) {
@@ -45,6 +59,9 @@ public class MasteryHandler : FieldPacketHandler {
         int rewardBoxDetails = packet.ReadInt();
         (int typeId, int level) = MasteryRules.RewardStep(rewardBoxDetails);
         var type = (MasteryType) typeId;
+        if (!Offered(session, type)) {
+            return; // no tab for this mastery: only a forged request gets here
+        }
 
         if (session.Player.Value.Unlock.MasteryRewardsClaimed.TryGetValue(rewardBoxDetails, out bool isClaimed) && isClaimed) {
             session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_unknown));
@@ -86,6 +103,9 @@ public class MasteryHandler : FieldPacketHandler {
         // got by gathering its object, so a craft of one is answered as an unknown recipe.
         if (!TableMetadata.MasteryRecipeTable.Entries.TryGetValue(recipeId, out MasteryRecipeTable.Entry? entry) || !MasteryRules.IsCraft(entry.Type)) {
             session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_unknown));
+            return;
+        }
+        if (!Offered(session, entry.Type)) {
             return;
         }
 

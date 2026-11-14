@@ -119,6 +119,45 @@ public class LifeSkillRefusalTests {
         AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_unknown);
     }
 
+    // The mastery window lists gathering, farming, alchemy and cooking only with MasterySecond on and pet taming
+    // only with PetBattle on: with the feature off neither a reward nor a craft of that type is given.
+    [TestCase(MasteryType.Gathering, "MasterySecond", false, ExpectedResult = false)]
+    [TestCase(MasteryType.Farming, "MasterySecond", false, ExpectedResult = false)]
+    [TestCase(MasteryType.PetTaming, "PetBattle", false, ExpectedResult = false)]
+    [TestCase(MasteryType.Gathering, "MasterySecond", true, ExpectedResult = true)]
+    [TestCase(MasteryType.Mining, "MasterySecond", false, ExpectedResult = true)]
+    public bool Reward_OfATypeWithoutItsTabIsRefused(MasteryType type, string feature, bool on) {
+        GameSession session = StartMastery();
+        test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>> {
+            [type] = new Dictionary<int, MasteryRewardTable.Entry> { [2] = new(50, RewardItemId, 1, 3) },
+        }));
+        Mastery mastery = session.Player.Value.Character.Mastery;
+        mastery.Mining = mastery.Foraging = mastery.Farming = mastery.PetTaming = 50;
+        if (!on) {
+            test.SetFeaturesOff(feature);
+        }
+
+        Send(session, 1, (int) type * 1000 + 2);
+
+        return session.Player.Value.Unlock.MasteryRewardsClaimed.ContainsKey((int) type * 1000 + 2);
+    }
+
+    [TestCase(MasteryType.Alchemist, "MasterySecond", false, ExpectedResult = 0)]
+    [TestCase(MasteryType.Cooking, "MasterySecond", false, ExpectedResult = 0)]
+    [TestCase(MasteryType.PetTaming, "PetBattle", false, ExpectedResult = 0)]
+    [TestCase(MasteryType.Cooking, "MasterySecond", true, ExpectedResult = 1)]
+    [TestCase(MasteryType.Blacksmithing, "MasterySecond", false, ExpectedResult = 1)]
+    public int Craft_OfATypeWithoutItsTabIsRefused(MasteryType type, string feature, bool on) {
+        GameSession session = StartRecipe(0, 0, type);
+        if (!on) {
+            test.SetFeaturesOff(feature);
+        }
+
+        Send(session, 2, RecipeId);
+
+        return Count(session, RewardItemId);
+    }
+
     private const int RecipeId = 70000001;
     private const int QuestId = 90000710;
 

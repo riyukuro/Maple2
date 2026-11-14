@@ -28,14 +28,14 @@ public class MagicScrollCraftTests {
         return metadata with { Property = metadata.Property with { Tag = ItemTag.CharmStone } };
     }
 
-    private GameSession Start(int stones, int otherStones, long meso, ItemComponent[]? required = null) {
+    private GameSession Start(int stones, int otherStones, long meso, ItemComponent[]? required = null, int recipeType = 1) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(ScrollId));
         if (stones > 0) test.Store(Stone(StoneId), stones);
         if (otherStones > 0) test.Store(Stone(OtherStoneId), otherStones);
         test.Register(Stone(StoneId));
         test.SetTable(new EnchantScrollRecipeTable(new Dictionary<int, EnchantScrollRecipeTable.Entry> {
-            [RecipeId] = new(RecipeId, 1, 1, new ItemComponent(ScrollId, 4, 1, ItemTag.None), Meso,
+            [RecipeId] = new(RecipeId, recipeType, 1, new ItemComponent(ScrollId, 4, 1, ItemTag.None), Meso,
                 required ?? [new ItemComponent(StoneId, 4, 2000, ItemTag.CharmStone)], []),
         }));
         GameSession session = test.Start();
@@ -53,6 +53,24 @@ public class MagicScrollCraftTests {
     }
 
     private static int Count(GameSession session, int itemId) => session.Item.Inventory.Find(itemId).Sum(item => item.Amount);
+
+    // The scroll tab is there only with MagicScroll01 on and each sub-tab (recipeType 1-4) only with its own
+    // feature: with either off no scroll is made and nothing is paid.
+    [TestCase(1, "MagicScroll01", ExpectedResult = 0)]
+    [TestCase(1, "EnchantScrollTab01", ExpectedResult = 0)]
+    [TestCase(2, "RestoreScrollTab01", ExpectedResult = 0)]
+    [TestCase(3, "FractoScrollTab01", ExpectedResult = 0)]
+    [TestCase(4, "ProtectedScrollTab01", ExpectedResult = 0)]
+    [TestCase(2, "EnchantScrollTab01", ExpectedResult = 1)] // another sub-tab's feature
+    public int Craft_NeedsTheTabFeatures(int recipeType, string feature) {
+        GameSession session = Start(2000, 0, Meso, recipeType: recipeType);
+        test.SetFeaturesOff(feature);
+
+        Craft(session);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(Count(session, ScrollId) == 0 ? Meso : 0));
+        return Count(session, ScrollId);
+    }
 
     // The client counts the ingredient by its tag: stones of either id pay for it.
     [Test]

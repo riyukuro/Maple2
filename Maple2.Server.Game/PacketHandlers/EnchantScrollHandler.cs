@@ -210,9 +210,25 @@ public class EnchantScrollHandler : FieldPacketHandler {
     // the mastery window's scroll tab finished casting; a mastery recipe (kind 0) goes through Mastery 2. The
     // client sends one of these per craft of a repeat and checks the meso and the ingredients itself first
     // (CraftMagicScroll, GetMaxCraftCount kind 1), so a refusal here gets no answer.
+    // The scroll tab is there only with MagicScroll01 on, and each of its sub-tabs (the recipe's recipeType 1-4,
+    // CEnchantScrollTable::FindRecipes) only with its own feature (UIMasteryDialog::FUN_140eb86b0, :1844-1853).
+    public const string MagicScrollFeature = "MagicScroll01";
+
+    public static string? TabFeature(int recipeType) => recipeType switch {
+        1 => "EnchantScrollTab01",
+        2 => "RestoreScrollTab01",
+        3 => "FractoScrollTab01",
+        4 => "ProtectedScrollTab01",
+        _ => null,
+    };
+
     private void HandleManufacture(GameSession session, IByteReader packet) {
         int recipeId = packet.ReadInt();
         if (!TableMetadata.EnchantScrollRecipeTable.Entries.TryGetValue(recipeId, out EnchantScrollRecipeTable.Entry? recipe)) {
+            return;
+        }
+        FeatureTable features = session.ServerTableMetadata.FeatureTable;
+        if (!features.IsOn(MagicScrollFeature) || TabFeature(recipe.RecipeType) is { } tab && !features.IsOn(tab)) {
             return;
         }
 
