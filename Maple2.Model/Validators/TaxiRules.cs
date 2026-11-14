@@ -24,7 +24,7 @@ public static class TaxiRules {
     }
 
     // Client CashCallManager (cashcallmanager.cpp FUN_140b030b0) picks how an air taxi (Rotors) ride is paid. Premium
-    // club rides free to any field; a field the character has visited (its Unlock.Maps, the list ServerEnter sends) takes
+    // club rides free to any field (with VIPAirTaxi on); a field the character has visited (its Unlock.Maps, the list ServerEnter sends) takes
     // one walkie-talkie or the meso fare (mode 3); a field never visited takes 3 advanced walkie-talkies or the meret
     // price (mode 4). The client never sends mode 2.
     public const int UnvisitedAdvancedTickets = 3;

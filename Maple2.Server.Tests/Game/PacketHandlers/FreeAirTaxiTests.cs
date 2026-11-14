@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -53,10 +55,18 @@ public class FreeAirTaxiTests {
     private static (long Paid, long Fare) Ride(DateTime? eventEnd) => Ride(eventEnd, 3, true).Paid;
 
     // Mode 3 pays in meso; mode 4 (the meret air taxi) pays in meret. Returns what each wallet lost.
-    private static ((long Paid, long Fare) Paid, long MeretPaid) Ride(DateTime? eventEnd, byte mode, bool meretTaxiOn) {
+    private static ((long Paid, long Fare) Paid, long MeretPaid) Ride(DateTime? eventEnd, byte mode, bool meretTaxiOn,
+                                                                    bool premium = false, bool vipTaxiOn = true, bool visited = true) {
         var test = new TestGameSession();
+        var off = new List<string>();
         if (!meretTaxiOn) {
-            test.SetFeaturesOff(TaxiHandler.MeretAirTaxiFeature);
+            off.Add(TaxiHandler.MeretAirTaxiFeature);
+        }
+        if (!vipTaxiOn) {
+            off.Add(TaxiHandler.VipAirTaxiFeature);
+        }
+        if (off.Count > 0) {
+            test.SetFeaturesOff(off.ToArray());
         }
         if (eventEnd != null) {
             test.AddEvent(1, GameEventType.FreeAirTaxi, new FreeAirTaxi(), DateTime.Now.AddDays(-3), eventEnd);
@@ -69,8 +79,10 @@ public class FreeAirTaxiTests {
         var config = (ConfigManager) RuntimeHelpers.GetUninitializedObject(typeof(ConfigManager));
         typeof(ConfigManager).GetField("session", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(config, session);
         session.Config = config;
-        session.Player.Value.Account.PremiumTime = 0;
-        session.Player.Value.Unlock.Maps.Add(To);
+        session.Player.Value.Account.PremiumTime = premium ? DateTime.Now.AddDays(30).ToEpochSeconds() : 0;
+        if (visited) {
+            session.Player.Value.Unlock.Maps.Add(To);
+        }
         session.Currency.Meso = Meso;
         session.Currency.Meret = Meso;
         new TaxiHandler {
@@ -90,6 +102,18 @@ public class FreeAirTaxiTests {
     [TestCase(true, ExpectedResult = true)]
     [TestCase(false, ExpectedResult = false)]
     public bool MeretAirTaxi_NeedsTheFeature(bool on) => Ride(null, 4, on).MeretPaid > 0;
+
+    // A premium club member rides free (and to a field never visited) only with VIPAirTaxi on (cashcallmanager.cpp:85);
+    // with it off the client sends mode 3 with the meso fare, and only to a visited field.
+    [TestCase(true, true, ExpectedResult = 0L)]
+    [TestCase(true, false, ExpectedResult = 0L)]
+    [TestCase(false, true, ExpectedResult = -1L)]
+    [TestCase(false, false, ExpectedResult = 0L)]
+    public long PremiumRide_IsFreeOnlyWithVipAirTaxi(bool vipTaxiOn, bool visited) {
+        ((long paid, long fare), _) = Ride(null, 3, true, premium: true, vipTaxiOn: vipTaxiOn, visited: visited);
+        Assert.That(fare, Is.GreaterThan(0));
+        return paid == fare ? -1 : paid;
+    }
 
     [Test]
     public void WhileTheEventRuns_TheRideIsFree() {

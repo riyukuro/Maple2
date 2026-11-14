@@ -130,7 +130,9 @@ public class TaxiHandler : FieldPacketHandler {
             return;
         }
 
-        bool premium = session.Config.IsPremiumClubActive();
+        // A premium club member rides free only with VIPAirTaxi on: without it the client treats the member as any other
+        // player, with the meso fare or a walkie-talkie (cashcallmanager.cpp:85, uiworldmapdialog.cpp:2447).
+        bool premium = session.Config.IsPremiumClubActive() && session.ServerTableMetadata.FeatureTable.IsOn(VipAirTaxiFeature);
         if (!TaxiRules.CanMesoRide(session.Player.Value.Unlock.Maps.Contains(mapId), premium)) {
             return; // the client offers merets or advanced walkie-talkies for a field never visited
         }
@@ -150,6 +152,8 @@ public class TaxiHandler : FieldPacketHandler {
             ? FieldEnterPacket.Request(session.Player)
             : FieldEnterPacket.Error(s_move_err_default));
     }
+
+    public const string VipAirTaxiFeature = "VIPAirTaxi";
 
     // Mode 4 is sent only for a cash call of kind 3, which the client picks only with MeratAirTaxi on
     // (CCashCallManager, cashcallmanager.cpp:123; the world map asks for meret only then, uiworldmapdialog.cpp:2464).
