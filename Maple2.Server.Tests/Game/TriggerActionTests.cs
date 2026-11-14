@@ -485,6 +485,25 @@ public class TriggerInteractTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="object_interacted" interact_ids="10001,10002" state="0" />"""), Is.True);
         Assert.That(Condition("""<condition name="object_interacted" interact_ids="10003" state="0" />"""), Is.False);
     }
+
+    // 02000393 (and 02000385) pick a character: three statues (10001083-10001085: reactCount 1, resetTime 10000,
+    // reactTime 1000, hideTime 0) are set to 1 and the script waits for object_interacted state 0 of one of them. Used,
+    // the statue went hidden (2) at once, so the pick never went on.
+    [Test]
+    public void UsedUpObjectWithNoHideTime_IsInteracted() {
+        Start();
+        var row = Row(10001084) with { ReactCount = 1, Time = new InteractObjectMetadataTime(10000, 1000, 0) };
+        FieldInteract knight = test.AddInteract(row, new InteractMeshObject("knight", new Ms2InteractMesh(10001084, Vector3.Zero, Vector3.Zero)));
+        Assert.That(Condition("""<condition name="object_interacted" interact_ids="10001084" state="0" />"""), Is.False);
+
+        Assert.That(knight.React(), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(knight.State, Is.EqualTo(InteractState.Normal));
+            Assert.That(Condition("""<condition name="object_interacted" interact_ids="10001084" state="0" />"""), Is.True);
+            Assert.That(knight.React(), Is.False);
+        });
+    }
 }
 
 public class TriggerCinematicTests : TriggerTestBase {

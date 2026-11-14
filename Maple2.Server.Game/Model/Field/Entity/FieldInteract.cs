@@ -65,6 +65,13 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
             if (Value.Time.Hide > 0) {
                 SetState(InteractState.Normal);
                 nextTick = reactTick + Value.Time.Hide;
+            } else if (Chest == MapChestRules.Kind.None && TimeEventId == 0) {
+                // A used-up map object with no hide time stays normal: the KR scripts wait on its state 0 (02000385
+                // and 02000393 pick a character with interact 10001083-10001085, 52000071 its doors 10001103-10001105,
+                // all reactCount 1 and hideTime 0) and never on 2; so do 02000388, 02000441 and 52100011 for their
+                // objects with a react count above 1 and no hide time.
+                SetState(InteractState.Normal);
+                nextTick = 0;
             } else {
                 // Immediately hide if no delay.
                 SetState(InteractState.Hidden);
