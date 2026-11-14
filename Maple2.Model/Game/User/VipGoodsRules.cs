@@ -13,8 +13,8 @@ public class VipGoodsPurchase {
 // (UIVIPGoodsShopDialog, PremiumClub 0xeb mode 3) keeps one Int32 per goods id and reads it as what is left: a goods
 // row with a limit is hidden when the value is 0 or missing, and its "Limit {0} per account" / "Can be purchased {0}
 // time(s) per day/week/month" text shows the value. The tooltips say when the count starts again: at midnight (day),
-// at midnight on Friday (week; s_vip_dialog_goods_sales_tooltip_week_limit names Friday in KR and EN, so not the
-// shops' Constant.ResetDay) and at midnight on the 1st (month); reset type 0 never starts again.
+// at midnight on Friday (week; s_vip_dialog_goods_sales_tooltip_week_limit names Friday in KR and EN, the server's
+// Constant.ResetDay too) and at midnight on the 1st (month); reset type 0 never starts again.
 public static class VipGoodsRules {
     // The start of the window a purchase at `now` counts in; DateTime.MinValue when the count never resets.
     public static DateTime WindowStart(ResetType resetType, DateTime now) => resetType switch {

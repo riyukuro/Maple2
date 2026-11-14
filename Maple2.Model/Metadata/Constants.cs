@@ -76,7 +76,13 @@ public static class Constant {
     public const ItemTag BeautyItemColorVoucherTag = ItemTag.beauty_itemcolor;
     public const int HairPaletteId = 2;
     public const int MaxBuyBackItems = 12;
-    public const DayOfWeek ResetDay = DayOfWeek.Thursday;
+    // The client's week starts at 00:00 on Friday: the weekly quests end then (CQuestManager, questmanager_2.cpp:1099,
+    // NextWeekdayStart(6, start); weekday 6 = Friday, Sunday = 1), the weekly random quests change then
+    // (questdata.cpp:2267), its weekly reset time is NextWeekdayStart(6, now) (commonutil.cpp FUN_1402916a0 mode 2),
+    // the weekly dungeon cooldowns use day 6 (dungeonroom.xml cooldownValue 6, all 66 weekly rows;
+    // CalcCooldownEndTime type 1), and the texts of the weekly limits say Friday 00:00 (s_tooltip_buylimit_week_*,
+    // s_meratmarket_limited_buylimit_week_*, s_vip_dialog_goods_sales_tooltip_week_limit).
+    public const DayOfWeek ResetDay = DayOfWeek.Friday;
     public const int PartyMaxCapacity = 10;
     public const int PartyMinCapacity = 4;
     public const int GroupChatMaxCapacity = 20;

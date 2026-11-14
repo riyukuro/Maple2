@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Tests.Game;
@@ -26,11 +26,12 @@ public class ItemCalendarExpiryTests {
         Assert.That(Item.MadeExpiry(life, At(made), Kst), Is.EqualTo(At(expiry)));
     }
 
-    // Chosen here: a week ends on the day before the weekly reset day (Thursday), 23:59:59.
-    [TestCase("2021-06-02T10:00:00+09:00", 1, "2021-06-02T23:59:59+09:00")] // a Wednesday
-    [TestCase("2021-06-03T00:00:00+09:00", 1, "2021-06-09T23:59:59+09:00")] // a Thursday
-    [TestCase("2021-06-06T12:00:00+09:00", 2, "2021-06-16T23:59:59+09:00")] // a Sunday
-    [TestCase("2021-06-06T12:00:00+09:00", 0, "2021-06-09T23:59:59+09:00")]
+    // Chosen here: a week ends on the day before the weekly reset day (Friday), so Thursday 23:59:59.
+    [TestCase("2021-06-02T10:00:00+09:00", 1, "2021-06-03T23:59:59+09:00")] // a Wednesday
+    [TestCase("2021-06-03T10:00:00+09:00", 1, "2021-06-03T23:59:59+09:00")] // a Thursday: that night
+    [TestCase("2021-06-04T00:00:00+09:00", 1, "2021-06-10T23:59:59+09:00")] // a Friday: the next Thursday
+    [TestCase("2021-06-06T12:00:00+09:00", 2, "2021-06-17T23:59:59+09:00")] // a Sunday
+    [TestCase("2021-06-06T12:00:00+09:00", 0, "2021-06-10T23:59:59+09:00")]
     public void Weeks_EndOnTheDayBeforeTheReset(string made, int count, string expiry) {
         var life = new ItemMetadataLife(0, 0, 1, count);
 

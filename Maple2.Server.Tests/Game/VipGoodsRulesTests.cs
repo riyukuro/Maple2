@@ -4,6 +4,7 @@ using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -78,11 +79,12 @@ public class VipGoodsRulesTests {
         Assert.That(VipGoodsRules.Remaining(purchases, GoodsId, 1, ResetType.Day, DateTime.Now), Is.EqualTo(1));
     }
 
-    // The week starts at midnight on Friday as the dialog's tooltip says, not on the shops' reset day (Thursday): a
+    // The week starts at midnight on Friday as the dialog's tooltip says, the server's weekly reset day too: a
     // limit-1 goods bought on Thursday night can be bought again just after midnight.
     [Test]
-    public void Week_StartsFriday_NotResetDay() {
-        Assert.That(Constant.ResetDay, Is.Not.EqualTo(DayOfWeek.Friday));
+    public void Week_StartsFriday() {
+        Assert.That(VipGoodsRules.WindowStart(ResetType.Week, DateTime.Parse("2026-11-15 12:00")),
+            Is.EqualTo(WeeklyResetRules.LastStart(DateTime.Parse("2026-11-15 12:00"))));
         var purchases = new List<VipGoodsPurchase>();
         VipGoodsRules.Record(purchases, GoodsId, ResetType.Week, DateTime.Parse("2026-11-12 23:00"));
 

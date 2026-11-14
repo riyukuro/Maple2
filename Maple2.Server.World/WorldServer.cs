@@ -293,14 +293,11 @@ public class WorldServer : ILoginGate {
         DateTime lastReset = db.GetLastWeeklyReset();
 
         DateTime now = DateTime.Now;
-        int daysSinceReset = ((int) now.DayOfWeek - (int) Constant.ResetDay + 7) % 7;
-        DateTime lastResetMidnight = now.Date.AddDays(-daysSinceReset);
-
-        if (lastReset < lastResetMidnight) {
+        if (lastReset < WeeklyResetRules.LastStart(now)) {
             GuardedReset("WeeklyReset", (reset, before) => reset.WeeklyReset(before), null);
         }
 
-        DateTime nextReset = now.NextDayOfWeek(Constant.ResetDay).Date;
+        DateTime nextReset = WeeklyResetRules.NextStart(now);
         TimeSpan timeUntilReset = nextReset - now;
         scheduler.Schedule(ScheduleWeeklyReset, timeUntilReset);
     }

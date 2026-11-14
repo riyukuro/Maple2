@@ -435,7 +435,7 @@ public sealed class ShopManager {
             case ResetType.Day:
                 return new DateTime(now.Year, now.Month, now.Day, 0, 0, 0).AddDays(1).ToEpochSeconds();
             case ResetType.Week:
-                return DateTime.Now.NextDayOfWeek(Constant.ResetDay).Date.ToEpochSeconds();
+                return WeeklyResetRules.NextStart(now).ToEpochSeconds();
             case ResetType.Month:
                 return new DateTime(now.Year, now.Month, 1, 0, 0, 0).AddMonths(1).ToEpochSeconds();
             case ResetType.Unlimited:

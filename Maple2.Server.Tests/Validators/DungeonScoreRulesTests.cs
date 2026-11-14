@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
@@ -109,7 +109,7 @@ public class DungeonScoreRulesTests {
     [TestCase("2025-01-03 00:00", 6, "2025-01-10 00:00")]
     [TestCase("2025-01-01 15:00", 1, "2025-01-05 00:00")] // Sunday
     [TestCase("2025-01-01 15:00", 7, "2025-01-04 00:00")] // Saturday
-    [TestCase("2025-01-01 15:00", 0, "2025-01-02 00:00")] // none: the server's reset day, Thursday
+    [TestCase("2025-01-01 15:00", 0, "2025-01-03 00:00")] // none: the server's reset day, Friday
     public void SeasonExpiryIsTheNextWeekEnd(string now, int dayOfWeeks, string expected) {
         Assert.That(DungeonScoreRules.SeasonExpiry(DateTime.Parse(now), dayOfWeeks, TimeSpan.Zero, DateTime.MaxValue), Is.EqualTo(DateTime.Parse(expected)));
     }
