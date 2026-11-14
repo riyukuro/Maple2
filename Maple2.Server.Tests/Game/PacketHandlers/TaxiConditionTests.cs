@@ -1,0 +1,108 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Numerics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using Caching;
+using Maple2.Database.Storage;
+using Maple2.Model.Enum;
+using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
+
+namespace Maple2.Server.Tests.Game.PacketHandlers;
+
+// RequestTaxi mode 1 (the ground taxi) counts taxiuse once its fare is paid. 70400012:
+// <condition type="taxiuse" value="1" />. The ride reaches PrepareField, which stops at the test field (one the
+// played client lacks), as in FreeAirTaxiTests. The field ids are made up.
+public class TaxiConditionTests {
+    private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+    private const int From = 2000913, To = 2000914;
+    private const string XBlock = "taxi_condition_test";
+    private static string MeshPath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Navmeshes", $"{XBlock}.navmesh");
+    private bool madeMesh;
+
+    [SetUp]
+    public void MakeMesh() {
+        // CheckMapCashCall refuses a field without a navmesh file; only the file's presence is asked.
+        Directory.CreateDirectory(Path.GetDirectoryName(MeshPath)!);
+        if (!System.IO.File.Exists(MeshPath)) {
+            System.IO.File.WriteAllBytes(MeshPath, []);
+            madeMesh = true;
+        }
+    }
+
+    [TearDown]
+    public void RemoveMesh() {
+        if (madeMesh) {
+            System.IO.File.Delete(MeshPath);
+            madeMesh = false;
+        }
+    }
+
+    private static MapMetadata Field(int id, bool notInPlayedClient = false) {
+        MapMetadata map = TestGameSession.Map(id, notInPlayedClient: notInPlayedClient);
+        return map with {
+            XBlock = XBlock,
+            CashCall = new MapMetadataCashCall(true, true, false, false, false),
+            Limit = new MapMetadataLimit(0, 0, 0, 0, [], false, false, false, false, false, false, false),
+        };
+    }
+
+    // The taxi stop's entities: a station, which the ride needs.
+    private static MapEntityStorage Entities() {
+        var storage = (MapEntityStorage) RuntimeHelpers.GetUninitializedObject(typeof(MapEntityStorage));
+        var cache = new LRUCache<string, MapEntityMetadata>(16, 1);
+        var entities = (MapEntityMetadata) RuntimeHelpers.GetUninitializedObject(typeof(MapEntityMetadata));
+        typeof(MapEntityMetadata).GetField("<Taxi>k__BackingField", Any)!.SetValue(entities, new TaxiStation(Vector3.Zero, Vector3.Zero));
+        cache.AddReplace(XBlock, entities);
+        typeof(MetadataStorage<string, MapEntityMetadata>).GetField("Cache", Any)!.SetValue(storage, cache);
+        return storage;
+    }
+
+    private static (long Counter, long Paid) Ride(long meso) {
+        var test = new TestGameSession();
+        MapMetadata from = Field(From);
+        test.AddMap(from, Field(To, notInPlayedClient: true));
+        test.SetTable(new FieldMetaTable(new Dictionary<int, IReadOnlyList<int>> { [From] = [To] }, new Dictionary<int, IReadOnlyList<int>>()));
+        GameSession session = test.Start();
+        test.EnterMap(from);
+        session.Player.Value.Character.MapId = From;
+        session.Player.Value.Unlock.Taxis.Add(To);
+        session.Currency.Meso = meso;
+        Quest quest = test.StartQuest(TestGameSession.QuestData(91000001) with {
+            Conditions = [new ConditionMetadata(ConditionType.taxiuse, 1, null, null)],
+        });
+        new TaxiHandler {
+            MapMetadata = test.MapMetadata,
+            EntityMetadata = Entities(),
+            TaxiRoute = new TaxiRouteStorage(test.TableMetadata, test.MapMetadata),
+            ServerTableMetadata = test.ServerTableMetadata,
+        }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteInt(To);
+        }));
+        return (quest.Conditions[0].Counter, meso - session.Currency.Meso);
+    }
+
+    [Test]
+    public void ThePaidRideCounts() {
+        (long counter, long paid) = Ride(1_000_000);
+        Assert.Multiple(() => {
+            Assert.That(paid, Is.GreaterThan(0));
+            Assert.That(counter, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public void ARideRefusedForTheFareDoesNot() {
+        (long counter, long paid) = Ride(0);
+        Assert.Multiple(() => {
+            Assert.That(paid, Is.Zero);
+            Assert.That(counter, Is.Zero);
+        });
+    }
+}
