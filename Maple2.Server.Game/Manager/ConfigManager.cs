@@ -883,13 +883,13 @@ public class ConfigManager {
         long now = DateTime.Now.ToEpochSeconds();
         long wait = CharacterAbilityRules.ResetWait(character.AbilityResetTime, now, constants.CharacterAbilityResetCoolTimeMinute);
         long price = constants.CharacterAbilityResetMeso;
-        if (CharacterAbilityRules.CanReset(character.Abilities.Count, wait, session.Currency.Meso, price) != CharacterAbilityRules.ResetStep.Reset) {
+        // KMS2 order: the meso, the load packet with the empty list and the reset time, the trophy, then one
+        // buff removal per ability. It sends no mode 1 answer (the client's reader for it is empty). The meso
+        // is checked and taken in one step.
+        if (CharacterAbilityRules.CanReset(character.Abilities.Count, wait, session.Currency.Meso, price) != CharacterAbilityRules.ResetStep.Reset
+            || !session.Currency.TryTakeMeso(price)) {
             return false;
         }
-
-        // KMS2 order: the meso, the load packet with the empty list and the reset time, the trophy, then one
-        // buff removal per ability. It sends no mode 1 answer (the client's reader for it is empty).
-        session.Currency.ChangeMeso(-price);
         int[] effectIds = character.Abilities
             .Select(abilityId => session.TableMetadata.CharacterAbilityTable.Entries.TryGetValue(abilityId, out CharacterAbilityTable.Entry? entry) ? entry.AdditionalEffectId : 0)
             .Where(effectId => effectId > 0).ToArray();
