@@ -41,7 +41,11 @@ public class ItemSocketHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
+    // Every request is dropped while ItemSocketSystem is off: the client then counts no sockets and has no socket page.
     public override void Handle(GameSession session, IByteReader packet) {
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(ItemSocketRules.SystemFeature)) {
+            return;
+        }
         var command = packet.Read<Command>();
         switch (command) {
             case Command.UnlockSocket:

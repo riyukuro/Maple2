@@ -15,6 +15,10 @@ public static class ItemSocketRules {
     // feature (id 253) is on (the ingested feature.xml; KR 49 and NA 40), else 1.
     public const string ExpansionFeature = "ItemSocketExpansion100";
 
+    // The client counts no sockets on any item while ItemSocketSystem (id 46) is off (GetMaxSocketCount gives 0,
+    // IsSocketFeatureEnabled), and its socket pages check it (ItemSocketPageBase FUN_140f6d670).
+    public const string SystemFeature = "ItemSocketSystem";
+
     // The dialog has a socket transfer tab only while ItemSocketTransfer01 (id 167) is on (uiitemsocketsystemdialog.cpp:171
     // and 243).
     public const string TransferFeature = "ItemSocketTransfer01";

@@ -3,6 +3,7 @@ using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
@@ -136,6 +137,22 @@ public class GemstoneSocketUnlockTests {
             Assert.That(Chips(session), Is.EqualTo(200));
             Assert.That(MaterialsLeft(session), Is.EqualTo(2));
             Assert.That(Sent(), Is.EqualTo(new[] { Error(s_itemsocketsystem_error_invalid_target_ingredient_count) }));
+        });
+    }
+
+    // With ItemSocketSystem (id 46) off the client has no socket page: the request is dropped and nothing is sent.
+    [Test]
+    public void SocketSystemOff_IsDropped() {
+        GameSession session = Start(chipCount: 200, mesos: 0);
+        test.SetFeaturesOff(ItemSocketRules.SystemFeature);
+
+        Unlock(session, materials[0].Uid, materials[1].Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(gear.Socket!.UnlockSlots, Is.EqualTo(1));
+            Assert.That(Chips(session), Is.EqualTo(200));
+            Assert.That(MaterialsLeft(session), Is.EqualTo(2));
+            Assert.That(Sent(), Is.Empty);
         });
     }
 

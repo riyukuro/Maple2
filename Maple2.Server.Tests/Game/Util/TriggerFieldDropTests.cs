@@ -94,6 +94,7 @@ public class TriggerFieldDropTests {
         });
         var serverTables = Bare<ServerTableMetadataStorage>();
         Set<ServerTableMetadataStorage>(serverTables, "individualDropItemTable", new Lazy<IndividualDropItemTable>(() => drops));
+        Set<ServerTableMetadataStorage>(serverTables, "featureTable", new Lazy<FeatureTable>(() => new FeatureTable(new Dictionary<string, int> { ["ItemSocketSystem"] = 1 })));
         Set<FieldManager>(field, "<ServerTableMetadata>k__BackingField", serverTables);
 
         var items = Bare<ItemMetadataStorage>();

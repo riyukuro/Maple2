@@ -95,6 +95,26 @@ public class ItemCreationTransferTests {
         Assert.That(item.Transfer.DisableBreak, Is.False);
     }
 
+    // With ItemSocketSystem (id 46) off the client counts no sockets: a created item and a drop row's socketDataID get none.
+    [Test]
+    public void SocketSystemOff_CreatesNoSockets() {
+        var test = new TestGameSession();
+        ItemMetadata outfit = Outfit(11400001);
+        test.Register(outfit);
+        test.SetTable(Table);
+        IDictionary<int, IndividualDropItemTable.Entry> box = TestGameSession.DropBox([(outfit.Id, 1)]);
+        IndividualDropItemTable.Entry group = box[1];
+        box[1] = group with { Items = [group.Items[0] with { SocketDataId = 1002 }] };
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> { [BoxId] = box }));
+        GameSession session = test.Start();
+        test.SetFeaturesOff(ItemSocketRules.SystemFeature);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Field!.ItemDrop.CreateItem(outfit.Id)!.Socket, Is.Null);
+            Assert.That(session.Field!.ItemDrop.GetIndividualDropItems(BoxId).Single().Socket, Is.Null);
+        });
+    }
+
     // m_b3F is the byte before m_b42 (CItemTransfer::vfunc_2); it is read back, cloned and saved.
     [TestCase(true)]
     [TestCase(false)]

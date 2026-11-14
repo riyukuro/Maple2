@@ -3,6 +3,7 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Session;
 using Maple2.Tools;
@@ -375,7 +376,7 @@ public class ItemDropManager {
 
             // The row's socketDataID replaces the item's own socket row (23 of today's 49 rows differ from the item's,
             // e.g. accessories without one get 1003-1005).
-            if (selectedItem.SocketDataId != 0) {
+            if (selectedItem.SocketDataId != 0 && field.ServerTableMetadata.FeatureTable.IsOn(ItemSocketRules.SystemFeature)) {
                 ItemSocket? sockets = field.ItemStatsCalc.GetSockets(createdItem, selectedItem.SocketDataId);
                 if (sockets != null) {
                     createdItem.Socket = sockets;
@@ -471,7 +472,8 @@ public class ItemDropManager {
 
         var item = new Item(itemMetadata, rarity, amount);
         item.Stats = field.ItemStatsCalc.GetStats(item, rollMax);
-        item.Socket = field.ItemStatsCalc.GetSockets(item);
+        // No sockets while ItemSocketSystem is off: the client counts none (GetMaxSocketCount gives 0).
+        item.Socket = field.ServerTableMetadata.FeatureTable.IsOn(ItemSocketRules.SystemFeature) ? field.ItemStatsCalc.GetSockets(item) : null;
         if (item.Transfer != null) {
             item.Transfer.SocketTransfer = field.ItemStatsCalc.SocketTransferAtCreation(item);
         }
