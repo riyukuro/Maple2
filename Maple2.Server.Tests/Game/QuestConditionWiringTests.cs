@@ -910,6 +910,39 @@ public class QuestConditionWiringTests : TriggerTestBase {
         });
     }
     #endregion
+    #region pet_taming (FieldPet.ApplyDamage, a wild pet's taming gauge filled)
+    // 90000792: <condition type="pet_taming" code="61000002" value="1" />, the feed that fills the gauge (KR
+    // TamingPetMaxPoint 10000) of the pet of the item counts; a feed short of it, one into a full gauge, or the
+    // filling of another pet's gauge does not.
+    [TestCase(61000002, 1)]
+    [TestCase(61000003, 0)]
+    public void PetTaming_90000792_TheFeedThatFillsTheGauge(int itemId, int expected) {
+        StartField(2000001, Npc(21000001));
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { TamingPetMaxPoint = 10000 });
+        test.Register(TestGameSession.Metadata(itemId));
+        Quest quest = StartQuest(Condition(ConditionType.pet_taming, 1, ["61000002"], []));
+        Assert.That(Field.NpcMetadata.TryGet(21000001, out NpcMetadata? npc), Is.True);
+        var petMetadata = (PetMetadata) RuntimeHelpers.GetUninitializedObject(typeof(PetMetadata)) with { Id = 21000001, NpcId = 21000001 };
+        var pet = new FieldPet(Field, 901, Field.Navigation.AddAgent(npc!, new Vector3(100, 0, 0)), new Npc(npc!, null),
+            Field.ItemDrop.CreateItem(itemId)!, petMetadata, string.Empty) { Origin = new Vector3(100, 0, 0) };
+        var skill = new SkillMetadata(1, 1, null, (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty)), null!, null!);
+        var feed = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with {
+            CompulsionTypes = [],
+            Pet = new SkillMetadataPet(TamingGroup: 0, TrapLevel: 0, TamingPoint: 6000, ForcedTaming: false),
+            Damage = new SkillMetadataDamage(Count: 1, Rate: 0, HitSpeed: 0, HitDelay: 0, IsConstDamage: false, Value: 0,
+                DamageByTargetMaxHp: 0, SuperArmorBreak: false, Push: null),
+        };
+        void Feed() => pet.ApplyDamage(test.Session.Player, new DamageRecord(skill, feed), feed);
+
+        Feed();
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Feed();
+        Feed();
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That((pet.TamingPoint, quest.Conditions[0].Counter), Is.EqualTo((10000, expected)));
+    }
+    #endregion
     #region item_add (InventoryManager.Add)
     // KR 70600053: code 20301082, value 2. Each add counts the amount it adds, not the stack it lands on: one more
     // on a held one counts 1, and another item counts nothing.
