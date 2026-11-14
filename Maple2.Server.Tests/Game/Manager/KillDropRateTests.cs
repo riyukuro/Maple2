@@ -29,6 +29,18 @@ public class KillDropRateTests {
         // A box without count 0 keeps its shares; the weights truncate (7 * 1.02 = 7.14 -> 7).
         Assert.That(ItemDropManager.DropCountWeights([new(1, 10), new(2, 10)], 2f), Is.EqualTo(new[] { (1, 20), (2, 20) }));
         Assert.That(ItemDropManager.DropCountWeights([new(0, 90), new(1, 7), new(2, 3)], 1.02f), Is.EqualTo(new[] { (1, 7), (2, 3), (0, 90) }));
+
+    }
+
+    // The client's precomputed keys 150, 200 and 300: a rate whose (int) (rate * 100) is one of them rolls at that key's
+    // rate (1.505 as 1.5, 2.009 as 2); another rescales at the rate itself (1.25: 1250).
+    [Test]
+    public void DropCountWeights_PrecomputedKeys() {
+        DropCount[] even = [new(0, 1000), new(1, 1000)];
+        Assert.That(ItemDropManager.DropCountWeights(even, 1.505f), Is.EqualTo(new[] { (1, 1500), (0, 500) }));
+        Assert.That(ItemDropManager.DropCountWeights(even, 2.009f), Is.EqualTo(new[] { (1, 2000) }));
+        Assert.That(ItemDropManager.DropCountWeights(even, 3.005f), Is.EqualTo(new[] { (1, 3000) }));
+        Assert.That(ItemDropManager.DropCountWeights(even, 1.25f), Is.EqualTo(new[] { (1, 1250), (0, 750) }));
     }
 
     [Test]

@@ -113,12 +113,18 @@ public class ItemDropManager {
 
     // The drop count weights of a global box at a drop rate (ItemDropGlobalBox::GetDropCount, ItemDropPicker::Rescale):
     // at a rate other than 1 each count's weight but count 0's is scaled by it and truncated, and count 0 gets what
-    // the others gave up (none once they gained more than it had, so the total grows). Weights of 0 are left out.
+    // the others gave up (none once they gained more than it had, so the total grows). Weights of 0 are left out. The
+    // picker is looked up by (int) (rate * 100): the client precomputes keys 150, 200 and 300 (ItemDropGlobalBox::Load),
+    // so a rate of 1.505 rolls as 1.5; any other key rescales at the rate itself.
     internal static List<(int Amount, int Weight)> DropCountWeights(IEnumerable<GlobalDropItemBoxTable.Group.DropCount> dropCounts, float rate) {
         List<(int Amount, int Weight)> rows = dropCounts.Where(row => row.Probability > 0)
             .Select(row => (row.Amount, row.Probability)).ToList();
-        if ((int) (rate * 100f) == 100) {
+        int key = (int) (rate * 100f);
+        if (key == 100) {
             return rows;
+        }
+        if (key is 150 or 200 or 300) {
+            rate = key / 100f;
         }
 
         var scaled = new List<(int Amount, int Weight)>();
