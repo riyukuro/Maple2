@@ -21,10 +21,11 @@ public class Shop : IByteSerializable {
 
     // The next instant restock's cost, the one the shop packet shows (the client, UIShopDialog: m_29c and
     // m_nResetPriceOrg, sent back in Shop 9) and InstantRestock charges. Without the multiplier (the client's
-    // useLuaResetPayment, read into the flag after the price) it is the table's price. With it the price is
-    // the KMS2 server's Lua, which the client does not hold. Inferred: the cost climbs with the restocks made
-    // since the reset, in the excess currency the client's reset tooltip shows (m_2a0), after five meso tiers.
-    // Chosen here: the tier is the next restock's number (the count made plus one).
+    // useLuaResetPayment, read into the flag after the price) it is the table's price. With it the cost
+    // follows the client's reset tooltip (s_shop_tooltip_lua_reset, shown with the flag set, its {0} the count
+    // m_nResetCount and {1} the excess currency icon m_2a0): restocks 1-5 cost 50,000 mesos, 6: 10, 7: 20,
+    // 8: 40, 9: 60, 10: 80, 11-15: 100 and 16 on: 150 of the excess currency. The tier is the next restock's
+    // number (the count made plus one).
     public (ShopCurrencyType Type, int Price) RestockCost {
         get {
             if (!RestockData.EnablePriceMultiplier) {
