@@ -3,7 +3,7 @@ namespace Maple2.Model.Validators;
 // ItemDismantle 0x005A mode 1: i32 slot (-1), i64 item uid, i32 count.
 public static class DismantleRules {
     // The client's count box takes 1 to the stack (CItemBreakManager::OnDismantleCountMsgBox), its
-    // CanBreakItem refuses a locked item and the pet that is out.
+    // CanBreakItem refuses a locked item, one still unlocking (CItem::FUN_140528e20) and the pet that is out.
     public static bool CanStage(int count, int owned, bool locked, long itemUid, long summonedPetUid) {
         if (count <= 0 || count > owned) {
             return false;

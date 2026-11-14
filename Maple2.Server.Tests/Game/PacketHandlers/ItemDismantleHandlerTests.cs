@@ -194,6 +194,25 @@ public class ItemDismantleHandlerTests {
         Assert.That(session.Item.Inventory.Find(Onyx), Is.Empty);
     }
 
+    // An item still unlocking is refused as a locked one (CanBreakItem, CItem::FUN_140528e20): not staged, and
+    // kept by a confirm when it was staged before its unlock began.
+    [Test]
+    public void UnlockingItem_IsNeitherStagedNorBroken() {
+        GameSession session = Login(rarity: 3);
+        Stage(session);
+        session.Item.Inventory.Get(gear.Uid)!.UnlockTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Error(5)) }));
+        Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Not.Null);
+        Assert.That(session.Item.Inventory.Find(Onyx), Is.Empty);
+
+        Stage(session);
+        Assert.That(session.DismantleStaging.Any(staged => staged.Uid == gear.Uid), Is.False);
+    }
+
     // The Green Hoods donation box (dialog type 2, map 02000422 interact 10001313).
     private const int Philanthropist = 22500042; // donation_item
     private const int ArmingTheTroops = 93000071; // donation_type, code "1,0,0"

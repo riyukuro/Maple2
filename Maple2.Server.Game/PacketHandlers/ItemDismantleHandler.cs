@@ -83,7 +83,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
         if (item == null || !DismantleRules.Breakable(item.Metadata.Limit.EnableBreak, item.Transfer?.DisableBreak == true, item.GachaDismantleId)) {
             return;
         }
-        if (!DismantleRules.CanStage(amount, item.Amount, item.IsLocked, itemUid, session.Pet?.Pet.Uid ?? 0)) {
+        if (!DismantleRules.CanStage(amount, item.Amount, item.IsLockedOrUnlocking(), itemUid, session.Pet?.Pet.Uid ?? 0)) {
             return;
         }
         if (session.DismantleType == DONATION_TYPE && !CanDonate(item)) {
@@ -156,7 +156,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
                     continue;
                 }
                 Item? item = session.Item.Inventory.Get(uid);
-                if (item == null || !DismantleRules.CanStage(amount, item.Amount, item.IsLocked, uid, session.Pet?.Pet.Uid ?? 0)
+                if (item == null || !DismantleRules.CanStage(amount, item.Amount, item.IsLockedOrUnlocking(), uid, session.Pet?.Pet.Uid ?? 0)
                         || session.DismantleType == DONATION_TYPE && !CanDonate(item)) {
                     session.DismantleStaging[slot] = default;
                 }
