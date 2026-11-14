@@ -176,6 +176,11 @@ public sealed class ExperienceManager {
 
         // A mini game round's prestige exp is its row times the round's exp rate, like its exp.
         decimal prestigeRate = PrestigeRules.ScalesWithExpRate(expType) ? (decimal) modifier : 1m;
+        // A massive event game's exp line raises the round's exp in its own field (MassiveAbilityRules); it raises no
+        // prestige exp, so it is applied after the prestige rate is taken.
+        if (MassiveAbilityRules.ExpAttribute(expType, session.Field.MapId) is { } massive) {
+            modifier = CommonExpRules.WithRate(modifier, session.Player.Stats.Values[massive].Multiplier());
+        }
         return AddExp(CommonExpRules.Amount(expValue, modifier, entry.Factor, additionalExp), message ?? expType.Message(), kill: false,
             prestigeRate: prestigeRate);
     }

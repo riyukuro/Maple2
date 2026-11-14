@@ -939,13 +939,19 @@ public sealed partial class GameSession : Core.Network.Session {
             Async = true,
         });
 
-        // The Chaos Raid lines count only in their room: entering or leaving one rebuilds the stats with the new field.
-        if (DungeonAbilityRules.RebuildsOnEntry(leftDungeonGroup, StatsManager.DungeonGroupOf(Field))) {
+        // The Chaos Raid lines count only in their room and the massive event speed lines only in their game's field:
+        // entering or leaving one rebuilds the stats with the new field. A rebuild sends the stats itself.
+        bool rebuilt = false;
+        if (DungeonAbilityRules.RebuildsOnEntry(leftDungeonGroup, StatsManager.DungeonGroupOf(Field))
+            || MassiveAbilityRules.RebuildsOnEntry(leftField.MapId, Field.MapId)) {
             Stats.Refresh();
+            rebuilt = !Stats.RefreshDeferred;
         }
         leftDungeonGroup = null;
-        Send(StatsPacket.Init(Player));
-        Field.Broadcast(StatsPacket.Update(Player), Player.Session);
+        if (!rebuilt) {
+            Send(StatsPacket.Init(Player));
+            Field.Broadcast(StatsPacket.Update(Player), Player.Session);
+        }
 
         // The first visit of a map pays exp. It comes after the player is added to the field: the client
         // has no local player before its own FieldAddUser, so it shows no exp text for an earlier ExpUp, and

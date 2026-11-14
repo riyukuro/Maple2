@@ -168,10 +168,12 @@ public class StatsManager {
             return;
         }
 
-        // Do not refresh stats if player is mounted
+        // Do not refresh stats if player is mounted; the ride's end rebuilds them (RideManager.EndRide).
         if (player.Session.Ride.RideType is RideOnType.Battle or RideOnType.Object) {
+            RefreshDeferred = true;
             return;
         }
+        RefreshDeferred = false;
 
         // Before the totals are rebuilt: giving or taking an effect that carries stats refreshes on its own.
         List<SetBonusMetadata> setBonuses = RefreshSetEffects(player);
@@ -193,6 +195,8 @@ public class StatsManager {
         AddBuffs(player);
         AddHotTime(player.Session);
         AddDungeonAbilities(player);
+        AddMassiveAbilities(player);
+        AddStaminaRecovery();
         Values.AddDerivedTotal(character.Job.Code());
         Values.Total();
         StatConversion(player);
@@ -411,6 +415,9 @@ public class StatsManager {
 
     private Dictionary<SpecialAttribute, long> hotTime = new();
 
+    // The last rebuild was skipped for a Battle or Object ride; the ride's end rebuilds the stats.
+    internal bool RefreshDeferred { get; private set; }
+
     // In a Chaos Raid room the items' Chaos Raid lines add to the stats (DungeonAbilityRules), once the items, buffs
     // and events are in. The entry of a field that starts or ends
     // them rebuilds the stats (GameSession.EnterField, DungeonAbilityRules.RebuildsOnEntry), so they hold only in the room.
@@ -424,6 +431,20 @@ public class StatsManager {
         Values[BasicAttribute.AttackSpeed].AddTotal(Values[SpecialAttribute.ChaosRaidAttackSpeed].Total);
         Values[BasicAttribute.Accuracy].AddTotal(Values[SpecialAttribute.ChaosRaidAccuracy].Total);
         Values[BasicAttribute.Health].AddTotal(Values[SpecialAttribute.ChaosRaidHp].Total);
+    }
+
+    // In a massive event game's field its move speed line adds to MovementSpeed (MassiveAbilityRules); entering or
+    // leaving that field rebuilds the stats (GameSession.EnterField).
+    internal void AddMassiveAbilities(FieldPlayer player) {
+        if (MassiveAbilityRules.SpeedAttribute(player.Field?.MapId) is { } speed) {
+            Values[BasicAttribute.MovementSpeed].AddTotal(Values[speed].Total);
+        }
+    }
+
+    // reduce_recovery_ep_inv (129, "EP recovery interval {0:0.1f}% down") shortens the stamina regen interval by its
+    // rate (StaminaRecoveryRules).
+    internal void AddStaminaRecovery() {
+        Values[BasicAttribute.StaminaRegenInterval].AddRate(-StaminaRecoveryRules.IntervalCut(Values[SpecialAttribute.ReduceRecoveryEpInv].Total));
     }
 
     internal static DungeonGroupType? DungeonGroupOf(FieldManager? field) => (field as DungeonFieldManager)?.DungeonMetadata.GroupType;
