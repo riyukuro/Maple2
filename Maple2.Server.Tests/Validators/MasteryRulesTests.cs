@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -32,6 +32,31 @@ public class MasteryRulesTests {
         Assert.That(MasteryRules.ExpReason(MasteryType.Mining), Is.EqualTo(ExpMessageCode.gathering));
         Assert.That(MasteryRules.ExpReason(MasteryType.Blacksmithing), Is.EqualTo(ExpMessageCode.manufacturing));
         Assert.That(MasteryRules.ExpReason(MasteryType.Farming), Is.EqualTo(ExpMessageCode.masteryFarming));
+    }
+
+    // Gathering efficiency (SA 157-160) per mastery type: the four gathering types have one each, the others none.
+    [TestCase(MasteryType.Mining, SpecialAttribute.MiningEfficiency)]
+    [TestCase(MasteryType.Breeding, SpecialAttribute.BreedingEfficiency)]
+    [TestCase(MasteryType.Gathering, SpecialAttribute.GatheringEfficiency)]
+    [TestCase(MasteryType.Farming, SpecialAttribute.FarmingEfficiency)]
+    [TestCase(MasteryType.Fishing, null)]
+    [TestCase(MasteryType.Cooking, null)]
+    public void GatherEfficiency(MasteryType type, SpecialAttribute? expected) {
+        Assert.That(MasteryRules.GatherEfficiency(type), Is.EqualTo(expected));
+    }
+
+    // The extra gathers: a whole point each, a fraction as a chance, at most 10. KR 90051136-150 give 1 to 5 (1000-5000).
+    [TestCase(0L, 0.0, 0)]
+    [TestCase(-1000L, 0.0, 0)]
+    [TestCase(1000L, 0.99, 1)]
+    [TestCase(5000L, 0.0, 5)]
+    [TestCase(1500L, 0.49, 2)]
+    [TestCase(1500L, 0.5, 1)]
+    [TestCase(250L, 0.1, 1)]
+    [TestCase(250L, 0.3, 0)]
+    [TestCase(50000L, 0.0, 10)]
+    public void ExtraGathers(long total, double roll, int expected) {
+        Assert.That(MasteryRules.ExtraGathers(total, roll), Is.EqualTo(expected));
     }
 
     // Mastery 0x0092 mode 2: u8 mode, i32 recipe id.

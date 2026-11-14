@@ -177,6 +177,64 @@ public class InteractAnswerOrderTests {
         Assert.That((BitConverter.ToInt32(drop, 6), BitConverter.ToInt32(drop, 10)), Is.EqualTo((RewardItemId, expected)));
     }
 
+    // Mining efficiency 2 makes one gather three: three masteries and drops, the interaction's decrease is 3 (the count
+    // the client adds to the recipe's gathers today), the recipe's count is 3 and the experience is three gathers' worth.
+    [Test]
+    public void FieldGather_EfficiencyGathersMoreThanOnce() {
+        GameSession session = StartWithRecipe(MasteryType.Mining);
+        session.Stats.Values[SpecialAttribute.MiningEfficiency].AddTotal(2000);
+        test.AddInteract(Row(13, InteractType.Gathering, RecipeId, reset: 1000), new InteractGatheringObject("ab", new Ms2InteractActor(13, Vector3.Zero, Vector3.Zero)));
+        Send(session, 11, "ab");
+        test.TakeSent();
+
+        Send(session, 12, "ab");
+
+        Assert.That(test.Errors, Is.Empty);
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Count(packet => TestGameSession.Op(packet) == SendOp.FieldAddItem), Is.EqualTo(3));
+        Assert.That(sent.Select(Hex).Where(packet => packet.StartsWith("630005")), Is.EqualTo(new[] {
+            "6300" + "05" + "02006162" + "06" + "0000" + "03000000",
+        }));
+        Assert.That(session.Config.GatheringCounts[RecipeId], Is.EqualTo(3));
+        Assert.That(session.Mastery[MasteryType.Mining], Is.EqualTo(30));
+        Assert.That(session.Player.Value.Character.Exp, Is.EqualTo(300));
+    }
+
+    // The extra gathers stop at the recipe's max count today (10 at limits 5 and 10): from 4 gathers, efficiency 10 makes
+    // the gather and 5 extra ones, not 10.
+    [Test]
+    public void FieldGather_EfficiencyStopsAtTheMaxCount() {
+        GameSession session = StartWithRecipe(MasteryType.Mining);
+        session.Config.GatheringCounts[RecipeId] = 4;
+        session.Stats.Values[SpecialAttribute.MiningEfficiency].AddTotal(10000);
+        test.AddInteract(Row(13, InteractType.Gathering, RecipeId, reset: 1000), new InteractGatheringObject("ab", new Ms2InteractActor(13, Vector3.Zero, Vector3.Zero)));
+        Send(session, 11, "ab");
+        test.TakeSent();
+
+        Send(session, 12, "ab");
+
+        Assert.That(test.Errors, Is.Empty);
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Count(packet => TestGameSession.Op(packet) == SendOp.FieldAddItem), Is.EqualTo(6));
+        Assert.That(sent.Select(Hex).Where(packet => packet.StartsWith("630005")).Single(), Does.EndWith("06000000"));
+        Assert.That(session.Config.GatheringCounts[RecipeId], Is.EqualTo(10));
+    }
+
+    // Another type's efficiency does not raise a gather.
+    [Test]
+    public void FieldGather_OtherTypesEfficiencyDoesNotCount() {
+        GameSession session = StartWithRecipe(MasteryType.Mining);
+        session.Stats.Values[SpecialAttribute.FarmingEfficiency].AddTotal(2000);
+        test.AddInteract(Row(13, InteractType.Gathering, RecipeId, reset: 1000), new InteractGatheringObject("ab", new Ms2InteractActor(13, Vector3.Zero, Vector3.Zero)));
+        Send(session, 11, "ab");
+        test.TakeSent();
+
+        Send(session, 12, "ab");
+
+        Assert.That(test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.FieldAddItem), Is.EqualTo(1));
+        Assert.That(session.Config.GatheringCounts[RecipeId], Is.EqualTo(1));
+    }
+
     // A harvested cube: the mastery, the drop, the cube's update (3) and the success (9), then the experience.
     [Test]
     public void CubeHarvest_SendsMasteryDropUpdateSuccessExp() {
@@ -202,5 +260,33 @@ public class InteractAnswerOrderTests {
         SendOp[] order = [SendOp.Mastery, SendOp.FieldAddItem, SendOp.FunctionCube, SendOp.FunctionCube, SendOp.ExpUp];
         Assert.That(sent.Select(TestGameSession.Op).Where(op => order.Contains(op)), Is.EqualTo(order));
         Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.FunctionCube).Select(packet => packet[2]), Is.EqualTo(new byte[] { 3, 9 }));
+    }
+
+    // Farming efficiency 1 makes a cube harvest two: two drops, one update and one success.
+    [Test]
+    public void CubeHarvest_EfficiencyHarvestsTwice() {
+        GameSession session = StartWithRecipe(MasteryType.Farming);
+        session.Stats.Values[SpecialAttribute.FarmingEfficiency].AddTotal(1000);
+        var cube = new InteractCube(new Vector3B(1, 2, 3), new FunctionCubeMetadata(5, RecipeId, ConfigurableCubeType.None,
+            InteractCubeState.Available, InteractCubeControlType.Farming, [], 0, null));
+        test.AddFunctionCube(cube);
+        var cubeHandler = new FunctionCubeHandler {
+            FunctionCubeMetadataStorage = session.FunctionCubeMetadata, ServerTableMetadataStorage = test.ServerTableMetadata,
+        };
+        foreach (byte command in new byte[] { 4, 5 }) {
+            test.TakeSent();
+            cubeHandler.Handle(session, TestGameSession.Packet(writer => {
+                writer.WriteByte(command);
+                writer.WriteInt(1);
+                writer.WriteUnicodeString(cube.Id);
+                writer.WriteByte(0);
+            }));
+        }
+
+        Assert.That(test.Errors, Is.Empty);
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Count(packet => TestGameSession.Op(packet) == SendOp.FieldAddItem), Is.EqualTo(2));
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.FunctionCube).Select(packet => packet[2]), Is.EqualTo(new byte[] { 3, 9 }));
+        Assert.That(session.Config.GatheringCounts[RecipeId], Is.EqualTo(2));
     }
 }

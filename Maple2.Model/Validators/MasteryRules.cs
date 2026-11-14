@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.Model.Error;
 
 namespace Maple2.Model.Validators;
@@ -133,6 +133,31 @@ public static class MasteryRules {
             MasteryType.Farming => SpecialAttribute.FarmingRewardItem,
             _ => null,
         };
+    }
+
+    // The special ability that makes one gather act more than once ("production efficiency", s_item_opt_sa_*_multiaction;
+    // the KR additional effects 90051136-150 give 1 to 5 of each). The client never reads it, so the server chooses:
+    // each whole point is one more gather on a success, a fraction is the chance of one more.
+    public static SpecialAttribute? GatherEfficiency(MasteryType type) {
+        return type switch {
+            MasteryType.Mining => SpecialAttribute.MiningEfficiency,
+            MasteryType.Breeding => SpecialAttribute.BreedingEfficiency,
+            MasteryType.Gathering => SpecialAttribute.GatheringEfficiency,
+            MasteryType.Farming => SpecialAttribute.FarmingEfficiency,
+            _ => null,
+        };
+    }
+
+    public const int MaxExtraGathers = 10;
+
+    // The extra gathers of a success for an efficiency total in thousandths and a roll in [0, 1): the whole points, one
+    // more when the roll falls under the fraction, at most MaxExtraGathers.
+    public static int ExtraGathers(long total, double roll) {
+        if (total <= 0) {
+            return 0;
+        }
+        long extra = total / 1000 + (roll < total % 1000 / 1000.0 ? 1 : 0);
+        return (int) Math.Min(extra, MaxExtraGathers);
     }
 
     // A gathered item's count: the recipe's count (the client script's calcGatheringReceipeRewardItemCount returns it

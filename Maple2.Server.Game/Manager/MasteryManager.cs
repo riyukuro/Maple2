@@ -148,56 +148,72 @@ public class MasteryManager {
 
     // KMS2 order for a gathered object: the mastery, the drops, InteractObject 5 and 13, then the experience.
     public void Gather(FieldInteract fieldInteract) {
-        bool success = GatherCommon(fieldInteract.Value.Item.RecipeId, fieldInteract.Position, fieldInteract.Rotation, out MasteryRecipeTable.Entry? recipeMetadata);
-        session.Send(success
-            ? InteractObjectPacket.Interact(fieldInteract, decreaseAmount: 1)
+        // The decrease is the count the client adds to the recipe's gathers today (CInteractGatheringObject::vfunc_2).
+        int gathers = GatherCommon(fieldInteract.Value.Item.RecipeId, fieldInteract.Position, fieldInteract.Rotation, out MasteryRecipeTable.Entry? recipeMetadata);
+        session.Send(gathers > 0
+            ? InteractObjectPacket.Interact(fieldInteract, decreaseAmount: gathers)
             : InteractObjectPacket.Interact(fieldInteract, GatherResult.Fail, decreaseAmount: 0));
         session.Send(InteractObjectPacket.Result(InteractResult.none, fieldInteract));
-        GatherExp(success, recipeMetadata);
+        GatherExp(gathers, recipeMetadata);
     }
 
     // KMS2 order for a farming or breeding cube: the mastery, the drops, the cube's update, the success or
     // failure, then the experience.
     public void Gather(FieldFunctionInteract fieldFunctionInteract) {
-        bool success = GatherCommon(fieldFunctionInteract.Value.RecipeId, fieldFunctionInteract.Position, fieldFunctionInteract.Rotation, out MasteryRecipeTable.Entry? recipeMetadata);
+        int gathers = GatherCommon(fieldFunctionInteract.Value.RecipeId, fieldFunctionInteract.Position, fieldFunctionInteract.Rotation, out MasteryRecipeTable.Entry? recipeMetadata);
         session.Send(FunctionCubePacket.UpdateFunctionCube(fieldFunctionInteract.InteractCube));
-        session.Send(success
+        session.Send(gathers > 0
             ? FunctionCubePacket.SuccessLifeSkill(session.CharacterId, fieldFunctionInteract.InteractCube)
             : FunctionCubePacket.FailLifeSkill(session.CharacterId, fieldFunctionInteract.InteractCube));
-        GatherExp(success, recipeMetadata);
+        GatherExp(gathers, recipeMetadata);
     }
 
-    private void GatherExp(bool success, MasteryRecipeTable.Entry? recipeMetadata) {
-        if (success && recipeMetadata is { NoRewardExp: false }) {
-            session.Exp.AddExp(ExpType.gathering, message: MasteryRules.ExpReason(recipeMetadata.Type));
+    // One experience gain for all the gathers of an interaction.
+    private void GatherExp(int gathers, MasteryRecipeTable.Entry? recipeMetadata) {
+        if (gathers > 0 && recipeMetadata is { NoRewardExp: false }) {
+            session.Exp.AddExp(ExpType.gathering, modifier: gathers, message: MasteryRules.ExpReason(recipeMetadata.Type));
         }
     }
 
-    private bool GatherCommon(int recipeId, Vector3 position, Vector3 rotation, out MasteryRecipeTable.Entry? recipeMetadata) {
+    // The gathers an interaction made: 0 for a refusal or a failed roll, else 1 plus the extra gathers of the type's
+    // efficiency (MasteryRules.ExtraGathers). An extra gather is made while the recipe's count today still gives a
+    // rate above 0, with no roll of its own, and gives its mastery, drops and gather conditions as the first does.
+    private int GatherCommon(int recipeId, Vector3 position, Vector3 rotation, out MasteryRecipeTable.Entry? recipeMetadata) {
         if (!session.TableMetadata.MasteryRecipeTable.Entries.TryGetValue(recipeId, out recipeMetadata)) {
             session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_unknown));
-            return false;
+            return 0;
         }
 
         MasteryError error = MasteryRules.GatherError(this[recipeMetadata.Type], recipeMetadata.RequiredMastery,
             recipeMetadata.RequiredQuests.Count, HasRequiredQuest(recipeMetadata));
         if (error != 0) {
             session.Send(MasteryPacket.Error(error));
-            return false;
+            return 0;
         }
         float successRate = GatherSuccessRate(recipeMetadata);
 
         BeforeGather(recipeMetadata);
         if (Random.Shared.NextDouble() > (successRate / 100)) {
-            return false;
+            return 0;
         }
 
+        GatherOnce(recipeMetadata, position, rotation);
+        int gathers = 1;
+        SpecialAttribute? efficiency = MasteryRules.GatherEfficiency(recipeMetadata.Type);
+        int extra = efficiency == null ? 0 : MasteryRules.ExtraGathers(session.Player.Stats.Values[efficiency.Value].Total, Random.Shared.NextDouble());
+        for (int i = 0; i < extra && GatherSuccessRate(recipeMetadata) > 0; i++) {
+            GatherOnce(recipeMetadata, position, rotation);
+            gathers++;
+        }
+        return gathers;
+    }
+
+    private void GatherOnce(MasteryRecipeTable.Entry recipeMetadata, Vector3 position, Vector3 rotation) {
         int reward = GatherReward(recipeMetadata);
         if (reward > 0) {
             this[recipeMetadata.Type] += reward;
         }
         Gather(recipeMetadata, position, rotation);
-        return true;
     }
 
     // One of the recipe's required quests is in progress.
