@@ -1,4 +1,4 @@
-﻿using Maple2.Model.Enum;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 
 namespace Maple2.Model.Validators;

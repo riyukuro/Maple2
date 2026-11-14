@@ -287,6 +287,9 @@ public class InteractAnswerOrderTests {
         List<byte[]> sent = test.TakeSent();
         Assert.That(sent.Count(packet => TestGameSession.Op(packet) == SendOp.FieldAddItem), Is.EqualTo(2));
         Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.FunctionCube).Select(packet => packet[2]), Is.EqualTo(new byte[] { 3, 9 }));
+        // The success answer's last i32 is the count the client adds to the recipe's gathers today.
+        byte[] success = sent.Last(packet => TestGameSession.Op(packet) == SendOp.FunctionCube && packet[2] == 9);
+        Assert.That(BitConverter.ToInt32(success, success.Length - 4), Is.EqualTo(2));
         Assert.That(session.Config.GatheringCounts[RecipeId], Is.EqualTo(2));
     }
 }

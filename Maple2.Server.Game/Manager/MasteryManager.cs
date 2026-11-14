@@ -163,7 +163,7 @@ public class MasteryManager {
         int gathers = GatherCommon(fieldFunctionInteract.Value.RecipeId, fieldFunctionInteract.Position, fieldFunctionInteract.Rotation, out MasteryRecipeTable.Entry? recipeMetadata);
         session.Send(FunctionCubePacket.UpdateFunctionCube(fieldFunctionInteract.InteractCube));
         session.Send(gathers > 0
-            ? FunctionCubePacket.SuccessLifeSkill(session.CharacterId, fieldFunctionInteract.InteractCube)
+            ? FunctionCubePacket.SuccessLifeSkill(session.CharacterId, fieldFunctionInteract.InteractCube, gathers)
             : FunctionCubePacket.FailLifeSkill(session.CharacterId, fieldFunctionInteract.InteractCube));
         GatherExp(gathers, recipeMetadata);
     }

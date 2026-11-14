@@ -63,13 +63,13 @@ public static class FunctionCubePacket {
         return pWriter;
     }
 
-    public static ByteWriter SuccessLifeSkill(long characterId, InteractCube interactCube) {
+    public static ByteWriter SuccessLifeSkill(long characterId, InteractCube interactCube, int count = 1) {
         var pWriter = Packet.Of(SendOp.FunctionCube);
         pWriter.Write<Command>(Command.SuccessLifeSkill);
         pWriter.WriteLong(characterId);
         pWriter.WriteUnicodeString(interactCube.Id);
         pWriter.WriteLong(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        pWriter.WriteInt(1); // count the client adds to its per-cube success tally; one gather = one success
+        pWriter.WriteInt(count); // the client adds it to the recipe's gathers today (functioncubeobject.cpp case 9), one per gather
         return pWriter;
     }
 

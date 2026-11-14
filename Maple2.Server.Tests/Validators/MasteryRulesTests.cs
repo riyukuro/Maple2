@@ -1,4 +1,4 @@
-﻿using Maple2.Model.Enum;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
