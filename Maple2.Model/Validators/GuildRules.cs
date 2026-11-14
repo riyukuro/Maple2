@@ -158,22 +158,23 @@ public static class GuildRules {
         return memberIds.Where(id => id != senderId).Distinct().OrderBy(id => id).ToList();
     }
 
-    // A server rule, not in the client (which sends 71 without a wait): one guild mail per sender in 60
-    // seconds, because one packet writes a mail for every other member.
-    public const int MailCooldownSeconds = 60;
+    // The client sends 71 without a wait. The server keeps only a flood guard against hand-made packets, its
+    // own choice: one guild mail per sender in a second (times in milliseconds), because one packet writes a
+    // mail for every other member.
+    public const long MailFloodGuardMilliseconds = 1000;
 
-    // What the sender is told inside the 60 seconds. The client has no text of its own for a mail sent too
+    // What the sender is told inside the guard. The client has no text of its own for a mail sent too
     // soon; CGuildManager::ShowGuildError (guildmanager.cpp:3230) shows "Please try again later." for 45
     // (:3351) and "Unknown Guild Error" for 1 (:3234).
     public const GuildError MailCooldownError = GuildError.s_guild_err_too_fast_to_search_by_name;
 
     public static bool CanSendMail(long now, long lastSent) {
-        return lastSent <= 0 || now < lastSent || now - lastSent >= MailCooldownSeconds;
+        return lastSent <= 0 || now < lastSent || now - lastSent >= MailFloodGuardMilliseconds;
     }
 
-    // The limit over a table of the last mail time of each sender. A sender inside the 60 seconds is
-    // refused and the table stays as it is; else the entries that are no longer held back are removed (so
-    // the table holds at most the senders of the last 60 seconds) and the sender's time is written.
+    // The guard over a table of the last mail time of each sender. A sender inside the guard is refused and
+    // the table stays as it is; else the entries that are no longer held back are removed (so the table
+    // holds at most the senders of the last second) and the sender's time is written.
     public static bool TakeMailTurn(IDictionary<long, long> lastMail, long senderId, long now) {
         lastMail.TryGetValue(senderId, out long last);
         if (!CanSendMail(now, last)) {

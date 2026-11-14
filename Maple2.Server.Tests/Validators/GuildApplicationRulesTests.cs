@@ -207,10 +207,10 @@ public class GuildApplicationRulesTests {
 
     [TestCase(1000, 0, true, Description = "first mail")]
     [TestCase(1000, 1000, false)]
-    [TestCase(1059, 1000, false)]
-    [TestCase(1060, 1000, true)]
+    [TestCase(1999, 1000, false)]
+    [TestCase(2000, 1000, true)]
     [TestCase(900, 1000, true, Description = "the clock went back")]
-    public void Mail_OnePerSenderInSixtySeconds(long now, long last, bool expected) {
+    public void Mail_OnePerSenderInASecond(long now, long last, bool expected) {
         Assert.That(GuildRules.CanSendMail(now, last), Is.EqualTo(expected));
     }
 
@@ -219,11 +219,11 @@ public class GuildApplicationRulesTests {
         var lastMail = new System.Collections.Generic.Dictionary<long, long>();
 
         Assert.That(GuildRules.TakeMailTurn(lastMail, 7, 1000), Is.True);
-        Assert.That(GuildRules.TakeMailTurn(lastMail, 7, 1059), Is.False);
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 7, 1999), Is.False);
         Assert.That(lastMail[7], Is.EqualTo(1000), "a refused turn does not move the time");
-        Assert.That(GuildRules.TakeMailTurn(lastMail, 8, 1059), Is.True, "another sender has an own limit");
-        Assert.That(GuildRules.TakeMailTurn(lastMail, 7, 1060), Is.True);
-        Assert.That(lastMail[7], Is.EqualTo(1060));
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 8, 1999), Is.True, "another sender has an own limit");
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 7, 2000), Is.True);
+        Assert.That(lastMail[7], Is.EqualTo(2000));
     }
 
     [Test]
@@ -234,14 +234,14 @@ public class GuildApplicationRulesTests {
         }
         Assert.That(lastMail, Has.Count.EqualTo(50));
 
-        // At 1080 the senders 1 to 20 (1001 to 1020) are free again and go; 21 to 50 stay, 99 is added.
-        Assert.That(GuildRules.TakeMailTurn(lastMail, 99, 1080), Is.True);
+        // At 2020 the senders 1 to 20 (1001 to 1020) are free again and go; 21 to 50 stay, 99 is added.
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 99, 2020), Is.True);
         Assert.That(lastMail, Has.Count.EqualTo(31));
         Assert.That(lastMail.ContainsKey(20), Is.False);
         Assert.That(lastMail.ContainsKey(21), Is.True);
 
         // Much later every other entry goes.
-        Assert.That(GuildRules.TakeMailTurn(lastMail, 99, 1200), Is.True);
+        Assert.That(GuildRules.TakeMailTurn(lastMail, 99, 4000), Is.True);
         Assert.That(lastMail, Has.Count.EqualTo(1));
     }
 

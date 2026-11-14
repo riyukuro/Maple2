@@ -781,7 +781,7 @@ public class GuildManager : IDisposable {
         }
     }
 
-    // Guild 71. The server's own limit (GuildRules.MailCooldownSeconds), kept here so that it holds on every
+    // Guild 71. The server's own flood guard (GuildRules.MailFloodGuardMilliseconds), kept here so that it holds on every
     // channel; the mail right is checked here too. The turn is taken before the channel writes the mails.
     public GuildError TakeMailTurn(long requestorId) {
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? _)) {
@@ -791,7 +791,7 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_no_authority;
         }
 
-        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         lock (lastMail) {
             if (!GuildRules.TakeMailTurn(lastMail, requestorId, now)) {
                 return GuildRules.MailCooldownError;

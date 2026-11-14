@@ -793,8 +793,9 @@ public class GuildHandler : PacketHandler<GameSession> {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
             return;
         }
-        // Server rule: one guild mail per sender in GuildRules.MailCooldownSeconds. World keeps the time, so
-        // the limit holds on every channel and over a new login.
+        // Server flood guard against hand-made packets (the client has no wait): one guild mail per sender in
+        // GuildRules.MailFloodGuardMilliseconds. World keeps the time, so the guard holds on every channel and
+        // over a new login.
         try {
             GuildResponse response = World.Guild(new GuildRequest {
                 RequestorId = session.CharacterId,
