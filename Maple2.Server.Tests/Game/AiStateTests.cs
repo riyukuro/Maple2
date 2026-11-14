@@ -304,7 +304,8 @@ public class AiStateTests : TriggerTestBase {
     }
 
     // The target a node kept with no actor in its window (rand 10 to 300, target 400 away) stays through the npc's own
-    // updates, which check it against the npc's sight (3000), not the node's window; out of sight it is let go of.
+    // updates, which check it against the npc's sight (3000), not the node's window; out of sight it is let go of. Found
+    // again by the npc's own search (200 away, in the window), it is held by the window again.
     [Test]
     public void Target_KeptPastTheWindow_StaysUntilOutOfSight() {
         Spawn([Target(NodeTargetType.Rand, 10, 300)], position: Vector3.Zero);
@@ -318,7 +319,17 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(npc.BattleState.Target, Is.SameAs(kept));
 
         kept.Position = new Vector3(3500, 0, 0);
-        npc.BattleState.Update(Field.FieldTick + 100);
+        SetTick(Field.FieldTick + 1000);
+        npc.BattleState.Update(Field.FieldTick);
+        Assert.That(npc.BattleState.Target, Is.Null);
+
+        kept.Position = new Vector3(200, 0, 0);
+        SetTick(Field.FieldTick + 1000);
+        npc.BattleState.Update(Field.FieldTick);
+        Assert.That(npc.BattleState.Target, Is.SameAs(kept));
+        kept.Position = new Vector3(400, 0, 0);
+        SetTick(Field.FieldTick + 100);
+        npc.BattleState.Update(Field.FieldTick);
         Assert.That(npc.BattleState.Target, Is.Null);
         Assert.That(test.Errors, Is.Empty);
     }

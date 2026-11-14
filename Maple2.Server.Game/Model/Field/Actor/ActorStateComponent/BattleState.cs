@@ -31,12 +31,22 @@ public class BattleState {
     public bool CanBattle = true;
     public bool InBattle { get => TargetId != 0 || KeepBattle; }
     public int TargetId => Target?.ObjectId ?? 0;
-    public IActor? Target { get; private set; }
+    public IActor? Target {
+        get => target;
+        private set {
+            if (value != target) {
+                keptPastNode = null;
+            }
+            target = value;
+        }
+    }
+    private IActor? target;
     public IActor? GrabbedUser { get; set; }
     private long nextTargetSearchTick = 0;
     private bool changedTargetType = false;
     private TargetNode? targetNode = null;
-    // The target a target node kept because no actor was in its window; the node's window does not let go of it.
+    // The target a target node kept because no actor was in its window; the node's window does not let go of it. Any
+    // change of target ends it.
     private IActor? keptPastNode = null;
 
     public BattleState(FieldNpc actor) {
@@ -64,8 +74,10 @@ public class BattleState {
 
         IActor? previous = Target;
         FindNewTarget();
-        keptPastNode = Target is null ? previous : null;
-        Target ??= previous;
+        if (Target is null && previous is not null) {
+            Target = previous;
+            keptPastNode = previous;
+        }
         if (Target != previous) {
             actor.AppendDebugMessage($"New target '{GetTargetName()}' (target node)\n");
         }
