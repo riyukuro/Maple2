@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Caching;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -14,7 +15,12 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Util;
+using Microsoft.EntityFrameworkCore;
+using Serilog;
+using Serilog.Core;
+using Serilog.Events;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -289,5 +295,31 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Action("""<action name="shadow_expedition_close_boss_gauge" type="CloseBossGauge" />""");
         Assert.That(Sent(SendOp.ShadowExpedition).Select(reader => reader.ReadByte()), Is.EqualTo(new[] { (byte) 2 }));
         Assert.That((Field.ShadowGauge, Field.ScoreBoardOpen), Is.EqualTo(((ShadowGauge?) null, (ScoreBoard.Board?) null)));
+    }
+
+    // A spawn point that names an npc the ingest left out (its features are all off for the locale: in KR data
+    // 02000420, 02000427, 02000499 and 52000187 name 23000076-7, 21001025-6, 29000404 and 11004206-7) spawns the
+    // rest of its npcs and logs only at debug level; before, each such npc was an error line.
+    [Test]
+    public void SpawnMonster_NpcNotIngestedIsSkippedQuietly() {
+        StartSpawns(Spawn(5, new Vector3(300, 0, 0), new SpawnPointNPCListEntry(29000404, 1), new SpawnPointNPCListEntry(MobId, 1)));
+        // A miss asks the database: an empty one here.
+        typeof(MetadataStorage<int, NpcMetadata>).GetField("Context", Any)!.SetValue(Field.NpcMetadata,
+            new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        var log = new LogSink();
+        typeof(TriggerContext).GetField("logger", Any)!.SetValue(context,
+            new LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(log).CreateLogger());
+
+        Action("""<action name="spawn_monster" spawn_ids="5" auto_target="0" />""");
+
+        Assert.That(Field.Mobs.Values.Select(npc => npc.Value.Metadata.Id), Is.EqualTo(new[] { MobId }));
+        Assert.That(log.Events.Where(e => e.Level >= LogEventLevel.Warning), Is.Empty);
+        Assert.That(log.Events.Where(e => e.Level == LogEventLevel.Debug).Select(e => e.Properties["NpcId"].ToString()),
+            Is.EqualTo(new[] { "29000404" }));
+    }
+
+    private sealed class LogSink : ILogEventSink {
+        public readonly List<LogEvent> Events = [];
+        public void Emit(LogEvent logEvent) => Events.Add(logEvent);
     }
 }

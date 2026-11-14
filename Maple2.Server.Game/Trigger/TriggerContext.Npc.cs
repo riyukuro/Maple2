@@ -377,7 +377,10 @@ public partial class TriggerContext {
 
         foreach (int npcId in npcIdsToSpawn) {
             if (!Field.NpcMetadata.TryGet(npcId, out NpcMetadata? npc)) {
-                logger.Error("[SpawnNpc] Invalid npcId:{NpcId}", npcId);
+                // Not ingested: in KR data every npc file the ingest leaves out has its features off (or only other
+                // locales), and spawn points of live maps name some of them (02000499: 21001025, SurvivalContents03).
+                logger.Debug("[SpawnNpc] Trigger {Trigger} of field {MapId}: npc {NpcId} of spawn point {SpawnId} is not in the npc table",
+                    owner.Value.Name, Field.MapId, npcId, spawnId);
                 continue;
             }
             if (npc.Basic.Friendly == 0 && !CanSpawnUnderLimit(Field.TriggerMobLimit, Field.Mobs.Count)) {
