@@ -82,19 +82,28 @@ public class StateReactHandler : FieldPacketHandler {
         }
 
         // Reward state.
+        var items = new List<Item>();
         foreach (ReactorTable.Reward reward in reactor.Metadata.Rewards) {
             Item? item = session.Field.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
-            if (item == null) {
-                continue;
+            if (item != null) {
+                items.Add(item);
             }
-            if (!session.Item.Inventory.Add(item, true)) {
-                session.Item.MailItem(item);
+        }
+        if (gameEvent != null) {
+            // An event reactor's reward and the day's count are stored together (ReactorEvent.Claim); when they are
+            // not, nothing is given and the count stays.
+            if (!ReactorEvent.Claim(session, gameEvent, items)) {
+                reactor.Disconnect(session.CharacterId);
+                return;
+            }
+        } else {
+            foreach (Item item in items) {
+                if (!session.Item.Inventory.Add(item, true)) {
+                    session.Item.MailItem(item);
+                }
             }
         }
         session.Send(ReactorPacket.Reward(reactor.Metadata.Rewards));
-        if (gameEvent != null && !ReactorEvent.AddReward(session, gameEvent)) {
-            Logger.Error("Reactor event {EventId}: the count of {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
-        }
         reactor.Disconnect(session.CharacterId);
     }
 }

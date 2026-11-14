@@ -181,35 +181,34 @@ public class MapleopolyHandler : FieldPacketHandler {
         if (trips >= totalNewTrips) {
             return;
         }
+        var items = new List<Item>();
         while (trips < totalNewTrips) {
             trips++;
 
             // The reward of every lap (round 0), then the reward of this lap count, each at its amount.
             BlueMarble.Round? entry1 = blueMarble.Rounds.FirstOrDefault(entry => entry.RoundCount == 0);
             if (entry1 != default) {
-                GiveTripReward(session, entry1.Item);
+                AddTripReward(session, items, entry1.Item);
             }
 
             BlueMarble.Round? entry2 = blueMarble.Rounds.FirstOrDefault(entry => entry.RoundCount == trips);
             if (entry2 != default) {
-                GiveTripReward(session, entry2.Item);
+                AddTripReward(session, items, entry2.Item);
             }
         }
 
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyTotalTrips, trips);
-        // Stored with the lap rewards, not at logout: a reward may sit in a stored mail already (a full bag), and
-        // a lap count lost with the session would pay the lap again after a restart.
-        if (!session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.MapleopolyTotalTrips)) {
-            Logger.Error("Mapleopoly: the lap count of event {EventId} by {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
-        }
+        // The lap rewards and the lap count are stored together (EventClaim): a lap count lost with the session would
+        // pay the lap again after a restart. When the store fails nothing is given and the count stays, so the next
+        // roll pays these laps.
+        EventClaim.Give(session, items, [EventClaim.Of(gameEvent.Id, GameEventUserValueType.MapleopolyTotalTrips, trips)]);
     }
 
-    private void GiveTripReward(GameSession session, ItemComponent reward) {
+    private void AddTripReward(GameSession session, List<Item> items, ItemComponent reward) {
         Item? item = session.Field?.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
         if (item == null) {
             Logger.Error("Mapleopoly lap reward {ItemId} could not be created", reward.ItemId);
             return;
         }
-        session.Item.AddOrMail(item, true);
+        items.Add(item);
     }
 }

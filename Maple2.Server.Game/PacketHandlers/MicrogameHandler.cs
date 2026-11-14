@@ -11,6 +11,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Database.Extensions;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -320,13 +321,18 @@ public class MicrogameHandler : FieldPacketHandler {
             return;
         }
 
-        // The reward counts as claimed only when at least one item reached the player; otherwise it stays open.
-        // A reward row without items is marked claimed at once.
-        List<Item> delivered = Deliver(session, CreateRewards(session, rps.Rewards[index].Rewards, gameEvent.Id), gameEvent.Id);
-        if (!RpsRules.ClaimSettled(rps.Rewards[index].Rewards.Length, delivered.Count)) {
+        // The reward counts as claimed only when at least one of its items can be made; otherwise it stays open. A
+        // reward row without items is marked claimed at once. The items and the mark are stored together
+        // (EventClaim): when they are not, nothing is given and the reward stays open.
+        List<Item> items = CreateRewards(session, rps.Rewards[index].Rewards, gameEvent.Id);
+        if (!RpsRules.ClaimSettled(rps.Rewards[index].Rewards.Length, items.Count)) {
             return;
         }
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.RPSRewardsClaimed, RpsRules.AddClaimed(claimed.String(), index));
+        List<Item>? delivered = EventClaim.Give(session, items,
+            [EventClaim.Of(gameEvent.Id, GameEventUserValueType.RPSRewardsClaimed, RpsRules.AddClaimed(claimed.String(), index))]);
+        if (delivered == null) {
+            return;
+        }
         session.Send(MicrogamePacket.Rewards(delivered.Select(item => (RewardItem) item).ToList()));
     }
 
@@ -518,13 +524,13 @@ public class MicrogameHandler : FieldPacketHandler {
         if (bonus) {
             rewards = rewards.Concat(dance.GoodEndRewards);
         }
-        // The step counts as received only when at least one item reached the player; otherwise it stays claimable.
-        // A step without items is marked received at once.
+        // The step counts as received only when at least one of its items can be made; otherwise it stays claimable.
+        // A step without items is marked received at once. The items and the mark are stored together (EventClaim).
         List<RewardItem> rewardList = rewards.ToList();
-        List<Item> delivered = Deliver(session, CreateRewards(session, rewardList, gameEvent.Id), gameEvent.Id);
-        if (!RpsRules.ClaimSettled(rewardList.Count, delivered.Count)) {
+        List<Item> items = CreateRewards(session, rewardList, gameEvent.Id);
+        if (!RpsRules.ClaimSettled(rewardList.Count, items.Count)) {
             return;
         }
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.CoupleDanceRewardState, value);
+        EventClaim.Give(session, items, [EventClaim.Of(gameEvent.Id, GameEventUserValueType.CoupleDanceRewardState, value)]);
     }
 }

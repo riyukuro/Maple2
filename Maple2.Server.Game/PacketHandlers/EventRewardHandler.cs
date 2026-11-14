@@ -12,6 +12,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -182,15 +183,8 @@ public class EventRewardHandler : FieldPacketHandler {
             Logger.Error("ClaimCollectItemGroupReward: event {EventId} item {ItemId} could not be made", gameEvent.Id, collect.Result.ItemId);
             return;
         }
-        if (!session.Item.AddOrMail(result, true)) {
-            Logger.Error("ClaimCollectItemGroupReward: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, result.Id);
-            return;
-        }
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.CollectItemGroup, 1);
-        // Stored with the reward, not at logout: the result may sit in a stored mail already.
-        if (!session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.CollectItemGroup)) {
-            Logger.Error("ClaimCollectItemGroupReward: the claim of event {EventId} by {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
-        }
+        // The result and the claim are stored together (EventClaim).
+        EventClaim.Give(session, [result], [EventClaim.Of(gameEvent.Id, GameEventUserValueType.CollectItemGroup, 1)]);
     }
 
     // The burning levelup's reward: 15 + int event id from the reward widget (UILevelUpPackageWidgetDialog,
@@ -227,16 +221,10 @@ public class EventRewardHandler : FieldPacketHandler {
             }
             items.Add(item);
         }
-        foreach (Item item in items) {
-            if (!session.Item.AddOrMail(item, true)) {
-                Logger.Error("ClaimBurningLevelupReward: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
-            }
-        }
+        // The items and the taken flag are stored together (EventClaim); nothing is given when that store fails.
         session.GameEvent.Get(GameEventUserValueType.BurningLevelupRewardTaken, gameEvent.Id, gameEvent.EndTime);
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.BurningLevelupRewardTaken, 1);
-        // Stored with the reward, not at logout: the items may sit in a stored mail already.
-        if (!session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.BurningLevelupRewardTaken)) {
-            Logger.Error("ClaimBurningLevelupReward: the claim of event {EventId} by {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
+        if (EventClaim.Give(session, items, [EventClaim.Of(gameEvent.Id, GameEventUserValueType.BurningLevelupRewardTaken, 1)]) == null) {
+            return;
         }
         session.Send(BurningLevelupPacket.RewardTaken());
     }
@@ -270,20 +258,12 @@ public class EventRewardHandler : FieldPacketHandler {
             items.Add(item);
         }
 
-        // Each item goes to the bag, or by mail when the bag does not take it. The day is marked once an item
-        // has landed; when the first one lands nowhere the day stays open and there is no reply.
-        int given = 0;
-        foreach (Item item in items) {
-            if (session.Item.AddOrMail(item, true)) {
-                given++;
-                continue;
-            }
-            Logger.Error("ClaimLongTermAttendReward: event {EventId} day {Day} item {ItemId} went to neither bag nor mail", gameEvent.Id, day, item.Id);
-            if (given == 0) {
-                return;
-            }
+        // The items (to the bag, or by mail when the bag does not take them) and the claimed day are stored together
+        // (EventClaim); when that store fails the day stays open and there is no reply.
+        if (EventClaim.Give(session, items,
+                [EventClaim.Of(gameEvent.Id, GameEventUserValueType.LongTermAttendClaimedDays, LongTermAttendRules.AddClaimedDay(claimed.Value, day))]) == null) {
+            return;
         }
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendClaimedDays, LongTermAttendRules.AddClaimedDay(claimed.Value, day));
         session.Send(EventRewardPacket.ClaimLongTermAttendReward());
     }
 
@@ -307,11 +287,11 @@ public class EventRewardHandler : FieldPacketHandler {
             return;
         }
 
-        List<RewardItem>? given = GiveStampItems(session, gameEvent.Id, [reward.Item01, reward.Item02]);
+        List<RewardItem>? given = GiveStampItems(session, gameEvent.Id, [reward.Item01, reward.Item02],
+            EventClaim.Of(gameEvent.Id, type, LongTermAttendRules.AddClaimedDay(claimed.Value, count)));
         if (given == null) {
             return;
         }
-        session.GameEvent.Set(gameEvent.Id, type, LongTermAttendRules.AddClaimedDay(claimed.Value, count));
         session.Send(EventRewardPacket.ClaimStampReward(given));
     }
 
@@ -328,11 +308,11 @@ public class EventRewardHandler : FieldPacketHandler {
             return;
         }
 
-        List<RewardItem>? given = GiveStampItems(session, gameEvent.Id, [stampEvent.CompleteReward]);
+        List<RewardItem>? given = GiveStampItems(session, gameEvent.Id, [stampEvent.CompleteReward],
+            EventClaim.Of(gameEvent.Id, GameEventUserValueType.StampCompleteRewardClaimed, 1));
         if (given == null) {
             return;
         }
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.StampCompleteRewardClaimed, 1);
         session.Send(EventRewardPacket.ClaimStampCompleteReward(given));
     }
 
@@ -344,9 +324,10 @@ public class EventRewardHandler : FieldPacketHandler {
         return session.Quest.TryGetQuest(questId, out Quest? quest) && quest.State == QuestState.Completed;
     }
 
-    // The items of a stamp reward, each to the bag or by mail when the bag does not take it; an empty slot gives
-    // nothing. Null (nothing claimed, no reply) when an item cannot be made or the first one lands nowhere.
-    private List<RewardItem>? GiveStampItems(GameSession session, int eventId, RewardItem[] rewardItems) {
+    // The items of a stamp reward, to the bag or by mail when the bag does not take them, stored together with the
+    // claim's mark (EventClaim); an empty slot gives nothing. Null (nothing claimed, no reply) when an item cannot be
+    // made or the store fails.
+    private List<RewardItem>? GiveStampItems(GameSession session, int eventId, RewardItem[] rewardItems, EventClaim.Mark mark) {
         var items = new List<(Item Item, RewardItem Reward)>();
         foreach (RewardItem rewardItem in rewardItems) {
             if (rewardItem.ItemId == 0) {
@@ -360,18 +341,10 @@ public class EventRewardHandler : FieldPacketHandler {
             items.Add((item, rewardItem));
         }
 
-        var given = new List<RewardItem>();
-        foreach ((Item item, RewardItem rewardItem) in items) {
-            if (session.Item.AddOrMail(item, true)) {
-                given.Add(rewardItem);
-                continue;
-            }
-            Logger.Error("Stamp reward: event {EventId} item {ItemId} went to neither bag nor mail", eventId, item.Id);
-            if (given.Count == 0) {
-                return null;
-            }
+        if (EventClaim.Give(session, items.Select(entry => entry.Item).ToList(), [mark]) == null) {
+            return null;
         }
-        return given;
+        return items.Select(entry => entry.Reward).ToList();
     }
 
     // Time run. 4 + int key (uitimeruneventdialog.cpp onClickReward) claims the step reward of that key, sent only
@@ -400,12 +373,9 @@ public class EventRewardHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Item.AddOrMail(item, true)) {
-            Logger.Error("Time run reward: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
+        if (EventClaim.Give(session, [item], [EventClaim.Of(gameEvent.Id, GameEventUserValueType.TimeRunStepRewardKey, key)]) == null) {
             return;
         }
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.TimeRunStepRewardKey, key);
-        StoreClaim(session, gameEvent.Id, GameEventUserValueType.TimeRunStepRewardKey);
         session.Send(EventRewardPacket.ClaimTimeRunStepReward(rewardItem));
     }
 
@@ -443,13 +413,10 @@ public class EventRewardHandler : FieldPacketHandler {
             session.Send(EventRewardPacket.OpenEventBox(false));
             return;
         }
-        if (!session.Item.AddOrMail(item, true)) {
-            Logger.Error("Item box: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
+        if (EventClaim.Give(session, [item], [EventClaim.Of(gameEvent.Id, GameEventUserValueType.ItemBoxReceivedDay, today)]) == null) {
             session.Send(EventRewardPacket.OpenEventBox(false));
             return;
         }
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.ItemBoxReceivedDay, today);
-        StoreClaim(session, gameEvent.Id, GameEventUserValueType.ItemBoxReceivedDay);
         session.Send(EventRewardPacket.OpenEventBox(true));
     }
 
@@ -542,12 +509,9 @@ public class EventRewardHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Item.AddOrMail(item, true)) {
-            Logger.Error("Time run reward: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
+        if (EventClaim.Give(session, [item], [EventClaim.Of(gameEvent.Id, GameEventUserValueType.TimeRunFinalRewardReceived, 1)]) == null) {
             return;
         }
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.TimeRunFinalRewardReceived, 1);
-        StoreClaim(session, gameEvent.Id, GameEventUserValueType.TimeRunFinalRewardReceived);
         session.Send(EventRewardPacket.ClaimTimeRunFinalReward(rewardItem));
     }
 
@@ -625,22 +589,21 @@ public class EventRewardHandler : FieldPacketHandler {
 
         GameEventUserValue userValue = session.GameEvent.Get(GameEventUserValueType.GalleryClaimReward, gameEvent.Id, gameEvent.EndTime);
         int value = userValue.Int();
-        if (value > 0) {
+        if (value > 0 || session.Field == null) {
             // already claimed
             return;
         }
 
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.GalleryClaimReward, value + 1);
-
+        var items = new List<Item>();
         foreach (RewardItem rewardItem in gallery.RewardItems) {
-            Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
-            if (item == null) {
-                continue;
+            Item? item = session.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+            if (item != null) {
+                items.Add(item);
             }
-
-            if (!session.Item.Inventory.Add(item)) {
-                session.Item.MailItem(item);
-            }
+        }
+        // The items and the claim are stored together (EventClaim); the claim was kept in memory only.
+        if (EventClaim.Give(session, items, [EventClaim.Of(gameEvent.Id, GameEventUserValueType.GalleryClaimReward, value + 1)]) == null) {
+            return;
         }
 
         session.Send(EventRewardPacket.ClaimGalleryReward(gallery.RewardItems));

@@ -1,5 +1,6 @@
 ﻿using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Session;
@@ -34,10 +35,10 @@ public static class ReactorEvent {
         return session.GameEvent.Get(GameEventUserValueType.ReactorRewardCount, gameEvent.Id, DateTime.Now.Date.AddDays(1).ToEpochSeconds()).Int();
     }
 
-    // Stored at once, not at logout: the reward may sit in a stored mail already, and a lost session must not
-    // give it again. False when the database refused it.
-    public static bool AddReward(GameSession session, GameEvent gameEvent) {
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.ReactorRewardCount, RewardCount(session, gameEvent) + 1);
-        return session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.ReactorRewardCount);
+    // The reward items and the day's count one more, stored in one transaction (EventClaim): a crash cannot keep
+    // the items and lose the count, so the day's limit holds after a restart. False when nothing was stored.
+    public static bool Claim(GameSession session, GameEvent gameEvent, IReadOnlyList<Item> items) {
+        int count = RewardCount(session, gameEvent);
+        return EventClaim.Give(session, items, [EventClaim.Of(gameEvent.Id, GameEventUserValueType.ReactorRewardCount, count + 1)]) != null;
     }
 }
