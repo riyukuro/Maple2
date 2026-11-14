@@ -4,6 +4,7 @@ public enum MesoReviveRefusal {
     None,
     NotDead,
     NoRevivalHere,
+    Dungeon,
     Buff,
     DebuffMax,
     NoVoucher,
@@ -24,6 +25,14 @@ public enum MeretReviveRefusal {
 }
 
 public static class RevivalRules {
+    // Client feature 93 (featuremanager.cpp), on in KR (feature.xml level 27).
+    public const string DungeonLimitMesoRevivalFeature = "DungeonLimitMesoRevival";
+
+    // Client UIRevivalDialog::FUN_141abc7f0: with feature 93 on, a dungeon room whose limitMesoRevival is set offers
+    // no meso button (FUN_141abcb90 shows the meret button or none), and so no voucher either: the voucher is that
+    // button's checkbox. Off for the feature, the room's flag is not read.
+    public static bool DungeonDisablesMeso(bool roomLimit, bool featureOn) => roomLimit && featureOn;
+
     // The revive in place for merets or a coupon (Revival mode 1). Every test comes before anything is taken.
     // localeClosed is the constant LimitMeratRevival; debuffAllows is DebuffAllows of the meret revival debuff.
     public static MeretReviveRefusal MeretRevive(bool dead, bool noRevivalHere, bool dungeonDisables, bool buffBlocks,
@@ -67,15 +76,18 @@ public static class RevivalRules {
     // A voucher is not held to the daily count; mesos are, except in a home field: there the client shows the
     // free meso button before it looks at the count left (UIRevivalDialog::FUN_141abcb90). The client's meso
     // button also refuses while the meret revival debuff is on the player (UIRevivalDialog::FUN_141abc080), as
-    // the meret button does.
+    // the meret button does. dungeonDisables is DungeonDisablesMeso of the room.
     public static MesoReviveRefusal MesoRevive(bool dead, bool noRevivalHere, bool buffBlocks, bool useVoucher,
             bool hasVoucher, int usedToday, int dailyMax, long meso, long cost, bool debuffAllows = true,
-            bool homeField = false) {
+            bool homeField = false, bool dungeonDisables = false) {
         if (!dead) {
             return MesoReviveRefusal.NotDead;
         }
         if (noRevivalHere) {
             return MesoReviveRefusal.NoRevivalHere;
+        }
+        if (dungeonDisables) {
+            return MesoReviveRefusal.Dungeon;
         }
         if (buffBlocks) {
             return MesoReviveRefusal.Buff;

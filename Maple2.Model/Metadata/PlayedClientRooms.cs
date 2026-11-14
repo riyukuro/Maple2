@@ -1,4 +1,4 @@
-using System.Xml;
+﻿using System.Xml;
 using Maple2.Model.Enum;
 
 namespace Maple2.Model.Metadata;
@@ -108,7 +108,56 @@ public static class PlayedClientRooms {
         return boxes;
     }
 
+    // The room's rules the played client reads from its own row (DungeonRoom::Load, commonfiles/dungeonroom.cpp:382-431)
+    // and tests or shows itself: the reward count its room window counts down (DungeonRecordCli::HasCountLeft), the
+    // reward reset day (GetCooldownType), the user counts and party-only flag of its enter buttons, the gear score
+    // and level it lists, the revival buttons (UIRevivalDialog) and the revival count. An attribute the row leaves
+    // out is 0 (the DungeonRoom constructor's defaults, :351-358). The server's room table is another locale's (NA),
+    // and ClientListedRows puts the client row's attributes over the NA row, so an attribute only the NA row sets
+    // stayed: KR rooms whose client shows the meret revive had it closed (59, NA limitMeratRevival), the meso revive
+    // closed (7: 23040003, 23100001, the guild raids 26001001-26005001), a gear limit (6: 20008001 1500) and a
+    // minimum party (29006001: 4). A later available row of a room replaces an earlier one.
+    public static Dictionary<int, PlayedRoomRules> Rules(XmlDocument roomTable, Func<XmlElement, bool> available) {
+        var rules = new Dictionary<int, PlayedRoomRules>();
+        XmlNodeList? rows = roomTable.SelectNodes("ms2/dungeonRoom");
+        if (rows == null) {
+            return rules;
+        }
+        foreach (XmlNode node in rows) {
+            if (node is not XmlElement row || !available(row) || !int.TryParse(row.GetAttribute("dungeonRoomID"), out int id)) {
+                continue;
+            }
+            rules[id] = new PlayedRoomRules(
+                RewardCount: Number(row, "rewardCount"),
+                CooldownValue: Number(row, "cooldownValue"),
+                MinUserCount: Number(row, "minUserCount"),
+                MaxUserCount: Number(row, "maxUserCount"),
+                GearScore: Number(row, "gearScore"),
+                MinLevel: Number(row, "limitPlayerLevel"),
+                PartyOnly: IsOn(row.GetAttribute("isPartyOnly")),
+                DisableMesoRevival: IsOn(row.GetAttribute("limitMesoRevival")),
+                DisableMeretRevival: IsOn(row.GetAttribute("limitMeratRevival")),
+                MaxRevivalCount: Number(row, "defaultRevivalLimitCount"));
+        }
+        return rules;
+    }
+
     private static int Number(XmlElement row, string name) => int.TryParse(row.GetAttribute(name), out int value) ? value : 0;
+
+    private static bool IsOn(string value) => value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsOff(string value) => value == "0" || value.Equals("false", StringComparison.OrdinalIgnoreCase);
 }
+
+/// <summary>The rules of a dungeon room as the played client's own row gives them (PlayedClientRooms.Rules).</summary>
+public record PlayedRoomRules(
+    int RewardCount,
+    int CooldownValue,
+    int MinUserCount,
+    int MaxUserCount,
+    int GearScore,
+    int MinLevel,
+    bool PartyOnly,
+    bool DisableMesoRevival,
+    bool DisableMeretRevival,
+    int MaxRevivalCount);

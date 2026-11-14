@@ -107,7 +107,10 @@ public class RevivalHandler : FieldPacketHandler {
             meso: session.Currency.Meso,
             cost: cost,
             debuffAllows: RevivalRules.DebuffAllows(debuffCode, debuffEnabled, session.Field.Metadata.Property.InfiniteMeretRevival),
-            homeField: homeField);
+            homeField: homeField,
+            dungeonDisables: RevivalRules.DungeonDisablesMeso(
+                session.Field is DungeonFieldManager { DungeonMetadata.Limit.DisableMesoRevival: true },
+                ServerTableMetadata.FeatureTable.IsOn(RevivalRules.DungeonLimitMesoRevivalFeature)));
         if (refusal != MesoReviveRefusal.None) {
             Logger.Debug("Instant revive refused for {CharacterId}: {Refusal}", session.CharacterId, refusal);
             return;

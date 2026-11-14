@@ -20,6 +20,30 @@ public class DungeonRoomRulesTests {
         Assert.That(DungeonRoomRules.CanCreate(withParty, partySize, min, max, gm), Is.EqualTo(expected));
     }
 
+    // KR dungeonroom.xml 24090004 (Crimson Balrog): isPartyOnly="1", no minUserCount, maxUserCount="10". The client
+    // hides its solo button; a party of one or of ten enters, a GM enters alone. 26001001 adds minUserCount="4"
+    // (maxUserCount="10"): alone it is the minimum that refuses, as before.
+    [TestCase(false, 1, 0, 10, false, DungeonRoomRules.CreateVerdict.PartyOnly)]
+    [TestCase(false, 1, 0, 10, true, DungeonRoomRules.CreateVerdict.Ok)]
+    [TestCase(true, 1, 0, 10, false, DungeonRoomRules.CreateVerdict.Ok)]
+    [TestCase(true, 10, 0, 10, false, DungeonRoomRules.CreateVerdict.Ok)]
+    [TestCase(true, 11, 0, 10, false, DungeonRoomRules.CreateVerdict.OverMaxUserCount)]
+    [TestCase(false, 1, 4, 10, false, DungeonRoomRules.CreateVerdict.UnderMinUserCount)]
+    public void Create_PartyOnly(bool withParty, int partySize, int min, int max, bool gm, DungeonRoomRules.CreateVerdict expected) {
+        Assert.That(DungeonRoomRules.CanCreate(withParty, partySize, min, max, gm, partyOnly: true), Is.EqualTo(expected));
+    }
+
+    // KMS2 constants DisableSoloPlayHighLevelDungeon="0": only isPartyOnly counts. With the constant on, the normal
+    // rooms of level 50 and up turn party only (KR 24090004 is groupType 8 and stays as its flag says).
+    [TestCase(false, 0, DungeonGroupType.normal, 50, false)]
+    [TestCase(true, 0, DungeonGroupType.normal, 50, true)]
+    [TestCase(false, 1, DungeonGroupType.normal, 50, true)]
+    [TestCase(false, 1, DungeonGroupType.normal, 49, false)]
+    [TestCase(false, 1, DungeonGroupType.raid, 60, false)]
+    public void IsPartyOnly(bool isPartyOnly, int constant, DungeonGroupType groupType, int minLevel, bool expected) {
+        Assert.That(DungeonRoomRules.IsPartyOnly(isPartyOnly, constant, groupType, minLevel), Is.EqualTo(expected));
+    }
+
     // The guild raid rows of the played client's table: limitDayOfWeeks="1,2,3,4,6,7" (no Thursday).
     private static readonly DayOfWeek[] GuildRaidDays = [
         DayOfWeek.Sunday, DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Friday, DayOfWeek.Saturday,

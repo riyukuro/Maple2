@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
 using Maple2.Model.Enum;
@@ -115,5 +115,30 @@ public class PlayedClientRoomsTests {
         Assert.That(boxes[1], Is.EqualTo(new[] { 330002188 }));
         Assert.That(boxes[2], Is.EqualTo(new[] { 5, 6 }));
         Assert.That(boxes[3], Is.EqualTo(new[] { 8 }));
+    }
+
+    // Shaped like KMS2 rows 26001001 (party only, 4 to 10 users, gear score 2630, level 50, no revival flags, where
+    // the NA row closes both revives) and 27003001 (the meso revival flag only, where the NA row also closes the
+    // meret revive; three revivals). An attribute the client row leaves out reads 0, not the NA row's value.
+    [Test]
+    public void Rules_ReadTheClientsRow() {
+        XmlDocument rooms = Table("""
+            <dungeonRoom dungeonRoomID="26001001" cooldownValue="6" rewardCount="1" minUserCount="4" maxUserCount="10" gearScore="2630" limitPlayerLevel="50" isPartyOnly="1" defaultRevivalLimitCount="3" />
+            <dungeonRoom dungeonRoomID="27003001" cooldownValue="6" rewardCount="4" maxUserCount="10" gearScore="14000" limitPlayerLevel="60" limitMesoRevival="1" defaultRevivalLimitCount="3" />
+            <dungeonRoom dungeonRoomID="3" rewardCount="9" feature="Off" />
+            <dungeonRoom dungeonRoomID="4" rewardCount="2" />
+            <dungeonRoom dungeonRoomID="4" rewardCount="5" limitMesoRevival="true" />
+            """);
+
+        Dictionary<int, PlayedRoomRules> rules = PlayedClientRooms.Rules(rooms, Available);
+
+        Assert.That(rules.Keys.OrderBy(id => id), Is.EqualTo(new[] { 4, 26001001, 27003001 }));
+        Assert.That(rules[26001001], Is.EqualTo(new PlayedRoomRules(RewardCount: 1, CooldownValue: 6, MinUserCount: 4, MaxUserCount: 10,
+            GearScore: 2630, MinLevel: 50, PartyOnly: true, DisableMesoRevival: false, DisableMeretRevival: false, MaxRevivalCount: 3)));
+        Assert.That(rules[27003001], Is.EqualTo(new PlayedRoomRules(RewardCount: 4, CooldownValue: 6, MinUserCount: 0, MaxUserCount: 10,
+            GearScore: 14000, MinLevel: 60, PartyOnly: false, DisableMesoRevival: true, DisableMeretRevival: false, MaxRevivalCount: 3)));
+        // a later row of a room replaces the earlier one
+        Assert.That(rules[4].RewardCount, Is.EqualTo(5));
+        Assert.That(rules[4].DisableMesoRevival, Is.True);
     }
 }

@@ -505,8 +505,14 @@ public class DungeonManager {
             }
         }
 
-        // The client's enter buttons: solo only without a minimum user count, party only up to the maximum.
-        switch (DungeonRoomRules.CanCreate(withParty, size, metadata.Limit.MinUserCount, metadata.Limit.MaxUserCount, GmCheck.IsGm(session.Player.AdminPermissions))) {
+        // The client's enter buttons: solo only without a minimum user count and not party only, party only up to
+        // the maximum.
+        switch (DungeonRoomRules.CanCreate(withParty, size, metadata.Limit.MinUserCount, metadata.Limit.MaxUserCount,
+                    GmCheck.IsGm(session.Player.AdminPermissions), DungeonRoomRules.IsPartyOnly(metadata.Limit.PartyOnly,
+                        session.ServerTableMetadata.ConstantsTable.DisableSoloPlayHighLevelDungeon, metadata.GroupType, metadata.Limit.MinLevel))) {
+            case DungeonRoomRules.CreateVerdict.PartyOnly:
+                logger.Debug("Solo room refused for {CharacterId}: dungeon {DungeonId} is party only", session.CharacterId, dungeonId);
+                return;
             case DungeonRoomRules.CreateVerdict.UnderMinUserCount:
                 session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_UnderMinUserCount, metadata.Limit.MinUserCount));
                 return;

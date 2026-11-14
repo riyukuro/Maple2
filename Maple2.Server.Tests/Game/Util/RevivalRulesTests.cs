@@ -124,6 +124,32 @@ public class RevivalRulesTests {
             Is.EqualTo(MesoReviveRefusal.DebuffMax));
     }
 
+    // KR dungeonroom.xml: 27003001 has limitMesoRevival="1" (and limitMeratRevival), 27006001 limitMesoRevival="1"
+    // alone; feature DungeonLimitMesoRevival (93) is on in KR at level 27. The meso button and its voucher checkbox
+    // are both gone in such a room, so a voucher is refused too, ahead of the daily count and the balance.
+    [Test]
+    public void MesoRevive_DungeonLimitMesoRevival_IsRefused() {
+        bool disables = RevivalRules.DungeonDisablesMeso(roomLimit: true, featureOn: true);
+        Assert.That(disables, Is.True);
+        Assert.That(RevivalRules.MesoRevive(true, false, false, false, false, 0, 10, 1000, 500, dungeonDisables: disables),
+            Is.EqualTo(MesoReviveRefusal.Dungeon));
+        Assert.That(RevivalRules.MesoRevive(true, false, false, true, true, 0, 10, 1000, 500, dungeonDisables: disables),
+            Is.EqualTo(MesoReviveRefusal.Dungeon));
+        // a living player is still refused as not dead first
+        Assert.That(RevivalRules.MesoRevive(false, false, false, false, false, 0, 10, 1000, 500, dungeonDisables: disables),
+            Is.EqualTo(MesoReviveRefusal.NotDead));
+    }
+
+    [Test]
+    public void MesoRevive_DungeonLimit_NeedsTheFeatureAndTheRoomFlag() {
+        // feature off (a locale whose feature.xml leaves 93 out): the room's flag is not read
+        Assert.That(RevivalRules.DungeonDisablesMeso(roomLimit: true, featureOn: false), Is.False);
+        // KR 24090004 sets no limitMesoRevival: the meso button stays
+        Assert.That(RevivalRules.DungeonDisablesMeso(roomLimit: false, featureOn: true), Is.False);
+        Assert.That(RevivalRules.MesoRevive(true, false, false, false, false, 0, 10, 1000, 500,
+            dungeonDisables: RevivalRules.DungeonDisablesMeso(false, true)), Is.EqualTo(MesoReviveRefusal.None));
+    }
+
     [Test]
     public void MesoCost_FollowsTheClientsButton() {
         Assert.That(RevivalRules.MesoCost(1000, 0.5f, 0f, false), Is.EqualTo(1000));

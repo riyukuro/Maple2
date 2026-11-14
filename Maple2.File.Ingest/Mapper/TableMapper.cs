@@ -2408,12 +2408,14 @@ public class TableMapper : TypeMapper<TableMetadata> {
         HashSet<int> playedLimitEnter = [];
         Dictionary<int, DungeonExtraRewardTicket> playedTickets = [];
         Dictionary<int, int[]>? playedHelperBoxes = null;
+        Dictionary<int, PlayedRoomRules> playedRules = [];
         Maple2.File.IO.Crypto.Common.PackFileEntry? roomEntry = playedReader?.Files.FirstOrDefault(file => file.Name == PlayedClientRooms.RoomTable);
         if (playedReader != null && roomEntry != null) {
             Func<System.Xml.XmlElement, bool> available = node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
             System.Xml.XmlDocument roomTable = playedReader.GetXmlDocument(roomEntry);
             playedLimitEnter = PlayedClientRooms.LimitEnter(roomTable, available);
             playedHelperBoxes = PlayedClientRooms.HelperRewardDropBoxes(roomTable, available);
+            playedRules = PlayedClientRooms.Rules(roomTable, available);
             Maple2.File.IO.Crypto.Common.PackFileEntry? couponEntry = playedReader.Files.FirstOrDefault(file => file.Name == PlayedClientRooms.CouponTable);
             if (couponEntry != null) {
                 playedTickets = PlayedClientRooms.ExtraRewardTickets(roomTable, PlayedClientRooms.Coupons(playedReader.GetXmlDocument(couponEntry), available), available);
@@ -2424,19 +2426,31 @@ public class TableMapper : TypeMapper<TableMetadata> {
         ReportClientListed("dungeonroom.xml", roomCounts);
         foreach (DungeonRoom dungeon in roomRoot.dungeonRoom) {
             int id = dungeon.dungeonRoomID;
+            // The rules the played client tests and shows come from its own row when it has the room (PlayedRoomRules).
+            PlayedRoomRules rules = playedRules.GetValueOrDefault(id) ?? new PlayedRoomRules(
+                RewardCount: dungeon.rewardCount,
+                CooldownValue: dungeon.cooldownValue,
+                MinUserCount: dungeon.minUserCount,
+                MaxUserCount: dungeon.maxUserCount,
+                GearScore: dungeon.gearScore,
+                MinLevel: dungeon.limitPlayerLevel,
+                PartyOnly: dungeon.isPartyOnly,
+                DisableMesoRevival: dungeon.limitMesoRevival,
+                DisableMeretRevival: dungeon.limitMeratRevival,
+                MaxRevivalCount: dungeon.defaultRevivalLimitCount);
             dungeons.Add(id, new DungeonRoomMetadata(
                 Id: dungeon.dungeonRoomID,
                 Level: dungeon.dungeonLevel,
                 PlayType: (DungeonPlayType) dungeon.playType,
                 GroupType: (DungeonGroupType) dungeon.groupType,
-                CooldownType: DungeonRoomRules.CooldownType(dungeon.cooldownValue), // the client ignores cooldownType
-                CooldownValue: dungeon.cooldownValue, // a day number, Sunday 1
+                CooldownType: DungeonRoomRules.CooldownType(rules.CooldownValue), // the client ignores cooldownType
+                CooldownValue: rules.CooldownValue, // a day number, Sunday 1
                 DurationTick: dungeon.durationTick,
                 LobbyFieldId: dungeon.lobbyFieldID,
                 FieldIds: dungeon.fieldIDs,
                 Reward: new DungeonRoomRewardMetadata(
                     AccountWide: dungeon.isAccountReward,
-                    Count: dungeon.rewardCount,
+                    Count: rules.RewardCount,
                     SubRewardCount: dungeon.subRewardCount,
                     Exp: dungeon.rewardExp,
                     ExpRate: dungeon.rewardExpRate,
@@ -2447,21 +2461,21 @@ public class TableMapper : TypeMapper<TableMetadata> {
                     SeasonRankRewardId: dungeon.seasonRankRewardID,
                     ScoreBonusId: dungeon.scoreBonusId),
                 Limit: new DungeonRoomLimitMetadata(
-                    MinUserCount: dungeon.minUserCount,
-                    MaxUserCount: dungeon.maxUserCount,
-                    GearScore: dungeon.gearScore,
-                    MinLevel: dungeon.limitPlayerLevel,
+                    MinUserCount: rules.MinUserCount,
+                    MaxUserCount: rules.MaxUserCount,
+                    GearScore: rules.GearScore,
+                    MinLevel: rules.MinLevel,
                     RequiredAchievementId: dungeon.limitAchieveID,
                     VipOnly: dungeon.limitVIP,
                     DayOfWeeks: dungeon.limitDayOfWeeks.Length == 0 ? [] : dungeon.limitDayOfWeeks.Select(ParseDayOfWeek).ToArray(),
                     ClearDungeonIds: dungeon.limitClearDungeon,
                     Buffs: dungeon.limitAdditionalEffects,
-                    DisableMeretRevival: dungeon.limitMeratRevival,
+                    DisableMeretRevival: rules.DisableMeretRevival,
                     EquippedRecommendedWeapon: dungeon.limitRecommendWeapon,
-                    PartyOnly: dungeon.isPartyOnly,
+                    PartyOnly: rules.PartyOnly,
                     ChangeMaxUsers: dungeon.isChangeMaxUser,
-                    DisableMesoRevival: dungeon.limitMesoRevival,
-                    MaxRevivalCount: dungeon.defaultRevivalLimitCount,
+                    DisableMesoRevival: rules.DisableMesoRevival,
+                    MaxRevivalCount: rules.MaxRevivalCount,
                     IsLimitTime: dungeon.isLimitTime,
                     OpenPeriodTag: dungeon.openPeriodTag?.Trim() ?? "",
                     OpenPeriodDate: DungeonRoomRules.ParseOpenPeriodDate(dungeon.openPeriodDate)),

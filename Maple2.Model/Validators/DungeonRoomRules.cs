@@ -24,11 +24,29 @@ public static class DungeonRoomRules {
         Ok,
         UnderMinUserCount,
         OverMaxUserCount,
+        PartyOnly,
     }
 
-    public static CreateVerdict CanCreate(bool withParty, int partySize, int minUserCount, int maxUserCount, bool gm) {
+    // The client's DungeonRoom::ApplyConstants (commonfiles/dungeonroom.cpp:795): with the constant
+    // DisableSoloPlayHighLevelDungeon set, a normal room (groupType 1) of limitPlayerLevel 50 or more is party only
+    // too. The KMS2 client's constants row is 0, so for KR the room's isPartyOnly alone decides.
+    public static bool IsPartyOnly(bool isPartyOnly, int disableSoloPlayHighLevelDungeon, DungeonGroupType groupType, int minLevel) =>
+        isPartyOnly || (disableSoloPlayHighLevelDungeon != 0 && groupType == DungeonGroupType.normal && minLevel >= 50);
+
+    // The client's UIDungeonRoomInfo::LayoutEnterButtons (uidungeonroomdialog.cpp:1194) shows the solo button only
+    // for a room that is not isPartyOnly and has no minUserCount, or to a GM (FUN_140d9f5d0(3)). KR 24090004
+    // (isPartyOnly, no minUserCount) is entered by a party only, even a party of one. The client has no error
+    // string for a party-only room: its solo button is hidden, so only a forged request gets the PartyOnly verdict.
+    public static CreateVerdict CanCreate(bool withParty, int partySize, int minUserCount, int maxUserCount, bool gm,
+            bool partyOnly = false) {
         if (!withParty) {
-            return minUserCount == 0 || gm ? CreateVerdict.Ok : CreateVerdict.UnderMinUserCount;
+            if (gm) {
+                return CreateVerdict.Ok;
+            }
+            if (minUserCount != 0) {
+                return CreateVerdict.UnderMinUserCount;
+            }
+            return partyOnly ? CreateVerdict.PartyOnly : CreateVerdict.Ok;
         }
         if (maxUserCount <= 1 || partySize > maxUserCount) {
             return CreateVerdict.OverMaxUserCount;
