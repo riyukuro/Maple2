@@ -46,6 +46,11 @@ public partial class WorldService {
             // A logout (channel -1, written only when the session ends without a move) leaves the rank duel queue.
             if (request.Channel < 0) {
                 pvpLookup.Remove(request.CharacterId);
+                // An invite still open to the player can no longer be answered: the inviting guild or club is told.
+                if (playerLookup.TryGet(request.CharacterId, out PlayerInfo? leaving)) {
+                    guildLookup.InviteeLoggedOut(request.CharacterId, leaving.Name);
+                    clubLookup.InviteeLoggedOut(request.CharacterId, leaving.Name);
+                }
             }
         }
 

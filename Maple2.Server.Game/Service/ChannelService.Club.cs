@@ -181,7 +181,7 @@ public partial class ChannelService {
                 continue;
             }
 
-            session.Send(ClubPacket.InviteNotification(clubId, reply.RequestorName, reply.Accept));
+            session.Send(ClubPacket.InviteNotification(clubId, reply.RequestorName, reply.Accept, (byte) reply.Code));
         }
 
         return new ClubResponse();

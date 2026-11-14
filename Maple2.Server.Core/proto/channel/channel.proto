@@ -466,6 +466,8 @@ message ClubRequest {
   message InviteReply {
     string requestor_name = 1;
     bool accept = 2;
+    // The reason byte of a decline (clubcli.cpp:1411): 2 logged out, 3 timed out, else declined.
+    int32 code = 3;
   }
 
   message UpdateLeader {

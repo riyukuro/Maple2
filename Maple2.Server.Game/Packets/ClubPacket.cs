@@ -106,13 +106,14 @@ public static class ClubPacket {
         return pWriter;
     }
 
-    public static ByteWriter InviteNotification(long clubId, string invitee, bool accept) {
+    // code: the decline reason the client reads after the type (clubcli.cpp:1411): 2 logged out, 3 timed out, else declined.
+    public static ByteWriter InviteNotification(long clubId, string invitee, bool accept, byte code = 0) {
         var pWriter = Packet.Of(SendOp.Club);
         pWriter.Write<Command>(Command.InviteNotification);
         pWriter.WriteLong(clubId);
         pWriter.WriteUnicodeString(invitee);
         pWriter.WriteBool(accept);
-        pWriter.WriteByte();
+        pWriter.WriteByte(code);
 
         return pWriter;
     }

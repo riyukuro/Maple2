@@ -45,6 +45,13 @@ public class GuildLookup : IDisposable {
         }
     }
 
+    // A logout ends the invites still open to that player; each guild that sent one tells its members (reason 2).
+    public void InviteeLoggedOut(long characterId, string name) {
+        foreach (GuildManager manager in guilds.Values) {
+            manager.InviteeLoggedOut(characterId, name);
+        }
+    }
+
     // The guild championship season roll of every guild held here (GuildManager.RollPvp).
     public void RollPvp(DateTime now) {
         foreach (GuildManager manager in guilds.Values) {

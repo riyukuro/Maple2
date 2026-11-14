@@ -42,6 +42,13 @@ public class ClubLookup : IDisposable {
         return club != null;
     }
 
+    // A logout ends the invites still open to that player; each club that sent one tells its members (code 2).
+    public void InviteeLoggedOut(long characterId, string name) {
+        foreach (ClubManager manager in clubs.Values) {
+            manager.InviteeLoggedOut(characterId, name);
+        }
+    }
+
     public List<ClubManager> TryGetByCharacterId(long characterId) {
         List<ClubManager> clubManagers = [];
         using GameStorage.Request db = gameStorage.Context();

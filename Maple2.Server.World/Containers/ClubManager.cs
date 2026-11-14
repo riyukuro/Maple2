@@ -122,6 +122,24 @@ public class ClubManager : IDisposable {
         }
     }
 
+    // The invited player logged out with the invite still open: the members get Club 9 with code 2, the client's
+    // "logged out" text (CClubClientManager mode 9, clubcli.cpp:1143-1160 and 1411, s_club_join_reject_logout).
+    public bool InviteeLoggedOut(long characterId, string name) {
+        if (!pendingInvites.TryRemove(characterId, out (string, DateTime) invite) || invite.Item2 < DateTime.Now) {
+            return false;
+        }
+
+        Broadcast(new ClubRequest {
+            InviteReply = new ClubRequest.Types.InviteReply {
+                RequestorName = name,
+                Accept = false,
+                Code = 2, // 0x34f; 3 is 0x34e (timeout), any other code 0x34d (declined)
+            },
+            ClubId = Club.Id,
+        });
+        return true;
+    }
+
     public string ConsumeInvite(long characterId) {
         foreach ((long id, (string name, DateTime expiryTime)) in pendingInvites) {
             // Remove any expired entries while iterating.

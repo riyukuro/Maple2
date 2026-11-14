@@ -1311,6 +1311,23 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // The invited player logged out with the invite still open: the members get Guild 6 with reason 2, the client's
+    // "logged out" text (CGuildManager mode 6, guildmanager.cpp:1636-1650, s_guild_join_reject_logout). Before, the
+    // invite only expired here and the inviter was never told.
+    public bool InviteeLoggedOut(long characterId, string name) {
+        if (!pendingInvites.TryRemove(characterId, out (string, DateTime) invite) || invite.Item2 < DateTime.Now) {
+            return false;
+        }
+
+        Broadcast(new GuildRequest {
+            InviteReply = new GuildRequest.Types.InviteReply {
+                Name = name,
+                Reply = (int) GuildInvite.Response.RejectLogout,
+            },
+        });
+        return true;
+    }
+
     public string ConsumeInvite(long characterId) {
         foreach ((long id, (string name, DateTime expiryTime)) in pendingInvites) {
             // Remove any expired entries while iterating.
