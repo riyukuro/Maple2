@@ -31,6 +31,8 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
         typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
         typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
+        // A spawn checks the field's broken breakables (none here).
+        typeof(FieldManager).GetField("fieldBreakables", Any)!.SetValue(Field, new ConcurrentDictionary<string, FieldBreakable>());
         typeof(FieldManager).GetField("<FieldInstance>k__BackingField", Any)!.SetValue(Field,
             new InstanceFieldMetadata(0, InstanceType.none, 0, false, 0, true, 0, 0, 0, 0));
         // A spawned npc's movement makes its debug markers (MovementState.InitDebugMarker) from these items.

@@ -189,6 +189,7 @@ public partial class FieldManager {
             PlayerSummon = playerSummon,
             SpawnBuffsPending = npc.Property.Buffs.Length > 0,
         };
+        DropSpawnOffBrokenBreakables(fieldNpc);
 
         // The room's npcStatFactorByPlayerCount row, taken once at spawn: an npc keeps its stats when players join or
         // leave later. A player's summon is never scaled (pets do not come through here).
@@ -439,21 +440,39 @@ public partial class FieldManager {
     // floor point becomes the npc's origin, which its patrol and return home aim at: the top is out of reach now.
     public void DropNpcsOffBreakable(FieldBreakable breakable) {
         foreach (FieldNpc npc in Mobs.Values.Concat(Npcs.Values)) {
-            if (npc.IsDead || npc.Navigation is null) {
-                continue;
-            }
-            Vector3 offset = npc.Position - breakable.Position;
-            if (offset.X * offset.X + offset.Y * offset.Y > BREAKABLE_TOP_RADIUS * BREAKABLE_TOP_RADIUS) {
-                continue;
-            }
-            if (!npc.Navigation.DropOffBreakable(breakable.Position, BREAKABLE_TOP_RADIUS, BREAKABLE_TOP_HEIGHT, BREAKABLE_FLOOR_REACH, out Vector3 floor)) {
+            if (npc.IsDead || !DropOffBreakable(npc, breakable)) {
                 continue;
             }
 
-            npc.Origin = floor;
             npc.MovementState.DropWalkSegment();
             npc.SendControl = true;
         }
+    }
+
+    // An npc spawned while a breakable under its spawn point is broken or hidden starts on the floor beside it,
+    // as one left on the top when it broke: a respawn would stand on the top that is gone.
+    private void DropSpawnOffBrokenBreakables(FieldNpc npc) {
+        foreach (FieldBreakable breakable in fieldBreakables.Values) {
+            if (breakable.State is BreakableState.Break or BreakableState.Hide && DropOffBreakable(npc, breakable)) {
+                return;
+            }
+        }
+    }
+
+    private static bool DropOffBreakable(FieldNpc npc, FieldBreakable breakable) {
+        if (npc.Navigation is null) {
+            return false;
+        }
+        Vector3 offset = npc.Position - breakable.Position;
+        if (offset.X * offset.X + offset.Y * offset.Y > BREAKABLE_TOP_RADIUS * BREAKABLE_TOP_RADIUS) {
+            return false;
+        }
+        if (!npc.Navigation.DropOffBreakable(breakable.Position, BREAKABLE_TOP_RADIUS, BREAKABLE_TOP_HEIGHT, BREAKABLE_FLOOR_REACH, out Vector3 floor)) {
+            return false;
+        }
+
+        npc.Origin = floor;
+        return true;
     }
 
     public FieldLiftable? AddLiftable(string entityId, Liftable liftable) {
