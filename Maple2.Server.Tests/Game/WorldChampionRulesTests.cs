@@ -97,6 +97,17 @@ public class WorldChampionRulesTests {
         });
     }
 
+    // Seasons of different lengths: a long one still on from an earlier week is found (the roll starts at the week of
+    // the latest end, not the earliest).
+    [Test]
+    public void WorldChampion_RollsLongSeason() {
+        DateTime saturday = new(2020, 7, 11, 19, 0, 0);
+        WorldChampionTable table = Table(Season(1, saturday) with { End = saturday.AddHours(3) },
+            Season(2, saturday.AddDays(1)) with { End = saturday.AddDays(10) });
+        // Week 1: 3 (Saturday + 7) and 4 (Sunday + 7 to Saturday + 17); week 2's 6 begins Sunday + 14.
+        Assert.That(WorldChampionRules.Current(table, saturday.AddDays(16))?.Id, Is.EqualTo(4));
+    }
+
     // A rolled season's rewards are due as a table season's.
     [Test]
     public void RewardDue_RolledSeason() {

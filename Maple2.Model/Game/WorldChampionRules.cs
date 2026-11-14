@@ -73,8 +73,9 @@ public static class WorldChampionRules {
         if (pattern.Count == 0) {
             yield break;
         }
-        DateTime earliestEnd = pattern.Min(season => season.End);
-        int week = Math.Max(1, (int) Math.Floor((from - earliestEnd).TotalDays / 7));
+        // The first week in which some season can still be on at from: the one of the latest end.
+        DateTime latestEnd = pattern.Max(season => season.End);
+        int week = Math.Max(1, (int) Math.Floor((from - latestEnd).TotalDays / 7));
         for (; ; week++) {
             if (pattern[0].Begin.AddDays(7 * week) > to) {
                 yield break;
