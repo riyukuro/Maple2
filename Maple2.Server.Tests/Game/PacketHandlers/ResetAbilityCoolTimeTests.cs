@@ -82,18 +82,18 @@ public class ResetAbilityCoolTimeTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
-    // Never reset, or the cool time over: nothing to clear, the stone is kept.
+    // Never reset, or the cool time over: the client asks its box without testing the cool time, so the stone is
+    // used all the same and the reset time is 0. The server kept it.
     [TestCase(0L)]
     [TestCase(CoolMinutes * 60L + 1)]
-    public void Use_KeptWithoutACoolTime(long ago) {
+    public void Use_UsedWithoutACoolTime(long ago) {
         Character.AbilityResetTime = ago == 0 ? 0 : DateTime.Now.ToEpochSeconds() - ago;
-        long before = Character.AbilityResetTime;
 
         Use();
 
-        Assert.That(Character.AbilityResetTime, Is.EqualTo(before));
-        Assert.That(Stones, Is.EqualTo(2));
-        Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.CharacterAbility));
+        Assert.That(Character.AbilityResetTime, Is.EqualTo(0));
+        Assert.That(Stones, Is.EqualTo(1));
+        Assert.That(test.TakeSentOps(), Does.Contain(SendOp.CharacterAbility));
     }
 
     // The window is not open (below level 50 or the open quest not done), as the client's message 0xc63.
@@ -111,12 +111,5 @@ public class ResetAbilityCoolTimeTests {
         Assert.That(Character.AbilityResetTime, Is.EqualTo(last));
         Assert.That(Stones, Is.EqualTo(2));
         Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.CharacterAbility));
-    }
-
-    [TestCase(true, 1L, true)]
-    [TestCase(true, 0L, false)]
-    [TestCase(false, 1L, false)]
-    public void Rules(bool open, long wait, bool expected) {
-        Assert.That(CharacterAbilityRules.CanResetCoolTime(open, wait), Is.EqualTo(expected));
     }
 }

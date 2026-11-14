@@ -933,15 +933,16 @@ public class ConfigManager {
         return true;
     }
 
-    // The cool time reset stone (ResetAbilityCoolTime): consume runs only when the stone may be used; the reset time
-    // goes back to 0 ("never reset", CharacterAbilityRules.ResetWait) and the load packet carries it to the window.
+    // The cool time reset stone (ResetAbilityCoolTime): consume runs only while the ability window is open, the one
+    // test the client makes before its confirm box (@0x140d22b50; message 0xc63 otherwise). It does not test the
+    // cool time, so a stone is used with none running too. The reset time goes back to 0 ("never reset",
+    // CharacterAbilityRules.ResetWait) and the load packet carries it to the window.
     public bool ResetCharacterAbilityCoolTime(Func<bool> consume) {
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
         Character character = AbilityCharacter;
         bool questDone = session.Quest.TryGetQuest(constants.CharacterAbilityOpenQuestID, out Quest? quest) && quest.State == QuestState.Completed;
-        long wait = CharacterAbilityRules.ResetWait(character.AbilityResetTime, DateTime.Now.ToEpochSeconds(), constants.CharacterAbilityResetCoolTimeMinute);
-        if (!CharacterAbilityRules.CanResetCoolTime(
-                CharacterAbilityRules.IsOpen(session.ServerTableMetadata.FeatureTable.IsOn(CharacterAbilityRules.Feature), character.Level, questDone), wait) || !consume()) {
+        if (!CharacterAbilityRules.IsOpen(session.ServerTableMetadata.FeatureTable.IsOn(CharacterAbilityRules.Feature), character.Level, questDone)
+            || !consume()) {
             return false;
         }
 
