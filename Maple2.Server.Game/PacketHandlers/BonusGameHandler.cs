@@ -44,8 +44,27 @@ public class BonusGameHandler : FieldPacketHandler {
         }
     }
 
+    // The client sends a load only when an npc talk opens RouletteDialog, with the dialog's argument as the game id
+    // (UITalkManager::FUN_141b1eb90, uitalkcinematic.cpp:1133-1140; atoi of the argument). Any other id is another
+    // npc's roulette, which the spin would then play with this talk's spin count.
+    public static int? OfferedGame(string uiName, string uiArg) {
+        if (!string.Equals(uiName, "RouletteDialog", StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+        string arg = (uiArg ?? "").TrimStart();
+        int end = arg.Length > 0 && (arg[0] == '-' || arg[0] == '+') ? 1 : 0;
+        while (end < arg.Length && char.IsAsciiDigit(arg[end])) {
+            end++;
+        }
+        return int.TryParse(arg.AsSpan(0, end), out int id) ? id : 0;
+    }
+
     private void HandleLoad(GameSession session, IByteReader packet) {
         int gameId = packet.ReadInt();
+        if (gameId == 0 || gameId != session.BonusGameOffered) {
+            Logger.Debug("BonusGame load of {GameId}, offered {Offered}", gameId, session.BonusGameOffered);
+            return;
+        }
 
         if (!ServerTableMetadata.BonusGameTable.Games.TryGetValue(gameId, out BonusGameTable.Game? game) ||
             !ServerTableMetadata.BonusGameTable.Drops.TryGetValue(gameId, out BonusGameTable.Drop? drop)) {

@@ -390,6 +390,9 @@ public sealed class NpcScriptManager {
 
         if (!string.IsNullOrEmpty(scriptFunction.UiName)) {
             session.Send(NpcTalkPacket.OpenDialog(scriptFunction.UiName, scriptFunction.UiArg));
+            if (Maple2.Server.Game.PacketHandlers.BonusGameHandler.OfferedGame(scriptFunction.UiName, scriptFunction.UiArg) is int offered) {
+                session.BonusGameOffered = offered;
+            }
         }
 
         if (!string.IsNullOrEmpty(scriptFunction.MoveMapMovie)) {
