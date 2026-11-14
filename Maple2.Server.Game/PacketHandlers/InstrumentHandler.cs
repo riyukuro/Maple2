@@ -339,7 +339,9 @@ public class InstrumentHandler : FieldPacketHandler {
             return;
         }
 
-        session.Send(InstrumentPacket.Fireworks(session.Player.ObjectId));
+        // Any player in the concert dialog may send it (the client throttles it to one per 2 s); every client in
+        // the field shows the effect over the sender (CInstrumentManager::OnPacket 14 picks the kind itself).
+        session.Field.Broadcast(InstrumentPacket.Fireworks(session.Player.ObjectId));
     }
 
     private void HandleEmote(GameSession session, IByteReader packet) {

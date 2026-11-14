@@ -686,7 +686,20 @@ public sealed partial class GameSession : Core.Network.Session {
             resummonUnSummonSent = false;
         }
         Pet?.Dispose(fieldChange: true);
+        // A play still running ends with the field: the other players are told and later arrivals are not sent it.
+        // A waiting ensemble member stops waiting (the leader's start finds the member's ready mark only in its field).
+        if (Instrument != null && Field != null) {
+            if (Instrument.Improvising) {
+                Field.Broadcast(InstrumentPacket.StopImprovise(Instrument));
+                Field.RemoveInstrument(Instrument.ObjectId, broadcast: false);
+            } else {
+                Field.RemoveInstrument(Instrument.ObjectId);
+            }
+        }
         Instrument = null;
+        EnsembleReady = false;
+        StagedInstrumentItem = null;
+        StagedScoreItem = null;
         Fishing?.LeaveField();
         GuideObject = null;
         HeldCube = null;
