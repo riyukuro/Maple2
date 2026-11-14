@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -9,6 +10,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -122,5 +124,26 @@ public class AddPetExpTests {
 
         Assert.That(Stones(session), Is.EqualTo(1));
         Assert.That((pet.Pet!.Level, pet.Pet.Exp), Is.EqualTo(((short) 4, 0L)));
+    }
+
+    // A kill's exp runs on the field thread: it waits for the item lock a stone use, fusion or training holds.
+    [Test]
+    public void KillExp_WaitsForTheItemLock() {
+        GameSession session = Start();
+        Assert.That(session.ItemMetadata.TryGetPet(PetId, out PetMetadata? petMetadata), Is.True);
+        const System.Reflection.BindingFlags any = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+        object fieldPet = typeof(PetManager).GetField("pet", any)!.GetValue(session.Pet)!;
+        typeof(FieldPet).GetField(nameof(FieldPet.Metadata), any)!.SetValue(fieldPet, petMetadata);
+
+        Task kill;
+        lock (session.Item) {
+            kill = Task.Run(() => session.Pet!.AddKillExp(100, 3));
+            Assert.That(kill.Wait(300), Is.False);
+            Assert.That(pet.Pet!.Exp, Is.EqualTo(0));
+        }
+        Assert.That(kill.Wait(TimeSpan.FromSeconds(10)), Is.True);
+
+        // 100 * 48 / 100 = 48.
+        Assert.That(pet.Pet.Exp, Is.EqualTo(PetFusionRules.KillExp(100, 3)).And.EqualTo(48));
     }
 }

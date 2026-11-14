@@ -67,23 +67,31 @@ public sealed class PetManager : IDisposable {
     }
 
     // The owner got a monster's kill exp: the pet gets its share (PetFusionRules.KillExp) and the owner is
-    // sent the new exp (ResponsePet 10), then the new level if it rose.
+    // sent the new exp (ResponsePet 10), then the new level if it rose. It runs on the field thread and holds the
+    // item lock, as the fusion stone use, fusion and training do, so a gain in the same tick as one of those is kept.
+    // Nothing that holds the item lock waits on the field thread, and this takes no other lock inside it.
     public void AddKillExp(int npcLevel, int npcClass) {
         long gain = PetFusionRules.KillExp(npcLevel, npcClass);
-        int maxLevel = session.ServerTableMetadata.ConstantsTable.PetMaxLevel;
-        if (gain <= 0 || !PetFusionRules.IsTarget(pet.Metadata.Type, ItemPet.Level, maxLevel)) {
+        if (gain <= 0) {
             return;
         }
 
-        int oldLevel = ItemPet.Level;
-        (int level, long exp) = PetFusionRules.Apply(session.TableMetadata.PetExpTable, ItemPet.Level, ItemPet.Exp, Pet.Rarity,
-            Pet.Metadata.Limit.Level, gain, maxLevel);
-        ItemPet.Level = (short) level;
-        ItemPet.Exp = exp;
-        session.Send(PetPacket.Fusion(OwnerId, Pet));
-        if (level != oldLevel) {
-            session.Send(PetPacket.LevelUp(OwnerId, Pet));
-            session.Player.Stats.Refresh();
+        lock (session.Item) {
+            int maxLevel = session.ServerTableMetadata.ConstantsTable.PetMaxLevel;
+            if (!PetFusionRules.IsTarget(pet.Metadata.Type, ItemPet.Level, maxLevel)) {
+                return;
+            }
+
+            int oldLevel = ItemPet.Level;
+            (int level, long exp) = PetFusionRules.Apply(session.TableMetadata.PetExpTable, ItemPet.Level, ItemPet.Exp, Pet.Rarity,
+                Pet.Metadata.Limit.Level, gain, maxLevel);
+            ItemPet.Level = (short) level;
+            ItemPet.Exp = exp;
+            session.Send(PetPacket.Fusion(OwnerId, Pet));
+            if (level != oldLevel) {
+                session.Send(PetPacket.LevelUp(OwnerId, Pet));
+                session.Player.Stats.Refresh();
+            }
         }
     }
 
