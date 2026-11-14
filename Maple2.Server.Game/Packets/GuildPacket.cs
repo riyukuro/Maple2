@@ -220,14 +220,6 @@ public static class GuildPacket {
         return pWriter;
     }
 
-    public static ByteWriter UpdateMemberMessage(string message) {
-        var pWriter = Packet.Of(SendOp.Guild);
-        pWriter.Write<Command>(Command.UpdateMemberMessage);
-        pWriter.WriteUnicodeString(message);
-
-        return pWriter;
-    }
-
     public static ByteWriter UpdateMemberName(string oldName, string newName) {
         var pWriter = Packet.Of(SendOp.Guild);
         pWriter.Write<Command>(Command.UpdateMemberName);

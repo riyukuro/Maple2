@@ -293,7 +293,8 @@ public class GuildModeHandlerTests {
         Send(13, writer => writer.WriteUnicodeString(text));
 
         Assert.That(test.World.GuildRequests.Single().UpdateMember.Message, Is.EqualTo(text));
-        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.UpdateMemberMessage(text)) }));
+        // The World's broadcast (22) tells the sender; 11 would be read by the client as a member name.
+        Assert.That(GuildAnswers(), Is.Empty);
     }
 
     [TestCase("Notice")]

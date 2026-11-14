@@ -537,8 +537,9 @@ public class GuildHandler : PacketHandler<GameSession> {
                 session.Send(GuildPacket.Error(error));
                 return;
             }
-
-            session.Send(GuildPacket.UpdateMemberMessage(message));
+            // No answer of its own: the client has no case for 13, and its 11 (FUN_1413be670) reads a member
+            // name, not the message. The sender learns the new message from the World's broadcast to every
+            // member (22, OnPacketSetMemberMessage), which includes the sender.
         } catch (RpcException ex) {
             Logger.Error(ex, "Failed to update the guild message of {CharacterId}", session.CharacterId);
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
