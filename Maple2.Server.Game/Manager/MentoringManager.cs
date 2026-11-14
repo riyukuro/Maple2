@@ -82,6 +82,16 @@ public class MentoringManager : IDisposable {
             return;
         }
 
+        // The level the client's menu asks before it opens the register page (uigamemenudialog.cpp:2078-2090,
+        // MentorRequireLevel and MenteeRequireLevel of constants.xml, KR 50 and 30). Its own notice is local and
+        // the error list has no level text, so a lower level gets the season refusal's code.
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        int requiredLevel = role == MentorRole.Mentee ? constants.MenteeRequireLevel : constants.MentorRequireLevel;
+        if (session.Player.Value.Character.Level < requiredLevel) {
+            session.Send(MentorPacket.Error(role == MentorRole.Mentee ? MentorError.IsNotReturnUser : MentorError.InvalidTarget));
+            return;
+        }
+
         // The role is set first: the season's quests can require it (require mentee, as 70600057 does).
         session.Player.Value.Character.MentorRole = role;
         if (role == MentorRole.Mentee) {

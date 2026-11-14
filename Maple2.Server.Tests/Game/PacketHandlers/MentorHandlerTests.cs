@@ -178,6 +178,27 @@ public class MentorHandlerTests {
         Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.None));
     }
 
+    // The client's menu opens the register page only from MentorRequireLevel (mentor) or MenteeRequireLevel (mentee)
+    // of constants.xml (KR 50 and 30, uigamemenudialog.cpp:2078-2090): one level lower gets the refusal and no role,
+    // the level itself registers.
+    [TestCase(RegisterMentor, MentorRole.Mentor, MentorError.InvalidTarget)]
+    [TestCase(RegisterMentee, MentorRole.Mentee, MentorError.IsNotReturnUser)]
+    public void Register_BelowTheRequiredLevelIsRefused(byte command, MentorRole role, MentorError error) {
+        Login(season: true);
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { MentorRequireLevel = 50, MenteeRequireLevel = 30 });
+        short required = (short) (role == MentorRole.Mentor ? 50 : 30);
+        session.Player.Value.Character.Level = (short) (required - 1);
+        Send(session, command);
+
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(error) }));
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.None));
+        Assert.That(test.World.PlayerUpdates.Any(update => update.HasMentorRole), Is.False);
+
+        session.Player.Value.Character.Level = required;
+        Send(session, command);
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(role));
+    }
+
     [Test]
     public void Register_TwiceAnswersTheNoticeAgain() {
         Login(season: true);
