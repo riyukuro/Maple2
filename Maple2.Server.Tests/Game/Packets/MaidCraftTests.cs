@@ -150,6 +150,11 @@ public class MaidCraftTests {
         Item tagged = NewItem(5, Metadata(30000099, tag: ItemTag.FreeChannelChatCoupon, rank: 2), 1, rarity: 4);
         Item locked = NewItem(6, Metadata(30000001), 5);
         locked.IsLocked = true;
+        // Unlocked but still inside the unlock wait: the client's lock filter skips it too.
+        Item unlocking = NewItem(7, Metadata(30000001), 5);
+        unlocking.UnlockTime = DateTimeOffset.UtcNow.AddHours(1).ToUnixTimeSeconds();
+        Item unlocked = NewItem(8, Metadata(30000001), 5);
+        unlocked.UnlockTime = DateTimeOffset.UtcNow.AddHours(-1).ToUnixTimeSeconds();
         Assert.Multiple(() => {
             Assert.That(MaidRules.Fills(byId, plain), Is.True);
             Assert.That(MaidRules.Fills(byId, ranked), Is.True);
@@ -158,6 +163,8 @@ public class MaidCraftTests {
             Assert.That(MaidRules.Fills(byTag, tagged), Is.True);
             Assert.That(MaidRules.Fills(byTag, plain), Is.False);
             Assert.That(MaidRules.Fills(byId, locked), Is.False);
+            Assert.That(MaidRules.Fills(byId, unlocking), Is.False);
+            Assert.That(MaidRules.Fills(byId, unlocked), Is.True);
         });
     }
 

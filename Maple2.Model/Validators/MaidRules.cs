@@ -197,9 +197,10 @@ public static class MaidRules {
 
     // An owned item that counts toward an ingredient: by tag (any rarity) or by id. An id ingredient that is not
     // equipment (item type 1) needs the item's rank as its rarity when it has one; equipment takes any rarity (the
-    // client's ingredient rarity, never set by the table). Expired and locked items do not count.
+    // client's ingredient rarity, never set by the table). Expired items do not count, nor locked ones or ones still
+    // unlocking (CItem::FUN_140528e20, the lock filter of the inventory count).
     public static bool Fills(MaidTable.Ingredient ingredient, Item item) {
-        if (item.IsExpired() || item.IsLocked || item.Amount <= 0) {
+        if (item.IsExpired() || item.IsLockedOrUnlocking() || item.Amount <= 0) {
             return false;
         }
         if (ingredient.Tag != ItemTag.None) {
