@@ -38,7 +38,9 @@ public class ItemUseHandler : FieldPacketHandler {
 
     // The checks an item use passes before its function runs: not expired (pets and maid furnishings excepted), a
     // premium-club item only with premium club, a shadow world item only in the shadow world. RequestItemBox runs them
-    // too (ItemBoxHandler).
+    // too (ItemBoxHandler). A locked item is used like any other: the client's UseItem (CanUseItem @0x140d1b610) does not
+    // ask the item lock, which (CItemLockManager::CanUseItem) guards only the trade, the black market, the drop/destroy
+    // and the dismantle.
     public static bool UseAllowed(GameSession session, Item item) {
         if (!ItemLockRules.ExpiryAllowsUse(item.IsExpired(), item.Metadata.Property.Type, MaidRules.MaidId(item.Metadata, false))) {
             return false;

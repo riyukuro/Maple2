@@ -108,4 +108,19 @@ public class AddPetExpTests {
         Assert.That((pet.Pet.Level, pet.Pet.Exp), Is.EqualTo((level, 0L)));
         Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.ResponsePet));
     }
+
+    // The client's UseItem (CanUseItem @0x140d1b610) does not ask the item lock: a locked item is used as any other.
+    // CItemLockManager::CanUseItem guards only the trade, the black market, the drop/destroy and the dismantle.
+    [Test]
+    public void Use_LockedStone_IsUsed() {
+        GameSession session = Start();
+        stone.IsLocked = true;
+        stone.UnlockTime = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
+
+        Assert.That(ItemUseHandler.UseAllowed(session, stone), Is.True);
+        Use(session);
+
+        Assert.That(Stones(session), Is.EqualTo(1));
+        Assert.That((pet.Pet!.Level, pet.Pet.Exp), Is.EqualTo(((short) 4, 0L)));
+    }
 }
