@@ -848,6 +848,10 @@ public class GuildHandler : PacketHandler<GameSession> {
     // With the feature off only a forged request reaches the World server's house rank or theme.
     public const string HouseFeature = "GuildHouse01";
 
+    // The guild window's event register and withdraw buttons are disabled with GuildMinigame01 off
+    // (UIGuildDialog::UpdateEventButtons, uiguilddialog.cpp:3125), and they are the only senders of 115 and 116.
+    public const string VsGameFeature = "GuildMinigame01";
+
     // CGuildManager::RequestPvpHistoryAndSeason (guildmanager.cpp:1144): sent when the guild PvP tab opens,
     // with the end time (fb8) of the newest match the client holds; the client adds the rows it gets, so only
     // the guild's matches after that time are sent.
@@ -1369,7 +1373,7 @@ public class GuildHandler : PacketHandler<GameSession> {
     // game. The World takes the ticket while a GuildVsGameOpen event is on and tells the members (118); two tickets
     // make a match (World GuildVsGameLookup), whose members get the entry prompt (119).
     private void HandleCreateGuildEvent(GameSession session) {
-        if (session.Guild.Guild == null) {
+        if (session.Guild.Guild == null || !session.ServerTableMetadata.FeatureTable.IsOn(VsGameFeature)) {
             return;
         }
 
@@ -1390,7 +1394,7 @@ public class GuildHandler : PacketHandler<GameSession> {
     // The World tells the members (118 false); a guild already matched or without a ticket gets 118 false without a
     // line.
     private void HandleStartGuildEvent(GameSession session) {
-        if (session.Guild.Guild == null) {
+        if (session.Guild.Guild == null || !session.ServerTableMetadata.FeatureTable.IsOn(VsGameFeature)) {
             return;
         }
         if (!session.Guild.HasPermission(session.CharacterId, GuildPermission.StartMiniGame)) {

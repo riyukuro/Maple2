@@ -37,8 +37,16 @@ public class MesoMarketHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
+    // The meso pages hang under the black market's meso radio button, which is hidden with MesoMarket off
+    // (UIBlackMarketDialog::OnLoadComplete, uiblackmarketdialog.cpp:227); modes 5-8 are sent only from them
+    // (uiblackmarketpagemeso.cpp:284/407/620/635). The load (3) is sent on every open of the window and stays.
+    public const string Feature = "MesoMarket";
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        if (command != Command.Load && !session.ServerTableMetadata.FeatureTable.IsOn(Feature)) {
+            return;
+        }
         switch (command) {
             case Command.Load:
                 HandleLoad(session);

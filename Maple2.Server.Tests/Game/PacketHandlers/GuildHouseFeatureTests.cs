@@ -2,6 +2,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.World.Service;
@@ -51,5 +52,29 @@ public class GuildHouseFeatureTests {
 
         return test.World.GuildRequests.Count(request =>
             request.GuildCase is GuildRequest.GuildOneofCase.UpgradeHouse or GuildRequest.GuildOneofCase.ChangeHouseTheme);
+    }
+
+    // Guild 115 / 116 (the guild vs game ticket and its withdrawal) come only from the event buttons, which are
+    // disabled with GuildMinigame01 off: the World gets no ticket request.
+    [TestCase((byte) 115, false, ExpectedResult = 0)]
+    [TestCase((byte) 116, true, ExpectedResult = 1)]
+    [TestCase((byte) 116, false, ExpectedResult = 0)]
+    public int VsGameRequestsNeedTheFeature(byte command, bool on) {
+        TestGameSession test = Start(true);
+        // The player holds the guild's mini game right.
+        Guild guild = test.Session.Guild.Guild!;
+        guild.Ranks.Add(new GuildRank { Id = 0, Name = "Master", Permission = GuildPermission.All });
+        guild.Members[test.CharacterId] = new GuildMember { GuildId = guild.Id, Info = new PlayerInfo(new CharacterInfo(test.AccountId, test.CharacterId, "Master", "", "", Gender.Male, Job.Newbie, 20), "",
+            new AchievementInfo(), []), Rank = 0 };
+        if (!on) {
+            test.SetFeaturesOff(GuildHandler.VsGameFeature);
+        }
+
+        new GuildHandler {
+            World = test.World, TableMetadata = null!, BanWordStorage = null!, ServerTableMetadata = test.ServerTableMetadata,
+        }.Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(command)));
+
+        return test.World.GuildRequests.Count(request =>
+            request.GuildCase is GuildRequest.GuildOneofCase.VsGameRegister or GuildRequest.GuildOneofCase.VsGameUnregister);
     }
 }

@@ -9,6 +9,11 @@ public static class EquipKind {
     public const byte Outfit = 1;
     public const byte Outfit2 = 2;
 
+    // The client has no second outfit tab with Skin2tab off: its equip test refuses kind 2 (Unk_Inventory::CanEquipItem,
+    // inventory.cpp:1425) and the closet lists no third layer (UIClosetDialog::BuildEquipProvider, uiclosetdialog.cpp:801),
+    // so the tab counts as closed and kind 2 lands in the first outfit tab.
+    public const string Outfit2Feature = "Skin2tab";
+
     // The second outfit tab takes items only while its period runs. Hair, face and face decoration are
     // replaced in the first tab only (they are destroyed when taken off).
     public static bool CanUseOutfit2(EquipSlot slot, bool tabActive) {

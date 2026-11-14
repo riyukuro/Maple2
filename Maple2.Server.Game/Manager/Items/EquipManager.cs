@@ -125,7 +125,7 @@ public class EquipManager {
 
             // The client names a tab, but the item's own type and the second tab's period decide it.
             Character character = session.Player.Value.Character;
-            bool tabActive = SkinTabPeriod.IsActive(character.SkinTabStart, character.SkinTabEnd, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            bool tabActive = session.ServerTableMetadata.FeatureTable.IsOn(EquipKind.Outfit2Feature) && SkinTabPeriod.IsActive(character.SkinTabStart, character.SkinTabEnd, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             bool isSkin = item.Metadata.Property.IsSkin;
             kind = EquipKind.Resolve(kind, isSkin, slot, tabActive) ?? kind;
             if (!ValidEquipSlotForItem(slot, item)) {

@@ -189,4 +189,31 @@ public class ItemEquipHandlerTests {
             (session.CharacterId, true, 3382), (session.CharacterId, true, 3400),
         }));
     }
+
+    // Kind 2 (the second outfit tab) while the tab's period runs: it lands there only with Skin2tab on; with it off the
+    // client has no such tab and the item goes to the first outfit tab.
+    [TestCase(true, ExpectedResult = "Outfit2")]
+    [TestCase(false, ExpectedResult = "Outfit")]
+    public string Outfit2_NeedsSkin2tab(bool on) {
+        test = new TestGameSession();
+        ItemMetadata metadata = TestGameSession.Metadata(11300001, EquipSlot.CP, slotMax: 1);
+        Item cap = test.Store(metadata with { Property = metadata.Property with { IsSkin = true } });
+        GameSession session = test.Start();
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        session.Player.Value.Character.SkinTabStart = now - 60;
+        session.Player.Value.Character.SkinTabEnd = now + 3600;
+        if (!on) {
+            test.SetFeaturesOff(Maple2.Server.Game.Util.EquipKind.Outfit2Feature);
+        }
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(0);
+            writer.WriteLong(cap.Uid);
+            writer.WriteByte((byte) EquipSlot.CP);
+            writer.WriteByte(2);
+        }));
+
+        return session.Item.Equips.Outfit2.ContainsKey(EquipSlot.CP) ? "Outfit2"
+            : session.Item.Equips.Outfit.ContainsKey(EquipSlot.CP) ? "Outfit" : "none";
+    }
 }

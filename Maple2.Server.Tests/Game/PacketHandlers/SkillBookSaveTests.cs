@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Maple2.Database.Context;
@@ -25,7 +26,7 @@ public class SkillBookSaveTests {
     private const int SkillId = 10500001;
 
     // A beginner whose tree has one base-job active skill (not a base skill: it starts at 0 of 10).
-    private static GameSession Setup(TestGameSession test) {
+    internal static GameSession Setup(TestGameSession test) {
         GameSession session = test.Start();
         ProgressionOrderTests.LoadConfig(test, session);
         test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
@@ -131,5 +132,26 @@ public class SkillBookSaveTests {
             writer.WriteInt(3);
         }));
         Assert.That(test.TakeSentOps(), Is.Empty);
+    }
+
+    // Job 10 (the skill reset box): one rank alone is offered only with JobChange_01 on; with it off only 0, every
+    // rank, is answered.
+    [TestCase(1, true, ExpectedResult = 1)]
+    [TestCase(1, false, ExpectedResult = 0)]
+    [TestCase(2, false, ExpectedResult = 0)]
+    [TestCase(0, false, ExpectedResult = 1)]
+    public int Reset_OneRankNeedsJobChange(int clientRank, bool on) {
+        var test = new TestGameSession();
+        GameSession session = Setup(test);
+        if (!on) {
+            test.SetFeaturesOff(JobHandler.RankResetFeature);
+        }
+
+        new JobHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(10);
+            writer.WriteInt(clientRank);
+        }));
+
+        return test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.Job);
     }
 }

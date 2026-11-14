@@ -18,6 +18,8 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class JobHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.Job;
 
+    public const string RankResetFeature = "JobChange_01";
+
     private enum Command : byte {
         Advance = 2,
         Unknown = 7,
@@ -118,6 +120,11 @@ public class JobHandler : FieldPacketHandler {
         // The client sends its job rank number: 0 every rank, 1 base job, 2 awakening.
         SkillRank? rank = JobRules.ReadResetRank(packet);
         if (rank == null) {
+            return;
+        }
+        // The reset box offers one rank only with JobChange_01 on (UISkillBookTreeDialog::OnResetConfirm,
+        // uiskillbookautodistributedialog.cpp:956); with it off the client always sends 0, every rank.
+        if (rank != SkillRank.Both && !session.ServerTableMetadata.FeatureTable.IsOn(RankResetFeature)) {
             return;
         }
         session.Config.Skill.ResetSkills(rank.Value);

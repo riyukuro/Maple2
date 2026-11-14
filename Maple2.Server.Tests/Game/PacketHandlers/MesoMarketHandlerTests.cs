@@ -459,4 +459,21 @@ public class MesoMarketHandlerTests {
             Assert.That(test.Errors.Concat(buyerTest.Errors), Is.Empty, $"round {round}");
         }
     }
+
+    // Modes 5-8 come only from the meso pages, which the window hides with MesoMarket off: a bad search range is
+    // answered only with the feature on. The load (3) is answered either way.
+    [TestCase(true, ExpectedResult = 1)]
+    [TestCase(false, ExpectedResult = 0)]
+    public int Search_NeedsMesoMarket(bool on) {
+        GameSession session = Login();
+        if (!on) {
+            test.SetFeaturesOff(MesoMarketHandler.Feature);
+        }
+
+        Send(session, 7, 0, BASE);
+        int answers = Sent().Count;
+        Send(session, 3);
+        Assert.That(Sent(), Is.Not.Empty);
+        return answers;
+    }
 }
