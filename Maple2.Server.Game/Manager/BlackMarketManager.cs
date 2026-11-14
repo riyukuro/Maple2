@@ -265,14 +265,14 @@ public sealed class BlackMarketManager {
             // A throw before the commit undoes the transaction, so the mesos go back. A throw after it (the answer's
             // shaping) leaves the buy stored and the item mailed, so the price stays taken.
             if (!stored) {
-                session.Currency.ReturnMeso(cost);
+                session.Currency.ReturnMeso(cost, notify: false);
             } else {
                 session.Currency.NotifyMeso();
             }
             throw;
         }
         if (listing == null || receivingMail == null) {
-            session.Currency.ReturnMeso(cost);
+            session.Currency.ReturnMeso(cost, notify: false);
             session.Send(BlackMarketPacket.Error(gone ? BlackMarketError.s_err_lack_itemcount : BlackMarketError.s_blackmarket_error_purchase_count, 5, listingId));
             return;
         }
