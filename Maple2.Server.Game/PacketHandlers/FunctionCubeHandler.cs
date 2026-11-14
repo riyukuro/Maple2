@@ -99,7 +99,8 @@ public class FunctionCubeHandler : FieldPacketHandler {
     }
 
     // The byte after each cube id: 1 from the action key, the furniture state and the gathering states; 2 from a skill
-    // hit (functioncubeobject.cpp:2838) on a cube whose StateChangeAction is Attack (objectdata.cpp:150).
+    // hit (functioncubeobject.cpp:2838) on a cube the client marks for it: kind 3 of sub 2 (CFunctionCubeObject::vfunc_2
+    // sets m_bLike, functioncubeobject.cpp:541, read by FUN_141236a60 at :489).
     private const byte UseBySkillHit = 2;
 
     private void HandleUseCube(GameSession session, string interactId, byte via) {
