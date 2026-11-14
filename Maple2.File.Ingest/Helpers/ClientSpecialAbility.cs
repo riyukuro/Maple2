@@ -31,8 +31,10 @@ namespace Maple2.File.Ingest.Helpers;
 //   the stat conversion, Accuracy to BonusAtk and Strength to Intelligence at the rate (the data pack
 //   writes the same rows as <Status statChangeBase statChangeResult statChangeRate>, 2.2 on 90051195 and 0.7 on
 //   10900041, and the client has no statChange attributes). A level holds one conversion; a second one is unmapped.
-// The rest (defensive_damageV, cap_ignore_limit, cad_ignore_limit, cap_ignore_limit_extra, aevp,
-// reduce_do_heal_hp, ...) has no server stat; Add returns false and counts it in Unmapped.
+// - cap_ignore_limit, cad_ignore_limit and cap_ignore_limit_extra (ids 202, 203, 205): the special stats of the same
+//   ids, which the client adds after the clamps of its crit rate and crit damage functions;
+// The rest (defensive_damageV, aevp, reduce_do_heal_hp, ...) has no server stat; Add returns false and counts it in
+// Unmapped.
 public sealed class ClientSpecialAbility {
     // The stats an additional effect level adds, as AdditionalEffectMetadataStatus holds them.
     public sealed class Stats {
@@ -167,6 +169,9 @@ public sealed class ClientSpecialAbility {
         }
         special["offensive_physicaldamage"] = SpecialAttribute.OffensivePhysicalDamage;
         special["offensive_magicaldamage"] = SpecialAttribute.OffensiveMagicalDamage;
+        special["cap_ignore_limit"] = SpecialAttribute.CriticalRateIgnoreLimit;
+        special["cad_ignore_limit"] = SpecialAttribute.CriticalDamageIgnoreLimit;
+        special["cap_ignore_limit_extra"] = SpecialAttribute.CriticalRateIgnoreLimitExtra;
         return special;
     }
 

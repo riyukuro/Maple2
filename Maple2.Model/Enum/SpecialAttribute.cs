@@ -362,4 +362,12 @@ public enum SpecialAttribute : byte {
     OffensiveMagicalDamage = 178,
     [Description("s_item_opt_sa_reduce_gameitem_socket_unlock_fee")]
     ReduceGameItemSocketUnlockFee = 179,
+    // The client's special abilities 202, 203 and 205 (specialabilitystringtable.xml), added after the clamps of its
+    // crit rate (202 flat, 205 thousandths) and crit damage (203 flat, thousandths of the multiplier) functions.
+    [Description("cap_ignore_limit")]
+    CriticalRateIgnoreLimit = 202,
+    [Description("cad_ignore_limit")]
+    CriticalDamageIgnoreLimit = 203,
+    [Description("cap_ignore_limit_extra")]
+    CriticalRateIgnoreLimitExtra = 205,
 }

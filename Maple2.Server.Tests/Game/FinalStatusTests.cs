@@ -22,7 +22,10 @@ public class FinalStatusTests {
           <key id="175" option="defensive_physicaldamage" valueType="2" />
           <key id="177" option="offensive_physicaldamage" valueType="2" />
           <key id="187" option="msp" valueType="1" />
+          <key id="202" option="cap_ignore_limit" valueType="1" />
+          <key id="203" option="cad_ignore_limit" valueType="1" />
           <key id="204" option="aevp" valueType="2" />
+          <key id="205" option="cap_ignore_limit_extra" valueType="2" />
           <key id="195" option="pap" valueType="1" />
           <key id="196" option="map" valueType="1" />
           <key id="199" option="pen" valueType="2" />
@@ -60,6 +63,21 @@ public class FinalStatusTests {
         Assert.That(stats.Values[BasicAttribute.MovementSpeed], Is.EqualTo(-50));
         Assert.That(stats.SpecialRates[SpecialAttribute.OffensivePhysicalDamage], Is.EqualTo(1.5f).Within(1e-6));
         Assert.That(stats.PhysicalDamageTakenRate, Is.EqualTo(0.3f).Within(1e-6));
+    }
+
+    // The crit specials 202, 203 and 205 at the played pack's values: cap_ignore_limit 20 (10700181 level 1),
+    // cad_ignore_limit 200 (10400243), cap_ignore_limit_extra 280 (10800041 level 1, thousandths).
+    [Test]
+    public void CritIgnoreLimitSpecials() {
+        ClientSpecialAbility specialAbility = SpecialAbility();
+        var stats = new ClientSpecialAbility.Stats();
+        Assert.That(specialAbility.Add(stats, "cap_ignore_limit", 20), Is.True);
+        Assert.That(specialAbility.Add(stats, "cad_ignore_limit", 200), Is.True);
+        Assert.That(specialAbility.Add(stats, "cap_ignore_limit_extra", 280), Is.True);
+        Assert.That(specialAbility.Unmapped, Is.Empty);
+        Assert.That(stats.SpecialValues[(SpecialAttribute) 202], Is.EqualTo(20));
+        Assert.That(stats.SpecialValues[(SpecialAttribute) 203], Is.EqualTo(200));
+        Assert.That(stats.SpecialRates[(SpecialAttribute) 205], Is.EqualTo(0.28f).Within(1e-6));
     }
 
     // A type with no server stat, or none in the table, is counted and left out.
