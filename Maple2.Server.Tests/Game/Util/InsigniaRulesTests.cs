@@ -58,6 +58,7 @@ public class InsigniaRulesTests {
         Assert.That(Shown(InsigniaConditionType.enchant, Plain with { HighEnchant = true }), Is.True);
         Assert.That(Shown(InsigniaConditionType.vip, Plain with { Vip = true }), Is.True);
         Assert.That(Shown(InsigniaConditionType.Burning, Plain with { BurningSymbol = true }), Is.True);
+        Assert.That(Shown(InsigniaConditionType.return_user, Plain with { Mentee = true }), Is.True);
     }
 
     [Test]

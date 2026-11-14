@@ -17,6 +17,10 @@ public static class MentoringAttend {
     // day, which the mentee page shows against the coins today of Mentor 11 (uimentoringmenteepage.cpp:111).
     public const int MenteeDailyCoinMax = 1500;
 
+    // table/mentoringconfig.xml isShowIcon (KR 1): the return_user name-tag symbol is shown only with it
+    // (CNametagSymbolTable::CheckCondition, nametagsymboltable.cpp:268, MentoringDataTable +0x30).
+    public const bool ShowIcon = true;
+
     // The part of coin still given today when today coins were given already.
     public static long DailyPart(long coin, long today) => Math.Clamp(MenteeDailyCoinMax - today, 0, Math.Max(coin, 0));
 

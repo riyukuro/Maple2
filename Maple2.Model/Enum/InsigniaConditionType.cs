@@ -15,4 +15,5 @@ public enum InsigniaConditionType {
     adventure_level,
     Burning,
     survivallevel,
+    return_user, // 12, as the parser numbers it
 }

@@ -15,7 +15,7 @@ public static class InsigniaRules {
     // insignia as its symbol (GameEventBurningLevelupCli::FUN_140ce64e0: the account's 2000 value is the character,
     // 2001 is 0, and the event's equipNametagSymbolId is the insignia).
     public readonly record struct Facts(bool HasTitle, int PrestigeLevel, int TrophyTotal, bool HighEnchant, int Level, bool Vip, bool Gm,
-                                        bool BurningSymbol = false);
+                                        bool BurningSymbol = false, bool Mentee = false);
 
     public static bool Shown(InsigniaConditionType type, in Facts facts) {
         return type switch {
@@ -27,6 +27,9 @@ public static class InsigniaRules {
             InsigniaConditionType.vip => facts.Vip,
             InsigniaConditionType.GM => facts.Gm, // the client: GM grade 50 or more
             InsigniaConditionType.Burning => facts.BurningSymbol,
+            // The client: the mentoring table's isShowIcon and the wearer's mentoring role 2, a registered mentee
+            // (PC +0x11cc, set from the field's character block and Mentor 1; nametagsymboltable.cpp:267).
+            InsigniaConditionType.return_user => MentoringAttend.ShowIcon && facts.Mentee,
             _ => false,
         };
     }
@@ -41,7 +44,7 @@ public static class InsigniaRules {
     public static bool Handled(InsigniaConditionType type) {
         return type is InsigniaConditionType.title or InsigniaConditionType.adventure_level or InsigniaConditionType.trophy_point
             or InsigniaConditionType.enchant or InsigniaConditionType.level or InsigniaConditionType.vip or InsigniaConditionType.GM
-            or InsigniaConditionType.Burning;
+            or InsigniaConditionType.Burning or InsigniaConditionType.return_user;
     }
 
     public static bool Shown(GameSession session, InsigniaTable.Entry entry) {
@@ -54,7 +57,8 @@ public static class InsigniaRules {
             Vip: session.Player.Value.Account.PremiumTime > DateTime.UtcNow.ToEpochSeconds(),
             Gm: GmCheck.IsGm(session.Player.Value.Account.AdminPermissions),
             BurningSymbol: session.GameEvent.BurningLevelupEvent() is { Metadata.Data: BurningLevelup burning }
-                           && burning.NametagSymbolId == session.Player.Value.Character.Insignia));
+                           && burning.NametagSymbolId == session.Player.Value.Character.Insignia,
+            Mentee: session.Player.Value.Character.MentorRole == MentorRole.Mentee));
     }
 
     // The effect a worn insignia gives when its wearer enters a field: the row's effect when the insignia is
