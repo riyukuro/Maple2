@@ -78,7 +78,10 @@ public sealed class AgentNavigation {
         int nvisited = 0;
 
         int MAX_POLYS = 256;
-        int MAX_SMOOTH = 256;
+        // Room for a path of 204,800 map units, past the length of any KR map. At 256 points (12,800 units) a longer
+        // path was cut where the points ran out and the npc stopped there: 02000331_bf, npc 11001165 on
+        // MS2PatrolData_1013 stopped 1,078 short of its waypoint. Chosen here: 4096, only long paths reach it.
+        int MAX_SMOOTH = 4096;
         List<RcVec3f> smoothPath = [];
         while (pathIterPolysCount > 0 && smoothPath.Count < MAX_SMOOTH) {
             // Find location to steer towards.

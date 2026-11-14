@@ -66,6 +66,58 @@ public class AgentNavigationTests {
         Assert.That(path.All(point => Math.Abs(point.Y) < 0.01), Is.True);
     }
 
+    // One flat strip, 200 x 10 navmesh units (20,000 by 1,000 map units) at height 0.
+    private static DtNavMesh LongStrip() {
+        var option = new DtNavMeshCreateParams {
+            verts = [0, 0, 0, 0, 0, 100, 2000, 0, 100, 2000, 0, 0],
+            vertCount = 4,
+            polys = [0, 1, 2, 3, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff],
+            polyAreas = [0],
+            polyFlags = [1],
+            polyCount = 1,
+            nvp = 6,
+            walkableHeight = 2,
+            walkableRadius = 0.5f,
+            walkableClimb = 0.5f,
+            bmin = new RcVec3f(0, 0, 0),
+            bmax = new RcVec3f(200, 1, 10),
+            cs = 0.1f,
+            ch = 0.1f,
+            buildBvTree = true,
+            offMeshConVerts = [],
+            offMeshConRad = [],
+            offMeshConDir = [],
+            offMeshConAreas = [],
+            offMeshConFlags = [],
+            offMeshConUserID = [],
+        };
+        DtMeshData? data = DtNavMeshBuilder.CreateNavMeshData(option);
+        Assert.That(data, Is.Not.Null);
+        var navMesh = new DtNavMesh();
+        Assert.That(navMesh.Init(data, 6, 0).Succeeded(), Is.True);
+        return navMesh;
+    }
+
+    // A path longer than 256 steps (12,800 map units) still ends at its target. Before, the smooth path stopped at 256
+    // points: 02000331_bf's seeker01 sends npc 11001165 along MS2PatrolData_1013, whose waypoint (-5025, -4650, 5550)
+    // is a full path of 109 polys from the npc, and the npc stopped 1,078 short of it and never arrived.
+    [Test]
+    public void SmoothPath_ReachesAFarTarget() {
+        DtNavMesh navMesh = LongStrip();
+        var query = new DtNavMeshQuery(navMesh);
+        var filter = new DtQueryDefaultFilter();
+        var extents = new RcVec3f(2, 4, 2);
+        var start = new RcVec3f(1, 0, 5);
+        var target = new RcVec3f(199, 0, 5);
+        query.FindNearestPoly(start, extents, filter, out long startRef, out _, out _);
+        query.FindNearestPoly(target, extents, filter, out long endRef, out _, out _);
+
+        List<RcVec3f>? path = AgentNavigation.SmoothPath(navMesh, query, filter, startRef, endRef, start, target);
+
+        Assert.That(path, Is.Not.Null.And.Not.Empty);
+        Assert.That(path![^1].X, Is.EqualTo(199).Within(0.01));
+    }
+
     // A point over the mesh lands on it; one beyond the search box across, or a NaN one, is refused instead of kept as it is.
     [Test]
     public void SnapToMesh_RefusesPointsOffTheMesh() {
