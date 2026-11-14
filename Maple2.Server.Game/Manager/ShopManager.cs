@@ -511,45 +511,56 @@ public sealed class ShopManager {
     }
 
 
+    // The command an error answers (its second field): the client's shop window resets the selection it made for that
+    // command (UIShopDialog::ReadShopError, Selection::ResetIf: a buy is 4, a buy back 3).
+    private const byte BuyBackCommand = 3;
+    private const byte BuyCommand = 4;
+
+    // Every buy is answered: the client turns its shop window off when it sends one (uishopdialog.cpp:992, 1514,
+    // 3191) and on again only with a reply (ReadShopError, ReadPurchaseResult, ReadProductUpdate). A refusal whose
+    // notice the client shows itself before it sends (the trophy, fame and guild npc checks) answers code 8, which
+    // turns the window on with no notice.
     public void Buy(int shopItemId, int quantity, int shopId) {
         // The client names the shop of its window (UIShopDialog::SendPurchase); a buy for another shop is dropped.
         if (!ShopOpen() || shopId != activeShop.Id) {
+            session.Send(ShopPacket.Error(ShopError.s_err_no_notice, BuyCommand));
             return;
         }
 
         if (!StarEventOpen()) {
-            session.Send(ShopPacket.Error(ShopError.s_shop_no_star_point_event));
+            session.Send(ShopPacket.Error(ShopError.s_shop_no_star_point_event, BuyCommand));
             return;
         }
 
         if (!activeShop.Items.TryGetValue(shopItemId, out ShopItem? shopItem)) {
-            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
+            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item, BuyCommand));
             return;
         }
 
 
         if (shopItem.Metadata.RestrictedBuyData?.CanBuy(DateTime.Now) == false) {
-            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item_cannot_buy_by_period));
+            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item_cannot_buy_by_period, BuyCommand));
             return;
         }
 
         if (!StarEventOpen(shopItem.Metadata.Cost.Type)) {
-            session.Send(ShopPacket.Error(ShopError.s_shop_no_star_point_event));
+            session.Send(ShopPacket.Error(ShopError.s_shop_no_star_point_event, BuyCommand));
             return;
         }
 
         int unitPrice = shopItem.Metadata.Cost.SaleAmount > 0 ? shopItem.Metadata.Cost.SaleAmount : shopItem.Metadata.Cost.Amount;
         if (!ShopRules.TryTotalPrice(unitPrice, quantity, out int price)) {
-            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
+            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item, BuyCommand));
             return;
         }
 
         if (shopItem.StockCount != 0 && quantity > shopItem.StockCount - shopItem.StockPurchased) {
-            session.Send(ShopPacket.Error(ShopError.s_err_lack_shopitem));
+            session.Send(ShopPacket.Error(ShopError.s_err_lack_shopitem, BuyCommand));
             return;
         }
 
         if (shopItem.Metadata.Requirements.Achievement.Id > 0 && !session.Achievement.HasAchievement(shopItem.Metadata.Requirements.Achievement.Id, shopItem.Metadata.Requirements.Achievement.Rank)) {
+            session.Send(ShopPacket.Error(ShopError.s_err_no_notice, BuyCommand));
             return;
         }
 
@@ -557,15 +568,14 @@ public sealed class ShopManager {
                 session.Guild.GetMember(session.CharacterId)?.JoinTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 session.Guild.Guild?.AchievementInfo.Total ?? 0, session.Guild.NpcLevel(shopItem.Metadata.Requirements.GuildNpc.Type),
                 session.Guild.Guild?.LeaderCharacterId == session.CharacterId, out ShopError? guildError)) {
-            if (guildError != null) {
-                session.Send(ShopPacket.Error(guildError.Value));
-            }
+            session.Send(ShopPacket.Error(guildError ?? ShopError.s_err_no_notice, BuyCommand));
             return;
         }
 
         // The fame table is read only for a product with a grade.
         ShopItemMetadata.QuestAlliance fame = shopItem.Metadata.Requirements.QuestAlliance;
         if (fame.Grade > 0 && !ShopRules.CheckFameProduct(fame, session.TableMetadata.FameTable, session.Player.Value.Unlock.FamePoints)) {
+            session.Send(ShopPacket.Error(ShopError.s_err_no_notice, BuyCommand));
             return;
         }
 
@@ -576,7 +586,7 @@ public sealed class ShopManager {
         // offers is the item count divided by the pack size, :453). So the bag gets quantity x pack size.
         long itemCount = (long) quantity * shopItem.SellUnit;
         if (itemCount > int.MaxValue) {
-            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
+            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item, BuyCommand));
             return;
         }
 
@@ -587,11 +597,11 @@ public sealed class ShopManager {
         bool toGuildStorage = shopItem.Metadata.Cost.Type == ShopCurrencyType.GuildFund;
         // Room for all of it before the payment (Add takes all or none; a furnishing goes into furnishing storage).
         if (!toGuildStorage && !session.Item.Inventory.HasRoomFor(item)) {
-            session.Send(ShopPacket.Error(ShopError.s_err_inventory));
+            session.Send(ShopPacket.Error(ShopError.s_err_inventory, BuyCommand));
             return;
         }
 
-        if (!Pay(shopItem.Metadata.Cost, price, toGuildStorage ? new RewardItem(item.Id, (short) item.Rarity, item.Amount) : default)) {
+        if (!Pay(shopItem.Metadata.Cost, price, toGuildStorage ? new RewardItem(item.Id, (short) item.Rarity, item.Amount) : default, BuyCommand)) {
             return;
         }
 
@@ -642,13 +652,15 @@ public sealed class ShopManager {
         return shops.TryGetValue(shopId, out CharacterShopData? shopData) && shopData.Interval != ResetType.Default;
     }
 
+    // A buy back turns the window off too (UIShopDialog::BuyProduct, uishopdialog.cpp:2464): every one is answered.
     public void PurchaseBuyBack(int id) {
         if (!ShopOpen()) {
+            session.Send(ShopPacket.Error(ShopError.s_err_no_notice, BuyBackCommand));
             return;
         }
 
         if (!StarEventOpen()) {
-            session.Send(ShopPacket.Error(ShopError.s_shop_no_star_point_event));
+            session.Send(ShopPacket.Error(ShopError.s_shop_no_star_point_event, BuyBackCommand));
             return;
         }
 
@@ -657,12 +669,12 @@ public sealed class ShopManager {
         // the lock: a session save takes the account lock and then the bag lock, so this takes them in that order too.
         lock (session.Item) {
             if (!buyBackItems.TryGetValue(id, out BuyBackItem? buyBackItem)) {
-                session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
+                session.Send(ShopPacket.Error(ShopError.s_err_invalid_item, BuyBackCommand));
                 return;
             }
 
             if (!session.Item.Inventory.CanAdd(buyBackItem.Item)) {
-                session.Send(ShopPacket.Error(ShopError.s_err_inventory));
+                session.Send(ShopPacket.Error(ShopError.s_err_inventory, BuyBackCommand));
                 return;
             }
 
@@ -670,13 +682,14 @@ public sealed class ShopManager {
             // Before, a meso change made between the check and the take (on another thread, or while the add ran)
             // made the take throw with the item given and no meso taken.
             if (!session.Currency.TryTakeMeso(buyBackItem.Price, notify: false)) {
-                session.Send(ShopPacket.Error(ShopError.s_err_lack_meso));
+                session.Send(ShopPacket.Error(ShopError.s_err_lack_meso, BuyBackCommand));
                 return;
             }
 
             if (!buyBackItems.Remove(id)) {
                 session.Currency.ReturnMeso(buyBackItem.Price);
                 logger.Error("Failed to remove buyback item {Id}", id);
+                session.Send(ShopPacket.Error(ShopError.s_err_no_notice, BuyBackCommand));
                 return;
             }
             // KMS2 order: the entry leaves the list, the item comes back, then the mesos are taken.
@@ -778,11 +791,12 @@ public sealed class ShopManager {
     }
 
     // `guildProduct`: the product the guild fund pays for, stored in the guild storage with the fund.
-    private bool Pay(ShopCost cost, int price, RewardItem guildProduct = default) {
+    // `command`: the command its error answers (BuyCommand for a buy).
+    private bool Pay(ShopCost cost, int price, RewardItem guildProduct = default, byte command = 0) {
         switch (cost.Type) {
             case ShopCurrencyType.Meso:
                 if (!session.Currency.TryTakeMeso(price)) {
-                    session.Send(ShopPacket.Error(ShopError.s_err_lack_meso));
+                    session.Send(ShopPacket.Error(ShopError.s_err_lack_meso, command));
                     return false;
                 }
                 break;
@@ -792,14 +806,14 @@ public sealed class ShopManager {
                 // EventMeret takes the red merets when they cover the price, else the plain ones; GameMeret
                 // takes red merets only (MeretCost.OfShop).
                 if (!session.Currency.TryTakeMerets(MeretCost.OfShop(cost.Type)!.Value, price, out _)) {
-                    session.Send(ShopPacket.Error(ShopError.s_err_lack_merat));
+                    session.Send(ShopPacket.Error(ShopError.s_err_lack_merat, command));
                     return false;
                 }
                 break;
             case ShopCurrencyType.GuildFund:
                 GuildError fundError = session.Guild.SpendFund(price, guildProduct);
                 if (fundError != GuildError.none) {
-                    session.Send(ShopPacket.Error(FundBuyError(fundError)));
+                    session.Send(ShopPacket.Error(FundBuyError(fundError), command));
                     if (FundBuyError(fundError) == ShopError.s_err_no_notice) {
                         // The World's own failure, or its answer lost (the buy may be stored: the storage list then
                         // shows it), not a refusal: the guild's unknown error, not the "master only" notice.
@@ -813,7 +827,7 @@ public sealed class ShopManager {
                 if (!session.Item.Inventory.ConsumeItemComponents([
                         ingredient,
                     ])) {
-                    session.Send(ShopPacket.Error(ShopError.s_err_lack_payment_item, 0, cost.ItemId));
+                    session.Send(ShopPacket.Error(ShopError.s_err_lack_payment_item, command, cost.ItemId));
                     return false;
                 }
                 break;
@@ -834,7 +848,7 @@ public sealed class ShopManager {
                 if (currencyType == CurrencyType.None || price < 0 || !session.Currency.TryTake(currencyType, price)) {
                     // Code 11 shows the lack notice of the currency kind in the last int (0: mesos). Chosen
                     // here: the kind is the payment type's number.
-                    session.Send(ShopPacket.Error(ShopError.s_err_lack_meso, 0, (int) cost.Type));
+                    session.Send(ShopPacket.Error(ShopError.s_err_lack_meso, command, (int) cost.Type));
                     return false;
                 }
                 break;

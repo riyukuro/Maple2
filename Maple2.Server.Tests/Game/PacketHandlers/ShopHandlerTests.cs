@@ -68,6 +68,10 @@ public class ShopHandlerTests {
     }
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
+    // The command of a refused buy and buy-back: the client's selection to reset (UIShopDialog::ReadShopError).
+    private const byte BuyCommand = 4;
+    private const byte BuyBackCommand = 3;
+    private static readonly string NoNotice = Hex(ShopPacket.Error(ShopError.s_err_no_notice, BuyCommand));
 
     private static ShopItemMetadata Product(int id, int price, int stock, short sellUnit = 1, ShopItemMetadata.QuestAlliance? fame = null,
                                             ShopCurrencyType currency = ShopCurrencyType.Meso, int itemId = ProductItemId) {
@@ -209,7 +213,7 @@ public class ShopHandlerTests {
             Assert.That(session.Item.Inventory.Find(FurnishingItemId), Is.Empty);
             Assert.That(test.Errors, Is.Empty);
             if (!bought) {
-                Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_inventory)) }));
+                Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_inventory, BuyCommand)) }));
             }
         });
     }
@@ -418,14 +422,15 @@ public class ShopHandlerTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(9970));
     }
 
-    // The client sends its window's shop id with a buy (UIShopDialog::SendPurchase).
+    // The client sends its window's shop id with a buy (UIShopDialog::SendPurchase). The buy is refused with no
+    // notice, which unlocks the window (UIShopDialog::ReadShopError).
     [Test]
-    public void Buy_ForAnotherShopDoesNothing() {
+    public void Buy_ForAnotherShopIsRefusedWithNoNotice() {
         GameSession session = Login();
 
         Buy(session, ProductId, 1, shopId: ShopId + 1);
 
-        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { NoNotice }));
         Assert.That(session.Currency.Meso, Is.EqualTo(10000));
     }
 
@@ -435,7 +440,7 @@ public class ShopHandlerTests {
 
         Buy(session, ProductId, 1);
 
-        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_lack_meso)) }));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_lack_meso, BuyCommand)) }));
         Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
     }
 
@@ -486,6 +491,25 @@ public class ShopHandlerTests {
         Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(5));
     }
 
+    // A buy back with the shop closed is refused with no notice, which turns the client's window on again.
+    [Test]
+    public void BuyBack_WithTheShopClosedIsRefusedWithNoNotice() {
+        GameSession session = Login();
+        Sell(session, bagItem.Uid, 5);
+        int entryId = BitConverter.ToInt32(test.TakeSent()[1], 5);
+        session.Shop.ClearActiveShop();
+        test.TakeSent();
+
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteInt(entryId);
+        }));
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_no_notice, BuyBackCommand)) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(10350));
+    }
+
     [Test]
     public void BuyBack_WithoutMesosKeepsTheEntry() {
         GameSession session = Login();
@@ -499,7 +523,7 @@ public class ShopHandlerTests {
             writer.WriteInt(entryId);
         }));
 
-        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_lack_meso)) }));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_err_lack_meso, BuyBackCommand)) }));
         Assert.That(session.Item.Inventory.Find(20000003), Is.Empty);
     }
 
@@ -689,15 +713,16 @@ public class ShopHandlerTests {
         Assert.That(Convert.ToHexString(sent[3]), Is.EqualTo(Hex(SystemShopPacket.Item())));
     }
 
-    // KMS2 answers the close with nothing; the shop is closed.
+    // KMS2 answers the close with nothing; the shop is closed and a later buy is refused with no notice.
     [Test]
-    public void SystemShop_CloseAnswersNothing() {
+    public void SystemShop_CloseClosesTheShop() {
         GameSession session = Login();
 
         SystemShop(session, open: false);
+        Assert.That(test.TakeSent(), Is.Empty);
         Buy(session, ProductId, 1);
 
-        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { NoNotice }));
         Assert.That(session.Currency.Meso, Is.EqualTo(10000));
     }
 
@@ -790,7 +815,7 @@ public class ShopHandlerTests {
     }
 
     // The client's fame product check (FUN_141b04af0, uishopdialog.cpp:3612): below the alliance's grade the buy
-    // is dropped with no answer (the client shows its own notice); at the grade it is sold.
+    // is refused with no notice of the server's (the client shows its own) to unlock the window; at the grade it is sold.
     [Test]
     public void Buy_OfAFameProductNeedsTheAlliancesGrade() {
         GameSession session = Login();
@@ -798,7 +823,7 @@ public class ShopHandlerTests {
         session.Player.Value.Unlock.FamePoints[AllianceType.GreenHoods] = 500000;
 
         Buy(session, FameProductId, 1);
-        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { NoNotice }));
         Assert.That(session.Currency.Meso, Is.EqualTo(10000));
 
         session.Player.Value.Unlock.FamePoints[AllianceType.MapleAlliance] = 30000;
@@ -815,7 +840,7 @@ public class ShopHandlerTests {
         session.Player.Value.Unlock.FamePoints[AllianceType.MapleAlliance] = 30000;
 
         Buy(session, AnyFameProductId, 1);
-        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { NoNotice }));
         Assert.That(session.Currency.Meso, Is.EqualTo(10000));
 
         session.Player.Value.Unlock.FamePoints[AllianceType.RoyalGuard] = 60000;
@@ -874,7 +899,7 @@ public class ShopHandlerTests {
 
         Buy(session, GuildFundProductId, 1);
 
-        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(shopError)) }));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ShopPacket.Error(shopError, BuyCommand)) }));
         Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
     }
 
@@ -893,7 +918,7 @@ public class ShopHandlerTests {
         Buy(session, GuildFundProductId, 1);
 
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
-            Hex(ShopPacket.Error(ShopError.s_err_no_notice)), Hex(GuildPacket.Error(GuildError.s_guild_err_unknown)),
+            NoNotice, Hex(GuildPacket.Error(GuildError.s_guild_err_unknown)),
         }));
         Assert.That(Convert.ToHexString(ShopPacket.Error(ShopError.s_err_no_notice).ToArray()), Does.Contain("08000000"));
         Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
@@ -1009,7 +1034,8 @@ public class ShopHandlerTests {
         Assert.Multiple(() => {
             Assert.That(sold, Is.EqualTo(bought));
             Assert.That(session.Currency.Meso, Is.EqualTo(bought ? 10000 - 30 + 350 : 10000));
-            Assert.That(sent.Select(Convert.ToHexString).Count(hex => hex == Hex(ShopPacket.Error(ShopError.s_shop_no_star_point_event))),
+            Assert.That(sent.Select(Convert.ToHexString).Count(hex => hex == Hex(ShopPacket.Error(ShopError.s_shop_no_star_point_event, BuyCommand))
+                || hex == Hex(ShopPacket.Error(ShopError.s_shop_no_star_point_event))),
                 Is.EqualTo(bought ? 0 : 2));
         });
         return bought;
@@ -1025,7 +1051,7 @@ public class ShopHandlerTests {
         Assert.Multiple(() => {
             Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
             Assert.That(test.TakeSent().Select(Convert.ToHexString),
-                Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_shop_no_star_point_event)) }));
+                Is.EqualTo(new[] { Hex(ShopPacket.Error(ShopError.s_shop_no_star_point_event, BuyCommand)) }));
         });
     }
 
@@ -1166,8 +1192,8 @@ public class ShopHandlerTests {
 
         Assert.That(session.Currency.Meso, Is.EqualTo(meso), "the new product is not in the stored list; the bought-out product stays bought out");
         Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Shop).Select(Convert.ToHexString).ToList(), Is.EqualTo(new[] {
-            Hex(ShopPacket.Error(ShopError.s_err_invalid_item)),
-            Hex(ShopPacket.Error(ShopError.s_err_lack_shopitem)),
+            Hex(ShopPacket.Error(ShopError.s_err_invalid_item, BuyCommand)),
+            Hex(ShopPacket.Error(ShopError.s_err_lack_shopitem, BuyCommand)),
         }));
     }
 }
