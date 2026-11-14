@@ -104,6 +104,7 @@ public class SpecialEffectWiringTests {
         Hold(player, SpecialEffectRulesTests.EliteRank);
         Assert.That(DamageCalculator.NpcRankDamageFactor(NpcRankDamageTests.Npc(3), player), Is.EqualTo(0.94f));
         Assert.That(DamageCalculator.NpcRankDamageFactor(NpcRankDamageTests.Npc(7), player), Is.EqualTo(0.94f));
+        Assert.That(DamageCalculator.NpcRankDamageFactor(NpcRankDamageTests.Npc(3, friendly: 1), player), Is.EqualTo(1f), "friendly");
         Assert.That(DamageCalculator.NpcRankDamageFactor(NpcRankDamageTests.Npc(1), player), Is.EqualTo(1f));
         Assert.That(DamageCalculator.NpcRankDamageFactor(player, player), Is.EqualTo(1f));
     }

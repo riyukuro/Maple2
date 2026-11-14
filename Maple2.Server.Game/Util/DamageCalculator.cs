@@ -122,7 +122,8 @@ public static class DamageCalculator {
     // The npc rank special effects the target holds (type 2): less damage from an npc of the ranks (its Basic class,
     // 110001013 elites 3 and 7). 1 from a pet or a player.
     internal static float NpcRankDamageFactor(IActor caster, IActor target) {
-        if (caster is not FieldNpc npc || caster is FieldPet) {
+        // A friendly npc has no rank, the same as RankBonusOf.
+        if (caster is not FieldNpc npc || caster is FieldPet || npc.Value.Metadata.Basic.Friendly != 0) {
             return 1;
         }
         return SpecialEffectRules.NpcRankDamageFactor(target.Buffs.SpecialEffects(), npc.Value.Metadata.Basic.Class, target.Buffs.SpecialEffectRandom);
