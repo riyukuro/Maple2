@@ -543,6 +543,39 @@ public static class SkillCastRules {
     // Chosen here: a cast whose health cost would leave no health is refused.
     public static bool HpCostRefused(long currentHp, int cost) => cost > 0 && cost >= currentHp;
 
+    // Skill 20000011 is the one cast the client sends without its cast checks: PCBase::FUN_1416788d0 builds its
+    // record straight from a jump, a fall or an auto climb off a ride (pcbase.cpp:4094, statejump.cpp:250,
+    // statefall.cpp:188, mypc.cpp:3526), so ConditionRefusal leaves it out.
+    public const int UncheckedCastSkill = 20000011;
+
+    // The begin condition tests the client makes on a cast's first motion and the server had not
+    // (CSkillSystem::FUN_14176a8c0, skillslot.cpp:3215-3259), with the client's answer: not on the shadow continent
+    // (0x15, the field's continent has shadowContinent="1"), not on a field with checkFly (0x16), on a battle mount
+    // without allowBattleRidingState (0x19), off one with onlyBattleRidingState (0x1a), and below 1 health (5).
+    // An honest client never sends such a cast, so these refuse only a forged one. null: none refuses.
+    public static int? ConditionRefusal(int skillId, bool laterMotion, bool onlyShadowWorld, bool onShadowContinent, bool onlyFlyableMap, bool fieldCanFly,
+            bool allowOnBattleMount, bool onlyOnBattleMount, bool battleRiding, long currentHp) {
+        if (laterMotion || skillId == UncheckedCastSkill) {
+            return null;
+        }
+        if (onlyShadowWorld && !onShadowContinent) {
+            return 0x15;
+        }
+        if (onlyFlyableMap && !fieldCanFly) {
+            return 0x16;
+        }
+        if (battleRiding && !allowOnBattleMount) {
+            return 0x19;
+        }
+        if (!battleRiding && onlyOnBattleMount) {
+            return 0x1a;
+        }
+        if (currentHp < 1) {
+            return 5;
+        }
+        return null;
+    }
+
     // Every skill of every job's tree, main and sub.
     public static HashSet<int> TreeSkills(JobTable jobTable) {
         var skills = new HashSet<int>();

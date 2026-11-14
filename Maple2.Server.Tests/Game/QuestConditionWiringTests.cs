@@ -314,6 +314,8 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Start();
         test.EnterMap(TestGameSession.Map(2000001) with { Limit = new MapMetadataLimit(0, 0, 0, 0, [], true, true, true, true, true, true, true) });
         SetSkills(CastSkill(90000023), CastSkill(90000024));
+        // A living caster has health: the client casts nothing below 1 (SkillCastRules.ConditionRefusal).
+        test.Session.Player.Stats.Values[BasicAttribute.Health].Current = 100;
         Quest quest = StartQuest(Condition(ConditionType.skill, 10, ["90000023"], []));
 
         Cast(90000024, 1);

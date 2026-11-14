@@ -350,6 +350,31 @@ public class SkillCastRulesTests {
         });
     }
 
+    // FUN_14176a8c0's begin condition answers, in the client's order; a later motion and skill 20000011 are not tested.
+    // KR 100000003 has onlyShadowWorld, 81000081 and 90000837 onlyFlyableMap, 178 levels onlyBattleRidingState.
+    [Test]
+    public void ConditionRefusal_IsTheClientsAnswer() {
+        int? Refusal(int skillId = 10100091, bool later = false, bool shadowOnly = false, bool onShadow = false, bool flyOnly = false, bool canFly = false,
+            bool allowBattle = false, bool onlyBattle = false, bool battle = false, long hp = 100) =>
+            SkillCastRules.ConditionRefusal(skillId, later, shadowOnly, onShadow, flyOnly, canFly, allowBattle, onlyBattle, battle, hp);
+        Assert.Multiple(() => {
+            Assert.That(Refusal(), Is.Null);
+            Assert.That(Refusal(shadowOnly: true), Is.EqualTo(0x15));
+            Assert.That(Refusal(shadowOnly: true, onShadow: true), Is.Null);
+            Assert.That(Refusal(flyOnly: true), Is.EqualTo(0x16));
+            Assert.That(Refusal(flyOnly: true, canFly: true), Is.Null);
+            Assert.That(Refusal(battle: true), Is.EqualTo(0x19));
+            Assert.That(Refusal(battle: true, allowBattle: true), Is.Null);
+            Assert.That(Refusal(onlyBattle: true), Is.EqualTo(0x1a));
+            Assert.That(Refusal(onlyBattle: true, battle: true, allowBattle: true), Is.Null);
+            Assert.That(Refusal(hp: 0), Is.EqualTo(5));
+            Assert.That(Refusal(hp: 1), Is.Null);
+            Assert.That(Refusal(flyOnly: true, hp: 0), Is.EqualTo(0x16));
+            Assert.That(Refusal(later: true, battle: true, hp: 0), Is.Null);
+            Assert.That(Refusal(skillId: SkillCastRules.UncheckedCastSkill, flyOnly: true, battle: true, hp: 0), Is.Null);
+        });
+    }
+
     [Test]
     public void ItemOfACastMustBeThereBeforePaying() {
         Assert.That(SkillCastRules.ItemMissing(false, 0, false, false), Is.False);

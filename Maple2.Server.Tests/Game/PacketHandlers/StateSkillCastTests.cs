@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -17,28 +18,30 @@ public class StateSkillCastTests : TriggerTestBase {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private const int SkillId = 20000011;
 
-    private static SkillMetadata StateSkill(ActorState state, int mainType = 0, bool noPlayerSource = false, int[]? maps = null) {
-        SkillMetadata skill = QuestConditionWiringTests.CastSkill(SkillId);
+    private static SkillMetadata StateSkill(ActorState state, int mainType = 0, bool noPlayerSource = false, int[]? maps = null, int skillId = SkillId,
+            Func<BeginCondition, BeginCondition>? condition = null) {
+        SkillMetadata skill = QuestConditionWiringTests.CastSkill(skillId);
+        BeginCondition begin = skill.Data.Condition with { Maps = maps ?? [] };
         return skill with {
             Property = skill.Property with { State = state, MainType = mainType, NoPlayerSource = noPlayerSource },
-            Data = skill.Data with { Condition = skill.Data.Condition with { Maps = maps ?? [] } },
+            Data = skill.Data with { Condition = condition?.Invoke(begin) ?? begin },
         };
     }
 
-    private void Begin(SkillMetadata skill) {
+    private void Begin(params SkillMetadata[] skills) {
         Start();
         test.EnterMap(TestGameSession.Map(2000001) with { Limit = new MapMetadataLimit(0, 0, 0, 0, [], true, true, true, true, true, true, true) });
-        QuestConditionWiringTests.SetSkills(test, skill);
+        QuestConditionWiringTests.SetSkills(test, skills);
         test.TakeSent();
     }
 
     // Sends the state cast; true when it was taken (added and no SkillUseFailed answered).
-    private bool Send(ActorState state, long uid = 5, long itemUid = 0) {
+    private bool Send(ActorState state, long uid = 5, long itemUid = 0, int skillId = SkillId) {
         new StateSkillHandler().Handle(test.Session, TestGameSession.Packet(writer => {
             writer.WriteByte(0);
             writer.WriteLong(uid);
             writer.WriteInt(0);
-            writer.WriteInt(SkillId);
+            writer.WriteInt(skillId);
             writer.WriteShort(1);
             writer.WriteInt((int) state);
             writer.WriteInt(0);
@@ -104,6 +107,39 @@ public class StateSkillCastTests : TriggerTestBase {
     public void ASkillNoClientPathGives_IsNotTaken() {
         Begin(StateSkill(ActorState.Climb, noPlayerSource: true));
         Assert.That(Send(ActorState.Climb), Is.False);
+    }
+
+    // The begin condition tests of FUN_14176a8c0 (SkillCastRules.ConditionRefusal): field 2000001 here has no checkFly,
+    // is not on the shadow continent, and the player rides nothing. Skill 20000011 is the client's one unchecked cast.
+    private const int OtherSkillId = 20000012;
+
+    [Test]
+    public void AFlyFieldSkill_IsNotTakenOnAFieldWithoutFlight_ButTheUncheckedCastIs() {
+        Begin(StateSkill(ActorState.Climb, skillId: OtherSkillId, condition: c => c with { OnlyFlyableMap = true }),
+            StateSkill(ActorState.Climb, condition: c => c with { OnlyFlyableMap = true }));
+        Assert.Multiple(() => {
+            Assert.That(Send(ActorState.Climb, uid: 1, skillId: OtherSkillId), Is.False);
+            Assert.That(Send(ActorState.Climb, uid: 2), Is.True);
+        });
+    }
+
+    [Test]
+    public void AShadowWorldSkill_IsNotTakenOffTheShadowContinent() {
+        Begin(StateSkill(ActorState.Climb, skillId: OtherSkillId, condition: c => c with { OnlyShadowWorld = true }));
+        Assert.That(Send(ActorState.Climb, skillId: OtherSkillId), Is.False);
+    }
+
+    [Test]
+    public void ABattleMountSkill_IsNotTakenOffABattleMount() {
+        Begin(StateSkill(ActorState.Climb, skillId: OtherSkillId, condition: c => c with { OnlyOnBattleMount = true }));
+        Assert.That(Send(ActorState.Climb, skillId: OtherSkillId), Is.False);
+    }
+
+    [Test]
+    public void ALivingPlayerWithNoHealth_CastsNothing() {
+        Begin(StateSkill(ActorState.Climb, skillId: OtherSkillId));
+        test.Session.Player.Stats.Values[BasicAttribute.Health].Current = 0;
+        Assert.That(Send(ActorState.Climb, skillId: OtherSkillId), Is.False);
     }
 
     [Test]

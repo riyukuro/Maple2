@@ -76,6 +76,13 @@ public static class SkillCastCheck {
             Logger.Debug("Cast refused, skill {SkillId} is not for field {MapId}", record.SkillId, session.Field.MapId);
             return false;
         }
+        FieldPlayer player = session.Player;
+        if (SkillCastRules.ConditionRefusal(record.SkillId, laterMotion, condition.OnlyShadowWorld, session.Field.Metadata.Property.Continent == Continent.ShadowWorld,
+                condition.OnlyFlyableMap, session.Field.Metadata.Property.CanFly, condition.AllowOnBattleMount, condition.OnlyOnBattleMount,
+                session.Ride.Ride?.Metadata.Basic.Type == RideOnType.Battle, player.Stats.Values[BasicAttribute.Health].Current) is { } answer) {
+            Logger.Debug("Cast refused, skill {SkillId}: the client's begin condition answers {Answer:X}", record.SkillId, answer);
+            return false;
+        }
         if (SkillCastRules.EpFieldRefuses(session.Field.Metadata.Limit.Dash, record.Metadata.Data.Consume.Stat.GetValueOrDefault(BasicAttribute.Stamina))) {
             Logger.Debug("Cast refused, skill {SkillId} costs EP and field {MapId} allows no EP skill", record.SkillId, session.Field.MapId);
             return false;
