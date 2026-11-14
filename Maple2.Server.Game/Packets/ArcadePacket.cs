@@ -15,7 +15,8 @@ namespace Maple2.Server.Game.Packets;
 //    6: life and max life. 7: the couple dance dialog's direction buttons (the Three Two One picks): a bool, then
 //    when true an int, the seconds the buttons show; false hides them. 8: the text effect, a byte type; type 0 is an
 //    int count of wins in a row, shown when above 0. 9: the lobby's season (an int, kept when not 0) and a count of (arcade id, score) ints,
-//    the player's own scores (ids above 6 are skipped). 13: closes the score dialog.
+//    the player's own scores (ids above 6 are skipped). 12: a byte align, places the score dialog at 0 points (1 at
+//    the center, 2 at the top right; it does not open it). 13: closes the score dialog.
 public static class ArcadePacket {
     private enum Command : byte {
         Open = 0,
@@ -26,6 +27,7 @@ public static class ArcadePacket {
         Buttons = 7,
         TextEffect = 8,
         Scores = 9,
+        ScoreBoard = 12,
         CloseScore = 13,
     }
 
@@ -109,6 +111,13 @@ public static class ArcadePacket {
             pWriter.WriteInt(best.ArcadeId);
             pWriter.WriteInt(best.Score);
         }
+        return pWriter;
+    }
+
+    public static ByteWriter ScoreBoard(byte align) {
+        var pWriter = Packet.Of(SendOp.PlayArcade);
+        pWriter.WriteByte((byte) Command.ScoreBoard);
+        pWriter.WriteByte(align);
         return pWriter;
     }
 

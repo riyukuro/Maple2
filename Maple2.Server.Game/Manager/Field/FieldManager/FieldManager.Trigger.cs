@@ -48,23 +48,26 @@ public partial class FieldManager {
     // Points for the open board (chosen here; the scripts give no other source): the score of a spawn_npc_range
     // npc that dies, and the amount of a picked-up score orb. 80000014_bonus checks score_board_score >= 18000
     // against 8,300 (83 npcs x 100) + 1,500 (its 2001 npc) + 10 x 800 (the orbs) = 17,800. The client shows the
-    // points on the 0xE1 board (FieldGameScoreBoardCli). Nothing is added with no board open (02000385_bf,
-    // 02000393_bf and 99999908 score kills but open none); false then.
+    // points on the 0xE1 board (FieldGameScoreBoardCli). With no 0xE1 board open they go to the open board of
+    // the ScoreBoard widget (02000385_bf); with neither, nothing is added (02000393_bf and 99999908 score kills
+    // but open none) and false.
     public bool AddScoreBoardScore(int points) {
         if (points <= 0) {
             return false;
         }
 
-        int total;
+        int? total = null;
         lock (scoreBoardLock) {
-            if (ScoreBoardOpen == null) {
-                return false;
+            if (ScoreBoardOpen != null) {
+                total = (int) Math.Min((long) (ScoreBoardScore ?? 0) + points, int.MaxValue);
+                ScoreBoardScore = total;
+                ScoreBoardOpen = ScoreBoardOpen with { Points = total.Value };
             }
-            total = (int) Math.Min((long) (ScoreBoardScore ?? 0) + points, int.MaxValue);
-            ScoreBoardScore = total;
-            ScoreBoardOpen = ScoreBoardOpen with { Points = total };
         }
-        Broadcast(ShadowExpeditionPacket.SetPoints(total));
+        if (total == null) {
+            return Widgets.GetValueOrDefault(ScoreBoardWidget.Type) is ScoreBoardWidget widget && widget.AddPoints(points);
+        }
+        Broadcast(ShadowExpeditionPacket.SetPoints(total.Value));
         return true;
     }
 

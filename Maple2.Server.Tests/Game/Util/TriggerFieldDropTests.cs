@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,6 +17,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger;
@@ -70,6 +71,7 @@ public class TriggerFieldDropTests {
         Set<FieldManager>(field, "initialized", true);
         Set<FieldManager>(field, "fieldItems", new ConcurrentDictionary<int, FieldItem>());
         Set<FieldManager>(field, "scoreBoardLock", new object());
+        Set<FieldManager>(field, nameof(FieldManager.Widgets), new Dictionary<string, Widget>());
 
         GameSession session = SessionOf(out sent);
         var player = Bare<FieldPlayer>();
@@ -238,6 +240,70 @@ public class TriggerFieldDropTests {
         ContextOf(field).ScoreBoardCreate("ScoreBoardTopCenter", "", 0);
         Assert.That(field.AddScoreBoardScore(0), Is.False);
         Assert.That(field.ScoreBoardScore, Is.Null);
+    }
+
+    // The ScoreBoard widget of 02000385/02000386: OpenBoard opens the Dark Stream score dialog (0xC5 0) and places
+    // it (0xD8 12, align 1); SetScore, kills and orbs send its score (0xC5 1); Compare reads "op,value";
+    // CloseBoard closes it (0xD8 13), after which kills count no more and Compare still reads the score.
+    [Test]
+    public void ScoreBoardWidget_OpensCountsAndCloses() {
+        FieldManager field = FieldOf(39990001, FieldManager.ScoreBoardItemId, [], out BlockingCollection<(byte[] packet, int length)> sent);
+        TriggerContext context = ContextOf(field);
+        context.CreateWidget("ScoreBoard");
+        Assert.That(field.Widgets["ScoreBoard"], Is.TypeOf<ScoreBoardWidget>());
+        Assert.That(field.AddScoreBoardScore(100), Is.False);
+
+        context.WidgetAction("ScoreBoard", "OpenBoard", "1", "", 0);
+        Assert.That(Packets(sent, SendOp.DarkStream).Select(reader => (reader.ReadByte(), reader.Available)), Is.EqualTo(new[] { ((byte) 0, 0) }));
+        context.WidgetAction("ScoreBoard", "SetScore", "0", "", 0);
+        Assert.That(field.AddScoreBoardScore(100), Is.True);
+        Assert.That(field.TakeScoreOrb(new Item(ItemOf(FieldManager.ScoreBoardItemId), 1, OrbAmount)), Is.True);
+        context.WidgetAction("ScoreBoard", "AddScore", "10", "", 0);
+
+        Assert.That(context.WidgetValue("ScoreBoard", "Compare", ">=,810", false), Is.True);
+        Assert.That(context.WidgetValue("ScoreBoard", "Compare", ">=,811", false), Is.False);
+        Assert.That(((ScoreBoardWidget) field.Widgets["ScoreBoard"]).EnterPackets(), Has.Count.EqualTo(3));
+
+        context.WidgetAction("ScoreBoard", "CloseBoard", "", "", 0);
+        Assert.That(field.AddScoreBoardScore(100), Is.False);
+        Assert.That(context.WidgetValue("ScoreBoard", "Compare", ">=,810", false), Is.True);
+        Assert.That(((ScoreBoardWidget) field.Widgets["ScoreBoard"]).EnterPackets(), Is.Empty);
+        Assert.That(field.ScoreBoardScore, Is.Null);
+    }
+
+    // The packets in order: open, place at align 1, then the score of each change; close.
+    [Test]
+    public void ScoreBoardWidget_Packets() {
+        FieldManager field = FieldOf(39990001, FieldManager.ScoreBoardItemId, [], out BlockingCollection<(byte[] packet, int length)> sent);
+        TriggerContext context = ContextOf(field);
+        context.CreateWidget("ScoreBoard");
+        context.WidgetAction("ScoreBoard", "OpenBoard", "1", "", 0);
+        context.WidgetAction("ScoreBoard", "SetScore", "0", "", 0);
+        field.AddScoreBoardScore(100);
+        context.WidgetAction("ScoreBoard", "CloseBoard", "", "", 0);
+
+        var packets = new List<string>();
+        while (sent.TryTake(out (byte[] packet, int length) item)) {
+            var reader = new ByteReader(item.packet.AsSpan(0, item.length).ToArray(), 0);
+            var op = reader.Read<SendOp>();
+            byte command = reader.ReadByte();
+            packets.Add(reader.Available >= 4 ? $"{op} {command} {reader.ReadInt()}" : reader.Available == 1 ? $"{op} {command} {reader.ReadByte()}" : $"{op} {command}");
+        }
+        Assert.That(packets, Is.EqualTo(new[] {
+            "DarkStream 0", "PlayArcade 12 1", "DarkStream 1 0", "DarkStream 1 100", "PlayArcade 13",
+        }));
+    }
+
+    // OpenBoard 2 places the board at the top right; any other value at the center.
+    [TestCase("2", (byte) 2)]
+    [TestCase("1", (byte) 1)]
+    [TestCase("0", (byte) 1)]
+    public void ScoreBoardWidget_Align(string arg, byte align) {
+        FieldManager field = FieldOf(39990001, FieldManager.ScoreBoardItemId, [], out _);
+        TriggerContext context = ContextOf(field);
+        context.CreateWidget("ScoreBoard");
+        context.WidgetAction("ScoreBoard", "OpenBoard", arg, "", 0);
+        Assert.That(((ScoreBoardWidget) field.Widgets["ScoreBoard"]).Align, Is.EqualTo(align));
     }
 
     private sealed class GuildWorld : WorldClient {

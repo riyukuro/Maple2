@@ -15,6 +15,7 @@ using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -2235,6 +2236,11 @@ public partial class FieldManager {
         }
         if (ScoreBoard.EnterPacket(ScoreBoardOpen) is { } scoreBoard) {
             added.Session.Send(scoreBoard);
+        }
+        if (Widgets.GetValueOrDefault(ScoreBoardWidget.Type) is ScoreBoardWidget scoreWidget) {
+            foreach (ByteWriter packet in scoreWidget.EnterPackets()) {
+                added.Session.Send(packet);
+            }
         }
 
         if (background != null) {
