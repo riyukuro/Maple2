@@ -190,7 +190,7 @@ public static class TriggerFunctionMapping {
         { "side_npc_talk_bottom", attrs => new Trigger.SideNpcTalkBottom(ParseInt(attrs?["npc_id"]?.Value), attrs?["illust"]?.Value ?? string.Empty, ParseInt(attrs?["duration"]?.Value), attrs?["script"]?.Value ?? string.Empty) },
         { "sight_range", attrs => new Trigger.SightRange(ParseBool(attrs?["enable"]?.Value), ParseInt(attrs?["range"]?.Value), ParseInt(attrs?["range_z"]?.Value), ParseInt(attrs?["border"]?.Value)) },
         { "spawn_item_range", attrs => new Trigger.SpawnItemRange(ParseIntArray(attrs?["range_ids"]?.Value), ParseInt(attrs?["random_pick_count"]?.Value)) },
-        { "spawn_monster", attrs => new Trigger.SpawnMonster(ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBool(attrs?["auto_target"]?.Value), ParseInt(attrs?["delay"]?.Value)) },
+        { "spawn_monster", attrs => new Trigger.SpawnMonster(ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBoolOr(attrs?["auto_target"]?.Value, true), ParseInt(attrs?["delay"]?.Value)) },
         { "spawn_npc_range", attrs => new Trigger.SpawnNpcRange(ParseIntArray(attrs?["range_ids"]?.Value), ParseBool(attrs?["is_auto_targeting"]?.Value), ParseInt(attrs?["random_pick_count"]?.Value), ParseInt(attrs?["score"]?.Value)) },
         { "start_combine_spawn", attrs => new Trigger.StartCombineSpawn(ParseIntArray(attrs?["group_id"]?.Value), ParseBool(attrs?["is_start"]?.Value)) },
         { "start_mini_game", attrs => new Trigger.StartMiniGame(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["round"]?.Value), attrs?["game_name"]?.Value ?? string.Empty, ParseBoolOr(attrs?["is_show_result_ui"]?.Value, true)) },
@@ -370,6 +370,11 @@ public static class TriggerFunctionMapping {
     // start_mini_game shows the result window unless is_show_result_ui says no (the trigger definition's default is
     // True; the KR scripts write "false" only on the UserMassive_*, PinataWD and WDdancedancestop games, and the classic
     // escape, springbeach and crazyrunner leave it out).
+    // spawn_monster plays the spawn point's spawn animation unless auto_target says no: the trigger definition's
+    // default is True, and the 457 KR spawns that leave it out (mostly boss rooms of the _bf maps, 488 of their spawn
+    // points with Regen_A) read as the 1734 that write 1 (chosen here: no client code reads trigger arguments). add_buff keeps false for a missing ignore_player and
+    // is_skill_set although the definition says True: the effects the 237 and 221 KR rows without them give are
+    // player effects (RemoveOnLogout, 70000019's experience rate), and the skill-set flag would drop them all.
     public static bool ParseBoolOr(string? value, bool absent) {
         return string.IsNullOrEmpty(value) ? absent : ParseBool(value);
     }

@@ -102,6 +102,23 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That(Field.Mobs, Has.Count.EqualTo(2));
     }
 
+    // spawn_monster plays the event spawn point's spawn animation unless auto_target is 0: a missing auto_target
+    // (457 KR rows) reads as the trigger definition's default True.
+    [Test]
+    public void SpawnMonster_SpawnAnimationUnlessTold() {
+        StartSpawns();
+        var spawn = new EventSpawnPointNPC("", 5, new Vector3(300, 0, 0), new Vector3(0, 0, 90), true, false, 0, 1,
+            [new SpawnPointNPCListEntry(MobId, 1)], 0, 0, "Regen_A");
+        typeof(MapEntityMetadata).GetField("<EventNpcSpawns>k__BackingField", Any)!.SetValue(Field.Entities,
+            new Dictionary<int, EventSpawnPointNPC> { [5] = spawn });
+
+        Action("""<action name="spawn_monster" spawn_ids="5" />""");
+        Action("""<action name="spawn_monster" spawn_ids="5" auto_target="0" />""");
+        Action("""<action name="spawn_monster" spawn_ids="5" auto_target="1" />""");
+        Assert.That(Field.Mobs.Values.OrderBy(npc => npc.ObjectId).Select(npc => npc.SpawnAnimation),
+            Is.EqualTo(new[] { "Regen_A", "", "Regen_A" }));
+    }
+
     // move_user_path (366): each player gets a dummy npc of their gender at their position that walks the named
     // patrol, and is told to follow it (FollowNpc); a path the map lacks spawns nothing.
     [Test]
