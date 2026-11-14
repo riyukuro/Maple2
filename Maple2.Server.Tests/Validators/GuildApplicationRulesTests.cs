@@ -471,10 +471,27 @@ public class GuildApplicationRulesTests {
             daysJoined * 86400L), Is.EqualTo(expected));
     }
 
-    [TestCase(false, false, true)]
-    [TestCase(true, false, false)]
-    [TestCase(false, true, false)]
-    public void GuildFieldEntry_NeedsAMemberFreeToLeave(bool dead, bool inDungeon, bool expected) {
-        Assert.That(GuildRules.CanGoToGuildField(dead, inDungeon), Is.EqualTo(expected));
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void GuildFieldEntry_NeedsAMemberAlive(bool dead, bool expected) {
+        Assert.That(GuildRules.CanGoToGuildField(dead, 2000001, 2000002, true, false), Is.EqualTo(expected));
+    }
+
+    // A dungeon field with homeReturnable set: the client sends the entry, so the server moves the member.
+    [Test]
+    public void GuildFieldEntry_FromAReturnableDungeonField() {
+        Assert.That(GuildRules.CanGoToGuildField(false, 2000001, 2000002, true, false), Is.True);
+    }
+
+    // A field without homeReturnable: refused, unless it is a home (map type 3).
+    [TestCase(false, false)]
+    [TestCase(true, true)]
+    public void GuildFieldEntry_NotReturnable_OnlyFromAHome(bool inHome, bool expected) {
+        Assert.That(GuildRules.CanGoToGuildField(false, 62000000, 2000002, false, inHome), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void GuildFieldEntry_AlreadyInTheHouse() {
+        Assert.That(GuildRules.CanGoToGuildField(false, 2000002, 2000002, true, false), Is.False);
     }
 }

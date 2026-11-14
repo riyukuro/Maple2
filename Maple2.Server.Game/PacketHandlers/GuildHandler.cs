@@ -1259,7 +1259,12 @@ public class GuildHandler : PacketHandler<GameSession> {
         if (house is null) {
             return;
         }
-        if (!GuildRules.CanGoToGuildField(session.Player.IsDead, session.Field is DungeonFieldManager)) {
+        if (session.Field == null) {
+            return;
+        }
+        MapMetadataProperty property = session.Field.Metadata.Property;
+        if (!GuildRules.CanGoToGuildField(session.Player.IsDead, session.Field.MapId, house.MapId,
+                property.HomeReturnable, property.Type == MapType.Home)) {
             return;
         }
 

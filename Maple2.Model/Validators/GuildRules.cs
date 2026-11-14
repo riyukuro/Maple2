@@ -419,13 +419,19 @@ public static class GuildRules {
         return eventMapId > 0 && IsEventActive(openTime, now) && currentMapId != eventMapId;
     }
 
-    // The guild house entry moves the member to the house. A dead member, or one inside a dungeon, stays
-    // where they are: the move would take them out of the death or the dungeon room without that field's
-    // own way out. A home is no bar: the client sends the entry from a home on purpose
-    // (`CGuildManager::FUN_1413ba4b0`, guildmanager.cpp:923, lets a field it would refuse through when its
-    // map type is 3, a home). Guild 100 (the event entry) asks nothing of the member or the field.
-    public static bool CanGoToGuildField(bool dead, bool inDungeon) {
-        return !dead && !inDungeon;
+    // Guild 103, the guild house entry, with the client's checks before it sends
+    // (`CGuildManager::FUN_1413ba4b0`, guildmanager.cpp:902-932), in its order: a dead member (0x279) stays;
+    // a member already on the house's map stays (s_common_cant_move_from_here); the current field must be
+    // homeReturnable (CFieldData +0x5c) unless its map type is 3, a home. A dungeon field with homeReturnable
+    // set lets the member go, as in the client. The client's battle check (0x27a) is not repeated: the
+    // server's battle flag ends on its own clock, which could refuse a click the client sent after its own
+    // battle state ended. Guild 100 (the event entry) asks nothing of the member or the field.
+    public static bool CanGoToGuildField(bool dead, int currentMapId, int houseMapId, bool homeReturnable,
+            bool inHome) {
+        if (dead || currentMapId == houseMapId) {
+            return false;
+        }
+        return homeReturnable || inHome;
     }
 
     // Guild 91 (CGuildManager::FUN_1413b96e0), in the client's order: the row of the skill's level must
