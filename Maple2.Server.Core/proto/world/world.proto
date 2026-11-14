@@ -102,6 +102,9 @@ message MigrateOutRequest {
   // The channel was picked by the player (the character select, a channel change): when it is not active the
   // move is refused (Unavailable) instead of going to the first channel.
   bool exact_channel = 16;
+  // A character select of the login server: the token ends every earlier token of the account, so only the move of
+  // the account's newest login is live. A move from a game session ends none (two moves of one session can overlap).
+  bool ends_earlier = 17;
 }
 
 enum MigrationType {

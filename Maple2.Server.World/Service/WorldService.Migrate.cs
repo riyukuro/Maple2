@@ -15,20 +15,31 @@ public partial class WorldService {
 
     private readonly IMemoryCache tokenCache;
 
-    // The account's newest token, kept in the token cache next to the tokens. An account has one client, so only its
-    // newest move is live: a new token ends the earlier one. Else a token left unused (the client was closed on the
-    // way, or another login of the account picked a character before it arrived) still let a second game session of
-    // the account in next to the first one.
+    // The account's live tokens, kept in the token cache next to the tokens. A character select ends the earlier ones
+    // (MigrateOutRequest.EndsEarlier): else a token left unused (another login of the account picked a character
+    // before it arrived, the client was closed on the way, a channel change of a session a login kicked) still let
+    // a second game session of the account in next to the first one. A move from a game session ends none: two moves
+    // of one session can be under way at once (a field's warp next to the client's own move), and the client goes
+    // with the first GameToGame it was sent.
     private readonly record struct AccountTokenKey(long AccountId);
     private static readonly object TokenIssue = new();
 
-    private void Issue(ulong token, TokenEntry entry) {
+    private void Issue(ulong token, TokenEntry entry, bool endsEarlier) {
         lock (TokenIssue) {
-            if (tokenCache.TryGetValue(new AccountTokenKey(entry.AccountId), out ulong earlier)) {
-                tokenCache.Remove(earlier);
+            var key = new AccountTokenKey(entry.AccountId);
+            List<ulong> live = [];
+            if (tokenCache.TryGetValue(key, out ulong[]? earlier) && earlier != null) {
+                foreach (ulong old in earlier) {
+                    if (endsEarlier) {
+                        tokenCache.Remove(old);
+                    } else if (tokenCache.TryGetValue(old, out _)) {
+                        live.Add(old);
+                    }
+                }
             }
+            live.Add(token);
             tokenCache.Set(token, entry, AuthExpiry);
-            tokenCache.Set(new AccountTokenKey(entry.AccountId), token, AuthExpiry);
+            tokenCache.Set(key, live.ToArray(), AuthExpiry);
         }
     }
 
@@ -38,7 +49,7 @@ public partial class WorldService {
         switch (request.Server) {
             case Server.Login:
                 var loginEntry = new TokenEntry(request.Server, request.AccountId, request.CharacterId, new Guid(request.MachineId), 0, 0, 0, 0, 0, MigrationType.Normal);
-                Issue(token, loginEntry);
+                Issue(token, loginEntry, request.EndsEarlier);
                 return Task.FromResult(new MigrateOutResponse {
                     IpAddress = Target.LoginIp.ToString(),
                     Port = Target.LoginPort,
@@ -74,7 +85,7 @@ public partial class WorldService {
                 }
 
                 var gameEntry = new TokenEntry(request.Server, request.AccountId, request.CharacterId, new Guid(request.MachineId), channel, request.MapId, request.PortalId, request.RoomId, request.OwnerId, request.Type, request.PetUid);
-                Issue(token, gameEntry);
+                Issue(token, gameEntry, request.EndsEarlier);
                 return Task.FromResult(new MigrateOutResponse {
                     IpAddress = endpoint.Address.ToString(),
                     Port = endpoint.Port,
@@ -103,21 +114,30 @@ public partial class WorldService {
     }
 
     public override Task<MigrateInResponse> MigrateIn(MigrateInRequest request, ServerCallContext context) {
-        if (!tokenCache.TryGetValue(request.Token, out TokenEntry data)) {
-            throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid token"));
-        }
-
-        if (data.AccountId != request.AccountId) {
-            throw new RpcException(new Status(StatusCode.PermissionDenied, "Invalid token for account"));
-        }
-        if (data.MachineId != new Guid(request.MachineId)) {
-            throw new RpcException(new Status(StatusCode.FailedPrecondition, "Mismatched machineId for account"));
-        }
-
+        TokenEntry data;
+        // Under the issue lock from the read to the remove: a token issued in between would else end this one only
+        // after it was let in, and both would be used.
         lock (TokenIssue) {
+            if (!tokenCache.TryGetValue(request.Token, out data)) {
+                throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid token"));
+            }
+
+            if (data.AccountId != request.AccountId) {
+                throw new RpcException(new Status(StatusCode.PermissionDenied, "Invalid token for account"));
+            }
+            if (data.MachineId != new Guid(request.MachineId)) {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "Mismatched machineId for account"));
+            }
+
             tokenCache.Remove(request.Token);
-            if (tokenCache.TryGetValue(new AccountTokenKey(data.AccountId), out ulong newest) && newest == request.Token) {
-                tokenCache.Remove(new AccountTokenKey(data.AccountId));
+            var key = new AccountTokenKey(data.AccountId);
+            if (tokenCache.TryGetValue(key, out ulong[]? live) && live != null) {
+                ulong[] rest = live.Where(token => token != request.Token).ToArray();
+                if (rest.Length == 0) {
+                    tokenCache.Remove(key);
+                } else {
+                    tokenCache.Set(key, rest, AuthExpiry);
+                }
             }
         }
         return Task.FromResult(new MigrateInResponse {

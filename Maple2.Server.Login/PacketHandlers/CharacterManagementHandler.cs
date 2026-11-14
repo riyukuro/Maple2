@@ -109,6 +109,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
                 CharacterId = characterId,
                 MachineId = session.MachineId.ToString(),
                 Server = Server.World.Service.Server.Game,
+                EndsEarlier = true,
             };
             if (channel > 0) {
                 request.Channel = channel;

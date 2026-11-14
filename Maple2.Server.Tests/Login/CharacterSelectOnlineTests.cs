@@ -58,6 +58,14 @@ public class CharacterSelectOnlineTests {
         });
     }
 
+    // The select's token ends the account's earlier ones (a token of another client of the account left unused).
+    [Test]
+    public void TheSelectsToken_EndsEarlierOnes() {
+        Select();
+
+        Assert.That(test.World.Moves.Select(move => move.EndsEarlier), Is.EqualTo(new[] { true }));
+    }
+
     [Test]
     public void AnAccountNotInGame_EndsNothing() {
         Select();
