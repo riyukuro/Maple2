@@ -42,6 +42,28 @@ public record EventSpawnPointNPC(
     string SpawnAnimation
 ) : SpawnPointNPC(EntityId, SpawnPointId, Position, Rotation, Visible, SpawnOnFieldCreate, SpawnRadius, NpcList, RegenCheckTime, String.Empty);
 
+// One group of an EventSpawnGroupNPC point: Count npcs, each a random one of NpcIds (the npcs of the server table
+// groupSpawn.xml's group GroupId whose tag list holds the point's tag). The point picks one of its groups by Weight.
+public record SpawnGroupEntry(int GroupId, int Count, int Weight, int[] NpcIds);
+
+// An event spawn point that names npc groups instead of npcs (EventSpawnGroupNPC: the Dark Stream maps 03100001-015
+// and 52010038). NpcCount is the client's field (1); the picked group's Count is what spawns.
+public record EventSpawnGroupNPC(
+    string EntityId,
+    int SpawnPointId,
+    Vector3 Position,
+    Vector3 Rotation,
+    bool Visible,
+    bool SpawnOnFieldCreate,
+    float SpawnRadius,
+    int NpcCount,
+    int RegenCheckTime,
+    int LifeTime,
+    string SpawnAnimation,
+    string GroupTag,
+    IList<SpawnGroupEntry> Groups
+) : EventSpawnPointNPC(EntityId, SpawnPointId, Position, Rotation, Visible, SpawnOnFieldCreate, SpawnRadius, NpcCount, new List<SpawnPointNPCListEntry>(), RegenCheckTime, LifeTime, SpawnAnimation);
+
 public record EventSpawnPointItem(
     int SpawnPointId,
     Vector3 Position,

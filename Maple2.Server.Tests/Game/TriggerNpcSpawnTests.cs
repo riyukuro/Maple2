@@ -227,6 +227,23 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That((Field.DarkStream.Ended, test.Session.Currency.Meso - meso), Is.EqualTo((true, 100L)));
     }
 
+    // A Dark Stream group point (03100001: tag dungeon, groups of 12/6/3 at weight 1 each): the spawn picks a group and
+    // spawns its count of the group's npcs, each with the spawn id, and the point takes the score as the plain points do.
+    [Test]
+    public void DarkStream_GroupPointSpawnsThePickedGroup() {
+        StartSpawns();
+        typeof(MapEntityMetadata).GetField("<EventNpcSpawns>k__BackingField", Any)!.SetValue(Field.Entities, new Dictionary<int, EventSpawnPointNPC> {
+            [1001] = new EventSpawnGroupNPC("", 1001, new Vector3(300, 0, 0), default, true, false, 0, 1, 0, 0, "", "dungeon",
+                [new SpawnGroupEntry(1, 3, 1, [MobId])]),
+        });
+        test.SetTable(new DarkStreamTable(new Dictionary<int, DarkStreamTable.Entry> { [1] = new(1, 0, 50, 0, []) }));
+
+        Action("""<action name="dark_stream_start_game" type="StartGame" round="1" />""");
+        Action("""<action name="dark_stream_spawn_monster" type="SpawnMonster" score="6000" spawn_ids="1001" />""");
+        Assert.That(Field.Mobs.Values.Select(npc => (npc.Value.Metadata.Id, npc.SpawnPointId)), Is.EqualTo(Enumerable.Repeat((MobId, 1001), 3)));
+        Assert.That((Field.DarkStream!.SpawnCleared(1001), Field.DarkStream.Score), Is.EqualTo((true, 6000)));
+    }
+
     // init_npc_rotation (10 KR uses; 02020019_bf spawn_ids="102,103"): the npcs of each listed spawn point turn back
     // to the spawn point's rotation; an npc of another spawn point keeps its own.
     [Test]

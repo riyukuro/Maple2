@@ -384,8 +384,10 @@ public partial class TriggerContext {
             }
         }
 
-        // Shuffle and cap at NpcCount
-        IEnumerable<int> npcIdsToSpawn = npcPool.OrderBy(_ => Random.Shared.Next()).Take(npcCount);
+        // Shuffle and cap at NpcCount. A group point (Dark Stream) spawns one of its npc groups instead (GroupSpawnRules).
+        IEnumerable<int> npcIdsToSpawn = spawn is EventSpawnGroupNPC groupSpawn
+            ? GroupSpawnRules.NpcIds(groupSpawn, Random.Shared)
+            : npcPool.OrderBy(_ => Random.Shared.Next()).Take(npcCount);
 
         foreach (int npcId in npcIdsToSpawn) {
             if (!Field.NpcMetadata.TryGet(npcId, out NpcMetadata? npc)) {

@@ -2,6 +2,8 @@
 using Maple2.File.Flat;
 using Maple2.File.Flat.maplestory2library;
 using Maple2.File.Flat.standardmodellibrary;
+using Maple2.File.Ingest.Helpers;
+using Maple2.File.IO;
 using Maple2.File.Parser.MapXBlock;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
@@ -13,11 +15,22 @@ namespace Maple2.File.Ingest.Mapper;
 public class MapEntityMapper : TypeMapper<MapEntity> {
     private readonly HashSet<string> xBlocks;
     private readonly XBlockParser parser;
+    private readonly Dictionary<int, List<ServerGroupSpawn.Npc>> groupSpawns;
 
-    public MapEntityMapper(MetadataContext db, XBlockParser parser) {
+    public MapEntityMapper(MetadataContext db, XBlockParser parser, M2dReader? serverReader = null) {
         xBlocks = db.MapMetadata.Select(metadata => metadata.XBlock).ToHashSet();
+        groupSpawns = ServerGroupSpawn.Read(serverReader);
 
         this.parser = parser;
+    }
+
+    // An xblock index=value property as int pairs; entries that are not numbers are skipped.
+    private static IEnumerable<(int Key, int Value)> IntPairs<TKey, TValue>(IEnumerable<KeyValuePair<TKey, TValue>>? entries) {
+        foreach ((TKey key, TValue value) in entries ?? []) {
+            if (int.TryParse(Convert.ToString(key), out int k) && int.TryParse(Convert.ToString(value), out int v)) {
+                yield return (k, v);
+            }
+        }
     }
 
     private IEnumerable<MapEntity> ParseMap(string xblock, IEnumerable<IMapEntity> entities) {
@@ -79,6 +92,19 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                         case ISpawnPointPC pcSpawn:
                             yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
                                 Block = new SpawnPointPC(pcSpawn.SpawnPointID, pcSpawn.Position, pcSpawn.Rotation, pcSpawn.IsVisible, pcSpawn.Enable),
+                            };
+                            continue;
+                        case IEventSpawnGroupNPC groupSpawn:
+                            // Npc groups instead of an npc list (ServerGroupSpawn); a point none of whose groups has an
+                            // npc of its tag (02000328's empty one) spawns nothing and is left out.
+                            List<SpawnGroupEntry> groups = ServerGroupSpawn.Groups(groupSpawns, groupSpawn.NpcGroupTag ?? string.Empty,
+                                IntPairs(groupSpawn.NpcGroupCount), IntPairs(groupSpawn.NpcGroupProbability).ToDictionary(),
+                                NpcMapper.NpcMetadataById.ContainsKey);
+                            if (groups.Count == 0) {
+                                continue;
+                            }
+                            yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
+                                Block = new EventSpawnGroupNPC(groupSpawn.EntityId, groupSpawn.SpawnPointID, groupSpawn.Position, groupSpawn.Rotation, groupSpawn.IsVisible, groupSpawn.IsSpawnOnFieldCreate, groupSpawn.SpawnRadius, (int) groupSpawn.NpcCount, (int) groupSpawn.RegenCheckTime, (int) groupSpawn.LifeTime, groupSpawn.SpawnAnimation, groupSpawn.NpcGroupTag ?? string.Empty, groups),
                             };
                             continue;
                         case ISpawnPointNPC npcSpawn:

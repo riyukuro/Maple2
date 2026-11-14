@@ -279,7 +279,7 @@ var index = new FlatTypeIndex(exportedReader);
 
 var xBlockParser = new XBlockParser(exportedReader, index);
 
-UpdateDatabase(metadataContext, new MapEntityMapper(metadataContext, xBlockParser));
+UpdateDatabase(metadataContext, new MapEntityMapper(metadataContext, xBlockParser, serverReader));
 
 var mapDataMapper = new MapDataMapper(metadataContext, xBlockParser);
 
