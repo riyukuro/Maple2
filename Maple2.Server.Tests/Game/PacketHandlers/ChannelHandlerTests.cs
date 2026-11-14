@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -111,6 +111,7 @@ public class ChannelHandlerTests {
     // takes the World's account lock, so Acquired counts the saves.
     private static GameSession Unsaved(TestGameSession test) {
         GameSession session = test.Start();
+        test.SavingConfig(session);
         typeof(GameSession).GetField("preMigrationSaved", Any)!.SetValue(session, false);
         return session;
     }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
 using Grpc.Core;
@@ -30,7 +30,8 @@ public class RefusedMoveTests {
         test = new TestGameSession();
         session = test.Start();
         test.EnterMap(TestGameSession.Map(2000023));
-        // Saves as a live session does (TestGameSession.Start counts as saved), so the move save runs.
+        // Saves as a live session does (TestGameSession.Start counts as saved), so the move save runs and stores.
+        test.SavingConfig(session);
         typeof(GameSession).GetField("preMigrationSaved", Any)!.SetValue(session, false);
         test.TakeSent();
     }

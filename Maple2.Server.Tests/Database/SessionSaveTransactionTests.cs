@@ -673,17 +673,33 @@ public class SessionSaveTransactionTests {
         Assert.That(StoredMeso(), Is.EqualTo(0));
     }
 
-    // A failed save before a migration is not tried again (at Dispose): the client was already sent to the other
-    // channel, which may have loaded the player by then.
+    // A move's save refused once is tried again at once and stores: the move goes on with what it stored.
     [Test]
-    public void MigrationSave_Failed_IsNotTriedAgain() {
+    public void MigrationSave_RefusedOnce_SecondTryStores() {
         session.Currency.Meso = 4321;
         RefuseOnce("UPDATE `account`");
 
         AllowMigrationSave();
-        session.MigrationSave();
+        Assert.That(session.MigrationSave(), Is.True);
         hook.Before = null;
-        session.MigrationSave();
+
+        Assert.That(StoredMeso(), Is.EqualTo(4321));
+    }
+
+    // A move's save refused on both tries stores nothing and the move is refused (GameSession.MigrationSave): the
+    // client is not sent to a server that would load the last stored state.
+    [Test]
+    public void MigrationSave_RefusedTwice_IsFalse_StoresNothing() {
+        session.Currency.Meso = 4321;
+        hook.Before = command => {
+            if (command.CommandText.Contains("UPDATE `account`")) {
+                throw new InvalidOperationException("write refused");
+            }
+        };
+
+        AllowMigrationSave();
+        Assert.That(session.MigrationSave(), Is.False);
+        hook.Before = null;
 
         Assert.That(StoredMeso(), Is.EqualTo(0));
     }

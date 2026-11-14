@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -361,6 +361,7 @@ public class ItemFunctionUseTests {
                 setup: () => test.AddMap(from, Field(to), Field(lacking, notInPlayedClient: true)));
             test.EnterMovingOut(from);
             // The move's save runs (Start counts as saved), so what the ride used is stored with it.
+            test.SavingConfig(session);
             typeof(GameSession).GetField("preMigrationSaved", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, false);
             // CheckMapCashCall looks the target up in the field's map storage.
             typeof(FieldManager).GetField("<MapMetadata>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!

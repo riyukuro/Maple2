@@ -96,7 +96,11 @@ public static class PlayerWarpUtil {
             return true;
         }
 
-        session.MigrationSave();
+        // A save that did not store refuses the move (GameSession.MigrationSave).
+        if (!session.MigrationSave()) {
+            session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+            return false;
+        }
         bool moved = false;
         try {
             var request = new MigrateOutRequest {

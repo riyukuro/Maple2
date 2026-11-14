@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -384,6 +384,7 @@ public class TradeHandlerTests {
         takerTest.TakeSent();
         Assert.That(taker.Currency.Meso, Is.EqualTo(4000));
         // The test session skips the save before a move; this test makes the one the move runs.
+        takerTest.SavingConfig(taker);
         typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(taker, false);
 
         taker.MigrationSave();

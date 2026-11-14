@@ -514,6 +514,18 @@ public sealed class TestGameSession {
         return session;
     }
 
+    // A config whose save runs (Start's is a bare one, whose save throws), so a full save of the session stores.
+    public void SavingConfig(GameSession session) {
+        SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
+            [JobCode.Newbie] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
+                [SkillRank.Basic] = [], [SkillRank.Awakening] = [],
+            }, []),
+        }));
+        SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        using GameStorage.Request db = Storage.Context();
+        session.Config = new ConfigManager(db, session);
+    }
+
     #region After Start
     public static ByteReader Packet(Action<ByteWriter> write) {
         var writer = new ByteWriter();

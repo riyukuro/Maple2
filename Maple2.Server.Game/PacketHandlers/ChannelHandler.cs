@@ -68,7 +68,11 @@ public class ChannelHandler : FieldPacketHandler {
             Refuse(session, MigrationError.s_move_err_no_server, listed);
             return;
         }
-        session.MigrationSave();
+        // A save that did not store refuses the change (GameSession.MigrationSave).
+        if (!session.MigrationSave()) {
+            Refuse(session, MigrationError.s_move_err_default, listed);
+            return;
+        }
         try {
             var request = new MigrateOutRequest {
                 AccountId = session.AccountId,

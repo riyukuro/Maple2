@@ -287,7 +287,12 @@ public class PvpHandler : FieldPacketHandler {
             character.ReturnPosition = session.Player.Position;
         }
 
-        session.MigrationSave();
+        // A save that did not store refuses the move (GameSession.MigrationSave).
+        if (!session.MigrationSave()) {
+            session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+            session.Send(failed);
+            return;
+        }
         try {
             MigrateOutResponse migrate = session.World.MigrateOut(new MigrateOutRequest {
                 AccountId = session.AccountId,

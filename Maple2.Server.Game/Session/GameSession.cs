@@ -1559,7 +1559,10 @@ public sealed partial class GameSession : Core.Network.Session {
             // Saved before the World is asked for the move (see Migrate).
             State = SessionState.ChangeMap;
             saved = !preMigrationSaved;
-            MigrationSave();
+            if (!MigrationSave()) {
+                Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                return;
+            }
 
             var request = new MigrateOutRequest {
                 AccountId = AccountId,
@@ -1636,7 +1639,10 @@ public sealed partial class GameSession : Core.Network.Session {
             // save still waited, and that entry's claim of the account refused the save.
             State = SessionState.ChangeMap;
             saved = !preMigrationSaved;
-            MigrationSave();
+            if (!MigrationSave()) {
+                Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                return;
+            }
 
             var request = new MigrateOutRequest {
                 AccountId = AccountId,
@@ -1666,7 +1672,10 @@ public sealed partial class GameSession : Core.Network.Session {
                     // What it changed (a trophy count, the return position) is stored with the move: a second save,
                     // short, since a reset the first save waited on is stored by now.
                     MigrationRefused();
-                    MigrationSave();
+                    if (!MigrationSave()) {
+                        Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+                        return;
+                    }
                 }
             }
             Dungeon?.LeaveStage();
@@ -1806,7 +1815,7 @@ public sealed partial class GameSession : Core.Network.Session {
             if (entered) {
                 SaveCacheConfig();
             }
-            MigrationSave();
+            LastSave();
         } catch (Exception ex) {
             Logger.Error(ex, "Error during session cleanup for {Player}", PlayerName);
         } finally {
@@ -1929,16 +1938,46 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     // Runs once: the save before a migration is not tried again when the session is disposed, since the client was
-    // already sent to the other channel, which may have loaded (and saved) the player by then. A failed save is
-    // logged, and the other channel starts from the last stored state.
+    // already sent to the other channel, which may have loaded (and saved) the player by then.
+    // A save that fails is no move: false, and the caller refuses the move (the client's move error box) and the
+    // session plays on here, saving again by its timed save and at Dispose. A move made after a failed save sent the
+    // client to a channel that loaded the last stored state, while the items made since were stored at once and the
+    // ones used up were not: the rewards came back, and the meso spent since the last save was lost or kept. The
+    // save is tried twice, as SessionSave (a passing error such as a deadlock), and a session whose second try fails
+    // too is ended as there (Cut: what it holds since its last save is in its memory only), its Dispose trying one
+    // last save. A reset that holds the save past ResetWait refuses the move only: a reset must not end sessions.
     // It waits for a reset being stored (up to ResetWait), on the field thread when a move handler calls it: the
     // move must be stored before the client is sent on, and coming back later would let the other channel load the
     // state from before it. The wait is the reset's own run, about 1 to 5 s for a daily reset over 50k characters,
     // once a day and only for the moves in those seconds; the save holds no row while it waits (the reset times are
     // its first read), so the reset never waits on it. 60 s bounds a reset that hangs (its statements time out at
     // 30 s each); before the share-lock read, the same save waited on the reset's rows in the database, up to 50 s.
-    public void MigrationSave() {
-        if (preMigrationSaved) return;
+    public bool MigrationSave() {
+        switch (SaveBeforeLeaving()) {
+            case SaveResult.Stored:
+                return true;
+            case SaveResult.ResetRunning:
+                Logger.Warning("MigrationSave: a reset is still being stored after {Wait}, the move is refused AccountId={AccountId} CharacterId={CharacterId}",
+                    ResetWait, AccountId, CharacterId);
+                return false;
+        }
+        Logger.Fatal("MigrationSave: not stored after a second try, the move is refused and the session is ended; the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}",
+            AccountId, CharacterId);
+        Cut();
+        return false;
+    }
+
+    // Dispose's last save: as a move's, with no session left to end.
+    private void LastSave() {
+        if (SaveBeforeLeaving() != SaveResult.Stored) {
+            Logger.Error("LastSave: not stored, the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+        }
+    }
+
+    // Stored also when an earlier save of this move (or of the session's close) stored it. A save that did not store
+    // clears the flag again: the session's packets are handled again and its next save is made.
+    private SaveResult SaveBeforeLeaving() {
+        if (preMigrationSaved) return SaveResult.Stored;
         // A handler the receive thread runs (a guild fund donation, a limit break) ends before the flag is set, and
         // the ones read after it are dropped: none changes the wallet or the inventory while the save reads them, or
         // after it. Every move's save comes here (channel change, quit, portal and warp moves, dungeon and PvP moves,
@@ -1947,7 +1986,7 @@ public sealed partial class GameSession : Core.Network.Session {
         // does not hold the field thread longer; the save then goes on, logged.
         bool gated = Monitor.TryEnter(InlineGate, InlineGateWait);
         try {
-            if (preMigrationSaved) return;
+            if (preMigrationSaved) return SaveResult.Stored;
             preMigrationSaved = true;
         } finally {
             if (gated) Monitor.Exit(InlineGate);
@@ -1964,16 +2003,11 @@ public sealed partial class GameSession : Core.Network.Session {
         // would reach this wallet unstored). The client sends these moves with a trade open (no trade check).
         Trade?.Dispose();
 
-        try {
-            AcquireLock(AccountId, 5);
-            if (!Save(ResetWait)) {
-                Logger.Error("MigrationSave: not stored, not tried again AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
-            }
-        } catch (Exception ex) {
-            Logger.Error(ex, "MigrationSave failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
-        } finally {
-            ReleaseLock(AccountId);
+        SaveResult result = LockedSave(tries: 2, ResetWait);
+        if (result != SaveResult.Stored) {
+            preMigrationSaved = false;
         }
+        return result;
     }
 
     // The start of a close (a dropped connection, a kick, the server's stop): no packet of the session is handled from

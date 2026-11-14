@@ -64,7 +64,11 @@ public class SidePopupHandler : FieldPacketHandler {
             return;
         }
 
-        session.MigrationSave();
+        // A save that did not store refuses the move (GameSession.MigrationSave).
+        if (!session.MigrationSave()) {
+            session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
+            return;
+        }
         try {
             MigrateOutResponse response = World.MigrateOut(new MigrateOutRequest {
                 AccountId = session.AccountId,

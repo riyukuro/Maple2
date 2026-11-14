@@ -47,9 +47,11 @@ public class MoveSaveQueueTests {
         }
     }
 
-    // The test session starts as saved and closed (TestGameSession.Start); these play on as a live session does.
+    // The test session starts as saved and closed (TestGameSession.Start); these play on as a live session does,
+    // whose move save stores (a refused one is no move, MigrationSaveRefusalTests).
     private static GameSession Unsaved(TestGameSession test) {
         GameSession session = test.Start();
+        test.SavingConfig(session);
         typeof(GameSession).GetField("preMigrationSaved", Any)!.SetValue(session, false);
         session.State = SessionState.Connected;
         return session;

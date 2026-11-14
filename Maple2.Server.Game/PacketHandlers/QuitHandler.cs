@@ -39,7 +39,14 @@ public class QuitHandler : FieldPacketHandler {
             return;
         }
 
-        session.MigrationSave();
+        // A save that did not store sends no client to the character list, which would load the state from before it
+        // (GameSession.MigrationSave): the client is told as for a refused quit and the session is ended, its Dispose
+        // trying one last save.
+        if (!session.MigrationSave()) {
+            session.Send(MigrationPacket.GameToLoginError(s_move_err_default));
+            session.CutAfterSend();
+            return;
+        }
         try {
             var request = new MigrateOutRequest {
                 AccountId = session.AccountId,
