@@ -507,7 +507,38 @@ public class StatsManager {
                      held.Select(buff => (buff.Id, buff.Metadata.Property.InvokeGroupId)))) {
             values[attribute].AddTotal(new SpecialOption(rate));
         }
+        foreach (Buff buff in held) {
+            BuffManager? casterBuffs = buff.Caster?.Buffs;
+            if (casterBuffs == null) {
+                continue;
+            }
+            foreach ((BasicAttribute attribute, long value) in InvokeDebuffBonus(type =>
+                         casterBuffs.GetEffectInvokeValues(type, buff.Id, buff.Metadata.Property.InvokeGroupId).Item1)) {
+                values[attribute].AddTotal(value);
+            }
+        }
     }
+
+    // Invoke types 23 and 26 add a flat value to the evasion or critical evasion of the effect they name: the passive
+    // 11100252 (levels 1-12) gives its debuff 11100242 a further -N evasion and -10N
+    // critical evasion at level N. The client's mapping of these types (specialability.cpp FUN_14081d980) has no
+    // caller, and it counts them for display only, so the server chooses: the bonus is on the holder of the named
+    // effect, from the invokes its caster holds (as IncreaseDotDamage is), times the invoke's stack count.
+    public static List<(BasicAttribute Attribute, long Value)> InvokeDebuffBonus(Func<InvokeEffectType, int> casterValue) {
+        List<(BasicAttribute, long)> bonus = [];
+        foreach ((InvokeEffectType type, BasicAttribute attribute) in DebuffInvokes) {
+            int value = casterValue(type);
+            if (value != 0) {
+                bonus.Add((attribute, value));
+            }
+        }
+        return bonus;
+    }
+
+    private static readonly (InvokeEffectType Type, BasicAttribute Attribute)[] DebuffInvokes = [
+        (InvokeEffectType.IncreaseEvasionDebuff, BasicAttribute.Evasion),
+        (InvokeEffectType.IncreaseCritEvasionDebuff, BasicAttribute.CriticalEvasion),
+    ];
 
     // A buff's status in a rebuild, once per stack: its values and special values to the totals, its rates to the
     // rates Stats.Total applies, its special rates in thousandths (an item's special rate is kept so).

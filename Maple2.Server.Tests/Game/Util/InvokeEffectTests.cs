@@ -179,4 +179,25 @@ public class InvokeEffectTests {
         Assert.That(HealDamageRecord.HealingRaised(1000, 0.04f), Is.EqualTo(1040));
         Assert.That(HealDamageRecord.HealingRaised(245, 0.06f), Is.EqualTo(259));
     }
+
+    // 11100252 level 3 (types 23, 26: -3, -30, effectID 11100242) held by the caster lowers its debuff's holder's
+    // evasion by 3 and critical evasion by 30 per stack of the invoke; other effects get nothing.
+    [Test]
+    public void EvasionDebuffInvokesAddToTheNamedEffectsHolder() {
+        var invoke = new AdditionalEffectMetadataInvokeEffect([InvokeEffectType.IncreaseEvasionDebuff, InvokeEffectType.IncreaseCritEvasionDebuff],
+            [-3f, -30f], [0f, 0f], EffectId: 11100242, EffectGroupId: 0, SkillId: 0, SkillGroupId: 0);
+        (AdditionalEffectMetadataInvokeEffect?, int)[] caster = [(invoke, 1)];
+
+        List<(BasicAttribute Attribute, long Value)> bonus = StatsManager.InvokeDebuffBonus(type => BuffManager.SumEffectInvokes(caster, type, 11100242, 0).Item1);
+        Assert.That(bonus, Is.EqualTo(new List<(BasicAttribute, long)> { (BasicAttribute.Evasion, -3), (BasicAttribute.CriticalEvasion, -30) }));
+
+        (AdditionalEffectMetadataInvokeEffect?, int)[] stacked = [(invoke, 2)];
+        bonus = StatsManager.InvokeDebuffBonus(type => BuffManager.SumEffectInvokes(stacked, type, 11100242, 0).Item1);
+        Assert.That(bonus, Is.EqualTo(new List<(BasicAttribute, long)> { (BasicAttribute.Evasion, -6), (BasicAttribute.CriticalEvasion, -60) }));
+
+        Assert.That(StatsManager.InvokeDebuffBonus(type => BuffManager.SumEffectInvokes(caster, type, 11100241, 0).Item1), Is.Empty);
+        // A damage invoke on the same effect adds no evasion.
+        (AdditionalEffectMetadataInvokeEffect?, int)[] damage = [(Invoke(InvokeEffectType.IncreaseOffensivePhysicalDamage, 20f, 0f, effectId: 11100242), 1)];
+        Assert.That(StatsManager.InvokeDebuffBonus(type => BuffManager.SumEffectInvokes(damage, type, 11100242, 0).Item1), Is.Empty);
+    }
 }
