@@ -74,7 +74,8 @@ public class DotDamageRecord {
             Invincible = true;
         }
         if (dotDamage.NotKill) {
-            hpAmount = Math.Min(hpAmount, Target.Stats.Values[BasicAttribute.Health].Current - 1);
+            // Never below 0: a target at 0 health is not healed by 1.
+            hpAmount = Math.Max(0, Math.Min(hpAmount, Target.Stats.Values[BasicAttribute.Health].Current - 1));
         }
 
         HpAmount = (int) -hpAmount;

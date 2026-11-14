@@ -73,6 +73,16 @@ public class DotDamageRowTests {
         Assert.That(record.HpAmount, Is.EqualTo(-299));
     }
 
+    // A not-kill dot on a target already at 0 health deals 0, not a heal of 1.
+    [Test]
+    public void NotKill_DoesNotHealATargetAtZero() {
+        FieldPlayer caster = Player(5000, 5000);
+        FieldPlayer target = Player(10000, 0);
+
+        var record = new DotDamageRecord(caster, target, Dot(hpValue: 10, isConstDamage: true, notKill: true));
+        Assert.That(record.HpAmount, Is.EqualTo(0));
+    }
+
     // 70000114 (KR: Type 1, DamageByTargetMaxHp 0.2), Snowfield's Intense Cold, which the Glacial Canyon (52000082)
     // trigger adds each second to the players in box 701. Its caster is the field's own actor, which has no stats: no
     // tick is rolled, each is a Normal fifth of the max health (an accuracy of 0 used to make each tick a Miss).
