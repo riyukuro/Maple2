@@ -193,7 +193,7 @@ public static class TriggerFunctionMapping {
         { "spawn_monster", attrs => new Trigger.SpawnMonster(ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBool(attrs?["auto_target"]?.Value), ParseInt(attrs?["delay"]?.Value)) },
         { "spawn_npc_range", attrs => new Trigger.SpawnNpcRange(ParseIntArray(attrs?["range_ids"]?.Value), ParseBool(attrs?["is_auto_targeting"]?.Value), ParseInt(attrs?["random_pick_count"]?.Value), ParseInt(attrs?["score"]?.Value)) },
         { "start_combine_spawn", attrs => new Trigger.StartCombineSpawn(ParseIntArray(attrs?["group_id"]?.Value), ParseBool(attrs?["is_start"]?.Value)) },
-        { "start_mini_game", attrs => new Trigger.StartMiniGame(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["round"]?.Value), attrs?["game_name"]?.Value ?? string.Empty, ParseBool(attrs?["is_show_result_ui"]?.Value)) },
+        { "start_mini_game", attrs => new Trigger.StartMiniGame(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["round"]?.Value), attrs?["game_name"]?.Value ?? string.Empty, ParseBoolOr(attrs?["is_show_result_ui"]?.Value, true)) },
         { "start_mini_game_round", attrs => new Trigger.StartMiniGameRound(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["round"]?.Value)) },
         { "start_tutorial", _ => new Trigger.StartTutorial() },
         { "talk_npc", attrs => new Trigger.TalkNpc(ParseInt(attrs?["spawn_id"]?.Value)) },
@@ -377,6 +377,9 @@ public static class TriggerFunctionMapping {
 
     // A flag whose absence has a meaning of its own: the hall triggers test a state with success 1, with
     // success 0 and without the attribute, which stands for the plain test.
+    // start_mini_game shows the result window unless is_show_result_ui says no (the trigger definition's default is
+    // True; the KR scripts write "false" only on the UserMassive_*, PinataWD and WDdancedancestop games, and the classic
+    // escape, springbeach and crazyrunner leave it out).
     public static bool ParseBoolOr(string? value, bool absent) {
         return string.IsNullOrEmpty(value) ? absent : ParseBool(value);
     }

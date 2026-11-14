@@ -269,4 +269,20 @@ public class TriggerHallGameTests : TriggerTestBase {
         Assert.That((record!.CharacterId, record.TotalRounds, record.MinRound, record.ClearedRounds), Is.EqualTo((CharacterId, 5, 1, 0)));
         Assert.That(test.TakeSent(), Is.Empty);
     }
+
+    // The result window shows unless is_show_result_ui says no: the trigger definition's default is True, and the KR
+    // scripts write "false" only on the games without one (UserMassive_Springbeach next to the plain springbeach).
+    [Test]
+    public void StartMiniGame_ShowsTheResultUnlessTold() {
+        StartHall();
+        Action("""<action name="start_mini_game" round="5" box_id="1" game_name="springbeach" />""");
+        Assert.That(test.Session.MiniGameRecord!.ShowResult, Is.True);
+
+        Action("""<action name="start_mini_game" round="1" box_id="9001" is_show_result_ui="False" game_name="PinataWD" />""");
+        Assert.That(test.Session.MiniGameRecord!.ShowResult, Is.True);
+        Action("""<action name="start_mini_game" round="1" box_id="1" is_show_result_ui="False" game_name="PinataWD" />""");
+        Assert.That(test.Session.MiniGameRecord!.ShowResult, Is.False);
+        Action("""<action name="start_mini_game" round="10" box_id="1" is_show_result_ui="1" game_name="oxquiz_ugc" />""");
+        Assert.That(test.Session.MiniGameRecord!.ShowResult, Is.True);
+    }
 }
