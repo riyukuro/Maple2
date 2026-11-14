@@ -7,18 +7,23 @@ using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
-using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
-public class DungeonRoomHandler : PacketHandler<GameSession> {
+// On the field thread, as the field thread's handlers change the same inventory, wallet and quests. Some commands
+// move the player, and the move saves first (GameSession.Migrate): queued, and the receive thread waits for it
+// (FieldPacketHandler.QueueAndWait), as for the channel change.
+public class DungeonRoomHandler : FieldPacketHandler {
     public const string FindHelperFeature = "FindDungeonHelp";
 
     public override RecvOp OpCode => RecvOp.RoomDungeon;
+
+    public override bool TryHandleDeferred(GameSession session, IByteReader reader) => QueueAndWait(session, reader);
 
     private enum Command : byte {
         Reset = 1,

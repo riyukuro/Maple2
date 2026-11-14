@@ -4,13 +4,15 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
-using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
-public class SmartPushHandler : PacketHandler<GameSession> {
+// On the field thread: a push takes items, mesos and merets and gathers or adds a buff, which the field thread's
+// handlers change too.
+public class SmartPushHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.SmartPush;
 
     public override void Handle(GameSession session, IByteReader packet) {

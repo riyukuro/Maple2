@@ -1,11 +1,13 @@
 ﻿using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
-using Maple2.Server.Core.PacketHandlers;
+using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
-public class LimitBreakHandler : PacketHandler<GameSession> {
+// On the field thread: the limit break takes items and mesos and changes the item, which the field thread's handlers
+// change too.
+public class LimitBreakHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.LimitBreak;
 
     private enum Command : byte {
