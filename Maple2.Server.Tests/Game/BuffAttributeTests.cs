@@ -146,6 +146,35 @@ public class BuffAttributeTests {
         Assert.That(Held(), Is.EqualTo(new[] { 10000051, 50000330 }));
     }
 
+    // cancelEffectCodes: the cancel takes the named buff whoever gave it, a casterIndividual copy of another caster too;
+    // cancelBuffCategories alone (no codes) takes the buffs of the category. 10200112 (KR: casterIndividualEffect 1);
+    // 90000070 cancels category 2001 only.
+    [Test]
+    public void Cancel_TakesAnotherCastersCopyAndCategoriesAlone() {
+        // Effects that proc each second with no dot; a canceller's start cancels, and so does each proc.
+        AdditionalEffectMetadata Ticking(int id, AdditionalEffectMetadataProperty property) =>
+            Effect(id, property with { IntervalTick = 1000 }) with { Dot = new AdditionalEffectMetadataDot(null, null) };
+        AdditionalEffectMetadata Cancel(int id, int[] ids, BuffCategory[] categories) => Ticking(id, Plain) with {
+            Update = new AdditionalEffectMetadataUpdate(new AdditionalEffectMetadataUpdate.CancelEffect(false, false, ids, categories), [], [], [], []),
+        };
+        Start(MapType.None,
+            Ticking(10200112, Plain with { CasterIndividualBuff = true }),
+            Ticking(50000001, Plain with { Category = (BuffCategory) 2001 }),
+            Ticking(10000051, Plain),
+            Cancel(10200243, [10200112], []),
+            Cancel(90000070, [], [(BuffCategory) 2001]));
+        Add(10200243);
+        Add(90000070);
+        // Put on after the cancellers started, so only their activation and procs can take them.
+        Add(10200112, caster: Field.FieldActor);
+        Add(50000001, caster: Field.FieldActor);
+        Add(10000051);
+        Assert.That(Held(), Is.EqualTo(new[] { 10000051, 10200112, 10200243, 50000001, 90000070 }));
+        Buffs.Update(2100);
+
+        Assert.That(Held(), Is.EqualTo(new[] { 10000051, 10200243, 90000070 }));
+    }
+
     // casterIndividualEffect: each caster's buff is its own. 10200112 (KR: casterIndividualEffect 1, 10 s); 10000051
     // (not set) is one buff whoever casts it.
     [TestCase(10200112, 2)]

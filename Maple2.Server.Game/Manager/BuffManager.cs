@@ -618,24 +618,11 @@ public class BuffManager : IUpdatable {
     }
 
     private void CancelBuffs(Buff buff, AdditionalEffectMetadataUpdate.CancelEffect cancel) {
-        List<(int buffId, int casterId)> buffsToRemove = [];
-        foreach (int cancelId in cancel.Ids) {
-            foreach (Buff buffResult in EnumerateBuffs(cancelId)) {
-                if (cancel.CheckSameCaster) {
-                    if (buffResult.Caster != buff.Caster) {
-                        continue;
-                    }
-                }
-                buffsToRemove.Add((buffResult.Id, buffResult.Caster.ObjectId));
-            }
-        }
-
-        foreach (BuffCategory category in cancel.Categories) {
-            foreach (Buff cancelCategoryBuff in EnumerateBuffs().Where(b => b.Metadata.Property.Category == category)) {
-                buffsToRemove.Add((cancelCategoryBuff.Id, cancelCategoryBuff.Caster.ObjectId));
-            }
-        }
-        Remove(buffsToRemove.ToArray());
+        (int buffId, int casterId)[] buffsToRemove = EnumerateBuffs()
+            .Where(held => held != buff && Buff.Cancels(cancel, buff.Caster.ObjectId, held.Id, held.Metadata.Property.Category, held.Caster.ObjectId))
+            .Select(held => (held.Id, held.Caster.ObjectId))
+            .ToArray();
+        Remove(buffsToRemove);
     }
 
     public void ModifyDuration(int buffId, int modifyValue) {

@@ -211,15 +211,7 @@ public class Buff : IUpdatable, IByteSerializable {
 
     public virtual void Update(long tickCount) {
         if (!activated) {
-            if (Metadata.Update.Cancel != null) {
-                foreach (int id in Metadata.Update.Cancel.Ids) {
-                    if (Metadata.Update.Cancel.CheckSameCaster && Owner.ObjectId != Caster.ObjectId) {
-                        continue;
-                    }
-
-                    Owner.Buffs.Remove(id, Caster.ObjectId);
-                }
-            }
+            ApplyCancel();
 
             activated = true;
         }
@@ -487,24 +479,20 @@ public class Buff : IUpdatable, IByteSerializable {
             return;
         }
 
-        if (Metadata.Update.Cancel.Ids.Length > 0) {
-            foreach (int id in Metadata.Update.Cancel.Ids) {
-                List<Buff> buffs = Owner.Buffs.EnumerateBuffs(id);
-                foreach (Buff buff in buffs) {
-                    if (!Metadata.Update.Cancel.CheckSameCaster || buff.Caster.ObjectId == Caster.ObjectId) {
-                        Owner.Buffs.Remove(id, Caster.ObjectId);
-                    }
-                }
-            }
+        List<Buff> buffsToRemove = Owner.Buffs.EnumerateBuffs()
+            .Where(buff => buff != this && Cancels(Metadata.Update.Cancel, Caster.ObjectId, buff.Id, buff.Metadata.Property.Category, buff.Caster.ObjectId))
+            .ToList();
+        // Each copy is removed under its own caster, so a casterIndividual copy another caster gave goes too.
+        buffsToRemove.ForEach(buff => Owner.Buffs.Remove(buff.Id, buff.Caster.ObjectId));
+    }
 
-            List<Buff> buffsToRemove = Owner.Buffs.EnumerateBuffs()
-                .Where(buff =>
-                    Metadata.Update.Cancel.Categories.Contains(buff.Metadata.Property.Category)
-                    && (!Metadata.Update.Cancel.CheckSameCaster || buff.Caster.ObjectId == Caster.ObjectId)
-                ).ToList();
-
-            buffsToRemove.ForEach(buff => Owner.Buffs.Remove(buff.Id, Caster.ObjectId));
+    // CancelEffectProperty: a held buff goes when its id is in cancelEffectCodes or its category in cancelBuffCategories
+    // (either list alone is enough); cancelCheckSameCaster keeps it unless this effect's caster also gave it.
+    internal static bool Cancels(AdditionalEffectMetadataUpdate.CancelEffect cancel, int casterId, int buffId, BuffCategory buffCategory, int buffCasterId) {
+        if (!cancel.Ids.Contains(buffId) && !cancel.Categories.Contains(buffCategory)) {
+            return false;
         }
+        return !cancel.CheckSameCaster || buffCasterId == casterId;
     }
 
     // ModifyEffectDuration: each held copy of a named effect gets its time left times the factor plus the value in
