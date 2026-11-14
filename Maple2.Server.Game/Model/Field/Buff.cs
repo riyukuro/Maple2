@@ -34,6 +34,13 @@ public class Buff : IUpdatable, IByteSerializable {
     public long ShieldHealth { get; set; }
 
     public bool Enabled { get; private set; }
+    // Held while the holder rides a battle mount (SuspendedOnBattleMount): Enabled and the client's flag stay as they
+    // are, and only the sums the client skips for it leave the buff out (Counted).
+    public bool Suspended { get; private set; }
+    // The buff counts in the status, resistance, consume, motion, invincible and revival sums: the client's
+    // AdditionalCliList::FUN_140972a00 skips a buff without m_bEnabled or with m_bSuspended. Its shield, stun and
+    // invoke sums and its has-buff tests skip only a buff without m_bEnabled.
+    public bool Counted => Enabled && !Suspended;
 
     private bool activated;
     private readonly bool canExpire;
@@ -249,21 +256,28 @@ public class Buff : IUpdatable, IByteSerializable {
     // notifyField is false only in the constructor, before the buff is held: then neither the field nor the
     // holder's sums and stats are told.
     public bool UpdateEnabled(bool notifyField = true) {
-        bool enabled = Metadata.Condition.Check(Caster, Owner, Owner) && !SuspendedOnBattleMount(Owner, Metadata.Condition);
+        bool enabled = Metadata.Condition.Check(Caster, Owner, Owner);
+        bool suspended = SuspendedOnBattleMount(Owner, Metadata.Condition);
+        bool changed = Enabled != enabled || Suspended != suspended;
         if (Enabled != enabled) {
             Enabled = enabled;
             if (notifyField) {
                 Field.Broadcast(BuffPacket.Update(this));
-                Owner.Buffs.EnabledChanged(this);
             }
+        }
+        // The client works out the suspend itself (AdditionalCli::Update), so no packet tells it.
+        Suspended = suspended;
+        if (notifyField && changed) {
+            Owner.Buffs.EnabledChanged(this);
         }
 
         return enabled;
     }
 
     // The client suspends a held buff while its holder rides a battle mount unless the level's begin condition has
-    // allowBattleRidingState (AdditionalCli::Update @0x14096c520), and its sums skip it as a disabled one
-    // (AdditionalCliList::FUN_140972a00). It tests the holder; the begin condition's own test is the caster's.
+    // allowBattleRidingState (AdditionalCli::Update @0x14096c520 sets m_bSuspended and leaves m_bEnabled), and one
+    // sum skips it (AdditionalCliList::FUN_140972a00, see Counted). It tests the holder; the begin condition's own
+    // test is the caster's.
     internal static bool SuspendedOnBattleMount(IActor owner, BeginCondition condition) {
         return !condition.AllowOnBattleMount && owner is FieldPlayer player &&
                player.Session.Ride?.Ride?.Metadata.Basic.Type == RideOnType.Battle;

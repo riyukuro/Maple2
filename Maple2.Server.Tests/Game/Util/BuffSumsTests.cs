@@ -68,6 +68,24 @@ public class BuffSumsTests {
         Assert.That(sums.Invokes(InvokeEffectType.IncreaseEffectDuration, 10500001).Item1, Is.EqualTo(2000));
     }
 
+    // A suspended buff (its holder on a battle mount) keeps its stun and invoke parts and gives no resistance or
+    // invincible flag (AdditionalCliList::FUN_140972a00 skips it; FUN_1409713b0 and CollectInvokeEffectStats do not).
+    [Test]
+    public void SuspendedBuffKeepsOnlyItsStunAndInvokeParts() {
+        AdditionalEffectMetadata effect = Effect(7, new Dictionary<BasicAttribute, float> { [BasicAttribute.Accuracy] = 0.1f },
+            BySkill, invincible: true, stun: 1);
+        BuffSums held = BuffSums.Of([(effect, 1, false)]);
+        BuffSums suspended = BuffSums.Of([(effect, 1, true)]);
+        Assert.Multiple(() => {
+            Assert.That(held.Invincible, Is.True);
+            Assert.That(held.Resistance(BasicAttribute.Accuracy), Is.EqualTo(0.1f).Within(1e-6f));
+            Assert.That(suspended.Invincible, Is.False, "invincible");
+            Assert.That(suspended.Resistance(BasicAttribute.Accuracy), Is.EqualTo(0f), "resistance");
+            Assert.That(suspended.Stun, Is.EqualTo(held.Stun), "stun");
+            Assert.That(suspended.Invokes(InvokeEffectType.IncreaseSkillDamage, 10500001), Is.EqualTo(held.Invokes(InvokeEffectType.IncreaseSkillDamage, 10500001)), "invoke");
+        });
+    }
+
     [Test]
     public void InvincibleWhenOneBuffHasTheFlag() {
         Assert.That(new BuffSums(Held).Invincible, Is.False);

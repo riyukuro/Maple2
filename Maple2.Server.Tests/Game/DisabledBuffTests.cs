@@ -27,11 +27,12 @@ public class DisabledBuffTests {
     }
 
     // A held buff as the field keeps it, with only what the sums read: its data, stack count and enabled flag.
-    internal static Buff Held(AdditionalEffectMetadata metadata, bool enabled, int stacks = 1) {
+    internal static Buff Held(AdditionalEffectMetadata metadata, bool enabled, int stacks = 1, bool suspended = false) {
         var buff = (Buff) RuntimeHelpers.GetUninitializedObject(typeof(Buff));
         typeof(Buff).GetField(nameof(Buff.Metadata))!.SetValue(buff, metadata);
         typeof(Buff).GetField("<Stacks>k__BackingField", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(buff, stacks);
         typeof(Buff).GetField("<Enabled>k__BackingField", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(buff, enabled);
+        typeof(Buff).GetField("<Suspended>k__BackingField", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(buff, suspended);
         return buff;
     }
 
@@ -139,6 +140,7 @@ public class DisabledBuffTests {
         AdditionalEffectMetadata noRevive = Effect(50005500, property: Property with { DisableRevivalHere = true });
         Assert.That(BuffManager.BlocksRevival([Held(noRevive, true)]), Is.True);
         Assert.That(BuffManager.BlocksRevival([Held(noRevive, false)]), Is.False);
+        Assert.That(BuffManager.BlocksRevival([Held(noRevive, true, suspended: true)]), Is.False);
         Assert.That(BuffManager.BlocksRevival([Held(Effect(1), true)]), Is.False);
     }
 
@@ -194,5 +196,31 @@ public class DisabledBuffTests {
         // Back on before the slot: it still procs at 5000.
         Assert.That(Buff.ResumedCanProc(Buff.ResumedProcTick(5000, 1000, 4800), 5500), Is.True);
         Assert.That(Buff.ResumedCanProc(5500, 5500), Is.True);
+    }
+
+    // A buff suspended on a battle mount (Buff.Suspended) stays enabled: its shield still takes hits and its invoke
+    // bonus counts, while its status, invincible flag and disableRevivalHere do not (only the client's
+    // AdditionalCliList::FUN_140972a00 skips m_bSuspended).
+    [Test]
+    public void ASuspendedBuffKeepsItsShieldAndInvokeButNotItsStatus() {
+        AdditionalEffectMetadata shield = Effect(61100121, shield: new AdditionalEffectMetadataShield(1200, 0f));
+        Buff riding = Held(shield, true, suspended: true);
+        Assert.That(BuffManager.Shields([riding]), Is.EqualTo(new[] { riding }));
+
+        AdditionalEffectMetadata guard = Effect(10100232, values: new Dictionary<BasicAttribute, long> { { BasicAttribute.PhysicalRes, 150 } },
+            invincible: true);
+        Stats stats = Player();
+        StatsManager.AddBuffs(stats, [Held(guard, true, suspended: true)]);
+        stats.Total();
+        Assert.That(stats[BasicAttribute.PhysicalRes].Total, Is.EqualTo(100));
+        Assert.That(BuffManager.SumsOf([Held(guard, true, suspended: true)]).Invincible, Is.False);
+        Assert.That(BuffManager.SumsOf([Held(guard, true)]).Invincible, Is.True);
+
+        var invoke = new AdditionalEffectMetadataInvokeEffect([InvokeEffectType.IncreaseOffensivePhysicalDamage], [20f], [0f], EffectId: 90050805, EffectGroupId: 0,
+            SkillId: 0, SkillGroupId: 0);
+        Stats on = Player();
+        StatsManager.AddBuffs(on, [Held(Effect(90050805), true), Held(Effect(90050806, invoke: invoke), true, suspended: true)]);
+        on.Total();
+        Assert.That(on[SpecialAttribute.OffensivePhysicalDamage].Total, Is.EqualTo(20));
     }
 }

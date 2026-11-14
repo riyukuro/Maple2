@@ -499,7 +499,8 @@ public class StatsManager {
     // stats were counted the whole time it was held.
     public static void AddBuffs(Stats values, IEnumerable<Buff> buffs) {
         List<Buff> held = buffs.Where(buff => buff.Enabled).ToList();
-        foreach (Buff buff in held) {
+        // A suspended buff (its holder on a battle mount) gives no status; its invoke bonus still counts.
+        foreach (Buff buff in held.Where(buff => !buff.Suspended)) {
             AddStatus(values, buff.Metadata.Status, buff.Stacks);
         }
         foreach ((SpecialAttribute attribute, float rate) in InvokeDamageBonus(
@@ -585,7 +586,7 @@ public class StatsManager {
     }
 
     private void StatConversion(FieldPlayer player) {
-        foreach (Buff buff in player.Buffs.EnumerateBuffs().Where(buff => buff.Enabled)) {
+        foreach (Buff buff in player.Buffs.EnumerateBuffs().Where(buff => buff.Counted)) {
             if (buff.Metadata.Status.Conversion != null) {
                 float sum = Values[buff.Metadata.Status.Conversion.BaseAttribute].Total;
                 sum *= buff.Metadata.Status.Conversion.Rate;

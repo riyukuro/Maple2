@@ -33,18 +33,35 @@ public sealed class BuffSums {
     public float ItemRecovery { get; }
     public float HealRecovery { get; }
 
-    public BuffSums(IEnumerable<(AdditionalEffectMetadata Metadata, int Stacks)> held) {
+    public BuffSums(IEnumerable<(AdditionalEffectMetadata Metadata, int Stacks)> held)
+        : this(held.Select(buff => (buff.Metadata, buff.Stacks, false))) { }
+
+    // A suspended buff (Buff.Suspended: its holder rides a battle mount) keeps its stun, invoke and attackPossible
+    // parts and gives none of the status ones (AdditionalCliList::FUN_140972a00 skips it, FUN_1409713b0 and
+    // CollectInvokeEffectStats do not).
+    public static BuffSums Of(IEnumerable<(AdditionalEffectMetadata Metadata, int Stacks, bool Suspended)> held) => new(held);
+
+    private BuffSums(IEnumerable<(AdditionalEffectMetadata Metadata, int Stacks, bool Suspended)> held) {
         List<(AdditionalEffectMetadataInvokeEffect? Invoke, int Stacks)> withInvoke = [];
         List<AttackPossibleMetadata> limits = [];
-        foreach ((AdditionalEffectMetadata metadata, int stacks) in held) {
+        foreach ((AdditionalEffectMetadata metadata, int stacks, bool suspended) in held) {
+            if (metadata.Property is { } stunProperty && Util.NpcControlRules.Stuns(stunProperty.Stun)) {
+                Stun = true;
+                StunBreak = Math.Max(StunBreak, stunProperty.ImmuneBreak);
+            }
+            if (metadata.InvokeEffect != null) {
+                withInvoke.Add((metadata.InvokeEffect, stacks));
+            }
+            if (metadata.Property?.AttackPossible is { } limit) {
+                limits.Add(limit);
+            }
+            if (suspended) {
+                continue;
+            }
             foreach ((BasicAttribute attribute, float value) in metadata.Status.Resistances) {
                 resistances[attribute] = resistances.GetValueOrDefault(attribute) + Model.Buff.ByStacks(value, stacks);
             }
             Invincible |= metadata.Status.Invincible;
-            if (metadata.Property is { } property && Util.NpcControlRules.Stuns(property.Stun)) {
-                Stun = true;
-                StunBreak = Math.Max(StunBreak, property.ImmuneBreak);
-            }
             DeathResistance |= metadata.Status.DeathResistanceHp;
             PvpOnOff |= metadata.Property?.PvpOnOff == true;
             InvincibleReflect |= metadata.Status.Invincible && metadata.Status.InvincibleReflect;
@@ -52,12 +69,6 @@ public sealed class BuffSums {
             MagicalDamageTaken += Model.Buff.ByStacks(metadata.Status.MagicalDamageTakenRate, stacks);
             ItemRecovery += Model.Buff.ByStacks(metadata.Status.ItemRecoveryRate, stacks);
             HealRecovery += Model.Buff.ByStacks(metadata.Status.HealRecoveryRate, stacks);
-            if (metadata.InvokeEffect != null) {
-                withInvoke.Add((metadata.InvokeEffect, stacks));
-            }
-            if (metadata.Property?.AttackPossible is { } limit) {
-                limits.Add(limit);
-            }
         }
         invokes = withInvoke.ToArray();
         attackLimits = limits.ToArray();

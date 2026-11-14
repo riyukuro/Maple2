@@ -289,9 +289,10 @@ public class BuffManager : IUpdatable {
 
 
     // The sums of the enabled buffs only: the client's resistance, invincible, stun and invoke sums skip a buff
-    // without m_bEnabled (AdditionalCliList::FUN_140972a00, FUN_1409713b0, CollectInvokeEffectStats).
+    // without m_bEnabled (AdditionalCliList::FUN_140972a00, FUN_1409713b0, CollectInvokeEffectStats). A suspended
+    // one gives its stun and invoke parts only (BuffSums).
     public static BuffSums SumsOf(IEnumerable<Buff> held) {
-        return new BuffSums(held.Where(buff => buff.Enabled).Select(buff => (buff.Metadata, buff.Stacks)));
+        return BuffSums.Of(held.Where(buff => buff.Enabled).Select(buff => (buff.Metadata, buff.Stacks, buff.Suspended)));
     }
 
     // A held buff's begin condition began or stopped holding (Buff.UpdateEnabled): the sums and the stat totals
@@ -327,7 +328,7 @@ public class BuffManager : IUpdatable {
     public float TotalCompulsionRate(BuffCompulsionEventType type, int skillId = 0) => CompulsionRate(EnumerateBuffs(), type, skillId);
 
     public static float CompulsionRate(IEnumerable<Buff> held, BuffCompulsionEventType type, int skillId = 0) {
-        return held.Where(buff => buff.Enabled && buff.Metadata.Status.Compulsion?.Type == type)
+        return held.Where(buff => buff.Counted && buff.Metadata.Status.Compulsion?.Type == type)
             .DistinctBy(buff => buff.Id)
             .Select(buff => buff.Metadata.Status.Compulsion!)
             .Where(compulsion => skillId == 0 || compulsion.SkillIds.Length == 0 || compulsion.SkillIds.Contains(skillId))
@@ -337,7 +338,7 @@ public class BuffManager : IUpdatable {
     // A revive in place is refused while an enabled buff has disableRevivalHere: the client takes the flag from enabled
     // buffs only (AdditionalCliList::FUN_140972a00, additionalcli_2.cpp:1065).
     public static bool BlocksRevival(IEnumerable<Buff> held) {
-        return RevivalRules.BuffBlocks(held.Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property.DisableRevivalHere));
+        return RevivalRules.BuffBlocks(held.Where(buff => buff.Counted).Select(buff => buff.Metadata.Property.DisableRevivalHere));
     }
 
     // The shields that take a hit, in the order held: an enabled buff's only, as the client's shield total
@@ -400,18 +401,18 @@ public class BuffManager : IUpdatable {
     }
 
     // The consume spirit rates of the enabled buffs held, each times its stack count: -1 makes casts free.
-    public float ConsumeSpRate => EnumerateBuffs().Where(buff => buff.Enabled).Sum(buff => buff.Metadata.Consume.SpRate * buff.Stacks);
+    public float ConsumeSpRate => EnumerateBuffs().Where(buff => buff.Counted).Sum(buff => buff.Metadata.Consume.SpRate * buff.Stacks);
 
     // An enabled buff held lists the skill among the ones its holder cannot cast.
     public bool SkillUseDisabled(int skillId) {
-        return Util.SkillCastRules.DisabledByBuff(EnumerateBuffs().Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property.SkillUseDisableIds), skillId);
+        return Util.SkillCastRules.DisabledByBuff(EnumerateBuffs().Where(buff => buff.Counted).Select(buff => buff.Metadata.Property.SkillUseDisableIds), skillId);
     }
 
     // The skillUseDisable main-type masks of the enabled buffs held, OR'd (AdditionalCliList::FUN_140972a00).
     public static int SkillUseDisableMask(IEnumerable<Buff> held) {
         int mask = 0;
         foreach (Buff buff in held) {
-            if (buff.Enabled) {
+            if (buff.Counted) {
                 mask |= buff.Metadata.Property.SkillUseDisableMask;
             }
         }
@@ -425,7 +426,7 @@ public class BuffManager : IUpdatable {
     public static int ForceApplyTarget(IEnumerable<Buff> held) {
         int bits = 0;
         foreach (Buff buff in held) {
-            if (buff.Enabled) {
+            if (buff.Counted) {
                 bits |= buff.Metadata.Property.ForceApplyTarget;
             }
         }

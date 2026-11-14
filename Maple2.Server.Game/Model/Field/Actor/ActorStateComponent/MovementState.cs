@@ -212,7 +212,7 @@ public partial class MovementState {
         SkillMetadataPush? push = SuperArmorRules.PushOn(attack.Damage.Push, mapType) is { } p
                                   && (p.Probability >= 1 || Random.Shared.NextSingle() < p.Probability) ? p : null;
         int armor = SuperArmorRules.Armor(State == ActorState.PcSkill ? castSkill?.Metadata.State : null,
-            actor.Buffs.EnumerateBuffs().Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property), mapType);
+            actor.Buffs.EnumerateBuffs().Where(buff => buff.Counted).Select(buff => buff.Metadata.Property), mapType);
         if (actor.IsDead || IsJumping || actor.Value.Metadata.Basic.Friendly != 0 || !NpcControlRules.HitReacts(attack.HitImmuneBreak,
                 actor.Value.Metadata.Basic.HitImmune, actor.Value.Metadata.Basic.Class, push != null, State,
                 SuperArmorRules.Holds(armor, attack, push))) {
