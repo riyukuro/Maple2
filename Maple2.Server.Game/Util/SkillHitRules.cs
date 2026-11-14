@@ -140,8 +140,9 @@ public static class SkillHitRules {
     // cast's rotation. Chosen here: within this of either.
     public const float FacingMargin = 90f;
     // An arrow's packet carries the step it hit on: its last and its current point. KMS2 steps are at most 139 long
-    // and 0.1 s of the path's velocity, but the client does not clamp a step (magicdata.cpp:980, the time since its
-    // last frame), so a frame hitch makes one as long as the hitch. Chosen here: a step longer than this at the
+    // and 0.1 s of the path's velocity, but the client cuts a step (the time since its last frame) only at the flight
+    // time left (magicdata.cpp:976-984; a homing path's is its target's distance, :1490), so a frame hitch makes one
+    // as long as the hitch, up to the rest of the flight. Chosen here: a step longer than this at the
     // fastest of the paths is logged, never refused (both ends are held by ImpactTooFar and ReachTooFar).
     public const float StepSeconds = 0.25f;
     // Two packets of one arrow: its current point moves at most the velocity for the time between their arrivals
