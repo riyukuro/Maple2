@@ -55,11 +55,26 @@ public class BanWordStorage {
         if (loadDynamic == null) {
             return [];
         }
-        if (DynamicStale()) {
+        if (!DynamicStale()) {
+            return dynamicWords;
+        }
+        // Only the first read waits for the db. A refresh is done by one caller; the others keep the words held
+        // meanwhile instead of waiting for a slow read.
+        if (!Volatile.Read(ref dynamicLoaded)) {
             lock (dynamicLock) {
                 if (DynamicStale()) {
                     Load();
                 }
+            }
+            return dynamicWords;
+        }
+        if (Monitor.TryEnter(dynamicLock)) {
+            try {
+                if (DynamicStale()) {
+                    Load();
+                }
+            } finally {
+                Monitor.Exit(dynamicLock);
             }
         }
         return dynamicWords;
