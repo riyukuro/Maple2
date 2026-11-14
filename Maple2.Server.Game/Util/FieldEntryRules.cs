@@ -82,6 +82,11 @@ public static class FieldEntryRules {
         return !dungeonField && enterReturnId != 0 && (type == InstanceType.none || saveField);
     }
 
+    // The saved return spot (Character.ReturnPosition) is a spot on the return field: a field entry that saves another
+    // return field ends it, so it is never used on that other field. It is stored with the character now, so it
+    // outlives the session it was taken in.
+    public static bool KeepsReturnSpot(int returnMapBefore, int returnMapSaved) => returnMapBefore == returnMapSaved;
+
     // A running dungeon room on this channel: its lobby room id, whether the character has a record in it (it entered
     // the room's lobby), the lobby's map and the room's fields by map.
     public readonly record struct RunningRoom<T>(int RoomId, bool Member, int LobbyMapId, T Lobby, IReadOnlyDictionary<int, T> Fields);

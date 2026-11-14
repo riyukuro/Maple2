@@ -162,6 +162,10 @@ public partial class FieldManager {
         }
 
         if (FieldEntryRules.SavesReturnMap(FieldInstance.Type, FieldInstance.SaveField, this is DungeonFieldManager, Metadata.Property.EnterReturnId)) {
+            int returnBefore = player.Character.ReturnMaps.IsEmpty ? 0 : player.Character.ReturnMaps.Peek();
+            if (!FieldEntryRules.KeepsReturnSpot(returnBefore, Metadata.Property.EnterReturnId)) {
+                player.Character.ReturnPosition = default;
+            }
             player.Character.ReturnMaps.Push(Metadata.Property.EnterReturnId);
         }
 

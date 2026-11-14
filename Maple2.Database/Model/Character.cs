@@ -60,6 +60,9 @@ internal class Character {
                 ChampionSeasonId = other.ChampionSeasonId,
                 ChampionGuildId = other.ChampionGuildId,
                 ChampionGuildName = other.ChampionGuildName,
+                ReturnX = other.ReturnPosition.X,
+                ReturnY = other.ReturnPosition.Y,
+                ReturnZ = other.ReturnPosition.Z,
             },
             Cooldown = new Cooldown {
                 Doctor = other.DoctorCooldown,
@@ -129,6 +132,7 @@ internal class Character {
             ChampionSeasonId = other.Profile.ChampionSeasonId,
             ChampionGuildId = other.Profile.ChampionGuildId,
             ChampionGuildName = other.Profile.ChampionGuildName ?? string.Empty,
+            ReturnPosition = new System.Numerics.Vector3(other.Profile.ReturnX, other.Profile.ReturnY, other.Profile.ReturnZ),
             DoctorCooldown = other.Cooldown.Doctor,
             StorageCooldown = other.Cooldown.Storage,
             AbilityResetTime = other.Cooldown.AbilityReset,
@@ -202,6 +206,11 @@ internal class Profile {
     public int ChampionSeasonId { get; set; }
     public long ChampionGuildId { get; set; }
     public string? ChampionGuildName { get; set; }
+    // The spot on the return field to go back to (Character.ReturnPosition, kept when a dungeon hall or a match is
+    // entered); also in this JSON column. A move to another server reloads the character, which lost it before.
+    public float ReturnX { get; set; }
+    public float ReturnY { get; set; }
+    public float ReturnZ { get; set; }
 }
 
 internal class Cooldown {

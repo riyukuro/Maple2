@@ -824,7 +824,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 newField = dungeonField.Lobby;
                 Dungeon.LeaveStage();
             } else {
-                Migrate(mapId, beforeMove: beforeMove);
+                Migrate(mapId, beforeMove: beforeMove, position: position);
                 fieldChangeMigrated = true;
                 newField = null;
                 return false;
@@ -1124,7 +1124,7 @@ public sealed partial class GameSession : Core.Network.Session {
         character.ReturnPosition = default;
 
         if (character.MapId is Constant.DefaultHomeMapId) {
-            Migrate(mapId);
+            Migrate(mapId, position: position);
             return;
         }
 
@@ -1135,7 +1135,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 houseRank.TryGetValue(Guild.Guild.HouseTheme, out GuildTable.House? house);
 
                 if (house?.MapId == character.MapId) {
-                    Migrate(mapId);
+                    Migrate(mapId, position: position);
                     return;
                 }
             }
@@ -1528,8 +1528,9 @@ public sealed partial class GameSession : Core.Network.Session {
     };
 
     // beforeMove runs right before the migrate packet, only when the move is made (not when the map is refused or
-    // the World server gives no address).
-    public void Migrate(int mapId, long ownerId = 0, Action? beforeMove = null) {
+    // the World server gives no address). position is the spot on the map to arrive at (the return field's saved
+    // spot); default is the map's spawn.
+    public void Migrate(int mapId, long ownerId = 0, Action? beforeMove = null, Vector3 position = default) {
         // Not to a map the played client does not have (see PrepareFieldInternal).
         if (MapMetadata.TryGet(mapId, out MapMetadata? target) && target.Property.NotInPlayedClient) {
             Send(NoticePacket.Message(FieldEntryRules.NotInPlayedClientNotice(target.Id, target.Name)));
@@ -1567,6 +1568,11 @@ public sealed partial class GameSession : Core.Network.Session {
                 InstancedContent = isInstanced,
                 PetUid = SummonedPetUid,
             };
+            if (position != default) {
+                request.PositionX = position.X;
+                request.PositionY = position.Y;
+                request.PositionZ = position.Z;
+            }
 
             MigrateOutResponse response = World.MigrateOut(request);
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {

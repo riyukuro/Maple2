@@ -730,6 +730,12 @@ public partial class GameStorage {
                 Insignia = row.Profile.Insignia,
                 SkinTabStart = row.Profile.SkinTabStart,
                 SkinTabEnd = row.Profile.SkinTabEnd,
+                ChampionSeasonId = row.Profile.ChampionSeasonId,
+                ChampionGuildId = row.Profile.ChampionGuildId,
+                ChampionGuildName = row.Profile.ChampionGuildName,
+                ReturnX = row.Profile.ReturnX,
+                ReturnY = row.Profile.ReturnY,
+                ReturnZ = row.Profile.ReturnZ,
             };
             return Context.TrySaveChanges();
         }

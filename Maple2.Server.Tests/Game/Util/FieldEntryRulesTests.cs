@@ -84,6 +84,15 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.SavesReturnMap(InstanceType.none, false, false, 0), Is.False);
     }
 
+    // The saved return spot is a spot on the return field: an entry that saves the same return field keeps it (a
+    // dungeon hall entered from the town it returns to), one that saves another field or the first one saved ends it.
+    [Test]
+    public void KeepsReturnSpot_OnlyOnTheSameReturnField() {
+        Assert.That(FieldEntryRules.KeepsReturnSpot(2000062, 2000062), Is.True);
+        Assert.That(FieldEntryRules.KeepsReturnSpot(2000062, 2000426), Is.False);
+        Assert.That(FieldEntryRules.KeepsReturnSpot(0, 2000062), Is.False);
+    }
+
     // A login on a map of a running room the character entered goes back into that room's field (the lobby on the
     // lobby map); a room the character never entered, or a map that is none of the room's, gives null. Of two rooms
     // on the same map the newest is taken.
