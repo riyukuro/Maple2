@@ -707,6 +707,46 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
     }
     #endregion
+    #region breakable_object (BreakableHandler, a breakable broken)
+    // 10002689: <condition type="breakable_object" value="10" />, each breakable the player's attack breaks counts;
+    // a repeat of the packet for the box already broken does not.
+    [Test]
+    public void BreakableObject_10002689_EachBreak() {
+        Start();
+        foreach (string name in new[] { "fieldBreakables", "triggerBreakable" }) {
+            FieldInfo info = typeof(FieldManager).GetField(name, Any)!;
+            info.SetValue(Field, Activator.CreateInstance(info.FieldType));
+        }
+        SkillMetadata cast = CastSkill(10000001);
+        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack));
+        SkillMetadata skill = cast with {
+            Data = cast.Data with { Motions = [cast.Data.Motions[0] with { Attacks = [attack] }] },
+        };
+        var storage = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", Any)!.GetValue(storage)!;
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(skill.Id, skill.Level), skill]);
+        Field.AddBreakable("bb1", new BreakableActor(true, 7001, 1000, 1000, 0, Vector3.Zero, Vector3.Zero));
+        Field.AddBreakable("bb2", new BreakableActor(true, 7002, 1000, 1000, 0, Vector3.Zero, Vector3.Zero));
+        Quest quest = StartQuest(Condition(ConditionType.breakable_object, 10, [], []));
+        var handler = new BreakableHandler { SkillMetadata = storage };
+        void Break(string entityId) => handler.Handle(test.Session, TestGameSession.Packet(writer => {
+            writer.WriteString(entityId);
+            writer.WriteLong(1);
+            writer.WriteInt(skill.Id);
+            writer.WriteShort(skill.Level);
+            writer.WriteByte(0);
+            writer.WriteByte(0);
+        }));
+
+        Break("bb1");
+        Break("bb1");
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+        Break("bb2");
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(2));
+    }
+    #endregion
     #region item_move (FieldManager.PlaceCube, a liftable put down)
     // 10001060: <condition type="item_move" code="30000030" value="3" target="400" />, the liftable item of the code
     // put down on a target box of the target counts; one put down off the box, or another item, does not.
