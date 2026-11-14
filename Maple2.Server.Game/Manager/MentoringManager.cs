@@ -433,6 +433,7 @@ public class MentoringManager : IDisposable {
         }
 
         session.Send(MentorPacket.AcceptMentorInvite(id));
+        MailMentorReward(pair.MentorId);
         try {
             session.World.Mentoring(new MentoringRequest {
                 ReceiverId = pair.MentorId,
@@ -440,6 +441,55 @@ public class MentoringManager : IDisposable {
             });
         } catch (Exception ex) {
             logger.Warning(ex, "Mentoring pair {Id} not sent to the mentor", pair.Id);
+        }
+    }
+
+    // The new mentor's reward for a pair: the mail of s_mentoring_new_mentor_mail_* (stringcommon.xml: the mentee's
+    // name as {0} of the title and the content, the points as {1}) with the table's MentorReward coin as mentor points
+    // (item 90000023, MentorToken when collected). The client parses the coin (mentoringdatatable.cpp:80) and reads it
+    // nowhere, and no client code sends the mail, so the server sends it when a mentee accepts. Chosen here: the coin
+    // is not counted against the mentor's daily cap (maxMentorDailyRewardCoin 400 is below the 1000 the mail names);
+    // a mail or item the database refuses is logged and the pair stays.
+    private void MailMentorReward(long mentorId) {
+        Item? points = session.Field?.ItemDrop.CreateItem(MentoringAttend.MentorPointItemId, amount: MentoringAttend.MentorRewardCoin);
+        if (points == null) {
+            logger.Error("Mentor reward item {ItemId} not created for {CharacterId}", MentoringAttend.MentorPointItemId, mentorId);
+            return;
+        }
+
+        var mail = new Mail {
+            ReceiverId = mentorId,
+            SenderId = mentorId,
+            Type = MailType.System,
+            TitleArgs = [("str", session.PlayerName)],
+            ContentArgs = [("str", session.PlayerName), ("str", MentoringAttend.MentorRewardCoin.ToString())],
+        };
+        mail.SetSenderName(StringCode.s_mentoring_new_mentor_mail_sender);
+        mail.SetTitle(StringCode.s_mentoring_new_mentor_mail_title);
+        mail.SetContent(StringCode.s_mentoring_new_mentor_mail_content);
+
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            Mail? stored = db.CreateMail(mail);
+            if (stored == null) {
+                logger.Error("Mentor reward mail not created for {CharacterId}", mentorId);
+                return;
+            }
+            points.Slot = -1;
+            if (db.CreateItem(stored.Id, points) == null) {
+                logger.Error("Mentor reward item not stored on mail {MailId}", stored.Id);
+                db.DeleteMail(stored.Id, mentorId);
+                return;
+            }
+            mail = stored;
+        }
+
+        try {
+            session.World.MailNotification(new MailNotificationRequest {
+                CharacterId = mentorId,
+                MailId = mail.Id,
+            });
+        } catch (Exception ex) {
+            logger.Warning(ex, "Mentor reward mail {MailId} not announced", mail.Id);
         }
     }
 

@@ -599,6 +599,42 @@ public class MentorHandlerTests {
         Assert.That(Mentor(test), Is.EqualTo(new[] { Hex(MentorPacket.MyList(pair)), Hex(MentorPacket.PairOnline(pair)) }));
     }
 
+    // The new mentor's pair reward: one mail with the table's 1000 mentor points, collected as MentorToken. A
+    // refused accept sends none.
+    [Test]
+    public void Accept_MailsTheMentorItsPoints() {
+        MentorAndMentee();
+        test.Register(TestGameSession.Metadata(90000023));
+        otherTest.Register(TestGameSession.Metadata(90000023));
+        InviteOther();
+        long id = Rows().Single().Id;
+        Send(session, Accept, writer => writer.WriteLong(id));
+        Assert.That(MentorMails(), Is.Empty);
+
+        Send(other, Accept, writer => writer.WriteLong(id));
+        Send(other, Accept, writer => writer.WriteLong(id));
+
+        var mails = MentorMails();
+        Assert.Multiple(() => {
+            Assert.That(mails.Select(mail => mail.Items), Is.EqualTo(new[] { new List<(int, int)> { (90000023, 1000) } }).AsCollection);
+            Assert.That(mails.Single().Title, Does.Contain(nameof(StringCode.s_mentoring_new_mentor_mail_title)));
+            Assert.That(otherTest.World.MailNotifications.Select(note => (note.CharacterId, note.MailId)),
+                Is.EqualTo(new[] { (session.CharacterId, mails.Single().Id) }));
+        });
+
+        session.Mail.Notify(force: true);
+        Assert.That(session.Mail.Collect(mails.Single().Id), Is.EqualTo(Maple2.Model.Error.MailError.none));
+        Assert.That(session.Player.Value.Currency.MentorToken, Is.EqualTo(1000));
+    }
+
+    private List<(long Id, string Title, List<(int Id, int Amount)> Items)> MentorMails() {
+        using var context = new Ms2Context(options);
+        return context.Mail.AsNoTracking().Where(mail => mail.ReceiverId == session.CharacterId).ToList()
+            .Select(mail => (mail.Id, mail.Title, context.Item.AsNoTracking().Where(item => item.OwnerId == mail.Id).ToList()
+                .Select(item => (item.ItemId, item.Amount)).ToList()))
+            .ToList();
+    }
+
     // Only the mentee the request names answers it: the mentor's own accept or decline of it is refused.
     [TestCase(Accept)]
     [TestCase(Decline)]

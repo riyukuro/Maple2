@@ -17,6 +17,13 @@ public static class MentoringAttend {
     // day, which the mentee page shows against the coins today of Mentor 11 (uimentoringmenteepage.cpp:111).
     public const int MenteeDailyCoinMax = 1500;
 
+    // table/mentoringconfig.xml MentorReward coin (KR): the mentor points a new mentor gets for a pair, by mail
+    // (MentoringManager.MailMentorReward).
+    public const int MentorRewardCoin = 1000;
+
+    // The mentor point item (InventoryManager.AddCurrency: MentorToken).
+    public const int MentorPointItemId = 90000023;
+
     // table/mentoringconfig.xml isShowIcon (KR 1): the return_user name-tag symbol is shown only with it
     // (CNametagSymbolTable::CheckCondition, nametagsymboltable.cpp:268, MentoringDataTable +0x30).
     public const bool ShowIcon = true;
