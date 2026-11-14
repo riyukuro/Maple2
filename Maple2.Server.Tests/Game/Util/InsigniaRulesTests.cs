@@ -57,6 +57,7 @@ public class InsigniaRulesTests {
         Assert.That(Shown(InsigniaConditionType.title, Plain with { HasTitle = true }), Is.True);
         Assert.That(Shown(InsigniaConditionType.enchant, Plain with { HighEnchant = true }), Is.True);
         Assert.That(Shown(InsigniaConditionType.vip, Plain with { Vip = true }), Is.True);
+        Assert.That(Shown(InsigniaConditionType.Burning, Plain with { BurningSymbol = true }), Is.True);
     }
 
     [Test]
@@ -70,7 +71,7 @@ public class InsigniaRulesTests {
     [Test]
     public void TypesWithoutAServerRule_AreNotShown() {
         Facts all = new(true, 999, 99999, true, 99, true, true);
-        foreach (InsigniaConditionType type in new[] { InsigniaConditionType.none, InsigniaConditionType.tencentvip, InsigniaConditionType.TGP, InsigniaConditionType.Burning, InsigniaConditionType.survivallevel }) {
+        foreach (InsigniaConditionType type in new[] { InsigniaConditionType.none, InsigniaConditionType.tencentvip, InsigniaConditionType.TGP, InsigniaConditionType.survivallevel }) {
             Assert.That(Handled(type), Is.False, type.ToString());
             Assert.That(Shown(type, all), Is.False, type.ToString());
         }

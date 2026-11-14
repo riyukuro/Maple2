@@ -11,7 +11,11 @@ namespace Maple2.Server.Game.Util;
 // packet when its answer differs from the flag the server sent; other clients draw the symbol from
 // the flag alone (field add and the Insignia update).
 public static class InsigniaRules {
-    public readonly record struct Facts(bool HasTitle, int PrestigeLevel, int TrophyTotal, bool HighEnchant, int Level, bool Vip, bool Gm);
+    // BurningSymbol: the running burning levelup the character was picked for and has not completed names the worn
+    // insignia as its symbol (GameEventBurningLevelupCli::FUN_140ce64e0: the account's 2000 value is the character,
+    // 2001 is 0, and the event's equipNametagSymbolId is the insignia).
+    public readonly record struct Facts(bool HasTitle, int PrestigeLevel, int TrophyTotal, bool HighEnchant, int Level, bool Vip, bool Gm,
+                                        bool BurningSymbol = false);
 
     public static bool Shown(InsigniaConditionType type, in Facts facts) {
         return type switch {
@@ -22,6 +26,7 @@ public static class InsigniaRules {
             InsigniaConditionType.level => facts.Level >= 50,
             InsigniaConditionType.vip => facts.Vip,
             InsigniaConditionType.GM => facts.Gm, // the client: GM grade 50 or more
+            InsigniaConditionType.Burning => facts.BurningSymbol,
             _ => false,
         };
     }
@@ -35,7 +40,8 @@ public static class InsigniaRules {
 
     public static bool Handled(InsigniaConditionType type) {
         return type is InsigniaConditionType.title or InsigniaConditionType.adventure_level or InsigniaConditionType.trophy_point
-            or InsigniaConditionType.enchant or InsigniaConditionType.level or InsigniaConditionType.vip or InsigniaConditionType.GM;
+            or InsigniaConditionType.enchant or InsigniaConditionType.level or InsigniaConditionType.vip or InsigniaConditionType.GM
+            or InsigniaConditionType.Burning;
     }
 
     public static bool Shown(GameSession session, InsigniaTable.Entry entry) {
@@ -46,7 +52,9 @@ public static class InsigniaRules {
             HighEnchant: session.Item.Equips.Gear.Any(item => item.Value.Enchant?.Enchants >= 12 && item.Value.Rarity > 3),
             Level: session.Player.Value.Character.Level,
             Vip: session.Player.Value.Account.PremiumTime > DateTime.UtcNow.ToEpochSeconds(),
-            Gm: GmCheck.IsGm(session.Player.Value.Account.AdminPermissions)));
+            Gm: GmCheck.IsGm(session.Player.Value.Account.AdminPermissions),
+            BurningSymbol: session.GameEvent.BurningLevelupEvent() is { Metadata.Data: BurningLevelup burning }
+                           && burning.NametagSymbolId == session.Player.Value.Character.Insignia));
     }
 
     // The effect a worn insignia gives when its wearer enters a field: the row's effect when the insignia is

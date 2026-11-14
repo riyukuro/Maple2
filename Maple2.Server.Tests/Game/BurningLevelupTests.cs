@@ -338,6 +338,20 @@ public class BurningLevelupTests {
         return session;
     }
 
+    // The event's symbol (equipNametagSymbolId, 47 here) worn as a Burning insignia is shown while the character is the
+    // event's pick and has not completed it, as the client's check (GameEventBurningLevelupCli::FUN_140ce64e0).
+    [TestCase(true, false, (short) 47, true)]
+    [TestCase(false, false, (short) 47, false)]
+    [TestCase(true, true, (short) 47, false)]
+    [TestCase(true, false, (short) 48, false)]
+    public void BurningInsignia_ShownForThePickedCharacterUntilItCompletes(bool picked, bool reached, short insignia, bool shown) {
+        GameSession session = Login(picked: picked, reached: reached);
+        session.Player.Value.Character.Insignia = insignia;
+
+        var entry = new InsigniaTable.Entry(InsigniaConditionType.Burning, 0, 0, 0);
+        Assert.That(Maple2.Server.Game.Util.InsigniaRules.Shown(session, entry), Is.EqualTo(shown));
+    }
+
     private static void Claim(GameSession session, int eventId = EventId) {
         new EventRewardHandler().Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(15);
