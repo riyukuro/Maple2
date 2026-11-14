@@ -24,6 +24,7 @@ public class ItemMergeHandlerTests {
     private readonly ItemMergeHandler handler = new();
     private Item gear = null!;
     private Item crystal = null!;
+    private Item revertScroll = null!;
 
     private static ScriptState State() => new(SmithState, ScriptStateType.Script, false, null, [
         new CinematicContent("", NpcTalkButton.None, 0, [], [new CinematicEventScript(8001, [Staged]), new CinematicEventScript(8002, [Done])]),
@@ -39,6 +40,8 @@ public class ItemMergeHandlerTests {
         crystal = test.Store(crystalMetadata, amount: crystals);
         ItemMetadata materialMetadata = TestGameSession.Metadata(40100001, type: 2);
         test.Store(materialMetadata with { Property = materialMetadata.Property with { Tag = ItemTag.Onix } }, amount: materials);
+        revertScroll = test.Store(TestGameSession.Metadata(31000001, function: new ItemMetadataFunction(ItemFunction.ItemMergeRevert, "ItemMergeRevert",
+            ItemMergeManager.RevertSlot(gearMetadata).ToString(), false)));
         var option = new ItemMergeTable.Option([new ItemMergeTable.Range<int>(5, 5)], [new ItemMergeTable.Range<int>(0, 0)], [1]);
         test.SetServerTable(new ItemMergeTable(new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> {
             [37000002] = new() {
@@ -117,6 +120,67 @@ public class ItemMergeHandlerTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(900));
         Assert.That(session.Item.Inventory.Get(gear.Uid)!.Stats!.HasMergeOption, Is.True);
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // Spends every meso left when the first item packet of a step is sent (a material, the crystal or the revert
+    // item leaving the inventory): a take on another thread in the middle of the step. Returns what it took.
+    private Func<long> SpendAtTheFirstItemPacket(GameSession session) {
+        long spent = -1;
+        test.OnSend = packet => {
+            if (spent >= 0 || TestGameSession.Op(packet) != SendOp.ItemInventory) {
+                return;
+            }
+            long left = session.Currency.Meso;
+            spent = session.Currency.TryTakeMeso(left, notify: false) ? left : 0;
+        };
+        return () => spent;
+    }
+
+    // A spend while the materials are taken: the price was taken first, so only what was left could go, and the
+    // merge is done. Before, the price was taken after the materials; that take threw on the short balance, and the
+    // materials and the crystal were gone with no merge.
+    [Test]
+    public void Empower_PaysBeforeTheMaterialsAreTaken() {
+        GameSession session = Login();
+        Send(session, 1, gear.Uid);
+        Send(session, 2, gear.Uid, crystal.Uid);
+        test.TakeSent();
+        Func<long> spent = SpendAtTheFirstItemPacket(session);
+
+        Assert.DoesNotThrow(() => Send(session, 3, gear.Uid, crystal.Uid));
+
+        Assert.Multiple(() => {
+            Assert.That(spent(), Is.EqualTo(900));
+            Assert.That(session.Currency.Meso, Is.EqualTo(0));
+            Assert.That(Materials(session), Is.EqualTo(7));
+            Assert.That(session.Item.Inventory.Get(gear.Uid)!.Stats?.HasMergeOption ?? false, Is.True);
+        });
+    }
+
+    // The same for the revert: its price is taken before the revert item.
+    [Test]
+    public void Revert_PaysBeforeTheRevertItemIsTaken() {
+        GameSession session = Login();
+        Send(session, 1, gear.Uid);
+        Send(session, 2, gear.Uid, crystal.Uid);
+        Send(session, 3, gear.Uid, crystal.Uid);
+        // Rarity 4: a price above 0 (the stored items are of rarity 1, whose revert is free).
+        session.Item.Inventory.Get(gear.Uid)!.Rarity = 4;
+        session.Item.Inventory.Get(revertScroll.Uid)!.Rarity = 4;
+        long price = ItemMergeManager.RevertPrice(session.Item.Inventory.Get(gear.Uid)!);
+        Assert.That(price, Is.GreaterThan(0));
+        session.Currency.Meso = price + 50;
+        test.TakeSent();
+        Func<long> spent = SpendAtTheFirstItemPacket(session);
+
+        Assert.DoesNotThrow(() => Send(session, 6, revertScroll.Uid, gear.Uid));
+
+        Assert.Multiple(() => {
+            Assert.That(spent(), Is.EqualTo(50));
+            Assert.That(session.Currency.Meso, Is.EqualTo(0));
+            Assert.That(session.Item.Inventory.Get(revertScroll.Uid), Is.Null);
+            Assert.That(session.Item.Inventory.Get(gear.Uid)!.Stats!.HasMergeOption, Is.False);
+        });
     }
 
     // An item that already has an option: the choice (mode 4) has no line; the pick's result (mode 5) has.

@@ -170,7 +170,10 @@ public sealed class ItemMergeManager {
 
         int multiplier = ItemMerge.CostMultiplier(upgradeItem.Rarity);
         long totalMesoCost = mergeSlot.MesoCost * multiplier;
-        if (session.Currency.CanAddMeso(-totalMesoCost) != -totalMesoCost) {
+        // The price is taken in one step where it was checked, before the materials: a take on another thread
+        // could leave too little for a take after them, and the materials were gone with no merge. A refused
+        // material gives it back unseen (no balance was sent); the balance goes out where the take used to.
+        if (!session.Currency.TryTakeMeso(totalMesoCost, notify: false)) {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_lack_meso));
             return;
         }
@@ -180,17 +183,19 @@ public sealed class ItemMergeManager {
             ingredients.Add(new IngredientInfo(component.Tag, component.Amount * multiplier));
         }
         if (!session.Item.Inventory.Consume(ingredients)) {
+            session.Currency.ReturnMeso(totalMesoCost, notify: false);
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_lack_material));
             return;
         }
 
         int crystalId = catalystItem.Id;
         if (!session.Item.Inventory.Consume(catalystItem.Uid, 1)) {
+            session.Currency.ReturnMeso(totalMesoCost, notify: false);
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
             return;
         }
 
-        session.Currency.ChangeMeso(-(mergeSlot.MesoCost * multiplier));
+        session.Currency.NotifyMeso();
 
         MergeRoll roll = Roll(mergeSlot, Random.Shared);
 
@@ -265,17 +270,19 @@ public sealed class ItemMergeManager {
         }
 
         long price = RevertPrice(item);
-        if (session.Currency.CanAddMeso(-price) != -price) {
+        // Taken before the revert item, as the merge's price (see Empower).
+        if (!session.Currency.TryTakeMeso(price, notify: false)) {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_lack_meso));
             return;
         }
 
         if (!session.Item.Inventory.Consume(revertItem.Uid, 1)) {
+            session.Currency.ReturnMeso(price, notify: false);
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
             return;
         }
 
-        session.Currency.ChangeMeso(-price);
+        session.Currency.NotifyMeso();
         item.Stats.ClearMergeOption();
 
         session.Send(ItemMergePacket.Remove(item));

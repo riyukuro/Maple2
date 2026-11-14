@@ -80,7 +80,10 @@ public sealed class TestGameSession {
     private readonly Dictionary<int, GameEvent> events = new();
     private readonly ItemMetadataStorage itemMetadata = Uninitialized<ItemMetadataStorage>();
     public ItemMetadataStorage ItemMetadata => itemMetadata;
-    private BlockingCollection<(byte[] packet, int length)> sendQueue = new(new ConcurrentQueue<(byte[], int)>());
+    private BlockingCollection<(byte[] packet, int length)> sendQueue;
+    // Runs at each packet the session sends, on the sending thread, before the packet is queued: a test acts there in
+    // the middle of the step that sent it.
+    public Action<byte[]>? OnSend;
     private GameSession? started;
     private readonly LRUCache<int, MapMetadata> maps = new(64, 1);
     private readonly LRUCache<int, AchievementMetadata> achievements;
@@ -89,6 +92,7 @@ public sealed class TestGameSession {
     private FieldPlayer fieldPlayer = null!;
 
     public TestGameSession(DbContextOptions? options = null, Gender gender = Gender.Male) {
+        sendQueue = NewSendQueue();
         Options = options ?? new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
@@ -475,11 +479,35 @@ public sealed class TestGameSession {
         }
         if (sendQueue.IsAddingCompleted && started != null) {
             Type core = typeof(Maple2.Server.Core.Network.Session);
-            sendQueue = new BlockingCollection<(byte[] packet, int length)>(new ConcurrentQueue<(byte[], int)>());
+            sendQueue = NewSendQueue();
             core.GetField("sendQueue", Any)!.SetValue(started, sendQueue);
             core.GetField("disconnecting", Any)!.SetValue(started, 0);
         }
         return sent;
+    }
+
+    private BlockingCollection<(byte[] packet, int length)> NewSendQueue() =>
+        new(new HookedQueue(entry => OnSend?.Invoke(entry.packet)));
+
+    // The send queue with the OnSend call at each add.
+    private sealed class HookedQueue(Action<(byte[] packet, int length)> onAdd) : IProducerConsumerCollection<(byte[] packet, int length)> {
+        private readonly ConcurrentQueue<(byte[] packet, int length)> queue = new();
+
+        public bool TryAdd((byte[] packet, int length) item) {
+            onAdd(item);
+            queue.Enqueue(item);
+            return true;
+        }
+
+        public bool TryTake(out (byte[] packet, int length) item) => queue.TryDequeue(out item);
+        public (byte[] packet, int length)[] ToArray() => queue.ToArray();
+        public void CopyTo((byte[] packet, int length)[] array, int index) => queue.CopyTo(array, index);
+        public void CopyTo(Array array, int index) => ((System.Collections.ICollection) queue).CopyTo(array, index);
+        public int Count => queue.Count;
+        public bool IsSynchronized => false;
+        public object SyncRoot => throw new NotSupportedException();
+        public IEnumerator<(byte[] packet, int length)> GetEnumerator() => queue.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => queue.GetEnumerator();
     }
 
     public static SendOp Op(byte[] packet) => (SendOp) (packet[1] << 8 | packet[0]);

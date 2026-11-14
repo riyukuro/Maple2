@@ -289,7 +289,8 @@ public class CurrencyManager {
     // Gives back a take made with TryTakeMeso(notify: false) and sends the balance: a meso packet sent meanwhile
     // (a gain on the field's thread) showed the balance without the take. Chosen here: the give-back stops at
     // MaxMeso as every gain does, and a part over it (a gain reached the cap meanwhile) is logged.
-    public void ReturnMeso(long amount) {
+    // With notify false nothing is sent: a refusal that answers as before the take, when no packet showed the take.
+    public void ReturnMeso(long amount, bool notify = true) {
         if (amount <= 0) {
             return;
         }
@@ -299,9 +300,13 @@ public class CurrencyManager {
             long room = Constant.MaxMeso - Currency.Meso;
             over = Math.Max(0, amount - room);
             Currency.Meso += amount - over;
-            session.Send(CurrencyPacket.UpdateMeso(Currency));
+            if (notify) {
+                session.Send(CurrencyPacket.UpdateMeso(Currency));
+            }
         }
-        session.Quest?.UpdateMeso();
+        if (notify) {
+            session.Quest?.UpdateMeso();
+        }
         if (over > 0) {
             logger.Warning("Meso give-back of {Amount} for {CharacterId} over the cap by {Over}", amount, session.CharacterId, over);
         }
