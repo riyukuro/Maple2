@@ -17,7 +17,11 @@ public class UgcMarketItem(ItemMetadata metadata) : MarketItem(metadata) {
     public required string[] Tags { get; set; } = [];
     public required UgcItemLook Look { get; init; }
     public required ItemBlueprint Blueprint { get; init; }
-    public UgcItemMusicScore MusicScore = new(); // TODO: Implement UgcItemMusicScore
+    // A score listing's score (UGCMarketMusicScore); empty for a design, whose look is in Look.
+    public UgcItemMusicScore MusicScore = new();
+    public bool IsMusicScore => MusicScore.ItemUid != 0;
+    // The product's name: a design's look name, a score's title.
+    public string Name => IsMusicScore ? MusicScore.Title : Look.Name;
     public UgcMarketHomeCategory Category = UgcMarketHomeCategory.None;
     // The kind of an expired listing (CUgcMarketProduct+0x70): StoppedKind when the owner stopped the sale
     // (uimeratmarketdialog.cpp:6245 logs it), FreeRelistKind when the time ran out and the free first relist is still
@@ -66,7 +70,7 @@ public class UgcMarketItem(ItemMetadata metadata) : MarketItem(metadata) {
         writer.WriteLong(SellerCharacterId);
         writer.WriteUnicodeString();
         writer.WriteUnicodeString(SellerCharacterName);
-        writer.WriteUnicodeString(string.Join(",", string.Join(",", Tags) + ", " + Look.Name));
+        writer.WriteUnicodeString(string.Join(",", string.Join(",", Tags) + ", " + Name));
         writer.WriteUnicodeString(Description);
         writer.WriteUnicodeString(SellerCharacterName);
         writer.WriteClass<UgcItemLook>(Look);

@@ -13,6 +13,9 @@ public sealed class ItemCustomMusicScore : IByteSerializable, IByteDeserializabl
     public bool IsLocked; // true=>s_writemusic_error_cant_edit
     public string Mml;
 
+    // The owner type of the author id (the client matches it with the account owner: FUN_1406a5a50, ViewScore).
+    public const int AccountAuthorType = 1;
+
     public ItemCustomMusicScore() {
         Title = string.Empty;
         Author = string.Empty;
@@ -28,7 +31,7 @@ public sealed class ItemCustomMusicScore : IByteSerializable, IByteDeserializabl
         writer.Write<Instrument>(Instrument);
         writer.WriteUnicodeString(Title);
         writer.WriteUnicodeString(Author);
-        writer.WriteInt(1);
+        writer.WriteInt(AccountAuthorType);
         writer.WriteLong(AuthorId);
         writer.WriteBool(IsLocked);
         writer.WriteLong();

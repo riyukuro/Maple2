@@ -24,6 +24,8 @@ internal class UgcMarketItem {
     public string[] Tags { get; set; } = [];
     public required UgcItemLook Look { get; set; }
     public required ItemBlueprint Blueprint { get; set; }
+    // A score listing's score; null for a design.
+    public UgcItemMusicScore? MusicScore { get; set; }
     public DateTime CreationTime { get; set; }
     public byte RelistKind { get; set; }
     public bool FreeRelistUsed { get; set; }
@@ -47,6 +49,7 @@ internal class UgcMarketItem {
             Tags = other.Tags,
             Look = other.Look,
             Blueprint = other.Blueprint,
+            MusicScore = other.IsMusicScore ? other.MusicScore : null,
             CreationTime = other.CreationTime.FromEpochSeconds(),
             RelistKind = other.RelistKind,
             FreeRelistUsed = other.FreeRelistUsed,
@@ -70,6 +73,7 @@ internal class UgcMarketItem {
             Tags = Tags,
             Look = Look,
             Blueprint = Blueprint,
+            MusicScore = (Maple2.Model.Game.UgcItemMusicScore?) MusicScore ?? new Maple2.Model.Game.UgcItemMusicScore(),
             RelistKind = RelistKind,
             FreeRelistUsed = FreeRelistUsed,
         };
@@ -82,9 +86,41 @@ internal class UgcMarketItem {
         builder.HasKey(entry => entry.Id);
         builder.Property(entry => entry.Look).HasJsonConversion();
         builder.Property(entry => entry.Blueprint).HasJsonConversion();
+        builder.Property(entry => entry.MusicScore).HasJsonConversion();
         builder.Property(entry => entry.Tags).HasJsonConversion();
         IMutableProperty creationTime = builder.Property(listing => listing.CreationTime)
             .ValueGeneratedOnAdd().Metadata;
         creationTime.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);
+    }
+}
+
+// The score of a score listing (Maple2.Model.Game.UgcItemMusicScore).
+internal record UgcItemMusicScore(
+    long ItemUid,
+    int Length,
+    int Instrument,
+    string Author,
+    string Title,
+    string Mml,
+    int AuthorType,
+    long AuthorId) {
+    [return: NotNullIfNotNull(nameof(other))]
+    public static implicit operator UgcItemMusicScore?(Maple2.Model.Game.UgcItemMusicScore? other) {
+        return other == null ? null : new UgcItemMusicScore(other.ItemUid, other.Length, other.Instrument, other.Author, other.Title,
+            other.Mml, other.AuthorType, other.AuthorId);
+    }
+
+    [return: NotNullIfNotNull(nameof(other))]
+    public static implicit operator Maple2.Model.Game.UgcItemMusicScore?(UgcItemMusicScore? other) {
+        return other == null ? null : new Maple2.Model.Game.UgcItemMusicScore {
+            ItemUid = other.ItemUid,
+            Length = other.Length,
+            Instrument = other.Instrument,
+            Author = other.Author ?? "",
+            Title = other.Title ?? "",
+            Mml = other.Mml ?? "",
+            AuthorType = other.AuthorType,
+            AuthorId = other.AuthorId,
+        };
     }
 }

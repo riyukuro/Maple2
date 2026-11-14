@@ -105,7 +105,7 @@ public sealed class UgcMarketManager {
         SoldUgcMarketItem? sold = db.AddUgcMarketSale(listing.Id, new SoldUgcMarketItem {
             AccountId = listing.SellerAccountId,
             Price = listing.Price,
-            Name = listing.Look.Name,
+            Name = listing.Name,
             Profit = profit,
             // Set here: the column's default only applies when no value is written, and the entry's 0 was
             // written as 1970, which the client shows as the sale's date with the payment already due.
@@ -352,6 +352,11 @@ public sealed class UgcMarketManager {
     // A design already listed by the account (IsAlreadyListed: FindProductByDesignUid on the item's design uid).
     public bool IsDesignListed(long designUid) {
         return designUid != 0 && items.Values.Any(listing => listing.Look.Id == designUid);
+    }
+
+    // A score already listed by the account (IsAlreadyListed: FindProductByMusicUid on the score item's uid).
+    public bool IsScoreListed(long itemUid) {
+        return itemUid != 0 && items.Values.Any(listing => listing.MusicScore.ItemUid == itemUid);
     }
 
     public bool TryGetItem(long id, [NotNullWhen(true)] out UgcMarketItem? item) {

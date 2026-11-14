@@ -2248,6 +2248,9 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("json");
 
+                    b.Property<string>("MusicScore")
+                        .HasColumnType("json");
+
                     b.Property<long>("Price")
                         .HasColumnType("bigint");
 

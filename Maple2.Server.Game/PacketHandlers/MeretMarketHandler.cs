@@ -187,20 +187,33 @@ public class MeretMarketHandler : FieldPacketHandler {
             Refuse(MeretMarketError.DisableUgcItem);
             return;
         }
-        if (item?.Template == null || item.Template.Id == 0) {
-            Refuse(MeretMarketError.DisableUgcItem);
-            return;
-        }
+        // A composed score is listed by its item uid (UGCMarketMusicScore), a design by its look.
+        bool score = item?.Music != null && item.Type.IsMusicScore;
+        if (score) {
+            if (!ScoreListable(session, item!)) {
+                Refuse(MeretMarketError.DisableUgcItem);
+                return;
+            }
+            if (session.UgcMarket.IsScoreListed(item!.Uid)) {
+                Refuse(MeretMarketError.AlreadyListed);
+                return;
+            }
+        } else {
+            if (item?.Template == null || item.Template.Id == 0) {
+                Refuse(MeretMarketError.DisableUgcItem);
+                return;
+            }
 
-        if (session.UgcMarket.IsDesignListed(item.Template.Id)) {
-            Refuse(MeretMarketError.AlreadyListed);
-            return;
-        }
+            if (session.UgcMarket.IsDesignListed(item.Template.Id)) {
+                Refuse(MeretMarketError.AlreadyListed);
+                return;
+            }
 
-        // The dialog only offers a design the player made (CItem 0x140526060 on the look's owner ids).
-        if (item.Template.AccountId != session.AccountId) {
-            Refuse(MeretMarketError.DisableUgcItem);
-            return;
+            // The dialog only offers a design the player made (CItem 0x140526060 on the look's owner ids).
+            if (item.Template.AccountId != session.AccountId) {
+                Refuse(MeretMarketError.DisableUgcItem);
+                return;
+            }
         }
 
         if (session.UgcMarket.ListingCount >= MaxListings) {
@@ -225,7 +238,6 @@ public class MeretMarketHandler : FieldPacketHandler {
 
         int tabId = tab.FirstOrDefault(kv => kv.Value.Categories.Contains(item.Metadata.Property.Category)).Key;
 
-        bool score = item.Type.IsMusicScore;
         long listingFee = UgcMarketRules.RegisterFee(session.UgcMarket.ActiveListingCount(), score, promote, Constants.UGCShopAdFeeMerat, Target.LOCALE == "CN");
         if (Pay(session, listingFee, MeretMarketCurrencyType.Meret) != StringCode.s_empty_string) {
             Refuse(MeretMarketError.LackMerat);
@@ -238,8 +250,9 @@ public class MeretMarketHandler : FieldPacketHandler {
             SellerCharacterName = session.PlayerName,
             Description = description,
             Tags = tags,
-            Look = item.Template,
+            Look = item.Template ?? new UgcItemLook(),
             Blueprint = item.Blueprint ?? new ItemBlueprint(),
+            MusicScore = score ? UgcItemMusicScore.From(item.Uid, item.Music!) : new UgcItemMusicScore(),
             Status = UgcMarketListingStatus.Active,
             PromotionEndTime = promote ? DateTime.Now.AddHours(Constants.UGCShopAdHour).ToEpochSeconds() : 0,
             ListingEndTime = DateTime.Now.AddDays(Constants.UGCShopSaleDay).ToEpochSeconds(),
@@ -271,6 +284,20 @@ public class MeretMarketHandler : FieldPacketHandler {
             return result ?? session.Item.Furnishing.GetCube(uid);
         }
     }
+
+    // The score the register dialog offers (FUN_1406a5a50, meratmarketbasketinfo.cpp:2620), with UGCMarketMusicScore
+    // on: a composed score, not locked (a bought copy is), written by this account, with no play used and of rarity 2.
+    internal static bool ScoreListable(GameSession session, Item item) {
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(MusicScoreFeature) || item.Music == null) {
+            return false;
+        }
+        return !item.Music.IsLocked && item.Music.AuthorId == session.AccountId
+            && item.RemainUses == (item.Metadata.Music?.PlayCount ?? -1) && item.Rarity == ScoreRarity;
+    }
+
+    private const int ScoreRarity = 2;
+
+    internal const string MusicScoreFeature = "UGCMarketMusicScore";
 
     // The register and resale dialogs' ValidateTexts (uimeratmarketregisterdialog.cpp:870): the tag line and the
     // description pass the ban word check (CBanTextChecker::CheckMarketProductName, CheckMarketDescription) and the
@@ -576,8 +603,13 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         error = PurchaseErrorUnknown;
-        if (!TableMetadata.UgcDesignTable.Entries.TryGetValue(ugcItem.ItemMetadata.Id, out UgcDesignTable.Entry? designMetadata)) {
-            return null;
+        // A score has no design row: its copy has the rarity the listed score had (2, ScoreListable).
+        int rarity = ScoreRarity;
+        if (!ugcItem.IsMusicScore) {
+            if (!TableMetadata.UgcDesignTable.Entries.TryGetValue(ugcItem.ItemMetadata.Id, out UgcDesignTable.Entry? designMetadata)) {
+                return null;
+            }
+            rarity = designMetadata.ItemRarity;
         }
 
         // Only a listing on sale: one taken off sale or past its sale time is not in any list the client shows.
@@ -587,13 +619,17 @@ public class MeretMarketHandler : FieldPacketHandler {
             return null;
         }
 
-        Item? item = session.Field?.ItemDrop.CreateItem(ugcItem.ItemMetadata.Id, designMetadata.ItemRarity);
+        Item? item = session.Field?.ItemDrop.CreateItem(ugcItem.ItemMetadata.Id, rarity);
         if (item == null) {
             Logger.Error("Unable to create Item for {itemId}", ugcItem.ItemMetadata.Id);
             return null;
         }
-        item.Template = ugcItem.Look;
-        item.Blueprint = ugcItem.Blueprint;
+        if (ugcItem.IsMusicScore) {
+            item.Music = ugcItem.MusicScore.ToBoughtCopy();
+        } else {
+            item.Template = ugcItem.Look;
+            item.Blueprint = ugcItem.Blueprint;
+        }
         return (ugcItem, item);
     }
 
@@ -689,7 +725,7 @@ public class MeretMarketHandler : FieldPacketHandler {
                     Rarity = gifted.Rarity,
                     Amount = gifted.Amount,
                     UgcUrl = ugcItem.Look.Url,
-                    UgcTitle = ugcItem.Look.Name,
+                    UgcTitle = ugcItem.Name,
                 },
             });
         } catch { /* ignored: the mail is there at the next mailbox load */ }
@@ -957,7 +993,7 @@ public class MeretMarketHandler : FieldPacketHandler {
     internal static IEnumerable<MarketItem> FilterByString(IEnumerable<MarketItem> items, string searchString) {
         foreach (MarketItem item in items) {
             if (item is UgcMarketItem ugc) {
-                if (ugc.Look.Name.Contains(searchString, StringComparison.OrdinalIgnoreCase)) {
+                if (ugc.Name.Contains(searchString, StringComparison.OrdinalIgnoreCase)) {
                     yield return ugc;
                     continue;
                 }
