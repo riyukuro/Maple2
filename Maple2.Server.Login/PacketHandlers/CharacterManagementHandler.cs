@@ -68,7 +68,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
                 HandleCancelDelete(session, packet);
                 break;
             case Command.ConfirmDelete:
-                HandleDelete(session, packet);
+                HandleDelete(session, packet, final: true);
                 break;
             case Command.Rename:
                 HandleRename(session, packet);
@@ -88,6 +88,12 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             Character? character = db.GetCharacter(characterId, session.AccountId);
             if (character == null) {
                 session.Send(MigrationPacket.LoginToGameError(s_move_err_default, "Invalid character"));
+                return;
+            }
+            // The client never starts a character in delete wait (UICharacterListDialog OnGameStart returns when
+            // its delete time is set).
+            if (character.DeleteTime != default) {
+                session.Send(MigrationPacket.LoginToGameError(s_move_err_default, "Character is waiting for deletion"));
                 return;
             }
             // A name that is too long: the client opens its name input and asks for the rename.
@@ -296,12 +302,19 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         session.CreateCharacter(character, outfits);
     }
 
-    private void HandleDelete(LoginSession session, IByteReader packet) {
+    // final: the final delete (CharacterManagement 4), which the client sends only from the final delete button of
+    // a character in wait (UICharacterListDialog onClickFinalDelete). Without a wait it is refused with error 8 in
+    // the delete answer, which lets the list take input again; it used to start a wait or delete outright.
+    private void HandleDelete(LoginSession session, IByteReader packet, bool final = false) {
         long characterId = packet.ReadLong();
 
         using GameStorage.Request db = GameStorage.Context();
         Character? character = db.GetCharacter(characterId, session.AccountId);
         if (character == null || !ValidateDeleteRequest(session, characterId, db, character)) {
+            return;
+        }
+        if (final && character.DeleteTime == default) {
+            session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_no_destroy_wait));
             return;
         }
 
