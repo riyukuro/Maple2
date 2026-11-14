@@ -1,5 +1,6 @@
 ﻿using Maple2.Model;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -167,6 +168,24 @@ public sealed class ExperienceManager {
         decimal prestigeRate = PrestigeRules.ScalesWithExpRate(expType) ? (decimal) modifier : 1m;
         return AddExp(CommonExpRules.Amount(expValue, modifier, entry.Factor, additionalExp), message ?? expType.Message(), kill: false,
             prestigeRate: prestigeRate);
+    }
+
+    // Decorating exp for a cube the player placed in a home (ConstructExpRules); the count is stored before the exp.
+    public void AddConstructExp() {
+        Character character = session.Player.Value.Character;
+        int paidToday = PetFusionRules.DailyCount(character.ConstructExpCount, character.ConstructExpTime, PetFusionRules.LastResetTime());
+        ConstructExpRules.Step step = ConstructExpRules.Check(session.TableMetadata.CommonExpTable.Entries.ContainsKey(ExpType.construct),
+            paidToday, session.ServerTableMetadata.ConstantsTable.ConstructExpMaxCount);
+        if (step == ConstructExpRules.Step.None) {
+            return;
+        }
+        character.ConstructExpCount = paidToday + 1;
+        character.ConstructExpTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (step == ConstructExpRules.Step.OverTime) {
+            session.Send(CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_err_ugcmap_construct_exp_overtime, session.Player.ObjectId));
+            return;
+        }
+        AddExp(ExpType.construct);
     }
 
     // The client's CExpTable::GetTypeValue at the character's level: the type's common exp curve, its base exp times its

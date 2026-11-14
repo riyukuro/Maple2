@@ -54,6 +54,11 @@ public class Character {
     public int MassiveExtraRewardCount;
     public long MassiveExtraRewardTime;
 
+    // Decorating exp (ConstructExpRules): the placements paid today, with the past-the-cap notice counted as one more,
+    // and when the count was last stored (seconds, 0 = never).
+    public int ConstructExpCount;
+    public long ConstructExpTime;
+
     // The guild championship rewards taken on GuildPvpRewardDay (yyyymmdd, local), at most GuildPvp.DailyRewardCap
     // whatever the guild.
     public int GuildPvpRewardDay;

@@ -233,6 +233,10 @@ public partial class FieldManager {
                     owner.ConditionUpdate(ConditionType.interior_point, counter: HousingManager.DecorationScore(plot));
                 }
                 session.Field!.Broadcast(CubePacket.PlaceCube(session.Player.ObjectId, plot, plotCube));
+                // The decorator's exp (the owner's or a build helper's own), not for a planner's cubes.
+                if (!plot.IsPlanner) {
+                    session.Exp.AddConstructExp();
+                }
 
                 if (plot.MapId is not Constant.DefaultHomeMapId) {
                     session.World.UpdateFieldPlot(new FieldPlotRequest {

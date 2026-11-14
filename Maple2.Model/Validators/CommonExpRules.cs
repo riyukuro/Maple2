@@ -40,6 +40,8 @@ public static class CommonExpRules {
             // Treasure Island's team result (btiTeamWin, btiTeamLose), at the player's own level as the other arenas'.
             case ExpType.btiTeamWin:
             case ExpType.btiTeamLose:
+            // Decorating a home (ConstructExpRules): the decorator's own level.
+            case ExpType.construct:
             // A pet capture: the tamer's own level, as the other life skills.
             case ExpType.petTaming:
                 return LevelSource.Character;

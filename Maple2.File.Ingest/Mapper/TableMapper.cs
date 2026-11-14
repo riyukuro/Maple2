@@ -1966,8 +1966,15 @@ public class TableMapper : TypeMapper<TableMetadata> {
 
     private CommonExpTable ParseCommonExpTable() {
         var results = new Dictionary<ExpType, CommonExpTable.Entry>();
+        // Decorating exp is the server-side feature ConstructExp (192; the client only names its error): without it the
+        // construct row is left out and a placed cube gives none (ConstructExpRules).
+        bool constructExp = FeatureLocaleFilter.FeatureEnabled("ConstructExp");
         foreach ((CommonExpType type, CommonExp exp) in parser.ParseCommonExp()) {
-            results.Add(ToExpType(type), new CommonExpTable.Entry(ExpTableId: exp.expTableID, Factor: exp.factor));
+            ExpType expType = ToExpType(type);
+            if (expType == ExpType.construct && !constructExp) {
+                continue;
+            }
+            results.Add(expType, new CommonExpTable.Entry(ExpTableId: exp.expTableID, Factor: exp.factor));
         }
         return new CommonExpTable(results);
     }

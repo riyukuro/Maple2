@@ -15,6 +15,7 @@ public class CommonExpRulesTests {
     // Treasure Island's team result (before: "Unhandled ExpType", no exp).
     [TestCase(ExpType.btiTeamWin, CommonExpRules.LevelSource.Character)]
     [TestCase(ExpType.btiTeamLose, CommonExpRules.LevelSource.Character)]
+    [TestCase(ExpType.construct, CommonExpRules.LevelSource.Character)]
     [TestCase(ExpType.taxi, CommonExpRules.LevelSource.Field)]
     [TestCase(ExpType.rareChestFirst, CommonExpRules.LevelSource.Field)]
     [TestCase(ExpType.none, CommonExpRules.LevelSource.None)]
