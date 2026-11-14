@@ -48,12 +48,12 @@ public partial class ChannelService {
     private ClubResponse Create(long clubId, IEnumerable<long> receiverIds, ClubRequest.Types.Create create) {
         foreach (long receiverId in receiverIds) {
             if (!server.GetSession(receiverId, out GameSession? session)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_member };
+                continue;
             }
 
             var clubManager = ClubManager.Create(create.Info, session);
             if (clubManager == null) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_club };
+                continue;
             }
             if (session.Clubs.TryAdd(clubId, clubManager)) {
                 session.Send(ClubPacket.Create(clubManager.Club));
@@ -66,7 +66,7 @@ public partial class ChannelService {
     private ClubResponse StagedClubFail(long clubId, IEnumerable<long> receiverIds, ClubRequest.Types.StagedClubFail stagedClubFail) {
         foreach (long receiverId in receiverIds) {
             if (!server.GetSession(receiverId, out GameSession? session)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_member };
+                continue;
             }
 
             session.Send(ClubPacket.DeleteStagedClub(clubId, (Maple2.Model.Enum.ClubResponse) stagedClubFail.Reply));
@@ -81,11 +81,11 @@ public partial class ChannelService {
                 continue;
             }
             if (!server.GetSession(receiverId, out GameSession? session)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_member };
+                continue;
             }
 
             if (!session.Clubs.TryGetValue(clubId, out ClubManager? manager)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_club };
+                continue;
             }
 
             session.Send(ClubPacket.StagedClubInviteReply(clubId, (Maple2.Model.Enum.ClubResponse) stagedClubInviteReply.Reply, stagedClubInviteReply.Name));
@@ -97,11 +97,11 @@ public partial class ChannelService {
     private ClubResponse Establish(long clubId, IEnumerable<long> receiverIds, ClubRequest.Types.Establish establish) {
         foreach (long receiverId in receiverIds) {
             if (!server.GetSession(receiverId, out GameSession? session)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_member };
+                continue;
             }
 
             if (!session.Clubs.TryGetValue(clubId, out ClubManager? manager)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_club };
+                continue;
             }
 
             manager.Club.State = ClubState.Established;
@@ -123,11 +123,11 @@ public partial class ChannelService {
     private ClubResponse Disband(long clubId, IEnumerable<long> receiverIds, ClubRequest.Types.Disband disband) {
         foreach (long receiverId in receiverIds) {
             if (!server.GetSession(receiverId, out GameSession? session)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_member };
+                continue;
             }
 
             if (!session.Clubs.TryGetValue(clubId, out ClubManager? manager)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_club };
+                continue;
             }
 
             manager.Disband();
@@ -231,11 +231,11 @@ public partial class ChannelService {
     private ClubResponse Rename(long clubId, IEnumerable<long> receiverIds, ClubRequest.Types.Rename rename) {
         foreach (long characterId in receiverIds) {
             if (!server.GetSession(characterId, out GameSession? session)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_member };
+                continue;
             }
 
             if (!session.Clubs.TryGetValue(clubId, out ClubManager? manager)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_club };
+                continue;
             }
 
             manager.Rename(rename.Name, rename.ChangedTime);
@@ -247,11 +247,11 @@ public partial class ChannelService {
     private ClubResponse UpdateBuff(long clubId, IEnumerable<long> receiverIds, ClubRequest.Types.UpdateBuff update) {
         foreach (long characterId in receiverIds) {
             if (!server.GetSession(characterId, out GameSession? session)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_member };
+                continue;
             }
 
             if (!session.Clubs.TryGetValue(clubId, out ClubManager? manager)) {
-                return new ClubResponse { Error = (int) ClubError.s_club_err_null_club };
+                continue;
             }
 
             manager.UpdateBuff(update.BuffId, update.BuffLevel);

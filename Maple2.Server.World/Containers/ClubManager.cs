@@ -345,7 +345,8 @@ public class ClubManager : IDisposable {
 
             try {
                 client.Club(request);
-            } catch { /* ignored */
+            } catch (Exception ex) {
+                Serilog.Log.Warning(ex, "Club {ClubId} {Case} did not reach channel {Channel}", Club.Id, request.ClubCase, group.Key);
             }
         }
     }
