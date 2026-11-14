@@ -82,11 +82,13 @@ public static class BeautyPacket {
         return pWriter;
     }
 
-    public static ByteWriter RandomHairResult(int voucherItemId, bool error = false) {
+    // The answer to a random pick's keep or return (uibeautyshopdialog.cpp:1557): the coupon given back (0: none, the
+    // new hair kept) and whether it went by mail (1) or to the bag.
+    public static ByteWriter RandomHairResult(int voucherItemId, bool mailed = false) {
         var pWriter = Packet.Of(SendOp.Beauty);
         pWriter.Write<Command>(Command.RandomHairResult);
         pWriter.WriteInt(voucherItemId);
-        pWriter.WriteBool(error);
+        pWriter.WriteBool(mailed);
 
         return pWriter;
     }

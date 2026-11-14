@@ -768,6 +768,50 @@ public partial class GameStorage {
             return true;
         }
 
+        // The character's saved style slot extensions (the unlock row's HairSlotExpand), as given, in the transaction
+        // that stores their merets (Beauty 17 and 19). Callers hold the account lock.
+        public bool SaveHairSlotExpand(Player player, short expand) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            CharacterUnlock? unlock = Context.CharacterUnlock.Find(player.Character.Id);
+            if (unlock == null) {
+                return false;
+            }
+
+            unlock.HairSlotExpand = expand;
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(player.Character.Id);
+            if (updated != null) {
+                player.Unlock.LastModified = updated.Value.UnlockLastModified;
+            }
+            return true;
+        }
+
+        // The character's skin color, as given, in the transaction that stores its fee (Beauty 6). Callers hold the
+        // account lock.
+        public bool SaveSkinColor(Player player, Maple2.Model.Common.SkinColor color) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.Character? character = Context.Character.Find(player.Character.Id);
+            if (character == null) {
+                return false;
+            }
+
+            character.SkinColor = color;
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(player.Character.Id);
+            if (updated != null) {
+                player.Character.LastModified = updated.Value.CharacterLastModified;
+            }
+            return true;
+        }
+
         // The account's claimed prestige rank rewards and its prestige missions, stored at a claim before its item is
         // given (as SavePcBang).
         public bool SavePrestigeClaims(Player player) {

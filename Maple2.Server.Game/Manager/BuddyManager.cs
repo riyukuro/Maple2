@@ -178,11 +178,17 @@ public class BuddyManager : IDisposable {
                 session.Send(BuddyPacket.Invite(name: name, error: s_buddy_err_target_full));
                 return;
             }
+            // Both rows or neither: the receiver's row failing used to be ignored, and the sender's request was kept
+            // with no entry on the other side (an accept could never pair it).
             BuddyEntry? entry = db.CreateBuddy(session.CharacterId, receiverId, BuddyType.OutRequest, message);
-            db.CreateBuddy(receiverId, session.CharacterId, BuddyType.InRequest, message); // Intentionally ignored result
+            if (entry == null || db.CreateBuddy(receiverId, session.CharacterId, BuddyType.InRequest, message) == null) {
+                db.Rollback();
+                session.Send(BuddyPacket.Invite(error: s_buddy_err_unknown));
+                return;
+            }
             db.Commit();
 
-            if (entry == null || !session.PlayerInfo.GetOrFetch(entry.BuddyId, out PlayerInfo? info)) {
+            if (!session.PlayerInfo.GetOrFetch(entry.BuddyId, out PlayerInfo? info)) {
                 session.Send(BuddyPacket.Invite(error: s_buddy_err_miss_id));
                 return;
             }
@@ -582,8 +588,12 @@ public class BuddyManager : IDisposable {
 
         try {
             using GameStorage.Request db = session.GameStorage.Context();
+            // The row is written first: a refused write keeps the old memo here and tells the client, which had no reply.
+            string before = self.Message;
             self.Message = message;
             if (!db.UpdateBuddy(self)) {
+                self.Message = before;
+                session.Send(BuddyPacket.UpdateBlock(error: s_buddy_err_unknown));
                 return;
             }
 

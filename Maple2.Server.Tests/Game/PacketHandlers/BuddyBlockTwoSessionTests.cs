@@ -33,9 +33,13 @@ public class BuddyBlockTwoSessionTests {
     // Every save of the shared database fails while Fail is set.
     private sealed class FailingSaves : SaveChangesInterceptor {
         public bool Fail;
+        // A save adding a buddy row owned by this character fails while set.
+        public long FailRowOwner;
 
         public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) =>
-            Fail ? throw new DbUpdateException("The test made this save fail") : result;
+            Fail || (FailRowOwner != 0 && eventData.Context!.ChangeTracker.Entries<Maple2.Database.Model.Buddy>()
+                .Any(row => row.State == EntityState.Added && row.Entity.OwnerId == FailRowOwner))
+                ? throw new DbUpdateException("The test made this save fail") : result;
     }
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
@@ -265,5 +269,54 @@ public class BuddyBlockTwoSessionTests {
         Assert.That(player.Buddy.IsBlocked(other.CharacterId), Is.True);
 
         UnblockOk(blockId);
+    }
+
+    // A block memo edit (Buddy 10) whose row write fails keeps the old memo in the list and answers the unknown error:
+    // the list took the new memo before the write and the client heard nothing.
+    [Test]
+    public void AFailedMemoEditKeepsTheOldMemo() {
+        BlockByName(player, other.PlayerName);
+        long entryId;
+        using (GameStorage.Request db = playerTest.Storage.Context()) {
+            entryId = db.ListBuddies(player.CharacterId).Single(entry => entry.BuddyId == other.CharacterId).Id;
+        }
+        playerTest.TakeSent();
+
+        saves.Fail = true;
+        buddyHandler.Handle(player, TestGameSession.Packet(writer => {
+            writer.WriteByte(10);
+            writer.WriteLong(entryId);
+            writer.WriteUnicodeString(other.PlayerName);
+            writer.WriteUnicodeString("new");
+        }));
+        saves.Fail = false;
+
+        Assert.That(playerTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Buddy).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Hex(BuddyPacket.UpdateBlock(error: BuddyError.s_buddy_err_unknown)) }));
+        var blocked = (System.Collections.Concurrent.ConcurrentDictionary<long, Buddy>) typeof(BuddyManager)
+            .GetField("blocked", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(player.Buddy)!;
+        Assert.That(blocked[entryId].Message, Is.EqualTo("memo"));
+    }
+
+    // A request whose receiver row fails is rolled back and answers the unknown error: the sender's row was
+    // committed alone, a request the receiver never saw and no accept could pair, and the list showed it.
+    [Test]
+    public void ARequestWhoseReceiverRowFailsIsRolledBack() {
+        saves.FailRowOwner = other.CharacterId;
+        buddyHandler.Handle(player, TestGameSession.Packet(writer => {
+            writer.WriteByte(Request);
+            writer.WriteUnicodeString(other.PlayerName);
+            writer.WriteUnicodeString("hi");
+        }));
+        saves.FailRowOwner = 0;
+
+        Assert.That(playerTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Buddy).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Hex(BuddyPacket.Invite(error: BuddyError.s_buddy_err_unknown)) }));
+        // The in-memory provider ignores the transaction, so the sender's row is not rolled back here as it is in MySQL.
+        using GameStorage.Request db = playerTest.Storage.Context();
+        Assert.That(db.ListBuddies(other.CharacterId), Is.Empty);
+        var buddies = (System.Collections.Concurrent.ConcurrentDictionary<long, Buddy>) typeof(BuddyManager)
+            .GetField("buddies", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(player.Buddy)!;
+        Assert.That(buddies, Is.Empty);
     }
 }

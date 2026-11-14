@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -11,6 +12,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -58,7 +60,9 @@ public class BeautyStyleSaveTests {
 
     private void Send(byte mode, Action<IByteWriter>? payload = null) {
         new BeautyHandler {
-            ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata, NpcMetadata = null!,
+            ItemMetadata = session.ItemMetadata,
+            TableMetadata = test.TableMetadata,
+            NpcMetadata = null!,
             ServerTableMetadata = test.ServerTableMetadata,
         }.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(mode);
@@ -208,6 +212,33 @@ public class BeautyStyleSaveTests {
 
         Assert.That(SentError(BeautyError.s_beauty_msg_error_style_slot_extend_max), Is.True);
         Assert.That(session.Currency.Meret, Is.EqualTo(5000L));
+    }
+
+    // The bought slot and its merets are stored in one save.
+    [Test]
+    public void Extend_StoresTheSlotWithItsMerets() {
+        Start(BeautyShopType.Save);
+
+        Extend();
+
+        using var context = new Ms2Context(test.Options);
+        Assert.That(context.CharacterUnlock.AsNoTracking().Single(unlock => unlock.CharacterId == test.CharacterId).HairSlotExpand,
+            Is.EqualTo((short) 1));
+        Assert.That(context.Account.AsNoTracking().Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(5000L - Price));
+    }
+
+    // A refused save keeps the merets and sells no slot.
+    [Test]
+    public void Extend_WhoseSaveFails_KeepsTheMerets() {
+        Start(BeautyShopType.Save);
+        test.FailSave = _ => true;
+
+        Extend();
+
+        test.FailSave = null;
+        Assert.That(session.Currency.Meret, Is.EqualTo(5000L));
+        Assert.That(session.Player.Value.Unlock.HairSlotExpand, Is.Zero);
+        Assert.That(session.Beauty.SlotCount, Is.EqualTo(30));
     }
 
     [Test]

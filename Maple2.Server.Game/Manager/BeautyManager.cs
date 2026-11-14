@@ -83,12 +83,20 @@ public sealed class BeautyManager : IDisposable {
         }
         int extended = BeautyRules.ExtendedSlots(owned, constants.BeautyStyleExpandSlotCount1time, constants.BeautyStyleMaxSlotCount);
 
-        if (!session.Currency.TryTakeMeret(price)) {
+        // The merets and the extension are stored together: the extension used to be kept in memory only, so a crash
+        // before the next session save kept the merets taken and lost the slots.
+        if (!session.Currency.TryTakeMeret(price, notify: false)) {
             session.Send(BeautyPacket.Error(BeautyError.s_err_lack_merat_ask));
+            return false;
+        }
+        if (!session.TrySavePurchase(db => db.SaveHairSlotExpand(session.Player.Value, (short) extended))) {
+            session.Currency.ReturnMeret(price);
+            Log.Error("Style slot extension of {CharacterId} not stored; merets given back", session.CharacterId);
             return false;
         }
         session.Player.Value.Unlock.HairSlotExpand = (short) extended;
         items.Expand((short) Slots);
+        session.Currency.NotifyMeretTaken(price);
         session.Send(BeautyPacket.SaveSlots((short) extended));
         return true;
     }
@@ -150,33 +158,17 @@ public sealed class BeautyManager : IDisposable {
 
     public bool HasSavedCosmetic(long uid) => items.Get(uid) != null;
 
-    public bool EquipSavedCosmetic(long uid) {
+    // A new copy of saved style uid to wear (no uid yet), or null for a uid that is no saved style of one slot. The
+    // caller stores it with the fee (BeautyHandler, sub-type 21).
+    public Item? SavedCopy(long uid) {
         Item? cosmetic = items.Get(uid);
-        if (cosmetic == null) {
-            return false;
+        if (cosmetic == null || cosmetic.Metadata.SlotNames.Length != 1) {
+            return null;
         }
 
-        // invalid cosmetic
-        if (cosmetic.Metadata.SlotNames.Length > 1) {
-            return false;
-        }
-
-        // Clone() causes copy to have the same Uid as the original. However, CreateItem() will generate a new Uid.
-        Item? copy = cosmetic.Clone();
+        // Clone() keeps the saved style's uid; the store gives the copy its own.
+        Item copy = cosmetic.Clone();
         copy.Group = ItemGroup.Default;
-
-        using GameStorage.Request db = session.GameStorage.Context();
-        copy = db.CreateItem(session.CharacterId, copy);
-        if (copy == null) {
-            return false;
-        }
-
-        if (!session.Item.Equips.EquipCosmetic(copy, copy.Metadata.SlotNames[0])) {
-            db.SaveItems(0, copy);
-            return false;
-        }
-        session.Send(BeautyPacket.ApplySavedHair());
-        session.ConditionUpdate(ConditionType.beauty_style_apply, codeLong: copy.Id);
-        return true;
+        return copy;
     }
 }

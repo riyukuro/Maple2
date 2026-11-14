@@ -106,7 +106,9 @@ public partial class WorldService {
             };
         }
 
-        if (reply == Model.Enum.ClubResponse.Reject) {
+        // The client sends 0 or 76 (clubcli.cpp SendClubMode3), but the manager broadcast the fail for any code other
+        // than accept: another code used to leave the club staged, with no way to finish or disband it.
+        if (reply != Model.Enum.ClubResponse.Accept) {
             error = clubLookup.Disband(invite.ClubId);
             if (error != ClubError.none) {
                 return new ClubResponse {

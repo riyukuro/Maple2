@@ -58,6 +58,7 @@ public class ClubCreateTests {
     private FakeChannel channel = null!;
     private PlayerInfoLookup playerLookup = null!;
     private ClubLookup lookup = null!;
+    private ChannelClientLookup channels = null!;
     private Dictionary<long, PlayerInfo> infos = null!;
     private GameSession session => test.Session;
     private long leader;
@@ -88,7 +89,7 @@ public class ClubCreateTests {
             [leader] = Info(leader, "Leader"),
             [member] = Info(member, "Member"),
         };
-        var channels = new ChannelClientLookup();
+        channels = new ChannelClientLookup();
         channel = new FakeChannel();
         AddChannel(channels, ChannelId, channel);
         playerLookup = new PlayerInfoLookup(test.Storage, channels);
@@ -289,6 +290,33 @@ public class ClubCreateTests {
         byte[][] packets = ClubPackets();
         Assert.That(ReadInviteReply(packets.First(packet => packet[2] == 0xf)), Is.EqualTo((clubId, 76)));
         Assert.That(packets.Select(packet => packet[2]), Does.Contain((byte) 5));
+        Assert.That(session.Clubs.ContainsKey(clubId), Is.False);
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetClub(playerLookup, clubId), Is.Null);
+    }
+
+    // The client answers the staged box with 0 or 76 only (SendClubMode3); the manager broadcast the fail for any
+    // other code, but only 76 disbanded, so a forged code left the club staged for good.
+    [TestCase(77)]
+    [TestCase(5)]
+    public void MemberSendsAnotherCode_TheClubGoes(int code) {
+        WorldClubManager manager = StagedClub();
+        long clubId = manager.Club.Id;
+        manager.Broadcast(new ClubRequest {
+            Create = new ClubRequest.Types.Create { Info = ToClubInfo(manager.Club) },
+            ClubId = clubId,
+        });
+        Assume.That(manager.NewClubInvite(leader, Model.Enum.ClubResponse.Accept), Is.EqualTo(Model.Error.ClubError.none));
+        test.TakeSent();
+        var world = new WorldService(null!, null!, channels, playerLookup, null!, null!, null!, null!, null!, lookup, null!, null!, null!,
+            null!, null!, null!, null!, null!);
+
+        Maple2.Server.World.Service.ClubResponse response = world.Club(new Maple2.Server.World.Service.ClubRequest {
+            NewClubInvite = new Maple2.Server.World.Service.ClubRequest.Types.NewClubInvite { ClubId = clubId, ReceiverId = member, Reply = code },
+        }, null!).GetAwaiter().GetResult();
+
+        Assert.That(response.Error, Is.EqualTo(0));
+        Assert.That(lookup.TryGet(clubId, out _), Is.False);
         Assert.That(session.Clubs.ContainsKey(clubId), Is.False);
         using GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetClub(playerLookup, clubId), Is.Null);

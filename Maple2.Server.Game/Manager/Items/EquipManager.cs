@@ -378,8 +378,10 @@ public class EquipManager {
         }
 
         // The bag is checked before the item leaves its equip slot: a full bag kept it out of both, so the
-        // item was lost.
-        if (session.Item.Inventory.FreeSlots(isSkin ? InventoryType.Outfit : InventoryType.Gear) == 0) {
+        // item was lost. Hair, ears, a face and face decoration are discarded, not put in the bag: a full outfit tab
+        // refused a paid beauty change (the hair worn could not come off).
+        bool discarded = slot is EquipSlot.HR or EquipSlot.ER or EquipSlot.FA or EquipSlot.FD;
+        if (!discarded && session.Item.Inventory.FreeSlots(isSkin ? InventoryType.Outfit : InventoryType.Gear) == 0) {
             return false;
         }
         if (!equips.TryRemove(slot, out Item? unequipItem)) {
@@ -393,7 +395,7 @@ public class EquipManager {
         }
 
         bool success;
-        if (slot is EquipSlot.HR or EquipSlot.ER or EquipSlot.FA or EquipSlot.FD) {
+        if (discarded) {
             session.Item.Inventory.Discard(unequipItem);
             success = true;
         } else {

@@ -10,6 +10,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
@@ -277,16 +278,15 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        // The fee is taken only once the new item is on the character.
+        // The fee is stored with the new item (WearPaid).
         Item? created = ReadBeauty(session, packet, entry.Id);
-        if (created == null || !CanPay(session, useVoucher, session.BeautyShop, entry.Cost)) {
+        if (created == null || !CanWear(session, created)) {
             return;
         }
-
-        if (EquipBeauty(session, created)) {
-            if (!Pay(session, useVoucher, session.BeautyShop, entry.Cost)) {
-                Logger.Error("Beauty fee not taken after the new item {ItemId} of {CharacterId}", itemId, session.CharacterId);
-            }
+        if (HoldFee(session, useVoucher, session.BeautyShop, entry.Cost) is not { } fee) {
+            return;
+        }
+        if (WearPaid(session, created, fee) != null) {
             session.ConditionUpdate(ConditionType.beauty_add, codeLong: itemId);
         }
     }
@@ -325,27 +325,21 @@ public class BeautyHandler : FieldPacketHandler {
         if (!Edits(shop.Metadata.Category, cosmetic.Type)) {
             return;
         }
-        // The fee is taken only once the changed item is on the character.
+        // The fee is stored with the changed item (WearPaid).
         Item? changed = ReadBeauty(session, packet, cosmetic.Id);
-        if (changed == null) {
+        if (changed == null || !CanWear(session, changed)) {
             return;
         }
         // The client's fee of an edited item (UIBeautyShopDialog::GetFee, uibeautyshopdialog.cpp:1282-1320): in a
         // shop of type 1 or 3 its recolor fee when its color changed, else none (a crop shows no price, :1960).
         EquipColor? startColor = cosmetic.Appearance?.Color;
         bool recolor = startColor != null && !Equals(changed.Appearance?.Color, startColor);
-        BeautyShopCostMetadata? fee = recolor ? shop.Metadata.ColorCostMetadata : null;
-        if (fee != null && !CanPay(session, useVoucher, shop, fee)) {
+        HeldFee? fee = null;
+        if (recolor && (fee = HoldFee(session, useVoucher, shop, shop.Metadata.ColorCostMetadata)) == null) {
             return;
         }
 
-        if (!EquipBeauty(session, changed)) {
-            return;
-        }
-        if (fee != null && !Pay(session, useVoucher, shop, fee)) {
-            Logger.Error("Beauty fee not taken after the change of item {ItemId} of {CharacterId}", cosmetic.Id, session.CharacterId);
-        }
-        if (fee != null) {
+        if (WearPaid(session, changed, fee) != null && recolor) {
             session.ConditionUpdate(ConditionType.beauty_change_color, codeLong: cosmetic.Id);
         }
     }
@@ -360,16 +354,19 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        if (useVoucher) {
-            if (!PayWithVoucher(session, session.BeautyShop)) {
-                return;
-            }
-        } else {
-            // A skin color is a recolor: the shop's recolor fee (KR skin shop 501: 150 merets, no style fee).
-            if (!PayWithCurrency(session, session.BeautyShop, session.BeautyShop.Metadata.ColorCostMetadata)) {
-                return;
-            }
+        // A skin color is a recolor: the shop's recolor fee (KR skin shop 501: 150 merets, no style fee). The fee and
+        // the color are stored together: the fee was taken first and the color kept in memory for the next save.
+        if (HoldFee(session, useVoucher, session.BeautyShop, session.BeautyShop.Metadata.ColorCostMetadata) is not { } fee) {
+            return;
         }
+        var held = new List<int>();
+        if (!session.TrySavePurchase(db => SaveFee(session, db, fee, held) && db.SaveSkinColor(session.Player.Value, skinColor))) {
+            ReleaseFee(session, fee);
+            Logger.Error("Skin color of {CharacterId} not stored; nothing taken", session.CharacterId);
+            return;
+        }
+        SettleFee(session, fee, held);
+        SpentFee(session, fee);
 
         session.Player.Value.Character.SkinColor = skinColor;
         session.Field?.Broadcast(UserSkinColorPacket.Update(session.Player, skinColor));
@@ -400,8 +397,8 @@ public class BeautyHandler : FieldPacketHandler {
         DefaultHairMetadata defaultHairMetadata = itemMetadata.DefaultHairs[Random.Shared.Next(itemMetadata.DefaultHairs.Length)];
 
         // Grab random hair from default hair metadata
-        double frontLength = Random.Shared.NextDouble() * (defaultHairMetadata.MaxScale - defaultHairMetadata.MinScale + defaultHairMetadata.MinScale);
-        double backLength = Random.Shared.NextDouble() * (defaultHairMetadata.MaxScale - defaultHairMetadata.MinScale + defaultHairMetadata.MinScale);
+        double frontLength = RandomScale(defaultHairMetadata.MinScale, defaultHairMetadata.MaxScale, Random.Shared.NextDouble());
+        double backLength = RandomScale(defaultHairMetadata.MinScale, defaultHairMetadata.MaxScale, Random.Shared.NextDouble());
 
         // Get random color
         if (!TableMetadata.ColorPaletteTable.Entries.TryGetValue(Constant.HairPaletteId, out IReadOnlyDictionary<int, ColorPaletteTable.Entry>? palette)) {
@@ -431,31 +428,29 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        // The fee is taken once every lookup above passed: it was taken first, so a pick that found no hair row, no
-        // palette or no worn hair took the fee and gave nothing.
-        if (useVoucher) {
-            if (!PayWithVoucher(session, shop)) {
-                return;
-            }
-        } else {
-            if (!PayWithCurrency(session, shop, shop.Metadata.StyleCostMetadata)) {
-                return;
-            }
-        }
-
-        using GameStorage.Request db = session.GameStorage.Context();
-        newHair = db.CreateItem(session.CharacterId, newHair);
-        if (newHair == null) {
+        // The fee is held once every lookup above passed (it was taken first, so a pick that found no hair row, no
+        // palette or no worn hair took the fee and gave nothing), and stored with the new hair (WearPaid): the hair
+        // used to be stored on its own after the fee, which only the next session save stored.
+        if (!CanWear(session, newHair)) {
             return;
         }
-        session.Beauty.SavePreviousHair(prevHair);
-
-        if (!session.Item.Equips.EquipCosmetic(newHair, EquipSlot.HR)) {
-            Logger.Error("Player {PlayerId} failed to equip random hair {HairId}", session.Player.Value.Character.Id, newHair.Id);
+        if (HoldFee(session, useVoucher, shop, shop.Metadata.StyleCostMetadata) is not { } fee) {
+            return;
         }
+        Item? worn = WearPaid(session, newHair, fee);
+        if (worn == null) {
+            return;
+        }
+        newHair = worn;
+        session.Beauty.SavePreviousHair(prevHair);
         session.Send(BeautyPacket.RandomHair(prevHair.Id, newHair.Id));
         session.ConditionUpdate(ConditionType.beauty_random, codeLong: newHair.Id);
     }
+
+    // A random hair length between the default hair's smallest and largest scale (roll in [0, 1)). It was
+    // roll * max, which went below the smallest scale.
+    public static double RandomScale(float min, float max, double roll) => min + roll * (max - min);
+
     // The game menu's and the beauty list's move to a salon (UIGameMenuDialog::SendBeauty, uigamemenudialog.cpp:2267;
     // UIBeautyListDialog, uibeautylistdialog.cpp:111-139): 1 the hair salon, 3 the face shop, 5 the dye shop, sent
     // after a confirm box only. The client checks nothing else before it; its texts for a refused move
@@ -512,16 +507,23 @@ public class BeautyHandler : FieldPacketHandler {
         if (session.BeautyShop == null || !session.Beauty.HasPreviousHair) {
             return;
         }
+        bool mailed = false;
         if (!newHairSelected) {
             session.Beauty.SelectPreviousHair();
             Item? voucher = session.Field?.ItemDrop.CreateItem(session.BeautyShop.Metadata.ReturnCouponId);
-            if (voucher != null && !session.Item.Inventory.Add(voucher, true)) {
-                session.Item.MailItem(voucher);
-                voucherItemId = voucher.Id;
+            if (voucher != null) {
+                // The client's answer (op 12, uibeautyshopdialog.cpp:1557) names the coupon given back, and whether it
+                // went by mail; 0 says no coupon. The coupon added to the bag used to be answered as none.
+                if (session.Item.Inventory.Add(voucher, true)) {
+                    voucherItemId = voucher.Id;
+                } else if (session.Item.MailItem(voucher)) {
+                    voucherItemId = voucher.Id;
+                    mailed = true;
+                }
             }
         }
 
-        session.Send(BeautyPacket.RandomHairResult(voucherItemId));
+        session.Send(BeautyPacket.RandomHairResult(voucherItemId, mailed));
         session.Beauty.ClearPreviousHair();
     }
 
@@ -574,18 +576,20 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        // Nothing is charged for a uid that is not a saved style.
-        if (!session.Beauty.HasSavedCosmetic(uid)) {
+        // Nothing is charged for a uid that is not a saved style. The fee is stored with the style's copy (WearPaid).
+        Item? copy = session.Beauty.SavedCopy(uid);
+        if (copy == null || !CanWear(session, copy)) {
             return;
         }
-
-        // The fee is taken only once the saved style is on the character.
-        BeautyShopCostMetadata cost = session.BeautyShop.Metadata.StyleCostMetadata;
-        if (CanPay(session, false, session.BeautyShop, cost) && session.Beauty.EquipSavedCosmetic(uid)) {
-            if (!Pay(session, false, session.BeautyShop, cost)) {
-                Logger.Error("Beauty fee not taken after the saved style {Uid} of {CharacterId}", uid, session.CharacterId);
-            }
+        if (HoldFee(session, false, session.BeautyShop, session.BeautyShop.Metadata.StyleCostMetadata) is not { } fee) {
+            return;
         }
+        Item? worn = WearPaid(session, copy, fee);
+        if (worn == null) {
+            return;
+        }
+        session.Send(BeautyPacket.ApplySavedHair());
+        session.ConditionUpdate(ConditionType.beauty_style_apply, codeLong: worn.Id);
     }
 
     // The saved style list (sub-types 16-19, 21) is the style save dialog's (0x4f03, type 4,
@@ -625,7 +629,7 @@ public class BeautyHandler : FieldPacketHandler {
 
             // The colors are read before the fee is taken: a short packet charges nothing.
             ItemAppearance appearance = BeautyRules.ReadDyeColors(packet, item.EquipSlot() == EquipSlot.CP);
-            if (!Pay(session, useVoucher, session.BeautyShop, session.BeautyShop.Metadata.ColorCostMetadata)) {
+            if (HoldFee(session, useVoucher, session.BeautyShop, session.BeautyShop.Metadata.ColorCostMetadata) is not { } fee) {
                 // The client waits for one answer per entry: an item update or an error with a code
                 // other than 0 (uiitemcoloringdialog.cpp:577-591, 939-955, 1044, 1321-1327), and while
                 // it waits it refuses to restart the window (:1248). A fee paid in currency has sent
@@ -636,7 +640,21 @@ public class BeautyHandler : FieldPacketHandler {
                 continue;
             }
 
-            item.Appearance = appearance;
+            // The fee and the dyed item's row are stored together: the color was kept in memory for the next save,
+            // the fee taken on its own. The item keeps its color when the store is not kept.
+            ItemAppearance? before = item.Appearance;
+            var held = new List<int>();
+            if (!session.TrySavePurchase(db => {
+                item.Appearance = appearance;
+                return SaveFee(session, db, fee, held) && db.SaveItems(session.CharacterId, item);
+            }, () => item.Appearance = before)) {
+                ReleaseFee(session, fee);
+                Logger.Error("Dye of item {Uid} of {CharacterId} not stored; nothing taken", item.Uid, session.CharacterId);
+                session.Send(BeautyPacket.Error(BeautyError.s_beauty_msg_error_color));
+                continue;
+            }
+            SettleFee(session, fee, held);
+            SpentFee(session, fee);
             session.Field?.Broadcast(ItemUpdatePacket.Update(session.Player, item));
             // A paid dye counts for beauty_change_color (conditionutil.cpp:615), as the KR trophy
             // 23100191 (items 11050001-15999999) needs.
@@ -675,36 +693,6 @@ public class BeautyHandler : FieldPacketHandler {
         session.Send(BeautyPacket.BeautyShop(shop, session.Beauty.SlotCount, session.Beauty.SavedCount));
     }
 
-    // Whether the fee can be taken; nothing is taken. Packets of one session are handled one at a time, so
-    // a Pay after the change finds what this found.
-    private static bool CanPay(GameSession session, bool useVoucher, BeautyShop shop, BeautyShopCostMetadata cost) {
-        cost = SaleCost(session, shop, cost);
-        if (useVoucher) {
-            ItemTag voucherTag = shop.Metadata.CouponTag;
-            if (voucherTag == ItemTag.None) {
-                return false;
-            }
-            if (!BeautyRules.Affords(session.Item.Inventory.Find(voucherTag).Sum(item => (long) item.Amount), 1)) {
-                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert, StringCode.s_err_invalid_item));
-                return false;
-            }
-            return true;
-        }
-
-        MeretCost.Wallet? wallet = MeretCost.OfShop(cost.CurrencyType);
-        long owned = cost.CurrencyType switch {
-            ShopCurrencyType.Meso => session.Currency.Meso,
-            _ when wallet is { } meretWallet => MeretCost.Owned(meretWallet, session.Currency.Meret, session.Currency.GameMeret, cost.Price),
-            ShopCurrencyType.Item => session.Item.Inventory.Find(cost.PaymentItemId).Sum(item => (long) item.Amount),
-            _ => ToCurrencyType(cost.CurrencyType) is var type && type != CurrencyType.None ? session.Currency[type] : -1,
-        };
-        if (!BeautyRules.Affords(owned, cost.Price)) {
-            SendLack(session, wallet);
-            return false;
-        }
-        return true;
-    }
-
     // The client's lack text for the fee (ShowLackCurrencyMessage, uicommon.cpp:1083-1105): currencies 3 and 10 ask
     // to buy merets, 9 (the red merets only) is a notice of its own; Beauty has no error code for it.
     private static void SendLack(GameSession session, MeretCost.Wallet? wallet) {
@@ -719,10 +707,6 @@ public class BeautyHandler : FieldPacketHandler {
                 session.Send(BeautyPacket.Error(BeautyError.s_err_lack_merat_ask));
                 break;
         }
-    }
-
-    private static bool Pay(GameSession session, bool useVoucher, BeautyShop shop, BeautyShopCostMetadata cost) {
-        return useVoucher ? PayWithVoucher(session, shop) : PayWithCurrency(session, shop, cost);
     }
 
     // The fee a running SaleBeautyShop event of the shop leaves, the fee the shop's window shows
@@ -748,57 +732,236 @@ public class BeautyHandler : FieldPacketHandler {
         };
     }
 
-    private static bool PayWithVoucher(GameSession session, BeautyShop shop) {
-        ItemTag voucherTag = shop.Metadata.CouponTag;
+    // A beauty fee taken in memory and not yet stored (HoldFee): the change's transaction stores it (SaveFee), then
+    // SettleFee sends it, or ReleaseFee gives it back when the transaction was not kept; RefundFee gives back a stored
+    // one. The fee used to be taken on its own, after the change was stored or applied (or before it, for a skin color,
+    // a dye and a random pick), and stored only by the next session save: a failed store of either half kept the
+    // other. Meso, merets: the take's packet waits for SettleFee. Currency: TryTake sends it at once. Payment items
+    // and vouchers: nothing is taken until the transaction writes their rows (Stacks).
+    private sealed record HeldFee(ShopCurrencyType Type, int Price, long MesoSends, bool Red, CurrencyType Currency,
+                                  bool Voucher, int CouponId, List<(long Uid, int Amount, int ItemId, int Rarity)>? Stacks);
 
-        if (voucherTag == ItemTag.None) {
-            return false;
+    // Takes the fee in memory (see HeldFee), or answers the lack and returns null. A voucher pays with one item of
+    // the shop's coupon tag.
+    private static HeldFee? HoldFee(GameSession session, bool useVoucher, BeautyShop shop, BeautyShopCostMetadata cost) {
+        if (useVoucher) {
+            ItemTag voucherTag = shop.Metadata.CouponTag;
+            if (voucherTag == ItemTag.None) {
+                return null;
+            }
+            IReadOnlyList<(long Uid, int Amount)>? plan = session.Item.Inventory.PlanConsume([new IngredientInfo(voucherTag, 1)]);
+            List<(long Uid, int Amount, int ItemId, int Rarity)>? vouchers = plan == null ? null : Stacks(session, plan);
+            if (vouchers == null) {
+                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert, StringCode.s_err_invalid_item));
+                return null;
+            }
+            return new HeldFee(ShopCurrencyType.Item, 1, 0, false, CurrencyType.None, true, shop.Metadata.CouponId, vouchers);
         }
 
-        var ingredient = new IngredientInfo(voucherTag, 1);
-        if (!session.Item.Inventory.Consume([ingredient])) {
-            session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert, StringCode.s_err_invalid_item));
-            return false;
-        }
-
-        session.Send(BeautyPacket.Voucher(shop.Metadata.CouponId, 1));
-        return true;
-    }
-
-    private static bool PayWithCurrency(GameSession session, BeautyShop shop, BeautyShopCostMetadata cost) {
         cost = SaleCost(session, shop, cost);
         switch (cost.CurrencyType) {
             case ShopCurrencyType.Meso:
-                // Checked and taken in one step; a negative price (ChangeMeso(-price) added it) is refused.
-                if (!session.Currency.TryTakeMeso(cost.Price)) {
+                // Checked and taken in one step; a negative price is refused.
+                long sends = session.Currency.MesoSends;
+                if (!session.Currency.TryTakeMeso(cost.Price, notify: false)) {
                     session.Send(BeautyPacket.Error(BeautyError.lack_currency));
-                    return false;
+                    return null;
+                }
+                return new HeldFee(cost.CurrencyType, cost.Price, sends, false, CurrencyType.None, false, 0, null);
+            case ShopCurrencyType.Meret:
+            case ShopCurrencyType.EventMeret:
+            case ShopCurrencyType.GameMeret:
+                MeretCost.Wallet wallet = MeretCost.OfShop(cost.CurrencyType)!.Value;
+                if (!session.Currency.TryTakeMerets(wallet, cost.Price, out bool red, notify: false)) {
+                    SendLack(session, wallet);
+                    return null;
+                }
+                return new HeldFee(cost.CurrencyType, cost.Price, 0, red, CurrencyType.None, false, 0, null);
+            case ShopCurrencyType.Item:
+                List<(long Uid, int Amount, int Rarity)>? planned = cost.Price < 0 ? null
+                    : session.Item.Inventory.PlanConsume(cost.PaymentItemId, -1, cost.Price);
+                if (planned == null) {
+                    session.Send(BeautyPacket.Error(BeautyError.lack_currency));
+                    return null;
+                }
+                return new HeldFee(cost.CurrencyType, cost.Price, 0, false, CurrencyType.None, false, 0,
+                    planned.Select(stack => (stack.Uid, stack.Amount, cost.PaymentItemId, stack.Rarity)).ToList());
+            default:
+                CurrencyType currencyType = ToCurrencyType(cost.CurrencyType);
+                if (currencyType == CurrencyType.None || cost.Price < 0 || !session.Currency.TryTake(currencyType, cost.Price)) {
+                    session.Send(BeautyPacket.Error(BeautyError.lack_currency));
+                    return null;
+                }
+                return new HeldFee(cost.CurrencyType, cost.Price, 0, false, currencyType, false, 0, null);
+        }
+
+        static List<(long Uid, int Amount, int ItemId, int Rarity)>? Stacks(GameSession session, IReadOnlyList<(long Uid, int Amount)> plan) {
+            var stacks = new List<(long Uid, int Amount, int ItemId, int Rarity)>();
+            foreach ((long uid, int amount) in plan) {
+                Item? item = session.Item.Inventory.Get(uid);
+                if (item == null) {
+                    return null;
+                }
+                stacks.Add((uid, amount, item.Id, item.Rarity));
+            }
+            return stacks;
+        }
+    }
+
+    // Writes the paying stacks' rows as the take leaves them in db's transaction, and takes them from the bag once it
+    // is committed (the wallet is stored by the purchase save itself); held gets the ids taken, for SettleFee.
+    private bool SaveFee(GameSession session, GameStorage.Request db, HeldFee fee, List<int> held) {
+        if (fee.Stacks == null) {
+            return true;
+        }
+        foreach ((long uid, int amount, _, _) in fee.Stacks) {
+            if (!session.Item.Inventory.SaveConsumed(db, uid, amount)) {
+                return false;
+            }
+        }
+        db.AfterCommit(() => {
+            foreach ((long uid, int amount, _, _) in fee.Stacks) {
+                if (!session.Item.Inventory.ConsumeStored(uid, amount, held)) {
+                    Logger.Error("Beauty fee item {Uid} x{Amount} stored as taken but not in the bag of {CharacterId}", uid, amount, session.CharacterId);
+                }
+            }
+        });
+        return true;
+    }
+
+    // Sends a fee once its change is stored, after the save (a held count's quest stores itself). A meret fee's
+    // use_merat waits for SpentFee: a fee given back is not counted as spent.
+    private static void SettleFee(GameSession session, HeldFee fee, List<int> held) {
+        session.Item.Inventory.UpdateHeld(held);
+        if (fee.Voucher) {
+            session.Send(BeautyPacket.Voucher(fee.CouponId, 1));
+            return;
+        }
+        switch (fee.Type) {
+            case ShopCurrencyType.Meso:
+                session.Currency.NotifyMeso();
+                break;
+            case ShopCurrencyType.Meret:
+            case ShopCurrencyType.EventMeret:
+            case ShopCurrencyType.GameMeret:
+                if (fee.Red) {
+                    session.Currency.NotifyGameMeretTaken(fee.Price, report: false);
+                } else {
+                    session.Currency.NotifyMeretTaken(fee.Price, report: false);
+                }
+                break;
+        }
+    }
+
+    // Counts a settled fee that was kept as merets spent (use_merat).
+    private static void SpentFee(GameSession session, HeldFee? fee) {
+        if (fee is { Voucher: false, Type: ShopCurrencyType.Meret or ShopCurrencyType.EventMeret or ShopCurrencyType.GameMeret }) {
+            session.Currency.ReportMeretSpent(-fee.Price);
+        }
+    }
+
+    // Gives back a held fee whose change was not stored (the paying items were not taken).
+    private static void ReleaseFee(GameSession session, HeldFee fee) {
+        if (fee.Voucher) {
+            return;
+        }
+        switch (fee.Type) {
+            case ShopCurrencyType.Meso:
+                session.Currency.ReturnHeldMeso(fee.Price, fee.MesoSends);
+                break;
+            case ShopCurrencyType.Meret:
+            case ShopCurrencyType.EventMeret:
+            case ShopCurrencyType.GameMeret:
+                if (fee.Red) {
+                    session.Currency.ReturnGameMeret(fee.Price);
+                } else {
+                    session.Currency.ReturnMeret(fee.Price);
+                }
+                break;
+            case ShopCurrencyType.Item:
+                break;
+            default:
+                session.Currency.Return(fee.Currency, fee.Price);
+                break;
+        }
+    }
+
+    // Gives back a stored and sent fee whose change could not be applied after its store. Paying items come back as
+    // new copies of the ids and rarities taken, to the bag or else by mail; one that cannot be given is logged.
+    private void RefundFee(GameSession session, HeldFee fee) {
+        switch (fee.Type) {
+            case ShopCurrencyType.Meso:
+                session.Currency.ReturnMeso(fee.Price);
+                break;
+            case ShopCurrencyType.Item:
+                foreach ((_, int amount, int itemId, int rarity) in fee.Stacks ?? []) {
+                    Item? copy = session.Item.CreateItem(itemId, rarity, amount);
+                    if (copy == null || !session.Item.AddOrMail(copy, true, commit: true)) {
+                        Logger.Error("Beauty fee item {ItemId} x{Amount} (rarity {Rarity}) could not be given back to {CharacterId}",
+                            itemId, amount, rarity, session.CharacterId);
+                    }
                 }
                 break;
             case ShopCurrencyType.Meret:
             case ShopCurrencyType.EventMeret:
             case ShopCurrencyType.GameMeret:
-                if (!session.Currency.TryTakeMerets(MeretCost.OfShop(cost.CurrencyType)!.Value, cost.Price, out _)) {
-                    SendLack(session, MeretCost.OfShop(cost.CurrencyType));
-                    return false;
-                }
-                break;
-            case ShopCurrencyType.Item:
-                var ingredient = new ItemComponent(cost.PaymentItemId, -1, cost.Price, ItemTag.None);
-                if (!session.Item.Inventory.ConsumeItemComponents([ingredient])) {
-                    session.Send(BeautyPacket.Error(BeautyError.lack_currency));
-                    return false;
+                if (fee.Red) {
+                    session.Currency.ReturnGameMeret(fee.Price);
+                } else {
+                    session.Currency.ReturnMeret(fee.Price);
                 }
                 break;
             default:
-                CurrencyType currencyType = ToCurrencyType(cost.CurrencyType);
-                if (currencyType == CurrencyType.None || cost.Price < 0 || !session.Currency.TryTake(currencyType, cost.Price)) {
-                    session.Send(BeautyPacket.Error(BeautyError.lack_currency));
-                    return false;
-                }
+                session.Currency.Return(fee.Currency, fee.Price);
                 break;
         }
+        session.SaveRefund();
+    }
+
+    // Whether cosmetic can go on: its one slot is hair, face or face decoration, and the client's equip checks pass
+    // (refused with their message box). Checked before the fee is held, so a refused item takes nothing.
+    private static bool CanWear(GameSession session, Item cosmetic) {
+        if (cosmetic.Metadata.SlotNames.Length == 0 || cosmetic.Metadata.SlotNames[0] is not (EquipSlot.HR or EquipSlot.FA or EquipSlot.FD)) {
+            return false;
+        }
+        StringCode result = EquipManager.ValidateEquipItem(session, cosmetic);
+        if (result != StringCode.s_empty_string) {
+            session.Send(NoticePacket.MessageBox(result));
+            return false;
+        }
         return true;
+    }
+
+    // Stores cosmetic (a new item, no uid yet) with its fee in one transaction, then puts it on: the stored item, or
+    // null when nothing was kept. A failed store gives the held fee back; an item that could not go on after its store
+    // is given up and its fee given back.
+    private Item? WearPaid(GameSession session, Item cosmetic, HeldFee? fee) {
+        var held = new List<int>();
+        Item? stored = null;
+        if (!session.TrySavePurchase(db => (fee == null || SaveFee(session, db, fee, held))
+                                           && (stored = db.CreateItem(session.CharacterId, cosmetic)) != null) || stored == null) {
+            if (fee != null) {
+                ReleaseFee(session, fee);
+            }
+            Logger.Error("Beauty item {ItemId} of {CharacterId} not stored; nothing taken", cosmetic.Id, session.CharacterId);
+            return null;
+        }
+        if (fee != null) {
+            SettleFee(session, fee, held);
+        }
+
+        if (!session.Item.Equips.EquipCosmetic(stored, stored.Metadata.SlotNames[0])) {
+            Logger.Error("Beauty item {Uid} of {CharacterId} stored but not worn; fee given back", stored.Uid, session.CharacterId);
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                db.SaveItems(0, stored);
+            }
+            if (fee != null) {
+                RefundFee(session, fee);
+            }
+            return null;
+        }
+        SpentFee(session, fee);
+        return stored;
     }
 
     // The new item with the appearance the packet carries; nothing is stored yet.
@@ -818,21 +981,5 @@ public class BeautyHandler : FieldPacketHandler {
             newCosmetic.Appearance = packet.ReadClass<ItemAppearance>();
         }
         return newCosmetic;
-    }
-
-    private static bool EquipBeauty(GameSession session, Item newCosmetic) {
-        using GameStorage.Request db = session.GameStorage.Context();
-        Item? stored = db.CreateItem(session.CharacterId, newCosmetic);
-        if (stored == null) {
-            return false;
-        }
-        newCosmetic = stored;
-
-        if (!session.Item.Equips.EquipCosmetic(newCosmetic, newCosmetic.Metadata.SlotNames.First())) {
-            db.SaveItems(0, newCosmetic);
-            return false;
-        }
-
-        return true;
     }
 }
