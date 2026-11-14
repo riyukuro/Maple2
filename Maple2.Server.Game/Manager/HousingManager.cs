@@ -753,6 +753,9 @@ public class HousingManager {
         if (!float.IsFinite(rotation)) {
             if (byPlayer) {
                 Refuse(UgcMapError.s_ugcmap_null_cube_item_info);
+            } else {
+                logger.Warning("Cube {ItemId} at {Position} of plot {PlotId} not placed: its rotation {Rotation} is not finite",
+                    cube.ItemId, position, plot.Number, rotation);
             }
             return false;
         }

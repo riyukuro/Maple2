@@ -24,12 +24,19 @@ public class NurturingRewardOrderTests {
     private const int FeedItem = 30001433;
     private const int FeedReward = 30001500;
     private const int PlayTrophy = 92000095;
+    private const int StageGift = 30001600;
+    private const int MailGift = 30001135;
 
     private TestGameSession test = null!;
 
     // The session stands in a home next to a nest; `visitor` makes the home another account's. The feed item is in
     // the bag when `withFeed`; `registered` lists the items the server has data for.
-    private (GameSession Session, FieldFunctionInteract Nest) Start(bool visitor, bool withFeed, params int[] registered) {
+    // `mailGift` is the visitor's rewardItemByFeeding (the owner's mail); `stageExp` is the stored growth, so the owner's
+    // use of a grown nest takes the stage gift.
+    private (GameSession Session, FieldFunctionInteract Nest) Start(bool visitor, bool withFeed, params int[] registered) =>
+        Start(visitor, withFeed, mailGift: 0, stageExp: 0, registered);
+
+    private (GameSession Session, FieldFunctionInteract Nest) Start(bool visitor, bool withFeed, int mailGift, long stageExp, params int[] registered) {
         test = new TestGameSession();
         if (withFeed) {
             test.Store(TestGameSession.Metadata(FeedItem));
@@ -45,13 +52,19 @@ public class NurturingRewardOrderTests {
         test.SetServerTable(new TermTagTable(new Dictionary<int, TermTagTable.Entry> {
             [TermId] = new(TermId, Tag, now - 3600, now + 3600),
         }));
-        var data = new FunctionCubeMetadata.NurturingData(new RewardItem(FeedItem, 1, 1), visitor ? default : new RewardItem(FeedReward, 1, 1),
-            [new FunctionCubeMetadata.NurturingData.Growth(100, 1, default)], Tag);
-        using (GameStorage.Request db = test.Storage.Context()) {
-            db.CreateNurturing(ownerId, data, CubeId);
-        }
+        RewardItem rewardFeed = visitor ? (mailGift == 0 ? default : new RewardItem(mailGift, 1, 1)) : new RewardItem(FeedReward, 1, 1);
+        var data = new FunctionCubeMetadata.NurturingData(new RewardItem(FeedItem, 1, 1), rewardFeed,
+            [new FunctionCubeMetadata.NurturingData.Growth(100, 1, new RewardItem(StageGift, 1, 1))], Tag);
         var cube = new InteractCube(new Vector3B(0, 0, 0), new FunctionCubeMetadata(CubeId, 0, ConfigurableCubeType.None,
             InteractCubeState.Available, InteractCubeControlType.Nurturing, [], 0, data));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Nurturing created = db.CreateNurturing(ownerId, data, CubeId)!;
+            if (stageExp > 0) {
+                created.Exp = stageExp;
+                cube.Nurturing = created;
+                db.UpdateNurturing(ownerId, cube);
+            }
+        }
         FieldFunctionInteract nest = test.AddFunctionCube(cube);
         nest.Position = session.Player.Position;
         return (session, nest);
@@ -70,10 +83,12 @@ public class NurturingRewardOrderTests {
         }));
     }
 
-    private long StoredExp(long ownerId) {
+    private Nurturing Stored(long ownerId) {
         using GameStorage.Request db = test.Storage.Context();
-        return db.GetNurturing(ownerId, CubeId, new FunctionCubeMetadata.NurturingData(default, default, [new(100, 1, default)], Tag))!.Exp;
+        return db.GetNurturing(ownerId, CubeId, new FunctionCubeMetadata.NurturingData(default, default, [new(100, 1, default)], Tag))!;
     }
+
+    private long StoredExp(long ownerId) => Stored(ownerId).Exp;
 
     [TestCase(true, 0, TestName = "Feed_RewardMade_TakesTheFeed")]
     [TestCase(false, 1, TestName = "Feed_RewardNotMade_KeepsTheFeed")]
@@ -96,5 +111,37 @@ public class NurturingRewardOrderTests {
         Use(session, nest);
 
         Assert.That(test.TrophyCounter(PlayTrophy), Is.EqualTo(counted));
+    }
+
+    // The owner's use of a grown nest takes the stage gift: the stage counts as claimed only with its gift made. It was
+    // counted before the make, so a gift the server cannot make left the placed nest (what the field sends) claimed.
+    [TestCase(true, (short) 2, TestName = "StageGift_Made_StageClaimed")]
+    [TestCase(false, (short) 1, TestName = "StageGift_NotMade_StageKept")]
+    public void StageGift_ClaimedOnlyWithItsItem(bool giftKnown, short claimed) {
+        (GameSession session, FieldFunctionInteract nest) = giftKnown
+            ? Start(false, false, mailGift: 0, stageExp: 100, StageGift)
+            : Start(false, false, mailGift: 0, stageExp: 100);
+
+        Use(session, nest);
+
+        Assert.Multiple(() => {
+            Assert.That(nest.InteractCube.Nurturing!.ClaimedGiftForStage, Is.EqualTo(claimed));
+            Assert.That(Stored(test.AccountId).ClaimedGiftForStage, Is.EqualTo(claimed));
+        });
+    }
+
+    // A visitor's play mails the owner the feeding gift; the mail is written only with its item. It was written first,
+    // so a gift the server cannot make left the owner an empty mail.
+    [TestCase(true, 1, TestName = "OwnerMail_GiftMade_Mailed")]
+    [TestCase(false, 0, TestName = "OwnerMail_GiftNotMade_NoMail")]
+    public void OwnerMail_OnlyWithItsGift(bool giftKnown, int mails) {
+        (GameSession session, FieldFunctionInteract nest) = giftKnown
+            ? Start(true, false, mailGift: MailGift, stageExp: 0, FeedItem, MailGift)
+            : Start(true, false, mailGift: MailGift, stageExp: 0, FeedItem);
+
+        Use(session, nest);
+
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetAllMail(test.AccountId + 1000).Count, Is.EqualTo(mails));
     }
 }
