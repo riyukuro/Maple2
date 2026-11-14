@@ -1,7 +1,11 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
+using Maple2.Model.Game.Field;
 using Maple2.Model.Metadata;
+using Maple2.Model.Metadata.FieldEntity;
 using Maple2.Tools.Collision;
+using Maple2.Tools.VectorMath;
 
 namespace Maple2.Server.Game.Util;
 
@@ -358,6 +362,81 @@ public static class SkillHitRules {
 
     public static bool RegionOwnerTrusted(Vector3 owner, Vector3 player) {
         return Vector3.Distance(owner, player) <= RegionOwnerTrust;
+    }
+
+    // A box collider counts as standing in the line of sight only where it rises this far above the ray (the owner's
+    // feet): the floor the owner stands on, and a server position a little below the client's, never count.
+    public const float SightFloorMargin = 20f;
+
+    // The client's line of sight for a region's hits (CMagic::FUN_141464d00, magicdata.cpp:1781-1799): with the
+    // attack's arrow rayPhysxTest set, each hit but the owner's own is kept only when a PhysX ray (groups 0x201) from
+    // the skill owner's (the caster's) position to it, flattened to the owner's height, is not blocked. The server has no PhysX scene; this
+    // finds the first of the map's box colliders (not fluid, turned only by quarter turns about Z, so its bounds are
+    // the box) that such a ray passes through: one that rises past SightFloorMargin above the owner's feet, reaches
+    // below them, and does not hold the owner. Logged only: which groups 0x201 takes is not mapped to the colliders.
+    public static FieldBoxColliderEntity? SightBlocker(Vector3 owner, Vector3 target, IEnumerable<FieldBoxColliderEntity> boxes) {
+        var start = new Vector2(owner.X, owner.Y);
+        var delta = new Vector2(target.X - owner.X, target.Y - owner.Y);
+        if (delta.LengthSquared() <= 0) {
+            return null;
+        }
+        foreach (FieldBoxColliderEntity box in boxes) {
+            BoundingBox3 bounds = box.Bounds;
+            if (box.IsFluid || !QuarterTurned(box.Rotation) || owner.Z <= bounds.Min.Z || owner.Z >= bounds.Max.Z - SightFloorMargin) {
+                continue;
+            }
+            if (start.X >= bounds.Min.X && start.X <= bounds.Max.X && start.Y >= bounds.Min.Y && start.Y <= bounds.Max.Y) {
+                continue;
+            }
+            if (SegmentCrosses(start, delta, new Vector2(bounds.Min.X, bounds.Min.Y), new Vector2(bounds.Max.X, bounds.Max.Y))) {
+                return box;
+            }
+        }
+        return null;
+    }
+
+    // The map's box colliders near the ray from the owner to the target (SightBlocker); none when the field has no map
+    // data.
+    public static FieldBoxColliderEntity? SightBlocker(FieldAccelerationStructure? map, Vector3 owner, Vector3 target) {
+        if (map == null) {
+            return null;
+        }
+        Vector3 end = target with { Z = owner.Z };
+        var pad = new Vector3(1, 1, FieldAccelerationStructure.BLOCK_SIZE);
+        var boxes = new List<FieldBoxColliderEntity>();
+        map.QueryBox(Vector3.Min(owner, end) - pad, Vector3.Max(owner, end) + pad, entity => {
+            if (entity is FieldBoxColliderEntity box) {
+                boxes.Add(box);
+            }
+        });
+        return SightBlocker(owner, target, boxes);
+    }
+
+    private static bool QuarterTurned(Vector3 rotation) {
+        const float slack = 0.5f;
+        float z = Math.Abs(rotation.Z % 90f);
+        return Math.Abs(rotation.X) < slack && Math.Abs(rotation.Y) < slack && (z < slack || z > 90f - slack);
+    }
+
+    // Whether the segment from start over delta passes through the inside of the rectangle (not only along an edge).
+    private static bool SegmentCrosses(Vector2 start, Vector2 delta, Vector2 min, Vector2 max) {
+        float enter = 0, leave = 1;
+        for (int axis = 0; axis < 2; axis++) {
+            float p = axis == 0 ? start.X : start.Y;
+            float d = axis == 0 ? delta.X : delta.Y;
+            float lo = axis == 0 ? min.X : min.Y;
+            float hi = axis == 0 ? max.X : max.Y;
+            if (Math.Abs(d) < 1e-6f) {
+                if (p <= lo || p >= hi) {
+                    return false;
+                }
+                continue;
+            }
+            float t1 = (lo - p) / d, t2 = (hi - p) / d;
+            enter = Math.Max(enter, Math.Min(t1, t2));
+            leave = Math.Min(leave, Math.Max(t1, t2));
+        }
+        return enter < leave;
     }
 
     // The most attacks an attack point packet declares for an attack.

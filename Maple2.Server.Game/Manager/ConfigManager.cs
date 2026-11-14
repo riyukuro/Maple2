@@ -62,6 +62,8 @@ public class ConfigManager {
     public readonly LogGate StepLog = new();
     // Region target packets whose owner position lies past SkillHitRules.RegionOwnerTrust (the server position stands in).
     public readonly LogGate RegionLog = new();
+    // Region hits past a box collider in the line of sight the client tests (SkillHitRules.SightBlocker), logged only.
+    public readonly LogGate SightLog = new();
     private long heldCastUid;
     private long heldAttackSpeed;
     private readonly IDictionary<string, int> statLimits;
