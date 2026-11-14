@@ -187,6 +187,10 @@ public class ItemDismantleHandler : FieldPacketHandler {
                     continue;
                 }
 
+                // The reward is read before the consume: a partial consume lowers item.Amount, and GetReward
+                // gives nothing once the stack holds less than the staged amount.
+                List<(int Id, int Min, int Max)> reward = GetReward(item, amount).ToList();
+
                 // If failed to consume, remove slot.
                 if (!session.Item.Inventory.Consume(uid, amount)) {
                     session.DismantleStaging[slot] = default;
@@ -194,7 +198,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 }
                 broken.Add(amount);
 
-                foreach ((int id, int min, int max) in GetReward(item, amount)) {
+                foreach ((int id, int min, int max) in reward) {
                     (int Min, int Max) prev = rewards.GetValueOrDefault(id, (0, 0));
                     rewards[id] = (prev.Min + min, prev.Max + max);
                 }

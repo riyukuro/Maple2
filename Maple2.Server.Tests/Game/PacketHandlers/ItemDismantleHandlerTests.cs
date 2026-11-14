@@ -97,6 +97,32 @@ public class ItemDismantleHandlerTests {
         Assert.That(session.Item.Inventory.Find(ChaosOnyx).Sum(item => item.Amount), Is.EqualTo(3));
     }
 
+    // Part of a stack: 3 of 5 staged pay 3 times the break row, and 2 stay in the bag. The reward was read after
+    // the consume had lowered the stack to 2, so it paid nothing.
+    [Test]
+    public void Confirm_OfPartOfAStackPaysTheStagedCount() {
+        const int Stack = 30000001;
+        GameSession session = Login(rarity: 3);
+        Item stack = test.Store(TestGameSession.Metadata(Stack, type: 4, slotMax: 99), amount: 5);
+        Assert.That(session.Item.Inventory.Add(stack, commit: true), Is.True);
+        test.SetTable(new ItemBreakTable(new Dictionary<int, IReadOnlyList<ItemBreakTable.Ingredient>> {
+            [Stack] = [new ItemBreakTable.Ingredient(Onyx, 2)],
+        }));
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteInt(-1);
+            writer.WriteLong(stack.Uid);
+            writer.WriteInt(3);
+        }));
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(Convert.ToHexString(test.TakeSent()[^1]), Is.EqualTo(Hex(ItemDismantlePacket.Result(1, new Dictionary<int, int> { [Onyx] = 6 }))));
+        Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(2));
+        Assert.That(session.Item.Inventory.Find(Onyx).Sum(item => item.Amount), Is.EqualTo(6));
+    }
+
     // Two confirms in a row: the second finds nothing staged, answers with result 5 and gives nothing more.
     [Test]
     public void Confirm_TwiceBreaksTheItemOnce() {
