@@ -6,6 +6,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
@@ -259,12 +260,25 @@ public class BuddyNoticeTwoSessionTests {
     // A memo with a banned word (KR string/kr/banword.xml row 1) in a request, a block or a block edit: the client
     // checks it before sending (CheckBuddyMemo); one that arrives anyway is refused with the unknown error and
     // nothing is stored.
-    [TestCase(2)]
-    [TestCase(5)]
-    [TestCase(10)]
-    public void BannedMemo_IsRefused(byte command) {
+    // A word a GM added with the banword command (any type; here Block) counts as a static one does.
+    [TestCase(2, false)]
+    [TestCase(5, false)]
+    [TestCase(10, false)]
+    [TestCase(2, true)]
+    [TestCase(5, true)]
+    [TestCase(10, true)]
+    public void BannedMemo_IsRefused(byte command, bool gmWord) {
         const string banned = "\uAC1C\uC0C8\uB07C";
-        var handler = new BuddyHandler { BanWordStorage = TestGameSession.BanWords(banned) };
+        BanWordStorage words;
+        if (gmWord) {
+            using (GameStorage.Request gmDb = playerTest.Storage.Context()) {
+                Assert.That(gmDb.AddDynamicBanWord(DynamicBanWordRules.Block, banned, "", playerTest.AccountId), Is.Not.Null);
+            }
+            words = TestGameSession.GmBanWords(playerTest.Storage);
+        } else {
+            words = TestGameSession.BanWords(banned);
+        }
+        var handler = new BuddyHandler { BanWordStorage = words };
         long blockId = 0;
         if (command == 10) {
             handler.Handle(player, TestGameSession.Packet(writer => {

@@ -268,4 +268,76 @@ public class DynamicBanWordTests {
             Assert.That(Sent(test), Is.EqualTo(new[] { "2401" + "00" + Long(0) }));
         }
     }
+
+    // The GM list counts in every banned-word check, whatever the word's chat type (Block hides a chat line, Mask
+    // replaces the word; a name, title or memo with either is refused), and in the UGC check too.
+    [Test]
+    public void Storage_GmWordsOfBothTypesCountWithTheStaticOnes() {
+        var test = new TestGameSession();
+        Add(test, "zzblock", DynamicBanWordRules.Block);
+        Add(test, "zzmask", DynamicBanWordRules.Mask, "**");
+        BanWordStorage words = TestGameSession.GmBanWords(test.Storage, "statword");
+        Assert.Multiple(() => {
+            Assert.That(words.ContainsBannedWord("a zzBLOCK b"), Is.True);
+            Assert.That(words.FindBannedWord("a zzblock b"), Is.EqualTo("zzblock"));
+            Assert.That(words.ContainsBannedWord("zzmask"), Is.True);
+            Assert.That(words.ContainsBannedWord("statword"), Is.True);
+            Assert.That(words.ContainsBannedWord("clean text"), Is.False);
+            Assert.That(words.ContainsUgcBannedWord("my zzblock home"), Is.True);
+            Assert.That(words.ContainsUgcBannedWord("my zzmask home"), Is.True);
+            Assert.That(words.ContainsUgcBannedWord("my home"), Is.False);
+            // Static only (the one-argument storage the tests use): the GM list is not read.
+            Assert.That(TestGameSession.BanWords().ContainsBannedWord("zzblock"), Is.False);
+        });
+    }
+
+    // The list is held for DynamicRefresh; a reload (the channel's, when a GM changes it) reads it at once.
+    [Test]
+    public void Storage_ReloadTakesAddsAndRemoves() {
+        var test = new TestGameSession();
+        BanWordStorage words = TestGameSession.GmBanWords(test.Storage);
+        Assert.That(words.ContainsBannedWord("zznew"), Is.False);
+
+        Add(test, "zznew", DynamicBanWordRules.Block);
+        Assert.That(words.ContainsBannedWord("zznew"), Is.False, "held until the refresh");
+        words.ReloadDynamicWords();
+        Assert.That(words.ContainsBannedWord("zznew"), Is.True);
+
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.RemoveDynamicBanWord(db.GetDynamicBanWords().Single().Id), Is.True);
+        }
+        words.ReloadDynamicWords();
+        Assert.That(words.ContainsBannedWord("zznew"), Is.False);
+    }
+
+    // A failed read keeps the words held; blank words are skipped.
+    [Test]
+    public void Storage_FailedReadKeepsTheWords() {
+        var context = new Maple2.Database.Context.MetadataContext(new DbContextOptionsBuilder()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        bool fail = false;
+        BanWordStorage words = BanWordStorage.WithDynamicWords(context,
+            () => fail ? throw new InvalidOperationException("db down") : new[] { "zzheld", " ", "" });
+        Assert.That(words.ContainsBannedWord("zzheld"), Is.True);
+        Assert.That(words.ContainsBannedWord("a b"), Is.False);
+
+        fail = true;
+        Assert.DoesNotThrow(words.ReloadDynamicWords);
+        Assert.That(words.ContainsBannedWord("zzheld"), Is.True);
+    }
+
+    // The banword push reloads the channel's own storage before it sends the list.
+    [Test]
+    public void Channel_ReloadsItsBanWordStorage() {
+        var test = new TestGameSession();
+        var server = (GameServer) RuntimeHelpers.GetUninitializedObject(typeof(GameServer));
+        typeof(GameServer).GetField("sessions", Any)!.SetValue(server, new ConcurrentDictionary<long, GameSession>());
+        BanWordStorage words = TestGameSession.GmBanWords(test.Storage);
+        var channel = new ChannelService(server, null!, test.Storage, null!, null!, null!, words);
+        Assert.That(words.ContainsBannedWord("zzpush"), Is.False);
+
+        Add(test, "zzpush", DynamicBanWordRules.Block);
+        channel.Admin(new AdminRequest { BanWord = new AdminRequest.Types.BanWord() }, null!).GetAwaiter().GetResult();
+        Assert.That(words.ContainsBannedWord("zzpush"), Is.True);
+    }
 }

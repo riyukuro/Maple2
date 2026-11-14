@@ -63,8 +63,10 @@ public partial class ChannelService {
 
     // The ban-word list changed: one packet for every player, the whole list (or a clear when it is empty). A client
     // holding it already reloads the same words. A session without a player gets it at its server entry instead.
+    // The channel's own checks (names, titles, memos) take the new list at once too.
     private AdminResponse BanWord() {
         lock (DynamicBanwordPacket.Gate) {
+            banWords?.ReloadDynamicWords();
             List<DynamicBanWord> words;
             using (GameStorage.Request db = gameStorage.Context()) {
                 words = db.GetDynamicBanWords().ToList();

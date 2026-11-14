@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using Grpc.Core;
+using Maple2.Database.Storage;
 using Maple2.Model.Error;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
@@ -109,6 +111,28 @@ public class PartySearchModeTests {
     public void Load_BannedSearch_Answers108Type2() {
         Load(Banned);
 
+        Assert.That(test.World.PartySearches, Is.Empty);
+        Assert.That(Sent(), Is.EqualTo(new[] { Hex(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_banword_findword, 2)) }));
+    }
+
+    // A word a GM added with the banword command counts in a title and a search word as a static one does.
+    [Test]
+    public void GmWord_InTitleAndSearch_IsRefused() {
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.AddDynamicBanWord(DynamicBanWordRules.Block, "zzlttest", "", test.AccountId), Is.Not.Null);
+        }
+        handler = new PartySearchHandler { World = test.World, BanWordStorage = TestGameSession.GmBanWords(test.Storage) };
+        bool partyAsked = false;
+        test.World.PartyWorld = _ => {
+            partyAsked = true;
+            return new PartyResponse { Party = PartyOf(false) };
+        };
+
+        Add("join ZZLTtest now");
+        Assert.That(partyAsked, Is.False);
+        Assert.That(Sent(), Is.EqualTo(new[] { Hex(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_banword_title, 0)) }));
+
+        Load("zzlttest");
         Assert.That(test.World.PartySearches, Is.Empty);
         Assert.That(Sent(), Is.EqualTo(new[] { Hex(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_banword_findword, 2)) }));
     }

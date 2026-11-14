@@ -10,10 +10,13 @@ public partial class ChannelService : Channel.Service.Channel.ChannelBase {
     private readonly GameStorage gameStorage;
     private readonly TableMetadataStorage tableMetadata;
     private readonly ServerTableMetadataStorage serverTableMetadata;
+    private readonly BanWordStorage? banWords;
     private readonly ILogger logger = Log.Logger.ForContext<ChannelService>();
 
-    public ChannelService(GameServer server, PlayerInfoStorage playerInfos, GameStorage gameStorage, ServerTableMetadataStorage serverTableMetadata, TableMetadataStorage tableMetadata, ItemMetadataStorage itemMetadata) {
+    public ChannelService(GameServer server, PlayerInfoStorage playerInfos, GameStorage gameStorage, ServerTableMetadataStorage serverTableMetadata, TableMetadataStorage tableMetadata, ItemMetadataStorage itemMetadata,
+            BanWordStorage? banWords = null) {
         this.server = server;
+        this.banWords = banWords;
         this.playerInfos = playerInfos;
         this.gameStorage = gameStorage;
         this.serverTableMetadata = serverTableMetadata;

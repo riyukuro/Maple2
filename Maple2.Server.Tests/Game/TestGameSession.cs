@@ -284,6 +284,16 @@ public sealed class TestGameSession {
         return new BanWordStorage(words);
     }
 
+    // The static words plus the GM list kept in storage (the banword command's words).
+    public static BanWordStorage GmBanWords(GameStorage storage, params string[] banned) {
+        var words = new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        for (int i = 0; i < banned.Length; i++) {
+            words.BanWordMetadata.Add(new BanWordMetadata(i + 1, banned[i], false));
+        }
+        words.SaveChanges();
+        return new BanWordStorage(words, storage);
+    }
+
     public static MapMetadata Map(int id, bool homeReturnable = true, bool notInPlayedClient = false) {
         var property = new MapMetadataProperty(Continent.VictoriaIsland, MapRegion.None, 0, MapType.None, false, 0, 0, 0, 0, AutoReviveType.None, 0,
             false, false, false, false, homeReturnable, false, false, false, false, false, 0f, NotInPlayedClient: notInPlayedClient);
