@@ -40,6 +40,16 @@ public static class PaybackRules {
 
     public static int MonthKey(DateTime time) => time.Year * 100 + time.Month;
 
+    // The payback month now is in, as yyyyMM. PaybackManagerClient::GetPeriodText shows the start's month and the month
+    // after as one period (KR "2022-01-01 ~ 2022-02-28" in both months), so the month after the start's counts in the
+    // start's month and is paid with it.
+    public static int PeriodKey(ConstantsTable constants, DateTime now) {
+        if (Start(constants) is { } start && MonthStart(now) == MonthStart(start).AddMonths(1)) {
+            return MonthKey(start);
+        }
+        return MonthKey(now);
+    }
+
     public static bool IsPaybackProduct(ConstantsTable constants, int productId) =>
         productId != 0 && constants.PaybackMarketProductSnList == productId;
 
@@ -100,17 +110,19 @@ public static class PaybackRules {
     // The record's levels: those gained since the month began, none for a level that went down.
     public static int LevelsGained(PaybackRecord record, int prestigeLevel) => Math.Max(0, prestigeLevel - record.StartLevel);
 
-    // The account's record for now: the one held while it is this month's; a new month's in the period, its start
-    // level the account's level; null outside it (no month to count).
+    // The account's record for now: the one held while it is this period's (PeriodKey); a new period's in the payback
+    // period, its start level the account's level; null outside it (no month to count).
     public static PaybackRecord? Current(PaybackRecord? held, PaybackTable table, ConstantsTable constants, DateTime now, int prestigeLevel) {
-        if (held != null && held.Month == MonthKey(now)) {
+        int key = PeriodKey(constants, now);
+        if (held != null && held.Month == key) {
             return held;
         }
-        return InPeriod(table, constants, now) ? new PaybackRecord(MonthKey(now), 0, prestigeLevel) : null;
+        return InPeriod(table, constants, now) ? new PaybackRecord(key, 0, prestigeLevel) : null;
     }
 
-    // A record of an earlier month with merets spent is due to be paid.
-    public static bool Due(PaybackRecord? held, DateTime now) => held != null && held.Month < MonthKey(now) && held.Spent > 0;
+    // A record of an earlier period with merets spent is due to be paid.
+    public static bool Due(PaybackRecord? held, ConstantsTable constants, DateTime now) =>
+        held != null && held.Month < PeriodKey(constants, now) && held.Spent > 0;
 
     public static string FormatPercent(float percent) => percent.ToString("0.##", CultureInfo.InvariantCulture);
 

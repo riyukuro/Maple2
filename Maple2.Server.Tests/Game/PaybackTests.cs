@@ -5,6 +5,7 @@ using Maple2.Database.Context;
 using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -16,8 +17,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Maple2.Server.Tests.Game;
 
 // The merat payback on a session: a payback buy counts in the account's month, and the month after mails its share
-// (PaybackMailId 50000020, the KR mail) and starts the new month's record. KR rows, a period of October to December
-// 2026 (the KR period, January to February 2022, is over).
+// (PaybackMailId 50000020, the KR mail) and starts the new month's record. KR rows, a period of August to December
+// 2026 (the KR period, January to February 2022, is over): August and September are its first period, October and
+// November months of their own.
 public class PaybackTests {
     private const int Product = 1000200013;
     private TestGameSession test = null!;
@@ -26,11 +28,16 @@ public class PaybackTests {
     private static readonly DateTime November = new(2026, 11, 2, 12, 0, 0);
 
     [SetUp]
-    public void SetUp() {
+    public void SetUp() => Make(true);
+
+    private void Make(bool eventRunning) {
         test = new TestGameSession();
         test.SetTable(PaybackRulesTests.Kr);
+        if (eventRunning) {
+            test.AddEvent(910300, GameEventType.FinishPayback, new FinishPayback());
+        }
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
-            PaybackStartDate = 20261001,
+            PaybackStartDate = 20260801,
             PaybackEndDate = new DateTime(2026, 12, 31),
             PaybackSettleMinutes = 5,
             PaybackMarketProductSnList = Product,
@@ -131,15 +138,64 @@ public class PaybackTests {
         });
     }
 
-    // A buy in a later month pays the earlier month first.
+    // A buy in a later month pays the earlier month first (ReadyForBuy, before the merets are taken).
     [Test]
     public void Spend_InALaterMonth_PaysTheEarlierFirst() {
         PaybackService.Spend(test.Session, 1000, October);
         Account.PrestigeLevel = 32;
+        Assert.That(PaybackService.ReadyForBuy(test.Session, November), Is.True);
         PaybackService.Spend(test.Session, 200, November);
         Assert.Multiple(() => {
             Assert.That(Mails().Single().Currency.Meret, Is.EqualTo(1000));
             Assert.That(Account.Payback, Is.EqualTo(new PaybackRecord(202611, 200, 32)));
+        });
+    }
+
+    // Without event FinishPayback the client shows no payback: no buy counts and no packet is sent.
+    [Test]
+    public void EventOff_NoPaybackBuy() {
+        Make(false);
+        Assert.Multiple(() => {
+            Assert.That(PaybackService.IsPaybackBuy(test.Session, Product, 0, MeretMarketCurrencyType.Meret, October), Is.False);
+            Assert.That(PaybackService.Shown(test.Session, October), Is.False);
+        });
+    }
+
+    // August and September are one period, paid in October once.
+    [Test]
+    public void FirstPeriod_TwoMonthsPaidOnce() {
+        PaybackService.Spend(test.Session, 600, new DateTime(2026, 8, 10));
+        Account.PrestigeLevel = 9;
+        Assert.That(PaybackService.Settle(test.Session, new DateTime(2026, 9, 3)), Is.False);
+        PaybackService.Spend(test.Session, 400, new DateTime(2026, 9, 4));
+        Assert.That(Account.Payback, Is.EqualTo(new PaybackRecord(202608, 1000, 4)));
+        Assert.That(PaybackService.Settle(test.Session, October), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(Mails().Single().Currency.Meret, Is.EqualTo(150)); // 5 levels gained (4 to 9): levels 1, 3 and 5, 15%
+            Assert.That(Mails().Single().TitleArgs, Is.EqualTo(new[] { "str=8" }).AsCollection);
+            Assert.That(Account.Payback, Is.EqualTo(new PaybackRecord(202610, 0, 9)));
+        });
+    }
+
+    // A failed save keeps the earlier month's record and mails nothing; the next try pays it exactly once.
+    [Test]
+    public void Settle_FailedSave_KeepsTheRecord() {
+        PaybackService.Spend(test.Session, 1000, October);
+        Account.PrestigeLevel = 13;
+        test.FailSave = _ => true;
+        Assert.Multiple(() => {
+            Assert.That(PaybackService.Settle(test.Session, November), Is.False);
+            Assert.That(PaybackService.ReadyForBuy(test.Session, November), Is.False);
+            Assert.That(Account.Payback, Is.EqualTo(new PaybackRecord(202610, 1000, 4)));
+        });
+        test.FailSave = null;
+        Assert.That(Mails(), Is.Empty);
+
+        Assert.That(PaybackService.ReadyForBuy(test.Session, November), Is.True);
+        Assert.That(PaybackService.Settle(test.Session, November.AddMinutes(1)), Is.False);
+        Assert.Multiple(() => {
+            Assert.That(Mails().Single().Currency.Meret, Is.EqualTo(300));
+            Assert.That(Stored(), Is.EqualTo(new PaybackRecord(202611, 0, 13)));
         });
     }
 

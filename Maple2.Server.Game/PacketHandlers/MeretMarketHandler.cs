@@ -540,7 +540,9 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
         DateTime now = DateTime.Now;
         bool payback = PaybackService.IsPaybackBuy(session, premiumMarketId, childMarketItemId, entry.Metadata.CurrencyType, now);
-        if (payback && PaybackService.BuyRefused(session, now)) {
+        // An earlier period is paid before this buy is: the buy is refused in the reset window and while that period
+        // is still unpaid.
+        if (payback && (PaybackService.BuyRefused(session, now) || !PaybackService.ReadyForBuy(session, now))) {
             error = PurchaseErrorNotSale;
             return null;
         }

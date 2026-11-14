@@ -108,21 +108,38 @@ public class PaybackRulesTests {
         });
     }
 
+    // The start's month and the month after are one period (GetPeriodText), counted in the start's month.
+    [Test]
+    public void PeriodKey_FirstPeriodIsTwoMonths() {
+        ConstantsTable constants = Constants();
+        Assert.Multiple(() => {
+            Assert.That(PaybackRules.PeriodKey(constants, new DateTime(2022, 1, 20)), Is.EqualTo(202201));
+            Assert.That(PaybackRules.PeriodKey(constants, new DateTime(2022, 2, 28)), Is.EqualTo(202201));
+            Assert.That(PaybackRules.PeriodKey(constants, new DateTime(2022, 3, 1)), Is.EqualTo(202203));
+            Assert.That(PaybackRules.PeriodKey(Constants(start: 20211215, end: new DateTime(2022, 3, 31)), new DateTime(2022, 1, 3)), Is.EqualTo(202112));
+            Assert.That(PaybackRules.PeriodKey(Constants(start: 20211215, end: new DateTime(2022, 3, 31)), new DateTime(2022, 2, 3)), Is.EqualTo(202202));
+            Assert.That(PaybackRules.PeriodKey(Constants(start: 0), new DateTime(2022, 2, 3)), Is.EqualTo(202202));
+        });
+    }
+
     [Test]
     public void Record_CurrentAndDue() {
-        ConstantsTable constants = Constants();
+        ConstantsTable constants = Constants(end: new DateTime(2022, 4, 30));
         var january = new DateTime(2022, 1, 20);
         var february = new DateTime(2022, 2, 3);
+        var march = new DateTime(2022, 3, 2);
         var record = new PaybackRecord(202201, 500, 4);
         Assert.Multiple(() => {
             Assert.That(PaybackRules.Current(null, Kr, constants, january, 4), Is.EqualTo(new PaybackRecord(202201, 0, 4)));
             Assert.That(PaybackRules.Current(record, Kr, constants, january, 9), Is.SameAs(record));
-            Assert.That(PaybackRules.Current(record, Kr, constants, february, 9), Is.EqualTo(new PaybackRecord(202202, 0, 9)));
+            Assert.That(PaybackRules.Current(record, Kr, constants, february, 9), Is.SameAs(record));
+            Assert.That(PaybackRules.Current(record, Kr, constants, march, 9), Is.EqualTo(new PaybackRecord(202203, 0, 9)));
             // After the period: no new month.
-            Assert.That(PaybackRules.Current(record, Kr, constants, new DateTime(2022, 3, 2), 9), Is.Null);
-            Assert.That(PaybackRules.Due(record, january), Is.False);
-            Assert.That(PaybackRules.Due(record, february), Is.True);
-            Assert.That(PaybackRules.Due(record with { Spent = 0 }, february), Is.False);
+            Assert.That(PaybackRules.Current(record, Kr, Constants(), march, 9), Is.Null);
+            Assert.That(PaybackRules.Due(record, constants, january), Is.False);
+            Assert.That(PaybackRules.Due(record, constants, february), Is.False);
+            Assert.That(PaybackRules.Due(record, constants, march), Is.True);
+            Assert.That(PaybackRules.Due(record with { Spent = 0 }, constants, march), Is.False);
             Assert.That(PaybackRules.LevelsGained(record, 13), Is.EqualTo(9));
             Assert.That(PaybackRules.LevelsGained(record, 2), Is.EqualTo(0));
         });

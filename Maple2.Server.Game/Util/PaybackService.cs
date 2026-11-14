@@ -21,10 +21,15 @@ public static class PaybackService {
     private static PaybackTable Table(GameSession session) => session.TableMetadata.PaybackTable;
     private static ConstantsTable Constants(GameSession session) => session.ServerTableMetadata.ConstantsTable;
 
-    // The product's buy is a payback buy: the configured payback product, in the period, paid in merets.
+    // PaybackManagerClient::IsEnabled: the client shows payback only while game event FinishPayback runs.
+    public static bool EventRunning(GameSession session) => session.FindEvent(GameEventType.FinishPayback).Count > 0;
+
+    // The product's buy is a payback buy: the configured payback product, in the period, paid in merets, while the
+    // event runs.
     public static bool IsPaybackBuy(GameSession session, int premiumMarketId, int childMarketItemId, MeretMarketCurrencyType currency, DateTime now) {
         ConstantsTable constants = Constants(session);
         return currency != MeretMarketCurrencyType.Meso
+               && EventRunning(session)
                && (PaybackRules.IsPaybackProduct(constants, premiumMarketId) || PaybackRules.IsPaybackProduct(constants, childMarketItemId))
                && PaybackRules.InPeriod(Table(session), constants, now);
     }
@@ -33,17 +38,22 @@ public static class PaybackService {
     // server, for a client whose clock differs.
     public static bool BuyRefused(GameSession session, DateTime now) => PaybackRules.IsResetWindow(Table(session), Constants(session), now);
 
-    // Counts a paid payback buy in the account's month. An earlier month's record is paid first. The caller stores
-    // the record with the purchase (GameStorage.Request.SavePayback).
+    // Before a payback buy is paid: an earlier period's record is paid first. False while it is still due (its save
+    // failed or a reset was being stored): the buy is refused, so nothing is taken that would not be counted.
+    public static bool ReadyForBuy(GameSession session, DateTime now) {
+        Settle(session, now);
+        return !PaybackRules.Due(session.Player.Value.Account.Payback, Constants(session), now);
+    }
+
+    // Counts a paid payback buy in the account's period (ReadyForBuy ran before the pay). The caller stores the
+    // record with the purchase (GameStorage.Request.SavePayback).
     public static void Spend(GameSession session, long price, DateTime now) {
         if (price <= 0) {
             return;
         }
-        Settle(session, now);
         Account account = session.Player.Value.Account;
-        if (account.Payback != null && account.Payback.Month != PaybackRules.MonthKey(now) && PaybackRules.Due(account.Payback, now)) {
-            // The earlier month could not be paid now: it is kept for the next try, and this buy is not counted.
-            Logger.Warning("Payback buy of {Price} merets not counted, month {Month} unpaid AccountId={AccountId}", price, account.Payback.Month, account.Id);
+        if (PaybackRules.Due(account.Payback, Constants(session), now)) {
+            Logger.Warning("Payback buy of {Price} merets not counted, month {Month} unpaid AccountId={AccountId}", price, account.Payback!.Month, account.Id);
             return;
         }
         PaybackRecord? current = PaybackRules.Current(account.Payback, Table(session), Constants(session), now, account.PrestigeLevel);
@@ -66,7 +76,7 @@ public static class PaybackService {
         }
 
         Mail? mail = null;
-        if (held != null && PaybackRules.Due(held, now)) {
+        if (held != null && PaybackRules.Due(held, constants, now)) {
             int levels = PaybackRules.LevelsGained(held, account.PrestigeLevel);
             long merat = PaybackRules.Reward(table, constants, levels, held.Spent);
             if (merat > 0) {
@@ -124,11 +134,12 @@ public static class PaybackService {
         return mail;
     }
 
-    // The client reads 0x012D only with the feature on; the table has no levels when the ingest found it off.
+    // The client reads 0x012D only with the feature on and event FinishPayback running; the table has no levels when
+    // the ingest found the feature off.
     public static bool Shown(GameSession session, DateTime now) {
         PaybackTable table = Table(session);
         ConstantsTable constants = Constants(session);
-        return PaybackRules.InPeriod(table, constants, now) || PaybackRules.InMonthPeriod(table, constants, now);
+        return EventRunning(session) && (PaybackRules.InPeriod(table, constants, now) || PaybackRules.InMonthPeriod(table, constants, now));
     }
 
     // The dialog's levels gained and merets spent this month.
