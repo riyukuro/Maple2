@@ -207,6 +207,43 @@ public class TriggerHallGameTests : TriggerTestBase {
         Assert.That(test.Session.Marriage.Marriage.Status, Is.Not.EqualTo(MaritalStatus.Married));
     }
 
+    // An exception while the vow's store runs (here the hall's gift list throws once the gift mail is created) ends in
+    // the vow's own catch: the transaction is rolled back, the ceremony is not complete, the couple is not married and
+    // no mail notice goes out, so a later vow may try again. Before, the exception left the vow and the ceremony
+    // stayed complete with nothing stored, so no vow could be made again. The in-memory store keeps no rollback (its
+    // marriage row is married and its mail row stays), so the stored rows and a second vow are not checked here.
+    [Test]
+    public void WeddingVowComplete_AnExceptionInTheStoreUncompletes() {
+        StartHall();
+        long marriageId;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Account account = db.CreateAccount(new Account { Username = "partner" }, "pw");
+            var partner = new Character { AccountId = account.Id, Name = "partner", Mastery = new Mastery() };
+            partner.ReturnMaps.Push(2000062);
+            long partnerId = db.CreateCharacter(partner)!.Id;
+            marriageId = db.CreateMarriage(CharacterId, partnerId)!.Id;
+            test.Session.Marriage.Marriage = db.GetMarriage(CharacterId)!;
+        }
+
+        WeddingCeremony ceremony = Field.Wedding = new WeddingCeremony(marriageId, CharacterId, CharacterId, CharacterId) {
+            Gifts = new ThrowingGifts(),
+        };
+        Assert.DoesNotThrow(() => Action("""<action name="wedding_vow_complete" />"""));
+
+        Assert.Multiple(() => {
+            Assert.That(ceremony.Complete, Is.False);
+            Assert.That(test.Session.Marriage.Marriage.Status, Is.Not.EqualTo(MaritalStatus.Married));
+            Assert.That(test.World.MailNotifications, Is.Empty);
+        });
+    }
+
+    private sealed class ThrowingGifts : IReadOnlyList<WeddingPackage.HallData.Item> {
+        public int Count => 1;
+        public WeddingPackage.HallData.Item this[int index] => throw new InvalidOperationException("gift list");
+        public IEnumerator<WeddingPackage.HallData.Item> GetEnumerator() => throw new InvalidOperationException("gift list");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     // wedding_entry_in_field (60): GroomBride with is_in_field 1 holds while both of the couple are in the room, 0
     // while one is missing. Other entry types and a room without a ceremony are false either way.
     [Test]
