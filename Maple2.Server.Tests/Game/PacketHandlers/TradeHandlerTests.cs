@@ -218,6 +218,25 @@ public class TradeHandlerTests {
         });
     }
 
+    // A slot past the short range is refused: it named slot 0 here (65536 wraps to 0) and took the offered item back
+    // to the bag, while both windows were told of slot 65536, so the taker still saw the item as offered.
+    [TestCase(65536)]
+    [TestCase(-65536)]
+    public void RemoveItem_ASlotPastTheShortRangeIsRefused(int tradeSlot) {
+        Offer();
+        giverTest.TakeSent();
+        takerTest.TakeSent();
+        Send(giver, 9, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(tradeSlot);
+        });
+
+        Assert.Multiple(() => {
+            Assert.That(giver.Item.Inventory.Get(item.Uid), Is.Null);
+            Assert.That(takerTest.TakeSent(), Is.Empty);
+        });
+    }
+
     // The rows of |characterId| holding item 20000001, as the next login loads them.
     private int Held(long characterId) {
         using GameStorage.Request db = giverTest.Storage.Context();

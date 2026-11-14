@@ -272,7 +272,9 @@ public class TradeManager : IDisposable {
     }
 
     public void RemoveItem(GameSession caller, long itemUid, int tradeSlot) {
-        if (state != TradeState.Started || !IsTrader(caller)) {
+        // The slot is echoed to both windows as the client's int: one past the short range named another slot here
+        // (65536 took slot 0 out), while the other trader's window still showed that item as offered.
+        if (state != TradeState.Started || !IsTrader(caller) || tradeSlot != (short) tradeSlot) {
             return;
         }
 
