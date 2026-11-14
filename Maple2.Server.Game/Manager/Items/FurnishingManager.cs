@@ -89,7 +89,7 @@ public class FurnishingManager {
             }
 
             Item? item = storage.Get(uid);
-            if (item == null || item.Amount < amount) {
+            if (item == null || item.Id != cube.ItemId || item.Amount < amount) {
                 return false;
             }
 

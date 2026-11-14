@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Storage;
@@ -52,7 +52,7 @@ public class PlaceHeldCubeTests {
         return (session, plot);
     }
 
-    private void Place(GameSession session, int held, int placed, Vector3B? position = null) {
+    private void Place(GameSession session, int held, int placed, Vector3B? position = null, long uid = 0) {
         session.HeldCube = null;
         if (held != 0) {
             session.ItemMetadata.TryGet(held, out ItemMetadata? metadata);
@@ -62,7 +62,7 @@ public class PlaceHeldCubeTests {
             writer.WriteByte(10);
             writer.Write<Vector3B>(position ?? new Vector3B(-1, -1, 1));
             writer.WriteInt(placed);
-            writer.WriteLong(0);
+            writer.WriteLong(uid);
             writer.WriteLong(0);
             writer.WriteBool(false);
             writer.WriteFloat(0);
@@ -175,6 +175,22 @@ public class PlaceHeldCubeTests {
         session.ItemMetadata.TryGet(House, out ItemMetadata? metadata);
         Assert.That(session.Housing.TryPlaceCube(new PlotCube(metadata!) { Type = PlotCube.CubeType.Default }, plot, metadata!, new Vector3B(-1, -1, 1), 0, out _), Is.True);
         Assert.That(plot.Cubes, Has.Count.EqualTo(1));
+    }
+
+    // The storage uid the client sends is a stack of another item: the stack is not spent and the named cube is bought
+    // as any cube not in storage. It was placed from the cheap stack, and taking it back gave the other item.
+    [Test]
+    public void AStackOfAnotherItem_IsNotSpent() {
+        (GameSession session, Plot plot) = StartInHome();
+        long uid = session.Item.Furnishing.AddCube(Cube);
+        Assert.That(uid, Is.Not.Zero);
+
+        Place(session, OtherCube, OtherCube, uid: uid);
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes.Values.Select(cube => cube.ItemId), Is.EqualTo(new[] { OtherCube }));
+            Assert.That(session.Item.Furnishing.GetCube(uid)?.Amount, Is.EqualTo(1));
+            Assert.That(session.Currency.Meso, Is.EqualTo(4000));
+        });
     }
 
     [Test]

@@ -850,7 +850,12 @@ public class HousingManager {
         Item? storedItem = null;
         long expiryTime = 0;
         if (!plot.IsPlanner) {
+            // The client names both the storage uid and the item id: a stack of another item is not this cube's, so
+            // the cube is bought as any cube not in storage (a cheap stack's uid must not place a dear item).
             storedItem = helper == null ? session.Item.Furnishing.GetCube(cube.Id) : null;
+            if (storedItem != null && storedItem.Id != cube.ItemId) {
+                storedItem = null;
+            }
             if (storedItem is { Amount: > 0 }) {
                 expiryTime = storedItem.ExpiryTime;
             } else {
