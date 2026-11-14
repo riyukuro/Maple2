@@ -29,13 +29,17 @@ public class TriggerStuckCinematicTests {
     private long tick;
 
     private void Setup(string enter) {
+        SetupStates("<state name=\"scene\"><onEnter>" + enter + "</onEnter>"
+            + "<condition name=\"true\"><transition state=\"gone\" /></condition></state>");
+    }
+
+    private void SetupStates(string states) {
         test = new TestGameSession();
         test.Start();
         field = test.Session.Field!;
         typeof(FieldManager).GetField("fieldProperties", Any)!.SetValue(field, new ConcurrentDictionary<FieldProperty, IFieldProperty>());
         var document = new XmlDocument();
-        document.LoadXml("<ms2><state name=\"scene\"><onEnter>" + enter + "</onEnter>"
-            + "<condition name=\"true\"><transition state=\"gone\" /></condition></state></ms2>");
+        document.LoadXml("<ms2>" + states + "</ms2>");
         var cache = new TriggerCache(null!);
         cache.AddReplace(("xblock", "main"), TriggerCache.ParseTrigger("xblock", "main", document));
         typeof(FieldManager).GetField("<TriggerCache>k__BackingField", Any)!.SetValue(field, cache);
@@ -45,12 +49,12 @@ public class TriggerStuckCinematicTests {
         trigger = field.AddTrigger(new TriggerModel(1, "main", Vector3.Zero, Vector3.Zero))!;
         tick = Environment.TickCount64;
         test.TakeSent();
-        Step(); // enters scene; its condition moves on to the missing state in the same update
+        Step(); // enters the first state; Setup's condition moves on to the missing state in the same update
     }
 
-    private void Step(int count = 1) {
+    private void Step(int count = 1, long by = 100_000) {
         for (int i = 0; i < count; i++) {
-            tick += 100_000;
+            tick += by;
             typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(field, tick);
             trigger.Update(tick);
         }
@@ -109,5 +113,74 @@ public class TriggerStuckCinematicTests {
         // only the script's own four and two
         Assert.That(cinematic.Select(x => x.Item1), Is.EqualTo(new byte[] { 1, 3, 1, 2 }));
         Assert.That(property, Is.EqualTo(new List<(byte, byte)> { (1, 4), (2, 4) }));
+    }
+
+    private const string OpenAndLock = "<action name=\"set_cinematic_ui\" type=\"1\" /><action name=\"set_cinematic_ui\" type=\"3\" />"
+        + "<action name=\"lock_my_pc\" is_lock=\"1\" />";
+
+    // A state with no condition and no transition can never be left (KR 52000150's contents_trigger end state
+    // keeps the key mode on): 10 s after it was entered the trigger gives the players back, once.
+    [Test]
+    public void DeadEndState_GivesBackAfterTenSeconds() {
+        SetupStates("<state name=\"scene\"><onEnter>" + OpenAndLock + "</onEnter></state>");
+        (List<(byte, int)> cinematic, List<(byte, byte)> property) = Sent();
+        Assert.That(cinematic.Select(x => x.Item1), Is.EqualTo(new byte[] { 1, 3 }));
+        Assert.That(property, Is.EqualTo(new List<(byte, byte)> { (1, 4) }));
+
+        Step(9, 1_000);
+        Assert.That(Sent().Cinematic, Is.Empty);
+
+        Step(1, 1_000);
+        (cinematic, property) = Sent();
+        Assert.That(cinematic, Is.EqualTo(new List<(byte, int)> { (1, 0), (2, -1) }));
+        Assert.That(property, Is.EqualTo(new List<(byte, byte)> { (2, 4) }));
+
+        Step(20, 1_000);
+        (cinematic, property) = Sent();
+        Assert.That(cinematic, Is.Empty);
+        Assert.That(property, Is.Empty);
+    }
+
+    // A long cutscene whose state still has a condition is never cut, however long it waits.
+    [Test]
+    public void StateWithCondition_IsNotCut() {
+        SetupStates("<state name=\"scene\"><onEnter>" + OpenAndLock + "</onEnter>"
+            + "<condition name=\"wait_tick\" wait_tick=\"30000\"><transition state=\"end\" /></condition></state>"
+            + "<state name=\"end\"><onEnter><action name=\"set_cinematic_ui\" type=\"0\" /><action name=\"set_cinematic_ui\" type=\"2\" /></onEnter></state>");
+        Sent();
+
+        Step(60, 1_000);
+        (List<(byte, int)> cinematic, List<(byte, byte)> property) = Sent();
+        Assert.That(cinematic, Is.Empty);
+        Assert.That(property, Is.Empty);
+    }
+
+    // A change another trigger of the field makes after the dead end was entered (here a new cutscene) is left
+    // to that trigger.
+    [Test]
+    public void DeadEndState_LeavesALaterCutsceneAlone() {
+        SetupStates("<state name=\"scene\"><onEnter>" + OpenAndLock + "</onEnter></state>");
+        Sent();
+
+        Step(5, 1_000);
+        trigger.Context.SetCinematicUi(3, string.Empty, false);
+        Sent();
+
+        Step(20, 1_000);
+        Assert.That(Sent().Cinematic, Is.Empty);
+    }
+
+    // A state with no condition that sets a skip state waits for the player's skip key (KR 51000001's intro):
+    // the skip moves it on, so nothing is given back.
+    [Test]
+    public void DeadEndState_WaitingForSkip_IsNotCut() {
+        SetupStates("<state name=\"intro\"><onEnter>" + OpenAndLock + "<action name=\"set_skip\" state=\"tutorial\" /></onEnter></state>"
+            + "<state name=\"tutorial\"><onEnter><action name=\"set_cinematic_ui\" type=\"0\" /><action name=\"set_cinematic_ui\" type=\"2\" /></onEnter></state>");
+        Sent();
+
+        Step(30, 1_000);
+        (List<(byte, int)> cinematic, List<(byte, byte)> property) = Sent();
+        Assert.That(cinematic, Is.Empty);
+        Assert.That(property, Is.Empty);
     }
 }

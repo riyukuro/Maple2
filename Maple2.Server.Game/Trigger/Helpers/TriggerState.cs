@@ -13,6 +13,8 @@ public class TriggerState {
     // Set when a transition names a state the script does not have: the state then does nothing more, so
     // the condition's actions do not run again every tick.
     public bool Stopped { get; private set; }
+    // No condition and no transition after onEnter: once entered, the state never changes on its own.
+    public bool DeadEnd => triggerState.Conditions.Count == 0 && triggerState.Enter?.NextState is null;
 
     public TriggerState(Trigger trigger, TriggerContext context) {
         this.trigger = trigger;

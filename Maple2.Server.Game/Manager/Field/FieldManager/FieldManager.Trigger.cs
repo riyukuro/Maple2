@@ -21,6 +21,10 @@ public partial class FieldManager {
     public readonly TriggerUserValues UserValues = new();
     public readonly Dictionary<string, Widget> Widgets = new();
     public readonly Dictionary<int, List<TriggerState>> States = new();
+    // What the field's triggers have left on its players (TriggerContext.ReleasePlayers): one record for all of
+    // them, as the cinematic and the player lock are the field's, whichever trigger set them.
+    private TriggerHold? triggerHold;
+    internal TriggerHold CinematicHold => triggerHold ??= new TriggerHold();
     // The score the score_board_score condition tests: score_board_set_score sets it, and while a board is open
     // AddScoreBoardScore adds kill and orb points to it; null until either, and score_board_create/remove clear it.
     public int? ScoreBoardScore;
@@ -239,4 +243,16 @@ public partial class FieldManager {
         }
         FieldTriggerEventRules.Apply(row, UserValues, seconds);
     }
+}
+
+// The cinematic key mode (set_cinematic_ui 1, off with 0; UICutSceneCinematic::OnPacketKeyMode), a cinematic
+// (set_cinematic_ui 3, closed by 2 or close_cinematic; OnPacketStartCinematic, OnPacketClose) and the player lock
+// (lock_my_pc), with the field tick of the last change to any of them.
+internal sealed class TriggerHold {
+    public bool KeyMode;
+    public bool Shown;
+    public bool Locked;
+    public long ChangeTick;
+
+    public bool Any => KeyMode || Shown || Locked;
 }

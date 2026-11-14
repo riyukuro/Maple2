@@ -1,4 +1,5 @@
 ﻿using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger.Helpers;
@@ -22,24 +23,19 @@ public partial class TriggerContext {
     public void CloseCinematic() {
         DebugLog("[CloseCinematic]");
         // guessing
-        cinematicShown = false;
+        Held(hold => hold.Shown = false);
         Broadcast(CinematicPacket.HideUi());
     }
 
-    // What this trigger has left on the players: the cinematic key mode (set_cinematic_ui 1, off with 0;
-    // UICutSceneCinematic::OnPacketKeyMode), a cinematic (set_cinematic_ui 3, closed by 2 or close_cinematic;
-    // OnPacketStartCinematic, OnPacketClose) and the player lock (lock_my_pc).
-    private bool cinematicKeyMode;
-    private bool cinematicShown;
-    private bool lockedPc;
     private bool releaseLogged;
+    private bool deadEndLogged;
 
     // Safety net, server-only: a script that moves to a state it does not have stops there (TriggerState), and
     // when it had a cinematic open or the players locked, nothing would give them back (KR: 52000092 after quest
     // 50100520, 52100105 when its scene movie stops first). The trigger turns the key mode off, closes the
     // cinematic as close_cinematic does and unlocks the players, as the scripts end a cutscene.
     internal void ReleasePlayers(string state, string missing) {
-        if (!cinematicKeyMode && !cinematicShown && !lockedPc) {
+        if (!HoldsPlayers) {
             return;
         }
         if (!releaseLogged) {
@@ -47,13 +43,46 @@ public partial class TriggerContext {
             logger.Information("{Trigger} state '{State}' moves to '{Missing}', which the script does not have: its cinematic is closed and the players are given back",
                 owner.Value.Name, state, missing);
         }
-        if (cinematicKeyMode) {
+        GiveBack();
+    }
+
+    // The same net for a state that can never exit: no condition and no transition after its onEnter (KR 52000150,
+    // 52020006, 52020022 and 63000070 end in one with the key mode or the cutscene still on). FieldTrigger calls this
+    // once the state has run for DeadEndReleaseTick with no skip state set; a state that still has a condition is
+    // left alone, however long it waits.
+    public const long DeadEndReleaseTick = 10_000;
+
+    // enteredTick: when the state was entered. A change any trigger of the field made after that (another
+    // trigger opening its own cutscene, or closing this one) leaves the players to that trigger.
+    internal void ReleaseDeadEnd(string state, long enteredTick) {
+        if (!HoldsPlayers || Field.CinematicHold.ChangeTick > enteredTick) {
+            return;
+        }
+        if (!deadEndLogged) {
+            deadEndLogged = true;
+            logger.Information("{Trigger} state '{State}' has no way out: its cinematic is closed and the players are given back",
+                owner.Value.Name, state);
+        }
+        GiveBack();
+    }
+
+    private bool HoldsPlayers => Field.CinematicHold.Any;
+
+    private void Held(Action<TriggerHold> change) {
+        TriggerHold hold = Field.CinematicHold;
+        change(hold);
+        hold.ChangeTick = Field.FieldTick;
+    }
+
+    private void GiveBack() {
+        TriggerHold hold = Field.CinematicHold;
+        if (hold.KeyMode) {
             SetCinematicUi(0, string.Empty, false);
         }
-        if (cinematicShown) {
+        if (hold.Shown) {
             CloseCinematic();
         }
-        if (lockedPc) {
+        if (hold.Locked) {
             LockMyPc(false);
         }
     }
@@ -77,13 +106,13 @@ public partial class TriggerContext {
         DebugLog("[SetCinematicUI] type:{Type}, script:{Script}, arg3:{Arg3}", type, script, arg3);
         switch (type) {
             case 0 or 1:
-                cinematicKeyMode = type == 1;
+                Held(hold => hold.KeyMode = type == 1);
                 break;
             case 2:
-                cinematicShown = false;
+                Held(hold => hold.Shown = false);
                 break;
             case 3:
-                cinematicShown = true;
+                Held(hold => hold.Shown = true);
                 break;
         }
         switch (type) {

@@ -15,6 +15,7 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
     private TriggerState? state;
     private TriggerState? nextState;
     private int forceNext;
+    private bool deadEndReleased;
 
     public FieldTrigger(FieldManager field, int objectId, TriggerModel value) : base(field, objectId, value) {
         Context = new TriggerContext(this);
@@ -77,6 +78,7 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
             Context.DebugLog("[OnExit] {State}", state?.Name ?? "null");
             state?.OnExit();
             state = nextState;
+            deadEndReleased = false;
             Context.StartTick = Field.FieldTick;
             Context.DebugLog("[OnEnter] {State}", state.Name);
             nextState = state.OnEnter();
@@ -95,6 +97,13 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
         }
 
         nextState = state?.OnTick();
+
+        // A state that waits for the skip key (set_skip with a state, KR 51000001's intro) is not a dead end.
+        if (state is { DeadEnd: true } && !deadEndReleased && Field.FieldTick - Context.StartTick >= TriggerContext.DeadEndReleaseTick
+            && !Context.TryGetSkip(out _)) {
+            deadEndReleased = true;
+            Context.ReleaseDeadEnd(state.Name, Context.StartTick);
+        }
     }
 
     // Trigger 0x04 (the GM "Next Trigger" key): the next update on the field thread moves this trigger on
