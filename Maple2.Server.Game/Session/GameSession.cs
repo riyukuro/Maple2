@@ -2291,11 +2291,13 @@ public sealed partial class GameSession : Core.Network.Session {
     // with what marks it sent) must not take the account lock again: the World's lock is not re-entrant, so the inner
     // store waited for it, went on without it, and gave the outer store's lock back. Such a step runs through
     // AfterStore: inside a store of this thread it runs once that store has given its lock back, else at once.
-    [ThreadStatic] private static List<Action>? afterStore;
+    // The queue is the thread's, not the session's (another session's store may run inside this one's): each step
+    // keeps the session that queued it, which its failure names.
+    [ThreadStatic] private static List<(GameSession Session, Action Action)>? afterStore;
 
     public void AfterStore(Action action) {
         if (afterStore != null) {
-            afterStore.Add(action);
+            afterStore.Add((this, action));
             return;
         }
         action();
@@ -2314,13 +2316,13 @@ public sealed partial class GameSession : Core.Network.Session {
         if (!outer) {
             return;
         }
-        List<Action> queued = afterStore ?? [];
+        List<(GameSession Session, Action Action)> queued = afterStore ?? [];
         afterStore = null;
-        foreach (Action action in queued) {
+        foreach ((GameSession session, Action action) in queued) {
             try {
                 action();
             } catch (Exception ex) {
-                Logger.Error(ex, "After a store: a queued step failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                Logger.Error(ex, "After a store: a queued step failed AccountId={AccountId} CharacterId={CharacterId}", session.AccountId, session.CharacterId);
             }
         }
     }

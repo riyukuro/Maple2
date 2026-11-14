@@ -369,31 +369,37 @@ public sealed class ExperienceManager {
         }
         session.Send(PrestigePacket.LoadMissions(session.Player.Value.Account));
 
-        // The level is in the database before its items are given (they get their rows at once), so a crash between
-        // them cannot give a level's item again when the exp is earned a second time; the level stayed in memory until
-        // the next save. A refused store does not take back a level already earned and shown: its items are given as
-        // before, and the next save stores the level.
-        if (!session.TrySavePurchase(db => db.SavePrestigeProgress(session.Player))) {
-            Log.Logger.Warning("Prestige level {Level} not stored before its items, the next save stores it", PrestigeLevel);
-        }
-        for (int i = 0; i < amount; i++) {
-            Item? item = session.Field?.ItemDrop.CreateItem(Constants.AdventureLevelLvUpRewardItem);
-            if (item == null) {
-                break;
+        // The rest stores: inside a store of this session (exp an item gives in an event claim's AfterCommit, a
+        // promotion's item) it runs once that store has given its lock back (GameSession.AfterStore), at once outside
+        // one. The level's store and its item's were refused there (the World's account lock is not re-entrant). The
+        // level and the missions above are sent at once; the item and the trophies follow in the same order.
+        session.AfterStore(() => {
+            // The level is in the database before its items are given (they get their rows at once), so a crash
+            // between them cannot give a level's item again when the exp is earned a second time; the level stayed in
+            // memory until the next save. A refused store does not take back a level already earned and shown: its
+            // items are given as before, and the next save stores the level.
+            if (!session.TrySavePurchase(db => db.SavePrestigeProgress(session.Player))) {
+                Log.Logger.Warning("Prestige level {Level} not stored before its items, the next save stores it", PrestigeLevel);
+            }
+            for (int i = 0; i < amount; i++) {
+                Item? item = session.Field?.ItemDrop.CreateItem(Constants.AdventureLevelLvUpRewardItem);
+                if (item == null) {
+                    break;
+                }
+
+                if (!session.Item.Inventory.Add(item, true, commit: true) && !session.Item.MailItem(item)) {
+                    Log.Logger.Error("Prestige level {Level} item {ItemId} x{Amount} neither added nor mailed", PrestigeLevel, item.Id, item.Amount);
+                }
             }
 
-            if (!session.Item.Inventory.Add(item, true, commit: true) && !session.Item.MailItem(item)) {
-                Log.Logger.Error("Prestige level {Level} item {ItemId} x{Amount} neither added nor mailed", PrestigeLevel, item.Id, item.Amount);
+            // The prestige rank reached (21100052 "Reach Prestige Rank {0}", grades 10, 20, ...), kept at the highest.
+            session.ConditionUpdate(ConditionType.adventure_level, counter: PrestigeLevel);
+            session.ConditionUpdate(ConditionType.adventure_level_up, counter: amount);
+            if (session.Field != null) {
+                session.Player.Buffs.RefreshPrestigeBuffs();
             }
-        }
-
-        // The prestige rank reached (21100052 "Reach Prestige Rank {0}", grades 10, 20, ...), kept at the highest.
-        session.ConditionUpdate(ConditionType.adventure_level, counter: PrestigeLevel);
-        session.ConditionUpdate(ConditionType.adventure_level_up, counter: amount);
-        if (session.Field != null) {
-            session.Player.Buffs.RefreshPrestigeBuffs();
-        }
-        // Every statPoint row up to the new level, also those of levels a gain passed over.
-        session.Config.RecountPrestigeStatPoints();
+            // Every statPoint row up to the new level, also those of levels a gain passed over.
+            session.Config.RecountPrestigeStatPoints();
+        });
     }
 }

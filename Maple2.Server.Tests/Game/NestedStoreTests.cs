@@ -1,9 +1,14 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -157,5 +162,110 @@ public class NestedStoreTests {
 
         Assert.That(session.Item.Inventory.ConsumeStored(stack.Uid, 1), Is.True);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
+    private void CompletionTables() {
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+    }
+
+    // An event gift goes to the bag in the claim store's AfterCommit (EventClaim.Give); a field mission that counts
+    // the item held (item_exist) fills there. It completes once the claim store gave its lock back
+    // (QuestManager.CompleteAutomatic through AfterStore): nothing nests. Its store used to be refused inside the claim
+    // store, and the mission stayed filled and not completed.
+    [Test]
+    public void AnEventGiftThatFillsAFieldMission_CompletesItAfterTheClaimStore() {
+        const int itemId = 50000103;
+        test.EnterMap(TestGameSession.Map(2000023));
+        CompletionTables();
+        Quest quest = test.StartQuest(TestGameSession.QuestData(990803, QuestType.FieldMission) with {
+            Conditions = [new ConditionMetadata(ConditionType.item_exist, 1, new ConditionMetadata.Parameters(Integers: [itemId]), null)],
+        });
+        ItemMetadata metadata = TestGameSession.Metadata(itemId);
+        test.Register(metadata);
+        QuestState stateAtCommit = QuestState.None;
+        int counterAtCommit = -1;
+
+        List<Item>? given = EventClaim.Give(session, [new Item(metadata, 1, 1)], [], afterCommit: () => {
+            stateAtCommit = quest.State;
+            counterAtCommit = quest.Conditions[0].Counter;
+        });
+
+        Assert.Multiple(() => {
+            Assert.That(given, Has.Count.EqualTo(1));
+            Assert.That(nested, Is.Empty);
+            Assert.That((counterAtCommit, stateAtCommit), Is.EqualTo((1, QuestState.Started)), "filled in the store, completed after it");
+            Assert.That((quest.State, quest.CompletionCount), Is.EqualTo((QuestState.Completed, 1)), "completed once its row was stored");
+        });
+    }
+
+    // Prestige exp gained inside a store (an exp item an event gift brings) that reaches a level: the level and its
+    // missions are sent at once, the level's store, item and trophies follow once the store gave its lock back
+    // (ExperienceManager.PrestigeLevelUp through AfterStore). The level's store used to be refused there.
+    [Test]
+    public void APrestigeLevelReachedInsideAStore_IsStoredAfterIt() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        session.Player.Value.Character.Level = 50;
+        long lvUpExp = session.ServerTableMetadata.ConstantsTable.AdventureLevelLvUpExp;
+        session.Exp.PrestigeCurrentExp = lvUpExp - 10;
+        int level = session.Exp.PrestigeLevel;
+        int levelAtCommit = -1;
+        bool levelSentAtCommit = false;
+
+        Assert.That(session.TrySavePurchase(db => {
+            db.AfterCommit(() => {
+                session.Exp.AddPrestigeExp(10);
+                levelAtCommit = session.Exp.PrestigeLevel;
+                levelSentAtCommit = test.TakeSent().Exists(packet => TestGameSession.Op(packet) == SendOp.Prestige && packet[2] == 2);
+            });
+            return true;
+        }), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(nested, Is.Empty);
+            Assert.That((levelAtCommit, levelSentAtCommit), Is.EqualTo((level + 1, true)), "the level is sent at once");
+            Assert.That(session.Exp.PrestigeLevel, Is.EqualTo(level + 1));
+            using GameStorage.Request db = test.Storage.Context();
+            Assert.That(db.GetAccount(session.AccountId)!.PrestigeLevel, Is.EqualTo(level + 1), "and stored after the store");
+        });
+    }
+
+    // The daily reset is taken inside a store (BeginWithResets); its grants start quests, and a field mission that
+    // counts the start (quest_accept) completes with a store of its own. The grants run once the store gave its lock
+    // back (QuestManager.ResetDailyQuests through AfterStore): nothing nests, and the granted quest is not started
+    // inside the store. Its start used to run there, and the mission's completion was refused.
+    [Test]
+    public void TheDailyResetsGrantInsideAStore_StartsAfterIt() {
+        const int fieldQuestId = 91000001;
+        test.EnterMap(TestGameSession.Map(2000023));
+        CompletionTables();
+        Assume.That(session.QuestMetadata.GetQuests(), Is.Empty);
+        typeof(QuestMetadataStorage).GetField("groups", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.QuestMetadata, new Dictionary<int, int[]> { [DailyQuestGrant.FieldQuestGroup] = [fieldQuestId] });
+        QuestMetadata fieldQuest = TestGameSession.QuestData(fieldQuestId, QuestType.FieldQuest);
+        test.Register(fieldQuest with {
+            Basic = fieldQuest.Basic with { Repeat = 2 },
+            Require = fieldQuest.Require with { Level = 50, GroupId = DailyQuestGrant.FieldQuestGroup },
+        });
+        session.Player.Value.Character.Level = 50;
+        session.Player.Value.Character.FieldQuestGrantTime = new DateTimeOffset(DateTime.Today.AddDays(-1)).ToUnixTimeSeconds();
+        Quest mission = test.StartQuest(TestGameSession.QuestData(990804, QuestType.FieldMission) with {
+            Conditions = [new ConditionMetadata(ConditionType.quest_accept, 1, new ConditionMetadata.Parameters(Integers: [fieldQuestId]), null)],
+        });
+        bool? grantedInside = null;
+
+        Assert.That(session.TrySavePurchase(db => {
+            session.Quest.ResetDailyQuests(DateTime.Today);
+            grantedInside = session.Quest.TryGetQuest(fieldQuestId, out _);
+            return true;
+        }), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(nested, Is.Empty);
+            Assert.That(grantedInside, Is.False, "granted after the store");
+            Assert.That(session.Quest.TryGetQuest(fieldQuestId, out Quest? granted) && granted.State == QuestState.Started);
+            Assert.That((mission.State, mission.CompletionCount), Is.EqualTo((QuestState.Completed, 1)));
+        });
     }
 }

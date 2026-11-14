@@ -129,7 +129,21 @@ public sealed class QuestManager {
     private HashSet<int>? completeRetries;
     private bool completeResetRefused;
 
+    // An update reached inside a store of this session (an item an event claim's AfterCommit gives, a stack taken in a
+    // purchase's, a quest a reset step starts) completes once that store has given its lock back (GameSession.AfterStore),
+    // at once outside one: the completion's own store was refused there, as the World's account lock is not re-entrant.
+    // What the store did meanwhile may have changed the quest, so it is checked again then.
     private void CompleteAutomatic(Quest quest) {
+        session.AfterStore(() => {
+            if (CompletesNow(quest)) {
+                CompleteOrRetry(quest);
+            }
+        });
+    }
+
+    private bool CompletesNow(Quest quest) => Holds(quest) && quest.State == QuestState.Started && CanComplete(quest);
+
+    private void CompleteOrRetry(Quest quest) {
         if (Complete(quest) || !completeResetRefused) {
             return;
         }
@@ -140,7 +154,7 @@ public sealed class QuestManager {
 
     private void CompleteRetry(FieldManager field, Quest quest) {
         completeRetries?.Remove(quest.Id);
-        if (session.PlaysOn(field) && Holds(quest) && quest.State == QuestState.Started && CanComplete(quest)) {
+        if (session.PlaysOn(field) && CompletesNow(quest)) {
             CompleteAutomatic(quest);
         }
     }
@@ -1232,8 +1246,14 @@ public sealed class QuestManager {
         session.Send(QuestPacket.DailyMissionReset(new DateTimeOffset(day).ToUnixTimeSeconds()));
         session.Send(QuestPacket.FieldQuestReset());
         session.Send(QuestPacket.WeddingMissionReset());
-        RestartGrantedToday(dropped, day);
-        GrantDailyQuests(day);
+        // The grants start quests, which store on their own (the quest's row, its accept items, a completion the start
+        // fills): the reset is taken inside a store (BeginWithResets), so they run once that store has given the account
+        // lock back (GameSession.AfterStore), as the dungeon reset's mail does; at once when the reset waited for
+        // midnight. Their start packets come after the reset's other packets then.
+        session.AfterStore(() => {
+            RestartGrantedToday(dropped, day);
+            GrantDailyQuests(day);
+        });
     }
 
     // A login or channel change between midnight and the reset already granted the day (stamp = day): the reset's
