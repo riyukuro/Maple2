@@ -1,13 +1,18 @@
 ﻿using System;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Maple2.Tools.VectorMath;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -84,6 +89,39 @@ public class PickupReachTests {
         Assert.Multiple(() => {
             Assert.That(session.Field!.TryGetItem(drop.ObjectId, out _), Is.True);
             Assert.That(Refusals(drop.ObjectId), Has.Length.EqualTo(1));
+        });
+    }
+
+    // A summoned pet with the default follow distance (300), the player standing far away.
+    private static int Summon(GameSession session, Vector3 at) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var fieldPet = (FieldPet) RuntimeHelpers.GetUninitializedObject(typeof(FieldPet));
+        typeof(Actor<Npc>).GetField("<ObjectId>k__BackingField", any)!.SetValue(fieldPet, 777);
+        typeof(Actor<Npc>).GetField("<Transform>k__BackingField", any)!.SetValue(fieldPet, new Transform());
+        typeof(FieldPet).GetField(nameof(FieldPet.Metadata), any)!.SetValue(fieldPet, RuntimeHelpers.GetUninitializedObject(typeof(PetMetadata)));
+        fieldPet.Position = at;
+        var manager = (PetManager) RuntimeHelpers.GetUninitializedObject(typeof(PetManager));
+        typeof(PetManager).GetField("session", any)!.SetValue(manager, session);
+        typeof(PetManager).GetField("pet", any)!.SetValue(manager, fieldPet);
+        session.Pet = manager;
+        return fieldPet.ObjectId;
+    }
+
+    // StateSummonItemPick: the pet loots a drop next to itself, out of the player's reach. The reach is the pet's
+    // server position plus its follow distance; the player's own request without the pet id is refused.
+    [TestCase(4900f, true, true)]
+    [TestCase(4900f, false, false)]
+    [TestCase(0f, true, false)]
+    public void ItemPickup_ASummonedPetInReach_TakesTheDrop(float petAway, bool petPicks, bool taken) {
+        GameSession session = Start();
+        FieldItem drop = Drop(session, Stackable, 5000f);
+        int petId = Summon(session, session.Player.Position + new Vector3(petAway, 0, 0));
+
+        PickItem(session, drop, pickerId: petPicks ? petId : 0);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Field!.TryGetItem(drop.ObjectId, out _), Is.EqualTo(!taken));
+            Assert.That(Refusals(drop.ObjectId), Has.Length.EqualTo(taken ? 0 : 1));
         });
     }
 
