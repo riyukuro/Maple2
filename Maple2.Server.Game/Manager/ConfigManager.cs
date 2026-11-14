@@ -1,4 +1,5 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -428,19 +429,18 @@ public class ConfigManager {
     // the rig lacks the sequence, or has a prefixed one of it that loops. The client plays the name its actor
     // resolves (CAnimationManager::ResolveAnimationName, animationmanager.cpp:209-230): a prefix of the actor (a
     // transform or a variant) put before the name when the model has that sequence, which the server cannot tell.
+    // Kept per sequence name: the rig does not change during the session.
     public bool LoopUnknown(SkillMetadataMotionProperty motion) {
         IReadOnlyDictionary<string, AnimationSequenceMetadata>? sequences = session.Player.Animation.RigMetadata?.Sequences;
         if (sequences == null || !sequences.ContainsKey(motion.SequenceName)) {
             return true;
         }
-        foreach ((string name, AnimationSequenceMetadata sequence) in sequences) {
-            if (name.Length > motion.SequenceName.Length && name.EndsWith(motion.SequenceName, StringComparison.OrdinalIgnoreCase)
-                && SkillCastRules.KeyTime(sequence.Keys, "loopstart") != null && SkillCastRules.KeyTime(sequence.Keys, "loopend") != null) {
-                return true;
-            }
-        }
-        return false;
+        ConcurrentDictionary<string, bool> cache = loopUnknown ?? Interlocked.CompareExchange(ref loopUnknown, new ConcurrentDictionary<string, bool>(), null) ?? loopUnknown!;
+        return cache.GetOrAdd(motion.SequenceName, name => sequences.Any(entry => entry.Key.Length > name.Length
+            && entry.Key.EndsWith(name, StringComparison.OrdinalIgnoreCase)
+            && SkillCastRules.KeyTime(entry.Value.Keys, "loopstart") != null && SkillCastRules.KeyTime(entry.Value.Keys, "loopend") != null));
     }
+    private ConcurrentDictionary<string, bool>? loopUnknown;
 
     public SkillCooldown? GetSkillCooldown(int skillId) {
         lock (skillCooldowns) {

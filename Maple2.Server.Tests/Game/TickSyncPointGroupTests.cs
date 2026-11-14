@@ -38,7 +38,7 @@ public class TickSyncPointGroupTests : TriggerTestBase {
     // The player's rig: the skill's sequence without a loop, and the other sequences named.
     private void Rig(bool hasSequence, params AnimationSequenceMetadata[] others) {
         var sequences = others.ToDictionary(sequence => sequence.Name);
-        if (hasSequence) {
+        if (hasSequence && !sequences.ContainsKey(Sequence)) {
             sequences[Sequence] = new AnimationSequenceMetadata(Sequence, 1, 1f, [new AnimationKey("hit", 0.2f), new AnimationKey("end", 1f)]);
         }
         typeof(AnimationManager).GetField(nameof(AnimationManager.RigMetadata))!
@@ -114,5 +114,23 @@ public class TickSyncPointGroupTests : TriggerTestBase {
         Assert.That(Hit(record, 1), Is.True, "the first hit pays");
         TickSync();
         Assert.That(Hit(record, 2), Is.True, "the sync forgot the group's hit");
+    }
+
+    // The base sequence loops for 5 s and a prefixed one of it for 0.5 s: the client may loop the prefixed one, so
+    // its syncs come every 0.5 s; they are not spaced by the base's loop (which would refuse them once the lag
+    // budget runs out).
+    [Test]
+    public void ASyncForAShorterPrefixedLoop_IsNotSpacedByTheBaseLoop() {
+        Rig(hasSequence: true,
+            new AnimationSequenceMetadata(Sequence, 1, 6f, [new AnimationKey("loopstart", 0.5f), new AnimationKey("loopend", 5.5f)]),
+            new AnimationSequenceMetadata("Fox_" + Sequence, 2, 2f, [new AnimationKey("loopstart", 0.5f), new AnimationKey("loopend", 1f)]));
+        Cast();
+        SkillRecord? record = test.Session.Player.ActiveSkills.Get(1);
+        Assert.That(record, Is.Not.Null, "the cast runs");
+        Assert.That(record!.Hits.TakePoint(0, 0, held: false, count: 5, tick: Field.FieldTick), Is.True);
+        for (int i = 0; i < 5; i++) {
+            Assert.That(Hit(record, 1 + i), Is.True, $"hit {i} after {i} syncs");
+            TickSync();
+        }
     }
 }

@@ -563,10 +563,15 @@ public class SkillHandler : FieldPacketHandler {
         // A sync forgets what the cast's point groups hit only as often as the client sends one: at each loop end of
         // a looping motion (SkillHitBudget.Sync). A sync is refused only when the motion's sequence is known to have
         // no loop and the skill does not continue while held. A sync refused here is still taken for the rest.
+        // When the loop is not known (a prefixed sequence the client may play instead loops for its own length), the
+        // syncs are not spaced.
         long intervalMs = session.Config.HeldInterval(record.Motion.MotionProperty, record.CastUid);
+        bool loopUnknown = session.Config.LoopUnknown(record.Motion.MotionProperty);
+        if (loopUnknown) {
+            intervalMs = 0;
+        }
         long tick = session.Field?.FieldTick ?? 0;
-        if (!record.Hits.Sync(tick, SkillCastRules.SyncLoops(intervalMs, record.Metadata.Property.ContinueSkill,
-                session.Config.LoopUnknown(record.Motion.MotionProperty)), intervalMs, session.Config.Lag)) {
+        if (!record.Hits.Sync(tick, SkillCastRules.SyncLoops(intervalMs, record.Metadata.Property.ContinueSkill, loopUnknown), intervalMs, session.Config.Lag)) {
             Logger.Debug("Tick sync keeps the point group hits (early or no loop): interval {Interval} ms: {Record}", intervalMs, record);
         }
 
