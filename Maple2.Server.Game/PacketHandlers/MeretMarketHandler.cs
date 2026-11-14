@@ -60,6 +60,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         RandomSaleRequestNotice = 115,
         RandomSalePayNotice = 116,
         RandomSaleRequestOther = 118,
+        RequestSaleMarket = 201,
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
@@ -148,6 +149,9 @@ public class MeretMarketHandler : FieldPacketHandler {
                 return;
             case Command.RandomSaleRequestOther:
                 HandleRandomSaleRequestOther(session, packet);
+                return;
+            case Command.RequestSaleMarket:
+                HandleRequestSaleMarket(session);
                 return;
         }
     }
@@ -374,7 +378,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         int totalItems = entries.Count;
         entries = TakeLimit(entries, meretMarketSearch.StartPage, meretMarketSearch.ItemsPerPage);
 
-        session.Send(MeretMarketPacket.LoadItems(entries, totalItems, meretMarketSearch.StartPage));
+        session.Send(MeretMarketPacket.LoadItems(entries, totalItems, meretMarketSearch.Page));
     }
 
     private void HandlePurchase(GameSession session, IByteReader packet) {
@@ -734,6 +738,8 @@ public class MeretMarketHandler : FieldPacketHandler {
         session.Send(MeretMarketPacket.FeaturedUgc(promoItems, newItems));
     }
 
+    private const byte BlueprintPageSize = 0x12;
+
     private void HandleFindItem(GameSession session, IByteReader packet) {
         bool premium = packet.ReadBool();
         // The client sends the id as a long for both kinds (CMeratMarketMan::SendMeretMarketMode29).
@@ -756,8 +762,11 @@ public class MeretMarketHandler : FieldPacketHandler {
             return;
         }
 
+        // The blueprint page carries a page size of 18, as KMS2 answers (0x1c 01000000 01000000 12 01000000) though
+        // the dialog's own searches ask for 8: with 1 the one item fills the page (CMeratMarketMan::OnBlueprintPage), so the page is not the end page
+        // (isEndPage false, UIBlueprintMarketDialog::ShowSearchResult) and the dialog offers a next page.
         session.Send(blueprintDialog
-            ? MeretMarketPacket.LoadBlueprints([marketItem], 1, 1, 1)
+            ? MeretMarketPacket.LoadBlueprints([marketItem], 1, BlueprintPageSize, 1)
             : MeretMarketPacket.LoadItems([marketItem], 1, 1));
     }
 
@@ -770,7 +779,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         int totalItems = entries.Count;
         entries = TakeLimit(entries, meretMarketSearch.StartPage, meretMarketSearch.ItemsPerPage);
 
-        session.Send(MeretMarketPacket.LoadItems(entries, totalItems, meretMarketSearch.StartPage));
+        session.Send(MeretMarketPacket.LoadItems(entries, totalItems, meretMarketSearch.Page));
     }
 
     private void HandleBlueprintSearch(GameSession session, IByteReader packet) {
@@ -780,7 +789,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         int totalItems = entries.Count;
         entries = TakeLimit(entries, meretMarketSearch.StartPage, meretMarketSearch.ItemsPerPage);
 
-        session.Send(MeretMarketPacket.LoadBlueprints(entries, totalItems, meretMarketSearch.ItemsPerPage, meretMarketSearch.StartPage));
+        session.Send(MeretMarketPacket.LoadBlueprints(entries, totalItems, meretMarketSearch.ItemsPerPage, meretMarketSearch.Page));
     }
 
     // A home page product (section 0, UIMeratMarketDialog::FillBannerProducts kind 2) draws its cell from a background:
@@ -1094,5 +1103,13 @@ public class MeretMarketHandler : FieldPacketHandler {
         int productId = packet.ReadInt();
         int arg = packet.ReadInt();
         Logger.Debug("MeretMarket bill opened for product {ProductId}, no reply", productId);
+    }
+
+    // 201, a bare mode byte, sent only by the GM command RequestSaleMarket (CUserCommandCli::RequestSaleMarket,
+    // usercommandcli.cpp:952, for a GM level of 50 or more). The client has no reader for a 201 answer
+    // (CMeratMarketMan::OnMeretMarket): the `c9 00000000` KMS2 sent in each login burst, unasked, is dropped by
+    // the client, so the request is only logged.
+    private void HandleRequestSaleMarket(GameSession session) {
+        Logger.Debug("MeretMarket RequestSaleMarket from {CharacterId}: the client reads no answer, none sent", session.CharacterId);
     }
 }
