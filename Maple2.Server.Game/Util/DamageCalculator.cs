@@ -119,6 +119,20 @@ public static class DamageCalculator {
         };
     }
 
+    // In a Dark Stream room the caster's Dark Stream damage line adds to its damage bonus, and the target's Dark Stream
+    // reduction line takes its share off the hit (DungeonAbilityRules). Elsewhere neither counts.
+    internal static double DarkStreamBonus(IActor caster) {
+        return DungeonAbilityRules.DarkStream(StatsManager.DungeonGroupOf(caster.Field))
+            ? caster.Stats.Values[SpecialAttribute.DarkStreamDamage].Multiplier()
+            : 0;
+    }
+
+    internal static double DarkStreamReceivedFactor(IActor target) {
+        return DungeonAbilityRules.DarkStream(StatsManager.DungeonGroupOf(target.Field))
+            ? DungeonAbilityRules.ReceivedFactor(target.Stats.Values[SpecialAttribute.ReduceDarkStreamReceiveDamage].Total)
+            : 1;
+    }
+
     // The npc rank special effects the target holds (type 2): less damage from an npc of the ranks (its Basic class,
     // 110001013 elites 3 and 7). 1 from a pet or a player.
     internal static float NpcRankDamageFactor(IActor caster, IActor target) {
@@ -171,7 +185,8 @@ public static class DamageCalculator {
             ? NpcAttackRoll(Random.Shared.NextDouble())
             : minBonusAtkDamage + (maxBonusAtkDamage - minBonusAtkDamage) * double.Lerp(Random.Shared.NextDouble(), Random.Shared.NextDouble(), Random.Shared.NextDouble());
 
-        double damageBonus = 1 + caster.Stats.Values[SpecialAttribute.TotalDamage].Multiplier() + RankBonus(caster, target);
+        double damageBonus = 1 + caster.Stats.Values[SpecialAttribute.TotalDamage].Multiplier() + RankBonus(caster, target)
+            + DarkStreamBonus(caster);
 
         // Get elemental bonus
         double elementBonus = 0;
@@ -275,6 +290,7 @@ public static class DamageCalculator {
             attackDamage *= DamageTakenFactor(target.Buffs.DamageTakenRate(physical));
         }
         attackDamage *= NpcRankDamageFactor(caster, target);
+        attackDamage *= DarkStreamReceivedFactor(target);
 
         // Apply any shields
         foreach (Buff buff in BuffManager.Shields(target.Buffs.EnumerateBuffs())) {

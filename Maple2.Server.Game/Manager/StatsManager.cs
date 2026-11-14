@@ -6,6 +6,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Core.Formulas;
 using Maple2.Server.Game.LuaFunctions;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -191,6 +192,7 @@ public class StatsManager {
         AddSetBonuses(setBonuses);
         AddBuffs(player);
         AddHotTime(player.Session);
+        AddDungeonAbilities(player);
         Values.AddDerivedTotal(character.Job.Code());
         Values.Total();
         StatConversion(player);
@@ -408,6 +410,22 @@ public class StatsManager {
     }
 
     private Dictionary<SpecialAttribute, long> hotTime = new();
+
+    // In a Chaos Raid room the items' Chaos Raid lines add to the stats (DungeonAbilityRules), once the items, buffs
+    // and events are in. The stats are rebuilt on entering each field, so they hold only in the room.
+    internal void AddDungeonAbilities(FieldPlayer player) {
+        if (!DungeonAbilityRules.ChaosRaid(DungeonGroupOf(player.Field))) {
+            return;
+        }
+        float weaponRate = (float) Values[SpecialAttribute.ChaosRaidAttack].Multiplier();
+        Values[BasicAttribute.MinWeaponAtk].AddRate(weaponRate);
+        Values[BasicAttribute.MaxWeaponAtk].AddRate(weaponRate);
+        Values[BasicAttribute.AttackSpeed].AddTotal(Values[SpecialAttribute.ChaosRaidAttackSpeed].Total);
+        Values[BasicAttribute.Accuracy].AddTotal(Values[SpecialAttribute.ChaosRaidAccuracy].Total);
+        Values[BasicAttribute.Health].AddTotal(Values[SpecialAttribute.ChaosRaidHp].Total);
+    }
+
+    internal static DungeonGroupType? DungeonGroupOf(FieldManager? field) => (field as DungeonFieldManager)?.DungeonMetadata.GroupType;
 
     private static Dictionary<SpecialAttribute, long> HotTimeBonus(GameSession session) {
         return EventSaleRules.HotTimeBonus(session.FindEvent(GameEventType.SAHotTime)
