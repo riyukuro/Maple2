@@ -177,6 +177,22 @@ public partial class FieldManager {
         return fieldPlayer;
     }
 
+    // The birthdaytable npcs of this field (BirthdayTable), read when the field is made like the event npcs: on a day
+    // inside the table's day range. An npc without metadata (its feature off) is not spawned.
+    public void SpawnBirthdayNpcs(DayOfWeek day) {
+        BirthdayTable birthday = ServerTableMetadata.BirthdayTable;
+        if (!birthday.Fields.TryGetValue(MapId, out BirthdayTable.Field? field) || !birthday.Active(day)) {
+            return;
+        }
+        foreach (BirthdayTable.Npc birthdayNpc in field.Npcs) {
+            if (!NpcMetadata.TryGet(birthdayNpc.NpcId, out NpcMetadata? npcMetadata)) {
+                logger.Debug("[SpawnNpc] birthday npc {NpcId} of {MapId} not found", birthdayNpc.NpcId, MapId);
+                continue;
+            }
+            SpawnNpc(npcMetadata, birthdayNpc.Position, birthdayNpc.Rotation);
+        }
+    }
+
     public FieldNpc? SpawnNpc(NpcMetadata npc, Vector3 position, Vector3 rotation, bool disableAi = false, FieldMobSpawn? owner = null, SpawnPointNPC? spawnPointNpc = null, string spawnAnimation = "", long maidUid = 0, bool playerSummon = false) {
         // The played client creates no NPC it has no data for (PlayedClientNpcs).
         if (!PlayedClientNpcs.CanSpawn(npc)) {

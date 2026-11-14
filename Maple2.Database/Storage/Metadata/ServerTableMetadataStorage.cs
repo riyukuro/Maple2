@@ -35,6 +35,7 @@ public class ServerTableMetadataStorage {
     private readonly Lazy<MonsterExpTable> monsterExpTable;
     private readonly Lazy<ArcadeRewardTable> arcadeRewardTable;
     private readonly Lazy<HideAndSeekTable> hideAndSeekTable;
+    private readonly Lazy<BirthdayTable> birthdayTable;
     private readonly Lazy<TermTagTable> termTagTable;
     private readonly Lazy<FeatureTable> featureTable;
     private readonly Lazy<WorldChampionTable> worldChampionTable;
@@ -70,6 +71,7 @@ public class ServerTableMetadataStorage {
     public MonsterExpTable MonsterExpTable => monsterExpTable.Value;
     public ArcadeRewardTable ArcadeRewardTable => arcadeRewardTable.Value;
     public HideAndSeekTable HideAndSeekTable => hideAndSeekTable.Value;
+    public BirthdayTable BirthdayTable => birthdayTable.Value;
     public TermTagTable TermTagTable => termTagTable.Value;
     public FeatureTable FeatureTable => featureTable.Value;
     public WorldChampionTable WorldChampionTable => worldChampionTable.Value;
@@ -106,6 +108,7 @@ public class ServerTableMetadataStorage {
         monsterExpTable = Retrieve<MonsterExpTable>(context, ServerTableNames.MONSTER_EXP);
         arcadeRewardTable = Retrieve<ArcadeRewardTable>(context, ServerTableNames.ARCADE_REWARD);
         hideAndSeekTable = Retrieve<HideAndSeekTable>(context, ServerTableNames.HIDE_AND_SEEK);
+        birthdayTable = Retrieve<BirthdayTable>(context, ServerTableNames.BIRTHDAY);
         termTagTable = Retrieve<TermTagTable>(context, ServerTableNames.TERM_TAG);
         featureTable = Retrieve<FeatureTable>(context, ServerTableNames.FEATURE);
         worldChampionTable = Retrieve<WorldChampionTable>(context, ServerTableNames.WORLD_CHAMPION);

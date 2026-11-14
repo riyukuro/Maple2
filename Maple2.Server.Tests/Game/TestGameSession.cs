@@ -150,6 +150,8 @@ public sealed class TestGameSession {
         SetServerTable(new FeatureTable(new AllFeatures([])));
         // A field init asks whether a world champion season is fought on its map: none until a test sets them.
         SetServerTable(new WorldChampionTable(new Dictionary<int, WorldChampionTable.Season>()));
+        // A field init asks for its birthdaytable npcs: none until a test sets them.
+        SetServerTable(new BirthdayTable(1, 7, new Dictionary<int, BirthdayTable.Field>()));
         // An enchant reads the row of the gear's subtype: the test gear (Metadata, subtype 0) may be enchanted at any
         // level to the last grade until a test sets the client's rows.
         SetServerTable(new EnchantLimitTable(new Dictionary<int, EnchantLimitTable.Limit> { [0] = new(0, 99, ItemEnchantRules.MaxGrade) }));

@@ -465,6 +465,8 @@ public partial class FieldManager : IField {
             }
         }
 
+        SpawnBirthdayNpcs(DateTime.Now.DayOfWeek);
+
         foreach (Ms2RegionSkill regionSkill in Entities.RegionSkills) {
             if (!SkillMetadata.TryGet(regionSkill.SkillId, regionSkill.Level, out SkillMetadata? skill)) {
                 continue;

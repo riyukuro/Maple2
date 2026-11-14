@@ -30,6 +30,7 @@ public static class ServerTableNames {
     public const string MONSTER_EXP = "monsterExpTable.xml";
     public const string ARCADE_REWARD = "arcadeReward.xml";
     public const string HIDE_AND_SEEK = "hideAndSeek.xml";
+    public const string BIRTHDAY = "birthdaytable.xml";
     public const string TERM_TAG = "TermTag.xml";
     public const string FEATURE = "feature.xml";
     public const string WORLD_CHAMPION = "WorldChampionBase.xml";

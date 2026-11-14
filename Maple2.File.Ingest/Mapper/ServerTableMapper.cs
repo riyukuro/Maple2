@@ -186,6 +186,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Table = ParseHideAndSeek(),
         };
         yield return new ServerTableMetadata {
+            Name = ServerTableNames.BIRTHDAY,
+            Table = ParseBirthday(),
+        };
+        yield return new ServerTableMetadata {
             Name = ServerTableNames.TERM_TAG,
             Table = ParseTermTag(),
         };
@@ -3691,6 +3695,99 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             entries[mapId] = new HideAndSeekTable.Field(rides, rideProps);
         }
         return new HideAndSeekTable(entries);
+    }
+
+    private BirthdayTable ParseBirthday() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = clientReader?.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/birthdaytable.xml", StringComparison.OrdinalIgnoreCase));
+        BirthdayTable table = entry == null ? new BirthdayTable(1, 7, new Dictionary<int, BirthdayTable.Field>())
+            : MapBirthday(clientReader!.GetXmlDocument(entry), BirthdaySpawnPoints);
+        Console.WriteLine($"birthdaytable: days {table.FirstDay}-{table.LastDay}, {table.Fields.Count} fields, "
+                          + $"{table.Fields.Values.Sum(field => field.Npcs.Count)} npcs placed");
+        return table;
+    }
+
+    // The xblocks of the map: its own (map/<id>.xml environment xblock name) first, then its locale variants
+    // (xblock/<name>_*.xblock, by name), each as its event spawn points.
+    private List<List<BirthdaySpawnPoint>> BirthdaySpawnPoints(int mapId) {
+        var result = new List<List<BirthdaySpawnPoint>>();
+        Maple2.File.IO.Crypto.Common.PackFileEntry? mapEntry = clientReader?.Files.FirstOrDefault(file =>
+            file.Name.Equals($"map/{mapId:D8}.xml", StringComparison.OrdinalIgnoreCase));
+        if (mapEntry == null || exportedReader == null) return result;
+        string? xblock = (clientReader!.GetXmlDocument(mapEntry).SelectSingleNode("ms2/environment/xblock") as XmlElement)?.GetAttribute("name");
+        if (string.IsNullOrEmpty(xblock)) return result;
+        string own = $"xblock/{xblock}.xblock";
+        string variant = $"xblock/{xblock}_";
+        IEnumerable<Maple2.File.IO.Crypto.Common.PackFileEntry> entries = exportedReader.Files
+            .Where(file => file.Name.Equals(own, StringComparison.OrdinalIgnoreCase))
+            .Concat(exportedReader.Files
+                .Where(file => file.Name.StartsWith(variant, StringComparison.OrdinalIgnoreCase)
+                               && file.Name.EndsWith(".xblock", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(file => file.Name, StringComparer.OrdinalIgnoreCase));
+        foreach (Maple2.File.IO.Crypto.Common.PackFileEntry xblockEntry in entries) {
+            result.Add(MapEventSpawnPoints(exportedReader.GetXmlDocument(xblockEntry)));
+        }
+        return result;
+    }
+
+    public record BirthdaySpawnPoint(string Name, int? SpawnPointId, Vector3 Position, Vector3 Rotation);
+
+    // The EventSpawnPointNPC entities of an xblock (a missing SpawnPointID property is null).
+    public static List<BirthdaySpawnPoint> MapEventSpawnPoints(XmlDocument xblock) {
+        var points = new List<BirthdaySpawnPoint>();
+        foreach (XmlElement entity in xblock.SelectNodes("game/entitySet/entity[@modelName='EventSpawnPointNPC']")!.OfType<XmlElement>()) {
+            string? Value(string name) => (entity.SelectSingleNode($"property[@name='{name}']/set") as XmlElement)?.GetAttribute("value");
+            int? spawnPointId = int.TryParse(Value("SpawnPointID"), out int id) ? id : null;
+            points.Add(new BirthdaySpawnPoint(entity.GetAttribute("name"), spawnPointId, ParseVector(Value("Position")), ParseVector(Value("Rotation"))));
+        }
+        return points;
+    }
+
+    private static Vector3 ParseVector(string? value) {
+        float[] parts = (value ?? "").Split(',', StringSplitOptions.TrimEntries)
+            .Select(part => float.TryParse(part, NumberStyles.Float, CultureInfo.InvariantCulture, out float number) ? number : 0f).ToArray();
+        return parts.Length == 3 ? new Vector3(parts[0], parts[1], parts[2]) : Vector3.Zero;
+    }
+
+    // dayRange "a-b" (a single number is a-a; unreadable is 1-7). An npc is placed at the first xblock (in spawnPointsOf
+    // order) holding an event spawn point of its spawnPointID, or else one without a SpawnPointID whose name starts with
+    // "<npcID>_" (the KMS2 tria cake point has no SpawnPointID); an npc no xblock places is left out. A later spawn row of
+    // the same field adds to the field.
+    public static BirthdayTable MapBirthday(XmlDocument document, Func<int, List<List<BirthdaySpawnPoint>>> spawnPointsOf) {
+        var root = document.SelectSingleNode("ms2/birthday") as XmlElement;
+        int firstDay = 1, lastDay = 7;
+        string[] range = (root?.GetAttribute("dayRange") ?? "").Split('-', StringSplitOptions.TrimEntries);
+        if (range.Length is 1 or 2 && int.TryParse(range[0], out int first) && int.TryParse(range[^1], out int last)) {
+            (firstDay, lastDay) = (first, last);
+        }
+        var npcs = new Dictionary<int, List<BirthdayTable.Npc>>();
+        var banners = new Dictionary<int, List<int>>();
+        foreach (XmlElement spawn in root?.SelectNodes("spawn")!.OfType<XmlElement>() ?? []) {
+            if (!int.TryParse(spawn.GetAttribute("fieldID"), out int fieldId)) continue;
+            if (!npcs.TryGetValue(fieldId, out List<BirthdayTable.Npc>? fieldNpcs)) {
+                npcs[fieldId] = fieldNpcs = [];
+                banners[fieldId] = [];
+            }
+            List<List<BirthdaySpawnPoint>>? xblocks = null;
+            foreach (XmlElement v in spawn.SelectNodes("npc/v")!.OfType<XmlElement>()) {
+                if (!int.TryParse(v.GetAttribute("npcID"), out int npcId) || !int.TryParse(v.GetAttribute("spawnPointID"), out int spawnPointId)) continue;
+                xblocks ??= spawnPointsOf(fieldId);
+                BirthdaySpawnPoint? point = xblocks
+                    .Select(points => points.FirstOrDefault(p => p.SpawnPointId == spawnPointId)
+                                      ?? points.FirstOrDefault(p => p.SpawnPointId == null && p.Name.StartsWith($"{npcId}_", StringComparison.Ordinal)))
+                    .FirstOrDefault(found => found != null);
+                if (point == null) {
+                    Console.WriteLine($"birthdaytable: field {fieldId} npc {npcId} spawn point {spawnPointId} is in no xblock, left out");
+                    continue;
+                }
+                fieldNpcs.Add(new BirthdayTable.Npc(npcId, spawnPointId, point.Position, point.Rotation));
+            }
+            foreach (XmlElement v in spawn.SelectNodes("ugcBanner/v")!.OfType<XmlElement>()) {
+                if (int.TryParse(v.GetAttribute("bannerID"), out int bannerId)) banners[fieldId].Add(bannerId);
+            }
+        }
+        var fields = npcs.ToDictionary(pair => pair.Key, pair => new BirthdayTable.Field(pair.Value, banners[pair.Key]));
+        return new BirthdayTable(firstDay, lastDay, fields);
     }
 
     private MonsterExpTable ParseMonsterExp() {
