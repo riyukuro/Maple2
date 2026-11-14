@@ -126,21 +126,30 @@ public static class DamageCalculator {
         return caster.Stats.Values[attribute].Multiplier();
     }
 
-    public static (DamageType, long) CalculateDamage(IActor caster, IActor target, DamagePropertyRecord property) {
+    // The block and evasion rolls of a hit: Block or Miss, or null for a hit that lands. An attack without damage rolls them
+    // too: the client takes a Miss on one (PCBase::FUN_141671c20 shows its miss effect for a skill of main type 0x12).
+    internal static DamageType? HitRoll(IActor caster, IActor target, DamagePropertyRecord property) {
         // Check block
         if (Damage.TriggerCompulsionEvent(target.Buffs.TotalCompulsionRate(BuffCompulsionEventType.BlockChance, property.SkillId))) {
-            return (DamageType.Block, 0);
+            return DamageType.Block;
         }
 
         // Check evase
         if (Damage.TriggerCompulsionEvent(target.Buffs.TotalCompulsionRate(BuffCompulsionEventType.EvasionChanceOverride, property.SkillId))) {
-            return (DamageType.Miss, 0);
+            return DamageType.Miss;
         }
 
         // Get hit rate
         if (Damage.Evade(target.Buffs.GetResistance(BasicAttribute.Accuracy), target.Stats.Values[BasicAttribute.Evasion].Total, target.Stats.Values[BasicAttribute.Dexterity].Total,
                 caster.Stats.Values[BasicAttribute.Accuracy].Total, caster.Buffs.GetResistance(BasicAttribute.Evasion), caster.Stats.Values[BasicAttribute.Luck].Total, property.SuperArmorBreak)) {
-            return (DamageType.Miss, 0);
+            return DamageType.Miss;
+        }
+        return null;
+    }
+
+    public static (DamageType, long) CalculateDamage(IActor caster, IActor target, DamagePropertyRecord property) {
+        if (HitRoll(caster, target, property) is { } missed) {
+            return (missed, 0);
         }
 
         var damageType = DamageType.Normal;

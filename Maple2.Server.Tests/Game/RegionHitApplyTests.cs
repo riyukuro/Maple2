@@ -88,11 +88,31 @@ public class RegionHitApplyTests : TriggerTestBase {
     public void AHitWithoutDamageTakesNothingAndDoesNotMoveTheNpc() {
         FieldNpc npc = SpawnMob(new Vector3(400, 0, 0));
         long health = npc.Stats.Values[BasicAttribute.Health].Current;
-        (DamageRecordTarget hit, List<NpcControlRules.HitSource> queued) = Fire(npc, new Vector3(600, 0, 0), Attack(0, 4));
+        SkillMetadataAttack attack = Attack(0, 4);
+        // superArmorBreak: never evaded, so the hit lands
+        attack = attack with { Damage = attack.Damage with { SuperArmorBreak = true } };
+        (DamageRecordTarget hit, List<NpcControlRules.HitSource> queued) = Fire(npc, new Vector3(600, 0, 0), attack);
         Assert.Multiple(() => {
             Assert.That(hit.Damage, Is.EqualTo(new[] { (DamageType.Normal, 0L) }));
             Assert.That(npc.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(health));
             Assert.That(queued, Is.Empty);
+        });
+    }
+
+    // An attack without damage still rolls evasion: a caster with no accuracy (hit rate below 0) always misses, and the
+    // miss takes nothing and moves nothing; a superArmorBreak attack is never evaded and comes back a hit of 0.
+    [Test]
+    public void AHitWithoutDamageRollsEvasion() {
+        FieldNpc npc = SpawnMob(new Vector3(400, 0, 0));
+        test.Session.Player.Stats.Values[BasicAttribute.Accuracy].Total = 0;
+        (DamageRecordTarget missed, List<NpcControlRules.HitSource> queued) = Fire(npc, new Vector3(600, 0, 0), Attack(0, 4));
+        SkillMetadataAttack armorBreak = Attack(0, 4);
+        armorBreak = armorBreak with { Damage = armorBreak.Damage with { SuperArmorBreak = true } };
+        (DamageRecordTarget landed, _) = Fire(npc, new Vector3(600, 0, 0), armorBreak);
+        Assert.Multiple(() => {
+            Assert.That(missed.Damage, Is.EqualTo(new[] { (DamageType.Miss, 0L) }));
+            Assert.That(queued, Is.Empty);
+            Assert.That(landed.Damage, Is.EqualTo(new[] { (DamageType.Normal, 0L) }));
         });
     }
 
