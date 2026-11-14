@@ -320,7 +320,12 @@ public class PartyManager : IDisposable {
         }
 
         Party.LastVoteTime = DateTime.Now.ToEpochSeconds();
-        Party.Vote = new PartyVote(PartyVoteType.ReadyCheck, Party.Members.Keys, characterId) {
+        // The online members, as World counts them.
+        long[] voters = Party.Members.Values
+            .Where(member => member.Info.Online || member.CharacterId == characterId)
+            .Select(member => member.CharacterId)
+            .ToArray();
+        Party.Vote = new PartyVote(PartyVoteType.ReadyCheck, voters, characterId) {
             Id = voteId,
             EndTime = VoteEndTime(Party.LastVoteTime),
         };

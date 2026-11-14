@@ -367,7 +367,9 @@ public class PartyManager : IDisposable {
         }
 
         int voteId = ++voteCount;
-        Party.Vote = new PartyVote(PartyVoteType.ReadyCheck, Party.Members.Keys, requestorId) {
+        // The online members answer: the client takes a member who goes offline off its check
+        // (PartyVoteReadyCli), so an offline member would hold the check open until it expires.
+        Party.Vote = new PartyVote(PartyVoteType.ReadyCheck, OnlineMembers(requestorId).Append(requestorId).ToArray(), requestorId) {
             Id = voteId,
         };
         Broadcast(new PartyRequest {
@@ -377,7 +379,11 @@ public class PartyManager : IDisposable {
             },
         });
 
-        PartyLookup.AfterVoteTime(this, () => ExpireVote(voteId));
+        // The leader's own answer is in: with no other member online the check ends now.
+        CheckEndVote();
+        if (Party.Vote?.Id == voteId) {
+            PartyLookup.AfterVoteTime(this, () => ExpireVote(voteId));
+        }
         return PartyError.none;
     });
 

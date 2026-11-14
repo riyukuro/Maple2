@@ -544,10 +544,8 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Party.Party.Members.Values.Count(member => member.Info.Online) < 2) {
-            return;
-        }
-
+        // The client sends a ready check from the leader with no member count (popup menu 200), and no party error
+        // text is meant for a lone leader: World runs it, and with only the leader online it ends at once.
         PartyResponse? response = TryParty(session, new PartyRequest {
             RequestorId = session.CharacterId,
             ReadyCheck = new PartyRequest.Types.ReadyCheck {

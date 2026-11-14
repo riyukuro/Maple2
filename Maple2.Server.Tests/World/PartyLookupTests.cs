@@ -799,6 +799,38 @@ public class PartyLookupTests {
         Assert.That(party.Party.Vote, Is.Null);
     }
 
+    // Client: the leader's ready check (Party 0x2e) has no member count, and no party error text is meant for a
+    // lone leader. With every other member offline the check starts and ends at once on the leader's answer.
+    [Test]
+    public void ReadyCheckWithOnlyTheLeaderOnlineEndsAtOnce() {
+        PartyManager party = Party(3);
+        long leader = party.Party.LeaderCharacterId;
+        foreach (PartyMember member in party.Party.Members.Values.Where(member => member.CharacterId != leader)) {
+            member.Info.Channel = -1;
+        }
+
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote, Is.Null);
+        Assert.That(lookup.VoteTimers, Is.Empty);
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+    }
+
+    // An offline member is not asked (the client takes a member who goes offline off its check): the online
+    // members' answers end it.
+    [Test]
+    public void ReadyCheckCountsOnlyTheOnlineMembers() {
+        PartyManager party = Party(3);
+        long leader = party.Party.LeaderCharacterId;
+        long[] others = party.Party.Members.Keys.Where(id => id != leader).ToArray();
+        party.Party.Members[others[1]].Info.Channel = -1;
+
+        Assert.That(party.StartReadyCheck(leader), Is.EqualTo(PartyError.none));
+        int id = party.Party.Vote!.Id;
+        Assert.That(party.Party.Vote!.Voters, Is.EquivalentTo(new[] { leader, others[0] }));
+        Assert.That(party.ReadyCheckReply(others[0], id, true), Is.EqualTo(PartyError.none));
+        Assert.That(party.Party.Vote, Is.Null);
+    }
+
     // An answer carrying an earlier vote's number is not counted in the running vote.
     [Test]
     public void AnswerToAnEarlierVoteIsNotCounted() {
