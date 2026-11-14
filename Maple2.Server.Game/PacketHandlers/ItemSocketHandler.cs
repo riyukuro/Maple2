@@ -359,9 +359,10 @@ public class ItemSocketHandler : FieldPacketHandler {
 
             // item.Socket cannot be null after CheckSocketSlot()
             // The socketed gem's binding is the gem's trade binding (the bag gem's writer sends Transfer.Binding in the
-            // same place), and its whole transfer is kept for the take-off.
+            // same place), and its whole transfer is kept for the take-off. A gem without stats (no option rows) is
+            // written to the client with the default stats, so it is socketed with them.
             ItemTransfer? transfer = gem.Transfer?.Clone();
-            var itemGemstone = new ItemGemstone(gem.Id, transfer?.Binding?.Clone(), gem.Stats?.Clone(), gem.IsLocked, gem.UnlockTime, transfer);
+            var itemGemstone = new ItemGemstone(gem.Id, transfer?.Binding?.Clone(), (gem.Stats ?? ItemStats.Default).Clone(), gem.IsLocked, gem.UnlockTime, transfer);
             item.Socket!.Sockets[socketSlot] = itemGemstone;
             session.Send(ItemSocketPacket.EquipGemstone(item.Uid, socketSlot, itemGemstone));
             session.ConditionUpdate(ConditionType.gemstone_puton);

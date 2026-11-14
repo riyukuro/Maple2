@@ -60,6 +60,22 @@ public class GemstoneSocketSlotTests {
         Assert.That(gear.Socket!.Sockets, Has.Length.EqualTo(1));
     }
 
+    // A gem whose metadata has no option rows has no stats; the bag writes it with the default stats, and it is
+    // socketed with them instead of being consumed and then lost to a throw.
+    [Test]
+    public void PutOn_AGemWithoutStats_IsSocketed() {
+        GameSession session = Start();
+        Item bagGem = session.Item.Inventory.Get(gem.Uid, InventoryType.Gemstone)!;
+        bagGem.Stats = null;
+
+        Equip(session, 0);
+
+        Assert.That(session.Item.Inventory.Get(gem.Uid, InventoryType.Gemstone), Is.Null);
+        Assert.That(gear.Socket!.Sockets[0], Is.Not.Null);
+        Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(40200001));
+        Assert.That(gear.Socket!.Sockets[0]!.Stats, Is.Not.Null);
+    }
+
     [Test]
     public void PutOn_PastTheLastSlot_IsRefused() {
         GameSession session = Start();
