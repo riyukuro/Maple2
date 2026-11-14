@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -87,5 +89,46 @@ public class DarkStreamRunCountTests {
 
         Assert.That(session.Dungeon.CountDarkStreamRun(roomField, DateTimeOffset.UtcNow.ToUnixTimeSeconds()), Is.True);
         Assert.That(session.Dungeon.Records[Room].UnionClears, Is.EqualTo(1));
+    }
+
+    private int StoredTotalClears(GameSession session) {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.GetDungeonRecords(session.CharacterId).TryGetValue(Room, out DungeonRecord? record) ? record.TotalClears : 0;
+    }
+
+    private void FailEveryWrite() =>
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State is EntityState.Added or EntityState.Modified);
+
+    // TakeDarkStreamRun: the count taken is in the database before the reward is given, so a crash after the reward
+    // cannot give it back; a count not stored gives no reward (the count stays taken in memory).
+    [Test]
+    public void TakeRun_StoresTheCountBeforeTheReward() {
+        GameSession session = Enter(rewardCount: 3);
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        Assert.That(session.Dungeon.TakeDarkStreamRun(session.Field, now), Is.True);
+        Assert.That(StoredTotalClears(session), Is.EqualTo(1));
+
+        FailEveryWrite();
+        Assert.That(session.Dungeon.TakeDarkStreamRun(session.Field, now + 1), Is.False);
+        Assert.That(session.Dungeon.Records[Room].TotalClears, Is.EqualTo(2));
+        test.FailSave = null;
+        Assert.That(StoredTotalClears(session), Is.EqualTo(1));
+        test.Errors.Clear();
+    }
+
+    // A run that takes no count (outside the player's room) has nothing to store: a store that would fail does not
+    // withhold its reward.
+    [Test]
+    public void TakeRun_OutsideTheRoom_PaysWithoutAStore() {
+        GameSession session = Enter(rewardCount: 1);
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        Assert.That(session.Dungeon.TakeDarkStreamRun(session.Field, now), Is.True);
+        test.EnterMap(TestGameSession.Map(2000498));
+        test.TakeSent();
+
+        FailEveryWrite();
+        Assert.That(session.Dungeon.TakeDarkStreamRun(session.Field, now + 1), Is.True);
+        test.FailSave = null;
     }
 }

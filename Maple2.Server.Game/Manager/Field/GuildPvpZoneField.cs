@@ -321,7 +321,7 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
     // TakeFighterReward, with the day's count stored in the database (with the session's currency, as a purchase)
     // before the reward item's row is made: a crash after the item cannot give the count back. A count that is not
     // stored is not taken and pays nothing.
-    private bool TakeStoredFighterReward(FieldPlayer player, bool fighter, bool guildPaid, DateTime now) {
+    internal static bool TakeStoredFighterReward(FieldPlayer player, bool fighter, bool guildPaid, DateTime now) {
         Character character = player.Value.Character;
         int day = character.GuildPvpRewardDay;
         int count = character.GuildPvpRewardCount;
@@ -333,7 +333,7 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
         }
         character.GuildPvpRewardDay = day;
         character.GuildPvpRewardCount = count;
-        logger.Warning("Guild PvP reward count of {CharacterId} not stored, not paid", character.Id);
+        Log.Logger.ForContext<GuildPvpZoneField>().Warning("Guild PvP reward count of {CharacterId} not stored, not paid", character.Id);
         return false;
     }
 

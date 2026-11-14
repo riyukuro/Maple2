@@ -246,6 +246,29 @@ public class GuildMoneyHandlerTests {
         Assert.That((session.Currency.Meso, StoredMeso()), Is.EqualTo((30000L, 30000L)));
     }
 
+    // A refund whose store fails is tried again on the field queue (2 s later), not left in memory for the next save.
+    [Test]
+    public void Donate_RefundNotStoredIsTriedAgain() {
+        Join();
+        // A session playing on its field (the test session starts as one already saved for a move).
+        typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(session, false);
+        session.State = SessionState.Connected;
+        session.Currency.Meso = 50000;
+        test.World.GuildWorld = _ => {
+            test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Character>().Any(entry => entry.State == EntityState.Modified);
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_unknown };
+        };
+
+        Donate(1);
+
+        Assert.That((session.Currency.Meso, StoredMeso()), Is.EqualTo((50000L, 40000L)));
+        test.FailSave = null;
+        test.Errors.Clear();
+        Thread.Sleep(2500);
+        test.RunFieldQueue();
+        Assert.That(StoredMeso(), Is.EqualTo(50000));
+    }
+
     // The taken meso could not be stored: the meso comes back, the World is not asked and the player gets the error.
     [Test]
     public void Donate_MesoNotStoredAsksNoWorld() {

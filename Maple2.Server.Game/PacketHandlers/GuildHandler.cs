@@ -1348,7 +1348,7 @@ public class GuildHandler : FieldPacketHandler {
             var error = (GuildError) response.Error;
             if (error != GuildError.none) {
                 session.Currency.ChangeMeso(cost);
-                session.SavePurchase();
+                session.SaveRefund();
                 session.Send(GuildPacket.Error(error));
                 return;
             }

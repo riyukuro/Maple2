@@ -2138,6 +2138,29 @@ public sealed partial class GameSession : Core.Network.Session {
         return result == SaveResult.Stored;
     }
 
+    // SavePurchase for a price given back (the currency alone): a failed store is tried once more too, 2 s later on
+    // the field queue (a reset being stored, as often as needed), so a refund does not wait in memory for the next
+    // timed save. Whatever is still not stored then goes with that save.
+    public bool SaveRefund() => SaveRefund(Field, failedTries: 1);
+
+    private bool SaveRefund(FieldManager? field, int failedTries) {
+        SaveResult result = PurchaseSave(_ => true);
+        if (result == SaveResult.Stored) {
+            return true;
+        }
+        int left = result == SaveResult.ResetRunning ? failedTries : failedTries - 1;
+        if (field != null && left >= 0) {
+            field.Scheduler.Schedule(() => {
+                if (TimedSaveDue(field)) {
+                    SaveRefund(field, left);
+                }
+            }, TimedSaveRetryDelay);
+        } else {
+            Logger.Error("SaveRefund: refund not stored, left to the next save AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+        }
+        return false;
+    }
+
     private void SavePurchaseRetry(FieldManager field, Action<GameStorage.Request>? alsoSave) {
         if (TimedSaveDue(field)) {
             SavePurchase(alsoSave);

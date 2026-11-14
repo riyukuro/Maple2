@@ -230,11 +230,9 @@ public partial class TriggerContext {
         long now = DateTime.Now.ToEpochSeconds();
         var none = new DarkStreamGame.Reward(0, 0, 0, []);
         foreach (FieldPlayer player in Field.Players.Values) {
-            // The run takes one of the room's reward counts; with none left it gets the result and no reward. The
-            // count is stored in the database (with the session's currency, as a purchase) before the reward's item
-            // rows are made, so a crash after them cannot give the count back. A count not stored pays nothing and
-            // stays taken in memory (the records are not rolled back; a store refused by a running reset is rare).
-            DarkStreamGame.Reward given = player.Session.Dungeon.CountDarkStreamRun(Field, now) && StoreRunCount(player) ? reward : none;
+            // The run takes one of the room's reward counts; with none left it gets the result and no reward. A count
+            // taken is stored before the reward is given (TakeDarkStreamRun).
+            DarkStreamGame.Reward given = player.Session.Dungeon.TakeDarkStreamRun(Field, now) ? reward : none;
             GiveDarkStreamReward(player, given);
             DarkStreamBest? best;
             using (GameStorage.Request db = Field.GameStorage.Context()) {
@@ -245,14 +243,6 @@ public partial class TriggerContext {
             }
             player.Session.Send(DarkStreamPacket.Result(game.Score, best?.Score ?? 0, given.Exp, given.Meso, given.Habi, given.Items));
         }
-    }
-
-    private bool StoreRunCount(FieldPlayer player) {
-        if (player.Session.TrySavePurchase(db => player.Session.Dungeon.Save(db))) {
-            return true;
-        }
-        WarnLog("DarkStreamClearRound: run count of {CharacterId} not stored, no reward", player.Value.Character.Id);
-        return false;
     }
 
     private void GiveDarkStreamReward(FieldPlayer player, DarkStreamGame.Reward reward) {

@@ -740,7 +740,29 @@ public class DungeonManager {
     /// take that room's count.
     /// </summary>
     /// <returns>Whether the run's reward is given: a count was left, or the run is not in the player's room.</returns>
-    public bool CountDarkStreamRun(FieldManager? field, long clearTimestamp) {
+    public bool CountDarkStreamRun(FieldManager? field, long clearTimestamp) => CountDarkStreamRun(field, clearTimestamp, out _);
+
+    /// <summary>
+    /// CountDarkStreamRun, with a count taken stored in the database (the records, with the session's currency, as a
+    /// purchase) before the run's reward is given, so a crash after the reward's item rows cannot give the count
+    /// back. A count not stored pays nothing and stays taken in memory (the records are not rolled back; a store
+    /// refused by a running reset is rare). A run that took no count (outside the player's room) stores nothing.
+    /// </summary>
+    /// <returns>Whether the run's reward is given.</returns>
+    public bool TakeDarkStreamRun(FieldManager? field, long clearTimestamp) {
+        if (!CountDarkStreamRun(field, clearTimestamp, out bool counted)) {
+            return false;
+        }
+        if (!counted || session.TrySavePurchase(Save)) {
+            return true;
+        }
+        logger.Warning("Dark Stream run count of {CharacterId} not stored, no reward", session.CharacterId);
+        return false;
+    }
+
+    /// <param name="counted">Whether the run took a count of the room (the records changed and need storing).</param>
+    private bool CountDarkStreamRun(FieldManager? field, long clearTimestamp, out bool counted) {
+        counted = false;
         if (Lobby == null || Metadata == null || UserRecord == null
             || field is not DungeonFieldManager dungeonField || (dungeonField.Lobby ?? dungeonField) != Lobby) {
             return true;
@@ -753,6 +775,7 @@ public class DungeonManager {
         }
         UpdateUnionRecord(rewardRecord, rewardRoom, clearTimestamp);
         UpdateDungeonRecord(GetRecord(Metadata.Id), Metadata, clearTimestamp);
+        counted = true;
         return true;
     }
 
