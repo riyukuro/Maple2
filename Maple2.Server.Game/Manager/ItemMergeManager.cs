@@ -184,9 +184,11 @@ public sealed class ItemMergeManager {
         }
         // The materials are counted before anything is taken (locked and expired stacks do not count, nor the
         // crystal itself if it has a material's tag), then the crystal is taken before them: no material is gone
-        // with the crystal refused.
+        // with the crystal refused. Rows naming one tag add up, as Consume takes them: a count per row passed two
+        // rows that together need more than is held, and Consume then refused after the crystal was taken.
         ItemTag crystalTag = heldCatalyst.Metadata.Property.Tag;
-        if (ingredients.Any(ingredient => session.Item.Inventory.SpendableCount(ingredient.Tag) - (ingredient.Tag == crystalTag ? 1 : 0) < ingredient.Amount)) {
+        if (ingredients.GroupBy(ingredient => ingredient.Tag).Any(tag => session.Item.Inventory.SpendableCount(tag.Key) - (tag.Key == crystalTag ? 1 : 0)
+                < tag.Sum(ingredient => (long) Math.Max(ingredient.Amount, 0)))) {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_lack_material));
             return;
         }

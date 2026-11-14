@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
@@ -30,7 +30,7 @@ public class ItemMergeHandlerTests {
         new CinematicContent("", NpcTalkButton.None, 0, [], [new CinematicEventScript(8001, [Staged]), new CinematicEventScript(8002, [Done])]),
     ]);
 
-    private GameSession Login(bool script = true, int crystals = 2, int materials = 10, ItemTag crystalTag = ItemTag.None) {
+    private GameSession Login(bool script = true, int crystals = 2, int materials = 10, ItemTag crystalTag = ItemTag.None, ItemComponent[]? rows = null) {
         test = new TestGameSession();
         ItemMetadata gearMetadata = TestGameSession.Metadata(11400001, EquipSlot.CL, type: 1);
         gearMetadata = gearMetadata with { Limit = gearMetadata.Limit with { Level = 50 } };
@@ -45,7 +45,7 @@ public class ItemMergeHandlerTests {
         var option = new ItemMergeTable.Option([new ItemMergeTable.Range<int>(5, 5)], [new ItemMergeTable.Range<int>(0, 0)], [1]);
         test.SetServerTable(new ItemMergeTable(new Dictionary<int, Dictionary<int, ItemMergeTable.Entry>> {
             [37000002] = new() {
-                [0] = new ItemMergeTable.Entry(0, 100, [new ItemComponent(0, 0, 3, ItemTag.Onix)], new Dictionary<BasicAttribute, ItemMergeTable.Option> { [BasicAttribute.Strength] = option },
+                [0] = new ItemMergeTable.Entry(0, 100, rows ?? [new ItemComponent(0, 0, 3, ItemTag.Onix)], new Dictionary<BasicAttribute, ItemMergeTable.Option> { [BasicAttribute.Strength] = option },
                     new Dictionary<SpecialAttribute, ItemMergeTable.Option>()),
             },
         }));
@@ -238,6 +238,26 @@ public class ItemMergeHandlerTests {
             Assert.That(Materials(session), Is.EqualTo(materials));
             Assert.That(session.Item.Inventory.Get(crystal.Uid)!.Amount, Is.EqualTo(2));
             Assert.That(session.Item.Inventory.Get(gear.Uid)!.Stats?.HasMergeOption ?? false, Is.False);
+        });
+    }
+
+    // Two material rows naming one tag: 4 held covers each row of 3 but not both; refused before the meso, the
+    // crystal or a material is taken.
+    [Test]
+    public void Empower_RowsSharingATagAddUp() {
+        GameSession session = Login(materials: 4, rows: [new ItemComponent(0, 0, 3, ItemTag.Onix), new ItemComponent(0, 0, 3, ItemTag.Onix)]);
+        Send(session, 1, gear.Uid);
+        Send(session, 2, gear.Uid, crystal.Uid);
+        test.TakeSent();
+
+        Send(session, 3, gear.Uid, crystal.Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Is.EqualTo(new[] { Hex(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_lack_material)) }));
+            Assert.That(session.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(Materials(session), Is.EqualTo(4));
+            Assert.That(session.Item.Inventory.Get(crystal.Uid)!.Amount, Is.EqualTo(2));
         });
     }
 
