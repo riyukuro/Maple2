@@ -545,10 +545,15 @@ public static class SkillCastRules {
         return maps.Any(code => code != 0) && Array.IndexOf(maps, mapId) < 0;
     }
 
-    // The item a cast uses up must be there before any other cost is paid: named, and in the pet's bag or the
-    // caster's own.
-    public static bool ItemMissing(bool consumesItem, long itemUid, bool inPetBag, bool inInventory) {
-        return consumesItem && (itemUid == 0 || (!inPetBag && !inInventory));
+    // The item a cast uses up must be there before any other cost is paid: named, in the pet's bag or the caster's
+    // own, and an item whose own skill is the one cast. The client casts an item's skill only from that item: every
+    // item skill request takes the item's skill id (inventory.cpp:1321-1391 Unk_Inventory::FUN_140a62d30,
+    // FUN_140a63000, FUN_140a63360; CPetInventory::UseItemSkill, petmanager.cpp:659), and the bind confirm box sends
+    // the same record's skill again (MyPC, mypc.cpp:1183; UIMessageBox::HandleUseBindItemSkillButton). Before, any
+    // owned item paid for any item skill. The level is not compared: those requests ask for level 1 whatever the
+    // item's level.
+    public static bool ItemMissing(bool consumesItem, long itemUid, ItemMetadata? item, int skillId) {
+        return consumesItem && (itemUid == 0 || item?.Skill == null || item.Skill.Id != skillId);
     }
 
     // The health a cast costs: the skill's rate (negative in the data) of the current health.

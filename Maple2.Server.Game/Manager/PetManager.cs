@@ -241,6 +241,8 @@ public sealed class PetManager : IDisposable {
 
     public bool Contains(long uid) => items.Contains(uid);
 
+    public Item? Get(long uid) => items.Get(uid);
+
     internal enum PieceResult { None, Reduced, Removed }
 
     // Takes amount pieces off the item: the stack shrinks, or the item leaves the collection with its last piece.

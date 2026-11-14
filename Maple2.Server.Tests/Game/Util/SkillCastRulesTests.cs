@@ -412,13 +412,20 @@ public class SkillCastRulesTests {
         });
     }
 
+    // An item skill is paid only by an owned item whose own skill it is; the ids are made up.
     [Test]
     public void ItemOfACastMustBeThereBeforePaying() {
-        Assert.That(SkillCastRules.ItemMissing(false, 0, false, false), Is.False);
-        Assert.That(SkillCastRules.ItemMissing(true, 0, true, true), Is.True);
-        Assert.That(SkillCastRules.ItemMissing(true, 7, false, false), Is.True);
-        Assert.That(SkillCastRules.ItemMissing(true, 7, true, false), Is.False);
-        Assert.That(SkillCastRules.ItemMissing(true, 7, false, true), Is.False);
+        ItemMetadata potion = Maple2.Server.Tests.Game.TestGameSession.Metadata(20000001) with { Skill = new ItemMetadataSkill(90000001, 3, 0, 0) };
+        ItemMetadata junk = Maple2.Server.Tests.Game.TestGameSession.Metadata(20000002);
+        ItemMetadata other = potion with { Skill = new ItemMetadataSkill(90000002, 1, 0, 0) };
+        Assert.Multiple(() => {
+            Assert.That(SkillCastRules.ItemMissing(false, 0, null, 90000001), Is.False, "no item asked");
+            Assert.That(SkillCastRules.ItemMissing(true, 0, potion, 90000001), Is.True, "no uid");
+            Assert.That(SkillCastRules.ItemMissing(true, 7, null, 90000001), Is.True, "not owned");
+            Assert.That(SkillCastRules.ItemMissing(true, 7, potion, 90000001), Is.False, "the item's own skill, any level asked");
+            Assert.That(SkillCastRules.ItemMissing(true, 7, junk, 90000001), Is.True, "an item with no skill");
+            Assert.That(SkillCastRules.ItemMissing(true, 7, other, 90000001), Is.True, "another item skill's item");
+        });
     }
 
     [Test]

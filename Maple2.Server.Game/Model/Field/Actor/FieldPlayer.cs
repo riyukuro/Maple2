@@ -1039,8 +1039,8 @@ public class FieldPlayer : Actor<Player> {
         }
 
         bool consumesItem = SkillCastRules.ConsumesItem(metadata.Data.Consume.UseItem, metadata.Property.MainType, record.ItemConsumed);
-        if (SkillCastRules.ItemMissing(consumesItem, record.ItemUid, Session.Pet != null && Session.Pet.Contains(record.ItemUid),
-                Session.Item.Inventory.Get(record.ItemUid) != null)) {
+        Item? castItem = consumesItem ? Session.Pet?.Get(record.ItemUid) ?? Session.Item.Inventory.Get(record.ItemUid) : null;
+        if (SkillCastRules.ItemMissing(consumesItem, record.ItemUid, castItem?.Metadata, metadata.Id)) {
             Logger.Error("Invalid item uid for skill: {SkillId},{Level}", metadata.Id, metadata.Level);
             return false;
         }
