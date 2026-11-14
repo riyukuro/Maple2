@@ -280,7 +280,7 @@ public sealed class ExperienceManager {
             session.AdventureProtect.Update();
             session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: Level);
             session.ConditionUpdate(ConditionType.level, targetLong: Level);
-            session.GameEvent.BurningLevelupReach(Level);
+            session.GameEvent.BurningLevelupReach(startLevel, Level);
 
             session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
                 AccountId = session.AccountId,

@@ -559,10 +559,31 @@ public sealed class GameEventManager {
         return BurningLevelupEvent() is { Metadata.Data: BurningLevelup data } ? BurningLevelupRules.BonusLevel(data, level) : 0;
     }
 
-    // At or past the end level the picked character has completed the event: 2001 is set and stored, the event's
-    // effect goes, and the reward widget can be claimed (EventReward 0x0f). Called after every level change.
-    public void BurningLevelupReach(int level) {
-        if (BurningLevelupEvent() is not { Metadata.Data: BurningLevelup data } gameEvent || level < data.EndLevel) {
+    // The level a level set (a level potion, GM `level`) lands on: the level plus its GetBonusLevel for the picked
+    // character, as a level up by exp reaches (BurningLevelupRules.Landing).
+    public int BurningLevelupLanding(int level) {
+        return BurningLevelupEvent() is { Metadata.Data: BurningLevelup data }
+            ? BurningLevelupRules.Landing(data, level, session.ServerTableMetadata.ConstantsTable.characterMaxLevel)
+            : level;
+    }
+
+    // Called after every level change. A change from below the jumping target to it or past it is the jumping done:
+    // 2004 is set and stored (the client shows its jumpingComplete box on the same change, and the character list
+    // offers no other pick). At or past the end level the picked character has completed the event: 2001 is set and
+    // stored, the event's effect goes, and the reward widget can be claimed (EventReward 0x0f).
+    public void BurningLevelupReach(int oldLevel, int level) {
+        if (BurningLevelupEvent() is not { Metadata.Data: BurningLevelup data } gameEvent) {
+            return;
+        }
+        if (BurningLevelupRules.JumpsPast(data, oldLevel, level)
+            && !BurningLevelupRules.IsSet(Peek(GameEventUserValueType.BurningLevelupJumpingDone, gameEvent.Id))) {
+            Get(GameEventUserValueType.BurningLevelupJumpingDone, gameEvent.Id, gameEvent.EndTime);
+            Set(gameEvent.Id, GameEventUserValueType.BurningLevelupJumpingDone, 1);
+            if (!Store(gameEvent.Id, GameEventUserValueType.BurningLevelupJumpingDone)) {
+                logger.Error("Failed to store the burning levelup jumping. Event ID: {EventId}", gameEvent.Id);
+            }
+        }
+        if (level < data.EndLevel) {
             return;
         }
         Get(GameEventUserValueType.BurningLevelupReached, gameEvent.Id, gameEvent.EndTime);
@@ -573,6 +594,35 @@ public sealed class GameEventManager {
         if (data.AdditionalEffectId > 0) {
             session.Player.Buffs.Remove(data.AdditionalEffectId, session.Player.ObjectId);
         }
+    }
+
+    // The jumping item (jumpingOption): on entering the field the tutorial ends in (tutorialEndFieldId), the picked
+    // character below the item's target level gets it once, to the bag or by mail; 2003 is set and stored, and
+    // EventReward 0x11 opens the client's notify box. Called on each field entry.
+    public void BurningLevelupFieldEnter() {
+        if (session.Field is null || BurningLevelupEvent() is not { Metadata.Data: BurningLevelup { Jumping: not null } data } gameEvent
+            || BurningLevelupRules.IsSet(Peek(GameEventUserValueType.BurningLevelupJumpingDone, gameEvent.Id))
+            || !BurningLevelupRules.GivesJumpingItem(data, session.Field.MapId, session.Player.Value.Character.Level,
+                BurningLevelupRules.IsSet(Peek(GameEventUserValueType.BurningLevelupJumpingNotify, gameEvent.Id)))) {
+            return;
+        }
+        RewardItem reward = data.Jumping.Item;
+        Item? item = session.Field.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
+        if (item == null) {
+            logger.Error("Burning levelup jumping item {ItemId} of event {EventId} could not be made", reward.ItemId, gameEvent.Id);
+            return;
+        }
+        if (!session.Item.AddOrMail(item, true)) {
+            logger.Error("Burning levelup jumping item {ItemId} of event {EventId} went to neither bag nor mail", reward.ItemId, gameEvent.Id);
+            return;
+        }
+        Get(GameEventUserValueType.BurningLevelupJumpingNotify, gameEvent.Id, gameEvent.EndTime);
+        Set(gameEvent.Id, GameEventUserValueType.BurningLevelupJumpingNotify, 1);
+        // Stored with the item, not at logout: the item may sit in a stored mail already.
+        if (!Store(gameEvent.Id, GameEventUserValueType.BurningLevelupJumpingNotify)) {
+            logger.Error("Failed to store the burning levelup jumping item notice. Event ID: {EventId}", gameEvent.Id);
+        }
+        session.Send(BurningLevelupPacket.JumpingItem(gameEvent.Id));
     }
 
     // The event's effect (additionalEffectId; the client never reads it, KR 90000838 is a marker buff without

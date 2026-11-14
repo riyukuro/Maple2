@@ -140,6 +140,9 @@ public class PlayerCommand : GameCommand {
                     return;
                 }
 
+                // The picked burning levelup character lands where a level up by exp would (GetBonusLevel of the level).
+                short oldLevel = session.Player.Value.Character.Level;
+                level = (short) session.GameEvent.BurningLevelupLanding(level);
                 session.Player.Value.Character.Level = level;
                 session.Field?.Broadcast(LevelUpPacket.LevelUp(session.Player));
                 session.Stats.Refresh(levelUp: true);
@@ -149,7 +152,7 @@ public class PlayerCommand : GameCommand {
 
                 session.ConditionUpdate(ConditionType.level, targetLong: level);
                 session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: level);
-                session.GameEvent.BurningLevelupReach(level);
+                session.GameEvent.BurningLevelupReach(oldLevel, level);
 
                 session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
                     AccountId = session.AccountId,
@@ -158,6 +161,7 @@ public class PlayerCommand : GameCommand {
                     Async = true,
                 });
 
+                ctx.Console.Out.WriteLine($"Level set to {level}.");
                 ctx.ExitCode = 0;
             } catch (SystemException ex) {
                 ctx.Console.Error.WriteLine(ex.Message);

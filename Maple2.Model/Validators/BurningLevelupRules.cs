@@ -36,6 +36,32 @@ public static class BurningLevelupRules {
         return level + bonus > data.EndLevel ? data.EndLevel - level : bonus;
     }
 
+    // The level a level set lands on (a level potion, GM `level`): `level` plus its GetBonusLevel, at most `maxLevel`.
+    // GetBonusLevel depends only on the level reached, so a set level stays on the levels a level up by exp reaches;
+    // the bonus steps crossed on the way add nothing (each would only move the level to the next earned one).
+    public static int Landing(BurningLevelup data, int level, int maxLevel) => System.Math.Min(level + BonusLevel(data, level), maxLevel);
+
+    // The jumping item (jumpingOption) is given on entering its tutorialEndFieldId, the field the tutorial ends in,
+    // to the picked character below the item's target level, once (2003, BurningLevelupJumpingNotify).
+    public static bool GivesJumpingItem(BurningLevelup data, int mapId, int level, bool notified) {
+        return data.Jumping is { TutorialEndFieldId: not 0, TargetLevel: > 0 } jumping
+               && mapId == jumping.TutorialEndFieldId && level < jumping.TargetLevel && !notified;
+    }
+
+    // The jumping is done (2004, BurningLevelupJumpingDone) when the picked character's level goes from below the
+    // jumping target to it or past it, however it does: the client's own test for its jumpingComplete box
+    // (GameEventBurningLevelupCli::vfunc_10, on NotifyChangeMyLevel).
+    public static bool JumpsPast(BurningLevelup data, int oldLevel, int newLevel) {
+        return data.Jumping is { TargetLevel: > 0 } jumping && oldLevel < jumping.TargetLevel && newLevel >= jumping.TargetLevel;
+    }
+
+    // The set-character popup's text: one burning character per account, changed only when it is deleted. The
+    // delete of the picked character frees the event's pick (2000) unless the event is completed (2001) or its
+    // jumping is done (2004; the jumping item's text: no other pick after the jump, even after a delete).
+    public static bool ReleasesPick(BurningLevelup data, long picked, long characterId, bool reached, bool jumped) {
+        return characterId != 0 && picked == characterId && !reached && !(data.Jumping != null && jumped);
+    }
+
     // A flag value (2001-2004) is set when it is a number other than 0.
     public static bool IsSet(string? value) => long.TryParse(value, out long number) && number != 0;
 

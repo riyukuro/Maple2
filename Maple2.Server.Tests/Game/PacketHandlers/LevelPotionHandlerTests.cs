@@ -18,6 +18,7 @@ public class LevelPotionHandlerTests {
             function: new ItemMetadataFunction(ItemFunction.LevelPotion, "LevelPotion", "<v targetLevel=\"50\"/>", false), type: 2));
         var handler = new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! };
         GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000062));
         test.TakeSent();
 
         handler.Handle(session, TestGameSession.Packet(writer => writer.WriteLong(potion.Uid)));
@@ -39,6 +40,7 @@ public class LevelPotionHandlerTests {
             function: new ItemMetadataFunction(ItemFunction.LevelPotion, "LevelPotion", "<v/>", false), type: 2));
         var handler = new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! };
         GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000062));
         test.TakeSent();
 
         handler.Handle(session, TestGameSession.Packet(writer => writer.WriteLong(potion.Uid)));

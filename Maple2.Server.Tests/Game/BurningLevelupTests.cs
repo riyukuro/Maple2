@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.CommandLine;
+using System.CommandLine.IO;
 using System.Linq;
 using Maple2.Database.Storage;
 using Maple2.File.Ingest.Helpers;
@@ -9,7 +11,9 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Commands;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
@@ -37,6 +41,59 @@ public class BurningLevelupTests {
     }
 
     #region Rules
+    private const int JumpingItem = 20001322;
+    private const int TutorialEnd = 2000062;
+
+    // The KR jumping row's shape on the test numbers: a level 30 potion given in the tutorial's end field.
+    private static BurningLevelup JumpingData() {
+        return Data(jumping: new BurningLevelup.JumpingOption(new RewardItem(JumpingItem, 3, 1), 30, TutorialEnd, "s_desc_popup", "s_notify", "s_complete"));
+    }
+
+    // GetBonusLevel of the level set: 10 lands on 12, 11 on 12, 12 stays; the end and the cap hold.
+    [TestCase(5, 5)]
+    [TestCase(9, 9)]
+    [TestCase(10, 12)]
+    [TestCase(11, 12)]
+    [TestCase(12, 12)]
+    [TestCase(67, 69)]
+    [TestCase(70, 70)]
+    public void Landing_IsTheLevelPlusItsBonus(int level, int landed) {
+        Assert.That(BurningLevelupRules.Landing(Data(), level, 99), Is.EqualTo(landed));
+        Assert.That(BurningLevelupRules.Landing(Data(), 10, 11), Is.EqualTo(11));
+    }
+
+    [Test]
+    public void GivesJumpingItem_InTheTutorialEndFieldBelowTheTarget_Once() {
+        Assert.That(BurningLevelupRules.GivesJumpingItem(JumpingData(), TutorialEnd, 1, false), Is.True);
+        Assert.That(BurningLevelupRules.GivesJumpingItem(JumpingData(), TutorialEnd, 29, false), Is.True);
+        Assert.That(BurningLevelupRules.GivesJumpingItem(JumpingData(), TutorialEnd, 30, false), Is.False);
+        Assert.That(BurningLevelupRules.GivesJumpingItem(JumpingData(), TutorialEnd + 1, 1, false), Is.False);
+        Assert.That(BurningLevelupRules.GivesJumpingItem(JumpingData(), TutorialEnd, 1, true), Is.False);
+        Assert.That(BurningLevelupRules.GivesJumpingItem(Data(), TutorialEnd, 1, false), Is.False);
+        BurningLevelup noField = JumpingData() with { Jumping = JumpingData().Jumping! with { TutorialEndFieldId = 0 } };
+        Assert.That(BurningLevelupRules.GivesJumpingItem(noField, 0, 1, false), Is.False);
+    }
+
+    [TestCase(1, 30, true)]
+    [TestCase(29, 31, true)]
+    [TestCase(1, 29, false)]
+    [TestCase(30, 31, false)]
+    [TestCase(31, 20, false)]
+    public void JumpsPast_IsTheCrossingOfTheTarget(int oldLevel, int newLevel, bool jumps) {
+        Assert.That(BurningLevelupRules.JumpsPast(JumpingData(), oldLevel, newLevel), Is.EqualTo(jumps));
+        Assert.That(BurningLevelupRules.JumpsPast(Data(), oldLevel, newLevel), Is.False);
+    }
+
+    [Test]
+    public void ReleasesPick_OnlyThePickedCharacterBeforeTheEndAndTheJump() {
+        Assert.That(BurningLevelupRules.ReleasesPick(JumpingData(), 7, 7, false, false), Is.True);
+        Assert.That(BurningLevelupRules.ReleasesPick(JumpingData(), 7, 8, false, false), Is.False);
+        Assert.That(BurningLevelupRules.ReleasesPick(JumpingData(), 0, 0, false, false), Is.False);
+        Assert.That(BurningLevelupRules.ReleasesPick(JumpingData(), 7, 7, true, false), Is.False);
+        Assert.That(BurningLevelupRules.ReleasesPick(JumpingData(), 7, 7, false, true), Is.False);
+        Assert.That(BurningLevelupRules.ReleasesPick(Data(), 7, 7, false, true), Is.True, "a 2004 without a jumping option means nothing");
+    }
+
     [TestCase(9, 0)] // the begin level is not a burning level
     [TestCase(10, 2)]
     [TestCase(11, 1)]
@@ -178,7 +235,7 @@ public class BurningLevelupTests {
     }
 
     [Test]
-    public void Reader_WithoutRewardItems_KeepsNoTargetsAndNoJumping() {
+    public void Reader_WithoutRewardItems_KeepsNoTargetsAndNoJumpingData() {
         BurningLevelup? data = EventXmlReader.BurningLevelup(Info, null, "10", Jumping, _ => 50);
         Assert.That(data, Is.Not.Null);
         Assert.That((data!.Rewards.Length, data.Targets.Length, data.Jumping), Is.EqualTo((0, 0, (BurningLevelup.JumpingOption?) null)));
@@ -244,10 +301,13 @@ public class BurningLevelupTests {
     #endregion
 
     #region Session
-    // picked: the account's 2000 value is this character; reached, taken: 2001 and 2002 are set.
-    private GameSession Login(bool picked = true, bool reached = false, bool taken = false, BurningLevelup? data = null) {
+    // picked: the account's 2000 value is this character; reached, taken, notified, jumped: 2001-2004 are set;
+    // setup runs before the login (items stored in the bag).
+    private GameSession Login(bool picked = true, bool reached = false, bool taken = false, BurningLevelup? data = null,
+                              bool notified = false, bool jumped = false, Action<TestGameSession>? setup = null) {
         test = new TestGameSession();
-        test.Register(TestGameSession.Metadata(Reward));
+        test.Register(TestGameSession.Metadata(Reward), Potion(TransferType.BindOnLoot, "<v targetLevel=\"30\"/>"));
+        setup?.Invoke(test);
         GameEvent gameEvent = test.AddEvent(EventId, GameEventType.BurningLevelup, data ?? Data());
         var values = new List<GameEventUserValue>();
         void Value(GameEventUserValueType type, string value) {
@@ -262,9 +322,16 @@ public class BurningLevelupTests {
         if (taken) {
             Value(GameEventUserValueType.BurningLevelupRewardTaken, "1");
         }
+        if (notified) {
+            Value(GameEventUserValueType.BurningLevelupJumpingNotify, "1");
+        }
+        if (jumped) {
+            Value(GameEventUserValueType.BurningLevelupJumpingDone, "1");
+        }
         using (GameStorage.Request db = test.Storage.Context()) {
             Assert.That(db.SaveAccountEventValues(test.AccountId, values), Is.True);
         }
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { characterMaxLevel = 99 });
         GameSession session = test.Start();
         test.TakeSent();
         return session;
@@ -297,10 +364,10 @@ public class BurningLevelupTests {
     public void Reach_AtTheEndLevel_SetsAndStoresTheCompletion() {
         GameSession session = Login();
 
-        session.GameEvent.BurningLevelupReach(69);
+        session.GameEvent.BurningLevelupReach(68, 69);
         Assert.That(Value(session, GameEventUserValueType.BurningLevelupReached), Is.Null.Or.EqualTo("0"));
 
-        session.GameEvent.BurningLevelupReach(70);
+        session.GameEvent.BurningLevelupReach(69, 70);
         Assert.That(Value(session, GameEventUserValueType.BurningLevelupReached), Is.EqualTo("1"));
         Assert.That(StoredValue(GameEventUserValueType.BurningLevelupReached), Is.EqualTo("1"));
         Assert.That(session.GameEvent.BurningLevelupEvent(), Is.Null);
@@ -311,7 +378,7 @@ public class BurningLevelupTests {
     public void Reach_OfACharacterNotPicked_SetsNothing() {
         GameSession session = Login(picked: false);
 
-        session.GameEvent.BurningLevelupReach(70);
+        session.GameEvent.BurningLevelupReach(69, 70);
 
         Assert.That(StoredValue(GameEventUserValueType.BurningLevelupReached), Is.Null);
     }
@@ -371,6 +438,177 @@ public class BurningLevelupTests {
 
         Assert.That(Held(session, Reward), Is.EqualTo(0));
         Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // The jumping item (EventReward 0x11, GameEventBurningLevelupCli::FUN_140ce7250): on entering the tutorial's end
+    // field the picked character gets the item once, 2003 is set and stored, and 0x11 + the event id opens the
+    // client's notify box.
+    [Test]
+    public void FieldEnter_OfTheTutorialEndField_GivesTheJumpingItemOnce() {
+        GameSession session = Login(data: JumpingData());
+        test.EnterMap(TestGameSession.Map(TutorialEnd));
+
+        session.GameEvent.BurningLevelupFieldEnter();
+
+        Assert.That(Held(session, JumpingItem), Is.EqualTo(1));
+        Assert.That(session.Item.Inventory.Find(JumpingItem).Single().Rarity, Is.EqualTo(3));
+        Assert.That(Value(session, GameEventUserValueType.BurningLevelupJumpingNotify), Is.EqualTo("1"));
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingNotify), Is.EqualTo("1"));
+        Assert.That(Convert.ToHexString(test.TakeSent()[^1]), Is.EqualTo("F700" + "11" + "6ACC0500"));
+        Assert.That(test.Errors, Is.Empty);
+
+        session.GameEvent.BurningLevelupFieldEnter();
+        Assert.That(Held(session, JumpingItem), Is.EqualTo(1));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    [TestCase("field")]
+    [TestCase("not picked")]
+    [TestCase("level")]
+    [TestCase("notified")]
+    [TestCase("no option")]
+    [TestCase("jumped")]
+    public void FieldEnter_Otherwise_GivesNothing(string why) {
+        GameSession session = Login(picked: why != "not picked", data: why == "no option" ? Data() : JumpingData(), notified: why == "notified",
+            jumped: why == "jumped");
+        test.EnterMap(TestGameSession.Map(why == "field" ? TutorialEnd + 1 : TutorialEnd));
+        if (why == "level") {
+            session.Player.Value.Character.Level = 30;
+        }
+
+        session.GameEvent.BurningLevelupFieldEnter();
+
+        Assert.That(Held(session, JumpingItem), Is.EqualTo(0));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    private Item StorePotion(TestGameSession session, int targetLevel) {
+        return session.Store(TestGameSession.Metadata(20301234,
+            function: new ItemMetadataFunction(ItemFunction.LevelPotion, "LevelPotion", $"<v targetLevel=\"{targetLevel}\"/>", false), type: 2));
+    }
+
+    // In a field that is not a tutorial's (the session's own field has no properties).
+    private void UsePotion(GameSession session, Item potion) {
+        if (session.Field!.Metadata.Property == null) {
+            test.EnterMap(TestGameSession.Map(2000062));
+        }
+        var handler = new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! };
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteLong(potion.Uid)));
+    }
+
+    // A potion to a level whose GetBonusLevel is not 0 lands where a level up by exp would: 10 lands on 12.
+    [TestCase(10, 12)]
+    [TestCase(11, 12)]
+    [TestCase(12, 12)]
+    public void Potion_LandsOnTheBonusLevel(int target, int landed) {
+        Item potion = null!;
+        GameSession session = Login(setup: t => potion = StorePotion(t, target));
+
+        UsePotion(session, potion);
+
+        Assert.That(session.Player.Value.Character.Level, Is.EqualTo(landed));
+        Assert.That(test.World.PlayerUpdates.Select(update => update.Level), Is.EqualTo(new[] { landed }));
+    }
+
+    [Test]
+    public void Potion_OfACharacterNotPicked_AddsNoBonus() {
+        Item potion = null!;
+        GameSession session = Login(picked: false, setup: t => potion = StorePotion(t, 10));
+
+        UsePotion(session, potion);
+
+        Assert.That(session.Player.Value.Character.Level, Is.EqualTo(10));
+    }
+
+    // The jumping potion (the KR item's own function): its use takes the level past the target, which is the jumping
+    // done (2004): the client shows its jumpingComplete box on the same level change.
+    [Test]
+    public void ThePotionPastTheJumpingTarget_IsTheJumpingDone() {
+        Item potion = null!;
+        GameSession session = Login(data: JumpingData(), setup: t => potion = StorePotion(t, 30));
+
+        UsePotion(session, potion);
+
+        Assert.That(session.Player.Value.Character.Level, Is.EqualTo(30));
+        Assert.That(Value(session, GameEventUserValueType.BurningLevelupJumpingDone), Is.EqualTo("1"));
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingDone), Is.EqualTo("1"));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    [Test]
+    public void ALevelUpPastTheJumpingTarget_IsTheJumpingDone() {
+        GameSession session = Login(data: JumpingData());
+
+        session.GameEvent.BurningLevelupReach(29, 31);
+
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingDone), Is.EqualTo("1"));
+    }
+
+    [Test]
+    public void ALevelChangeNotCrossingTheTarget_IsNoJump() {
+        GameSession session = Login(data: JumpingData());
+
+        session.GameEvent.BurningLevelupReach(30, 33);
+        session.GameEvent.BurningLevelupReach(1, 29);
+
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingDone), Is.Null);
+    }
+
+    // The client refuses a potion to the character's level or below (s_err_cannot_already_target_level_potion), in a
+    // tutorial field (s_tutorial_levelup_item_not_use) and while dead (unit_140d1ae30_itemfunctiondispatch.cpp:1567):
+    // the server keeps the potion and the level.
+    [TestCase("level")]
+    [TestCase("below")]
+    [TestCase("tutorial")]
+    [TestCase("dead")]
+    public void Potion_TheClientRefuses_IsKept(string why) {
+        Item potion = null!;
+        GameSession session = Login(setup: t => potion = StorePotion(t, 20));
+        session.Player.Value.Character.Level = why == "below" ? (short) 25 : why == "level" ? (short) 20 : (short) 5;
+        if (why == "tutorial") {
+            MapMetadata map = TestGameSession.Map(52000001);
+            test.EnterMap(map with { Property = map.Property with { TutorialType = 1 } });
+        }
+        if (why == "dead") {
+            typeof(Maple2.Server.Game.Model.FieldPlayer).GetField("isDead", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .SetValue(session.Player, true);
+        }
+        short level = session.Player.Value.Character.Level;
+
+        UsePotion(session, potion);
+
+        Assert.That(session.Item.Inventory.Get(potion.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(session.Player.Value.Character.Level, Is.EqualTo(level));
+        Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.LevelUp));
+    }
+
+    // The tables GM `level` reads (the prestige stat point recount).
+    private static void GmTables(TestGameSession t) {
+        t.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        t.SetTable(new PrestigeLevelAbilityTable(new Dictionary<int, PrestigeLevelAbilityMetadata>()));
+    }
+
+    // GM `level` lands where a level up would, too, and says the level it set.
+    [Test]
+    public void GmLevel_LandsOnTheBonusLevel() {
+        GameSession session = Login(setup: GmTables);
+        PacketHandlers.ProgressionOrderTests.LoadConfig(test, session);
+        var console = new TestConsole();
+
+        Assert.That(new PlayerCommand(session, null!).Invoke(["level", "10"], console), Is.EqualTo(0), console.Error.ToString());
+
+        Assert.That(session.Player.Value.Character.Level, Is.EqualTo(12));
+        Assert.That(console.Out.ToString(), Does.Contain("12"));
+    }
+
+    [Test]
+    public void GmLevel_PastTheJumpingTarget_IsTheJumpingDone() {
+        GameSession session = Login(data: JumpingData(), setup: GmTables);
+        PacketHandlers.ProgressionOrderTests.LoadConfig(test, session);
+
+        Assert.That(new PlayerCommand(session, null!).Invoke(["level", "30"], new TestConsole()), Is.EqualTo(0));
+
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingDone), Is.EqualTo("1"));
     }
     #endregion
 }

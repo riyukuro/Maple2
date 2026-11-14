@@ -13,6 +13,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Login.PacketHandlers;
 using Maple2.Server.Login.Session;
 using Maple2.Server.Tests.Game;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Login;
 
@@ -195,4 +196,83 @@ public class BurningLevelupPickTests {
         Pick(session, test.CharacterId);
         Assert.That(Stored().Single().Value, Is.EqualTo(test.CharacterId.ToString()));
     }
+
+    #region Delete
+    private void Delete(LoginSession session, long characterId) {
+        var words = new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var handler = new CharacterManagementHandler {
+            World = test.World,
+            GameStorage = test.Storage,
+            BanWordStorage = new BanWordStorage(words),
+            ItemMetadata = null!,
+            TableMetadata = test.Rows.TableMetadata,
+            ServerTableMetadata = test.Rows.ServerTableMetadata,
+        };
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(2);
+            writer.WriteLong(characterId);
+        }));
+    }
+
+    private static BurningLevelup JumpingData() {
+        return Data() with { Jumping = new BurningLevelup.JumpingOption(new RewardItem(20001322, 1, 3), 30, 2000062, "a", "b", "c") };
+    }
+
+    // A picked character whose delete wait has passed, with its jumping item given (2003).
+    private (LoginSession Session, long CharacterId) PickedForDelete(BurningLevelup? data = null) {
+        LoginSession session = Start(data ?? JumpingData());
+        long characterId = test.AddCharacter("Gone");
+        SetRow(characterId, row => row.DeleteTime = DateTime.UnixEpoch.AddSeconds(1));
+        SeedValue(GameEventUserValueType.BurningLevelupCharacter, characterId.ToString());
+        SeedValue(GameEventUserValueType.BurningLevelupJumpingNotify, "1");
+        test.TakeSent();
+        return (session, characterId);
+    }
+
+    private string? StoredValue(GameEventUserValueType type) => Stored().FirstOrDefault(value => value.Type == type)?.Value;
+
+    // The set-character popup's text: one burning character per account, changed only when it is deleted. Its delete
+    // frees the pick (2000) and the jumping item notice (2003), so the popup offers the event to the next character
+    // and that one gets the item; both Updates follow the delete reply.
+    [Test]
+    public void Delete_OfThePickedCharacter_FreesThePick() {
+        (LoginSession session, long characterId) = PickedForDelete();
+
+        Delete(session, characterId);
+
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupCharacter), Is.EqualTo("0"));
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingNotify), Is.EqualTo("0"));
+        List<SendOp> ops = test.TakeSentOps();
+        Assert.That(ops, Is.EqualTo(new[] { SendOp.CharacterList, SendOp.GameEventUserValue, SendOp.GameEventUserValue }));
+        Assert.That(test.Errors, Is.Empty);
+
+        Pick(session, test.CharacterId);
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupCharacter), Is.EqualTo(test.CharacterId.ToString()));
+    }
+
+    // Completed (2001), or the jumping done (2004, the jumping item's text: no other pick after the jump even after a
+    // delete): the pick stays.
+    [TestCase(GameEventUserValueType.BurningLevelupReached)]
+    [TestCase(GameEventUserValueType.BurningLevelupJumpingDone)]
+    public void Delete_AfterTheEndOrTheJump_KeepsThePick(GameEventUserValueType type) {
+        (LoginSession session, long characterId) = PickedForDelete();
+        SeedValue(type, "1");
+
+        Delete(session, characterId);
+
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupCharacter), Is.EqualTo(characterId.ToString()));
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.CharacterList }));
+    }
+
+    [Test]
+    public void Delete_OfAnotherCharacter_KeepsThePick() {
+        (LoginSession session, long characterId) = PickedForDelete();
+        SeedValue(GameEventUserValueType.BurningLevelupCharacter, test.CharacterId.ToString());
+
+        Delete(session, characterId);
+
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupCharacter), Is.EqualTo(test.CharacterId.ToString()));
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.CharacterList }));
+    }
+    #endregion
 }

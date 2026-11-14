@@ -978,6 +978,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Config.LoadStatAttributes();
         Config.LoadSkillPoints();
         Player.Buffs.LoadFieldBuffs();
+        // The burning levelup's jumping item, given in the field the tutorial ends in.
+        GameEvent.BurningLevelupFieldEnter();
 
         AnnounceOpenGlobalPortal();
         AnnounceOpenFieldWar();

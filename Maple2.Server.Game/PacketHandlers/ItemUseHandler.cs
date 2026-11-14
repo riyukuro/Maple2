@@ -798,9 +798,18 @@ public class ItemUseHandler : FieldPacketHandler {
         session.Item.Inventory.Consume(item.Uid, 1);
     }
 
+    // The client sends the use only outside a tutorial field (s_tutorial_levelup_item_not_use), for a target above
+    // the character's level (s_err_cannot_already_target_level_potion) and while alive (LevelPotion,
+    // unit_140d1ae30_itemfunctiondispatch.cpp:1567); the server repeats these and keeps the potion. The picked burning
+    // levelup character lands where a level up by exp would: the target plus its GetBonusLevel (the KR jumping potion
+    // targets the event's begin level, which adds none).
     private static void HandleLevelPotion(GameSession session, Item item) {
         Dictionary<string, string> xmlParameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
-        if (!xmlParameters.ContainsKey("targetLevel") || !short.TryParse(xmlParameters["targetLevel"], out short level)) {
+        if (!xmlParameters.ContainsKey("targetLevel") || !short.TryParse(xmlParameters["targetLevel"], out short target) || target <= 0) {
+            return;
+        }
+        if (session.Field == null || session.Field.Metadata.Property.TutorialType != 0 || target <= session.Player.Value.Character.Level
+            || session.Player.IsDead) {
             return;
         }
 
@@ -815,6 +824,7 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         int currentLevel = session.Player.Value.Character.Level;
+        short level = (short) session.GameEvent.BurningLevelupLanding(target);
         session.Player.Value.Character.Level = level;
         session.Field?.Broadcast(LevelUpPacket.LevelUp(session.Player));
         session.Stats.Refresh();
@@ -824,8 +834,8 @@ public class ItemUseHandler : FieldPacketHandler {
         for (int i = currentLevel; i < level; i++) {
             session.ConditionUpdate(ConditionType.level, targetLong: i);
         }
-        // A potion to the burning levelup's end level completes it as a level up does; it adds no bonus levels.
-        session.GameEvent.BurningLevelupReach(level);
+        // A potion past the jumping target or to the end level does what a level up does there.
+        session.GameEvent.BurningLevelupReach(currentLevel, level);
 
         session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = session.AccountId,

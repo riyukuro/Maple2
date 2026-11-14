@@ -215,6 +215,37 @@ public class LoginSession : Core.Network.Session {
         Send(BurningLevelupPacket.Picked(characterId));
     }
 
+    // The set-character popup's text (setCharacterPopupStringKey): one burning character per account, changed only
+    // when it is deleted. The delete of the picked character frees the pick (2000) of each running event it was
+    // picked for, unless the event is completed (2001) or its jumping is done (2004: the jumping item's text, no
+    // other pick after the jump even after a delete), and the jumping item notice (2003), so the next character
+    // gets the item. The Updates go to the client, whose popup then offers the event again.
+    public void ReleaseBurningLevelup(GameStorage.Request db, long characterId) {
+        List<GameEventUserValue> values = BurningLevelupValues(db);
+        bool Flag(int eventId, GameEventUserValueType type) =>
+            values.Any(value => value.EventId == eventId && value.Type == type && BurningLevelupRules.IsSet(value.Value));
+        foreach (GameEvent gameEvent in BurningLevelupEvents()) {
+            long picked = values.FirstOrDefault(value => value.EventId == gameEvent.Id && value.Type == GameEventUserValueType.BurningLevelupCharacter)?.Long() ?? 0;
+            if (!BurningLevelupRules.ReleasesPick((BurningLevelup) gameEvent.Metadata.Data, picked, characterId,
+                    Flag(gameEvent.Id, GameEventUserValueType.BurningLevelupReached), Flag(gameEvent.Id, GameEventUserValueType.BurningLevelupJumpingDone))) {
+                continue;
+            }
+            var released = new List<GameEventUserValue>();
+            foreach (GameEventUserValueType type in new[] { GameEventUserValueType.BurningLevelupCharacter, GameEventUserValueType.BurningLevelupJumpingNotify }) {
+                var value = new GameEventUserValue(type, gameEvent.EndTime, gameEvent.Id);
+                value.SetValue("0");
+                released.Add(value);
+            }
+            if (!db.SaveAccountEventValues(AccountId, released)) {
+                Logger.Error("Failed to free the burning levelup pick of deleted {CharacterId} by account {AccountId}", characterId, AccountId);
+                continue;
+            }
+            foreach (GameEventUserValue value in released) {
+                Send(GameEventUserValuePacket.Update(value));
+            }
+        }
+    }
+
     // No server path stores a name longer than the limit; a row that has one (written by hand, or kept from another
     // region's limit) must be renamed before it enters. The client's test counts the length first, so a long name
     // with a character the region does not allow is due as well.

@@ -447,5 +447,6 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         }
 
         session.Send(CharacterListPacket.DeleteEntry(characterId));
+        session.ReleaseBurningLevelup(db, characterId);
     }
 }

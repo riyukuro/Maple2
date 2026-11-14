@@ -500,7 +500,9 @@ public record CollectItemGroup(
 // pick (EventReward 0x10); the picked character gets Bonus extra levels on its way from BeginLevel to EndLevel
 // (BurningLevelupRules.BonusLevel) and claims the rewards at EndLevel (EventReward 0x0f).
 // The jumping item is a character-bound LevelPotion with a targetLevel; the client drops the option otherwise, and
-// so does the ingest. Its notices (EventReward 0x11) are not sent: no KR row that can still run has one.
+// so does the ingest. The game gives it on entering the jumping's tutorialEndFieldId below its target level, once
+// (2003, with the notice EventReward 0x11), and sets the jumping done (2004) when the level crosses the target.
+// A level potion or GM `level` lands on its level plus that level's bonus (BurningLevelupRules.Landing).
 public record BurningLevelup(
     int BeginLevel,
     int EndLevel,
