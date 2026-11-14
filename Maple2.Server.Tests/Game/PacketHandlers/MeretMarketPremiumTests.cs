@@ -32,11 +32,8 @@ public class MeretMarketPremiumTests {
 
     [SetUp]
     public void SetUp() {
-        DbContextOptions options = new DbContextOptionsBuilder()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        test = new TestGameSession(options);
+        // Its own in-memory store, with the save fault hook (FailSave).
+        test = new TestGameSession();
         // The KR rows: one grade, the condition limited_bundle_buy (110) with the product as its code and goal 1.
         test.AddAchievement(TestGameSession.Trophy(Trophy, ConditionType.limited_bundle_buy, [1], codes: [Package]),
             TestGameSession.Trophy(OtherTrophy, ConditionType.limited_bundle_buy, [1], codes: [OtherPackage]));
@@ -282,5 +279,76 @@ public class MeretMarketPremiumTests {
         Assert.That(Answer().Code, Is.EqualTo(0xA4));
         AssertNothingPaid();
         Assert.That(test.TrophyCounter(Trophy) ?? 0, Is.Zero);
+    }
+    // The save of the wallet: SaveCurrency writes the account's and the character's currency columns.
+    private static bool WalletSave(DbContext context) =>
+        context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Modified && entry.Entity is Maple2.Database.Model.Account or Maple2.Database.Model.Character);
+
+    private long StoredMeret() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Account.AsNoTracking().Single(row => row.Id == test.AccountId).Currency.Meret;
+    }
+
+    // Item rows of the product: (owner, amount).
+    private List<(long Owner, int Amount)> ItemRows() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Item.AsNoTracking().Where(row => row.ItemId == ItemId).AsEnumerable().Select(row => (row.OwnerId, row.Amount)).ToList();
+    }
+
+    // The buyer's wallet, the sale and the item's bag row are stored in one transaction: the stored wallet holds the
+    // take at once. Before, the item row and the sale were stored and the wallet only after them, so a crash in
+    // between kept the item and gave the merets back.
+    [Test]
+    public void APremiumBuy_StoresTheWalletWithTheItem() {
+        SetMarket(Row(Package));
+
+        Buy(Package);
+
+        Assert.Multiple(() => {
+            Assert.That(Answer().Sub, Is.EqualTo(0x1E));
+            Assert.That(session.Currency.Meret, Is.EqualTo(4900));
+            Assert.That(StoredMeret(), Is.EqualTo(4900));
+            Assert.That(Owned(), Is.EqualTo(1));
+            Assert.That(ItemRows(), Is.EqualTo(new[] { (test.CharacterId, 1) }));
+        });
+    }
+
+    // The wallet cannot be stored: nothing is given or charged, and the answer is the generic error.
+    [TestCase(MeretMarketCurrencyType.Meret)]
+    [TestCase(MeretMarketCurrencyType.RedMeret)]
+    [TestCase(MeretMarketCurrencyType.Meso)]
+    public void APremiumBuyWhoseWalletIsNotStored_GivesNothing(MeretMarketCurrencyType currency) {
+        SetMarket(Row(Package, currency: currency));
+        test.FailSave = WalletSave;
+
+        Buy(Package);
+        test.FailSave = null;
+
+        Assert.That(Answer().Code, Is.EqualTo(1));
+        AssertNothingPaid();
+        Assert.That(ItemRows(), Is.Empty);
+        Assert.That(test.TrophyCounter(Trophy) ?? 0, Is.Zero);
+    }
+
+    // A bag that does not take the item: it goes by mail, stored with the wallet.
+    [Test]
+    public void APremiumBuyIntoAFullBag_MailsTheItem() {
+        SetMarket(Row(Package));
+        var tabs = (Dictionary<InventoryType, Maple2.Server.Game.Manager.Items.ItemCollection>) typeof(Maple2.Server.Game.Manager.Items.InventoryManager)
+            .GetField("tabs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Item.Inventory)!;
+        InventoryType type = session.Field!.ItemDrop.CreateItem(ItemId)!.Inventory;
+        tabs[type] = new Maple2.Server.Game.Manager.Items.ItemCollection(0);
+
+        Buy(Package);
+
+        using GameStorage.Request db = test.Storage.Context();
+        Mail mail = db.GetAllMail(test.CharacterId).Single();
+        Assert.Multiple(() => {
+            Assert.That(Answer().Sub, Is.EqualTo(0x1E));
+            Assert.That(StoredMeret(), Is.EqualTo(4900));
+            Assert.That(mail.Items.Select(item => (item.Id, item.Amount)), Is.EqualTo(new[] { (ItemId, 1) }));
+            Assert.That(ItemRows(), Is.EqualTo(new[] { (mail.Id, 1) }));
+            Assert.That(test.World.MailNotifications.Select(notice => notice.MailId), Is.EqualTo(new[] { mail.Id }));
+        });
     }
 }

@@ -497,7 +497,6 @@ public class MeretMarketHandler : FieldPacketHandler {
                 Fail(giftError);
                 return;
             }
-            session.SavePurchase();
             session.Send(MeretMarketPacket.Purchase(kind, flag, childMarketItemId, unk1, totalQuantity, itemIndex, unk2, price, premiumMarketId, ugcItemId,
                 true, playerName, message, payType));
             return;
@@ -505,18 +504,61 @@ public class MeretMarketHandler : FieldPacketHandler {
 
         int error = PurchaseErrorUnknown;
         PaybackRecord? paybackBefore = session.Player.Value.Account.Payback;
-        Item? item = ugcItemId > 0 ? PurchaseUgcItem(session, ugcItemId, out error) : PurchasePremiumItem(session, premiumMarketId, childMarketItemId, out error);
-        if (item == null) {
+        PreparedBuy? buy = ugcItemId > 0 ? PrepareUgcBuy(session, ugcItemId, out error) : PreparePremiumBuy(session, premiumMarketId, childMarketItemId, out error);
+        if (buy == null) {
             Fail(error);
             return;
         }
 
-        if (!session.Item.Inventory.Add(item, true, commit: true)) {
-            session.Item.MailItem(item);
+        // The price is held (taken, not yet shown) and the wallet, the sale's row, the payback month a payback buy
+        // counts in and the item (a bag row, or a mail when the bag does not take it) are stored in one transaction
+        // (TrySavePurchase). Before, the item and the sale were stored at once and the wallet only after them (or at
+        // the next session save), so a crash in between kept the item and gave the price back. A purchase that is
+        // not stored gives nothing and the price back.
+        long mesoSends = session.Currency.MesoSends;
+        StringCode payResult = Pay(session, buy.Price, buy.Currency, notify: false);
+        if (payResult != StringCode.s_empty_string) {
+            Fail(PayError(session, payResult));
+            return;
         }
-        // Store the paid merets now, not only at the next session save (with the payback month a payback buy counted in).
+        if (buy.Payback) {
+            PaybackService.Spend(session, buy.Price, DateTime.Now);
+        }
         bool paybackCounted = !Equals(paybackBefore, session.Player.Value.Account.Payback);
-        session.SavePurchase(paybackCounted ? db => db.SavePayback(session.Player) : null);
+        Item? bagRow = null;
+        Mail? mailed = null;
+        bool stored = session.TrySavePurchase(db => {
+            if (!buy.RecordSale(db) || (paybackCounted && !db.SavePayback(session.Player))) {
+                return false;
+            }
+            if (session.Item.Inventory.CanAdd(buy.Item)) {
+                bagRow = db.CreateItem(session.CharacterId, buy.Item);
+                return bagRow != null;
+            }
+            mailed = WriteBoughtMail(db, session.CharacterId, buy.Item);
+            return mailed != null;
+        });
+        if (!stored) {
+            Logger.Error("Meret market buy of {Product} not stored, nothing given or charged CharacterId={CharacterId}",
+                ugcItemId > 0 ? ugcItemId : premiumMarketId, session.CharacterId);
+            session.Player.Value.Account.Payback = paybackBefore;
+            Settle(session, buy.Price, buy.Currency, stored: false, mesoSends);
+            Fail(PurchaseErrorUnknown);
+            return;
+        }
+        Settle(session, buy.Price, buy.Currency, stored: true, mesoSends);
+        if (bagRow != null && !session.Item.Inventory.Add(bagRow, true)) {
+            // The room was checked in the transaction; the stored row is the character's bag item, so the next login has it.
+            Logger.Error("Meret market item {ItemId} stored but not added to the bag of {CharacterId}", bagRow.Id, session.CharacterId);
+        }
+        if (mailed != null) {
+            try {
+                session.World.MailNotification(new MailNotificationRequest {
+                    CharacterId = session.CharacterId,
+                    MailId = mailed.Id,
+                });
+            } catch { /* ignored: the mail is there at the next mailbox load */ }
+        }
         if (paybackCounted && PaybackService.Shown(session, DateTime.Now)) {
             PaybackService.SendStatus(session, DateTime.Now);
         }
@@ -557,7 +599,11 @@ public class MeretMarketHandler : FieldPacketHandler {
     // a design (IsUgcProduct sets bGift) and a design's GetCurrency is merets, so no other pay type is a gift.
     private const byte PayTypeMeret = 3;
 
-    private Item? PurchasePremiumItem(GameSession session, int premiumMarketId, int childMarketItemId, out int error) {
+    // A buy checked and its item made, not yet paid or stored: the price in its currency, whether it counts for the
+    // payback, and the write of the sale's row (made in the purchase save).
+    private sealed record PreparedBuy(Item Item, long Price, MeretMarketCurrencyType Currency, bool Payback, Func<GameStorage.Request, bool> RecordSale);
+
+    private PreparedBuy? PreparePremiumBuy(GameSession session, int premiumMarketId, int childMarketItemId, out int error) {
         error = PurchaseErrorUnknown;
         PremiumMarketItem? entry = session.GetPremiumMarketItem(premiumMarketId, childMarketItemId);
         if (entry == null) {
@@ -620,25 +666,19 @@ public class MeretMarketHandler : FieldPacketHandler {
             error = PurchaseErrorNotSale;
             return null;
         }
-        StringCode payResult = Pay(session, price, entry.Metadata.CurrencyType);
-        if (payResult != StringCode.s_empty_string) {
-            error = PayError(session, payResult);
-            return null;
-        }
-        if (payback) {
-            PaybackService.Spend(session, price, now);
-        }
 
         if (entry.Metadata.DurationInDays > 0) {
             item.ExpiryTime = DateTime.Now.AddDays(entry.Metadata.DurationInDays).ToEpochSeconds();
         }
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        if (!db.CreateSoldMeretMarketItem(entry, session.CharacterId)) {
-            Logger.Fatal("Failed to create Sold Meret Market Entry for {itemId}", entry.Id);
-        }
-
-        return item;
+        error = PurchaseErrorUnknown;
+        return new PreparedBuy(item, price, entry.Metadata.CurrencyType, payback, db => {
+            if (!db.CreateSoldMeretMarketItem(entry, session.CharacterId)) {
+                Logger.Error("Failed to create Sold Meret Market Entry for {itemId}", entry.Id);
+                return false;
+            }
+            return true;
+        });
     }
 
     // A listing on sale with its design entry, and the item it sells (made, not yet paid for).
@@ -680,9 +720,9 @@ public class MeretMarketHandler : FieldPacketHandler {
         return (ugcItem, item);
     }
 
-    private Item? PurchaseUgcItem(GameSession session, long id, out int error) {
+    private PreparedBuy? PrepareUgcBuy(GameSession session, long id, out int error) {
         using GameStorage.Request db = session.GameStorage.Context();
-        // The item is made before anything is paid, and a sale that cannot be stored gives the merets back.
+        // The item is made before anything is paid; the sale is stored with the payment (the purchase save).
         if (PrepareUgcItem(session, db, id, out error) is not (UgcMarketItem ugcItem, Item item)) {
             return null;
         }
@@ -693,20 +733,14 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         error = PurchaseErrorUnknown;
-        StringCode stringCode = Pay(session, ugcItem.Price, MeretMarketCurrencyType.Meret);
-        if (stringCode != StringCode.s_empty_string) {
-            error = PayError(session, stringCode);
-            return null;
-        }
-
         // The seller's share by the charge table the client shows, at the seller's sales total before this sale.
-        SoldUgcMarketItem? soldEntry = UgcMarketManager.RecordSale(db, ugcItem);
-        if (soldEntry == null) {
-            Logger.Fatal("Unable to create Sold Ugc Market Entry for {itemId}", ugcItem.Id);
-            session.Currency.ChangeMeret(ugcItem.Price);
-            return null;
-        }
-        return item;
+        return new PreparedBuy(item, ugcItem.Price, MeretMarketCurrencyType.Meret, Payback: false, save => {
+            if (UgcMarketManager.RecordSale(save, ugcItem) == null) {
+                Logger.Error("Unable to create Sold Ugc Market Entry for {itemId}", ugcItem.Id);
+                return false;
+            }
+            return true;
+        });
     }
 
     // A design bought for another player: the item goes to the receiver's mailbox in a system mail with the client's
@@ -746,25 +780,24 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         long receiverId = receiver.Value.CharacterId;
-        (Mail? mail, bool undoFailed) = DeliverGift(
-            writeMail: () => WriteGiftMail(db, receiverId, session.PlayerName, message, item),
-            pay: () => Pay(session, price, MeretMarketCurrencyType.Meret) == StringCode.s_empty_string,
-            recordSale: () => UgcMarketManager.RecordSale(db, ugcItem) != null,
-            refund: () => session.Currency.ChangeMeret(price),
-            undoMail: written => {
-                // The failed save's rows are still tracked here and would fail the delete too.
-                db.DiscardChanges();
-                return db.DeleteMail(written.Id, receiverId);
-            });
-        if (undoFailed) {
-            // The receiver keeps the mail; when the merets were taken they stay taken, so the gift is paid for.
-            Logger.Error("Unable to take back gift mail of listing {ListingId} to {CharacterId} from {BuyerId}, paid: {Paid}",
-                ugcItem.Id, receiverId, session.CharacterId, mail != null);
+        // The merets are held, and the gift mail with its item, the seller's sale and the buyer's wallet are stored in
+        // one transaction (TrySavePurchase); a gift that is not stored gives nothing and the merets back. Before, the
+        // mail and the sale were stored at once and the wallet after them, so a crash in between delivered the gift
+        // and gave the merets back.
+        if (Pay(session, price, MeretMarketCurrencyType.Meret, notify: false) != StringCode.s_empty_string) {
+            return PurchaseErrorLackMeret;
         }
-        if (mail == null) {
+        Mail? mail = null;
+        bool stored = session.TrySavePurchase(save => {
+            mail = WriteGiftMail(save, receiverId, session.PlayerName, message, item);
+            return mail != null && UgcMarketManager.RecordSale(save, ugcItem) != null;
+        });
+        if (!stored || mail == null) {
+            Settle(session, price, MeretMarketCurrencyType.Meret, stored: false, mesoSends: 0);
             Logger.Error("Unable to deliver gift {ListingId} to {CharacterId}", ugcItem.Id, receiverId);
             return PurchaseErrorUnknown;
         }
+        Settle(session, price, MeretMarketCurrencyType.Meret, stored: true, mesoSends: 0);
 
         Item gifted = mail.Items[0];
         try {
@@ -782,29 +815,6 @@ public class MeretMarketHandler : FieldPacketHandler {
             });
         } catch { /* ignored: the mail is there at the next mailbox load */ }
         return 0;
-    }
-
-    // The order of a gift: the mail with its item is written first, so nothing is charged when it cannot be; a
-    // payment or a sale that fails after that takes the mail back, and what was paid is given back only once the
-    // mail is gone. A mail that cannot be taken back after the payment keeps the payment: the gift is delivered and
-    // paid for (only the seller's sale record is missing), and the caller logs it. Returns the delivered mail, null
-    // when nothing was delivered, and whether a take-back failed.
-    internal static (Mail? Mail, bool UndoFailed) DeliverGift(Func<Mail?> writeMail, Func<bool> pay, Func<bool> recordSale, Action refund, Func<Mail, bool> undoMail) {
-        Mail? mail = writeMail();
-        if (mail == null) {
-            return (null, false);
-        }
-        if (!pay()) {
-            return (null, !undoMail(mail));
-        }
-        if (!recordSale()) {
-            if (!undoMail(mail)) {
-                return (mail, true);
-            }
-            refund();
-            return (null, false);
-        }
-        return (mail, false);
     }
 
     // The gift mail: from s_meratmarket_gift_mail_sender, titled with the item, the content with the buyer's name
@@ -835,6 +845,26 @@ public class MeretMarketHandler : FieldPacketHandler {
             // The failed item row is still tracked and would fail the delete; dropped, the mail goes.
             db.DiscardChanges();
             db.DeleteMail(written.Id, receiverId);
+            return null;
+        }
+        written.Items.Add(row);
+        return written;
+    }
+
+    // The mail of a bought item the bag does not take, as ItemManager.MailItem writes it, inside the caller's
+    // transaction. Null when the mail or its item row cannot be written.
+    private static Mail? WriteBoughtMail(GameStorage.Request db, long characterId, Item item) {
+        Mail? written = db.CreateMail(new Mail {
+            Type = MailType.System,
+            ReceiverId = characterId,
+            Content = "50000000", // id from string/en/systemmailcontentna.xml
+        });
+        if (written == null) {
+            return null;
+        }
+        item.Slot = -1;
+        Item? row = db.CreateItem(written.Id, item);
+        if (row == null) {
             return null;
         }
         written.Items.Add(row);
@@ -1003,26 +1033,55 @@ public class MeretMarketHandler : FieldPacketHandler {
         return false;
     }
 
-    private static StringCode Pay(GameSession session, long price, MeretMarketCurrencyType currencyType) {
+    // With notify false the price is held: nothing is sent until Settle shows the take or gives it back.
+    private static StringCode Pay(GameSession session, long price, MeretMarketCurrencyType currencyType, bool notify = true) {
         switch (currencyType) {
             case MeretMarketCurrencyType.Meso:
-                if (!session.Currency.TryTakeMeso(price)) {
+                if (!session.Currency.TryTakeMeso(price, notify)) {
                     return StringCode.s_err_lack_meso;
                 }
                 return StringCode.s_empty_string;
             case MeretMarketCurrencyType.Meret:
-                if (!session.Currency.TryTakeMeret(price)) {
+                if (!session.Currency.TryTakeMeret(price, notify)) {
                     return StringCode.s_err_lack_merat;
                 }
                 return StringCode.s_empty_string;
             case MeretMarketCurrencyType.RedMeret:
                 // Pay type 2 is the client's currency 9, red merets only (FUN_14069c3e0, meratmarketbasketinfo.cpp:217).
-                if (!session.Currency.TryTakeGameMeret(price)) {
+                if (!session.Currency.TryTakeGameMeret(price, notify)) {
                     return StringCode.s_err_lack_merat_red;
                 }
                 return StringCode.s_empty_string;
             default:
                 return StringCode.s_err_lack_money;
+        }
+    }
+
+    // Ends a held Pay: once what was paid for is stored, the take is shown (and counted for use_merat); otherwise the
+    // price goes back (mesos silently unless a meso packet went out since mesoSends).
+    private static void Settle(GameSession session, long price, MeretMarketCurrencyType currencyType, bool stored, long mesoSends) {
+        switch (currencyType) {
+            case MeretMarketCurrencyType.Meso:
+                if (stored) {
+                    session.Currency.NotifyMeso();
+                } else {
+                    session.Currency.ReturnHeldMeso(price, mesoSends);
+                }
+                return;
+            case MeretMarketCurrencyType.Meret:
+                if (stored) {
+                    session.Currency.NotifyMeretTaken(price);
+                } else {
+                    session.Currency.ReturnMeret(price);
+                }
+                return;
+            case MeretMarketCurrencyType.RedMeret:
+                if (stored) {
+                    session.Currency.NotifyGameMeretTaken(price);
+                } else {
+                    session.Currency.ReturnGameMeret(price);
+                }
+                return;
         }
     }
 

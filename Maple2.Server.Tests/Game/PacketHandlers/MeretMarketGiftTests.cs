@@ -33,14 +33,10 @@ public class MeretMarketGiftTests {
 
     [SetUp]
     public void SetUp() {
-        steps.Clear();
-        DbContextOptions options = new DbContextOptionsBuilder()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        buyerTest = new TestGameSession(options);
-        receiverTest = new TestGameSession(options);
-        sellerTest = new TestGameSession(options);
+        // One in-memory store, with the buyer's save fault hook (FailSave).
+        buyerTest = new TestGameSession();
+        receiverTest = new TestGameSession(buyerTest.Options);
+        sellerTest = new TestGameSession(buyerTest.Options);
         receiverName = receiverTest.StoredCharacter().Name;
 
         buyerTest.SetTable(new UgcDesignTable(new Dictionary<int, UgcDesignTable.Entry> {
@@ -269,60 +265,43 @@ public class MeretMarketGiftTests {
         Assert.That(ReceiverMail(), Is.Empty);
     }
 
-    #region DeliverGift
-    private readonly List<string> steps = [];
+    #region Stored with the wallet
+    // The save of the wallet: SaveCurrency writes the account's and the character's currency columns.
+    private static bool WalletSave(DbContext context) =>
+        context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Modified && entry.Entity is Maple2.Database.Model.Account or Maple2.Database.Model.Character);
 
-    private (Mail? Mail, bool UndoFailed) Deliver(bool mailWritten, bool paid, bool saleStored, bool undone = true) {
-        return MeretMarketHandler.DeliverGift(
-            writeMail: () => { steps.Add("mail"); return mailWritten ? new Mail() : null; },
-            pay: () => { steps.Add("pay"); return paid; },
-            recordSale: () => { steps.Add("sale"); return saleStored; },
-            refund: () => steps.Add("refund"),
-            undoMail: _ => { steps.Add("undo"); return undone; });
+    private long StoredMeret() {
+        using var context = new Maple2.Database.Context.Ms2Context(buyerTest.Options);
+        return context.Account.AsNoTracking().Single(row => row.Id == buyerTest.AccountId).Currency.Meret;
     }
 
-    // A mail that cannot be written charges nothing.
+    // The gift mail, the sale and the buyer's wallet are stored in one transaction: the stored wallet holds the take
+    // at once. Before, the mail and the sale were stored and the wallet was left to a later save, so a crash in
+    // between delivered the gift and gave the merets back.
     [Test]
-    public void DeliverGift_MailNotWritten_NothingIsPaid() {
-        Assert.That(Deliver(false, true, true), Is.EqualTo(((Mail?) null, false)));
-        Assert.That(steps, Is.EqualTo(new[] { "mail" }));
+    public void AGift_StoresTheBuyersWalletWithTheMail() {
+        Buy(List(sellerTest.AccountId), receiverName, PayMeret);
+
+        Assert.Multiple(() => {
+            Assert.That(Answer()[2], Is.Not.EqualTo(0x1F));
+            Assert.That(ReceiverMail(), Has.Count.EqualTo(1));
+            Assert.That(buyer.Currency.Meret, Is.EqualTo(2000));
+            Assert.That(StoredMeret(), Is.EqualTo(2000));
+        });
     }
 
+    // The wallet cannot be stored: no mail, no sale, the merets back, and the generic error.
     [Test]
-    public void DeliverGift_NotPaid_TheMailIsTakenBack() {
-        Assert.That(Deliver(true, false, true), Is.EqualTo(((Mail?) null, false)));
-        Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "undo" }));
-    }
+    public void AGiftWhoseWalletIsNotStored_GivesNothing() {
+        long listing = List(sellerTest.AccountId);
+        buyerTest.FailSave = WalletSave;
 
-    // Nothing was paid, so nothing is given back; the failed take-back is reported.
-    [Test]
-    public void DeliverGift_NotPaid_TakeBackFails_IsReported() {
-        Assert.That(Deliver(true, false, true, undone: false), Is.EqualTo(((Mail?) null, true)));
-        Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "undo" }));
-    }
+        Buy(listing, receiverName, PayMeret);
+        buyerTest.FailSave = null;
 
-    // The merets come back only after the mail is gone.
-    [Test]
-    public void DeliverGift_SaleNotStored_TakesTheMailBackThenRefunds() {
-        Assert.That(Deliver(true, true, false), Is.EqualTo(((Mail?) null, false)));
-        Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "sale", "undo", "refund" }));
-    }
-
-    // The receiver keeps the mail: the payment is kept, so the gift is paid for.
-    [Test]
-    public void DeliverGift_SaleNotStored_TakeBackFails_KeepsThePayment() {
-        (Mail? mail, bool undoFailed) = Deliver(true, true, false, undone: false);
-        Assert.That(mail, Is.Not.Null);
-        Assert.That(undoFailed, Is.True);
-        Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "sale", "undo" }));
-    }
-
-    [Test]
-    public void DeliverGift_AllWritten_KeepsTheMail() {
-        (Mail? mail, bool undoFailed) = Deliver(true, true, true);
-        Assert.That(mail, Is.Not.Null);
-        Assert.That(undoFailed, Is.False);
-        Assert.That(steps, Is.EqualTo(new[] { "mail", "pay", "sale" }));
+        AssertRefused(1);
+        using GameStorage.Request db = buyerTest.Storage.Context();
+        Assert.That(db.GetMySoldUgcListings(sellerTest.AccountId), Is.Empty);
     }
     #endregion
 
