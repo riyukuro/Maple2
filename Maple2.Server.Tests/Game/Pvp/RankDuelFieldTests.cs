@@ -410,7 +410,8 @@ public class RankDuelFieldTests {
         }
 
         duel.Field.RankDuel.Death(duel.PlayerB);
-        Assert.That(Dialogs(duel.A).Single()[16..26], Is.EqualTo("00000000" + "01"));
+        // After the round: 0 ms and no auto remove, so the client keeps it open through the break.
+        Assert.That(Dialogs(duel.A).Single()[16..26], Is.EqualTo("00000000" + "00"));
         Assert.That(Dialogs(duel.B).Single(), Does.Contain(Long(duel.A.CharacterId) + Int((int) duel.PlayerA.Stats.Values[BasicAttribute.Health].Current) + Int((int) duel.PlayerA.Stats.Values[BasicAttribute.Health].Total) + "01"));
 
         WinRound(duel, duel.PlayerB);

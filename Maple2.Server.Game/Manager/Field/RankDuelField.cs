@@ -136,11 +136,11 @@ public sealed class RankDuelField {
 
     // The duel's observer dialog with both duelists' health, rounds won and ratings. Chosen here:
     // the center button's camera step is 0.
-    private Maple2.PacketLib.Tools.ByteWriter? DuelDialog(int duration) {
+    private Maple2.PacketLib.Tools.ByteWriter? DuelDialog(int duration, bool autoRemove = true) {
         if (!field.TryGetPlayerById(state.First, out FieldPlayer? a) || !field.TryGetPlayerById(state.Second, out FieldPlayer? b)) {
             return null;
         }
-        return TriggerPacket.PvpPlayerDialog(duration, Fighter(a), Fighter(b));
+        return TriggerPacket.PvpPlayerDialog(duration, Fighter(a), Fighter(b), autoRemove: autoRemove);
     }
 
     private TriggerPacket.PvpFighter Fighter(FieldPlayer player) {
@@ -304,7 +304,9 @@ public sealed class RankDuelField {
     }
 
     // A round ended and the match goes on: the round's win and lose intros, or the draw intro; the onlookers' dialog
-    // shows the new round wins.
+    // shows the new round wins. Its time is 0 and it is not removed by time: with auto remove the client closes a 0 ms
+    // dialog on its next tick (UIPvPObserverDialog vfunc_72), which would take the bars and win marks off for the
+    // break and stop the duelists' observing. The next fight start sends it with the fight's time again.
     private void EndRound(RankDuelEvent @event) {
         if (@event.End == RankDuelEnd.Win) {
             Send(@event.Winner, PvpPacket.RankDuelWin());
@@ -313,7 +315,7 @@ public sealed class RankDuelField {
             Send(state.First, PvpPacket.RankDuelDraw());
             Send(state.Second, PvpPacket.RankDuelDraw());
         }
-        if (DuelDialog(0) is { } dialog) {
+        if (DuelDialog(0, autoRemove: false) is { } dialog) {
             SendDialog(dialog);
         }
     }
