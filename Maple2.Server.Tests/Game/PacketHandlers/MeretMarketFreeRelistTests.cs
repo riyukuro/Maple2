@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
+using Microsoft.EntityFrameworkCore;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -62,7 +63,11 @@ public class MeretMarketFreeRelistTests {
         test.TakeSent();
     }
 
-    private MeretMarketHandler Handler() => new() { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata };
+    private MeretMarketHandler Handler() => new() {
+        TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata,
+        BanWordStorage = new BanWordStorage(new Maple2.Database.Context.MetadataContext(
+            new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options)),
+    };
 
     private List<byte[]> Load() {
         Handler().Handle(session, TestGameSession.Packet(writer => writer.WriteByte(11)));

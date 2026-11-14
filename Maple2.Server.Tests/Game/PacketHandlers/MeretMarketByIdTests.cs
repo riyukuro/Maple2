@@ -72,7 +72,7 @@ public class MeretMarketByIdTests {
     }
 
     private List<byte[]> Send(byte command, Action<Maple2.PacketLib.Tools.ByteWriter> ids) {
-        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata, BanWordStorage = null! }
             .Handle(session, TestGameSession.Packet(writer => {
                 writer.WriteByte(command);
                 ids(writer);

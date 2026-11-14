@@ -429,4 +429,5 @@ public static class MeretMarketError {
     public const int AlreadySale = 0x8E; // s_meratmarket_error_already_sale
     public const int AlreadyListed = 0x98; // s_meratmarket_register_error_add_already
     public const int DisableUgcItem = 0x9A; // s_meratmarket_error_register_disable_ugcitem
+    public const int BanWord = 0xAD; // the ban word message (string 0x8b7); OnErrorReply also clears the search input
 }

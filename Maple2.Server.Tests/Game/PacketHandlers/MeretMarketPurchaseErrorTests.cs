@@ -74,7 +74,7 @@ public class MeretMarketPurchaseErrorTests {
     // BuyPacket::Write without the gift: kind, the product key, flag, child id, a long, index, count, shop id, the
     // gift fields, the price, a flag and the pay type (3, merets), then four ints.
     private void Buy(int premiumId, long ugcId) {
-        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata, BanWordStorage = null! }
             .Handle(session, TestGameSession.Packet(writer => {
                 writer.WriteByte(30);
                 writer.WriteByte(ugcId > 0 ? (byte) 1 : (byte) 0);

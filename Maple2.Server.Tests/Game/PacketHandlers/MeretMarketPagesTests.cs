@@ -76,7 +76,7 @@ public class MeretMarketPagesTests {
     private static long Later => DateTime.Now.AddDays(1).ToEpochSeconds();
 
     private List<byte[]> Send(Action<ByteWriter> body) {
-        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata, BanWordStorage = null! }
             .Handle(session, TestGameSession.Packet(body));
         return test.TakeSent().Where(p => TestGameSession.Op(p) == SendOp.MeretMarket).ToList();
     }

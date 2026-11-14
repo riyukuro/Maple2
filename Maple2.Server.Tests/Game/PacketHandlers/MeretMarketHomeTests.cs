@@ -67,7 +67,7 @@ public class MeretMarketHomeTests {
     // slot an exists flag and a product (is-ugc flag, id, ...). Returns the slot count and which test products it holds
     // (found by their exists flag, is-ugc flag and id bytes; the ids are chosen not to occur elsewhere).
     private (byte slots, bool blank, bool gift) Featured() {
-        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata, BanWordStorage = null! }
             .Handle(session, TestGameSession.Packet(writer => {
                 writer.WriteByte(101);
                 writer.WriteByte(0);

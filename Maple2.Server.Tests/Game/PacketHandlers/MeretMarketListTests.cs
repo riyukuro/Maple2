@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -12,6 +13,7 @@ using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Database.Extensions;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -21,6 +23,7 @@ public class MeretMarketListTests {
     private const int Design = 11300001;
     private const int Town = 90000100;
     private const long DesignUid = 777001;
+    private const string BannedWord = "badword";
 
     private TestGameSession test = null!;
     private GameSession session => test.Session;
@@ -84,15 +87,18 @@ public class MeretMarketListTests {
     }
 
     // ListItem and RelistItem share a layout: the id, the price, the promote flag, tags, description, the fee.
-    private List<byte[]> Send(byte command, long id, long price) {
-        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+    private List<byte[]> Send(byte command, long id, long price, string tags = "tag", string description = "description") {
+        var words = new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        words.BanWordMetadata.Add(new BanWordMetadata(0, BannedWord, false));
+        words.SaveChanges();
+        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata, BanWordStorage = new BanWordStorage(words) }
             .Handle(session, TestGameSession.Packet(writer => {
                 writer.WriteByte(command);
                 writer.WriteLong(id);
                 writer.WriteLong(price);
                 writer.WriteBool(false);
-                writer.WriteUnicodeString("tag");
-                writer.WriteUnicodeString("description");
+                writer.WriteUnicodeString(tags);
+                writer.WriteUnicodeString(description);
                 writer.WriteLong(0);
             }));
         return test.TakeSent().Where(p => TestGameSession.Op(p) == SendOp.MeretMarket).ToList();
@@ -233,5 +239,50 @@ public class MeretMarketListTests {
             Assert.That(item.Description, Is.EqualTo(string.Empty));
             Assert.That(item.Tags, Is.Empty);
         });
+    }
+
+    // The dialogs' ValidateTexts, asked again here: a banned word in the tag line or the description, or a
+    // description over 200 characters, is refused with the ban word reply (0xAD) before any fee.
+    [TestCase("tag,badword", "description")]
+    [TestCase("tag", "a BADWORD here")]
+    public void BannedWordIsRefused(string tags, string description) {
+        Start();
+        AssertRefused(Send(13, itemUid, 500, tags, description), 13, 0xAD, itemUid);
+        Assert.That(session.UgcMarket.ListingCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void DescriptionOverTwoHundredIsRefused() {
+        Start();
+        AssertRefused(Send(13, itemUid, 500, description: new string('a', 201)), 13, 0xAD, itemUid);
+        Assert.That(Send(13, itemUid, 500, description: new string('a', 200)).Select(p => p[2]), Does.Not.Contain((byte) 0x00));
+        Assert.That(session.UgcMarket.ListingCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void RelistWithABannedWordIsRefused() {
+        Start(listings: 1, endTime: DateTime.Now.AddDays(-1).ToEpochSeconds());
+        long id = firstListing;
+        AssertRefused(Send(18, id, 800, tags: "badword"), 18, 0xAD, id);
+        Assert.That(session.UgcMarket.TryGetItem(id, out UgcMarketItem? item), Is.True);
+        Assert.That(item!.Price, Is.EqualTo(500));
+    }
+
+    // A search word in two of a listing's tags finds the listing once.
+    [Test]
+    public void SearchFindsAListingOnce() {
+        var listing = new UgcMarketItem(TestGameSession.Metadata(Design, EquipSlot.CP, slotMax: 1)) {
+            Status = UgcMarketListingStatus.Active,
+            ListingEndTime = 0,
+            PromotionEndTime = 0,
+            SellerAccountId = 1,
+            SellerCharacterId = 1,
+            SellerCharacterName = "Seller",
+            Description = string.Empty,
+            Tags = ["red", "reddish"],
+            Look = new UgcItemLook { Id = 1, Name = "Coat", Url = "" },
+            Blueprint = new ItemBlueprint(),
+        };
+        Assert.That(MeretMarketHandler.FilterByString([listing], "red").Count(), Is.EqualTo(1));
     }
 }

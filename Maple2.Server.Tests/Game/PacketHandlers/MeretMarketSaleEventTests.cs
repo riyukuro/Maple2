@@ -57,7 +57,7 @@ public class MeretMarketSaleEventTests {
     // BuyPacket::Write without the gift, as MeretMarketPurchaseErrorTests sends it (the price field is the client's
     // GetSalePrice; the server does not trust it).
     private void Buy(byte payType = 3) {
-        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata, BanWordStorage = null! }
             .Handle(session, TestGameSession.Packet(writer => {
                 writer.WriteByte(30);
                 writer.WriteByte(0);

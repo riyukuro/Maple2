@@ -25,6 +25,7 @@ public class MeretMarketHandler : FieldPacketHandler {
     // ReSharper disable MemberCanBePrivate.Global
     public required TableMetadataStorage TableMetadata { private get; init; }
     public required ServerTableMetadataStorage ServerTableMetadata { private get; init; }
+    public required BanWordStorage BanWordStorage { private get; init; }
     private ConstantsTable Constants => ServerTableMetadata.ConstantsTable;
     // ReSharper restore All
     #endregion
@@ -168,7 +169,8 @@ public class MeretMarketHandler : FieldPacketHandler {
         long itemUid = packet.ReadLong();
         long price = packet.ReadLong();
         bool promote = packet.ReadBool();
-        string[] tags = packet.ReadUnicodeString().Split(",");
+        string tagText = packet.ReadUnicodeString();
+        string[] tags = tagText.Split(",");
         string description = packet.ReadUnicodeString();
         packet.ReadLong(); // the fee the dialog worked out; the server charges its own
 
@@ -212,6 +214,11 @@ public class MeretMarketHandler : FieldPacketHandler {
 
         if (!UgcMarketRules.InRange(SellPriceRange(item.Metadata.Id), price)) {
             Refuse(MeretMarketError.RegisterPrice);
+            return;
+        }
+
+        if (!TextsAllowed(tagText, description)) {
+            Refuse(MeretMarketError.BanWord);
             return;
         }
 
@@ -264,11 +271,21 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
     }
 
+    // The register and resale dialogs' ValidateTexts (uimeratmarketregisterdialog.cpp:870): the tag line and the
+    // description pass the ban word check (CBanTextChecker::CheckMarketProductName, CheckMarketDescription) and the
+    // description is at most 200 characters.
+    internal const int MaxDescription = 200;
+
+    private bool TextsAllowed(string tagText, string description) {
+        return description.Length <= MaxDescription && !BanWordStorage.ContainsBannedWord(tagText) && !BanWordStorage.ContainsBannedWord(description);
+    }
+
     private void HandleRelistItem(GameSession session, IByteReader packet) {
         long ugcMarketItemId = packet.ReadLong();
         long price = packet.ReadLong();
         bool promote = packet.ReadBool();
-        string[] tags = packet.ReadUnicodeString().Split(",");
+        string tagText = packet.ReadUnicodeString();
+        string[] tags = tagText.Split(",");
         string description = packet.ReadUnicodeString();
         packet.ReadLong(); // the fee the dialog worked out; the server charges its own
 
@@ -285,6 +302,11 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
         if (!UgcMarketRules.InRange(SellPriceRange(item.ItemMetadata.Id), price)) {
             Refuse(MeretMarketError.RegisterPrice);
+            return;
+        }
+
+        if (!TextsAllowed(tagText, description)) {
+            Refuse(MeretMarketError.BanWord);
             return;
         }
 
@@ -915,7 +937,7 @@ public class MeretMarketHandler : FieldPacketHandler {
                                     (job & entry.ItemMetadata.Limit.JobRecommends.FilterFlags()) != JobFilterFlag.None);
     }
 
-    private static IEnumerable<MarketItem> FilterByString(IEnumerable<MarketItem> items, string searchString) {
+    internal static IEnumerable<MarketItem> FilterByString(IEnumerable<MarketItem> items, string searchString) {
         foreach (MarketItem item in items) {
             if (item is UgcMarketItem ugc) {
                 if (ugc.Look.Name.Contains(searchString, StringComparison.OrdinalIgnoreCase)) {
@@ -928,10 +950,9 @@ public class MeretMarketHandler : FieldPacketHandler {
                     continue;
                 }
 
-                foreach (string tag in ugc.Tags) {
-                    if (tag.Contains(searchString, StringComparison.OrdinalIgnoreCase)) {
-                        yield return ugc;
-                    }
+                // One row per listing, however many of its tags match.
+                if (ugc.Tags.Any(tag => tag.Contains(searchString, StringComparison.OrdinalIgnoreCase))) {
+                    yield return ugc;
                 }
                 continue;
             }
