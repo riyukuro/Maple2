@@ -129,8 +129,10 @@ public class AttendanceHandler : FieldPacketHandler {
     }
 
     // A reset being stored refuses the attend (its save does not wait on the field thread); the client sends nothing
-    // more for this event, so it comes back 2 s later on the field's queue while the session plays on that field, as
-    // a purchase save does. A session that left the field is attended at its next BeginTimer.
+    // more for this event (BeginTimer comes only at login or a channel change), so it comes back 2 s later on the
+    // field's queue while the session plays on that field, as a purchase save does, and at the session's next field
+    // entry once it left that field (GameSession.AttendRefused), as QuestManager does for a field mission. One try
+    // again per event is pending: a BeginTimer sent again while one waits queues no other.
     private void AttendAtGameStart(GameSession session, GameEvent gameEvent) {
         if (gameEvent.Metadata.Data is not AttendGift attendGift || !AttendanceRules.AttendsAtGameStart(attendGift.RequiredPlaySeconds)
             || !RequirementMet(session, attendGift, gameEvent) || AttendedToday(session, gameEvent)) {
@@ -138,15 +140,21 @@ public class AttendanceHandler : FieldPacketHandler {
         }
         if (!Attend(session, attendGift, gameEvent, out bool resetRunning) && resetRunning && session.Field is { } field) {
             int eventId = gameEvent.Id;
-            field.Scheduler.Schedule(() => AttendAtGameStartRetry(session, field, eventId), AttendRetryDelay);
+            if (!session.AttendRefused(eventId, () => AttendAgain(session, eventId))) {
+                return;
+            }
+            field.Scheduler.Schedule(() => {
+                if (session.PlaysOn(field)) {
+                    session.AttendAgain(eventId);
+                }
+            }, AttendRetryDelay);
         }
     }
 
-    private void AttendAtGameStartRetry(GameSession session, FieldManager field, int eventId) {
-        if (!session.PlaysOn(field) || session.FindEvent(eventId) is not { } gameEvent) {
-            return;
+    private void AttendAgain(GameSession session, int eventId) {
+        if (session.FindEvent(eventId) is { } gameEvent) {
+            AttendAtGameStart(session, gameEvent);
         }
-        AttendAtGameStart(session, gameEvent);
     }
 
     // Mails the next reward. The mail, its item, the claim count and the day's mark (markType set to markValue: the

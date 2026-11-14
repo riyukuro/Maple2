@@ -350,11 +350,17 @@ public sealed class TestGameSession {
     }
 
     // A live event (started three days ago, ending in thirty) of the game server the session asks for its events.
-    // Added before Start: the login reads the character's stored user values of it.
+    // Added before Start: the login reads the character's stored user values of it. One added after Start goes
+    // to the started session's server too (its stored user values are not read then).
     public GameEvent AddEvent(int id, GameEventType type, GameEventData data, DateTime? start = null, DateTime? end = null) {
         var gameEvent = new GameEvent(new GameEventMetadata(id, type, start ?? DateTime.Now.AddDays(-3), end ?? DateTime.Now.AddDays(30),
             TimeSpan.Zero, TimeSpan.Zero, [], data, string.Empty, string.Empty, string.Empty, string.Empty));
         events[id] = gameEvent;
+        if (started != null) {
+            object server = typeof(GameSession).GetField("server", Any)!.GetValue(started)!;
+            var cache = (IDictionary<int, GameEvent>) typeof(Maple2.Server.Game.GameServer).GetField("eventCache", Any)!.GetValue(server)!;
+            cache[id] = gameEvent;
+        }
         return gameEvent;
     }
 
@@ -438,6 +444,7 @@ public sealed class TestGameSession {
         // The objects and cubes whose interaction the session began.
         typeof(GameSession).GetField(nameof(GameSession.InteractStarted), Any)!.SetValue(session, new HashSet<string>());
         typeof(GameSession).GetField(nameof(GameSession.CubeStarted), Any)!.SetValue(session, new HashSet<string>());
+        typeof(GameSession).GetField("attendRefused", Any)!.SetValue(session, new Dictionary<int, Action>());
 
         stats = Uninitialized<ItemStatsCalculator>();
         typeof(ItemStatsCalculator).GetField("<TableMetadata>k__BackingField", Any)!.SetValue(stats, TableMetadata);

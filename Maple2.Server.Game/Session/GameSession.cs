@@ -154,6 +154,9 @@ public sealed partial class GameSession : Core.Network.Session {
     public readonly HashSet<string> InteractStarted = [];
     // The farming and breeding cube ids of the last FunctionCube begin packet; same thread rule.
     public readonly HashSet<string> CubeStarted = [];
+    // The attends at game start a reset being stored refused (AttendanceHandler), by event id, each with its try
+    // again: run 2 s later on the field's queue, or at the next field entry once the session left that field.
+    private readonly Dictionary<int, Action> attendRefused = [];
     // The recall offered to this player per RecallScrollType (party, guild, wedding); lock the array to use it.
     public readonly PendingRecall?[] Recalls = new PendingRecall?[3];
 
@@ -1037,6 +1040,7 @@ public sealed partial class GameSession : Core.Network.Session {
         // CompleteFieldMissions) is tried again.
         Quest.CompleteStampQuests();
         Quest.CompleteFieldMissions();
+        AttendAgainAtFieldEntry();
         if (firstVisit) {
             ConditionUpdate(ConditionType.explore_continent, codeLong: (int) Field.Metadata.Property.Continent);
             ConditionUpdate(ConditionType.continent, codeLong: (int) Field.Metadata.Property.Continent);
@@ -2160,6 +2164,35 @@ public sealed partial class GameSession : Core.Network.Session {
 
     // The session still plays on the field (a try again queued on the field's queue runs only then).
     public bool PlaysOn(FieldManager field) => TimedSaveDue(field);
+
+    // Keeps the try again of a refused attend; false when one is pending for that event already (nothing to queue).
+    public bool AttendRefused(int eventId, Action tryAgain) {
+        lock (attendRefused) {
+            return attendRefused.TryAdd(eventId, tryAgain);
+        }
+    }
+
+    // Runs the event's pending try again, taken off first so that a refusal keeps a new one.
+    public void AttendAgain(int eventId) {
+        Action? tryAgain;
+        lock (attendRefused) {
+            if (!attendRefused.Remove(eventId, out tryAgain)) {
+                return;
+            }
+        }
+        tryAgain();
+    }
+
+    // The tries again whose queued run found the session gone from their field.
+    public void AttendAgainAtFieldEntry() {
+        int[] eventIds;
+        lock (attendRefused) {
+            eventIds = attendRefused.Keys.ToArray();
+        }
+        foreach (int eventId in eventIds) {
+            AttendAgain(eventId);
+        }
+    }
 
     private SaveResult PurchaseSave(Func<GameStorage.Request, bool> alsoSave, Func<bool>? refused = null) {
         try {

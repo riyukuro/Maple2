@@ -211,11 +211,14 @@ public class ResetSaveTests {
         Assert.That((saved, test.Errors.Count, session.Field!.Scheduler.Count), Is.EqualTo((1, 0, queued)));
     }
 
-    // An AttendGift event with no play time is attended at BeginTimer only (the client sends no claim for it). While a
-    // reset is being stored the attend is refused at once and comes back 2 s later on the field's queue, as a purchase
-    // save does, and the day's gift is given once then. It used to wait for the next BeginTimer or login.
-    [Test]
-    public void AttendAtGameStart_ResetRunning_ComesBackLater() {
+    // An AttendGift event with no play time is attended at BeginTimer only (the client sends it at login or a channel
+    // change, not at a field entry). While a reset is being stored the attend is refused at once and comes back 2 s
+    // later on the field's queue, or at the next field entry when the session left the field, and the day's gift is
+    // given once then. A BeginTimer sent again while the try again waits queues no other. It used to wait for the next
+    // login.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void AttendAtGameStart_ResetRunning_ComesBackLater(bool leftTheField) {
         const int eventId = 7103;
         test.Register(TestGameSession.Metadata(20000001));
         test.AddEvent(eventId, GameEventType.AttendGift, new AttendGift(
@@ -224,26 +227,37 @@ public class ResetSaveTests {
         typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(session, false);
         session.State = SessionState.Connected;
         test.Errors.Clear();
-        int queued = session.Field!.Scheduler.Count;
+        FieldManager field = session.Field!;
+        int queued = field.Scheduler.Count;
         var handler = new AttendanceHandler { ItemMetadata = null! };
         using (new ResetHold(options, "DailyReset", test.AccountId, test.CharacterId)) {
+            handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(1)));
+            handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(1)));
             handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(1)));
         }
         Assert.Multiple(() => {
             Assert.That(session.GameEvent.Peek(GameEventUserValueType.AttendanceRewardsClaimed, eventId), Is.Null.Or.Empty.Or.EqualTo("0"));
-            Assert.That((test.Errors.Count, session.Field!.Scheduler.Count), Is.EqualTo((0, queued + 1)));
+            Assert.That((test.Errors.Count, field.Scheduler.Count), Is.EqualTo((0, queued + 1)), "one try again for three refusals");
         });
 
-        // The reset rolled back: the queued try again gives the gift and stores the claim.
-        var timed = (System.Collections.IList) typeof(EventQueue).GetField("timedEvents", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .GetValue(session.Field!.Scheduler)!;
-        object retry = timed.Cast<object>().Last();
-        var task = (Action) retry.GetType().GetField("task", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(retry)!;
-        timed.Remove(retry);
-        task();
+        // The reset rolled back: the try again gives the gift and stores the claim.
+        if (leftTheField) {
+            // The queued run finds the session on another field and does nothing; the field entry gives it.
+            test.EnterMap(TestGameSession.Map(2000024));
+            RunQueued(field);
+            Assert.That(session.GameEvent.Peek(GameEventUserValueType.AttendanceRewardsClaimed, eventId), Is.Null.Or.Empty.Or.EqualTo("0"));
+            session.AttendAgainAtFieldEntry();
+        } else {
+            RunQueued(field);
+        }
         Assert.That(session.GameEvent.Peek(GameEventUserValueType.AttendanceRewardsClaimed, eventId), Is.EqualTo("1"));
         Assert.That(test.StoredEventValues(eventId)[GameEventUserValueType.AttendanceRewardsClaimed], Is.EqualTo("1"));
-        Assert.That((test.Errors.Count, session.Field!.Scheduler.Count), Is.EqualTo((0, queued)));
+        Assert.That((test.Errors.Count, field.Scheduler.Count), Is.EqualTo((0, queued)));
+
+        // Never twice: the next field entry and BeginTimer give nothing more.
+        session.AttendAgainAtFieldEntry();
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(1)));
+        Assert.That(test.StoredEventValues(eventId)[GameEventUserValueType.AttendanceRewardsClaimed], Is.EqualTo("1"));
     }
 
     // A field mission whose last counter is filled while a reset is being stored: its completion is refused (its save
