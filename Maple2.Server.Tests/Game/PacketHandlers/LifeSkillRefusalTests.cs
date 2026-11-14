@@ -83,6 +83,42 @@ public class LifeSkillRefusalTests {
         AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_unknown);
     }
 
+    private bool StoredClaim(int id) {
+        using GameStorage.Request db = test.Storage.Context();
+        Player? stored = db.LoadPlayer(test.AccountId, test.CharacterId, 1, 1);
+        return stored!.Unlock.MasteryRewardsClaimed.TryGetValue(id, out bool claimed) && claimed;
+    }
+
+    // The claim is stored before its box is given: a crash after the box cannot leave the grade unclaimed in the
+    // database. Before, the mark stayed in memory until the next session save.
+    [Test]
+    public void Reward_TheClaimIsStoredWithTheBox() {
+        GameSession session = StartMastery();
+        session.Player.Value.Character.Mastery.Mining = 50;
+
+        Send(session, 1, MiningId(2));
+
+        Assert.That(StoredClaim(MiningId(2)), Is.True);
+        Assert.That(Count(session, RewardItemId), Is.EqualTo(3));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A save that fails gives nothing and leaves the grade unclaimed.
+    [Test]
+    public void Reward_AFailedSaveGivesNothing() {
+        GameSession session = StartMastery();
+        session.Player.Value.Character.Mastery.Mining = 50;
+        test.FailSave = _ => true;
+
+        Send(session, 1, MiningId(2));
+        test.FailSave = null;
+
+        AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_unknown);
+        Assert.That(Count(session, RewardItemId), Is.EqualTo(0));
+        Assert.That(session.Player.Value.Unlock.MasteryRewardsClaimed, Is.Empty);
+        Assert.That(StoredClaim(MiningId(2)), Is.False);
+    }
+
     [Test]
     public void Reward_BelowTheGradeValueIsRefused() {
         GameSession session = StartMastery();

@@ -745,6 +745,28 @@ public partial class GameStorage {
             return true;
         }
 
+        // The character's claimed mastery reward boxes (the unlock row's MasteryRewardsClaimed), stored on their own
+        // so a claim is in the database before its box is given.
+        public bool SaveMasteryRewardsClaimed(Player player) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            CharacterUnlock? unlock = Context.CharacterUnlock.Find(player.Character.Id);
+            if (unlock == null) {
+                return false;
+            }
+
+            unlock.MasteryRewardsClaimed = new Dictionary<int, bool>(player.Unlock.MasteryRewardsClaimed);
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(player.Character.Id);
+            if (updated != null) {
+                player.Unlock.LastModified = updated.Value.UnlockLastModified;
+            }
+            return true;
+        }
+
         private static AccountCurrency ToAccountCurrency(Currency currency) {
             return new AccountCurrency {
                 Meret = currency.Meret,

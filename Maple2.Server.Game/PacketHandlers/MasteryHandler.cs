@@ -85,12 +85,32 @@ public class MasteryHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Item.Inventory.Add(rewardItem, true)) {
+        if (!session.Item.Inventory.HasRoomFor(rewardItem)) {
             session.Send(ChatPacket.Alert(StringCode.s_err_inventory));
             return;
         }
 
-        session.Player.Value.Unlock.MasteryRewardsClaimed.Add(rewardBoxDetails, true);
+        // The claim is in the database before its box is given (as the premium club claim), so a crash between them
+        // cannot give the box twice. A failed save takes the mark back out and gives nothing.
+        IDictionary<int, bool> claimed = session.Player.Value.Unlock.MasteryRewardsClaimed;
+        bool marked = false;
+        if (!session.TrySavePurchase(db => {
+            marked = true;
+            claimed[rewardBoxDetails] = true;
+            return db.SaveMasteryRewardsClaimed(session.Player);
+        })) {
+            if (marked) {
+                claimed.Remove(rewardBoxDetails);
+            }
+            Logger.Warning("Mastery: reward {RewardId} claim not stored, nothing given", rewardBoxDetails);
+            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_unknown));
+            return;
+        }
+
+        // The stored claim's box: to the inventory, or by mail when the inventory no longer takes it.
+        if (!session.Item.Inventory.Add(rewardItem, true, commit: true) && !session.Item.MailItem(rewardItem)) {
+            Logger.Error("Mastery: claimed reward {RewardId} item {ItemId} x{Amount} neither added nor mailed", rewardBoxDetails, rewardItem.Id, rewardItem.Amount);
+        }
         session.Send(MasteryPacket.ClaimReward(rewardBoxDetails, new List<ItemComponent>() {
             new(entry.ItemId, (short) entry.ItemRarity, entry.ItemAmount, ItemTag.None),
         }));
