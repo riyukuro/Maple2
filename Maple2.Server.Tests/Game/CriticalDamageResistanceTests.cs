@@ -18,21 +18,30 @@ namespace Maple2.Server.Tests.Game;
 public class CriticalDamageResistanceTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-    [TestCase(1000, 0, 0f, 2f)]
-    [TestCase(1000, 0, 0.5f, 1.5f)]
-    [TestCase(1000, 0, 0.25f, 1.75f)]
+    [TestCase(1000, 0f, 2f)]
+    [TestCase(1000, 0.5f, 1.5f)]
+    [TestCase(1000, 0.25f, 1.75f)]
     // The cap applies after the resistance: 3000 is 2.5 either way at a half.
-    [TestCase(3000, 0, 0.5f, 2.5f)]
-    [TestCase(2000, 0, 0.5f, 2f)]
+    [TestCase(3000, 0.5f, 2.5f)]
+    [TestCase(2000, 0.5f, 2f)]
     // A full (or larger) resistance leaves the plain hit, never less.
-    [TestCase(1000, 0, 1f, 1f)]
-    [TestCase(1000, 0, 1.5f, 1f)]
+    [TestCase(1000, 1f, 1f)]
+    [TestCase(1000, 1.5f, 1f)]
     // A negative resistance adds, up to the cap.
-    [TestCase(1000, 0, -0.2f, 2.2f)]
-    [TestCase(3000, 14, 0.5f, 2.5f)]
-    [TestCase(8000, 14, 0.5f, 5f)]
-    public void TheResistanceScalesTheBonusBeforeTheCap(int criticalDamage, int mode, float resistance, float expected) {
-        Assert.That(Maple2.Server.Game.LuaFunctions.Lua.CalcCritDamage(criticalDamage, mode, resistance), Is.EqualTo(expected).Within(1e-5f));
+    [TestCase(1000, -0.2f, 2.2f)]
+    // The client has no other cap (the old mode 14 allowed 5).
+    [TestCase(8000, 0.5f, 2.5f)]
+    public void TheResistanceScalesTheBonusBeforeTheCap(int criticalDamage, float resistance, float expected) {
+        Assert.That(Maple2.Server.Game.LuaFunctions.Lua.CalcCritDamage(criticalDamage, resistance), Is.EqualTo(expected).Within(1e-5f));
+    }
+
+    // The special 203 is added past the 2.5 clamp, scaled by the same rate: 2000 with 300 is 2.8, 1000 with 300 is 2.3,
+    // and at a half resistance 2000 with 300 is 2 + 0.15.
+    [TestCase(2000, 0f, 300, 2.8f)]
+    [TestCase(1000, 0f, 300, 2.3f)]
+    [TestCase(2000, 0.5f, 300, 2.15f)]
+    public void TheSpecial203IsAddedPastTheCap(int criticalDamage, float resistance, int bonus, float expected) {
+        Assert.That(Maple2.Server.Game.LuaFunctions.Lua.CalcCritDamage(criticalDamage, resistance, bonus), Is.EqualTo(expected).Within(1e-5f));
     }
 
     [Test]

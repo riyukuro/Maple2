@@ -232,13 +232,10 @@ public class LuaTests {
     [TestCase(100, 0, 1.1f)]
     [TestCase(1000, 0, 2f)]
     [TestCase(2000, 0, 2.5f)]
-    [TestCase(3000, 14, 4f)]
-    [TestCase(3500, 14, 4.5f)]
-    [TestCase(4000, 14, 5f)]
     public void TestCalcCritDamage(int criticalDamage, int mode, float expected) {
         // Act
         float maple2LuaResult = maple2Lua.CalcCritDamage(criticalDamage, mode);
-        float luaResult = Server.Game.LuaFunctions.Lua.CalcCritDamage(criticalDamage, mode);
+        float luaResult = Server.Game.LuaFunctions.Lua.CalcCritDamage(criticalDamage);
 
         // Assert
         Assert.Multiple(() => {

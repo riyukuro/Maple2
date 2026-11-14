@@ -45,14 +45,16 @@ public static class Lua {
 
     // The client's own critical damage (luautil.cpp CLua::FUN_140674a70(value, rate, bonus)) scales the critical damage
     // by max(1 - rate, 0) before the clamp; the client always passes rate 0 (its character info), so the rate being the
-    // target's critical damage resistance is the server's reading.
-    public static float CalcCritDamage(float critDamage, int mode = 0, float resistance = 0) {
-        float rate = Math.Max(1 - resistance, 0);
-        if (mode == 14) {
-            return Math.Clamp(1 + (critDamage / 1000 * rate), 1, 5);
+    // target's critical damage resistance is the server's reading. In doubles, clamped to 1-2.5; the special 203 (bonus)
+    // is added past the clamp, scaled by the same rate.
+    public static float CalcCritDamage(long critDamage, float resistance = 0, long bonus = 0) {
+        double rate = Math.Max(1.0 - resistance, 0);
+        double result = Math.Clamp(1.0 + (double) critDamage / 1000.0 * rate, 1.0, 2.5);
+        if (bonus != 0) {
+            result += (double) bonus / 1000.0 * rate;
         }
 
-        return Math.Clamp(1 + (critDamage / 1000 * rate), 1, 2.5f);
+        return (float) result;
     }
 
     // The client's crit rate (luautil.cpp CLua::FUN_1406747a0(job, luk, critRate, res, bonus, rate)), in doubles: a
