@@ -512,6 +512,7 @@ public class AiState {
 
     private void ProcessNode(TargetNode node) {
         actor.BattleState.TargetNode = node;
+        actor.BattleState.Retarget();
     }
 
     private void ProcessNode(SayNode node) {

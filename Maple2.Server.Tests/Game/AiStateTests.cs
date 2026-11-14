@@ -22,6 +22,7 @@ public class AiStateTests : TriggerTestBase {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private const string AiPath = "AI_StateTest.xml";
     private const int NpcId = 21000001;
+    private const float Sight = 3000;
 
     private FieldNpc npc = null!;
 
@@ -56,7 +57,7 @@ public class AiStateTests : TriggerTestBase {
         var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 1, false, 0, 0, 0, 0, [], [], 0);
         var stat = new NpcMetadataStat(new Dictionary<BasicAttribute, long> { [BasicAttribute.Health] = 100 }, [], [], [], []);
         return new NpcMetadata(id, "npc", AiPath, new NpcMetadataModel("test_model", 1, 1), stat, basic,
-            new NpcMetadataDistance(0, 0, 0, 0, 0, 0, 0), new NpcMetadataSkill([], 0),
+            new NpcMetadataDistance(0, Sight, 300, 300, Sight, 300, 300), new NpcMetadataSkill([], 0),
             new NpcMetadataProperty([], new NpcMetadataCapsule(10, 100), null),
             new NpcMetadataDropInfo(0, 0, [], [], [], [], []), new NpcMetadataAction(0, 100, 100, [], 0, ""),
             new NpcMetadataDead(0, 0, 0, 0, 0), null, new NpcMetadataLookAtTarget("", false, false));
@@ -85,6 +86,21 @@ public class AiStateTests : TriggerTestBase {
         typeof(MetadataStorage<string, AiMetadata>).GetField("Cache", Any)!.SetValue(storage, cache);
         return storage;
     }
+
+    // Another player in the npc's field, x away from the npc.
+    private FieldPlayer AddPlayer(int objectId, float x) {
+        var other = new TestGameSession(test.Options);
+        other.Start();
+        typeof(Actor<Maple2.Model.Game.Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(other.Session.Player, objectId);
+        typeof(Actor<Maple2.Model.Game.Player>).GetField("<Field>k__BackingField", Any)!.SetValue(other.Session.Player, Field);
+        other.Session.Field = Field;
+        other.Session.Player.Position = npc.Position + new Vector3(x, 0, 0);
+        Field.Players[objectId] = other.Session.Player;
+        return other.Session.Player;
+    }
+
+    private static TargetNode Target(NodeTargetType type, int from, int to) =>
+        new("target", [], type, 0, 0, 0, 0, from, to, Vector3.Zero, NodeAiTarget.DefaultTarget, false, 0, 0, false);
 
     private static TraceNode Trace(int limit, int till = 0, int skillIdx = 0, long cooltime = 0) =>
         new("trace", [], limit, skillIdx, "", 0, till, 0, cooltime, false);
@@ -231,6 +247,45 @@ public class AiStateTests : TriggerTestBase {
         Run();
         Assert.That(npc.AiExtraData["Summon"], Is.EqualTo(1));
         Assert.That(npc.AiExtraData.GetValueOrDefault("After"), Is.EqualTo(1));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // KR AI_Alex_AnchorLizard.xml: <node name="target" type="near" from="10" to="500" /> after a skill. The npc turns
+    // to the nearest player in 10 to 500 when the node runs, from a target it had 400 away.
+    [Test]
+    public void Target_Near_TakesTheNearestInItsWindow() {
+        Spawn([Target(NodeTargetType.Near, 10, 500)], position: Vector3.Zero);
+        FieldPlayer far = AddPlayer(2, 400);
+        FieldPlayer near = AddPlayer(3, 100);
+        AddPlayer(4, 5);
+        npc.BattleState.ForceTarget(far);
+        Run();
+        Assert.That(npc.BattleState.Target, Is.SameAs(near));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // KR AI_Alex_AnchorLizard.xml: a standby with cooltime="10000" (its comment: the periodic target switch) whose child is
+    // <node name="target" type="rand" from="10" to="1500" />. Each run picks one of the players in the window at
+    // random; with none in it the npc keeps its target.
+    [Test]
+    public void Target_Rand_PicksAtRandomInItsWindow() {
+        Spawn([Target(NodeTargetType.Rand, 10, 1500)], position: Vector3.Zero);
+        FieldPlayer first = AddPlayer(2, 400);
+        FieldPlayer second = AddPlayer(3, 800);
+        FieldPlayer outside = AddPlayer(4, 2000);
+        var picked = new HashSet<IActor>();
+        for (int i = 0; i < 60; i++) {
+            npc.BattleState.ForceTarget(outside);
+            Run();
+            picked.Add(npc.BattleState.Target!);
+        }
+        Assert.That(picked, Is.EquivalentTo(new IActor[] { first, second }));
+
+        Spawn([Target(NodeTargetType.Rand, 10, 300)], position: Vector3.Zero);
+        FieldPlayer kept = AddPlayer(2, 400);
+        npc.BattleState.ForceTarget(kept);
+        Run();
+        Assert.That(npc.BattleState.Target, Is.SameAs(kept));
         Assert.That(test.Errors, Is.Empty);
     }
 

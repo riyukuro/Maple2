@@ -46,6 +46,22 @@ public class BattleState {
         actor.AppendDebugMessage($"Forced target '{GetTargetName()}'\n");
     }
 
+    // A target node picks the target when it runs, by its own rule (KR AI_Alex_AnchorLizard.xml: a standby every 10 s
+    // whose target node, rand 10 to 1500, is commented as the periodic target switch). With no actor in the node's
+    // window the npc keeps the target it has. rankAssociate (8 nodes) has no rule here, so it changes nothing.
+    public void Retarget() {
+        if (!CanBattle || actor.IsDead || TargetType == NodeTargetType.RankAssociated || actor is FieldPet { OwnerId: 0, TamingPoint: <= 0 }) {
+            return;
+        }
+
+        IActor? previous = Target;
+        FindNewTarget();
+        Target ??= previous;
+        if (Target != previous) {
+            actor.AppendDebugMessage($"New target '{GetTargetName()}' (target node)\n");
+        }
+    }
+
     private string GetTargetName() {
         if (Target is null) {
             return "null";
@@ -275,7 +291,7 @@ public class BattleState {
         float nextTargetDistance = float.MaxValue;
         List<(float, IActor)>? candidates = null;
 
-        if (TargetType == NodeTargetType.RandAssociated || TargetType == NodeTargetType.Mid) {
+        if (TargetType == NodeTargetType.Rand || TargetType == NodeTargetType.RandAssociated || TargetType == NodeTargetType.Mid) {
             candidates = new List<(float, IActor)>();
         }
 
@@ -322,7 +338,7 @@ public class BattleState {
             }
         }
 
-        if (TargetType == NodeTargetType.RandAssociated) {
+        if (TargetType == NodeTargetType.Rand || TargetType == NodeTargetType.RandAssociated) {
             if (candidates!.Count == 0) {
                 nextTarget = null;
             } else {
