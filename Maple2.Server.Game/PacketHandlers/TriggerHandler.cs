@@ -90,7 +90,11 @@ public class TriggerHandler : FieldPacketHandler {
                 break;
             case WidgetType.SceneMovie:
                 if (session.Field.Widgets.TryGetValue(widgetType.ToString(), out Widget? sceneMovieWidget)) {
-                    sceneMovieWidget.Conditions["IsStop"] = arg;
+                    if (sceneMovieWidget is SceneMovieWidget movie) {
+                        movie.Stop(session.CharacterId, arg);
+                    } else {
+                        sceneMovieWidget.Conditions["IsStop"] = arg;
+                    }
                     session.Send(TriggerPacket.UiSkipMovie(arg));
                 }
                 break;

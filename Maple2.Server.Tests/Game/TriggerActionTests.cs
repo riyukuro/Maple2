@@ -21,7 +21,9 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Model.Widget;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.Game.Util;
@@ -38,6 +40,17 @@ namespace Maple2.Server.Tests.Game;
 // Each node is read by the trigger mapping, as from the ingested Xml (snake_case attributes).
 public abstract class TriggerTestBase {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+    // A second player in the same field.
+    protected TestGameSession SecondPlayer() {
+        var other = new TestGameSession(test.Options);
+        other.Start();
+        typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(other.Session.Player, 2);
+        Field.Players[2] = other.Session.Player;
+        other.Session.Field = Field;
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(other.Session.Player, Field);
+        return other;
+    }
 
     protected TestGameSession test = null!;
     protected TriggerContext context = null!;
@@ -1657,17 +1670,6 @@ public class TriggerItemTests : TriggerTestBase {
         Assert.That(Drops().Select(drop => (drop.ItemId, drop.Receiver)), Is.EqualTo(new[] { (QuestItem, test.Session.CharacterId) }));
     }
 
-    // A second player in the same field.
-    private TestGameSession SecondPlayer() {
-        var other = new TestGameSession(test.Options);
-        other.Start();
-        typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(other.Session.Player, 2);
-        Field.Players[2] = other.Session.Player;
-        other.Session.Field = Field;
-        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(other.Session.Player, Field);
-        return other;
-    }
-
     // A group mixing quest-only and plain rows rolls its drop count once over all of them, as the client's box roll
     // does (ItemDropTable::DropIndividualGroup calls PickDropCount once per group): a count of 1 gives one row, the
     // plain one for anyone or the quest one for the player who needs it, never both.
@@ -2209,10 +2211,45 @@ public class TriggerInterfaceTests : TriggerTestBase {
     [Test]
     public void PlaySceneMovie_Packet() {
         Start();
+        typeof(FieldManager).GetField(nameof(FieldManager.Widgets))!.SetValue(Field, new Dictionary<string, Widget>());
 
         Action("""<action name="play_scene_movie" file_name="common\JobIntro_Thief.usm" movie_id="1" skip_type="needAll" />""");
         ByteReader sent = Sent(SendOp.Trigger).Single();
         Assert.That((sent.ReadByte(), sent.ReadByte(), sent.ReadString(), sent.ReadInt()), Is.EqualTo(((byte) 9, (byte) 4, "common\\JobIntro_Thief.usm", 1)));
+    }
+
+    // play_scene_movie skip_type="needAll" (KR 02000410/02000428/02000429: the dungeon waits on SceneMovie IsStop 1
+    // or 10 s): each client sends its own stop (UICutSceneMovie::Exit, Trigger UpdateWidget SceneMovie), so IsStop
+    // holds once every player in the field has stopped; without needAll the first stop is enough.
+    [Test]
+    public void PlaySceneMovie_NeedAllWaitsForEveryPlayer() {
+        Start();
+        typeof(FieldManager).GetField(nameof(FieldManager.Widgets))!.SetValue(Field, new Dictionary<string, Widget>());
+        TestGameSession other = SecondPlayer();
+        const string isStop = """<condition name="widget_value" type="SceneMovie" widget_name="IsStop" condition="1" />""";
+        Action("""<action name="create_widget" type="SceneMovie" />""");
+        Action("""<action name="widget_action" type="SceneMovie" func="Clear" />""");
+
+        Action("""<action name="play_scene_movie" file_name="WorldInvasionScene6.usm" movie_id="1" skip_type="needAll" />""");
+        Assert.That(Condition(isStop), Is.False);
+        StopMovie(test.Session);
+        Assert.That(Condition(isStop), Is.False);
+        StopMovie(other.Session);
+        Assert.That(Condition(isStop), Is.True);
+
+        Action("""<action name="widget_action" type="SceneMovie" func="Clear" />""");
+        Action("""<action name="play_scene_movie" file_name="WorldInvasionScene6.usm" movie_id="1" />""");
+        StopMovie(test.Session);
+        Assert.That(Condition(isStop), Is.True);
+    }
+
+    // The client's movie stop: Trigger UpdateWidget (9) SceneMovie (5) with the movie id.
+    private static void StopMovie(GameSession session) {
+        new TriggerHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(9);
+            writer.WriteByte(5);
+            writer.WriteInt(1);
+        }));
     }
 
     // set_pc_emotion_sequence (91): Trigger Ui (9) EmotionSequence (7) with the count and each sequence name.

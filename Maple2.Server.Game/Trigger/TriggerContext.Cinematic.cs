@@ -1,6 +1,8 @@
-﻿using Maple2.PacketLib.Tools;
+﻿using Maple2.Model.Enum;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger.Helpers;
 
@@ -97,6 +99,11 @@ public partial class TriggerContext {
 
     public void PlaySceneMovie(string fileName, int movieId, string skipType) {
         DebugLog("[PlaySceneMovie] fileName:{FileName}, movieId:{MovieId}, skipType:{SkipType}", fileName, movieId, skipType);
+        // The SceneMovie widget counts the players' stops (the client's UICutSceneMovie::Exit @0x141910220 sends
+        // Trigger UpdateWidget SceneMovie with the movie id); needAll waits for every player in the field.
+        if (Field.Widgets.TryGetValue(nameof(WidgetType.SceneMovie), out Widget? widget) && widget is SceneMovieWidget movie) {
+            movie.Play(skipType == "needAll");
+        }
         Broadcast(TriggerPacket.UiStartMovie(fileName, movieId));
     }
 
