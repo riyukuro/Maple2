@@ -64,9 +64,10 @@ public class MesoMarketPurchaseMySqlTests {
             return;
         }
         fault.Fail = false;
+        fault.FailLimits = false;
         using var context = new Ms2Context(plain);
         context.Mail.Where(mail => mail.ReceiverId == seller || mail.ReceiverId == test.CharacterId).ExecuteDelete();
-        context.MesoMarket.Where(listing => listing.AccountId == sellerAccount).ExecuteDelete();
+        context.MesoMarket.Where(listing => listing.AccountId == sellerAccount || listing.AccountId == test.AccountId).ExecuteDelete();
         context.MesoMarketSold.Where(listing => listing.AccountId == sellerAccount).ExecuteDelete();
     }
 
@@ -77,13 +78,27 @@ public class MesoMarketPurchaseMySqlTests {
         })!;
     }
 
-    private void Buy(long listingId) {
+    private void Buy(long listingId) => Send(8, listingId);
+
+    private void Send(byte mode, params long[] values) {
         var handler = new MesoMarketHandler { ServerTableMetadata = test.ServerTableMetadata };
         handler.Handle(session, TestGameSession.Packet(writer => {
-            writer.WriteByte(8);
-            writer.WriteLong(listingId);
+            writer.WriteByte(mode);
+            foreach (long value in values) {
+                writer.WriteLong(value);
+            }
         }));
     }
+
+    // The stored day's listings and month's purchases.
+    private (int Listed, int Purchased) StoredLimits() {
+        using var context = new Ms2Context(plain);
+        Maple2.Database.Model.Account account = context.Account.AsNoTracking().Single(row => row.Id == test.AccountId);
+        return (account.MarketLimits.MesoListed, account.MarketLimits.MesoPurchased);
+    }
+
+    private string[] MarketAnswers() => test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.MesoMarket)
+        .Select(packet => Convert.ToHexString(packet)[4..]).ToArray();
 
     private (long Tokens, bool Listed, int Mails) Stored(long listingId) {
         using var context = new Ms2Context(plain);
@@ -147,13 +162,78 @@ public class MesoMarketPurchaseMySqlTests {
         Assert.That(Stored(listing.Id), Is.EqualTo((80L, false, 2)));
     }
 
-    // Fails a save that adds a mail: the sale's second write, after the listing's delete.
+    // The month's purchase count is stored with the sale.
+    [Test]
+    public void Buy_StoresThePurchaseCount() {
+        MesoListing listing = Listing();
+
+        Buy(listing.Id);
+
+        Assert.That(StoredLimits(), Is.EqualTo((0, 1)));
+    }
+
+    // The count's write, the sale's last, fails: the listing's delete, the mails and the wallet are rolled back with it.
+    [Test]
+    public void Buy_FailedCountSaveStoresNothing() {
+        MesoListing listing = Listing();
+        fault.FailLimits = true;
+
+        Buy(listing.Id);
+        fault.FailLimits = false;
+
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
+        Assert.That(session.Player.Value.Account.MesoMarketPurchased, Is.EqualTo(0));
+        Assert.That(Stored(listing.Id), Is.EqualTo((500L, true, 0)));
+        Assert.That(StoredLimits(), Is.EqualTo((0, 0)));
+        Assert.That(MarketAnswers(), Is.EqualTo(new[] { "00" + Convert.ToHexString(BitConverter.GetBytes(2)) }));
+    }
+
+    // A listing stores the wallet with its mesos taken and the day's count; one whose count's write fails stores
+    // neither the listing nor the wallet, and the mesos come back.
+    [Test]
+    public void Register_StoredWithTheWalletOrNotAtAll() {
+        session.Currency.Meso = 3 * BASE;
+        Assume.That(session.SavePurchase(), Is.True);
+        test.TakeSent();
+        fault.FailLimits = true;
+
+        Send(5, BASE, 200);
+        fault.FailLimits = false;
+
+        Assert.That(MarketAnswers(), Is.EqualTo(new[] { "00" + Convert.ToHexString(BitConverter.GetBytes(2)) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(3 * BASE));
+        Assert.That((StoredMeso(), OwnListings(), StoredLimits()), Is.EqualTo((3 * BASE, 0, (0, 0))));
+
+        Send(5, BASE, 200);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(2 * BASE));
+        Assert.That((StoredMeso(), OwnListings(), StoredLimits()), Is.EqualTo((2 * BASE, 1, (1, 0))));
+    }
+
+    private long StoredMeso() {
+        using var context = new Ms2Context(plain);
+        return context.Character.AsNoTracking().Single(row => row.Id == test.CharacterId).Currency.Meso;
+    }
+
+    private int OwnListings() {
+        using var context = new Ms2Context(plain);
+        return context.MesoMarket.AsNoTracking().Count(listing => listing.AccountId == test.AccountId);
+    }
+
+    // Fail: fails a save that adds a mail, the sale's second write, after the listing's delete. FailLimits: fails the
+    // write of the account's meso market counts, the last of a sale or a listing.
     private sealed class MailFault : SaveChangesInterceptor {
         public bool Fail;
+        public bool FailLimits;
 
         public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
             if (Fail && eventData.Context != null &&
                 eventData.Context.ChangeTracker.Entries<Maple2.Database.Model.Mail>().Any(entry => entry.State == EntityState.Added)) {
+                throw new DbUpdateException("The test made this save fail");
+            }
+            if (FailLimits && eventData.Context != null &&
+                eventData.Context.ChangeTracker.Entries<Maple2.Database.Model.Account>()
+                    .Any(entry => entry.State == EntityState.Modified && entry.Property(account => account.MarketLimits).IsModified)) {
                 throw new DbUpdateException("The test made this save fail");
             }
             return result;

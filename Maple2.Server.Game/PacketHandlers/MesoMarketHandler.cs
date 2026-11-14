@@ -108,23 +108,20 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        MesoListing? listing;
-        bool saving = false;
+        MesoListing? listing = null;
         try {
-            listing = CreateListing(session, amount, price, ref saving);
-        } catch {
-            // Given back only for a throw before the listing's save: from the save on it may be stored.
-            if (!saving) {
+            listing = CreateListing(session, amount, price);
+        } finally {
+            // Nothing is stored unless the listing is, with the wallet: a refusal, a failed save or a throw gives the
+            // mesos back.
+            if (listing == null) {
                 session.Currency.ReturnMeso(amount, notify: false);
             }
-            throw;
         }
         if (listing == null) {
-            session.Currency.ReturnMeso(amount, notify: false);
             return;
         }
 
-        session.Player.Value.Account.MesoMarketListed++;
         session.Currency.NotifyMeso();
         session.Send(MesoMarketPacket.Create(listing, session.Player.Value.Account.MesoMarketListed));
         session.Send(MesoMarketPacket.Quota(session.Player.Value.Account.MesoMarketListed, session.Player.Value.Account.MesoMarketPurchased));
@@ -132,7 +129,7 @@ public class MesoMarketHandler : FieldPacketHandler {
 
     // The checks after the balance, in CanRegister's order, and the listing stored; null (the refusal sent) when
     // refused.
-    private MesoListing? CreateListing(GameSession session, long amount, long price, ref bool saving) {
+    private MesoListing? CreateListing(GameSession session, long amount, long price) {
         using GameStorage.Request db = session.GameStorage.Context();
         if (!MesoMarketRules.HasListingSlot(db.GetMyMesoListingsByAccountId(session.AccountId).Count, Constant.MesoMarketListLimit)) {
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_maxCountOwnProduct));
@@ -162,10 +159,32 @@ public class MesoMarketHandler : FieldPacketHandler {
             Amount = amount,
         };
 
-        saving = true;
-        MesoListing? created = db.CreateMesoListing(listing);
-        if (created == null) {
-            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_errorDB));
+        // The listing, the wallet with its mesos taken and the day's listing count are one save (TrySavePurchase):
+        // a listing stored alone (the wallet left to the session's next save) held the mesos and gave them back too
+        // after a crash or a failed save, and the count stored at the next save missed such a listing. The count
+        // is raised inside the save, after the resets it takes (a daily reset taken there zeroes it first).
+        MesoListing? created = null;
+        bool stored = false, resetRunning = false, counted = false;
+        try {
+            stored = session.TrySavePurchase(save => {
+                created = save.CreateMesoListing(listing);
+                if (created == null) {
+                    return false;
+                }
+                session.Player.Value.Account.MesoMarketListed++;
+                counted = true;
+                return save.SaveMarketLimits(session.Player);
+            }, out resetRunning);
+        } finally {
+            // Undone after the save let the account lock go: a daily reset taken meanwhile has zeroed the count already.
+            if (!stored && counted && session.Player.Value.Account.MesoMarketListed > 0) {
+                session.Player.Value.Account.MesoMarketListed--;
+            }
+        }
+        if (!stored) {
+            // 4 (alreadyDbWork) while a reset is being stored: the player can list a few seconds later.
+            session.Send(MesoMarketPacket.Error(resetRunning ? s_mesoMarket_error_alreadyDbWork : s_mesoMarket_error_errorDB));
+            return null;
         }
         return created;
     }
@@ -270,15 +289,30 @@ public class MesoMarketHandler : FieldPacketHandler {
         // wallet (left to the session's next save before) came back paid for nothing after a crash or a failed save,
         // or the price back in the wallet with the mesos mailed. A sale that is not stored, or whose wallet is not,
         // writes nothing and the price is given back.
+        // The month's purchase count is stored with the sale too: counted after the save (and stored at the next
+        // session save) it was lost with a crash or a failed save, a buy the monthly limit did not count. It is
+        // counted inside the save, after the resets it takes (a monthly reset taken there zeroes the count first).
         (Mail Buyer, Mail Seller)? mails = null;
-        bool stored = false, gone = false, resetRunning = false;
+        bool stored = false, gone = false, resetRunning = false, counted = false;
         try {
             (Mail buyerMail, Mail sellerMail) = PurchaseMails(session, listing, Constants.MesoMarketIconType);
-            stored = session.TrySavePurchase(save => (mails = save.SellMesoListing(listingId, buyerMail, sellerMail, out gone)) != null,
-                () => gone, out resetRunning);
+            stored = session.TrySavePurchase(save => {
+                mails = save.SellMesoListing(listingId, buyerMail, sellerMail, out gone);
+                if (mails == null) {
+                    return false;
+                }
+                session.Player.Value.Account.MesoMarketPurchased++;
+                counted = true;
+                return save.SaveMarketLimits(session.Player);
+            }, () => gone, out resetRunning);
         } finally {
             if (!stored) {
                 mails = null;
+                // Undone after the save let the account lock go: a monthly reset taken meanwhile has zeroed the count
+                // already.
+                if (counted && session.Player.Value.Account.MesoMarketPurchased > 0) {
+                    session.Player.Value.Account.MesoMarketPurchased--;
+                }
                 GiveBack(session, payment.Value, listing.Price);
             }
         }
@@ -295,8 +329,6 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
         Paid(session, payment.Value, listing.Price);
-
-        session.Player.Value.Account.MesoMarketPurchased++;
 
         foreach (Mail mail in new[] { mails.Value.Buyer, mails.Value.Seller }) {
             try {

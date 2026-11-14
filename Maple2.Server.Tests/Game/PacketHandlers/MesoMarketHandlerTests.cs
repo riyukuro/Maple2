@@ -420,6 +420,89 @@ public class MesoMarketHandlerTests {
         Assert.That(db.GetAllMail(OTHER_CHARACTER), Is.Empty);
     }
 
+    // The month's purchase count is stored with the sale, not left to the session's next save.
+    [Test]
+    public void Buy_StoresThePurchaseCountWithTheSale() {
+        GameSession session = Login(tokens: 500);
+        Assume.That(session.SavePurchase(), Is.True);
+        MesoListing listing = OtherListing(2 * BASE, 420);
+
+        Send(session, 8, listing.Id);
+
+        Assert.That(session.Player.Value.Account.MesoMarketPurchased, Is.EqualTo(1));
+        Assert.That(StoredLimits(session), Is.EqualTo((0, 1)));
+    }
+
+    // The count's write fails: the price comes back, the count stays 0, and the answer is 2 (the rollback of the
+    // sale's rows: MesoMarketPurchaseMySqlTests).
+    [Test]
+    public void Buy_FailedCountSaveStoresNothing() {
+        GameSession session = Login(tokens: 500);
+        Assume.That(session.SavePurchase(), Is.True);
+        MesoListing listing = OtherListing(2 * BASE, 420);
+        test.FailSave = LimitsWritten;
+
+        Send(session, 8, listing.Id);
+        test.FailSave = null;
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(2) }));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
+        Assert.That(session.Player.Value.Account.MesoMarketPurchased, Is.EqualTo(0));
+        Assert.That(StoredLimits(session), Is.EqualTo((0, 0)));
+    }
+
+    // Mode 5 stores the wallet with its mesos taken and the day's count with the listing: a listing stored alone
+    // held the mesos while the stored wallet still had them.
+    [Test]
+    public void Register_StoresTheWalletAndCountWithTheListing() {
+        GameSession session = Login(meso: 3 * BASE);
+        Assume.That(session.SavePurchase(), Is.True);
+
+        Send(session, 5, BASE, 200);
+
+        Assert.That(OwnListings(session), Has.Count.EqualTo(1));
+        Assert.That(StoredMeso(session), Is.EqualTo(2 * BASE));
+        Assert.That(StoredLimits(session), Is.EqualTo((1, 0)));
+    }
+
+    // A listing whose save fails (here at the count, after the listing's and the wallet's writes): the mesos come
+    // back, the count stays 0, and the answer is 2; the next try lists (the rollback of the listing's row:
+    // MesoMarketPurchaseMySqlTests).
+    [Test]
+    public void Register_FailedSaveStoresNothing() {
+        GameSession session = Login(meso: 3 * BASE);
+        Assume.That(session.SavePurchase(), Is.True);
+        test.FailSave = LimitsWritten;
+
+        Send(session, 5, BASE, 200);
+        test.FailSave = null;
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(2) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(3 * BASE));
+        Assert.That(session.Player.Value.Account.MesoMarketListed, Is.EqualTo(0));
+        Assert.That(StoredLimits(session), Is.EqualTo((0, 0)));
+
+        Send(session, 5, BASE, 200);
+        Assert.That(session.Currency.Meso, Is.EqualTo(2 * BASE));
+        Assert.That(StoredLimits(session), Is.EqualTo((1, 0)));
+    }
+
+    private static bool LimitsWritten(Microsoft.EntityFrameworkCore.DbContext context) {
+        return context.ChangeTracker.Entries<Maple2.Database.Model.Account>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified && entry.Property(account => account.MarketLimits).IsModified);
+    }
+
+    private (int Listed, int Purchased) StoredLimits(GameSession session) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Maple2.Database.Model.Account account = context.Account.Single(row => row.Id == session.AccountId);
+        return (account.MarketLimits.MesoListed, account.MarketLimits.MesoPurchased);
+    }
+
+    private long StoredMeso(GameSession session) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Character.Single(row => row.Id == session.CharacterId).Currency.Meso;
+    }
+
     // Mode 8 on a listing that is gone: mode 8 with code 17, on which the client drops the row from its list.
     [Test]
     public void Buy_GoneListingAnswersSoldOut() {

@@ -364,9 +364,10 @@ public sealed class UgcMarketManager {
     }
 
     // The sales removed but not yet deleted are deleted here too: the session's save stores the wallet that holds
-    // their profit, so both go in its one transaction. A delete that is not written fails the whole save. The ids
-    // stay kept until a removal's own save clears them; deleting a row already gone is no failure.
-    public void Save(GameStorage.Request db) {
+    // their profit, so both go in its one transaction. A delete that is not written fails the whole save. Answers the
+    // removals written: the session's save drops them from the kept ones once it is committed (RemovalsStored), so a
+    // later save does not delete them again; deleting a row already gone is no failure.
+    public long[] Save(GameStorage.Request db) {
         db.SaveUgcMarketItems(items.Values);
         db.SaveSoldUgcMarketItems(sales.Values);
         long[] ids;
@@ -375,6 +376,26 @@ public sealed class UgcMarketManager {
         }
         if (ids.Length > 0) {
             db.DeleteSoldUgcMarketItems(session.AccountId, ids);
+        }
+        return ids;
+    }
+
+    // The count of removals kept for a save (tests).
+    internal int KeptRemovals {
+        get {
+            lock (removalLock) {
+                return unstoredRemovals.Count;
+            }
+        }
+    }
+
+    // The removals a committed session save stored (Save's answer).
+    public void RemovalsStored(long[] ids) {
+        if (ids.Length == 0) {
+            return;
+        }
+        lock (removalLock) {
+            unstoredRemovals.ExceptWith(ids);
         }
     }
 }

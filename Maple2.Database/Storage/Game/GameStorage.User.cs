@@ -570,6 +570,34 @@ public partial class GameStorage {
         }
 
         /// <summary>
+        /// Writes only the account's meso market counts (the listings of the day, the purchases of the month), together
+        /// with the listing or the sale that counts. Callers hold the account lock.
+        /// </summary>
+        public bool SaveMarketLimits(Player player) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.Account? account = Context.Account.Find(player.Account.Id);
+            if (account == null) {
+                return false;
+            }
+
+            account.MarketLimits = new Model.MarketLimits {
+                MesoListed = player.Account.MesoMarketListed,
+                MesoPurchased = player.Account.MesoMarketPurchased,
+            };
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(player.Character.Id);
+            if (updated != null) {
+                player.Account.LastModified = updated.Value.AccountLastModified;
+                player.Character.LastModified = updated.Value.CharacterLastModified;
+            }
+            return true;
+        }
+
+        /// <summary>
         /// Writes only the account's payback month (the merat spent on the payback product this month and the
         /// adventure level it started at), together with a purchase or a payback mail. Callers hold the account lock.
         /// </summary>

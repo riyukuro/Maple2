@@ -2081,7 +2081,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // SavePlayer may fail a save on a concurrency conflict it then retries; count from after it.
         int failedSaves = db.FailedSaves;
         bool threw = false;
-        TrySaveComponent(UgcMarket, (manager, request) => manager.Save(request));
+        long[] ugcRemovals = [];
+        TrySaveComponent(UgcMarket, (manager, request) => ugcRemovals = manager.Save(request));
         TrySaveComponent(Shop, (manager, request) => manager.Save(request));
         TrySaveComponent(Item, (manager, request) => manager.Save(request));
         TrySaveComponent(Config, (manager, request) => manager.Save(request));
@@ -2096,7 +2097,11 @@ public sealed partial class GameSession : Core.Network.Session {
             return false;
         }
         lastSaveItemRows = db.ItemRowsWritten;
-        return tokens.Kept = db.Commit();
+        if (!(tokens.Kept = db.Commit())) {
+            return false;
+        }
+        UgcMarket?.RemovalsStored(ugcRemovals);
+        return true;
 
         // A manager that was never built (the load threw before it, and the session is torn down) has nothing of its
         // own to store: the rows it would write are as loaded. It is skipped.

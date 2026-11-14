@@ -335,7 +335,37 @@ public class MeretMarketShopTests {
         Assert.That(session.SessionSave(), Is.True);
         Assert.That(SaleStored(collected), Is.False);
         Assert.That(SaleStored(other), Is.True, "a sale still held is kept");
+        Assert.That(session.UgcMarket.KeptRemovals, Is.EqualTo(0), "the stored removal is not deleted again");
         Assert.That(session.SessionSave(), Is.True, "the row is gone already");
+    }
+
+    // A session save that is not stored keeps its removals for the next one.
+    [Test]
+    public void Save_NotStoredKeepsTheRemovals() {
+        long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());
+        long collected = CreateSale(listing, 350, DateTime.Now.AddDays(-Constant.UGCShopProfitDelayDays - 1));
+        Start();
+        ReadyToSave();
+        test.FailSave = context => {
+            if (!SaleDeleted(context)) {
+                return false;
+            }
+            session.Currency.Meret = 100;
+            return true;
+        };
+        session.State = SessionState.ChangeMap;
+
+        IdRequest(20, collected);
+        Assert.That(session.UgcMarket.KeptRemovals, Is.EqualTo(1));
+
+        Assert.That(session.SessionSave(), Is.False);
+        Assert.That(session.UgcMarket.KeptRemovals, Is.EqualTo(1));
+        Assert.That(SaleStored(collected), Is.True);
+
+        test.FailSave = null;
+        Assert.That(session.SessionSave(), Is.True);
+        Assert.That(session.UgcMarket.KeptRemovals, Is.EqualTo(0));
+        Assert.That(SaleStored(collected), Is.False);
     }
 
     private static bool SaleDeleted(Microsoft.EntityFrameworkCore.DbContext context) =>
