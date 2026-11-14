@@ -145,7 +145,18 @@ public class PvpConditionTests {
     public void DuelWin_ByDeath_IsWinBy_Death() {
         var duel = Fighting();
         duel.Death(2, 10_000);
+        Assert.That(duel.WinBy, Is.EqualTo(RankDuelWinBy.None), "round 1 of a best of 3");
+        duel.Update(10_000 + RankDuelMatchState.RoundBreakMs);
+        duel.Update(10_000 + RankDuelMatchState.RoundBreakMs + RankDuelMatchState.CountdownMs);
+        duel.Death(2, 20_000);
         Assert.That(duel.WinBy, Is.EqualTo(RankDuelWinBy.Death));
+    }
+
+    // A win on more rounds when the last round ran out: the win only, no perfect, buff or grade.
+    [Test]
+    public void DuelWin_OnRounds_IsTheWinOnly() {
+        Assert.That(PvpConditions.DuelWinUpdates(RankDuelWinBy.Rounds, true, [90001010], 4),
+            Is.EqualTo(new[] { new PvpConditions.Update(ConditionType.pvp_win) }));
     }
 
     private static RankDuelMatchState Fighting() {

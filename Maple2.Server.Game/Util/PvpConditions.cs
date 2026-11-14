@@ -46,7 +46,7 @@ public static class PvpConditions {
     public static void TeamWin(FieldPlayer winner, int mapId, int lead, long fightMs) => Raise(winner, mapId, TeamWinUpdates(lead, fightMs));
 
     public static void DuelWin(FieldPlayer winner, int mapId, RankDuelWinBy winBy, int? grade) {
-        if (winBy is not (RankDuelWinBy.Death or RankDuelWinBy.LeftFight)) {
+        if (winBy is not (RankDuelWinBy.Death or RankDuelWinBy.LeftFight or RankDuelWinBy.Rounds)) {
             return;
         }
         bool fullHealth = winner.Stats.Values[BasicAttribute.Health].Current >= winner.Stats.Values[BasicAttribute.Health].Total;
@@ -62,11 +62,11 @@ public static class PvpConditions {
     ];
 
     // A rank duel win by the loser's death: the win, perfect at full health, one with_buff per effect held, the grade
-    // when the result was saved (null: no grade, the record did not change). A loser that left the fight: the win
-    // only. A walkover: nothing.
+    // when the result was saved (null: no grade, the record did not change). A loser that left the fight, or a win
+    // on more rounds won when the last round ran out: the win only. A walkover: nothing.
     public static List<Update> DuelWinUpdates(RankDuelWinBy winBy, bool fullHealth, IEnumerable<int> effects, int? grade) {
         switch (winBy) {
-            case RankDuelWinBy.LeftFight:
+            case RankDuelWinBy.LeftFight or RankDuelWinBy.Rounds:
                 return [new Update(ConditionType.pvp_win)];
             case not RankDuelWinBy.Death:
                 return [];

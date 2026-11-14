@@ -11,8 +11,8 @@ using Serilog;
 namespace Maple2.Server.Game.Manager.Field;
 
 // The rank duel match of one field (FieldManager.RankDuel): the duelists' enter, leave and death, and the field's
-// update, are given to its RankDuelMatchState, and what the state answers is sent. One round, see
-// RankDuelMatchState for the rules.
+// update, are given to its RankDuelMatchState, and what the state answers is sent. A best of
+// RankDuelMatchState.MaxRounds rounds, see RankDuelMatchState for the rules.
 public sealed class RankDuelField {
     // The maps whose environment feature is PvPRankingDuelMode (map/65010001.xml to 65010010.xml, the mapname
     // rows of that feature): the rank duel arenas. One is picked at random among those the server can load.
@@ -134,7 +134,7 @@ public sealed class RankDuelField {
         }
     }
 
-    // The duel's observer dialog with both duelists' health, rounds won (none yet: one round) and ratings. Chosen here:
+    // The duel's observer dialog with both duelists' health, rounds won and ratings. Chosen here:
     // the center button's camera step is 0.
     private Maple2.PacketLib.Tools.ByteWriter? DuelDialog(int duration) {
         if (!field.TryGetPlayerById(state.First, out FieldPlayer? a) || !field.TryGetPlayerById(state.Second, out FieldPlayer? b)) {
@@ -146,7 +146,7 @@ public sealed class RankDuelField {
     private TriggerPacket.PvpFighter Fighter(FieldPlayer player) {
         int rating = ratings.GetValueOrDefault(player.Value.Character.Id, Rating);
         return new TriggerPacket.PvpFighter(player.Value.Character.Id, (int) player.Stats.Values[BasicAttribute.Health].Current,
-            (int) player.Stats.Values[BasicAttribute.Health].Total, 0, rating);
+            (int) player.Stats.Values[BasicAttribute.Health].Total, (byte) state.Wins(player.Value.Character.Id), rating);
     }
 
     // Once per duel, when its fight starts.
@@ -207,23 +207,32 @@ public sealed class RankDuelField {
         foreach (RankDuelEvent @event in events) {
             switch (@event.Type) {
                 case RankDuelEventType.Round:
-                    Send(state.First, PvpPacket.RankDuelRound(1));
-                    Send(state.Second, PvpPacket.RankDuelRound(1));
+                    if (@event.Round > 1) {
+                        StartNextRound();
+                    }
+                    Send(state.First, PvpPacket.RankDuelRound(@event.Round));
+                    Send(state.Second, PvpPacket.RankDuelRound(@event.Round));
                     break;
                 case RankDuelEventType.Fight:
                     Send(state.First, PvpPacket.RankDuelFight());
                     Send(state.Second, PvpPacket.RankDuelFight());
                     StartFight();
-                    ReadRatings();
-                    foreach (long characterId in new[] { state.First, state.Second }) {
-                        if (field.TryGetPlayerById(characterId, out FieldPlayer? duelist)) {
-                            PvpConditions.Participation(duelist, field.MapId);
+                    // Once per match: the ratings, the participation and the world's observe offer.
+                    if (state.Round == 1) {
+                        ReadRatings();
+                        foreach (long characterId in new[] { state.First, state.Second }) {
+                            if (field.TryGetPlayerById(characterId, out FieldPlayer? duelist)) {
+                                PvpConditions.Participation(duelist, field.MapId);
+                            }
                         }
+                        Tell(onObservable);
                     }
                     if (DuelDialog((int) RankDuelMatchState.FightMs) is { } dialog) {
                         SendObservers(dialog);
                     }
-                    Tell(onObservable);
+                    break;
+                case RankDuelEventType.RoundEnd:
+                    EndRound(@event);
                     break;
                 case RankDuelEventType.Result:
                     SendResult(@event);
@@ -278,9 +287,45 @@ public sealed class RankDuelField {
         Send(state.Second, PvpPacket.RankDuelUnregistered());
     }
 
+    // A side's score is its rounds won (a win by walkover or by leaving shows the rounds won before it).
     private PvpPacket.RankDuelSide Side(long characterId, long winner, Dictionary<long, RankDuelChange> changes) {
         RankDuelChange change = changes.GetValueOrDefault(characterId, new RankDuelChange(Rating, 0, 0));
-        return new PvpPacket.RankDuelSide(Name(characterId), characterId, characterId == winner ? 1 : 0, change.Rating, change.RatingChange, change.Reward);
+        return new PvpPacket.RankDuelSide(Name(characterId), characterId, state.Wins(characterId), change.Rating, change.RatingChange, change.Reward);
+    }
+
+    // A round ended and the match goes on: the round's win and lose intros, or the draw intro; the onlookers' dialog
+    // shows the new round wins.
+    private void EndRound(RankDuelEvent @event) {
+        if (@event.End == RankDuelEnd.Win) {
+            Send(@event.Winner, PvpPacket.RankDuelWin());
+            Send(@event.Loser, PvpPacket.RankDuelLose());
+        } else {
+            Send(state.First, PvpPacket.RankDuelDraw());
+            Send(state.Second, PvpPacket.RankDuelDraw());
+        }
+        if (DuelDialog(0) is { } dialog) {
+            SendObservers(dialog);
+        }
+    }
+
+    // Before the intro of a later round: a duelist that died comes back where it fell (an instant revive, so it does
+    // not leave the arena), and both start at full health. Chosen here: with two or more player spawns the first
+    // duelist goes to the first and the second to the second; otherwise they stay where they are.
+    private void StartNextRound() {
+        List<FieldPlayerSpawnPoint> spawns = field.GetPlayerSpawns();
+        int index = 0;
+        foreach (long characterId in new[] { state.First, state.Second }) {
+            if (field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                if (player.IsDead) {
+                    player.Revive(instant: true);
+                }
+                player.RecoverHp((int) player.Stats.Values[BasicAttribute.Health].Total);
+                if (spawns.Count >= 2) {
+                    player.MoveToPosition(spawns[index].Position, spawns[index].Rotation);
+                }
+            }
+            index++;
+        }
     }
 
     // Both duelists' records take the result (RankDuelRules.Apply) and are saved; the duelists in the field get

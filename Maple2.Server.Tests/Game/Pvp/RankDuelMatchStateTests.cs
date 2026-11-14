@@ -3,12 +3,14 @@ using Maple2.Model.Game.Pvp;
 
 namespace Maple2.Server.Tests.Game.Pvp;
 
-// One rank duel match field's round, on the state alone.
+// One rank duel match field's best-of rounds, on the state alone.
 public class RankDuelMatchStateTests {
     private const long A = 101;
     private const long B = 202;
 
-    private static RankDuelEvent Round => new(RankDuelEventType.Round);
+    private static RankDuelEvent Round => new(RankDuelEventType.Round, Round: 1);
+    private static RankDuelEvent RoundOf(int round) => new(RankDuelEventType.Round, Round: round);
+    private static RankDuelEvent RoundWon(long winner, long loser, int round) => new(RankDuelEventType.RoundEnd, RankDuelEnd.Win, winner, loser, Round: round);
     private static RankDuelEvent Fight => new(RankDuelEventType.Fight);
     private static RankDuelEvent Exit => new(RankDuelEventType.Exit);
     private static RankDuelEvent Won(long winner, long loser) => new(RankDuelEventType.Result, RankDuelEnd.Win, winner, loser);
@@ -20,6 +22,15 @@ public class RankDuelMatchStateTests {
         fightTick = 200 + RankDuelMatchState.CountdownMs;
         Assert.That(state.Update(fightTick), Is.EqualTo(new List<RankDuelEvent> { Fight }));
         return state;
+    }
+
+    // The loser dies in the round being fought and the next round's fight starts; tick is that fight's start.
+    private static void LoseRound(RankDuelMatchState state, long loser, ref long tick) {
+        int round = state.Round;
+        Assert.That(state.Death(loser, tick + 50), Is.EqualTo(new List<RankDuelEvent> { RoundWon(state.Opponent(loser), loser, round) }));
+        Assert.That(state.Update(tick + 50 + RankDuelMatchState.RoundBreakMs), Is.EqualTo(new List<RankDuelEvent> { RoundOf(round + 1) }));
+        tick += 50 + RankDuelMatchState.RoundBreakMs + RankDuelMatchState.CountdownMs;
+        Assert.That(state.Update(tick), Is.EqualTo(new List<RankDuelEvent> { Fight }));
     }
 
     [Test]
@@ -45,9 +56,38 @@ public class RankDuelMatchStateTests {
         Assert.That(state.Phase, Is.EqualTo(RankDuelPhase.Waiting));
     }
 
+    // Best of 3 (the observer dialog's two win marks per side): the first death ends round 1 only; the round break,
+    // the round 2 intro with its number, then its fight.
+    [Test]
+    public void FirstDeath_EndsTheRoundOnly() {
+        RankDuelMatchState state = Fighting(out long tick);
+        Assert.That(state.Death(B, tick + 50), Is.EqualTo(new List<RankDuelEvent> { RoundWon(A, B, 1) }));
+        Assert.That(state.Phase, Is.EqualTo(RankDuelPhase.Break));
+        Assert.That((state.Wins(A), state.Wins(B), state.Winner), Is.EqualTo((1, 0, 0L)));
+        Assert.That(state.Hostile(A, B), Is.False);
+        Assert.That(state.Death(A, tick + 60), Is.Empty, "no death counts in the break");
+        Assert.That(state.Update(tick + 50 + RankDuelMatchState.RoundBreakMs - 1), Is.Empty);
+        Assert.That(state.Update(tick + 50 + RankDuelMatchState.RoundBreakMs), Is.EqualTo(new List<RankDuelEvent> { RoundOf(2) }));
+        Assert.That((state.Phase, state.Round), Is.EqualTo((RankDuelPhase.Countdown, 2)));
+        Assert.That(state.Update(tick + 50 + RankDuelMatchState.RoundBreakMs + RankDuelMatchState.CountdownMs), Is.EqualTo(new List<RankDuelEvent> { Fight }));
+        Assert.That(state.Hostile(A, B), Is.True);
+    }
+
+    // 2-1: B takes round 2, A round 3; the match is A's by death.
+    [Test]
+    public void TwoOne_TheThirdRoundDecides() {
+        RankDuelMatchState state = Fighting(out long tick);
+        LoseRound(state, B, ref tick);
+        LoseRound(state, A, ref tick);
+        Assert.That((state.Round, state.Wins(A), state.Wins(B)), Is.EqualTo((3, 1, 1)));
+        Assert.That(state.Death(B, tick + 50), Is.EqualTo(new List<RankDuelEvent> { Won(A, B) }));
+        Assert.That((state.Winner, state.WinBy, state.Wins(A)), Is.EqualTo((A, RankDuelWinBy.Death, 2)));
+    }
+
     [Test]
     public void DeathInTheFight_Loses() {
         RankDuelMatchState state = Fighting(out long tick);
+        LoseRound(state, B, ref tick);
         Assert.That(state.Death(B, tick + 50), Is.EqualTo(new List<RankDuelEvent> { Won(A, B) }));
         Assert.That((state.Winner, state.Loser), Is.EqualTo((A, B)));
         Assert.That(state.Hostile(A, B), Is.False);
@@ -57,23 +97,27 @@ public class RankDuelMatchStateTests {
         Assert.That(state.Phase, Is.EqualTo(RankDuelPhase.Closed));
     }
 
-    // Perfect: a death win where no hit of the loser took health from the winner during the fight.
+    // Perfect: a death win where no hit of the loser took health from the winner during any round's fight.
     [Test]
     public void Perfect_OnlyAnUntouchedWinnerByDeath() {
         RankDuelMatchState state = Fighting(out long tick);
         state.Hurt(B);
+        LoseRound(state, B, ref tick);
         Assert.That(state.Perfect, Is.False);
         state.Death(B, tick + 50);
         Assert.That(state.Perfect, Is.True);
         state.Update(tick + 50 + RankDuelMatchState.ResultMs);
         Assert.That(state.Perfect, Is.True);
 
+        // A hit in round 1 counts against the perfect of round 2's win.
         RankDuelMatchState hurt = Fighting(out tick);
         hurt.Hurt(A);
+        LoseRound(hurt, B, ref tick);
         hurt.Death(B, tick + 50);
         Assert.That(hurt.Perfect, Is.False);
         // A hit after the end changes nothing.
         RankDuelMatchState late = Fighting(out tick);
+        LoseRound(late, B, ref tick);
         late.Death(B, tick + 50);
         late.Hurt(A);
         Assert.That(late.Perfect, Is.True);
@@ -90,8 +134,10 @@ public class RankDuelMatchStateTests {
         state.Hurt(A);
         state.Enter(B, 200);
         state.Hurt(A);
-        state.Update(200 + RankDuelMatchState.CountdownMs);
-        state.Death(B, 200 + RankDuelMatchState.CountdownMs + 50);
+        long tick = 200 + RankDuelMatchState.CountdownMs;
+        state.Update(tick);
+        LoseRound(state, B, ref tick);
+        state.Death(B, tick + 50);
         Assert.That(state.Perfect, Is.True);
     }
 
@@ -111,6 +157,22 @@ public class RankDuelMatchStateTests {
         Assert.That(state.Leave(A, tick + 1), Is.EqualTo(new List<RankDuelEvent> { Won(B, A) }));
     }
 
+    // A leave between rounds, or in a later round's countdown, is a leave of the fought match, not a walkover.
+    [Test]
+    public void LeavingBetweenRounds_LosesTheFight() {
+        RankDuelMatchState state = Fighting(out long tick);
+        state.Death(B, tick + 50);
+        Assert.That(state.Leave(A, tick + 60), Is.EqualTo(new List<RankDuelEvent> { Won(B, A) }));
+        Assert.That(state.WinBy, Is.EqualTo(RankDuelWinBy.LeftFight));
+
+        RankDuelMatchState later = Fighting(out tick);
+        later.Death(B, tick + 50);
+        later.Update(tick + 50 + RankDuelMatchState.RoundBreakMs);
+        Assert.That(later.Phase, Is.EqualTo(RankDuelPhase.Countdown));
+        Assert.That(later.Leave(B, tick + 60 + RankDuelMatchState.RoundBreakMs), Is.EqualTo(new List<RankDuelEvent> { Won(A, B) }));
+        Assert.That(later.WinBy, Is.EqualTo(RankDuelWinBy.LeftFight));
+    }
+
     [Test]
     public void LeavingTheCountdown_Loses() {
         var state = new RankDuelMatchState(A, B, 0);
@@ -122,19 +184,45 @@ public class RankDuelMatchStateTests {
     [Test]
     public void LeavingAfterTheResult_ChangesNothing() {
         RankDuelMatchState state = Fighting(out long tick);
+        LoseRound(state, B, ref tick);
         state.Death(B, tick);
         Assert.That(state.Leave(A, tick + 1), Is.Empty);
         Assert.That(state.Leave(B, tick + 2), Is.Empty);
         Assert.That((state.Winner, state.Loser), Is.EqualTo((A, B)));
     }
 
+    // A round whose fight runs out counts for nobody; with three run out the match is a draw.
     [Test]
     public void FightTimeOut_IsADraw() {
         RankDuelMatchState state = Fighting(out long tick);
-        Assert.That(state.Update(tick + RankDuelMatchState.FightMs - 1), Is.Empty);
+        for (int round = 1; round < RankDuelMatchState.MaxRounds; round++) {
+            Assert.That(state.Update(tick + RankDuelMatchState.FightMs - 1), Is.Empty);
+            Assert.That(state.Update(tick + RankDuelMatchState.FightMs),
+                Is.EqualTo(new List<RankDuelEvent> { new(RankDuelEventType.RoundEnd, RankDuelEnd.Draw, Round: round) }));
+            tick += RankDuelMatchState.FightMs;
+            Assert.That(state.Update(tick + RankDuelMatchState.RoundBreakMs), Is.EqualTo(new List<RankDuelEvent> { RoundOf(round + 1) }));
+            tick += RankDuelMatchState.RoundBreakMs + RankDuelMatchState.CountdownMs;
+            Assert.That(state.Update(tick), Is.EqualTo(new List<RankDuelEvent> { Fight }));
+        }
+        Assert.That(state.Round, Is.EqualTo(3));
         Assert.That(state.Update(tick + RankDuelMatchState.FightMs),
             Is.EqualTo(new List<RankDuelEvent> { new(RankDuelEventType.Result, RankDuelEnd.Draw) }));
         Assert.That(state.Winner, Is.EqualTo(0));
+    }
+
+    // Round 1 to B, then two rounds run out: B wins on rounds, 1-0, with no perfect.
+    [Test]
+    public void LastRoundRunsOut_MoreRoundWinsTakeIt() {
+        RankDuelMatchState state = Fighting(out long tick);
+        LoseRound(state, A, ref tick);
+        state.Update(tick + RankDuelMatchState.FightMs);
+        tick += RankDuelMatchState.FightMs + RankDuelMatchState.RoundBreakMs;
+        state.Update(tick);
+        tick += RankDuelMatchState.CountdownMs;
+        state.Update(tick);
+        Assert.That((state.Round, state.Phase), Is.EqualTo((3, RankDuelPhase.Fighting)));
+        Assert.That(state.Update(tick + RankDuelMatchState.FightMs), Is.EqualTo(new List<RankDuelEvent> { Won(B, A) }));
+        Assert.That((state.WinBy, state.Wins(B), state.Wins(A), state.Perfect), Is.EqualTo((RankDuelWinBy.Rounds, 1, 0, false)));
     }
 
     [Test]

@@ -70,6 +70,7 @@ public class RankDuelFieldTests {
         FieldManager field = a.Session.Field!;
         typeof(FieldManager).GetField("<GameStorage>k__BackingField", Any)!.SetValue(field, a.Storage);
         typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldNpc>());
+        typeof(FieldManager).GetField("fieldPlayerSpawnPoints", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldPlayerSpawnPoint>());
         int objectId = 2;
         foreach (TestGameSession other in new[] { b, c }) {
             typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(other.Session.Player, objectId);
@@ -90,6 +91,38 @@ public class RankDuelFieldTests {
         duel.Field.RankDuel!.Enter(duel.PlayerA);
         duel.Field.RankDuel.Enter(duel.PlayerB);
         duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.CountdownMs);
+    }
+
+    // The loser dies in round 1 of the best of 3; round 2's intro and fight follow, and what was sent is dropped.
+    private static void WinRound(Duel duel, FieldPlayer loser) {
+        duel.Field.RankDuel!.Death(loser);
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.RoundBreakMs);
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.RoundBreakMs + RankDuelMatchState.CountdownMs);
+        Assert.That(duel.Field.RankDuel.Phase, Is.EqualTo(RankDuelPhase.Fighting));
+        foreach (TestGameSession test in new[] { duel.A, duel.B, duel.Bystander }) {
+            test.TakeSent();
+        }
+    }
+
+    // B dies in round 1: the round's win and lose intros (Pvp 28, 29), no result; after the break both are at full
+    // health and get the round 2 intro with its number.
+    [Test]
+    public void FirstRound_RoundIntrosThenRoundTwo() {
+        Duel duel = Start();
+        Fight(duel);
+        duel.A.TakeSent();
+        duel.B.TakeSent();
+        duel.PlayerA.Stats.Values[BasicAttribute.Health].Add(-10);
+
+        duel.Field.RankDuel!.Death(duel.PlayerB);
+        Assert.That(Pvp(duel.A), Is.EqualTo(new[] { "B600" + "1C" + "B80B0000" }));
+        Assert.That(Pvp(duel.B), Is.EqualTo(new[] { "B600" + "1D" + "B80B0000" }));
+        Assert.That(duel.Ended, Is.Empty);
+
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.RoundBreakMs);
+        Assert.That(Pvp(duel.A), Is.EqualTo(new[] { "B600" + "1B" + "C4090000" + "02000000" }));
+        Assert.That(Pvp(duel.B), Is.EqualTo(new[] { "B600" + "1B" + "C4090000" + "02000000" }));
+        Assert.That(duel.PlayerA.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(duel.PlayerA.Stats.Values[BasicAttribute.Health].Total));
     }
 
     // The hostile pool of a player caster around the origin (where the test players stand).
@@ -134,15 +167,14 @@ public class RankDuelFieldTests {
         Assert.That(Hostile(duel, duel.Bystander.Session.Player), Is.Empty);
     }
 
-    // B dies: A wins. Both records move by their grade (grade 1: +30 and -10, 10 tokens each), the tokens and the
+    // B dies in round 2 too: A wins 2-0. Both records move by their grade (grade 1: +30 and -10, 10 tokens each), the tokens and the
     // exp reach both duelists, the result carries the new ratings, Pvp 15 and the new standing follow, and the
     // world is told the match ended.
     [Test]
     public void Death_WinnerAndLoserRecords() {
         Duel duel = Start();
         Fight(duel);
-        duel.A.TakeSent();
-        duel.B.TakeSent();
+        WinRound(duel, duel.PlayerB);
         long tokensA = duel.A.Session.Currency[CurrencyType.ValorToken];
         long tokensB = duel.B.Session.Currency[CurrencyType.ValorToken];
         long expA = duel.A.Session.Player.Value.Character.Exp;
@@ -171,7 +203,7 @@ public class RankDuelFieldTests {
         List<string> sentA = Pvp(duel.A);
         Assert.That(sentA[0], Is.EqualTo("B600" + "1C" + "B80B0000"));
         Assert.That(sentA[1], Does.StartWith("B600" + "12" + Long(duel.A.CharacterId)));
-        Assert.That(sentA[1], Does.Contain(Long(duel.A.CharacterId) + "01000000" + "06040000" + "1E000000" + "0A000000"));
+        Assert.That(sentA[1], Does.Contain(Long(duel.A.CharacterId) + "02000000" + "06040000" + "1E000000" + "0A000000"));
         Assert.That(sentA[1], Does.Contain(Long(duel.B.CharacterId) + "00000000" + "DE030000" + "F6FFFFFF" + "0A000000"));
         Assert.That(sentA.Skip(2), Is.EqualTo(new[] {
             "B600" + "16" + "5A000000" + "06040000" + "06040000" + "0A000000",
@@ -192,8 +224,7 @@ public class RankDuelFieldTests {
     public void Death_UntouchedWinner_PerfectIntro() {
         Duel duel = Start();
         Fight(duel);
-        duel.A.TakeSent();
-        duel.B.TakeSent();
+        WinRound(duel, duel.PlayerB);
 
         duel.Field.RankDuel!.Damage(duel.PlayerA, duel.PlayerB);
         duel.Field.RankDuel!.Death(duel.PlayerB);
@@ -226,6 +257,7 @@ public class RankDuelFieldTests {
             db.SaveRankDuelRecord(duel.A.CharacterId, old);
         }
         Fight(duel);
+        WinRound(duel, duel.PlayerB);
         duel.Field.RankDuel!.Death(duel.PlayerB);
 
         using GameStorage.Request check = duel.A.Storage.Context();
@@ -306,6 +338,7 @@ public class RankDuelFieldTests {
         Assert.That(dialog, Does.Contain(Long(duel.A.CharacterId)));
         Assert.That(dialog, Does.Contain(Long(duel.B.CharacterId)));
 
+        WinRound(duel, duel.PlayerB);
         duel.Field.RankDuel.Death(duel.PlayerB);
         List<string> after = duel.Bystander.TakeSent().Select(Convert.ToHexString).ToList();
         Assert.That(after, Does.Contain("B600" + "13" + "01"));
