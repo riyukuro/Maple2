@@ -274,7 +274,8 @@ public class BeautyHandler : FieldPacketHandler {
                 return;
             }
         } else {
-            if (!PayWithCurrency(session, session.BeautyShop, session.BeautyShop.Metadata.StyleCostMetadata)) {
+            // A skin color is a recolor: the shop's recolor fee (KR skin shop 501: 150 merets, no style fee).
+            if (!PayWithCurrency(session, session.BeautyShop, session.BeautyShop.Metadata.ColorCostMetadata)) {
                 return;
             }
         }
