@@ -34,12 +34,50 @@ public sealed class AchievementManager {
     }
 
     public void Load() {
+        GrantAccountRewards();
         session.Send(AchievementPacket.Initialize());
         foreach (ImmutableList<Achievement> batch in accountValues.Values.Batch(BATCH_SIZE)) {
             session.Send(AchievementPacket.Load(batch));
         }
         foreach (ImmutableList<Achievement> batch in characterValues.Values.Batch(BATCH_SIZE)) {
             session.Send(AchievementPacket.Load(batch));
+        }
+    }
+
+    // An account trophy has one row for the whole account, so its reward grade is shared: once one character has
+    // claimed a title (or reached an emote), every other character sees that grade's reward as taken
+    // (AchievementPacket.Load sends the account rows to each of them) and cannot claim it. The title and emote are
+    // kept by the character (Unlock), so the other characters take them here, before the title and emote lists are
+    // sent (GameSession: Achievement.Load comes first). Items are not given again: the account had its one.
+    private void GrantAccountRewards() {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        foreach (Achievement achievement in accountValues.Values) {
+            foreach (AchievementMetadataReward reward in AccountRewardsHeld(achievement)) {
+                if (reward.Type == AchievementRewardType.title) {
+                    session.Player.Value.Unlock.AddTitle(reward.Code);
+                } else {
+                    session.Player.Value.Unlock.LearnEmote(reward.Code, now);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The title and emote rewards of an account trophy that the account already took: the grades that are finished
+    /// and below the reward grade. A grade the GM debug "down" button took back is not finished, so it gives nothing.
+    /// Empty for a character trophy.
+    /// </summary>
+    public static IEnumerable<AchievementMetadataReward> AccountRewardsHeld(Achievement achievement) {
+        if (!achievement.Metadata.AccountWide) {
+            yield break;
+        }
+        foreach ((int grade, AchievementMetadataGrade metadata) in achievement.Metadata.Grades) {
+            if (grade >= achievement.RewardGrade || !achievement.Grades.ContainsKey(grade) || metadata.Reward == null) {
+                continue;
+            }
+            if (metadata.Reward.Type is AchievementRewardType.title or AchievementRewardType.dynamicaction) {
+                yield return metadata.Reward;
+            }
         }
     }
 
