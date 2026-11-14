@@ -653,6 +653,7 @@ public class ItemFunctionUseTests {
 
     private static MapMetadata RecallField(bool recall) => TestGameSession.Map(2000062) with {
         CashCall = new MapMetadataCashCall(false, false, false, false, recall),
+        Limit = new MapMetadataLimit(0, 0, 0, 0, [], false, false, false, false, false, false, false),
     };
 
     private static PlayerInfo Info(long characterId, short channel) =>
@@ -663,14 +664,17 @@ public class ItemFunctionUseTests {
 
     // 20300053 (RecallParty): the party window's recall button (UIPartyDialog onPartyRecall) casts StateRecall, then
     // sends the plain use. With another member and a field that allows recalls the World is asked to call the party
-    // here and one scroll is used up; a field without recalls asks nothing and keeps it.
-    [TestCase(true, 1)]
-    [TestCase(false, 2)]
-    public void RecallParty_CallsThePartyHereAndIsUsedUp(bool recall, int left) {
-        Item scroll = Login(20300053, ItemFunction.RecallParty, "", amount: 2, field: RecallField(recall));
+    // here and one scroll is used up; a field without recalls asks nothing and keeps it, and so does a party whose
+    // other member is offline (the client counts only online members, CPartyManager::CountOnlineMembersOutsideTutorial).
+    [TestCase(true, (short) 2, 1)]
+    [TestCase(false, (short) 2, 2)]
+    [TestCase(true, (short) -1, 2)]
+    public void RecallParty_CallsThePartyHereAndIsUsedUp(bool recall, short otherChannel, int left) {
+        Item scroll = Login(20300053, ItemFunction.RecallParty, "", amount: 2, field: RecallField(recall),
+            setup: () => test.AddMap(TestGameSession.Map(2000062)));
         var party = new Maple2.Model.Game.Party.Party(5, new Maple2.Model.Game.Party.PartyMember { PartyId = 5, Info = Info(test.CharacterId, 1) });
         party.Members[test.CharacterId] = new Maple2.Model.Game.Party.PartyMember { PartyId = 5, Info = Info(test.CharacterId, 1) };
-        party.Members[77] = new Maple2.Model.Game.Party.PartyMember { PartyId = 5, Info = Info(77, 2) };
+        party.Members[77] = new Maple2.Model.Game.Party.PartyMember { PartyId = 5, Info = Info(77, otherChannel) };
         session.Party = new Maple2.Server.Game.Manager.PartyManager(test.World, session);
         typeof(Maple2.Server.Game.Manager.PartyManager).GetField("<Party>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(session.Party, party);
@@ -683,7 +687,7 @@ public class ItemFunctionUseTests {
         Use(scroll);
 
         Assert.That(asked.Select(request => (request.Recall.PartyId, request.Recall.MapId)),
-            Is.EqualTo(recall ? new[] { (5, 2000062) } : Array.Empty<(int, int)>()));
+            Is.EqualTo(left == 1 ? new[] { (5, 2000062) } : Array.Empty<(int, int)>()));
         Assert.That(session.Item.Inventory.Get(scroll.Uid)?.Amount, Is.EqualTo(left));
     }
 

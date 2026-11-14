@@ -4,6 +4,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Party;
+using Maple2.Model.Metadata;
 using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -44,15 +45,41 @@ public class PartyManager : IDisposable {
     private const int RecallKeepSeconds = 300;
 
     /// <summary>
+    /// The members a party recall calls, as the client counts them before it offers one
+    /// (UIPartyDialog::FUN_141a77eb0, CPartyManager::CountOnlineMembersOutsideTutorial): the online members in a
+    /// field the client knows that is not a tutorial, less one for the caller.
+    /// </summary>
+    public static int CountRecallable(IEnumerable<PartyMember> members, Func<int, bool> isCountedField) {
+        return members.Count(member => member.Info.Online && isCountedField(member.Info.MapId)) - 1;
+    }
+
+    /// <summary>
+    /// Whether the called members fit in the caller's field: with a capacity (the field's "capacity", above 0) the
+    /// players there and the called members may not pass it (the client refuses with its text 0xb5f).
+    /// The client also adds the members still due through recall portals of the field; the server does not track
+    /// those, so it can only be less strict.
+    /// </summary>
+    public static bool RecallFits(int capacity, int playersInField, int recallable) {
+        return capacity <= 0 || playersInField + recallable <= capacity;
+    }
+
+    /// <summary>
     /// Offers a party recall to the other members (s2c RecallScroll on their channels).
-    /// False when there is no one to call, the field forbids recalls or the World refuses.
+    /// False when there is no one to call, the caller is dead, the field forbids recalls or has no room for them,
+    /// or the World refuses. The client asks all of these before it sends the recall (UIPartyDialog::FUN_141a77eb0).
     /// </summary>
     public bool Recall() {
-        if (Party == null || session.Field == null) {
+        if (Party == null || session.Field == null || session.Player.IsDead) {
             return false;
         }
-        // UIPartyDialog checks the field's cashCall recall flag and that someone else is in the party.
-        if (!session.Field.Metadata.CashCall.Recall || Party.Members.Count <= 1) {
+        if (!session.Field.Metadata.CashCall.Recall) {
+            return false;
+        }
+        // Before, any second member counted, also offline or in a tutorial: the scroll (or the merets) went on an
+        // offer nobody got.
+        bool IsCountedField(int mapId) => session.MapMetadata.TryGet(mapId, out MapMetadata? map) && map.Property.TutorialType == 0;
+        int recallable = CountRecallable(Party.Members.Values, IsCountedField);
+        if (recallable <= 0 || !RecallFits(session.Field.Metadata.Limit.Capacity, session.Field.Players.Count, recallable)) {
             return false;
         }
 
