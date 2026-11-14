@@ -189,6 +189,8 @@ public enum RecvOp : ushort
     Wedding = 0x00BA,
     WeddingBillboard = 0x00BB,
     LimitBreak = 0x00BC,
+    CheckDeleteAccount = 0x00BE, // UICharacterListDialog::CheckDeleteAccount: i64 account id
+    DeleteAccount = 0x00BF, // UICharacterListDialog::SendDeleteAccountRequest: i64 account id, 3 strings (CN only)
     PersonalInfoAgreement = 0x00C0,
     HomeBlock = 0x00C1,
     MapleSurvival = 0x00C2, // the restored client's Maple Survival requests
