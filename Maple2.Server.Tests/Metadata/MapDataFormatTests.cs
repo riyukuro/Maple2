@@ -31,11 +31,13 @@ public class MapDataFormatTests {
         });
     }
 
-    // A vibrate object keeps its materialTag through the map data (the vibrate_object condition code).
+    // A vibrate object keeps its materialTag (the vibrate_object condition code) and ShapeDimensions (its hit box)
+    // through the map data.
     [Test]
     public void VibrateMaterialReads() {
         var tree = new FieldVibrateEntity(new FieldEntityId(1, 2, "tree"), Vector3.Zero, Vector3.Zero, 1,
-            new BoundingBox3(), BreakDefense: 99, BreakTick: 0, VibrateIndex: 0, MaterialTag: "wood");
+            new BoundingBox3(), BreakDefense: 99, BreakTick: 0, VibrateIndex: 0, MaterialTag: "wood",
+            ShapeDimensions: new Vector3(150, 300, 450));
         var structure = new FieldAccelerationStructure();
         structure.AddEntities(new Dictionary<Vector3S, List<FieldEntity>>(), new Vector3S(short.MaxValue, 0, 0),
             new Vector3S(0, 0, 0), [tree], 1);
@@ -43,7 +45,10 @@ public class MapDataFormatTests {
         writer.WriteClass(structure);
 
         var read = new ByteReader(writer.ToArray(), 0).ReadClassWithNew<FieldAccelerationStructure>();
-        Assert.That(read.GetVibrateEntity("tree")?.MaterialTag, Is.EqualTo("wood"));
+        Assert.Multiple(() => {
+            Assert.That(read.GetVibrateEntity("tree")?.MaterialTag, Is.EqualTo("wood"));
+            Assert.That(read.GetVibrateEntity("tree")?.ShapeDimensions, Is.EqualTo(new Vector3(150, 300, 450)), "the client's hit box");
+        });
     }
 
     // A blob from the older ingest starts with the grid size: it has no marker.

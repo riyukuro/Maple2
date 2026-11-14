@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -45,6 +46,22 @@ public class VibrateHandler : FieldPacketHandler {
             Logger.Debug("Vibrate {EntityId} refused ({Refusal}): skill {SkillId} level {Level} point {AttackPoint}: {Record}",
                 entityId, refusal, skillId, level, attackPoint, record);
             return;
+        }
+
+        // The tag's area met the object's box (ShapeDimensions, worldservice_1.cpp:6830-6864), so the object lies
+        // within the attack's reach of the cast or the player (SkillHitRules.BreakableTooFar, the same test as a
+        // breakable's). Before, any vibrate object of the map took the packet. An attack point the skill data lacks
+        // is not checked.
+        if (session.Field != null && record.Metadata.Data.Motions.ElementAtOrDefault(motionPoint)?.Attacks.ElementAtOrDefault(attackPoint) is { } attack) {
+            IReadOnlyDictionary<long, IReadOnlyList<MagicPath>> paths = session.Field.TableMetadata.MagicPathTable.Entries;
+            paths.TryGetValue(attack.MagicPathId, out IReadOnlyList<MagicPath>? magicPaths);
+            paths.TryGetValue(attack.CubeMagicPathId, out IReadOnlyList<MagicPath>? cubePaths);
+            float boxReach = SkillHitRules.BreakableReach(0, vibrate!.ShapeDimensions);
+            if (SkillHitRules.BreakableTooFar(vibrate.Position, record.CastPosition, session.Player.Position, attack, magicPaths, cubePaths, boxReach)) {
+                Logger.Debug("Vibrate {EntityId} refused: at {Position}, past the reach of cast {SkillUid} skill {SkillId} point {MotionPoint},{AttackPoint} from {Cast} (player at {Player})",
+                    entityId, vibrate.Position, skillUid, skillId, motionPoint, attackPoint, record.CastPosition, session.Player.Position);
+                return;
+            }
         }
 
         DamageRecord damage = new(record.Metadata, record.Attack) {

@@ -144,7 +144,8 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                             BreakTick: vibrate.brokenTick,
                             VibrateIndex: vibrateObjectId++,
                             HideGroupId: vibrate.hideGroupId,
-                            MaterialTag: vibrate.materialTag ?? string.Empty);
+                            MaterialTag: vibrate.materialTag ?? string.Empty,
+                            ShapeDimensions: vibrate.ShapeDimensions);
 
                         break;
                     }

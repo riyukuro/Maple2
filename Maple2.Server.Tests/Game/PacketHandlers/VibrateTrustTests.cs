@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Maple2.Model.Common;
+using Maple2.Model.Enum;
 using Maple2.Model.Game.Field;
 using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
@@ -25,22 +26,29 @@ public class VibrateTrustTests {
     private const long CastUid = 77;
     private const int SkillId = 10000001;
 
-    private static FieldVibrateEntity Entity(string id, int index, int hideGroup = 0) {
+    private static FieldVibrateEntity Entity(string id, int index, int hideGroup = 0, Vector3 shape = default) {
         return new FieldVibrateEntity(new FieldEntityId(1, 2, id), new Vector3(100, 0, 0), Vector3.Zero, 1, new BoundingBox3(),
-            BreakDefense: 99, BreakTick: 0, VibrateIndex: index, HideGroupId: hideGroup, MaterialTag: "wood");
+            BreakDefense: 99, BreakTick: 0, VibrateIndex: index, HideGroupId: hideGroup, MaterialTag: "wood", ShapeDimensions: shape);
     }
+
+    // A box region 300 ahead (ImpactReach 1050), the fixture's attack.
+    private static readonly SkillMetadataRange Box = new(SkillRegion.Box, 300, 150, 150, 0, 0, default, default,
+        IncludeCasterType.Exclude, ApplyTargetType.Hostile, SkillTargetType.None);
+    private static readonly SkillMetadataArrow NoArrow = new(false, false, false, SkillTargetType.None, BounceType.None, 0, 0,
+        false, default, default, 0);
 
     private sealed class Scene {
         public required TestGameSession Test;
         public required SkillRecord Record;
     }
 
-    // A field with a tree and a rock of hidden group 1; a cast whose attack point 0 has no packet yet.
+    // A field with a tree, a rock of hidden group 1 and a big tree (ShapeDimensions 1000 each way); a cast whose
+    // attack point 0 has no packet yet.
     private static Scene Start() {
         var test = new TestGameSession();
         test.Start();
         FieldManager field = test.Session.Field!;
-        FieldVibrateEntity[] entities = [Entity("tree", 0), Entity("rock", 1, hideGroup: 1)];
+        FieldVibrateEntity[] entities = [Entity("tree", 0), Entity("rock", 1, hideGroup: 1), Entity("bigtree", 2, shape: new Vector3(1000, 1000, 1000))];
         var structure = new FieldAccelerationStructure();
         structure.AddEntities(new Dictionary<Vector3S, List<FieldEntity>>(), new Vector3S(short.MaxValue, 0, 0),
             new Vector3S(0, 0, 0), entities.ToList<FieldEntity>(), entities.Length);
@@ -50,6 +58,7 @@ public class VibrateTrustTests {
         var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with {
             CompulsionTypes = [],
             Damage = (SkillMetadataDamage) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataDamage)),
+            Range = Box, Arrow = NoArrow,
         };
         var motion = new SkillMetadataMotion(null!, [attack], new Dictionary<string, byte>());
         var level = (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with {
@@ -60,6 +69,7 @@ public class VibrateTrustTests {
             Position = new Vector3(10, 20, 0),
         };
         record.Hits.Open(field.FieldTick);
+        test.SetTable(new MagicPathTable(new Dictionary<long, IReadOnlyList<MagicPath>>()));
         // The fixture's player is not constructed: it has no skill queue.
         typeof(Maple2.Server.Game.Model.Actor<Maple2.Model.Game.Player>).GetField("<ActiveSkills>k__BackingField", Any)!
             .SetValue(test.Session.Player, new SkillQueue());
@@ -145,6 +155,40 @@ public class VibrateTrustTests {
             Assert.That(Vibrate(scene, "tree", skillId, level), Is.EqualTo(0));
             Assert.That(Vibrate(scene, "tree"), Is.EqualTo(1), "the refused one took nothing");
         });
+    }
+
+    // The tag's area meets the object's box, so the object lies within the attack's reach of the cast or the player:
+    // the tree 1400 past the box's reach (1050 + margin 600) is taken, 4900 past is refused. Before, any object of the
+    // map took the packet.
+    [TestCase(1500f, ExpectedResult = 1)]
+    [TestCase(5000f, ExpectedResult = 0)]
+    public int AnObjectPastTheAttacksReachIsRefused(float away) {
+        Scene scene = Start();
+        scene.Record.CastPosition = new Vector3(away, 0, 0);
+        scene.Test.Session.Player.Position = new Vector3(away, 0, 0);
+        AttackPoint(scene);
+        return Vibrate(scene, "tree");
+    }
+
+    // A big tree's box (ShapeDimensions 1000 each way) is hit at its side, past the reach from its position: taken.
+    [TestCase(3000f, ExpectedResult = 1)]
+    [TestCase(6000f, ExpectedResult = 0)]
+    public int ABigObjectHitAtItsSideIsTaken(float away) {
+        Scene scene = Start();
+        scene.Record.CastPosition = new Vector3(away, 0, 0);
+        scene.Test.Session.Player.Position = new Vector3(away, 0, 0);
+        AttackPoint(scene);
+        return Vibrate(scene, "bigtree");
+    }
+
+    // The cast moved since (a dash): the object near the player now is taken.
+    [Test]
+    public void AnObjectNearThePlayerNowIsTaken() {
+        Scene scene = Start();
+        scene.Record.CastPosition = new Vector3(8000, 0, 0);
+        scene.Test.Session.Player.Position = new Vector3(500, 0, 0);
+        AttackPoint(scene);
+        Assert.That(Vibrate(scene, "tree"), Is.EqualTo(1));
     }
 
     [Test]
