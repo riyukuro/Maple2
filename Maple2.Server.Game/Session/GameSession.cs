@@ -1943,16 +1943,16 @@ public sealed partial class GameSession : Core.Network.Session {
         // SavePlayer may fail a save on a concurrency conflict it then retries; count from after it.
         int failedSaves = db.FailedSaves;
         bool threw = false;
-        TrySaveComponent(UgcMarket.Save);
-        TrySaveComponent(Shop.Save);
-        TrySaveComponent(Item.Save);
-        TrySaveComponent(Config.Save);
-        TrySaveComponent(Survival.Save);
-        TrySaveComponent(Housing.Save);
-        TrySaveComponent(GameEvent.Save);
-        TrySaveComponent(Achievement.Save);
-        TrySaveComponent(Quest.Save);
-        TrySaveComponent(Dungeon.Save);
+        TrySaveComponent(UgcMarket, (manager, request) => manager.Save(request));
+        TrySaveComponent(Shop, (manager, request) => manager.Save(request));
+        TrySaveComponent(Item, (manager, request) => manager.Save(request));
+        TrySaveComponent(Config, (manager, request) => manager.Save(request));
+        TrySaveComponent(Survival, (manager, request) => manager.Save(request));
+        TrySaveComponent(Housing, (manager, request) => manager.Save(request));
+        TrySaveComponent(GameEvent, (manager, request) => manager.Save(request));
+        TrySaveComponent(Achievement, (manager, request) => manager.Save(request));
+        TrySaveComponent(Quest, (manager, request) => manager.Save(request));
+        TrySaveComponent(Dungeon, (manager, request) => manager.Save(request));
         if (threw || !db.SaveChanges() || db.FailedSaves != failedSaves) {
             Logger.Error("Save: a component was not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return false;
@@ -1960,9 +1960,14 @@ public sealed partial class GameSession : Core.Network.Session {
         lastSaveItemRows = db.ItemRowsWritten;
         return tokens.Kept = db.Commit();
 
-        void TrySaveComponent(Action<GameStorage.Request> action) {
+        // A manager that was never built (the load threw before it, and the session is torn down) has nothing of its
+        // own to store: the rows it would write are as loaded. It is skipped.
+        void TrySaveComponent<T>(T? manager, Action<T, GameStorage.Request> save) where T : class {
+            if (manager == null) {
+                return;
+            }
             try {
-                action(db);
+                save(manager, db);
             } catch (Exception ex) {
                 threw = true;
                 Logger.Error(ex, "Error saving component for {Player}", PlayerName);
