@@ -325,7 +325,11 @@ public class ItemEnchantManager {
 
     public bool Enchant(long itemUid, bool force = false) {
         Item? item = session.Item.GetGear(itemUid);
+        // A request for an item that is gone or is not the staged one: error 1, the client's invalid-item
+        // notice (OnItemEnchant mode 12, scenestategame.cpp:6190), not silence.
         if (item == null || upgradeItem == null || upgradeItem.Uid != item.Uid) {
+            session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_invalid_item));
+            NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_invalid_item);
             return false;
         }
 
@@ -642,10 +646,7 @@ public class ItemEnchantManager {
         if (retryUid == 0) {
             return false;
         }
-        Item? item = session.Item.GetGear(retryUid);
-        if (item == null || !ItemEnchantRules.CanEnchant(item.Metadata.Limit.EnableEnchant, item.Enchant?.Enchants ?? 0, item.LimitBreak?.Level ?? 0)) {
-            return false;
-        }
+        // StageItem answers an item that is gone or can go no further with error 1 itself.
         return StageItem(retryType, retryUid);
     }
 

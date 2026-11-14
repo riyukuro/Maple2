@@ -60,6 +60,36 @@ public class ItemEnchantStageTests {
         });
     }
 
+    // An enchant request for an item that is not the staged one, and a retry whose item has gone: each is answered
+    // with error 1 (the client's invalid-item notice, OnItemEnchant mode 12) instead of nothing.
+    [Test]
+    public void EnchantOfAnUnstagedItem_AndRetryOfAGoneItem_AnswerError1() {
+        var test = new TestGameSession();
+        Item gear = test.Store(TestGameSession.Metadata(11400001, EquipSlot.CL, type: 1));
+        Item other = test.Store(TestGameSession.Metadata(11400002, EquipSlot.CL, type: 1));
+        test.SetServerTable(new EnchantOptionTable(new Dictionary<int, EnchantOptionMetadata>()));
+        test.SetServerTable(new ScriptEventConditionTable(new Dictionary<ScriptEventType, Dictionary<int, ScriptEventConditionMetadata>>()));
+        GameSession session = test.Start();
+        session.NpcScript = new NpcScriptManager(session, [new CinematicEventScript(1, [new ScriptContent("select", "", "")])]);
+        string error1 = System.Convert.ToHexString(Maple2.Server.Game.Packets.ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_invalid_item).ToArray());
+        test.TakeSent();
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.False);
+        Assert.That(test.TakeSent().Select(System.Convert.ToHexString), Does.Contain(error1));
+
+        session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid);
+        test.TakeSent();
+        Assert.That(session.ItemEnchant.Enchant(other.Uid), Is.False);
+        Assert.That(test.TakeSent().Select(System.Convert.ToHexString), Does.Contain(error1));
+
+        Assert.That(session.Item.Inventory.Remove(gear.Uid, out _), Is.True);
+        test.TakeSent();
+        Assert.Multiple(() => {
+            Assert.That(session.ItemEnchant.Retry(), Is.False);
+            Assert.That(test.TakeSent().Select(System.Convert.ToHexString), Does.Contain(error1));
+        });
+    }
+
     // Enchant pressed without the copies the grade asks for: error 3 (lack of ingredient), which the client shows
     // as a notice, then the smith's line; the item keeps its grade.
     [Test]
