@@ -276,6 +276,11 @@ public class BeautyHandler : FieldPacketHandler {
         if (shop.Type is BeautyShopType.Random or BeautyShopType.Save) {
             return;
         }
+        // Chosen here: only a hair, face or makeup shop takes an edit; a skin, dye or mirror shop's dialog has no
+        // hair, face or makeup page to send it from, and its recolor fee is not for these items.
+        if (shop.Metadata.Category is not (BeautyShopCategory.Hair or BeautyShopCategory.Face or BeautyShopCategory.Makeup)) {
+            return;
+        }
         // The fee is taken only once the changed item is on the character.
         Item? changed = ReadBeauty(session, packet, cosmetic.Id);
         if (changed == null) {

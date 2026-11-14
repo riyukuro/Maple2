@@ -20,7 +20,7 @@ public class BeautyRecolorFeeTests {
     private GameSession session => test.Session;
     private Item worn = null!;
 
-    private void Start(BeautyShopType type) {
+    private void Start(BeautyShopType type, BeautyShopCategory category = BeautyShopCategory.Makeup) {
         test = new TestGameSession();
         worn = test.Store(TestGameSession.Metadata(Makeup, EquipSlot.FA), 1, ItemGroup.Outfit, EquipSlot.FA);
         test.AddAchievement(TestGameSession.Trophy(Trophy, ConditionType.beauty_change_color, [1, 2]));
@@ -28,7 +28,7 @@ public class BeautyRecolorFeeTests {
         test.EnterMap(TestGameSession.Map(2000062));
         var style = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 1000, string.Empty, 0);
         var color = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 300, string.Empty, 0);
-        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(505, default, 0, style, color, false, false, 0, 0, ItemTag.None, [], []), []) {
+        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(505, category, 0, style, color, false, false, 0, 0, ItemTag.None, [], []), []) {
             Type = type,
         };
         session.Currency.Meso = 5000;
@@ -79,6 +79,18 @@ public class BeautyRecolorFeeTests {
     [TestCase(BeautyShopType.Save)]
     public void AnEditInARandomOrSaveShopIsRefused(BeautyShopType type) {
         Start(type);
+
+        Edit(Red);
+
+        Assert.That((session.Item.Equips.Get(EquipSlot.FA)?.Uid, session.Currency.Meso), Is.EqualTo(((long?) worn.Uid, 5000L)));
+    }
+
+    // A skin, dye or mirror shop (type 3) takes no hair, face or makeup edit: refused, not charged its recolor fee.
+    [TestCase(BeautyShopCategory.Skin)]
+    [TestCase(BeautyShopCategory.Dye)]
+    [TestCase(BeautyShopCategory.Mirror)]
+    public void AnEditInASkinDyeOrMirrorShopIsRefused(BeautyShopCategory category) {
+        Start(BeautyShopType.Modify, category);
 
         Edit(Red);
 
