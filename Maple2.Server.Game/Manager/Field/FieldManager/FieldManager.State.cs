@@ -430,6 +430,19 @@ public partial class FieldManager {
         Broadcast(FieldPacket.DropItem(fieldItem));
     }
 
+    // The breakables of the map: the actor ones and the MS2BreakableNIF ones (moving platforms, boxes; the client makes
+    // a breakable object of each and changes its state only from the Breakable packet). Both are shown, hidden and
+    // broken by the triggers and by hits the same way, keyed by their entity id as the client names them.
+    public void AddMapBreakables() {
+        foreach ((Guid guid, BreakableActor breakable) in Entities.BreakableActors) {
+            AddBreakable(guid.ToString("N"), breakable);
+        }
+        foreach ((Guid guid, Breakable breakable) in Entities.Breakables) {
+            AddBreakable(guid.ToString("N"), new BreakableActor(breakable.Visible, breakable.Id, breakable.HideTime, breakable.ResetTime,
+                breakable.GlobalDropBoxId, breakable.Position, breakable.Rotation));
+        }
+    }
+
     public FieldBreakable? AddBreakable(string entityId, BreakableActor breakable) {
         if (fieldBreakables.ContainsKey(entityId)) {
             return null;

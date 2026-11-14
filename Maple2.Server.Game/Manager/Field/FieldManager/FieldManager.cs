@@ -389,9 +389,7 @@ public partial class FieldManager : IField {
                 new UgcMapGroup.Limits(0, 0, 0, 0, 0, 0)));
         }
 
-        foreach ((Guid guid, BreakableActor breakable) in Entities.BreakableActors) {
-            AddBreakable(guid.ToString("N"), breakable);
-        }
+        AddMapBreakables();
         foreach ((Guid guid, Liftable liftable) in Entities.Liftables) {
             AddLiftable(guid.ToString("N"), liftable);
         }

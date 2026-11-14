@@ -143,16 +143,16 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                         Block = new Ms2RegionSkill(skill.skillID, (short) skill.skillLevel, skill.Interval, skill.Position, skill.Rotation),
                     };
                     continue;
-                // case IMS2Breakable breakable: {
-                //     switch (breakable) {
-                //         case IMS2BreakableNIF nif:
-                //             yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                //                 Block = new Breakable(nif.IsVisible, (int) nif.TriggerBreakableID, nif.hideTimer, nif.resetTimer, nif.Position, nif.Rotation)
-                //             };
-                //             continue;
-                //     }
-                //     continue;
-                // }
+                // The client makes a breakable object of every MS2BreakableNIF (the moving platforms and boxes of the
+                // maps, presets such as el_move_woodbox_B04_ derive it) and changes its state only from the server's
+                // Breakable packet, so set_breakable / set_visible_breakable_object and a hit reach it only from here.
+                case IMS2BreakableNIF nif: {
+                        int.TryParse(nif.additionGlobalDropBoxId, out int globalDropBoxId);
+                        yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
+                            Block = new Breakable(nif.IsVisible, (int) nif.TriggerBreakableID, nif.hideTimer, nif.resetTimer, globalDropBoxId, nif.Position, nif.Rotation),
+                        };
+                        continue;
+                    }
                 case IMS2TriggerModel triggerModel:
                     string name = Path.GetFileNameWithoutExtension(triggerModel.XmlFilePath);
                     yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {

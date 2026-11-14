@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -851,6 +851,52 @@ public class TriggerFieldStateTests : TriggerTestBase {
         ByteReader batch = Sent(SendOp.Breakable).Single();
         Assert.That((batch.ReadByte(), batch.ReadInt(), batch.ReadString(), batch.ReadByte(), batch.ReadBool()),
             Is.EqualTo(((byte) 0, 1, "bb", (byte) breakable.State, true)));
+    }
+
+    // The map's breakables as Init places them; the actor ones are none here.
+    private void AddMapBreakables(Guid guid, Breakable breakable) {
+        var entities = (MapEntityMetadata) RuntimeHelpers.GetUninitializedObject(typeof(MapEntityMetadata));
+        typeof(MapEntityMetadata).GetField("<Breakables>k__BackingField", Any)!.SetValue(entities, new Dictionary<Guid, Breakable> { [guid] = breakable });
+        typeof(MapEntityMetadata).GetField("<BreakableActors>k__BackingField", Any)!.SetValue(entities, new Dictionary<Guid, BreakableActor>());
+        typeof(FieldManager).GetField("<Entities>k__BackingField", Any)!.SetValue(Field, entities);
+        Field.AddMapBreakables();
+    }
+
+    // 02000011_bf: MS2BreakableNIF_7000 is a moving platform (moveDirection -1,0,0, moveDistance 600) that the trigger
+    // hides and shows (set_breakable 7000 enable 0 / 1). The client makes a breakable object of every MS2BreakableNIF
+    // and changes its state only from the Breakable packet (worldservice_1.cpp:6758, scenestategame.cpp:3667).
+    [Test]
+    public void SetBreakable_NifPlatformOfTheMap() {
+        StartWithBoxes();
+        AddMapBreakables(Guid.Parse("09abc4dd488b4e4896799dd0c17967d4"),
+            new Breakable(true, 7000, 3000, 40000, 0, new Vector3(1800, -5400, 2250), Vector3.Zero));
+        test.TakeSent();
+
+        Action("""<action name="set_breakable" trigger_ids="7000" enable="0" />""");
+        ByteReader hidden = Sent(SendOp.Breakable).Single();
+        Assert.That((hidden.ReadByte(), hidden.ReadString(), hidden.ReadByte()),
+            Is.EqualTo(((byte) 1, "09abc4dd488b4e4896799dd0c17967d4", (byte) BreakableState.Hide)));
+
+        Action("""<action name="set_breakable" trigger_ids="7000" enable="1" />""");
+        ByteReader shown = Sent(SendOp.Breakable).Single();
+        Assert.That((shown.ReadByte(), shown.ReadString(), shown.ReadByte()),
+            Is.EqualTo(((byte) 1, "09abc4dd488b4e4896799dd0c17967d4", (byte) BreakableState.Show)));
+    }
+
+    // 02000295_bf: the trigger hides the 30 MS2BreakableNIF 3100-3129 at once; MS2BreakableNIF_3101 (a lift: moveDirection
+    // 0,0,1, moveDistance 150) is in the batch with the flag off.
+    [Test]
+    public void SetVisibleBreakableObject_NifOfTheMap() {
+        StartWithBoxes();
+        AddMapBreakables(Guid.Parse("39b7731dafd64848ad9440dcf00d71b2"),
+            new Breakable(true, 3101, 3000, 40000, 0, new Vector3(-5925, 390, 2210), Vector3.Zero));
+        test.TakeSent();
+
+        Action("""<action name="set_visible_breakable_object" trigger_ids="3100,3101,3102,3103,3104,3105,3106,3107,3108,3109,3110,3111,3112,3113,3114,3115,3116,3117,3118,3119,3120,3121,3122,3123,3124,3125,3126,3127,3128,3129" visible="0" />""");
+
+        ByteReader batch = Sent(SendOp.Breakable).Single();
+        Assert.That((batch.ReadByte(), batch.ReadInt(), batch.ReadString(), batch.ReadByte(), batch.ReadBool()),
+            Is.EqualTo(((byte) 0, 1, "39b7731dafd64848ad9440dcf00d71b2", (byte) BreakableState.Show, false)));
     }
 
     // set_skill (36171): an enabled trigger skill is placed as a region skill of the field; disabled, it is taken
