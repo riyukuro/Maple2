@@ -746,7 +746,30 @@ public class HousingManager {
     public bool TryPlaceCube(HeldCube cube, Plot plot, ItemMetadata itemMetadata, in Vector3B position, float rotation,
                              [NotNullWhen(true)] out PlotCube? result, bool isReplace = false, GameSession? helper = null, bool byPlayer = false) {
         lock (plot.EditLock) {
-            return PlaceCube(cube, plot, itemMetadata, position, rotation, out result, isReplace, helper, byPlayer);
+            try {
+                return PlaceCube(cube, plot, itemMetadata, position, rotation, out result, isReplace, helper, byPlayer);
+            } finally {
+                // A layout apply places many cubes and stores their prices once, after the last (StoreCubePrices).
+                if (byPlayer) {
+                    StoreCubePrices();
+                }
+            }
+        }
+    }
+
+    // A cube bought in PlaceCube has its plot row (CreateCube) and its storage row (AddCube) written at once, but its
+    // price was taken in memory only (PurchaseCube), stored by the next session save: a crash before it kept the cube
+    // and gave the price back. The currency is stored once the place (or a layout apply's last place) is done
+    // (SavePurchase: the currency alone); a failed store is left to the next save.
+    private bool pricesTaken;
+
+    private void StoreCubePrices() {
+        if (!pricesTaken) {
+            return;
+        }
+        pricesTaken = false;
+        if (!session.SavePurchase()) {
+            logger.Error("Cube prices not stored now, left to the next save CharacterId={CharacterId}", session.CharacterId);
         }
     }
 
@@ -1038,6 +1061,7 @@ public class HousingManager {
                 Refuse(UgcMapError.s_ugcmap_db);
                 return false;
             }
+            pricesTaken = true;
             session.Item.Furnishing.ReportPurchase(shopEntry);
 
             session.Send(CubePacket.PurchaseCube(session.Player.ObjectId));
@@ -1553,6 +1577,8 @@ public class HousingManager {
 
             session.Field.Broadcast(sendPacket);
         }
+
+        StoreCubePrices();
 
         List<PlotCube> cubePortals = plot.Cubes.Values
             .Where(x => x.ItemId is Constant.InteriorPortalCubeId && x.Interact?.PortalSettings is not null)

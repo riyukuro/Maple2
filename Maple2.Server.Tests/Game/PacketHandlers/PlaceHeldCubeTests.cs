@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
@@ -12,6 +13,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -215,6 +217,29 @@ public class PlaceHeldCubeTests {
         session.ItemMetadata.TryGet(House, out ItemMetadata? metadata);
         Assert.That(session.Housing.TryPlaceCube(new PlotCube(metadata!) { Type = PlotCube.CubeType.Default }, plot, metadata!, new Vector3B(-1, -1, 1), 0, out _), Is.True);
         Assert.That(plot.Cubes, Has.Count.EqualTo(1));
+    }
+
+    private long StoredMeso(GameSession session) {
+        using var context = new Ms2Context(test.Options);
+        return context.Character.AsNoTracking().Single(row => row.Id == session.CharacterId).Currency.Meso;
+    }
+
+    // A bought place stores the price with it: the cube's row was written at once and the mesos taken in memory only,
+    // so a crash before the next save kept the placed cube and gave the price back. A refused place stores nothing.
+    [Test]
+    public void ABoughtPlace_StoresThePrice() {
+        (GameSession session, Plot plot) = StartInHome();
+        long before = StoredMeso(session);
+
+        Place(session, 0, Cube);
+        Assert.That(StoredMeso(session), Is.EqualTo(before));
+
+        Place(session, Cube, Cube);
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes.Values.Select(cube => cube.ItemId), Is.EqualTo(new[] { Cube }));
+            Assert.That((session.Currency.Meso, StoredMeso(session)), Is.EqualTo((4000L, 4000L)));
+            Assert.That(test.Errors, Is.Empty);
+        });
     }
 
     // The storage uid the client sends is a stack of another item: the stack is not spent and the named cube is bought
