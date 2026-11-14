@@ -159,8 +159,13 @@ public sealed class RankDuelMatchState {
         if (Phase == RankDuelPhase.Fighting && IsDuelist(characterId)) {
             long winner = Opponent(characterId);
             int won = wins[winner] = Wins(winner) + 1;
-            if (won >= RoundsToWin) {
+            if (won >= RoundsToWin || (Round >= MaxRounds && won > Wins(characterId))) {
                 End(events, tick, winner, characterId, RankDuelWinBy.Death);
+            } else if (Round >= MaxRounds) {
+                // The last round, and the death evens the wins: a draw, as the last round's timeout with equal wins.
+                Phase = RankDuelPhase.Ended;
+                phaseTick = tick;
+                events.Add(new RankDuelEvent(RankDuelEventType.Result, RankDuelEnd.Draw));
             } else {
                 Phase = RankDuelPhase.Break;
                 phaseTick = tick;

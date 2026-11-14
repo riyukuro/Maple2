@@ -225,6 +225,38 @@ public class RankDuelMatchStateTests {
         Assert.That((state.WinBy, state.Wins(B), state.Wins(A), state.Perfect), Is.EqualTo((RankDuelWinBy.Rounds, 1, 0, false)));
     }
 
+    // The round that ran out ends in a break and the next fight; tick is that fight's start.
+    private static void RunOut(RankDuelMatchState state, ref long tick) {
+        state.Update(tick + RankDuelMatchState.FightMs);
+        tick += RankDuelMatchState.FightMs + RankDuelMatchState.RoundBreakMs;
+        state.Update(tick);
+        tick += RankDuelMatchState.CountdownMs;
+        state.Update(tick);
+    }
+
+    // A death in round 3 ends the match there, never a round 4: two rounds run out, then B dies: A wins 1-0 by death.
+    [Test]
+    public void DeathInTheLastRound_EndsTheMatch() {
+        RankDuelMatchState state = Fighting(out long tick);
+        RunOut(state, ref tick);
+        RunOut(state, ref tick);
+        Assert.That((state.Round, state.Phase), Is.EqualTo((3, RankDuelPhase.Fighting)));
+        Assert.That(state.Death(B, tick + 50), Is.EqualTo(new List<RankDuelEvent> { Won(A, B) }));
+        Assert.That((state.WinBy, state.Wins(A), state.Wins(B), state.Round), Is.EqualTo((RankDuelWinBy.Death, 1, 0, 3)));
+    }
+
+    // Round 1 to A, round 2 runs out, A dies in round 3: 1-1 after the last round is a draw, not a round 4.
+    [Test]
+    public void EvenWinsAfterTheLastRound_IsADraw() {
+        RankDuelMatchState state = Fighting(out long tick);
+        LoseRound(state, B, ref tick);
+        RunOut(state, ref tick);
+        Assert.That((state.Round, state.Phase), Is.EqualTo((3, RankDuelPhase.Fighting)));
+        Assert.That(state.Death(A, tick + 50), Is.EqualTo(new List<RankDuelEvent> { new(RankDuelEventType.Result, RankDuelEnd.Draw) }));
+        Assert.That((state.Winner, state.Phase, state.Round), Is.EqualTo((0L, RankDuelPhase.Ended, 3)));
+        Assert.That(state.Update(tick + 50 + RankDuelMatchState.ResultMs), Is.EqualTo(new List<RankDuelEvent> { Exit }));
+    }
+
     [Test]
     public void NoShow_LosesToTheOneWhoCame() {
         var state = new RankDuelMatchState(A, B, 1000);
