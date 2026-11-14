@@ -9,7 +9,7 @@ namespace Maple2.File.Ingest.Utils;
 /// &lt;environment&gt; holds the sections the data folder's item/&lt;id&gt;.xml has, with these differences
 /// (CItemData::Load, commonfiles/itemdata.cpp:330-420):
 /// - the slots and customize sections are in itemmodel/&lt;nnn&gt;.xml, found by &lt;tool itemPreset&gt;;
-/// - the skill, weapon skill, ride, pet or shop id is &lt;property param1&gt;, by the item's type;
+/// - the weapon skill, ride, pet or shop id is &lt;property param1&gt;, by the item's type;
 /// - an item box names its box id in &lt;function param1&gt; (and param2), the server's "0,1,0,&lt;id&gt;" parameter;
 ///   an instrument names its instrument in &lt;property param1&gt;;
 /// - &lt;property sell price&gt; may hold one price, which the client uses at every rarity;
@@ -25,14 +25,18 @@ public static class PlayedItemData {
     private static readonly XmlSerializer Serializer = new(typeof(ItemData), new XmlRootAttribute("environment") { Namespace = "" });
 
     // The section and attribute that <property param1> fills, by the item's type (CItemData::Load reads param1 and
-    // param2 as plain ints; the type decides what they name).
+    // param2 as plain ints; the type decides what they name): the weapon skill of a type 1 item of subtype 0x50 to
+    // 0x53 (FUN_14053dc90, itemdata.cpp:1142), the pet (GetPetId), ride (GetRideeId) and shop (GetShopId) ids. A
+    // type 5 item's param1 is its glide id (GetGlideItemId, itemdata.cpp:1187), which the server does not read.
     private static readonly Dictionary<int, (string Element, string Attribute)> Param1Targets = new() {
         [1] = ("objectWeaponSkill", "skillID"),
-        [5] = ("skill", "skillID"),
         [9] = ("ride", "rideMonster"),
         [11] = ("pet", "petID"),
         [20] = ("Shop", "systemShopID"),
     };
+
+    private static bool Param1Applies(int type, string subtype) =>
+        type != 1 || int.TryParse(subtype, out int value) && value is >= 0x50 and <= 0x53;
 
     public const int SellRarities = 6;
 
@@ -82,7 +86,8 @@ public static class PlayedItemData {
             }
             string param1 = property.GetAttribute("param1");
             if (param1.Length > 0 && int.TryParse(property.GetAttribute("type"), out int type)
-                && Param1Targets.TryGetValue(type, out (string Element, string Attribute) target)) {
+                && Param1Targets.TryGetValue(type, out (string Element, string Attribute) target)
+                && Param1Applies(type, property.GetAttribute("subtype"))) {
                 XmlElement? element = root[target.Element];
                 if (element == null) {
                     element = document.CreateElement(target.Element);

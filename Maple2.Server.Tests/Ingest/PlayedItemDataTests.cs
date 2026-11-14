@@ -23,7 +23,7 @@ public class PlayedItemDataTests {
             "<customize colorPalette=\"10\" defaultColorIndex=\"2\" /></ItemModel></ms2>", "ItemModel");
         ItemData data = PlayedItemData.Read(Environment(
             "<item id=\"1\"><environment><basic originID=\"7\" stringTag=\"T\" />" +
-            "<property rank=\"4\" type=\"1\" subtype=\"13\" skinType=\"2\" slotMax=\"5\" param1=\"99\"><sell price=\"40\" /></property>" +
+            "<property rank=\"4\" type=\"1\" subtype=\"80\" skinType=\"2\" slotMax=\"5\" param1=\"99\"><sell price=\"40\" /></property>" +
             "<limit genderLimit=\"0\" levelLimit=\"50\" transferType=\"1\" />" +
             "<option constantID=\"123\" randomID=\"456\" optionLevelFactor=\"60\" />" +
             "<tool itemPreset=\"500\" /></environment></item>"), model);
@@ -33,14 +33,14 @@ public class PlayedItemDataTests {
             Assert.That(data.basic.stringTag, Is.EqualTo("T"));
             Assert.That(data.property.rank, Is.EqualTo(4));
             Assert.That(data.property.type, Is.EqualTo(1));
-            Assert.That(data.property.subtype, Is.EqualTo(13));
+            Assert.That(data.property.subtype, Is.EqualTo(80));
             Assert.That(data.property.skinType, Is.EqualTo(2));
             Assert.That(data.property.skin, Is.True);
             Assert.That(data.property.slotMax, Is.EqualTo(5));
             Assert.That(data.property.sell.price, Is.EqualTo(new long[] { 40, 40, 40, 40, 40, 40 }));
             Assert.That(data.limit.levelLimit, Is.EqualTo(50));
             Assert.That(data.limit.transferType, Is.EqualTo(1));
-            // Type 1: param1 is the weapon skill.
+            // Type 1 subtype 80: param1 is the weapon skill.
             Assert.That(data.objectWeaponSkill.skillID, Is.EqualTo(99));
             Assert.That(data.skill.skillID, Is.EqualTo(0));
             // The client's option rows are left out.
@@ -103,7 +103,6 @@ public class PlayedItemDataTests {
         });
     }
 
-    [TestCase(5, "skill")]
     [TestCase(9, "ride")]
     [TestCase(11, "pet")]
     [TestCase(20, "shop")]
@@ -112,7 +111,6 @@ public class PlayedItemDataTests {
             $"<item id=\"1\"><environment><property type=\"{type}\" param1=\"77\" /></environment></item>"), null);
 
         int value = target switch {
-            "skill" => data.skill.skillID,
             "ride" => data.ride.rideMonster,
             "pet" => data.pet.petID,
             _ => data.Shop?.systemShopID ?? 0,
@@ -123,9 +121,23 @@ public class PlayedItemDataTests {
     [Test]
     public void Param1DoesNotReplaceANamedId() {
         ItemData data = PlayedItemData.Read(Environment(
-            "<item id=\"1\"><environment><property type=\"5\" param1=\"77\" /><skill skillID=\"5\" /></environment></item>"), null);
+            "<item id=\"1\"><environment><property type=\"11\" param1=\"77\" /><pet petID=\"5\" /></environment></item>"), null);
 
-        Assert.That(data.skill.skillID, Is.EqualTo(5));
+        Assert.That(data.pet.petID, Is.EqualTo(5));
+    }
+
+    [Test]
+    public void Param1IsNotASkillOrAnyWeaponSkill() {
+        // Type 5: param1 is the glide id; type 1 outside subtypes 80 to 83: nothing.
+        ItemData glide = PlayedItemData.Read(Environment(
+            "<item id=\"1\"><environment><property type=\"5\" param1=\"77\" /></environment></item>"), null);
+        ItemData gear = PlayedItemData.Read(Environment(
+            "<item id=\"1\"><environment><property type=\"1\" subtype=\"13\" param1=\"77\" /></environment></item>"), null);
+
+        Assert.Multiple(() => {
+            Assert.That(glide.skill.skillID, Is.EqualTo(0));
+            Assert.That(gear.objectWeaponSkill.skillID, Is.EqualTo(0));
+        });
     }
 
     [Test]
