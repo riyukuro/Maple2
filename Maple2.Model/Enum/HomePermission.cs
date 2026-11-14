@@ -13,7 +13,7 @@ public enum HomePermission : byte {
     GroundMount = 5,
     AirMount = 6,
     Pvp = 7,
-    Unknown = 8,
+    Revival = 8, // the in-place revive (UIRevivalDialog::FUN_141abcb90)
 }
 
 public enum HomePermissionSetting : byte {

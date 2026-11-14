@@ -173,6 +173,14 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Debug("Cast refused, skill {SkillId} of main type {MainType} is disabled by a buff held or the field", record.SkillId, record.Metadata.Property.MainType);
             return false;
         }
+        // A home's row for the skill's main type (potion, glide, climb or a learned skill) stops it there for the
+        // player it covers (HomeRowCheck): checked on the first motion only, as the client checks it before the cast.
+        if (!laterMotion && HomePermissionRules.SkillRow(record.Metadata.Property.MainType) is { } row
+            && HomePermissionRules.SkillRowApplies(row, AdminLevel.Of(session.Player.Value.Account.AdminPermissions))
+            && HomeRowCheck.Blocks(session, row)) {
+            Logger.Debug("Cast refused, skill {SkillId}: the home's {Row} row stops it", record.SkillId, row);
+            return false;
+        }
         // The same holds for a buff that disables the skill itself (answer 0x1f): checked on the first motion only.
         if (!laterMotion && session.Player.Buffs.SkillUseDisabled(record.SkillId)) {
             Logger.Debug("Cast refused, a buff held disables skill {SkillId}", record.SkillId);

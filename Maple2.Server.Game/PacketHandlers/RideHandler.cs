@@ -57,7 +57,9 @@ public class RideHandler : FieldPacketHandler {
 
     private void HandleStart(GameSession session, IByteReader packet) {
         Logger.Information("RequestRide Start: map={Map} limitRide={Limit} alreadyRiding={Riding}", session.Field?.MapId, session.Field?.Metadata.Limit.Ride, session.Ride.Ride != null);
-        if (session.Field == null || !RideShare.CanStart(session.Player.IsDead, session.Field.Metadata.Limit.Ride, session.Ride.Ride != null)) {
+        // The client asks the home's ground mount row before any ride item (WorldService::FUN_141bcb210).
+        if (session.Field == null || !RideShare.CanStart(session.Player.IsDead, session.Field.Metadata.Limit.Ride, session.Ride.Ride != null)
+            || HomeRowCheck.Blocks(session, HomePermission.GroundMount)) {
             session.Send(NoticePacket.MessageBox(StringCode.s_action_cant_ride));
             return;
         }
@@ -125,7 +127,7 @@ public class RideHandler : FieldPacketHandler {
     // ResponseRide has no refusal mode, so a refused swap is answered like a refused ride start, with the
     // s_action_cant_ride box (chosen here).
     private void HandleChange(GameSession session, IByteReader packet) {
-        if (session.Field == null || session.Ride.Ride == null) {
+        if (session.Field == null || session.Ride.Ride == null || HomeRowCheck.Blocks(session, HomePermission.GroundMount)) {
             session.Send(NoticePacket.MessageBox(StringCode.s_action_cant_ride));
             return;
         }

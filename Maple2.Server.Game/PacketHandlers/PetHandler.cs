@@ -83,6 +83,11 @@ public class PetHandler : FieldPacketHandler {
 
     private void HandleSummon(GameSession session, IByteReader packet) {
         long petUid = packet.ReadLong();
+        // The home's pvp row forbids a summon (s_ugcmap_fun_pvp_ffa_forbiden_summon_pet, MyPC::FUN_14152aa90): the
+        // client asks it before a summon and a switch.
+        if (HomeRowCheck.Blocks(session, HomePermission.Pvp)) {
+            return;
+        }
         SummonPet(session, petUid);
     }
 
@@ -103,6 +108,9 @@ public class PetHandler : FieldPacketHandler {
         }
 
         long petUid = packet.ReadLong();
+        if (HomeRowCheck.Blocks(session, HomePermission.Pvp)) {
+            return;
+        }
         // The client asks only its own state and the field's pet flag before a switch (mypc.cpp FUN_14152b8d0),
         // so the server weighs the next pet first: one that is not in the pet bag, or that the field or the
         // character's level refuses, leaves the summoned pet out instead of putting it away for nothing.

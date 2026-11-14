@@ -14,6 +14,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -365,11 +366,7 @@ public class InstrumentHandler : FieldPacketHandler {
 
     // A home whose music row stops the player (HomePermissionRules.Blocks): the client sends no play there
     // (CInstrumentManager, the FUN_141bdb660(3) check before 0, 3 and 5), so the server refuses one too.
-    internal static bool MusicBlocked(GameSession session) {
-        return session.Field is HomeFieldManager home && HomePermissionRules.Blocks(home.Home.Permissions, HomePermission.Music,
-            home.OwnerId, session.AccountId,
-            () => session.Party?.Party?.Members.Values.Any(member => member.AccountId == home.OwnerId) == true);
-    }
+    internal static bool MusicBlocked(GameSession session) => HomeRowCheck.Blocks(session, HomePermission.Music);
 
     private bool TryGetScore(GameSession session, long scoreUid, [NotNullWhen(true)] out Item? score) {
         score = session.Item.Inventory.Get(scoreUid, InventoryType.FishingMusic);

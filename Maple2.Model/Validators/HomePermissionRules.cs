@@ -56,4 +56,23 @@ public static class HomePermissionRules {
             _ => true,
         };
     }
+
+    // The row a cast of the skill's main type is checked against (CSkillSystem, skillslot.cpp): 5 (potion) the
+    // potion row; 7 (glide) the air mount row in a home; 13 (climb) the climb row; and a skill of any main type that
+    // needs learning (SkillData::FUN_1407e9f30: not 1, 3, 4, 5, 7, 10, 11, 13, 14, 15, 17, 18 or 19) the skill row.
+    public static HomePermission? SkillRow(int mainType) {
+        return mainType switch {
+            5 => HomePermission.Potion,
+            7 => HomePermission.AirMount,
+            13 => HomePermission.Climb,
+            1 or 3 or 4 or 10 or 11 or 14 or 15 or 17 or 18 or 19 => null,
+            _ => HomePermission.Skill,
+        };
+    }
+
+    // A glide is let through for a GM (account level 50 or more) with the constants' glide skill (skillslot.cpp,
+    // the DAT_143ab2914 test); the server lets a GM's glide through whatever its item.
+    public static bool SkillRowApplies(HomePermission row, byte adminLevel) {
+        return row != HomePermission.AirMount || adminLevel < 50;
+    }
 }

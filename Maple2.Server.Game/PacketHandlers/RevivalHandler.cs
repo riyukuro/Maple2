@@ -83,6 +83,12 @@ public class RevivalHandler : FieldPacketHandler {
     private void HandleInstantRevive(GameSession session, IByteReader packet) {
         if (session.Field is null) return;
         bool useVoucher = packet.ReadBool();
+        // The home's revival row leaves the client's dialog without its in-place button (UIRevivalDialog::FUN_141abcb90),
+        // which is the only sender of 1 and 2.
+        if (HomeRowCheck.Blocks(session, HomePermission.Revival)) {
+            Logger.Debug("Instant revive refused for {CharacterId}: the home's revival row", session.CharacterId);
+            return;
+        }
 
         // The client prices this button with CalcRevivalMeso(level, remaining daily count, 0)
         // (UIRevivalDialog::RefreshMesoButton); CalcRevivalPrice is a different, much smaller fee.
@@ -153,6 +159,10 @@ public class RevivalHandler : FieldPacketHandler {
     private void HandleCouponRevive(GameSession session, IByteReader packet) {
         bool useCoupon = packet.ReadBool();
         if (session.Field is null) return;
+        if (HomeRowCheck.Blocks(session, HomePermission.Revival)) {
+            Logger.Debug("Meret revive refused for {CharacterId}: the home's revival row", session.CharacterId);
+            return;
+        }
 
         ConstantsTable constants = ServerTableMetadata.ConstantsTable;
         int debuffCode = constants.MeratRevivalDebuffCode;
