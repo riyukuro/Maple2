@@ -9,7 +9,8 @@ public class AiPathRulesTests {
     private static readonly HashSet<string> Shipped = ["AI_Default.xml", "AI_Default_Summon.xml", "AI_GigantikaHead_Summon_1.xml",
         "BossDungeon/SnowKing/AI_SnowKing.xml", "BossDungeon/SnowKing_Normal/AI_SnowKing_Chaos.xml",
         "BossDungeon/Pinkbean/AI_StatueHuman01.xml", "BossDungeon/Pinkbean_Normal/Chaos/AI_StatueHuman01.xml",
-        "BossDungeon/Papulatus_Chaos/AI_Papulatus_Chaos.xml", "BossDungeon/Papulatus_Chaos/AI_Papulatus_ChaosNormalJP.xml"];
+        "BossDungeon/Papulatus_Chaos/AI_Papulatus_Chaos.xml", "BossDungeon/Papulatus_Chaos/AI_Papulatus_ChaosNormalJP.xml",
+        "BossDungeon/Archeon/Boss/AI_DarkEgoWeapon_Bow.xml", "BossDungeon/Archeon/Boss/AI_Archeon.xml", "BossDungeon/Archeon/Boss_Quest/AI_Archeon.xml"];
 
     private static string? Resolve(string path) => AiPathRules.Resolve(path, Shipped.Contains);
 
@@ -54,6 +55,26 @@ public class AiPathRulesTests {
             Assert.That(AiPathRules.WithoutLocale("AI_BANANA.xml"), Is.EqualTo("AI_BANA.xml"));
             Assert.That(AiPathRules.WithoutLocale("AI_Default.xml"), Is.Null);
         });
+    }
+
+    [Test]
+    public void MissingQuestCopy_UsesTheFolderItCopies() {
+        Assert.Multiple(() => {
+            // npc 25030011 (map 52100301); its boss twin 23503011 names the Boss/ file.
+            Assert.That(Resolve("BossDungeon/Archeon/Boss_Quest/AI_DarkEgoWeapon_Bow.xml"), Is.EqualTo("BossDungeon/Archeon/Boss/AI_DarkEgoWeapon_Bow.xml"));
+            // The quest folder's own file is kept, not swapped for the boss folder's.
+            Assert.That(Resolve("BossDungeon/Archeon/Boss_Quest/AI_Archeon.xml"), Is.EqualTo("BossDungeon/Archeon/Boss_Quest/AI_Archeon.xml"));
+            Assert.That(Resolve("BossDungeon/Archeon/Boss_Quest/AI_Nothing.xml"), Is.Null);
+        });
+    }
+
+    [TestCase("BossDungeon/Archeon/Boss_Quest/AI_X.xml", "BossDungeon/Archeon/Boss/AI_X.xml")]
+    [TestCase("BossDungeon/EyeOfLapenta/IshuraRbladerDark_Quest/AI_X.xml", "BossDungeon/EyeOfLapenta/IshuraRbladerDark/AI_X.xml")]
+    [TestCase("BossDungeon/Archeon/Boss/AI_X_Quest.xml", null)]
+    [TestCase("BossDungeon/_Quest/AI_X.xml", null)]
+    [TestCase("AI_X.xml", null)]
+    public void QuestSource(string path, string? expected) {
+        Assert.That(AiPathRules.QuestSource(path), Is.EqualTo(expected));
     }
 
     [TestCase("BossDungeon/SnowKing/AI_SnowKing_Chaos.xml", "BossDungeon/SnowKing_Normal/AI_SnowKing_Chaos.xml")]

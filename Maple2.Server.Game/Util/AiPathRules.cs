@@ -27,6 +27,10 @@ public static partial class AiPathRules {
         if (plain != null && exists(plain)) {
             return plain;
         }
+        string? source = QuestSource(aiPath);
+        if (source != null && exists(source)) {
+            return source;
+        }
         return null;
     }
 
@@ -52,6 +56,24 @@ public static partial class AiPathRules {
         }
         parts[1] += "_Normal";
         return string.Join('/', parts);
+    }
+
+    // A <name>_Quest folder is the quest copy of the folder <name>: BossDungeon/Archeon/Boss_Quest/ ships 10 files, 9 of
+    // them the same bytes as the file of that name in BossDungeon/Archeon/Boss/ (AI_Archeon.xml is the quest's own boss).
+    // Npc 25030011 (the quest map 52100301) names "BossDungeon/Archeon/Boss_Quest/AI_DarkEgoWeapon_Bow.xml", which was
+    // never copied; its boss twin 23503011, with the same skill list and feature, names the file in Boss/. So a missing
+    // name in a _Quest folder falls back to the same name in the folder it copies.
+    public static string? QuestSource(string aiPath) {
+        const string suffix = "_Quest";
+        string[] parts = aiPath.Split('/');
+        bool changed = false;
+        for (int i = 0; i < parts.Length - 1; i++) {
+            if (parts[i].Length > suffix.Length && parts[i].EndsWith(suffix)) {
+                parts[i] = parts[i][..^suffix.Length];
+                changed = true;
+            }
+        }
+        return changed ? string.Join('/', parts) : null;
     }
 
     [GeneratedRegex(@"^(.+)_\d+\.xml$")]
