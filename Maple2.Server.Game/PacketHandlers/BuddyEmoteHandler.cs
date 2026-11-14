@@ -62,6 +62,10 @@ public class BuddyEmoteHandler : FieldPacketHandler {
         if (receiver.Session == session) {
             return;
         }
+        if (!BuddyEmoteRules.InReach(session.Player.Position, receiver.Position)) {
+            session.Send(BuddyEmotePacket.Error(s_couple_emotion_failed_teleport_limit_distance));
+            return;
+        }
 
         receiver.Session.BuddyEmoteInvites.Add(session.CharacterId, emoteId);
         receiver.Session.Send(BuddyEmotePacket.Invite(emoteId, session.Player));
@@ -112,6 +116,13 @@ public class BuddyEmoteHandler : FieldPacketHandler {
         }
         if (session.Field?.TryGetPlayerById(senderId, out FieldPlayer? sender) is null or false) {
             session.Send(BuddyEmotePacket.Error(s_couple_emotion_failed_accept_cannot_find_request_user));
+            return;
+        }
+        // The start point the accepting client chose has to lie near it, and the two players near each other.
+        if (!BuddyEmoteRules.InReach(session.Player.Position, sender.Position)
+            || !BuddyEmoteRules.StartInReach(session.Player.Position, senderPosition)) {
+            session.Send(BuddyEmotePacket.Error(s_couple_emotion_failed_teleport_limit_distance));
+            sender.Session.Send(BuddyEmotePacket.Error(s_couple_emotion_failed_teleport_limit_distance));
             return;
         }
 

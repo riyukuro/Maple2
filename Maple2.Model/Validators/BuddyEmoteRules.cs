@@ -52,6 +52,22 @@ public sealed class BuddyEmoteInvites {
 
 // BuddyEmote: the requests one player's client sends to be passed to the other player.
 public static class BuddyEmoteRules {
+    // CoupleEmotionMaxDistance: the client asks (mode 0) and accepts (mode 3) only while the two players are at
+    // most this far apart (FUN_140b83fa0, statecoupleemotion.cpp:1207; stateskill.cpp:1976, RequestCoupleEmotion
+    // statecoupleemotion.cpp:1357). Defined as 300 (constantsblocks.cpp:892); KR constants.xml leaves it there.
+    public const float MaxDistance = 300f;
+
+    // The two players, by the server's positions, are near enough for a couple emote.
+    public static bool InReach(System.Numerics.Vector3 a, System.Numerics.Vector3 b) {
+        return InteractRules.InReach(a, b, MaxDistance);
+    }
+
+    // Mode 3's start point is the accepting player's own position moved by the emote's node offsets
+    // (FindPlacement, statecoupleemotion.cpp:869-881), so it lies near that player.
+    public static bool StartInReach(System.Numerics.Vector3 accepter, System.Numerics.Vector3 start) {
+        return InteractRules.InReach(accepter, start, MaxDistance);
+    }
+
     // Mode 2: i64 character id, u8 reason (networkservice.cpp:1104-1121, statecoupleemotion.cpp:1349-1402).
     public static (long CharacterId, byte Reason) ReadError(IByteReader packet) {
         long characterId = packet.ReadLong();
