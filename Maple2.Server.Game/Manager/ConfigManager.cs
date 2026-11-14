@@ -926,9 +926,11 @@ public class ConfigManager {
     }
 
     // Gives the effects of the learned abilities that the player does not have
-    // (CharacterAbilityRules.MissingEffects). Called on learn and at every field entry.
+    // (CharacterAbilityRules.MissingEffects). Called on learn and at every field entry. With CharacterAbility
+    // (id 45) off the client has no ability window (FUN_1401e0800, characterability.cpp:290), so the abilities a
+    // character learned while it was on give no effect: the effects are not saved, so none is held past the next entry.
     public void RefreshCharacterAbilityBuffs() {
-        if (session.Field is not { } field) {
+        if (session.Field is not { } field || !session.ServerTableMetadata.FeatureTable.IsOn(CharacterAbilityRules.Feature)) {
             return;
         }
 

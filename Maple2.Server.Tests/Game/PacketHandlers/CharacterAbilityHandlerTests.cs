@@ -13,6 +13,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Microsoft.EntityFrameworkCore;
@@ -273,6 +274,27 @@ public class CharacterAbilityHandlerTests {
         Assert.That(test.Errors, Is.Empty);
     }
     #endregion
+
+    // At field entry the learned abilities give their effects only while CharacterAbility (id 45) is on.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Refresh_GivesTheEffectsOnlyWithTheFeatureOn(bool on) {
+        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(skills)!;
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [((int) 90000321, (short) 1), BuffAttributeTests.Effect(90000321, DisabledBuffTests.Property)]);
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Field, skills);
+        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!
+            .SetValue(session.Field, new FieldActor(session.Field!, 99, session.Field!.Metadata, null!));
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Player, session.Field);
+        if (!on) {
+            test.SetFeaturesOff(CharacterAbilityRules.Feature);
+        }
+        Character.Abilities.Add(Strength);
+
+        session.Config.RefreshCharacterAbilityBuffs();
+
+        Assert.That(session.Player.Buffs.HasBuff(90000321), Is.EqualTo(on));
+    }
 
     // The learned list and the reset time are columns of the character row.
     [Test]
