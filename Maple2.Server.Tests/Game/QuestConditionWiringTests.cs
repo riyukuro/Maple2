@@ -873,6 +873,25 @@ public class QuestConditionWiringTests : TriggerTestBase {
         });
     }
     #endregion
+    #region item_add (InventoryManager.Add)
+    // KR 70600053: code 20301082, value 2. Each add counts the amount it adds, not the stack it lands on: one more
+    // on a held one counts 1, and another item counts nothing.
+    [Test]
+    public void ItemAdd_70600053_TheAmountAdded() {
+        Start();
+        Assert.That(test.Session.Item.Inventory.Add(test.Store(TestGameSession.Metadata(20301082))), Is.True);
+        Quest quest = StartQuest(Condition(ConditionType.item_add, 2, ["20301082"], []));
+
+        Assert.That(test.Session.Item.Inventory.Add(test.Store(TestGameSession.Metadata(20301083))), Is.True);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Assert.That(test.Session.Item.Inventory.Add(test.Store(TestGameSession.Metadata(20301082))), Is.True);
+        Assume.That(test.Session.Item.Inventory.Filter(item => item.Id == 20301082).Single().Amount, Is.EqualTo(2), "one stack");
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+        Assert.That(test.Session.Item.Inventory.Add(test.Store(TestGameSession.Metadata(20301082))), Is.True);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(2));
+    }
+    #endregion
+
     #region item_move (FieldManager.PlaceCube, a liftable put down)
     // 10001060: <condition type="item_move" code="30000030" value="3" target="400" />, the liftable item of the code
     // put down on a target box of the target counts; one put down off the box, or another item, does not.

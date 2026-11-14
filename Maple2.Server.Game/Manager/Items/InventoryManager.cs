@@ -393,7 +393,8 @@ public class InventoryManager {
                     session.Send(ItemInventoryPacket.NotifyNew(item.Uid, added));
                 }
                 session.ConditionUpdate(ConditionType.item_collect, codeLong: item.Id);
-                session.ConditionUpdate(ConditionType.item_add, counter: item.Amount, codeLong: item.Id);
+                // item_add counts what this add brought, not the stack it joined (KR 70600053: two of 20301082).
+                session.ConditionUpdate(ConditionType.item_add, counter: added, codeLong: item.Id);
                 session.Field?.Survival?.ItemGot(session.CharacterId, item.Id, added);
                 session.Achievement.Update(ConditionType.item_exist, count: item.Amount, targetLong: session.Field?.MapId ?? 0, codeLong: item.Id);
                 session.Quest.UpdateHeld(item.Id);
