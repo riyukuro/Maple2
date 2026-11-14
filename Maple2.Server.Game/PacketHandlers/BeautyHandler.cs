@@ -129,6 +129,9 @@ public class BeautyHandler : FieldPacketHandler {
             }
         }
 
+        // A pick waiting for its answer belongs to the shop it was made in; the client's keep or return box is modal, so
+        // a shop opened after it ends it, and the answer cannot take another shop's return coupon.
+        session.Beauty.ClearPreviousHair();
         session.BeautyShop = new BeautyShop(shopMetadata, entries.ToArray()) {
             Type = ShopType(session.ServerTableMetadata.ScriptFunctionTable, npcId, shopMetadata),
         };
@@ -621,6 +624,7 @@ public class BeautyHandler : FieldPacketHandler {
             Type = RowType(shopMetadata),
         };
 
+        session.Beauty.ClearPreviousHair();
         session.BeautyShop = shop;
         session.Send(BeautyPacket.BeautyShop(shop, session.Beauty.SlotCount, session.Beauty.SavedCount));
     }

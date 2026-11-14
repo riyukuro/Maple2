@@ -98,4 +98,54 @@ public class BeautyRandomHairTests {
 
         Assert.That(session.Item.Inventory.Filter(item => item.Id == coupon), Is.Empty);
     }
+
+    // A pick waiting for its answer ends when another shop opens (Beauty 23, a coupon of shop 600 whose return coupon
+    // is 20300300): the answer took the return coupon of the shop open at the time, not of the shop of the pick.
+    [Test]
+    public void AShopOpenedAfterAPickEndsIt() {
+        const int coupon = 20300300;
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(coupon));
+        test.Register(TestGameSession.Metadata(10200001, EquipSlot.HR));
+        Item worn = test.Store(TestGameSession.Metadata(10200002, EquipSlot.HR), 1, ItemGroup.Outfit, EquipSlot.HR);
+        Item open = test.Store(TestGameSession.Metadata(20300100,
+            function: new ItemMetadataFunction(ItemFunction.ItemChangeBeauty, "ItemChangeBeauty", "600", false)));
+        var fee = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 300, string.Empty, 0);
+        var row = new BeautyShopItem(10200001, fee, 1, 0, 0, 0, ShopItemLabel.None);
+        test.SetServerTable(new BeautyShopTable(new Dictionary<int, BeautyShopMetadata> {
+            [600] = new(600, BeautyShopCategory.Hair, 0, fee, fee, true, false, coupon, 0, ItemTag.None, [row], []),
+        }));
+        test.SetTable(new ItemOptionPickTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionPickTable.Option>>()));
+        test.SetTable(new ItemOptionConstantTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>>()));
+        test.SetTable(new ItemOptionStaticTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+        test.SetTable(new ItemOptionRandomTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+        test.Start();
+        test.EnterMap(TestGameSession.Map(2000062));
+        session.Beauty = new BeautyManager(session);
+        session.Beauty.SavePreviousHair(worn);
+        var handler = new BeautyHandler {
+            ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata, NpcMetadata = null!,
+            ServerTableMetadata = test.ServerTableMetadata,
+        };
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(23);
+            writer.WriteLong(open.Uid);
+        }));
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteBool(false);
+        }));
+
+        Assert.That(session.BeautyShop?.Metadata.Id, Is.EqualTo(600));
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == coupon), Is.Empty);
+
+        // The shop's own pick still gets its return coupon on "keep the old hair".
+        session.Beauty.SavePreviousHair(worn);
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteBool(false);
+        }));
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == coupon), Has.Count.EqualTo(1));
+    }
 }
