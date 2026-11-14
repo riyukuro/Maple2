@@ -376,7 +376,7 @@ public partial class TriggerContext : ITriggerContext {
     internal Func<DateTimeOffset>? Clock { get; set; }
 
     public bool DayOfWeek(int[] dayOfWeeks, string description, bool negate) {
-        int today = (int) (Clock?.Invoke() ?? DateTimeOffset.UtcNow).UtcDateTime.DayOfWeek + 1;
+        int today = (int) (Clock?.Invoke() ?? DateTimeOffset.UtcNow).LocalDateTime.DayOfWeek + 1;
         if (negate) {
             return !dayOfWeeks.Contains(today);
         }
