@@ -142,6 +142,10 @@ public partial class GameStorage {
                 GuildId = guild.Id,
                 CharacterId = leaderId,
                 Rank = 0,
+                // The join time is set here, in the server's local time as the check-in and donation times are.
+                // The column default is in the database's time zone (UTC in the MySQL container) and reads back as
+                // local time, so a member who had just joined showed a join time ahead by the UTC offset.
+                CreationTime = DateTime.Now,
             };
             Context.GuildMember.Add(guildLeader);
             RemoveGuildApplicationsOf(leaderId);
@@ -164,6 +168,8 @@ public partial class GameStorage {
                 GuildId = guildId,
                 CharacterId = info.CharacterId,
                 Rank = 5,
+                // In the server's local time, as for the leader (CreateGuild).
+                CreationTime = DateTime.Now,
             };
             Context.GuildMember.Add(member);
             RemoveGuildApplicationsOf(info.CharacterId);
@@ -357,7 +363,12 @@ public partial class GameStorage {
                     Context.GuildMember.Remove(member);
                 }
             }
-            Context.GuildMember.AddRange(saveMembers.Values.Select<GuildMember, Model.GuildMember>(member => member));
+            // A member with no row yet gets its join time here too, in local time (not the column default's zone).
+            Context.GuildMember.AddRange(saveMembers.Values.Select(member => {
+                Model.GuildMember model = member;
+                model.CreationTime = member.JoinTime > 0 ? member.JoinTime.FromEpochSeconds() : DateTime.Now;
+                return model;
+            }));
 
             return SaveChanges();
         }
