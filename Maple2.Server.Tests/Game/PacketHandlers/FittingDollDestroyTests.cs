@@ -280,6 +280,22 @@ public class FittingDollDestroyTests {
         AssertKept();
     }
 
+    // With FittingDollEquipAll (0xd4) off the client tests no binding before a take-off, but the server still refuses
+    // an item bound to another character of the account, or with a gem bound to one: a take-off never moves a bound
+    // item to another character.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TakeOff_BoundToAnotherCharacter_IsRefusedWithEquipAllOff(bool byGem) {
+        if (byGem) {
+            Start(() => 0, () => [NewCharacter(test.AccountId)]);
+        } else {
+            Start(() => NewCharacter(test.AccountId));
+        }
+        test.SetFeaturesOff(FittingDollRules.EquipAllFeature);
+        Assert.That(TakeOff(), Is.EqualTo(new[] { Error(0x12) }));
+        AssertKept();
+    }
+
     [Test]
     public void TakeOff_OwnOrFreeGems_TakesTheItem() {
         Start(() => test.CharacterId, () => [0, test.CharacterId]);
