@@ -69,8 +69,9 @@ public static class QuestExpRules {
 
     // The player's quest exp rate (SpecialAttribute.QuestExp, seg_questrewardrate: guild buff 110000113 +30% to +38%,
     // buff 100000009 +10%; a fraction) adds its share of the exp for a quest of standardLevel QuestRewardSAIgnoreLevel
-    // (10 in KR) and up: CQuest::ShowRewards (questmanager_1.cpp:333-344) skips the rate below that level and adds
-    // exp * (1 + rate) - exp, in float, to the exp.
+    // (10 in KR) and up. The client's reward line (CQuest::ShowRewards, questmanager_1.cpp:333-344) shows this share
+    // only for the game rule's quest exp ability (hot time, keyed by the PC-bang flag), not for the player's buffs:
+    // giving the buffs' rate the same way, with the same level gate and float math, is the server's own choice.
     public static long StatBonus(long exp, double rate, int standardLevel, int ignoreLevel) {
         if (exp <= 0 || rate == 0 || standardLevel < ignoreLevel) {
             return exp;

@@ -215,7 +215,8 @@ public class QuestRewardTierTests {
 
     // The quest exp rate (SpecialAttribute.QuestExp, in thousandths: KR guild buff 110000113 level 1 is
     // seg_questrewardrate 0.3) adds its share of the exp for a quest of standardLevel 10 (QuestRewardSAIgnoreLevel in
-    // KR) and up, as the client's reward line adds it; below that level, and without the rate, the exp is the reward's.
+    // KR) and up, by the rule the client's reward line uses for the game rule's rate; below that level, and without the
+    // rate, the exp is the reward's.
     [TestCase(300, 10, 1300L)]
     [TestCase(300, 60, 1300L)]
     [TestCase(100, 60, 1100L)]
