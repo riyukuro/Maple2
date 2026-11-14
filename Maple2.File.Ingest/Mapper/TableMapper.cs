@@ -2212,9 +2212,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
     // subJobLevel of a skillPoint round and leaves out a round of any other type, which the client still keeps as a
     // round with no reward (GetNextRound walks every row), so the claim of the round after it was refused for good.
     private FieldMissionTable ParseFieldMissionTable() {
-        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
-            file.Name.Equals($"table/{language}/fieldmission.xml", StringComparison.OrdinalIgnoreCase));
-        return new FieldMissionTable(entry == null ? [] : ReadFieldMissions(xmlReader.GetXmlDocument(entry)));
+        // The pack's region folder, as the parser reads it (PackTables.Locale: LOCALE's own, else the pack's one).
+        string path = $"table/{PackTables.Locale.ToLowerInvariant()}/fieldmission.xml";
+        return new FieldMissionTable(ReadFieldMissions(xmlReader.GetXmlDocument(xmlReader.GetEntry(path))));
     }
 
     // Each <round>: mission (the round, a later row of the same round replaces it), type item / statPoint /
