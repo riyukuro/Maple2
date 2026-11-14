@@ -1428,6 +1428,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             if (!Enum.TryParse(data.eventType, out GameEventType eventType)) {
                 Console.WriteLine($"Unknown GameEventType: {data.eventType}");
             }
+            if (GameEventScreen.MarkedNotForPlay(data.reference)) {
+                Console.WriteLine($"{data.eventType} {id}: marked unused or test in the table's reference, row dropped");
+                continue;
+            }
 
             GameEventData? eventData = ParseGameEventData(eventType, data.value1, data.value2, data.value3, data.value4);
             if (eventData == null) {
