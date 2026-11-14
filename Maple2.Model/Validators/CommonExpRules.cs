@@ -67,7 +67,7 @@ public static class CommonExpRules {
     // fishing_exp), arcade clears (_arcade_exp) and performing (_playinstrument_exp). The client only names them in item
     // tooltips. KR sets them together on 10000061 (+1% at level 1 to +2.4%). Gathering and crafting are raised by
     // AcquireGatheringExp and AcquireManufacturingExp (75, 76); KR sets neither and the client has no string for them.
-    // PvP exp (s_item_opt_sa_improve_pvp_exp, 108) raises the rows the common exp table names Exp_Pvp: the arenas' and
+    // PvP exp (s_item_opt_sa_improve_pvp_exp, 108) raises the common exp rows of the arenas' and
     // duels' results (bloodMineRank, redDuel, btiTeam, rankDuel); KR rolls it on PvP gear (+0.1% to +50%).
     public static SpecialAttribute? RateAttribute(ExpType expType) {
         return expType switch {

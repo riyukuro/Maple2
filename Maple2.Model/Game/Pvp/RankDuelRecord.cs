@@ -101,11 +101,11 @@ public static class RankDuelRules {
     }
 
     // The extra valor tokens of the honor token special attribute (s_item_opt_sa_improve_honor_token, 107), as a
-    // fraction of the result's reward (0.05 = +5%). The client only names it in item tooltips. Chosen here: it is paid
-    // apart from the reward, beyond the week's gauge as the type 11 special effect's extra, rounded down; a rate below
-    // 0 gives none.
-    public static int HonorTokenExtra(int reward, double rate) {
-        return reward <= 0 || rate <= 0 ? 0 : (int) (reward * rate);
+    // share of the result's reward, in the attribute's thousandths (50 = +5%). The client only names it in item tooltips.
+    // Chosen here: it is paid apart from the reward, beyond the week's gauge as the type 11 special effect's extra,
+    // rounded down in integer math (100 at 290 gives 29); a rate below 0 gives none.
+    public static int HonorTokenExtra(int reward, long rate) {
+        return reward <= 0 || rate <= 0 ? 0 : (int) ((long) reward * rate / 1000);
     }
 
     // The widening window of the queue: the gap allowed after waiting waitedMs, from the server constants

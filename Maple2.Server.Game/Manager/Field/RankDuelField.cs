@@ -381,8 +381,7 @@ public sealed class RankDuelField {
                         ? SpecialEffectRules.ValorExtra(player.Buffs.TakeSpecialEffects(SpecialEffectRules.ValorToken), change.Reward)
                         : 0;
                     // The honor token special attribute (107) adds its rate of the reward, winner or loser.
-                    extra += RankDuelRules.HonorTokenExtra(change.Reward,
-                        player.Stats.Values[SpecialAttribute.HonorToken].Multiplier());
+                    extra += RankDuelRules.HonorTokenExtra(change.Reward, player.Stats.Values[SpecialAttribute.HonorToken].Total);
                     if (extra > 0) {
                         player.Session.Currency.Change(CurrencyType.ValorToken, extra);
                     }

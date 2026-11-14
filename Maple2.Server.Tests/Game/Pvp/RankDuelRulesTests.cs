@@ -169,13 +169,14 @@ public class RankDuelRulesTests {
     }
 
     // The honor token special attribute: its rate of the reward, rounded down; none for no reward or no rate.
-    [TestCase(100, 0.05, 5)]
-    [TestCase(30, 0.5, 15)]
-    [TestCase(30, 0.001, 0)]
-    [TestCase(0, 0.5, 0)]
+    [TestCase(100, 50, 5)]
+    [TestCase(100, 290, 29)]
+    [TestCase(30, 500, 15)]
+    [TestCase(30, 1, 0)]
+    [TestCase(0, 500, 0)]
     [TestCase(100, 0, 0)]
-    [TestCase(100, -0.5, 0)]
-    public void HonorTokenExtra(int reward, double rate, int expected) {
+    [TestCase(100, -500, 0)]
+    public void HonorTokenExtra(int reward, long rate, int expected) {
         Assert.That(RankDuelRules.HonorTokenExtra(reward, rate), Is.EqualTo(expected));
     }
 }

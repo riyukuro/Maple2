@@ -169,7 +169,7 @@ public sealed class ExperienceManager {
             return 0;
         }
 
-        // Fishing, arcade and performing exp are raised by their special attributes (CommonExpRules.RateAttribute).
+        // Fishing, arcade, performing, gathering, crafting and PvP exp are raised by their special attributes (CommonExpRules.RateAttribute).
         if (CommonExpRules.RateAttribute(expType) is { } attribute) {
             modifier = CommonExpRules.WithRate(modifier, session.Player.Stats.Values[attribute].Multiplier());
         }
