@@ -46,7 +46,7 @@ public class BuffAttributeTests {
     }
 
     // The effect with the given property and no begin condition, update, reflect or consume.
-    private static AdditionalEffectMetadata Effect(int id, AdditionalEffectMetadataProperty property) {
+    internal static AdditionalEffectMetadata Effect(int id, AdditionalEffectMetadataProperty property) {
         var always = new BeginCondition(0, 0, Gender.All, [], 1, 0, 0, 0, false, false, false, true, false, true, [],
             new Dictionary<BasicAttribute, long>(), [], [], [], [], null, null, null, null);
         return DisabledBuffTests.Effect(id, property: property) with {

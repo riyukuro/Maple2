@@ -19,6 +19,7 @@ using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Maple2.Server.Tests.Game;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
@@ -54,6 +55,16 @@ public class ItemFunctionUseTests {
     }
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
+
+    // The test field is made bare: fills the named members it leaves null.
+    private void FillField(params string[] names) {
+        foreach (string name in names) {
+            FieldInfo field = typeof(FieldManager).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
+            if (field.GetValue(session.Field) == null) {
+                field.SetValue(session.Field, Activator.CreateInstance(field.FieldType));
+            }
+        }
+    }
 
     private string[] Sent() => test.TakeSent().Select(Convert.ToHexString).ToArray();
 
@@ -366,5 +377,212 @@ public class ItemFunctionUseTests {
 
         Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
         Assert.That(Sent().Last(), Is.EqualTo(Hex(ReactorPacket.StartReact(10000000))));
+    }
+
+    // 20300052 (ExpendCharacterSlot): the client sends the use as is. One coupon opens one more character slot and is
+    // used up; at the server's most slots (8) the coupon stays and the client gets the most-slots answer.
+    [TestCase(4, 5, 1)]
+    [TestCase(Constant.ServerMaxCharacters, Constant.ServerMaxCharacters, 2)]
+    public void ExpendCharacterSlot_AddsOneSlotUpToTheMost(int slots, int after, int left) {
+        Item coupon = Login(20300052, ItemFunction.ExpendCharacterSlot, "", amount: 2);
+        session.Player.Value.Account.MaxCharacters = slots;
+
+        Use(coupon);
+
+        Assert.That(session.Player.Value.Account.MaxCharacters, Is.EqualTo(after));
+        Assert.That(session.Item.Inventory.Get(coupon.Uid)?.Amount, Is.EqualTo(left));
+        Assert.That(Sent().Last(), Is.EqualTo(Hex(slots < after ? ItemUsePacket.CharacterSlotAdded() : ItemUsePacket.MaxCharacterSlots())));
+    }
+
+    // 20300964 (HongBao: 50 of 90000020, red merets, for 6 users over 300 s): the client sends the use as is. One
+    // envelope is used up, the opener takes the first share (at least 1 of the 50) and the field is told.
+    [Test]
+    public void HongBao_GivesTheOpenerAShareAndIsUsedUp() {
+        Item envelope = Login(20300964, ItemFunction.HongBao,
+            "<v itemId=\"90000020\" totalCount=\"50\" totalUser=\"6\" durationSec=\"300\" />", amount: 2,
+            setup: () => test.Register(TestGameSession.Metadata(90000020)));
+        FillField("hongBaos");
+        long before = session.Currency.Meret;
+
+        Use(envelope);
+
+        Assert.That(session.Item.Inventory.Get(envelope.Uid)?.Amount, Is.EqualTo(1));
+        long share = session.Currency.Meret - before;
+        Assert.That(share, Is.InRange(1, 50 - 5));
+        Assert.That(test.TakeSentOps(), Does.Contain(SendOp.PlayerHost));
+    }
+
+    // 20300012 (AddAdditionalEffect 70000029,1; the effect lasts 600 s): the client sends the use as is. The effect
+    // starts on the user and one item is used up.
+    [Test]
+    public void AddAdditionalEffect_StartsTheEffectAndIsUsedUp() {
+        Item item = Login(20300012, ItemFunction.AddAdditionalEffect, "70000029,1", amount: 2);
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        // The field knows the effect (as BuffAttributeTests sets it up), the player stands in the field.
+        var skills = new SkillMetadataStorage(new Maple2.Database.Context.MetadataContext(
+            new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", any)!.GetValue(skills)!;
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(70000029, (short) 1),
+            BuffAttributeTests.Effect(70000029, DisabledBuffTests.Property with { DurationTick = 600000 })]);
+        FieldManager field = session.Field!;
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", any)!.SetValue(field, skills);
+        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), any)!.SetValue(field, new FieldActor(field, 99, field.Metadata, null!));
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", any)!.SetValue(session.Player, field);
+
+        Use(item);
+
+        Assert.That(session.Player.Buffs.EnumerateBuffs(70000029), Has.Count.EqualTo(1));
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
+    }
+
+    // 20302629 (OpenItemBoxLimitedQuantity: box 340000326, 3 s cooldown; 30001369 is its common item). The client
+    // keeps the same cooldown per item id (OpenItemBoxLimitedQuantity @0x140d25c50) and then sends the use with no
+    // text. The first use opens one box; a second within the cooldown opens none.
+    [Test]
+    public void OpenItemBoxLimitedQuantity_OpensOneBoxThenWaitsForTheCooldown() {
+        Item box = Login(20302629, ItemFunction.OpenItemBoxLimitedQuantity,
+            "<xmlData individualDropBoxId=\"340000326\" cooldownTime=\"3\" />", amount: 3, setup: () => {
+                test.Register(TestGameSession.Metadata(30001369));
+                test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
+                    new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
+                test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+                    [340000326] = TestGameSession.DropBox([(30001369, 1)]),
+                }));
+            });
+
+        Use(box);
+
+        Assert.That(session.Item.Inventory.Get(box.Uid)?.Amount, Is.EqualTo(2));
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == 30001369).Sum(item => item.Amount), Is.EqualTo(1));
+        Assert.That(Sent(), Does.Contain(Hex(ItemBoxPacket.Open(20302629, 1))));
+
+        Use(box);
+
+        Assert.That(session.Item.Inventory.Get(box.Uid)?.Amount, Is.EqualTo(2));
+        Assert.That(Sent(), Is.Empty);
+    }
+
+    private static MapMetadata RecallField(bool recall) => TestGameSession.Map(2000062) with {
+        CashCall = new MapMetadataCashCall(false, false, false, false, recall),
+    };
+
+    private static PlayerInfo Info(long characterId, short channel) =>
+        new(new CharacterInfo(1, characterId, $"m{characterId}", "", "", Gender.Male, Job.Newbie, 20), "", new AchievementInfo(), []) {
+            Channel = channel,
+            MapId = 2000062,
+        };
+
+    // 20300053 (RecallParty): the party window's recall button (UIPartyDialog onPartyRecall) casts StateRecall, then
+    // sends the plain use. With another member and a field that allows recalls the World is asked to call the party
+    // here and one scroll is used up; a field without recalls asks nothing and keeps it.
+    [TestCase(true, 1)]
+    [TestCase(false, 2)]
+    public void RecallParty_CallsThePartyHereAndIsUsedUp(bool recall, int left) {
+        Item scroll = Login(20300053, ItemFunction.RecallParty, "", amount: 2, field: RecallField(recall));
+        var party = new Maple2.Model.Game.Party.Party(5, new Maple2.Model.Game.Party.PartyMember { PartyId = 5, Info = Info(test.CharacterId, 1) });
+        party.Members[test.CharacterId] = new Maple2.Model.Game.Party.PartyMember { PartyId = 5, Info = Info(test.CharacterId, 1) };
+        party.Members[77] = new Maple2.Model.Game.Party.PartyMember { PartyId = 5, Info = Info(77, 2) };
+        session.Party = new Maple2.Server.Game.Manager.PartyManager(test.World, session);
+        typeof(Maple2.Server.Game.Manager.PartyManager).GetField("<Party>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.Party, party);
+        var asked = new List<Maple2.Server.World.Service.PartyRequest>();
+        test.World.PartyWorld = request => {
+            asked.Add(request);
+            return new Maple2.Server.World.Service.PartyResponse();
+        };
+
+        Use(scroll);
+
+        Assert.That(asked.Select(request => (request.Recall.PartyId, request.Recall.MapId)),
+            Is.EqualTo(recall ? new[] { (5, 2000062) } : Array.Empty<(int, int)>()));
+        Assert.That(session.Item.Inventory.Get(scroll.Uid)?.Amount, Is.EqualTo(left));
+    }
+
+    // 20300054 (RecallGuild): the client casts StateRecall, then sends the plain use. With a member online outside a
+    // tutorial the World is asked to call the guild here and one scroll is used up; with only the caller online
+    // (the client counts the same, CGuildInfo::FUN_1404d3400) nothing is asked and the scroll stays.
+    [TestCase((short) 2, 1)]
+    [TestCase((short) -1, 2)]
+    public void RecallGuild_CallsTheGuildHereAndIsUsedUp(short otherChannel, int left) {
+        Item scroll = Login(20300054, ItemFunction.RecallGuild, "", amount: 2, field: RecallField(true),
+            setup: () => test.AddMap(TestGameSession.Map(2000062)));
+        var guild = new Guild(9, "g", test.AccountId, test.CharacterId, session.PlayerName);
+        guild.Members[test.CharacterId] = new GuildMember { GuildId = 9, Info = Info(test.CharacterId, 1) };
+        guild.Members[77] = new GuildMember { GuildId = 9, Info = Info(77, otherChannel) };
+        typeof(Maple2.Server.Game.Manager.GuildManager).GetField("session", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Guild, session);
+        typeof(Maple2.Server.Game.Manager.GuildManager).GetField("logger", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.Guild, Serilog.Log.Logger);
+        typeof(Maple2.Server.Game.Manager.GuildManager).GetField("<Guild>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.Guild, guild);
+
+        Use(scroll);
+
+        Assert.That(test.World.GuildRequests.Select(request => (request.Recall.GuildId, request.Recall.MapId)),
+            Is.EqualTo(left == 1 ? new[] { (9L, 2000062) } : Array.Empty<(long, int)>()));
+        Assert.That(session.Item.Inventory.Get(scroll.Uid)?.Amount, Is.EqualTo(left));
+    }
+
+    // KR 35200000 used outside the player's own indoor home: the server refuses it and keeps the item (the client
+    // sends the use from its s_msg_item_open_blueprint box, so the home check is the server's).
+    [Test]
+    public void BlueprintImport_OutsideTheHomeIsRefusedAndKeepsTheItem() {
+        Item blueprint = Login(35200000, ItemFunction.BlueprintImport, "");
+        session.Item.Inventory.Get(blueprint.Uid)!.Blueprint = new ItemBlueprint { BlueprintUid = 1 };
+
+        Use(blueprint);
+
+        Assert.That(Sent(), Is.EqualTo(new[] {
+            Hex(NoticePacket.Message(StringCode.s_ugcmap_not_use_blueprint_item, NoticePacket.Flags.Message | NoticePacket.Flags.Alert)),
+        }));
+        Assert.That(session.Item.Inventory.Get(blueprint.Uid)?.Amount, Is.EqualTo(1));
+    }
+
+    // 20303165 (RecallWedding): the client sends the plain use. A married player whose partner is online asks the
+    // World to call the partner here and uses one scroll up; an engaged couple (CanRecall) asks nothing and keeps it.
+    [TestCase(MaritalStatus.Married, 1)]
+    [TestCase(MaritalStatus.Engaged, 2)]
+    public void RecallWedding_CallsThePartnerHereAndIsUsedUp(MaritalStatus status, int left) {
+        Item scroll = Login(20303165, ItemFunction.RecallWedding, "", amount: 2, field: RecallField(true));
+        test.World.AddPlayer(2, 77, "m77");
+        test.World.Players[77].Channel = 2;
+        session.Marriage.Marriage = new Marriage {
+            Id = 1, Status = status, Partner1 = new MarriagePartner { Info = Info(test.CharacterId, 1) },
+            Partner2 = new MarriagePartner { Info = Info(77, 2) },
+        };
+
+        Use(scroll);
+
+        Assert.That(test.World.MarriageRequests.Select(request => (request.ReceiverId, request.Recall.MapId)),
+            Is.EqualTo(left == 1 ? new[] { (77L, 2000062) } : Array.Empty<(long, int)>()));
+        Assert.That(session.Item.Inventory.Get(scroll.Uid)?.Amount, Is.EqualTo(left));
+    }
+
+    // 20001703 (WeddingExpItem, a Blessing Charm): the client sends the plain use. A married player's charm adds the
+    // reward table's weddingExpItem exp to the marriage and is used up; a second charm inside the month limit is kept.
+    [Test]
+    public void WeddingExpItem_AddsTheMarriageExpOnceAMonth() {
+        Item charm = Login(20001703, ItemFunction.WeddingExpItem, "", amount: 2, setup: () => test.SetTable(new WeddingTable(
+            new Dictionary<MarriageExpType, WeddingReward> {
+                [MarriageExpType.weddingExpItem] = new WeddingReward(MarriageExpType.weddingExpItem, 350, MarriageExpLimit.month),
+            }, new Dictionary<int, WeddingPackage>())));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Account account = db.CreateAccount(new Account { Username = "partner" }, "pw");
+            var partner = new Character { AccountId = account.Id, Name = "partner", Mastery = new Mastery() };
+            partner.ReturnMaps.Push(2000062);
+            long partnerId = db.CreateCharacter(partner)!.Id;
+            Marriage marriage = db.CreateMarriage(test.CharacterId, partnerId)!;
+            Assert.That(db.SetMarried(marriage.Id, DateTime.Now), Is.True);
+            session.Marriage.Marriage = db.GetMarriage(test.CharacterId)!;
+        }
+
+        Use(charm);
+
+        Assert.That(session.Marriage.Marriage.Exp, Is.EqualTo(350));
+        Assert.That(session.Item.Inventory.Get(charm.Uid)?.Amount, Is.EqualTo(1));
+
+        Use(charm);
+
+        Assert.That(session.Marriage.Marriage.Exp, Is.EqualTo(350));
+        Assert.That(session.Item.Inventory.Get(charm.Uid)?.Amount, Is.EqualTo(1));
     }
 }
