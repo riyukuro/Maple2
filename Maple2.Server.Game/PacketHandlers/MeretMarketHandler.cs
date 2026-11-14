@@ -423,6 +423,11 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
         // Store the paid merets now, not only at the next session save.
         session.SavePurchase();
+        // limited_bundle_buy's code is the product bought (the KR package trophies 92000104-92000151 name products
+        // 3000147-3000194); a design is not a product, so only a premium buy counts.
+        if (ugcItemId <= 0) {
+            session.ConditionUpdate(ConditionType.limited_bundle_buy, codeLong: childMarketItemId != 0 ? childMarketItemId : premiumMarketId);
+        }
 
         session.Send(MeretMarketPacket.Purchase(kind, flag, childMarketItemId, unk1, totalQuantity, itemIndex, unk2, price, premiumMarketId, ugcItemId,
             false, playerName, message, payType));

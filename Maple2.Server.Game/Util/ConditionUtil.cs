@@ -50,6 +50,7 @@ public static class ConditionUtil {
             case ConditionType.interact_object_rep:
             case ConditionType.donation_type: // code: the donated item's property type
             case ConditionType.fame_grade: // code: the alliance
+            case ConditionType.limited_bundle_buy: // code: the meret market product bought
                 if ((code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) ||
                     (code.Integers != null && code.Integers.Contains((int) longValue))) {
                     return true;
