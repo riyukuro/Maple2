@@ -35,17 +35,29 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     private long nextInvokeTick;
     private readonly ILogger logger = Log.ForContext<FieldSkill>();
 
-    // How many times the region has fired, and how many tags of those fires each vibrate object has taken for each
-    // attack (VibrateHandler): every fire places each attack's tags, which send once per object they meet.
-    public int Fires { get; private set; }
+    // How many tags each attack of the region's fires has placed, and how many of them each vibrate object has taken
+    // (VibrateHandler): a tag sends once per object it meets.
+    private readonly Dictionary<(byte MotionPoint, byte AttackPoint), int> tags = new();
     private readonly Dictionary<(string EntityId, byte MotionPoint, byte AttackPoint), int> vibrates = new();
 
-    // Takes one of the region's fires for a tag of this attack on the vibrate object, false when each fire has
-    // already sent one.
+    // The tags one fire of an attack places: one, or for a bouncing attack one per bounce target its SkillDamage
+    // Target packet lists, each with its own entered set (at least one, never fewer than the client may send).
+    public static int FireTags(bool bounce, int targetRecords) => bounce ? Math.Max(1, targetRecords) : 1;
+
+    // Counts a fire's tags of an attack.
+    public void AddTags(byte motionPoint, byte attackPoint, int count) {
+        lock (vibrates) {
+            tags.TryGetValue((motionPoint, attackPoint), out int placed);
+            tags[(motionPoint, attackPoint)] = placed + count;
+        }
+    }
+
+    // Takes one of the attack's tags for the vibrate object, false when each tag placed has already sent for it.
     public bool TakeVibrate(string entityId, byte motionPoint, byte attackPoint) {
         lock (vibrates) {
+            tags.TryGetValue((motionPoint, attackPoint), out int placed);
             vibrates.TryGetValue((entityId, motionPoint, attackPoint), out int taken);
-            if (taken >= Fires) {
+            if (taken >= placed) {
                 return false;
             }
             vibrates[(entityId, motionPoint, attackPoint)] = taken + 1;
@@ -210,7 +222,6 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     }
 
     private void Fire() {
-        Fires++;
         // TODO: These are buffs? seems irrelevant to FieldSkill?
         // foreach (SkillEffectMetadata skill in Value.Data.Skills) {
         //     if (skill.Condition != null) {
@@ -262,6 +273,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                         prevTargetUid = record.TargetUid;
                     }
 
+                    AddTags(i, j, FireTags(bounce: true, targetRecords.Count));
                     Field.Broadcast(SkillDamagePacket.Target(record, targetRecords));
                     BroadcastDamage(damage);
                     for (int t = 0; t < bounceTargets.Count; t++) {
@@ -297,6 +309,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     //     }
                     // }
 
+                    AddTags(i, j, FireTags(bounce: false, targetRecords.Count));
                     Field.VibrateObjects(damage, Position);
                     foreach (IActor target in targets) {
                         target.ApplyDamage(Caster, damage, attack);

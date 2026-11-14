@@ -231,20 +231,21 @@ public class VibrateTrustTests {
         Assert.That(Vibrate(scene, "tree"), Is.EqualTo(0));
     }
 
-    // A region of the player's at a point, of the fixture's skill, that has fired fires times.
-    private static FieldSkill Region(Scene scene, Vector3 point, int fires) {
+    // A region of the player's at a point, of the fixture's skill, whose fires placed that many tags of attack 0,0.
+    private static FieldSkill Region(Scene scene, Vector3 point, int tags) {
         FieldManager field = scene.Test.Session.Field!;
         var skills = new ConcurrentDictionary<int, FieldSkill>();
         typeof(FieldManager).GetField("fieldSkills", Any)!.SetValue(field, skills);
         typeof(FieldManager).GetField("removedSkills", Any)!.SetValue(field, new ConcurrentDictionary<int, (FieldSkill, long)>());
         var region = new FieldSkill(field, 900, scene.Test.Session.Player, scene.Record.Metadata, 1000, point);
-        Fired(region, fires);
+        region.AddTags(0, 0, tags);
         skills[900] = region;
         return region;
     }
 
-    private static void Fired(FieldSkill region, int fires) {
-        typeof(FieldSkill).GetField("<Fires>k__BackingField", Any)!.SetValue(region, fires);
+    // One more fire of attack 0,0: one tag, or one per bounce target for a bouncing attack.
+    private static void Fired(FieldSkill region, bool bounce = false, int targetRecords = 0) {
+        region.AddTags(0, 0, FieldSkill.FireTags(bounce, targetRecords));
     }
 
     // A region skill's hit makes its tags with uid 0 (as for Breakable): each fire of the player's region sends once
@@ -252,15 +253,32 @@ public class VibrateTrustTests {
     [Test]
     public void ARegionsTagIsTakenOncePerFire() {
         Scene scene = Start();
-        FieldSkill region = Region(scene, new Vector3(300, 0, 0), fires: 0);
+        FieldSkill region = Region(scene, new Vector3(300, 0, 0), tags: 0);
         Assert.Multiple(() => {
             Assert.That(Vibrate(scene, "tree", castUid: 0), Is.EqualTo(0), "not fired yet");
-            Fired(region, 1);
+            Fired(region);
             Assert.That(Vibrate(scene, "tree", castUid: 0), Is.EqualTo(1));
             Assert.That(Vibrate(scene, "tree", castUid: 0), Is.EqualTo(0), "the fire already sent for the tree");
             Assert.That(Vibrate(scene, "bigtree", castUid: 0), Is.EqualTo(1), "another object");
-            Fired(region, 2);
+            Fired(region);
             Assert.That(Vibrate(scene, "tree", castUid: 0), Is.EqualTo(1), "the next fire");
+        });
+    }
+
+    // A bouncing region's fire makes one tag per bounce target (its SkillDamage Target records, each with its own
+    // entered set): two bounces over three mobs by the tree send three packets, all taken. Before, one per fire.
+    [Test]
+    public void ABouncingRegionsFireSendsOncePerBounceTarget() {
+        Scene scene = Start();
+        FieldSkill region = Region(scene, new Vector3(300, 0, 0), tags: 0);
+        Fired(region, bounce: true, targetRecords: 3);
+        Assert.Multiple(() => {
+            Assert.That(Vibrate(scene, "tree", castUid: 0), Is.EqualTo(1));
+            Assert.That(Vibrate(scene, "tree", castUid: 0), Is.EqualTo(1));
+            Assert.That(Vibrate(scene, "tree", castUid: 0), Is.EqualTo(1));
+            Assert.That(Vibrate(scene, "tree", castUid: 0), Is.EqualTo(0), "each bounce target's tag already sent");
+            Fired(region, bounce: true, targetRecords: 0);
+            Assert.That(Vibrate(scene, "tree", castUid: 0), Is.EqualTo(1), "a bounce fire with no target still sends once");
         });
     }
 
@@ -268,12 +286,12 @@ public class VibrateTrustTests {
     [Test]
     public void ARegionsTagPastItsReachOrOfAnotherSkillIsRefused() {
         Scene scene = Start();
-        Region(scene, new Vector3(5000, 0, 0), fires: 5);
+        Region(scene, new Vector3(5000, 0, 0), tags: 5);
         Assert.Multiple(() => {
             Assert.That(Vibrate(scene, "tree", castUid: 0), Is.EqualTo(0), "past the reach");
             Assert.That(Vibrate(scene, "tree", skillId: 10000002, castUid: 0), Is.EqualTo(0));
         });
-        Region(scene, new Vector3(300, 0, 0), fires: 5);
+        Region(scene, new Vector3(300, 0, 0), tags: 5);
         Assert.Multiple(() => {
             Assert.That(Vibrate(scene, "tree", level: 2, castUid: 0), Is.EqualTo(0));
             Assert.That(Vibrate(scene, "tree", motionPoint: 3, castUid: 0), Is.EqualTo(0));

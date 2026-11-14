@@ -94,8 +94,9 @@ public class VibrateHandler : FieldPacketHandler {
     }
 
     // A region's tag: one of the player's regions of the skill and level, in the field or removed within the hit
-    // window (FieldManager.FieldSkillsOf), whose attack point reaches the object from one of its points, and each fire
-    // of the region sends once per object for each attack (FieldSkill.TakeVibrate).
+    // window (FieldManager.FieldSkillsOf), whose attack point reaches the object from one of its points, and each tag
+    // the region's fires placed for the attack (one per fire, one per bounce target for a bounce) sends once per
+    // object (FieldSkill.TakeVibrate).
     private void HandleRegion(GameSession session, FieldManager field, string entityId, int skillId, short level, byte motionPoint, byte attackPoint) {
         FieldVibrateEntity? vibrate = field.AccelerationStructure?.GetVibrateEntity(entityId);
         if (vibrate == null || field.Vibrate.IsHidden(entityId)) {
