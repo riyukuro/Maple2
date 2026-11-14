@@ -6,6 +6,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
@@ -103,17 +104,17 @@ public class HomeHandler : PacketHandler<GameSession> {
     }
 
     private void HandleWarp(GameSession session, IByteReader packet) {
-        if (session.Field?.Metadata.Property.HomeReturnable != true) {
-            session.Send(NoticePacket.MessageBox(StringCode.s_home_returnable_forbidden));
+        if (session.Field == null) {
+            return;
+        }
+        long? homeOwnerId = session.Field is HomeFieldManager homeField ? homeField.OwnerId : null;
+        StringCode? refusal = WarpRefusal(session.Player.IsDead, session.Field.Metadata.Property.HomeReturnable, homeOwnerId, session.AccountId);
+        if (refusal != null) {
+            session.Send(NoticePacket.MessageBox(refusal.Value));
             return;
         }
 
         Home home = session.Player.Value.Home;
-        int homeMapId = home.Indoor.MapId;
-        if (session.Field.MapId == homeMapId) {
-            session.Send(NoticePacket.MessageBox(StringCode.s_home_returnable_forbidden_to_sameplace));
-            return;
-        }
 
         // If the home has no name, initialize home
         if (string.IsNullOrEmpty(home.Indoor.Name)) {
@@ -135,5 +136,19 @@ public class HomeHandler : PacketHandler<GameSession> {
         // home_goto (trophy 23500019): KMS2 sends its update, up by 1, just before the migrate packet to the own home.
         // A refused move counts nothing.
         session.Migrate(home.Indoor.MapId, home.Indoor.OwnerId, () => session.ConditionUpdate(ConditionType.home_goto));
+    }
+
+    // KMS2 UIGameMenuDialog (go home): a dead player gets the invalid-state box. Inside a home that is not
+    // the player's own, going home is always allowed, whatever the field's homeReturnable flag (all homes
+    // share map 62000000, which has homeReturnable 0). Inside the own home it is the same-place box (the
+    // client's answer there, as that map is not returnable); elsewhere the field flag decides.
+    public static StringCode? WarpRefusal(bool dead, bool homeReturnable, long? homeOwnerId, long accountId) {
+        if (dead) {
+            return StringCode.s_home_returnable_invalid_state;
+        }
+        if (homeOwnerId != null) {
+            return homeOwnerId == accountId ? StringCode.s_home_returnable_forbidden_to_sameplace : null;
+        }
+        return homeReturnable ? null : StringCode.s_home_returnable_forbidden;
     }
 }
