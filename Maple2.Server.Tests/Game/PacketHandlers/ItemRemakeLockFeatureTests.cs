@@ -33,10 +33,12 @@ public class ItemRemakeLockFeatureTests {
     [TestCase(20000001, ExpectedResult = null)]
     public string? LockFeature_OfTheItemKind(int itemId) => ItemRemakeRules.LockFeature(new ItemType(itemId));
 
-    // A rarity 4 level 50 earring with a Strength option, held in the bag.
-    private (GameSession Session, Item Item) Start(params string[] off) {
+    // A rarity 4 level 50 earring (or the given gear) with a Strength option, held in the bag.
+    private (GameSession Session, Item Item) Start(params string[] off) => Start(EarringId, EquipSlot.EA, off);
+
+    private (GameSession Session, Item Item) Start(int itemId, EquipSlot slot, params string[] off) {
         test = new TestGameSession();
-        ItemMetadata metadata = TestGameSession.Metadata(EarringId, slot: EquipSlot.EA, type: 1, slotMax: 1);
+        ItemMetadata metadata = TestGameSession.Metadata(itemId, slot: slot, type: 1, slotMax: 1);
         Item stored = test.Store(metadata with { Limit = metadata.Limit with { Level = 50 } });
         ItemMetadata scroll = TestGameSession.Metadata(ScrollId,
             function: new ItemMetadataFunction(ItemFunction.ItemRemakeScroll, "ItemRemakeScroll", "1", false));
@@ -84,8 +86,16 @@ public class ItemRemakeLockFeatureTests {
     // the scroll's own checks; with it on the scroll check answers (no row for it here).
     [TestCase("OptionBlockAccessory", ExpectedResult = true)]
     [TestCase("OptionBlockArmor", ExpectedResult = false)]
-    public bool ScrollLock_NeedsTheItemKindsFeature(string off) {
-        (GameSession session, Item item) = Start(off);
+    public bool ScrollLock_NeedsTheItemKindsFeature(string off) => ScrollLockRefused(Start(off));
+
+    // A kind CanLockOptions does not sort (subtype 57, a two-hand weapon) is offered no lock even with every feature on.
+    [Test]
+    public void ScrollLock_RefusedForAKindWithoutLocks() {
+        Assert.That(ScrollLockRefused(Start(15700002, EquipSlot.RH)), Is.True);
+    }
+
+    private bool ScrollLockRefused((GameSession Session, Item Item) start) {
+        (GameSession session, Item item) = start;
         Item scroll = session.Item.Inventory.Find(ScrollId).Single();
 
         new ChangeAttributesScrollHandler { TableMetadata = test.TableMetadata, ItemStatsCalc = null! }.Handle(session,

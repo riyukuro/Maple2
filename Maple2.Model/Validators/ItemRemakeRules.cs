@@ -18,7 +18,8 @@ public static class ItemRemakeRules {
 
     // The feature the client asks before it offers locks for this kind of item (CanLockOptions,
     // itemremakescrolldata.cpp:437): armor, weapon and accessory by the equip subtype (CItemData FUN_14053d600,
-    // FUN_14053d2f0, FUN_14053d5c0), and a pet. Null for a kind not sorted here, which keeps no such check.
+    // FUN_14053d2f0, FUN_14053d5c0), and a pet. Null for a kind not sorted here: CanLockOptions is false for it, so the
+    // client offers it no lock at all.
     public static string? LockFeature(ItemType type) {
         if (type.IsPet) {
             return "PetRemakeBlock01";

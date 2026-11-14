@@ -72,9 +72,13 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
                 Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_data, itemUid);
                 return;
             }
-            if (locking && ItemRemakeRules.LockFeature(item.Type) is { } kindFeature && !session.ServerTableMetadata.FeatureTable.IsOn(kindFeature)) {
-                Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake, itemUid, $"{kindFeature} off");
-                return;
+            if (locking) {
+                string? kindFeature = ItemRemakeRules.LockFeature(item.Type);
+                if (kindFeature == null || !session.ServerTableMetadata.FeatureTable.IsOn(kindFeature)) {
+                    Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake, itemUid,
+                        kindFeature == null ? "no lock for this item kind" : $"{kindFeature} off");
+                    return;
+                }
             }
             ChangeAttributesScrollError error = IsCompatibleScroll(item, scroll, out ItemRemakeScrollMetadata? itemRemakeScrollMetadata);
             if (error is not ChangeAttributesScrollError.none || itemRemakeScrollMetadata is null) {
