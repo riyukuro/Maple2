@@ -29,4 +29,11 @@ public record ScriptFunctionMetadata(
     long CollectMeso,
     int MaidMoodIncrease,
     int MaidClosenessIncrease,
-    bool MaidPay);
+    bool MaidPay,
+    // skillID / skillLevel: an additional effect put on the talker (KR: 70000030, which cancels 70000029).
+    int EffectId = 0,
+    short EffectLevel = 0,
+    // presentGlobalDropBoxID rolled at presentGlobalDropLevel, presentIndivisualDropBoxID: items for the talker.
+    int GlobalDropBoxId = 0,
+    int GlobalDropLevel = 0,
+    int IndividualDropBoxId = 0);

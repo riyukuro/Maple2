@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
@@ -24,9 +25,11 @@ public class ScriptFunctionPayTests {
             [new ItemComponent(Present, 1, 1, ItemTag.None)], collect, 0, "", "", divorce, presentExp, collectMeso, 0, 0, false);
 
     // Runs the function of talk 21 after the talker got `material` of the material and `meso` mesos.
-    private GameSession Run(ScriptFunctionMetadata function, int material, long meso) {
+    private GameSession Run(ScriptFunctionMetadata function, int material, long meso, Action<TestGameSession>? setup = null,
+            Action<GameSession>? beforeTalk = null) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(Present));
+        setup?.Invoke(test);
         if (material > 0) {
             test.Store(TestGameSession.Metadata(Material), material);
         }
@@ -39,6 +42,7 @@ public class ScriptFunctionPayTests {
         var state = new ScriptState(21, ScriptStateType.Script, false, null, [content]);
         var script = new ScriptMetadata(NpcId, ScriptType.Npc, new Dictionary<int, ScriptState> { [21] = state });
         session.NpcScript = new NpcScriptManager(session, null, script, state, NpcTalkType.Talk);
+        beforeTalk?.Invoke(session);
         test.TakeSent();
         session.NpcScript.ProcessScriptFunction();
         return session;
@@ -120,5 +124,46 @@ public class ScriptFunctionPayTests {
         GameSession session = Run(Function([new ItemComponent(Material, -1, 10, ItemTag.None)], divorce: DivorceRules.FunctionFile), material: 3, meso: 0);
         Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Wedding), Is.Empty);
         Assert.That(Count(session, Material), Is.EqualTo(3));
+    }
+
+    // presentGlobalDropBoxID at presentGlobalDropLevel: what the box rolls is given with the present (KR: Lileaf
+    // 11001210 takes one 30000419 and rolls box 10000001 at level 50, always one 30000420). Paid only.
+    private const int GlobalBox = 10000001, Dropped = 30000420;
+
+    private static void WithGlobalBox(TestGameSession test) {
+        test.Register(TestGameSession.Metadata(Dropped));
+        var group = new GlobalDropItemBoxTable.Group(1, 50, 50, [new GlobalDropItemBoxTable.Group.DropCount(1, 100)], false, 0, 0);
+        var item = new GlobalDropItemBoxTable.Item(Dropped, 0, 0, new GlobalDropItemBoxTable.Range<int>(1, 1), 1, 1, [], false);
+        test.SetServerTable(new GlobalDropItemBoxTable(
+            new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>> { [GlobalBox] = new() { [1] = [group] } },
+            new Dictionary<int, IList<GlobalDropItemBoxTable.Item>> { [1] = [item] }));
+    }
+
+    [Test]
+    public void TheGlobalBoxDrop_IsRolledForThePaidTalker() {
+        ScriptFunctionMetadata function = Function([new ItemComponent(Material, -1, 1, ItemTag.None)]) with { GlobalDropBoxId = GlobalBox, GlobalDropLevel = 50 };
+        GameSession paid = Run(function, material: 1, meso: 0, setup: WithGlobalBox);
+        Assert.That(Count(paid, Dropped), Is.EqualTo(1));
+        GameSession poor = Run(function, material: 0, meso: 0, setup: WithGlobalBox);
+        Assert.That(Count(poor, Dropped), Is.EqualTo(0));
+    }
+
+    // The box's level is the row's, not the talker's: at level 49 the level-50 group gives nothing.
+    [Test]
+    public void TheGlobalBoxDrop_UsesTheRowsLevel() {
+        ScriptFunctionMetadata function = Function([new ItemComponent(Material, -1, 1, ItemTag.None)]) with { GlobalDropBoxId = GlobalBox, GlobalDropLevel = 49 };
+        GameSession session = Run(function, material: 1, meso: 0, setup: WithGlobalBox);
+        Assert.That(Count(session, Dropped), Is.EqualTo(0));
+    }
+
+    // skillID / skillLevel: the additional effect is put on the talker who paid (KR: the Altar of Rage, 11000674
+    // script 11, puts on 70000030 level 1). A talker who cannot pay gets no effect.
+    [TestCase(1, true)]
+    [TestCase(0, false)]
+    public void TheFunctionsEffect_IsPutOnThePaidTalker(int material, bool expected) {
+        const int effect = 70000030;
+        ScriptFunctionMetadata function = Function([new ItemComponent(Material, -1, 1, ItemTag.None)]) with { EffectId = effect, EffectLevel = 1 };
+        GameSession session = Run(function, material, meso: 0, beforeTalk: talker => TriggerTestBase.WithEffect(talker.Field!, talker.Player, effect));
+        Assert.That(session.Player.Buffs.HasBuff(effect, 1), Is.EqualTo(expected));
     }
 }

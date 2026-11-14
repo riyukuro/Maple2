@@ -139,7 +139,9 @@ public abstract class TriggerTestBase {
 
     // The effect is known to the field's skill data, and the field's own actor (the caster of trigger buffs) is a
     // real one.
-    protected void WithEffect(params int[] ids) {
+    protected void WithEffect(params int[] ids) => WithEffect(Field, test.Session.Player, ids);
+
+    internal static void WithEffect(FieldManager field, FieldPlayer player, params int[] ids) {
         var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
         object cache = typeof(SkillMetadataStorage).GetField("EffectCache", Any)!.GetValue(skills)!;
         // No begin condition: the effect is on once held.
@@ -153,9 +155,9 @@ public abstract class TriggerTestBase {
                 Consume = new AdditionalEffectMetadataConsume(0, 0),
             }]);
         }
-        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, skills);
-        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), Any)!.SetValue(Field, new FieldActor(Field, 99, Field.Metadata, null!));
-        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(field, skills);
+        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), Any)!.SetValue(field, new FieldActor(field, 99, field.Metadata, null!));
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(player, field);
     }
 }
 

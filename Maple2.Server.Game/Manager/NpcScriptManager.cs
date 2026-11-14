@@ -433,15 +433,29 @@ public sealed class NpcScriptManager {
             }
         }
 
-        IList<Item> items = new List<Item>();
+        // The presents: the listed items, then what the drop boxes roll for the talker (presentGlobalDropBoxID at
+        // presentGlobalDropLevel, presentIndivisualDropBoxID at the talker's level). KR: Lileaf (11001210, scripts 41
+        // and 52) takes one 30000419 and rolls global box 10000001 at level 50, which is always one 30000420. The rows'
+        // presentGlobalDropRank (903) is not read: the box has no rank condition and no client code names the field.
+        var presents = new List<Item>();
         foreach (ItemComponent item in scriptFunction.PresentItems) {
-            Item? newItem = session.Field?.ItemDrop.CreateItem(item.ItemId, item.Rarity, item.Amount);
-            if (newItem == null) {
-                continue;
+            Item? newItem = session.Field.ItemDrop.CreateItem(item.ItemId, item.Rarity, item.Amount);
+            if (newItem != null) {
+                presents.Add(newItem);
             }
+        }
+        if (scriptFunction.GlobalDropBoxId > 0) {
+            presents.AddRange(session.Field.ItemDrop.GetGlobalDropItems(scriptFunction.GlobalDropBoxId, scriptFunction.GlobalDropLevel, session));
+        }
+        if (scriptFunction.IndividualDropBoxId > 0) {
+            presents.AddRange(session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, scriptFunction.IndividualDropBoxId));
+        }
+        IList<Item> items = new List<Item>();
+        foreach (Item newItem in presents) {
+            int itemId = newItem.Id, amount = newItem.Amount;
             // The mesos are already taken: what the bag (or furnishing storage) cannot take goes by mail.
             if (!session.Item.AddOrMail(newItem, true)) {
-                logger.Error("Script reward {ItemId} x{Amount} of {CharacterId} not given", item.ItemId, item.Amount, session.CharacterId);
+                logger.Error("Script reward {ItemId} x{Amount} of {CharacterId} not given", itemId, amount, session.CharacterId);
                 continue;
             }
             items.Add(newItem);
@@ -453,6 +467,12 @@ public sealed class NpcScriptManager {
 
         if (Npc is { MaidUid: not 0 } && (scriptFunction.MaidMoodIncrease != 0 || scriptFunction.MaidClosenessIncrease != 0 || scriptFunction.MaidPay)) {
             MaidFunction(scriptFunction, Npc.MaidUid);
+        }
+
+        // skillID / skillLevel: an additional effect on the talker (no skill has the id). KR: the Altar of Rage
+        // (11000674 script 11) puts on 70000030, whose cancelEffectCodes take off 70000029 (the Ereb protection).
+        if (scriptFunction.EffectId > 0) {
+            session.Player.Buffs.AddBuff(session.Player, session.Player, scriptFunction.EffectId, scriptFunction.EffectLevel, session.Field.FieldTick);
         }
 
         if (scriptFunction.PresentExp > 0) {

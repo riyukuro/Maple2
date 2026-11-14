@@ -436,13 +436,37 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
     private ScriptFunctionTable ParseScriptFunction() {
         var results = new Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>>();
-        results = MergeNpcScriptFunctions(results, parser.ParseNpcScriptFunction());
+        results = MergeNpcScriptFunctions(results, parser.ParseNpcScriptFunction(), NpcScriptEffects());
         results = MergeQuestScriptFunctions(results, parser.ParseQuestScriptFunction());
 
         return new ScriptFunctionTable(results);
     }
 
-    private static Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>> MergeNpcScriptFunctions(Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>> results, IEnumerable<(int NpcId, IDictionary<int, NpcScriptFunction> ScriptFunctions)> parser) {
+    // The parser's NpcScriptFunction has no skillID or skillLevel; they are read from the table's rows here.
+    private Dictionary<(int NpcId, int ScriptId, int FunctionId), (int Id, short Level)> NpcScriptEffects() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/Server/npcScriptFunction_Final.xml", StringComparison.OrdinalIgnoreCase));
+        return entry == null ? [] : NpcScriptEffects(xmlReader.GetXmlDocument(entry));
+    }
+
+    public static Dictionary<(int NpcId, int ScriptId, int FunctionId), (int Id, short Level)> NpcScriptEffects(XmlDocument document) {
+        var results = new Dictionary<(int, int, int), (int, short)>();
+        foreach (XmlNode node in document.SelectNodes("ms2/function")!) {
+            if (!int.TryParse(node.Attributes?["skillID"]?.Value, out int skillId) || skillId <= 0
+                || !int.TryParse(node.Attributes?["npcID"]?.Value, out int npcId)
+                || !int.TryParse(node.Attributes?["scriptID"]?.Value, out int scriptId)) {
+                continue;
+            }
+            int.TryParse(node.Attributes?["functionID"]?.Value, out int functionId);
+            if (!short.TryParse(node.Attributes?["skillLevel"]?.Value, out short level) || level <= 0) {
+                level = 1;
+            }
+            results[(npcId, scriptId, functionId)] = (skillId, level);
+        }
+        return results;
+    }
+
+    private static Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>> MergeNpcScriptFunctions(Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>> results, IEnumerable<(int NpcId, IDictionary<int, NpcScriptFunction> ScriptFunctions)> parser, IReadOnlyDictionary<(int NpcId, int ScriptId, int FunctionId), (int Id, short Level)> effects) {
         foreach ((int npcId, IDictionary<int, NpcScriptFunction> scripts) in parser) {
             var scriptDict = new Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>(); // scriptIds, functionDict
             foreach ((int scriptId, NpcScriptFunction scriptFunction) in scripts) {
@@ -459,6 +483,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     collectItems.Add(new ItemComponent(scriptFunction.collectItemID[i], -1, itemAmount, ItemTag.None));
                 }
 
+                effects.TryGetValue((npcId, scriptId, scriptFunction.functionID), out (int Id, short Level) effect);
                 var metadata = new ScriptFunctionMetadata(
                     Id: npcId, // NpcId or QuestId
                     ScriptId: scriptId,
@@ -483,7 +508,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     CollectMeso: scriptFunction.collectMeso,
                     MaidMoodIncrease: scriptFunction.maidMoodUp,
                     MaidClosenessIncrease: scriptFunction.maidAffinityUp,
-                    MaidPay: scriptFunction.maidPay
+                    MaidPay: scriptFunction.maidPay,
+                    EffectId: effect.Id,
+                    EffectLevel: effect.Level,
+                    GlobalDropBoxId: scriptFunction.presentGlobalDropBoxID,
+                    GlobalDropLevel: scriptFunction.presentGlobalDropLevel,
+                    IndividualDropBoxId: scriptFunction.presentIndivisualDropBoxID
                 );
                 if (!scriptDict.TryGetValue(scriptId, out Dictionary<int, ScriptFunctionMetadata>? functionDict)) {
                     functionDict = new Dictionary<int, ScriptFunctionMetadata> {
