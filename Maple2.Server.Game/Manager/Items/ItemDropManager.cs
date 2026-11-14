@@ -183,30 +183,54 @@ public class ItemDropManager {
             .SelectMany(itemEntry => CreateIndividualDropBoxItems(itemEntry)).ToList();
     }
 
-    // A box a trigger spawns, rolled with the players on the field: each group's drop count is rolled once, over one
-    // picker of its rows (the client's box roll, ItemDropTable::DropIndividualGroup, commonfiles/itemdroptable.cpp:1604,
-    // calls PickDropCount once per group, quest-only rows and the others alike). A picked row without a quest is a
-    // shared drop; a picked quest-only row (constraintsQuest) drops, as their own item, for each player whose started
-    // quest still needs it on this map (QuestManager.NeedsItem), so a player who holds the item or finished the quest
-    // gets none. Chosen here: a quest-only row is in the picker when a player on the field needs it.
+    // A box a trigger spawns, rolled with the players on the field. The client rolls a box group for one player
+    // (ItemDropTable::DropIndividualGroup, commonfiles/itemdroptable.cpp:1560, with that player's ItemDropContext): one
+    // picker over the rows that player may get, and its drop count (PickDropCount) once, quest-only rows and the others
+    // alike. So each player whose started quest still needs one of a group's quest-only rows (constraintsQuest) on this
+    // map (QuestManager.NeedsItem) rolls the group for themselves, over the plain rows and the quest rows they need; a
+    // picked quest row drops as their own item, so two players needing different items of one group each get theirs.
+    // A group no player needs a quest row of is rolled once over its plain rows.
+    // Chosen here: the plain rows drop once for the field, as shared items: those the first such player's roll picks;
+    // the other players' rolls give only their quest rows.
     public SpawnBoxDrops GetSpawnBoxItems(int individualDropBoxId, IReadOnlyCollection<GameSession> players) {
         var drops = new SpawnBoxDrops([], []);
         if (!field.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId, out IDictionary<int, IndividualDropItemTable.Entry>? entryDict)) {
             return drops;
         }
 
-        IEnumerable<IndividualDropItemTable.Item> picked = PickBoxEntries(entryDict.Values, field.Metadata.Id,
-            itemEntry => players.Any(session => IsEntryAvailable(session, itemEntry)));
-        foreach (IndividualDropItemTable.Item itemEntry in picked) {
-            if (!itemEntry.QuestConstraint) {
-                drops.Shared.AddRange(CreateIndividualDropBoxItems(itemEntry));
+        foreach (IndividualDropItemTable.Entry group in entryDict.Values) {
+            List<GameSession> questers = players
+                .Where(session => group.Items.Any(itemEntry => itemEntry.QuestConstraint && IsEntryAvailable(session, itemEntry)))
+                .ToList();
+            if (questers.Count == 0) {
+                foreach (IndividualDropItemTable.Item itemEntry in PickSpawnGroup(group, null)) {
+                    drops.Shared.AddRange(CreateIndividualDropBoxItems(itemEntry));
+                }
                 continue;
             }
-            foreach (GameSession session in players.Where(session => IsEntryAvailable(session, itemEntry))) {
-                drops.Owned.AddRange(CreateIndividualDropBoxItems(itemEntry, session.Player.Value.Character).Select(item => (session, item)));
+
+            for (int i = 0; i < questers.Count; i++) {
+                GameSession session = questers[i];
+                foreach (IndividualDropItemTable.Item itemEntry in PickSpawnGroup(group, session)) {
+                    if (itemEntry.QuestConstraint) {
+                        drops.Owned.AddRange(CreateIndividualDropBoxItems(itemEntry, session.Player.Value.Character).Select(item => (session, item)));
+                    } else if (i == 0) {
+                        drops.Shared.AddRange(CreateIndividualDropBoxItems(itemEntry));
+                    }
+                }
             }
         }
         return drops;
+    }
+
+    // One roll of a spawn box group by the rows' own weights: the plain rows for this map, and the quest-only rows the
+    // player needs (none without a player).
+    private IEnumerable<IndividualDropItemTable.Item> PickSpawnGroup(IndividualDropItemTable.Entry group, GameSession? session) {
+        return PickGroupEntries(group, group.Items,
+            itemEntry => itemEntry.QuestConstraint
+                ? session != null && IsEntryAvailable(session, itemEntry)
+                : itemEntry.MapIds.Length == 0 || itemEntry.MapIds.Contains(field.Metadata.Id),
+            _ => false, itemEntry => itemEntry.Weight);
     }
 
     public record SpawnBoxDrops(List<Item> Shared, List<(GameSession Session, Item Item)> Owned);

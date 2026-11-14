@@ -1244,6 +1244,9 @@ public class TriggerItemTests : TriggerTestBase {
     private const int QuestId = 60100070;
     // One group of drop count 1 that mixes the quest-only row with a plain one, each of weight 50.
     private const int MixedBoxId = 900003;
+    // One group of drop count 1 holding two quest-only rows: QuestItem for QuestId, Potion for PotionQuestId.
+    private const int TwoQuestBoxId = 900004;
+    private const int PotionQuestId = 60100099;
 
     // A field whose map has item spawn point 9001 (box BoxId, 30 s), 9002 (no box, no lifetime), 9004 (QuestBoxId) and
     // 9005 (MixedBoxId).
@@ -1263,6 +1266,12 @@ public class TriggerItemTests : TriggerTestBase {
                 [1] = new(1, 0, always, 0, false, false, [
                     new([QuestItem, 0], false, 0, 0, 50, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], true),
                     new([Coin, 0], false, 0, 0, 50, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], false),
+                ]),
+            },
+            [TwoQuestBoxId] = new Dictionary<int, IndividualDropItemTable.Entry> {
+                [1] = new(1, 0, always, 0, false, false, [
+                    new([QuestItem, 0], false, 0, 0, 50, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], true),
+                    new([Potion, 0], false, 0, 0, 50, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], true),
                 ]),
             },
         }));
@@ -1400,22 +1409,39 @@ public class TriggerItemTests : TriggerTestBase {
         Assert.That(drops.Select(drop => drop.Receiver), Has.None.EqualTo(other.Session.CharacterId));
     }
 
-    // With both players on the quest, a pick of the quest row gives each of them their own copy.
+    // Each player rolls the group for themselves (the client's DropIndividualGroup runs with one player's context): with
+    // both players on the quest, each can get their own copy, and the coin drops at most once for the field.
     [Test]
     public void CreateItem_MixedGroupQuestRowForEachPlayerWhoNeedsIt() {
         StartQuest();
         TestGameSession other = SecondPlayer();
         StartQuest(other);
+        var questDrops = new List<long>();
         for (int i = 0; i < 100; i++) {
             Action("""<action name="create_item" spawn_ids="9005" />""");
             List<(int ItemId, long Receiver)> run = Drops().Select(drop => (drop.ItemId, drop.Receiver)).ToList();
-            if (run.Any(drop => drop.ItemId == QuestItem)) {
-                Assert.That(run, Is.EquivalentTo(new[] { (QuestItem, test.Session.CharacterId), (QuestItem, other.Session.CharacterId) }));
-                return;
-            }
-            Assert.That(run, Is.EqualTo(new[] { (Coin, 0L) }));
+            Assert.That(run.Count(drop => drop.ItemId == Coin), Is.LessThanOrEqualTo(1));
+            Assert.That(run.Where(drop => drop.ItemId == Coin).Select(drop => drop.Receiver), Has.All.EqualTo(0L));
+            questDrops.AddRange(run.Where(drop => drop.ItemId == QuestItem).Select(drop => drop.Receiver));
         }
-        Assert.Fail("the quest row was never picked");
+        Assert.That(questDrops, Is.EquivalentTo(new[] { test.Session.CharacterId, other.Session.CharacterId }));
+    }
+
+    // A count-1 group with quest-only rows for two quests: the player needing QuestItem and the one needing Potion each
+    // get their own item from every roll, not one of them only.
+    [Test]
+    public void TwoQuestRows_EachPlayerGetsTheItemTheyNeed() {
+        StartQuest();
+        TestGameSession other = SecondPlayer();
+        other.StartQuest(TestGameSession.QuestData(PotionQuestId) with {
+            Conditions = [new ConditionMetadata(ConditionType.item_exist, 1, new ConditionMetadata.Parameters(Integers: [Potion]), null)],
+        });
+        for (int i = 0; i < 50; i++) {
+            ItemDropManager.SpawnBoxDrops box = Field.ItemDrop.GetSpawnBoxItems(TwoQuestBoxId, [test.Session, other.Session]);
+            Assert.That(box.Shared, Is.Empty);
+            Assert.That(box.Owned.Select(drop => (drop.Session, drop.Item.Id)),
+                Is.EquivalentTo(new[] { (test.Session, QuestItem), (other.Session, Potion) }));
+        }
     }
 }
 
