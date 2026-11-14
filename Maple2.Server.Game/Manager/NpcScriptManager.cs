@@ -278,11 +278,10 @@ public sealed class NpcScriptManager {
         }
 
         if (JobCondition.Mesos > 0) {
-            if (session.Currency.CanAddMeso(-JobCondition.Mesos) != -JobCondition.Mesos) {
+            if (!session.Currency.TryTakeMeso(JobCondition.Mesos)) {
                 session.Send(ChatPacket.Alert(StringCode.s_err_lack_meso));
                 return;
             }
-            session.Currency.ChangeMeso(-JobCondition.Mesos);
         }
 
         if (JobCondition.MoveMapId > 0) {
@@ -413,8 +412,11 @@ public sealed class NpcScriptManager {
             }
         }
 
-        if (scriptFunction.CollectMeso > 0) {
-            session.Currency.ChangeMeso(-scriptFunction.CollectMeso);
+        // Checked and taken in one step. A talker who cannot pay gets no presents (ChangeMeso threw here before,
+        // which also stopped the function before the presents).
+        if (scriptFunction.CollectMeso > 0 && !session.Currency.TryTakeMeso(scriptFunction.CollectMeso)) {
+            logger.Error("Not enough mesos for script function {FunctionId} on npc {NpcId}", scriptFunction.FunctionId, Npc?.Value.Id);
+            return;
         }
 
         IList<Item> items = new List<Item>();
@@ -499,11 +501,7 @@ public sealed class NpcScriptManager {
             return false;
         }
         if (salary.SalaryType == 0) {
-            if (session.Currency.Meso < salary.Salary) {
-                return false;
-            }
-            session.Currency.ChangeMeso(-salary.Salary);
-            return true;
+            return session.Currency.TryTakeMeso(salary.Salary);
         }
         return session.Currency.TryTakeMeret(salary.Salary);
     }
