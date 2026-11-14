@@ -823,6 +823,34 @@ public partial class GameStorage {
             return true;
         }
 
+        /// <summary>
+        /// Writes only the account's survival level, exp and pass levels claimed, as given (not from memory), in the
+        /// transaction that stores the rewards they give (MapleSurvivalProgress). Callers hold the account lock.
+        /// </summary>
+        public bool SaveSurvivalProgress(Player player, int level, long exp, int silverClaimed, int goldClaimed) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.Account? account = Context.Account.Find(player.Account.Id);
+            if (account == null) {
+                return false;
+            }
+
+            account.SurvivalLevel = level;
+            account.SurvivalExp = exp;
+            account.SurvivalSilverLevelRewardClaimed = silverClaimed;
+            account.SurvivalGoldLevelRewardClaimed = goldClaimed;
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(player.Character.Id);
+            if (updated != null) {
+                player.Account.LastModified = updated.Value.AccountLastModified;
+                player.Character.LastModified = updated.Value.CharacterLastModified;
+            }
+            return true;
+        }
+
         private static AccountCurrency ToAccountCurrency(Currency currency) {
             return new AccountCurrency {
                 Meret = currency.Meret,

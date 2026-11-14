@@ -8,6 +8,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -109,6 +110,51 @@ public class SurvivalLevelExpTests {
         Assert.That(session.Player.Value.Account.SurvivalLevel, Is.EqualTo(2));
         Assert.That(items, Is.EqualTo(new[] { new Maple2.Server.Game.Manager.MapleSurvivalProgress.ResultItem(RewardId, 1, 1) }));
         Assert.That((Amount(session, RewardId), Amount(session, 29999999)), Is.EqualTo((1, 0)));
+    }
+
+    private Maple2.Database.Model.Account StoredAccount() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Account.AsNoTracking().Single(account => account.Id == test.AccountId);
+    }
+
+    private void FailAccountSave() {
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Account>().Any(entry => entry.State == EntityState.Modified);
+    }
+
+    // The level reached is stored with its level reward in one transaction. Before, the reward was stored at once and
+    // the level stayed in memory until the session save, so a crash in between gave the level's reward again.
+    [Test]
+    public void Use_StoresTheLevelWithTheReward() {
+        GameSession session = Start();
+        Use(session);
+        Maple2.Database.Model.Account stored = StoredAccount();
+        Assert.That((stored.SurvivalLevel, stored.SurvivalExp), Is.EqualTo((2, 100L)));
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(context.Item.Count(item => item.ItemId == RewardId), Is.EqualTo(1));
+    }
+
+    // When the level and exp cannot be stored, no level reward is given, the level stays and the tonic is kept.
+    [Test]
+    public void Use_LevelNotStored_NothingGiven() {
+        GameSession session = Start();
+        FailAccountSave();
+        Use(session);
+        test.FailSave = null;
+        Account account = session.Player.Value.Account;
+        Assert.That((account.SurvivalLevel, account.SurvivalExp, Amount(session, RewardId)), Is.EqualTo((1, 0L, 0)));
+        Assert.That(session.Item.Inventory.Get(tonic.Uid)!.Amount, Is.EqualTo(2));
+        Assert.That(StoredAccount().SurvivalLevel, Is.Not.EqualTo(2));
+    }
+
+    // A game's level-up whose level cannot be stored gives and lists no level reward and gains no exp.
+    [Test]
+    public void GameResult_LevelNotStored_NothingGiven() {
+        GameSession session = Start();
+        session.Survival = new Maple2.Server.Game.Manager.SurvivalManager(session);
+        FailAccountSave();
+        Maple2.Server.Game.Manager.MapleSurvivalProgress.Result(session, 1, 1, 5, 60, out var items);
+        test.FailSave = null;
+        Assert.That((session.Player.Value.Account.SurvivalLevel, items.Count, Amount(session, RewardId)), Is.EqualTo((1, 0, 0)));
     }
 
     // In the pass mode (SurvivalContents03 on) the level reached gives no level reward: its pass rewards are claimed.

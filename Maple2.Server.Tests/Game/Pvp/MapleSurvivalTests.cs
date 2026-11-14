@@ -342,12 +342,7 @@ public class MapleSurvivalTests {
         sent = Send(test, session, "22" + "01" + Long(800));
         Assert.That((session.Player.Value.Account.ActiveGoldPass, session.Currency.Meret), Is.EqualTo((true, 200L)));
         Assert.That(sent.Where(packet => packet.StartsWith("1901")).Select(packet => packet[..6]), Is.EqualTo(new[] { "190123", "190117" }));
-        // No field (a field change): refused, nothing claimed.
-        var field = session.Field;
-        session.Field = null;
-        Send(test, session, "23" + "08000000" + "00000000");
-        Assert.That(session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Is.EqualTo(0));
-        session.Field = field;
+        // Between fields the claim goes too (MapleSurvivalPassTests.ClaimPass_NoField_MailsTheItems).
         sent = Send(test, session, "23" + "08000000" + "00000000");
         Assert.That(sent.Where(packet => packet.StartsWith("1901")).ToList(), Is.EqualTo(new[] {
             "1901" + "23" + "01000000" + "03000000" + "01000000" + "00000000",

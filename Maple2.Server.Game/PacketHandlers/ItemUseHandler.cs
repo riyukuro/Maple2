@@ -842,16 +842,19 @@ public class ItemUseHandler : FieldPacketHandler {
 
     // A Royale Experience Tonic (SurvivalLevelExp, <v SurvivalExp="N"/>): the client registers no function for it, so
     // UseItem (unit_140d1ae30 @0x140d1bd60) sends the plain use. The tonic is taken and its exp added to the survival
-    // level; at the last level (chosen) or without its exp it is kept.
+    // level; at the last level (chosen), without its exp, or when the exp with its level rewards was not stored it is
+    // kept.
     private static void HandleSurvivalLevelExp(GameSession session, Item item) {
         Dictionary<string, string> xmlParameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
         if (!xmlParameters.TryGetValue("SurvivalExp", out string? value) || !long.TryParse(value, out long exp) || exp <= 0) {
             return;
         }
-        if (!MapleSurvivalProgress.CanAddItemExp(session) || !session.Item.Inventory.Consume(item.Uid, 1)) {
+        if (!MapleSurvivalProgress.CanAddItemExp(session) || session.Item.Inventory.Get(item.Uid) == null) {
             return;
         }
-        MapleSurvivalProgress.AddItemExp(session, exp);
+        if (MapleSurvivalProgress.AddItemExp(session, exp)) {
+            session.Item.Inventory.Consume(item.Uid, 1);
+        }
     }
 
     // SurvivalScan (30001099 "Position Tracker", `<v duration="10000" isAnnounce="false"/>`): the client sends the plain

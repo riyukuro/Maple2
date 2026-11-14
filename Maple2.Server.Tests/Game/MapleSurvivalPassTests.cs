@@ -8,6 +8,7 @@ using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -115,6 +116,56 @@ public class MapleSurvivalPassTests {
         Assert.That(session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Is.EqualTo(1));
         Assert.That(Amount(session, BonusItemId), Is.EqualTo(2));
         Assert.That(Amount(session, MissingItemId), Is.EqualTo(0));
+    }
+
+    private Maple2.Database.Model.Account StoredAccount() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Account.AsNoTracking().Single(account => account.Id == test.AccountId);
+    }
+
+    private int StoredItems(int itemId) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Item.Count(item => item.ItemId == itemId);
+    }
+
+    // The levels claimed are stored with their items in one transaction. Before, the items were stored at once and the
+    // levels claimed stayed in memory until the session save, so a crash in between let the levels be claimed again.
+    [Test]
+    public void ClaimPass_StoresTheLevelsWithTheItems() {
+        GameSession session = Start(table: Table([new MapleSurvivalTable.Reward("item", [BonusItemId], [1], [2])]));
+        session.Player.Value.Account.SurvivalLevel = 1;
+        MapleSurvivalProgress.ClaimPass(session, 1, 0);
+        Assert.That((StoredAccount().SurvivalSilverLevelRewardClaimed, StoredItems(BonusItemId)), Is.EqualTo((1, 1)));
+        Assert.That((session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Amount(session, BonusItemId)), Is.EqualTo((1, 2)));
+    }
+
+    // When the levels claimed cannot be stored, no item is given and nothing is claimed; the claim gives them later.
+    [Test]
+    public void ClaimPass_LevelsNotStored_NothingGiven() {
+        GameSession session = Start(table: Table([new MapleSurvivalTable.Reward("item", [BonusItemId], [1], [2])]));
+        session.Player.Value.Account.SurvivalLevel = 1;
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Account>().Any(entry => entry.State == EntityState.Modified);
+        MapleSurvivalProgress.ClaimPass(session, 1, 0);
+        test.FailSave = null;
+        Assert.That((session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Amount(session, BonusItemId)), Is.EqualTo((0, 0)));
+        Assert.That((StoredAccount().SurvivalSilverLevelRewardClaimed, StoredItems(BonusItemId)), Is.EqualTo((0, 0)));
+
+        MapleSurvivalProgress.ClaimPass(session, 1, 0);
+        Assert.That((session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Amount(session, BonusItemId)), Is.EqualTo((1, 2)));
+    }
+
+    // Between fields (Field null) the claim goes and its items are mailed. Before, the claim was refused.
+    [Test]
+    public void ClaimPass_NoField_MailsTheItems() {
+        GameSession session = Start(table: Table([new MapleSurvivalTable.Reward("item", [BonusItemId], [1], [2])]));
+        session.Player.Value.Account.SurvivalLevel = 1;
+        session.Field = null;
+        MapleSurvivalProgress.ClaimPass(session, 1, 0);
+        Assert.That((session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Amount(session, BonusItemId)), Is.EqualTo((1, 0)));
+        Assert.That(StoredAccount().SurvivalSilverLevelRewardClaimed, Is.EqualTo(1));
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        long mailId = context.Mail.Where(mail => mail.ReceiverId == session.CharacterId).Select(mail => mail.Id).Single();
+        Assert.That(context.Item.Count(item => item.OwnerId == mailId && item.ItemId == BonusItemId), Is.EqualTo(1));
     }
 
     // A bundle whose bonus item cannot be made is refused before the merets are taken: nothing is bought.
