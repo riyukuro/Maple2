@@ -370,6 +370,35 @@ public class TrophyWiringTests {
     }
     #endregion
 
+    #region revise_achieve_multi_grade and hero_achieve (a grade of the code's trophies)
+    // KR 22200452: revise_achieve_multi_grade codes 22200188 and 22200189 (three grades each), target grade 2, value
+    // 2. Quest 71000004: hero_achieve code 22100001, target grade 2, value 1. Each counts when a trophy of its code
+    // earns the target grade: the grade just earned, not the next one.
+    private static AchievementMetadata GradeTrophy(int id, ConditionType type, long value, int[] codes, int grade) =>
+        new(id, $"{id}", false, AchievementCategory.Life, [], new Dictionary<int, AchievementMetadataGrade> {
+            [1] = new(1, new ConditionMetadata(type, value, new ConditionMetadata.Parameters(Integers: codes),
+                new ConditionMetadata.Parameters(Integers: [grade])), null),
+        }, false);
+
+    [Test]
+    public void ReviseAchieveMultiGrade_22200452_TheSecondGradeOfBoth() {
+        const int first = 22200188, second = 22200189, multi = 22200452, hero = 22200453;
+        GameSession session = Start(TestGameSession.Trophy(first, ConditionType.use_merat, [100, 200, 300]),
+            TestGameSession.Trophy(second, ConditionType.use_merat, [100, 200, 300]),
+            GradeTrophy(multi, ConditionType.revise_achieve_multi_grade, 2, [first, second], 2),
+            GradeTrophy(hero, ConditionType.hero_achieve, 1, [first], 2));
+        session.Currency.Meret += 1000;
+
+        session.Currency.Meret -= 100; // grade 1 of both
+        Assert.That((test.TrophyCounter(multi), test.TrophyCounter(hero)), Is.EqualTo(((long?) null, (long?) null)));
+        session.Currency.Meret -= 100; // grade 2 of both
+        Assert.That((test.TrophyCounter(multi), test.TrophyCounter(hero)), Is.EqualTo(((long?) 2, (long?) 1)));
+        session.Currency.Meret -= 100; // grade 3 of both
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That((test.TrophyCounter(multi), test.TrophyCounter(hero)), Is.EqualTo(((long?) 2, (long?) 1)));
+    }
+    #endregion
+
     #region interior_level and interior_exp_offset
     private const int LevelTrophy = 90000401;
     private const int ExpTrophy = 90000402;

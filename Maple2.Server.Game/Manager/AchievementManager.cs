@@ -169,6 +169,9 @@ public sealed class AchievementManager {
             achievement.Grades.Add(achievement.CurrentGrade, DateTime.Now.ToEpochSeconds());
             newGradesCount++;
             NotifyGuild(achievement.Id, achievement.CurrentGrade, achievement.Completed);
+            // The grade just earned: the grade conditions name it (quest 71000004 hero_achieve "grade 2 of 22100001",
+            // trophy 22200452 revise_achieve_multi_grade "grade 2 of 22200188 and 22200189"), not the next one.
+            int earned = achievement.CurrentGrade;
 
             if (achievement.Grades.Count < achievement.Metadata.Grades.Count) {
                 achievement.CurrentGrade++;
@@ -180,9 +183,9 @@ public sealed class AchievementManager {
             GiveReward(achievement);
 
             session.Send(AchievementPacket.Update(achievement));
-            session.ConditionUpdate(ConditionType.revise_achieve_multi_grade, codeLong: achievement.Id, targetLong: achievement.CurrentGrade);
-            session.ConditionUpdate(ConditionType.revise_achieve_single_grade, codeLong: achievement.Id, targetLong: achievement.CurrentGrade);
-            session.ConditionUpdate(ConditionType.hero_achieve, codeLong: achievement.Id, targetLong: achievement.CurrentGrade);
+            session.ConditionUpdate(ConditionType.revise_achieve_multi_grade, codeLong: achievement.Id, targetLong: earned);
+            session.ConditionUpdate(ConditionType.revise_achieve_single_grade, codeLong: achievement.Id, targetLong: earned);
+            session.ConditionUpdate(ConditionType.hero_achieve, codeLong: achievement.Id, targetLong: earned);
             session.ConditionUpdate(ConditionType.trophy_point, codeLong: achievement.Id);
             // hero_achieve_grade (trophies 21240001, 21100019, 23100290): each grade a trophy of the condition's
             // code gains adds 1. KMS2 sends the update after the trophy_point one.
