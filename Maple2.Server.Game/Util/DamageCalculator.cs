@@ -129,12 +129,6 @@ public static class DamageCalculator {
     // The block and evasion rolls of a hit: Block or Miss, or null for a hit that lands. An attack without damage rolls them
     // too: the client takes a Miss on one (PCBase::FUN_141671c20 shows its miss effect for a skill of main type 0x12).
     internal static DamageType? HitRoll(IActor caster, IActor target, DamagePropertyRecord property) {
-        // The field's own actor (the caster of triggers, regions and cubes) has no stats: an accuracy of 0 would miss
-        // every hit (Damage.HitRate below 0), so its hits, dots and hits without damage are not rolled.
-        if (caster is FieldActor) {
-            return null;
-        }
-
         // Check block
         if (Damage.TriggerCompulsionEvent(target.Buffs.TotalCompulsionRate(BuffCompulsionEventType.BlockChance, property.SkillId))) {
             return DamageType.Block;
@@ -145,8 +139,10 @@ public static class DamageCalculator {
             return DamageType.Miss;
         }
 
-        // Get hit rate
-        if (Damage.Evade(target.Buffs.GetResistance(BasicAttribute.Accuracy), target.Stats.Values[BasicAttribute.Evasion].Total, target.Stats.Values[BasicAttribute.Dexterity].Total,
+        // Get hit rate. The field's own actor (the caster of triggers, regions and cubes) has no stats: an accuracy of 0
+        // would miss every hit (Damage.HitRate below 0), so its hits, dots and hits without damage are not rolled for
+        // evasion. The target's block and evasion compulsions above still hold against them.
+        if (caster is not FieldActor && Damage.Evade(target.Buffs.GetResistance(BasicAttribute.Accuracy), target.Stats.Values[BasicAttribute.Evasion].Total, target.Stats.Values[BasicAttribute.Dexterity].Total,
                 caster.Stats.Values[BasicAttribute.Accuracy].Total, caster.Buffs.GetResistance(BasicAttribute.Evasion), caster.Stats.Values[BasicAttribute.Luck].Total, property.SuperArmorBreak)) {
             return DamageType.Miss;
         }

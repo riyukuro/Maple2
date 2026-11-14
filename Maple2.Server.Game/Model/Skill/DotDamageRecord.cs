@@ -38,8 +38,11 @@ public class DotDamageRecord {
         // The whole amount is times the buff's stack count (Buff.AmountFactor), before the not-kill cap.
         long hpAmount = dotDamage.HpValue;
         if (!dotDamage.IsConstDamage) {
-            // An invincible target's tick is not rolled, so its shields stay.
-            if (dotDamage.Type != AttackType.None && !shielded) {
+            // An invincible target's tick is not rolled, so its shields stay. A typed dot without a rate has no rolled part
+            // (rate 0 times any attack is 0): it is not rolled either, so it gets no Miss, no crit and not the hit's least
+            // damage of 1 on top of its share. The 14 typed dots the KR triggers, regions and cubes add are all such (e.g.
+            // 70000114: Type 1, DamageByTargetMaxHp 0.2), as are 149 of the KR dot levels.
+            if (dotDamage.Type != AttackType.None && dotDamage.Rate > 0 && !shielded) {
                 try {
                     (DamageType type, long amount) = DamageCalculator.CalculateDamage(caster, target, Properties);
                     Type = type;

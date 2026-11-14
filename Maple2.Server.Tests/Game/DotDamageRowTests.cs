@@ -1,7 +1,12 @@
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.Util;
 using NUnit.Framework;
 
 namespace Maple2.Server.Tests.Game;
@@ -78,8 +83,39 @@ public class DotDamageRowTests {
         for (int i = 0; i < 20; i++) {
             var record = new DotDamageRecord(field, target, dot);
             Assert.That(record.Type, Is.EqualTo(DamageType.Normal));
-            // 2000, and the 1 CalculateDamage gives at the least for a typed dot without a rate (any caster's).
-            Assert.That(record.HpAmount, Is.InRange(-2001, -2000));
+            // The share alone: a typed dot without a rate has no rolled part, so not the hit's least damage of 1 on top.
+            Assert.That(record.HpAmount, Is.EqualTo(-2000));
         }
+    }
+
+    // 50004001 (KR: Type 1, DamageByTargetMaxHp 1.1, no rate), as a player's: no Miss on a target that evades every
+    // roll, and the share alone (the rolled part of a dot without a rate was a Miss of 0 beside the share, or a 1).
+    [Test]
+    public void TypedDotWithoutRate_IsNotRolled() {
+        FieldPlayer caster = Player(5000, 5000);
+        FieldPlayer target = Player(10000, 10000);
+        target.Stats.Values[BasicAttribute.Evasion].AddTotal(1_000_000);
+        AdditionalEffectMetadataDot.DotDamage dot = Dot(AttackType.Physical, useGrade: true, damageByTargetMaxHp: 1.1f);
+        for (int i = 0; i < 20; i++) {
+            var record = new DotDamageRecord(caster, target, dot);
+            Assert.That(record.Type, Is.EqualTo(DamageType.Normal));
+            Assert.That(record.HpAmount, Is.EqualTo(-11000));
+        }
+    }
+
+    // A hit of the field's own actor is not rolled for evasion, but the target's block and evasion compulsions hold:
+    // the KR rows 10100081 (BlockChance 1 on every skill) block it, 10700193 (EvasionChanceOverride 1) make it a Miss.
+    [TestCase(10100081, BuffCompulsionEventType.BlockChance, DamageType.Block)]
+    [TestCase(10700193, BuffCompulsionEventType.EvasionChanceOverride, DamageType.Miss)]
+    public void FieldActorHit_KeepsTheTargetsCompulsions(int effectId, BuffCompulsionEventType type, DamageType expected) {
+        FieldPlayer target = Player(10000, 10000);
+        var field = new FieldActor(target.Session.Field!, 1, target.Session.Field!.Metadata, null!);
+        var property = new DamagePropertyRecord { Rate = 1, AttackType = AttackType.Physical };
+        Assert.That(DamageCalculator.HitRoll(field, target, property), Is.Null);
+
+        AdditionalEffectMetadata effect = DisabledBuffTests.Effect(effectId, compulsion: new AdditionalEffectMetadataStatus.CompulsionEvent(type, 1f, []));
+        var held = (ConcurrentDictionary<int, List<Buff>>) typeof(BuffManager).GetField("buffs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target.Buffs)!;
+        held[effectId] = [DisabledBuffTests.Held(effect, true)];
+        Assert.That(DamageCalculator.HitRoll(field, target, property), Is.EqualTo(expected));
     }
 }
