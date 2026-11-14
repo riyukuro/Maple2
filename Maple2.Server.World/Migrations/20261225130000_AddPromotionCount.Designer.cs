@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Maple2.Server.World.Migrations
 {
     [DbContext(typeof(Ms2Context))]
-    [Migration("20261225120000_AddPromotionCount")]
+    [Migration("20261225130000_AddPromotionCount")]
     partial class AddPromotionCount
     {
         /// <inheritdoc />
@@ -121,6 +121,12 @@ namespace Maple2.Server.World.Migrations
 
                     b.Property<int>("SurvivalSilverLevelRewardClaimed")
                         .HasColumnType("int");
+
+                    b.Property<long>("UnitedRewardResetCharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("UnitedRewardResetExpiry")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Username")
                         .IsRequired()
