@@ -196,6 +196,37 @@ public class WeddingReservationTests {
         accepter.Session.Marriage.WeddingHall = held!;
     }
 
+    // The halls the billboard (WeddingBillboard 4) lists to the session.
+    private static int Listed(TestGameSession test) {
+        test.TakeSent();
+        new WeddingBillboardHandler().Handle(test.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(4);
+            writer.WriteInt(0);
+        }));
+        byte[] packet = test.TakeSent().Single(sent => TestGameSession.Op(sent) == SendOp.WeddingBillboard);
+        return BitConverter.ToInt32(packet, 3);
+    }
+
+    // The client lists a private hall only to its couple (uiweddingbillboarddialog.cpp:276): another player gets
+    // none of its rows, the couple and every player a public one.
+    [Test]
+    public void Billboard_ListsAPrivateHallToItsCoupleOnly() {
+        Hold(Now + 2 * 86400);
+        var outsider = new TestGameSession(options);
+        outsider.Start();
+        Assert.Multiple(() => {
+            Assert.That(Listed(proposer), Is.EqualTo(1));
+            Assert.That(Listed(accepter), Is.EqualTo(1));
+            Assert.That(Listed(outsider), Is.EqualTo(0));
+        });
+
+        using (var context = new Ms2Context(options)) {
+            context.WeddingHall.Single().Public = true;
+            context.SaveChanges();
+        }
+        Assert.That(Listed(outsider), Is.EqualTo(1));
+    }
+
     // The client refuses a new reservation only while the reserved ceremony is ahead (WeddingProxy::CheckVisit);
     // a couple still inside the promise limit whose ceremony time has passed reserves anew, and the new hall
     // takes the old one's place.

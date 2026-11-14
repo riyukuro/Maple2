@@ -29,8 +29,14 @@ public class WeddingBillboardHandler : FieldPacketHandler {
         int unknown = packet.ReadInt(); // 0
 
         using GameStorage.Request db = session.GameStorage.Context();
-        IList<WeddingHall> halls = db.GetWeddingHalls().ToList();
+        IList<WeddingHall> halls = db.GetWeddingHalls().Where(hall => Lists(hall, session.PlayerName)).ToList();
 
         session.Send(WeddingBillboardPacket.Load(halls));
+    }
+
+    // The client lists a private hall only to the couple, by name (UIWeddingBillboardDialog, uiweddingbillboarddialog.cpp:276);
+    // the others' private halls are not sent.
+    public static bool Lists(WeddingHall hall, string playerName) {
+        return hall.Public || hall.ReserverName == playerName || hall.PartnerName == playerName;
     }
 }
