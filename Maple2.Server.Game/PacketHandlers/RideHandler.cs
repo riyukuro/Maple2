@@ -130,8 +130,8 @@ public class RideHandler : FieldPacketHandler {
             session.Send(RidePacket.Stop(session.Player.ObjectId, action));
             return;
         }
-        if (!RideShare.MayRideOff(session.Ride.Ride.Metadata.Basic.Type, action.Forced)) {
-            Logger.Debug("Ride-off {Type} of a {RideType} mount refused: not forced", action.Type, session.Ride.Ride.Metadata.Basic.Type);
+        if (!RideShare.MayRideOff(session.Ride.Ride.Metadata.Basic.Type, action.Type)) {
+            Logger.Debug("Ride-off {Type} of a {RideType} mount refused: the client sends none", action.Type, session.Ride.Ride.Metadata.Basic.Type);
             return;
         }
         session.Ride.Dismount(action);

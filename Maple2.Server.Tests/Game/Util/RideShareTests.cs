@@ -69,13 +69,36 @@ public class RideShareTests {
         Assert.That(RideShare.DismountsOnHit(unrideOnHit, type, owner, healthTaken), Is.EqualTo(expected));
     }
 
-    [TestCase(RideOnType.Default, false, true)]
-    [TestCase(RideOnType.Battle, false, false)]
-    [TestCase(RideOnType.Object, false, false)]
-    [TestCase(RideOnType.Battle, true, true)]
-    [TestCase(RideOnType.Object, true, true)]
-    public void MayRideOff(RideOnType dataType, bool forced, bool expected) {
-        Assert.That(RideShare.MayRideOff(dataType, forced), Is.EqualTo(expected));
+    [TestCase(RideOnType.Default, RideOffType.Default, true)]
+    [TestCase(RideOnType.Default, RideOffType.TakeLr, true)]
+    [TestCase(RideOnType.Battle, RideOffType.Default, false)]
+    [TestCase(RideOnType.Battle, RideOffType.TakeLr, false)]
+    [TestCase(RideOnType.Object, RideOffType.AutoClimb, false)]
+    [TestCase(RideOnType.Battle, RideOffType.UnRideSkill, false)]
+    [TestCase(RideOnType.Battle, RideOffType.RidingUi, true)]
+    [TestCase(RideOnType.Battle, RideOffType.DisableField, true)]
+    [TestCase(RideOnType.Object, RideOffType.Dead, true)]
+    [TestCase(RideOnType.Object, RideOffType.AdditionalEffect, true)]
+    [TestCase(RideOnType.Battle, RideOffType.Groggy, true)]
+    [TestCase(RideOnType.Object, RideOffType.HideAndSeek, true)]
+    public void MayRideOff(RideOnType dataType, RideOffType type, bool expected) {
+        Assert.That(RideShare.MayRideOff(dataType, type), Is.EqualTo(expected));
+    }
+
+    // The ride-off button of a battle mount with enableRideOffUI: RidingUI with arg 0, as the client sends it
+    // (new RideOffActionRidingUI(0)), and DisableField the same.
+    [TestCase(RideOffType.RidingUi)]
+    [TestCase(RideOffType.DisableField)]
+    public void BattleMountRidesOffWithArgZero(RideOffType type) {
+        var writer = new Maple2.PacketLib.Tools.ByteWriter();
+        writer.WriteByte((byte) type);
+        writer.WriteByte(0);
+        Maple2.Model.Game.RideOffAction action = Maple2.Model.Game.RideOffAction.Read(new Maple2.PacketLib.Tools.ByteReader(writer.Buffer[..writer.Length], 0));
+        Assert.Multiple(() => {
+            Assert.That(action.Type, Is.EqualTo(type));
+            Assert.That(action.Forced, Is.False);
+            Assert.That(RideShare.MayRideOff(RideOnType.Battle, action.Type), Is.True);
+        });
     }
 
     [TestCase(true, false, true)]

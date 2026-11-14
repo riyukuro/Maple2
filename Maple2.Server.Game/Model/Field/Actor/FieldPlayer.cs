@@ -587,7 +587,7 @@ public class FieldPlayer : Actor<Player> {
                 string.Join(",", hit.Damage.Select(entry => $"{entry.Type}:{entry.Amount}")), healthBefore, Stats.Values[BasicAttribute.Health].Current);
         }
         Ride? ride = Session.Ride?.Ride;
-        if (ride != null && RideShare.DismountsOnHit(attack.UnrideOnHit, ride.Action.Type, ride.OwnerId == ObjectId,
+        if (ride != null && RideShare.DismountsOnHit(attack.UnrideOnHit, ride.Metadata.Basic.Type, ride.OwnerId == ObjectId,
                 Stats.Values[BasicAttribute.Health].Current < healthBefore)) {
             Session.Ride.Dismount(RideOffType.UnRideSkill);
         }

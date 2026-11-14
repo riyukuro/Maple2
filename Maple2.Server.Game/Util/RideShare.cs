@@ -64,10 +64,13 @@ public static class RideShare {
     // ride stays.
     public static bool DismountsOnDeath(RideOnType type) => type is RideOnType.Battle or RideOnType.Object;
 
-    // MyPC::SendRequestRideMode1 (mypc.cpp:3574): the client asks to get off a battle or object mount only with a
-    // forced ride-off action (swim, climb and the like); a plain one shows notice 0x655 and sends nothing.
-    public static bool MayRideOff(RideOnType dataType, bool forced) =>
-        forced || dataType is not (RideOnType.Battle or RideOnType.Object);
+    // MyPC::SendRequestRideMode1 (mypc.cpp:3574): the client asks to get off a battle or object mount only with an
+    // action whose RideOffAction +0x20 is 1, a constant of the type that is not sent (rideonaction.cpp: DisableField,
+    // Dead, AdditionalEffect, RidingUI, Groggy, HideAndSeek); any other shows notice 0x655 and sends nothing.
+    public static bool MayRideOff(RideOnType dataType, RideOffType type) =>
+        dataType is not (RideOnType.Battle or RideOnType.Object)
+        || type is RideOffType.DisableField or RideOffType.Dead or RideOffType.AdditionalEffect or RideOffType.RidingUi
+            or RideOffType.Groggy or RideOffType.HideAndSeek;
 
     // A hit that takes health knocks the mount's owner off when the attack's unrideOnHit has the ride type's bit
     // (1 a mount item, 2 a battle mount, 4 an object mount): KMS2 sends ride-off type UnRideSkill after a monster
