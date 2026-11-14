@@ -563,7 +563,8 @@ public class FieldNpc : Actor<Npc> {
                 Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
             }
         } else {
-            if (Navigation!.PathTo(currentWaypoint.Position)) {
+            bool cutOff = Navigation!.GoalCutOff(currentWaypoint.Position);
+            if (!cutOff && Navigation.PathTo(currentWaypoint.Position)) {
                 if (Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? patrolSequence)) {
                     approachTask = MovementState.TryMoveTo(currentWaypoint.Position, false, sequence: patrolSequence.Name, speed: GroundPatrolSpeed(patrolSequence.Name));
                 } else if (WalkSequence is not null) {
@@ -571,9 +572,10 @@ public class FieldNpc : Actor<Npc> {
                 } else {
                     Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
                 }
-            } else if (Navigation.GoalOffMesh(currentWaypoint.Position)) {
-                // The waypoint stands on ground the navmesh does not cover (e.g. a train track that is not path geometry):
-                // go there in a straight line at the patrol's speed instead of skipping it, so boxes waiting for the npc see it.
+            } else if (cutOff || Navigation.GoalOffMesh(currentWaypoint.Position)) {
+                // The waypoint stands on ground the navmesh does not cover (e.g. a train track that is not path geometry),
+                // or on a part of the mesh no path reaches (a ledge one block up): go there in a straight line at the
+                // patrol's speed instead of skipping it or stopping at the edge, so boxes waiting for the npc see it.
                 if (Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? patrolSequence)) {
                     approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: patrolSequence.Name, speed: GroundPatrolSpeed(patrolSequence.Name));
                 } else if (WalkSequence is not null) {

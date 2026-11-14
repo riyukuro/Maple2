@@ -493,6 +493,25 @@ public sealed class AgentNavigation {
         return field.FindNearestPoly(goal, out long endRef, out _) && endRef == 0;
     }
 
+    // True when the npc and the goal both stand on the navmesh but no path joins them (a ledge one block up, a gap):
+    // PathTo then walks the npc only to the edge of its own part of the mesh.
+    public bool GoalCutOff(Vector3 goal) {
+        if (!field.FindNearestPoly(agent.npos, out long startRef, out RcVec3f start) || startRef == 0) {
+            return false;
+        }
+        if (!field.FindNearestPoly(goal, out long endRef, out RcVec3f end) || endRef == 0) {
+            return false;
+        }
+        return PathCutOff(crowd.GetNavMeshQuery(), crowd.GetFilter(0), startRef, endRef, start, end);
+    }
+
+    // True when the best path from startRef ends on a poly other than endRef (a partial path).
+    public static bool PathCutOff(DtNavMeshQuery query, IDtQueryFilter filter, long startRef, long endRef, RcVec3f start, RcVec3f end) {
+        List<long> polys = [];
+        query.FindPath(startRef, endRef, start, end, filter, ref polys, new DtFindPathOption(0, float.MaxValue));
+        return polys.Count == 0 || polys[^1] != endRef;
+    }
+
     private bool SetPathTo(RcVec3f target) {
         currentPath = [];
         currentPathIndex = 0;

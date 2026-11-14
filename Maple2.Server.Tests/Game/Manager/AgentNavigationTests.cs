@@ -117,6 +117,25 @@ public class AgentNavigationTests {
         return navMesh;
     }
 
+    // A patrol leg across the gap has polys at both ends but no path: it is cut off; one on the same quad is not.
+    [Test]
+    public void PathCutOff_TrueOnlyWhenNoPathJoinsTheEnds() {
+        var query = new DtNavMeshQuery(TwoQuads());
+        var filter = new DtQueryDefaultFilter();
+        var extents = new RcVec3f(2, 4, 2);
+        var start = new RcVec3f(5, 0, 5);
+        var near = new RcVec3f(8, 0, 2);
+        var across = new RcVec3f(18, 0, 5);
+        query.FindNearestPoly(start, extents, filter, out long startRef, out _, out _);
+        query.FindNearestPoly(near, extents, filter, out long nearRef, out _, out _);
+        query.FindNearestPoly(across, extents, filter, out long acrossRef, out _, out _);
+        Assert.That(startRef, Is.Not.Zero);
+        Assert.That(acrossRef, Is.Not.Zero.And.Not.EqualTo(startRef));
+
+        Assert.That(AgentNavigation.PathCutOff(query, filter, startRef, acrossRef, start, across), Is.True);
+        Assert.That(AgentNavigation.PathCutOff(query, filter, startRef, nearRef, start, near), Is.False);
+    }
+
     // A push of 1.5 units from 0.1 before a one-block wall: snapping the end to the nearest poly would put the
     // npc on the far side; the straight move stops at the wall.
     [Test]
