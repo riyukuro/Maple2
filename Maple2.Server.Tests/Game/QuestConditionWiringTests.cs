@@ -744,6 +744,34 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
     }
     #endregion
+    #region stay_map (FieldPlayer's scheduler, each minute on a map)
+    // The player's minute task made due now, and the scheduler run as FieldPlayer.Update runs it.
+    private static void AMinutePasses(FieldPlayer player) {
+        object scheduler = typeof(FieldPlayer).GetField("scheduler", Any)!.GetValue(player)!;
+        var events = (System.Collections.IList) scheduler.GetType().GetField("timedEvents", Any)!.GetValue(scheduler)!;
+        Assert.That(events, Has.Count.EqualTo(1));
+        events[0]!.GetType().GetField("<ExecutionTime>k__BackingField", Any)!.SetValue(events[0], 0L);
+        scheduler.GetType().GetField("nextTime", Any)!.SetValue(scheduler, 0L);
+        ((Maple2.Tools.Scheduler.EventQueue) scheduler).InvokeAll();
+    }
+
+    // 72000586: <condition type="stay_map" code="03009007" value="5" />, each minute on the map of the code counts;
+    // a minute on another map does not.
+    [TestCase(3009007, 2)]
+    [TestCase(3009008, 0)]
+    public void StayMap_72000586_EachMinuteOnTheMap(int mapId, int expected) {
+        StateSyncField(mapId);
+        // The test session's player is made without its constructor, which schedules the minute task: a real one.
+        var player = new FieldPlayer(test.Session, test.Session.Player.Value);
+        Quest quest = StartQuest(Condition(ConditionType.stay_map, 5, ["03009007"], []));
+
+        AMinutePasses(player);
+        AMinutePasses(player);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
+    }
+    #endregion
     #region breakable_object (BreakableHandler, a breakable broken)
     // 10002689: <condition type="breakable_object" value="10" />, each breakable the player's attack breaks counts;
     // a repeat of the packet for the box already broken does not.
