@@ -94,10 +94,12 @@ public class RevivalHandler : FieldPacketHandler {
         // (UIRevivalDialog::RefreshMesoButton); CalcRevivalPrice is a different, much smaller fee.
         int totalMaxCount = Lua.GetMesoRevivalDailyMaxCount();
         int remaining = Math.Max(totalMaxCount - session.Config.InstantReviveCount, 0);
-        // The third argument is the client's meso revival event flag; this server runs no such event.
+        // The third argument is the client's meso revival event flag (CGameRule::FUN_140477d10): 1 while a
+        // MesoRevival event for everyone runs, a flat 10000 before the fee cut.
         ConstantsTable constants = ServerTableMetadata.ConstantsTable;
         bool homeField = session.Field.Metadata.Property.Type == MapType.Home;
-        long cost = useVoucher ? 0 : RevivalRules.MesoCost(Lua.CalcRevivalMeso(session.Player.Value.Character.Level, remaining, 0),
+        bool mesoEvent = RevivalRules.MesoEventOn(session.FindEvent(GameEventType.MesoRevival));
+        long cost = useVoucher ? 0 : RevivalRules.MesoCost(Lua.CalcRevivalMeso(session.Player.Value.Character.Level, remaining, mesoEvent ? 1 : 0),
             constants.MesoRevivalFeeReduceLimit, (float) session.Player.Stats.Values[SpecialAttribute.ReduceMesoRevivalFee].Multiplier(),
             homeField);
         int debuffCode = constants.MeratRevivalDebuffCode;
@@ -116,7 +118,8 @@ public class RevivalHandler : FieldPacketHandler {
             homeField: homeField,
             dungeonDisables: RevivalRules.DungeonDisablesMeso(
                 session.Field is DungeonFieldManager { DungeonMetadata.Limit.DisableMesoRevival: true },
-                ServerTableMetadata.FeatureTable.IsOn(RevivalRules.DungeonLimitMesoRevivalFeature)));
+                ServerTableMetadata.FeatureTable.IsOn(RevivalRules.DungeonLimitMesoRevivalFeature)),
+            mesoEvent: mesoEvent);
         if (refusal != MesoReviveRefusal.None) {
             Logger.Debug("Instant revive refused for {CharacterId}: {Refusal}", session.CharacterId, refusal);
             return;
@@ -130,8 +133,8 @@ public class RevivalHandler : FieldPacketHandler {
         }
 
         // The count goes up first: the revive sends it. Paid only once the revive has happened. The free
-        // revive of a home field leaves the count alone.
-        bool counts = RevivalRules.CountsTowardDailyMax(homeField && !useVoucher);
+        // revive of a home field and a meso revive while a meso revival event runs leave the count alone.
+        bool counts = RevivalRules.CountsTowardDailyMax(homeField && !useVoucher, mesoEvent && !useVoucher);
         if (counts) {
             session.Config.InstantReviveCount++;
         }

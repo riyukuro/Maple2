@@ -378,6 +378,16 @@ public record FreeAirTaxi : GameEventData;
 public record TransferItemBound(
     bool Enabled) : GameEventData;
 
+/// <summary>
+/// The meso revival event (GameEventMesoRevival, OnStart: CGameRule::AddMesoRevivalEvent): while one runs, the meso
+/// revive in place costs a flat CalcRevivalMeso(level, remaining, 1) (10000 before the fee cut) and is not held to the
+/// day's count (UIRevivalDialog::RefreshMesoButton, FUN_141abc7f0). value1 is ParseBoolW (an empty value1 is false,
+/// as in all KR rows): true keeps the event to PC-bang players (CGameRule::FUN_140477d10), which this server has
+/// none of. The packet carries the id and the flag.
+/// </summary>
+public record MesoRevival(
+    bool PcBangOnly) : GameEventData;
+
 
 /// <summary>
 /// Closes Maple Survival (Mushking Royale)
@@ -751,6 +761,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(EventRate), "EventRate")]
 [JsonDerivedType(typeof(PetMastery), "PetMastery")]
 [JsonDerivedType(typeof(TransferItemBound), "TransferItemBound")]
+[JsonDerivedType(typeof(MesoRevival), "MesoRevival")]
 [JsonDerivedType(typeof(BlackMarketFeeDiscount), "BlackMarketFeeDiscount")]
 [JsonDerivedType(typeof(LevelUpPackage), "LevelUpPackage")]
 [JsonDerivedType(typeof(DungeonEnterTimeLimit), "DungeonEnterTimeLimit")]

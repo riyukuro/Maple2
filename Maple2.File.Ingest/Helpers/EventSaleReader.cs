@@ -43,6 +43,13 @@ public static class EventSaleReader {
         return new TransferItemBound(text.Length == 0 || text.IndexOfAny(['1', 'o', 'O', 't', 'T']) >= 0);
     }
 
+    // The MesoRevival flag as GameEventMesoRevival::vfunc_2 reads it: ParseBoolW (packetlogger.cpp:183) with no
+    // default of its own, so an empty value1 is false (the event is for everyone).
+    public static MesoRevival MesoRevival(string? value1) {
+        string text = value1?.Trim() ?? string.Empty;
+        return new MesoRevival(text.IndexOfAny(['1', 'o', 'O', 't', 'T']) >= 0);
+    }
+
     // The black market fee rate: 0..10000 (the client asserts on anything else); else no event.
     public static BlackMarketFeeDiscount? FeeRate(string? value1) {
         return int.TryParse(value1?.Trim(), out int rate) && rate is >= 0 and <= 10000 ? new BlackMarketFeeDiscount(rate) : null;

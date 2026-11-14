@@ -1939,6 +1939,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new FreeAirTaxi();
             case GameEventType.TransferItemBound:
                 return EventSaleReader.TransferItemBound(value1);
+            case GameEventType.MesoRevival:
+                return EventSaleReader.MesoRevival(value1);
             case GameEventType.ShutdownMapleSurvival:
                 return new ShutdownMapleSurvival();
             case GameEventType.LevelUpPackage:

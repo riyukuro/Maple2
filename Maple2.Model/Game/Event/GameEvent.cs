@@ -236,6 +236,11 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(Id);
                 writer.WriteBool(transferItemBound.Enabled);
                 break;
+            case MesoRevival mesoRevival:
+                // GameEventMesoRevival::vfunc_4: the flag after the id.
+                writer.WriteInt(Id);
+                writer.WriteBool(mesoRevival.PcBangOnly);
+                break;
             case FreeAirTaxi:
                 // GameEventFreeAirTaxi reads only the base event's id (gameeventbase.cpp:196).
                 writer.WriteInt(Id);

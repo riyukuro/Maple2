@@ -1,4 +1,7 @@
-﻿namespace Maple2.Server.Game.Util;
+﻿using Maple2.Model.Game.Event;
+using Maple2.Model.Metadata;
+
+namespace Maple2.Server.Game.Util;
 
 public enum MesoReviveRefusal {
     None,
@@ -76,10 +79,11 @@ public static class RevivalRules {
     // A voucher is not held to the daily count; mesos are, except in a home field: there the client shows the
     // free meso button before it looks at the count left (UIRevivalDialog::FUN_141abcb90). The client's meso
     // button also refuses while the meret revival debuff is on the player (UIRevivalDialog::FUN_141abc080), as
-    // the meret button does. dungeonDisables is DungeonDisablesMeso of the room.
+    // the meret button does. dungeonDisables is DungeonDisablesMeso of the room. A running meso revival event
+    // lifts the count too (UIRevivalDialog::FUN_141abc7f0 enables the button when the event is on or a revive is left).
     public static MesoReviveRefusal MesoRevive(bool dead, bool noRevivalHere, bool buffBlocks, bool useVoucher,
             bool hasVoucher, int usedToday, int dailyMax, long meso, long cost, bool debuffAllows = true,
-            bool homeField = false, bool dungeonDisables = false) {
+            bool homeField = false, bool dungeonDisables = false, bool mesoEvent = false) {
         if (!dead) {
             return MesoReviveRefusal.NotDead;
         }
@@ -98,7 +102,7 @@ public static class RevivalRules {
         if (useVoucher) {
             return hasVoucher ? MesoReviveRefusal.None : MesoReviveRefusal.NoVoucher;
         }
-        if (!homeField && usedToday >= dailyMax) {
+        if (!homeField && !mesoEvent && usedToday >= dailyMax) {
             return MesoReviveRefusal.DailyMax;
         }
         return meso < cost || cost < 0 ? MesoReviveRefusal.LackMeso : MesoReviveRefusal.None;
@@ -145,6 +149,12 @@ public static class RevivalRules {
         return !debuffEnabled;
     }
 
-    // The daily meso revive count rises for a meso or voucher revive, not for the free one of a home field.
-    public static bool CountsTowardDailyMax(bool homeField) => !homeField;
+    // The daily meso revive count rises for a meso or voucher revive, not for the free one of a home field nor for a
+    // meso revive while a meso revival event runs (the event's price does not look at the count, and the client shows
+    // no count then; a revive the event paid for leaves the day's own ones for after it).
+    public static bool CountsTowardDailyMax(bool homeField, bool mesoEvent = false) => !homeField && !mesoEvent;
+
+    // A running MesoRevival event for everyone (a PC-bang-only one applies to no player of this server).
+    public static bool MesoEventOn(IEnumerable<GameEvent> events) =>
+        events.Any(gameEvent => gameEvent.Metadata.Data is MesoRevival { PcBangOnly: false });
 }
