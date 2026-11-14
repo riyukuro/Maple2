@@ -292,7 +292,8 @@ public class GuildManager : IDisposable {
     }
 
     public GuildError CheckIn(long requestorId) {
-        const int contribution = 10;
+        // The table's attend row (KR: 10).
+        int contribution = TableMetadata.GuildTable.ContributionOf(GuildContributionKind.Attend);
 
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
             return GuildError.s_guild_err_null_member;

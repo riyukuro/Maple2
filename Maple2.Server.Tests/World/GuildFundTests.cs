@@ -229,9 +229,11 @@ public class GuildFundTests {
         }
     }
 
-    // Two check-ins of one member at once pay the guild once; the fund stops at the level's ceiling.
+    // Two check-ins of one member at once pay the guild once and the member the table's attend row (7 here) once; the
+    // fund stops at the level's ceiling.
     [Test]
     public void CheckIn_TwoAtOncePayOnceAndStopAtTheCeiling() {
+        SetContributions(new Dictionary<string, int> { [GuildContributionKind.Attend] = 7 });
         for (int round = 0; round < Rounds; round++) {
             guild.Funds = 100;
             guild.Experience = 0;
@@ -243,7 +245,7 @@ public class GuildFundTests {
                 () => errors[1] = manager.CheckIn(member.CharacterId));
 
             Assert.That(errors, Has.Exactly(1).EqualTo(GuildError.none), $"round {round}");
-            Assert.That((guild.Funds, guild.Experience, member.TotalContribution), Is.EqualTo((130, 5, 10)), $"round {round}");
+            Assert.That((guild.Funds, guild.Experience, member.TotalContribution), Is.EqualTo((130, 5, 7)), $"round {round}");
         }
 
         guild.Funds = 990;
