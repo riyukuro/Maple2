@@ -1,8 +1,10 @@
 using System.Net;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Tools.Extensions;
@@ -198,7 +200,12 @@ public sealed class PcBangManager {
         }
     }
 
-    // A gift: received once a day at a PC bang, not in a tutorial field.
+    // A gift: received once a day at a PC bang, not in a tutorial field. A refusal of a gift the client offers is
+    // answered: its gift list has no received state (RefreshGiftList shows each gift with its Get button), so a gift
+    // taken earlier in the day is still offered and its Get would otherwise show nothing. Chosen here: a gift already
+    // received today gets s_ugcmap_already_taken_interior_grade_gift ("already received the bonus"), a full inventory
+    // s_err_inventory, an item not made or a record not stored s_item_err_code with the item id. An id not in the
+    // table is only logged: the client offers only the gifts the info sent.
     public void ReceiveGift(int giftId) {
         if (!On) {
             return;
@@ -212,16 +219,31 @@ public sealed class PcBangManager {
             return;
         }
         PcBangRecord today = Fold(DateTime.Now);
-        if (PcBangRules.CanReceiveGift(Table, today, Grade, giftId) != PcBangRules.GiftError.None) {
+        PcBangRules.GiftError error = PcBangRules.CanReceiveGift(Table, today, Grade, giftId);
+        if (error == PcBangRules.GiftError.Received) {
+            logger.Debug("PcBang: gift {GiftId} already received today CharacterId={CharacterId}", giftId, session.CharacterId);
+            session.Send(NoticePacket.MessageBox(StringCode.s_ugcmap_already_taken_interior_grade_gift));
+            return;
+        }
+        if (error != PcBangRules.GiftError.None) {
+            logger.Warning("PcBang: gift {GiftId} refused ({Error}) CharacterId={CharacterId}", giftId, error, session.CharacterId);
             return;
         }
         PcBangTable.Gift gift = Table.Gifts[giftId];
         Item? item = session.Field.ItemDrop.CreateItem(gift.ItemId, gift.Rarity, gift.Count);
-        if (item == null || !session.Item.Inventory.CanAdd(item)) {
+        if (item == null) {
+            logger.Warning("PcBang: gift {GiftId} item {ItemId} not made CharacterId={CharacterId}", giftId, gift.ItemId, session.CharacterId);
+            session.Send(NoticePacket.MessageBox(new InterfaceText(StringCode.s_item_err_code, gift.ItemId.ToString())));
+            return;
+        }
+        if (!session.Item.Inventory.CanAdd(item)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_err_inventory));
             return;
         }
         if (!Store(record => PcBangRules.ReceiveGift(record, giftId))) {
             logger.Warning("PcBang: gift {GiftId} not stored, nothing given CharacterId={CharacterId}", giftId, session.CharacterId);
+            SendStatus();
+            session.Send(NoticePacket.MessageBox(new InterfaceText(StringCode.s_item_err_code, gift.ItemId.ToString())));
             return;
         }
         Give(item);

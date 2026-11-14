@@ -12,6 +12,7 @@ using Maple2.Model.Validators;
 using Maple2.Database.Storage;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Manager.Items;
@@ -227,7 +228,7 @@ public class PcBangTests {
         test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Account>().Any(entry => entry.State == EntityState.Modified);
         Send(writer => { writer.WriteByte(1); writer.WriteByte(2); });
         Send(writer => { writer.WriteByte(2); writer.WriteInt(1); });
-        Assert.That(PcBangSent().Select(packet => packet[2]), Is.EqualTo(new byte[] { 3 }));
+        Assert.That(PcBangSent().Select(packet => packet[2]), Is.EqualTo(new byte[] { 3, 3 }));
         Assert.That(Count(20302777), Is.Zero);
         Assert.That(Count(70100009), Is.Zero);
         Assert.That(account.PcBang!.Claimed, Is.Zero);
@@ -320,9 +321,41 @@ public class PcBangTests {
         Send(writer => { writer.WriteByte(2); writer.WriteInt(1); });
         Assert.That(PcBangSent().Select(packet => packet[2..]), Is.EqualTo(new[] { new byte[] { 2, 1, 0, 0, 0 } }));
         Assert.That(Count(70100009), Is.EqualTo(1));
+        // Received today: the client still offers it (its gift list has no received state), so the refusal is
+        // answered with a message box; an id not in the table is dropped.
         Send(writer => { writer.WriteByte(2); writer.WriteInt(1); });
         Send(writer => { writer.WriteByte(2); writer.WriteInt(3); });
-        Assert.That(PcBangSent(), Is.Empty);
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.PcBangBonus), Is.Empty);
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.Notice).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(NoticePacket.MessageBox(StringCode.s_ugcmap_already_taken_interior_grade_gift).ToArray()) }));
+        Assert.That(Count(70100009), Is.EqualTo(1));
+    }
+
+    // A full tab: the gift is refused with s_err_inventory and is not stored as received, so a Get after room is
+    // made gives it.
+    [Test]
+    public void GiftIntoAFullTab() {
+        StartSession();
+        test.Session.PcBang.SetGrade(1);
+        Item sample = test.Session.Field!.ItemDrop.CreateItem(70100009)!;
+        var tabs = (Dictionary<InventoryType, ItemCollection>) typeof(InventoryManager)
+            .GetField("tabs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(test.Session.Item.Inventory)!;
+        ItemCollection room = tabs[sample.Inventory];
+        tabs[sample.Inventory] = new ItemCollection(0);
+        test.TakeSent();
+
+        Send(writer => { writer.WriteByte(2); writer.WriteInt(1); });
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.PcBangBonus), Is.Empty);
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.Notice).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(NoticePacket.MessageBox(StringCode.s_err_inventory).ToArray()) }));
+        Assert.That(Count(70100009), Is.Zero);
+        Assert.That(StoredPcBang()?.Gifts ?? [], Is.Empty);
+
+        tabs[sample.Inventory] = room;
+        Send(writer => { writer.WriteByte(2); writer.WriteInt(1); });
+        Assert.That(PcBangSent().Select(packet => packet[2..]), Is.EqualTo(new[] { new byte[] { 2, 1, 0, 0, 0 } }));
         Assert.That(Count(70100009), Is.EqualTo(1));
     }
 
