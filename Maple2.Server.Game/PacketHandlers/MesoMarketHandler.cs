@@ -265,14 +265,19 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        // The listing's end and both mails are one save: a sale without its mails would lose the buyer's meso or
-        // the seller's price.
+        // The listing's end, both mails and the buyer's wallet with the price taken are one save (TrySavePurchase):
+        // a sale without its mails would lose the buyer's meso or the seller's price, and a sale stored without the
+        // wallet (left to the session's next save before) came back paid for nothing after a crash or a failed save,
+        // or the price back in the wallet with the mesos mailed. A sale that is not stored, or whose wallet is not,
+        // writes nothing and the price is given back.
         (Mail Buyer, Mail Seller)? mails = null;
+        bool stored = false;
         try {
             (Mail buyerMail, Mail sellerMail) = PurchaseMails(session, listing, Constants.MesoMarketIconType);
-            mails = db.SellMesoListing(listingId, buyerMail, sellerMail);
+            stored = session.TrySavePurchase(save => (mails = save.SellMesoListing(listingId, buyerMail, sellerMail)) != null);
         } finally {
-            if (mails == null) {
+            if (!stored) {
+                mails = null;
                 GiveBack(session, payment.Value, listing.Price);
             }
         }

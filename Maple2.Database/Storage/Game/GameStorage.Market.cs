@@ -67,7 +67,9 @@ public partial class GameStorage {
 
         // A sale in one transaction: the listing moves to the sold table and both mails are made, or nothing
         // changes (the listing is gone, another buyer or its owner was first, or a save failed). The listing's
-        // row is deleted first, so the request that loses a race stops before it has written anything.
+        // row is deleted first, so the request that loses a race stops before it has written anything. Inside a
+        // transaction the request already holds (a purchase save that stores the buyer's wallet with the sale), the
+        // sale is part of it: it commits or rolls back with the wallet.
         public (Maple2.Model.Game.Mail Buyer, Maple2.Model.Game.Mail Seller)? SellMesoListing(long listingId, Maple2.Model.Game.Mail buyerMail, Maple2.Model.Game.Mail sellerMail) {
             Model.MesoListing? listing = Context.MesoMarket.Find(listingId);
             if (listing == null) {
@@ -83,7 +85,7 @@ public partial class GameStorage {
             seller.Id = 0;
 
             SoldMesoListing soldListing = listing;
-            using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+            using IDbContextTransaction? transaction = Context.Database.CurrentTransaction == null ? Context.Database.BeginTransaction() : null;
             Context.MesoMarket.Remove(listing);
             if (!Context.TrySaveChanges()) {
                 return null; // the transaction is rolled back when it is disposed
@@ -94,7 +96,7 @@ public partial class GameStorage {
             if (!Context.TrySaveChanges()) {
                 return null;
             }
-            transaction.Commit();
+            transaction?.Commit();
             return (buyer!, seller!);
         }
 

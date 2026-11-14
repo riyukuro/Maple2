@@ -387,6 +387,39 @@ public class MesoMarketHandlerTests {
         Assert.That((seller.Meret, seller.GameMeret), Is.EqualTo((meret, red)));
     }
 
+    // The buyer's wallet is stored with the sale (the purchase save), not left to the session's next save.
+    [Test]
+    public void Buy_StoresTheWalletWithTheSale() {
+        GameSession session = Login(tokens: 500);
+        Assume.That(session.SavePurchase(), Is.True);
+        MesoListing listing = OtherListing(2 * BASE, 420);
+
+        Send(session, 8, listing.Id);
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(context.Account.Single(account => account.Id == session.AccountId).Currency.MesoToken, Is.EqualTo(80));
+    }
+
+    // The wallet's write fails: the sale is not stored either (no mail, the listing still for sale), and the price
+    // comes back.
+    [Test]
+    public void Buy_FailedWalletSaveStoresNothing() {
+        GameSession session = Login(tokens: 500);
+        MesoListing listing = OtherListing(2 * BASE, 420);
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Account>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified);
+
+        Send(session, 8, listing.Id);
+        test.FailSave = null;
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "08" + Int(17) + Long(listing.Id) + Int(0) }));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(listing.Id), Is.Not.Null);
+        Assert.That(db.GetAllMail(session.CharacterId), Is.Empty);
+        Assert.That(db.GetAllMail(OTHER_CHARACTER), Is.Empty);
+    }
+
     // Mode 8 on a listing that is gone: mode 8 with code 17, on which the client drops the row from its list.
     [Test]
     public void Buy_GoneListingAnswersSoldOut() {
@@ -511,6 +544,12 @@ public class MesoMarketHandlerTests {
         }));
     }
 
+    private const string LostRaceLog = "SavePurchase: purchase rows not saved";
+
+    private static int LostRace(IEnumerable<string> errors) => errors.Count(error => error.StartsWith(LostRaceLog));
+
+    private static IEnumerable<string> OtherErrors(IEnumerable<string> errors) => errors.Where(error => !error.StartsWith(LostRaceLog));
+
     // Two buyers at once on one listing: one pays and gets the one mail, the other gets the sold-out answer and
     // keeps its tokens; the seller is paid once.
     [Test]
@@ -538,7 +577,9 @@ public class MesoMarketHandlerTests {
                 : otherTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.MesoMarket).Select(packet => Convert.ToHexString(packet)[4..]).ToList();
             Assert.That(loser, Is.EqualTo(new[] { soldOut }), $"round {round}");
             Assert.That((paid[0] == 0 ? first : other).Player.Value.Account.MesoMarketPurchased, Is.EqualTo(0), $"round {round}");
-            Assert.That(test.Errors.Concat(otherTest.Errors), Is.Empty, $"round {round}");
+            // The loser's purchase save fails at the listing's delete and says so; nothing else is logged.
+            Assert.That(LostRace(paid[0] == 0 ? test.Errors : otherTest.Errors), Is.LessThanOrEqualTo(1), $"round {round}");
+            Assert.That(OtherErrors(test.Errors.Concat(otherTest.Errors)), Is.Empty, $"round {round}");
         }
     }
 
@@ -570,7 +611,9 @@ public class MesoMarketHandlerTests {
             Assert.That(db.GetAllMail(buyer.CharacterId).Sum(mail => mail.Meso), Is.EqualTo(paid == 0 ? 0 : BASE), $"round {round}");
             Assert.That(owner.Currency.Meso, Is.EqualTo(paid == 0 ? BASE : 0), $"round {round}");
             Assert.That(db.GetAllMail(owner.CharacterId).Sum(mail => mail.Meret), Is.EqualTo(paid == 0 ? 0 : 190), $"round {round}");
-            Assert.That(test.Errors.Concat(buyerTest.Errors), Is.Empty, $"round {round}");
+            // A buyer that lost to the take-back fails its purchase save at the listing's delete and says so.
+            Assert.That(LostRace(buyerTest.Errors), Is.EqualTo(0).Or.EqualTo(paid == 0 ? 1 : 0), $"round {round}");
+            Assert.That(OtherErrors(test.Errors.Concat(buyerTest.Errors)), Is.Empty, $"round {round}");
         }
     }
 
