@@ -372,11 +372,15 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     #region Conditions
+    // The current time (tests set it); null: the clock.
+    internal Func<DateTimeOffset>? Clock { get; set; }
+
     public bool DayOfWeek(int[] dayOfWeeks, string description, bool negate) {
+        int today = (int) (Clock?.Invoke() ?? DateTimeOffset.UtcNow).UtcDateTime.DayOfWeek + 1;
         if (negate) {
-            return !dayOfWeeks.Contains((int) DateTime.UtcNow.DayOfWeek + 1);
+            return !dayOfWeeks.Contains(today);
         }
-        return dayOfWeeks.Contains((int) DateTime.UtcNow.DayOfWeek + 1);
+        return dayOfWeeks.Contains(today);
     }
 
     public bool RandomCondition(float rate, string description) {
