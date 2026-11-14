@@ -108,6 +108,16 @@ public class UgcUploadTests {
         Assert.That(((IRequestSizeLimitMetadata) limit!).MaxRequestBodySize, Is.EqualTo(48 + 0xFFFFF));
     }
 
+    // The ranking (irrq) and info (ruq) requests are capped at 64 KiB: a search text of 32,000 characters still fits.
+    [TestCase(nameof(WebController.Rankings))]
+    [TestCase(nameof(WebController.Info))]
+    public void TheSmallRequestsSizeLimit(string method) {
+        RequestSizeLimitAttribute? limit = typeof(WebController).GetMethod(method)!.GetCustomAttributes<RequestSizeLimitAttribute>().SingleOrDefault();
+        Assert.That(limit, Is.Not.Null);
+        Assert.That(((IRequestSizeLimitMetadata) limit!).MaxRequestBodySize, Is.EqualTo(0x10000));
+        Assert.That(0x10000, Is.GreaterThanOrEqualTo(40 + 32000 * 2));
+    }
+
     // The folder is the one the game server recorded (TargetId), and the key the one the GET routes serve.
     [Test]
     public void TheFolderIsTheResourcesTarget() {

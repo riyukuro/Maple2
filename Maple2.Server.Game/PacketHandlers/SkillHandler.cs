@@ -198,14 +198,14 @@ public class SkillHandler : FieldPacketHandler {
                 unenforced, attackPoint, iterations, count, session.PlayerName, unlogged, record);
         }
 
-        record.Position = position;
-        record.Direction = direction;
-
         List<List<TargetRecord>>? tags = ReadPointTags(packet, count, record.Attack.Arrow.BounceCount);
         if (tags == null) {
             Logger.Debug("Attack point dropped: more linked tags than the arrow bounces ({Bounce}): {Record}", record.Attack.Arrow.BounceCount, record);
             return;
         }
+        // Only a point that is taken moves the cast (a dropped one leaves its position and direction).
+        record.Position = position;
+        record.Direction = direction;
         DeclarePointTags(record.Hits, attackPoint, iterations, tags);
         foreach (List<TargetRecord> targets in tags) {
             session.Player.InBattle = true;

@@ -37,7 +37,14 @@ public class WebController : ControllerBase {
         this.tableMetadata = tableMetadata;
     }
 
+    // The ranking and info requests are small: irrq is 40 bytes and the search text (CSoapClient::RequestGameRanking,
+    // soapclient.cpp:189-199: UTF-16 after an int byte length), ruq 28 bytes (soapclient.cpp:257-262). Chosen here: 64 KiB,
+    // a search of 32,000 characters, far past any name the client's search box takes. Before, both routes took
+    // Kestrel's default 30 MB body, read whole into memory, from anyone (no login).
+    public const int SmallRequestLimit = 0x10000;
+
     [HttpPost("irrq.aspx")]
+    [RequestSizeLimit(SmallRequestLimit)]
     public async Task<IResult> Rankings() {
         Stream bodyStream = Request.Body;
         var memoryStream = new MemoryStream();
@@ -94,6 +101,7 @@ public class WebController : ControllerBase {
     }
 
     [HttpPost("ruq.aspx")]
+    [RequestSizeLimit(SmallRequestLimit)]
     public async Task<IResult> Info() {
         Stream bodyStream = Request.Body;
         var memoryStream = new MemoryStream();
