@@ -504,6 +504,9 @@ public sealed class MarriageManager {
 
     private static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
+    // The passive wedding skill effects given by RefreshSkillBuffs: effect id -> level.
+    private readonly Dictionary<int, short> skillEffects = new();
+
     // This player filed the divorce that is in its cooling off.
     private bool IsFiler => DivorceRules.FilerId(Marriage.Status, Marriage.Partner1.CharacterId, Marriage.Partner2.CharacterId) == session.CharacterId;
 
@@ -526,6 +529,39 @@ public sealed class MarriageManager {
         // A wedding recall can no longer be answered once the couple cannot recall (divorced).
         if (!CanRecall(Marriage.Status)) {
             session.CloseRecall(RecallScrollType.Wedding);
+        }
+        RefreshSkillBuffs();
+    }
+
+    // The passive wedding skills' effects of the marriage's grade (WeddingSkillRules.PassiveEffects): a missing one is
+    // given, one at another level is replaced, and one the marriage no longer reaches (a divorce, a lower grade) is
+    // taken. Called at every field entry and whenever the marriage is read again. The effects have no duration
+    // (keepCondition 99) and are kept through death.
+    public void RefreshSkillBuffs() {
+        if (session.Field is not { } field || session.Player is not { } player) {
+            return;
+        }
+        if (!MarriageExpRules.CountsWeddingExp(Marriage.Status) && skillEffects.Count == 0) {
+            return;
+        }
+        List<(int Id, short Level)> effects = WeddingSkillRules.PassiveEffects(Marriage.Status, Marriage.Exp,
+            session.TableMetadata.WeddingTable, (id, level) => field.SkillMetadata.TryGetEffect(id, level, out _));
+        lock (skillEffects) {
+            foreach ((int id, short level) in skillEffects.ToArray()) {
+                if (!effects.Contains((id, level))) {
+                    player.Buffs.Remove(id, player.ObjectId);
+                    skillEffects.Remove(id);
+                }
+            }
+            foreach ((int id, short level) in effects) {
+                if (player.Buffs.HasBuff(id, level)) {
+                    skillEffects[id] = level;
+                    continue;
+                }
+                if (player.Buffs.AddBuff(player, player, id, level, field.FieldTick)) {
+                    skillEffects[id] = level;
+                }
+            }
         }
     }
 
@@ -792,6 +828,7 @@ public sealed class MarriageManager {
         if (update) {
             session.Send(WeddingPacket.UpdateMarriage(Marriage));
         }
+        RefreshSkillBuffs();
     }
 
     public void RemoveWeddingHall(bool update = true) {

@@ -10,14 +10,16 @@ public record WeddingTable(IReadOnlyDictionary<MarriageExpType, WeddingReward> R
                                  IReadOnlyDictionary<int, long>? Grades = null) : Table;
 
 // A couple skill unlocked by the wedding grade. The client's types: passive (an additional effect whose level
-// grows with the grade) and item (an item the couple can take from the skill page).
+// grows with the grade) and item (an item the couple can take from the skill page). AdditionalEffectId is the
+// passive's effect (0 for an item skill, and in metadata ingested before it was added).
 public record WeddingSkill(
     int Id,
     WeddingSkillType Type,
     int RequireGrade,
     int ItemId,
     int ItemRarity,
-    int ItemAmount);
+    int ItemAmount,
+    int AdditionalEffectId = 0);
 
 public enum WeddingSkillType {
     Passive = 0,

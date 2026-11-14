@@ -2417,7 +2417,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 RequireGrade: skill.requireGrade,
                 ItemId: skill.itemID,
                 ItemRarity: skill.grade,
-                ItemAmount: skill.count);
+                ItemAmount: skill.count,
+                AdditionalEffectId: skill.additionalEffectID);
         }
 
         var gradeResults = new Dictionary<int, long>();

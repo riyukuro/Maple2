@@ -138,6 +138,7 @@ public sealed class TestGameSession {
         SetTable(new DungeonConfigTable(new Dictionary<int, int>(), new Dictionary<int, DungeonMissionRankMetadata>()));
         SetTable(InventoryTabNameTable.Empty);
         SetTable(new UgcCubeCategoryTable(new Dictionary<int, int>()));
+        SetTable(new WeddingTable(new Dictionary<MarriageExpType, WeddingReward>(), new Dictionary<int, WeddingPackage>()));
         SetServerTable(new InstanceFieldTable(new Dictionary<int, InstanceFieldMetadata>()));
         // A shop load reads the running game events (NpcShopShowItem).
         SetServerTable(new GameEventTable(new Dictionary<int, GameEventMetadata>()));
@@ -465,6 +466,7 @@ public sealed class TestGameSession {
         typeof(MarriageManager).GetField("session", Any)!.SetValue(marriage, session);
         typeof(MarriageManager).GetField("logger", Any)!.SetValue(marriage, Serilog.Log.Logger.ForContext<MarriageManager>());
         typeof(MarriageManager).GetField("ticketsSent", Any)!.SetValue(marriage, new HashSet<(long, long)>());
+        typeof(MarriageManager).GetField("skillEffects", Any)!.SetValue(marriage, new Dictionary<int, short>());
         marriage.Marriage = Marriage.Default;
         session.Marriage = marriage;
         session.Guild = Uninitialized<GuildManager>();

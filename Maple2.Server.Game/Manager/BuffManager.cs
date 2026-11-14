@@ -79,6 +79,7 @@ public class BuffManager : IUpdatable {
             player.Session.PcBang.RefreshBuffs();
             player.Session.GameEvent.RefreshBurningLevelupBuff();
             player.Session.Guild.LoadSkillBuffs();
+            player.Session.Marriage.RefreshSkillBuffs();
 
             // The worn insignia's effect: picking the insignia gives it (InsigniaHandler), but a login
             // can arrive without it (seen after a server restart), and the client does not ask again at login.
