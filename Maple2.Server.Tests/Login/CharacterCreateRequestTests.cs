@@ -27,6 +27,10 @@ public class CharacterCreateRequestTests {
     public void SetUp() {
         test = new TestLoginSession();
         var words = new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        words.BanWordMetadata.Add(new BanWordMetadata(0, "bad", false));
+        words.BanWordMetadata.Add(new BanWordMetadata(0, "word", false));
+        words.BanWordMetadata.Add(new BanWordMetadata(0, "badword", false));
+        words.SaveChanges();
         var tutorial = new JobTable.Tutorial(2000023, 0, 0, [], [], [], []);
         var skills = new Dictionary<SkillRank, JobTable.Skill[]> { [SkillRank.Basic] = [], [SkillRank.Awakening] = [] };
         // job.xml holds the beginner row as well as the eleven jobs.
@@ -94,6 +98,20 @@ public class CharacterCreateRequestTests {
 
         Assert.That(Count("Fresh"), Is.EqualTo(1));
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The client fills its banned word text ("Contains a forbidden word ({0}).", answer 9) with the answer's text;
+    // it was empty. The word named is the first in the name, the longest of those starting there.
+    [Test]
+    public void BannedWord_IsNamedInTheAnswer() {
+        Create(JobCode.Knight, "AWordBadword");
+
+        Assert.That(SentHex(), Is.EqualTo(new[] { Hex(CharacterListPacket.CreateError(s_char_err_ban_any, "word")) }));
+        Assert.That(Count("AWordBadword"), Is.Zero);
+
+        Create(JobCode.Knight, "Badwording");
+
+        Assert.That(SentHex(), Is.EqualTo(new[] { Hex(CharacterListPacket.CreateError(s_char_err_ban_any, "badword")) }));
     }
 
     // Two creates of one name: the second's save hits the unique name index after its check passed. The client

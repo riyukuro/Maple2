@@ -229,8 +229,9 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             return;
         }
 
-        if (BanWordStorage.ContainsBannedWord(name)) {
-            session.Send(CharacterListPacket.CreateError(s_char_err_ban_any));
+        // The client fills its text ("Contains a forbidden word ({0}).") with the answer's text: the word found.
+        if (BanWordStorage.FindBannedWord(name) is { } banned) {
+            session.Send(CharacterListPacket.CreateError(s_char_err_ban_any, banned));
             return;
         }
 
