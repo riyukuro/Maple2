@@ -149,6 +149,7 @@ public class PlayerCommand : GameCommand {
 
                 session.ConditionUpdate(ConditionType.level, targetLong: level);
                 session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: level);
+                session.GameEvent.BurningLevelupReach(level);
 
                 session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
                     AccountId = session.AccountId,

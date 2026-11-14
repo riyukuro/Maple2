@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Threading;
 using Grpc.Core;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
@@ -160,11 +161,63 @@ public class LoginSession : Core.Network.Session {
             entries.Add((character, equips));
         }
 
+        // The character list reads the account's burning levelup values (GameEventUserValue in CSceneStateMulti):
+        // its popup and icons test 2000 and 2001. Sent only while such an event runs.
+        List<GameEventUserValue> burningValues = BurningLevelupValues(db);
+        if (burningValues.Count > 0) {
+            Send(GameEventUserValuePacket.Load(burningValues));
+        }
         Send(CharacterListPacket.SetMax(account.MaxCharacters, Constant.ServerMaxCharacters));
         Send(CharacterListPacket.StartList());
         // Send each character data
         Send(CharacterListPacket.AddEntries(account, entries));
         Send(CharacterListPacket.EndList(characters.Any(character => IsRenameDue(character.Name))));
+    }
+
+    private List<GameEvent> BurningLevelupEvents() {
+        return Server.GetEvents().Where(gameEvent => gameEvent.Metadata.Data is BurningLevelup).ToList();
+    }
+
+    // The account's unexpired 2000-2004 values of the running burning levelup events.
+    private List<GameEventUserValue> BurningLevelupValues(GameStorage.Request db) {
+        List<GameEvent> events = BurningLevelupEvents();
+        if (events.Count == 0) {
+            return [];
+        }
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return db.GetAccountEventValues(AccountId)
+            .Where(value => BurningLevelupRules.ValueTypes.Contains(value.Type) && value.ExpirationTime >= now
+                            && events.Any(gameEvent => gameEvent.Id == value.EventId))
+            .ToList();
+    }
+
+    // EventReward 16 (Login EventRewardHandler): the character picked in the popup after a create. The event is
+    // the one the popup offers (BurningLevelupRules.CheckPick); the pick is the account's 2000 value of it, kept
+    // until the event's end. The Update of 2000, then the reply with the id: the client attaches the burning icon.
+    // A refusal (no such event, another account's or a deleted character, a level at or past the end) sends
+    // nothing: the client has no refusal reply.
+    public void PickBurningLevelup(long characterId) {
+        using GameStorage.Request db = GameStorage.Context();
+        Character? character = db.GetCharacter(characterId, AccountId);
+        bool owned = character != null && character.DeleteTime == default;
+        List<GameEventUserValue> values = BurningLevelupValues(db);
+        (BurningLevelupRules.Pick result, GameEvent? gameEvent) = BurningLevelupRules.CheckPick(BurningLevelupEvents(), owned,
+            character?.Level ?? 0, character == null ? 0 : (int) character.Job.Code(),
+            eventId => values.FirstOrDefault(value => value.EventId == eventId && value.Type == GameEventUserValueType.BurningLevelupCharacter)?.Long() ?? 0,
+            (eventId, type) => values.Any(value => value.EventId == eventId && value.Type == type && BurningLevelupRules.IsSet(value.Value)));
+        if (result != BurningLevelupRules.Pick.Ok || gameEvent == null) {
+            Logger.Debug("Burning levelup pick of {CharacterId} by account {AccountId} refused: {Result}", characterId, AccountId, result);
+            return;
+        }
+
+        var picked = new GameEventUserValue(GameEventUserValueType.BurningLevelupCharacter, gameEvent.EndTime, gameEvent.Id);
+        picked.SetValue(characterId.ToString());
+        if (!db.SaveAccountEventValues(AccountId, [picked])) {
+            Logger.Error("Failed to store the burning levelup pick of {CharacterId} by account {AccountId}", characterId, AccountId);
+            return;
+        }
+        Send(GameEventUserValuePacket.Update(picked));
+        Send(BurningLevelupPacket.Picked(characterId));
     }
 
     // No server path stores a name longer than the limit; a row that has one (written by hand, or kept from another

@@ -824,6 +824,8 @@ public class ItemUseHandler : FieldPacketHandler {
         for (int i = currentLevel; i < level; i++) {
             session.ConditionUpdate(ConditionType.level, targetLong: i);
         }
+        // A potion to the burning levelup's end level completes it as a level up does; it adds no bonus levels.
+        session.GameEvent.BurningLevelupReach(level);
 
         session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = session.AccountId,

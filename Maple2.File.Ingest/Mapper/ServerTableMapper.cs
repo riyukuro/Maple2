@@ -1938,6 +1938,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventSaleReader.BeautyShop(value1, value2, value3);
             case GameEventType.DungeonBonusReward:
                 return EventXmlReader.DungeonBonus(value1);
+            case GameEventType.BurningLevelup:
+                return EventXmlReader.BurningLevelup(value1, value2, value3, value4,
+                    itemId => EventXmlReader.JumpingTargetLevel(ItemMapper.ItemMetadataById.GetValueOrDefault(itemId)));
             case GameEventType.CollectItemGroup:
                 return EventXmlReader.CollectItemGroup(value1);
             case GameEventType.ArcadeOpen:

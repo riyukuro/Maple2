@@ -510,6 +510,38 @@ public class GameEvent : IByteSerializable {
                 WriteItemEntities(writer, collect.Conditions);
                 WriteItemEntity(writer, collect.Result);
                 break;
+            case BurningLevelup burning:
+                // GameEvent::vfunc_4 reads the id, then BurningLevelupContext::Read (gameeventcontext.cpp:2022) the
+                // event id, the end, the level range, the bonus, the effect, four string keys, the name tag, the
+                // target jobs, the rewards and the optional jumping item with its target level, tutorial end field
+                // and three string keys.
+                writer.WriteInt(Id);
+                writer.WriteInt(Id);
+                writer.WriteLong(EndTime);
+                writer.WriteInt(burning.BeginLevel);
+                writer.WriteInt(burning.EndLevel);
+                writer.WriteInt(burning.Bonus);
+                writer.WriteInt(burning.AdditionalEffectId);
+                writer.WriteUnicodeString(burning.SetCharacterPopupStringKey);
+                writer.WriteUnicodeString(burning.SetCharacterPopupBottomStringKey);
+                writer.WriteUnicodeString(burning.DescPopupStringKey);
+                writer.WriteUnicodeString(burning.RewardUiTitleStringKey);
+                writer.WriteShort(burning.NametagSymbolId);
+                writer.WriteShort((short) burning.Targets.Length);
+                foreach (int target in burning.Targets) {
+                    writer.WriteInt(target);
+                }
+                WriteItemEntities(writer, burning.Rewards);
+                writer.WriteBool(burning.Jumping != null);
+                if (burning.Jumping != null) {
+                    WriteItemEntity(writer, burning.Jumping.Item);
+                    writer.WriteInt(burning.Jumping.TargetLevel);
+                    writer.WriteInt(burning.Jumping.TutorialEndFieldId);
+                    writer.WriteUnicodeString(burning.Jumping.DescPopupStringKey);
+                    writer.WriteUnicodeString(burning.Jumping.NotifyStringKey);
+                    writer.WriteUnicodeString(burning.Jumping.CompleteStringKey);
+                }
+                break;
             case ArcadeOpen arcadeOpen:
                 // ArcadeOpenContext::Read (gameeventcontext.cpp:2225): the arcade id only.
                 writer.WriteInt(Id);

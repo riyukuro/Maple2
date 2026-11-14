@@ -7,6 +7,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -130,7 +131,11 @@ public sealed class GameEventManager {
     // So are the daily login mail's mark (UpdateDailyLoginReward) and the item box's day (EventRewardHandler).
     // So are the snowman's values: the KR rows of the latest snowman event (900070) give snowflakes for the account
     // (promotionContents isAccount 1).
+    // So are the burning levelup values (2000-2004): the character list picks one character of the account
+    // (UICharacterListDialog::ShowBurningLevelupPopup, uicharacterlistdialog.cpp:2041, and the login stores the
+    // pick before any character enters), and the picked character's reach and reward claim go with that pick.
     public static bool AccountValue(GameEventUserValueType type) => StampValueTypes.Contains(type)
+        || BurningLevelupRules.ValueTypes.Contains(type)
         || type is GameEventUserValueType.CollectItemGroup or GameEventUserValueType.DailyLoginRewardGiven
             or GameEventUserValueType.ItemBoxReceivedDay
             or GameEventUserValueType.SnowflakeCount or GameEventUserValueType.DailyCompleteCount
@@ -154,6 +159,7 @@ public sealed class GameEventManager {
             GameEventType.StampEvent => StampValueTypes.Contains(value.Type),
             GameEventType.CollectItemGroup => value.Type is GameEventUserValueType.CollectItemGroup,
             GameEventType.Snowman => value.Type is GameEventUserValueType.AccumCompleteCount or GameEventUserValueType.AccumCompleteRewardReceived,
+            GameEventType.BurningLevelup => BurningLevelupRules.ValueTypes.Contains(value.Type),
             GameEventType.UserCondition => value.Type is GameEventUserValueType.UserConditionDone or GameEventUserValueType.UserConditionNotice,
             _ => false,
         };
@@ -560,6 +566,47 @@ public sealed class GameEventManager {
             Set(gameEvent.Id, GameEventUserValueType.SnowflakeCount, SnowmanRules.Join(snowflakes));
             session.Send(TaskEventPacket.Snowflake());
         }
+    }
+
+    // The running burning levelup event this character was picked for (the account's 2000 value is its id) and
+    // has not completed (2001): the lowest id when several run.
+    public GameEvent? BurningLevelupEvent() {
+        return session.FindEvent(GameEventType.BurningLevelup)
+            .Where(found => found.Metadata.Data is BurningLevelup
+                            && Peek(GameEventUserValueType.BurningLevelupCharacter, found.Id) == session.CharacterId.ToString()
+                            && !BurningLevelupRules.IsSet(Peek(GameEventUserValueType.BurningLevelupReached, found.Id)))
+            .MinBy(found => found.Id);
+    }
+
+    // The levels added on reaching `level` by exp (ExperienceManager.LevelUp): GetBonusLevel of the picked
+    // character's event, 0 without one.
+    public int BurningLevelupBonus(int level) {
+        return BurningLevelupEvent() is { Metadata.Data: BurningLevelup data } ? BurningLevelupRules.BonusLevel(data, level) : 0;
+    }
+
+    // At or past the end level the picked character has completed the event: 2001 is set and stored, the event's
+    // effect goes, and the reward widget can be claimed (EventReward 0x0f). Called after every level change.
+    public void BurningLevelupReach(int level) {
+        if (BurningLevelupEvent() is not { Metadata.Data: BurningLevelup data } gameEvent || level < data.EndLevel) {
+            return;
+        }
+        Get(GameEventUserValueType.BurningLevelupReached, gameEvent.Id, gameEvent.EndTime);
+        Set(gameEvent.Id, GameEventUserValueType.BurningLevelupReached, 1);
+        if (!Store(gameEvent.Id, GameEventUserValueType.BurningLevelupReached)) {
+            logger.Error("Failed to store the burning levelup reach. Event ID: {EventId}", gameEvent.Id);
+        }
+        if (data.AdditionalEffectId > 0) {
+            session.Player.Buffs.Remove(data.AdditionalEffectId, session.Player.ObjectId);
+        }
+    }
+
+    // The event's effect (additionalEffectId; the client never reads it, KR 90000838 is a marker buff without
+    // stats) while the picked character has not completed the event, given on each field entry (LoadFieldBuffs).
+    public void RefreshBurningLevelupBuff() {
+        if (session.Field is null || BurningLevelupEvent() is not { Metadata.Data: BurningLevelup { AdditionalEffectId: > 0 } data }) {
+            return;
+        }
+        session.Player.Buffs.AddBuff(session.Player, session.Player, data.AdditionalEffectId, 1, session.Field.FieldTick);
     }
 
     // The running snowman event that gathers snowflakes and pays claims: the lowest id when several run.

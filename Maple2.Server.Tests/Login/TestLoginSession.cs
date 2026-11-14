@@ -10,6 +10,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
+using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Login;
 using Maple2.Server.Login.Session;
@@ -40,6 +41,8 @@ public sealed class TestLoginSession {
     public long AccountId => Rows.AccountId;
     public long CharacterId => Rows.CharacterId;
     public GameStorage Storage => Rows.Storage;
+    // The login server's events (its event cache): GetEvents gives the active ones.
+    public readonly Dictionary<int, GameEvent> Events = [];
 
     private readonly BlockingCollection<(byte[] packet, int length)> sendQueue = new(new ConcurrentQueue<(byte[], int)>());
 
@@ -52,6 +55,13 @@ public sealed class TestLoginSession {
             Mastery = new Mastery(), MapId = 2000023, ReturnMaps = new Maple2.Tools.LimitedStack<int>(3, 2000023),
         }) ?? throw new InvalidOperationException("character row not created");
         return character.Id;
+    }
+
+    public GameEvent AddEvent(int id, GameEventType type, GameEventData data, DateTime? start = null, DateTime? end = null) {
+        var gameEvent = new GameEvent(new Maple2.Model.Metadata.GameEventMetadata(id, type, start ?? DateTime.Now.AddDays(-3),
+            end ?? DateTime.Now.AddDays(30), TimeSpan.Zero, TimeSpan.Zero, [], data, string.Empty, string.Empty, string.Empty, string.Empty));
+        Events[id] = gameEvent;
+        return gameEvent;
     }
 
     // The stored name of a character.
@@ -74,7 +84,7 @@ public sealed class TestLoginSession {
         SetField(server, "connectingSessions", new HashSet<LoginSession>());
         SetField(server, "sessions", new Dictionary<long, LoginSession>());
         SetField(server, "bannerCache", new List<SystemBanner>());
-        SetField(server, "eventCache", new Dictionary<int, GameEvent>());
+        SetField(server, "eventCache", Events);
 
         var session = (LoginSession) RuntimeHelpers.GetUninitializedObject(typeof(LoginSession));
         GC.SuppressFinalize(session);

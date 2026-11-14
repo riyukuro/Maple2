@@ -61,6 +61,15 @@ public enum GameEventUserValueType {
     RPSDailyMatches = 1800,
     RPSRewardsClaimed = 1801,
 
+    // Burning levelup (BurningLevelup), account values read by the character list (uicharacterlistdialog.cpp:2041)
+    // and the level-up package widget (uileveluppackagewidgetdialog.cpp:459): the picked character's id, 1 once it
+    // reached the end level, 1 once the reward was taken; the jumping item's notice and its completion.
+    BurningLevelupCharacter = 2000,
+    BurningLevelupReached = 2001,
+    BurningLevelupRewardTaken = 2002,
+    BurningLevelupJumpingNotify = 2003,
+    BurningLevelupJumpingDone = 2004,
+
     // Couple Dance
     CoupleDanceBannerOpen = 2100,
     CoupleDanceRewardState = 2101, // completed/bonus/received flags

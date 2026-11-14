@@ -490,6 +490,39 @@ public record CollectItemGroup(
     RewardItem[] Conditions,
     RewardItem Result) : GameEventData;
 
+// The burning levelup (GameEventBurningLevelup::vfunc_2, commonfiles/gameevent.cpp:5923): value1
+// <ms2><v beginLevel endLevel burningBonus additionalEffectId setCharacterPopupStringKey
+// setCharacterPopupBottomStringKey descPopupStringKey rewardUiTitleStringKey equipNametagSymbolID/></ms2>, its root's
+// first element whatever its name; value2 <items><v itemID count grade/>...</items>, the reward at the end level;
+// value3 a comma list of job codes (Targets; none, every job); value4
+// <ms2><jumpingOption tutorialEndFieldId jumpingItemDescPopupStringKey jumpingItemNotifyStringKey
+// jumpingCompleteStringKey><item itemID count grade/></jumpingOption></ms2>. A new character's list entry offers the
+// pick (EventReward 0x10); the picked character gets Bonus extra levels on its way from BeginLevel to EndLevel
+// (BurningLevelupRules.BonusLevel) and claims the rewards at EndLevel (EventReward 0x0f).
+// The jumping item is a character-bound LevelPotion with a targetLevel; the client drops the option otherwise, and
+// so does the ingest. Its notices (EventReward 0x11) are not sent: no KR row that can still run has one.
+public record BurningLevelup(
+    int BeginLevel,
+    int EndLevel,
+    int Bonus,
+    int AdditionalEffectId,
+    string SetCharacterPopupStringKey,
+    string SetCharacterPopupBottomStringKey,
+    string DescPopupStringKey,
+    string RewardUiTitleStringKey,
+    short NametagSymbolId,
+    int[] Targets,
+    RewardItem[] Rewards,
+    BurningLevelup.JumpingOption? Jumping) : GameEventData {
+    public record JumpingOption(
+        RewardItem Item,
+        int TargetLevel,
+        int TutorialEndFieldId,
+        string DescPopupStringKey,
+        string NotifyStringKey,
+        string CompleteStringKey);
+}
+
 // An event arcade's opening (GameEventArcadeOpen, commonfiles/gameevent.cpp:6657): value1 is
 // <ms2><info arcadeId rewardCountPerDay/><reward itemID count grade/>...</ms2>. While it runs the client lists the
 // arcade in its lobby (CGameEventValueArcadeOpen::Get of the arcade id). The client receives only the arcade id; the
@@ -673,6 +706,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(DungeonBonusReward), "DungeonBonusReward")]
 [JsonDerivedType(typeof(CollectItemGroup), "CollectItemGroup")]
 [JsonDerivedType(typeof(ArcadeOpen), "ArcadeOpen")]
+[JsonDerivedType(typeof(BurningLevelup), "BurningLevelup")]
 [JsonDerivedType(typeof(TreeWatering), "TreeWatering")]
 [JsonDerivedType(typeof(MiniGameBonusReward), "MiniGameBonusReward")]
 [JsonDerivedType(typeof(SpawnNpcEvent), "SpawnNpc")]

@@ -7,9 +7,9 @@ using Maple2.Model.Validators;
 
 namespace Maple2.File.Ingest.Helpers;
 
-// The value1 of the DungeonBonusReward, CollectItemGroup and ArcadeOpen rows and the values of the TreeWatering rows,
-// each an <ms2> element, and the value2 of the MiniGameBonusReward rows, an <items> element. Text that is not XML is
-// a row that cannot be read; it does not stop the ingest.
+// The value1 of the DungeonBonusReward, CollectItemGroup and ArcadeOpen rows and the values of the TreeWatering and
+// BurningLevelup rows, each an <ms2> element, and the value2 of the MiniGameBonusReward rows, an <items> element. Text
+// that is not XML is a row that cannot be read; it does not stop the ingest.
 public static class EventXmlReader {
     // <ms2><v dungeonID groupType mesoRate expRate itemRolls customDropBoxIds/></ms2>: the client reads the root's
     // first element whatever its name (GameEventDungeonBonusReward::vfunc_2, commonfiles/gameevent.cpp:996, and
@@ -186,6 +186,61 @@ public static class EventXmlReader {
             return null;
         }
         return new SpawnNpcEvent(fieldId, spawnPointId, npcId, Math.Max(shopId, 0));
+    }
+
+    // The burning levelup's values (GameEventBurningLevelup::vfunc_2, commonfiles/gameevent.cpp:5923). value1's
+    // root must have a first element, whose attributes are read whatever its name; a row without it is not stored
+    // (the client reads nothing else of it). value2's root must have a first element too, and its <v> items are
+    // the rewards; without it the client stops there, so the row keeps no targets and no jumping. value3 is a
+    // comma list of job codes. value4's <jumpingOption> needs its <item>; jumpingTargetLevel gives the item's
+    // targetLevel when it is a character-bound LevelPotion with one, else null, and the option is dropped.
+    public static BurningLevelup? BurningLevelup(string? value1, string? value2, string? value3, string? value4,
+                                                 Func<int, int?> jumpingTargetLevel) {
+        XmlElement? info = AnyRoot(value1)?.ChildNodes.OfType<XmlElement>().FirstOrDefault();
+        if (info == null) {
+            return null;
+        }
+        int.TryParse(info.GetAttribute("beginLevel"), out int beginLevel);
+        int.TryParse(info.GetAttribute("endLevel"), out int endLevel);
+        int.TryParse(info.GetAttribute("burningBonus"), out int bonus);
+        int.TryParse(info.GetAttribute("additionalEffectId"), out int effectId);
+        short.TryParse(info.GetAttribute("equipNametagSymbolID"), out short nametag);
+
+        XmlElement? items = AnyRoot(value2);
+        bool itemsRead = items?.ChildNodes.OfType<XmlElement>().Any() == true;
+        RewardItem[] rewards = itemsRead ? Children(items, "v").Select(Item).OfType<RewardItem>().ToArray() : [];
+        int[] targets = itemsRead
+            ? (value3 ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(text => int.TryParse(text, out int code) ? code : 0).Where(code => code > 0).Distinct().ToArray()
+            : [];
+
+        BurningLevelup.JumpingOption? jumping = null;
+        if (itemsRead && Children(AnyRoot(value4), "jumpingOption").FirstOrDefault() is { } option
+            && Children(option, "item").FirstOrDefault() is { } itemElement && Item(itemElement) is { } jumpingItem
+            && jumpingTargetLevel(jumpingItem.ItemId) is int targetLevel and > 0) {
+            int.TryParse(option.GetAttribute("tutorialEndFieldId"), out int tutorialEndFieldId);
+            jumping = new BurningLevelup.JumpingOption(jumpingItem, targetLevel, tutorialEndFieldId,
+                option.GetAttribute("jumpingItemDescPopupStringKey"), option.GetAttribute("jumpingItemNotifyStringKey"),
+                option.GetAttribute("jumpingCompleteStringKey"));
+        }
+
+        return new BurningLevelup(beginLevel, endLevel, bonus, effectId,
+            info.GetAttribute("setCharacterPopupStringKey"), info.GetAttribute("setCharacterPopupBottomStringKey"),
+            info.GetAttribute("descPopupStringKey"), info.GetAttribute("rewardUiTitleStringKey"), nametag,
+            targets, rewards, jumping);
+    }
+
+    // The jumping item test of GameEventBurningLevelup::vfunc_2: an item of the LevelPotion function, bound to the
+    // character (CItemData::FUN_14053d7c0, commonfiles/itemdata.cpp:1013: transfer types 2, 3 and 4), whose function
+    // xml has a targetLevel that is not 0 as an unsigned short. Null for any other item.
+    public static int? JumpingTargetLevel(ItemMetadata? item) {
+        if (item?.Function is not { Type: ItemFunction.LevelPotion } function
+            || item.Limit.TransferType is not (TransferType.BindOnLoot or TransferType.BindOnEquip or TransferType.BindOnUse)
+            || !int.TryParse(AnyRoot(function.Parameters)?.GetAttribute("targetLevel"), out int targetLevel)) {
+            return null;
+        }
+        ushort level = unchecked((ushort) targetLevel); // the client truncates; the ingest builds checked
+        return level > 0 ? level : null;
     }
 
     private static IEnumerable<XmlElement> Children(XmlElement? parent, string name) {

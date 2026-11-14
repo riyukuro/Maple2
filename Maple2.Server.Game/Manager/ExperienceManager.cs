@@ -244,16 +244,28 @@ public sealed class ExperienceManager {
         return AddExp(BossKillRules.FieldBossBonus(killExp), ExpMessageCode.s_msg_take_assist_bonus_exp, kill: false, npcObjectId);
     }
 
-    public bool LevelUp() {
-        int startLevel = Level;
-        for (int level = startLevel; level < Constants.characterMaxLevel; level++) {
-            if (!session.TableMetadata.ExpTable.NextExp.TryGetValue(level, out long expToNextLevel) || expToNextLevel > Exp) {
+    // The level and exp after the exp is spent on levels: each level whose next exp the exp covers is taken, up to
+    // the last level (maxLevel). Reaching a level adds `bonus` of it more (the burning levelup's GetBonusLevel for the picked
+    // character, BurningLevelupRules.BonusLevel), also capped at the last level; the exp left carries on.
+    public static (int Level, long Exp) LevelSteps(int level, long exp, IReadOnlyDictionary<int, long> nextExp, int maxLevel, Func<int, int> bonus) {
+        while (level < maxLevel) {
+            if (!nextExp.TryGetValue(level, out long expToNextLevel) || expToNextLevel > exp) {
                 break;
             }
 
-            Exp -= expToNextLevel;
-            Level++;
+            exp -= expToNextLevel;
+            level++;
+            level = Math.Min(level + bonus(level), maxLevel);
         }
+        return (level, exp);
+    }
+
+    public bool LevelUp() {
+        int startLevel = Level;
+        // At the last level the exp table is not read (as before the steps took a bonus).
+        (int level, long exp) = Level >= Constants.characterMaxLevel ? (Level, Exp) : LevelSteps(Level, Exp, session.TableMetadata.ExpTable.NextExp, Constants.characterMaxLevel, session.GameEvent.BurningLevelupBonus);
+        Level = (short) level;
+        Exp = exp;
         if (Level > startLevel) {
             session.Player.Flag |= PlayerObjectFlag.Level;
             session.Dungeon.UpdateDungeonEnterLimit();
@@ -268,6 +280,7 @@ public sealed class ExperienceManager {
             session.AdventureProtect.Update();
             session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: Level);
             session.ConditionUpdate(ConditionType.level, targetLong: Level);
+            session.GameEvent.BurningLevelupReach(Level);
 
             session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
                 AccountId = session.AccountId,

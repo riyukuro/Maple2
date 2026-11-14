@@ -7,6 +7,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
@@ -94,19 +95,17 @@ public class EventRewardHandler : FieldPacketHandler {
             case Command.ClaimSnowmanAccumReward:
                 HandleClaimSnowman(session, packet.ReadByte(), true);
                 return;
-            // Sub-types of event kinds the server neither stores nor sends (GameEventTable has no record for the
-            // level-up package and burning level-up events, and GameEvent writes none of them), so the client's
-            // dialogs have no event to show and there is nothing to pay out. The client has no refusal text for
-            // them: read and logged.
+            case Command.ClaimLevelUpEventReward:
+                HandleClaimBurningLevelupReward(session, packet);
+                return;
+            // 5 is of an event kind the server neither stores nor sends; 16, the burning levelup's character pick,
+            // is sent from the character list only (uicharacterlistdialog.cpp:2093) and the login answers it
+            // (Maple2.Server.Login EventRewardHandler). The client has no refusal text for them: read and logged.
             // Client writers:
             //   5      uibuddyeventlistener.cpp:667 (needs client feature 0x82)
-            //   15     uileveluppackagewidgetdialog.cpp:580
             //   16     uicharacterlistdialog.cpp:2093
             case Command.VipGmClick: // always 1; sent by any player when the buddy event page opens, not a GM mode
                 Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadByte());
-                return;
-            case Command.ClaimLevelUpEventReward: // event id
-                Logger.Debug("EventReward {Command} from {CharacterId}: {Value}", command, session.CharacterId, packet.ReadInt());
                 return;
             case Command.SetEventCharacter: // character id picked in the character list
                 Logger.Debug("EventReward {Command} from {CharacterId}: character {Target}", command, session.CharacterId, packet.ReadLong());
@@ -192,6 +191,54 @@ public class EventRewardHandler : FieldPacketHandler {
         if (!session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.CollectItemGroup)) {
             Logger.Error("ClaimCollectItemGroupReward: the claim of event {EventId} by {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
         }
+    }
+
+    // The burning levelup's reward: 15 + int event id from the reward widget (UILevelUpPackageWidgetDialog,
+    // uileveluppackagewidgetdialog.cpp:580), which offers it while the account picked this character (2000), the
+    // character reached the end level (2001) and the reward is not taken (2002). The server tests the same, gives
+    // every reward item to the bag or by mail, stores 2002 and answers 0x0f (BurningLevelupPacket.RewardTaken),
+    // on which the client updates the widget. The client has no refusal text: refusals are logged.
+    private void HandleClaimBurningLevelupReward(GameSession session, IByteReader packet) {
+        int eventId = packet.ReadInt();
+        GameEvent? gameEvent = session.FindEvent(GameEventType.BurningLevelup).FirstOrDefault(found => found.Id == eventId);
+        if (gameEvent?.Metadata.Data is not BurningLevelup burning || session.Field == null) {
+            Logger.Debug("ClaimBurningLevelupReward from {CharacterId} refused: no event {EventId}", session.CharacterId, eventId);
+            return;
+        }
+        if (session.GameEvent.Peek(GameEventUserValueType.BurningLevelupCharacter, gameEvent.Id) != session.CharacterId.ToString()) {
+            Logger.Debug("ClaimBurningLevelupReward from {CharacterId} refused: event {EventId} picked another character", session.CharacterId, eventId);
+            return;
+        }
+        if (!BurningLevelupRules.IsSet(session.GameEvent.Peek(GameEventUserValueType.BurningLevelupReached, gameEvent.Id))) {
+            Logger.Debug("ClaimBurningLevelupReward from {CharacterId} refused: event {EventId} end level not reached", session.CharacterId, eventId);
+            return;
+        }
+        if (BurningLevelupRules.IsSet(session.GameEvent.Peek(GameEventUserValueType.BurningLevelupRewardTaken, gameEvent.Id))) {
+            Logger.Debug("ClaimBurningLevelupReward from {CharacterId} refused: event {EventId} reward taken", session.CharacterId, eventId);
+            return;
+        }
+
+        var items = new List<Item>();
+        foreach (RewardItem reward in burning.Rewards) {
+            Item? item = session.Field.ItemDrop.CreateItem(reward.ItemId, reward.Rarity, reward.Amount);
+            if (item == null) {
+                Logger.Error("ClaimBurningLevelupReward: event {EventId} item {ItemId} could not be made", gameEvent.Id, reward.ItemId);
+                return;
+            }
+            items.Add(item);
+        }
+        foreach (Item item in items) {
+            if (!session.Item.AddOrMail(item, true)) {
+                Logger.Error("ClaimBurningLevelupReward: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
+            }
+        }
+        session.GameEvent.Get(GameEventUserValueType.BurningLevelupRewardTaken, gameEvent.Id, gameEvent.EndTime);
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.BurningLevelupRewardTaken, 1);
+        // Stored with the reward, not at logout: the items may sit in a stored mail already.
+        if (!session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.BurningLevelupRewardTaken)) {
+            Logger.Error("ClaimBurningLevelupReward: the claim of event {EventId} by {CharacterId} was not stored", gameEvent.Id, session.CharacterId);
+        }
+        session.Send(BurningLevelupPacket.RewardTaken());
     }
 
     private void HandleClaimLongTermAttendReward(GameSession session, IByteReader packet) {

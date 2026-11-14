@@ -62,13 +62,15 @@ public class BuffManager : IUpdatable {
 
     public void LoadFieldBuffs() {
         // Game Events: the only event kind whose client record names an effect is the burning level-up
-        // (BurningLevelupContext, gameevent.h:213), and the server has no record for that kind.
+        // (BurningLevelupContext, gameevent.h:213); its effect is given below while the picked character has not
+        // completed it (GameEventManager.RefreshBurningLevelupBuff).
         EnterField();
         if (Actor is FieldPlayer player) {
             RefreshPrestigeBuffs();
             player.Session.Config.RefreshLapenshardBuffs();
             player.Session.Config.RefreshCharacterAbilityBuffs();
             player.Session.Config.RefreshPremiumClubBuffs();
+            player.Session.GameEvent.RefreshBurningLevelupBuff();
             player.Session.Guild.LoadSkillBuffs();
 
             // The worn insignia's effect: picking the insignia gives it (InsigniaHandler), but a login
