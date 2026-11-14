@@ -21,6 +21,9 @@ public partial class GlobalService : Global.GlobalBase {
         this.gameStorage = gameStorage;
     }
 
+    // A ban's times are stored in UTC (CreateBan); the database gives them back with no kind.
+    private static long UtcEpoch(DateTime utc) => new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeSeconds();
+
     public override Task<LoginResponse> Login(LoginRequest request, ServerCallContext context) {
 #if !DEBUG // Allow empty username for testing
         if (string.IsNullOrWhiteSpace(request.Username)) {
@@ -53,8 +56,8 @@ public partial class GlobalService : Global.GlobalBase {
                 Code = LoginResponse.Types.Code.Restricted,
                 Message = hwStatus.Ban.Reason,
                 AccountId = 0,
-                BanStart = new DateTimeOffset(hwStatus.Ban.CreatedAt).ToUnixTimeSeconds(),
-                BanExpiry = new DateTimeOffset(hwStatus.Ban.ExpiresAt).ToUnixTimeSeconds(),
+                BanStart = UtcEpoch(hwStatus.Ban.CreatedAt),
+                BanExpiry = UtcEpoch(hwStatus.Ban.ExpiresAt),
             });
         }
 
@@ -102,8 +105,8 @@ public partial class GlobalService : Global.GlobalBase {
                 Code = LoginResponse.Types.Code.Restricted,
                 Message = status.Ban.Reason,
                 AccountId = account.Id,
-                BanStart = new DateTimeOffset(status.Ban.CreatedAt).ToUnixTimeSeconds(),
-                BanExpiry = new DateTimeOffset(status.Ban.ExpiresAt).ToUnixTimeSeconds(),
+                BanStart = UtcEpoch(status.Ban.CreatedAt),
+                BanExpiry = UtcEpoch(status.Ban.ExpiresAt),
             });
         }
 
