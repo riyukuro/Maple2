@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
 using System.Text.Json;
 using System.Xml;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 
 namespace Maple2.File.Ingest.Helpers;
@@ -110,16 +111,16 @@ public static class PlayedAdditionalRows {
 
     // The children of a played level the takeover leaves to the pack by design: the splash skills and the final
     // stats (which the final-stat ingest reads from the client's FinalStatus itself). The status stays the pack's
-    // too, but a played <Status> that differs from the pack's StatusProperty holds the level (Holding).
+    // too, but its compulsion event is the client's (TakeOver), and a played <Status> that differs from the pack's
+    // StatusProperty on another attribute holds the level (Holding).
     public static readonly IReadOnlySet<string> KeptFromPack = new HashSet<string> { "Skill", "Status", "FinalStatus" };
 
     // The children of a played level the ingest does not read and the pack does not keep (Offensive, Defensive,
     // Spread, ...; SpecialAbility where it is not read, readsSpecialAbility, SpecialAbility below): the client runs them with the rest
     // of the row, so the row is taken whole or not at all. A <Status> holds where it and the pack's StatusProperty
-    // (packRow, the pack's level as its serializer writes it) differ on an attribute (StatusDiffers): the client's
-    // compulsion event of 10700193, 10700196 and 10700281, which the pack's rows lack, would be lost while the level
-    // took the client's timing; a level without one holds where the pack's StatusProperty sets an attribute the
-    // client's <Status> has (the client's level has none of it).
+    // (packRow, the pack's level as its serializer writes it) differ on an attribute other than the compulsion event
+    // (StatusDiffers; the client's compulsion event is taken instead, TakeOver); a level without one holds where the
+    // pack's StatusProperty sets an attribute the client's <Status> has (the client's level has none of it).
     public static IReadOnlyList<string> Holding(XmlElement row, XmlElement? packRow = null, bool readsSpecialAbility = false) {
         IEnumerable<string> holding = row.ChildNodes.OfType<XmlElement>()
             .Where(child => !Gated.Contains(child.Name) && !(readsSpecialAbility && child.Name == "SpecialAbility") && (!KeptFromPack.Contains(child.Name) || child.Name == "Status" && StatusDiffers(child, packRow)))
@@ -138,17 +139,44 @@ public static class PlayedAdditionalRows {
         "compulsionEventTypes", "compulsionEventRate", "compulsionEventSkillCodes",
     };
 
+    // The compulsion event's attributes of a <Status>: the client's replaces the pack's (Compulsion, TakeOver).
+    private static readonly IReadOnlySet<string> CompulsionRead = new HashSet<string>(StringComparer.Ordinal) {
+        "compulsionEventTypes", "compulsionEventRate", "compulsionEventSkillCodes",
+    };
+
     // Whether a played <Status> (null for none) and the pack's StatusProperty differ: on an attribute the played row
-    // has, or on one the client reads (StatusRead) the pack's has.
+    // has, or on one the client reads (StatusRead) the pack's has; the compulsion event aside (CompulsionRead).
     private static bool StatusDiffers(XmlElement? status, XmlElement? packRow) {
         XmlElement? pack = packRow?["StatusProperty"];
         IEnumerable<string> names = (status?.Attributes.OfType<XmlAttribute>().Select(attribute => attribute.Name) ?? [])
-            .Concat(pack?.Attributes.OfType<XmlAttribute>().Select(attribute => attribute.Name).Where(StatusRead.Contains) ?? []);
+            .Concat(pack?.Attributes.OfType<XmlAttribute>().Select(attribute => attribute.Name).Where(StatusRead.Contains) ?? [])
+            .Where(name => !CompulsionRead.Contains(name));
         return names.Any(name => !Numbers(status?.GetAttribute(name) ?? "").SequenceEqual(Numbers(pack?.GetAttribute(name) ?? "")));
     }
 
     // A list as the pack's parser reads it ("1,2", "0.1", "true"): numbers and flags (true 1, false 0) by value, other
     // text as it is; 0 for an empty list's lone value.
+    // The compulsion event of a played level's <Status> (null for none) as the client reads it
+    // (additionalactionadditional.cpp:1223-1225: one type, one rate, 0 where absent, the skill codes): null for the
+    // type None, as the pack's (AdditionalEffectMapper.Status).
+    public static AdditionalEffectMetadataStatus.CompulsionEvent? Compulsion(XmlElement? status) {
+        string type = Split(status?.GetAttribute("compulsionEventTypes") ?? "").FirstOrDefault() ?? "";
+        if (!byte.TryParse(type, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte value) || value == 0) {
+            return null;
+        }
+        float rate = float.TryParse(Split(status!.GetAttribute("compulsionEventRate")).FirstOrDefault() ?? "", NumberStyles.Float, CultureInfo.InvariantCulture, out float read) ? read : 0;
+        int[] skills = Split(status.GetAttribute("compulsionEventSkillCodes"))
+            .Select(code => int.Parse(code, NumberStyles.Integer, CultureInfo.InvariantCulture)).ToArray();
+        return new AdditionalEffectMetadataStatus.CompulsionEvent((BuffCompulsionEventType) value, rate, skills);
+    }
+
+    private static bool Same(AdditionalEffectMetadataStatus.CompulsionEvent? a, AdditionalEffectMetadataStatus.CompulsionEvent? b) {
+        if (a == null || b == null) {
+            return a == null && b == null;
+        }
+        return a.Type == b.Type && Same(a.Rate, b.Rate) && a.SkillIds.SequenceEqual(b.SkillIds);
+    }
+
     private static IEnumerable<string> Numbers(string list) {
         string[] values = Split(list).Select(Value).ToArray();
         return values.Length == 1 && values[0] == "0" ? [] : values;
@@ -166,7 +194,9 @@ public static class PlayedAdditionalRows {
     // child is read (Shadow Stance 10800211 would lose its shield and last 60 s without the client's +30 physical
     // damage). taken still gets the parts that differ; holding gets the children that held them back. With the
     // client's SpecialAbility table (table; abilities, the level's <SpecialAbility> rows), its stats are read too
-    // (SpecialAbility): "SpecialAbility" is taken where they differ from the pack's, or holds the level.
+    // (SpecialAbility): "SpecialAbility" is taken where they differ from the pack's, or holds the level. The client's
+    // compulsion event (Compulsion, none for a level without one) replaces the pack's: "Compulsion" is taken where they
+    // differ (the client's 10800041 has none and is cap_ignore_limit_extra only, the pack's a critical compulsion 1).
     public static AdditionalEffectMetadata TakeOver(AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, IEnumerable<string> unread, XmlElement row,
                                                     XmlElement? packRow, ICollection<string> taken, out IReadOnlyList<string> holding,
                                                     ClientSpecialAbility? table = null, IReadOnlyDictionary<string, int>? abilities = null, bool finalRows = false) {
@@ -181,6 +211,11 @@ public static class PlayedAdditionalRows {
             if (reason != null) {
                 hold.Add(reason);
             }
+        }
+        AdditionalEffectMetadataStatus.CompulsionEvent? compulsion = Compulsion(row["Status"]);
+        if (!Same(compulsion, metadata.Status.Compulsion)) {
+            taken.Add("Compulsion");
+            metadata = metadata with { Status = metadata.Status with { Compulsion = compulsion } };
         }
         holding = hold.Distinct().Order(StringComparer.Ordinal).ToList();
         return holding.Count > 0 ? pack : metadata;

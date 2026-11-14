@@ -6,6 +6,7 @@ using System.Xml;
 using Maple2.File.Ingest.Helpers;
 using Maple2.File.Ingest.Mapper;
 using Maple2.File.Parser.Xml.AdditionalEffect;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Tests.Game;
@@ -72,6 +73,14 @@ public class PlayedTakeOverTests {
               <Basic durationTick="800" />
               <Motion abnormalImmuneBreak="5" />
               <Status compulsionEventTypes="2" compulsionEventRate="1" />
+            </level>
+          </additional>
+          <additional id="10800041" skillGroupType="1">
+            <level level="1">
+              <Basic durationTick="12000" />
+              <SpecialAbility>
+                <v type="cap_ignore_limit_extra" value="280" />
+              </SpecialAbility>
             </level>
           </additional>
           <additional id="10800212" mainType="1">
@@ -186,6 +195,11 @@ public class PlayedTakeOverTests {
               <MotionProperty abnormalImmuneBreak="5" />
             </level>
             """,
+        [10800041] = """
+            <level><BasicProperty level="1" buffSubType="2" durationTick="8000" skillGroupType="1" />
+              <StatusProperty compulsionEventTypes="1" compulsionEventRate="1.000000" />
+            </level>
+            """,
         [10800212] = """
             <level><BasicProperty level="1" buffSubType="2" durationTick="12000" />
               <StatusProperty><SpecialAbility darkdamagerate="0.1" /></StatusProperty>
@@ -232,6 +246,7 @@ public class PlayedTakeOverTests {
           <key id="130" option="improve_stat_wap_u" valueType="2" />
           <key id="177" option="offensive_physicaldamage" valueType="2" />
           <key id="204" option="aevp" valueType="2" />
+          <key id="205" option="cap_ignore_limit_extra" valueType="2" />
           <key id="999" option="noValueType" valueType="0" />
         </ms2>
         """));
@@ -387,17 +402,41 @@ public class PlayedTakeOverTests {
         });
     }
 
-    // The client's <Status> has a compulsion event the pack's StatusProperty lacks: the level stays the pack's whole.
+    // The client's <Status> has an evasion compulsion event the pack's StatusProperty lacks: the level takes it with
+    // the client's timing (before: held whole on "Status", no compulsion).
     [Test]
-    public void KeepsALevelWholeWhileThePlayedStatusDiffers() {
+    public void TakesThePlayedCompulsion() {
         (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10700193);
         var taken = new List<string>();
         AdditionalEffectMetadata metadata = PlayedAdditionalRows.TakeOver(pack, mapped, unread, row, packRow, taken, out IReadOnlyList<string> holding);
         Assert.Multiple(() => {
-            Assert.That(holding, Is.EqualTo(new[] { "Status" }));
-            Assert.That(taken, Is.EqualTo(new[] { "Basic" }));
-            Assert.That(metadata, Is.SameAs(pack));
+            Assert.That(holding, Is.Empty);
+            Assert.That(taken, Is.EquivalentTo(new[] { "Basic", "Compulsion" }));
             Assert.That(pack.Status.Compulsion, Is.Null);
+            Assert.That(metadata.Status.Compulsion!.Type, Is.EqualTo(BuffCompulsionEventType.EvasionChanceOverride));
+            Assert.That(metadata.Status.Compulsion.Rate, Is.EqualTo(1f));
+            Assert.That(metadata.Status.Compulsion.SkillIds, Is.Empty);
+            Assert.That(metadata.Property.DurationTick, Is.EqualTo(800));
+        });
+    }
+
+    // The client's Assassin buff 10800041 has no compulsion and is cap_ignore_limit_extra 280 only; the pack's has a
+    // critical compulsion 1 (every hit critical). The pack's compulsion does not survive the takeover: the level
+    // gives +0.28 critical rate past the cap for the client's 12 s (before: held whole on "Status", always critical).
+    [Test]
+    public void ThePacksCompulsionDoesNotSurviveTheTakeover() {
+        (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10800041);
+        var taken = new List<string>();
+        AdditionalEffectMetadata metadata = PlayedAdditionalRows.TakeOver(pack, mapped, unread, row, packRow, taken, out IReadOnlyList<string> holding,
+            Table, Abilities(10800041));
+        Assert.Multiple(() => {
+            Assert.That(holding, Is.Empty);
+            Assert.That(taken, Is.EquivalentTo(new[] { "Basic", "SpecialAbility", "Compulsion" }));
+            Assert.That(pack.Status.Compulsion!.Type, Is.EqualTo(BuffCompulsionEventType.CritChanceOverride));
+            Assert.That(pack.Status.Compulsion.Rate, Is.EqualTo(1f));
+            Assert.That(metadata.Status.Compulsion, Is.Null);
+            Assert.That(metadata.Status.SpecialRates[SpecialAttribute.CriticalRateIgnoreLimitExtra], Is.EqualTo(0.28f).Within(1e-6f));
+            Assert.That(metadata.Property.DurationTick, Is.EqualTo(12000));
         });
     }
 
