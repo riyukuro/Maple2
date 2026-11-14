@@ -5,6 +5,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Serilog;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -21,19 +22,25 @@ public class ItemRepeatHandler : FieldPacketHandler {
 
         GmItemCreateRequest request = GmItemCreateRequest.Read(packet);
         int repeat = packet.ReadInt();
+        Simulate(session, request, repeat, Logger, "ItemRepeat");
+    }
+
+    // Rolls the requested item's options `repeat` times and sends them through 0x101 ItemOptionSimulator. Shared with
+    // ItemCompare, which sends the same request.
+    internal static void Simulate(GameSession session, GmItemCreateRequest request, int repeat, ILogger logger, string name) {
         if (session.Field == null) {
             return;
         }
 
         int rolls = GmCreateRules.PlanRepeat(repeat, request.Rarity);
         if (rolls == 0) {
-            Logger.Warning("ItemRepeat: repeat {Repeat} rank {Rarity} refused, account {AccountId}", repeat, request.Rarity, session.AccountId);
+            logger.Warning("{Name}: repeat {Repeat} rank {Rarity} refused, account {AccountId}", name, repeat, request.Rarity, session.AccountId);
             return;
         }
 
         Item? item = session.Field.ItemDrop.CreateItem(request.ItemId, request.Rarity);
         if (item == null) {
-            Logger.Warning("ItemRepeat: unknown item {ItemId} from account {AccountId}", request.ItemId, session.AccountId);
+            logger.Warning("{Name}: unknown item {ItemId} from account {AccountId}", name, request.ItemId, session.AccountId);
             return;
         }
 
