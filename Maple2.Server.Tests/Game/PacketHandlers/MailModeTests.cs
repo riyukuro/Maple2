@@ -128,10 +128,12 @@ public class MailModeTests {
         });
     }
 
-    // The same mail in a second inbox loaded before the first collect (the inbox of a channel the player was in): the
-    // collect reads the mail again from storage, so the second inbox gives nothing and answers already collected.
+    // The same mail in a second inbox of the same session, loaded before the first collect: the collect reads the mail
+    // again from storage, so the second inbox gives nothing and answers already collected. This is one process under
+    // one item lock; two game servers collecting at once are kept apart only by login, which never leaves a character
+    // live in two sessions (UpdateMail writes the row unconditionally).
     [Test]
-    public void Collect_FromAnInboxLoadedBeforeTheCollect_GivesNothing() {
+    public void Collect_FromASecondInboxOfTheSameSession_GivesNothing() {
         Begin();
         Mail mail = StoreMail(meso: 300, meret: 7, amount: 2);
         GameSession session = Login();
@@ -220,6 +222,38 @@ public class MailModeTests {
             Assert.That(Held(session), Is.EqualTo(0));
             Assert.That(Stored(mail.Id)!.Items, Has.Count.EqualTo(1));
             Assert.That(Stored(mail.Id)!.MesoCollectTime, Is.EqualTo(0));
+        });
+    }
+
+    // Another character's mail sent by id: it is in no inbox of this player and storage is keyed by the receiver, so a
+    // collect gives nothing and answers that the mail is gone; a delete removes nothing.
+    [TestCase((byte) 11)]
+    [TestCase((byte) 13)]
+    public void AnotherCharactersMail_IsLeftAlone(byte command) {
+        Begin();
+        const long otherId = 7777777;
+        Mail mail;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            mail = db.CreateMail(new Mail { ReceiverId = otherId, Type = MailType.System, Title = "t", Content = "c", Meso = 300 })!;
+            mail.Items.Add(db.CreateItem(mail.Id, new Item(TestGameSession.Metadata(ItemId), amount: 2))!);
+        }
+        GameSession session = Login();
+        session.Mail.Notify(force: true);
+        test.TakeSent();
+
+        Request(session, command, mail.Id);
+
+        using GameStorage.Request check = test.Storage.Context();
+        Mail? stored = check.GetMail(mail.Id, otherId);
+        Assert.Multiple(() => {
+            if (command == 11) {
+                Assert.That(MailSent().Select(Convert.ToHexString), Does.Contain(Hex(MailPacket.Deleted(mail.Id))));
+            }
+            Assert.That(session.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(Held(session), Is.EqualTo(0));
+            Assert.That(stored, Is.Not.Null);
+            Assert.That(stored?.Items, Has.Count.EqualTo(1));
+            Assert.That(stored?.MesoCollectTime, Is.EqualTo(0));
         });
     }
 
