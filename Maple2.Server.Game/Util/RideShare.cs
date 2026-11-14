@@ -21,6 +21,17 @@ public static class RideShare {
         return -1;
     }
 
+    // RequestRide mode 3: the client boards only the owner FindHoldTarget finds (HoldPCAction, actionkeyobject.cpp:2320;
+    // the ride-off path, mypc.cpp:3448, searches 20 further): one with a hold node within FindHoldTargetRange (KR 230)
+    // of the joiner (WorldService::FindNearestActor, worldservice_1.cpp:5143; PC::vfunc_118, pc.cpp:1307). The nodes
+    // sit on the mount, away from the owner's position, which is all the server holds.
+    public const float JoinReach = 230f + 20f;
+    // Server rule: room for a hold node's offset from the owner on a large mount.
+    public const float HoldNodeAllowance = 200f;
+
+    public static bool InJoinReach(System.Numerics.Vector3 joiner, System.Numerics.Vector3 owner) =>
+        Maple2.Model.Validators.InteractRules.InReach(joiner, owner, JoinReach + HoldNodeAllowance);
+
     // RequestRide mode 0: a mount item is summoned by a living player who is not on a ride, in a field that
     // allows rides.
     public static bool CanStart(bool dead, bool fieldAllowsRide, bool riding) => !dead && fieldAllowsRide && !riding;

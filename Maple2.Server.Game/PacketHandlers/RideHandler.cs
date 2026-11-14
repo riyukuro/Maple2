@@ -160,6 +160,10 @@ public class RideHandler : FieldPacketHandler {
         if (other.Session.Ride.Ride == null) {
             return;
         }
+        if (!RideShare.InJoinReach(session.Player.Position, other.Position)) {
+            Logger.Debug("Ride join of {OwnerId} out of reach", otherId);
+            return;
+        }
 
         // The owner riding alone (Action.Flag) gets no board prompt in the client; see RideShare for the rest.
         int seat = RideShare.Seat(session.Player.IsDead, other.IsDead, other.Session.Ride.Ride.Action.Flag,
