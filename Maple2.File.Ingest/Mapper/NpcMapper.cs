@@ -19,6 +19,7 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
     private readonly NpcParser parser;
     private readonly M2dReader xmlReader;
     private readonly M2dReader? playedReader;
+    private readonly string language;
 
     public static Dictionary<int, NpcMetadata> NpcMetadataById { get; } = new();
 
@@ -26,6 +27,7 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
         parser = new NpcParser(xmlReader, language);
         this.xmlReader = xmlReader;
         this.playedReader = playedReader;
+        this.language = language;
     }
 
     // The file parser does not read aiInfo's summonNpcIDs, so it is read from the npc xml here. In the data the
@@ -75,138 +77,184 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
             playedStats = PlayedNpcStats.Read(npcFiles, EnvironmentAvailable, feature => FeatureLocaleFilter.Features.GetValueOrDefault(feature), FeatureLocaleFilter.Locale);
         }
         int notInPlayed = 0, inPlayed = 0;
+        HashSet<int> packIds = [];
         foreach ((int id, string name, NpcData data, List<EffectDummy> _) in parser.Parse()) {
+            packIds.Add(id);
             bool notInPlayedClient = known != null && !known.Contains(id);
             if (known != null) {
                 if (notInPlayedClient) notInPlayed++;
                 else inPlayed++;
             }
-            Debug.Assert(data.collision.shape == "box" || string.IsNullOrWhiteSpace(data.collision.shape));
-
-            var metadata = new NpcMetadata(Id: id,
-                Name: name,
-                AiPath: data.aiInfo.path,
-                Model: new NpcMetadataModel(
-                    Name: data.model.kfm,
-                    Scale: data.model.scale,
-                    AniSpeed: data.model.anispeed
-                ),
-                Distance: new NpcMetadataDistance(
-                    Avoid: data.distance.avoid,
-                    Sight: data.distance.sight,
-                    SightHeightUp: data.distance.sightHeightUP,
-                    SightHeightDown: data.distance.sightHeightDown,
-                    LastSightRadius: data.distance.customLastSightRadius == 0 ? Constant.NpcLastSightRadius : data.distance.customLastSightRadius,
-                    LastSightHeightUp: data.distance.customLastSightHeightUp == 0 ? Constant.NpcLastSightHeightUp : data.distance.customLastSightHeightUp,
-                    LastSightHeightDown: data.distance.customLastSightHeightDown == 0 ? Constant.NpcLastSightHeightDown : data.distance.customLastSightHeightDown
-                ),
-                Skill: new NpcMetadataSkill(
-                    Entries: data.skill.ids.Select((skillId, i) =>
-                        new NpcMetadataSkill.Entry(skillId, data.skill.levels[i], i < data.skill.probs.Length ? data.skill.probs[i] : 0)).ToArray(),
-                    Cooldown: data.skill.coolDown
-                ),
-                Stat: new NpcMetadataStat(Stats: MapStats(data.stat, playedStats.GetValueOrDefault(id)),
-                    ScaleStatRate: [
-                        data.stat.scaleStatRate_1,
-                        data.stat.scaleStatRate_2,
-                        data.stat.scaleStatRate_3,
-                        data.stat.scaleStatRate_4,
-                    ],
-                    ScaleBaseTap: [
-                        data.stat.scaleBaseTap_1,
-                        data.stat.scaleBaseTap_2,
-                        data.stat.scaleBaseTap_3,
-                        data.stat.scaleBaseTap_4,
-                    ],
-                    ScaleBaseDef: [
-                        data.stat.scaleBaseDef_1,
-                        data.stat.scaleBaseDef_2,
-                        data.stat.scaleBaseDef_3,
-                        data.stat.scaleBaseDef_4,
-                    ],
-                    ScaleBaseSpaRate: [
-                        data.stat.scaleBaseSpaRate_1,
-                        data.stat.scaleBaseSpaRate_2,
-                        data.stat.scaleBaseSpaRate_3,
-                        data.stat.scaleBaseSpaRate_4,
-                    ]),
-                Basic: new NpcMetadataBasic(Friendly: data.basic.friendly,
-                    AttackGroup: data.basic.npcAttackGroup,
-                    DefenseGroup: data.basic.npcDefenseGroup,
-                    Kind: data.basic.kind,
-                    ShopId: data.basic.shopId,
-                    HitImmune: data.basic.hitImmune,
-                    AbnormalImmune: data.basic.abnormalImmune,
-                    Level: data.basic.level,
-                    Class: data.basic.@class,
-                    RotationDisabled: data.basic.rotationDisabled,
-                    MaxSpawnCount: data.basic.maxSpawnCount,
-                    GroupSpawnCount: data.basic.groupSpawnCount,
-                    RareDegree: data.basic.rareDegree,
-                    MainTags: data.basic.mainTags,
-                    SubTags: data.basic.subTags,
-                    Difficulty: data.basic.difficulty,
-                    CustomExp: data.exp.customExp,
-                    PropertyTags: data.basic.propertyTags,
-                    SummonNpcIds: summonNpcIds.GetValueOrDefault(id),
-                    StringId: string.IsNullOrEmpty(data.basic.stringID) ? null : data.basic.stringID,
-                    NotInPlayedClient: notInPlayedClient,
-                    RaceStrings: data.basic.raceString),
-                Property: new NpcMetadataProperty(
-                    Buffs: data.additionalEffect.codes.Select((buffId, i) => new NpcMetadataBuff(buffId, data.additionalEffect.levels[i])).ToArray(),
-                    Capsule: new NpcMetadataCapsule(data.capsule.radius, data.capsule.height),
-                    Collision: data.collision.shape == "box" ? new NpcMetadataCollision(
-                        Dimensions: new Vector3(data.collision.width, data.collision.depth, data.collision.height),
-                        Offset: new Vector3(data.collision.widthOffset, data.collision.depthOffset, data.collision.heightOffset)
-                    ) : null),
-                DropInfo: new NpcMetadataDropInfo(
-                    DropDistanceBase: data.dropiteminfo.dropDistanceBase,
-                    DropDistanceRandom: data.dropiteminfo.dropDistanceRandom,
-                    GlobalDropBoxIds: data.dropiteminfo.globalDropBoxId,
-                    DeadGlobalDropBoxIds: data.dropiteminfo.globalDeadDropBoxId,
-                    IndividualDropBoxIds: data.dropiteminfo.individualDropBoxId,
-                    GlobalHitDropBoxIds: data.dropiteminfo.globalHitDropBoxId,
-                    IndividualHitDropBoxIds: data.dropiteminfo.individualHitDropBoxId),
-                Action: new NpcMetadataAction(
-                    RotateSpeed: data.speed.rotation,
-                    WalkSpeed: data.speed.walk,
-                    RunSpeed: data.speed.run,
-                    Actions: data.normal.action.Zip(data.normal.prob, (action, prob) => new NpcAction(action, prob)).ToArray(),
-                    MoveArea: data.normal.movearea,
-                    MaidExpired: data.normal.maidExpired),
-                Dead: new NpcMetadataDead(
-                    Time: data.dead.time,
-                    Revival: data.dead.revival,
-                    Count: data.dead.count,
-                    LifeTime: data.dead.lifeTime,
-                    ExtendRoomTime: data.dead.extendRoomTime),
-                Corpse: data.corpse.hitAble == 1 ? new NpcMetadataCorpse(
-                    Width: data.corpse.width,
-                    Height: data.corpse.height,
-                    Depth: data.corpse.depth,
-                    Added: data.corpse.added,
-                    OffsetNametag: data.corpse.offsetNametag,
-                    CorpseEffect: data.corpse.corpseEffect,
-                    HitAble: true,
-                    Rotation: data.corpse.rotation) : null,
-                LookAtTarget: new NpcMetadataLookAtTarget(
-                    data.lookattarget.targetdummy,
-                    data.lookattarget.lookAtMyPCWhenTalking == 1,
-                    data.lookattarget.useTalkMotion == 1),
-                Interact: NpcInteractRules.Parse(data.interact?.interactFunction, data.interact?.interactCastingTime ?? 0,
-                    data.interact?.interactCoolTime ?? 0)
-            );
-
+            NpcMetadata metadata = Build(id, name, data, notInPlayedClient, summonNpcIds.GetValueOrDefault(id), playedStats.GetValueOrDefault(id));
             NpcMetadataById[id] = metadata;
-
             yield return metadata;
+        }
+
+        // The NPCs only the played client has: the data folder's pack (a development pack) lacks them, and the
+        // client spawns them (e.g. the MadDoctor01 dungeon's bosses). They are read from the played client's npcdata.
+        int playedOnly = 0;
+        if (playedReader != null && known != null) {
+            Dictionary<int, string> playedNames = new NpcParser(playedReader, language).ParseNpcNames();
+            foreach ((int id, XmlElement environment) in PlayedOnlyEnvironments(packIds)) {
+                NpcData data = PlayedNpcData.Read(environment);
+                NpcMetadata metadata = Build(id, playedNames.GetValueOrDefault(id, string.Empty), data, false,
+                    ParseSummonNpcIds(environment.OuterXml), playedStats.GetValueOrDefault(id));
+                NpcMetadataById[id] = metadata;
+                playedOnly++;
+                yield return metadata;
+            }
         }
         if (known != null) {
             Console.WriteLine($"npcs: {notInPlayed} not in the played client's NPC data (the server does not spawn them), {inPlayed} in it");
+            Console.WriteLine($"npcs: {playedOnly} only in the played client's NPC data, read from it");
         }
         if (playedStats.Count > 0) {
             Console.WriteLine($"npcs: {playedStats.Count} stat blocks taken from the played client's NPC data (no hidden stat added)");
         }
+    }
+
+    // The <environment> the played client keeps of each of its NPCs that the data folder's pack lacks. When a file
+    // holds an id twice the later one is kept, as NpcDataTableCli::Load does.
+    private IEnumerable<(int Id, XmlElement Environment)> PlayedOnlyEnvironments(HashSet<int> packIds) {
+        var result = new SortedDictionary<int, XmlElement>();
+        foreach (PackFileEntry file in playedReader!.Files.Where(file => PlayedClientNpcs.IsNpcFile(file.Name))) {
+            XmlNodeList? npcs = playedReader.GetXmlDocument(file).DocumentElement?.SelectNodes("npc");
+            if (npcs == null) {
+                continue;
+            }
+            foreach (XmlElement npc in npcs.OfType<XmlElement>()) {
+                if (!int.TryParse(npc.GetAttribute("id"), out int id) || id == 0 || packIds.Contains(id)) {
+                    continue;
+                }
+                XmlElement? environment = PlayedNpcStats.SelectEnvironment(npc, EnvironmentAvailable,
+                    feature => FeatureLocaleFilter.Features.GetValueOrDefault(feature), FeatureLocaleFilter.Locale);
+                if (environment != null) {
+                    result[id] = environment;
+                }
+            }
+        }
+        return result.Select(entry => (entry.Key, entry.Value));
+    }
+
+    private static NpcMetadata Build(int id, string name, NpcData data, bool notInPlayedClient, int[]? summonNpcIds, Stat? playedStat) {
+        Debug.Assert(data.collision.shape == "box" || string.IsNullOrWhiteSpace(data.collision.shape));
+
+        var metadata = new NpcMetadata(Id: id,
+            Name: name,
+            AiPath: data.aiInfo.path,
+            Model: new NpcMetadataModel(
+                Name: data.model.kfm,
+                Scale: data.model.scale,
+                AniSpeed: data.model.anispeed
+            ),
+            Distance: new NpcMetadataDistance(
+                Avoid: data.distance.avoid,
+                Sight: data.distance.sight,
+                SightHeightUp: data.distance.sightHeightUP,
+                SightHeightDown: data.distance.sightHeightDown,
+                LastSightRadius: data.distance.customLastSightRadius == 0 ? Constant.NpcLastSightRadius : data.distance.customLastSightRadius,
+                LastSightHeightUp: data.distance.customLastSightHeightUp == 0 ? Constant.NpcLastSightHeightUp : data.distance.customLastSightHeightUp,
+                LastSightHeightDown: data.distance.customLastSightHeightDown == 0 ? Constant.NpcLastSightHeightDown : data.distance.customLastSightHeightDown
+            ),
+            Skill: new NpcMetadataSkill(
+                // A skill with no level listed is level 1 (Unk_NpcSkill::GetSkill, commonfiles/npcdata.cpp:286).
+                Entries: data.skill.ids.Select((skillId, i) =>
+                    new NpcMetadataSkill.Entry(skillId, i < data.skill.levels.Length ? data.skill.levels[i] : (short) 1,
+                        i < data.skill.probs.Length ? data.skill.probs[i] : 0)).ToArray(),
+                Cooldown: data.skill.coolDown
+            ),
+            Stat: new NpcMetadataStat(Stats: MapStats(data.stat, playedStat),
+                ScaleStatRate: [
+                    data.stat.scaleStatRate_1,
+                        data.stat.scaleStatRate_2,
+                        data.stat.scaleStatRate_3,
+                        data.stat.scaleStatRate_4,
+                ],
+                ScaleBaseTap: [
+                    data.stat.scaleBaseTap_1,
+                        data.stat.scaleBaseTap_2,
+                        data.stat.scaleBaseTap_3,
+                        data.stat.scaleBaseTap_4,
+                ],
+                ScaleBaseDef: [
+                    data.stat.scaleBaseDef_1,
+                        data.stat.scaleBaseDef_2,
+                        data.stat.scaleBaseDef_3,
+                        data.stat.scaleBaseDef_4,
+                ],
+                ScaleBaseSpaRate: [
+                    data.stat.scaleBaseSpaRate_1,
+                        data.stat.scaleBaseSpaRate_2,
+                        data.stat.scaleBaseSpaRate_3,
+                        data.stat.scaleBaseSpaRate_4,
+                ]),
+            Basic: new NpcMetadataBasic(Friendly: data.basic.friendly,
+                AttackGroup: data.basic.npcAttackGroup,
+                DefenseGroup: data.basic.npcDefenseGroup,
+                Kind: data.basic.kind,
+                ShopId: data.basic.shopId,
+                HitImmune: data.basic.hitImmune,
+                AbnormalImmune: data.basic.abnormalImmune,
+                Level: data.basic.level,
+                Class: data.basic.@class,
+                RotationDisabled: data.basic.rotationDisabled,
+                MaxSpawnCount: data.basic.maxSpawnCount,
+                GroupSpawnCount: data.basic.groupSpawnCount,
+                RareDegree: data.basic.rareDegree,
+                MainTags: data.basic.mainTags,
+                SubTags: data.basic.subTags,
+                Difficulty: data.basic.difficulty,
+                CustomExp: data.exp.customExp,
+                PropertyTags: data.basic.propertyTags,
+                SummonNpcIds: summonNpcIds,
+                StringId: string.IsNullOrEmpty(data.basic.stringID) ? null : data.basic.stringID,
+                NotInPlayedClient: notInPlayedClient,
+                RaceStrings: data.basic.raceString),
+            Property: new NpcMetadataProperty(
+                Buffs: data.additionalEffect.codes.Select((buffId, i) => new NpcMetadataBuff(buffId, data.additionalEffect.levels[i])).ToArray(),
+                Capsule: new NpcMetadataCapsule(data.capsule.radius, data.capsule.height),
+                Collision: data.collision.shape == "box" ? new NpcMetadataCollision(
+                    Dimensions: new Vector3(data.collision.width, data.collision.depth, data.collision.height),
+                    Offset: new Vector3(data.collision.widthOffset, data.collision.depthOffset, data.collision.heightOffset)
+                ) : null),
+            DropInfo: new NpcMetadataDropInfo(
+                DropDistanceBase: data.dropiteminfo.dropDistanceBase,
+                DropDistanceRandom: data.dropiteminfo.dropDistanceRandom,
+                GlobalDropBoxIds: data.dropiteminfo.globalDropBoxId,
+                DeadGlobalDropBoxIds: data.dropiteminfo.globalDeadDropBoxId,
+                IndividualDropBoxIds: data.dropiteminfo.individualDropBoxId,
+                GlobalHitDropBoxIds: data.dropiteminfo.globalHitDropBoxId,
+                IndividualHitDropBoxIds: data.dropiteminfo.individualHitDropBoxId),
+            Action: new NpcMetadataAction(
+                RotateSpeed: data.speed.rotation,
+                WalkSpeed: data.speed.walk,
+                RunSpeed: data.speed.run,
+                Actions: data.normal.action.Zip(data.normal.prob, (action, prob) => new NpcAction(action, prob)).ToArray(),
+                MoveArea: data.normal.movearea,
+                MaidExpired: data.normal.maidExpired),
+            Dead: new NpcMetadataDead(
+                Time: data.dead.time,
+                Revival: data.dead.revival,
+                Count: data.dead.count,
+                LifeTime: data.dead.lifeTime,
+                ExtendRoomTime: data.dead.extendRoomTime),
+            Corpse: data.corpse.hitAble == 1 ? new NpcMetadataCorpse(
+                Width: data.corpse.width,
+                Height: data.corpse.height,
+                Depth: data.corpse.depth,
+                Added: data.corpse.added,
+                OffsetNametag: data.corpse.offsetNametag,
+                CorpseEffect: data.corpse.corpseEffect,
+                HitAble: true,
+                Rotation: data.corpse.rotation) : null,
+            LookAtTarget: new NpcMetadataLookAtTarget(
+                data.lookattarget.targetdummy,
+                data.lookattarget.lookAtMyPCWhenTalking == 1,
+                data.lookattarget.useTalkMotion == 1),
+            Interact: NpcInteractRules.Parse(data.interact?.interactFunction, data.interact?.interactCastingTime ?? 0,
+                data.interact?.interactCoolTime ?? 0)
+        );
+        return metadata;
     }
 
     private static bool EnvironmentAvailable(XmlElement node) =>
