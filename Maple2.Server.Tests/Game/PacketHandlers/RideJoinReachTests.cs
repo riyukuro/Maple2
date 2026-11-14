@@ -1,6 +1,7 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -18,11 +19,20 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class RideJoinReachTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-    private static (TestGameSession Owner, TestGameSession Joiner) Start(float x) {
+    private static (TestGameSession Owner, TestGameSession Joiner) Start(float x, bool authority = false) {
         var a = new TestGameSession();
         a.Start();
         var b = new TestGameSession(a.Options);
         b.Start();
+        if (!authority) {
+            a.SetFeaturesOff("RideShareAuthority");
+            b.SetFeaturesOff("RideShareAuthority");
+        }
+        foreach (TestGameSession test in new[] { a, b }) {
+            test.Session.Party = new PartyManager(test.World, test.Session);
+            // No guild: a guild-less manager reads guild id 0.
+            test.Session.Guild = (GuildManager) RuntimeHelpers.GetUninitializedObject(typeof(GuildManager));
+        }
         FieldManager field = a.Session.Field!;
         typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(b.Session.Player, 2);
         field.Players[2] = b.Session.Player;
@@ -74,6 +84,18 @@ public class RideJoinReachTests {
         Assert.Multiple(() => {
             Assert.That(RideShare.InJoinReach(Vector3.Zero, new Vector3(edge, 0, 0)), Is.True);
             Assert.That(RideShare.InJoinReach(Vector3.Zero, new Vector3(edge + 1, 0, 0)), Is.False);
+        });
+    }
+
+    // With RideShareAuthority on, the client asks to board only a friend's, a party member's or a guildmate's mount
+    // (MyPC::FUN_1415279d0); a stranger's request is refused.
+    [Test]
+    public void WithRideShareAuthority_AStrangersJoin_IsRefused() {
+        (TestGameSession owner, TestGameSession joiner) = Start(200, authority: true);
+        Join(joiner, owner.Session.Player.ObjectId);
+        Assert.Multiple(() => {
+            Assert.That(joiner.Session.Ride.Ride, Is.Null);
+            Assert.That(owner.Session.Ride.Ride!.Passengers, Is.EqualTo(new[] { 0 }));
         });
     }
 }

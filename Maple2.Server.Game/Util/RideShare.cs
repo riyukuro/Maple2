@@ -4,9 +4,7 @@ namespace Maple2.Server.Game.Util;
 
 // The seat a player boards on another player's multi-seat mount, or -1. The client asks only for a mount the
 // joiner may board (MyPC::FUN_1415279d0, HoldPCAction): the joiner is alive, the owner is a live player (its
-// nearest-actor search skips dead ones) on a mount with a free seat. Its friend / party / same-guild check runs
-// only with the RideShareAuthority feature, whose feature.xml level is 99 for KR and NA (above the live setting),
-// so in those locales anyone may board, and the server keeps no such check either.
+// nearest-actor search skips dead ones) on a mount with a free seat.
 public static class RideShare {
     public static int Seat(bool joinerDead, bool ownerDead, bool ownerRidesAlone, IReadOnlyList<int> passengers) {
         if (joinerDead || ownerDead || ownerRidesAlone) {
@@ -19,6 +17,14 @@ public static class RideShare {
             }
         }
         return -1;
+    }
+
+    // With the RideShareAuthority feature on (the ingested feature.xml), MyPC::FUN_1415279d0 lets the joiner board
+    // only when the owner is an accepted buddy (CBuddyManager::FUN_140ae4d70, keyed by the buddy entry's character
+    // id), a member of the joiner's party (FUN_1415278d0), or in the joiner's guild (equal, non-empty guild names).
+    // With it off, anyone may board and the server does not ask.
+    public static bool MayBoard(bool buddy, bool partyMember, long joinerGuildId, long ownerGuildId) {
+        return buddy || partyMember || (joinerGuildId != 0 && joinerGuildId == ownerGuildId);
     }
 
     // RequestRide mode 3: the client boards only the owner FindHoldTarget finds (HoldPCAction, actionkeyobject.cpp:2320;

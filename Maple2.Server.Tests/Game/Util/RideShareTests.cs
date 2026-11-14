@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Util;
@@ -100,5 +100,24 @@ public class RideShareTests {
     public void Change_BattleOrObjectMount_IsRefused() {
         Assert.That(RideShare.CanChange(owner: true, RideOnType.Battle), Is.False);
         Assert.That(RideShare.CanChange(owner: true, RideOnType.Object), Is.False);
+    }
+
+    // RideShareAuthority on (MyPC::FUN_1415279d0): the joiner boards only a friend's, a party member's or a
+    // guildmate's mount.
+    [Test]
+    public void AStranger_IsRefused() {
+        Assert.Multiple(() => {
+            Assert.That(RideShare.MayBoard(false, false, 0, 0), Is.False);
+            Assert.That(RideShare.MayBoard(false, false, 7, 8), Is.False);
+        });
+    }
+
+    [Test]
+    public void AFriendPartyMemberOrGuildmate_Boards() {
+        Assert.Multiple(() => {
+            Assert.That(RideShare.MayBoard(true, false, 0, 0), Is.True);
+            Assert.That(RideShare.MayBoard(false, true, 0, 0), Is.True);
+            Assert.That(RideShare.MayBoard(false, false, 7, 7), Is.True);
+        });
     }
 }

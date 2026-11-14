@@ -164,6 +164,15 @@ public class RideHandler : FieldPacketHandler {
             Logger.Debug("Ride join of {OwnerId} out of reach", otherId);
             return;
         }
+        if (session.ServerTableMetadata.FeatureTable.IsOn("RideShareAuthority")) {
+            long ownerCharacterId = other.Session.CharacterId;
+            if (!RideShare.MayBoard(session.Buddy.IsBuddy(ownerCharacterId),
+                    session.Party.Party?.Members.ContainsKey(ownerCharacterId) == true,
+                    session.Guild.Id, other.Session.Guild.Id)) {
+                Logger.Debug("Ride join of {OwnerId} refused: not a buddy, party member or guildmate", otherId);
+                return;
+            }
+        }
 
         // The owner riding alone (Action.Flag) gets no board prompt in the client; see RideShare for the rest.
         int seat = RideShare.Seat(session.Player.IsDead, other.IsDead, other.Session.Ride.Ride.Action.Flag,
