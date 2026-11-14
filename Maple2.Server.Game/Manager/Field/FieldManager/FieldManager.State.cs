@@ -1288,7 +1288,7 @@ public partial class FieldManager {
         // Caster is always excluded from the pool; re-added explicitly per IncludeCaster semantics
         ICollection<IActor> poolIgnore = ignore != null ? [.. ignore, caster] : [caster];
 
-        switch (range.IncludeCaster) {
+        switch (TakesCaster(caster, range) ? range.IncludeCaster : IncludeCasterType.Exclude) {
             case IncludeCasterType.Priority: {
                     // Caster guaranteed as first target; pool fills remaining slots
                     IActor[] pool = SelectTargets(caster, prisms, range, targetCount - 1, poolIgnore, sort).ToArray();
@@ -1302,6 +1302,21 @@ public partial class FieldManager {
             default: // Exclude
                 return SelectTargets(caster, prisms, range, targetCount, poolIgnore, sort);
         }
+    }
+
+    // Whether a range's includeCaster may add its caster. The client's search (CBaseCollision::Detect) puts the caster
+    // first only when he passes the same target filter as the others (FilterTarget, basecollision.cpp:784, on the
+    // range's applyTarget with the caster's forceApplyTarget ORed in): the friendly bit takes him, but the hostile bit
+    // alone takes him only when his own team is 2 (PCBase::vfunc_122 compares teams; an npc's team is its friendly
+    // value), so a monster's hostile splash with includeCaster (60036032, Lazy Stumpy's) does not hit the monster.
+    // Chosen here: a range of no kind or of the hungry mobs keeps the caster as before.
+    private static bool TakesCaster(IActor caster, SkillMetadataRange range) {
+        int force = caster is FieldPlayer { Buffs: not null } player ? player.Buffs.ForceApplyTarget() : 0;
+        int flags = (int) range.ApplyTarget | force;
+        if ((flags & (int) ApplyTargetType.Friendly) != 0 || (flags & (int) ApplyTargetType.Hostile) == 0) {
+            return true;
+        }
+        return caster is FieldNpc { Value.Metadata.Basic.Friendly: 2 };
     }
 
     // The range's pool in its prisms; with a target choice (Select) or a search frame (sort) the whole pool is
@@ -1347,7 +1362,7 @@ public partial class FieldManager {
                 }
             }
         }
-        if (range.IncludeCaster != IncludeCasterType.Exclude && !caster.IsDead && !(caster is FieldPlayer player && IsOnlooker(player))) {
+        if (range.IncludeCaster != IncludeCasterType.Exclude && TakesCaster(caster, range) && !caster.IsDead && !(caster is FieldPlayer player && IsOnlooker(player))) {
             for (int index = 0; index < ids.Length; index++) {
                 if (ids[index] == caster.ObjectId) {
                     found[index] = caster;
