@@ -29,6 +29,21 @@ public static class LapenshardRules {
         return Math.Max(1, (int) (amount * factor + 1e-06));
     }
 
+    // Whether the client refuses to put a shard in a slot because a shard of its group is worn (LapenshardSlot's drop,
+    // lapenshardslot.cpp:150-158). The group is the shard's LapenGroupID in itemLapenshardUpgrade.xml, 0 for a shard
+    // with no row (CItemLapenshardTable::GetGroup); MyPC::HasEquippedLapenshardOfSameGroup (mypc.cpp:4261) compares
+    // it with every worn shard's, the slot's own included. A match is allowed only as a swap in that slot: the slot
+    // holds a different shard of the same group, and the group is not 0.
+    public static bool IsSameGroupWorn(int itemId, int slotItemId, IEnumerable<int> wornItemIds, Func<int, int> groupOf) {
+        int group = groupOf(itemId);
+        if (!wornItemIds.Any(worn => groupOf(worn) == group)) {
+            return false;
+        }
+
+        int slotGroup = groupOf(slotItemId);
+        return slotGroup == 0 || slotGroup != group || itemId == slotItemId;
+    }
+
     // The tier a fusion makes (lapenshard_upgrade_result, 21100060-21100064 "Fuse lapenshards to tier 6" to 10): the
     // LapenLevel of the next item's row in itemlapenshardupgrade.xml, which is the entry's level plus one in the data.
     public static int ResultTier(LapenshardUpgradeTable table, LapenshardUpgradeTable.Entry entry) {

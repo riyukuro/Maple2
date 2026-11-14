@@ -1012,6 +1012,13 @@ public class ConfigManager {
             }
         }
 
+        // Nor a second shard of a group already worn, but for a swap of the slot's own shard (the client's check).
+        lapenshards.TryGetValue(slot, out int slotItemId);
+        if (LapenshardRules.IsSameGroupWorn(lapenshard.Id, slotItemId, lapenshards.Values.Where(id => id > 0),
+                id => session.TableMetadata.LapenshardUpgradeTable.Entries.TryGetValue(id, out LapenshardUpgradeTable.Entry? entry) ? entry.GroupId : 0)) {
+            return false;
+        }
+
         if (lapenshard.Type.IsRedLapenshard && slot is not (LapenshardSlot.Red1 or LapenshardSlot.Red2)) {
             return false;
         }

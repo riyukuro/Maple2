@@ -72,4 +72,31 @@ public class LapenshardRulesTests {
         Assert.That(LapenshardRules.ResultTier(table, table.Entries[41000015]), Is.EqualTo(6));
         Assert.That(LapenshardRules.ResultTier(table, table.Entries[41000016]), Is.EqualTo(7));
     }
+
+    // KR itemLapenshardUpgrade.xml: 41000011 and 41000012 are tiers 1 and 2 of LapenGroupID 41000011, 41000021 is
+    // another group's; 0 has no row (group 0), as an empty slot.
+    private static int GroupOf(int itemId) => itemId switch {
+        41000011 or 41000012 => 41000011,
+        41000021 => 41000021,
+        _ => 0,
+    };
+
+    // lapenshardslot.cpp:150-158: a shard of a worn group is refused in another slot or an empty one; in the slot that
+    // holds a different shard of its group it is a swap. The same shard again is refused, in its slot or another.
+    [TestCase(41000012, 0, new[] { 41000011 }, ExpectedResult = true)]
+    [TestCase(41000012, 41000021, new[] { 41000011, 41000021 }, ExpectedResult = true)]
+    [TestCase(41000012, 41000011, new[] { 41000011 }, ExpectedResult = false)]
+    [TestCase(41000011, 41000011, new[] { 41000011 }, ExpectedResult = true)]
+    [TestCase(41000011, 0, new[] { 41000011 }, ExpectedResult = true)]
+    [TestCase(41000021, 0, new[] { 41000011 }, ExpectedResult = false)]
+    [TestCase(41000021, 41000011, new[] { 41000011 }, ExpectedResult = false)]
+    [TestCase(41000011, 0, new int[0], ExpectedResult = false)]
+    public bool SameGroupWorn(int itemId, int slotItemId, int[] worn) => LapenshardRules.IsSameGroupWorn(itemId, slotItemId, worn, GroupOf);
+
+    // Two shards with no upgrade row are both group 0: the client refuses the second one, also as a swap.
+    [Test]
+    public void SameGroupWorn_GroupZero() {
+        Assert.That(LapenshardRules.IsSameGroupWorn(41999998, 0, [41999999], GroupOf), Is.True);
+        Assert.That(LapenshardRules.IsSameGroupWorn(41999998, 41999999, [41999999], GroupOf), Is.True);
+    }
 }
