@@ -89,19 +89,21 @@ public partial class FieldManager {
     // Whether a region skill the caster placed, of this skill and level, is still in the field.
     // A region removed within the hit window (SkillHitRules.HitWindowMs) still counts: nearly every region is
     // removed on the first tick after its last fire, before the client's tags of that fire have met anything.
-    public bool HasFieldSkill(IActor caster, int skillId, short level) {
+    public bool HasFieldSkill(IActor caster, int skillId, short level) => FieldSkillsOf(caster, skillId, level).Any();
+
+    // The regions HasFieldSkill counts, those in the field first.
+    public IEnumerable<FieldSkill> FieldSkillsOf(IActor caster, int skillId, short level) {
         bool Matches(FieldSkill skill) => skill.Caster == caster && skill.Value.Id == skillId && skill.Value.Level == level;
-        if (fieldSkills.Values.Any(Matches)) {
-            return true;
+        foreach (FieldSkill skill in fieldSkills.Values.Where(Matches)) {
+            yield return skill;
         }
         foreach ((int objectId, (FieldSkill skill, long removedTick)) in removedSkills) {
             if (SkillHitRules.TooLate(FieldTick, removedTick)) {
                 removedSkills.TryRemove(objectId, out _);
             } else if (Matches(skill)) {
-                return true;
+                yield return skill;
             }
         }
-        return false;
     }
     public IEnumerable<FieldSkill> DebugCubeSkills => cubeSkills.Values;
 

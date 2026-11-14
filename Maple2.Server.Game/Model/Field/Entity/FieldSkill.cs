@@ -35,6 +35,24 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     private long nextInvokeTick;
     private readonly ILogger logger = Log.ForContext<FieldSkill>();
 
+    // How many times the region has fired, and how many tags of those fires each vibrate object has taken for each
+    // attack (VibrateHandler): every fire places each attack's tags, which send once per object they meet.
+    public int Fires { get; private set; }
+    private readonly Dictionary<(string EntityId, byte MotionPoint, byte AttackPoint), int> vibrates = new();
+
+    // Takes one of the region's fires for a tag of this attack on the vibrate object, false when each fire has
+    // already sent one.
+    public bool TakeVibrate(string entityId, byte motionPoint, byte attackPoint) {
+        lock (vibrates) {
+            vibrates.TryGetValue((entityId, motionPoint, attackPoint), out int taken);
+            if (taken >= Fires) {
+                return false;
+            }
+            vibrates[(entityId, motionPoint, attackPoint)] = taken + 1;
+            return true;
+        }
+    }
+
     // The point a cube skill's tile packets give: one block below the cube (SplashTiming.TilePoint).
     public Vector3 CubePosition { get; init; }
 
@@ -192,6 +210,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     }
 
     private void Fire() {
+        Fires++;
         // TODO: These are buffs? seems irrelevant to FieldSkill?
         // foreach (SkillEffectMetadata skill in Value.Data.Skills) {
         //     if (skill.Condition != null) {
