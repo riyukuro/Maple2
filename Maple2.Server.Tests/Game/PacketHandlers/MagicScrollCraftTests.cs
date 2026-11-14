@@ -28,14 +28,14 @@ public class MagicScrollCraftTests {
         return metadata with { Property = metadata.Property with { Tag = ItemTag.CharmStone } };
     }
 
-    private GameSession Start(int stones, int otherStones, long meso, ItemComponent[]? required = null, int recipeType = 1) {
+    private GameSession Start(int stones, int otherStones, long meso, ItemComponent[]? required = null, int recipeType = 1, int slot = 1) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(ScrollId));
         if (stones > 0) test.Store(Stone(StoneId), stones);
         if (otherStones > 0) test.Store(Stone(OtherStoneId), otherStones);
         test.Register(Stone(StoneId));
         test.SetTable(new EnchantScrollRecipeTable(new Dictionary<int, EnchantScrollRecipeTable.Entry> {
-            [RecipeId] = new(RecipeId, recipeType, 1, new ItemComponent(ScrollId, 4, 1, ItemTag.None), Meso,
+            [RecipeId] = new(RecipeId, recipeType, slot, new ItemComponent(ScrollId, 4, 1, ItemTag.None), Meso,
                 required ?? [new ItemComponent(StoneId, 4, 2000, ItemTag.CharmStone)], []),
         }));
         GameSession session = test.Start();
@@ -62,8 +62,16 @@ public class MagicScrollCraftTests {
     [TestCase(3, "FractoScrollTab01", ExpectedResult = 0)]
     [TestCase(4, "ProtectedScrollTab01", ExpectedResult = 0)]
     [TestCase(2, "EnchantScrollTab01", ExpectedResult = 1)] // another sub-tab's feature
-    public int Craft_NeedsTheTabFeatures(int recipeType, string feature) {
-        GameSession session = Start(2000, 0, Meso, recipeType: recipeType);
+    public int Craft_NeedsTheTabFeatures(int recipeType, string feature) => Craft(recipeType, 1, feature);
+
+    // Slots 7-10 are on the tab only with EnchantExpansion01 on (the slot is capped at 6 without it).
+    [TestCase(7, ExpectedResult = 0)]
+    [TestCase(10, ExpectedResult = 0)]
+    [TestCase(6, ExpectedResult = 1)]
+    public int Craft_OfAnExpansionSlotNeedsTheFeature(int slot) => Craft(1, slot, "EnchantExpansion01");
+
+    private int Craft(int recipeType, int slot, string feature) {
+        GameSession session = Start(2000, 0, Meso, recipeType: recipeType, slot: slot);
         test.SetFeaturesOff(feature);
 
         Craft(session);

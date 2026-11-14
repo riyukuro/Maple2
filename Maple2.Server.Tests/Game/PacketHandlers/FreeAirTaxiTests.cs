@@ -50,8 +50,14 @@ public class FreeAirTaxiTests {
         };
     }
 
-    private static (long Paid, long Fare) Ride(DateTime? eventEnd) {
+    private static (long Paid, long Fare) Ride(DateTime? eventEnd) => Ride(eventEnd, 3, true).Paid;
+
+    // Mode 3 pays in meso; mode 4 (the meret air taxi) pays in meret. Returns what each wallet lost.
+    private static ((long Paid, long Fare) Paid, long MeretPaid) Ride(DateTime? eventEnd, byte mode, bool meretTaxiOn) {
         var test = new TestGameSession();
+        if (!meretTaxiOn) {
+            test.SetFeaturesOff(TaxiHandler.MeretAirTaxiFeature);
+        }
         if (eventEnd != null) {
             test.AddEvent(1, GameEventType.FreeAirTaxi, new FreeAirTaxi(), DateTime.Now.AddDays(-3), eventEnd);
         }
@@ -66,18 +72,24 @@ public class FreeAirTaxiTests {
         session.Player.Value.Account.PremiumTime = 0;
         session.Player.Value.Unlock.Maps.Add(To);
         session.Currency.Meso = Meso;
+        session.Currency.Meret = Meso;
         new TaxiHandler {
             MapMetadata = test.MapMetadata,
             EntityMetadata = null!,
             TaxiRoute = null!,
             ServerTableMetadata = test.ServerTableMetadata,
         }.Handle(session, TestGameSession.Packet(writer => {
-            writer.WriteByte(3);
+            writer.WriteByte(mode);
             writer.WriteInt(To);
         }));
         long fare = TaxiRules.AirFare(GameLua.CalcAirTaxiCharge(session.Player.Value.Character.Level), 0f);
-        return (Meso - session.Currency.Meso, fare);
+        return ((Meso - session.Currency.Meso, fare), Meso - session.Currency.Meret);
     }
+
+    // The client sends mode 4 only with MeratAirTaxi on (cashcallmanager.cpp:123): with it off no meret is taken.
+    [TestCase(true, ExpectedResult = true)]
+    [TestCase(false, ExpectedResult = false)]
+    public bool MeretAirTaxi_NeedsTheFeature(bool on) => Ride(null, 4, on).MeretPaid > 0;
 
     [Test]
     public void WhileTheEventRuns_TheRideIsFree() {

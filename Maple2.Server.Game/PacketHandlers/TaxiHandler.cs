@@ -151,8 +151,15 @@ public class TaxiHandler : FieldPacketHandler {
             : FieldEnterPacket.Error(s_move_err_default));
     }
 
+    // Mode 4 is sent only for a cash call of kind 3, which the client picks only with MeratAirTaxi on
+    // (CCashCallManager, cashcallmanager.cpp:123; the world map asks for meret only then, uiworldmapdialog.cpp:2464).
+    public const string MeretAirTaxiFeature = "MeratAirTaxi";
+
     private void HandleMeretAirTaxi(GameSession session, IByteReader packet) {
         int mapId = packet.ReadInt();
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(MeretAirTaxiFeature)) {
+            return;
+        }
         if (!CheckMapCashCall(session, mapId, MapMetadata)) {
             return;
         }

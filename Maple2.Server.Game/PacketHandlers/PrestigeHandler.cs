@@ -19,6 +19,12 @@ public class PrestigeHandler : FieldPacketHandler {
         MissionReward = 5,
     }
 
+    // The mission reward (5) comes only from the new adventure level dialog (uiadventureleveldialog.cpp:556), which
+    // the game menu and every other opener show only with AdventureLevelMission on; with it off they show the old
+    // dialog, which sends the rank reward (3) only (gameeventmanagercli.cpp:930, uigamemenudialog.cpp:1494,
+    // scenestategame.cpp:8877-8945).
+    public const string MissionFeature = "AdventureLevelMission";
+
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
     public required TableMetadataStorage TableMetadata { private get; init; }
@@ -73,6 +79,9 @@ public class PrestigeHandler : FieldPacketHandler {
 
     private void HandleMissionReward(GameSession session, IByteReader packet) {
         int missionId = packet.ReadInt();
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(MissionFeature)) {
+            return;
+        }
 
         PrestigeMission? mission = session.Exp.PrestigeMissions.FirstOrDefault(m => m.Id == missionId);
         if (mission == null) {

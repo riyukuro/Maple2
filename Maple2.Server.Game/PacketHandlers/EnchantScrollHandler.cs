@@ -213,6 +213,10 @@ public class EnchantScrollHandler : FieldPacketHandler {
     // The scroll tab is there only with MagicScroll01 on, and each of its sub-tabs (the recipe's recipeType 1-4,
     // CEnchantScrollTable::FindRecipes) only with its own feature (UIMasteryDialog::FUN_140eb86b0, :1844-1853).
     public const string MagicScrollFeature = "MagicScroll01";
+    // The scroll tab has slots 1-10 with EnchantExpansion01 on and 1-6 with it off (UIMasteryDialog ctor, :365, and
+    // GetSelectedMagicScrollSlot, :1763, which caps the slot); the list shows only the selected slot's recipes.
+    public const string ExpansionFeature = "EnchantExpansion01";
+    public const int SlotsWithoutExpansion = 6;
 
     public static string? TabFeature(int recipeType) => recipeType switch {
         1 => "EnchantScrollTab01",
@@ -228,7 +232,8 @@ public class EnchantScrollHandler : FieldPacketHandler {
             return;
         }
         FeatureTable features = session.ServerTableMetadata.FeatureTable;
-        if (!features.IsOn(MagicScrollFeature) || TabFeature(recipe.RecipeType) is { } tab && !features.IsOn(tab)) {
+        if (!features.IsOn(MagicScrollFeature) || TabFeature(recipe.RecipeType) is { } tab && !features.IsOn(tab)
+            || recipe.Slot > SlotsWithoutExpansion && !features.IsOn(ExpansionFeature)) {
             return;
         }
 

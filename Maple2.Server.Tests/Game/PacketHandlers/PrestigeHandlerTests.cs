@@ -130,6 +130,20 @@ public class PrestigeHandlerTests {
         Assert.That(Held(session), Is.EqualTo(4));
     }
 
+    // The mission reward comes only from the new adventure level dialog, which the client shows only with
+    // AdventureLevelMission on: with it off nothing is given.
+    [Test]
+    public void MissionReward_NeedsAdventureLevelMission() {
+        GameSession session = Login();
+        test.SetFeaturesOff(PrestigeHandler.MissionFeature);
+
+        Claim(session, 5, MissionId);
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(Held(session), Is.EqualTo(0));
+        Assert.That(session.Exp.PrestigeMissions[0].Awarded, Is.False);
+    }
+
     // A mission whose levels are not gained yet, and a mission the account does not have.
     [Test]
     public void MissionReward_NotReachedGivesNothing() {

@@ -41,14 +41,22 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
         }
     }
 
+    // The dialog offers option locks only with OptionBlock01 on (its Flash enableOptionLock,
+    // UIItemRemakeScrollDialog, uiitemremakescrolldialog.cpp:288): with it off the client sends no lock.
+    public const string OptionLockFeature = "OptionBlock01";
+
     private void HandleChange(GameSession session, IByteReader packet) {
         long scrollUid = packet.ReadLong();
         long itemUid = packet.ReadLong();
         long ingredientUid = packet.ReadLong(); // the talent lock candy (UIItemRemakeScrollDialog m_nIngredientUid)
-        packet.ReadByte();
+        bool lockedFlag = packet.ReadBool();
 
         List<ItemRemakeRules.Lock>? locks = ItemRemakeRules.ReadLocks(packet);
         if (locks == null || !ItemRemakeRules.LocksAllowed(locks.Count, ItemRemakeRules.MaxLocks)) {
+            Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake, itemUid);
+            return;
+        }
+        if ((locks.Count > 0 || lockedFlag) && !session.ServerTableMetadata.FeatureTable.IsOn(OptionLockFeature)) {
             Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake, itemUid);
             return;
         }

@@ -56,6 +56,36 @@ public class ChangeAttributesPendingTests {
         });
     }
 
+    // The scroll dialog offers option locks only with OptionBlock01 on: a change with a lock (a kept option or the
+    // locked flag) is refused before anything else with it off. With it on the same request goes on to the scroll
+    // check (no such scroll here).
+    [TestCase(1, false, false, ExpectedResult = ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake)]
+    [TestCase(0, true, false, ExpectedResult = ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake)]
+    [TestCase(1, false, true, ExpectedResult = ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll)]
+    [TestCase(0, false, false, ExpectedResult = ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_scroll)]
+    public ChangeAttributesScrollError ScrollLocks_NeedOptionBlock(int keptOptions, bool lockedFlag, bool on) {
+        (GameSession session, Item item, _) = Start();
+        if (!on) {
+            test.SetFeaturesOff("OptionBlock01");
+        }
+
+        new ChangeAttributesScrollHandler { TableMetadata = null!, ItemStatsCalc = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1); // Change
+            writer.WriteLong(99); // no such scroll
+            writer.WriteLong(item.Uid);
+            writer.WriteLong(0);
+            writer.WriteBool(lockedFlag);
+            writer.WriteByte((byte) keptOptions);
+            for (int i = 0; i < keptOptions; i++) {
+                writer.WriteBool(true); // a special option
+                writer.WriteShort(5);
+            }
+        }));
+
+        byte[] sent = test.TakeSent().Single();
+        return (ChangeAttributesScrollError) BitConverter.ToInt32(sent, sent.Length - 4);
+    }
+
     [Test]
     public void ItemDialogResult_IsNotKeptByTheScrollDialog() {
         (GameSession session, Item item, Item result) = Start();
