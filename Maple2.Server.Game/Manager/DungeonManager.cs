@@ -113,8 +113,9 @@ public class DungeonManager {
     // The reset of the united weekly count (RoomDungeon 0x15, DungeonRoomRules.UnitedRewardResetError): record 1006's
     // weekly count goes to 0, and the account keeps the character and the end of its reward week, so no character of
     // the account resets again before then and the client shows the boost (0x16) for that character. The record and
-    // the account's mark are stored at once, together; a failed store keeps both as they were and answers nothing.
-    // The client shows no price for the reset, so it is free. The steps earned again pay what they pay the first time.
+    // the account's mark are stored at once, together; a failed store keeps both as they were and answers 0x21 (the
+    // reset switched off). The client shows no price for the reset, so it is free. The steps earned again pay what they
+    // pay the first time.
     public void ResetUnitedReward() {
         // The reset button shows only with the client feature (uidungeonhelper.cpp:273); off, the answer is the
         // client's text for the reset being switched off (0x21).
