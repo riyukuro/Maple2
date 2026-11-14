@@ -56,6 +56,7 @@ public partial class ChannelService {
 
         return new PlayerWarpResponse {
             RoomId = session.Field.RoomId,
+            MapId = session.Field.MapId,
             OwnerId = session.Field is HomeFieldManager home ? home.OwnerId : 0,
             X = session.Player.Position.X,
             Y = session.Player.Position.Y,

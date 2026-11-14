@@ -1121,10 +1121,12 @@ public sealed partial class GameSession : Core.Network.Session {
             position = default;
         }
 
-        character.ReturnPosition = default;
+        // The spot is used up only by a move that went: a refused one (no server, a field that cannot be made)
+        // keeps it for the next way out. For a move to another server it is cleared before that move's save.
+        void UseSpot() => character.ReturnPosition = default;
 
         if (character.MapId is Constant.DefaultHomeMapId) {
-            Migrate(mapId, position: position);
+            Migrate(mapId, beforeMove: UseSpot, position: position);
             return;
         }
 
@@ -1135,14 +1137,14 @@ public sealed partial class GameSession : Core.Network.Session {
                 houseRank.TryGetValue(Guild.Guild.HouseTheme, out GuildTable.House? house);
 
                 if (house?.MapId == character.MapId) {
-                    Migrate(mapId, position: position);
+                    Migrate(mapId, beforeMove: UseSpot, position: position);
                     return;
                 }
             }
         }
 
-        // If returning to a map, pass in the spawn point.
-        SendFieldEnter(PrepareField(mapId, position: position));
+        // If returning to a map, pass in the spawn point. PaidFieldChange runs UseSpot only once the change went.
+        SendFieldEnter(PaidFieldChange(mapId, UseSpot, position));
     }
 
     // Environment.TickCount64 of the last minute counted for play time (ConditionType.playtime); the session's start

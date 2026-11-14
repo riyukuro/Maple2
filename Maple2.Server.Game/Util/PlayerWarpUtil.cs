@@ -36,6 +36,11 @@ public static class PlayerWarpUtil {
         return targetRoomId == ownRoomId && targetMapId == ownMapId && targetOwnerId == ownOwnerId ? GoToKind.Portal : GoToKind.Field;
     }
 
+    // The map a move to a player goes to: the one the target's channel read with the position; the World's record
+    // (playerInfo.MapId) only when the channel named none. The record can still hold the map the target just left,
+    // and the position on the new map was used on the old one.
+    public static int TargetMap(int warpMapId, int recordMapId) => warpMapId != 0 ? warpMapId : recordMapId;
+
     // The home a move to a player goes into: the home the target is in when the move may enter homes, else
     // none (0), which for the home map means the mover's own home (GameSession.PrepareField).
     public static long TargetHome(bool intoHome, long targetOwnerId) {
@@ -63,21 +68,22 @@ public static class PlayerWarpUtil {
             return false;
         }
 
+        int targetMapId = TargetMap(warpResponse.MapId, playerInfo.MapId);
         var position = new Vector3(warpResponse.X, warpResponse.Y, warpResponse.Z + VERTICAL_SPAWN_OFFSET);
         long ownerId = TargetHome(intoHome, warpResponse.OwnerId);
         long ownOwnerId = session.Field is Manager.Field.HomeFieldManager ownHome ? ownHome.OwnerId : 0;
         GoToKind kind = intoHome
             ? Decide(playerInfo.Channel, session.Player.Value.Character.Channel, warpResponse.RoomId, session.Field.RoomId,
-                playerInfo.MapId, session.Player.Value.Character.MapId, ownerId, ownOwnerId)
+                targetMapId, session.Player.Value.Character.MapId, ownerId, ownOwnerId)
             : Decide(playerInfo.Channel, session.Player.Value.Character.Channel, warpResponse.RoomId, session.Field.RoomId,
-                playerInfo.MapId, session.Player.Value.Character.MapId);
+                targetMapId, session.Player.Value.Character.MapId);
         if (kind == GoToKind.Portal) {
             session.Send(PortalPacket.MoveByPortal(session.Player, position, session.Player.Rotation));
             return true;
         }
 
         if (kind == GoToKind.Field) {
-            if (!session.PrepareField(playerInfo.MapId, ownerId: ownerId, roomId: warpResponse.RoomId, position: position)) {
+            if (!session.PrepareField(targetMapId, ownerId: ownerId, roomId: warpResponse.RoomId, position: position)) {
                 session.SendFieldEnter(false);
                 return false;
             }
@@ -94,7 +100,7 @@ public static class PlayerWarpUtil {
                 MachineId = session.MachineId.ToString(),
                 Server = Server.World.Service.Server.Game,
                 Channel = playerInfo.Channel,
-                MapId = playerInfo.MapId,
+                MapId = targetMapId,
                 RoomId = warpResponse.RoomId,
                 PositionX = position.X,
                 PositionY = position.Y,
@@ -109,7 +115,7 @@ public static class PlayerWarpUtil {
 
             MigrateOutResponse response = session.World.MigrateOut(request);
             if (TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
-                session.Send(MigrationPacket.GameToGame(endpoint, response.Token, playerInfo.MapId));
+                session.Send(MigrationPacket.GameToGame(endpoint, response.Token, targetMapId));
                 session.State = SessionState.ChangeMap;
                 moved = true;
             } else {

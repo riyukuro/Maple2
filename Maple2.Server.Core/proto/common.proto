@@ -408,6 +408,8 @@ message PlayerWarpResponse {
   int32 room_id = 5;
   // The account that owns the target's field when it is a home; 0 otherwise.
   int64 owner_id = 6;
+  // The map the target stands on with x y z; the World's player record can still name the map they just left.
+  int32 map_id = 7;
 }
 
 // The profile of a player (CharacterInfo) on another channel. The response's packet is the CharacterInfo packet the
