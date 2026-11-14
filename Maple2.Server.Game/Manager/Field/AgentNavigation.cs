@@ -488,14 +488,28 @@ public sealed class AgentNavigation {
         return SetPathTo(end);
     }
 
-    // True when the goal is off the navmesh (no poly lies near it, so PathTo fails) or the npc itself stands off it
-    // after a flown leg (no path starts there). Chosen here: such an npc flies the leg back, as it flew off.
+    // True when the goal is off the navmesh or the npc itself stands off it after a flown leg (no path starts there;
+    // Chosen here: such an npc flies the leg back, as it flew off). A goal is off the mesh when no poly lies near it
+    // (PathTo fails), or when the nearest poly's closest point is more than OffMeshDistance from it across the ground,
+    // so a path would stop at the mesh's edge short of it: 63000015_cs's MS2PatrolData_201, 204 and 206 end 80 beyond
+    // the mesh, 52010018_qd's MS2PatrolData_1007_B 449, 52010055_qd's PatrolDataBalrog_Open_115 105.
     public bool GoalOffMesh(Vector3 goal) {
         if (!NpcPoly(out long startRef, out _) || startRef == 0) {
             return true;
         }
-        return field.FindNearestPoly(goal, out long endRef, out _) && endRef == 0;
+        if (!field.FindNearestPoly(goal, out long endRef, out RcVec3f end)) {
+            return false;
+        }
+        if (endRef == 0) {
+            return true;
+        }
+        Vector3 onMesh = DotRecastHelper.FromNavMeshSpace(end);
+        return new Vector2(onMesh.X - goal.X, onMesh.Y - goal.Y).Length() > OffMeshDistance;
     }
+
+    // How far across the ground the goal may lie from the navmesh and still be walked to. Chosen here: a third of a
+    // block, well above the mesh's own rounding at its edges (a few units) and below the 80 of 63000015_cs.
+    public const float OffMeshDistance = 50;
 
     // True when the npc and the goal both stand on the navmesh but no path joins them (a ledge one block up, a gap):
     // PathTo then walks the npc only to the edge of its own part of the mesh.

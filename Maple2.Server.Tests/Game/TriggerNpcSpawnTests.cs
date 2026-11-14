@@ -390,6 +390,20 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That(nearestSpawn, Is.GreaterThan(1500)); // the straight leg from (2600, 0) passes 1,664 from the spawn
     }
 
+    // A ground waypoint that lies beside the navmesh, past its edge but within the poly search box, is still reached:
+    // the path stops at the edge, so the npc flies the rest (Chosen here, as for a waypoint off the mesh). KR rows:
+    // 63000015_cs's MS2PatrolData_201, 204 and 206 end 80 units across the ground from the mesh, 52010018_qd's
+    // MS2PatrolData_1007_B 449 and 52010055_qd's PatrolDataBalrog_Open_115 105; before, each npc stopped at the edge.
+    [Test]
+    public void MoveNpc_WaypointBesideTheMeshIsReached() {
+        NpcMetadata mob = Npc(MobId, 0) with { Action = new NpcMetadataAction(0, 100, 200, [], 0, "") };
+        var route = new MS2PatrolData("1d2e3f40", "MS2PatrolData_201", false, 5, false,
+            [new MS2WayPoint("1", true, new Vector3(2150, 0, 0), Vector3.Zero, "Walk_A", "", 0, false)]);
+
+        FieldNpc npc = WalkPatrol(mob, ["Idle_A", "Walk_A", "Run_A"], route);
+        Assert.That(Vector3.Distance(npc.Position, new Vector3(2150, 0, 0)), Is.LessThan(10));
+    }
+
     // An npc whose model gives no walk or run speed (npcdata reads them from the model's walkSpeed/runSpeed and
     // keeps 0 without them, npcdata.cpp:654, 1526; 0 and 0 is a stationary npc, npcdata.cpp:798) still walks a
     // patrol that has a speed, at that speed: 02000026_in main sends Anos (11003313, model 02010044_Anos with
