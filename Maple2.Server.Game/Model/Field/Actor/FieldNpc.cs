@@ -692,6 +692,7 @@ public class FieldNpc : Actor<Npc> {
         lastAttackerObjectId = caster.ObjectId;
         if (caster is FieldPlayer hitPlayer) {
             DropHitLoot(hitPlayer);
+            DropHitRewardOrbs(hitPlayer);
             PlayerDamageCallback?.Invoke(hitPlayer, amount);
             if (Field is DungeonFieldManager dungeonField) {
                 dungeonField.CountMissions(hitPlayer, mission => mission.AddDamage(Value.Metadata.Id, amount));
@@ -892,6 +893,31 @@ public class FieldNpc : Actor<Npc> {
                 float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
                 Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id, dropKind: ItemDropKind.NpcHit);
             }
+        }
+    }
+
+    // The spirit and stamina orbs of the hitter's NpcHitRewardSpBall and NpcHitRewardEpBall rates (NpcHitRewardRules),
+    // dropped as the hit drops are, for the hitter alone.
+    private void DropHitRewardOrbs(FieldPlayer player) {
+        long now = Environment.TickCount64;
+        foreach ((SpecialAttribute attribute, int itemId) in NpcHitRewardRules.Orbs) {
+            double rate = player.Stats.Values[attribute].Multiplier();
+            if (rate <= 0) {
+                continue;
+            }
+            player.HitRewardOrbTicks.TryGetValue(itemId, out long lastDropTick);
+            if (!NpcHitRewardRules.Drops(lastDropTick, now, rate, Random.Shared.NextDouble())) {
+                continue;
+            }
+            Item? orb = Field.ItemDrop.CreateItem(itemId, amount: NpcHitRewardRules.OrbAmount);
+            if (orb == null) {
+                continue;
+            }
+            player.HitRewardOrbTicks[itemId] = now;
+            NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
+            float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
+            float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
+            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, orb, owner: this, characterId: player.Value.Character.Id, dropKind: ItemDropKind.NpcHit);
         }
     }
 

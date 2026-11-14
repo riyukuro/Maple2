@@ -111,6 +111,8 @@ public class FieldPlayer : Actor<Player> {
     public FieldEntity? StandingOnBlock { get; set; }
 
     public Tombstone? Tombstone { get; set; }
+    // The tick of the last spirit and stamina orb this player's hits dropped (NpcHitRewardRules), by orb item id.
+    public readonly Dictionary<int, long> HitRewardOrbTicks = new();
     // Pk field kills since this player's last death in the field (FieldManager.PkKill's streak notices).
     public int PkStreak { get; set; }
 
