@@ -75,8 +75,8 @@ public static class ItemRemakeRules {
 
     // The client's lock item (GetLockItemId, GetLockItemLevel; itemremakescrolldata.cpp:407): the lock tag of the
     // item's kind (armor 102, weapon 101, accessory 103, pet 104 in its tag table), and for an equip the equip's
-    // rarity, which the client asks only with OptionBlock02 (on in the played client). Any item with the tag and
-    // that rarity serves; a pet's lock item may be of any rarity.
+    // rarity, which the client asks only with OptionBlock02 (GetLockItemLevel is 0 with it off). Any item with the tag
+    // and that rarity serves; a pet's lock item, and any lock item with OptionBlock02 off, may be of any rarity.
     public static ItemTag? LockTag(bool armor, bool weapon, bool accessory, bool pet) {
         if (armor) {
             return ItemTag.LockItemOptionArmor;
@@ -90,7 +90,9 @@ public static class ItemRemakeRules {
         return pet ? ItemTag.LockItemOptionPet : null;
     }
 
-    public static int LockRarity(bool pet, int rarity) => pet ? 0 : rarity;
+    public const string LockRarityFeature = "OptionBlock02";
+
+    public static int LockRarity(bool pet, int rarity, bool byRarity) => pet || !byRarity ? 0 : rarity;
 
     public static bool IsLockItem(ItemTag lockTag, int lockRarity, ItemTag tag, int rarity) =>
         tag == lockTag && (lockRarity == 0 || rarity == lockRarity);

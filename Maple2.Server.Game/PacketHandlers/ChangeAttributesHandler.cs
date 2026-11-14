@@ -346,7 +346,8 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         if (lockTag == null) {
             return null;
         }
-        int lockRarity = ItemRemakeRules.LockRarity(changeItem.Type.IsPet, changeItem.Rarity);
+        int lockRarity = ItemRemakeRules.LockRarity(changeItem.Type.IsPet, changeItem.Rarity,
+            session.ServerTableMetadata.FeatureTable.IsOn(ItemRemakeRules.LockRarityFeature));
         bool vip = session.Config.IsPremiumClubActive();
         bool pet = lockTag == ItemTag.LockItemOptionPet;
         return session.Item.Inventory.Filter(item => ItemRemakeRules.IsLockItem(lockTag.Value, lockRarity, item.Metadata.Property.Tag, item.Rarity)

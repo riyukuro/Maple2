@@ -19,6 +19,7 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class ItemRemakeLockFeatureTests {
     private const int EarringId = 11200002;
     private const int ScrollId = 20000010;
+    private const int LockItemId = 30000990;
 
     private TestGameSession test = null!;
 
@@ -80,6 +81,23 @@ public class ItemRemakeLockFeatureTests {
         }));
 
         return (ChangeAttributesError) LastInt(test.TakeSent().Single());
+    }
+
+    // A rarity 2 accessory lock item serves the rarity 4 earring only with OptionBlock02 off: with it on the client asks
+    // a lock item of the earring's rarity (GetLockItemLevel, itemremakescrolldata.cpp:428).
+    [TestCase(true, ExpectedResult = false)]
+    [TestCase(false, ExpectedResult = true)]
+    public bool LockItem_RarityOnlyWithOptionBlock02(bool on) {
+        (GameSession session, Item item) = on ? Start() : Start(ItemRemakeRules.LockRarityFeature);
+        ItemMetadata lockMetadata = TestGameSession.Metadata(LockItemId, type: 4);
+        test.Register(lockMetadata with { Property = lockMetadata.Property with { Tag = ItemTag.LockItemOptionAccessory } });
+        Item lockItem = session.Field!.ItemDrop.CreateItem(LockItemId, rarity: 2)!;
+        Assert.That(session.Item.Inventory.Add(lockItem, commit: true), Is.True);
+        lockItem = session.Item.Inventory.Find(LockItemId).Single();
+
+        lock (session.Item) {
+            return ChangeAttributesHandler.GetLockConsumeItem(session, item, 0)?.Uid == lockItem.Uid;
+        }
     }
 
     // ChangeAttributesScroll 1 with the Strength option kept: with the item kind's feature off it is refused before

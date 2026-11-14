@@ -73,18 +73,23 @@ public class ItemRemakeRulesTests {
         Assert.That(ItemRemakeRules.LockTag(false, false, false, false), Is.Null);
     }
 
-    // An equip takes a lock item of its own rarity; a pet takes one of any rarity.
+    // An equip takes a lock item of its own rarity (with OptionBlock02 on); a pet takes one of any rarity.
     [Test]
     public void LockItemRarity() {
-        int equip = ItemRemakeRules.LockRarity(false, 4);
+        int equip = ItemRemakeRules.LockRarity(false, 4, true);
         Assert.That(ItemRemakeRules.IsLockItem(ItemTag.LockItemOptionAccessory, equip, ItemTag.LockItemOptionAccessory, 4), Is.True);
         Assert.That(ItemRemakeRules.IsLockItem(ItemTag.LockItemOptionAccessory, equip, ItemTag.LockItemOptionAccessory, 5), Is.False);
         Assert.That(ItemRemakeRules.IsLockItem(ItemTag.LockItemOptionAccessory, equip, ItemTag.LockItemOptionArmor, 4), Is.False);
 
-        int pet = ItemRemakeRules.LockRarity(true, 6);
+        int pet = ItemRemakeRules.LockRarity(true, 6, true);
         Assert.That(pet, Is.EqualTo(0));
         Assert.That(ItemRemakeRules.IsLockItem(ItemTag.LockItemOptionPet, pet, ItemTag.LockItemOptionPet, 3), Is.True);
         Assert.That(ItemRemakeRules.IsLockItem(ItemTag.LockItemOptionPet, pet, ItemTag.LockItemOptionPet, 5), Is.True);
+
+        // OptionBlock02 off: the client asks lock level 0 (GetLockItemLevel), so any rarity serves.
+        int anyRarity = ItemRemakeRules.LockRarity(false, 4, false);
+        Assert.That(anyRarity, Is.EqualTo(0));
+        Assert.That(ItemRemakeRules.IsLockItem(ItemTag.LockItemOptionAccessory, anyRarity, ItemTag.LockItemOptionAccessory, 5), Is.True);
     }
 
     // Only a lock item the character can use counts (PC::CanUseItem): not expired, premium club only with it, not
