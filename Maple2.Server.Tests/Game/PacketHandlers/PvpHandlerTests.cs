@@ -30,6 +30,13 @@ public class PvpHandlerTests {
         return test;
     }
 
+    // A player of the windows' register level (PvpHandler.MinLevel).
+    private static GameSession Start(TestGameSession test, short level = PvpHandler.MinLevel) {
+        GameSession session = test.Start();
+        session.Player.Value.Character.Level = level;
+        return session;
+    }
+
     private static List<string> Send(TestGameSession test, GameSession session, string hex) {
         test.TakeSent();
         new PvpHandler().Handle(session, TestGameSession.Packet(writer => writer.WriteBytes(Convert.FromHexString(hex))));
@@ -38,7 +45,7 @@ public class PvpHandlerTests {
 
     private static List<string> Send(string hex) {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         return Send(test, session, hex);
     }
 
@@ -46,7 +53,7 @@ public class PvpHandlerTests {
     [Test]
     public void RankDuelRegister_IsQueued() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         Assert.That(Send(test, session, "0E"), Is.EqualTo(new[] { "B600" + "0E" }));
         Assert.That(test.World.PvpRequests.Single().PvpCase, Is.EqualTo(PvpRequest.PvpOneofCase.Register));
         // No record yet: the start rating goes to the queue.
@@ -58,7 +65,7 @@ public class PvpHandlerTests {
     [Test]
     public void RankDuelRegister_QueuedAlready_StaysQueued() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         test.World.PvpResponses[PvpRequest.PvpOneofCase.Register] = new PvpResponse { Error = (int) RankDuelError.Queued };
         Assert.That(Send(test, session, "0E"), Is.EqualTo(new[] { "B600" + "0E" }));
     }
@@ -68,7 +75,7 @@ public class PvpHandlerTests {
     [Test]
     public void RankDuelRegister_FeatureOff_IsRefused() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         test.SetFeaturesOff("PvPRankingDuelMode");
         Assert.That(Send(test, session, "0E"), Is.EqualTo(new[] { "B600" + "10" + "00" }));
         Assert.That(test.World.PvpRequests, Is.Empty);
@@ -79,7 +86,7 @@ public class PvpHandlerTests {
     [TestCase("10")]
     public void RankDuel_Dead_IsRefused(string request) {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         typeof(Maple2.Server.Game.Model.FieldPlayer)
             .GetField("isDead", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .SetValue(session.Player, true);
@@ -93,18 +100,31 @@ public class PvpHandlerTests {
     [TestCase("10")]
     public void RankDuel_FromADungeon_IsRefused(string request) {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000062));
         Assert.That(Send(test, session, request), Is.EqualTo(new[] { "B600" + "10" + "00" }));
         Assert.That(test.World.PvpRequests, Is.Empty);
         Assert.That(test.World.Moves, Is.Empty);
     }
 
+    // Under the register level (CFeatureManager::FUN_14036dc20, 50; UIRankPvPDialog and UIIndividualPvPDialog refuse
+    // with string 0x42a before they send): the rank duel gets its failed box, the arena Pvp 10, and the World is
+    // not asked.
+    [TestCase("0E", "B600" + "10" + "00")]
+    [TestCase("09" + "01000000", "B600" + "0A")]
+    [TestCase("09" + "03000000", "B600" + "0A")]
+    public void Register_UnderTheLevel_IsRefused(string request, string answer) {
+        TestGameSession test = NewTest();
+        GameSession session = Start(test, PvpHandler.MinLevel - 1);
+        Assert.That(Send(test, session, request), Is.EqualTo(new[] { answer }));
+        Assert.That(test.World.PvpRequests, Is.Empty);
+    }
+
     // The move into the match field fails after the World's join: the client leaves state 2 (failed box).
     [Test]
     public void RankDuelJoin_MoveFails_GetsTheFailedMatch() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         test.World.PvpResponses[PvpRequest.PvpOneofCase.Join] = new PvpResponse { Channel = 1, MapId = 65010004, RoomId = 321 };
         test.World.MoveAddress = "";
         List<string> sent = Send(test, session, "10");
@@ -115,7 +135,7 @@ public class PvpHandlerTests {
     [Test]
     public void RankDuelRegister_Refused_GetsTheFailedMatch() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         test.World.PvpResponses[PvpRequest.PvpOneofCase.Register] = new PvpResponse { Error = (int) RankDuelError.Busy };
         Assert.That(Send(test, session, "0E"), Is.EqualTo(new[] { "B600" + "0E", "B600" + "10" + "00" }));
     }
@@ -123,7 +143,7 @@ public class PvpHandlerTests {
     [Test]
     public void RankDuelUnregister_LeavesTheQueue() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         Assert.That(Send(test, session, "0F"), Is.EqualTo(new[] { "B600" + "0F" }));
         Assert.That(test.World.PvpRequests.Single().PvpCase, Is.EqualTo(PvpRequest.PvpOneofCase.Unregister));
     }
@@ -132,7 +152,7 @@ public class PvpHandlerTests {
     [Test]
     public void RankDuelJoin_NoMatch_GetsTheFailedMatch() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         test.World.PvpResponses[PvpRequest.PvpOneofCase.Join] = new PvpResponse { Error = (int) RankDuelError.NoMatch };
         Assert.That(Send(test, session, "10"), Is.EqualTo(new[] { "B600" + "10" + "00" }));
         Assert.That(test.World.Moves, Is.Empty);
@@ -142,7 +162,7 @@ public class PvpHandlerTests {
     [Test]
     public void RankDuelJoin_MovesIntoTheMatchField() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         test.World.PvpResponses[PvpRequest.PvpOneofCase.Join] = new PvpResponse { Channel = 1, MapId = 65010004, RoomId = 321 };
         Send(test, session, "10");
         MigrateOutRequest move = test.World.Moves.Single();
@@ -155,7 +175,7 @@ public class PvpHandlerTests {
     [Test]
     public void RankDuelJoin_OnTheReturnMap_KeepsTheSpot() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         session.Player.Position = new System.Numerics.Vector3(100, 200, 300);
         test.World.PvpResponses[PvpRequest.PvpOneofCase.Join] = new PvpResponse { Channel = 1, MapId = 65010004, RoomId = 321 };
         Send(test, session, "10");
@@ -167,7 +187,7 @@ public class PvpHandlerTests {
     [Test]
     public void RankDuelJoin_FromAnInstancedHall_KeepsTheReturnPosition() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         var before = new System.Numerics.Vector3(1, 2, 3);
         session.Player.Value.Character.ReturnPosition = before;
         test.EnterMap(TestGameSession.Map(63000047));
@@ -184,7 +204,7 @@ public class PvpHandlerTests {
     [Test]
     public void ArenaRegister_IsQueued() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         var response = new PvpResponse();
         response.ArenaWaits.Add(1, 4000);
         test.World.PvpResponses[PvpRequest.PvpOneofCase.ArenaRegister] = response;
@@ -203,7 +223,7 @@ public class PvpHandlerTests {
     [Test]
     public void ArenaUnregister_LeavesTheQueue() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         Assert.That(Send(test, session, "0A"), Is.EqualTo(new[] { "B600" + "0A",
             "B600" + "0C" + "03" + "01000000" + "00000000" + "02000000" + "00000000" + "03000000" + "00000000" }));
         Assert.That(test.World.PvpRequests.Single().PvpCase, Is.EqualTo(PvpRequest.PvpOneofCase.ArenaUnregister));
@@ -213,7 +233,7 @@ public class PvpHandlerTests {
     [Test]
     public void ArenaJoin() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         test.World.PvpResponses[PvpRequest.PvpOneofCase.ArenaJoin] = new PvpResponse { Error = (int) RankDuelError.NoMatch };
         Assert.That(Send(test, session, "0B"), Is.EqualTo(new[] { "B600" + "0A" }));
         test.World.PvpResponses[PvpRequest.PvpOneofCase.ArenaJoin] = new PvpResponse { Channel = 1, MapId = 65000002, RoomId = 77 };
@@ -234,7 +254,7 @@ public class PvpHandlerTests {
     [Test]
     public void ObserveOffer_NotInADungeon() {
         TestGameSession test = NewTest();
-        GameSession session = test.Start();
+        GameSession session = Start(test);
         Assert.That(PvpHandler.TakesObserveOffer(session), Is.True);
         test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000062));
         Assert.That(PvpHandler.TakesObserveOffer(session), Is.False);

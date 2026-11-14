@@ -78,6 +78,10 @@ public class PvpHandler : FieldPacketHandler {
         }
     }
 
+    // The level the rank duel and arena windows register from (CFeatureManager::FUN_14036dc20; UIRankPvPDialog,
+    // UIIndividualPvPDialog: string 0x42a under it, nothing sent).
+    public const short MinLevel = 50;
+
     // The register is answered first (state 1), then the World queues the character: a match the World makes at
     // once is then told after it. A refusal takes the client back to state 0 with the matching failed box.
     private static void HandleRankDuelRegister(GameSession session) {
@@ -87,7 +91,8 @@ public class PvpHandler : FieldPacketHandler {
         }
         // The rank duel arenas are the maps of the PvPRankingDuelMode feature (KR level 13): with the feature off in the
         // operator's feature.xml there is no arena to fight in, so the register is refused before the World is asked.
-        if (!CanLeave(session) || !session.ServerTableMetadata.FeatureTable.IsOn(RankDuelFeature)) {
+        if (!CanLeave(session) || !session.ServerTableMetadata.FeatureTable.IsOn(RankDuelFeature)
+            || session.Player.Value.Character.Level < MinLevel) {
             session.Send(PvpPacket.RankDuelMatchFailed());
             return;
         }
@@ -143,11 +148,12 @@ public class PvpHandler : FieldPacketHandler {
         MoveToMatch(session, response, PvpPacket.RankDuelMatchFailed());
     }
 
-    // The individual arena (Pvp 9 with the arena; CSceneStateGame::OnPvp 9/10/11). Only an arena whose field runs a
-    // round the server builds is queued (PvpMatchMaps.PlayableArenaFields); the others get Pvp 10, the client's
-    // state 0, as before. The register is answered first (state 1), then the World queues the character.
+    // The individual arena (Pvp 9 with the arena; CSceneStateGame::OnPvp 9/10/11), from MinLevel. Only an arena
+    // whose field runs a round the server builds is queued (PvpMatchMaps.PlayableArenaFields); the others get Pvp 10,
+    // the client's state 0, as before. The register is answered first (state 1), then the World queues the character.
     private static void HandleArenaRegister(GameSession session, int arenaType) {
         if (session.Field?.RankDuel != null || session.Field?.Arena != null || !CanLeave(session)
+            || session.Player.Value.Character.Level < MinLevel
             || !session.TableMetadata.IndividualArenaTable.Entries.TryGetValue(arenaType, out IndividualArenaTable.Entry? arena)
             || !PvpMatchMaps.PlayableArenaFields.Contains(arena.FieldId)) {
             session.Send(PvpPacket.ArenaUnregistered());
