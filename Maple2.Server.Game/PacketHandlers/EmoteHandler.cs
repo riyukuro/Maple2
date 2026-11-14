@@ -79,6 +79,12 @@ public class EmoteHandler : FieldPacketHandler {
         if (!UseAllowed(emoteId, session.Player.Value.Unlock.Emotes.Contains(emoteId), session.Field?.MapId ?? 0, caught)) {
             return;
         }
+        // The client sends the emote skill's own emotion name (its <kinds emotion>, stateskill.cpp:1906-1909, its
+        // only Use sender), and the emotion condition counts that name; a use naming another emotion is dropped.
+        if (session.SkillMetadata?.TryGet(emoteId, 1, out SkillMetadata? skill) == true && !KeyMatches(skill.Property.Emotion, aniKey)) {
+            Logger.Debug("Dropped emote {EmoteId} sent with another emotion {AniKey}", emoteId, aniKey);
+            return;
+        }
 
         session.ConditionUpdate(ConditionType.emotion, codeString: aniKey);
         session.Buffs.TriggerEvent(session.Player, session.Player, session.Player, EventConditionType.OnEmote, skillId: emoteId);
@@ -94,6 +100,8 @@ public class EmoteHandler : FieldPacketHandler {
         }
         return learned;
     }
+
+    public static bool KeyMatches(string? emotion, string aniKey) => string.Equals(emotion ?? string.Empty, aniKey, StringComparison.OrdinalIgnoreCase);
 
     public const int ApplaudEmoteId = 90210001;
     public const int GlowstickEmoteId = 90210002;
