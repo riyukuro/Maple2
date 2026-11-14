@@ -17,11 +17,27 @@ public class BeautyRandomHairTests {
     private TestGameSession test = null!;
     private GameSession session => test.Session;
 
-    private void Start(BeautyShopType type) {
+    // pickable: the shop's row has a hair item with a default hair, the hair palette exists and the character wears a
+    // hair, so the pick can be made.
+    private void Start(BeautyShopType type, bool pickable = false, ShopCurrencyType currency = ShopCurrencyType.Meso) {
         test = new TestGameSession();
+        if (pickable) {
+            test.Register(TestGameSession.Metadata(10200001, EquipSlot.HR) with { DefaultHairs = [new DefaultHairMetadata(MinScale: 0.5f, MaxScale: 1f)] });
+            test.Store(TestGameSession.Metadata(10200002, EquipSlot.HR), 1, ItemGroup.Outfit, EquipSlot.HR);
+            test.SetTable(new ColorPaletteTable(new Dictionary<int, IReadOnlyDictionary<int, ColorPaletteTable.Entry>> {
+                [Constant.HairPaletteId] = new Dictionary<int, ColorPaletteTable.Entry> {
+                    [0] = new(default, default, default, 0, 0),
+                },
+            }));
+            test.SetTable(new ItemOptionPickTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionPickTable.Option>>()));
+            test.SetTable(new ItemOptionConstantTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>>()));
+            test.SetTable(new ItemOptionStaticTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+            test.SetTable(new ItemOptionRandomTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+        }
         test.Start();
         test.EnterMap(TestGameSession.Map(2000062));
-        var style = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 300, string.Empty, 0);
+        session.Beauty = new BeautyManager(session);
+        var style = new BeautyShopCostMetadata(currency, 300, string.Empty, 0);
         var color = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 0, string.Empty, 0);
         var row = new BeautyShopItem(10200001, style, 1, 0, 0, 0, ShopItemLabel.None);
         session.BeautyShop = new BeautyShop(new BeautyShopMetadata(ShopId, BeautyShopCategory.Hair, 0, style, color, false, false, 0, 0,
@@ -29,6 +45,7 @@ public class BeautyRandomHairTests {
             Type = type,
         };
         session.Currency.Meso = 5000;
+        session.Currency.Meret = 5000;
         test.TakeSent();
     }
 
@@ -58,11 +75,33 @@ public class BeautyRandomHairTests {
 
     [Test]
     public void APickInARandomShopTakesTheStyleFee() {
-        Start(BeautyShopType.Random);
+        Start(BeautyShopType.Random, pickable: true);
 
         Pick();
 
         Assert.That(session.Currency.Meso, Is.EqualTo(4700L));
+        Assert.That(session.Item.Equips.Get(EquipSlot.HR)?.Id, Is.EqualTo(10200001));
+    }
+
+    // The fee is taken only once the pick can be made: with no metadata for the row's hair (not pickable) it took
+    // the merets and gave nothing.
+    [Test]
+    public void APickThatFindsNoHairKeepsTheMerets() {
+        Start(BeautyShopType.Random, currency: ShopCurrencyType.Meret);
+
+        Pick();
+
+        Assert.That(session.Currency.Meret, Is.EqualTo(5000L));
+    }
+
+    [Test]
+    public void APickWithNoWornHairKeepsTheMerets() {
+        Start(BeautyShopType.Random, pickable: true, currency: ShopCurrencyType.Meret);
+        Assert.That(session.Item.Equips.Unequip(session.Item.Equips.Get(EquipSlot.HR)!.Uid), Is.True);
+
+        Pick();
+
+        Assert.That(session.Currency.Meret, Is.EqualTo(5000L));
     }
 
     // Beauty 12 "keep the old hair" with no random pick waiting gives nothing; it gave the shop's return coupon each

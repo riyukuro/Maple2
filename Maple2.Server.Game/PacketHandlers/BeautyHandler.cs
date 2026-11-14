@@ -370,16 +370,6 @@ public class BeautyHandler : FieldPacketHandler {
         }
         BeautyShop shop = session.BeautyShop;
 
-        if (useVoucher) {
-            if (!PayWithVoucher(session, shop)) {
-                return;
-            }
-        } else {
-            if (!PayWithCurrency(session, shop, shop.Metadata.StyleCostMetadata)) {
-                return;
-            }
-        }
-
         WeightedSet<BeautyShopItem> weightedSet = new();
         foreach (BeautyShopItem item in shop.Items) {
             weightedSet.Add(item, item.Weight);
@@ -418,16 +408,27 @@ public class BeautyHandler : FieldPacketHandler {
         newHair.Appearance = hairAppearance;
         newHair.Group = ItemGroup.Outfit;
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        newHair = db.CreateItem(session.CharacterId, newHair);
-        if (newHair == null) {
-            return;
-        }
-
-        // Save old hair
         Item? prevHair = session.Item.Equips.Get(EquipSlot.HR);
         if (prevHair == null) {
             Logger.Error("Player {PlayerId} has no previous hair to save for random hair", session.Player.Value.Character.Id);
+            return;
+        }
+
+        // The fee is taken once every lookup above passed: it was taken first, so a pick that found no hair row, no
+        // palette or no worn hair took the fee and gave nothing.
+        if (useVoucher) {
+            if (!PayWithVoucher(session, shop)) {
+                return;
+            }
+        } else {
+            if (!PayWithCurrency(session, shop, shop.Metadata.StyleCostMetadata)) {
+                return;
+            }
+        }
+
+        using GameStorage.Request db = session.GameStorage.Context();
+        newHair = db.CreateItem(session.CharacterId, newHair);
+        if (newHair == null) {
             return;
         }
         session.Beauty.SavePreviousHair(prevHair);
