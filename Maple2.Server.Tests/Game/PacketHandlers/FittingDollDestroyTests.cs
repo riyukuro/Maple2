@@ -9,6 +9,7 @@ using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
@@ -125,6 +126,15 @@ public class FittingDollDestroyTests {
         Start(() => 880_000_001);
         Assert.That(Destroy(top.Uid), Is.EqualTo(new[] { PutOff() }));
         Assert.That(Row(top.Uid), Is.Null);
+    }
+
+    // With FittingDollEquipAll off the client never asks: the request is dropped and nothing is sent.
+    [Test]
+    public void EquipAllFeatureOff_IsDropped() {
+        Start(() => NewCharacter(OtherAccount));
+        test.SetFeaturesOff(FittingDollRules.EquipAllFeature);
+        Assert.That(Destroy(top.Uid), Is.Empty);
+        AssertKept();
     }
 
     // Another character of the account gets the item back with a take-off or a recall, so it is not destroyed.

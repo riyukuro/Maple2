@@ -7,6 +7,10 @@ namespace Maple2.Model.Validators;
 // The home mannequin (FittingDoll 0x42 / 0x7B). The result codes are the ones the client's doll notice reads
 // (FUN_14121b840, client/ms2/fittingdollslot_1.cpp:201), each naming its s_fittingdoll_ string.
 public static class FittingDollRules {
+    // The client asks to destroy a doll item (mode 9) only while FittingDollEquipAll (id 212, 0xd4) is on: the
+    // s_strDestroyDollItem box (uimessagebox.cpp:1196) and the recall's ask (fittingdollslot_2.cpp:325) check it.
+    public const string EquipAllFeature = "FittingDollEquipAll";
+
     public enum Error {
         None = 0,
         InventoryFull = 1, // s_fittingdoll_InventoryFull

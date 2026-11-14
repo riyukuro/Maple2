@@ -313,9 +313,12 @@ public class FittingDollHandler : FieldPacketHandler {
     // reasons 4 and 5: the character of the item's binding, or of a gem's (FittingDollRules.BindingOwner), is not in
     // the account's character list): after the owner confirms
     // s_strDestroyDollItem on a take-off (uimessagebox.cpp:1433), and for each such item before a recall (mypc.cpp:4095,
-    // then mode 10). It needs feature FittingDollEquipAll (0xd4), on in KR. The row is deleted only while it is still
+    // then mode 10). While FittingDollEquipAll (0xd4, on in KR) is off the request is dropped. The row is deleted only while it is still
     // on the cube; the field then gets the take-off (0x7B mode 7), as the client has no other answer for it.
     private FittingDollRules.Error Destroy(GameSession session, long dollUid, long itemUid) {
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(FittingDollRules.EquipAllFeature)) {
+            return FittingDollRules.Error.None;
+        }
         FieldFittingDoll? doll = session.Field?.GetFittingDoll(dollUid);
         if (doll == null) {
             return FittingDollRules.Error.InvalidDoll;
