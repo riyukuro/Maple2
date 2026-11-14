@@ -54,6 +54,20 @@ public class HeartbeatRulesTests {
         Assert.That(HeartbeatRules.MarksOffline(1, 1, tracker.IsLeaving(7, 1, Start + Lifetime)), Is.True);
     }
 
+    // The channel a player goes to, only for the channel they left and only while the token is valid.
+    [Test]
+    public void Tracker_KnowsTheTarget() {
+        var tracker = new MigrationTracker(Lifetime);
+        tracker.Begin(7, 1, 2, Start);
+
+        Assert.Multiple(() => {
+            Assert.That(tracker.TargetOf(7, 1, Start), Is.EqualTo(2));
+            Assert.That(tracker.TargetOf(7, 2, Start), Is.EqualTo(-1));
+            Assert.That(tracker.TargetOf(8, 1, Start), Is.EqualTo(-1));
+            Assert.That(tracker.TargetOf(7, 1, Start + Lifetime), Is.EqualTo(-1));
+        });
+    }
+
     [Test]
     public void Tracker_KnowsOnlyWhoLeft() {
         var tracker = new MigrationTracker(Lifetime);

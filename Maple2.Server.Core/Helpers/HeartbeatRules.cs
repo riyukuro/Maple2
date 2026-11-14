@@ -57,7 +57,7 @@ public static class HeartbeatRules {
 // migration token is valid; after that the player can no longer arrive, and a failed heartbeat counts again.
 public class MigrationTracker {
     private readonly TimeSpan lifetime;
-    private readonly ConcurrentDictionary<long, (int Channel, DateTime At)> leaving = new();
+    private readonly ConcurrentDictionary<long, (int Channel, int To, DateTime At)> leaving = new();
 
     public MigrationTracker(TimeSpan lifetime) {
         this.lifetime = lifetime;
@@ -70,7 +70,7 @@ public class MigrationTracker {
             return;
         }
 
-        leaving[characterId] = (fromChannel, now);
+        leaving[characterId] = (fromChannel, toChannel, now);
     }
 
     // The channel change is over: the record's channel was written (the login on the new channel, or a logout).
@@ -83,15 +83,25 @@ public class MigrationTracker {
     // True while the player is on the way out of `channel`. An entry of another channel says nothing: the
     // player has arrived and the record names the new channel.
     public bool IsLeaving(long characterId, int channel, DateTime now) {
-        if (!leaving.TryGetValue(characterId, out (int Channel, DateTime At) entry)) {
-            return false;
+        return Current(characterId, now) is { } entry && entry.Channel == channel;
+    }
+
+    // The channel a player on the way out of `channel` goes to, -1 for none. The session there can be loaded
+    // (and play) before its login writes the record's channel.
+    public int TargetOf(long characterId, int channel, DateTime now) {
+        return Current(characterId, now) is { } entry && entry.Channel == channel ? entry.To : -1;
+    }
+
+    private (int Channel, int To, DateTime At)? Current(long characterId, DateTime now) {
+        if (!leaving.TryGetValue(characterId, out (int Channel, int To, DateTime At) entry)) {
+            return null;
         }
 
         if (now < entry.At || now - entry.At >= lifetime) {
             leaving.TryRemove(characterId, out _);
-            return false;
+            return null;
         }
 
-        return entry.Channel == channel;
+        return entry;
     }
 }

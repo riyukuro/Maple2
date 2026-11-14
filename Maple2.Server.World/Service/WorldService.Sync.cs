@@ -132,6 +132,10 @@ public partial class WorldService {
         }
 
         int channel = info.Channel;
+        // A player on the way to another channel: the session there can be loaded and play while the record still
+        // names this channel (its login writes the new channel only after the load). Read before the record is set
+        // offline, which ends the channel change.
+        int target = worldServer.Migrations.TargetOf(info.CharacterId, channel, DateTime.UtcNow);
         if (!channelClients.TryGetClient(channel, out channelClient)) {
             logger.Error("No registry for channel: {Channel}", channel);
             return Task.FromResult(new DisconnectResponse());
@@ -140,6 +144,13 @@ public partial class WorldService {
         DisconnectResponse disconnectResponse = channelClient.Disconnect(new DisconnectRequest {
             CharacterId = info.CharacterId,
         });
+        // Not on the record's channel: the session that arrived on the target is ended, else it plays on next to a
+        // login that ended "the account's session" (a second client of the account would get in next to it).
+        if (!disconnectResponse.Success && target != -1 && channelClients.TryGetClient(target, out ChannelClient? targetClient)) {
+            disconnectResponse = targetClient.Disconnect(new DisconnectRequest {
+                CharacterId = info.CharacterId,
+            });
+        }
 
         if (!disconnectResponse.Success) {
             logger.Information("Disconnect failed for character: {CharacterId}", info.CharacterId);
