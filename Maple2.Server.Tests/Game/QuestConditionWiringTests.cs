@@ -237,6 +237,8 @@ public class QuestConditionWiringTests : TriggerTestBase {
         typeof(Actor<Player>).GetField("<ActiveSkills>k__BackingField", Any)!.SetValue(test.Session.Player, new SkillQueue());
         // The config as a login loads it, and a job tree without these skills (quest and item skills are in none).
         PacketHandlers.ProgressionOrderTests.LoadConfig(test, test.Session);
+        // A cast keeps for its magic paths' flight (SkillHitRules.CastKeepMs): none here.
+        test.SetTable(new MagicPathTable(new Dictionary<long, IReadOnlyList<MagicPath>>()));
         test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
             [JobCode.Newbie] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
                 [SkillRank.Basic] = [], [SkillRank.Awakening] = [],
@@ -841,7 +843,7 @@ public class QuestConditionWiringTests : TriggerTestBase {
         record.Hits.Open(Field.FieldTick);
         record.Hits.TakePoint(0, 0, held: false, count: 1, Field.FieldTick);
         record.Hits.Declare(1000, 0, 0);
-        test.Session.Player.ActiveSkills.Add(record);
+        test.Session.Player.ActiveSkills.Add(record, test.Session.Field!.FieldTick);
         var handler = new BreakableHandler { SkillMetadata = storage };
         void Break(string entityId) => handler.Handle(test.Session, TestGameSession.Packet(writer => {
             writer.WriteString(entityId);

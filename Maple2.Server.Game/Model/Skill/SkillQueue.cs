@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Model.Skill;
 
@@ -7,22 +8,24 @@ namespace Maple2.Server.Game.Model.Skill;
 public class SkillQueue {
     private const int MAX_PENDING = 3;
     // The casts a late packet may still name. The client keeps a cast's attack areas, and sends their breakable hits,
-    // after the player has cast again (a magic still on its way, a lingering area), so these outlive the pending three.
-    // 32 is the server's bound, not a client count: the client keeps an area as long as its cast lives.
-    private const int MAX_RECENT = 32;
+    // after the player has cast again (a magic still on its way, a lingering area), so these outlive the pending three:
+    // each is kept for its keep time (SkillHitRules.CastKeepMs) after the later of its add and its hit window, however
+    // many casts come after it. MAX_RECENT only bounds the server's memory, far above any cast rate over a keep time
+    // (at most 65 s): at that count the oldest is dropped.
+    private const int MAX_RECENT = 4096;
 
     private readonly SkillRecord?[] casts;
     public SkillRecord? StateSkill;
     private int index;
-    private readonly SkillRecord?[] recent = new SkillRecord?[MAX_RECENT];
-    private int recentIndex;
+    private readonly LinkedList<(SkillRecord Cast, long AddTick, long KeepMs)> recent = [];
 
     public SkillQueue() {
         casts = new SkillRecord[MAX_PENDING];
         index = 0;
     }
 
-    public void Add(SkillRecord cast) {
+    // tick: the field tick of the add. keepMs: how long the cast may still be named (SkillHitRules.CastKeepMs).
+    public void Add(SkillRecord cast, long tick, long keepMs = SkillHitRules.HitWindowMs) {
         casts[index] = cast;
 
         if (cast.Metadata.Property.State != ActorState.None) {
@@ -30,16 +33,21 @@ public class SkillQueue {
         }
 
         index = (index + 1) % MAX_PENDING;
-        recent[recentIndex] = cast;
-        recentIndex = (recentIndex + 1) % MAX_RECENT;
+        while (recent.First is { } oldest && (!Live(oldest.Value, tick) || recent.Count >= MAX_RECENT)) {
+            recent.RemoveFirst();
+        }
+        recent.AddLast((cast, tick, keepMs));
     }
 
-    // One of the last MAX_RECENT casts by uid, newest first.
-    public SkillRecord? GetRecent(long uid) {
-        for (int i = 1; i <= MAX_RECENT; i++) {
-            SkillRecord? cast = recent[(recentIndex - i + MAX_RECENT) % MAX_RECENT];
-            if (cast?.CastUid == uid) {
-                return cast;
+    private static bool Live((SkillRecord Cast, long AddTick, long KeepMs) entry, long tick) {
+        return tick - Math.Max(entry.AddTick, entry.Cast.Hits.WindowTick) <= entry.KeepMs;
+    }
+
+    // A cast still within its keep time at tick, by uid, newest first.
+    public SkillRecord? GetRecent(long uid, long tick) {
+        for (LinkedListNode<(SkillRecord Cast, long AddTick, long KeepMs)>? node = recent.Last; node != null; node = node.Previous) {
+            if (node.Value.Cast.CastUid == uid) {
+                return Live(node.Value, tick) ? node.Value.Cast : null;
             }
         }
         return null;
@@ -70,7 +78,7 @@ public class SkillQueue {
         for (int i = 0; i < MAX_PENDING; i++) {
             casts[i] = null;
         }
-        Array.Clear(recent);
+        recent.Clear();
     }
 
     /// <summary>

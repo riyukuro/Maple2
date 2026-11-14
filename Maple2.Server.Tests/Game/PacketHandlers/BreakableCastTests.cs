@@ -12,6 +12,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Util;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
@@ -55,7 +56,7 @@ public class BreakableCastTests {
         // The fixture's player is not constructed: it has no skill queue.
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<ActiveSkills>k__BackingField", Any)!
             .SetValue(test.Session.Player, new SkillQueue());
-        test.Session.Player.ActiveSkills.Add(record);
+        test.Session.Player.ActiveSkills.Add(record, field.FieldTick);
         // The skill table holds the cast's skill and the other one the cases name (the handler before read it).
         var storage = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
         object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", Any)!.GetValue(storage)!;
@@ -152,20 +153,82 @@ public class BreakableCastTests {
         Scene scene = Start();
         AttackPoint(scene);
         for (long uid = CastUid + 1; uid <= CastUid + 3; uid++) {
-            scene.Test.Session.Player.ActiveSkills.Add(new SkillRecord(scene.Record.Metadata, uid, scene.Test.Session.Player));
+            scene.Test.Session.Player.ActiveSkills.Add(new SkillRecord(scene.Record.Metadata, uid, scene.Test.Session.Player),
+                scene.Test.Session.Field!.FieldTick);
         }
         Assert.That(scene.Test.Session.Player.ActiveSkills.Get(CastUid), Is.Null, "no longer pending");
         Assert.That(Hit(scene), Is.EqualTo(BreakableState.Break));
     }
 
-    // An attack point whose brokenOffence is 0, or one the skill does not have, makes no breakable area in the client.
-    [TestCase((byte) 0, (byte) 1)]
+    // An attack point whose brokenOffence is 0 makes no breakable area in the client.
+    [Test]
+    public void AnAttackWithNoBrokenOffenceIsRefused() {
+        Scene scene = Start();
+        AttackPoint(scene, attackPoint: 1);
+        Assert.That(Hit(scene, attackPoint: 1), Is.Not.EqualTo(BreakableState.Break));
+    }
+
+    // A motion or attack point the cast's skill level does not have makes no breakable area in the client: the KR
+    // client has no breaking attack missing inside a skill level the server pack has.
     [TestCase((byte) 0, (byte) 2)]
     [TestCase((byte) 1, (byte) 0)]
-    public void AnAttackWithNoBrokenOffenceIsRefused(byte motionPoint, byte attackPoint) {
+    [TestCase((byte) 200, (byte) 0)]
+    public void AnAttackPointTheLevelLacksIsRefused(byte motionPoint, byte attackPoint) {
         Scene scene = Start();
         AttackPoint(scene, attackPoint: attackPoint);
         Assert.That(Hit(scene, motionPoint: motionPoint, attackPoint: attackPoint), Is.Not.EqualTo(BreakableState.Break));
+    }
+
+    // A region of a skill level the server's skill data lacks may be one the client has (the KR client's breaking
+    // attacks of the skill levels the server pack lacks): taken, not refused.
+    [Test]
+    public void ARegionOfALevelTheDataLacksBreaks() {
+        Scene scene = Start();
+        FieldManager field = scene.Test.Session.Field!;
+        var skills = new ConcurrentDictionary<int, FieldSkill>();
+        typeof(FieldManager).GetField("fieldSkills", Any)!.SetValue(field, skills);
+        typeof(FieldManager).GetField("removedSkills", Any)!.SetValue(field, new ConcurrentDictionary<int, (FieldSkill, long)>());
+        skills[900] = new FieldSkill(field, 900, scene.Test.Session.Player, scene.Record.Metadata with { Level = 3 }, 1000, Vector3.Zero);
+        Assert.That(Hit(scene, 0, SkillId, 3), Is.EqualTo(BreakableState.Break));
+    }
+
+    private static void SetTick(FieldManager field, long tick) {
+        typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(field, tick);
+    }
+
+    // A cast whose magic path lives 15 s (keep time 5 + 15 s), then 40 fast casts, 0.3 s apart: the magic still breaks
+    // the box 15 s after its cast, however many casts came after it; past its keep time it no longer does.
+    [TestCase(15000, ExpectedResult = true)]
+    [TestCase(21000, ExpectedResult = false)]
+    public bool ALongLivedMagicOutlivesFortyCasts(long sinceCast) {
+        Scene scene = Start();
+        FieldManager field = scene.Test.Session.Field!;
+        SkillQueue queue = scene.Test.Session.Player.ActiveSkills;
+        long start = field.FieldTick;
+        var path = (MagicPath) RuntimeHelpers.GetUninitializedObject(typeof(MagicPath)) with { LifeTime = 15 };
+        SkillRecord fixture = scene.Record;
+        SkillMetadata metadata = fixture.Metadata with {
+            Data = fixture.Metadata.Data with {
+                Motions = [fixture.Motion with { Attacks = [fixture.Attack with { MagicPathId = 5 }] }],
+            },
+        };
+        long keepMs = SkillHitRules.CastKeepMs(metadata, new Dictionary<long, IReadOnlyList<MagicPath>> { [5] = [path] });
+        Assert.That(keepMs, Is.EqualTo(20000));
+
+        var magic = new SkillRecord(metadata, 500, scene.Test.Session.Player);
+        magic.Hits.Open(start);
+        queue.Add(magic, start, keepMs);
+        Assert.That(magic.Hits.TakePoint(0, 0, held: false, count: 1, start), Is.True);
+        magic.Hits.Declare(2000, 0, 0);
+        for (int i = 1; i <= 40; i++) {
+            long tick = start + 300 * i;
+            var cast = new SkillRecord(fixture.Metadata, 500 + i, scene.Test.Session.Player);
+            cast.Hits.Open(tick);
+            queue.Add(cast, tick, SkillHitRules.CastKeepMs(fixture.Metadata, null));
+        }
+
+        SetTick(field, start + sinceCast);
+        return Hit(scene, 500) == BreakableState.Break;
     }
 
     // A region's hit is held to the same rule: its attack point 1 has no brokenOffence.

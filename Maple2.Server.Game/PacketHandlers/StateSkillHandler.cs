@@ -58,7 +58,7 @@ public class StateSkillHandler : FieldPacketHandler {
         }
 
         cast.StateNextTick = SkillCastRules.NextStateTick(session.Field.FieldTick);
-        session.Player.ActiveSkills.Add(cast);
+        session.Player.ActiveSkills.Add(cast, session.Field.FieldTick, SkillHitRules.CastKeepMs(metadata, session.Field.TableMetadata.MagicPathTable.Entries));
         session.Field.Broadcast(SkillPacket.StateSkill(session.Player, skillId, skillCastUid));
     }
 

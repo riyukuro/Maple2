@@ -19,10 +19,16 @@ public static class BreakableRules {
     }
 
     // The client registers a breakable area only for an attack whose brokenOffence is not 0
-    // (WorldService::FUN_141bc3470, worldservice_1.cpp:4206), so no hit comes from any other attack point. A point the
-    // skill does not have names no attack the client could have made an area of.
-    public static bool AttackBreaks(SkillMetadata? skill, byte motionPoint, byte attackPoint) {
-        if (skill == null || motionPoint >= skill.Data.Motions.Length) {
+    // (WorldService::FUN_141bc3470, worldservice_1.cpp:4206), so no hit comes from any other attack point, and a
+    // motion or attack point the skill level does not have is refused. A skill level the server's data lacks (null)
+    // is not refused: the client may have it (the KR client has 834 breaking attacks in 357 skill levels the server
+    // pack lacks, which a played-client ingest adds; none is missing inside a level the pack has), and the server
+    // cannot tell.
+    public static bool? AttackBreaks(SkillMetadata? skill, byte motionPoint, byte attackPoint) {
+        if (skill == null) {
+            return null;
+        }
+        if (motionPoint >= skill.Data.Motions.Length) {
             return false;
         }
         SkillMetadataAttack[] attacks = skill.Data.Motions[motionPoint].Attacks;

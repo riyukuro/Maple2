@@ -139,7 +139,7 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         session.Player.InBattle = record.Metadata.State.InBattle;
-        session.Player.ActiveSkills.Add(record);
+        session.Player.ActiveSkills.Add(record, startTick, SkillHitRules.CastKeepMs(record.Metadata, session.Field.TableMetadata.MagicPathTable.Entries));
         session.Field.Broadcast(SkillPacket.Use(record));
         session.Send(StatsPacket.Init(session.Player));
         session.Field.Broadcast(StatsPacket.Update(session.Player), session);

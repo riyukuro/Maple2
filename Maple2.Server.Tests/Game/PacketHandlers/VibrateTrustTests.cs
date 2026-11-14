@@ -63,7 +63,7 @@ public class VibrateTrustTests {
         // The fixture's player is not constructed: it has no skill queue.
         typeof(Maple2.Server.Game.Model.Actor<Maple2.Model.Game.Player>).GetField("<ActiveSkills>k__BackingField", Any)!
             .SetValue(test.Session.Player, new SkillQueue());
-        test.Session.Player.ActiveSkills.Add(record);
+        test.Session.Player.ActiveSkills.Add(record, test.Session.Field!.FieldTick);
         test.TakeSent();
         return new Scene { Test = test, Record = record };
     }

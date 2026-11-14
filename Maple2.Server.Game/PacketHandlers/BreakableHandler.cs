@@ -1,4 +1,5 @@
-﻿using Maple2.Database.Storage;
+﻿using System.Collections.Concurrent;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -21,6 +22,9 @@ public class BreakableHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
+    // The skill levels missing from the skill data that a region hit has named, logged once each.
+    private static readonly ConcurrentDictionary<(int, short), byte> UnknownLevels = new();
+
     public override void Handle(GameSession session, IByteReader packet) {
         string entityId = packet.ReadString();
         long skillUid = packet.ReadLong();
@@ -35,15 +39,21 @@ public class BreakableHandler : FieldPacketHandler {
         // A region skill's hit (SkillDamage Target with the server flag, scenestategame.cpp:5567) makes its tags with
         // uid 0 and the region's skill, owned by the local player: the player's region of that skill is in the field.
         // The cast is looked up among the player's recent casts, not the three pending ones: the client keeps a cast's
-        // areas after the player cast again, so a magic still on its way names a cast the pending queue has dropped.
-        SkillRecord? record = session.Player.ActiveSkills.GetRecent(skillUid);
+        // areas after the player cast again, so a magic still on its way names a cast the pending queue has dropped. A
+        // cast is kept while its magic may still land (SkillQueue, SkillHitRules.CastKeepMs).
+        SkillRecord? record = session.Field == null ? null : session.Player.ActiveSkills.GetRecent(skillUid, session.Field.FieldTick);
         bool fromRegion = skillUid == 0 && session.Field?.HasFieldSkill(session.Player, skillId, level) == true;
         SkillMetadata? skill = fromRegion
             ? SkillMetadata.TryGet(skillId, level, out SkillMetadata? regionSkill) ? regionSkill : null
             : record?.Metadata;
-        if ((!fromRegion && !BreakableRules.FromCast(record != null, record?.SkillId == skillId && record.Level == level,
-                record?.Hits.PointAttacks(attackPoint) ?? 0))
-            || !BreakableRules.AttackBreaks(skill, motionPoint, attackPoint)) {
+        bool fromCast = fromRegion || BreakableRules.FromCast(record != null, record?.SkillId == skillId && record.Level == level,
+            record?.Hits.PointAttacks(attackPoint) ?? 0);
+        bool? breaks = fromCast ? BreakableRules.AttackBreaks(skill, motionPoint, attackPoint) : false;
+        if (breaks == null && UnknownLevels.TryAdd((skillId, level), 0)) {
+            Logger.Warning("Breakable {EntityId}: skill {SkillId} level {Level} is not in the skill data, taken",
+                entityId, skillId, level);
+        }
+        if (breaks == false) {
             Logger.Information("Breakable {EntityId} refused: cast {SkillUid} skill {SkillId} level {Level} point {MotionPoint},{AttackPoint}",
                 entityId, skillUid, skillId, level, motionPoint, attackPoint);
             return;

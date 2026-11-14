@@ -70,6 +70,39 @@ public static class SkillHitRules {
 
     public static bool TooLate(long tick, long windowTick) => tick - windowTick > HitWindowMs;
 
+    // How long after its hit window (the cast, or a held skill's last attack point packet) a cast's magic may still
+    // meet something and the client still names the cast (a Breakable tag): the hit window, then the longest flight of
+    // the cast's magic paths. A path's flight is its delay, spawn, trace and destroy times and the longer of its
+    // lifeTime and its move (distance or nonTargetMoveDistance over velocity) with the hold at the move's end, both ways
+    // for a boomerang. Chosen here: generous (every part added), at most MaxCastFlightMs of flight.
+    public const long MaxCastFlightMs = 60_000;
+
+    public static long CastKeepMs(SkillMetadata skill, IReadOnlyDictionary<long, IReadOnlyList<MagicPath>>? paths) {
+        float flightMs = 0;
+        foreach (SkillMetadataMotion motion in skill.Data.Motions) {
+            foreach (SkillMetadataAttack attack in motion.Attacks) {
+                int ways = attack.Arrow?.BounceType == BounceType.Boomerang ? 2 : 1;
+                foreach (long id in new[] { attack.MagicPathId, attack.CubeMagicPathId }) {
+                    if (id == 0 || paths == null || !paths.TryGetValue(id, out IReadOnlyList<MagicPath>? moves)) {
+                        continue;
+                    }
+                    foreach (MagicPath path in moves) {
+                        flightMs = MathF.Max(flightMs, ways * PathFlightMs(path));
+                    }
+                }
+            }
+        }
+        return HitWindowMs + (long) MathF.Min(MaxCastFlightMs, MathF.Ceiling(flightMs));
+    }
+
+    private static float PathFlightMs(MagicPath path) {
+        float moveMs = path.Velocity > 0 ? MathF.Max(path.Distance, path.NonTargetMoveDistance) / path.Velocity * 1000 : 0;
+        float extraMs = MathF.Max(0, path.DelayTime) + MathF.Max(0, path.SpawnTime) + MathF.Max(0, path.DestroyTime)
+                        + MathF.Max(0, path.TraceTargetDuration);
+        float flight = extraMs * 1000 + MathF.Max(path.LifeTime * 1000, moveMs + Math.Max(0, path.MoveEndHoldDuration));
+        return float.IsFinite(flight) ? MathF.Max(0, flight) : MaxCastFlightMs;
+    }
+
     // How the client writes the hits of an attack's target packets (CMagic, magicdata.cpp:2063): an attack with
     // AttackMethodType 1 flies as an arrow (FUN_141465b30), any other is a region (FUN_141464d00). paths: the
     // attack's magic path moves, which hold the arrow's piercing.
@@ -363,6 +396,9 @@ public sealed class SkillHitBudget {
 
     // The cast: the time window starts here.
     public void Open(long tick) => windowTick = tick;
+
+    // The cast's tick, or a held skill's last taken attack point packet's.
+    public long WindowTick => windowTick;
 
     public bool TooLate(long tick) => SkillHitRules.TooLate(tick, windowTick);
 
