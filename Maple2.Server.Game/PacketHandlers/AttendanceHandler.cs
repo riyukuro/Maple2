@@ -28,8 +28,8 @@ public class AttendanceHandler : FieldPacketHandler {
     private enum Command : byte {
         Claim = 0,
         BeginTimer = 1,
-        Unknown2 = 2,
-        Unknown3 = 3,
+        WindowOpened = 2,
+        MeretPayOpened = 3,
         EarlyParticipation = 4,
         Unknown8 = 8,
     }
@@ -45,6 +45,17 @@ public class AttendanceHandler : FieldPacketHandler {
                 return;
             case Command.EarlyParticipation:
                 HandleEarlyParticipation(session, packet);
+                return;
+            case Command.WindowOpened:
+                // Sent with no body when the gift window opens and user value 100 (AttendanceActive) is true
+                // (UIAttendGiftDialog::OnLoadComplete, uiattendgiftdialog.cpp:418). The window redraws at once
+                // without waiting, and both attendance windows read only Attendance 5, 6, 7 and 9, so no reply is
+                // expected. This server never sets value 100, so the client does not send it here.
+                return;
+            case Command.MeretPayOpened:
+                // Sent with no body just before the merets pay box is shown (uiattendgiftdialog.cpp:375, called at
+                // :448 for pay type 2; the same sender at uicashattenddialog.cpp:581 has no caller). The box shows at
+                // once and the pay request (4) carries the payment, so no reply is expected.
                 return;
             case Command.Unknown8:
                 // The selected event's id (uiattendgiftdialog.cpp:385, uicashattenddialog.cpp:591); no reply is known.
