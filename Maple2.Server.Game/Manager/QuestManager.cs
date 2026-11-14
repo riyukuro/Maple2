@@ -256,6 +256,9 @@ public sealed class QuestManager {
             }
             acceptItems.Add(reward);
         }
+        // The job rows of the accept reward too (quest 50100720 has only those): the client loads one item list for
+        // either reward and shows each row to the jobs its item recommends.
+        acceptItems.AddRange(JobRewardItems(metadata.AcceptReward));
         if (!bypassRequirements && acceptItems.Count > 0 && !session.Item.Inventory.CanAdd(acceptItems)) {
             return QuestError.s_quest_error_inventory_full;
         }
