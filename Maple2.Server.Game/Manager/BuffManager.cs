@@ -83,14 +83,16 @@ public class BuffManager : IUpdatable {
         }
     }
 
-    public void AddBuff(IActor caster, IActor owner, int id, short level, long startTick, int stacks = 0, int durationMs = -1, bool notifyField = true, EventConditionType type = EventConditionType.Activate) {
+    // Whether the buff is on the owner afterwards (added, or the one it has refreshed or kept): false for an effect
+    // not in the data, one on cooldown, one the owner is immune to, or one that could not be added.
+    public bool AddBuff(IActor caster, IActor owner, int id, short level, long startTick, int stacks = 0, int durationMs = -1, bool notifyField = true, EventConditionType type = EventConditionType.Activate) {
         if (!owner.Field.SkillMetadata.TryGetEffect(id, level, out AdditionalEffectMetadata? additionalEffect)) {
             logger.Error("Invalid buff: {SkillId},{Level}", id, level);
-            return;
+            return false;
         }
 
         if (type != EventConditionType.Activate && CooldownTimes.TryGetValue(id, out long cooldownTick) && startTick < cooldownTick) {
-            return;
+            return false;
         }
 
         if (durationMs < 0) {
@@ -112,7 +114,7 @@ public class BuffManager : IUpdatable {
 
         // Check if immune to any present buffs
         if (!CheckImmunity(id, additionalEffect.Property.Category)) {
-            return;
+            return false;
         }
 
         // Boom Boom Ocean: a buff the game scores (the pickups), each time a game player gets it.
@@ -160,7 +162,7 @@ public class BuffManager : IUpdatable {
                     GiveBackRecharge(existing);
                     TriggerEvent(Actor, Actor, Actor, EventConditionType.OnEffectApplied, skillId: existing.Id);
                 }
-                return;
+                return true;
             }
         }
 
@@ -175,7 +177,7 @@ public class BuffManager : IUpdatable {
 
         if (!TryAdd(buff)) {
             logger.Error("Could not add buff {Id} to {Object}", buff.Id, Actor.ObjectId);
-            return;
+            return false;
         }
 
         // A player gaining a buff: the GainBuff missions of a dungeon room.
@@ -212,6 +214,7 @@ public class BuffManager : IUpdatable {
             owner.Field.Broadcast(BuffPacket.Add(buff));
         }
         SetMount(buff);
+        return true;
     }
 
     private Buff? GetBuff(int buffId, int casterObjectId = 0) {

@@ -906,7 +906,12 @@ public class ItemUseHandler : FieldPacketHandler {
 
         int effectId = parameters[0];
         short effectLevel = (short) parameters[1];
-        session.Player.Buffs.AddBuff(session.Player, session.Player, effectId, effectLevel, session.Field.FieldTick, notifyField: true);
+        // Chosen here: an effect not in the data, or one the character is immune to (CheckImmunity: a buff it holds
+        // lists the id or its category), adds nothing; the item is kept. The client sends a plain use and shows nothing
+        // either way.
+        if (!session.Player.Buffs.AddBuff(session.Player, session.Player, effectId, effectLevel, session.Field.FieldTick, notifyField: true)) {
+            return;
+        }
         session.Item.Inventory.Consume(item.Uid, 1);
     }
 

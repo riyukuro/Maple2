@@ -418,22 +418,56 @@ public class ItemFunctionUseTests {
     [Test]
     public void AddAdditionalEffect_StartsTheEffectAndIsUsedUp() {
         Item item = Login(20300012, ItemFunction.AddAdditionalEffect, "70000029,1", amount: 2);
-        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        // The field knows the effect (as BuffAttributeTests sets it up), the player stands in the field.
-        var skills = new SkillMetadataStorage(new Maple2.Database.Context.MetadataContext(
-            new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
-        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", any)!.GetValue(skills)!;
-        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(70000029, (short) 1),
-            BuffAttributeTests.Effect(70000029, DisabledBuffTests.Property with { DurationTick = 600000 })]);
-        FieldManager field = session.Field!;
-        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", any)!.SetValue(field, skills);
-        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), any)!.SetValue(field, new FieldActor(field, 99, field.Metadata, null!));
-        typeof(Actor<Player>).GetField("<Field>k__BackingField", any)!.SetValue(session.Player, field);
+        EffectField(BuffAttributeTests.Effect(70000029, DisabledBuffTests.Property with { DurationTick = 600000 }));
 
         Use(item);
 
         Assert.That(session.Player.Buffs.EnumerateBuffs(70000029), Has.Count.EqualTo(1));
         Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
+    }
+
+    // The same item when the field's data has no effect 70000029: nothing starts and the item is kept.
+    [Test]
+    public void AddAdditionalEffect_AnEffectNotInTheData_KeepsTheItem() {
+        Item item = Login(20300012, ItemFunction.AddAdditionalEffect, "70000029,1", amount: 2);
+        EffectField();
+
+        Use(item);
+
+        Assert.That(session.Player.Buffs.EnumerateBuffs(70000029), Is.Empty);
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(2));
+    }
+
+    // The same item while the character holds an effect immune to 70000029 (immuneEffectCodes, as 10100051 is to
+    // 10100052 in KR): nothing starts and the item is kept.
+    [Test]
+    public void AddAdditionalEffect_WhileImmune_KeepsTheItem() {
+        Item item = Login(20300012, ItemFunction.AddAdditionalEffect, "70000029,1", amount: 2);
+        EffectField(BuffAttributeTests.Effect(70000029, DisabledBuffTests.Property with { DurationTick = 600000 }),
+            BuffAttributeTests.Effect(10100051, DisabledBuffTests.Property with { DurationTick = 600000 }) with {
+                Update = new AdditionalEffectMetadataUpdate(null, [70000029], [], [], []),
+            });
+        Assert.That(session.Player.Buffs.AddBuff(session.Player, session.Player, 10100051, 1, session.Field!.FieldTick), Is.True);
+
+        Use(item);
+
+        Assert.That(session.Player.Buffs.EnumerateBuffs(70000029), Is.Empty);
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(2));
+    }
+
+    // The field knows the given effects at level 1 (as BuffAttributeTests sets it up), the player stands in the field.
+    private void EffectField(params AdditionalEffectMetadata[] effects) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var skills = new SkillMetadataStorage(new Maple2.Database.Context.MetadataContext(
+            new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", any)!.GetValue(skills)!;
+        foreach (AdditionalEffectMetadata effect in effects) {
+            cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(effect.Id, (short) 1), effect]);
+        }
+        FieldManager field = session.Field!;
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", any)!.SetValue(field, skills);
+        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), any)!.SetValue(field, new FieldActor(field, 99, field.Metadata, null!));
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", any)!.SetValue(session.Player, field);
     }
 
     // 20302629 (OpenItemBoxLimitedQuantity: box 340000326, 3 s cooldown; 30001369 is its common item). The client
