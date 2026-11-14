@@ -24,8 +24,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-// Force Globalization to en-US because we use periods instead of commas for decimals
-CultureInfo.CurrentCulture = new("en-US");
+// Force Globalization to en-US because we use periods instead of commas for decimals. CurrentCulture covers only
+// this thread; the field, pool and timer threads take the default.
+CultureInfo.CurrentCulture = CultureInfo.DefaultThreadCurrentCulture = new("en-US");
 
 DotEnv.Load();
 // An unknown LOCALE stops the server with one line instead of Target's type-initializer stack trace.

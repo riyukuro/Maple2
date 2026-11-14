@@ -1,6 +1,7 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
+using System.Globalization;
 using System.Numerics;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
@@ -63,13 +64,13 @@ public class CoordCommand : GameCommand {
             input = input.Trim();
             if (input.StartsWith('~')) {
                 if (input.Length == 1) return current;
-                if (float.TryParse(input[1..], out float rel)) {
+                if (float.TryParse(input[1..], NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out float rel)) {
                     return current + (asBlock ? rel * Constant.BlockSize : rel);
                 }
                 ctx.Console.Error.WriteLine($"Invalid relative coordinate: {input}. Use ~[value] or ~+[value] or ~-[value].");
                 return current;
             }
-            if (float.TryParse(input, out float abs)) {
+            if (float.TryParse(input, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out float abs)) {
                 if (asBlock) {
                     abs *= Constant.BlockSize;
                 }

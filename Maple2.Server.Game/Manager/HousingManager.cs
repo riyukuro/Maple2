@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Numerics;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
@@ -207,7 +208,7 @@ public class HousingManager {
         int costAmount = contract.Amount;
         GameEvent? saleEvent = session.FindEvent(GameEventType.UGCMapContractSale).FirstOrDefault();
         if (saleEvent != null) {
-            float discount = float.Parse(saleEvent.Metadata.Value1) / 10000f;
+            float discount = float.Parse(saleEvent.Metadata.Value1, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture) / 10000f;
             costAmount = (int) Math.Ceiling(costAmount * (1 - discount));
         }
 
@@ -325,7 +326,7 @@ public class HousingManager {
         int costAmount = extension.Amount;
         GameEvent? saleEvent = session.FindEvent(GameEventType.UGCMapExtensionSale).FirstOrDefault();
         if (saleEvent != null) {
-            float discount = float.Parse(saleEvent.Metadata.Value1) / 10000f;
+            float discount = float.Parse(saleEvent.Metadata.Value1, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture) / 10000f;
             costAmount = (int) Math.Ceiling(costAmount * (1 - discount));
         }
 

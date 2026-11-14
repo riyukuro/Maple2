@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System.Globalization;
+using System.Numerics;
 using System.Xml;
 using Maple2.Model.Enum;
 
@@ -385,11 +386,11 @@ public static class TriggerFunctionMapping {
             foreach (string part in value.Split(',')) {
                 if (part.Contains('-')) {
                     string[] rangeParts = part.Split('-');
-                    if (rangeParts.Length == 2 && int.TryParse(rangeParts[0], out int start) && int.TryParse(rangeParts[1], out int end)) {
+                    if (rangeParts.Length == 2 && int.TryParse(rangeParts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int start) && int.TryParse(rangeParts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int end)) {
                         if (start > end) (start, end) = (end, start);
                         result.AddRange(Enumerable.Range(start, end - start + 1));
                     }
-                } else if (int.TryParse(part, out int singleValue)) {
+                } else if (int.TryParse(part, NumberStyles.Integer, CultureInfo.InvariantCulture, out int singleValue)) {
                     result.Add(singleValue);
                 }
             }
@@ -397,17 +398,17 @@ public static class TriggerFunctionMapping {
         }
         if (value.Contains('-')) {
             string[] parts = value.Split('-');
-            if (parts.Length == 2 && int.TryParse(parts[0], out int start) && int.TryParse(parts[1], out int end)) {
+            if (parts.Length == 2 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int start) && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int end)) {
                 if (start > end) (start, end) = (end, start);
                 return Enumerable.Range(start, end - start + 1).ToArray();
             }
         }
-        return value.Split(',').Select(int.Parse).ToArray();
+        return value.Split(',').Select(part => int.Parse(part, NumberStyles.Integer, CultureInfo.InvariantCulture)).ToArray();
     }
 
-    public static int ParseInt(string? value) => int.TryParse(value, out int v) ? v : 0;
+    public static int ParseInt(string? value) => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) ? v : 0;
 
-    public static float ParseFloat(string? value) => float.TryParse(value, out float v) ? v : 0f;
+    public static float ParseFloat(string? value) => float.TryParse(value, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out float v) ? v : 0f;
 
     // A flag whose absence has a meaning of its own: the hall triggers test a state with success 1, with
     // success 0 and without the attribute, which stands for the plain test.
@@ -439,7 +440,7 @@ public static class TriggerFunctionMapping {
         if (string.IsNullOrEmpty(value)) return Vector3.Zero;
 
         string[] parts = value.Split(',');
-        if (parts.Length != 3 || !float.TryParse(parts[0], out float x) || !float.TryParse(parts[1], out float y) || !float.TryParse(parts[2], out float z)) {
+        if (parts.Length != 3 || !float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) || !float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y) || !float.TryParse(parts[2], NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out float z)) {
             return Vector3.Zero;
         }
 

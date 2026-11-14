@@ -32,8 +32,9 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
-// Force Globalization to en-US because we use periods instead of commas for decimals
-CultureInfo.CurrentCulture = new("en-US");
+// Force Globalization to en-US because we use periods instead of commas for decimals. CurrentCulture covers only
+// this thread; the field, pool and timer threads take the default.
+CultureInfo.CurrentCulture = CultureInfo.DefaultThreadCurrentCulture = new("en-US");
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
 DotEnv.Load();

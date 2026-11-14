@@ -101,7 +101,7 @@ public class PacketStructureResolver {
                         resolver.packet.WriteLong(long.Parse(valueAsString));
                         break;
                     case "Float":
-                        resolver.packet.WriteFloat(float.Parse(valueAsString));
+                        resolver.packet.WriteFloat(float.Parse(valueAsString, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands, System.Globalization.CultureInfo.InvariantCulture));
                         break;
                     case "UnicodeString":
                         resolver.packet.WriteUnicodeString(valueAsString.Replace("\"", ""));

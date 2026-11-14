@@ -379,7 +379,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 KeepOnEnterPvpZone: data.BasicProperty.doNotClearEffectFromEnterPVPZone,
                 CasterIndividualBuff: data.BasicProperty.casterIndividualEffect,
                 Exp: data.ExpProperty.value,
-                CooldownTime: (int) TimeSpan.FromSeconds(float.TryParse(data.BasicProperty.coolDownTime, out float cooldown) ? cooldown : 0).TotalMilliseconds,
+                CooldownTime: (int) TimeSpan.FromSeconds(float.TryParse(data.BasicProperty.coolDownTime, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands, System.Globalization.CultureInfo.InvariantCulture, out float cooldown) ? cooldown : 0).TotalMilliseconds,
                 RideId: data.RideeProperty == null! ? 0 : data.RideeProperty.rideeID,
                 ImmuneBreak: data.MotionProperty.abnormalImmuneBreak,
                 Stun: data.MotionProperty.stun,

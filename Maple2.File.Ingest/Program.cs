@@ -36,8 +36,9 @@ foreach (string arg in args) {
     }
 }
 
-// Force Globalization to en-US because we use periods instead of commas for decimals
-CultureInfo.CurrentCulture = new CultureInfo("en-US");
+// Force Globalization to en-US because we use periods instead of commas for decimals. CurrentCulture covers only
+// this thread; the parallel and pool threads take the default.
+CultureInfo.CurrentCulture = CultureInfo.DefaultThreadCurrentCulture = new CultureInfo("en-US");
 
 DotEnv.Load();
 
