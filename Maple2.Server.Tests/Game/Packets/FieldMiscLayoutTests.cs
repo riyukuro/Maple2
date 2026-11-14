@@ -64,7 +64,7 @@ public class FieldMiscLayoutTests {
             new FieldPropertyHidePlayer(),
             new FieldPropertyLockPlayer(),
             new FieldPropertyUserTagSymbol { Symbol1 = "a", Symbol2 = "b" },
-            new FieldPropertySightRange { Fades = [1, 2, 3], Unknown = true, Opacity = 0x12, Opaque = true },
+            new FieldPropertySightRange { Range = 450, Fades = [1, 2, 3], Unknown = true, Opacity = 0x12, Opaque = true },
             new FieldPropertyWeather { WeatherType = WeatherType.Rain },
             new FieldPropertyAmbientLight { Color = new Byte3(1, 2, 3), Restore = true, Value = 0.5f },
             new FieldPropertyDirectionalLight {
