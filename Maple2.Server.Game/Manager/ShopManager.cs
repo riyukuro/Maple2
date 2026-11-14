@@ -690,11 +690,10 @@ public sealed class ShopManager {
     private bool Pay(ShopCost cost, int price, RewardItem guildProduct = default) {
         switch (cost.Type) {
             case ShopCurrencyType.Meso:
-                if (session.Currency.CanAddMeso(-price) != -price) {
+                if (!session.Currency.TryTakeMeso(price)) {
                     session.Send(ShopPacket.Error(ShopError.s_err_lack_meso));
                     return false;
                 }
-                session.Currency.ChangeMeso(-price);
                 break;
             case ShopCurrencyType.Meret:
             case ShopCurrencyType.EventMeret:
