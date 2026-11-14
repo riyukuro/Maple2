@@ -2150,13 +2150,14 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             case GameEventType.ShutdownSurvivalObserver:
                 return new ShutdownSurvivalObserver();
             case GameEventType.MapleSurvivalPassBundle:
-                // Both prices are needed (the buy-bundle window sends one of them); a bonus item the client reads as
-                // 0 (_wtoi) is none.
-                if (!long.TryParse(value1, out long defaultPrice) || defaultPrice <= 0 || !long.TryParse(value2, out long bundlePrice) || bundlePrice <= 0) {
-                    Console.WriteLine($"MapleSurvivalPassBundle without both prices skipped: {value1} {value2}");
+                // Both prices and the bonus item are needed: the buy-bundle window sends one of the prices, and it closes
+                // on a bonus item of 0 while the pass window opens only that window, so such a row would stop every pass buy.
+                if (!long.TryParse(value1, out long defaultPrice) || defaultPrice <= 0 || !long.TryParse(value2, out long bundlePrice) || bundlePrice <= 0
+                    || !int.TryParse(value3, out int bonusItemId) || bonusItemId <= 0) {
+                    Console.WriteLine($"MapleSurvivalPassBundle without both prices and the bonus item skipped: {value1} {value2} {value3}");
                     return null;
                 }
-                return new MapleSurvivalPassBundle(defaultPrice, bundlePrice, int.TryParse(value3, out int bonusItemId) ? bonusItemId : 0);
+                return new MapleSurvivalPassBundle(defaultPrice, bundlePrice, bonusItemId);
             case GameEventType.EpicRestart:
                 return ReadEpicRestart(value1, value2, value3);
             case GameEventType.LevelUpPackage:

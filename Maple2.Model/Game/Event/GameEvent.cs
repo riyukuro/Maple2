@@ -29,8 +29,8 @@ public class GameEvent : IByteSerializable {
         && (RestoredSurvivalClient || Metadata.Data is not (ShutdownMapleSurvival or ShutdownMapleSurvivalSquad
             or ShutdownMapleSurvivalPass or ShutdownSurvivalObserver or MapleSurvivalPassBundle));
 
-    // The server serves the restored client's Maple Survival (MS2_SURVIVAL_CLIENT=1).
-    public static bool RestoredSurvivalClient => Environment.GetEnvironmentVariable("MS2_SURVIVAL_CLIENT") == "1";
+    // The server serves the restored client's Maple Survival unless MS2_SURVIVAL_CLIENT=0 (an operator with stock clients).
+    public static bool RestoredSurvivalClient => Environment.GetEnvironmentVariable("MS2_SURVIVAL_CLIENT") != "0";
 
     public bool IsActive() => IsActive(DateTime.Now);
 

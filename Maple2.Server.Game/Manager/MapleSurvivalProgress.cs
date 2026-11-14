@@ -75,7 +75,7 @@ public static class MapleSurvivalProgress {
         session.Survival.Load(); // the record (0x17) and the skins (0x1e)
         // The lobby's level, exp and reward level (0x15) last: the record (0x17) sets the same level and exp but
         // refreshes only the pass window, and 0x12 sets only the reward level, so the lobby showed level 0.
-        session.Send(MapleSurvivalPacket.LevelProgress(account.SurvivalExp, account.SurvivalLevel, account.SurvivalLevel));
+        session.Send(MapleSurvivalPacket.LevelProgress(account.SurvivalExp, Math.Max(1, account.SurvivalLevel), Math.Max(1, account.SurvivalLevel)));
     }
 
     // 0xC2 0x22: the paid pass in merets. The pass window sends (true, the season's passPrice); while a
@@ -89,8 +89,8 @@ public static class MapleSurvivalProgress {
         MapleSurvivalPassBundle? bundle = session.FindEvent(GameEventType.MapleSurvivalPassBundle)
             .Select(gameEvent => gameEvent.Metadata.Data).OfType<MapleSurvivalPassBundle>().FirstOrDefault();
         (long Cost, int BonusItemId)? purchase = period == null ? null : PassPurchase(period.PassPrice, bundle, paid, price);
-        // The bonus item is made before the merets are taken (no field during a field change: refused).
-        Item? bonus = purchase is { BonusItemId: not 0 } ? session.Field?.ItemDrop.CreateItem(purchase.Value.BonusItemId, 1, 1) : null;
+        // The bonus item is made before the merets are taken (an item that cannot be made: refused).
+        Item? bonus = purchase is { BonusItemId: not 0 } ? session.Item.CreateItem(purchase.Value.BonusItemId, 1, 1) : null;
         if (!SurvivalRules.PassOn(session.ServerTableMetadata.FeatureTable) || purchase == null || account.ActiveGoldPass
             || MapleSurvivalHandler.Shutdown(session, GameEventType.ShutdownMapleSurvivalPass)
             || (purchase.Value.BonusItemId != 0 && bonus == null) || !session.Currency.TryTakeMeret(purchase.Value.Cost)) {
@@ -98,7 +98,7 @@ public static class MapleSurvivalProgress {
             return;
         }
         account.ActiveGoldPass = true;
-        if (bonus != null && !session.Item.Inventory.Add(bonus, true)) {
+        if (bonus != null && (session.Field == null || !session.Item.Inventory.Add(bonus, true))) {
             session.Item.MailItem(bonus);
         }
         // survival_buy_gold_pass (23200042 "(Account) Royalety: Activate {0} Gold Royale Pass").
@@ -174,12 +174,14 @@ public static class MapleSurvivalProgress {
         switch (reward.Type) {
             case "item":
             case "genderItem":
-                Item? item = session.Field?.ItemDrop.CreateItem(id, Math.Max(1, value), Math.Max(1, count));
+                // A player between fields (Field null for the moment of a field change) gets it by mail.
+                Item? item = session.Item.CreateItem(id, Math.Max(1, value), Math.Max(1, count));
                 if (item == null) {
+                    Logger.Warning("Maple Survival reward item {ItemId} not given to {CharacterId}", id, session.CharacterId);
                     return null;
                 }
                 var given = new ResultItem(item.Id, (short) item.Rarity, item.Amount);
-                if (!session.Item.Inventory.Add(item, true)) {
+                if (session.Field == null || !session.Item.Inventory.Add(item, true)) {
                     session.Item.MailItem(item);
                 }
                 return given;

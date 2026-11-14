@@ -1,4 +1,5 @@
-﻿using Maple2.Model;
+﻿using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -6,6 +7,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 
 namespace Maple2.Server.Game.Manager.Items;
@@ -540,7 +542,13 @@ public class ItemDropManager {
     }
 
     public Item? CreateItem(int itemId, int rarity = -1, int amount = 1, bool rollMax = false) {
-        if (!field.ItemMetadata.TryGet(itemId, out ItemMetadata? itemMetadata) || !PlayedClientItems.CanCreate(itemMetadata)) {
+        return Create(field.ItemMetadata, field.ItemStatsCalc, field.TableMetadata, field.ServerTableMetadata, itemId, rarity, amount, rollMax);
+    }
+
+    // The item as a field makes it, from the stores alone (a player between fields has none: ItemManager.CreateItem).
+    public static Item? Create(ItemMetadataStorage itemMetadataStorage, ItemStatsCalculator itemStatsCalc, TableMetadataStorage tableMetadata,
+            ServerTableMetadataStorage serverTableMetadata, int itemId, int rarity = -1, int amount = 1, bool rollMax = false) {
+        if (!itemMetadataStorage.TryGet(itemId, out ItemMetadata? itemMetadata) || !PlayedClientItems.CanCreate(itemMetadata)) {
             return null;
         }
 
@@ -549,24 +557,24 @@ public class ItemDropManager {
         }
 
         var item = new Item(itemMetadata, rarity, amount);
-        item.Stats = field.ItemStatsCalc.GetStats(item, rollMax);
+        item.Stats = itemStatsCalc.GetStats(item, rollMax);
         // No sockets while ItemSocketSystem is off: the client counts none (GetMaxSocketCount gives 0).
-        item.Socket = field.ServerTableMetadata.FeatureTable.IsOn(ItemSocketRules.SystemFeature) ? field.ItemStatsCalc.GetSockets(item) : null;
+        item.Socket = serverTableMetadata.FeatureTable.IsOn(ItemSocketRules.SystemFeature) ? itemStatsCalc.GetSockets(item) : null;
         if (item.Transfer != null) {
-            item.Transfer.SocketTransfer = field.ItemStatsCalc.SocketTransferAtCreation(item);
+            item.Transfer.SocketTransfer = itemStatsCalc.SocketTransferAtCreation(item);
         }
 
         if (item.Appearance != null) {
-            item.Appearance.Color = GetColor(item.Metadata.Customize);
+            item.Appearance.Color = GetColor(tableMetadata, item.Metadata.Customize);
         }
 
         return item;
     }
 
-    private EquipColor GetColor(ItemMetadataCustomize metadata) {
+    private static EquipColor GetColor(TableMetadataStorage tableMetadata, ItemMetadataCustomize metadata) {
         // Item has no color
         if (metadata.ColorPalette == 0 ||
-            !field.TableMetadata.ColorPaletteTable.Entries.TryGetValue(metadata.ColorPalette, out IReadOnlyDictionary<int, ColorPaletteTable.Entry>? palette)) {
+            !tableMetadata.ColorPaletteTable.Entries.TryGetValue(metadata.ColorPalette, out IReadOnlyDictionary<int, ColorPaletteTable.Entry>? palette)) {
             return EquipColor.None;
         }
 

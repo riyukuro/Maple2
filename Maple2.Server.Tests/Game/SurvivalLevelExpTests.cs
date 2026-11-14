@@ -113,7 +113,7 @@ public class SurvivalLevelExpTests {
         string? before = Environment.GetEnvironmentVariable("MS2_SURVIVAL_CLIENT");
         try {
             foreach (bool restored in new[] { true, false }) {
-                Environment.SetEnvironmentVariable("MS2_SURVIVAL_CLIENT", restored ? "1" : null);
+                Environment.SetEnvironmentVariable("MS2_SURVIVAL_CLIENT", restored ? "1" : "0");
                 GameSession session = Start(level: 3);
                 session.Player.Value.Account.SurvivalSeason = 99;
                 Use(session);

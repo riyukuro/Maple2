@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
@@ -49,6 +50,23 @@ public class MapleSurvivalPassTests {
         return amount;
     }
 
+    // An ingested row needs both prices and the bonus item: the client's buy-bundle window closes on item 0.
+    [TestCase("700", "1500", "20000995", true)]
+    [TestCase("700", "1500", "", false)]
+    [TestCase("700", "1500", "0", false)]
+    [TestCase("", "1500", "20000995", false)]
+    [TestCase("700", "0", "20000995", false)]
+    public void Ingest_PassBundleRow(string value1, string value2, string value3, bool kept) {
+        var mapper = (Maple2.File.Ingest.Mapper.ServerTableMapper) System.Runtime.CompilerServices.RuntimeHelpers
+            .GetUninitializedObject(typeof(Maple2.File.Ingest.Mapper.ServerTableMapper));
+        System.Reflection.MethodInfo parse = typeof(Maple2.File.Ingest.Mapper.ServerTableMapper).GetMethod("ParseGameEventData",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+
+        object? data = parse.Invoke(mapper, [GameEventType.MapleSurvivalPassBundle, value1, value2, value3, ""]);
+
+        Assert.That(data, Is.EqualTo(kept ? new MapleSurvivalPassBundle(700, 1500, 20000995) : null));
+    }
+
     // The 0x02 match box: character 0 (the first-match ranking line) until the character has a game in the season.
     [Test]
     public void RankingCharacter_ZeroUntilTheFirstSeasonGame() {
@@ -85,6 +103,19 @@ public class MapleSurvivalPassTests {
         Assert.That(session.Player.Value.Account.ActiveGoldPass, Is.True);
         Assert.That(session.Currency.Meret, Is.EqualTo(3500));
         Assert.That(Amount(session, BonusItemId), Is.EqualTo(1));
+    }
+
+    // Between fields (Field null) the bonus item is made all the same and goes by mail.
+    [Test]
+    public void BuyPass_Bundle_NoField_MailsTheBonusItem() {
+        GameSession session = Start(new MapleSurvivalPassBundle(700, 1500, BonusItemId));
+        session.Field = null;
+        MapleSurvivalProgress.BuyPass(session, true, 1500);
+        Assert.That(session.Player.Value.Account.ActiveGoldPass, Is.True);
+        Assert.That(Amount(session, BonusItemId), Is.EqualTo(0));
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        long mailId = context.Mail.Where(mail => mail.ReceiverId == session.CharacterId).Select(mail => mail.Id).Single();
+        Assert.That(context.Item.Count(item => item.OwnerId == mailId && item.ItemId == BonusItemId), Is.EqualTo(1));
     }
 
     [Test]
@@ -132,7 +163,7 @@ public class MapleSurvivalPassTests {
         ];
         string? before = Environment.GetEnvironmentVariable("MS2_SURVIVAL_CLIENT");
         try {
-            Environment.SetEnvironmentVariable("MS2_SURVIVAL_CLIENT", null);
+            Environment.SetEnvironmentVariable("MS2_SURVIVAL_CLIENT", "0");
             Assert.That(bundle.SentToClient, Is.False);
             foreach (GameEvent gameEvent in switches) {
                 Assert.That(gameEvent.SentToClient, Is.False);

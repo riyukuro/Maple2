@@ -64,6 +64,12 @@ public class ItemManager {
         }
     }
 
+    // An item made without the player's field (a player between fields): as the field would make it.
+    public Item? CreateItem(int itemId, int rarity = -1, int amount = 1) {
+        return session.Field?.ItemDrop.CreateItem(itemId, rarity, amount)
+            ?? ItemDropManager.Create(session.ItemMetadata, itemStatsCalc, session.TableMetadata, session.ServerTableMetadata, itemId, rarity, amount);
+    }
+
     public bool MailItem(Item item) {
         lock (session.Item) {
             using GameStorage.Request db = session.GameStorage.Context();

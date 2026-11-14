@@ -75,7 +75,7 @@ public class SurvivalSkinTests {
     // The KR client keeps the medal list.
     [Test]
     public void AddMedal_New_KrClient_SendsTheList() {
-        WithRestoredClient(null, () => {
+        WithRestoredClient("0", () => {
             GameSession session = Start();
             session.Survival.AddMedal(Medal(20900009, $"<v id=\"{TailId}\" type=\"effectTail\"/>"));
             List<byte[]> sent = test.TakeSent();
