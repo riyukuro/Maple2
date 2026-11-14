@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Grpc.Core;
 using Maple2.Model.Error;
@@ -132,6 +133,38 @@ public class PartySearchModeTests {
 
         Assert.That(session.Party.Party!.Search, Is.Null);
         Assert.That(Sent(), Is.EqualTo(new[] { Hex(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_db)) }));
+    }
+
+    // A party made for the listing goes again when the listing is not made: the lone leader leaves it on the World
+    // and the client gets the Disband (Party 7), so no party of one is left behind.
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Add_ListingNotMade_UndoesTheMadeParty(bool refused, bool leaveDown) {
+        bool leaveAsked = false;
+        test.World.PartyWorld = request => {
+            if (request.PartyCase == PartyRequest.PartyOneofCase.Create) {
+                return new PartyResponse { Party = PartyOf(false) };
+            }
+            Assert.That(request.PartyCase, Is.EqualTo(PartyRequest.PartyOneofCase.Leave));
+            Assert.That(request.Leave.PartyId, Is.EqualTo(PartyId));
+            leaveAsked = true;
+            return leaveDown ? throw Down() : new PartyResponse();
+        };
+        test.World.PartySearchWorld = _ => refused
+            ? new PartySearchResponse { Error = (int) PartySearchError.s_partysearch_err_server_already_register }
+            : throw Down();
+
+        Assert.DoesNotThrow(() => Add("come along"));
+
+        Assert.That(leaveAsked, Is.True);
+        Assert.That(session.Party.Party, Is.Null);
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.Party).Select(Convert.ToHexString).Last(),
+            Is.EqualTo(Hex(PartyPacket.Disband())));
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.PartySearch).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Hex(PartySearchPacket.Error(refused ? PartySearchError.s_partysearch_err_server_already_register : PartySearchError.s_partysearch_err_server_db)) }));
     }
 
     [Test]

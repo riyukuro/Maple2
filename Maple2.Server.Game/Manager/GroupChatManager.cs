@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Game;
+﻿using Grpc.Core;
+using Maple2.Model.Game;
 using Maple2.Model.Game.GroupChat;
 using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Packets;
@@ -119,11 +120,16 @@ public class GroupChatManager : IDisposable {
 
         // Checking less or equal to 1 because member logging off is still online at this point
         if (groupChat.Members.Values.Count(member => member.Info.Online) <= 1) {
-            session.World.GroupChat(new GroupChatRequest {
-                Disband = new GroupChatRequest.Types.Disband(),
-                GroupChatId = groupChat.Id,
-                RequesterId = session.CharacterId,
-            });
+            // Sent at logout, with nobody to answer: an unreachable World is only logged.
+            try {
+                session.World.GroupChat(new GroupChatRequest {
+                    Disband = new GroupChatRequest.Types.Disband(),
+                    GroupChatId = groupChat.Id,
+                    RequesterId = session.CharacterId,
+                });
+            } catch (RpcException ex) {
+                logger.Error(ex, "Group chat {Id}: the disband at logout failed for {CharacterId}", groupChat.Id, session.CharacterId);
+            }
         }
     }
 

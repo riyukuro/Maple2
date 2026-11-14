@@ -1,4 +1,5 @@
-﻿using Maple2.Database.Extensions;
+﻿using Grpc.Core;
+using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -85,13 +86,17 @@ public class PartyManager : IDisposable {
 
         if (Party.Vote != null) {
             if (!Party.Vote.Approvals.Contains(session.CharacterId) && !Party.Vote.Disapprovals.Contains(session.CharacterId)) {
-                world.Party(new PartyRequest {
-                    RequestorId = session.CharacterId,
-                    VoteReply = new PartyRequest.Types.VoteReply {
-                        PartyId = Party.Id,
-                        Reply = false,
-                    },
-                });
+                try {
+                    world.Party(new PartyRequest {
+                        RequestorId = session.CharacterId,
+                        VoteReply = new PartyRequest.Types.VoteReply {
+                            PartyId = Party.Id,
+                            Reply = false,
+                        },
+                    });
+                } catch (RpcException ex) {
+                    logger.Error(ex, "Party {Id}: the vote's no at logout failed for {CharacterId}", Party.Id, session.CharacterId);
+                }
             }
         }
     }
@@ -269,12 +274,17 @@ public class PartyManager : IDisposable {
             return;
         }
 
-        world.Party(new PartyRequest {
-            Disband = new PartyRequest.Types.Disband {
-                PartyId = Id,
-            },
-            RequestorId = session.CharacterId,
-        });
+        // Sent at logout, before the session is saved: an unreachable World is only logged, so the save still runs.
+        try {
+            world.Party(new PartyRequest {
+                Disband = new PartyRequest.Types.Disband {
+                    PartyId = Id,
+                },
+                RequestorId = session.CharacterId,
+            });
+        } catch (RpcException ex) {
+            logger.Error(ex, "Party {Id}: the disband at logout failed for {CharacterId}", Id, session.CharacterId);
+        }
     }
 
     public void StartReadyCheck(long characterId, int voteId) {

@@ -364,6 +364,8 @@ public sealed class TestGameSession {
         core.GetField("Logger", Any)!.SetValue(session, new LoggerConfiguration().WriteTo.Sink(new ErrorSink(Errors)).CreateLogger());
         Set(session, nameof(GameSession.AccountId), AccountId);
         typeof(GameSession).GetField(nameof(GameSession.WhisperedBy), Any)!.SetValue(session, new ConcurrentDictionary<string, long>());
+        // A party or guild left closes its recall (GameSession.CloseRecall).
+        typeof(GameSession).GetField(nameof(GameSession.Recalls), Any)!.SetValue(session, new PendingRecall?[3]);
         Set(session, nameof(GameSession.CharacterId), CharacterId);
         Set(session, nameof(GameSession.GameStorage), Storage);
         Set(session, nameof(GameSession.ItemMetadata), itemMetadata);

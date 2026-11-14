@@ -1,4 +1,5 @@
-﻿using Maple2.Database.Storage;
+﻿using Grpc.Core;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -107,16 +108,24 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
         }
 
         DungeonRecruitRoom room = DungeonRecruitRoom.Of(metadata);
-        PartyResponse response = World.Party(new PartyRequest {
-            RequestorId = session.CharacterId,
-            DungeonRecruit = new PartyRequest.Types.DungeonRecruit {
-                Kind = (int) kind,
-                RoomId = room.Id,
-                MinLevel = room.MinLevel,
-                GearScore = room.GearScore,
-                MaxUsers = room.MaxUsers,
-            },
-        });
+        PartyResponse response;
+        try {
+            response = World.Party(new PartyRequest {
+                RequestorId = session.CharacterId,
+                DungeonRecruit = new PartyRequest.Types.DungeonRecruit {
+                    Kind = (int) kind,
+                    RoomId = room.Id,
+                    MinLevel = room.MinLevel,
+                    GearScore = room.GearScore,
+                    MaxUsers = room.MaxUsers,
+                },
+            });
+        } catch (RpcException ex) {
+            // An unreachable World: the party's not-found answer, as for the other party requests.
+            Logger.Error(ex, "Dungeon recruit {Kind} for room {RoomId} failed for {CharacterId}", kind, room.Id, session.CharacterId);
+            session.Send(PartyPacket.Error(PartyError.s_party_err_not_found));
+            return;
+        }
         if (response.Error != (int) PartyError.none) {
             session.Send(PartyPacket.Error((PartyError) response.Error));
             return;

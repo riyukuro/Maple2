@@ -58,6 +58,7 @@ public class PartySearchHandler : FieldPacketHandler {
             return;
         }
 
+        int madePartyId = 0;
         if (session.Party.Party == null) {
             // Create new party
             PartyResponse partyResponse;
@@ -78,6 +79,7 @@ public class PartySearchHandler : FieldPacketHandler {
             }
 
             session.Party.SetParty(partyResponse.Party, joinNotify: true);
+            madePartyId = partyResponse.Party.Id;
         }
 
         if (session.Party.Party == null) {
@@ -110,11 +112,34 @@ public class PartySearchHandler : FieldPacketHandler {
             PartyId = session.Party.Party.Id,
         });
         if (response == null) {
+            UndoMadeParty(session, madePartyId);
             return;
         }
 
         if (response.Error != (int) PartySearchError.none) {
             session.Send(PartySearchPacket.Error((PartySearchError) response.Error, response.ErrorCategory));
+            UndoMadeParty(session, madePartyId);
+        }
+    }
+
+    // A party made for a listing that was not made goes again: the lone leader leaves it on the World (which ends a
+    // party of one), and the session drops it with a Disband so the client's party goes too.
+    private void UndoMadeParty(GameSession session, int partyId) {
+        if (partyId == 0 || session.Party.Party?.Id != partyId || session.Party.Party.Members.Count > 1) {
+            return;
+        }
+        try {
+            World.Party(new PartyRequest {
+                RequestorId = session.CharacterId,
+                Leave = new PartyRequest.Types.Leave {
+                    PartyId = partyId,
+                },
+            });
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Party search: leaving the party made for a failed listing failed for {CharacterId}", session.CharacterId);
+        }
+        if (session.Party.Party?.Id == partyId) {
+            session.Party.Disband(notify: true);
         }
     }
 
