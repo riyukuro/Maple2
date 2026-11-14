@@ -1,15 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Database.Extensions;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -215,5 +218,158 @@ public class ItemEquipHandlerTests {
 
         return session.Item.Equips.Outfit2.ContainsKey(EquipSlot.CP) ? "Outfit2"
             : session.Item.Equips.Outfit.ContainsKey(EquipSlot.CP) ? "Outfit" : "none";
+    }
+
+    // The client's put-on checks (FUN_14140dea0, invenslot.cpp:2082-2127) refuse an item of the other gender, a
+    // premium-club item without premium club, a wedding item unless married, an item of another job and an expired one
+    // (a pet or a maid furnishing excepted); the server refuses such a packet too, the item stays in the bag and nothing
+    // is worn. Before, the gender, premium-club and wedding items were worn, and a beginner's or an all-jobs list item
+    // was refused.
+    private TestGameSession Start(ItemMetadata metadata, out Item item, Action<GameSession>? setup = null) {
+        test = new TestGameSession(gender: Gender.Male);
+        item = test.Store(metadata);
+        GameSession session = test.Start();
+        session.Player.Value.Account.PremiumTime = 0;
+        setup?.Invoke(session);
+        test.TakeSent();
+        return test;
+    }
+
+    private string PutOn(Func<ItemMetadataLimit, ItemMetadataLimit> limit, Action<GameSession>? setup = null) {
+        ItemMetadata metadata = TestGameSession.Metadata(11300001, EquipSlot.CP, slotMax: 1);
+        Start(metadata with { Limit = limit(metadata.Limit) }, out Item cap, setup);
+        GameSession session = test.Session;
+
+        Equip(session, cap, EquipSlot.CP);
+
+        bool worn = session.Item.Equips.Get(cap.Uid) != null;
+        Assert.That(session.Item.Inventory.Get(cap.Uid) != null, Is.Not.EqualTo(worn));
+        return worn ? "worn" : "refused";
+    }
+
+    [TestCase(Gender.Male, ExpectedResult = "worn")]
+    [TestCase(Gender.All, ExpectedResult = "worn")]
+    [TestCase(Gender.Female, ExpectedResult = "refused")]
+    public string PutOn_TheOtherGendersItemIsRefused(Gender gender) => PutOn(limit => limit with { Gender = gender });
+
+    [TestCase(false, ExpectedResult = "refused")]
+    [TestCase(true, ExpectedResult = "worn")]
+    public string PutOn_APremiumClubItemNeedsPremiumClub(bool premium) => PutOn(limit => limit with { RequireVip = true },
+        session => session.Player.Value.Account.PremiumTime = premium ? DateTime.Now.AddDays(1).ToEpochSeconds() : 0);
+
+    [TestCase(MaritalStatus.Single, ExpectedResult = "refused")]
+    [TestCase(MaritalStatus.Engaged, ExpectedResult = "refused")]
+    [TestCase(MaritalStatus.Married, ExpectedResult = "worn")]
+    [TestCase(MaritalStatus.DivorceFiledByGroom, ExpectedResult = "worn")]
+    [TestCase(MaritalStatus.DivorceFiledByBride, ExpectedResult = "worn")]
+    [TestCase(MaritalStatus.Divorced, ExpectedResult = "refused")]
+    public string PutOn_AWeddingItemNeedsAMarriage(MaritalStatus status) => PutOn(limit => limit with { RequireWedding = true },
+        session => session.Marriage.Marriage.Status = status);
+
+    // ItemLimit::IsJobAllowed (itemdatastruct.cpp:690): a beginner counts as a knight, a list naming job 0 or the
+    // beginner allows every job, an empty list too.
+    [TestCase(Job.Newbie, new[] { JobCode.Knight }, ExpectedResult = "worn")]
+    [TestCase(Job.Newbie, new[] { JobCode.Wizard }, ExpectedResult = "refused")]
+    [TestCase(Job.Wizard, new[] { JobCode.Newbie }, ExpectedResult = "worn")]
+    [TestCase(Job.Wizard, new[] { JobCode.None }, ExpectedResult = "worn")]
+    [TestCase(Job.Wizard, new[] { JobCode.Knight, JobCode.Wizard }, ExpectedResult = "worn")]
+    [TestCase(Job.Wizard, new[] { JobCode.Knight }, ExpectedResult = "refused")]
+    [TestCase(Job.WizardII, new JobCode[0], ExpectedResult = "worn")]
+    public string PutOn_TheJobAsTheClientTestsIt(Job job, JobCode[] limits) => PutOn(limit => limit with { JobLimits = limits },
+        session => session.Player.Value.Character.Job = job);
+
+    // An expired furnishing that places a maid stays usable (CItem::FUN_140528980); another expired item is refused.
+    [TestCase(0, ExpectedResult = "s_item_err_puton_expired")]
+    [TestCase(1, ExpectedResult = "s_empty_string")]
+    public string PutOn_AnExpiredMaidItemIsAllowed(int maidId) {
+        ItemMetadata metadata = TestGameSession.Metadata(11300001, EquipSlot.CP, slotMax: 1);
+        if (maidId > 0) {
+            metadata = metadata with { Housing = new ItemMetadataHousing(0, 0, 0, default, false, MaidId: maidId) };
+        }
+        Start(metadata, out Item cap);
+        Item held = test.Session.Item.Inventory.Get(cap.Uid)!;
+        held.ExpiryTime = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds();
+        return EquipManager.ValidateEquipItem(test.Session, held).ToString();
+    }
+
+    // The client's order: an item that fails several checks gets the first one's answer (expired before the PC bang
+    // before the premium club before the level before the job before the gender).
+    [Test]
+    public void PutOn_TheFirstFailedCheckAnswers() {
+        ItemMetadata metadata = TestGameSession.Metadata(11300001, EquipSlot.CP, slotMax: 1);
+        Start(metadata with { Limit = metadata.Limit with {
+            Level = 99, Gender = Gender.Female, JobLimits = [JobCode.Wizard], RequireVip = true, RequirePcBang = true,
+        } }, out Item cap, session => session.Player.Value.Character.Job = Job.Knight);
+        Item held = test.Session.Item.Inventory.Get(cap.Uid)!;
+        var answers = new List<StringCode>();
+        Func<ItemMetadataLimit, ItemMetadataLimit>[] steps = [
+            limit => limit with { RequirePcBang = false },
+            limit => limit with { RequireVip = false },
+            limit => limit with { Level = 0 },
+            limit => limit with { JobLimits = [] },
+            limit => limit with { Gender = Gender.All },
+        ];
+        held.ExpiryTime = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds();
+        answers.Add(EquipManager.ValidateEquipItem(test.Session, held));
+        held.ExpiryTime = 0;
+        Item current = held;
+        foreach (Func<ItemMetadataLimit, ItemMetadataLimit> step in steps) {
+            answers.Add(EquipManager.ValidateEquipItem(test.Session, current));
+            current = new Item(current.Metadata with { Limit = step(current.Metadata.Limit) }) { Uid = current.Uid };
+        }
+        answers.Add(EquipManager.ValidateEquipItem(test.Session, current));
+        Assert.That(answers, Is.EqualTo(new[] {
+            StringCode.s_item_err_puton_expired, StringCode.s_item_err_puton_pcbang, StringCode.s_item_err_puton,
+            StringCode.s_item_err_puton_low_level, StringCode.s_item_err_puton_job, StringCode.s_err_gender,
+            StringCode.s_empty_string,
+        }));
+    }
+
+    // A dead player puts nothing on and takes nothing off (Unk_Inventory::RequestEquipItem / RequestUnequipItem send
+    // nothing while dead); a badge neither (EquipGem / UnequipGem). Before, all four went through.
+    [Test]
+    public void WhileDead_NothingGoesOnOrComesOff() {
+        Start(TestGameSession.Metadata(11300001, EquipSlot.CP, slotMax: 1), out Item cap);
+        GameSession session = test.Session;
+        Item badge = test.Store(TestGameSession.Metadata(70400001, type: 7));
+        Assert.That(session.Item.Inventory.Add(badge), Is.True);
+        Equip(session, cap, EquipSlot.CP);
+        Assert.That(session.Item.Equips.Get(cap.Uid), Is.Not.Null);
+        Item other = test.Store(TestGameSession.Metadata(11300002, EquipSlot.CP, slotMax: 1));
+        Assert.That(session.Item.Inventory.Add(other), Is.True);
+        typeof(Maple2.Server.Game.Model.FieldPlayer).GetField("isDead", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.Player, true);
+        test.TakeSent();
+        var badges = new BadgeEquipHandler();
+
+        Equip(session, other, EquipSlot.CP);
+        Unequip(session, cap);
+        badges.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(0);
+            writer.WriteLong(badge.Uid);
+            writer.WriteByte((byte) BadgeType.Damage);
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Equips.Get(cap.Uid), Is.Not.Null);
+            Assert.That(session.Item.Inventory.Get(other.Uid), Is.Not.Null);
+            Assert.That(session.Item.Inventory.Get(badge.Uid), Is.Not.Null);
+            Assert.That(session.Item.Equips.Get(BadgeType.Damage), Is.Null);
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
+    // Badge equip runs the same put-on checks: a badge of the other gender stays in the bag.
+    [TestCase(Gender.Male, ExpectedResult = true)]
+    [TestCase(Gender.Female, ExpectedResult = false)]
+    public bool Badge_TheOtherGendersBadgeIsRefused(Gender gender) {
+        ItemMetadata metadata = TestGameSession.Metadata(70400001, type: 7);
+        Start(metadata with { Limit = metadata.Limit with { Gender = gender } }, out Item badge);
+        new BadgeEquipHandler().Handle(test.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(0);
+            writer.WriteLong(badge.Uid);
+            writer.WriteByte((byte) BadgeType.Damage);
+        }));
+        return test.Session.Item.Equips.Get(BadgeType.Damage)?.Uid == badge.Uid;
     }
 }

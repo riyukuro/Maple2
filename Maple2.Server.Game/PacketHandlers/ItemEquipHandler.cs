@@ -20,6 +20,11 @@ public class ItemEquipHandler : FieldPacketHandler {
 
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        // A dead player puts nothing on and takes nothing off: Unk_Inventory::RequestEquipItem and RequestUnequipItem
+        // (inventory.cpp:1241, 1284) show their own notice and send nothing.
+        if (session.Player.IsDead && command is Command.Equip or Command.Unequip) {
+            return;
+        }
         switch (command) {
             case Command.Equip:
                 HandleEquip(session, packet);

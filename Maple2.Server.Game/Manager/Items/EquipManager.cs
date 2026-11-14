@@ -4,7 +4,10 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -443,23 +446,39 @@ public class EquipManager {
         }
     }
 
-    // The client's put-on checks (FUN_14140dea0, invenslot.cpp:2084) refuse a PC bang item away from a PC bang with
-    // notice s_item_err_puton_pcbang (its premium-club refusal is a by-key string with no code to send).
+    // The client's put-on checks (FUN_14140dea0, invenslot.cpp:2082-2127), in its order: an expired item (a pet or a
+    // maid furnishing excepted, CItem::FUN_140528980), a PC bang item away from a PC bang, a premium-club item without
+    // premium club, a wedding item unless married (also with a divorce filed, WeddingManager::IsInProgress), the
+    // level, the job (ItemLimit::IsJobAllowed: a beginner counts as a knight, a list naming job 0 or the beginner
+    // allows all), a binding to another character, the gender (CItemData::IsGenderAllowed: 2 is either). The
+    // premium-club and wedding refusals are by-key strings with no code to send, so a packet the client would not send
+    // gets s_item_err_puton for them.
     public static StringCode ValidateEquipItem(GameSession session, Item item) {
-        if (item.Metadata.Limit.Level > session.Player.Value.Character.Level) {
-            return StringCode.s_item_err_puton_low_level;
-        }
-        if (item.IsExpired()) {
+        Character character = session.Player.Value.Character;
+        ItemMetadataLimit limit = item.Metadata.Limit;
+        if (!ItemLockRules.ExpiryAllowsUse(item.IsExpired(), item.Metadata.Property.Type, MaidRules.MaidId(item.Metadata, false))) {
             return StringCode.s_item_err_puton_expired;
         }
-        if (item.Metadata.Limit.RequirePcBang && session.PcBang.Grade <= 0) {
+        if (limit.RequirePcBang && session.PcBang.Grade <= 0) {
             return StringCode.s_item_err_puton_pcbang;
         }
-        if (item.Metadata.Limit.JobLimits.Length > 0 && !item.Metadata.Limit.JobLimits.Contains(session.Player.Value.Character.Job.Code())) {
+        if (limit.RequireVip && session.Player.Value.Account.PremiumTime <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+            return StringCode.s_item_err_puton;
+        }
+        if (limit.RequireWedding && !MarriageManager.InProgress(session.Marriage.Marriage.Status)) {
+            return StringCode.s_item_err_puton;
+        }
+        if (limit.Level > character.Level) {
+            return StringCode.s_item_err_puton_low_level;
+        }
+        if (!ItemUseHandler.JobAllowed(limit.JobLimits, character.Job.Code())) {
             return StringCode.s_item_err_puton_job;
         }
         if (item.Transfer?.Binding != null && item.Transfer.Binding.CharacterId != session.CharacterId) {
             return StringCode.s_item_err_puton_invalid_binding;
+        }
+        if (limit.Gender != Gender.All && limit.Gender != character.Gender) {
+            return StringCode.s_err_gender;
         }
 
         return StringCode.s_empty_string;

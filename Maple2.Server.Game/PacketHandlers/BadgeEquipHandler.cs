@@ -21,6 +21,11 @@ public class BadgeEquipHandler : FieldPacketHandler {
 
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        // A dead player puts no badge on and takes none off: EquipGem and UnequipGem (gemslot_2.cpp:448, 485) show
+        // their own notice and send nothing.
+        if (session.Player.IsDead && command is Command.Equip or Command.Unequip) {
+            return;
+        }
         switch (command) {
             case Command.Equip:
                 HandleEquip(session, packet);

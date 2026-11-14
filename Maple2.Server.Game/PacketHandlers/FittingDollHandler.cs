@@ -266,9 +266,7 @@ public class FittingDollHandler : FieldPacketHandler {
         if (FittingDollRules.BoundToOther(item.Transfer?.Binding, session.CharacterId)) {
             return FittingDollRules.Error.InvalidBinding;
         }
-        Gender gender = item.Metadata.Limit.Gender;
-        if (EquipManager.ValidateEquipItem(session, item) != StringCode.s_empty_string
-            || (gender != Gender.All && gender != session.Player.Value.Character.Gender)) {
+        if (EquipManager.ValidateEquipItem(session, item) != StringCode.s_empty_string) {
             return FittingDollRules.Error.ItemLimit;
         }
         return FittingDollRules.Error.None;
