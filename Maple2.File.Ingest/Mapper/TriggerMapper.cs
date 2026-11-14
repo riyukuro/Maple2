@@ -28,9 +28,10 @@ public class TriggerMapper : TypeMapper<TriggerMetadata> {
 
     // The trigger files to map and the pack each is read from: the played client's copy of a file when it has one,
     // else the data pack's. The client the players run is the one whose scripts the maps were built for: the data
-    // folder's pack is an older build (KR: 70 files only in the played client, among them whole maps, and 297
-    // that differ, such as 02000410's dungeon missions 24090003/04/07 where the played client sends 24090013/14/17,
-    // the ids of its dungeonmission rows). Files only the data pack has are kept. Names match case-insensitively.
+    // folder's pack is an older build (KR: 54 files only in the played client, among them whole maps, and 294 that
+    // differ in more than whitespace, such as 02000410's dungeon missions 24090003/04/07 where the played client
+    // sends 24090013/14/17, the ids of its dungeonmission rows). Files only the data pack has are kept. Names match
+    // case-insensitively.
     public static List<(string Name, bool Played)> Pick(IEnumerable<string> dataNames, IEnumerable<string>? playedNames) {
         var picked = new List<(string Name, bool Played)>();
         var played = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
