@@ -1,5 +1,7 @@
 ﻿using Maple2.Model.Enum;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Mail = Maple2.Model.Game.Mail;
 using Item = Maple2.Model.Game.Item;
 
@@ -156,6 +158,37 @@ public partial class GameStorage {
             }
             Context.Mail.Update(model);
             return SaveChanges() ? model : null;
+        }
+
+        // Writes a collect of mail's mesos and merets: only while the stored collect times are still the ones the
+        // collect read (`read`, before it set them), so of two collects of one mail (two game servers holding the
+        // player) one marks it collected and the other changes nothing and gets false. On a relational DB the stored
+        // row is locked for the test and the write; the in-memory store (the tests) has no row lock to take.
+        public bool CollectMail(Mail mail, (long Meso, long Meret, long GameMeret) read) {
+            try {
+                using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                if (Context.Database.IsRelational()) {
+                    Context.Database.ExecuteSqlRaw("SELECT `Id` FROM `mail` WHERE `ReceiverId` = {0} AND `Id` = {1} FOR UPDATE",
+                        mail.ReceiverId, mail.Id);
+                }
+                Model.MailCurrency? stored = Context.Mail.AsNoTracking()
+                    .Where(row => row.ReceiverId == mail.ReceiverId && row.Id == mail.Id)
+                    .Select(row => row.Currency)
+                    .FirstOrDefault();
+                if (stored == null || (stored.MesoCollectTime, stored.MeretCollectTime, stored.GameMeretCollectTime) != read) {
+                    return false;
+                }
+                if (UpdateMail(mail) == null) {
+                    return false; // the transaction is rolled back when it is disposed
+                }
+
+                transaction.Commit();
+                return true;
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Failed to collect mail {MailId}", mail.Id);
+                Context.ChangeTracker.Clear();
+                return false;
+            }
         }
     }
 }

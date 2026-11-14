@@ -150,6 +150,53 @@ public class MailModeTests {
         });
     }
 
+    // Two collects of one mail that both read it before either wrote it (two game servers holding the player; login
+    // keeps a character in one session, this is the insurance): the write of the collect is conditional, so the one
+    // that writes second gives nothing. Before, it gave the mesos and merets again.
+    [Test]
+    public void Collect_OfAMailReadBeforeAnotherCollectWroteIt_GivesNothing() {
+        Begin();
+        Mail mail = StoreMail(meso: 300, meret: 7);
+        GameSession session = Login();
+        long meretsBefore = session.Currency.Meret;
+        Mail stale = Stored(mail.Id)!;
+
+        MailError first = session.Mail.Collect(mail.Id);
+        using GameStorage.Request db = test.Storage.Context();
+        var collect = typeof(MailManager).GetMethod("CollectInternal", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var second = (MailError) collect.Invoke(session.Mail, [db, stale])!;
+
+        Assert.Multiple(() => {
+            Assert.That(first, Is.EqualTo(MailError.none));
+            Assert.That(second, Is.Not.EqualTo(MailError.none));
+            Assert.That(session.Currency.Meso, Is.EqualTo(1300));
+            Assert.That(session.Currency.Meret - meretsBefore, Is.EqualTo(7));
+        });
+    }
+
+    // The same through storage: of two collect writes from the same read, only the first is kept.
+    [Test]
+    public void CollectMail_OfTwoWritersFromOneRead_KeepsTheFirst() {
+        Begin();
+        Mail mail = StoreMail(meso: 300, meret: 7);
+        using GameStorage.Request one = test.Storage.Context();
+        using GameStorage.Request two = test.Storage.Context();
+        Mail a = one.GetMail(mail.Id, test.CharacterId)!;
+        Mail b = two.GetMail(mail.Id, test.CharacterId)!;
+        a.MesoCollectTime = a.MeretCollectTime = 100;
+        b.MesoCollectTime = b.MeretCollectTime = 200;
+
+        bool first = one.CollectMail(a, (0, 0, 0));
+        bool second = two.CollectMail(b, (0, 0, 0));
+
+        Assert.Multiple(() => {
+            Assert.That(first, Is.True);
+            Assert.That(second, Is.False);
+            Assert.That(Stored(mail.Id)!.MesoCollectTime, Is.EqualTo(100));
+            Assert.That(Stored(mail.Id)!.MeretCollectTime, Is.EqualTo(100));
+        });
+    }
+
     // A mail that ran out after the inbox was fetched: the collect reads its expiry from storage and is refused with
     // code 21 (s_mail_error_receive_expired, command 11); nothing is given and the attachments stay.
     [Test]

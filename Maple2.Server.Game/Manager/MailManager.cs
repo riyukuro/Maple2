@@ -252,6 +252,7 @@ public sealed class MailManager {
             }
         }
 
+        (long Meso, long Meret, long GameMeret) read = (mail.MesoCollectTime, mail.MeretCollectTime, mail.GameMeretCollectTime);
         bool collectMeso = false;
         if (!mail.MesoCollected()) { // Allow mesos to be collected regardless and just overflow.
             mail.MesoCollectTime = now;
@@ -268,11 +269,11 @@ public sealed class MailManager {
             collectGameMeret = true;
         }
 
-        if (collectMeso || collectMeret || collectGameMeret) {
-            Mail? updatedMail = db.UpdateMail(mail);
-            if (updatedMail == null) {
-                return MailError.s_mail_error;
-            }
+        // Only one collect marks the mail collected (CollectMail): a second one that read the mail before the first
+        // wrote it gives nothing. Before, the write was unconditional and both gave the mesos and merets.
+        if ((collectMeso || collectMeret || collectGameMeret) && !db.CollectMail(mail, read)) {
+            (mail.MesoCollectTime, mail.MeretCollectTime, mail.GameMeretCollectTime) = read;
+            return MailError.s_mail_error;
         }
 
         if (collectMeso) {
