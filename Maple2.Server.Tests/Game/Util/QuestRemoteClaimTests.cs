@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -48,16 +49,41 @@ public class QuestRemoteClaimTests {
         Assert.That(QuestRules.RemoteClaimCheck(true, Held(state), true, true, listed: false), Is.EqualTo(expected));
     }
 
-    // 0x18 lists daily missions only (the daily mission page and the level-up guide); 0x1b, 0x1d and 0x27 keep any type.
+    // 0x18 lists daily missions, 0x27 wedding missions (by type, whatever events run).
     [TestCase((byte) 0x18, QuestType.DailyMission, true)]
     [TestCase((byte) 0x18, QuestType.EpicQuest, false)]
     [TestCase((byte) 0x18, QuestType.FieldMission, false)]
     [TestCase((byte) 0x18, QuestType.MentoringMission, false)]
-    [TestCase((byte) 0x1b, QuestType.EventQuest, true)]
-    [TestCase((byte) 0x1d, QuestType.MentoringMission, true)]
+    [TestCase((byte) 0x18, QuestType.WeddingMission, false)]
     [TestCase((byte) 0x27, QuestType.WeddingMission, true)]
-    public void Claim_Listed(byte mode, QuestType type, bool listed) {
-        Assert.That(QuestRules.RemoteClaimListed(mode, type), Is.EqualTo(listed));
+    [TestCase((byte) 0x27, QuestType.DailyMission, false)]
+    [TestCase((byte) 0x27, QuestType.EventMission, false)]
+    [TestCase((byte) 0x04, QuestType.DailyMission, false)] // not a claim mode
+    public void Claim_ListedByType(byte mode, QuestType type, bool listed) {
+        Assert.That(QuestRules.RemoteClaimListed(mode, 900001, type, Running), Is.EqualTo(listed));
+    }
+
+    // Made-up running events: a level-up package of 900001 and 900002, a time run of 900003, a season of 900004.
+    private static readonly GameEventData[] Running = [
+        new LevelUpPackage(20000001, "900001, 900002,"),
+        new TimeRunEvent(0, [new TimeRunEvent.Quest(900003, 3, 1)], new Dictionary<int, RewardItem>(), default),
+        new ReturnUser(1, [900004], 0, default, 0, 0),
+    ];
+
+    // 0x1b lists the level-up package's and the time run's quests, 0x1d the season's, whatever their type.
+    [TestCase((byte) 0x1b, 900001, true)]
+    [TestCase((byte) 0x1b, 900002, true)]
+    [TestCase((byte) 0x1b, 900003, true)]
+    [TestCase((byte) 0x1b, 900004, false)]
+    [TestCase((byte) 0x1b, 900005, false)]
+    [TestCase((byte) 0x1d, 900004, true)]
+    [TestCase((byte) 0x1d, 900001, false)]
+    [TestCase((byte) 0x1d, 900005, false)]
+    public void Claim_ListedByEvent(byte mode, int questId, bool listed) {
+        Assert.Multiple(() => {
+            Assert.That(QuestRules.RemoteClaimListed(mode, questId, QuestType.EventMission, Running), Is.EqualTo(listed));
+            Assert.That(QuestRules.RemoteClaimListed(mode, questId, QuestType.EventMission, []), Is.False); // no event runs
+        });
     }
 
     [TestCase(QuestRules.RemoteClaim.Done, false)]

@@ -787,11 +787,17 @@ public sealed class QuestManager {
     /// mentoring and wedding claims): completes the held quest when a page of that mode lists it and the client and
     /// the server agree it is due (QuestRules.RemoteClaimCheck), else says why.
     /// </summary>
+    // The running events whose quest lists a claim of this mode reads (0x1b, 0x1d).
+    private IEnumerable<GameEventData> ClaimListEvents(byte mode) =>
+        mode is QuestRules.EventClaimMode or QuestRules.MentoringClaimMode
+            ? QuestRules.ClaimListEvents.SelectMany(type => session.FindEvent(type)).Select(gameEvent => gameEvent.Metadata.Data)
+            : [];
+
     public QuestRules.RemoteClaim RemoteComplete(int questId, byte mode = QuestRules.RemoteCompleteMode) {
         TryGetQuest(questId, out Quest? quest);
         QuestRules.RemoteClaim claim = QuestRules.RemoteClaimCheck(session.QuestMetadata.TryGet(questId, out _), quest,
             quest != null && PlayedClientQuests.Known(quest.Metadata.Basic), quest != null && CanComplete(quest),
-            quest == null || QuestRules.RemoteClaimListed(mode, quest.Metadata.Basic.Type));
+            quest == null || QuestRules.RemoteClaimListed(mode, questId, quest.Metadata.Basic.Type, ClaimListEvents(mode)));
         if (claim != QuestRules.RemoteClaim.Done) {
             return claim;
         }

@@ -303,14 +303,41 @@ public static class QuestRules {
         InventoryFull,
     }
 
-    // The quests a page may claim with its mode. Every 0x18 sender lists daily missions (type 3) only: the daily
-    // mission page's tabs and level guide (RefreshRecommendList, RefreshLevelGuide: held type-3 quests) and the level-up
-    // guide (CollectType3QuestsByGuideType 1 and 2). Any other quest is completed at its npc (Quest 4), so a 0x18 for
-    // it is a claim no page shows. The event, mentoring and wedding claims (0x1b, 0x1d, 0x27) keep the checks below.
+    // The quests a page may claim with its mode; any other quest is completed at its npc (Quest 4), so a claim for it
+    // is one no page shows.
+    // - 0x18: daily missions (type 3) only: the daily mission page's tabs and level guide (RefreshRecommendList,
+    //   RefreshLevelGuide: held type-3 quests) and the level-up guide (CollectType3QuestsByGuideType 1 and 2).
+    // - 0x1b: the quests of a running level-up package (UILevelUpPackageDialog, CGameRule::GetLevelUpPackageIds: the
+    //   event's comma list) or time run (UITimeRunEventDialog, TimeRunEventContext's quests).
+    // - 0x1d: the mentoring mission page's quests, the running ReturnUser season's quest ids
+    //   (UIMentoringMissionPage::GetMissionIds, CGameEventValueMentoring::GetIds).
+    // - 0x27: the wedding mission page's quests, the held type-10 quests (UIWeddingPageMission::UpdateQuestList,
+    //   CQuestManager m_quests110).
     public const byte RemoteCompleteMode = 0x18;
+    public const byte EventClaimMode = 0x1b;
+    public const byte MentoringClaimMode = 0x1d;
+    public const byte WeddingClaimMode = 0x27;
 
-    public static bool RemoteClaimListed(byte mode, QuestType type) =>
-        mode != RemoteCompleteMode || type == QuestType.DailyMission;
+    public static bool RemoteClaimListed(byte mode, int questId, QuestType type, IEnumerable<GameEventData> running) => mode switch {
+        RemoteCompleteMode => type == QuestType.DailyMission,
+        EventClaimMode => running.Any(data => data switch {
+            LevelUpPackage package => PackageQuestIds(package).Contains(questId),
+            TimeRunEvent timeRun => timeRun.Quests.Any(quest => quest.Id == questId),
+            _ => false,
+        }),
+        MentoringClaimMode => running.OfType<ReturnUser>().Any(season => season.QuestIds.Contains(questId)),
+        WeddingClaimMode => type == QuestType.WeddingMission,
+        _ => false,
+    };
+
+    // The event types whose quest lists the claims of 0x1b and 0x1d read.
+    public static readonly GameEventType[] ClaimListEvents = [GameEventType.LevelUpPackage, GameEventType.TimeRunEvent, GameEventType.ReturnUser];
+
+    // The level-up package's ids as CGameRule::SetLevelUpPackage splits them (on ",").
+    public static IEnumerable<int> PackageQuestIds(LevelUpPackage package) =>
+        package.QuestIds.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(id => int.TryParse(id, out int questId) ? questId : 0)
+            .Where(questId => questId != 0);
 
     public static RemoteClaim RemoteClaimCheck(bool hasMetadata, Quest? held, bool knownToClient, bool conditionsMet, bool listed = true) {
         if (held == null) {

@@ -122,17 +122,42 @@ public class QuestHandlerTests {
         });
     }
 
-    // Quest 0x18 comes from the daily mission page and the level-up guide, which list daily missions only: a daily
-    // mission due is completed, any other quest due stays in progress with the refusal text (it is completed at
-    // its npc). The event claim (0x1b) keeps taking an event quest.
-    [TestCase((byte) 0x18, QuestType.DailyMission, true)]
-    [TestCase((byte) 0x18, QuestType.EpicQuest, false)]
-    [TestCase((byte) 0x18, QuestType.WorldQuest, false)]
-    [TestCase((byte) 0x18, QuestType.EventQuest, false)]
-    [TestCase((byte) 0x18, QuestType.GuildQuest, false)]
-    [TestCase((byte) 0x1b, QuestType.EventQuest, true)]
-    public void Claim_CompletesOnlyTheQuestsItsPagesList(byte mode, QuestType type, bool completed) {
-        GameSession session = Login();
+    // Each claim mode completes only a quest its pages list: 0x18 daily missions (the daily mission page, the level-up
+    // guide), 0x1b the quests of a running level-up package or time run, 0x1d those of the running mentoring season,
+    // 0x27 wedding missions. Any other quest due stays in progress with the refusal text (it is completed at its npc).
+    // The event: 0 none, 1 a level-up package, 2 a time run, 3 a ReturnUser season, each listing the quest.
+    [TestCase((byte) 0x18, QuestType.DailyMission, 0, true)]
+    [TestCase((byte) 0x18, QuestType.EpicQuest, 0, false)]
+    [TestCase((byte) 0x18, QuestType.WorldQuest, 0, false)]
+    [TestCase((byte) 0x18, QuestType.EventQuest, 0, false)]
+    [TestCase((byte) 0x18, QuestType.GuildQuest, 0, false)]
+    [TestCase((byte) 0x18, QuestType.EventMission, 1, false)]
+    [TestCase((byte) 0x1b, QuestType.EventMission, 1, true)]
+    [TestCase((byte) 0x1b, QuestType.EventMission, 2, true)]
+    [TestCase((byte) 0x1b, QuestType.EventMission, 0, false)]
+    [TestCase((byte) 0x1b, QuestType.EventMission, 3, false)]
+    [TestCase((byte) 0x1b, QuestType.EpicQuest, 0, false)]
+    [TestCase((byte) 0x1d, QuestType.MentoringMission, 3, true)]
+    [TestCase((byte) 0x1d, QuestType.MentoringMission, 0, false)]
+    [TestCase((byte) 0x1d, QuestType.MentoringMission, 1, false)]
+    [TestCase((byte) 0x27, QuestType.WeddingMission, 0, true)]
+    [TestCase((byte) 0x27, QuestType.EventMission, 1, false)]
+    [TestCase((byte) 0x27, QuestType.DailyMission, 0, false)]
+    public void Claim_CompletesOnlyTheQuestsItsPagesList(byte mode, QuestType type, int listingEvent, bool completed) {
+        var prepared = new TestGameSession();
+        switch (listingEvent) {
+            case 1:
+                prepared.AddEvent(1, GameEventType.LevelUpPackage, new LevelUpPackage(RewardId, $"90000009,{QuestId}"));
+                break;
+            case 2:
+                prepared.AddEvent(1, GameEventType.TimeRunEvent, new TimeRunEvent(0, [new TimeRunEvent.Quest(QuestId, 3, 1)],
+                    new Dictionary<int, RewardItem>(), default));
+                break;
+            case 3:
+                prepared.AddEvent(1, GameEventType.ReturnUser, new ReturnUser(1, [QuestId], 0, default, 0, 0));
+                break;
+        }
+        GameSession session = Login(prepared: prepared);
         Quest quest = Started(remote: false, type: type);
         long meso = session.Currency.Meso;
 
