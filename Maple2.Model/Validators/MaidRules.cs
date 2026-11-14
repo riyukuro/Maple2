@@ -85,9 +85,10 @@ public static class MaidRules {
     public static int RemainDays(Maid maid, long now) => maid.ExpiryTime > now ? (int) ((maid.ExpiryTime - now) / (24 * 60 * 60)) : -1;
 
     // maid_ready_to_pay: the salary talk (maidPay) is open in the last MaidReadyToPay days of the contract (KR 7 of
-    // the 30 that PeriodOfMaidEmployment hires for) and after it has ended (script 8010 has maid_ready_to_pay and
-    // maid_expired). Inferred from the data and the constant's name; the client never tests it.
-    public static bool IsReadyToPay(Maid maid, long now, int readyDays) => RemainDays(maid, now) <= readyDays;
+    // the 30 that PeriodOfMaidEmployment hires for), that is while fewer than that many whole days are left by
+    // GetRemainDays (7 d 23 h left is 7 whole days, not ready), and after it has ended (script 8010 has
+    // maid_ready_to_pay and maid_expired). Inferred from the data and the constant's name; the client never tests it.
+    public static bool IsReadyToPay(Maid maid, long now, int readyDays) => RemainDays(maid, now) < readyDays;
 
     // maid_ready_to_pay "1"/"!1"; null passes, a npc with no placed maid fails a check.
     public static bool ReadyToPayMatches(bool? ready, Maid? maid, long now, int readyDays) {

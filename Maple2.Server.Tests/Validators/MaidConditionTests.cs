@@ -46,7 +46,9 @@ public class MaidConditionTests {
         Assert.Multiple(() => {
             Assert.That(MaidRules.IsReadyToPay(Maid(expiry: Now + 30 * Day), Now, 7), Is.False);
             Assert.That(MaidRules.IsReadyToPay(Maid(expiry: Now + 8 * Day), Now, 7), Is.False);
-            Assert.That(MaidRules.IsReadyToPay(Maid(expiry: Now + 7 * Day + 100), Now, 7), Is.True);
+            Assert.That(MaidRules.IsReadyToPay(Maid(expiry: Now + 8 * Day - 100), Now, 7), Is.False);
+            Assert.That(MaidRules.IsReadyToPay(Maid(expiry: Now + 7 * Day), Now, 7), Is.False);
+            Assert.That(MaidRules.IsReadyToPay(Maid(expiry: Now + 7 * Day - 100), Now, 7), Is.True);
             Assert.That(MaidRules.IsReadyToPay(Maid(expiry: Now - Day), Now, 7), Is.True);
             Assert.That(NpcTalkUtil.MaidMatches(Condition(readyToPay: false), Maid(), Now, 7), Is.True);
             Assert.That(NpcTalkUtil.MaidMatches(Condition(readyToPay: true), Maid(), Now, 7), Is.False);
