@@ -1310,8 +1310,13 @@ public class ItemUseHandler : FieldPacketHandler {
     // to its list.
     private void HandleTreasureMap(GameSession session, IByteReader packet, Item item) {
         bool free = packet.ReadUnicodeString() == TreasureMapRules.FreeArgument;
-        if (!TreasureMapRules.TryPick(item.Metadata.Function?.Parameters, free, out int boxId, out long cost)
-            || session.Currency.Meso < cost) {
+        if (!TreasureMapRules.TryPick(item.Metadata.Function?.Parameters, free, out int boxId, out long cost)) {
+            session.Send(ItemScriptPacket.TreasureMapFailed());
+            return;
+        }
+        // The cost is held here without a packet (the map's packet goes out before it was taken, and a spend on
+        // another thread could come in between), given back when nothing is given; the packet goes where the take was.
+        if (cost > 0 && !session.Currency.TryTakeMeso(cost, notify: false)) {
             session.Send(ItemScriptPacket.TreasureMapFailed());
             return;
         }
@@ -1319,12 +1324,13 @@ public class ItemUseHandler : FieldPacketHandler {
         ICollection<Item> rewards = session.Field!.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId);
         // The room is checked for the whole roll before the map is taken, so an Add below takes all of it.
         if (rewards.Count == 0 || !session.Item.Inventory.TakesAll(rewards) || !session.Item.Inventory.Consume(item.Uid, 1)) {
+            session.Currency.ReturnMeso(cost, notify: false);
             session.Send(ItemScriptPacket.TreasureMapFailed());
             return;
         }
 
         if (cost > 0) {
-            session.Currency.ChangeMeso(-cost);
+            session.Currency.NotifyMeso();
         }
         foreach (Item reward in rewards) {
             // Only a failed item write gets here (TakesAll checked the bag and furnishing storage); the map is
