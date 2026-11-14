@@ -61,6 +61,28 @@ public static class SurvivalRules {
         return reached;
     }
 
+    // The account enters the open period: an account whose survival level, exp and pass belong to another period
+    // starts the period at level 1 with no exp, no paid pass and no pass level claimed, so a new period's pass can be
+    // bought and claimed again. Chosen here (the client keeps no season of the pass; the period's rewardID names the
+    // pass rewards of each level, so the level starts again with them). An account with no period recorded (0, also
+    // every account from before the period was kept) takes the open one as it is. With no open period nothing changes.
+    // True when the account was reset.
+    public static bool EnterSeason(Account account, int periodId) {
+        if (periodId == 0 || account.SurvivalSeason == periodId) {
+            return false;
+        }
+        bool reset = account.SurvivalSeason != 0;
+        if (reset) {
+            account.SurvivalLevel = 1;
+            account.SurvivalExp = 0;
+            account.ActiveGoldPass = false;
+            account.SurvivalSilverLevelRewardClaimed = 0;
+            account.SurvivalGoldLevelRewardClaimed = 0;
+        }
+        account.SurvivalSeason = periodId;
+        return reset;
+    }
+
     // The pass levels a claim takes (the client sends how many free and paid levels, UIMapleSurvivalPassDialog
     // OnReceive): the free ones after those claimed up to the level, the paid ones only with the paid pass.
     public static (int FreeTo, int PaidTo) Claim(int level, int freeClaimed, int paidClaimed, bool paidPass, int free, int paid) {

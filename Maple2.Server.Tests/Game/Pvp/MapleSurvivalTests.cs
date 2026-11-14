@@ -325,6 +325,47 @@ public class MapleSurvivalTests {
         Assert.That(session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Is.EqualTo(3));
     }
 
+    // A new period starts the survival level and the pass again; an account with no period recorded takes the open one
+    // as it is, and no open period changes nothing.
+    [Test]
+    public void EnterSeason_ResetsOnANewPeriod() {
+        var account = new Maple2.Model.Game.Account { Username = "a", Id = 9, SurvivalLevel = 5, SurvivalExp = 70, ActiveGoldPass = true,
+            SurvivalSilverLevelRewardClaimed = 4, SurvivalGoldLevelRewardClaimed = 3 };
+        Assert.That(SurvivalRules.EnterSeason(account, 1), Is.False);
+        Assert.That((account.SurvivalSeason, account.SurvivalLevel, account.ActiveGoldPass), Is.EqualTo((1, 5, true)));
+        Assert.That(SurvivalRules.EnterSeason(account, 1), Is.False);
+        Assert.That(SurvivalRules.EnterSeason(account, 0), Is.False);
+        Assert.That(account.SurvivalSeason, Is.EqualTo(1));
+        Assert.That(SurvivalRules.EnterSeason(account, 2), Is.True);
+        Assert.That((account.SurvivalSeason, account.SurvivalLevel, account.SurvivalExp, account.ActiveGoldPass,
+            account.SurvivalSilverLevelRewardClaimed, account.SurvivalGoldLevelRewardClaimed), Is.EqualTo((2, 1, 0L, false, 0, 0)));
+    }
+
+    // An account that bought and claimed the pass of an ended period buys the new period's pass again (0xC2 0x22).
+    [Test]
+    public void Pass_NewPeriodBuysAgain() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        MapleSurvivalTable table = Table();
+        test.SetTable(table with {
+            Periods = new Dictionary<int, MapleSurvivalTable.Period> {
+                [1] = new(1, 1, new DateTime(2018, 8, 22), new DateTime(2019, 1, 1), 800),
+                [2] = new(2, 1, new DateTime(2019, 1, 2), new DateTime(2099, 1, 1), 500),
+            },
+        });
+        session.Currency.Meret = 1000;
+        Maple2.Model.Game.Account account = session.Player.Value.Account;
+        account.SurvivalSeason = 1;
+        account.SurvivalLevel = 3;
+        account.ActiveGoldPass = true;
+        account.SurvivalSilverLevelRewardClaimed = 3;
+        account.SurvivalGoldLevelRewardClaimed = 3;
+        test.TakeSent();
+        Send(test, session, "22" + "01" + Long(500));
+        Assert.That((account.SurvivalSeason, account.SurvivalLevel, account.ActiveGoldPass, session.Currency.Meret), Is.EqualTo((2, 1, true, 500L)));
+        Assert.That((account.SurvivalSilverLevelRewardClaimed, account.SurvivalGoldLevelRewardClaimed), Is.EqualTo((0, 0)));
+    }
+
     // A match takes the units that fit its count (a unit that would go past it waits): 18 solo players and a squad of
     // 4 make no 20-player match; two more solos fill it. A match needs two units.
     [Test]

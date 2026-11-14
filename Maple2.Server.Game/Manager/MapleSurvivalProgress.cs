@@ -24,15 +24,26 @@ public static class MapleSurvivalProgress {
         }
     }
 
+    // The open period, which the account enters first (SurvivalRules.EnterSeason: a new period starts the survival
+    // level and the pass again). Every read of the account's survival level or pass goes through here.
+    private static MapleSurvivalTable.Period? Period(GameSession session, MapleSurvivalTable? table) {
+        MapleSurvivalTable.Period? period = table == null ? null : SurvivalRules.CurrentPeriod(table, DateTime.Now);
+        if (period != null && SurvivalRules.EnterSeason(session.Player.Value.Account, period.Id)) {
+            Logger.Information("Maple Survival period {Period}: account {AccountId} starts its survival level and pass again",
+                period.Id, session.Player.Value.Account.Id);
+        }
+        return period;
+    }
+
     // After each game server entry and on the lobby's refresh (0xC2 0x12).
     public static void SendLobby(GameSession session) {
         Account account = session.Player.Value.Account;
+        MapleSurvivalTable? table = Table(session);
+        MapleSurvivalTable.Period? period = Period(session, table);
         // The first survival level is 1 (survivallevel.xml starts there); an account that never played has 0 stored.
         if (account.SurvivalLevel < 1) {
             account.SurvivalLevel = 1;
         }
-        MapleSurvivalTable? table = Table(session);
-        MapleSurvivalTable.Period? period = table == null ? null : SurvivalRules.CurrentPeriod(table, DateTime.Now);
         if (period != null) {
             using GameStorage.Request db = session.GameStorage.Context();
             SurvivalSeasonRecord record = db.GetSurvivalRecord(session.CharacterId, period.Id);
@@ -47,7 +58,7 @@ public static class MapleSurvivalProgress {
     public static void BuyPass(GameSession session, bool paid, long price) {
         Account account = session.Player.Value.Account;
         MapleSurvivalTable? table = Table(session);
-        MapleSurvivalTable.Period? period = table == null ? null : SurvivalRules.CurrentPeriod(table, DateTime.Now);
+        MapleSurvivalTable.Period? period = Period(session, table);
         if (!paid || period == null || account.ActiveGoldPass || price != period.PassPrice || !session.Currency.TryTakeMeret(period.PassPrice)) {
             session.Send(SurvivalPacket.UpdateStats(account));
             return;
@@ -64,7 +75,7 @@ public static class MapleSurvivalProgress {
     public static void ClaimPass(GameSession session, int free, int paid) {
         Account account = session.Player.Value.Account;
         MapleSurvivalTable? table = Table(session);
-        MapleSurvivalTable.Period? period = table == null ? null : SurvivalRules.CurrentPeriod(table, DateTime.Now);
+        MapleSurvivalTable.Period? period = Period(session, table);
         // Without a field (a field change under way) no reward item can be made: the claim is refused, nothing is
         // marked claimed.
         if (table == null || period == null || session.Field == null) {
@@ -140,6 +151,7 @@ public static class MapleSurvivalProgress {
     // level SurvivalRules.AddExp keeps 0 exp, so the item would add nothing.
     public static bool CanAddItemExp(GameSession session) {
         MapleSurvivalTable? table = Table(session);
+        Period(session, table);
         return table != null && table.LevelExp.ContainsKey(Math.Max(1, session.Player.Value.Account.SurvivalLevel) + 1);
     }
 
@@ -151,6 +163,7 @@ public static class MapleSurvivalProgress {
         if (table == null) {
             return;
         }
+        Period(session, table);
         Account account = session.Player.Value.Account;
         int level = Math.Max(1, account.SurvivalLevel);
         long exp = account.SurvivalExp;
@@ -178,6 +191,7 @@ public static class MapleSurvivalProgress {
     public static int[] Result(GameSession session, int rank, int participants, int kills, int seconds, bool squad = false) {
         Account account = session.Player.Value.Account;
         MapleSurvivalTable? table = Table(session);
+        MapleSurvivalTable.Period? period = Period(session, table);
         int ratingBefore = 0, ratingAfter = 0;
         bool inSeason = false;
         int levelBefore = Math.Max(1, account.SurvivalLevel);
@@ -191,7 +205,7 @@ public static class MapleSurvivalProgress {
             account.SurvivalExp = exp;
             int seasonId = squad
                 ? SquadSeason(session) is > 0 and int squadSeason ? SurvivalRules.SquadSeasonOffset + squadSeason : 0
-                : SurvivalRules.CurrentPeriod(table, DateTime.Now)?.Id ?? 0;
+                : period?.Id ?? 0;
             if (seasonId != 0) {
                 using GameStorage.Request db = session.GameStorage.Context();
                 SurvivalSeasonRecord record = db.GetSurvivalRecord(session.CharacterId, seasonId);

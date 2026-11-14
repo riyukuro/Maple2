@@ -38,6 +38,7 @@ internal class Account {
     public int SurvivalSilverLevelRewardClaimed { get; set; }
     public int SurvivalGoldLevelRewardClaimed { get; set; }
     public bool ActiveGoldPass { get; set; }
+    public int SurvivalSeason { get; set; }
 
     public DateTime CreationTime { get; set; }
     public DateTime LastModified { get; init; }
@@ -102,6 +103,7 @@ internal class Account {
             SurvivalSilverLevelRewardClaimed = other.SurvivalSilverLevelRewardClaimed,
             SurvivalGoldLevelRewardClaimed = other.SurvivalGoldLevelRewardClaimed,
             ActiveGoldPass = other.ActiveGoldPass,
+            SurvivalSeason = other.SurvivalSeason,
             Online = other.Online,
             Permissions = other.AdminPermissions.ToString(),
         };
@@ -145,6 +147,7 @@ internal class Account {
             SurvivalSilverLevelRewardClaimed = other.SurvivalSilverLevelRewardClaimed,
             SurvivalGoldLevelRewardClaimed = other.SurvivalGoldLevelRewardClaimed,
             ActiveGoldPass = other.ActiveGoldPass,
+            SurvivalSeason = other.SurvivalSeason,
             Online = other.Online,
             AdminPermissions = Enum.TryParse<AdminPermissions>(other.Permissions, true, out AdminPermissions permissions) ? permissions : AdminPermissions.None,
         };

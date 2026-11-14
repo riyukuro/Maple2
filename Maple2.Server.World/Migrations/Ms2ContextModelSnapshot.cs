@@ -113,6 +113,9 @@ namespace Maple2.Server.World.Migrations
                     b.Property<int>("SurvivalLevel")
                         .HasColumnType("int");
 
+                    b.Property<int>("SurvivalSeason")
+                        .HasColumnType("int");
+
                     b.Property<int>("SurvivalSilverLevelRewardClaimed")
                         .HasColumnType("int");
 
