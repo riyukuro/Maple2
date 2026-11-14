@@ -1454,9 +1454,11 @@ public class TableMapper : TypeMapper<TableMetadata> {
     }
 
     // The parser has no guildcontribution.xml; its rows are read here as CGuildXmlData::LoadGuildContribution reads
-    // them (guilddef_2.cpp:603): one contribution row per type, of the enabled features and locale.
+    // them (guilddef_2.cpp:603): one contribution row per type, of the enabled features and locale. The client
+    // parses the type without case (commonenum.cpp:688) and stores contribution[kind] = value (guilddef_2.cpp:616),
+    // so of two rows whose types differ only by case the last one counts, under its own spelling.
     public static Dictionary<string, int> GuildContributions(XmlDocument document) {
-        var results = new Dictionary<string, int>();
+        var results = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (XmlElement node in document.SelectNodes("ms2/contribution")?.OfType<XmlElement>() ?? []) {
             if (!FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"))) {
                 continue;
@@ -1465,6 +1467,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
             if (type.Length == 0 || !int.TryParse(node.GetAttribute("value"), out int value)) {
                 continue;
             }
+            results.Remove(type);
             results[type] = value;
         }
         return results;
