@@ -41,7 +41,15 @@ public class ClubHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
+    // With Club off (feature 0x56) the client drops every Club packet the server sends (CClubClientManager::OnClub,
+    // clubcli.cpp:794), so no club request can be answered; the server takes none (a club made then would be one its
+    // members never see).
+    public const string Feature = "Club";
+
     public override void Handle(GameSession session, IByteReader packet) {
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(Feature)) {
+            return;
+        }
         var command = packet.Read<Command>();
         switch (command) {
             case Command.Create:

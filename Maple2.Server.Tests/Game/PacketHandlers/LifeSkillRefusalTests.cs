@@ -434,6 +434,25 @@ public class LifeSkillRefusalTests {
         Assert.That(session.Mastery[type], Is.EqualTo(0));
     }
 
+    // With Fishing off the client reads no Fishing packet (fishingmanager.cpp:548): the request is not taken.
+    [Test]
+    public void Fishing_FeatureOffIsNotTaken() {
+        test = new TestGameSession();
+        GameSession session = test.Start();
+        test.EnterHome();
+        session.Fishing = new FishingManager(session, test.TableMetadata, test.ServerTableMetadata);
+        test.SetFeaturesOff("Fishing");
+        test.TakeSent();
+
+        new FishingHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(0);
+            writer.WriteLong(1);
+        }));
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.GuideObject, Is.Null);
+    }
+
     // Fishing 2: i16 error. The client refuses by itself in a house (error 8).
     [Test]
     public void Fishing_InAHouseIsRefused() {

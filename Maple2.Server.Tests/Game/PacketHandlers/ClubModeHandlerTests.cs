@@ -95,6 +95,19 @@ public class ClubModeHandlerTests {
         Assert.That(ClubAnswers(), Is.EqualTo(Unknown));
     }
 
+    // With Club off the client reads no Club packet (clubcli.cpp:794): the request is not taken, nothing is answered.
+    [Test]
+    public void Invite_ClubOff_NotTaken() {
+        test.SetFeaturesOff("Club");
+        Send(6, writer => {
+            writer.WriteLong(ClubId);
+            writer.WriteUnicodeString(session.PlayerName);
+        });
+
+        Assert.That(test.World.Clubs, Is.Empty);
+        Assert.That(ClubAnswers(), Is.Empty);
+    }
+
     // The invite reply: mode 8 drops the listed invite (kept, the next invite to the club stops the client), then
     // the error.
     [Test]

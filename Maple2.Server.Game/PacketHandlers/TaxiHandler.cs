@@ -139,7 +139,7 @@ public class TaxiHandler : FieldPacketHandler {
     // is refused instead of moving the character for free.
     private void HandleRotorsAirTaxi(GameSession session, IByteReader packet) {
         int mapId = packet.ReadInt();
-        Logger.Warning("Refused RequestTaxi mode 2 to {MapId} from {CharacterId}", mapId, session.CharacterId);
+        Logger.Debug("Refused RequestTaxi mode 2 to {MapId} from {CharacterId}", mapId, session.CharacterId);
     }
 
     private float AirTaxiReduceRate(GameSession session) {

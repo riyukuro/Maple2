@@ -1274,8 +1274,12 @@ public class ItemUseHandler : FieldPacketHandler {
     // pet allows extraction, the gemPetSkinBaseItemID badge with that pet id), and the confirmed box sends the
     // scroll's use with the pet's uid as text (OnConfirmUseScroll). The pet is kept: the answer names it, and the
     // client shows its success notice only while it finds the pet. One scroll is used for the new badge.
+    // With GemPetSkin off (feature 0x6c) the dialog reads no answer (vfunc_79, uipetextractionscrolldialog.cpp:225),
+    // so the use is not taken: no scroll is spent and no badge made.
+    public const string PetSkinFeature = "GemPetSkin";
+
     private void HandlePetExtraction(GameSession session, Item item, IByteReader packet) {
-        if (session.Field is null) {
+        if (session.Field is null || !session.ServerTableMetadata.FeatureTable.IsOn(PetSkinFeature)) {
             return;
         }
         string text = packet.ReadUnicodeString();

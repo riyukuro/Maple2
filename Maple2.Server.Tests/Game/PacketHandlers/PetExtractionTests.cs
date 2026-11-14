@@ -86,6 +86,18 @@ public class PetExtractionTests {
         Assert.That(session.Item.Inventory.Get(closedPet.Uid), Is.Not.Null);
     }
 
+    // With GemPetSkin off the dialog reads no answer (uipetextractionscrolldialog.cpp:225): nothing is used or added.
+    [Test]
+    public void Refused_FeatureOff() {
+        Login();
+        test.SetFeaturesOff("GemPetSkin");
+        Use($"{pet.Uid}");
+
+        Assert.That(Answers(), Is.Empty);
+        Assert.That(Scrolls(), Is.EqualTo(2));
+        Assert.That(Badges(), Is.Empty);
+    }
+
     // A full badge tab: the client's inventory full code, nothing used.
     [Test]
     public void Refused_InventoryFull() {

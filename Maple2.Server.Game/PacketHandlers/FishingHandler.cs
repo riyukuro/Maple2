@@ -20,7 +20,14 @@ public class FishingHandler : FieldPacketHandler {
         FailMinigame = 10,
     }
 
+    // With Fishing off (feature 0xb) the client reads no Fishing packet (CFishingManager::FUN_140cd9840,
+    // fishingmanager.cpp:548), so it can never fish; the server takes no request (no catch, exp or mastery paid).
+    public const string Feature = "Fishing";
+
     public override void Handle(GameSession session, IByteReader packet) {
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(Feature)) {
+            return;
+        }
         var command = packet.Read<Command>();
         switch (command) {
             case Command.Prepare:
