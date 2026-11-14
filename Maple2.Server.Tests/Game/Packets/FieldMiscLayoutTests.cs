@@ -66,9 +66,9 @@ public class FieldMiscLayoutTests {
             new FieldPropertyUserTagSymbol { Symbol1 = "a", Symbol2 = "b" },
             new FieldPropertySightRange { Range = 450, Fades = [1, 2, 3], Unknown = true, Opacity = 0x12, Opaque = true },
             new FieldPropertyWeather { WeatherType = WeatherType.Rain },
-            new FieldPropertyAmbientLight { Color = new Byte3(1, 2, 3), Restore = true, Value = 0.5f },
+            new FieldPropertyAmbientLight { Color = new Byte3(1, 2, 3), Fade = true, FadeSeconds = 0.5f },
             new FieldPropertyDirectionalLight {
-                DiffuseColor = new Byte3(4, 5, 6), SpecularColor = new Byte3(7, 8, 9), Restore = false, Value = 0.25f,
+                DiffuseColor = new Byte3(4, 5, 6), SpecularColor = new Byte3(7, 8, 9), Fade = false, FadeSeconds = 0.25f,
             },
             new FieldPropertyLocalCamera { Enabled = true },
             new FieldPropertyPhotoStudio { Enabled = true },

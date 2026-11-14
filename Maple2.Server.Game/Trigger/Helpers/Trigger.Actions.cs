@@ -507,8 +507,8 @@ public partial class Trigger {
         public void Execute(TriggerContext context) => context.SetAiExtraData(key, value, isModify, boxId);
     }
 
-    public class SetAmbientLight(Vector3 primary, Vector3 secondary, Vector3 tertiary) : IAction {
-        public void Execute(TriggerContext context) => context.SetAmbientLight(primary, secondary, tertiary);
+    public class SetAmbientLight(Vector3 primary, bool fade, float fadeSeconds) : IAction {
+        public void Execute(TriggerContext context) => context.SetAmbientLight(primary, fade, fadeSeconds);
     }
 
     public class SetBreakable(int[] triggerIds, bool enable) : IAction {
@@ -531,8 +531,8 @@ public partial class Trigger {
         public void Execute(TriggerContext context) => context.SetDialogue(type, spawnId, script, time, arg5, align);
     }
 
-    public class SetDirectionalLight(Vector3 diffuseColor, Vector3 specularColor) : IAction {
-        public void Execute(TriggerContext context) => context.SetDirectionalLight(diffuseColor, specularColor);
+    public class SetDirectionalLight(Vector3 diffuseColor, Vector3 specularColor, bool fade, float fadeSeconds) : IAction {
+        public void Execute(TriggerContext context) => context.SetDirectionalLight(diffuseColor, specularColor, fade, fadeSeconds);
     }
 
     public class SetEffect(int[] triggerIds, bool visible, int startDelay, int interval) : IAction {

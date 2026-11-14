@@ -42,16 +42,19 @@ public partial class TriggerContext {
         }
     }
 
-    public void SetAmbientLight(Vector3 primary, Vector3 secondary, Vector3 tertiary) {
-        DebugLog("[SetAmbientLight] color:{Color}", primary);
-        Field.AddFieldProperty(new FieldPropertyAmbientLight { Color = primary });
+    public void SetAmbientLight(Vector3 primary, bool fade, float fadeSeconds) {
+        DebugLog("[SetAmbientLight] color:{Color}, fade:{Fade}, fadeSeconds:{FadeSeconds}", primary, fade, fadeSeconds);
+        Field.AddFieldProperty(new FieldPropertyAmbientLight { Color = primary, Fade = fade, FadeSeconds = fadeSeconds });
     }
 
-    public void SetDirectionalLight(Vector3 diffuseColor, Vector3 specularColor) {
-        DebugLog("[SetDirectionalLight] diffuseColor:{DiffuseColor}, specularColor:{SpecularColor}", diffuseColor, specularColor);
+    public void SetDirectionalLight(Vector3 diffuseColor, Vector3 specularColor, bool fade, float fadeSeconds) {
+        DebugLog("[SetDirectionalLight] diffuseColor:{DiffuseColor}, specularColor:{SpecularColor}, fade:{Fade}, fadeSeconds:{FadeSeconds}",
+            diffuseColor, specularColor, fade, fadeSeconds);
         Field.AddFieldProperty(new FieldPropertyDirectionalLight {
             DiffuseColor = diffuseColor,
             SpecularColor = specularColor,
+            Fade = fade,
+            FadeSeconds = fadeSeconds,
         });
     }
 

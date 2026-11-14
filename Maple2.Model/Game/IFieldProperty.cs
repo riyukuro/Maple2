@@ -109,18 +109,17 @@ public class FieldPropertyAmbientLight : IFieldProperty {
     public FieldProperty Type => FieldProperty.AmbientLight;
 
     public Byte3 Color { get; init; }
-    // Client FieldPropertyAmbientLightCli: false sets Color on the field's ambient light at once. true does not
-    // set Color; the client passes the same light property and a saved vector to another entity helper and marks
-    // itself for a later step that is not traced yet. The name assumes a restore that is not proven.
-    public bool Restore { get; init; }
-    // Read into FieldPropertyAmbientLight +0x30; its use on the client is not settled.
-    public float Value { get; init; }
+    // Client FieldPropertyAmbientLightCli::vfunc_4: false sets Color on the field's ambient light at once. true saves
+    // the light's current colour and WorldService::UpdateAmbientLight fades it to Color over FadeSeconds (elapsed
+    // frame time / FadeSeconds), then sets Color.
+    public bool Fade { get; init; }
+    public float FadeSeconds { get; init; }
 
     public void WriteTo(IByteWriter writer) {
         writer.Write<FieldProperty>(Type);
         writer.Write<Byte3>(Color);
-        writer.WriteBool(Restore);
-        writer.WriteFloat(Value);
+        writer.WriteBool(Fade);
+        writer.WriteFloat(FadeSeconds);
     }
 }
 
@@ -129,19 +128,18 @@ public class FieldPropertyDirectionalLight : IFieldProperty {
 
     public Byte3 DiffuseColor { get; init; }
     public Byte3 SpecularColor { get; init; }
-    // Client FieldPropertyDirectionalLightCli: false sets the colours on the field's directional light at once. true
-    // does not set them; as for the ambient light, the client hands the light property and a saved vector to another
-    // entity helper and marks itself for a later step that is not traced yet. The name assumes a restore that is not proven.
-    public bool Restore { get; init; }
-    // Read after the flag; its use on the client is not settled.
-    public float Value { get; init; }
+    // Client FieldPropertyDirectionalLightCli::vfunc_4: false sets DiffuseColor on the field's directional light at
+    // once. true saves the current colour and WorldService::UpdateDirectionalLight fades it to DiffuseColor over
+    // FadeSeconds, as for the ambient light.
+    public bool Fade { get; init; }
+    public float FadeSeconds { get; init; }
 
     public void WriteTo(IByteWriter writer) {
         writer.Write<FieldProperty>(Type);
         writer.Write<Byte3>(DiffuseColor);
         writer.Write<Byte3>(SpecularColor);
-        writer.WriteBool(Restore);
-        writer.WriteFloat(Value);
+        writer.WriteBool(Fade);
+        writer.WriteFloat(FadeSeconds);
     }
 }
 

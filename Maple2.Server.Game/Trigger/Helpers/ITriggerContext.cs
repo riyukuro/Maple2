@@ -130,13 +130,13 @@ public interface ITriggerContext {
     public void SetActor(int triggerId, bool visible, string initialSequence, bool arg4, bool arg5);
     public void SetAgent(int[] triggerIds, bool visible);
     public void SetAiExtraData(string key, int value, bool isModify, int boxId);
-    public void SetAmbientLight(Vector3 primary, Vector3 secondary, Vector3 tertiary);
+    public void SetAmbientLight(Vector3 primary, bool fade, float fadeSeconds);
     public void SetBreakable(int[] triggerIds, bool enable);
     public void SetCinematicIntro(string text);
     public void SetCinematicUi(int type, string script, bool arg3);
     public void SetCube(int[] triggerIds, bool isVisible, int randomCount);
     public void SetDialogue(int type, int spawnId, string script, int time, int arg5, Align align);
-    public void SetDirectionalLight(Vector3 diffuseColor, Vector3 specularColor);
+    public void SetDirectionalLight(Vector3 diffuseColor, Vector3 specularColor, bool fade, float fadeSeconds);
     public void SetEffect(int[] triggerIds, bool visible, int startDelay, int interval);
     public void SetEventUiCountdown(string script, int[] roundCountdown, string[] boxIds);
     public void SetEventUiRound(int[] rounds, int vOffset, int arg3);

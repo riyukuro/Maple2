@@ -2310,13 +2310,21 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That(reader.Available, Is.Zero);
     }
 
-    // set_ambient_light (82): the AmbientLight (8) property is added.
+    // set_ambient_light (82): the AmbientLight (8) property is added with the colour, the fade flag and the fade
+    // seconds; a colour written where the flag goes ("0,0,0", two KR rows) is no fade.
     [Test]
     public void SetAmbientLight_AddsTheProperty() {
         StartWithProperties();
 
-        Action("""<action name="set_ambient_light" primary="128,64,32" />""");
-        Assert.That(PropertySent(), Is.EqualTo(((byte) 1, (byte) 8)));
+        Action("""<action name="set_ambient_light" primary="128,64,32" fade="1" fade_seconds="2.5" />""");
+        ByteReader sent = Sent(SendOp.FieldProperty).Single();
+        Assert.That((sent.ReadByte(), sent.ReadByte(), sent.ReadByte(), sent.ReadByte(), sent.ReadByte(), sent.ReadBool(), sent.ReadFloat()),
+            Is.EqualTo(((byte) 1, (byte) 8, (byte) 128, (byte) 64, (byte) 32, true, 2.5f)));
+
+        Action("""<action name="set_ambient_light" primary="1,2,3" fade="0,0,0" fade_seconds="0,0,0" />""");
+        sent = Sent(SendOp.FieldProperty).Last();
+        Assert.That((sent.ReadByte(), sent.ReadByte(), sent.ReadByte(), sent.ReadByte(), sent.ReadByte(), sent.ReadBool(), sent.ReadFloat()),
+            Is.EqualTo(((byte) 1, (byte) 8, (byte) 1, (byte) 2, (byte) 3, false, 0f)));
     }
 
     // show_count_ui (129): MassiveEvent Countdown (1) as UIMassiveEvent reads it: text, stage, count, sound type.
@@ -2367,13 +2375,18 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="is_dungeon_room" negate="1" />"""), Is.True);
     }
 
-    // set_directional_light (69): the DirectionalLight (9) property is added.
+    // set_directional_light (69): the DirectionalLight (9) property is added with both colours, the fade flag and the
+    // fade seconds.
     [Test]
     public void SetDirectionalLight_AddsTheProperty() {
         StartWithProperties();
 
-        Action("""<action name="set_directional_light" diffuse_color="255,200,100" specular_color="20,20,20" />""");
-        Assert.That(PropertySent(), Is.EqualTo(((byte) 1, (byte) 9)));
+        Action("""<action name="set_directional_light" diffuse_color="255,200,100" specular_color="20,20,20" fade="1" fade_seconds="1.5" />""");
+        ByteReader sent = Sent(SendOp.FieldProperty).Single();
+        Assert.That((sent.ReadByte(), sent.ReadByte()), Is.EqualTo(((byte) 1, (byte) 9)));
+        Assert.That((sent.ReadByte(), sent.ReadByte(), sent.ReadByte(), sent.ReadByte(), sent.ReadByte(), sent.ReadByte()),
+            Is.EqualTo(((byte) 255, (byte) 200, (byte) 100, (byte) 20, (byte) 20, (byte) 20)));
+        Assert.That((sent.ReadBool(), sent.ReadFloat(), sent.Available), Is.EqualTo((true, 1.5f, 0)));
     }
 
     // set_local_camera (113): LocalCamera with the camera id, the switch and no object.

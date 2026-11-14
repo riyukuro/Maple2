@@ -139,13 +139,13 @@ public static class TriggerFunctionMapping {
         { "set_actor", attrs => new Trigger.SetActor(ParseInt(attrs?["trigger_id"]?.Value), ParseBool(attrs?["visible"]?.Value), attrs?["initial_sequence"]?.Value ?? string.Empty, ParseBool(attrs?["arg4"]?.Value), ParseBool(attrs?["arg5"]?.Value)) },
         { "set_agent", attrs => new Trigger.SetAgent(ParseIntArray(attrs?["trigger_ids"]?.Value), ParseBool(attrs?["visible"]?.Value)) },
         { "set_ai_extra_data", attrs => new Trigger.SetAiExtraData(attrs?["key"]?.Value ?? string.Empty, ParseInt(attrs?["value"]?.Value), ParseBool(attrs?["is_modify"]?.Value), ParseInt(attrs?["box_id"]?.Value)) },
-        { "set_ambient_light", attrs => new Trigger.SetAmbientLight(ParseVector3(attrs?["primary"]?.Value), ParseVector3(attrs?["secondary"]?.Value), ParseVector3(attrs?["tertiary"]?.Value)) },
+        { "set_ambient_light", attrs => new Trigger.SetAmbientLight(ParseVector3(attrs?["primary"]?.Value), ParseFadeFlag(attrs?["fade"]?.Value), ParseFloat(attrs?["fade_seconds"]?.Value)) },
         { "set_breakable", attrs => new Trigger.SetBreakable(ParseIntArray(attrs?["trigger_ids"]?.Value), ParseBool(attrs?["enable"]?.Value)) },
         { "set_cinematic_intro", attrs => new Trigger.SetCinematicIntro(attrs?["text"]?.Value ?? string.Empty) },
         { "set_cinematic_ui", attrs => new Trigger.SetCinematicUi(ParseInt(attrs?["type"]?.Value), attrs?["script"]?.Value ?? string.Empty, ParseBool(attrs?["arg3"]?.Value)) },
         { "set_cube", attrs => new Trigger.SetCube(ParseIntArray(attrs?["trigger_ids"]?.Value), ParseBool(attrs?["is_visible"]?.Value), ParseInt(attrs?["random_count"]?.Value)) },
         { "set_dialogue", attrs => new Trigger.SetDialogue(ParseInt(attrs?["type"]?.Value), ParseInt(attrs?["spawn_id"]?.Value), attrs?["script"]?.Value ?? string.Empty, ParseInt(attrs?["time"]?.Value), ParseInt(attrs?["arg5"]?.Value), ParseAlign(attrs?["align"]?.Value)) },
-        { "set_directional_light", attrs => new Trigger.SetDirectionalLight(ParseVector3(attrs?["diffuse_color"]?.Value), ParseVector3(attrs?["specular_color"]?.Value)) },
+        { "set_directional_light", attrs => new Trigger.SetDirectionalLight(ParseVector3(attrs?["diffuse_color"]?.Value), ParseVector3(attrs?["specular_color"]?.Value), ParseFadeFlag(attrs?["fade"]?.Value), ParseFloat(attrs?["fade_seconds"]?.Value)) },
         { "set_effect", attrs => new Trigger.SetEffect(ParseIntArray(attrs?["trigger_ids"]?.Value), ParseBool(attrs?["visible"]?.Value), ParseInt(attrs?["start_delay"]?.Value), ParseInt(attrs?["interval"]?.Value)) },
         { "set_event_ui_countdown", attrs => new Trigger.SetEventUiCountdown(attrs?["script"]?.Value ?? string.Empty, ParseIntArray(attrs?["round_countdown"]?.Value), attrs?["box_ids"]?.Value.Split(',') ?? []) },
         { "set_event_ui_round", attrs => new Trigger.SetEventUiRound(ParseIntArray(attrs?["rounds"]?.Value), ParseInt(attrs?["v_offset"]?.Value), ParseInt(attrs?["arg3"]?.Value)) },
@@ -426,6 +426,13 @@ public static class TriggerFunctionMapping {
     public static bool ParseBool(string? value) {
         if (string.IsNullOrEmpty(value)) return false;
         return value == "1" || value.Equals("true", StringComparison.CurrentCultureIgnoreCase);
+    }
+
+    // The light fade flag: "1" in the KR scripts that fade; two SetAmbientLight rows write a colour ("0,0,0") in its
+    // place, which reads as no fade.
+    public static bool ParseFadeFlag(string? value) {
+        if (string.IsNullOrEmpty(value)) return false;
+        return float.TryParse(value.Split(',')[0], out float v) ? v != 0 : ParseBool(value);
     }
 
     public static Vector3 ParseVector3(string? value) {

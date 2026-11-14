@@ -465,7 +465,7 @@ internal class TriggerDefinitionOverride {
             Types = BuildTypeOverride(("type", null), ("script", Required), ("arg3", null)),
         };
         ActionOverride["npc_remove_additional_effect"] = new TriggerDefinitionOverride("npc_remove_additional_effect") {
-            Names = BuildNameOverride(("spawnPointID", "spawnId"), ("additionalEffectID", "additionalEffectId")),
+            Names = BuildNameOverride(("spawnPointID", "spawnId"), ("additionalEffectID", "additionalEffectId"), ("additionalEffect", "additionalEffectId")),
             Types = BuildTypeOverride(("spawnId", Required), ("additionalEffectId", Required)),
         };
         ActionOverride["npc_to_patrol_in_box"] = new TriggerDefinitionOverride("npc_to_patrol_in_box") {
@@ -557,8 +557,10 @@ internal class TriggerDefinitionOverride {
             Types = BuildTypeOverride(("key", Required), ("value", Required), ("isModify", null), ("boxId", null)),
         };
         ActionOverride["set_ambient_light"] = new TriggerDefinitionOverride("set_ambient_light") {
-            Names = BuildNameOverride(("arg1", "primary"), ("arg2", "secondary"), ("arg3", "tertiary")),
-            Types = BuildTypeOverride(("primary", Required), ("secondary", null), ("tertiary", null)),
+            // arg2/arg3 are the fade flag and the fade seconds the client's AmbientLight property reads (KR SetAmbientLight
+            // arg1="214,200,179" arg2="1" arg3="2.0"), not more colours.
+            Names = BuildNameOverride(("arg1", "primary"), ("arg2", "fade"), ("arg3", "fadeSeconds")),
+            Types = BuildTypeOverride(("primary", Required), ("fade", null), ("fadeSeconds", null)),
         };
         ActionOverride["set_breakable"] = new TriggerDefinitionOverride("set_breakable") {
             Names = BuildNameOverride(("arg1", "triggerIds"), ("arg2", "enable")),
@@ -581,8 +583,8 @@ internal class TriggerDefinitionOverride {
             Types = BuildTypeOverride(("triggerIds", Required), ("isVisible", null), ("randomCount", null)),
         };
         ActionOverride["set_directional_light"] = new TriggerDefinitionOverride("set_directional_light") {
-            Names = BuildNameOverride(("arg1", "diffuseColor"), ("arg2", "specularColor")),
-            Types = BuildTypeOverride(("diffuseColor", Required), ("specularColor", null)),
+            Names = BuildNameOverride(("arg1", "diffuseColor"), ("arg2", "specularColor"), ("arg3", "fade"), ("arg4", "fadeSeconds")),
+            Types = BuildTypeOverride(("diffuseColor", Required), ("specularColor", null), ("fade", null), ("fadeSeconds", null)),
         };
         ActionOverride["set_effect"] = new TriggerDefinitionOverride("set_effect") {
             Names = BuildNameOverride(("arg1", "triggerIds"), ("arg2", "visible"), ("arg3", "startDelay"), ("arg4", "interval")),
@@ -952,7 +954,7 @@ internal class TriggerDefinitionOverride {
             Types = BuildTypeOverride(),
         };
         ConditionOverride["check_npc_additional_effect"] = new TriggerDefinitionOverride("check_npc_additional_effect") {
-            Names = BuildNameOverride(("spawnPointID", "spawnId"), ("additionalEffectID", "additionalEffectId")),
+            Names = BuildNameOverride(("spawnPointID", "spawnId"), ("additionalEffectID", "additionalEffectId"), ("additionalEffect", "additionalEffectId")),
             Types = BuildTypeOverride(("spawnId", Required), ("additionalEffectId", Required), ("level", Required)),
         };
         ConditionOverride["check_npc_damage"] = new TriggerDefinitionOverride("npc_damage") {

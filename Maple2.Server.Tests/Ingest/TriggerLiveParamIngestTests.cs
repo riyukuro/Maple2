@@ -53,4 +53,30 @@ public class TriggerLiveParamIngestTests {
             }
         }
     }
+
+    // The light actions' trailing args are the fade flag and seconds the client reads; NpcRemoveAdditionalEffect
+    // also comes with additionalEffect (KR 52100401_qd, 02200002_dg) instead of additionalEffectID.
+    [Test]
+    public void LightFadeArgs_AndRemoveEffectAlias() {
+        var xml = new XmlDocument();
+        xml.LoadXml("""
+            <ms2><state name="Start"><onEnter>
+                <action name="SetAmbientLight" arg1="214,200,179" arg2="1" arg3="2.0" />
+                <action name="SetDirectionalLight" arg1="255,247,239" arg2="255,255,255" arg3="1" arg4="1.5" />
+                <action name="NpcRemoveAdditionalEffect" spawnPointID="2000" additionalEffect="44100004" />
+            </onEnter></state></ms2>
+            """);
+        TriggerMapper.NormalizeTriggerXmlNames(xml);
+
+        XmlNodeList actions = xml.SelectNodes("//action")!;
+        Assert.That(actions[0]!.Attributes!["name"]!.Value, Is.EqualTo("set_ambient_light"));
+        Assert.That((actions[0]!.Attributes!["primary"]?.Value, actions[0]!.Attributes!["fade"]?.Value, actions[0]!.Attributes!["fade_seconds"]?.Value),
+            Is.EqualTo(("214,200,179", "1", "2.0")));
+        Assert.That(actions[1]!.Attributes!["name"]!.Value, Is.EqualTo("set_directional_light"));
+        Assert.That((actions[1]!.Attributes!["specular_color"]?.Value, actions[1]!.Attributes!["fade"]?.Value, actions[1]!.Attributes!["fade_seconds"]?.Value),
+            Is.EqualTo(("255,255,255", "1", "1.5")));
+        Assert.That(actions[2]!.Attributes!["name"]!.Value, Is.EqualTo("npc_remove_additional_effect"));
+        Assert.That((actions[2]!.Attributes!["spawn_id"]?.Value, actions[2]!.Attributes!["additional_effect_id"]?.Value),
+            Is.EqualTo(("2000", "44100004")));
+    }
 }
