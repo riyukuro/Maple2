@@ -91,7 +91,10 @@ public class ItemExchangeScroll : FieldPacketHandler {
             // uiitemexchangescrolldialog.cpp:392).
             int saleRate = EventSaleRules.ExchangeScrollSaleRate(session.FindEvent(GameEventType.ExchangeScrollSale), scrollId);
             long fee = ItemExchangeScrollRules.Fee(EventSaleRules.ExchangeScrollFee(scrollMetadata.RequiredMeso, saleRate), quantity);
-            if (fee < 0 || session.Currency.Meso < fee) {
+            // Held here without a packet (the materials' packets go out before the fee was taken, and a spend on
+            // another thread could come in between), given back on each refusal below; the packet goes where the
+            // take was.
+            if (fee < 0 || !session.Currency.TryTakeMeso(fee, notify: false)) {
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_money_invalid));
                 return;
             }
@@ -102,6 +105,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
             int[]? take = ItemExchangeScrollRules.TakeFromStacks(scrolls.Select(scroll => scroll.Amount).ToList(), (long) scrollMetadata.RecipeScroll.Amount * quantity);
             long rewardAmount = (long) scrollMetadata.RewardItem.Amount * quantity;
             if (take == null || rewardAmount is <= 0 or > int.MaxValue) {
+                session.Currency.ReturnMeso(fee, notify: false);
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_invalid));
                 return;
             }
@@ -109,6 +113,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
             // The reward is made before anything is taken.
             Item? rewardItem = session.Field?.ItemDrop.CreateItem(scrollMetadata.RewardItem.ItemId, scrollMetadata.RewardItem.Rarity, (int) rewardAmount);
             if (rewardItem == null) {
+                session.Currency.ReturnMeso(fee, notify: false);
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
                 return;
             }
@@ -119,22 +124,25 @@ public class ItemExchangeScroll : FieldPacketHandler {
 
             // The target is no material: a requirement of the target's id is paid with other items.
             if (!session.Item.Inventory.ConsumeItemComponents(scrollMetadata.RequiredItems, quantity, target?.Uid ?? 0)) {
+                session.Currency.ReturnMeso(fee, notify: false);
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_invalid));
                 return;
             }
 
             for (int i = 0; i < scrolls.Count; i++) {
                 if (take[i] > 0 && !session.Item.Inventory.Consume(scrolls[i].Uid, take[i])) {
+                    session.Currency.ReturnMeso(fee, notify: false);
                     Logger.Fatal("Failed to consume item {ItemUid}", scrolls[i].Uid);
                     throw new InvalidOperationException($"Fatal: Consuming item: {scrolls[i].Uid}");
                 }
             }
             if (target != null && !session.Item.Inventory.Consume(target.Uid, 1)) {
+                session.Currency.ReturnMeso(fee, notify: false);
                 Logger.Fatal("Failed to consume item {ItemUid}", target.Uid);
                 throw new InvalidOperationException($"Fatal: Consuming item: {target.Uid}");
             }
 
-            session.Currency.ChangeMeso(-fee);
+            session.Currency.NotifyMeso();
             if (!session.Item.Inventory.Add(rewardItem, true)) {
                 session.Item.MailItem(rewardItem);
             }

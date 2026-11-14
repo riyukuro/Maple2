@@ -19,10 +19,10 @@ public class ItemExchangeScrollHandlerTests {
 
     private TestGameSession test = null!;
 
-    private GameSession Start(out BagItem lockedScroll, out BagItem freeScroll, out BagItem lockedMaterial, out BagItem freeMaterial) {
+    private GameSession Start(out BagItem lockedScroll, out BagItem freeScroll, out BagItem lockedMaterial, out BagItem freeMaterial, long fee = 0, long meso = 0) {
         test = new TestGameSession();
         test.SetTable(new ItemExchangeScrollTable(new Dictionary<int, ItemExchangeScrollMetadata> {
-            [77] = new(new ItemComponent(ScrollId, -1, 1, ItemTag.None), new ItemComponent(RewardId, 1, 1, ItemTag.None), 0, 0,
+            [77] = new(new ItemComponent(ScrollId, -1, 1, ItemTag.None), new ItemComponent(RewardId, 1, 1, ItemTag.None), 0, fee,
                 [new ItemComponent(MaterialId, -1, 1, ItemTag.None)]),
         }));
         ItemMetadata scroll = TestGameSession.Metadata(ScrollId, type: 1, slotMax: 1,
@@ -34,6 +34,7 @@ public class ItemExchangeScrollHandlerTests {
         freeMaterial = test.Store(material);
         test.Register(TestGameSession.Metadata(RewardId, slotMax: 100));
         GameSession session = test.Start();
+        session.Currency.Meso = meso;
         test.TakeSent();
         lockedScroll = session.Item.Inventory.Get(lockedScroll.Uid)!;
         freeScroll = session.Item.Inventory.Get(freeScroll.Uid)!;
@@ -90,6 +91,46 @@ public class ItemExchangeScrollHandlerTests {
             Assert.That(Rewards(session), Is.EqualTo(1));
             Assert.That(Held(session, lockedMaterial), Is.True);
             Assert.That(Held(session, freeMaterial), Is.False);
+        });
+    }
+
+    // A spend on another thread while the materials leave: the fee was held at the check, so the exchange is done
+    // and only what was left could go. Before, the fee was taken after the materials; that take threw on the short
+    // balance, and the scroll and the material were gone with no reward.
+    [Test]
+    public void ASpendWhileTheMaterialsLeave_CannotSkipTheFee() {
+        GameSession session = Start(out BagItem lockedScroll, out _, out _, out _, fee: 1000, meso: 1500);
+        long spent = -1;
+        test.OnSend = packet => {
+            if (spent >= 0 || TestGameSession.Op(packet) != Maple2.Server.Core.Constants.SendOp.ItemInventory) {
+                return;
+            }
+            long left = session.Currency.Meso;
+            spent = session.Currency.TryTakeMeso(left, notify: false) ? left : 0;
+        };
+
+        Assert.DoesNotThrow(() => Exchange(session, lockedScroll.Uid, 1));
+
+        Assert.Multiple(() => {
+            Assert.That(spent, Is.EqualTo(500));
+            Assert.That(session.Currency.Meso, Is.Zero);
+            Assert.That(Rewards(session), Is.EqualTo(1));
+        });
+    }
+
+    // A refusal after the fee is held gives it back: no reward can be made.
+    [Test]
+    public void RefusedAfterTheFeeIsHeld_TheFeeComesBack() {
+        GameSession session = Start(out BagItem lockedScroll, out _, out BagItem lockedMaterial, out BagItem freeMaterial, fee: 1000, meso: 1500);
+        lockedMaterial.IsLocked = true;
+        freeMaterial.IsLocked = true;
+
+        Exchange(session, lockedScroll.Uid, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(1500));
+            Assert.That(Rewards(session), Is.Zero);
+            Assert.That(Held(session, lockedScroll), Is.True);
         });
     }
 }
