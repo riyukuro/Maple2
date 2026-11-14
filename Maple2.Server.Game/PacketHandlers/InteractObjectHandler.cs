@@ -76,7 +76,7 @@ public class InteractObjectHandler : FieldPacketHandler {
     private static bool InReach(GameSession session, FieldInteract interact) {
         float reach = interact.Value.Type == InteractType.Gathering
             ? session.ServerTableMetadata.ConstantsTable.MasteryObjectInteractionDistance
-            : InteractRules.OtherReach;
+            : InteractRules.ObjectReach(interact.Value.InteractionDistance);
         return InteractRules.InReach(session.Player.Position, interact.Position, reach);
     }
 

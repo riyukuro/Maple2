@@ -896,7 +896,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                     ModifyCode: info.additionalEffect.modify.code,
                     ModifyTime: info.additionalEffect.modify.modifyTime),
                 Spawn: spawn,
-                Ui: string.IsNullOrEmpty(info.ui?.swf) ? null : new InteractObjectMetadataUi(info.ui.swf, info.ui.value ?? "")
+                Ui: string.IsNullOrEmpty(info.ui?.swf) ? null : new InteractObjectMetadataUi(info.ui.swf, info.ui.value ?? ""),
+                InteractionDistance: info.validate?.interactionDistance ?? 0
             );
         }
         return results;

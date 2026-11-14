@@ -24,8 +24,8 @@ public static class InteractRules {
 
     // Server rule: room for the lag between the client's position and the one the server holds (one block).
     public const float ReachSlack = 150f;
-    // Server rule: the reach of an object that is not gathered. The client tests the object row's own
-    // interactionDistance, which the server's object data does not carry.
+    // Server rule: the reach of an object that is not gathered when its row's interactionDistance is not loaded
+    // (data from before the ingest read it, or a row of 0).
     public const float OtherReach = 1500f;
 
     // Liftable 1: the client lifts only an object within its ActionDistance (LiftCubeAction::FUN_140957890,
@@ -39,6 +39,11 @@ public static class InteractRules {
     public const int DefaultTalkableDistance = 400;
     public static float TalkReach(int talkableDistance, float capsuleRadius) =>
         (talkableDistance > 0 ? talkableDistance : DefaultTalkableDistance) + Math.Max(0f, capsuleRadius);
+
+    // The reach of an object that is not gathered: the client picks it and keeps the interaction only within the
+    // row's interactionDistance (WorldService::FUN_141bc6090, worldservice_1.cpp:4567; stateinteractdata.cpp:382;
+    // KR rows 70 to 900, most 155).
+    public static float ObjectReach(float rowDistance) => rowDistance > 0 ? rowDistance : OtherReach;
 
     // The client lists a gathered object or a farming cube only within the MasteryObjectInteractionDistance
     // constant of the character. A reach of 0 or less (constant not loaded) tests nothing.

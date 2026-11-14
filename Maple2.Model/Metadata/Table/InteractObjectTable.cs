@@ -17,7 +17,10 @@ public record InteractObjectMetadata(
     InteractObjectMetadataDrop Drop,
     InteractObjectMetadataEffect AdditionalEffect,
     InteractObjectMetadataSpawn[] Spawn,
-    InteractObjectMetadataUi? Ui = null);
+    InteractObjectMetadataUi? Ui = null,
+    // The row's <validate interactionDistance>: how near the client must be to start or keep using the object
+    // (stateinteractdata.cpp:382, worldservice_1.cpp:4567). 0 when not ingested.
+    float InteractionDistance = 0);
 
 // The page a Ui object opens (<ui swf value>): the swf's type name and its parameter, e.g. CardReverseGameDialog with
 // the BonusGame id of its deck.
