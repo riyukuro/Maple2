@@ -455,6 +455,87 @@ public class ItemFunctionUseTests {
         Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(2));
     }
 
+    // 30001099 (SurvivalScan "Position Tracker", `<v duration="10000" isAnnounce="false"/>`; SurvivalScanAdditionalID is
+    // 71000052 in KR, a 10 s buff): the client sends the plain use. In a running Maple Survival game the effect starts on
+    // the user for the item's 10 s and one item is used up.
+    [Test]
+    public void SurvivalScan_InARunningGame_StartsTheEffectAndIsUsedUp() {
+        Item item = ScanItem();
+        SurvivalGame();
+
+        Use(item);
+
+        Assert.That(session.Player.Buffs.EnumerateBuffs(ScanEffect).Select(buff => buff.EndTick - buff.StartTick), Is.EqualTo(new[] { 10000L }));
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
+    }
+
+    // Outside a game, after the game's end, with SurvivalContents01 off, when the user has fallen or when the data has
+    // no effect: nothing starts and the item is kept.
+    [TestCase("none")]
+    [TestCase("ended")]
+    [TestCase("off")]
+    [TestCase("fallen")]
+    [TestCase("noEffect")]
+    public void SurvivalScan_Refused_KeepsTheItem(string reason) {
+        Item item = ScanItem(reason == "off");
+        if (reason == "noEffect") {
+            EffectField();
+        }
+        if (reason != "none") {
+            SurvivalGame(withEffect: reason != "noEffect");
+        }
+        if (reason == "ended") {
+            // The other two leave: the user is the last one standing and the game ends.
+            foreach (FieldPlayer player in session.Field!.Players.Values.Where(player => player != session.Player).ToList()) {
+                session.Field.Survival!.Leave(player);
+            }
+            Assume.That(session.Field.Survival!.Ended, Is.True);
+        }
+        if (reason == "fallen") {
+            // The user falls; the other two still play, so the game runs on.
+            session.Field!.Survival!.Leave(session.Player);
+            Assume.That(session.Field.Survival.Ended || !session.Field.Survival.InRunningGame(session.CharacterId), Is.False);
+        }
+
+        Use(item);
+
+        Assert.That(session.Player.Buffs.EnumerateBuffs(ScanEffect), Is.Empty);
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(2));
+    }
+
+    private const int ScanEffect = 71000052;
+
+    private Item ScanItem(bool featureOff = false) {
+        return Login(30001099, ItemFunction.SurvivalScan, "<v duration=\"10000\" isAnnounce=\"false\" />", amount: 2, setup: () => {
+            test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { SurvivalScanAdditionalID = ScanEffect });
+            if (featureOff) {
+                test.SetFeaturesOff("SurvivalContents01");
+            }
+        });
+    }
+
+    // Two more players join the user's field and the survival game starts with the three; the field knows the scan's
+    // effect.
+    private void SurvivalGame(bool withEffect = true) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        if (withEffect) {
+            EffectField(BuffAttributeTests.Effect(ScanEffect, DisabledBuffTests.Property with { DurationTick = 10000 }));
+        }
+        FieldManager field = session.Field!;
+        for (int i = 1; i <= 2; i++) {
+            var other = new TestGameSession(test.Options);
+            other.Start();
+            typeof(Actor<Player>).GetField("<ObjectId>k__BackingField", any)!.SetValue(other.Session.Player, session.Player.ObjectId + i);
+            typeof(Actor<Player>).GetField("<Field>k__BackingField", any)!.SetValue(other.Session.Player, field);
+            other.Session.Field = field;
+            field.Players[other.Session.Player.ObjectId] = other.Session.Player;
+        }
+        // The test field has no constructor run: the game's end looks up the storm widget in this table.
+        typeof(FieldManager).GetField(nameof(FieldManager.Widgets))!.SetValue(field, new Dictionary<string, Maple2.Server.Game.Model.Widget.Widget>());
+        field.StartSurvival();
+        Assume.That(field.Survival!.Playing(session.CharacterId), Is.True);
+    }
+
     // The field knows the given effects at level 1 (as BuffAttributeTests sets it up), the player stands in the field.
     private void EffectField(params AdditionalEffectMetadata[] effects) {
         const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;

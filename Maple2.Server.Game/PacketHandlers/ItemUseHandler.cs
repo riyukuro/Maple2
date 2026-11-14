@@ -143,6 +143,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.SurvivalLevelExp:
                 HandleSurvivalLevelExp(session, item);
                 break;
+            case ItemFunction.SurvivalScan:
+                HandleSurvivalScan(session, item);
+                break;
             case ItemFunction.CreateReactor:
                 HandleCreateReactor(session, item);
                 break;
@@ -772,6 +775,27 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
         MapleSurvivalProgress.AddItemExp(session, exp);
+    }
+
+    // SurvivalScan (30001099 "Position Tracker", `<v duration="10000" isAnnounce="false"/>`): the client sends the plain
+    // use. The constant SurvivalScanAdditionalID (71000052 in KR) is the item's effect: the item's icon, a 10 s buff with
+    // the winner's visual effect, allowed in Maple Survival, no stats. No client code reads the constant or a tracked
+    // position packet, so the effect is all the item does. Chosen here: only a participant still playing a running game
+    // with SurvivalContents01 on can use it; otherwise, or when the effect does not start, the item is kept.
+    private static void HandleSurvivalScan(GameSession session, Item item) {
+        if (!session.ServerTableMetadata.FeatureTable.IsOn("SurvivalContents01") ||
+            session.Field?.Survival?.Playing(session.CharacterId) != true || session.Player.IsDead) {
+            return;
+        }
+        int effectId = session.ServerTableMetadata.ConstantsTable.SurvivalScanAdditionalID;
+        Dictionary<string, string> xmlParameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
+        int durationMs = xmlParameters.TryGetValue("duration", out string? value) && int.TryParse(value, out int duration) && duration > 0
+            ? duration : -1;
+        if (effectId <= 0 || !session.Player.Buffs.AddBuff(session.Player, session.Player, effectId, 1, session.Field!.FieldTick,
+                durationMs: durationMs, notifyField: true)) {
+            return;
+        }
+        session.Item.Inventory.Consume(item.Uid, 1);
     }
 
     private static void HandleLevelPotion(GameSession session, Item item) {

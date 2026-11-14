@@ -94,6 +94,11 @@ public sealed class SurvivalGameField {
         lock (mutex) return !state.Ended && state.Get(characterId) != null;
     }
 
+    // True while the game runs and the character is one of its participants still playing (not fallen).
+    public bool Playing(long characterId) {
+        lock (mutex) return !state.Ended && state.Get(characterId) != null && state.IsAlive(characterId);
+    }
+
     public bool Hostile(FieldPlayer caster, FieldPlayer target) {
         lock (mutex) return state.Hostile(caster.Value.Character.Id, target.Value.Character.Id);
     }
