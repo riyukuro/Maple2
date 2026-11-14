@@ -19,6 +19,13 @@ public static class MiniGameClearRules {
     // (is_gain_loser_bonus, 81000001 and 81000003) is exp of the same game, so it takes the same type as the winners'.
     public static ExpType ExpTypeOf(string gameName) => IsUserOpenGame(gameName) ? ExpType.userMiniGame : ExpType.miniGame;
 
+    // A round's exp type. The goal of the user-opened Escape and Crazy Runner (81000001 and 81000003 goal.xml) ends
+    // the round at exp rate 1 with no game_name, while their other round and every action around it name the game.
+    // Read as miniGame, that exp took the mass event's row (KR factor 25) instead of userMiniGame (1.5), about 17
+    // times as much. A round with no game_name takes the game the player started.
+    public static ExpType RoundExpType(string roundGameName, string? startedGameName) =>
+        ExpTypeOf(string.IsNullOrEmpty(roundGameName) ? startedGameName ?? string.Empty : roundGameName);
+
     // The extra reward (reward content 1008) is paid at most userMassiveExtraRewardMax times a day; the triggers'
     // own comment says "5 extra bonuses a day" and the constant is 5.
     public static bool CanPayExtraReward(int paidToday, int maxPerDay) => paidToday < maxPerDay;

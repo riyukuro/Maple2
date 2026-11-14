@@ -257,6 +257,34 @@ public class TriggerHallGameTests : TriggerTestBase {
         Assert.That(Sent(SendOp.DungeonReward), Has.Count.EqualTo(1));
     }
 
+    // The goal round of the user-opened Escape (81000001 goal.xml) ends with no game_name at exp rate 1: the winner
+    // and, with is_gain_loser_bonus, the loser get the started game's userMiniGame exp (KR factor 1.5), not the mass
+    // event's miniGame row (25). Exp base 1000 at every level.
+    [Test]
+    public void EndMiniGameRound_Unnamed_TakesTheStartedGamesExp() {
+        StartHall();
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> {
+            [ExpType.miniGame] = new(1, 25f),
+            [ExpType.userMiniGame] = new(1, 1.5f),
+        }));
+        test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
+            [1] = Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1000L),
+        }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000_000L)));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+
+        Action("""<action name="start_mini_game" round="5" box_id="1" game_name="UserMassive_Escape" />""");
+        long exp = test.Session.Player.Value.Character.Exp;
+        Action("""<action name="end_mini_game_round" winner_box_id="1" exp_rate="1" />""");
+        Assert.That(test.Session.Player.Value.Character.Exp - exp, Is.EqualTo(1500));
+        Assert.That(test.Session.MiniGameRecord!.Rewards[DungeonRewardType.Exp], Is.EqualTo(1500));
+
+        Action("""<action name="start_mini_game" round="5" box_id="1" game_name="UserMassive_Escape" />""");
+        exp = test.Session.Player.Value.Character.Exp;
+        Action("""<action name="end_mini_game_round" winner_box_id="2" exp_rate="1" is_gain_loser_bonus="1" />""");
+        Assert.That(test.Session.Player.Value.Character.Exp - exp, Is.EqualTo(1500));
+        Assert.That(test.Session.MiniGameRecord, Is.Null);
+    }
+
     // start_mini_game_round (55) sends nothing and leaves the records as they are.
     [Test]
     public void StartMiniGameRound_SendsNothing() {
@@ -298,6 +326,7 @@ public class TriggerHallGameTests : TriggerTestBase {
         MiniGameUserRecord? record = test.Session.MiniGameRecord;
         Assert.That(record, Is.Not.Null);
         Assert.That((record!.CharacterId, record.TotalRounds, record.MinRound, record.ClearedRounds), Is.EqualTo((CharacterId, 5, 1, 0)));
+        Assert.That(record.GameName, Is.EqualTo("springbeach"));
         Assert.That(test.TakeSent(), Is.Empty);
     }
 

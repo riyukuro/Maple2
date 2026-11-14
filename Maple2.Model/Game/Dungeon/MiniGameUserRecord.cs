@@ -11,6 +11,8 @@ public class MiniGameUserRecord : IUserContentRecord {
     public required int MinRound { get; init; }
     public required int TotalRounds { get; init; }
     public required bool ShowResult { get; init; }
+    // The game_name of the start_mini_game that made the record.
+    public string GameName { get; init; } = string.Empty;
     // The game's MiniGameGiveReward has run for this player: one reward and one clear per game.
     public bool RewardGiven { get; set; }
 

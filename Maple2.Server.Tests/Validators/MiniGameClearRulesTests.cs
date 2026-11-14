@@ -83,4 +83,16 @@ public class MiniGameClearRulesTests {
         Assert.That(MiniGameClearRules.ExpTypeOf("trapmaster"), Is.EqualTo(ExpType.miniGame));
         Assert.That(MiniGameClearRules.ExpTypeOf(""), Is.EqualTo(ExpType.miniGame));
     }
+
+    // The goal round of 81000001 and 81000003 names no game: it takes the game the player started, so the
+    // user-opened game's goal exp is userMiniGame. A named round keeps its own name; a mass event stays miniGame.
+    [Test]
+    public void RoundExpType_UnnamedRoundTakesTheStartedGame() {
+        Assert.That(MiniGameClearRules.RoundExpType("", "UserMassive_Escape"), Is.EqualTo(ExpType.userMiniGame));
+        Assert.That(MiniGameClearRules.RoundExpType("", "UserMassive_Crazyrunner"), Is.EqualTo(ExpType.userMiniGame));
+        Assert.That(MiniGameClearRules.RoundExpType("", "escape"), Is.EqualTo(ExpType.miniGame));
+        Assert.That(MiniGameClearRules.RoundExpType("", null), Is.EqualTo(ExpType.miniGame));
+        Assert.That(MiniGameClearRules.RoundExpType("UserMassive_Escape", "escape"), Is.EqualTo(ExpType.userMiniGame));
+        Assert.That(MiniGameClearRules.RoundExpType("trapmaster", "UserMassive_Escape"), Is.EqualTo(ExpType.miniGame));
+    }
 }
