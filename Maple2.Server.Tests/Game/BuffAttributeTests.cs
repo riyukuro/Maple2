@@ -260,4 +260,230 @@ public class BuffAttributeTests {
 
         Assert.That(Player.Value.Character.Exp - before, Is.EqualTo(264539));
     }
+
+    // rideId: the buff puts its player on the ride, and the buff and the ride end together. 73000002 (KR: rideId
+    // 99910380, 30 s); the ride's stats are left out here.
+    private void Rides(params int[] rides) {
+        var storage = new RideMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(RideMetadataStorage).BaseType!.GetField("Cache", Any)!.GetValue(storage)!;
+        foreach (int ride in rides) {
+            var metadata = new RideMetadata(ride, "", new RideMetadataBasic(RideOnType.Battle, 0, 0, 0, false, 0, 0),
+                new RideMetadataSpeed(1, 1, 1, 1), new Dictionary<BasicAttribute, long>());
+            cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [ride, metadata]);
+        }
+        typeof(FieldManager).GetField("<RideMetadata>k__BackingField", Any)!.SetValue(Field, storage);
+        test.Session.Ride = new RideManager(test.Session);
+        // Getting off sends the key table again (the default one here).
+        typeof(ConfigManager).GetField("session", Any)!.SetValue(test.Session.Config, test.Session);
+        typeof(ConfigManager).GetField("keyBinds", Any)!.SetValue(test.Session.Config, new Dictionary<int, KeyBind>());
+    }
+
+    private static readonly AdditionalEffectMetadataProperty BattleRide = Plain with { DurationTick = 30000, RideId = 99910380 };
+
+    [Test]
+    public void RideId_MountsTheRide() {
+        Start(MapType.None, Effect(73000002, BattleRide));
+        Rides(99910380);
+
+        Add(73000002);
+
+        Ride? ride = test.Session.Ride.Ride;
+        Assert.That(ride?.Metadata.Id, Is.EqualTo(99910380));
+        Assert.That((ride?.Action as RideOnActionBattle)?.SkillId, Is.EqualTo(73000002));
+    }
+
+    [Test]
+    public void RideId_BuffEndGetsOff() {
+        Start(MapType.None, Effect(73000002, BattleRide));
+        Rides(99910380);
+        Add(73000002);
+
+        Buffs.Remove(73000002, Player.ObjectId);
+
+        Assert.That(test.Session.Ride.Ride, Is.Null);
+    }
+
+    [Test]
+    public void RideId_GettingOffEndsTheBuff() {
+        Start(MapType.None, Effect(73000002, BattleRide));
+        Rides(99910380);
+        Add(73000002);
+
+        test.Session.Ride.Dismount(RideOffType.Default);
+
+        Assert.That(Held(), Is.Empty);
+    }
+
+    // A ride with no ride row is not put on, so the buff does not stay either.
+    [Test]
+    public void RideId_UnknownRideDropsTheBuff() {
+        Start(MapType.None, Effect(73000002, BattleRide));
+        Rides();
+
+        Add(73000002);
+
+        Assert.That(Held(), Is.Empty);
+        Assert.That(test.Session.Ride.Ride, Is.Null);
+    }
+
+    // skillUseDisable ids: a held buff stops the skills it lists, until it ends. 10100181 (KR: 13 skills, among them
+    // 10100051; 20 s).
+    [Test]
+    public void SkillUseDisableIds_StopsTheListedSkills() {
+        Start(MapType.None, Effect(10100181, Plain with { DurationTick = 20000, SkillUseDisableIds = [10100051, 10100061, 10100071] }));
+        Add(10100181);
+
+        Assert.That(Buffs.SkillUseDisabled(10100051), Is.True);
+        Assert.That(Buffs.SkillUseDisabled(10100052), Is.False);
+
+        Buffs.Remove(10100181, Player.ObjectId);
+
+        Assert.That(Buffs.SkillUseDisabled(10100051), Is.False);
+    }
+
+    // skillUseDisable main-type mask: the held buffs' masks add up. 71000051 (KR: 2), 49018002 (KR: 12).
+    [Test]
+    public void SkillUseDisableMask_AddsUpTheHeldMasks() {
+        Start(MapType.None, Effect(71000051, Plain with { SkillUseDisableMask = 2 }), Effect(49018002, Plain with { SkillUseDisableMask = 12 }));
+        Add(71000051);
+
+        Assert.That(Buffs.SkillUseDisableMask(), Is.EqualTo(2));
+
+        Add(49018002);
+
+        Assert.That(Buffs.SkillUseDisableMask(), Is.EqualTo(14));
+    }
+
+    private static AdditionalEffectMetadata Updating(int id, AdditionalEffectMetadataProperty property, AdditionalEffectMetadataUpdate update) =>
+        Effect(id, property) with { Update = update };
+
+    private static AdditionalEffectMetadataUpdate.CancelEffect Cancel(int[] ids, BuffCategory[] categories, bool sameCaster = false) =>
+        new(sameCaster, false, ids, categories);
+
+    // cancelEffectCodes: the start takes off the effects it names. 10100181 (KR: cancels 10100061).
+    [Test]
+    public void CancelIds_TakeOffTheNamedBuff() {
+        Start(MapType.None,
+            Updating(10100181, Plain with { DurationTick = 20000 }, new AdditionalEffectMetadataUpdate(Cancel([10100061], []), [], [], [], [])),
+            Effect(10100061, Plain), Effect(10000051, Plain));
+        Add(10100061);
+        Add(10000051);
+
+        Add(10100181);
+
+        Assert.That(Held(), Is.EqualTo(new[] { 10000051, 10100181 }));
+    }
+
+    // cancelCheckSameCaster: only the copies the same caster put on go. 10200253 (KR: cancels 10200243, same caster).
+    [TestCase(false, new[] { 10200253 })]
+    [TestCase(true, new[] { 10200243, 10200253 })]
+    public void CancelSameCaster_LeavesOtherCastersBuffs(bool otherCaster, int[] held) {
+        Start(MapType.None,
+            Updating(10200253, Plain, new AdditionalEffectMetadataUpdate(Cancel([10200243], [], sameCaster: true), [], [], [], [])),
+            Effect(10200243, Plain));
+        Add(10200243, caster: otherCaster ? Field.FieldActor : null);
+
+        Add(10200253);
+
+        Assert.That(Held(), Is.EqualTo(held));
+    }
+
+    // cancelEffectCategories: the start takes off the buffs of the category. 90000190 (KR: category 7), 10000031 (KR:
+    // category 7), 10200062 (KR: category 8).
+    [Test]
+    public void CancelCategories_TakeOffTheCategory() {
+        Start(MapType.None,
+            Updating(90000190, Plain, new AdditionalEffectMetadataUpdate(Cancel([], [BuffCategory.Stunned]), [], [], [], [])),
+            Effect(10000031, Plain with { Category = BuffCategory.Stunned }), Effect(10200062, Plain with { Category = BuffCategory.Slow }));
+        Add(10000031);
+        Add(10200062);
+
+        Add(90000190);
+
+        Assert.That(Held(), Is.EqualTo(new[] { 10200062, 90000190 }));
+    }
+
+    // immuneEffectCodes: while held, the named effect is not put on. 10100051 (KR: immune to 10100052).
+    [Test]
+    public void ImmuneIds_KeepTheNamedBuffOff() {
+        Start(MapType.None,
+            Updating(10100051, Plain, new AdditionalEffectMetadataUpdate(null, [10100052], [], [], [])),
+            Effect(10100052, Plain), Effect(10000051, Plain));
+        Add(10100051);
+
+        Add(10100052);
+        Add(10000051);
+
+        Assert.That(Held(), Is.EqualTo(new[] { 10000051, 10100051 }));
+    }
+
+    // immuneEffectCategories: while held, no buff of the category is put on. 40500047 (KR: category 8), 10200062.
+    [Test]
+    public void ImmuneCategories_KeepTheCategoryOff() {
+        Start(MapType.None,
+            Updating(40500047, Plain, new AdditionalEffectMetadataUpdate(null, [], [BuffCategory.Slow], [], [])),
+            Effect(10200062, Plain with { Category = BuffCategory.Slow }), Effect(10000031, Plain with { Category = BuffCategory.Stunned }));
+        Add(40500047);
+
+        Add(10200062);
+        Add(10000031);
+
+        Assert.That(Held(), Is.EqualTo(new[] { 10000031, 40500047 }));
+    }
+
+    // ModifyOverlapCount: the start changes the stacks of another effect held, and one that comes to 0 goes.
+    // 10200036 (KR: +10 on 10200032, maxBuffCount 10); 10300263 (KR: -1 on 10300262, maxBuffCount 5).
+    [Test]
+    public void ModifyOverlapCount_AddsStacks() {
+        Start(MapType.None,
+            Effect(10200036, Plain with { MaxCount = 1 }) with { ModifyOverlapCount = [new AdditionalEffectMetadataModifyOverlapCount(10200032, 10)] },
+            Effect(10200032, Plain with { MaxCount = 10 }));
+        Add(10200032);
+
+        Add(10200036);
+
+        Assert.That(Only(10200032).Stacks, Is.EqualTo(10));
+    }
+
+    [Test]
+    public void ModifyOverlapCount_TakesOffAtNoStacks() {
+        Start(MapType.None,
+            Effect(10300263, Plain with { MaxCount = 1 }) with { ModifyOverlapCount = [new AdditionalEffectMetadataModifyOverlapCount(10300262, -1)] },
+            Effect(10300262, Plain with { MaxCount = 5 }));
+        Add(10300262);
+
+        Add(10300263);
+
+        Assert.That(Held(), Is.EqualTo(new[] { 10300263 }));
+    }
+
+    // eventBuffType 1 (auto fishing): the holder fishes on its own. 100000011 (KR: 3 h).
+    [Test]
+    public void EventTypeAutoFish_IsHeld() {
+        Start(MapType.None, Effect(100000011, Plain with { DurationTick = 10800000, EventType = BuffEventType.AutoFish }), Effect(10000051, Plain));
+        Add(10000051);
+
+        Assert.That(Buffs.HasBuff(BuffEventType.AutoFish), Is.False);
+
+        Add(100000011);
+
+        Assert.That(Buffs.HasBuff(BuffEventType.AutoFish), Is.True);
+    }
+
+    // ResetCooldown: the start ends the cooldowns of the skills it names. 10200201 (KR: resets 10200051).
+    [Test]
+    public void ResetCooldown_EndsTheNamedCooldown() {
+        Start(MapType.None, Updating(10200201, Plain, new AdditionalEffectMetadataUpdate(null, [], [], [10200051], [])));
+        ConfigManager config = test.Session.Config;
+        typeof(ConfigManager).GetField("session", Any)!.SetValue(config, test.Session);
+        typeof(ConfigManager).GetField("skillCooldowns", Any)!.SetValue(config, new Dictionary<int, SkillCooldown>());
+        typeof(ConfigManager).GetField("lastCasts", Any)!.SetValue(config, new Dictionary<int, Maple2.Server.Game.Util.SkillCastRules.LastCast>());
+        config.SetSkillCooldown(10200051, endTick: 60000);
+        config.SetSkillCooldown(10200052, endTick: 60000);
+
+        Add(10200201);
+
+        Assert.That(config.GetSkillCooldown(10200051)?.EndTick, Is.EqualTo(0));
+        Assert.That(config.GetSkillCooldown(10200052)?.EndTick, Is.EqualTo(60000));
+    }
 }
