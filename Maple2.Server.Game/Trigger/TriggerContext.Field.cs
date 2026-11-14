@@ -665,13 +665,14 @@ public partial class TriggerContext {
         return Field.PvpZone is { } zone && zone.BoxId == boxId && zone.Ended;
     }
 
+    // A timer no script of the field has set is not expired: nothing removes a timer once set, so a missing one was
+    // never started. Chosen from the KR scripts (the client only reads trigger files, it runs none): 72 time_expired
+    // conditions name a timer no script of their map sets, and the one that matters is 02000253_bf start (room
+    // 21004001), whose 36 trap rounds each test timer 300 before their own timer and go to the game-over state on
+    // it; read as expired, the traps stopped after the first round. The others end in states with no action.
     public bool TimeExpired(string timerId) {
         DebugLog("[TimeExpired] timerId:{TimerId}", timerId);
-        if (Field.Timers.TryGetValue(timerId, out TickTimer? timer)) {
-            return timer.Expired();
-        }
-
-        return true;
+        return Field.Timers.TryGetValue(timerId, out TickTimer? timer) && timer.Expired();
     }
     #endregion
 }

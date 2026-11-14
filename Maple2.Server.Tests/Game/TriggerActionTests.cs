@@ -373,7 +373,8 @@ public class TriggerTimerTests : TriggerTestBase {
         Assert.That(Sent(SendOp.Trigger), Is.Empty);
     }
 
-    // time_expired (6590): false while the timer runs, true once past it, and true for a timer never set.
+    // time_expired (6590): false while the timer runs, true once past it, and false for a timer never set (the trap
+    // rounds of 02000253_bf start test timer 300, which no script of the map sets).
     [Test]
     public void TimeExpired_ByTheTimer() {
         Start();
@@ -382,7 +383,7 @@ public class TriggerTimerTests : TriggerTestBase {
 
         Assert.That(Condition("""<condition name="time_expired" timer_id="1" />"""), Is.False);
         Assert.That(Condition("""<condition name="time_expired" timer_id="2" />"""), Is.True);
-        Assert.That(Condition("""<condition name="time_expired" timer_id="9" />"""), Is.True);
+        Assert.That(Condition("""<condition name="time_expired" timer_id="9" />"""), Is.False);
     }
 
     // reset_timer (1629): the timer starts again from now and a shown one sends its dialog again.
