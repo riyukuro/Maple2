@@ -39,8 +39,8 @@ public sealed class HideAndSeekState {
     // constant and no client code gives the count.
     public const int SeekerLives = 3;
 
-    // Every key the hide-and-seek fields give (61000023-61000029). The exp keys (HideTeamExp, SeekTeamExp,
-    // HideTeamExpDurationTick) are not used: both exps are 0 in every field, so the result info sends 0.
+    // Every key the hide-and-seek fields give (61000023-61000034). The exp keys (HideTeamExp, SeekTeamExp,
+    // HideTeamExpDurationTick) are not used: no field gives either exp, so the result info sends 0.
     public static readonly HashSet<string> Keys = [
         "BeginTriggerID", "EndTriggerID", "RequireUserCount", "EnterableSeconds", "GameRuleNoticeTick", "ShortOfUserTick",
         "DivideTeamsSeconds", "MoveGameAreaTick", "BeInHidingTeamsSeconds", "LookingForATeamsSeconds", "TeamMatchResultTick",

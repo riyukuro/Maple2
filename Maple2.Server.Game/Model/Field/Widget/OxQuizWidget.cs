@@ -50,13 +50,9 @@ public class OxQuizWidget : Widget {
         }
     }
 
+    // The answer in the question text is the script's choice alone (61000003 sets DevMode 0), debug build or not.
     private void DevMode(string isOnStr, int numericArg) {
-        if (isOnStr == "1") {
-            isDevMode = true;
-        }
-#if DEBUG
-        isDevMode = true;
-#endif
+        isDevMode = isOnStr == "1";
     }
 
     private void PickQuiz(string levelStr, int numericArg) {
@@ -65,10 +61,20 @@ public class OxQuizWidget : Widget {
             level = 1;
         }
 
-        List<OxQuizTable.Entry> matchingQuestions = Field.ServerTableMetadata.OxQuizTable.Entries.Values.Where(question => question.Level == level).ToList();
-        if (matchingQuestions.Count > 0) {
-            questions[round] = matchingQuestions[Random.Shared.Next(matchingQuestions.Count)];
+        OxQuizTable.Entry? question = Pick(Field.ServerTableMetadata.OxQuizTable.Entries.Values, level,
+            questions.Values.Select(asked => asked.Id).ToHashSet(), Random.Shared);
+        if (question != null) {
+            questions[round] = question;
         }
+    }
+
+    // A random question of the level not yet asked in this game. Chosen here: once the level has no unasked question
+    // left, any question of the level again (null: the level has none).
+    internal static OxQuizTable.Entry? Pick(IEnumerable<OxQuizTable.Entry> entries, int level, IReadOnlySet<int> asked, Random random) {
+        List<OxQuizTable.Entry> ofLevel = entries.Where(question => question.Level == level).ToList();
+        List<OxQuizTable.Entry> unasked = ofLevel.Where(question => !asked.Contains(question.Id)).ToList();
+        List<OxQuizTable.Entry> pool = unasked.Count > 0 ? unasked : ofLevel;
+        return pool.Count > 0 ? pool[random.Next(pool.Count)] : null;
     }
 
     private void ShowQuiz(string durationStr, int numericArg) {
