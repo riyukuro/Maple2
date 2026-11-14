@@ -9,9 +9,6 @@ namespace Maple2.Server.Game.Util;
 // main tags (an npc without main tags comes in on a sub tag alone), and its weight is CalcNpcSpawnWeight of the main
 // and sub tags the row names, its rare degree and the row's max difficulty less its own.
 public static class RegionSpawnRules {
-    // The weights are kept in hundredths, so a rare degree's share (a hundredth each) is not lost.
-    public const int WeightScale = 100;
-
     // The row's tags the npc has among its main tags and among its sub tags, each counted per tag of the row.
     public static (int Main, int Sub) Hits(NpcMetadataBasic basic, IEnumerable<string> tags) {
         int main = 0;
@@ -23,7 +20,8 @@ public static class RegionSpawnRules {
         return (main, sub);
     }
 
-    // The npc's weight in hundredths, or null when the row does not spawn it.
+    // The npc's weight, or null when the row does not spawn it. The client's CLua::CalcNpcSpawnWeight returns the
+    // script's number cut to an int (commonfiles/luautil.cpp), so a rare degree's share below 1 is dropped.
     public static int? Weight(NpcMetadataBasic basic, IEnumerable<string> tags, int minDifficulty, int maxDifficulty) {
         if (basic.Difficulty < minDifficulty || basic.Difficulty > maxDifficulty) {
             return null;
@@ -35,7 +33,6 @@ public static class RegionSpawnRules {
         if (main != basic.MainTags.Length) {
             return null;
         }
-        float weight = Lua.CalcNpcSpawnWeight(main, sub, basic.RareDegree, maxDifficulty - basic.Difficulty);
-        return (int) MathF.Round(weight * WeightScale);
+        return (int) Lua.CalcNpcSpawnWeight(main, sub, basic.RareDegree, maxDifficulty - basic.Difficulty);
     }
 }

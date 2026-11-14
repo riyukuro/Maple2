@@ -19,6 +19,8 @@ public class RegionSpawnRulesTests : TriggerTestBase {
     private const string Event = "\uC774\uBCA4\uD2B8";
     private const string Machine = "\uAE30\uACC4";
     private const string BloodPig = "\uD53C\uB3FC\uC9C0";
+    private const string ShadowForest = "\uC250\uB3C4\uC6B0\uBD09\uC778\uC758\uC232\uBD84\uB178";
+    private const string Shadow = "\uC250\uB3C4\uC6B0";
 
     private static NpcMetadata Npc(int id, int difficulty, int rareDegree, string[] mainTags, string[] subTags) {
         NpcMetadata npc = TriggerNpcSpawnTests.Npc(id, 0);
@@ -54,7 +56,7 @@ public class RegionSpawnRulesTests : TriggerTestBase {
         FieldMobSpawn? spawn = Field.AddMobSpawn(row, region, [IceMob54.Id, IceMob56.Id, IceMachine.Id]);
 
         Assert.That(spawn, Is.Not.Null);
-        Assert.That(Picked(spawn!), Is.EqualTo(new[] { (IceMob54.Id, 5300), (IceMob56.Id, 5500) }));
+        Assert.That(Picked(spawn!), Is.EqualTo(new[] { (IceMob54.Id, 53), (IceMob56.Id, 55) }));
     }
 
     // A row naming only part of an npc's main tags does not spawn it: an ice-only row has no 21091033, a row of ice
@@ -62,7 +64,7 @@ public class RegionSpawnRulesTests : TriggerTestBase {
     [Test]
     public void Weight_NeedsEveryMainTag() {
         Assert.That(RegionSpawnRules.Weight(IceMachine.Basic, [Ice], 54, 56), Is.Null);
-        Assert.That(RegionSpawnRules.Weight(IceMachine.Basic, [Ice, Machine], 54, 56), Is.EqualTo(7500));
+        Assert.That(RegionSpawnRules.Weight(IceMachine.Basic, [Ice, Machine], 54, 56), Is.EqualTo(75));
         Assert.That(RegionSpawnRules.Weight(IceMob56.Basic, [Ice], 50, 55), Is.Null);
         Assert.That(RegionSpawnRules.Weight(IceMob54.Basic, [Event], 54, 56), Is.Null);
     }
@@ -72,7 +74,16 @@ public class RegionSpawnRulesTests : TriggerTestBase {
     [Test]
     public void Weight_SubTagAloneForAnNpcWithoutMainTags() {
         NpcMetadata pig = Npc(25020405, 75, 100, [], [BloodPig]);
-        Assert.That(RegionSpawnRules.Weight(pig.Basic, [BloodPig], 70, 75), Is.EqualTo(1600));
+        Assert.That(RegionSpawnRules.Weight(pig.Basic, [BloodPig], 70, 75), Is.EqualTo(16));
         Assert.That(RegionSpawnRules.Hits(pig.Basic, [BloodPig, Ice]), Is.EqualTo((0, 1)));
+    }
+
+    // 41010001 (KR NpcRegionSpawnData: main tag shadow sealed forest's wrath, sub tag shadow, difficulty 52, rare
+    // degree 50) on a row of both tags up to difficulty 52: 2 x 20 + 2 + 0.5 + 12 = 54.5, which the client cuts to 54
+    // (CLua::CalcNpcSpawnWeight returns an int).
+    [Test]
+    public void Weight_CutToAnInt() {
+        NpcMetadata shadow = Npc(41010001, 52, 50, [ShadowForest], [Shadow]);
+        Assert.That(RegionSpawnRules.Weight(shadow.Basic, [ShadowForest, Shadow], 50, 52), Is.EqualTo(54));
     }
 }
