@@ -131,17 +131,8 @@ public class PartyManager : IDisposable {
             party.Members.TryAdd(member.CharacterId, member);
         }
 
-        session.Send(PartyPacket.Load(Party, joinNotify));
-
-        session.Dungeon.SetDungeon(Party.DungeonId, Party.DungeonLobbyRoomId, Party.DungeonSet);
-
-        // Listening happens after loading the party
-        foreach (PartyMember member in party.Members.Values) {
-            BeginListen(member);
-        }
-
-        session.Player.Value.Character.PartyId = Party.Id;
-
+        // The listing is the Load's last row and the client's own listing (OnPartyInfo, partymanager.cpp:1131-1135),
+        // so it is set before the Load goes.
         if (info.PartySearch != null) {
             Party.Search = new PartySearch(info.PartySearch.Id, info.PartySearch.Name, info.PartySearch.Size) {
                 PartyId = Party.Id,
@@ -153,6 +144,17 @@ public class PartyManager : IDisposable {
                 MemberCount = info.PartySearch.MemberCount,
             };
         }
+
+        session.Send(PartyPacket.Load(Party, joinNotify));
+
+        session.Dungeon.SetDungeon(Party.DungeonId, Party.DungeonLobbyRoomId, Party.DungeonSet);
+
+        // Listening happens after loading the party
+        foreach (PartyMember member in party.Members.Values) {
+            BeginListen(member);
+        }
+
+        session.Player.Value.Character.PartyId = Party.Id;
 
         return true;
     }

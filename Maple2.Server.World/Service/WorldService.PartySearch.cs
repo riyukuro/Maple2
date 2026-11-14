@@ -62,7 +62,7 @@ public partial class WorldService {
         return new PartySearchResponse { Error = (int) error };
     }
 
-    private static PartySearchInfo ToPartySearchInfo(PartySearch partySearch) {
+    internal static PartySearchInfo ToPartySearchInfo(PartySearch partySearch) {
         return new PartySearchInfo {
             Id = partySearch.Id,
             PartyId = partySearch.PartyId,

@@ -359,6 +359,21 @@ public class PartyLookupTests {
         Assert.That(manual.Join(Player()), Is.EqualTo(PartyError.none));
     }
 
+    // The finder's row count (current/max) is the World's listing, counted up by a join without approval; the client
+    // shows the new count when it asks for the list again (it has no packet that changes a row it holds).
+    [Test]
+    public void AJoinWithoutApprovalCountsInTheNextFetch() {
+        PartyManager party = Party(1);
+        Assert.That(partySearch.Create(party.Party, "open", true, 10, out long listingId), Is.EqualTo(PartySearchError.none));
+
+        (PartyError error, _) = lookup.JoinPartySearch(Player(), party.Party.Id, listingId);
+
+        Assert.That(error, Is.EqualTo(PartyError.none));
+        PartySearch row = partySearch.FetchEntries(PartySearchSort.Newest, "", 1).Single();
+        Assert.That(row.MemberCount, Is.EqualTo(2));
+        Assert.That(row.Size, Is.EqualTo(10));
+    }
+
     // rv44 MINOR 4: the leader's own room is refused while the party searches or is matched.
     [Test]
     public void ALeadersRoomIsRefusedWhileSearchingOrMatched() {

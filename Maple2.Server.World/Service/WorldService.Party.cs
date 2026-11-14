@@ -311,9 +311,15 @@ public partial class WorldService {
         return new PartyResponse { Party = ToPartyInfo(manager.Party) };
     }
 
-    private PartyInfo ToPartyInfo(Party party) {
+    private PartyInfo ToPartyInfo(Party party) => PartyInfoOf(party, partyLookup.DungeonMatch.KindOf(party.Id));
+
+    // The party as a channel loads it. The listing goes with it: a member whose session is made again (a map change
+    // through migration, a channel change, a relog) loads the party from here, and the Load's listing row is what the
+    // client keeps as its own listing (OnPartyInfo, partymanager.cpp:1131-1135); without it the owner's finder shows
+    // "Recruit" again and its cancel (PartySearch 1, no id) is never sent.
+    internal static PartyInfo PartyInfoOf(Party party, int dungeonMatchKind) {
         return new PartyInfo {
-            DungeonMatchKind = partyLookup.DungeonMatch.KindOf(party.Id),
+            DungeonMatchKind = dungeonMatchKind,
             Id = party.Id,
             CreationTime = party.CreationTime,
             LeaderAccountId = party.LeaderAccountId,
@@ -328,6 +334,7 @@ public partial class WorldService {
                     JoinTime = member.JoinTime,
                 }),
             },
+            PartySearch = party.Search == null ? null : ToPartySearchInfo(party.Search),
         };
     }
 }

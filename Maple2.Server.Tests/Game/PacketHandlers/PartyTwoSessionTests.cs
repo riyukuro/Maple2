@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Reflection;
@@ -15,6 +15,7 @@ using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Service;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
+using Maple2.Tools.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using ChannelPartyRequest = Maple2.Server.Channel.Service.PartyRequest;
@@ -140,6 +141,46 @@ public class PartyTwoSessionTests {
     // The sent packets and the expected ones are compared without the time of writing in a member's info: the
     // expected packet is built after the send, and the second can change in between.
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(TestGameSession.NoClock(packet.ToArray()));
+
+    // A session made again (map change through migration, channel change, relog) loads its party from World. A party
+    // with a finder listing sends it in the Load's last row, which the client keeps as its own listing
+    // (OnPartyInfo, partymanager.cpp:1131-1135): the owner's button stays "Cancel Recruitment".
+    [Test]
+    public void LoadedParty_SendsItsListingInTheLoad() {
+        var info = new PartyInfo {
+            Id = PartyId,
+            LeaderAccountId = inviter.AccountId,
+            LeaderCharacterId = inviter.CharacterId,
+            LeaderName = inviter.PlayerName,
+            CreationTime = 1000,
+            PartySearch = new PartySearchInfo {
+                Id = 7,
+                PartyId = PartyId,
+                Name = "come",
+                Size = 10,
+                MemberCount = 1,
+                NoApproval = false,
+                LeaderAccountId = inviter.AccountId,
+                LeaderCharacterId = inviter.CharacterId,
+                LeaderName = inviter.PlayerName,
+                CreationTime = 1000,
+            },
+        };
+        info.Members.Add(new PartyInfo.Types.Member { CharacterId = inviter.CharacterId, JoinTime = 1000 });
+
+        Assert.That(inviter.Party.SetParty(info), Is.True);
+
+        Assert.That(inviter.Party.Party!.Search, Is.Not.Null);
+        Assert.That(inviter.Party.Party.Search!.Id, Is.EqualTo(7));
+        byte[][] sent = Party(inviterTest);
+        Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.Load(inviter.Party.Party, false)),
+        }));
+        var listing = new Maple2.PacketLib.Tools.ByteWriter();
+        listing.WriteBool(true);
+        listing.WriteClass<Maple2.Model.Game.Party.PartySearch>(inviter.Party.Party.Search);
+        Assert.That(Convert.ToHexString(sent[0]), Does.EndWith(Convert.ToHexString(listing.ToArray())), "the listing row ends the Load");
+    }
 
     [Test]
     public void Invite_ReachesTheGuestAndAcceptJoinsBoth() {

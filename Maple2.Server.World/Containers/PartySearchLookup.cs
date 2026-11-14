@@ -11,7 +11,7 @@ public class PartySearchLookup : IDisposable {
     private readonly ChannelClientLookup channelClients;
 
     private readonly ConcurrentDictionary<long, PartySearchManager> partySearches;
-    private long nextPartySearchId = 1;
+    private long nextPartySearchId;
 
     public PartySearchLookup(ChannelClientLookup channelClients) {
         this.channelClients = channelClients;
@@ -76,7 +76,13 @@ public class PartySearchLookup : IDisposable {
     }
 
     public PartySearchError Create(Party party, string name, bool noApproval, int size, out long listingId) {
-        listingId = nextPartySearchId++;
+        listingId = 0;
+        // One listing per party: the client's cancel (PartySearch 1) names no listing, so a second one would be
+        // left in the list with no way to remove it.
+        if (party.Search != null || TryGetByPartyId(party.Id, out _)) {
+            return PartySearchError.s_partysearch_err_server_already_register;
+        }
+        listingId = Interlocked.Increment(ref nextPartySearchId);
 
         party.Search = new PartySearch(listingId, name, size) {
             PartyId = party.Id,
