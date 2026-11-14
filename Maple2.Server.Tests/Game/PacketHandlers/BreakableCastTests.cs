@@ -1,0 +1,109 @@
+﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Numerics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using Maple2.Database.Context;
+using Maple2.Database.Storage;
+using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.PacketHandlers;
+using Microsoft.EntityFrameworkCore;
+
+namespace Maple2.Server.Tests.Game.PacketHandlers;
+
+// Breakable 0x27: the client sends it from a tag of one of the player's own casts, made with the cast's id when the
+// cast's attack point fires and sends its packet (stateskill.cpp:1348-1370, worldservice_1.cpp:9302). The server
+// made a new record from whatever skill the packet named, so any uid broke the object, dropped its box and counted.
+public class BreakableCastTests {
+    private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+    private const long CastUid = 77;
+    private const int SkillId = 10000001;
+
+    private sealed class Scene {
+        public required TestGameSession Test;
+        public required SkillRecord Record;
+        public required FieldBreakable Box;
+        public required SkillMetadataStorage Storage;
+    }
+
+    private static Scene Start() {
+        var test = new TestGameSession();
+        test.Start();
+        FieldManager field = test.Session.Field!;
+        foreach (string name in new[] { "fieldBreakables" }) {
+            FieldInfo info = typeof(FieldManager).GetField(name, Any)!;
+            info.SetValue(field, Activator.CreateInstance(info.FieldType));
+        }
+        typeof(FieldManager).GetField("triggerBreakable", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldBreakable>());
+        FieldBreakable box = field.AddBreakable("box", new BreakableActor(true, 0, 1000, 1000, 0, Vector3.Zero, Vector3.Zero))!;
+
+        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack));
+        var motion = new SkillMetadataMotion(null!, [attack], new Dictionary<string, byte>());
+        var level = (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with {
+            Motions = [motion],
+        };
+        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
+        var record = new SkillRecord(new SkillMetadata(SkillId, 1, null, property, null!, level), CastUid, test.Session.Player);
+        record.Hits.Open(field.FieldTick);
+        // The fixture's player is not constructed: it has no skill queue.
+        typeof(Actor<Maple2.Model.Game.Player>).GetField("<ActiveSkills>k__BackingField", Any)!
+            .SetValue(test.Session.Player, new SkillQueue());
+        test.Session.Player.ActiveSkills.Add(record);
+        // The skill table holds the cast's skill and the other one the cases name (the handler before read it).
+        var storage = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", Any)!.GetValue(storage)!;
+        foreach ((int id, short lv) in new[] { (SkillId, (short) 1), (SkillId, (short) 2), (10000002, (short) 1) }) {
+            cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(id, lv), record.Metadata with { Id = id, Level = lv }]);
+        }
+        return new Scene { Test = test, Record = record, Box = box, Storage = storage };
+    }
+
+    // The attack point's packet, declaring tags attacks.
+    private static void AttackPoint(Scene scene, int tags = 1) {
+        Assert.That(scene.Record.Hits.TakePoint(0, 0, held: false, count: tags, scene.Test.Session.Field!.FieldTick), Is.True);
+        for (int i = 0; i < tags; i++) {
+            scene.Record.Hits.Declare(1000 + i, 0, 0);
+        }
+    }
+
+    private static BreakableState Hit(Scene scene, long castUid = CastUid, int skillId = SkillId, short level = 1) {
+        new BreakableHandler { SkillMetadata = scene.Storage }.Handle(scene.Test.Session, TestGameSession.Packet(writer => {
+            writer.WriteString("box");
+            writer.WriteLong(castUid);
+            writer.WriteInt(skillId);
+            writer.WriteShort(level);
+            writer.WriteByte(0);
+            writer.WriteByte(0);
+        }));
+        return scene.Box.State;
+    }
+
+    [Test]
+    public void TheCastsTagBreaksTheBox() {
+        Scene scene = Start();
+        Assert.That(Hit(scene), Is.Not.EqualTo(BreakableState.Break), "before the attack point's packet");
+        AttackPoint(scene);
+        Assert.That(Hit(scene), Is.EqualTo(BreakableState.Break));
+    }
+
+    [Test]
+    public void NoTagNoBreak() {
+        Scene scene = Start();
+        AttackPoint(scene, tags: 0);
+        Assert.That(Hit(scene), Is.Not.EqualTo(BreakableState.Break));
+    }
+
+    [TestCase(78, SkillId, (short) 1)]
+    [TestCase(CastUid, 10000002, (short) 1)]
+    [TestCase(CastUid, SkillId, (short) 2)]
+    public void AnotherCastOrSkillIsRefused(long castUid, int skillId, short level) {
+        Scene scene = Start();
+        AttackPoint(scene);
+        Assert.That(Hit(scene, castUid, skillId, level), Is.Not.EqualTo(BreakableState.Break));
+    }
+}

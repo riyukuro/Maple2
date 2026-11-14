@@ -830,6 +830,13 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Field.AddBreakable("bb1", new BreakableActor(true, 7001, 1000, 1000, 0, Vector3.Zero, Vector3.Zero));
         Field.AddBreakable("bb2", new BreakableActor(true, 7002, 1000, 1000, 0, Vector3.Zero, Vector3.Zero));
         Quest quest = StartQuest(Condition(ConditionType.breakable_object, 10, [], []));
+        // The packet names the player's cast 1, whose attack point packet declared a tag (BreakableRules.FromCast).
+        typeof(Actor<Player>).GetField("<ActiveSkills>k__BackingField", Any)!.SetValue(test.Session.Player, new SkillQueue());
+        var record = new SkillRecord(skill, 1, test.Session.Player);
+        record.Hits.Open(Field.FieldTick);
+        record.Hits.TakePoint(0, 0, held: false, count: 1, Field.FieldTick);
+        record.Hits.Declare(1000, 0, 0);
+        test.Session.Player.ActiveSkills.Add(record);
         var handler = new BreakableHandler { SkillMetadata = storage };
         void Break(string entityId) => handler.Handle(test.Session, TestGameSession.Packet(writer => {
             writer.WriteString(entityId);

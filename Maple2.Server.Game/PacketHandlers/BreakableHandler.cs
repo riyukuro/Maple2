@@ -26,20 +26,17 @@ public class BreakableHandler : FieldPacketHandler {
         long skillUid = packet.ReadLong();
         int skillId = packet.ReadInt();
         short level = packet.ReadShort();
-        if (!SkillMetadata.TryGet(skillId, level, out SkillMetadata? metadata)) {
-            Logger.Error("Invalid skill use: {SkillId},{Level}", skillId, level);
-            return;
-        }
-
-        var record = new SkillRecord(metadata, skillUid, session.Player);
         byte motionPoint = packet.ReadByte();
-        if (!record.TrySetMotionPoint(motionPoint)) {
-            Logger.Error("Invalid MotionPoint({MotionPoint}) for {Record}", motionPoint, record);
-            return;
-        }
         byte attackPoint = packet.ReadByte();
-        if (!record.TrySetAttackPoint(attackPoint)) {
-            Logger.Error("Invalid AttackPoint({AttackPoint}) for {Record}", attackPoint, record);
+
+        // The client's tag packet (WorldService::FUN_141bc3560, worldservice_1.cpp:9302): a tag is made only by the
+        // player's own cast, with the cast's id (StateSkill, stateskill.cpp:2607), when its attack point fires. So
+        // the cast is one of the player's, the skill is its own, and its attack point's packet declared a tag.
+        SkillRecord? record = session.Player.ActiveSkills.Get(skillUid);
+        if (!BreakableRules.FromCast(record != null, record?.SkillId == skillId && record.Level == level,
+                record?.Hits.PointAttacks(attackPoint) ?? 0)) {
+            Logger.Debug("Breakable {EntityId} refused: cast {SkillUid} skill {SkillId} level {Level} point {MotionPoint},{AttackPoint}",
+                entityId, skillUid, skillId, level, motionPoint, attackPoint);
             return;
         }
 
