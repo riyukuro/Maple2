@@ -1,12 +1,19 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -22,13 +29,14 @@ public class ItemFunctionUseTests {
     private TestGameSession test = null!;
     private GameSession session => test.Session;
 
-    private Item Login(int id, ItemFunction function, string parameters, int amount = 1, Action? setup = null) {
+    private Item Login(int id, ItemFunction function, string parameters, int amount = 1, Action? setup = null, ItemTag tag = ItemTag.None,
+                       MapMetadata? field = null) {
         test = new TestGameSession();
-        Item item = test.Store(TestGameSession.Metadata(id, function: new ItemMetadataFunction(function, function.ToString(), parameters, false)),
-            amount);
+        ItemMetadata metadata = TestGameSession.Metadata(id, function: new ItemMetadataFunction(function, function.ToString(), parameters, false));
+        Item item = test.Store(metadata with { Property = metadata.Property with { Tag = tag } }, amount);
         setup?.Invoke();
         test.Start();
-        test.EnterMap(TestGameSession.Map(2000062));
+        test.EnterMap(field ?? TestGameSession.Map(2000062));
         test.TakeSent();
         return item;
     }
@@ -162,5 +170,103 @@ public class ItemFunctionUseTests {
         Mail? mail = db.GetMail(test.World.MailNotifications[0].MailId, partner.CharacterId);
         Assert.That(mail?.Items.Select(item => (item.Id, item.Rarity, item.CoupleInfo?.CharacterId)),
             Is.EqualTo(new[] { (70800001, 4, (long?) test.CharacterId) }));
+    }
+
+    // 21100001 adds sticker set 1 for good; a second coupon of a set held for good is kept.
+    [Test]
+    public void ChatEmoticonAdd_AddsTheSetOnce() {
+        Item coupon = Login(21100001, ItemFunction.ChatEmoticonAdd, "<v id=\"1\"/>", amount: 2);
+
+        Use(coupon);
+
+        Assert.That(session.Player.Value.Unlock.StickerSets.TryGetValue(1, out long expiry), Is.True);
+        Assert.That(Sent(), Does.Contain(Hex(ChatStickerPacket.Add(coupon, new ChatSticker(1, expiry)))));
+        Assert.That(session.Item.Inventory.Get(coupon.Uid)?.Amount, Is.EqualTo(1));
+
+        Use(coupon);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { Hex(ChatStickerPacket.Error(ChatStickerError.s_msg_chat_emoticon_add_failed_already_exist)) }));
+        Assert.That(session.Item.Inventory.Get(coupon.Uid)?.Amount, Is.EqualTo(1));
+    }
+
+    // 20300031 (tag air_taxi) takes one ticket to a field the character has been to, and none to one it has not
+    // (only the advanced ticket goes there). The ride stops at PrepareField: the target is not in the played client.
+    [Test]
+    public void CallAirTaxi_TakesOneTicketToAVisitedField() {
+        const int to = 2000914;
+        const string xBlock = "item_air_taxi_test";
+        string mesh = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Navmeshes", $"{xBlock}.navmesh");
+        Directory.CreateDirectory(Path.GetDirectoryName(mesh)!);
+        bool made = !System.IO.File.Exists(mesh);
+        if (made) {
+            System.IO.File.WriteAllBytes(mesh, []);
+        }
+        try {
+            MapMetadata Field(int id, bool notInPlayedClient = false) => TestGameSession.Map(id, notInPlayedClient: notInPlayedClient) with {
+                XBlock = xBlock,
+                CashCall = new MapMetadataCashCall(true, true, false, false, false),
+                Limit = new MapMetadataLimit(0, 0, 0, 0, [], false, false, false, false, false, false, false),
+            };
+            MapMetadata from = Field(2000913);
+            Item ticket = Login(20300031, ItemFunction.CallAirTaxi, "", amount: 2, tag: ItemTag.air_taxi, field: from,
+                setup: () => test.AddMap(from, Field(to, notInPlayedClient: true)));
+            // CheckMapCashCall looks the target up in the field's map storage.
+            typeof(FieldManager).GetField("<MapMetadata>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(session.Field, test.MapMetadata);
+
+            Use(ticket, $"{to}");
+
+            Assert.That(session.Item.Inventory.Get(ticket.Uid)?.Amount, Is.EqualTo(2));
+
+            session.Player.Value.Unlock.Maps.Add(to);
+            Use(ticket, $"{to}");
+
+            Assert.That(session.Item.Inventory.Get(ticket.Uid)?.Amount, Is.EqualTo(1));
+        } finally {
+            if (made) {
+                System.IO.File.Delete(mesh);
+            }
+        }
+    }
+
+    // 20301053 opens a portal to field 81000001 for 180 s, for up to 20 players, and is used up. The test has no such
+    // field, so the walk through the portal stops at the field factory with the move error.
+    [Test]
+    public void OpenMassive_OpensThePortalAndIsUsedUp() {
+        Item item = Login(20301053, ItemFunction.OpenMassive, "<v fieldID=\"81000001\" portalDurationTick=\"180000\" maxCount=\"20\" />");
+        typeof(FieldManager).GetField("fieldPortals", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.Field, new ConcurrentDictionary<int, FieldPortal>());
+        var factory = (FieldManager.Factory) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager.Factory));
+        typeof(FieldManager.Factory).GetField("<MapMetadata>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(factory, test.MapMetadata);
+        typeof(FieldManager.Factory).GetField("logger", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(factory, Serilog.Log.Logger);
+        typeof(FieldManager).GetField("<FieldFactory>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.Field, factory);
+
+        Use(item, "");
+
+        Assert.That(session.Item.Inventory.Get(item.Uid), Is.Null);
+        string[] sent = Sent();
+        Assert.That(sent, Does.Contain(Hex(PlayerHostPacket.StartMiniGame(session.PlayerName, 81000001))));
+        Assert.That(sent.Last(), Is.EqualTo(Hex(FieldEnterPacket.Error(MigrationError.s_move_err_default))));
+    }
+
+    // 20600001 places billboard interact 19300001 for a day from the dialog's title'description'public text, and is
+    // used up; the dialog's banner gets the success.
+    [Test]
+    public void InstallBillBoard_PlacesTheBoardAndIsUsedUp() {
+        var metadata = new InteractObjectMetadata(19300001, InteractType.BillBoard, Collection: 0, ReactCount: 0, TargetPortalId: 0, GuildPosterId: 0,
+            WeaponItemId: 0, new InteractObjectMetadataItem(0, 0, 0, 0, 0), new InteractObjectMetadataTime(0, 0, 0),
+            new InteractObjectMetadataDrop(0, [], [], 0, 0), new InteractObjectMetadataEffect([], [], 0, 0), []);
+        Item item = Login(20600001, ItemFunction.InstallBillBoard,
+            "<v interactID=\"19300001\" model=\"MS2InteractMesh\" normal=\"Interaction_advertisement_A01\" " +
+            "reactable=\"Interaction_advertisement_A01\" durationSec=\"86400\" />",
+            setup: () => test.SetTable(new InteractObjectTable(new Dictionary<int, InteractObjectMetadata> { [19300001] = metadata })));
+
+        Use(item, "Title'Text'0");
+
+        Assert.That(session.Item.Inventory.Get(item.Uid), Is.Null);
+        Assert.That(Sent().Last(), Is.EqualTo(Hex(PlayerHostPacket.BillboardInstallResult(BillboardInstallResult.Success))));
     }
 }
