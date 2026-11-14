@@ -1122,6 +1122,9 @@ public class QuestConditionWiringTests : TriggerTestBase {
 
         Assert.That(test.Errors, Is.Empty);
         Assert.That((pet.TamingPoint, quest.Conditions[0].Counter), Is.EqualTo((10000, expected)));
+        // Nothing gives the points a rate to fall at: a minute on, the gauge is still full.
+        pet.Update(Field.FieldTick + 60_000);
+        Assert.That(pet.TamingPoint, Is.EqualTo(10000));
     }
     #endregion
     #region item_add (InventoryManager.Add)

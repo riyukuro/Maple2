@@ -30,7 +30,6 @@ public sealed class FieldPet : FieldNpc {
 
     public short TamingRank; // (0-70=green, 70-95=yellow, 95-100=red)
     public int TamingPoint;
-    private long tamingTick;
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
@@ -104,12 +103,6 @@ public sealed class FieldPet : FieldNpc {
 
     public override void Update(long tickCount) {
         base.Update(tickCount);
-
-        if (TamingPoint > 0 && tamingTick < tickCount) {
-            tamingTick = tickCount + (long) TimeSpan.FromSeconds(1).TotalMilliseconds;
-            TamingPoint = Math.Max(0, TamingPoint - 100);
-            Field.Broadcast(PetPacket.SyncTaming(BattleState.TargetId, this));
-        }
     }
 
     public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
@@ -127,6 +120,11 @@ public sealed class FieldPet : FieldNpc {
         int damageAmount = TamingPoint - Math.Min(TamingPoint + attack.Pet.TamingPoint, Constants.TamingPetMaxPoint);
         TamingPoint -= damageAmount;
         targetRecord.AddDamage(damageAmount == 0 ? DamageType.Miss : DamageType.Normal, damageAmount);
+        if (damageAmount != 0) {
+            // The bar shows only what SyncPetTamingPoint sends (CSceneStateGame::OnSyncPetTamingPoint sets the tamer and
+            // the points); neither the client nor a table gives the points a rate to fall at, so they stay as fed.
+            Field.Broadcast(PetPacket.SyncTaming(caster.ObjectId, this));
+        }
         if (caster is FieldPlayer feeder && PetRules.Pacified(pointBefore, TamingPoint, Constants.TamingPetMaxPoint)) {
             // 90000792 names the pet's item id ("Pacify a hungry $item:61000002$").
             feeder.Session.ConditionUpdate(ConditionType.pet_taming, codeLong: Pet.Id);
