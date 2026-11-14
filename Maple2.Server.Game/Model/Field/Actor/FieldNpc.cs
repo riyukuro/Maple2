@@ -696,6 +696,19 @@ public class FieldNpc : Actor<Npc> {
     public long AccumulatedDamage { get; private set; }
 
     protected override void OnDamageReceived(IActor caster, long amount) {
+        CreditDamage(caster, amount);
+        if (caster is FieldPlayer hitPlayer) {
+            DropHitLoot(hitPlayer);
+            DropHitRewardOrbs(hitPlayer);
+        }
+    }
+
+    // A dot tick that takes health counts as damage the caster dealt (Buff.DealDotDamage): the death's dealers (exp
+    // and loot), the last hitter, the rank target, the damage bar and the room's damage records. It is no hit, so it
+    // drops no hit loot and no hit orbs.
+    protected override void OnDotDamageReceived(IActor caster, long amount) => CreditDamage(caster, amount);
+
+    private void CreditDamage(IActor caster, long amount) {
         LastDamageTick = Environment.TickCount64;
         AccumulatedDamage += amount;
         if (Value.Metadata.Basic.HasPropertyTag("damaged_hp_upper_hp_bar")) {
@@ -703,8 +716,6 @@ public class FieldNpc : Actor<Npc> {
         }
         lastAttackerObjectId = caster.ObjectId;
         if (caster is FieldPlayer hitPlayer) {
-            DropHitLoot(hitPlayer);
-            DropHitRewardOrbs(hitPlayer);
             PlayerDamageCallback?.Invoke(hitPlayer, amount);
             if (Field is DungeonFieldManager dungeonField) {
                 dungeonField.CountMissions(hitPlayer, mission => mission.AddDamage(Value.Metadata.Id, amount));

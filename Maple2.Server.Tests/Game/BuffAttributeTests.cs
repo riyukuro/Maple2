@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -11,6 +12,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Microsoft.EntityFrameworkCore;
@@ -641,6 +643,7 @@ public class BuffAttributeTests {
             Effect(49126003, Plain with { DurationTick = 150, IntervalTick = 100 }) with { Dot = new AdditionalEffectMetadataDot(dot, null) });
         typeof(FieldPlayer).GetField("healthSync", Any)!.SetValue(Player, new HealthSyncClock());
         typeof(FieldPlayer).GetField("regenClock", Any)!.SetValue(Player, new RegenClock());
+        typeof(Actor<Player>).GetField("DamageDealers", Any)!.SetValue(Player, new ConcurrentDictionary<int, DamageRecordTarget>());
         Stat health = Player.Stats.Values[BasicAttribute.Health];
         health.AddTotal(1000 - health.Total);
         health.Add(1000 - health.Current);
@@ -674,6 +677,7 @@ public class BuffAttributeTests {
             Effect(49126003, Plain with { DurationTick = 150, IntervalTick = 100 }) with { Dot = new AdditionalEffectMetadataDot(dot, null) });
         typeof(FieldPlayer).GetField("healthSync", Any)!.SetValue(Player, new HealthSyncClock());
         typeof(FieldPlayer).GetField("regenClock", Any)!.SetValue(Player, new RegenClock());
+        typeof(Actor<Player>).GetField("DamageDealers", Any)!.SetValue(Player, new ConcurrentDictionary<int, DamageRecordTarget>());
         Stat health = Player.Stats.Values[BasicAttribute.Health];
         health.AddTotal(1000 - health.Total);
         health.Add(1000 - health.Current);
@@ -691,6 +695,7 @@ public class BuffAttributeTests {
         int[] casters = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.SkillDamage && packet[2] == 3)
             .Select(packet => BitConverter.ToInt32(packet, 3)).ToArray();
         Assert.That(casters, Is.EquivalentTo(new[] { Player.ObjectId, Field.FieldActor.ObjectId }));
+        Assert.That(Player.DamageByDealer, Is.EquivalentTo(new[] { (Player.ObjectId, 16L), (Field.FieldActor.ObjectId, 30L) }));
     }
 
     // Status rates: a held buff's rate adds that share of the stat. 10100071 (KR: Rates Defense -0.01, one stack) on

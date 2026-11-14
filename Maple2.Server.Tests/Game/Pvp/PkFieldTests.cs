@@ -12,6 +12,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
 using Maple2.Tools.Collision;
@@ -276,6 +277,7 @@ public class PkFieldTests {
         Scene scene = Start(pk: true);
         string kill = Convert.ToHexString(PlayerKillNoticePacket.Kill(scene.A.Value.Character.Name, scene.B.Value.Character.Name).ToArray());
         typeof(FieldPlayer).GetField("regenClock", Any)!.SetValue(scene.B, new RegenClock());
+        typeof(Actor<Player>).GetField("DamageDealers", Any)!.SetValue(scene.B, new ConcurrentDictionary<int, DamageRecordTarget>());
         Stat health = scene.B.Stats.Values[BasicAttribute.Health];
         health.AddTotal(1000 - health.Total);
         health.Add(1000 - health.Current);

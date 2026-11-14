@@ -446,6 +446,10 @@ public class Buff : IUpdatable, IByteSerializable {
             }
             Owner.Stats.Values[BasicAttribute.Health].Add(healthChange);
             targetUpdated.Add(BasicAttribute.Health);
+            if (record.HpAmount < 0) {
+                // Credited like a skill hit's damage (Actor.ApplyDamage): the whole tick, before the floors.
+                Owner.RecordDotDamage(caster, -record.HpAmount);
+            }
             if (record.HpAmount < 0 && Owner is FieldPlayer player) {
                 player.DelayHpRegen();
             }

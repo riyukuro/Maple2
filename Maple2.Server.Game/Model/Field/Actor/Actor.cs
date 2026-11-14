@@ -229,6 +229,16 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
     protected virtual void OnDamageReceived(IActor caster, long amount) { }
 
+    /// <summary>
+    /// Credits a dot tick's damage to its caster (Buff.DealDotDamage), as a skill hit's damage is.
+    /// </summary>
+    public void RecordDotDamage(IActor caster, long amount) {
+        DamageDealers.GetOrAdd(caster.ObjectId, _ => new DamageRecordTarget(this)).AddDamage(DamageType.Normal, amount);
+        OnDotDamageReceived(caster, amount);
+    }
+
+    protected virtual void OnDotDamageReceived(IActor caster, long amount) { }
+
     // hit: the health the hit took; attackType: the hit's attack type, which picks the reflect rate (ReflectRecord.Share).
     public virtual void Reflect(IActor target, long hit = 0, AttackType attackType = AttackType.None) {
         if (Buffs.Reflect == null || Buffs.Reflect.Counter >= Buffs.Reflect.Metadata.Count) {
