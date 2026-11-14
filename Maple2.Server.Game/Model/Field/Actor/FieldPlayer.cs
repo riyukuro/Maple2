@@ -19,6 +19,8 @@ namespace Maple2.Server.Game.Model;
 
 public class FieldPlayer : Actor<Player> {
     public readonly GameSession Session;
+    // The last portal that asks first (FieldPortal.AsksFirst) whose box held the player on this field; 0 for none.
+    public int AskedPortalId;
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global

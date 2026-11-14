@@ -68,11 +68,13 @@ public class MoveFieldHandler : PacketHandler<GameSession> {
         packet.ReadUnicodeString();
         string password = packet.ReadUnicodeString(); // Password for locked portals
 
-        // The client uses only a portal whose box holds the character (PortalRules); a confirm box or the apartment
-        // dialog opened from one may be answered after a few steps, hence the slack.
+        // The client uses only a portal whose box holds the character (PortalRules). A portal that asks first (a confirm
+        // or password box) is used when the box is answered, wherever the character has walked since; it counts if the
+        // character stood in its box on this field (FieldPortal.Update).
         if (session.Field.TryGetPortal(portalId, out FieldPortal? fieldPortal)
             && !PortalRules.InBox(session.Player.Position, fieldPortal.Position, fieldPortal.Rotation, fieldPortal.Value.Dimension,
-                fieldPortal.Value.Offset, InteractRules.ReachSlack)) {
+                fieldPortal.Value.Offset, InteractRules.ReachSlack)
+            && !(fieldPortal.AsksFirst && session.Player.AskedPortalId == portalId)) {
             Logger.Debug("Portal {PortalId} used out of its box", portalId);
             return;
         }
