@@ -1461,32 +1461,6 @@ public partial class FieldManager {
         Broadcast(FieldPropertyPacket.Background(background));
     }
 
-    private void SetBonusMapPortal(IList<MapMetadata> bonusMaps, Ms2RegionSpawn spawn) {
-        // Spawn a hat within a random range of 5 min to 8 hours
-        var delay = Random.Shared.Next(1, 97) * TimeSpan.FromMinutes(5);
-        MapMetadata bonusMapMetadata = bonusMaps[Random.Shared.Next(bonusMaps.Count)];
-        IField? bonusMap = FieldFactory.Create(bonusMapMetadata.Id);
-        bonusMap?.Init();
-        Console.WriteLine($"Creating bonus map {bonusMapMetadata.Id} at {spawn.Position} in {delay} ms.");
-        if (bonusMap == null) {
-            return;
-        }
-        bonusMap.SetRoomTimer(RoomTimerType.Clock, 90000);
-        var portal = new Portal(NextLocalId(), bonusMapMetadata.Id, -1, PortalType.Event, PortalActionType.Interact, spawn.Position, spawn.Rotation,
-            new Vector3(200, 200, 250), 0, 0, true, false, true);
-        FieldPortal fieldPortal = SpawnPortal(portal, bonusMap.RoomId);
-        fieldPortal.Model = Metadata.Property.Continent switch {
-            Continent.VictoriaIsland => "Eff_event_portal_A01",
-            Continent.KarkarIsland => "Eff_kr_sandswirl_01",
-            Continent.ShadowWorld => "Eff_uw_potral_A01",
-            Continent.Kritias => "Eff_ks_magichole_portal_A01",
-            _ => "Eff_event_portal_A01",
-        };
-        fieldPortal.EndTick = (FieldTick + (long) TimeSpan.FromSeconds(30).TotalMilliseconds).Truncate32();
-        Broadcast(PortalPacket.Add(fieldPortal));
-        Scheduler.Schedule(() => SetBonusMapPortal(bonusMaps, spawn), delay);
-    }
-
     /// <summary>
     /// An AI createRandomRoom node (the ShadowGate npcs, at their death): an Event portal at the npc for
     /// durationSeconds, to a room of the randomroom row. The room itself is made at the first entry

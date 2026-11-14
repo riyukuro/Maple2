@@ -427,7 +427,6 @@ public partial class FieldManager : IField {
 
         FieldTrigger.UpdateAll(fieldTriggers.Values, FieldTick);
 
-        IList<MapMetadata> bonusMaps = MapMetadata.GetMapsByType(Metadata.Property.Continent, MapType.PocketRealm);
         foreach (MapMetadataSpawn spawn in Metadata.Spawns) {
             if (!Entities.RegionSpawns.TryGetValue(spawn.Id, out Ms2RegionSpawn? regionSpawn)) {
                 continue;
@@ -447,15 +446,9 @@ public partial class FieldManager : IField {
                 }
             }
 
+            // The bonus map hats of the regions are the timeEventData type 2 portals (UpdateRoomEvents).
             if (npcIds.Count > 0 && spawn.Population > 0) {
                 AddMobSpawn(spawn, regionSpawn, npcIds);
-                continue;
-            }
-
-            if (spawn.Tags.Contains("보너스맵")) { // Bonus Map
-                // Spawn a hat within a random range of 5 min to 8 hours
-                TimeSpan delay = Random.Shared.Next(1, 97) * TimeSpan.FromMinutes(5);
-                Scheduler.Schedule(() => SetBonusMapPortal(bonusMaps, regionSpawn), delay);
             }
         }
 
@@ -611,6 +604,7 @@ public partial class FieldManager : IField {
         UpdateChests(FieldTick);
         UpdateInteractEvents(DateTime.Now);
         UpdateTriggerEvents(DateTime.Now);
+        UpdateRoomEvents(DateTime.Now);
         foreach (HongBao hongBao in hongBaos.Values) hongBao.Update(FieldTick);
         foreach (FieldItem item in fieldItems.Values) item.Update(FieldTick);
         foreach (FieldMobSpawn mobSpawn in fieldMobSpawns.Values) mobSpawn.Update(FieldTick);

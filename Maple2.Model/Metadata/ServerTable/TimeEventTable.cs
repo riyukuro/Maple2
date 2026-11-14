@@ -12,7 +12,26 @@ public record TimeEventTable(
     IReadOnlyDictionary<int, FieldInteractEventMetadata>? FieldInteractEvent = null,
     // The field trigger events (timeEventData type 6) of the rows the feature and locale keep. Null in a table
     // ingested before them.
-    IReadOnlyDictionary<int, FieldTriggerEventMetadata>? FieldTriggerEvent = null) : ServerTable;
+    IReadOnlyDictionary<int, FieldTriggerEventMetadata>? FieldTriggerEvent = null,
+    // The field random room portals (timeEventData type 2) of the rows the feature and locale keep. Null in a table
+    // ingested before them.
+    IReadOnlyDictionary<int, FieldRoomEventMetadata>? FieldRoomEvent = null) : ServerTable;
+
+// A timeEventData type 2 row: every CycleTime (late by up to RandomTime), at the roll of Probability (of 100), each
+// field of MapIds opens RoomCount portals for LifeTime at its mapspawntag regions with one of SpawnTags (the bonus map
+// hats and the antlion holes), each to a room of the randomroom row RandomRoomId (room_random.xml).
+public record FieldRoomEventMetadata(
+    int Id,
+    int Probability,
+    DateTime StartTime,
+    DateTime EndTime,
+    TimeSpan CycleTime,
+    TimeSpan RandomTime,
+    TimeSpan LifeTime,
+    int[] MapIds,
+    string[] SpawnTags,
+    int RandomRoomId,
+    int RoomCount);
 
 // A timeEventData type 6 row (the parser's KritiasChestPuzzle): every CycleTime (late by up to RandomTime) the
 // fields of MapIds give their trigger TriggerId the user value Key = Value, and the run's LifeTime in seconds as

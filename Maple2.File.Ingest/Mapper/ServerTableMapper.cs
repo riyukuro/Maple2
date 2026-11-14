@@ -913,6 +913,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         var fieldWarEvents = new Dictionary<int, FieldWarEventMetadata>();
         var fieldInteractEvents = new Dictionary<int, FieldInteractEventMetadata>();
         var fieldTriggerEvents = new Dictionary<int, FieldTriggerEventMetadata>();
+        var fieldRoomEvents = new Dictionary<int, FieldRoomEventMetadata>();
+        int fieldRoomSkipped = 0;
         int fieldInteractDuplicates = 0;
         int fieldInteractSkipped = 0;
         int fieldTriggerSkipped = 0;
@@ -974,6 +976,34 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     DurationStartMin: data.eventDurationStartMin,
                     DurationEndHour: data.eventDurationEndHour,
                     DurationEndMin: data.eventDurationEndMin);
+                continue;
+            }
+            // Type 2: the random room portals of fields (the bonus map hats and the antlion holes), at the map's
+            // spawn regions with one of targetSpawnTags, to a room of the randomroom row roomID. 247 KR rows, 36 of
+            // them behind a feature.
+            if ((int) data.type == 2) {
+                if (!FeatureLocaleFilter.FeatureEnabled(data.Feature) || !FeatureLocaleFilter.HasLocale(data.Locale)
+                    || data.roomID == 0 || data.targetSpawnTags.Length == 0) {
+                    continue;
+                }
+                if (!TryParseDate(data.startTime, out DateTime startTime) || !TryParseDate(data.endTime, out DateTime endTime)
+                    || !TryParseSpan(data.cycleTime, out TimeSpan cycleTime) || !TryParseSpan(data.randomTime, out TimeSpan randomTime)
+                    || !TryParseSpan(data.lifeTime, out TimeSpan lifeTime)) {
+                    fieldRoomSkipped++;
+                    continue;
+                }
+                fieldRoomEvents[id] = new FieldRoomEventMetadata(
+                    Id: id,
+                    Probability: data.prob,
+                    StartTime: startTime,
+                    EndTime: endTime,
+                    CycleTime: cycleTime,
+                    RandomTime: randomTime,
+                    LifeTime: lifeTime,
+                    MapIds: data.targetFields,
+                    SpawnTags: data.targetSpawnTags.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).ToArray(),
+                    RandomRoomId: data.roomID,
+                    RoomCount: Math.Max(1, data.roomCount));
                 continue;
             }
             // Type 6: a user value the row gives a trigger of its fields at every run (EventStart or MelodyOn of the
@@ -1067,9 +1097,11 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         Console.WriteLine($"timeEventData: {fieldWarEvents.Count} field war events, {fieldWars.Count} field wars, "
                           + $"{fieldInteractEvents.Count} field interact events ({fieldInteractDuplicates} ids kept twice, the last row wins; "
                           + $"{fieldInteractSkipped} rows skipped, times unreadable), "
-                          + $"{fieldTriggerEvents.Count} field trigger events ({fieldTriggerSkipped} rows skipped, times unreadable)");
+                          + $"{fieldTriggerEvents.Count} field trigger events ({fieldTriggerSkipped} rows skipped, times unreadable), "
+                          + $"{fieldRoomEvents.Count} field room events ({fieldRoomSkipped} rows skipped, times unreadable)");
         return new TimeEventTable(GlobalPortal: globalPortals, WorldBoss: worldBosses, FieldWarEvent: fieldWarEvents, FieldWar: fieldWars,
-            FieldInteractEvent: fieldInteractEvents, FieldTriggerEvent: fieldTriggerEvents);
+            FieldInteractEvent: fieldInteractEvents, FieldTriggerEvent: fieldTriggerEvents,
+            FieldRoomEvent: fieldRoomEvents);
 
         // A type 4 time: year-month-day-hour-minute-second, every part a number and the date a real one.
         bool TryParseDate(string? time, out DateTime value) {
