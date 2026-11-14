@@ -740,14 +740,12 @@ public sealed class ShopManager {
                     _ => CurrencyType.None,
 
                 };
-                if (currencyType == CurrencyType.None || session.Currency[currencyType] < price) {
+                if (currencyType == CurrencyType.None || price < 0 || !session.Currency.TryTake(currencyType, price)) {
                     // Code 11 shows the lack notice of the currency kind in the last int (0: mesos). Chosen
                     // here: the kind is the payment type's number.
                     session.Send(ShopPacket.Error(ShopError.s_err_lack_meso, 0, (int) cost.Type));
                     return false;
                 }
-
-                session.Currency.Change(currencyType, -price);
                 break;
         }
         return true;

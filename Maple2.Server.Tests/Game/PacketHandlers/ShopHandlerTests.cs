@@ -46,6 +46,8 @@ public class ShopHandlerTests {
     private TestGameSession test = null!;
     private Item bagItem = null!;
     private Item shopItem = null!;
+    // The shop's restock rule; a test of the instant restock sets it before Login.
+    private ShopRestockData restockData = new(ResetType.Default, ShopCurrencyType.Meso, ShopCurrencyType.Meso, 0, 0, 0, false, true, false);
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
@@ -62,7 +64,7 @@ public class ShopHandlerTests {
         test.AddAchievement(trophies);
         test.SetServerTable(new ShopTable(new Dictionary<int, ShopMetadata> {
             [ShopId] = new(ShopId, 0, "shop", default, false, false, false, false, false, false, false, 0, false,
-                new ShopRestockData(ResetType.Default, ShopCurrencyType.Meso, ShopCurrencyType.Meso, 0, 0, 0, false, true, false)),
+                restockData),
         }));
         test.SetServerTable(new ShopItemTable(new Dictionary<int, Dictionary<int, ShopItemMetadata>> {
             [ShopId] = new() {
@@ -742,5 +744,23 @@ public class ShopHandlerTests {
         }));
         Assert.That(Convert.ToHexString(ShopPacket.Error(ShopError.s_err_no_notice).ToArray()), Does.Contain("08000000"));
         Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
+    }
+
+    // The instant restock (Shop 9) pays the shop's restock price in one step, and a price below 0 is refused. The
+    // Treva price was checked with `held < price` and taken with Change(type, -price), so a negative price added.
+    [TestCase(-100, 1000)]
+    [TestCase(100, 900)]
+    public void InstantRestock_PaysThePriceAndRefusesANegativeOne(int price, int treva) {
+        restockData = new ShopRestockData(ResetType.Default, ShopCurrencyType.Treva, ShopCurrencyType.Treva, 0, 0, price, false, false, false);
+        GameSession session = Login();
+        test.SetServerTable(new ConstantsTable(KarmaTokenMax: 30000));
+        session.Currency[CurrencyType.Treva] = 1000;
+
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(9);
+            writer.WriteInt(price);
+        }));
+
+        Assert.That(session.Currency[CurrencyType.Treva], Is.EqualTo(treva));
     }
 }

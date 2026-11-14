@@ -724,11 +724,11 @@ public class BeautyHandler : FieldPacketHandler {
         cost = SaleCost(session, shop, cost);
         switch (cost.CurrencyType) {
             case ShopCurrencyType.Meso:
-                if (session.Currency.CanAddMeso(-cost.Price) != -cost.Price) {
+                // Checked and taken in one step; a negative price (ChangeMeso(-price) added it) is refused.
+                if (!session.Currency.TryTakeMeso(cost.Price)) {
                     session.Send(BeautyPacket.Error(BeautyError.lack_currency));
                     return false;
                 }
-                session.Currency.ChangeMeso(-cost.Price);
                 break;
             case ShopCurrencyType.Meret:
             case ShopCurrencyType.EventMeret:
@@ -747,12 +747,10 @@ public class BeautyHandler : FieldPacketHandler {
                 break;
             default:
                 CurrencyType currencyType = ToCurrencyType(cost.CurrencyType);
-                if (currencyType == CurrencyType.None || session.Currency[currencyType] < cost.Price) {
+                if (currencyType == CurrencyType.None || cost.Price < 0 || !session.Currency.TryTake(currencyType, cost.Price)) {
                     session.Send(BeautyPacket.Error(BeautyError.lack_currency));
                     return false;
                 }
-
-                session.Currency.Change(currencyType, -cost.Price);
                 break;
         }
         return true;
