@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading;
 using Maple2.Database.Context;
@@ -13,7 +13,7 @@ namespace Maple2.Server.Tests.Database;
 // ON UPDATE CURRENT_TIMESTAMP: the reset must keep it, or the first save of a character still online on a channel
 // meets a concurrency conflict and every last-online time moves to the World's start. The reset is raw SQL, so the
 // tests run only when MS2_TEST_GAME_DB holds the connection string of a scratch MySQL game database (and
-// MS2_TEST_ACCOUNT_ID the id of an account in it).
+// MS2_TEST_ACCOUNT_ID the id of its account, made when missing).
 public class CharacterOfflineResetTests {
     private static readonly string? Connection = Environment.GetEnvironmentVariable("MS2_TEST_GAME_DB");
 
@@ -31,6 +31,7 @@ public class CharacterOfflineResetTests {
         }
         options = new DbContextOptionsBuilder().UseMySql(Connection, ServerVersion.AutoDetect(Connection)).Options;
         storage = new GameStorage(options, null!, null!, null!, null!, null!, null!, NullLogger<GameStorage>.Instance, null!);
+        TestAccountRow.Ensure(options, AccountId);
 
         using (GameStorage.Request db = storage.Context()) {
             var character = new Character { AccountId = AccountId, Name = "Reset" + Guid.NewGuid().ToString("N")[..6], Mastery = new Mastery() };

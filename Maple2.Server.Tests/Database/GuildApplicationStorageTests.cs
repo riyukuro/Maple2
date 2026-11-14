@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Storage;
@@ -13,7 +13,7 @@ namespace Maple2.Server.Tests.Database;
 // The guild join requests through GameStorage. Each call uses its own request, as the servers do.
 // The database is in memory, where the batch deletes cannot run: the tests that delete are skipped unless
 // MS2_TEST_GAME_DB holds the connection string of a scratch MySQL game database and MS2_TEST_ACCOUNT_ID the
-// id of an account in it.
+// id of its account (made when missing).
 public class GuildApplicationStorageTests {
     private static readonly string? Connection = Environment.GetEnvironmentVariable("MS2_TEST_GAME_DB");
 
@@ -37,6 +37,9 @@ public class GuildApplicationStorageTests {
             : new DbContextOptionsBuilder().UseMySql(Connection, ServerVersion.AutoDetect(Connection)).Options;
         suffix = Guid.NewGuid().ToString("N")[..6];
         storage = new GameStorage(options, null!, null!, null!, null!, null!, null!, NullLogger<GameStorage>.Instance, null!);
+        if (Connection != null) {
+            TestAccountRow.Ensure(options, AccountId);
+        }
 
         guildA = CreateGuild("GuildA", CreateCharacter("LeaderA"));
         guildB = CreateGuild("GuildB", CreateCharacter("LeaderB"));

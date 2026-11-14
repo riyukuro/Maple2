@@ -65,7 +65,7 @@ public class GuildPvpRankPageTests {
     // From the database: the guilds that fought in the current season, ranked; a guild of another season is left out.
     // The standings query reads the JSON pvp column, which the in-memory database cannot, so this one runs only when
     // MS2_TEST_GAME_DB holds the connection string of a scratch MySQL game database and MS2_TEST_ACCOUNT_ID the id of
-    // an account in it.
+    // its account (made when missing).
     [Test]
     public void FromTheDatabase_TheCurrentSeasonsGuilds() {
         string? connection = Environment.GetEnvironmentVariable("MS2_TEST_GAME_DB");
@@ -75,6 +75,7 @@ public class GuildPvpRankPageTests {
         long accountId = long.TryParse(Environment.GetEnvironmentVariable("MS2_TEST_ACCOUNT_ID"), out long id) ? id : 1;
         DbContextOptions options = new DbContextOptionsBuilder().UseMySql(connection, ServerVersion.AutoDetect(connection)).Options;
         var storage = new GameStorage(options, null!, null!, null!, null!, null!, null!, NullLogger<GameStorage>.Instance, null!);
+        Maple2.Server.Tests.Database.TestAccountRow.Ensure(options, accountId);
         string tag = Guid.NewGuid().ToString("N")[..6];
         // A season id no other guild of the database fought in.
         int seasonId = 900000 + Random.Shared.Next(99999);
