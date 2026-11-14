@@ -1,4 +1,5 @@
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game.Pvp;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -80,9 +81,12 @@ public class MapleSurvivalHandler : FieldPacketHandler {
         }
     }
 
+    // A ShutdownMapleSurvival game event runs (its window closes the queue; the client has no line for it).
+    public static bool Shutdown(GameSession session) => session.FindEvent(GameEventType.ShutdownMapleSurvival).Count > 0;
+
     // State 1 first, then the World queues the character; a refusal takes it back to state 0.
     private static void Queue(GameSession session) {
-        if (!PvpHandler.CanLeave(session) || session.Field?.Arena != null) {
+        if (!PvpHandler.CanLeave(session) || session.Field?.Arena != null || Shutdown(session)) {
             session.Send(MapleSurvivalPacket.Idle());
             return;
         }
@@ -100,15 +104,51 @@ public class MapleSurvivalHandler : FieldPacketHandler {
     // The party chief registers its party as a squad (the pass window's squad mode; the client sends it only from the
     // chief of a party of fewer than SquadMax). The members wait and play as one unit (World ArenaRegister with the
     // members); each member's party window gets Party 0x37 from the World's notice. Refused (nothing queued): no party,
-    // not the chief, too many members, a member offline, or the chief cannot leave its field.
+    // not the chief, too many members, a member offline, or the chief cannot leave its field. Each refusal the client
+    // has a line for comes as its Party result code (OnPartyResultMessage, partymanager.cpp), then Party 0x37 false.
     public const int SquadMax = 4;
+
+    // The reason the chief's register is refused before the World sees it: null = go on; none = refused with no line.
+    public static PartyError? SquadRefusal(Maple2.Model.Game.Party.Party? party, long characterId, bool canLeave, bool inArena) {
+        if (party == null || party.Members.Count < 2) {
+            return PartyError.none;
+        }
+        if (party.LeaderCharacterId != characterId) {
+            return PartyError.s_party_err_isNotChief;
+        }
+        if (party.Members.Count > SquadMax) {
+            return PartyError.s_maple_survival_error_squad_register_over_count;
+        }
+        if (party.Members.Values.Any(member => !member.Info.Online)) {
+            return PartyError.s_party_err_hasOfflineUser;
+        }
+        if (inArena) {
+            return PartyError.s_party_err_inside_survival;
+        }
+        return canLeave ? null : PartyError.none;
+    }
+
+    // The World's refusal as the client's line: a member in a match, waiting alone, or in another queue.
+    public static PartyError SquadError(int? error) {
+        return error switch {
+            (int) RankDuelError.Busy => PartyError.s_party_err_inside_survival,
+            (int) RankDuelError.Queued => PartyError.s_party_err_survival_has_solo_register,
+            (int) RankDuelError.OtherQueue => PartyError.s_party_err_another_matching,
+            _ => PartyError.none,
+        };
+    }
+
+    private static void RefuseSquad(GameSession session, PartyError reason) {
+        if (reason != PartyError.none) {
+            session.Send(PartyPacket.Error(reason));
+        }
+        session.Send(PartyPacket.SurvivalPartySearch(false, false));
+    }
 
     private static void QueueSquad(GameSession session) {
         Maple2.Model.Game.Party.Party? party = session.Party.Party;
-        if (party == null || party.LeaderCharacterId != session.CharacterId || party.Members.Count is < 2 or > SquadMax
-            || party.Members.Values.Any(member => !member.Info.Online)
-            || !PvpHandler.CanLeave(session) || session.Field?.Arena != null) {
-            session.Send(PartyPacket.SurvivalPartySearch(false, false));
+        if (SquadRefusal(party, session.CharacterId, PvpHandler.CanLeave(session) && !Shutdown(session), session.Field?.Arena != null) is { } refusal) {
+            RefuseSquad(session, refusal);
             return;
         }
         int players = MapleSurvivalRules.PlayerCount;
@@ -117,7 +157,7 @@ public class MapleSurvivalHandler : FieldPacketHandler {
         register.Members.AddRange(party.Members.Keys.Where(id => id != session.CharacterId));
         int? error = PvpHandler.Request(session, new PvpRequest { RequesterId = session.CharacterId, ArenaRegister = register })?.Error;
         if (error is not (int) RankDuelError.none) {
-            session.Send(PartyPacket.SurvivalPartySearch(false, false));
+            RefuseSquad(session, SquadError(error));
         }
     }
 

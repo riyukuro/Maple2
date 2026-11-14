@@ -377,4 +377,14 @@ public class MapleSurvivalTests {
         MigrateOutRequest move = test.World.Moves.Single();
         Assert.That((move.MapId, move.RoomId, move.Type), Is.EqualTo((MapleSurvivalRules.MapId, 41, MigrationType.PvpMatch)));
     }
+
+    // A running ShutdownMapleSurvival event closes the queue: state 0 at once and nothing reaches the World.
+    [Test]
+    public void Shutdown_RefusesTheQueue() {
+        var test = new TestGameSession();
+        test.AddEvent(910100, Maple2.Model.Enum.GameEventType.ShutdownMapleSurvival, new ShutdownMapleSurvival());
+        GameSession session = test.Start();
+        Assert.That(Send(test, session, "00"), Is.EqualTo(new[] { "1901" + "01" }));
+        Assert.That(test.World.PvpRequests, Is.Empty);
+    }
 }

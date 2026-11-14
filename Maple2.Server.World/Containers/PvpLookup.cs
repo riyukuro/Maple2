@@ -166,13 +166,20 @@ public sealed class PvpLookup : IDisposable {
     }
 
     // A Maple Survival squad registers (its chief's 0xC2 mode 4): the members wait as one unit; each member's party window
-    // shows the squad registered (Party 0x37 true).
+    // shows the squad registered (Party 0x37 true). Refused, nothing queued: a member in the rank duel queue or match
+    // (OtherQueue), in an arena match (Busy) or waiting in the arena queue (Queued); the chief gets the reason.
     public RankDuelError ArenaRegisterSquad(IReadOnlyList<long> members, int arena, int playerCount, int minPlayers) {
         List<ArenaMatch> made;
         RankDuelError error;
         lock (mutex) {
             if (members.Any(member => queue.IsQueued(member) || queue.MatchOf(member) != null)) {
+                return RankDuelError.OtherQueue;
+            }
+            if (members.Any(member => arenas.MatchOf(member) != null)) {
                 return RankDuelError.Busy;
+            }
+            if (members.Any(arenas.IsQueued)) {
+                return RankDuelError.Queued;
             }
             error = arenas.RegisterSquad(members, arena, playerCount, tick(), minPlayers, out made);
         }

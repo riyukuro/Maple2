@@ -172,7 +172,12 @@ public class PvpLookupTests {
         PvpLookup lookup = Lookup();
         Assert.That(lookup.ArenaRegisterSquad([1, 2], 100, 3, 3), Is.EqualTo(RankDuelError.none));
         Assert.That(squadNotices, Is.EquivalentTo(new[] { (1L, 1), (2L, 1) }));
-        Assert.That(lookup.ArenaRegisterSquad([2, 5], 100, 3, 3), Is.EqualTo(RankDuelError.Busy));
+        // A member waiting already (here in this squad), in the rank duel queue or in an arena match: refused, nothing queued.
+        Assert.That(lookup.ArenaRegisterSquad([2, 5], 100, 3, 3), Is.EqualTo(RankDuelError.Queued));
+        Assert.That(lookup.Register(6), Is.EqualTo(RankDuelError.none));
+        Assert.That(lookup.ArenaRegisterSquad([5, 6], 100, 3, 3), Is.EqualTo(RankDuelError.OtherQueue));
+        Assert.That(lookup.ArenaUnregister(5), Is.EqualTo(RankDuelError.NotQueued));
+        Assert.That(lookup.Unregister(6), Is.EqualTo(RankDuelError.none));
         squadNotices.Clear();
         Assert.That(lookup.ArenaUnregister(2), Is.EqualTo(RankDuelError.none));
         Assert.That(squadNotices, Is.EquivalentTo(new[] { (1L, 2), (2L, 2) }));
@@ -198,5 +203,7 @@ public class PvpLookupTests {
         lookup.LastStep.Wait();
         Assert.That(made.Single().Characters, Is.EquivalentTo(new long[] { 1, 2, 7 }));
         Assert.That(madeUnits.Single(), Is.EquivalentTo(new Dictionary<long, long> { [1] = 1, [2] = 1, [7] = 7 }));
+        // A member in that match: refused (inside survival).
+        Assert.That(lookup.ArenaRegisterSquad([7, 8], 100, 3, 3), Is.EqualTo(RankDuelError.Busy));
     }
 }

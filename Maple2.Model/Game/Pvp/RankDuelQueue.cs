@@ -11,6 +11,8 @@ public enum RankDuelError {
     NoMatch = 3,
     // A register from a character that is queued already: it stays queued.
     Queued = 4,
+    // A squad register with a member in the rank duel queue or a rank duel match (another matching).
+    OtherQueue = 5,
 }
 
 // One match of two characters. MapId and RoomId are set once the match field is made; Joined holds the
