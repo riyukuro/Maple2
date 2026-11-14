@@ -84,15 +84,16 @@ public sealed class BlackMarketManager {
         // blackmarketitemoption.cpp:244); the percent is applied inside it.
         long depositFee = Lua.CalcBlackMarketRegisterDeposit(price * quantity);
 
-        if (session.Currency.CanAddMeso(-depositFee) != -depositFee) {
+        // Checked and taken in one step (a spend between a check and the take made the take throw).
+        if (!session.Currency.TryTakeMeso(depositFee, notify: false)) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_meso, 2));
             return;
         }
 
         // KMS2 order: Meso (the deposit), the item leaving the bag, then the listing.
-        session.Currency.ChangeMeso(-depositFee);
+        session.Currency.NotifyMeso();
         if (!session.Item.Inventory.Remove(itemUid, out item, quantity)) {
-            session.Currency.ChangeMeso(depositFee);
+            session.Currency.ReturnMeso(depositFee);
             return;
         }
 
