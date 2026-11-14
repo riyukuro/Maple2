@@ -830,11 +830,13 @@ public sealed class TestGameSession {
 
         // Called at each account lock taken (on the taking thread).
         public Action? OnAcquire;
+        // Set: the account lock is held by another holder, and each take is refused with this error.
+        public string? LockError;
 
         public override LockResponse AcquireLock(LockRequest request, CallOptions options) {
             Acquired++;
             OnAcquire?.Invoke();
-            return new LockResponse();
+            return new LockResponse { Error = LockError ?? "" };
         }
 
         // Called at each account lock given back (on the giving thread, before the release returns).

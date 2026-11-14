@@ -303,7 +303,7 @@ public sealed partial class GameSession : Core.Network.Session {
             // nothing else writes this account's and character's item rows while the session plays: the item loads
             // may keep the values they read (GameStorage.HoldOwners). Not taken (after the retries, or the world
             // down): another server may still write them, and no load of this session keeps any.
-            locked = AcquireLock(AccountId, 5);
+            locked = AcquireLock(AccountId, 5) == LockTake.Taken;
             // A running SendMail ReturnUser row mails a character that enters after its days away (KR 10100100:
             // 90), stored with the entry's stamp.
             IList<GameEvent> sendMail = FindEvent(GameEventType.SendMail);
@@ -320,7 +320,10 @@ public sealed partial class GameSession : Core.Network.Session {
             });
             db.Commit();
         } finally {
-            ReleaseLock(AccountId);
+            // Only a lock this load took: one not taken may be another holder's.
+            if (locked) {
+                ReleaseLock(AccountId);
+            }
         }
         if (player == null) {
             Logger.Warning("Failed to load player from database: {AccountId}, {CharacterId}", AccountId, CharacterId);
@@ -1724,8 +1727,13 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
-    // True when the lock was taken.
-    private bool AcquireLock(long accountId, int maxRetries = 3) {
+    // Taken: this caller holds the lock and gives it back. Held: another holder has it after the retries; the caller
+    // neither writes (a store is refused) nor releases it (the release would free that holder's lock). WorldDown: the
+    // World cannot be reached; a World that is down (stopped before this server) holds no locks, so a store goes on
+    // without one (a logout's last save at shutdown), and nothing is released.
+    private enum LockTake { Taken, Held, WorldDown }
+
+    private LockTake AcquireLock(long accountId, int maxRetries = 3) {
         int retryCount = 0;
         const int backoffMs = 500;
 
@@ -1739,11 +1747,11 @@ public sealed partial class GameSession : Core.Network.Session {
                 // A world that is down (stopped before this server) holds no locks and grants none. The save goes on
                 // without the lock, as after the retries below; a throw here would skip the save.
                 Logger.Warning("World unavailable; lock for account {AccountId} not taken", accountId);
-                return false;
+                return LockTake.WorldDown;
             }
 
             if (string.IsNullOrEmpty(response.Error)) {
-                return true;
+                return LockTake.Taken;
             }
 
             retryCount++;
@@ -1751,7 +1759,7 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         Logger.Error("Failed to acquire lock for account {AccountId} after {MaxRetries} retries", accountId, maxRetries);
-        return false;
+        return LockTake.Held;
     }
 
     private void ReleaseLock(long accountId) {
@@ -2088,7 +2096,15 @@ public sealed partial class GameSession : Core.Network.Session {
     // handler that gives one. The cut takes the lost-connection path: Dispose tries one last full save
     // (MigrationSave), and the next login starts from the last stored state, whole, with no part written alone.
     // False when the session was ended: the caller does nothing more with it.
+    // A session save asked for inside a store of this session (the account lock is not re-entrant) runs once the
+    // outermost store of the thread gave its lock back (AfterStore), and is logged with its stack; true then, since
+    // the session goes on. The deferred save ends the session as any session save does when it fails.
     public bool SessionSave() {
+        if (Storing) {
+            ReportNested("SessionSave deferred", "asked for inside another store of the same session, run after it");
+            AfterStore(() => SessionSave());
+            return true;
+        }
         if (LockedSave(tries: 2, ResetWait) == SaveResult.Stored) {
             return true;
         }
@@ -2120,10 +2136,15 @@ public sealed partial class GameSession : Core.Network.Session {
             return SaveResult.Failed;
         }
         bool outer = BeginStoreScope();
-        GameSession? outerStoring = storing;
-        storing = this;
+        EnterStore();
+        bool locked = false;
         try {
-            AcquireLock(AccountId, 5);
+            LockTake take = AcquireLock(AccountId, 5);
+            locked = take == LockTake.Taken;
+            if (take == LockTake.Held) {
+                Logger.Error("SessionSave: the account lock is held elsewhere, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                return SaveResult.Failed;
+            }
             for (int i = 0; i < tries; i++) {
                 if (Save(resetWait)) {
                     return SaveResult.Stored;
@@ -2137,9 +2158,11 @@ public sealed partial class GameSession : Core.Network.Session {
             Logger.Error(ex, "SessionSave failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return SaveResult.Failed;
         } finally {
-            ReleaseLock(AccountId);
+            if (locked) {
+                ReleaseLock(AccountId);
+            }
             // Before the queued steps: they run once the lock is given back, and may store.
-            storing = outerStoring;
+            LeaveStore();
             EndStoreScope(outer);
         }
     }
@@ -2148,20 +2171,32 @@ public sealed partial class GameSession : Core.Network.Session {
     // re-entrant: a store started inside another store of the same session (from the rows' callback: a quest
     // completed by a currency change, a reset step of a clear) waited on the lock its own thread holds, and its
     // ReleaseLock then freed the outer store's lock while that one still wrote. Such a store is refused (a failed
-    // save for its caller) and logged with its stack; the outer store goes on.
-    [ThreadStatic] private static GameSession? storing;
-    // Told of each refused nested store (where, stack): the tests fail any test that nests one.
+    // save for its caller; a session save is deferred, SessionSave) and logged with its stack; the outer store goes
+    // on. Every session storing on the thread is kept, not only the innermost: a store of this session inside another
+    // session's store inside one of this session's is nested too.
+    [ThreadStatic] private static List<GameSession>? storing;
+    // Told of each nested store (where, stack): the tests fail any test that nests one.
     internal static Action<string, string>? OnNestedStore;
 
+    private bool Storing => storing?.Contains(this) == true;
+
+    private void EnterStore() => (storing ??= []).Add(this);
+
+    private static void LeaveStore() => storing!.RemoveAt(storing.Count - 1);
+
     private bool NestedStore(string where) {
-        if (storing != this) {
+        if (!Storing) {
             return false;
         }
-        string stack = Environment.StackTrace;
-        Logger.Error("{Where}: started inside another store of the same session, refused AccountId={AccountId} CharacterId={CharacterId}{NewLine}{Stack}",
-            where, AccountId, CharacterId, Environment.NewLine, stack);
-        OnNestedStore?.Invoke(where, stack);
+        ReportNested(where, "started inside another store of the same session, refused");
         return true;
+    }
+
+    private void ReportNested(string where, string what) {
+        string stack = Environment.StackTrace;
+        Logger.Error("{Where}: {What} AccountId={AccountId} CharacterId={CharacterId}{NewLine}{Stack}",
+            where, what, AccountId, CharacterId, Environment.NewLine, stack);
+        OnNestedStore?.Invoke(where, stack);
     }
 
     // The timed save, from the session's queue: it runs on the player's field thread, where the packets that change
@@ -2364,19 +2399,26 @@ public sealed partial class GameSession : Core.Network.Session {
         bool outer = BeginStoreScope();
         SaveResult result = SaveResult.Failed;
         bool locked = false;
-        GameSession? outerStoring = storing;
+        bool entered = false;
         bool nested = NestedStore("SavePurchase");
         try {
             if (nested) {
                 return result;
             }
-            storing = this;
-            // AcquireLock answers only an unreachable World itself; any other World error refuses the store.
+            EnterStore();
+            entered = true;
+            // AcquireLock answers only an unreachable World itself; any other World error refuses the store, as does
+            // a lock held elsewhere.
+            LockTake take;
             try {
-                AcquireLock(AccountId);
-                locked = true;
+                take = AcquireLock(AccountId);
             } catch (Exception ex) {
                 Logger.Error(ex, "SavePurchase: account lock failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                return result;
+            }
+            locked = take == LockTake.Taken;
+            if (take == LockTake.Held) {
+                Logger.Error("SavePurchase: the account lock is held elsewhere, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
                 return result;
             }
             return result = PurchaseRows(alsoSave, refused, resetWait);
@@ -2392,7 +2434,9 @@ public sealed partial class GameSession : Core.Network.Session {
                 ReleaseLock(AccountId);
             }
             // Before the queued steps: they run once the lock is given back, and may store.
-            storing = outerStoring;
+            if (entered) {
+                LeaveStore();
+            }
             EndStoreScope(outer);
         }
     }

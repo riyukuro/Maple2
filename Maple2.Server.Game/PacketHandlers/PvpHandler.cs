@@ -289,8 +289,10 @@ public class PvpHandler : FieldPacketHandler {
         }
 
         // A save that did not store refuses the move (GameSession.MigrationSave); the return spot set for it is put
-        // back before the session's last save.
-        if (!session.MigrationSave(() => character.ReturnPosition = returnBefore)) {
+        // back before the session's last save. A move the World refuses after the save stored puts it back too, as
+        // GameSession.Migrate does: the session plays on, and its next save stores the spot from before the join.
+        void Undo() => character.ReturnPosition = returnBefore;
+        if (!session.MigrationSave(Undo)) {
             session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             session.Send(failed);
             return;
@@ -308,6 +310,7 @@ public class PvpHandler : FieldPacketHandler {
                 PetUid = session.SummonedPetUid,
             });
             if (!PlayerWarpUtil.TryEndpoint(migrate.IpAddress, migrate.Port, out IPEndPoint? endpoint)) {
+                Undo();
                 session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
                 session.Send(failed);
                 session.MigrationRefused();
@@ -318,6 +321,7 @@ public class PvpHandler : FieldPacketHandler {
         } catch (RpcException) {
             // The World counts the character as joined (it is not told again at the end): its client goes back to
             // state 0 here.
+            Undo();
             session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             session.Send(failed);
             session.MigrationRefused();

@@ -83,7 +83,8 @@ public class LoginSession : Core.Network.Session {
         Server.OnConnected(this);
     }
 
-    private void AcquireLock(long accountId, int maxRetries = 3) {
+    // True when this caller took the lock (and gives it back); a lock not taken may be another holder's.
+    private bool AcquireLock(long accountId, int maxRetries = 3) {
         int retryCount = 0;
         const int backoffMs = 500;
 
@@ -97,11 +98,11 @@ public class LoginSession : Core.Network.Session {
                 // A world that is down (stopped before this server) holds no locks and grants none. The save goes on
                 // without the lock, as after the retries below; a throw here would skip the save.
                 Logger.Warning("World unavailable; lock for account {AccountId} not taken", accountId);
-                return;
+                return false;
             }
 
             if (string.IsNullOrEmpty(response.Error)) {
-                return;
+                return true;
             }
 
             retryCount++;
@@ -109,6 +110,7 @@ public class LoginSession : Core.Network.Session {
         }
 
         Logger.Error("Failed to acquire lock for account {AccountId} after {MaxRetries} retries", accountId, maxRetries);
+        return false;
     }
 
     private void ReleaseLock(long accountId) {
@@ -163,13 +165,16 @@ public class LoginSession : Core.Network.Session {
 
     public void ListCharacters() {
         using GameStorage.Request db = GameStorage.Context();
-        AcquireLock(AccountId);
+        // The read goes on without the lock (it only reads); only a lock this read took is given back.
+        bool locked = AcquireLock(AccountId);
         Account? readAccount;
         IList<Character>? characters;
         try {
             (readAccount, characters) = db.ListCharacters(AccountId);
         } finally {
-            ReleaseLock(AccountId);
+            if (locked) {
+                ReleaseLock(AccountId);
+            }
         }
         if (readAccount == null || characters == null) {
             throw new InvalidOperationException($"Failed to load characters for account: {AccountId}");

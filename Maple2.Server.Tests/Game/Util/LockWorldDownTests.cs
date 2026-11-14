@@ -28,10 +28,11 @@ public class LockWorldDownTests {
         return session;
     }
 
-    private static bool AcquireLock(GameSession session, int tries = 5) {
+    // The answer's name: Taken, Held or WorldDown.
+    private static string AcquireLock(GameSession session, int tries = 5) {
         MethodInfo acquire = typeof(GameSession).GetMethod("AcquireLock", BindingFlags.Instance | BindingFlags.NonPublic)!;
         try {
-            return (bool) acquire.Invoke(session, [1L, tries])!;
+            return acquire.Invoke(session, [1L, tries])!.ToString()!;
         } catch (TargetInvocationException ex) {
             throw ex.InnerException!;
         }
@@ -40,11 +41,11 @@ public class LockWorldDownTests {
     [Test]
     public void WorldDown_ReturnsAtOnceWithoutThrowing() {
         var world = new DownWorld(StatusCode.Unavailable);
-        bool taken = true;
+        string taken = "";
         Assert.DoesNotThrow(() => taken = AcquireLock(SessionWith(world)));
         Assert.Multiple(() => {
             Assert.That(world.Calls, Is.EqualTo(1));
-            Assert.That(taken, Is.False, "not taken: the entry's loads keep no item rows (GameStorage.HoldOwners)");
+            Assert.That(taken, Is.EqualTo("WorldDown"), "not taken: the entry's loads keep no item rows (GameStorage.HoldOwners)");
         });
     }
 
@@ -56,8 +57,8 @@ public class LockWorldDownTests {
     [Test]
     public void Lock_TakenOrRefused() {
         Assert.Multiple(() => {
-            Assert.That(AcquireLock(SessionWith(new LockWorld(""))), Is.True);
-            Assert.That(AcquireLock(SessionWith(new LockWorld("held")), tries: 1), Is.False);
+            Assert.That(AcquireLock(SessionWith(new LockWorld(""))), Is.EqualTo("Taken"));
+            Assert.That(AcquireLock(SessionWith(new LockWorld("held")), tries: 1), Is.EqualTo("Held"));
         });
     }
 

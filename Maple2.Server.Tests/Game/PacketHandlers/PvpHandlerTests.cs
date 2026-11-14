@@ -131,6 +131,29 @@ public class PvpHandlerTests {
         Assert.That(sent.Last(), Is.EqualTo("B600" + "10" + "00"));
     }
 
+    // A move the World refuses after the save stored puts the return spot the join set back: the session plays on and
+    // its next save stores the spot from before the join.
+    [TestCase("")]
+    [TestCase("throw")]
+    public void RankDuelJoin_WorldRefusesTheMove_PutsTheReturnSpotBack(string refusal) {
+        TestGameSession test = NewTest();
+        GameSession session = Start(test);
+        var before = new System.Numerics.Vector3(1, 2, 3);
+        session.Player.Value.Character.ReturnPosition = before;
+        session.Player.Position = new System.Numerics.Vector3(100, 200, 300);
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.Join] = new PvpResponse { Channel = 1, MapId = 65010004, RoomId = 321 };
+        if (refusal == "") {
+            test.World.MoveAddress = "";
+        } else {
+            test.World.MoveError = new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "gone"));
+        }
+        Send(test, session, "10");
+        Assert.Multiple(() => {
+            Assert.That(test.World.Moves, Has.Count.EqualTo(1));
+            Assert.That(session.Player.Value.Character.ReturnPosition, Is.EqualTo(before));
+        });
+    }
+
     // A refused register (in a match already) takes the state back to 0 with the matching failed box.
     [Test]
     public void RankDuelRegister_Refused_GetsTheFailedMatch() {

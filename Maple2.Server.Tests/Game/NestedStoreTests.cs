@@ -52,17 +52,89 @@ public class NestedStoreTests {
         });
     }
 
+    // A session save inside a store is deferred, not refused: it runs once the outer store gave its lock back, and
+    // the session goes on (a nesting path not found yet would otherwise disconnect the player).
     [Test]
-    public void ASessionSaveInsideAPurchase_IsRefused() {
+    public void ASessionSaveInsideAPurchase_IsDeferred_ToAfterTheOuterStore() {
+        int acquired = test.World.Acquired, released = test.World.Released;
         bool? inner = null;
+        int releasedBeforeSave = -1;
 
         Assert.That(session.TrySavePurchase(_ => {
             inner = session.SessionSave();
+            test.World.OnAcquire = () => releasedBeforeSave = test.World.Released - released;
             return true;
         }), Is.True);
-        Assert.That(inner, Is.False);
-        Assert.That(nested, Has.Member("SessionSave"));
+        Assert.Multiple(() => {
+            Assert.That(inner, Is.True);
+            Assert.That(nested, Is.EqualTo(new[] { "SessionSave deferred" }));
+            Assert.That(releasedBeforeSave, Is.EqualTo(1), "the deferred save takes the lock after the outer store gave it back");
+            Assert.That((test.World.Acquired - acquired, test.World.Released - released), Is.EqualTo((2, 2)));
+            Assert.That(test.Errors, Has.Some.Contains("SessionSave deferred"));
+            Assert.That(Ended(), Is.False);
+        });
     }
+
+    // The deferred save ends the session when it fails, as any failed session save does.
+    [Test]
+    public void ADeferredSessionSaveThatFails_EndsTheSession() {
+        Assert.That(session.TrySavePurchase(_ => {
+            session.SessionSave();
+            test.FailSave = _ => true;
+            return true;
+        }), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(nested, Is.EqualTo(new[] { "SessionSave deferred" }));
+            Assert.That(Ended(), Is.True);
+        });
+    }
+
+    // A store of this session inside another session's store inside one of this session's: nested too.
+    [Test]
+    public void ANestingThroughAnotherSession_IsRefused() {
+        var other = new TestGameSession();
+        GameSession otherSession = other.Start();
+        other.SavingConfig(otherSession);
+        bool? inner = null, middle = null;
+
+        Assert.That(session.TrySavePurchase(_ => {
+            middle = otherSession.TrySavePurchase(_ => {
+                inner = session.TrySavePurchase(_ => true);
+                return true;
+            });
+            return true;
+        }), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(middle, Is.True);
+            Assert.That(inner, Is.False);
+            Assert.That(nested, Is.EqualTo(new[] { "SavePurchase" }));
+        });
+    }
+
+    // A lock another holder has (refused after the tries) refuses the store and is not given back: that holder's
+    // lock stays.
+    [Test]
+    public void ALockHeldElsewhere_RefusesTheStore_AndIsNotReleased() {
+        test.World.LockError = "held";
+        int released = test.World.Released;
+        bool rowsRan = false;
+
+        bool purchase = session.TrySavePurchase(_ => rowsRan = true);
+        bool save = session.SessionSave();
+
+        Assert.Multiple(() => {
+            Assert.That(purchase, Is.False);
+            Assert.That(rowsRan, Is.False, "nothing is stored");
+            Assert.That(save, Is.False);
+            Assert.That(Ended(), Is.True, "a session save refused ends the session");
+            Assert.That(test.World.Released, Is.EqualTo(released), "ReleaseLock is not called");
+            Assert.That(test.Errors, Has.Some.Contains("held elsewhere"));
+            Assert.That(nested, Is.Empty);
+        });
+    }
+
+    private bool Ended() =>
+        (int) typeof(Maple2.Server.Core.Network.Session).GetField("disconnecting", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)! == 1;
 
     [Test]
     public void AStoreAfterAStore_IsNotNested() {

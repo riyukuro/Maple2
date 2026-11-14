@@ -211,4 +211,23 @@ public class MigrationSaveRefusalTests {
             Assert.That(character.MapId, Is.EqualTo(mapBefore), "the return map the quit set is put back");
         });
     }
+
+    // A quit the World refuses after the save stored puts the return map back too: the session's last save stores
+    // the map the character is on.
+    [Test]
+    public void QuitToCharacterList_WorldRefuses_MapPutBack() {
+        var test = new TestGameSession();
+        GameSession session = Live(test);
+        Maple2.Model.Game.Character character = session.Player.Value.Character;
+        int mapBefore = character.MapId;
+        character.ReturnMaps.Push(Target);
+        test.World.MoveError = new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "gone"));
+
+        new QuitHandler { World = test.World }.Handle(session, TestGameSession.Packet(writer => writer.WriteBool(false)));
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.Moves, Has.Count.EqualTo(1), "the save stored and the World was asked");
+            Assert.That(character.MapId, Is.EqualTo(mapBefore), "the return map the quit set is put back");
+        });
+    }
 }
