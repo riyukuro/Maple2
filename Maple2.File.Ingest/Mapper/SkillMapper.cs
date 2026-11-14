@@ -231,10 +231,14 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             Dictionary<short, SkillMetadataLevel> levels = data.level.ToDictionary(
                 level => level.value,
                 level => new SkillMetadataLevel(
-                    // The played client's hand weapons and level cooldown stand in for the data pack's (PlayedClientSkills).
+                    // The played client's hand weapons, cast flags and level cooldown stand in for the data pack's (PlayedClientSkills).
                     Condition: WithClientCooldown(id, level.value, client is { } played ? level.beginCondition.Convert() with {
                         Weapon = played.Weapons.Select(weapon =>
-                        new BeginConditionWeapon(new ItemType(1, (byte) weapon.LeftHand), new ItemType(1, (byte) weapon.RightHand))).ToArray()
+                        new BeginConditionWeapon(new ItemType(1, (byte) weapon.LeftHand), new ItemType(1, (byte) weapon.RightHand))).ToArray(),
+                        OnlyShadowWorld = played.OnlyShadowWorld,
+                        OnlyFlyableMap = played.OnlyFlyableMap,
+                        AllowOnBattleMount = played.AllowBattleRiding,
+                        OnlyOnBattleMount = played.OnlyBattleRiding,
                     }
                         : level.beginCondition.Convert()),
                     Change: level.changeSkill?.Convert(),

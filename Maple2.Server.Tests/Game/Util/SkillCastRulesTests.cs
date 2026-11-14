@@ -671,7 +671,7 @@ public class SkillCastRulesTests {
               <skill id="100"><basic mainType="4"><stateAttr rechargeMaxCount="6" /></basic></skill>
               <skill id="101" originID="100"><basic><stateAttr rechargeMaxCount="6" rechargeShareOrigin="1" /></basic></skill>
               <skill id="102" originID="100"><basic mainType="2" feature="X"><stateAttr rechargeMaxCount="3" /><condition sp="20"><weapon lh="0" rh="32" /><weapon lh="41" rh="30" /></condition></basic></skill>
-              <skill id="103"><basic><stateAttr rechargeShareOrigin="1" /></basic></skill>
+              <skill id="103"><basic><stateAttr rechargeShareOrigin="1" /><condition onlyShadowWorld="1" onlyFlyableMap="1" allowBattleRidingState="1" onlyBattleRidingState="1" /></basic></skill>
               <skill id="0"><basic mainType="1" /></skill>
               <skill id="104" />
             </ms2>
@@ -686,6 +686,12 @@ public class SkillCastRulesTests {
         Assert.That(read[102].Weapons, Is.EqualTo(new[] { (0, 32), (41, 30) }), "the hand weapons of <condition>");
         Assert.That(read[100].Weapons, Is.Empty);
         Assert.That(read[104].Weapons, Is.Empty);
+        PlayedClientSkills.Entry flagged = read[103];
+        Assert.That((flagged.OnlyShadowWorld, flagged.OnlyFlyableMap, flagged.AllowBattleRiding, flagged.OnlyBattleRiding),
+            Is.EqualTo((true, true, true, true)), "the cast flags of <condition>");
+        PlayedClientSkills.Entry plain = read[102];
+        Assert.That((plain.OnlyShadowWorld, plain.OnlyFlyableMap, plain.AllowBattleRiding, plain.OnlyBattleRiding),
+            Is.EqualTo((false, false, false, false)));
         Assert.That(PlayedClientSkills.IsSkillFile("skilldata/010.xml"), Is.True);
         Assert.That(PlayedClientSkills.IsSkillFile("skill/10/10000001.xml"), Is.False);
     }
