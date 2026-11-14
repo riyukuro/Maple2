@@ -194,7 +194,9 @@ public partial class TriggerContext {
     // A Dark Stream run (see DarkStreamGame): start_game opens the score dialog, a cleared spawn sends the new
     // score, and clearing the last round gives each player in the field the reward row of the rounds cleared
     // (table/darkstream.xml: the exp, the meso, the habi and the items, an item to the bag or else by mail) and
-    // sends it in the result with the player's best score before the run (0 before a first run). The run's score
+    // sends it in the result with the player's best score before the run (0 before a first run). In a Dark Stream room
+    // the run takes one of the room's reward counts (DungeonManager.CountDarkStreamRun); with none left the result
+    // comes with no reward. The run's score
     // is then kept as the player's best when it is higher (DarkStreamBest.Replaces).
     public void DarkStreamSpawnMonster(int[] spawnIds, int score) {
         DebugLog("[DarkStreamSpawnMonster] spawnIds:{SpawnIds}, score:{Score}", string.Join(", ", spawnIds), score);
@@ -224,8 +226,11 @@ public partial class TriggerContext {
         DarkStreamGame.Reward reward = DarkStreamGame.RewardOf(Field.TableMetadata.DarkStreamTable.Entries, game.RoundsCleared, roomExp)
             ?? new DarkStreamGame.Reward(0, 0, 0, []);
         long now = DateTime.Now.ToEpochSeconds();
+        var none = new DarkStreamGame.Reward(0, 0, 0, []);
         foreach (FieldPlayer player in Field.Players.Values) {
-            GiveDarkStreamReward(player, reward);
+            // The run takes one of the room's reward counts; with none left it gets the result and no reward.
+            DarkStreamGame.Reward given = player.Session.Dungeon.CountDarkStreamRun(Field, now) ? reward : none;
+            GiveDarkStreamReward(player, given);
             DarkStreamBest? best;
             using (GameStorage.Request db = Field.GameStorage.Context()) {
                 best = db.GetDarkStreamBest(player.Value.Character.Id);
@@ -233,7 +238,7 @@ public partial class TriggerContext {
                     db.SaveDarkStreamScore(player.Value.Character.Id, game.Score, now);
                 }
             }
-            player.Session.Send(DarkStreamPacket.Result(game.Score, best?.Score ?? 0, reward.Exp, reward.Meso, reward.Habi, reward.Items));
+            player.Session.Send(DarkStreamPacket.Result(game.Score, best?.Score ?? 0, given.Exp, given.Meso, given.Habi, given.Items));
         }
     }
 

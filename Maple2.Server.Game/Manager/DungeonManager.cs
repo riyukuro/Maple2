@@ -679,6 +679,33 @@ public class DungeonManager {
     public bool IsVeteran(int dungeonId) =>
         Records.TryGetValue(dungeonId, out DungeonRecord? record) && record.Flag.HasFlag(DungeonRecordFlag.Veteran);
 
+    /// <summary>
+    /// A Dark Stream run that cleared its last round, counted as one of its room's reward runs. The Dark Stream
+    /// scripts have no dungeon clear (DarkStreamGame), so the room never reaches CompleteDungeon, and its
+    /// rewardCount (3 for 25008001, a limitEnter room) was never used: the room could be entered and its
+    /// reward taken without end. The run counts as a clear counts (the room's record or its unionRewardID room's,
+    /// the RoomDungeon record updates), and only while a count is left, as for a clear.
+    /// Only a run on a field of the player's own room counts: the room the player last entered stays set after
+    /// leaving it, and a run elsewhere (field 02000498 has no room in KR, or 02000350 reached by a GM move) must not
+    /// take that room's count.
+    /// </summary>
+    /// <returns>Whether the run's reward is given: a count was left, or the run is not in the player's room.</returns>
+    public bool CountDarkStreamRun(FieldManager? field, long clearTimestamp) {
+        if (Lobby == null || Metadata == null || UserRecord == null
+            || field is not DungeonFieldManager dungeonField || (dungeonField.Lobby ?? dungeonField) != Lobby) {
+            return true;
+        }
+        (DungeonRoomMetadata rewardRoom, int rewardId) = RewardRoom(Metadata);
+        DungeonRecord rewardRecord = GetRecord(rewardId);
+        if (!DungeonRoomRules.HasCountLeft(rewardRecord, rewardRoom.Reward.Count, rewardRoom.Reward.SubRewardCount, clearTimestamp,
+                ExtraRewardCount(rewardId))) {
+            return false;
+        }
+        UpdateUnionRecord(rewardRecord, rewardRoom, clearTimestamp);
+        UpdateDungeonRecord(GetRecord(Metadata.Id), Metadata, clearTimestamp);
+        return true;
+    }
+
     /// <param name="withRookie">Another player of the clear played the room as a rookie.</param>
     public void CompleteDungeon(long clearTimestamp, bool withRookie = false) {
         if (Lobby == null || Metadata == null || UserRecord == null) {
