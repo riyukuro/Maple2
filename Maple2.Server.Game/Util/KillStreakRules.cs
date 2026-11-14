@@ -14,4 +14,9 @@ public static class KillStreakRules {
         }
         return Lua.CalcKillCount(playerLevel, npcLevel, (int) Math.Clamp(elapsedMs, 0, int.MaxValue), streak);
     }
+
+    // The exp bonus of a streak, as a fraction (0.01 = +1%). In KMS2 kills it came in at the kill that made the streak
+    // 21, 31, 41, 51 and 101 (8 of the 12 kills on those steps; the other 4 a kill later, as packet times blur 5 s).
+    // The Lua rate is a float (0.01f is 0.0099999998); it is taken to the whole percent it stands for.
+    public static double BonusRate(int streak) => Math.Round(Lua.CalcKillCountBonusExpRate(streak), 2);
 }

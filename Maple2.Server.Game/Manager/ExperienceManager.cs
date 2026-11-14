@@ -83,6 +83,10 @@ public sealed class ExperienceManager {
         session.ConditionUpdate(ConditionType.killcount, counter: ChainKillCount);
     }
 
+    // The exp rate of a kill: the stat rate plus the kill streak's bonus (the client's calcKillCountBonusExpRate, 1%
+    // from 21 kills to 15% past 100). The streak counts the kill itself: OnKill runs before the exp is given.
+    public double KillExpRate(double statRate) => statRate + KillStreakRules.BonusRate(ChainKillCount);
+
     // Adds a gain and spends rest exp on it (RestExpRules); returns the gain with its bonus.
     private long SpendRest(long expGained, bool kill) {
         (long gain, long rest) = RestExpRules.Spend(expGained, RestExp, kill, Constants.RestExpAcquireRate);

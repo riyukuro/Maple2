@@ -919,6 +919,8 @@ public class FieldNpc : Actor<Npc> {
 
             DropGlobalLoot(player);
             DropIndividualLoot(player);
+            // The kill counts for the streak before its exp, which the streak's bonus raises.
+            player.Session.Exp.OnKill(Value.Metadata.Basic.Level, Environment.TickCount64);
             // KMS2: a dealer who is dead when the npc dies still gets its drop box, but no kill exp.
             if (BossKillRules.DealerGetsExp(player.IsDead)) {
                 GiveExp(player);
@@ -926,7 +928,6 @@ public class FieldNpc : Actor<Npc> {
 
             player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
             Field.Survival?.NpcKill(player);
-            player.Session.Exp.OnKill(Value.Metadata.Basic.Level, Environment.TickCount64);
             foreach (string race in NpcKillRules.RaceCodes(Value.Metadata.Basic)) {
                 player.Session.ConditionUpdate(ConditionType.npc_race, codeString: race);
             }
@@ -972,8 +973,9 @@ public class FieldNpc : Actor<Npc> {
             return;
         }
 
-        // The exp rate (SpecialAttribute.Experience: the party buff, gear options) raises the exp of a kill.
-        double expRate = player.Stats.Values[SpecialAttribute.Experience].Multiplier();
+        // The exp rate (SpecialAttribute.Experience: the party buff, gear options) and the kill streak's bonus raise the
+        // exp of a kill.
+        double expRate = player.Session.Exp.KillExpRate(player.Stats.Values[SpecialAttribute.Experience].Multiplier());
         player.Session.Pet?.AddKillExp(Value.Metadata.Basic.Level, Value.Metadata.Basic.Class);
 
         // KMS2 gives every dealer the full kill exp, nothing is split; the ExpUp carries the npc's object id.
