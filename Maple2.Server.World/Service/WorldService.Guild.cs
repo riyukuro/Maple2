@@ -144,7 +144,6 @@ public partial class WorldService {
         return new GuildResponse { Guild = ToGuildInfo(manager) };
     }
 
-    // TODO: Send reject mail to any applicants
     private GuildResponse DisbandGuild(long requestorId, GuildRequest.Types.Disband disband) {
         GuildError error = guildLookup.Disband(requestorId, disband.GuildId);
         if (error != GuildError.none) {
@@ -451,17 +450,7 @@ public partial class WorldService {
         } else if (!db.DeleteGuildApplication(row.Id)) {
             return new GuildResponse { Error = (int) GuildError.s_guild_err_unknown };
         } else {
-            Mail? mail = db.CreateMail(GuildRules.RejectedApplicationMail(applicantId, manager.Guild.Name));
-            if (mail == null) {
-                logger.Error("Guild {GuildId} reject mail to {CharacterId} could not be written", respond.GuildId, applicantId);
-            } else if (MailNotifyRules.Notify(applicant) && channelClients.TryGetClient(applicant.Channel, out ChannelClient? mailClient)) {
-                try {
-                    mailClient.MailNotification(new MailNotificationRequest {
-                        CharacterId = applicantId,
-                        MailId = mail.Id,
-                    });
-                } catch (RpcException) { /* the mail is listed at the next look */ }
-            }
+            guildLookup.SendRejectMail(db, respond.GuildId, manager.Guild.Name, applicantId, applicant);
         }
 
         manager.BroadcastToApplicationHandlers(new ChannelGuildRequest {
@@ -473,19 +462,7 @@ public partial class WorldService {
             },
         }, exceptCharacterId: applicant.CharacterId);
 
-        if (applicant.Online && channelClients.TryGetClient(applicant.Channel, out ChannelClient? client)) {
-            try {
-                client.Guild(new ChannelGuildRequest {
-                    GuildId = manager.Guild.Id,
-                    ReceiverIds = { applicant.CharacterId },
-                    ApplicationResult = new ChannelGuildRequest.Types.ApplicationResult {
-                        ApplicationId = row.Id,
-                        GuildName = manager.Guild.Name,
-                        Joined = respond.Accepted,
-                    },
-                });
-            } catch (RpcException) { /* the applicant sees the result at the next login */ }
-        }
+        guildLookup.SendApplicationResult(manager.Guild.Id, manager.Guild.Name, row.Id, applicant, respond.Accepted);
 
         return new GuildResponse {
             GuildId = manager.Guild.Id,

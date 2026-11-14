@@ -1,12 +1,19 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
+using Maple2.Server.Channel.Service;
+using Serilog;
+using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
+using ChannelGuildRequest = Maple2.Server.Channel.Service.GuildRequest;
 
 namespace Maple2.Server.World.Containers;
 
 public class GuildLookup : IDisposable {
+    private readonly ILogger logger = Log.ForContext<GuildLookup>();
     private readonly GameStorage gameStorage;
     private readonly TableMetadataStorage tableMetadata;
     private readonly ItemMetadataStorage itemMetadata;
@@ -124,11 +131,51 @@ public class GuildLookup : IDisposable {
         manager.Dispose();
 
         using GameStorage.Request db = gameStorage.Context();
+        // The delete drops the guild's open join requests; each applicant is answered as for a declined request.
+        IList<GuildApplicationRow> open = db.GetGuildApplications(guildId);
         if (!db.DeleteGuild(guildId)) {
             return GuildError.s_guild_err_unknown;
         }
+        foreach (GuildApplicationRow row in open) {
+            playerLookup.TryGet(row.ApplicantId, out PlayerInfo? applicant);
+            SendRejectMail(db, guildId, manager.Guild.Name, row.ApplicantId, applicant);
+            SendApplicationResult(guildId, manager.Guild.Name, row.Id, applicant, joined: false);
+        }
 
         return GuildError.none;
+    }
+
+    // The mail a declined applicant gets (GuildRules.RejectedApplicationMail), with the new-mail notice while online.
+    public void SendRejectMail(GameStorage.Request db, long guildId, string guildName, long applicantId, PlayerInfo? applicant) {
+        Mail? mail = db.CreateMail(GuildRules.RejectedApplicationMail(applicantId, guildName));
+        if (mail == null) {
+            logger.Error("Guild {GuildId} reject mail to {CharacterId} could not be written", guildId, applicantId);
+        } else if (MailNotifyRules.Notify(applicant) && channelClients.TryGetClient(applicant!.Channel, out ChannelClient? client)) {
+            try {
+                client.MailNotification(new MailNotificationRequest {
+                    CharacterId = applicantId,
+                    MailId = mail.Id,
+                });
+            } catch (RpcException) { /* the mail is listed at the next look */ }
+        }
+    }
+
+    // Guild 48 to an online applicant: their request is gone, joined or not.
+    public void SendApplicationResult(long guildId, string guildName, long applicationId, PlayerInfo? applicant, bool joined) {
+        if (applicant is not { Online: true } || !channelClients.TryGetClient(applicant.Channel, out ChannelClient? client)) {
+            return;
+        }
+        try {
+            client.Guild(new ChannelGuildRequest {
+                GuildId = guildId,
+                ReceiverIds = { applicant.CharacterId },
+                ApplicationResult = new ChannelGuildRequest.Types.ApplicationResult {
+                    ApplicationId = applicationId,
+                    GuildName = guildName,
+                    Joined = joined,
+                },
+            });
+        } catch (RpcException) { /* the applicant sees the result at the next login */ }
     }
 
     private GuildManager? FetchGuild(long guildId) {
