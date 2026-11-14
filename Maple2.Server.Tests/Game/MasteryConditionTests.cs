@@ -195,6 +195,29 @@ public class MasteryConditionTests {
         Assert.That(test.TrophyCounter(23100241), Is.EqualTo(1));
     }
 
+    // The fisher grade trophies, as the KR rows have them: 23100135 fisher_grade code 1, 23100138 code 13 and
+    // 23100343 code 16 (value 1 each). A gain of several grades at once passes each of them; before, only the grade
+    // reached counted, so a rise from 12 to 14 never earned 23100138. Grades here are 100 mastery apart (grade 1 at 0).
+    [Test]
+    public void FisherGrade_23100138_EachGradePassedCounts() {
+        test = new TestGameSession();
+        test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>> {
+            [MasteryType.Fishing] = Enumerable.Range(1, 20).ToDictionary(grade => grade, grade => new MasteryRewardTable.Entry((grade - 1) * 100, 0, 1, 1)),
+        }));
+        test.AddAchievement(TestGameSession.Trophy(23100135, ConditionType.fisher_grade, [1], codes: [1]),
+            TestGameSession.Trophy(23100138, ConditionType.fisher_grade, [1], codes: [13]),
+            TestGameSession.Trophy(23100343, ConditionType.fisher_grade, [1], codes: [16]));
+        GameSession session = test.Start();
+        test.TakeSent();
+
+        session.Mastery[MasteryType.Fishing] = 1100; // 0 -> grade 12: grade 1 passed
+        Assert.That((test.TrophyCounter(23100135), test.TrophyCounter(23100138)), Is.EqualTo(((long?) 1, (long?) null)));
+        session.Mastery[MasteryType.Fishing] = 1300; // 12 -> 14 at once
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That((test.TrophyCounter(23100138), test.TrophyCounter(23100343)), Is.EqualTo(((long?) 1, (long?) null)));
+        Assert.That(session.Achievement.TryGetAchievement(23100138, out Achievement? trophy) && trophy.Completed, Is.True);
+    }
+
     // A quest of set_mastery_grade (no KR quest has one) keeps the grade reached, as the trophies do: grade 2 and
     // then grade 3 is 3, not 5.
     [Test]

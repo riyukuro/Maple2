@@ -126,7 +126,12 @@ public class MasteryManager {
 
         switch (type) {
             case MasteryType.Fishing:
-                session.ConditionUpdate(ConditionType.fisher_grade, codeLong: currentLevel);
+                // fisher_grade names one grade (KR 23100135-23100138 codes 1, 5, 9 and 13, 23100343 code 16 and
+                // 23100344 code 19; the fishing album's best title, UIFishingBookDialog::GetBestFisherTitleId, reads
+                // them). Each grade passed counts, so a gain of several grades at once misses none.
+                for (int grade = currentLevel - deltaLevel + 1; grade <= currentLevel; grade++) {
+                    session.ConditionUpdate(ConditionType.fisher_grade, codeLong: grade);
+                }
                 return;
             case MasteryType.Music:
                 session.ConditionUpdate(ConditionType.music_play_grade, counter: deltaLevel);
