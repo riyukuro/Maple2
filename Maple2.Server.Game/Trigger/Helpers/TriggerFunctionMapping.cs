@@ -336,7 +336,8 @@ public static class TriggerFunctionMapping {
 
     public static int[] ParseIntArray(string? value) {
         if (string.IsNullOrEmpty(value)) return [];
-        if (value is "all") return [-1]; // Special case for "all" to indicate all IDs.
+        // Special case for "all" to indicate all IDs; KR scripts also write "All".
+        if (value.Equals("all", StringComparison.OrdinalIgnoreCase)) return [-1];
         // Handles ranges and comma-separated values and mixed usage.
         if (value.Contains(',')) {
             var result = new List<int>();
