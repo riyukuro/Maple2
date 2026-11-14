@@ -40,7 +40,7 @@ public static class EventClaim {
         List<GameEventUserValue> characterValues = values.Where(value => !GameEventManager.AccountValue(value.Type)).ToList();
         List<GameEventUserValue> accountValues = values.Where(value => GameEventManager.AccountValue(value.Type)).ToList();
 
-        bool toBag = session.Field != null && (items.Count == 0 || session.Item.Inventory.CanAdd(items.ToList()));
+        bool toBag = session.Field != null && (items.Count == 0 || session.Item.Inventory.TakesAll(items));
         var rows = new List<Item>();
         var mails = new List<Mail>();
         bool stored = session.TrySavePurchase(db => {
@@ -82,6 +82,23 @@ public static class EventClaim {
                 return false;
             }
             db.AfterCommit(() => {
+                // The bag rows first, then the marks: the client gets the items before the claim's values and the
+                // reply, as when the items were added before the mark was set. A throw here is caught, so the marks
+                // of the committed claim still reach memory (a throw out of the commit's actions answered "not
+                // stored" for a claim that was).
+                if (toBag) {
+                    foreach (Item row in rows) {
+                        // The room was checked above; a row the bag no longer takes moves to a mail (it is the
+                        // character's stored bag row until then, so it is not lost either way: a load places it).
+                        try {
+                            if (!session.Item.AddOrMail(row, true, commit: true)) {
+                                Logger.Error("Event claim: stored item {ItemId} row {Uid} went to neither bag nor mail of {CharacterId}", row.Id, row.Uid, session.CharacterId);
+                            }
+                        } catch (Exception ex) {
+                            Logger.Error(ex, "Event claim: stored item {ItemId} row {Uid} not added for {CharacterId}; the row stays the character's", row.Id, row.Uid, session.CharacterId);
+                        }
+                    }
+                }
                 foreach (Mark mark in marks) {
                     session.GameEvent.Set(mark.EventId, mark.Type, mark.Value);
                 }
@@ -94,15 +111,6 @@ public static class EventClaim {
             return null;
         }
 
-        if (toBag) {
-            foreach (Item row in rows) {
-                // The room was checked above; a row the bag no longer takes moves to a mail (it is the character's
-                // stored bag row until then, so it is not lost either way).
-                if (!session.Item.AddOrMail(row, true, commit: true)) {
-                    Logger.Error("Event claim: stored item {ItemId} row {Uid} went to neither bag nor mail of {CharacterId}", row.Id, row.Uid, session.CharacterId);
-                }
-            }
-        }
         foreach (Mail mail in mails) {
             try {
                 session.World.MailNotification(new MailNotificationRequest {

@@ -328,12 +328,12 @@ public class MicrogameHandler : FieldPacketHandler {
         if (!RpsRules.ClaimSettled(rps.Rewards[index].Rewards.Length, items.Count)) {
             return;
         }
-        List<Item>? delivered = EventClaim.Give(session, items,
-            [EventClaim.Of(gameEvent.Id, GameEventUserValueType.RPSRewardsClaimed, RpsRules.AddClaimed(claimed.String(), index))]);
-        if (delivered == null) {
+        // The notice lists the items as made: a stored bag row that merged into a stack is left at amount 0.
+        if (EventClaim.Give(session, items,
+                [EventClaim.Of(gameEvent.Id, GameEventUserValueType.RPSRewardsClaimed, RpsRules.AddClaimed(claimed.String(), index))]) == null) {
             return;
         }
-        session.Send(MicrogamePacket.Rewards(delivered.Select(item => (RewardItem) item).ToList()));
+        session.Send(MicrogamePacket.Rewards(items.Select(item => (RewardItem) item).ToList()));
     }
 
     // The client keeps one couple dance event (CGameEventValueCoupleDance) and sends its id with every mode; the
