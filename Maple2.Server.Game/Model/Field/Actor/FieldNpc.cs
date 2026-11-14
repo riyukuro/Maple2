@@ -534,6 +534,9 @@ public class FieldNpc : Actor<Npc> {
     private float AirPatrolSpeed(string sequence) =>
         PatrolRules.AirMultiplier(Patrol!.PatrolSpeed, sequence, Value.Metadata.Action.WalkSpeed, Value.Metadata.Action.RunSpeed);
 
+    private float GroundPatrolSpeed(string sequence) =>
+        PatrolRules.GroundMultiplier(Patrol!.PatrolSpeed, sequence, Value.Metadata.Action.WalkSpeed, Value.Metadata.Action.RunSpeed);
+
     private NpcTask? NextWaypoint() {
         MS2WayPoint currentWaypoint = Patrol!.WayPoints[currentWaypointIndex];
         MS2WayPoint? waypointBefore = null;
@@ -562,19 +565,19 @@ public class FieldNpc : Actor<Npc> {
         } else {
             if (Navigation!.PathTo(currentWaypoint.Position)) {
                 if (Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? patrolSequence)) {
-                    approachTask = MovementState.TryMoveTo(currentWaypoint.Position, false, sequence: patrolSequence.Name, speed: 1);
+                    approachTask = MovementState.TryMoveTo(currentWaypoint.Position, false, sequence: patrolSequence.Name, speed: GroundPatrolSpeed(patrolSequence.Name));
                 } else if (WalkSequence is not null) {
-                    approachTask = MovementState.TryMoveTo(currentWaypoint.Position, false, sequence: WalkSequence.Name, speed: 1);
+                    approachTask = MovementState.TryMoveTo(currentWaypoint.Position, false, sequence: WalkSequence.Name, speed: GroundPatrolSpeed(WalkSequence.Name));
                 } else {
                     Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
                 }
             } else if (Navigation.GoalOffMesh(currentWaypoint.Position)) {
                 // The waypoint stands on ground the navmesh does not cover (e.g. a train track that is not path geometry):
-                // go there in a straight line at walk speed instead of skipping it, so boxes waiting for the npc see it.
+                // go there in a straight line at the patrol's speed instead of skipping it, so boxes waiting for the npc see it.
                 if (Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? patrolSequence)) {
-                    approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: patrolSequence.Name, speed: 1);
+                    approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: patrolSequence.Name, speed: GroundPatrolSpeed(patrolSequence.Name));
                 } else if (WalkSequence is not null) {
-                    approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: WalkSequence.Name, speed: 1);
+                    approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: WalkSequence.Name, speed: GroundPatrolSpeed(WalkSequence.Name));
                 } else {
                     Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
                 }
