@@ -698,6 +698,19 @@ public class PlayedTakeOverTests {
         });
     }
 
+    // The skill ingest keeps a use of a played-only effect the effect ingest takes over with its <SpecialAbility>
+    // (10800215, KR 10800211's row) and still drops one of an effect left out (10800217, defensive_damageV); before,
+    // "SpecialAbility" stayed unread there and the use of 10800215 was dropped.
+    [Test]
+    public void TheSkillIngestKeepsAPlayedOnlyEffectWithItsSpecialAbility() {
+        Dictionary<int, PlayedClientAdditionalEffects.Entry> played = PlayedClientAdditionalEffects.Read([Xml(Played)], _ => true);
+        Assert.Multiple(() => {
+            Assert.That(SkillMapper.PlayedOnlyTakenOver(10800215, played[10800215], Table, null), Is.True);
+            Assert.That(SkillMapper.PlayedOnlyTakenOver(10800216, played[10800216], Table, null), Is.True);
+            Assert.That(SkillMapper.PlayedOnlyTakenOver(10800217, played[10800217], Table, null), Is.False);
+        });
+    }
+
     // Every name on the pack-only list is one no played row of these tests writes.
     [Test]
     public void ThePackOnlyNamesAreNotWritten() {

@@ -174,12 +174,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
     // client's <SpecialAbility> is read where every type the client keeps has a server stat and no level has final
     // stats (Status adds them to the stats it replaces).
     private List<AdditionalEffectMetadata>? Own(int id, PlayedClientAdditionalEffects.Entry entry, List<string> unread, out bool readAbilities) {
-        unread.AddRange(PlayedAdditionalRows.Unread(entry));
-        readAbilities = unread.Contains("SpecialAbility") && abilities != null
-                        && entry.Rows.Keys.All(level => finals?.Get(id, level) == null && Mapped(abilities, entry.SpecialAbilities.GetValueOrDefault(level)));
-        if (readAbilities) {
-            unread.Remove("SpecialAbility");
-        }
+        unread.AddRange(LeftOut(id, entry, abilities, finals, out readAbilities));
         if (unread.Count > 0) {
             return null;
         }
@@ -194,6 +189,19 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             levels.Add(metadata);
         }
         return levels;
+    }
+
+    // What an effect only the played client has is left out for (empty: it is taken over), and whether its
+    // <SpecialAbility> is read: where every type the client keeps has a server stat and no level has final stats.
+    // The skill ingest counts the same effects as present (SkillMapper).
+    public static List<string> LeftOut(int id, PlayedClientAdditionalEffects.Entry entry, ClientSpecialAbility? abilities, FinalStatusRows? finals, out bool readAbilities) {
+        var unread = new List<string>(PlayedAdditionalRows.Unread(entry));
+        readAbilities = unread.Contains("SpecialAbility") && abilities != null
+                        && entry.Rows.Keys.All(level => finals?.Get(id, level) == null && Mapped(abilities, entry.SpecialAbilities.GetValueOrDefault(level)));
+        if (readAbilities) {
+            unread.Remove("SpecialAbility");
+        }
+        return unread;
     }
 
     // Whether every type of a played level's <SpecialAbility> rows the client keeps has a server stat, but those the

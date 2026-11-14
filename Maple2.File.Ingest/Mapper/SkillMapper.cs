@@ -79,6 +79,12 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     // The skills each data pack skill's cast turns into (combo output, change skill, default skill, jump), filled by MapSkills.
     private readonly Dictionary<int, HashSet<int>> castEdges = [];
 
+    // Whether the effect ingest takes over an effect only the played client has (AdditionalEffectMapper.LeftOut), so a
+    // use of it is kept: one whose <SpecialAbility> it reads counts too (before: "SpecialAbility" stayed unread).
+    public static bool PlayedOnlyTakenOver(int id, PlayedClientAdditionalEffects.Entry entry, ClientSpecialAbility? abilities, FinalStatusRows? finals) {
+        return entry.Rows.Count > 0 && AdditionalEffectMapper.LeftOut(id, entry, abilities, finals, out _).Count == 0;
+    }
+
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
         this.xmlReader = xmlReader;
@@ -97,9 +103,11 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             // And the levels of the played client's effects the pack lacks that the effect ingest takes over
             // (AdditionalEffectMapper.PlayedOnly): Focused Fire 10600181's charge 10600280.
             var packIds = packEffects.Select(effect => effect.Id).ToHashSet();
+            var abilities = new ClientSpecialAbility(playedReader, xmlReader);
+            var finals = new FinalStatusRows(xmlReader);
             foreach ((int effectId, PlayedClientAdditionalEffects.Entry entry) in PlayedClientAdditionalEffects.Read(playedReader.Files
                          .Where(file => PlayedClientAdditionalEffects.IsAdditionalFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available)) {
-                if (packIds.Contains(effectId) || entry.Rows.Count == 0 || PlayedAdditionalRows.Unread(entry).Count > 0) {
+                if (packIds.Contains(effectId) || !PlayedOnlyTakenOver(effectId, entry, abilities, finals)) {
                     continue;
                 }
                 foreach (short level in entry.Rows.Keys) {
