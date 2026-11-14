@@ -19,6 +19,7 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // and places and takes nothing. The item ids are made up.
 public class PlaceHeldCubeTests {
     private const int Cube = 50200911, OtherCube = 50200912, House = 50200913, TemplateCube = 50200914, TrophyCube = 50200915;
+    private const int QuestCube = 50400341; // the install_item code of KR 80000631
     private const int Trophy = 23100098; // made up
     private TestGameSession test = null!;
 
@@ -37,11 +38,12 @@ public class PlaceHeldCubeTests {
             [House] = new(House, true, FurnishingCurrencyType.Meso, 1000),
             [TemplateCube] = new(TemplateCube, true, FurnishingCurrencyType.Meso, 1000),
             [TrophyCube] = new(TrophyCube, true, FurnishingCurrencyType.Meso, 1000),
+            [QuestCube] = new(QuestCube, true, FurnishingCurrencyType.Meso, 1000),
         }));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>()));
         ItemMetadata house = Furnishing(House);
         test.Register(Furnishing(Cube), Furnishing(OtherCube), house with { Property = house.Property with { Type = 6, SubType = 4 } },
-            Furnishing(TemplateCube) with { Mesh = "ugc_mesh" },
+            Furnishing(TemplateCube) with { Mesh = "ugc_mesh" }, Furnishing(QuestCube),
             Furnishing(TrophyCube) with { Housing = new ItemMetadataHousing(Trophy, 1, 0, HousingCategory.None, false) });
         test.AddAchievement(TestGameSession.Trophy(Trophy, ConditionType.home_goto, [1, 2]));
         GameSession session = test.Start();
@@ -191,6 +193,24 @@ public class PlaceHeldCubeTests {
             Assert.That(session.Item.Furnishing.GetCube(uid)?.Amount, Is.EqualTo(1));
             Assert.That(session.Currency.Meso, Is.EqualTo(4000));
         });
+    }
+
+    // 80000631: <condition type="install_item" code="50400341" value="1" />, a place of the cube counts; a refused
+    // place of it (nothing held) or a place of another cube does not.
+    [Test]
+    public void InstallItem_80000631_ThePlacedCube() {
+        (GameSession session, _) = StartInHome();
+        Quest quest = test.StartQuest(TestGameSession.QuestData(91000001) with {
+            Conditions = [new ConditionMetadata(ConditionType.install_item, 1, new ConditionMetadata.Parameters(Integers: [QuestCube]), null)],
+        });
+
+        Place(session, 0, QuestCube);
+        Place(session, Cube, Cube);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Place(session, QuestCube, QuestCube, new Vector3B(-2, -1, 1));
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
 
     [Test]
