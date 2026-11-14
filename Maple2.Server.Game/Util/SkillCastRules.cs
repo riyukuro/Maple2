@@ -576,6 +576,33 @@ public static class SkillCastRules {
         return null;
     }
 
+    // The client's buffs follow the server's by packet, so for a moment after a change the two disagree: a buff the
+    // server just lost (removed, expired or turned off) the client may still hold, and one the server just gained the
+    // client may not hold yet. Chosen here: a buff state that changed this long ago or less counts both ways.
+    public const long BuffStateSlackMs = 1500;
+
+    // A change at changeTick (null: none recorded) is recent enough that the client may not have seen it.
+    public static bool ChangedWithinSlack(long? changeTick, long tick) => changeTick is { } changed && tick - changed <= BuffStateSlackMs;
+
+    // The begin condition's effect tests on a cast's first motion (CSkillSystem::FUN_14176a8c0, skillslot.cpp:3150-3215):
+    // each requireEffect code must be an enabled buff held (CBuffMgr HasEnabledWithId, answer 0x14), and no enabled
+    // buff held may be of a hasNotAdditionalEffectGroup group (HasEnabledInGroup, answer 0x18). heldOrJustLost: an
+    // enabled buff of the id is held, or one was lost within BuffStateSlackMs; groupHeldSettled: an enabled buff of
+    // the group is held and none of the group was gained within it. null: none refuses.
+    public static int? EffectRefusal(int skillId, bool laterMotion, int[]? requireEffects, Func<int, bool> heldOrJustLost,
+            int[]? notEffectGroups, Func<int, bool> groupHeldSettled) {
+        if (laterMotion || skillId == UncheckedCastSkill) {
+            return null;
+        }
+        if (requireEffects != null && requireEffects.Any(id => !heldOrJustLost(id))) {
+            return 0x14;
+        }
+        if (notEffectGroups != null && notEffectGroups.Any(groupHeldSettled)) {
+            return 0x18;
+        }
+        return null;
+    }
+
     // Every skill of every job's tree, main and sub.
     public static HashSet<int> TreeSkills(JobTable jobTable) {
         var skills = new HashSet<int>();

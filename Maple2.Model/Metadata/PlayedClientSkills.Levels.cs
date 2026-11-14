@@ -57,9 +57,9 @@ public static partial class PlayedClientSkills {
     // One <level> of the skill. The condition is the skill's <condition> (SkillCondition::Load,
     // skilloverlapcompare.cpp:521): the shadow world, flyable map and battle ride flags, the map codes, the hand
     // weapons and the recharge gap, with the level's cooldown (SkillLevelData::Load, skillleveldata.cpp:923, in
-    // milliseconds). requireEffect and hasNotAdditionalEffectGroup have no place in the server's condition and are left
-    // out (UnreadConditionRows counts them). The level's sp, ep, meso and hpRate are its cost; detectProperty is only a
-    // shape to the client (Unk_RangeShape), so only its distance is kept and the caster is not taken in.
+    // milliseconds), the requireEffect codes and hasNotAdditionalEffectGroup ids, and the condition's sp (the spirit the
+    // cast needs held, answer 0xb). The level's sp, ep, meso and hpRate are its cost; detectProperty is only a shape
+    // to the client (Unk_RangeShape), so only its distance is kept and the caster is not taken in.
     public static SkillMetadataLevel BuildLevel(XmlElement skill, XmlElement level) {
         XmlElement? condition = Child(Child(skill, "basic"), "condition");
         var stat = new Dictionary<BasicAttribute, long>();
@@ -86,7 +86,7 @@ public static partial class PlayedClientSkills {
                 OnlyOnBattleMount: Number(condition, "onlyBattleRidingState") != 0,
                 AllowOnSurvival: false,
                 DungeonGroupType: [],
-                Stat: new Dictionary<BasicAttribute, long>(),
+                Stat: Number(condition, "sp") is var needed and not 0 ? new Dictionary<BasicAttribute, long> { [BasicAttribute.Spirit] = needed } : new Dictionary<BasicAttribute, long>(),
                 Maps: Children(condition, "requireMapCodes").Select(code => Number(code, "code")).ToArray(),
                 MapTypes: [],
                 Continents: [],
@@ -96,7 +96,9 @@ public static partial class PlayedClientSkills {
                 Target: null,
                 Owner: null,
                 Caster: null,
-                RechargeGap: Real(condition, "defaultRechargingCooldownTime")),
+                RechargeGap: Real(condition, "defaultRechargingCooldownTime"),
+                RequireEffects: RequireEffectCodes(condition),
+                NotEffectGroups: NotEffectGroupIds(condition)),
             Change: null,
             AutoTargeting: null,
             Consume: new SkillMetadataConsume(
@@ -124,7 +126,8 @@ public static partial class PlayedClientSkills {
     }
 
     // A played client's level (BuildLevel) added to a data pack skill: the client's own condition fields (cooldown,
-    // shadow world, flyable map, battle ride, map codes, hand weapons, recharge gap) and cost, and what the client's
+    // shadow world, flyable map, battle ride, map codes, hand weapons, recharge gap, required effects and refused
+    // effect groups) and cost, and what the client's
     // level does not give from the pack's level: the rest of its begin condition (level, jobs, stats, targets) and
     // whether it is an item skill's level (consume useItem, which the cast checks its condition and cooldown for).
     public static SkillMetadataLevel WithPackLevel(SkillMetadataLevel built, SkillMetadataLevel pack) {
@@ -139,15 +142,23 @@ public static partial class PlayedClientSkills {
                 Maps = client.Maps,
                 Weapon = client.Weapon,
                 RechargeGap = client.RechargeGap,
+                RequireEffects = client.RequireEffects,
+                NotEffectGroups = client.NotEffectGroups,
             },
             Consume = built.Consume with { UseItem = pack.Consume.UseItem },
         };
     }
 
-    // The rows of the skill's <condition> the server's condition has no place for.
-    public static int UnreadConditionRows(XmlElement skill) {
-        XmlElement? condition = Child(Child(skill, "basic"), "condition");
-        return Children(condition, "requireEffect").Count() + Children(condition, "hasNotAdditionalEffectGroup").Count();
+    // The codes of the condition's requireEffect rows (SkillCondition::Load), none when it has none.
+    public static int[]? RequireEffectCodes(XmlElement? condition) {
+        int[] codes = Children(condition, "requireEffect").Select(row => Number(row, "code")).Where(code => code != 0).ToArray();
+        return codes.Length > 0 ? codes : null;
+    }
+
+    // The ids of the condition's hasNotAdditionalEffectGroup rows (SkillCondition::Load), none when it has none.
+    public static int[]? NotEffectGroupIds(XmlElement? condition) {
+        int[] ids = Children(condition, "hasNotAdditionalEffectGroup").Select(row => Number(row, "id")).Where(id => id != 0).ToArray();
+        return ids.Length > 0 ? ids : null;
     }
 
     // SkillMotionData::Load (skillleveldata.cpp:1159-1202; sequence speed 1 and faceTarget 1 when not given, the

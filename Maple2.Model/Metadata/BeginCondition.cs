@@ -34,7 +34,13 @@ public record BeginCondition(
     PvpZoneApply PvpZone = PvpZoneApply.Everywhere,
     // The proc's probability is cut by the number of targets the attack hit (useTargetCountFactor): times the
     // server constant invokeEffectTargetCountFactor<n>, n the target count (SkillCastRules.TargetCountFactor).
-    bool UseTargetCountFactor = false);
+    bool UseTargetCountFactor = false,
+    // The played client's requireEffect codes: every one must be an enabled buff the caster holds (answer 0x14).
+    int[]? RequireEffects = null,
+    // The played client's hasNotAdditionalEffectGroup ids: an enabled buff held of one of these groups refuses the
+    // cast (answer 0x18). Both are read from the skill's <basic><condition> (SkillCondition::Load) and tested by the
+    // client's cast check (CSkillSystem::FUN_14176a8c0); SkillCastCheck tests them on a cast's first motion.
+    int[]? NotEffectGroups = null);
 
 public record BeginConditionWeapon(
     ItemType LeftHand,

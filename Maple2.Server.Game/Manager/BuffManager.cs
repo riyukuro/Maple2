@@ -32,6 +32,11 @@ public class BuffManager : IUpdatable {
     // CooldownTimes is).
     public PvpCooldownHold<long> PvpHold { get; } = new((endTick, _) => endTick);
     public ReflectRecord? Reflect;
+    // The field tick a buff of each id was last lost (removed, or its begin condition turned it off), and the one a
+    // buff of each group was last gained (added enabled, or turned on): a cast's effect tests count a change this
+    // recent both ways (SkillCastRules.BuffStateSlackMs), as the client's buffs follow by packet.
+    private readonly ConcurrentDictionary<int, long> lostTicks = new();
+    private readonly ConcurrentDictionary<int, long> groupGainTicks = new();
     private readonly ILogger logger = Log.ForContext<BuffManager>();
 
     public BuffManager(IActor actor) {
@@ -199,6 +204,8 @@ public class BuffManager : IUpdatable {
         // The buff's constructor took its enabled flag from the condition; it keeps its procs for when it is enabled.
         if (!buff.Enabled) {
             InvalidateSums();
+        } else {
+            NoteGained(buff);
         }
 
         // refresh stats if needed
@@ -301,6 +308,11 @@ public class BuffManager : IUpdatable {
     // follow it, as they do a stack change.
     public void EnabledChanged(Buff buff) {
         InvalidateSums();
+        if (buff.Enabled) {
+            NoteGained(buff);
+        } else {
+            lostTicks[buff.Id] = Actor.Field.FieldTick;
+        }
         if (HasStatus(buff.Metadata)) {
             Actor.Stats.Refresh();
         }
@@ -377,6 +389,24 @@ public class BuffManager : IUpdatable {
             }
         }
         return false;
+    }
+    // The requireEffect test of a cast (SkillCastRules.EffectRefusal, answer 0x14): an enabled buff of this id is held,
+    // or one was lost within the slack.
+    public bool HeldOrJustLost(int effectId, long tick) {
+        return HoldsEnabled(effectId) || SkillCastRules.ChangedWithinSlack(lostTicks.TryGetValue(effectId, out long lost) ? lost : null, tick);
+    }
+    // The hasNotAdditionalEffectGroup test of a cast (answer 0x18): an enabled buff of this group (its <Basic group>,
+    // the client's AdditionalLevelData group) is held, and none of the group was gained within the slack.
+    public bool GroupHeldSettled(int group, long tick) {
+        if (SkillCastRules.ChangedWithinSlack(groupGainTicks.TryGetValue(group, out long gained) ? gained : null, tick)) {
+            return false;
+        }
+        return EnumerateBuffs().Any(buff => buff.Enabled && buff.Metadata.Property.Group == group);
+    }
+    private void NoteGained(Buff buff) {
+        if (buff.Metadata.Property.Group > 0) {
+            groupGainTicks[buff.Metadata.Property.Group] = Actor.Field.FieldTick;
+        }
     }
     // An enabled buff held has pvpOnOff, as the client's buff sum takes it (AdditionalCliList::FUN_140972a00,
     // additionalcli_2.cpp:1081): kept with the other sums, so the hit path reads it without walking the buffs.
@@ -822,6 +852,7 @@ public class BuffManager : IUpdatable {
 
         foreach (Buff buff in buffsToRemove) {
             RemoveInternal(buff);
+            lostTicks[buff.Id] = Actor.Field.FieldTick;
             Actor.Field.Broadcast(BuffPacket.Remove(buff));
             if (buff.Metadata.Property.RideId > 0) {
                 refreshStats = true;

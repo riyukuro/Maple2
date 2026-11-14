@@ -17,6 +17,8 @@ namespace Maple2.Model.Metadata;
 // - the onlyShadowWorld, onlyFlyableMap, allowBattleRidingState and onlyBattleRidingState flags of <condition>, which
 //   the client's cast test reads (FUN_14176a8c0); the data pack's beginCondition differs (80010001 has onlyFlyableMap
 //   there and not in the client, so a pack flag would refuse a cast the client sends).
+// - the requireEffect codes and hasNotAdditionalEffectGroup ids of <condition>, which the same cast test reads (answers
+//   0x14 and 0x18); the data pack's beginCondition has neither.
 // - attackMethodType of each <attack> (SkillAttackData::Load, 0 when not given): the data pack gives it for 2 skills
 //   only. The client's search of an attack of type 1 takes neither the range offset nor its z rotation
 //   (SkillLevelData::FUN_1408043f0); see ReadAttackMethods.
@@ -25,7 +27,7 @@ public static partial class PlayedClientSkills {
 
     public readonly record struct Entry(int MainType, int RechargeMaxCount, bool RechargeShared, (int LeftHand, int RightHand)[] Weapons,
         int SplashMaxCount = 0, bool OnlyShadowWorld = false, bool OnlyFlyableMap = false, bool AllowBattleRiding = false,
-        bool OnlyBattleRiding = false);
+        bool OnlyBattleRiding = false, int[]? RequireEffects = null, int[]? NotEffectGroups = null);
 
     public static bool IsSkillFile(string name) => name.StartsWith(SkillFolder, StringComparison.OrdinalIgnoreCase);
 
@@ -47,7 +49,9 @@ public static partial class PlayedClientSkills {
                 OnlyShadowWorld: Number(condition, "onlyShadowWorld") != 0,
                 OnlyFlyableMap: Number(condition, "onlyFlyableMap") != 0,
                 AllowBattleRiding: Number(condition, "allowBattleRidingState") != 0,
-                OnlyBattleRiding: Number(condition, "onlyBattleRidingState") != 0);
+                OnlyBattleRiding: Number(condition, "onlyBattleRidingState") != 0,
+                RequireEffects: RequireEffectCodes(condition),
+                NotEffectGroups: NotEffectGroupIds(condition));
         }
         return entries;
     }

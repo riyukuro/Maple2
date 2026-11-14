@@ -375,6 +375,32 @@ public class SkillCastRulesTests {
         });
     }
 
+    // FUN_14176a8c0's effect answers: every requireEffect code held (0x14), no buff held of a hasNotAdditionalEffectGroup
+    // group (0x18). KR 10200281 requires its own buff 10200281; item skills 90000596-90000601 refuse groups 10 and 11.
+    // A buff state that changed within BuffStateSlackMs counts both ways, as the client may not have it yet.
+    [Test]
+    public void EffectRefusal_IsTheClientsAnswer() {
+        var held = new HashSet<int> { 10200281, 10200034 };
+        var groups = new HashSet<int> { 10 };
+        int? Refusal(int[]? require = null, int[]? notGroups = null, bool later = false, int skillId = 10200281) =>
+            SkillCastRules.EffectRefusal(skillId, later, require, held.Contains, notGroups, groups.Contains);
+        Assert.Multiple(() => {
+            Assert.That(Refusal(), Is.Null);
+            Assert.That(Refusal(require: [10200281]), Is.Null);
+            Assert.That(Refusal(require: [10200281, 10200034]), Is.Null);
+            Assert.That(Refusal(require: [10200281, 10200282]), Is.EqualTo(0x14), "every code must be held");
+            Assert.That(Refusal(notGroups: [11]), Is.Null);
+            Assert.That(Refusal(notGroups: [11, 10]), Is.EqualTo(0x18));
+            Assert.That(Refusal(require: [5], notGroups: [10]), Is.EqualTo(0x14), "0x14 is asked first");
+            Assert.That(Refusal(require: [5], notGroups: [10], later: true), Is.Null);
+            Assert.That(Refusal(require: [5], skillId: SkillCastRules.UncheckedCastSkill), Is.Null);
+
+            Assert.That(SkillCastRules.ChangedWithinSlack(null, 10_000), Is.False);
+            Assert.That(SkillCastRules.ChangedWithinSlack(10_000 - SkillCastRules.BuffStateSlackMs, 10_000), Is.True);
+            Assert.That(SkillCastRules.ChangedWithinSlack(10_000 - SkillCastRules.BuffStateSlackMs - 1, 10_000), Is.False);
+        });
+    }
+
     [Test]
     public void ItemOfACastMustBeThereBeforePaying() {
         Assert.That(SkillCastRules.ItemMissing(false, 0, false, false), Is.False);
@@ -671,7 +697,7 @@ public class SkillCastRulesTests {
               <skill id="100"><basic mainType="4"><stateAttr rechargeMaxCount="6" /></basic></skill>
               <skill id="101" originID="100"><basic><stateAttr rechargeMaxCount="6" rechargeShareOrigin="1" /></basic></skill>
               <skill id="102" originID="100"><basic mainType="2" feature="X"><stateAttr rechargeMaxCount="3" /><condition sp="20"><weapon lh="0" rh="32" /><weapon lh="41" rh="30" /></condition></basic></skill>
-              <skill id="103"><basic><stateAttr rechargeShareOrigin="1" /><condition onlyShadowWorld="1" onlyFlyableMap="1" allowBattleRidingState="1" onlyBattleRidingState="1" /></basic></skill>
+              <skill id="103"><basic><stateAttr rechargeShareOrigin="1" /><condition onlyShadowWorld="1" onlyFlyableMap="1" allowBattleRidingState="1" onlyBattleRidingState="1"><requireEffect code="10200281" /><hasNotAdditionalEffectGroup id="10" /></condition></basic></skill>
               <skill id="0"><basic mainType="1" /></skill>
               <skill id="104" />
             </ms2>
@@ -692,6 +718,8 @@ public class SkillCastRulesTests {
         PlayedClientSkills.Entry plain = read[102];
         Assert.That((plain.OnlyShadowWorld, plain.OnlyFlyableMap, plain.AllowBattleRiding, plain.OnlyBattleRiding),
             Is.EqualTo((false, false, false, false)));
+        Assert.That((flagged.RequireEffects, flagged.NotEffectGroups), Is.EqualTo((new[] { 10200281 }, new[] { 10 })), "the effect rows of <condition>");
+        Assert.That((plain.RequireEffects, plain.NotEffectGroups), Is.EqualTo(((int[]?) null, (int[]?) null)));
         Assert.That(PlayedClientSkills.IsSkillFile("skilldata/010.xml"), Is.True);
         Assert.That(PlayedClientSkills.IsSkillFile("skill/10/10000001.xml"), Is.False);
     }
@@ -1120,8 +1148,9 @@ public class SkillCastRulesTests {
                   <kinds rangeType="2" element="3" groupIDs="7" unrideOnUse="1" />
                   <ui attackType="1" />
                   <stateAttr battle="1" superArmor="3" cooldownGroupID="12" rechargeMaxCount="2" rechargeShareOrigin="1" clearCooldownFromPVPZone="1" />
-                  <condition onlyBattleRidingState="1" defaultRechargingCooldownTime="1.5">
-                    <requireMapCodes code="2000001" /><weapon lh="0" rh="32" /><requireEffect code="5" />
+                  <condition onlyBattleRidingState="1" defaultRechargingCooldownTime="1.5" sp="40">
+                    <requireMapCodes code="2000001" /><weapon lh="0" rh="32" /><requireEffect code="5" /><requireEffect code="6" />
+                    <hasNotAdditionalEffectGroup id="11" />
                   </condition>
                 </basic>
                 <level value="2" cooldown="7500" sp="15" meso="100">
@@ -1157,7 +1186,9 @@ public class SkillCastRulesTests {
             Assert.That((built.Condition.OnlyOnBattleMount, built.Condition.AllowOnBattleMount, built.Condition.RechargeGap), Is.EqualTo((true, false, 1.5f)));
             Assert.That(built.Condition.Maps, Is.EqualTo(new[] { 2000001 }));
             Assert.That(built.Condition.Weapon.Select(weapon => (weapon.LeftHand.Type, weapon.RightHand.Type)), Is.EqualTo(new[] { (0, 32) }));
-            Assert.That(PlayedClientSkills.UnreadConditionRows(skill), Is.EqualTo(1));
+            Assert.That(built.Condition.RequireEffects, Is.EqualTo(new[] { 5, 6 }));
+            Assert.That(built.Condition.NotEffectGroups, Is.EqualTo(new[] { 11 }));
+            Assert.That(built.Condition.Stat, Is.EqualTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.Spirit] = 40 }), "the condition's sp");
             Assert.That(built.Consume.Meso, Is.EqualTo(100));
             Assert.That(built.Consume.Stat, Is.EqualTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.Spirit] = 15 }));
             Assert.That((built.Detect.IncludeCaster, built.Detect.Distance), Is.EqualTo((false, 300f)));
@@ -1202,7 +1233,7 @@ public class SkillCastRulesTests {
         document.LoadXml("""
             <ms2>
               <skill id="310">
-                <basic><condition><weapon lh="0" rh="32" /></condition></basic>
+                <basic><condition><weapon lh="0" rh="32" /><requireEffect code="7" /><hasNotAdditionalEffectGroup id="10" /></condition></basic>
                 <level value="3" cooldown="4000" sp="5" />
               </skill>
             </ms2>
@@ -1210,7 +1241,7 @@ public class SkillCastRulesTests {
         XmlElement skill = (XmlElement) document.SelectSingleNode("ms2/skill")!;
         SkillMetadataLevel built = PlayedClientSkills.BuildLevel(skill, (XmlElement) skill.SelectSingleNode("level")!);
         SkillMetadataLevel pack = built with {
-            Condition = built.Condition with { Level = 20, JobCode = [JobCode.Knight], CooldownTime = 9f, Weapon = [] },
+            Condition = built.Condition with { Level = 20, JobCode = [JobCode.Knight], CooldownTime = 9f, Weapon = [], RequireEffects = null, NotEffectGroups = [11] },
             Consume = built.Consume with { UseItem = true, Stat = new Dictionary<BasicAttribute, long>() },
         };
         SkillMetadataLevel added = PlayedClientSkills.WithPackLevel(built, pack);
@@ -1219,6 +1250,7 @@ public class SkillCastRulesTests {
             Assert.That((added.Condition.Level, added.Condition.JobCode), Is.EqualTo(((short) 20, new[] { JobCode.Knight })));
             Assert.That(added.Condition.CooldownTime, Is.EqualTo(4f));
             Assert.That(added.Condition.Weapon!.Select(weapon => weapon.RightHand.Type), Is.EqualTo(new[] { 32 }));
+            Assert.That((added.Condition.RequireEffects, added.Condition.NotEffectGroups), Is.EqualTo((new[] { 7 }, new[] { 10 })), "the client's effect rows");
             Assert.That(added.Consume.Stat, Is.EqualTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.Spirit] = 5 }));
 
             Assert.That(PlayedClientSkills.NearestLevel(new short[] { 1, 2, 5 }, 3), Is.EqualTo((short?) 2));

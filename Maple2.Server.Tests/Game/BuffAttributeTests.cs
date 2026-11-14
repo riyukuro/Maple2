@@ -672,4 +672,33 @@ public class BuffAttributeTests {
 
         Assert.That(stats[BasicAttribute.Defense].Total, Is.EqualTo(990));
     }
+
+    // A cast's effect tests (SkillCastRules.EffectRefusal) count a buff state that changed within BuffStateSlackMs
+    // both ways: a requireEffect buff just removed still counts as held, and a buff of a refused group just gained
+    // does not refuse yet, as the client's buffs follow by packet. KR 10200281 (requireEffect of itself), group 10 of
+    // the item skills 90000596-90000601.
+    [Test]
+    public void CastEffectTests_GiveAJustChangedBuffTheSlack() {
+        Start(MapType.None, Effect(10200281, Plain), Effect(10000051, Plain with { Group = 10 }));
+        long now = Field.FieldTick;
+        long later = now + SkillCastRules.BuffStateSlackMs + 1;
+        Assert.That(Buffs.HeldOrJustLost(10200281, now), Is.False, "never held");
+
+        Add(10200281, tick: now);
+        Add(10000051, tick: now);
+        Assert.Multiple(() => {
+            Assert.That(Buffs.HeldOrJustLost(10200281, later), Is.True, "held");
+            Assert.That(Buffs.GroupHeldSettled(10, now), Is.False, "group 10 just gained");
+            Assert.That(Buffs.GroupHeldSettled(10, later), Is.True, "group 10 held past the slack");
+            Assert.That(Buffs.GroupHeldSettled(11, later), Is.False);
+        });
+
+        Buffs.Remove(10200281, Player.ObjectId);
+        Buffs.Remove(10000051, Player.ObjectId);
+        Assert.Multiple(() => {
+            Assert.That(Buffs.HeldOrJustLost(10200281, now), Is.True, "just removed");
+            Assert.That(Buffs.HeldOrJustLost(10200281, later), Is.False, "removed past the slack");
+            Assert.That(Buffs.GroupHeldSettled(10, later), Is.False, "none held");
+        });
+    }
 }

@@ -42,7 +42,8 @@ public static class SkillCastCheck {
     }
 
     // Checked before any cost is paid. A dead player casts only a skill that allows it, and no one casts a skill
-    // that a buff held disables or that names other fields, or a skill that takes the caster off the ride while on it. A skill of a job's tree
+    // that a buff held disables or that names other fields, or a skill that takes the caster off the ride while on it;
+    // no first motion comes without the buffs the condition requires or with a buff of a group it refuses. A skill of a job's tree
     // must be in the caster's own tree at that level or above; a skill of no tree must be one some client path gives a player. An item skill must also pass its own condition and
     // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast and must find
     // its hand weapons held and its spirit threshold met.
@@ -81,6 +82,11 @@ public static class SkillCastCheck {
                 condition.OnlyFlyableMap, session.Field.Metadata.Property.CanFly, condition.AllowOnBattleMount, condition.OnlyOnBattleMount,
                 session.Ride.Ride?.Metadata.Basic.Type == RideOnType.Battle, player.Stats.Values[BasicAttribute.Health].Current) is { } answer) {
             Logger.Debug("Cast refused, skill {SkillId}: the client's begin condition answers {Answer:X}", record.SkillId, answer);
+            return false;
+        }
+        if (SkillCastRules.EffectRefusal(record.SkillId, laterMotion, condition.RequireEffects, id => player.Buffs.HeldOrJustLost(id, tick),
+                condition.NotEffectGroups, group => player.Buffs.GroupHeldSettled(group, tick)) is { } effectAnswer) {
+            Logger.Debug("Cast refused, skill {SkillId}: the client's begin condition answers {Answer:X} for the buffs held", record.SkillId, effectAnswer);
             return false;
         }
         if (SkillCastRules.EpFieldRefuses(session.Field.Metadata.Limit.Dash, record.Metadata.Data.Consume.Stat.GetValueOrDefault(BasicAttribute.Stamina))) {

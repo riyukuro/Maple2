@@ -216,7 +216,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         List<long> magicPaths = [];
         List<long> cubeMagicPaths = [];
         int clientAdded = 0, clientUnmatched = 0, clientSkills = 0, clientNotBuffOwned = 0;
-        int playedLevelsAdded = 0, playedSkillsAdded = 0, playedConditionRows = 0, playedLevelsOfPackSkills = 0, playedLevelsOfItemSkills = 0;
+        int playedLevelsAdded = 0, playedSkillsAdded = 0, playedLevelsOfPackSkills = 0, playedLevelsOfItemSkills = 0;
         var packIds = new HashSet<int>();
         foreach ((int id, string name, SkillData data) in parser.Parse()) {
             packIds.Add(id);
@@ -231,7 +231,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             Dictionary<short, SkillMetadataLevel> levels = data.level.ToDictionary(
                 level => level.value,
                 level => new SkillMetadataLevel(
-                    // The played client's hand weapons, cast flags and level cooldown stand in for the data pack's (PlayedClientSkills).
+                    // The played client's hand weapons, cast flags, required effects, refused effect groups and level cooldown stand in for the data pack's (PlayedClientSkills).
                     Condition: WithClientCooldown(id, level.value, client is { } played ? level.beginCondition.Convert() with {
                         Weapon = played.Weapons.Select(weapon =>
                         new BeginConditionWeapon(new ItemType(1, (byte) weapon.LeftHand), new ItemType(1, (byte) weapon.RightHand))).ToArray(),
@@ -239,6 +239,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         OnlyFlyableMap = played.OnlyFlyableMap,
                         AllowOnBattleMount = played.AllowBattleRiding,
                         OnlyOnBattleMount = played.OnlyBattleRiding,
+                        RequireEffects = played.RequireEffects,
+                        NotEffectGroups = played.NotEffectGroups,
                     }
                         : level.beginCondition.Convert()),
                     Change: level.changeSkill?.Convert(),
@@ -347,7 +349,6 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             AddClientEffects(id, levels, ref clientAdded, ref clientUnmatched, ref clientSkills, ref clientNotBuffOwned);
             playedSkillsAdded++;
             playedLevelsAdded += levels.Count;
-            playedConditionRows += PlayedClientSkills.UnreadConditionRows(skill);
             yield return new StoredSkillMetadata(
                 Id: id,
                 Name: names.GetValueOrDefault(id, string.Empty),
@@ -356,7 +357,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                 Levels: levels);
         }
         if (playedSkills.Count > 0) {
-            Console.WriteLine($"Skills and levels added from the played client's skill data: {playedSkillsAdded} skills, {playedLevelsAdded} levels ({playedConditionRows} condition rows of the added skills with no place in the server's condition; {playedLevelsOfPackSkills} levels of data pack skills given the rest of their condition and the item use from the nearest data pack level, {playedLevelsOfItemSkills} of them an item skill's)");
+            Console.WriteLine($"Skills and levels added from the played client's skill data: {playedSkillsAdded} skills, {playedLevelsAdded} levels ({playedLevelsOfPackSkills} levels of data pack skills given the rest of their condition and the item use from the nearest data pack level, {playedLevelsOfItemSkills} of them an item skill's)");
         }
         if (clientEffects.Count > 0) {
             Console.WriteLine($"Skill effects added from the played client's skill data: {clientAdded} in {clientSkills} skills ({clientUnmatched} attack effects with no attack of their point)");
