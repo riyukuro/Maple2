@@ -350,6 +350,18 @@ public class ItemBoxHandlerTests {
         Assert.That(Held(session, RewardB), Is.EqualTo(1));
     }
 
+    // KR select box 20301130 carries "1,,330001622": the client skips the empty part (select count 1, its box).
+    [Test]
+    public void SelectItemBox_Use_EmptyParameterPartIsSkipped() {
+        GameSession session = Login(ItemFunction.SelectItemBox, $"1,,{DropBoxId}", amount: 2);
+
+        Use(session, "1");
+
+        Assert.That(Held(session, BoxId), Is.EqualTo(1));
+        Assert.That(Held(session, RewardA), Is.EqualTo(0));
+        Assert.That(Held(session, RewardB), Is.EqualTo(1));
+    }
+
     [TestCase("2")]    // not a row of the list
     [TestCase("0,1")]  // more rows than the box lets pick
     [TestCase("")]
