@@ -1,8 +1,11 @@
+using System.Linq;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
@@ -32,9 +35,11 @@ public class BeautyGearDyeTests {
     }
 
     // Beauty 22, one entry: the head (ReadDyeHead), then the item's colors.
-    private void Dye(long uid, int itemId) {
+    private void Dye(long uid, int itemId, byte color = 0) {
         new BeautyHandler {
-            ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata, NpcMetadata = null!,
+            ItemMetadata = session.ItemMetadata,
+            TableMetadata = test.TableMetadata,
+            NpcMetadata = null!,
             ServerTableMetadata = test.ServerTableMetadata,
         }.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(22);
@@ -47,7 +52,7 @@ public class BeautyGearDyeTests {
             writer.WriteLong(0);
             writer.WriteLong(uid);
             writer.WriteInt(itemId);
-            writer.WriteBytes(new byte[20]);
+            writer.WriteBytes(Enumerable.Repeat(color, 20).ToArray());
         }));
     }
 
@@ -92,6 +97,22 @@ public class BeautyGearDyeTests {
 
         Dye(worn.Uid, Top + 1);
 
+        Assert.That((session.Currency.Meso, test.TrophyCounter(Trophy) ?? 0), Is.EqualTo((5000, 0L)));
+    }
+
+    // A refused store gives the fee back and the item keeps its color, with the entry's error answer.
+    [Test]
+    public void ARefusedDyeStoreKeepsTheFeeAndTheColor() {
+        session.Currency.Meso = 5000;
+        ItemAppearance? before = worn.Appearance;
+        test.FailSave = _ => true;
+
+        Dye(worn.Uid, Top, 0x11);
+
+        test.FailSave = null;
+        byte[] error = BeautyPacket.Error(BeautyError.s_beauty_msg_error_color).ToArray();
+        Assert.That(test.TakeSent().Any(packet => packet.SequenceEqual(error)), Is.True);
+        Assert.That(worn.Appearance, Is.SameAs(before));
         Assert.That((session.Currency.Meso, test.TrophyCounter(Trophy) ?? 0), Is.EqualTo((5000, 0L)));
     }
 }

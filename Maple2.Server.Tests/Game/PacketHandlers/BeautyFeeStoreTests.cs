@@ -26,13 +26,14 @@ public class BeautyFeeStoreTests {
     private static readonly SkinColor Skin = new(new Color(10, 20, 30, 255));
     private static readonly EquipColor Red = new(new Color(0, 0, 255, 255), new Color(0, 0, 255, 255), new Color(0, 0, 255, 255), 1, 3);
 
-    private void Start(BeautyShopCategory category, BeautyShopType type) {
+    private void Start(BeautyShopCategory category, BeautyShopType type, BeautyShopCostMetadata? colorCost = null, Action? stock = null) {
         test = new TestGameSession();
         worn = test.Store(TestGameSession.Metadata(Face, EquipSlot.FA), 1, ItemGroup.Outfit, EquipSlot.FA);
+        stock?.Invoke();
         test.Start();
         test.EnterMap(TestGameSession.Map(2000062));
         var style = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 1000, string.Empty, 0);
-        var color = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 300, string.Empty, 0);
+        BeautyShopCostMetadata color = colorCost ?? new BeautyShopCostMetadata(ShopCurrencyType.Meso, 300, string.Empty, 0);
         session.BeautyShop = new BeautyShop(new BeautyShopMetadata(501, category, 0, style, color, false, false, 0, 0, ItemTag.None, [], []), []) {
             Type = type,
         };
@@ -48,8 +49,8 @@ public class BeautyFeeStoreTests {
     };
 
     // Beauty 6: the skin page's new color, no voucher.
-    private void ChangeSkin(bool failSave) {
-        Start(BeautyShopCategory.Skin, BeautyShopType.Modify);
+    private void ChangeSkin(bool failSave, BeautyShopCostMetadata? colorCost = null, Action? stock = null) {
+        Start(BeautyShopCategory.Skin, BeautyShopType.Modify, colorCost, stock);
         SkinColor skin = Skin;
         if (failSave) {
             test.FailSave = _ => true;
@@ -136,5 +137,34 @@ public class BeautyFeeStoreTests {
     public void TheRandomScaleStaysInItsRange(double roll) {
         double scale = BeautyHandler.RandomScale(0.8f, 1.2f, roll);
         Assert.That(scale, Is.InRange(0.8f, 1.2f));
+    }
+
+    private const int Ticket = 20000001;
+    private static readonly BeautyShopCostMetadata TicketFee = new(ShopCurrencyType.Item, 2, string.Empty, Ticket);
+    private Item ticket = null!;
+
+    private int StoredAmount(long uid) {
+        using var context = new Ms2Context(test.Options);
+        return context.Item.AsNoTracking().Single(item => item.Id == uid).Amount;
+    }
+
+    // A fee paid in items: the stack's row is written in the skin's save and taken from the bag once it is kept.
+    [Test]
+    public void AnItemFeeIsStoredWithTheSkin() {
+        ChangeSkin(failSave: false, TicketFee, () => ticket = test.Store(TestGameSession.Metadata(Ticket), 5));
+
+        Assert.That(session.Player.Value.Character.SkinColor, Is.EqualTo(Skin));
+        Assert.That(session.Item.Inventory.Get(ticket.Uid)?.Amount, Is.EqualTo(3));
+        Assert.That(StoredAmount(ticket.Uid), Is.EqualTo(3));
+    }
+
+    // A refused save takes no item.
+    [Test]
+    public void ARefusedSkinSaveTakesNoFeeItem() {
+        ChangeSkin(failSave: true, TicketFee, () => ticket = test.Store(TestGameSession.Metadata(Ticket), 5));
+
+        Assert.That(session.Player.Value.Character.SkinColor, Is.Not.EqualTo(Skin));
+        Assert.That(session.Item.Inventory.Get(ticket.Uid)?.Amount, Is.EqualTo(5));
+        Assert.That(StoredAmount(ticket.Uid), Is.EqualTo(5));
     }
 }

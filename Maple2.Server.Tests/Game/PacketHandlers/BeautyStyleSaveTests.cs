@@ -236,6 +236,7 @@ public class BeautyStyleSaveTests {
         Extend();
 
         test.FailSave = null;
+        Assert.That(SentError(BeautyError.s_beauty_msg_error_code), Is.True);
         Assert.That(session.Currency.Meret, Is.EqualTo(5000L));
         Assert.That(session.Player.Value.Unlock.HairSlotExpand, Is.Zero);
         Assert.That(session.Beauty.SlotCount, Is.EqualTo(30));
@@ -280,6 +281,38 @@ public class BeautyStyleSaveTests {
         Assert.That(worn?.Uid, Is.Not.EqualTo(other.Uid).And.Not.EqualTo(saved));
         Assert.That(session.Currency.Meso, Is.EqualTo(4000L));
         Assert.That(session.Beauty.SavedCount, Is.EqualTo(1));
+    }
+
+    // The style's copy and its fee are stored in one save.
+    [Test]
+    public void Apply_StoresTheCopyWithItsFee() {
+        Start(BeautyShopType.Save);
+        Save(hair.Uid);
+        long saved = SavedUid();
+        Wear();
+
+        Apply(saved);
+
+        long copy = session.Item.Equips.Get(EquipSlot.HR)!.Uid;
+        using var context = new Ms2Context(test.Options);
+        Assert.That(context.Character.AsNoTracking().Single(character => character.Id == test.CharacterId).Currency.Meso, Is.EqualTo(4000L));
+        Assert.That(context.Item.AsNoTracking().Any(item => item.Id == copy && item.ItemId == HairId), Is.True);
+    }
+
+    // A refused save keeps the fee and the worn hair.
+    [Test]
+    public void Apply_WhoseSaveFails_KeepsTheFeeAndTheWornHair() {
+        Start(BeautyShopType.Save);
+        Save(hair.Uid);
+        long saved = SavedUid();
+        Item other = Wear();
+        test.FailSave = _ => true;
+
+        Apply(saved);
+
+        test.FailSave = null;
+        Assert.That(session.Item.Equips.Get(EquipSlot.HR)?.Uid, Is.EqualTo(other.Uid));
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000L));
     }
 
     [Test]

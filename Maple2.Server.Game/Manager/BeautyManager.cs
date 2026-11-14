@@ -92,6 +92,8 @@ public sealed class BeautyManager : IDisposable {
         if (!session.TrySavePurchase(db => db.SaveHairSlotExpand(session.Player.Value, (short) extended))) {
             session.Currency.ReturnMeret(price);
             Log.Error("Style slot extension of {CharacterId} not stored; merets given back", session.CharacterId);
+            // The style window's default code shows the system error box and closes (uibeautyshopstyledialog.cpp:1360).
+            session.Send(BeautyPacket.Error(BeautyError.s_beauty_msg_error_code));
             return false;
         }
         session.Player.Value.Unlock.HairSlotExpand = (short) extended;
