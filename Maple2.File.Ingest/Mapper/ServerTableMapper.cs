@@ -442,7 +442,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         return new ScriptFunctionTable(results);
     }
 
-    // The parser's NpcScriptFunction has no skillID or skillLevel; they are read from the table's rows here.
+    // The parser's NpcScriptFunction has no skillID or skillLevel; they are read from the table's rows here, with the
+    // parser's feature and locale filter.
     private Dictionary<(int NpcId, int ScriptId, int FunctionId), (int Id, short Level)> NpcScriptEffects() {
         Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
             file.Name.Equals("table/Server/npcScriptFunction_Final.xml", StringComparison.OrdinalIgnoreCase));
@@ -452,6 +453,11 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     public static Dictionary<(int NpcId, int ScriptId, int FunctionId), (int Id, short Level)> NpcScriptEffects(XmlDocument document) {
         var results = new Dictionary<(int, int, int), (int, short)>();
         foreach (XmlNode node in document.SelectNodes("ms2/function")!) {
+            // The rows the parser keeps: those of an enabled feature and of the pack's locale (a locale-split row
+            // shares its npc, script and function with the other locale's).
+            if (node is not XmlElement row || !ClientListedRows.Available(row)) {
+                continue;
+            }
             if (!int.TryParse(node.Attributes?["skillID"]?.Value, out int skillId) || skillId <= 0
                 || !int.TryParse(node.Attributes?["npcID"]?.Value, out int npcId)
                 || !int.TryParse(node.Attributes?["scriptID"]?.Value, out int scriptId)) {
