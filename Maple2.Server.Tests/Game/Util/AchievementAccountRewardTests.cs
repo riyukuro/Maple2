@@ -1,9 +1,11 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Database.Storage;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.Util;
 
@@ -104,5 +106,40 @@ public class AchievementAccountRewardTests {
         achievement.CurrentGrade = 1;
         achievement.RewardGrade = 2;
         Assert.That(AchievementManager.AccountRewardsHeld(achievement), Is.Empty);
+    }
+
+    // Load itself: a character of the account that never claimed the trophy takes the claimed title and the reached
+    // emote of the account rows, and not the title of a grade still waiting for its claim.
+    [Test]
+    public void LoadGrantsTheAccountTitlesAndEmotes() {
+        var test = new TestGameSession();
+        var condition = new ConditionMetadata(ConditionType.skill, 1, null, null);
+        var titleGrades = new Dictionary<int, AchievementMetadataGrade> {
+            [1] = new(1, condition, new AchievementMetadataReward(AchievementRewardType.title, 10000651, 0, 1)),
+            [2] = new(2, condition, new AchievementMetadataReward(AchievementRewardType.title, 10000652, 0, 1)),
+        };
+        var emoteGrades = new Dictionary<int, AchievementMetadataGrade> {
+            [1] = new(1, condition, new AchievementMetadataReward(AchievementRewardType.dynamicaction, 90200043, 0, 1)),
+        };
+        var titles = new AchievementMetadata(21100065, null, true, AchievementCategory.Combat, [], titleGrades);
+        var emote = new AchievementMetadata(22210017, null, true, AchievementCategory.Adventure, [], emoteGrades);
+        test.AddAchievement(titles, emote);
+        using (GameStorage.Request db = test.Storage.Context()) {
+            // Grade 1's title claimed, grade 2 finished and not claimed.
+            var titleRow = new Achievement(titles) { CurrentGrade = 2, RewardGrade = 2, Grades = { [1] = 1, [2] = 2 } };
+            var emoteRow = new Achievement(emote) { CurrentGrade = 1, RewardGrade = 2, Grades = { [1] = 1 } };
+            Assert.That(db.CreateAchievement(test.AccountId, titleRow), Is.Not.Null);
+            Assert.That(db.CreateAchievement(test.AccountId, emoteRow), Is.Not.Null);
+        }
+
+        GameSession session = test.Start();
+        Unlock unlock = session.Player.Value.Unlock;
+        Assert.That(unlock.Titles, Does.Not.Contain(10000651));
+        Assert.That(unlock.Emotes, Does.Not.Contain(90200043));
+
+        session.Achievement.Load();
+        Assert.That(unlock.Titles, Does.Contain(10000651));
+        Assert.That(unlock.Titles, Does.Not.Contain(10000652));
+        Assert.That(unlock.Emotes, Does.Contain(90200043));
     }
 }
