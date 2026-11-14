@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Caching;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -14,6 +15,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Util;
+using Microsoft.EntityFrameworkCore;
 using static Maple2.Server.Game.Model.ActorStateComponent.TaskState;
 using static Maple2.Model.Metadata.AiMetadata;
 
@@ -29,7 +31,8 @@ public class AiStateTests : TriggerTestBase {
 
     private FieldNpc npc = null!;
 
-    private FieldNpc Spawn(Entry[] battle, Condition[]? reserved = null, Vector3? position = null, string[]? sequences = null) {
+    private FieldNpc Spawn(Entry[] battle, Condition[]? reserved = null, Vector3? position = null, string[]? sequences = null,
+            NpcMetadataSkill? skill = null) {
         Start();
         typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
@@ -39,7 +42,11 @@ public class AiStateTests : TriggerTestBase {
             new InstanceFieldMetadata(0, InstanceType.none, 0, false, 0, true, 0, 0, 0, 0));
         test.Register(TestGameSession.Metadata(30000071), TestGameSession.Metadata(50300014), TestGameSession.Metadata(30000084));
         test.SetServerTable(new NpcStatFactorTable(new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyDictionary<int, NpcStatFactorMetadata>>>()));
-        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, NpcTable(sequences ?? [], Npc(NpcId)));
+        if (skill != null) {
+            typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, new SkillMetadataStorage(
+                new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(System.Guid.NewGuid().ToString()).Options)));
+        }
+        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, NpcTable(sequences ?? [], Npc(NpcId, skill)));
         typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field,
             AiTable(new AiMetadata(AiPath, reserved ?? [], battle, [], [])));
         SetTick(1_000_000);
@@ -56,11 +63,11 @@ public class AiStateTests : TriggerTestBase {
 
     private NpcTask? CurrentTask => (NpcTask?) typeof(AiState).GetField("currentTask", Any)!.GetValue(npc.AiState);
 
-    private static NpcMetadata Npc(int id) {
+    private static NpcMetadata Npc(int id, NpcMetadataSkill? skill = null) {
         var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 1, false, 0, 0, 0, 0, [], [], 0);
         var stat = new NpcMetadataStat(new Dictionary<BasicAttribute, long> { [BasicAttribute.Health] = 100 }, [], [], [], []);
         return new NpcMetadata(id, "npc", AiPath, new NpcMetadataModel("test_model", 1, 1), stat, basic,
-            new NpcMetadataDistance(0, Sight, 300, 300, Sight, 300, 300), new NpcMetadataSkill([], 0),
+            new NpcMetadataDistance(0, Sight, 300, 300, Sight, 300, 300), skill ?? new NpcMetadataSkill([], 0),
             new NpcMetadataProperty([], new NpcMetadataCapsule(10, 100), null),
             new NpcMetadataDropInfo(0, 0, [], [], [], [], []), new NpcMetadataAction(0, 100, 100, [], 0, ""),
             new NpcMetadataDead(0, 0, 0, 0, 0), null, new NpcMetadataLookAtTarget("", false, false));
@@ -549,5 +556,43 @@ public class AiStateTests : TriggerTestBase {
 
         Assert.That(npc.AiExtraData["BattleEnd"], Is.EqualTo(2), "reset to 0 once, then 1 added twice");
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    private long? LastSkillCastTick {
+        get => (long?) typeof(AiState).GetField("lastSkillCastTick", Any)!.GetValue(npc.AiState);
+        set => typeof(AiState).GetField("lastSkillCastTick", Any)!.SetValue(npc.AiState, value);
+    }
+
+    private long CurrentLimitTick => (long) typeof(AiState).GetField("currentLimitTick", Any)!.GetValue(npc.AiState)!;
+
+    private static SkillNode SkillAt(int idx, params Entry[] entries) =>
+        new("skill", entries, idx, 0, 0, false, Vector3.Zero, 1, 0, 0, 0, 0, false);
+
+    // A default AI tree's skill node (AI_DefaultNew: <node name="skill" idx="1"><node name="standby" limit="1000" .../>)
+    // on an npc with <skill coolDown="3000">: a cast 1000 ms ago leaves 2000 ms, which the npc stands out facing its
+    // target, with the node's standby; then the node runs again and casts. With no coolDown it casts at once.
+    [TestCase(3000, 2000)]
+    [TestCase(0, 0)]
+    public void SkillCooldown_WaitsBetweenCasts(int cooldown, int wait) {
+        Spawn([SkillAt(1, Standby(1000))], skill: new NpcMetadataSkill([new NpcMetadataSkill.Entry(1, 1)], cooldown));
+        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
+        npc.Skills[0] = new SkillMetadata(1, 1, null, property, null!, null!);
+        long start = Field.FieldTick;
+        LastSkillCastTick = start - 1000;
+
+        npc.AiState.Update(start);
+        if (wait == 0) {
+            Assert.That(LastSkillCastTick, Is.EqualTo(start));
+            return;
+        }
+
+        Assert.That((LastSkillCastTick, CurrentTask is MovementState.NpcStandbyTask, CurrentLimitTick),
+            Is.EqualTo(((long?) (start - 1000), true, start + wait)));
+        npc.AiState.Update(start + wait - 1);
+        Assert.That(LastSkillCastTick, Is.EqualTo(start - 1000));
+
+        SetTick(start + wait);
+        npc.AiState.Update(start + wait);
+        Assert.That(LastSkillCastTick, Is.EqualTo(start + wait));
     }
 }

@@ -29,6 +29,10 @@ public class AiState {
     private long battleStartTick;
 
     private Dictionary<string, long> coolTimes = new();
+    // The field tick of the npc's last AI skill cast in battle, for its skill coolDown (NpcSkillCooldown).
+    private long? lastSkillCastTick;
+    // The stack index the running step took its entry from, so a skill node that waits out the coolDown runs again.
+    private int steppingIndex;
     private List<Node> reservedNodes = new List<Node>();
 
     private enum DecisionTreeType {
@@ -245,6 +249,7 @@ public class AiState {
         }
 
         int nextIndex = entry.LockIndex ? entry.Node.Entries.Length : index + 1;
+        steppingIndex = index;
 
         aiStack[last] = new StackEntry() {
             Node = entry.Node,
@@ -417,6 +422,10 @@ public class AiState {
                 actor.BattleState.KeepBattle = true;
             }
 
+            if (entry is SkillNode skillNode && WaitsOutSkillCooldown(skillNode)) {
+                return;
+            }
+
             ProcessNode((dynamic) entry);
 
             if (node.Entries.Length > 0 && node is not SelectNode && aiStack.Last().Node != node && CanEvaluateNode(node.Entries[0])) {
@@ -470,11 +479,39 @@ public class AiState {
         SetNodeTask(task, node.Limit);
     }
 
+    // A battle skill node reached within the npc's skill coolDown of its last cast: the npc stands facing its target
+    // for the time left, and the step that reached the node (the node, or the select that picked it) runs again
+    // after it. The node's own cooltime and children wait with it. The battleEnd tree (also run at the death) casts
+    // at once.
+    private bool WaitsOutSkillCooldown(SkillNode node) {
+        if (currentTree != DecisionTreeType.Battle || aiStack.Count == 0) {
+            return false;
+        }
+
+        long wait = NpcSkillCooldown.Remaining(actor.Value.Metadata.Skill.Cooldown, lastSkillCastTick, actor.Field.FieldTick);
+        if (wait <= 0 || TryGetSkill(node.Idx) is null) {
+            return false;
+        }
+
+        StackEntry top = aiStack[^1];
+        aiStack[^1] = new StackEntry {
+            Node = top.Node,
+            Index = steppingIndex,
+            LockIndex = top.LockIndex,
+        };
+        SetNodeTask(actor.MovementState.TryStandby(actor.BattleState.Target, false), wait);
+        return true;
+    }
+
     private void ProcessNode(SkillNode node) {
         SkillMetadata? skill = TryGetSkill(node.Idx);
 
         if (skill is null) {
             return;
+        }
+
+        if (currentTree == DecisionTreeType.Battle) {
+            lastSkillCastTick = actor.Field.FieldTick;
         }
 
         NpcTask task = actor.CastAiSkill(skill.Id, skill.Level, node.FaceTarget, node.FacePos);
