@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Xml;
 using Maple2.File.Ingest.Helpers;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -116,6 +117,24 @@ public class PlayedAdditionalRowsTests {
         Assert.Multiple(() => {
             Assert.That(row["BasicProperty"]!.GetAttribute("skillGroupType"), Is.EqualTo("1"));
             Assert.That(unread, Is.EquivalentTo(new[] { "additional.other" }));
+        });
+    }
+
+    // KR 10800059, an effect only the client has (Assassin skill 10800051 at every level): 1 s of evasion compulsion
+    // 2 at rate 1. <Status> goes to <StatusProperty> under the client's names, so the effect is not left out (before:
+    // "Status" unread, the effect and the skill's fifth effect dropped).
+    [Test]
+    public void WritesTheStatusOfAnEffectOnlyTheClientHas() {
+        const string played = """<ms2><additional id="10800059" mainType="1" skillGroupType="1"><level level="1"><Basic durationTick="1000" /><Status compulsionEventTypes="2" compulsionEventRate="1" /></level></additional></ms2>""";
+        var document = new XmlDocument();
+        document.LoadXml(played);
+        Dictionary<int, PlayedClientAdditionalEffects.Entry> entries = PlayedClientAdditionalEffects.Read([document], _ => true);
+        (XmlElement row, List<string> unread) = Pack("""<additional id="10800059" mainType="1" skillGroupType="1"><level level="1"><Basic durationTick="1000" /><Status compulsionEventTypes="2" compulsionEventRate="1" /></level></additional>""");
+        Assert.Multiple(() => {
+            Assert.That(PlayedAdditionalRows.Unread(entries[10800059]), Is.Empty);
+            Assert.That(unread, Is.Empty);
+            Assert.That(row["StatusProperty"]!.GetAttribute("compulsionEventTypes"), Is.EqualTo("2"));
+            Assert.That(row["StatusProperty"]!.GetAttribute("compulsionEventRate"), Is.EqualTo("1"));
         });
     }
 }

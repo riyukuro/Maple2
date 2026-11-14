@@ -517,6 +517,19 @@ public class PlayedTakeOverTests {
         });
     }
 
+    // A level both have keeps the pack's StatusProperty whole: the client's <Status> (evasion compulsion type 2, which
+    // the pack's level lacks) is not written over it, as Build takes the pack's status and TakeOver the compulsion.
+    [Test]
+    public void ALevelBothHaveKeepsThePacksStatus() {
+        (_, _, _, _, XmlElement packRow) = LevelsWithRow(10700193);
+        Dictionary<int, PlayedClientAdditionalEffects.Entry> played = PlayedClientAdditionalEffects.Read([Xml(Played)], _ => true);
+        XmlElement row = AdditionalEffectMapper.Serialized(AdditionalEffectMapper.PlayedOnly(played[10700193], 1, new List<string>(), packRow));
+        Assert.Multiple(() => {
+            Assert.That(packRow["StatusProperty"]!.GetAttribute("compulsionEventTypes"), Is.Empty);
+            Assert.That(row["StatusProperty"]!.OuterXml, Is.EqualTo(packRow["StatusProperty"]!.OuterXml));
+        });
+    }
+
     // A <Status> the same as the pack's (a flag written 1 by the client and true by the pack's serializer) does not hold.
     [Test]
     public void TakesALevelWhoseStatusIsThePacks() {

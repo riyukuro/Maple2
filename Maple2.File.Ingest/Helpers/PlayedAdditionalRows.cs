@@ -14,7 +14,8 @@ namespace Maple2.File.Ingest.Helpers;
 // - <Basic> and the children of the same class (SameClass): <BasicProperty>, <MotionProperty>, ... as they are;
 // - <Condition>: <beginCondition>, its owner attributes on <owner>, its id lists as the pack's child rows (Condition);
 // - <Additional>: a <conditionSkill> with its owner, caster and target tests in a <beginCondition> (Additional);
-// - <Skill>: a <splashSkill splash="1">.
+// - <Skill>: a <splashSkill splash="1">;
+// - <Status>: <StatusProperty>, the attributes the client reads (StatusRead) under the same names.
 // What has no pack name is listed in unread; the mapper takes no effect with one over.
 public static class PlayedAdditionalRows {
     // <X> to <XProperty>, the same attributes and children.
@@ -31,18 +32,21 @@ public static class PlayedAdditionalRows {
     // (AdditionalEffectMapper.Compare) found equal to the pack's on the effects both have wherever the client's own
     // two rows (additional/ and additionaleffect/) agree, and those the server does not read (UI, SpecialEffect,
     // MesoGuard) or reads from the played rows elsewhere. Out: <Skill>, as the pack's nonTargetActive (39 of 867
-    // shared levels) is no attribute of the client's row; <Status> and <SpecialAbility>, not mapped.
+    // shared levels) is no attribute of the client's row; <SpecialAbility>, not mapped. <Status> is out too, as on a
+    // level both have the pack's status stays (KeptFromPack), but an effect only the client has takes it (Unread): its
+    // stat rows (231 KR levels) are the pack's on every level both have, its compulsion event the one TakeOver takes.
     public static readonly IReadOnlySet<string> Gated = new HashSet<string> {
         "Basic", "Motion", "Condition", "Additional", "CancelEffect", "ImmuneEffect", "ResetSkillCoolDownTime",
         "ModifyEffectDuration", "ModifyOverlapCount", "Recovery", "Exp", "DotDamage", "DotBuff", "Consume", "Reflect", "Shield", "Ridee",
         "UI", "SpecialEffect", "MesoGuard", "InvokeEffect", "RemoveRechargingCount",
     };
 
-    // Why the ingest does not take an effect over: each child not in Gated and each attribute with no pack name.
+    // Why the ingest does not take an effect over: each child not in Gated (but <Status>, which ToPack maps) and
+    // each attribute with no pack name.
     public static IReadOnlyCollection<string> Unread(PlayedClientAdditionalEffects.Entry entry) {
         var unread = new SortedSet<string>(StringComparer.Ordinal);
         foreach ((short level, XmlElement row) in entry.Rows) {
-            foreach (XmlElement child in row.ChildNodes.OfType<XmlElement>().Where(child => !Gated.Contains(child.Name))) {
+            foreach (XmlElement child in row.ChildNodes.OfType<XmlElement>().Where(child => !Gated.Contains(child.Name) && child.Name != "Status")) {
                 unread.Add(child.Name);
             }
             ToPack(entry.Effect!, row, level, unread);
@@ -540,6 +544,20 @@ public static class PlayedAdditionalRows {
                         root.AppendChild(splash);
                         break;
                     }
+                case "Status": {
+                        // AdditionalData::LoadLevel (additionalactionadditional.cpp:1211-1225) reads these; the pack's
+                        // StatusProperty has them under the same names.
+                        XmlElement status = document.CreateElement("StatusProperty");
+                        foreach (XmlAttribute attribute in child.Attributes) {
+                            if (StatusRead.Contains(attribute.Name)) {
+                                status.SetAttribute(attribute.Name, attribute.Value);
+                            } else {
+                                unread.Add("Status." + attribute.Name);
+                            }
+                        }
+                        root.AppendChild(status);
+                        break;
+                    }
                 default:
                     if (SameClass.Contains(child.Name)) {
                         root.AppendChild(document.ImportNode(Renamed(child, child.Name + "Property"), true));
@@ -582,9 +600,9 @@ public static class PlayedAdditionalRows {
     public static readonly IReadOnlySet<string> PackOnly = new HashSet<string>(StringComparer.Ordinal) {
         // The serializer's namespaces and the pack's feature tag.
         "@xmlns:xsd", "@xmlns:xsi", "@feature",
-        // The status and final stats are built from the pack's and the client's rows apart (Build, FinalStatusRows);
-        // the invoke effect is the client's own (PlayedClientAdditionalEffects); the client has no meso guard.
-        "StatusProperty/", "FinalStatusProperty/", "InvokeEffectProperty/", "MesoGuardProperty/",
+        // The final stats are built from the pack's and the client's rows apart (FinalStatusRows); the invoke effect is
+        // the client's own (PlayedClientAdditionalEffects); the client has no meso guard.
+        "FinalStatusProperty/", "InvokeEffectProperty/", "MesoGuardProperty/",
         // The client's <Defensive> reads only invincible.
         "DefensiveProperty/@mapDamageR", "DefensiveProperty/@papDamageR",
         // The client's <Motion> has none of these.
@@ -610,6 +628,10 @@ public static class PlayedAdditionalRows {
         "splashSkill/@nonTargetActive", "splashSkill/@overlapCount", "splashSkill/beginCondition/",
     };
 
+    // The pack's elements a played row writes (ToPack) that a level both have keeps from the pack whole, in place of
+    // the played row's: the status (Build takes the pack's level's; TakeOver its compulsion event from the client).
+    public static readonly IReadOnlySet<string> FromPack = new HashSet<string>(StringComparer.Ordinal) { "StatusProperty/" };
+
     // What the client has no name for keeps the pack's value: each attribute and element of the pack's row (pack,
     // written back by the pack's serializer) on PackOnly that the played level's row (played, ToPack's) lacks is
     // copied onto it, so a part that differs only there is not taken and a part taken keeps it (the pack's
@@ -617,8 +639,9 @@ public static class PlayedAdditionalRows {
     // would no longer start on a Maple Survival map). A beginCondition (the level's, or a condition skill's) or one
     // of its sub conditions the played row has not is made for it; a condition skill only where the played row's
     // skill at the same place is the same skill; no other element is made. kept gets each name copied whose value is
-    // not empty, 0 or false; unlisted (where given) each pack attribute with such a value neither on PackOnly nor in
-    // written (the names the played rows write, Written), which a locale's data would need on the list.
+    // not empty, 0 or false, and each FromPack element put in place of the played row's; unlisted (where given) each
+    // pack attribute with such a value neither on PackOnly nor in written (the names the played rows write, Written),
+    // which a locale's data would need on the list.
     public static void KeepPackOnly(XmlElement pack, XmlElement played, ICollection<string> kept, IReadOnlySet<string>? written = null, ICollection<string>? unlisted = null) {
         Keep(pack, () => played, "", kept, written, unlisted);
     }
@@ -645,11 +668,16 @@ public static class PlayedAdditionalRows {
             int place = index.GetValueOrDefault(child.Name);
             index[child.Name] = place + 1;
             string sub = path + child.Name + "/";
-            if (PackOnly.Contains(sub)) {
+            if (PackOnly.Contains(sub) || FromPack.Contains(sub)) {
                 if (played() is { } target) {
                     had ??= target.ChildNodes.OfType<XmlElement>().Select(element => element.Name).ToHashSet(StringComparer.Ordinal);
                     if (had.Contains(child.Name)) {
-                        continue;
+                        if (!FromPack.Contains(sub)) {
+                            continue;
+                        }
+                        foreach (XmlElement own in target.ChildNodes.OfType<XmlElement>().Where(element => element.Name == child.Name).ToList()) {
+                            target.RemoveChild(own);
+                        }
                     }
                     target.AppendChild(target.OwnerDocument.ImportNode(child, true));
                     if (child.HasAttributes || child.HasChildNodes) {
