@@ -2203,6 +2203,9 @@ public partial class FieldManager {
             added.Session.Send(ReactorPacket.Add(reactor.ObjectId, reactor.Name, reactor.Metadata.Id, reactor.Position, reactor.Rotation,
                 reactor.StateIndex, reactor.StateTime, reactor.Connected));
         }
+        // The reverse raid hall sets its raid portals from the running events before they are sent.
+        (Widgets.GetValueOrDefault("ReverseRaidPortal") as Model.Widget.ReverseRaidPortalWidget)?.Refresh(
+            added.Session.FindEvent(GameEventType.ReverseRaidDungeonOpen).Select(gameEvent => gameEvent.Metadata.Data), added.Session);
         foreach (FieldPortal fieldPortal in fieldPortals.Values) {
             switch (fieldPortal) {
                 case FieldQuestPortal questPortal:

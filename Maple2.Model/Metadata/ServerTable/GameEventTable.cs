@@ -690,6 +690,11 @@ public record ArcadeOpen(
     int RewardCountPerDay,
     RewardItem[] Rewards) : GameEventData;
 
+// The reverse raid hall's raid portals (KR 360001-360007, 2017-07-27 to 2018-10-04): value1 is a comma list of the
+// hall's portal ids, each the id of the reverse raid room it opens (20007001 Zakum, 20023001 Pink Bean, in 63000054).
+// The client has no class for this type, so it is not sent; the hall's ReverseRaidPortal widget shows the portals.
+public record ReverseRaidDungeonOpen(int[] PortalIds) : GameEventData;
+
 // A mini game's bonus reward: value1 is a comma list of mini game names, the game_name of the scripts' end_mini_game
 // (oxquiz, crazyrunner, springbeach, dancedancestop, escape, trapmaster, finalsurvivor, christmasdancedancestop),
 // value2 <items><v itemID grade count/>...</items>. The client has no class for this type (GameEventManagerCli
@@ -908,6 +913,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(QuestAdditionalReward), "QuestAdditionalReward")]
 [JsonDerivedType(typeof(CollectItemGroup), "CollectItemGroup")]
 [JsonDerivedType(typeof(ArcadeOpen), "ArcadeOpen")]
+[JsonDerivedType(typeof(ReverseRaidDungeonOpen), "ReverseRaidDungeonOpen")]
 [JsonDerivedType(typeof(BurningLevelup), "BurningLevelup")]
 [JsonDerivedType(typeof(TreeWatering), "TreeWatering")]
 [JsonDerivedType(typeof(MiniGameBonusReward), "MiniGameBonusReward")]

@@ -9,7 +9,8 @@ namespace Maple2.File.Ingest.Helpers;
 
 // The value1 of the DungeonBonusReward, CollectItemGroup and ArcadeOpen rows and the values of the TreeWatering and
 // BurningLevelup rows, each an <ms2> element, and the value2 of the MiniGameBonusReward rows, an <items> element. Text
-// that is not XML is a row that cannot be read; it does not stop the ingest.
+// that is not XML is a row that cannot be read; it does not stop the ingest. The ReverseRaidDungeonOpen value1,
+// a comma list, is read here too.
 public static class EventXmlReader {
     // <ms2><v dungeonID groupType mesoRate expRate itemRolls customDropBoxIds/></ms2>: the client reads the root's
     // first element whatever its name (GameEventDungeonBonusReward::vfunc_2, commonfiles/gameevent.cpp:996, and
@@ -97,6 +98,17 @@ public static class EventXmlReader {
             .OfType<RewardItem>()
             .ToArray();
         return new ArcadeOpen(arcadeId, Math.Max(countPerDay, 0), rewards);
+    }
+
+    // A ReverseRaidDungeonOpen row's value1: the hall's portal ids, comma separated ("20007001,20023001"). An id
+    // that is not a positive number is skipped; a row with none opens nothing and is not stored.
+    public static ReverseRaidDungeonOpen? ReverseRaidDungeonOpen(string? value1) {
+        int[] portalIds = (value1 ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(text => int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int id) ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+        return portalIds.Length > 0 ? new ReverseRaidDungeonOpen(portalIds) : null;
     }
 
     // The three values of a TreeWatering row (GameEventTreeWatering::ReadTreeWateringData,

@@ -2189,6 +2189,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventXmlReader.CollectItemGroup(value1);
             case GameEventType.ArcadeOpen:
                 return EventXmlReader.ArcadeOpen(value1);
+            case GameEventType.ReverseRaidDungeonOpen:
+                return EventXmlReader.ReverseRaidDungeonOpen(value1);
             case GameEventType.TreeWatering:
                 return EventXmlReader.TreeWatering(value1, value2, value3);
             case GameEventType.MiniGameBonusReward:

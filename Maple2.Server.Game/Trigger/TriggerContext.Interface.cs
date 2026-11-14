@@ -16,6 +16,7 @@ public partial class TriggerContext {
         var widget = type switch {
             "OxQuiz" => new OxQuizWidget(Field),
             "OxQuizUGC" => new OxQuizUgcWidget(Field),
+            "ReverseRaidPortal" => new ReverseRaidPortalWidget(Field),
             "SceneMovie" => new SceneMovieWidget(Field),
             "Guide" => new GuideWidget(Field),
             "SurvivalContents" => new SurvivalContentsWidget(Field),

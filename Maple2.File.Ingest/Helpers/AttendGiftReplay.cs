@@ -22,6 +22,7 @@ namespace Maple2.File.Ingest.Helpers;
 // snowflakes come from its promotionContents rows (read with it, so they move with it). So is the user condition
 // event (UserCondition): the live KR row runs group 2, which no user condition row has; the ended one runs group 1.
 // The burning levelup event (BurningLevelup) has ended too (KR 380001-380010); one is replayed.
+// So have the reverse raid hall's portal openings (ReverseRaidDungeonOpen, KR 360001-360007); one is replayed.
 public static class AttendGiftReplay {
     public const string Option = "MS2_REPLAY_ATTEND_GIFT";
 
@@ -33,16 +34,16 @@ public static class AttendGiftReplay {
         GameEventType.DungeonBonusReward, GameEventType.CollectItemGroup, GameEventType.ArcadeOpen,
         GameEventType.TreeWatering, GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent,
         GameEventType.CoupleDance, GameEventType.ExchangeScrollSale, GameEventType.ItemBox, GameEventType.Snowman,
-        GameEventType.UserCondition, GameEventType.BurningLevelup,
+        GameEventType.UserCondition, GameEventType.BurningLevelup, GameEventType.ReverseRaidDungeonOpen,
     ];
 
     // The replayed types whose events are not taken without data (not read): the minigames, whose rules are all
     // in it, the item box, whose field and box are, the snowman, whose snowmen are, and the user condition event,
-    // whose row group is, and the burning levelup event, whose level range is.
+    // whose row group is, the burning levelup event, whose level range is, and the reverse raid opening, whose portals are.
     public static readonly GameEventType[] NeedData = [
         GameEventType.StampEvent, GameEventType.RPS, GameEventType.BingoEvent, GameEventType.TimeRunEvent,
         GameEventType.CoupleDance, GameEventType.ItemBox, GameEventType.Snowman,
-        GameEventType.UserCondition, GameEventType.BurningLevelup,
+        GameEventType.UserCondition, GameEventType.BurningLevelup, GameEventType.ReverseRaidDungeonOpen,
     ];
 
     // The item a round of the event takes: the RPS ticket, the bingo's daily pencil, the time run's start item
