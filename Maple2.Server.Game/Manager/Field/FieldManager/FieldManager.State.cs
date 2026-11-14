@@ -1568,9 +1568,9 @@ public partial class FieldManager {
         Broadcast(PlayerHostPacket.UseHongBao(hongBao, item.Amount));
     }
 
-    // False when the cell already holds a reactor (the client checks the same by name).
-    // ownerLimit: how many reactors of one character may stand in the field at once.
-    public bool TryAddReactor(ReactorTable.Entry metadata, Vector3 position, long ownerId, int ownerLimit, [NotNullWhen(true)] out FieldReactor? reactor) {
+    // False when the cell already holds a reactor (the client checks the same by name). A character may place any
+    // number of them, as the client lets it (CanCreateReactor); the field holds at most MaxPerField.
+    public bool TryAddReactor(ReactorTable.Entry metadata, Vector3 position, long ownerId, [NotNullWhen(true)] out FieldReactor? reactor) {
         (int X, int Y, int Z) cell = ReactorRules.Cell(position);
         string name = ReactorRules.Name(ReactorRules.CellKey(cell));
         Vector3 center = ReactorRules.CellCenter(cell);
@@ -1579,7 +1579,7 @@ public partial class FieldManager {
             if (metadata.States.Length == 0 || fieldReactors.Values.Any(other => other.Name == name)) {
                 return false;
             }
-            if (fieldReactors.Count >= ReactorRules.MaxPerField || fieldReactors.Values.Count(other => other.OwnerId == ownerId) >= ownerLimit) {
+            if (fieldReactors.Count >= ReactorRules.MaxPerField) {
                 return false;
             }
             if (!CanPlaceReactor(center)) {

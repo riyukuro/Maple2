@@ -907,10 +907,9 @@ public class ItemUseHandler : FieldPacketHandler {
         if (!ReactorEvent.Check(session, metadata, out Maple2.Model.Game.Event.GameEvent? gameEvent)) {
             return;
         }
-        // The client counts rewards, not placements, so the event's limit also caps how many reactors
-        // of one character stand at once.
-        int ownerLimit = gameEvent?.Metadata.Data is Maple2.Model.Metadata.Reactor reactorEvent ? Math.Max(reactorEvent.DailyCount, 1) : 1;
-        if (!session.Field.TryAddReactor(metadata, session.Player.Position, session.CharacterId, ownerLimit, out FieldReactor? reactor)) {
+        // The client counts the day's rewards, not placements or reactors standing (CheckReactorGameEvent), so a
+        // character may place another reactor while one stands; each reward checks the count again (StateReact).
+        if (!session.Field.TryAddReactor(metadata, session.Player.Position, session.CharacterId, out FieldReactor? reactor)) {
             return;
         }
         if (!session.Item.Inventory.Consume(item.Uid, 1)) {

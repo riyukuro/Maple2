@@ -527,6 +527,29 @@ public class ItemFunctionUseTests {
     // and count here are the test's.
     [Test]
     public void CreateReactor_PlacesTheReactorAndIsUsedUp() {
+        Item item = LoginReactor(dailyCount: 3);
+
+        Use(item);
+
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(Sent().Last(), Is.EqualTo(Hex(ReactorPacket.StartReact(10000000))));
+    }
+
+    // The client lets a character place a reactor while its own stands (CanCreateReactor counts the day's rewards,
+    // not reactors): a second one on the next cell stands too, with a daily count of 1. The server refused it.
+    [Test]
+    public void CreateReactor_SecondReactorOfOneCharacterStands() {
+        Item item = LoginReactor(dailyCount: 1);
+
+        Use(item);
+        session.Player.Position += new System.Numerics.Vector3(ReactorRules.CellSize, 0, 0);
+        Use(item);
+
+        Assert.That(session.Item.Inventory.Get(item.Uid), Is.Null);
+        Assert.That(Sent().Count(packet => packet == Hex(ReactorPacket.StartReact(10000000))), Is.EqualTo(2));
+    }
+
+    private Item LoginReactor(int dailyCount) {
         var reactor = new ReactorTable.Entry(10000000, 155, 1500, 900051, [
             new ReactorTable.State(100, ReactorStateType.Connect, 0, 60, [new ReactorTable.ConditionItem(30001095, 1, 1, 0)]),
             new ReactorTable.State(101, ReactorStateType.Sleep, 15, 30, []),
@@ -534,7 +557,7 @@ public class ItemFunctionUseTests {
             new ReactorTable.State(103, ReactorStateType.Reward, 1, 1, []),
         ], [new ReactorTable.Reward(30001097, 1, 1)]);
         Item item = Login(30001093, ItemFunction.CreateReactor, "10000000", amount: 2, setup: () => {
-            test.AddEvent(900051, GameEventType.reactor, new Reactor([2000062], 3));
+            test.AddEvent(900051, GameEventType.reactor, new Reactor([2000062], dailyCount));
             test.SetTable(new ReactorTable(new Dictionary<int, ReactorTable.Entry> { [10000000] = reactor }));
         });
         // The test field is bare: what a placement reads, empty, on one flat poly around the player.
@@ -546,11 +569,7 @@ public class ItemFunctionUseTests {
                 field.SetValue(session.Field, Activator.CreateInstance(field.FieldType));
             }
         }
-
-        Use(item);
-
-        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
-        Assert.That(Sent().Last(), Is.EqualTo(Hex(ReactorPacket.StartReact(10000000))));
+        return item;
     }
 
     // 20300052 (ExpendCharacterSlot): the client sends the use as is. One coupon opens one more character slot and is
