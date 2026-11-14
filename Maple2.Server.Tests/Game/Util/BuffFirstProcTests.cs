@@ -42,4 +42,17 @@ public class BuffFirstProcTests {
         AdditionalEffectMetadataProperty delayed = Property(5000, 800, 300, BuffDotCondition.OnInterval);
         Assert.That(Buff.FirstProcTick(delayed, 10_000, delayed.IntervalTick), Is.EqualTo(11_100));
     }
+
+    [Test]
+    public void NonDefaultConditionWithoutIntervalNeverProcs() {
+        // The client makes a level with dotCondition other than 0 and no interval no dot, recovery, exp or dot buff
+        // (AdditionalLevelData::IsDotDamage and the others). In KR five levels have it (40443002, 40500016, 40600016:
+        // dotCondition 1, 2.5 s; 40500035 and 40600035 level 3: dotCondition 2, 1 s), none with such values; the
+        // server's first proc of such a level falls after its end, so it never procs.
+        foreach ((int duration, BuffDotCondition condition) in new[] { (2500, BuffDotCondition.OnInterval), (1000, BuffDotCondition.Stack) }) {
+            AdditionalEffectMetadataProperty property = Property(duration, 0, 0, condition);
+            long start = 50_000;
+            Assert.That(Buff.FirstProcTick(property, start, property.DurationTick + 1000), Is.GreaterThan(start + duration));
+        }
+    }
 }
