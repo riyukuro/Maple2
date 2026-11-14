@@ -737,6 +737,9 @@ public class FieldNpc : Actor<Npc> {
         SpringFarmSpawnCleared();
         Field.StringIdDeaths.Died(Value.Metadata.Basic.StringId);
         Field.AddScoreBoardScore(TriggerScore);
+        // dead extendRoomTime (115 KR npcs, most of them dungeon bosses and mid bosses; 40000, 60000 or
+        // 90000 ms): the death adds that time to the room's running timer. The client only reads the attribute.
+        Field.RoomTimer?.Extend(Value.Metadata.Dead.ExtendRoomTime);
         Field.ShadowGaugeKilled(ObjectId);
         // RainbowMonster (02100002): a group's slime or a bad slime the furnace npc kills moves the score.
         if (Field.Widgets.GetValueOrDefault("RainbowMonster") is RainbowMonsterWidget rainbow

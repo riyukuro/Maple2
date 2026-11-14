@@ -92,6 +92,23 @@ public class RoomTimer : IUpdatable {
         field.Broadcast(RoomTimerPacket.Modify(this, delta, showEffect));
     }
 
+    /// <summary>
+    /// The time runs and counts: started, its window open, not stopped, not ended (dungeon_set_end_time) and not run out.
+    /// </summary>
+    public bool Running => started && !Closed && !Clock.Stopped && !Clock.Ended && !expiredHandled;
+
+    /// <summary>
+    /// A dead npc's extendRoomTime: adds that time, with the client's notice, while the time runs. A stopped, ended or
+    /// expired timer, or a closed window, is left alone.
+    /// </summary>
+    public bool Extend(int tick) {
+        if (tick <= 0 || !Running) {
+            return false;
+        }
+        Modify(tick, showEffect: true);
+        return true;
+    }
+
     /// <summary>dungeon_reset_time: the timer runs again for the given time from now.</summary>
     public void Restart(int duration) {
         Clock.Restart((int) field.FieldTick, duration);

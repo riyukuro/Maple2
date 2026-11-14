@@ -2863,6 +2863,25 @@ public class TriggerDungeonTests : TriggerTestBase {
         Assert.That(Field.RoomTimer.Clock.Stopped, Is.True);
         Assert.That(test.TakeSent().Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] { Hex(RoomTimerPacket.Stop()) }));
     }
+
+    // A dead npc's extendRoomTime (60000 ms on most of the 115 KR npcs) adds its time to the running timer with the
+    // client's notice; none before the timer starts, for no time, or once the time function was ended.
+    [Test]
+    public void DeadExtendRoomTime_AddsToTheRunningTimer() {
+        StartRoom();
+        Field.SetRoomTimer(RoomTimerType.Clock, 60_000, false);
+        Assert.That(Field.RoomTimer!.Extend(60_000), Is.False);
+        Field.RoomTimer.Update(Field.FieldTick);
+        test.TakeSent();
+
+        Assert.That((Field.RoomTimer.Extend(0), Field.RoomTimer.Extend(60_000), Field.RoomTimer.Duration), Is.EqualTo((false, true, 120_000)));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).ToArray(),
+            Is.EqualTo(new[] { Hex(RoomTimerPacket.Modify(Field.RoomTimer.StartTick, 120_000, 60_000, true)) }));
+
+        Action("""<action name="dungeon_set_end_time" />""");
+        Assert.That((Field.RoomTimer.Extend(60_000), Field.RoomTimer.Duration), Is.EqualTo((false, 120_000)));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
 }
 
 public class TriggerRoundUiTests : TriggerTestBase {
