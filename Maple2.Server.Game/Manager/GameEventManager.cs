@@ -799,6 +799,13 @@ public sealed class GameEventManager {
         session.Send(GameEventUserValuePacket.Load(values));
     }
 
+    // The value held for the event and type, expired or not; null when there is none. Unlike Get it adds no value.
+    public GameEventUserValue? Held(int eventId, GameEventUserValueType type) {
+        lock (valuesLock) {
+            return eventValues.GetValueOrDefault(eventId)?.GetValueOrDefault(type);
+        }
+    }
+
     // The text of an unexpired value, null when there is none; unlike Get it adds no value.
     public string? Peek(GameEventUserValueType type, int eventId) {
         lock (valuesLock) {
