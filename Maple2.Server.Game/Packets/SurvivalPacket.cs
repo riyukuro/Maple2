@@ -50,7 +50,9 @@ public static class SurvivalPacket {
             pWriter.WriteInt(medals.Count);
             foreach (Medal medal in medals.Values) {
                 pWriter.WriteInt(medal.Id);
-                pWriter.WriteLong(long.MaxValue);
+                // The stored end (seconds since 1970; a lasting medal's is the far end): the restored client hides a
+                // skin whose end has passed (maplesurvivalskindialog.cpp). Before, every end was long.MaxValue.
+                pWriter.WriteLong(medal.ExpiryTime);
             }
         }
 

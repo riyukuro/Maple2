@@ -130,7 +130,7 @@ public sealed class SurvivalManager {
         // The restored client gets the new skin alone (0x1f, the end sent as the medal list sends it) and the learned
         // line (0x21); before, the whole list was sent again and no line was shown. The KR client keeps the list.
         if (MapleSurvivalRules.RestoredClient) {
-            session.Send(MapleSurvivalPacket.SkinAdded((byte) medal.Type, medal.Id, long.MaxValue));
+            session.Send(MapleSurvivalPacket.SkinAdded((byte) medal.Type, medal.Id, medal.ExpiryTime));
             session.Send(MapleSurvivalPacket.SkinLearned((byte) medal.Type, medal.Id));
         } else {
             session.Send(SurvivalPacket.LoadMedals(inventory, equip));
@@ -152,6 +152,11 @@ public sealed class SurvivalManager {
             return false;
         }
 
+        // An ended medal is refused, as the restored client refuses it (s_item_err_puton_expired).
+        if (Ended(medal)) {
+            return false;
+        }
+
         // medal is already equipped
         if (medal.Slot != -1) {
             return false;
@@ -170,6 +175,10 @@ public sealed class SurvivalManager {
         return true;
     }
 
+    private static bool Ended(Medal medal) {
+        return medal.ExpiryTime < DateTime.UtcNow.ToEpochSeconds();
+    }
+
     private void Unequip(MedalType type) {
         Medal medal = equip[type];
         equip[type] = new Medal(0, type);
@@ -186,6 +195,12 @@ public sealed class SurvivalManager {
     }
 
     public void Load() {
+        // An equipped medal whose end has passed comes off (chosen here: the medal stays in the list, ended).
+        foreach ((MedalType type, Medal medal) in equip.ToArray()) {
+            if (medal.Id != 0 && Ended(medal)) {
+                Unequip(type);
+            }
+        }
         session.Send(SurvivalPacket.UpdateStats(session.Player.Value.Account));
         session.Send(SurvivalPacket.LoadMedals(inventory, equip));
     }

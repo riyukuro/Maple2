@@ -231,7 +231,8 @@ public class MapleSurvivalTests {
     }
 
     // The windows' packets (layouts.md 2): the lobby value, the season, the skin equipped, the pass progress, the
-    // spectate answer (SpectateMushtopia 0x11A mode 1), the record (0x17) and the skin slots in slot order.
+    // spectate answer (SpectateMushtopia 0x11A mode 1), the record (0x17) and the skin slots in slot order
+    // (each skin with its stored end).
     [Test]
     public void WindowLayouts() {
         Assert.That(Hex(MapleSurvivalPacket.LobbyValue(7)), Is.EqualTo("1901" + "12" + "07000000"));
@@ -245,7 +246,7 @@ public class MapleSurvivalTests {
         Assert.That(Hex(SurvivalPacket.UpdateStats(account, 50)), Is.EqualTo("1901" + "17" + Long(9) + "00000000" + "01" + Long(120) + "04000000"
             + "03000000" + "02000000" + Long(50)));
         var inventory = new Dictionary<MedalType, Dictionary<int, Medal>> {
-            [MedalType.Gliding] = new() { [30] = new Medal(30, MedalType.Gliding) { ExpiryTime = 0 } },
+            [MedalType.Gliding] = new() { [30] = new Medal(30, MedalType.Gliding) { ExpiryTime = 0x6f000000 } },
             [MedalType.Tail] = new(),
             [MedalType.Riding] = new(),
         };
@@ -253,7 +254,7 @@ public class MapleSurvivalTests {
             [MedalType.Tail] = new Medal(0, MedalType.Tail), [MedalType.Riding] = new Medal(0, MedalType.Riding), [MedalType.Gliding] = new Medal(30, MedalType.Gliding),
         };
         Assert.That(Hex(SurvivalPacket.LoadMedals(inventory, equips)), Is.EqualTo("1901" + "1E" + "03"
-            + "00000000" + "00000000" + "00000000" + "00000000" + "1E000000" + "01000000" + "1E000000" + Long(long.MaxValue)));
+            + "00000000" + "00000000" + "00000000" + "00000000" + "1E000000" + "01000000" + "1E000000" + Long(0x6f000000)));
     }
 
     private static MapleSurvivalTable Table() {
