@@ -519,7 +519,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             PhysicalRateLimit: reflect.physicalReflectionRateLimit,
             MagicalRateLimit: reflect.magicalReflectionRateLimit,
             Values: values,
-            Rates: rates);
+            Rates: rates,
+            DamageReduceRate: reflect.reflectionDamageReduceRate);
     }
 
     private static AdditionalEffectMetadataStatus Convert(StatusProperty status, OffensiveProperty offensive, DefensiveProperty defensive) {

@@ -109,7 +109,7 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         // An attackPossible limit of a buff held refuses the hit: sent as an invincible hit (AttackPossibleRules).
         bool refused = Buffs.AttackRefused(caster, damage.SkillId);
         for (int i = 0; i < attack.Damage.Count; i++) {
-            Reflect(caster);
+            long before = damageAmount;
             if (caster is FieldPlayer { DeathPower: true } && this is FieldNpc { Value.Metadata.Basic.Friendly: 0 } and not FieldPet) {
                 // GM toggle: the hit takes all the health that is left. Monsters only: friendly NPCs and
                 // pets take normal damage.
@@ -154,6 +154,8 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                     damageAmount = 0; // No damage dealt
                 }
             }
+            // Each hit rolls the holder's reflect, with the health the hit took for its reflected share.
+            Reflect(caster, before - damageAmount, damage.Properties.AttackType);
         }
 
         // constDamageByTargetSP: the spirit of a player hit (npcs have none) goes down to the value as well, when a hit
@@ -217,7 +219,8 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
     protected virtual void OnDamageReceived(IActor caster, long amount) { }
 
-    public virtual void Reflect(IActor target) {
+    // hit: the health the hit took; attackType: the hit's attack type, which picks the reflect rate (ReflectRecord.Share).
+    public virtual void Reflect(IActor target, long hit = 0, AttackType attackType = AttackType.None) {
         if (Buffs.Reflect == null || Buffs.Reflect.Counter >= Buffs.Reflect.Metadata.Count) {
             return;
         }
@@ -233,7 +236,13 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         }
         target.Buffs.AddBuff(this, target, record.Metadata.EffectId, record.Metadata.EffectLevel, Field.FieldTick);
 
-        // TODO: Reflect should also amend the target's damage record from Reflect.ReflectValues and ReflectRates
+        // A reflect with a rate: the attacker's reflect effect from this holder carries the reflected share to its
+        // next dot tick (chosen here, Buff.AddReflected).
+        if (ReflectRecord.HasShare(record.Metadata)) {
+            Buff? reflected = target.Buffs.EnumerateBuffs(record.Metadata.EffectId).FirstOrDefault(buff => buff.Caster.ObjectId == ObjectId)
+                ?? target.Buffs.EnumerateBuffs(record.Metadata.EffectId).FirstOrDefault();
+            reflected?.AddReflected(ReflectRecord.Share(record.Metadata, attackType, hit));
+        }
     }
 
     public virtual void TargetAttack(SkillRecord record) {

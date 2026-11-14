@@ -29,7 +29,8 @@ public class DotDamageRecord {
 
     /// <param name="invokeRate">The caster's dot damage invokes (type 5) on the effect: they raise its rate (DotRate).</param>
     /// <param name="effectId">The dot's effect: an attackPossible limit of the target lets only the dots it names hit.</param>
-    public DotDamageRecord(IActor caster, IActor target, AdditionalEffectMetadataDot.DotDamage dotDamage, int stacks = 1, float invokeRate = 0f, int effectId = 0) {
+    /// <param name="reflected">A reflect effect's tick (Buff.AddReflected): this damage in place of the rolled part.</param>
+    public DotDamageRecord(IActor caster, IActor target, AdditionalEffectMetadataDot.DotDamage dotDamage, int stacks = 1, float invokeRate = 0f, int effectId = 0, long? reflected = null) {
         Caster = caster;
         Target = target;
         Properties = new DamagePropertyRecord {
@@ -50,7 +51,9 @@ public class DotDamageRecord {
             // (rate 0 times any attack is 0): it is not rolled either, so it gets no Miss, no crit and not the hit's least
             // damage of 1 on top of its share. The 14 typed dots the KR triggers, regions and cubes add are all such (e.g.
             // 70000114: Type 1, DamageByTargetMaxHp 0.2), as are 149 of the KR dot levels.
-            if (dotDamage.Type != AttackType.None && dotDamage.Rate > 0 && !shielded) {
+            if (reflected != null) {
+                hpAmount += reflected.Value;
+            } else if (dotDamage.Type != AttackType.None && dotDamage.Rate > 0 && !shielded) {
                 try {
                     (DamageType type, long amount) = DamageCalculator.CalculateDamage(caster, target, Properties);
                     Type = type;

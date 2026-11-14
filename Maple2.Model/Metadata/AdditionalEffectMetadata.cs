@@ -102,7 +102,9 @@ public record AdditionalEffectMetadataReflect(
     int PhysicalRateLimit,
     int MagicalRateLimit,
     IReadOnlyDictionary<BasicAttribute, long> Values,
-    IReadOnlyDictionary<BasicAttribute, float> Rates);
+    IReadOnlyDictionary<BasicAttribute, float> Rates,
+    // reflectionDamageReduceRate (m_fReflectionDamageReduceRate): the part of the reflected share taken away (ReflectRecord.Share).
+    float DamageReduceRate = 0);
 
 public record AdditionalEffectMetadataUpdate(
     AdditionalEffectMetadataUpdate.CancelEffect? Cancel,

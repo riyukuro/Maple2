@@ -10,6 +10,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Microsoft.EntityFrameworkCore;
 
@@ -558,6 +559,41 @@ public class BuffAttributeTests {
         Player.Reflect(Field.FieldActor);
 
         Assert.That(((IActor) Field.FieldActor).Buffs.EnumerateBuffs(50003301), Has.Count.EqualTo(1));
+        Assert.That(((IActor) Field.FieldActor).Buffs.EnumerateBuffs(50003301).Single().Reflected, Is.False, "no reflect rate");
+    }
+
+    // 49126002 (KR: reflectionRate 1, physical and magical reflectionRate 0.02, reflectionDamageReduceRate 0.2, effect
+    // 49126003: a dot of type 1, rate 0.05, every 100 ms for 150 ms): a hit of 1000 sends 16 back, which the effect's
+    // next tick deals in place of its own roll; the tick after it, with nothing reflected, is not dealt. The player
+    // hits itself, so it is both the holder and the attacker.
+    [Test]
+    public void Reflect_TheEffectTickDealsTheShare() {
+        var dot = new AdditionalEffectMetadataDot.DotDamage(AttackType.Physical, Element.None, UseGrade: false, Rate: 0.05f, HpValue: 0,
+            SpValue: 0, EpValue: 0, DamageByTargetMaxHp: 0, RecoverHpByDamage: 0, IsConstDamage: false, NotKill: false);
+        Start(MapType.None,
+            Effect(49126002, Plain) with {
+                Reflect = new AdditionalEffectMetadataReflect(1f, 49126003, 1, 99999, 0, 0, new Dictionary<BasicAttribute, long>(),
+                    new Dictionary<BasicAttribute, float> { { BasicAttribute.PhysicalAtk, 0.02f }, { BasicAttribute.MagicalAtk, 0.02f } }, DamageReduceRate: 0.2f),
+            },
+            Effect(49126003, Plain with { DurationTick = 150, IntervalTick = 100 }) with { Dot = new AdditionalEffectMetadataDot(dot, null) });
+        typeof(FieldPlayer).GetField("healthSync", Any)!.SetValue(Player, new HealthSyncClock());
+        typeof(FieldPlayer).GetField("regenClock", Any)!.SetValue(Player, new RegenClock());
+        Stat health = Player.Stats.Values[BasicAttribute.Health];
+        health.AddTotal(1000 - health.Total);
+        health.Add(1000 - health.Current);
+        Add(49126002);
+
+        Player.Reflect(Player, 1000, AttackType.Physical);
+        Buff reflected = Only(49126003);
+        Assert.That(reflected.Reflected, Is.True);
+        Assert.That(reflected.ReflectedDamage, Is.EqualTo(16));
+
+        reflected.Update(reflected.NextProcTick);
+        Assert.That(health.Current, Is.EqualTo(984));
+        Assert.That(reflected.ReflectedDamage, Is.EqualTo(0));
+
+        reflected.Update(reflected.NextProcTick);
+        Assert.That(health.Current, Is.EqualTo(984), "nothing reflected since");
     }
 
     // Status rates: a held buff's rate adds that share of the stat. 10100071 (KR: Rates Defense -0.01, one stack) on

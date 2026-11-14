@@ -32,6 +32,10 @@ public class Buff : IUpdatable, IByteSerializable {
     public int ProcCount { get; private set; }
     public int Stacks { get; private set; }
     public long ShieldHealth { get; set; }
+    // The effect of a reflect with a rate (ReflectRecord.HasShare): its dot ticks deal the reflected damage held
+    // here, then none until another reflected hit.
+    public bool Reflected { get; private set; }
+    public long ReflectedDamage { get; private set; }
 
     public bool Enabled { get; private set; }
     // Held while the holder rides a battle mount (SuspendedOnBattleMount): Enabled and the client's flag stay as they
@@ -385,14 +389,32 @@ public class Buff : IUpdatable, IByteSerializable {
         }
     }
 
+    // A reflected hit on the holder of a reflect (Actor.Reflect): the share goes to this effect's next dot tick.
+    public void AddReflected(long amount) {
+        Reflected = true;
+        ReflectedDamage += Math.Max(0, amount);
+    }
+
     private void ApplyDotDamage() {
         if (Metadata.Dot.Damage == null) {
             return;
         }
+        // Chosen here: a reflect effect's tick deals the reflected damage in place of its own rolled damage; a tick with
+        // none to deal is not sent. In the global service's packets the attacker of a holder of 60131001 (reflect rate
+        // 0.1, reduce rate 0.9) took one tick of 60131002 per reflect, about 1.1 % of the hit (82 for 7452, 70 for 6386);
+        // ReflectRecord.Share gives 1 % (75 for 7452).
+        long? reflectedDamage = null;
+        if (Reflected) {
+            if (ReflectedDamage <= 0) {
+                return;
+            }
+            reflectedDamage = ReflectedDamage;
+            ReflectedDamage = 0;
+        }
 
         // The caster's dot damage invokes on this effect (type 5) raise its rate (DotDamageRecord.DotRate).
         (_, float invokeRate) = Caster.Buffs.GetEffectInvokeValues(InvokeEffectType.IncreaseDotDamage, Id, Metadata.Property.InvokeGroupId);
-        var record = new DotDamageRecord(Caster, Owner, Metadata.Dot.Damage, Stacks, invokeRate, Id) {
+        var record = new DotDamageRecord(Caster, Owner, Metadata.Dot.Damage, Stacks, invokeRate, Id, reflectedDamage) {
             BuffObjectId = ObjectId,
         };
         var targetUpdated = new List<BasicAttribute>(3);
