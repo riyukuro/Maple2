@@ -354,6 +354,41 @@ public class GuildMoneyHandlerTests {
         Assert.That(session.Guild.Guild, Is.Null);
     }
 
+    // A failure after the guild is founded and its price sent (here the World is down when the founder's guild data
+    // goes out) leaves the price paid: the guild stands. Before, the catch gave the price back and answered an error.
+    [Test]
+    public void Create_AFailureAfterTheFoundingKeepsThePrice() {
+        Join(inGuild: false);
+        session.Currency.Meso = 5000;
+        test.World.AddPlayer(session.AccountId, session.CharacterId, "Founder");
+        test.World.GuildWorld = request => new GuildResponse {
+            Guild = new GuildInfo {
+                Id = 7,
+                Name = request.Create.GuildName,
+                Emblem = "",
+                Notice = "",
+                Members = { new GuildInfo.Types.Member { CharacterId = session.CharacterId, Message = "", Rank = 0, JoinTime = 1000 } },
+            },
+        };
+        bool mesoSent = false;
+        test.OnSend = packet => {
+            if (TestGameSession.Op(packet) == SendOp.Meso) {
+                mesoSent = true;
+            } else if (mesoSent && TestGameSession.Op(packet) == SendOp.Guild) {
+                test.OnSend = null;
+                throw new RpcException(new Status(StatusCode.Unavailable, "down"));
+            }
+        };
+        test.TakeSent();
+
+        Create("Guild");
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000 - CreatePrice));
+        Assert.That(session.Guild.Guild, Is.Not.Null);
+        Assert.That(GuildAnswers(), Does.Not.Contain(Hex(GuildPacket.Error(GuildError.s_guild_err_unknown))));
+        self = session.Guild.Guild!.Members[session.CharacterId];
+    }
+
     // Another member's check-in as a member sees it, in the order KMS2 sends it: the guild's exp (50) and fund
     // (51), the member's contribution (53: name, the amount, the week's and the whole sum) and check-in time (36).
     [Test]

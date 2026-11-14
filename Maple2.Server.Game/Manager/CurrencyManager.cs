@@ -312,7 +312,6 @@ public class CurrencyManager {
         }
     }
 
-    // Sends the balance (after TryTakeMeso with notify false).
     // Takes amount, or all that is held when that is less, in one step, and returns what was taken. Nothing is sent
     // (the caller sends the balance with NotifyMeso).
     public long TakeMesoUpTo(long amount) {
@@ -326,6 +325,7 @@ public class CurrencyManager {
         }
     }
 
+    // Sends the balance (after TryTakeMeso with notify false).
     public void NotifyMeso() {
         lock (walletLock) {
             session.Send(CurrencyPacket.UpdateMeso(Currency));

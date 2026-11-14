@@ -230,6 +230,7 @@ public class GuildHandler : PacketHandler<GameSession> {
             return;
         }
 
+        bool paid = false;
         try {
             var request = new GuildRequest {
                 RequestorId = session.CharacterId,
@@ -261,6 +262,7 @@ public class GuildHandler : PacketHandler<GameSession> {
             }
             session.Send(GuildPacket.Created(guildName));
             session.Currency.NotifyMeso();
+            paid = true;
 
             session.Guild.Load();
             GuildMember? founder = session.Guild.GetMember(session.CharacterId);
@@ -271,6 +273,12 @@ public class GuildHandler : PacketHandler<GameSession> {
             // The founder is the guild's first member: "Join a guild" (70300010) counts for it too.
             session.ConditionUpdate(ConditionType.guild_join);
         } catch (RpcException ex) {
+            // After the guild is founded the price stays paid: a failure past that point (the founder's load)
+            // is only logged.
+            if (paid) {
+                Logger.Error(ex, "Failed after creating guild: {Name}", guildName);
+                return;
+            }
             session.Currency.ReturnMeso(Constants.GuildCreatePrice, notify: false);
             Logger.Error(ex, "Failed to create guild: {Name}", guildName);
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
