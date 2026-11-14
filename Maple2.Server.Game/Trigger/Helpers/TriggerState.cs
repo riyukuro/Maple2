@@ -100,6 +100,7 @@ public class TriggerState {
             Stopped = true;
             // A gap in the game data, not a server fault: every such target is missing in the client's own trigger files too.
             Log.Logger.Debug("Trigger state '{State}' moves to '{Next}', which the script does not have: the state stops", Name, nextStateName);
+            triggerContext?.ReleasePlayers(Name, nextStateName);
         }
         return nextState != null;
     }

@@ -33,6 +33,7 @@ public partial class TriggerContext {
 
     public void LockMyPc(bool isLock) {
         DebugLog("[LockMyPc] isLock:{IsLock}", isLock);
+        lockedPc = isLock;
         if (isLock) {
             Field.AddFieldProperty(new FieldPropertyLockPlayer());
         } else {

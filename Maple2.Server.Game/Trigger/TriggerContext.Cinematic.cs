@@ -22,7 +22,40 @@ public partial class TriggerContext {
     public void CloseCinematic() {
         DebugLog("[CloseCinematic]");
         // guessing
+        cinematicShown = false;
         Broadcast(CinematicPacket.HideUi());
+    }
+
+    // What this trigger has left on the players: the cinematic key mode (set_cinematic_ui 1, off with 0;
+    // UICutSceneCinematic::OnPacketKeyMode), a cinematic (set_cinematic_ui 3, closed by 2 or close_cinematic;
+    // OnPacketStartCinematic, OnPacketClose) and the player lock (lock_my_pc).
+    private bool cinematicKeyMode;
+    private bool cinematicShown;
+    private bool lockedPc;
+    private bool releaseLogged;
+
+    // Safety net, server-only: a script that moves to a state it does not have stops there (TriggerState), and
+    // when it had a cinematic open or the players locked, nothing would give them back (KR: 52000092 after quest
+    // 50100520, 52100105 when its scene movie stops first). The trigger turns the key mode off, closes the
+    // cinematic as close_cinematic does and unlocks the players, as the scripts end a cutscene.
+    internal void ReleasePlayers(string state, string missing) {
+        if (!cinematicKeyMode && !cinematicShown && !lockedPc) {
+            return;
+        }
+        if (!releaseLogged) {
+            releaseLogged = true;
+            logger.Information("{Trigger} state '{State}' moves to '{Missing}', which the script does not have: its cinematic is closed and the players are given back",
+                owner.Value.Name, state, missing);
+        }
+        if (cinematicKeyMode) {
+            SetCinematicUi(0, string.Empty, false);
+        }
+        if (cinematicShown) {
+            CloseCinematic();
+        }
+        if (lockedPc) {
+            LockMyPc(false);
+        }
     }
 
     public void PlaySceneMovie(string fileName, int movieId, string skipType) {
@@ -42,6 +75,17 @@ public partial class TriggerContext {
 
     public void SetCinematicUi(int type, string script, bool arg3) {
         DebugLog("[SetCinematicUI] type:{Type}, script:{Script}, arg3:{Arg3}", type, script, arg3);
+        switch (type) {
+            case 0 or 1:
+                cinematicKeyMode = type == 1;
+                break;
+            case 2:
+                cinematicShown = false;
+                break;
+            case 3:
+                cinematicShown = true;
+                break;
+        }
         switch (type) {
             case 0:
                 Broadcast(CinematicPacket.ToggleUi(false));
