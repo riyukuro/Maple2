@@ -19,4 +19,11 @@ public class GlobalPortalRulesTests {
     [TestCase(3, 5, ExpectedResult = false)]
     [TestCase(0, 0, ExpectedResult = false)]
     public bool EntryValid(int index, int count) => GlobalPortalRules.EntryValid(index, count);
+
+    // GlobalPortalMinLevel: KR 0 (no limit), the default row 10.
+    [TestCase(1, 0, ExpectedResult = true)]
+    [TestCase(9, 10, ExpectedResult = false)]
+    [TestCase(10, 10, ExpectedResult = true)]
+    [TestCase(70, 10, ExpectedResult = true)]
+    public bool LevelAllowed(int level, int minLevel) => GlobalPortalRules.LevelAllowed(level, minLevel);
 }

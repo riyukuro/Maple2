@@ -42,5 +42,13 @@ public static class GlobalPortalPacket {
 
         return pWriter;
     }
+
+    // UIGlobalPortalDialog case 4 reads nothing more: the notice s_massive_event_error_cant_enter_level_limit.
+    public static ByteWriter CannotEnterLevel() {
+        var pWriter = Packet.Of(SendOp.GlobalPortal);
+        pWriter.WriteByte(4);
+
+        return pWriter;
+    }
 }
 

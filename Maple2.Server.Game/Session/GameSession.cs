@@ -898,12 +898,16 @@ public sealed partial class GameSession : Core.Network.Session {
         });
 
         if (globalEventResponse.Error == 0 && globalEventResponse.GlobalPortalInfo != null
-            && TimeEventRules.PortalAnnouncedIn(Field.Metadata.Property.Type)) {
+            && TimeEventRules.PortalAnnouncedIn(Field.Metadata.Property.Type) && GlobalPortalLevelAllowed()) {
             if (ServerTableMetadata.TimeEventTable.GlobalPortal.TryGetValue(globalEventResponse.GlobalPortalInfo.MetadataId, out GlobalPortalMetadata? portal)) {
                 Send(GlobalPortalPacket.Announce(portal, globalEventResponse.GlobalPortalInfo.EventId));
             }
         }
     }
+
+    // The client shows the global portal only from GlobalPortalMinLevel (GlobalPortalRules.LevelAllowed).
+    public bool GlobalPortalLevelAllowed() =>
+        GlobalPortalRules.LevelAllowed(Player.Value.Character.Level, ServerTableMetadata.ConstantsTable.GlobalPortalMinLevel);
 
     // The uid of the field war this player was last announced (FieldWarPacket.Announce): its SidePopup enter has no
     // id. 0 when none was.

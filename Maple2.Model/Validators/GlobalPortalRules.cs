@@ -16,6 +16,11 @@ public static class GlobalPortalRules {
         return captions;
     }
 
+    // The constant GlobalPortalMinLevel (KR 0, the default row 10): the dialog does not show the announce to a player
+    // below it (UIGlobalPortalDialog::vfunc_72, uiglobalportaldialog.cpp:149) and has the notice of its mode 4 for an
+    // enter below it. 0 is no limit.
+    public static bool LevelAllowed(int level, int minLevel) => minLevel <= 0 || level >= minLevel;
+
     // The button index of an enter request names a field of the row.
     public static bool EntryValid(int index, int entryCount) => index >= 0 && index < entryCount && index < CaptionCount;
 }

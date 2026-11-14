@@ -48,6 +48,11 @@ public class GlobalPortal : FieldPacketHandler {
             session.Send(GlobalPortalPacket.CannotEnterDead());
             return;
         }
+        // Below GlobalPortalMinLevel the dialog was not shown; an enter that comes anyway gets the dialog's level notice.
+        if (!session.GlobalPortalLevelAllowed()) {
+            session.Send(GlobalPortalPacket.CannotEnterLevel());
+            return;
+        }
         if (!GlobalPortalRules.EntryValid(index, GlobalPortalRules.CaptionCount)) {
             return;
         }

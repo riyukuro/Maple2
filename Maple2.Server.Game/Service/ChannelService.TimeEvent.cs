@@ -54,7 +54,7 @@ public partial class ChannelService {
             return new TimeEventResponse();
         }
         foreach (GameSession session in server.GetSessions()) {
-            if (session.Field != null && TimeEventRules.PortalAnnouncedIn(session.Field.Metadata.Property.Type)) {
+            if (session.Field != null && TimeEventRules.PortalAnnouncedIn(session.Field.Metadata.Property.Type) && session.GlobalPortalLevelAllowed()) {
                 session.Send(GlobalPortalPacket.Announce(metadata, portal.EventId));
             }
         }
