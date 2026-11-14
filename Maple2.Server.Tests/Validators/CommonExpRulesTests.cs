@@ -12,6 +12,9 @@ public class CommonExpRulesTests {
     // The arenas' results (before: "Unhandled ExpType", no exp).
     [TestCase(ExpType.redDuelLose, CommonExpRules.LevelSource.Character)]
     [TestCase(ExpType.bloodMineRank1, CommonExpRules.LevelSource.Character)]
+    // Treasure Island's team result (before: "Unhandled ExpType", no exp).
+    [TestCase(ExpType.btiTeamWin, CommonExpRules.LevelSource.Character)]
+    [TestCase(ExpType.btiTeamLose, CommonExpRules.LevelSource.Character)]
     [TestCase(ExpType.taxi, CommonExpRules.LevelSource.Field)]
     [TestCase(ExpType.rareChestFirst, CommonExpRules.LevelSource.Field)]
     [TestCase(ExpType.none, CommonExpRules.LevelSource.None)]

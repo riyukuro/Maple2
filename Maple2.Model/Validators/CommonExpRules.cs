@@ -37,6 +37,9 @@ public static class CommonExpRules {
             case ExpType.bloodMineRank2:
             case ExpType.bloodMineRank3:
             case ExpType.bloodMineRankOther:
+            // Treasure Island's team result (btiTeamWin, btiTeamLose), at the player's own level as the other arenas'.
+            case ExpType.btiTeamWin:
+            case ExpType.btiTeamLose:
             // A pet capture: the tamer's own level, as the other life skills.
             case ExpType.petTaming:
                 return LevelSource.Character;
