@@ -108,11 +108,12 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         long damageAmount = 0;
         // An attackPossible limit of a buff held refuses the hit: sent as an invincible hit (AttackPossibleRules).
         bool refused = Buffs.AttackRefused(caster, damage.SkillId);
+        // GM toggle (DeathPower): the hit takes all the health that is left. Monsters only: friendly NPCs and pets take
+        // normal damage. Such a hit is not reflected.
+        bool deathPower = caster is FieldPlayer { DeathPower: true } && this is FieldNpc { Value.Metadata.Basic.Friendly: 0 } and not FieldPet;
         for (int i = 0; i < attack.Damage.Count; i++) {
             long before = damageAmount;
-            if (caster is FieldPlayer { DeathPower: true } && this is FieldNpc { Value.Metadata.Basic.Friendly: 0 } and not FieldPet) {
-                // GM toggle: the hit takes all the health that is left. Monsters only: friendly NPCs and
-                // pets take normal damage.
+            if (deathPower) {
                 long health = Math.Max(1, Stats.Values[BasicAttribute.Health].Current);
                 targetRecord.AddDamage(DamageType.Normal, health);
                 damageAmount -= health;
@@ -155,7 +156,9 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 }
             }
             // Each hit rolls the holder's reflect, with the health the hit took for its reflected share.
-            Reflect(caster, before - damageAmount, damage.Properties.AttackType);
+            if (!deathPower) {
+                Reflect(caster, before - damageAmount, damage.Properties.AttackType);
+            }
         }
 
         // constDamageByTargetSP: the spirit of a player hit (npcs have none) goes down to the value as well, when a hit
@@ -236,12 +239,12 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         }
         target.Buffs.AddBuff(this, target, record.Metadata.EffectId, record.Metadata.EffectLevel, Field.FieldTick);
 
-        // A reflect with a rate: the attacker's reflect effect from this holder carries the reflected share to its
-        // next dot tick (chosen here, Buff.AddReflected).
+        // A reflect with a rate: the attacker's reflect effect from this holder (the shared one when the effect is not
+        // caster-individual) carries this holder's reflected share to its next dot tick (chosen here, Buff.AddReflected).
         if (ReflectRecord.HasShare(record.Metadata)) {
             Buff? reflected = target.Buffs.EnumerateBuffs(record.Metadata.EffectId).FirstOrDefault(buff => buff.Caster.ObjectId == ObjectId)
                 ?? target.Buffs.EnumerateBuffs(record.Metadata.EffectId).FirstOrDefault();
-            reflected?.AddReflected(ReflectRecord.Share(record.Metadata, attackType, hit));
+            reflected?.AddReflected(this, ReflectRecord.Share(record.Metadata, attackType, hit));
         }
     }
 

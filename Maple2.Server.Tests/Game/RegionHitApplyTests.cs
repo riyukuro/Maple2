@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Maple2.Database.Context;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -11,6 +14,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Util;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -68,6 +72,22 @@ public class RegionHitApplyTests : TriggerTestBase {
             return true;
         });
         return (damage.Targets[npc.ObjectId], queued);
+    }
+
+    // A hit rolls the holder's reflect (rate 1 here, so each roll counts), but not the GM's DeathPower hit: it takes
+    // all the health left, so its share would be a share of that.
+    [TestCase(false, 1)]
+    [TestCase(true, 0)]
+    public void ADeathPowerHitIsNotReflected(bool deathPower, int reflects) {
+        FieldNpc npc = SpawnMob(new Vector3(400, 0, 0));
+        // No effect is known: the reflect effect is not added, only the roll counted.
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, new SkillMetadataStorage(
+            new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options)));
+        npc.Buffs.Reflect = new ReflectRecord(1, new AdditionalEffectMetadataReflect(1f, 49126003, 1, 99999, 0, 0,
+            new Dictionary<BasicAttribute, long>(), new Dictionary<BasicAttribute, float> { { BasicAttribute.PhysicalAtk, 0.02f } }));
+        test.Session.Player.DeathPower = deathPower;
+        Fire(npc, new Vector3(600, 0, 0), Attack(0, 0, value: 10));
+        Assert.That(npc.Buffs.Reflect.Counter, Is.EqualTo(reflects));
     }
 
     // SkillDamage::HasDamage: any of value, constDamageByTargetHP, rate and damageByTargetMaxHP above 0.

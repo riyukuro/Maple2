@@ -35,7 +35,9 @@ public class Buff : IUpdatable, IByteSerializable {
     // The effect of a reflect with a rate (ReflectRecord.HasShare): its dot ticks deal the reflected damage held
     // here, then none until another reflected hit.
     public bool Reflected { get; private set; }
-    public long ReflectedDamage { get; private set; }
+    // The reflected damage pooled for the next tick, by the reflect holder it came from (AddReflected).
+    private readonly Dictionary<int, (IActor Holder, long Amount)> reflectedBy = new();
+    public long ReflectedDamage => reflectedBy.Values.Sum(entry => entry.Amount);
 
     public bool Enabled { get; private set; }
     // Held while the holder rides a battle mount (SuspendedOnBattleMount): Enabled and the client's flag stay as they
@@ -389,10 +391,13 @@ public class Buff : IUpdatable, IByteSerializable {
         }
     }
 
-    // A reflected hit on the holder of a reflect (Actor.Reflect): the share goes to this effect's next dot tick.
-    public void AddReflected(long amount) {
+    // A reflected hit on the holder of a reflect (Actor.Reflect): the share goes to this effect's next dot tick, kept
+    // apart per holder. A reflect effect that is not caster-individual is one buff for every holder, so each holder's
+    // share is its own tick, credited to that holder (chosen here).
+    public void AddReflected(IActor holder, long amount) {
         Reflected = true;
-        ReflectedDamage += Math.Max(0, amount);
+        (IActor _, long pooled) = reflectedBy.GetValueOrDefault(holder.ObjectId);
+        reflectedBy[holder.ObjectId] = (holder, pooled + Math.Max(0, amount));
     }
 
     private void ApplyDotDamage() {
@@ -403,18 +408,23 @@ public class Buff : IUpdatable, IByteSerializable {
         // none to deal is not sent. In the global service's packets the attacker of a holder of 60131001 (reflect rate
         // 0.1, reduce rate 0.9) took one tick of 60131002 per reflect, about 1.1 % of the hit (82 for 7452, 70 for 6386);
         // ReflectRecord.Share gives 1 % (75 for 7452).
-        long? reflectedDamage = null;
         if (Reflected) {
-            if (ReflectedDamage <= 0) {
-                return;
+            // Several hits before a tick add up into that one tick.
+            List<(IActor Holder, long Amount)> pooled = reflectedBy.Values.Where(entry => entry.Amount > 0).ToList();
+            reflectedBy.Clear();
+            foreach ((IActor holder, long amount) in pooled) {
+                DealDotDamage(holder, amount);
             }
-            reflectedDamage = ReflectedDamage;
-            ReflectedDamage = 0;
+            return;
         }
+        DealDotDamage(Caster, null);
+    }
 
+    private void DealDotDamage(IActor caster, long? reflectedDamage) {
+        AdditionalEffectMetadataDot.DotDamage dotDamage = Metadata.Dot.Damage!;
         // The caster's dot damage invokes on this effect (type 5) raise its rate (DotDamageRecord.DotRate).
-        (_, float invokeRate) = Caster.Buffs.GetEffectInvokeValues(InvokeEffectType.IncreaseDotDamage, Id, Metadata.Property.InvokeGroupId);
-        var record = new DotDamageRecord(Caster, Owner, Metadata.Dot.Damage, Stacks, invokeRate, Id, reflectedDamage) {
+        (_, float invokeRate) = caster.Buffs.GetEffectInvokeValues(InvokeEffectType.IncreaseDotDamage, Id, Metadata.Property.InvokeGroupId);
+        var record = new DotDamageRecord(caster, Owner, dotDamage, Stacks, invokeRate, Id, reflectedDamage) {
             BuffObjectId = ObjectId,
         };
         var targetUpdated = new List<BasicAttribute>(3);
@@ -447,11 +457,11 @@ public class Buff : IUpdatable, IByteSerializable {
         Field.Broadcast(SkillDamagePacket.DotDamage(record));
         // A tick of another player's dot that takes the last health on a pk field is that player's kill.
         if (Owner is FieldPlayer victim) {
-            victim.PkKilledBy(Caster, healthBefore);
+            victim.PkKilledBy(caster, healthBefore);
         }
         if (record.RecoverHp != 0) {
-            Caster.Stats.Values[BasicAttribute.Health].Add(record.RecoverHp);
-            Field.Broadcast(StatsPacket.Update(Caster, BasicAttribute.Health));
+            caster.Stats.Values[BasicAttribute.Health].Add(record.RecoverHp);
+            Field.Broadcast(StatsPacket.Update(caster, BasicAttribute.Health));
         }
     }
 
