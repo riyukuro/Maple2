@@ -65,13 +65,16 @@ public static class CommonExpRules {
 
     // The special attribute that raises a type's exp, as a fraction (0.01 = +1%): fishing (s_item_opt_sa_improve_acquire_
     // fishing_exp), arcade clears (_arcade_exp) and performing (_playinstrument_exp). The client only names them in item
-    // tooltips. KR sets them together on 10000061 (+1% at level 1 to +2.4%).
+    // tooltips. KR sets them together on 10000061 (+1% at level 1 to +2.4%). Gathering and crafting are raised by
+    // AcquireGatheringExp and AcquireManufacturingExp (75, 76); KR sets neither and the client has no string for them.
     public static SpecialAttribute? RateAttribute(ExpType expType) {
         return expType switch {
             ExpType.fishing => SpecialAttribute.FishingExp,
             ExpType.arcade => SpecialAttribute.ArcadeExp,
             ExpType.musicMastery1 or ExpType.musicMastery2 or ExpType.musicMastery3 or ExpType.musicMastery4 =>
                 SpecialAttribute.PlayInstrumentExp,
+            ExpType.gathering => SpecialAttribute.AcquireGatheringExp,
+            ExpType.manufacturing => SpecialAttribute.AcquireManufacturingExp,
             _ => null,
         };
     }
