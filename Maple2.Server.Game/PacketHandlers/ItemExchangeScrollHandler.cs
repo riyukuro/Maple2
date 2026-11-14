@@ -1,4 +1,5 @@
-﻿using Maple2.Database.Storage;
+﻿using System.Diagnostics.CodeAnalysis;
+using Maple2.Database.Storage;
 using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -50,6 +51,12 @@ public class ItemExchangeScroll : FieldPacketHandler {
         }
     }
 
+    // The dialog takes its row only from an item of the ItemExchangeScroll function (FUN_140f53a70,
+    // uiitemexchangescrolldialog.cpp:601): another item's parameter names no exchange.
+    private static bool IsScroll([NotNullWhen(true)] Item? item) {
+        return item?.Metadata.Function?.Type == ItemFunction.ItemExchangeScroll;
+    }
+
     // Client UIItemExchangeScrollDialog::SendItemExchangeScrollMode1 (uiitemexchangescrolldialog.cpp:575-598):
     // long scroll uid, long target uid, int count. The client refuses count 0 with code 7.
     private void HandleExchange(GameSession session, IByteReader packet) {
@@ -61,7 +68,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
 
         lock (session.Item) {
             Item? scrollItem = session.Item.Inventory.Get(scrollItemUid);
-            if (scrollItem == null) {
+            if (!IsScroll(scrollItem)) {
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid));
                 return;
             }
@@ -221,7 +228,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
             scrollItem = session.Item.Inventory.Get(scrollItemUid);
             target = session.Item.Inventory.Get(itemUid);
         }
-        if (scrollItem == null) {
+        if (!IsScroll(scrollItem)) {
             session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid));
             return;
         }
@@ -262,7 +269,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
         int scrollId;
         lock (session.Item) {
             Item? scrollItem = session.Item.Inventory.Get(scrollItemUid);
-            if (scrollItem == null) {
+            if (!IsScroll(scrollItem)) {
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid));
                 return;
             }

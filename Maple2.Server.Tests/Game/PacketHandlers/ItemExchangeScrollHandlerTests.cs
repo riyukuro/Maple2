@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using BagItem = Maple2.Model.Game.Item;
 
@@ -54,6 +56,26 @@ public class ItemExchangeScrollHandlerTests {
 
     private static bool Held(GameSession session, BagItem item) => session.Item.Inventory.Get(item.Uid) != null;
     private static int Rewards(GameSession session) => session.Item.Inventory.Find(RewardId).Sum(item => item.Amount);
+
+    // An item of another function whose parameter names a scroll row is no scroll: the exchange is refused with the
+    // dialog's invalid-scroll code and nothing is taken.
+    [Test]
+    public void ItemOfAnotherFunction_IsNoScroll() {
+        GameSession session = Start(out BagItem lockedScroll, out BagItem freeScroll, out _, out _);
+        BagItem box = test.Store(TestGameSession.Metadata(30000003,
+            function: new ItemMetadataFunction(ItemFunction.OpenGachaBox, "OpenGachaBox", "77", false)));
+        Assert.That(session.Item.Inventory.Add(box, commit: true), Is.True);
+        test.TakeSent();
+
+        Exchange(session, box.Uid, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(System.Convert.ToHexString(test.TakeSent().Single()), Is.EqualTo(System.Convert.ToHexString(
+                ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_scroll_invalid).ToArray())));
+            Assert.That(Rewards(session), Is.Zero);
+            Assert.That(Held(session, lockedScroll) && Held(session, freeScroll), Is.True);
+        });
+    }
 
     // A locked scroll is not one of the two the exchange takes.
     [TestCase(true)]
