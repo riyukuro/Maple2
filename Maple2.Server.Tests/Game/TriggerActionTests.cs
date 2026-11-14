@@ -2471,3 +2471,87 @@ public class TriggerRoomRowTests : TriggerTestBase {
         Assert.That(test.Session.MiniGameRecord.Rewards[DungeonRewardType.Exp], Is.EqualTo(1000));
     }
 }
+
+// The MassiveEvent banner and round rows (client UIMassiveEvent::FUN_1419f5e90, uimassiveevent.cpp:183) and the
+// side popup rows (CTriggerService::OnSidePopupTalk, triggerservice.cpp:683; UISidePopupTalk::AddPopup,
+// uisidepopuptalk_1.cpp:303), with the attribute forms KR scripts write.
+public class TriggerEventUiTests : TriggerTestBase {
+    // Box 1 holds the player at the origin, box 2 is far off.
+    private static readonly Ms2TriggerBox Near = new(Vector3.Zero, new Vector3(300, 300, 300), 1, true);
+    private static readonly Ms2TriggerBox Far = new(new Vector3(5000, 0, 0), new Vector3(300, 300, 300), 2, true);
+
+    private void StartWithBoxes() {
+        Start(Near, Far);
+        test.Session.Player.Position = Vector3.Zero;
+    }
+
+    // Mode 2: u8 subtype, unicode text (a server string key), i32 duration.
+    private static (byte Mode, byte Type, string Text, int Duration, int Left) Banner(ByteReader reader) =>
+        (reader.ReadByte(), reader.ReadByte(), reader.ReadUnicodeString(), reader.ReadInt(), reader.Available);
+
+    // set_event_ui_script (1526): no box (879 uses) and box 0 go to the whole field; a box id to the players in it;
+    // "!id" to the players outside it. The script types map to client subtypes through ParseBannerType (1 Text,
+    // 3 Winner, 6 Bonus, 7 Success); the client has no table for that, it only reads the subtype.
+    [Test]
+    public void SetEventUiScript_BannerToTheBoxes() {
+        StartWithBoxes();
+
+        Action("""<action name="set_event_ui_script" type="1" script="$02000344_BF__MAIN__2$" duration="3000" />""");
+        Assert.That(Banner(Sent(SendOp.MassiveEvent).Single()), Is.EqualTo(((byte) 2, (byte) BannerType.Text, "$02000344_BF__MAIN__2$", 3000, 0)));
+
+        Action("""<action name="set_event_ui_script" type="7" script="" duration="2000" box_ids="0" />""");
+        Assert.That(Banner(Sent(SendOp.MassiveEvent).Single()), Is.EqualTo(((byte) 2, (byte) BannerType.Success, "", 2000, 0)));
+
+        Action("""<action name="set_event_ui_script" type="3" script="$x$" duration="4000" box_ids="2" />""");
+        Assert.That(Sent(SendOp.MassiveEvent), Is.Empty);
+        Action("""<action name="set_event_ui_script" type="3" script="$x$" duration="4000" box_ids="1" />""");
+        Assert.That(Banner(Sent(SendOp.MassiveEvent).Single()), Is.EqualTo(((byte) 2, (byte) BannerType.Winner, "$x$", 4000, 0)));
+
+        Action("""<action name="set_event_ui_script" type="6" script="$y$" duration="5000" box_ids="!1" />""");
+        Assert.That(Sent(SendOp.MassiveEvent), Is.Empty);
+        Action("""<action name="set_event_ui_script" type="6" script="$y$" duration="5000" box_ids="!2" />""");
+        Assert.That(Banner(Sent(SendOp.MassiveEvent).Single()), Is.EqualTo(((byte) 2, (byte) BannerType.Bonus, "$y$", 5000, 0)));
+    }
+
+    // set_event_ui_round (238): mode 0, four ints the client hands to setStage: round, last round, first round
+    // (1 when the script names two), vertical offset. "0,0" (45 uses) sends a last round of 0, which hides the stage.
+    [TestCase("""arg1="0" rounds="2,5" """, 2, 5, 1, 0)]
+    [TestCase("""arg1="0" rounds="0,0" """, 0, 0, 1, 0)]
+    [TestCase("""arg1="0" rounds="7,10,6" v_offset="120" """, 7, 10, 6, 120)]
+    public void SetEventUiRound_SendsTheStage(string attributes, int round, int last, int first, int offset) {
+        Start();
+
+        Action($"""<action name="set_event_ui_round" {attributes}/>""");
+        ByteReader reader = Sent(SendOp.MassiveEvent).Single();
+        Assert.That((reader.ReadByte(), reader.ReadInt(), reader.ReadInt(), reader.ReadInt(), reader.ReadInt(), reader.Available),
+            Is.EqualTo(((byte) 0, round, last, first, offset, 0)));
+    }
+
+    // Trigger SidePopup (0x13): u8 kind, i32 duration, string movie, string illust, string voice, string sound,
+    // unicode text.
+    private static (byte Command, byte Kind, int Duration, string Movie, string Illust, string Voice, string Sound, string Text, int Left)
+        Popup(ByteReader reader) => (reader.ReadByte(), reader.ReadByte(), reader.ReadInt(), reader.ReadString(), reader.ReadString(),
+        reader.ReadString(), reader.ReadString(), reader.ReadUnicodeString(), reader.Available);
+
+    // side_npc_talk (675), side_npc_talk_bottom (76), side_npc_cutin (23), side_npc_movie (16), as 02020051_bf,
+    // 82000002_survival, 83000002_colosseum and 02000410_bf write them.
+    [Test]
+    public void SideNpc_PopupKinds() {
+        Start();
+
+        Action("""<action name="side_npc_talk" type="talk" illust="Neirin_surprise" script="$02020051_BF__101_MAIN__0$" duration="5684" voice="ko/Npc/00002201" npc_id="11003536" />""");
+        Assert.That(Popup(Sent(SendOp.Trigger).Single()),
+            Is.EqualTo(((byte) 0x13, (byte) 0, 5684, "", "Neirin_surprise", "ko/Npc/00002201", "", "$02020051_BF__101_MAIN__0$", 0)));
+
+        Action("""<action name="side_npc_talk_bottom" type="talkbottom" illust="MushroomRichPorter_normal" duration="5000" script="$82000002_survival__16_ExtraEvent__0$" npc_id="21001019" />""");
+        Assert.That(Popup(Sent(SendOp.Trigger).Single()),
+            Is.EqualTo(((byte) 0x13, (byte) 3, 5000, "", "MushroomRichPorter_normal", "", "", "$82000002_survival__16_ExtraEvent__0$", 0)));
+
+        Action("""<action name="side_npc_cutin" type="cutin" illust="Robe_normal" duration="3000" />""");
+        Assert.That(Popup(Sent(SendOp.Trigger).Single()), Is.EqualTo(((byte) 0x13, (byte) 2, 3000, "", "Robe_normal", "", "", "", 0)));
+
+        Action("""<action name="side_npc_movie" type="movie" usm="Common/WorldInvasionScene5.usm" duration="0" />""");
+        Assert.That(Popup(Sent(SendOp.Trigger).Single()),
+            Is.EqualTo(((byte) 0x13, (byte) 1, 0, "Common/WorldInvasionScene5.usm", "", "", "", "", 0)));
+    }
+}
