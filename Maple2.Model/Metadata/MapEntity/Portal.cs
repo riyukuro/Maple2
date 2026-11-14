@@ -16,5 +16,8 @@ public record Portal(
     int RandomRadius,
     bool Visible,
     bool MinimapVisible,
-    bool Enable
+    bool Enable,
+    // The xblock's PortalOffset: the client moves the portal's box centre by it, in world space (Unk_PortalBox,
+    // portal.cpp:112). Optional, so a pack ingested before loads with none.
+    Vector3 Offset = default
 ) : MapBlock;

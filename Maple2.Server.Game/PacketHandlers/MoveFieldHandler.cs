@@ -7,6 +7,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -66,6 +67,15 @@ public class MoveFieldHandler : PacketHandler<GameSession> {
         packet.ReadInt();
         packet.ReadUnicodeString();
         string password = packet.ReadUnicodeString(); // Password for locked portals
+
+        // The client uses only a portal whose box holds the character (PortalRules); a confirm box or the apartment
+        // dialog opened from one may be answered after a few steps, hence the slack.
+        if (session.Field.TryGetPortal(portalId, out FieldPortal? fieldPortal)
+            && !PortalRules.InBox(session.Player.Position, fieldPortal.Position, fieldPortal.Rotation, fieldPortal.Value.Dimension,
+                fieldPortal.Value.Offset, InteractRules.ReachSlack)) {
+            Logger.Debug("Portal {PortalId} used out of its box", portalId);
+            return;
+        }
 
         session.Field.UsePortal(session, portalId, password);
     }
