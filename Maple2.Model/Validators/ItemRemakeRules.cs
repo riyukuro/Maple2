@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 
 namespace Maple2.Model.Validators;
@@ -10,6 +11,28 @@ namespace Maple2.Model.Validators;
 // client's stat ids).
 public static class ItemRemakeRules {
     public readonly record struct Lock(bool Special, short Attribute);
+
+    // The dialogs offer option locks only with OptionBlock01 on (the scroll dialog's enableOptionLock and the item
+    // modify dialog's initData flag, uiitemremakescrolldialog.cpp:288, uiitemenchantdialog.cpp:402).
+    public const string OptionLockFeature = "OptionBlock01";
+
+    // The feature the client asks before it offers locks for this kind of item (CanLockOptions,
+    // itemremakescrolldata.cpp:437): armor, weapon and accessory by the equip subtype (CItemData FUN_14053d600,
+    // FUN_14053d2f0, FUN_14053d5c0), and a pet. Null for a kind not sorted here, which keeps no such check.
+    public static string? LockFeature(ItemType type) {
+        if (type.IsPet) {
+            return "PetRemakeBlock01";
+        }
+        if (type.Group != 1) {
+            return null;
+        }
+        return type.Type switch {
+            12 or >= 18 and <= 21 => "OptionBlockAccessory",
+            >= 13 and <= 17 or 22 => "OptionBlockArmor",
+            >= 30 and <= 34 or 40 or 41 or >= 50 and <= 56 or >= 80 and <= 83 => "OptionBlockWeapon",
+            _ => null,
+        };
+    }
 
     // Null when a basic option's id is outside the client's stat table (every option is still read).
     public static List<Lock>? ReadLocks(IByteReader packet) {

@@ -92,6 +92,16 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_null_status));
                 return;
             }
+            // A pet's locks (kept options, the lock candy) are offered only with PetRemakeBlock01 on (the pet remake
+            // tab, tabcontentspetremakeoption.cpp:566/709/1341); gear locks only with OptionBlock01 on (the item modify
+            // dialog's initData flag, uiitemenchantdialog.cpp:402).
+            if (locks.Count > 0 || item.Type.IsPet && ingredientUid != 0) {
+                string? feature = item.Type.IsPet ? ItemRemakeRules.LockFeature(item.Type) : ItemRemakeRules.OptionLockFeature;
+                if (feature != null && !session.ServerTableMetadata.FeatureTable.IsOn(feature)) {
+                    session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
+                    return;
+                }
+            }
 
             Item? lockItem = null;
             if (locks.Count > 0) {

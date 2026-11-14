@@ -41,10 +41,6 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
         }
     }
 
-    // The dialog offers option locks only with OptionBlock01 on (its Flash enableOptionLock,
-    // UIItemRemakeScrollDialog, uiitemremakescrolldialog.cpp:288): with it off the client sends no lock.
-    public const string OptionLockFeature = "OptionBlock01";
-
     private void HandleChange(GameSession session, IByteReader packet) {
         long scrollUid = packet.ReadLong();
         long itemUid = packet.ReadLong();
@@ -56,7 +52,10 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
             Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake, itemUid);
             return;
         }
-        if ((locks.Count > 0 || lockedFlag) && !session.ServerTableMetadata.FeatureTable.IsOn(OptionLockFeature)) {
+        // The dialog offers option locks only with OptionBlock01 on (its Flash enableOptionLock) and, for the item in
+        // it, its kind's lock feature (showOption's lock flag, CanLockOptions, uiitemremakescrolldialog.cpp:814).
+        bool locking = locks.Count > 0 || lockedFlag;
+        if (locking && !session.ServerTableMetadata.FeatureTable.IsOn(ItemRemakeRules.OptionLockFeature)) {
             Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake, itemUid);
             return;
         }
@@ -71,6 +70,10 @@ public class ChangeAttributesScrollHandler : FieldPacketHandler {
             Item? item = session.Item.Inventory.Get(itemUid, InventoryType.Gear) ?? session.Item.Inventory.Get(itemUid, InventoryType.Pets);
             if (item == null) {
                 Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_invalid_target_data, itemUid);
+                return;
+            }
+            if (locking && ItemRemakeRules.LockFeature(item.Type) is { } kindFeature && !session.ServerTableMetadata.FeatureTable.IsOn(kindFeature)) {
+                Refuse(session, ChangeAttributesScrollError.s_itemremake_scroll_error_server_fail_remake, itemUid, $"{kindFeature} off");
                 return;
             }
             ChangeAttributesScrollError error = IsCompatibleScroll(item, scroll, out ItemRemakeScrollMetadata? itemRemakeScrollMetadata);
