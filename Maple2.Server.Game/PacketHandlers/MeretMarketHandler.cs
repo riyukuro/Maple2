@@ -762,9 +762,10 @@ public class MeretMarketHandler : FieldPacketHandler {
             return;
         }
 
-        // The blueprint page carries a page size of 18, as KMS2 answers (0x1c 01000000 01000000 12 01000000) though
-        // the dialog's own searches ask for 8: with 1 the one item fills the page (CMeratMarketMan::OnBlueprintPage), so the page is not the end page
-        // (isEndPage false, UIBlueprintMarketDialog::ShowSearchResult) and the dialog offers a next page.
+        // The blueprint page carries a page size of 18, as KMS2 answers (0x1c 01000000 01000000 12 01000000)
+        // though the dialog's own searches ask for 8: with 1 the one item fills the page
+        // (CMeratMarketMan::OnBlueprintPage), so the page is not the end page (isEndPage false,
+        // UIBlueprintMarketDialog::ShowSearchResult) and the dialog offers a next page.
         session.Send(blueprintDialog
             ? MeretMarketPacket.LoadBlueprints([marketItem], 1, BlueprintPageSize, 1)
             : MeretMarketPacket.LoadItems([marketItem], 1, 1));

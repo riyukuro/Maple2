@@ -34,7 +34,6 @@ public static class MeretMarketPacket {
         FeaturedUgc = 102,
         AdProducts = 103,
         SaleSettings = 107,
-        Unknown201 = 201,
     }
 
     // Client reader: CMeratMarketMan::OnAdProducts (meratmarketman.cpp:2129), the answer to MeretMarket 103, which the
@@ -246,12 +245,12 @@ public static class MeretMarketPacket {
         return pWriter;
     }
 
-    public static ByteWriter LoadItems(ICollection<MarketItem> marketItems, int totalItems, int startPage) {
+    public static ByteWriter LoadItems(ICollection<MarketItem> marketItems, int totalItems, int page) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
         pWriter.Write<Command>(Command.LoadItems);
         pWriter.WriteInt(marketItems.Count);
         pWriter.WriteInt(totalItems);
-        pWriter.WriteInt(startPage);
+        pWriter.WriteInt(page);
         foreach (MarketItem entry in marketItems) {
             pWriter.WriteBool(true);
             pWriter.WriteMarketItem(entry);
@@ -280,13 +279,13 @@ public static class MeretMarketPacket {
         return pWriter;
     }
 
-    public static ByteWriter LoadBlueprints(ICollection<MarketItem> marketItems, int totalItems, byte itemsPerPage, int startPage) {
+    public static ByteWriter LoadBlueprints(ICollection<MarketItem> marketItems, int totalItems, byte itemsPerPage, int page) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
         pWriter.Write<Command>(Command.LoadBlueprints);
         pWriter.WriteInt(marketItems.Count);
         pWriter.WriteInt(totalItems);
         pWriter.WriteByte(itemsPerPage);
-        pWriter.WriteInt(startPage);
+        pWriter.WriteInt(page);
         foreach (MarketItem entry in marketItems) {
             pWriter.WriteBool(true);
             pWriter.WriteMarketItem(entry);
