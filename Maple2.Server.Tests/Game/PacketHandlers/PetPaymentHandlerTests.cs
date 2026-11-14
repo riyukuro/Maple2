@@ -395,6 +395,37 @@ public class PetPaymentHandlerTests {
         Assert.That(test.TrophyCounter(23100384), Is.Null);
     }
 
+    // The pet window has no evolution tab with PetEvolution01 off and no compose tab with PetBattle off
+    // (uipetsystemdialog.cpp:339/369): nothing changes and nothing is paid.
+    [Test]
+    public void EvolveAndFusion_WithTheirFeatureOff_DoNothing() {
+        GameSession session = Login(meso: 10_000_000, pets: 2);
+        pet.Pet!.Level = 50;
+        pet.Pet.EvolvePoints = 10;
+        int rarity = pet.Rarity;
+        test.SetFeaturesOff(PetHandler.EvolutionFeature, PetHandler.ComposeFeature);
+        test.TakeSent();
+
+        new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(17);
+            writer.WriteLong(pet.Uid);
+        }));
+        new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteLong(pet.Uid);
+            writer.WriteShort(1);
+            writer.WriteLong(Fodders[0].Uid);
+            writer.WriteInt(1);
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That(pet.Rarity, Is.EqualTo(rarity));
+            Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
+            Assert.That(session.Item.Inventory.Get(Fodders[0].Uid), Is.Not.Null);
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
     [Test]
     public void Fusion_TakesTheMesoThenTheFodder() {
         GameSession session = Login(meso: 10_000_000, pets: 2);

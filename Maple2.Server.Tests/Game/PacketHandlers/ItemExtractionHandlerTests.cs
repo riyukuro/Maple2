@@ -72,6 +72,20 @@ public class ItemExtractionHandlerTests {
         });
     }
 
+    // ItemExtraction off: the client opens no extraction dialog (invenslot.cpp:1012), so nothing is extracted.
+    [Test]
+    public void FeatureOff_ExtractsNothing() {
+        Start();
+        test.SetFeaturesOff(ItemExtractionHandler.Feature);
+        Extract();
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(ResultId), Is.Empty);
+            Assert.That(source.GlamorForges, Is.EqualTo(1));
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
     // Before, these requests got no reply and the dialog stayed waiting.
     [Test]
     public void NoRow_IsAnswered() {

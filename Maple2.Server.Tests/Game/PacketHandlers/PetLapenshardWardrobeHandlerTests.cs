@@ -408,6 +408,23 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(test.TakeSent().Select(packet => Convert.ToHexString(packet)[4..]), Is.EqualTo(new[] { "0405000101000000260D000000000000" }));
     }
 
+    // Closet off: the closet dialog does not open (uiclosetdialog.cpp:602), so a reset changes nothing.
+    [Test]
+    public void ClosetOff_KeepsTheTab() {
+        var test = new TestGameSession();
+        Item cap = test.Store(TestGameSession.Metadata(11300001, EquipSlot.CP, slotMax: 1));
+        GameSession session = test.Start();
+        Wardrobe wardrobe = Closet(session, 1, (cap, EquipSlot.CP));
+        test.SetFeaturesOff(WardrobeHandler.Feature);
+        test.TakeSent();
+
+        ClosetRequest(session, 2, layer: false);
+
+        Assert.That(wardrobe.Type, Is.EqualTo(1));
+        Assert.That(wardrobe.Equips, Has.Count.EqualTo(1));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
     // A cleared tab goes back to type 0.
     [Test]
     public void ClosetReset_SendsTypeZero() {

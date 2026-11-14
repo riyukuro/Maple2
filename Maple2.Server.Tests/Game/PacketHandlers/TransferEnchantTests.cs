@@ -61,6 +61,34 @@ public class TransferEnchantTests {
         });
     }
 
+    // EnchantTransform01 off: the inventory hides the transform button (uiinventorydialog.cpp:1008), so nothing is
+    // transformed and nothing paid.
+    [Test]
+    public void FeatureOff_TransformsNothing() {
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(GearId, EquipSlot.CP, slotMax: 1), TestGameSession.Metadata(OutputId));
+        GameSession session = test.Start();
+        Item gear = session.Field!.ItemDrop.CreateItem(GearId)!;
+        Assert.That(session.Item.Inventory.Add(gear, commit: true), Is.True);
+        gear = session.Item.Inventory.Find(GearId).Single();
+        test.SetTable(new ItemEnchantTransformTable([
+            new ItemEnchantTransformTable.Entry(gear.Rarity, 0, 0, [(int) gear.Type.Type], [GearId], 100,
+                [new ItemEnchantTransformTable.Output(OutputId, 1, 3)]),
+        ]));
+        session.Currency.Meso = 1000;
+        test.SetFeaturesOff(TransferEnchantHandler.Feature);
+        test.TakeSent();
+
+        new TransferEnchantHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => writer.WriteLong(gear.Uid)));
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(session.Item.Inventory.Find(GearId).Count(), Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Find(OutputId), Is.Empty);
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
     // A spend while the gear leaves the bag (another thread) cannot skip the fee: the fee was held before. Before,
     // the take after the gear's consume threw with the gear gone and no output given.
     [Test]

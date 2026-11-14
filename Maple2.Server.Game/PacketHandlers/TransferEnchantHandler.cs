@@ -24,8 +24,15 @@ public class TransferEnchantHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
+    // With EnchantTransform01 off the inventory hides the button that opens the transform dialog (UIInventoryDialog,
+    // uiinventorydialog.cpp:1008), the only sender (uiitemenchanttransformdialog.cpp:350).
+    public const string Feature = "EnchantTransform01";
+
     public override void Handle(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(Feature)) {
+            return;
+        }
 
         lock (session.Item) {
             Item? item = session.Item.Inventory.Get(itemUid);

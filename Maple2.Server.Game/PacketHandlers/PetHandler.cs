@@ -41,8 +41,22 @@ public class PetHandler : FieldPacketHandler {
         EvolvePoints = 18,
     }
 
+    // The pet window makes its compose tab only with PetBattle on and its evolution tab only with PetEvolution01 on
+    // (uipetsystemdialog.cpp:339/369); those tabs are the only senders of Fusion (tabcontentspetcompose.cpp:790) and
+    // Evolve / EvolvePoints (tabcontentspetevolution.cpp:912/937).
+    public const string ComposeFeature = "PetBattle";
+    public const string EvolutionFeature = "PetEvolution01";
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        string? feature = command switch {
+            Command.Fusion => ComposeFeature,
+            Command.Evolve or Command.EvolvePoints => EvolutionFeature,
+            _ => null,
+        };
+        if (feature != null && !session.ServerTableMetadata.FeatureTable.IsOn(feature)) {
+            return;
+        }
 
         switch (command) {
             case Command.Summon:

@@ -30,8 +30,15 @@ public class WardrobeHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
+    // Every Wardrobe request comes from the closet dialog (uiclosetdialog.cpp), which does not open with Closet off
+    // (UIClosetDialog::vfunc_75, :602; its openers check it too, uimyinfodialog.cpp:321, uiscenegame.cpp:1591).
+    public const string Feature = "Closet";
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(Feature)) {
+            return;
+        }
         switch (command) {
             case Command.Create:
                 HandleCreate(session, packet);

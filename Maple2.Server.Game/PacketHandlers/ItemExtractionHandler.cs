@@ -19,9 +19,16 @@ public class ItemExtractionHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
+    // With ItemExtraction off the client does not open the scroll's dialog (InvenSlot, invenslot.cpp:1012), the only
+    // sender (uiitemextractionscrolldialog.cpp:282).
+    public const string Feature = "ItemExtraction";
+
     public override void Handle(GameSession session, IByteReader packet) {
         long anvilItemUid = packet.ReadLong();
         long sourceItemUid = packet.ReadLong();
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(Feature)) {
+            return;
+        }
 
         lock (session.Item) {
             Item? anvil = session.Item.Inventory.Get(anvilItemUid);
