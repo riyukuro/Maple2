@@ -16,6 +16,10 @@ public static class DungeonAbilityRules {
 
     public static bool DarkStream(DungeonGroupType? group) => group == DungeonGroupType.darkStream;
 
+    // The stats are rebuilt at a field entry that starts or ends a Chaos Raid room's lines: nothing else rebuilds them
+    // there (a rebuild while leaving still sees the old field). The Dark Stream lines are read at each hit.
+    public static bool RebuildsOnEntry(DungeonGroupType? left, DungeonGroupType? entered) => ChaosRaid(left) != ChaosRaid(entered);
+
     // The share of a hit a target in Dark Stream takes: 70 (7 %) takes 93 %. A rate of 100 % or more leaves nothing,
     // a negative one adds nothing.
     public static double ReceivedFactor(long reduceRate) => 1 - Math.Clamp(reduceRate / 1000.0, 0, 1);

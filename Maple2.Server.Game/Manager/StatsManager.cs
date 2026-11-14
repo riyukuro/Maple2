@@ -412,7 +412,8 @@ public class StatsManager {
     private Dictionary<SpecialAttribute, long> hotTime = new();
 
     // In a Chaos Raid room the items' Chaos Raid lines add to the stats (DungeonAbilityRules), once the items, buffs
-    // and events are in. The stats are rebuilt on entering each field, so they hold only in the room.
+    // and events are in. The entry of a field that starts or ends
+    // them rebuilds the stats (GameSession.EnterField, DungeonAbilityRules.RebuildsOnEntry), so they hold only in the room.
     internal void AddDungeonAbilities(FieldPlayer player) {
         if (!DungeonAbilityRules.ChaosRaid(DungeonGroupOf(player.Field))) {
             return;

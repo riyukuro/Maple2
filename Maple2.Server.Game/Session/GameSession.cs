@@ -706,6 +706,8 @@ public sealed partial class GameSession : Core.Network.Session {
     // The field this session left for the one it enters (map 0: none, the session arrived from elsewhere), and
     // the owner when it was a home.
     private (int MapId, long OwnerId) leftField;
+    // The dungeon group of the field left by the last field change (DungeonAbilityRules.RebuildsOnEntry).
+    private DungeonGroupType? leftDungeonGroup;
 
     public bool PrepareField(int mapId, int portalId = -1, long ownerId = 0, int roomId = 0, in Vector3 position = default, in Vector3 rotation = default) {
         return PrepareFieldInternal(mapId, out _, portalId, ownerId, roomId, position, rotation);
@@ -787,6 +789,7 @@ public sealed partial class GameSession : Core.Network.Session {
 
         State = SessionState.ChangeMap;
         leftField = (Field?.MapId ?? 0, Field is HomeFieldManager leftHome ? leftHome.OwnerId : 0);
+        leftDungeonGroup = StatsManager.DungeonGroupOf(Field);
         bool leftDead = Player.IsDead;
         LeaveField();
 
@@ -936,6 +939,11 @@ public sealed partial class GameSession : Core.Network.Session {
             Async = true,
         });
 
+        // The Chaos Raid lines count only in their room: entering or leaving one rebuilds the stats with the new field.
+        if (DungeonAbilityRules.RebuildsOnEntry(leftDungeonGroup, StatsManager.DungeonGroupOf(Field))) {
+            Stats.Refresh();
+        }
+        leftDungeonGroup = null;
         Send(StatsPacket.Init(Player));
         Field.Broadcast(StatsPacket.Update(Player), Player.Session);
 

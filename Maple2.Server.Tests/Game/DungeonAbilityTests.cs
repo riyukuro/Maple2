@@ -73,6 +73,16 @@ public class DungeonAbilityTests {
         Assert.That(stats[BasicAttribute.Health].Total - health, Is.EqualTo(counts ? 500 : 0));
     }
 
+    [TestCase(null, DungeonGroupType.chaosRaid, true)]
+    [TestCase(DungeonGroupType.chaosRaid, null, true)]
+    [TestCase(DungeonGroupType.chaosRaid, DungeonGroupType.darkStream, true)]
+    [TestCase(DungeonGroupType.chaosRaid, DungeonGroupType.chaosRaid, false)]
+    [TestCase(null, DungeonGroupType.darkStream, false)]
+    [TestCase(null, null, false)]
+    public void RebuildsOnEntry(DungeonGroupType? left, DungeonGroupType? entered, bool rebuilds) {
+        Assert.That(DungeonAbilityRules.RebuildsOnEntry(left, entered), Is.EqualTo(rebuilds));
+    }
+
     [TestCase(DungeonGroupType.darkStream, 1.07)]
     [TestCase(DungeonGroupType.chaosRaid, 1.0)]
     [TestCase(null, 1.0)]
