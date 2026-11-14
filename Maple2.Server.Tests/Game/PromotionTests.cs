@@ -38,6 +38,7 @@ public class PromotionTests {
           <promotion id="73" promotionType="Snowman" startTime="2019-01-17-07-00" endTime="2019-02-14-07-00" point="2" type="npc" rewardLimitType="" rewardLimitCount="" prop="5000" code="" target="" individualDropBoxID="" buffID="" buffLevel="" feature="" locale="KR" />
           <promotion id="7201" promotionType="pesca" startTime="2019-12-04-08-00-00" endTime="2050-12-31-00-00-00" point="" type="fish" rewardLimitType="day" rewardLimitCount="999999" prop="10000" code="" target="00000001-63000059,63000061-99999999" individualDropBoxID="320000468" buffID="" buffLevel="" feature="" locale="CN" />
           <promotion id="9" promotionType="normal" startTime="2018-07-01-07-00" endTime="2018-07-26-07-00" point="" type="harvest" rewardLimitType="day" rewardLimitCount="1" prop="10000" code="" target="" individualDropBoxID="330001219" buffID="" buffLevel="" feature="" locale="KR" />
+          <promotion id="11" promotionType="normal" startTime="2018-07-01-07-00" endTime="2018-07-26-07-00" point="" type="item_collect" rewardLimitType="day" rewardLimitCount="1" prop="10000" code="" target="" individualDropBoxID="330001219" buffID="" buffLevel="" feature="" locale="KR" />
           <promotion id="10" promotionType="normal" startTime="2018-07-01-07-00" endTime="2018-07-26-07-00" point="" type="npc" rewardLimitType="day" rewardLimitCount="1" prop="10000" code="" target="" individualDropBoxID="" buffID="" buffLevel="" feature="" locale="KR" />
         </ms2>
         """;
@@ -52,7 +53,8 @@ public class PromotionTests {
     public void Ingest_KeepsTheLocaleRowsButSnowmanAndUncounted() {
         PromotionTable table = Map("KR");
 
-        // Left out: the snowman row, playinstrument_time, a type that is no condition and a row without a box.
+        // Left out: the snowman row, playinstrument_time, item_collect (its check counts the item), a type that is no
+        // condition and a row without a box.
         Assert.That(table.Entries.Select(entry => entry.Id), Is.EqualTo(new[] { 8804, 8849, 8866, 8822, 8021, 4, 112 }));
         PromotionTable.Entry coin = table.Entries[0];
         Assert.Multiple(() => {
@@ -83,9 +85,11 @@ public class PromotionTests {
     public void Ingest_OtherLocale_ItsRowsOnly() {
         PromotionTable table = Map("CN");
 
-        Assert.That(table.Entries.Select(entry => (entry.Id, entry.Kind)), Is.EqualTo(new[] { (7201, PromotionKind.pesca) }));
-        // Two ranges in a list are kept as strings (ConvertCodes), as a quest condition's would be.
-        Assert.That(table.Entries[0].Condition.Target!.Strings, Has.Length.EqualTo(2));
+        // A target list of two ranges: one entry per range.
+        Assert.That(table.Entries.Select(entry => (entry.Id, entry.Kind)), Is.EqualTo(new[] { (7201, PromotionKind.pesca), (7201, PromotionKind.pesca) }));
+        Assert.That(table.Entries.Select(entry => entry.Condition.Target!.Range), Is.EqualTo(new ConditionMetadata.Range<int>?[] {
+            new ConditionMetadata.Range<int>(1, 63000059), new ConditionMetadata.Range<int>(63000061, 99999999),
+        }));
     }
 
     [Test]
@@ -205,6 +209,31 @@ public class PromotionTests {
         Assert.That(Stored().OrderBy(row => row.ShareId), Is.EqualTo(new[] { (session.CharacterId, 4, 1), (0L, 8804, 1) }));
         // The goldus row's notice is type 1 (Goldus).
         Assert.That(test.TakeSent().Count(packet => BitConverter.ToUInt16(packet, 0) == (ushort) SendOp.TaskEvent && packet[2] == 1), Is.EqualTo(1));
+    }
+
+    // Two sessions of one account restart the same expired counter: the count is 1 before and after, so only the
+    // end tells the second writer that the row moved; its save fails and it reads again (TakePromotionCount).
+    [Test]
+    public void ExpiredCounter_RestartedByAnotherSession_LosesTheRace() {
+        test = new TestGameSession();
+        test.Start();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.TakePromotionCount(1, 0, 4, 1, 1_010, 1_000), Is.True);
+        }
+
+        using var stale = new Ms2Context(test.Options);
+        var row = stale.PromotionCount.AsTracking().Single(count => count.ShareId == 4);
+        using (GameStorage.Request other = test.Storage.Context()) {
+            Assert.That(other.TakePromotionCount(1, 0, 4, 1, 1_100, 1_050), Is.True);
+        }
+        row.Count = 1;
+        row.ExpirationTime = 1_100;
+
+        Assert.Throws<DbUpdateConcurrencyException>(() => stale.SaveChanges());
+        using (GameStorage.Request again = test.Storage.Context()) {
+            // Read again, the restarted counter is full.
+            Assert.That(again.TakePromotionCount(1, 0, 4, 1, 1_100, 1_050), Is.False);
+        }
     }
 
     [Test]

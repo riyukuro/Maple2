@@ -2512,6 +2512,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 || !int.TryParse(row.GetAttribute("id"), out int id)
                 || !Enum.TryParse(row.GetAttribute("type"), true, out Maple2.Model.Enum.ConditionType type) || !Enum.IsDefined(type)
                 || type is Maple2.Model.Enum.ConditionType.playinstrument_time
+                    or Maple2.Model.Enum.ConditionType.item_collect or Maple2.Model.Enum.ConditionType.item_collect_revise
                 || !int.TryParse(row.GetAttribute("individualDropBoxID"), out int boxId) || boxId <= 0
                 || !int.TryParse(row.GetAttribute("prop"), out int prop) || prop <= 0
                 || !DateTime.TryParseExact(row.GetAttribute("startTime"), PromotionTimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime start)
@@ -2523,17 +2524,30 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 ? parsedLimit : PromotionLimit.none;
             int shareId = int.TryParse(row.GetAttribute("rewardLimitShareID"), out int parsedShare) && parsedShare > 0 ? parsedShare : id;
             int.TryParse(row.GetAttribute("requireLevel"), out int requireLevel);
-            var condition = new ConditionMetadata(type, 1, PromotionCodes(row.GetAttribute("code")), PromotionCodes(row.GetAttribute("target")));
-            entries.Add(new PromotionTable.Entry(id, kind, condition, start, end, Math.Min(prop, 10000), boxId, requireLevel,
-                limit, limit == PromotionLimit.none ? 0 : limitCount, shareId, row.GetAttribute("isAccount") == "1"));
+            foreach (ConditionMetadata.Parameters? code in PromotionCodes(row.GetAttribute("code"))) {
+                foreach (ConditionMetadata.Parameters? target in PromotionCodes(row.GetAttribute("target"))) {
+                    var condition = new ConditionMetadata(type, 1, code, target);
+                    entries.Add(new PromotionTable.Entry(id, kind, condition, start, end, Math.Min(prop, 10000), boxId, requireLevel,
+                        limit, limit == PromotionLimit.none ? 0 : limitCount, shareId, row.GetAttribute("isAccount") == "1"));
+                }
+            }
         }
         return new PromotionTable(entries.ToArray());
     }
 
     // A code or target as the quest and trophy conditions read theirs (MapperExtensions.ConvertCodes): a list split
-    // at commas, or one id, one range ("80000001-80000010") or one string; none when empty.
-    private static ConditionMetadata.Parameters? PromotionCodes(string value) {
+    // at commas, or one id, one range ("80000001-80000010") or one string; none when empty. A list that holds a range
+    // ("00000001-63000059,63000061-99999999", CN) gives one parameter per element, as Parameters holds one range; the
+    // row is then one entry per element (the elements do not overlap, so an action meets at most one).
+    private static IEnumerable<ConditionMetadata.Parameters?> PromotionCodes(string value) {
         string[] codes = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (codes.Length > 1 && codes.Any(code => code.Contains('-'))) {
+            return codes.Select(code => PromotionCode([code]));
+        }
+        return [PromotionCode(codes)];
+    }
+
+    private static ConditionMetadata.Parameters? PromotionCode(string[] codes) {
         // ConvertCodes parses one dashed code as a range; a dashed code that is not two numbers stays a string.
         if (codes.Length == 1 && codes[0].Split('-') is { Length: > 1 } parts
             && !(parts.Length == 2 && int.TryParse(parts[0], out _) && int.TryParse(parts[1], out _))) {

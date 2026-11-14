@@ -1810,6 +1810,7 @@ namespace Maple2.Server.World.Migrations
                         .HasColumnType("int");
 
                     b.Property<long>("ExpirationTime")
+                        .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
                     b.HasKey("AccountId", "CharacterId", "ShareId");
