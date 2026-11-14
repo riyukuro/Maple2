@@ -961,6 +961,35 @@ public class QuestHandlerTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // A claimed round that is no longer a table round (here 7, between KR rounds 5 and 10): the client's
+    // CFieldMissionTable::GetNextRound finds no round after it and sends none, so a claim of 10 gives nothing.
+    [Test]
+    public void FieldMission_AfterAClaimedRoundOutsideTheTableTakesNone() {
+        GameSession session = Login();
+        test.SetTable(new FieldMissionTable(new Dictionary<int, FieldMissionTable.Entry> {
+            [10] = new(10, new ItemComponent(RewardId, 1, 3, ItemTag.None), 0),
+            [5] = new(5, new ItemComponent(RewardId, 1, 1, ItemTag.None), 0),
+        }));
+        for (int i = 0; i < 10; i++) {
+            test.StartQuest(TestGameSession.QuestData(QuestId + 1 + i, QuestType.FieldMission)).State = QuestState.Completed;
+        }
+        session.Config.ExplorationProgress = 7;
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(26);
+            writer.WriteInt(10);
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That((Held(session), session.Config.ExplorationProgress), Is.EqualTo((0, 7)));
+            Assert.That(QuestRules.NextFieldMissionRound([10, 5], 0), Is.EqualTo(5));
+            Assert.That(QuestRules.NextFieldMissionRound([10, 5], 5), Is.EqualTo(10));
+            Assert.That(QuestRules.NextFieldMissionRound([10, 5], 10), Is.EqualTo(0));
+            Assert.That(QuestRules.NextFieldMissionRound([], 0), Is.EqualTo(0));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // A started quest of the KR row's type with this complete reward, its one condition met.
     private Quest StartedWith(QuestType type, Func<QuestMetadataReward, QuestMetadataReward> reward, AllianceType alliance = AllianceType.AnyFaction,
                               int rank = 5) {

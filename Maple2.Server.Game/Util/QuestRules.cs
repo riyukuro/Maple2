@@ -428,9 +428,16 @@ public static class QuestRules {
 
     // The round Quest 26 may claim: CQuestManager::GetNextRound (questmanager_2.cpp:1572) sends the round after the
     // claimed one (CFieldMissionTable::GetNextRound, fieldmissiontable.cpp:160, the rounds in their mission count's
-    // order; the first one after none), 0 after the last. A later round is not claimed past the one before it.
-    public static int NextFieldMissionRound(IEnumerable<int> rounds, int progress) =>
-        rounds.Where(round => round > progress).DefaultIfEmpty(0).Min();
+    // order; the first one after none), 0 after the last. A later round is not claimed past the one before it, and a
+    // claimed round that is not a table round (data changed since) leaves none claimable, as in the client.
+    public static int NextFieldMissionRound(IEnumerable<int> rounds, int progress) {
+        List<int> sorted = rounds.Order().ToList();
+        if (progress == 0 && sorted.Count > 0) {
+            return sorted[0];
+        }
+        int index = sorted.IndexOf(progress);
+        return index >= 0 && index + 1 < sorted.Count ? sorted[index + 1] : 0;
+    }
 
     public static bool ClientStartsItself(QuestMetadata metadata, int mapId) {
         QuestMetadataBasic basic = metadata.Basic;
