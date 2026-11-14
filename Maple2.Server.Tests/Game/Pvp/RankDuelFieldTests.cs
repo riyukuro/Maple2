@@ -254,6 +254,28 @@ public class RankDuelFieldTests {
         System.Threading.SpinWait.SpinUntil(() => duel.Ended.Count > 0, 2000);
     }
 
+    // The honor token (107) and PvP exp (108) special attributes: B, the loser, holds +50% of each and gets 10 + 5
+    // tokens and 200 + 100 exp; A holds none and gets the result's alone.
+    [Test]
+    public void Death_HonorTokenAndPvpExpRates() {
+        Duel duel = Start();
+        Fight(duel);
+        WinRound(duel, duel.PlayerB);
+        duel.PlayerB.Stats.Values[SpecialAttribute.HonorToken].AddTotal(500);
+        duel.PlayerB.Stats.Values[SpecialAttribute.PvpExp].AddTotal(500);
+        long tokensA = duel.A.Session.Currency[CurrencyType.ValorToken];
+        long tokensB = duel.B.Session.Currency[CurrencyType.ValorToken];
+        long expA = duel.A.Session.Player.Value.Character.Exp;
+        long expB = duel.B.Session.Player.Value.Character.Exp;
+
+        duel.Field.RankDuel!.Death(duel.PlayerB);
+
+        Assert.That(duel.A.Session.Currency[CurrencyType.ValorToken], Is.EqualTo(tokensA + 10));
+        Assert.That(duel.B.Session.Currency[CurrencyType.ValorToken], Is.EqualTo(tokensB + 15));
+        Assert.That(duel.A.Session.Player.Value.Character.Exp, Is.EqualTo(expA + 600));
+        Assert.That(duel.B.Session.Player.Value.Character.Exp, Is.EqualTo(expB + 300));
+    }
+
     // A win where the loser's hits took no health from the winner: the winner gets the perfect intro (Pvp 31) in
     // place of the win intro, the loser its lose intro; a hit of the winner on the loser does not matter.
     [Test]

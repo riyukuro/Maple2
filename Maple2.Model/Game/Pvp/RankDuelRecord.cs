@@ -100,6 +100,14 @@ public static class RankDuelRules {
         return new RankDuelChange(rating, change, reward);
     }
 
+    // The extra valor tokens of the honor token special attribute (s_item_opt_sa_improve_honor_token, 107), as a
+    // fraction of the result's reward (0.05 = +5%). The client only names it in item tooltips. Chosen here: it is paid
+    // apart from the reward, beyond the week's gauge as the type 11 special effect's extra, rounded down; a rate below
+    // 0 gives none.
+    public static int HonorTokenExtra(int reward, double rate) {
+        return reward <= 0 || rate <= 0 ? 0 : (int) (reward * rate);
+    }
+
     // The widening window of the queue: the gap allowed after waiting waitedMs, from the server constants
     // rankDuelPvpMatchingMinGap and rankDuelPvpMatchingTime (seconds). Chosen here (the constants are not
     // explained by the client): the gap starts at minGap and grows by minGap every matchingTime seconds; with no

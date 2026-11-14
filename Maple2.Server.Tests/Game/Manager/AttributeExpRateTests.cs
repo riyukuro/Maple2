@@ -10,7 +10,7 @@ using Maple2.Server.Game.Session;
 namespace Maple2.Server.Tests.Game.Manager;
 
 // Fishing, arcade, performing, gathering and crafting exp raised by their special attributes (FishingExp, ArcadeExp,
-// PlayInstrumentExp, AcquireGatheringExp, AcquireManufacturingExp):
+// PlayInstrumentExp, AcquireGatheringExp, AcquireManufacturingExp), and the arenas' and duels' results by PvpExp:
 // before, Game read none of them and the exp was the curve's alone.
 public class AttributeExpRateTests {
     private TestGameSession test = null!;
@@ -24,6 +24,10 @@ public class AttributeExpRateTests {
             [ExpType.gathering] = new(1, 1f),
             [ExpType.manufacturing] = new(1, 1f),
             [ExpType.petTaming] = new(1, 1f),
+            [ExpType.rankDuelWin] = new(1, 1f),
+            [ExpType.redDuelLose] = new(1, 1f),
+            [ExpType.btiTeamWin] = new(1, 1f),
+            [ExpType.bloodMineRankOther] = new(1, 1f),
         }));
         test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
             [1] = Enumerable.Range(1, 99).ToDictionary(level => level, level => level * 10L),
@@ -46,6 +50,10 @@ public class AttributeExpRateTests {
     [TestCase(ExpType.musicMastery3, SpecialAttribute.PlayInstrumentExp, 1f, 512)]
     [TestCase(ExpType.gathering, SpecialAttribute.AcquireGatheringExp, 1f, 512)]
     [TestCase(ExpType.manufacturing, SpecialAttribute.AcquireManufacturingExp, 1f, 512)]
+    [TestCase(ExpType.rankDuelWin, SpecialAttribute.PvpExp, 1f, 512)]
+    [TestCase(ExpType.redDuelLose, SpecialAttribute.PvpExp, 1f, 512)]
+    [TestCase(ExpType.btiTeamWin, SpecialAttribute.PvpExp, 1f, 512)]
+    [TestCase(ExpType.bloodMineRankOther, SpecialAttribute.PvpExp, 1f, 512)]
     public void Gain_RaisedByItsAttribute(ExpType type, SpecialAttribute attribute, float modifier, long expected) {
         GameSession session = Start();
         session.Player.Stats.Values[attribute].AddTotal(24);
@@ -63,6 +71,7 @@ public class AttributeExpRateTests {
         Assert.That(session.Exp.AddExp(ExpType.arcade), Is.EqualTo(500));
         Assert.That(session.Exp.AddExp(ExpType.gathering), Is.EqualTo(500));
         Assert.That(session.Exp.AddExp(ExpType.petTaming), Is.EqualTo(500));
+        Assert.That(session.Exp.AddExp(ExpType.rankDuelWin), Is.EqualTo(500));
     }
 
     [TestCase(ExpType.fishing, SpecialAttribute.FishingExp)]
@@ -71,6 +80,16 @@ public class AttributeExpRateTests {
     [TestCase(ExpType.musicMastery4, SpecialAttribute.PlayInstrumentExp)]
     [TestCase(ExpType.gathering, SpecialAttribute.AcquireGatheringExp)]
     [TestCase(ExpType.manufacturing, SpecialAttribute.AcquireManufacturingExp)]
+    [TestCase(ExpType.bloodMineRank1, SpecialAttribute.PvpExp)]
+    [TestCase(ExpType.bloodMineRank2, SpecialAttribute.PvpExp)]
+    [TestCase(ExpType.bloodMineRank3, SpecialAttribute.PvpExp)]
+    [TestCase(ExpType.bloodMineRankOther, SpecialAttribute.PvpExp)]
+    [TestCase(ExpType.redDuelWin, SpecialAttribute.PvpExp)]
+    [TestCase(ExpType.redDuelLose, SpecialAttribute.PvpExp)]
+    [TestCase(ExpType.btiTeamWin, SpecialAttribute.PvpExp)]
+    [TestCase(ExpType.btiTeamLose, SpecialAttribute.PvpExp)]
+    [TestCase(ExpType.rankDuelWin, SpecialAttribute.PvpExp)]
+    [TestCase(ExpType.rankDuelLose, SpecialAttribute.PvpExp)]
     [TestCase(ExpType.petTaming, null)]
     [TestCase(ExpType.miniGame, null)]
     public void RateAttribute(ExpType type, SpecialAttribute? expected) {
