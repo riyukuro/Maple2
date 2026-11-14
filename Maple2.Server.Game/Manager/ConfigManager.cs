@@ -856,6 +856,9 @@ public class ConfigManager {
         return lapenshards.TryGetValue(slot, out int id) ? id : -1;
     }
 
+    // The item ids of the worn shards.
+    public int[] WornLapenshards() => lapenshards.Values.Where(id => id > 0).ToArray();
+
     public void SetLapenshard(LapenshardSlot slot, int id) {
         lapenshards[slot] = id;
     }

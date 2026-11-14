@@ -461,6 +461,8 @@ public sealed class TestGameSession {
         session.Config = Uninitialized<ConfigManager>();
         // No favorite designer: what the meret market manager reads.
         typeof(ConfigManager).GetField("favoriteDesigners", Any)!.SetValue(session.Config, new List<long>());
+        // No shard worn: what the skill cast check reads.
+        typeof(ConfigManager).GetField("lapenshards", Any)!.SetValue(session.Config, new Dictionary<LapenshardSlot, int>());
         session.Quest = quest;
         var marriage = Uninitialized<MarriageManager>();
         typeof(MarriageManager).GetField("session", Any)!.SetValue(marriage, session);

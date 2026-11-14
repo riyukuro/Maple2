@@ -89,6 +89,12 @@ public static class SkillCastCheck {
             Logger.Debug("Cast refused, skill {SkillId}: the client's begin condition answers {Answer:X} for the buffs held", record.SkillId, effectAnswer);
             return false;
         }
+        if (SkillCastRules.LapenshardFieldRefuses(record.SkillId, laterMotion, session.Field.Metadata.Property.Type == MapType.Pvp,
+                ContentShutdownConfig.Contents.Contains(SkillCastRules.LapenshardSkillContent),
+                session.Config.WornLapenshards().Select(itemId => session.ItemMetadata.TryGet(itemId, out ItemMetadata? item) ? item.Skill : null))) {
+            Logger.Debug("Cast refused, skill {SkillId}: a worn shard gives it and field {MapId} is a PvP field", record.SkillId, session.Field.MapId);
+            return false;
+        }
         if (SkillCastRules.EpFieldRefuses(session.Field.Metadata.Limit.Dash, record.Metadata.Data.Consume.Stat.GetValueOrDefault(BasicAttribute.Stamina))) {
             Logger.Debug("Cast refused, skill {SkillId} costs EP and field {MapId} allows no EP skill", record.SkillId, session.Field.MapId);
             return false;

@@ -595,6 +595,24 @@ public static class SkillCastRules {
         return null;
     }
 
+    // The content id that, while shut, makes the client count no shard skill (MyPC::GetLapenshardSkillLevel, mypc.cpp:4335).
+    public const short LapenshardSkillContent = 0x5b;
+
+    // A skill a worn shard gives is not cast on a PvP field (CSkillSystem::FUN_14176a8c0, skillslot.cpp:3265-3269,
+    // answer 0x1b; CFieldData::FUN_1403744a0 is mapType 9). The client looks up the skill id among the item skills of
+    // the worn shards whose EquipPart is 1 alone (MyPC::UpdateLapenshardGrades, mypc.cpp:4292; an item skill with no
+    // skillLevel is level 1, so every one counts). In the KR and GMS2 data only the 60 EquipPart 1 shards (the red
+    // ones, itemdata 410) have an item skill, so every worn shard's skill is read and EquipPart is not ingested. The
+    // client counts none while content 0x5b is shut (it then has no shard skill to cast at all). An honest client
+    // never sends such a cast, so this refuses only a forged one.
+    public static bool LapenshardFieldRefuses(int skillId, bool laterMotion, bool pvpField, bool contentShut,
+            IEnumerable<ItemMetadataSkill?> wornShardSkills) {
+        if (laterMotion || skillId == UncheckedCastSkill || !pvpField || contentShut) {
+            return false;
+        }
+        return wornShardSkills.Any(skill => skill != null && skill.Id == skillId);
+    }
+
     // The client's buffs follow the server's by packet, so for a moment after a change the two disagree: a buff the
     // server just lost (removed, expired or turned off) the client may still hold, and one the server just gained the
     // client may not hold yet. Chosen here: a buff state that changed this long ago or less counts both ways.

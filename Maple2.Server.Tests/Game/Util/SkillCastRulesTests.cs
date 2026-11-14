@@ -386,6 +386,23 @@ public class SkillCastRulesTests {
         });
     }
 
+    // FUN_14176a8c0's answer 0x1b: a skill a worn shard gives is not cast on a PvP field. KR 41000011 (a red shard)
+    // gives skill 120010001 with no skillLevel; the other shards give none.
+    [Test]
+    public void LapenshardFieldRefuses_OnAPvpFieldOnly() {
+        ItemMetadataSkill?[] worn = [null, new ItemMetadataSkill(120010001, 0, 0, 0)];
+        bool Refuses(int skillId = 120010001, bool later = false, bool pvp = true, bool shut = false, ItemMetadataSkill?[]? shards = null) =>
+            SkillCastRules.LapenshardFieldRefuses(skillId, later, pvp, shut, shards ?? worn);
+        Assert.Multiple(() => {
+            Assert.That(Refuses(), Is.True);
+            Assert.That(Refuses(pvp: false), Is.False);
+            Assert.That(Refuses(skillId: 10100091), Is.False);
+            Assert.That(Refuses(shards: [null]), Is.False);
+            Assert.That(Refuses(later: true), Is.False);
+            Assert.That(Refuses(shut: true), Is.False);
+        });
+    }
+
     // FUN_14176a8c0's effect answers: every requireEffect code held (0x14), no buff held of a hasNotAdditionalEffectGroup
     // group (0x18). KR 10200281 requires its own buff 10200281; item skills 90000596-90000601 refuse groups 10 and 11.
     // A buff state that changed within BuffStateSlackMs counts both ways, as the client may not have it yet.
