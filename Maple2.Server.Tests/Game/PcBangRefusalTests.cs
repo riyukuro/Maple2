@@ -64,6 +64,42 @@ public class PcBangRefusalTests {
         Assert.That(session.PcBang.Refuses(session.Item.Inventory.Get(item.Uid)!), Is.False);
     }
 
+    // A change of mount while riding (Ride 2, RideHandler.HandleChange) to a PC bang mount is refused the same way.
+    [Test]
+    public void RideChange() {
+        test = new TestGameSession();
+        ItemMetadata duckData = TestGameSession.Metadata(50600002, type: 5, slotMax: 1);
+        Item duck = test.Store(duckData with { Property = duckData.Property with { Ride = 21000021 } });
+        ItemMetadata mount = TestGameSession.Metadata(50600001, type: 5, slotMax: 1);
+        Item item = test.Store(PcBang(mount with { Property = mount.Property with { Ride = 21000022 } }));
+        Start();
+        session.Ride = new RideManager(session);
+        var metadata = new RideMetadata(21000021, "", new RideMetadataBasic(RideOnType.Default, 0, 0, 0, false, 0, 0),
+            new RideMetadataSpeed(0, 0, 0, 0), new Dictionary<BasicAttribute, long>());
+        Ride ride = new Ride(session.Player.ObjectId, metadata, new RideOnActionDefault(metadata.Id, 1, duck));
+        session.Ride.Ride = ride;
+        // The key table the end of a ride sends again (the fixture's config is not loaded).
+        typeof(ConfigManager).GetField("session", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Config, session);
+        typeof(ConfigManager).GetField("keyBinds", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.Config, new Dictionary<int, KeyBind>());
+
+        void Change() => new RideHandler { RideMetadata = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(2); // Change
+            writer.WriteInt(21000022);
+            writer.WriteLong(item.Uid);
+        }));
+
+        Change();
+        Assert.That(session.Ride.Ride, Is.SameAs(ride));
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Notice).ToArray(),
+            Has.Length.EqualTo(1));
+
+        AtPcBang();
+        Change();
+        Assert.That(session.Ride.Ride, Is.Null);
+        Assert.That(test.TakeSent().Select(TestGameSession.Op), Does.Contain(SendOp.ResponseRide));
+    }
+
     [Test]
     public void PetSummonAndSwitch() {
         test = new TestGameSession();
