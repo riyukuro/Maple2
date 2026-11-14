@@ -509,6 +509,9 @@ public class MentorHandlerTests {
 
     private static long NextMidnight() => DateTime.Now.Date.AddDays(1).ToEpochSeconds();
 
+    // Mentor 11: an unread int, the coins today, the time they hold until.
+    private static string Coins(int today) => Hex(MentorPacket.DailyPoints(today, NextMidnight()));
+
     // The reward page's button (Mentor 0): the first day's coin, the streak level and the next midnight (Mentor 10).
     [Test]
     public void AttendReward_GivesTheDaysCoinOnce() {
@@ -517,7 +520,7 @@ public class MentorHandlerTests {
         Mentor(test);
 
         Send(session, Reward);
-        Assert.That(Mentor(test), Is.EqualTo(new[] { AttendDate(1, NextMidnight()) }));
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Coins(100), AttendDate(1, NextMidnight()) }));
         Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(100));
 
         Send(session, Reward);
@@ -538,6 +541,7 @@ public class MentorHandlerTests {
                 Is.EquivalentTo(new[] {
                     (GameEventUserValueType.MentoringAttendLevel, "1"),
                     (GameEventUserValueType.MentoringAttendNext, NextMidnight().ToString()),
+                    (GameEventUserValueType.MentoringMenteeCoinToday, "100"),
                 }));
         }
         session.Mentoring.Load();
@@ -572,5 +576,51 @@ public class MentorHandlerTests {
         Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.FullEarnCoin) }));
         Send(session, Reward);
         Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.FullEarnCoin) }));
+    }
+
+    // The mentee coins of the mentoring rewards stop at the table's daily cap (1500): the attend claim gives the
+    // part under it, and at the cap it is refused like the token cap (Mentor 16, 9) and keeps the day.
+    [Test]
+    public void AttendReward_StopsAtTheDailyCoinCap() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        Assert.That(session.Mentoring.AddMenteeCoin(1450), Is.EqualTo(1450));
+        Mentor(test);
+
+        Send(session, Reward);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Coins(1500), AttendDate(1, NextMidnight()) }));
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(1500));
+
+        Assert.That(session.Mentoring.AddMenteeCoin(100), Is.EqualTo(0));
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(1500));
+    }
+
+    [Test]
+    public void AttendReward_AtTheDailyCoinCapIsRefused() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        session.Mentoring.AddMenteeCoin(1500);
+        Mentor(test);
+
+        Send(session, Reward);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.FullEarnCoin) }));
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(1500));
+        session.Mentoring.Load();
+        Assert.That(Mentor(test).Last(), Is.EqualTo(AttendDate(0, 0)));
+    }
+
+    // The dialog's open sends a mentee the coins today; without a season the coins are given as before, uncounted.
+    [Test]
+    public void MenteeCoins_ShownOnOpenAndUncappedWithoutASeason() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        session.Mentoring.AddMenteeCoin(300);
+        Mentor(test);
+        Send(session, OpenDialog);
+        Assert.That(Mentor(test), Has.Member(Coins(300)));
+
+        Login(season: false);
+        Assert.That(session.Mentoring.AddMenteeCoin(2000), Is.EqualTo(2000));
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(2000));
     }
 }

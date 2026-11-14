@@ -13,6 +13,13 @@ public static class MentoringAttend {
     // shows them only when there are exactly three (ASMentoringRewardPage::Refresh).
     public static readonly int[] RewardCoins = [100, 200, 300];
 
+    // table/mentoringconfig.xml maxMenteeDailyRewardCoin (KR): the mentee coins the mentoring rewards give in one
+    // day, which the mentee page shows against the coins today of Mentor 11 (uimentoringmenteepage.cpp:111).
+    public const int MenteeDailyCoinMax = 1500;
+
+    // The part of coin still given today when today coins were given already.
+    public static long DailyPart(long coin, long today) => Math.Clamp(MenteeDailyCoinMax - today, 0, Math.Max(coin, 0));
+
     private const long DaySeconds = 24 * 60 * 60;
 
     public static bool Available(long next, long now) => next <= now;

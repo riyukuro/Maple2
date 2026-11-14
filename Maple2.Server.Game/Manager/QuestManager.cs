@@ -979,11 +979,10 @@ public sealed class QuestManager {
         }
 
         // menteeCoin: the mentee token the mentoring page shows on the reward line (FUN_140762be0,
-        // commonfiles/questmasktable.cpp:1000, no bonus); the currency caps it and counts get_mentee_token.
+        // commonfiles/questmasktable.cpp:1000, no bonus); the currency caps it and counts get_mentee_token. While a
+        // mentoring season runs it also counts against the mentee's daily coin cap.
         long menteeCoin = QuestRewardEventRules.Raise(reward.MenteeCoin, rewardEvent, QuestRewardEventRules.MenteeCoin);
-        if (menteeCoin > 0) {
-            session.Currency.Change(CurrencyType.MenteeToken, menteeCoin);
-        }
+        session.Mentoring.AddMenteeCoin(menteeCoin);
 
         // weddingExp: the wedding mission's intimacy, once for each partner who completes it.
         session.Marriage.AddWeddingMissionExp(reward.WeddingExp);

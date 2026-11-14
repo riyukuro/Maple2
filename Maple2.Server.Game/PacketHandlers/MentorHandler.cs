@@ -84,8 +84,8 @@ public class MentorHandler : FieldPacketHandler {
 
     private void HandleLoad(GameSession session) {
         session.Mentoring.SendRequests();
-        // The mentor page's coins today (Mentor 11). How a mentor earns coins is not known, so it is 0 until midnight.
-        session.Send(MentorPacket.DailyPoints(0, DateTime.Now.Date.AddDays(1).ToEpochSeconds()));
+        // The page's coins today (Mentor 11): a mentee's mentee coins, 0 for a mentor.
+        session.Mentoring.SendDailyCoins();
         session.Send(MentorPacket.Load());
         session.Mentoring.SendAttend();
         //session.Send(MentorPacket.MyList());

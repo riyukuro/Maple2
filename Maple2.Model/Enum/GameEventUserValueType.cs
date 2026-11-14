@@ -88,6 +88,8 @@ public enum GameEventUserValueType {
     // KMS2 values; the client keeps any type in its list and reads these nowhere.
     MentoringAttendLevel = 2410,
     MentoringAttendNext = 2411,
+    // The mentee coins of the mentoring rewards today, until the next midnight (Mentor 11). Not a KMS2 value.
+    MentoringMenteeCoinToday = 2412,
 
     // Daily login mail (DailyLoginReward): 1 once today's mail is sent. Not a KMS2 value; the client keeps any
     // type in its list and reads this one nowhere.
