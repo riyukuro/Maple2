@@ -396,6 +396,7 @@ public record MesoRevival(
 /// </summary>
 public record RankDuelRewardRate(int Rate) : GameEventData;
 
+/// <summary>
 /// The mastery reward (GameEventMasteryReward, commonfiles/gameevent.cpp:3417): value1 is the mastery type (_wtoi; KR
 /// uses 1 fishing and 2 music), value2 an XML list &lt;ms2&gt;&lt;v fieldID rate/&gt;&lt;/ms2&gt; of the maps and
 /// their rates in 1/10000 (CGameEventValueMasteryReward::Load, gameeventvalue.cpp:561: the first rate of a map counts,
