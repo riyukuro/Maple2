@@ -174,6 +174,17 @@ public class UgcOxEvent {
         }
     }
 
+    // A new entrant whose move into the stadium failed: its entry is taken out and its fee (returned, 0 when there
+    // is none to give back) goes back to it, so a fee is kept only for an entrant who got in. Nothing once settled.
+    public long Unenter(long characterId) {
+        lock (Lock) {
+            if (settled || !entrants.Remove(characterId, out long fee)) {
+                return 0;
+            }
+            return fee;
+        }
+    }
+
     // The host's start (c2s 7). With fewer than MinEntrants entrants the event is canceled instead; false then.
     public bool Start() {
         lock (Lock) {
@@ -292,16 +303,18 @@ public class UgcOxEvent {
     /// <summary>
     /// Ends the event and settles its money, once: null on every later call. A game that ran pays the pot out to
     /// the winners (the entrants among winners) and the host (UgcOxRules.Payout). An event canceled or never started
-    /// gives every entrant its fee back, as does refundAll (the server's shutdown). The caller pays the result under
-    /// Lock (Factory.CloseUgcOx), so the event's money moves once.
+    /// gives every entrant its fee back, as does refundAll (the server's shutdown), and so does an event that never
+    /// reached the script's EndGame (gameEnded false: its stadium was disposed, or it failed to be made), so a host
+    /// who starts and then waits the game out keeps nothing. The caller pays the result after the event's lock
+    /// (Factory.CloseUgcOx); settling once is what makes the money move once.
     /// </summary>
-    public IReadOnlyList<UgcOxPayment>? Settle(IReadOnlyCollection<long> winners, bool refundAll) {
+    public IReadOnlyList<UgcOxPayment>? Settle(IReadOnlyCollection<long> winners, bool refundAll, bool gameEnded = true) {
         lock (Lock) {
             if (settled) {
                 return null;
             }
             settled = true;
-            bool ran = Phase == UgcOxPhase.Running && !Canceled;
+            bool ran = Phase == UgcOxPhase.Running && !Canceled && gameEnded;
             Phase = UgcOxPhase.Ended;
             var payments = new List<UgcOxPayment>();
             if (refundAll || !ran) {

@@ -1132,9 +1132,17 @@ public partial class FieldManager : IField {
                 ox.HostCharacterId, session.CharacterId, ox.Settings.Fee);
         }
         logger.Information("OX quiz of {HostCharacterId}: {CharacterId} enters ({Enter})", ox.HostCharacterId, session.CharacterId, enter);
-        session.Send(session.PrepareFieldByPortal(UgcOxRules.StadiumMapId, UgcOxRules.SpectatorPortalId, ox.StadiumRoomId)
-            ? FieldEnterPacket.Request(session.Player)
-            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        if (session.PrepareFieldByPortal(UgcOxRules.StadiumMapId, UgcOxRules.SpectatorPortalId, ox.StadiumRoomId)) {
+            session.Send(FieldEnterPacket.Request(session.Player));
+            return true;
+        }
+        // The move failed: a new entrant did not get in, so its entry and its fee go back (UgcOxEvent.Unenter).
+        if (enter == UgcOxEnter.New && ox.Unenter(session.CharacterId) is var fee and > 0) {
+            session.Currency.ChangeMeso(fee);
+            logger.Information("OX quiz of {HostCharacterId}: {CharacterId} could not move in; the entry fee of {Fee} mesos was given back",
+                ox.HostCharacterId, session.CharacterId, fee);
+        }
+        session.Send(FieldEnterPacket.Error(MigrationError.s_move_err_default));
         return true;
     }
 

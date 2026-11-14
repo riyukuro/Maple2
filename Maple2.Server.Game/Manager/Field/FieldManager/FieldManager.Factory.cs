@@ -320,7 +320,12 @@ public partial class FieldManager {
                 }
                 field.SetUgcOx(ox);
                 ox.StadiumRoomId = field.RoomId;
-                ugcOxEvents[ox.HostAccountId] = ox;
+                // One event per host: a live one is never replaced (CreateRefusal checks it first on the host's own
+                // session; this holds it by itself). The unused room is swept as a disposed field.
+                if (!ugcOxEvents.TryAdd(ox.HostAccountId, ox)) {
+                    field.Dispose();
+                    return null;
+                }
                 return field;
             } finally {
                 mapLock.Release();
@@ -349,27 +354,30 @@ public partial class FieldManager {
             return !field.Disposed && field.UgcOx == ox ? field : null;
         }
 
-        // Takes the event out without a game end (a failed create, a stadium gone empty): its money is settled as
-        // CloseUgcOx does with no winner, so an event that never started gives the fees back and one that ran
-        // leaves the pot to the host (its entrants left, and leaving forfeits the fee).
+        // Takes the event out without a game end (a failed create, a stadium gone empty): it never reached the
+        // script's EndGame, so every entrant gets its fee back, whether or not the host had started.
         public void RemoveUgcOx(UgcOxEvent ox) {
-            CloseUgcOx(ox, [], refundAll: false, stadium: FindUgcOxStadium(ox));
+            CloseUgcOx(ox, [], refundAll: false, stadium: FindUgcOxStadium(ox), gameEnded: false);
         }
 
         /// <summary>
-        /// Ends the event: its money is settled (UgcOxEvent.Settle) and paid under the event's lock, so it moves
-        /// once, and its portal leaves the host's home. A payee in the stadium, or online on this channel when a
+        /// Ends the event: its money is settled (UgcOxEvent.Settle, once) under the event's lock and paid after it, so
+        /// it moves once and no db or World call runs under the lock, and its portal leaves the host's home. A payee in the stadium, or online on this channel when a
         /// stadium player can look it up, is paid at once with the client's notice; anyone else, and everyone when
         /// refundAll (the shutdown, when sessions may already be saved), by mail. Every payment is logged.
         /// </summary>
-        public void CloseUgcOx(UgcOxEvent ox, IReadOnlyCollection<long> winners, bool refundAll, FieldManager? stadium) {
+        public void CloseUgcOx(UgcOxEvent ox, IReadOnlyCollection<long> winners, bool refundAll, FieldManager? stadium, bool gameEnded = true) {
+            IReadOnlyList<UgcOxPayment>? payments;
+            long pot;
             lock (ox.Lock) {
-                if (ox.Settle(winners, refundAll) is { } payments) {
-                    logger.Information("OX quiz event of {HostCharacterId} settled: pot {Pot}, {Count} payments (refund all: {RefundAll})",
-                        ox.HostCharacterId, ox.Pot, payments.Count, refundAll);
-                    foreach (UgcOxPayment payment in payments) {
-                        PayUgcOx(ox, payment, refundAll ? null : stadium);
-                    }
+                pot = ox.Pot;
+                payments = ox.Settle(winners, refundAll, gameEnded);
+            }
+            if (payments != null) {
+                logger.Information("OX quiz event of {HostCharacterId} settled: pot {Pot}, {Count} payments (refund all: {RefundAll}, game ended: {GameEnded})",
+                    ox.HostCharacterId, pot, payments.Count, refundAll, gameEnded);
+                foreach (UgcOxPayment payment in payments) {
+                    PayUgcOx(ox, payment, refundAll ? null : stadium);
                 }
             }
             if (!ugcOxEvents.TryRemove(new KeyValuePair<long, UgcOxEvent>(ox.HostAccountId, ox))) {

@@ -235,6 +235,36 @@ public class UgcOxEventTests {
         }));
     }
 
+    // A host who starts and never asks a question (or waits in its home) keeps nothing: the stadium is disposed
+    // when it empties and the event never reached the script's EndGame, so every entrant gets its fee back.
+    [Test]
+    public void AStartedGameThatNeverEnds_RefundsEveryEntrant() {
+        UgcOxEvent ox = Running(rounds: 1);
+        Assert.That(ox.Settle([], refundAll: false, gameEnded: false), Is.EqualTo(new[] {
+            new UgcOxPayment(2, 1000, UgcOxPaymentKind.Refund),
+            new UgcOxPayment(3, 1000, UgcOxPaymentKind.Refund),
+        }));
+    }
+
+    // An entrant whose move into the stadium failed gets its fee back at once and is no entrant any more: a
+    // later settle does not pay it twice, and a second give-back gives nothing.
+    [Test]
+    public void AFailedMove_GivesTheFeeBackOnce() {
+        UgcOxEvent ox = Make();
+        ox.Enter(2, Paid);
+        ox.Enter(3, Paid);
+        Assert.Multiple(() => {
+            Assert.That(ox.Unenter(2), Is.EqualTo(1000));
+            Assert.That(ox.Unenter(2), Is.Zero);
+            Assert.That(ox.EntrantCount, Is.EqualTo(1));
+            Assert.That(ox.Cancel(), Is.True);
+            Assert.That(ox.Settle([], refundAll: false), Is.EqualTo(new[] {
+                new UgcOxPayment(3, 1000, UgcOxPaymentKind.Refund),
+            }));
+            Assert.That(ox.Unenter(3), Is.Zero);
+        });
+    }
+
     [Test]
     public void HostLeavingMidGameRefunds() {
         UgcOxEvent ox = Running(rounds: 3);
