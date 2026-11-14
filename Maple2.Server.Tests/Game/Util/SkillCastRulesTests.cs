@@ -828,6 +828,27 @@ public class SkillCastRulesTests {
     }
 
     [Test]
+    public void UnrideOnHitIsReadPerAttack() {
+        // unrideOnHit is an attack attribute (skillattackdata.cpp:586); attacks without it are left out. The ids and
+        // values are made up.
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="300">
+                <level value="1"><motion><attack point="p0" unrideOnHit="1" /><attack point="p1" /></motion>
+                  <motion><attack point="p2" unrideOnHit="5" /></motion></level>
+                <level value="2"><motion><attack point="p0" unrideOnHit="0" /></motion></level>
+              </skill>
+            </ms2>
+            """);
+        Dictionary<(int, short, int, int), (int, string)> read = PlayedClientSkills.ReadAttackUnrides([document]);
+        Assert.That(read, Is.EquivalentTo(new Dictionary<(int, short, int, int), (int, string)> {
+            [(300, 1, 0, 0)] = (1, "p0"),
+            [(300, 1, 1, 0)] = (5, "p2"),
+        }));
+    }
+
+    [Test]
     public void LevelCooldownIsTheClientsMilliseconds() {
         // Sticky Monster 10600281 and Holy Symbol 10400051 as the played client gives them (SkillLevelData::Load reads
         // the level's cooldown in milliseconds): 40 s and 120 s, where the data pack's beginCondition says 60 s and 180 s.

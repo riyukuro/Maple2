@@ -6,6 +6,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -92,6 +93,10 @@ public class RideHandler : FieldPacketHandler {
             session.Send(NoticePacket.MessageBox(StringCode.s_item_err_puton_pcbang));
             return;
         }
+        if (!RideItemUsable(session, item)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_item_invalid_function_item));
+            return;
+        }
 
         session.Ride.Mount(item, flag);
     }
@@ -125,6 +130,10 @@ public class RideHandler : FieldPacketHandler {
             session.Send(RidePacket.Stop(session.Player.ObjectId, action));
             return;
         }
+        if (!RideShare.MayRideOff(session.Ride.Ride.Metadata.Basic.Type, action.Forced)) {
+            Logger.Debug("Ride-off {Type} of a {RideType} mount refused: not forced", action.Type, session.Ride.Ride.Metadata.Basic.Type);
+            return;
+        }
         session.Ride.Dismount(action);
     }
 
@@ -152,11 +161,21 @@ public class RideHandler : FieldPacketHandler {
             session.Send(NoticePacket.MessageBox(StringCode.s_item_err_puton_pcbang));
             return;
         }
+        if (!RideItemUsable(session, item)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_item_invalid_function_item));
+            return;
+        }
 
         if (!session.Ride.Change(rideId, itemUid)) {
             session.Send(NoticePacket.MessageBox(StringCode.s_action_cant_ride));
         }
     }
+
+    // The rest of MyPC's mount item checks (mypc.cpp:4643, 4657-4667): PC::CanUseItem (premium club, the owner bind)
+    // and a wedding item only while married. The client sends no request for such an item.
+    private static bool RideItemUsable(GameSession session, Item item) =>
+        PcItemUse.CanUseItem(session, item)
+        && (!item.Metadata.Limit.RequireWedding || MarriageManager.InProgress(session.Marriage.Marriage.Status));
 
     private void HandleJoin(GameSession session, IByteReader packet) {
         if (session.Field == null || session.Ride.Ride != null) {

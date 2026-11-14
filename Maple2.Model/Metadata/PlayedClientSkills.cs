@@ -160,6 +160,32 @@ public static partial class PlayedClientSkills {
         return result;
     }
 
+    // The unrideOnHit of every attack of the client's levels that has one (SkillAttackData::Load,
+    // skillattackdata.cpp:586), by skill id, level, the motion's place in the level and the attack's place in the
+    // motion, with the attack's point. The data pack's parser reads unrideOnHit only from <kinds>, where no skill has
+    // it. The skills and levels are the client's pick (SelectSkills).
+    public static Dictionary<(int Skill, short Level, int Motion, int Attack), (int Unride, string Point)> ReadAttackUnrides(
+            IEnumerable<XmlDocument> skillFiles, Func<XmlElement, bool>? available = null, Func<XmlElement, XmlElement, XmlElement>? select = null) {
+        var result = new Dictionary<(int, short, int, int), (int, string)>();
+        foreach ((int id, (_, List<(short, XmlElement)> levels)) in SelectSkills(skillFiles, available, select)) {
+            foreach ((short value, XmlElement level) in levels) {
+                int motionIndex = 0;
+                foreach (XmlElement motion in level.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "motion")) {
+                    int attackIndex = 0;
+                    foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
+                        int unride = Number(attack, "unrideOnHit");
+                        if (unride != 0) {
+                            result[(id, value, motionIndex, attackIndex)] = (unride, attack.GetAttribute("point"));
+                        }
+                        attackIndex++;
+                    }
+                    motionIndex++;
+                }
+            }
+        }
+        return result;
+    }
+
     // The damage rate of every attack of the client's levels, by skill id, level, the motion's place in the level and
     // the attack's place in the motion, with the attack's point (SkillDamage::Load reads the rate of the attack's
     // <damage>, skillattackdata.cpp:258; 0 when the attack has no <damage> or no rate, SkillDamage::SkillDamage). The

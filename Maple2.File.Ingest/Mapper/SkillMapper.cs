@@ -31,6 +31,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     // The played client's splashActiveSkillID lists (PlayedClientSkills.ReadSplashActive); empty without a played client.
     private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (int[] Ids, string Point)> clientSplashActive = [];
     private int splashActivePointMismatches;
+    // The played client's unrideOnHit of each attack that has one (PlayedClientSkills.ReadAttackUnrides); empty without
+    // a played client.
+    private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (int Unride, string Point)> clientUnrides = [];
+    private int clientUnridesTaken, unridePointMismatches;
     // The played client's level cooldowns in milliseconds (PlayedClientSkills.ReadLevelCooldowns); empty without a
     // played client.
     private readonly Dictionary<(int Skill, short Level), int> clientCooldowns = [];
@@ -121,6 +125,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientSplashActive = PlayedClientSkills.ReadSplashActive(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill attacks with splash skills to fire in the played client's skill data: {clientSplashActive.Count}");
+            clientUnrides = PlayedClientSkills.ReadAttackUnrides(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
+                .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
+            Console.WriteLine($"Skill attacks with unrideOnHit in the played client's skill data: {clientUnrides.Count}");
             clientCooldowns = PlayedClientSkills.ReadLevelCooldowns(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), ClientListedRows.Available, SelectLevel);
             Console.WriteLine($"Skill levels with a cooldown in the played client's skill data: {clientCooldowns.Count}");
@@ -367,6 +374,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientSplashActive.Count > 0) {
             Console.WriteLine($"Skill attacks whose played splash skills to fire have another point: {splashActivePointMismatches} (left out)");
         }
+        if (clientUnrides.Count > 0) {
+            Console.WriteLine($"Skill attacks given the played client's unrideOnHit: {clientUnridesTaken} ({unridePointMismatches} with another point at that place, left out)");
+        }
         if (clientAttackMethods.Count > 0) {
             Console.WriteLine($"Skill attacks whose played attack method has another point: {attackMethodPointMismatches} (the data pack's kept)");
         }
@@ -418,6 +428,20 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             clientAddedHere |= added > 0;
         }
         if (clientAddedHere) clientSkills++;
+    }
+
+    // The played client's unrideOnHit where it has the attack at that place with the same point, else 0 (the data
+    // pack's attacks have none the parser reads).
+    private int Unride(int id, short level, int motion, int attack, string point) {
+        if (!clientUnrides.TryGetValue((id, level, motion, attack), out (int Unride, string Point) played)) {
+            return 0;
+        }
+        if (played.Point != point) {
+            unridePointMismatches++;
+            return 0;
+        }
+        clientUnridesTaken++;
+        return played.Unride;
     }
 
     // The played client's type where it has the attack at that place with the same point, else the data pack's.
@@ -635,7 +659,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             GrabTargetType: attack.grabTargetType,
             Direction: directions.Get(id, level, motionIndex, packIndex),
             AttackMethodType: AttackMethod(id, level, motionIndex, attackIndex, attack.point, (int) attack.attackMethodType),
-            SplashActiveSkillIds: SplashActive(id, level, motionIndex, attackIndex, attack.point)
+            SplashActiveSkillIds: SplashActive(id, level, motionIndex, attackIndex, attack.point),
+            UnrideOnHit: Unride(id, level, motionIndex, attackIndex, attack.point)
         );
     }
 

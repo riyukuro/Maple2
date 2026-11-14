@@ -311,7 +311,8 @@ public static partial class PlayedClientSkills {
             GrabTargetType: Number(attack, "grabTargetType"),
             Direction: direction == 3 ? null : direction,
             AttackMethodType: Number(attack, "attackMethodType"),
-            SplashActiveSkillIds: splashActive.Length > 0 ? splashActive : null);
+            SplashActiveSkillIds: splashActive.Length > 0 ? splashActive : null,
+            UnrideOnHit: Number(attack, "unrideOnHit"));
     }
 
     // Unk_RangeProperty::LoadElement (unit_1408001f0_skillrangeandtarget.cpp:150): the shape, the target properties,

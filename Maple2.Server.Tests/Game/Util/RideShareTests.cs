@@ -52,6 +52,32 @@ public class RideShareTests {
         Assert.That(RideShare.DismountsOnDeath(type), Is.EqualTo(expected));
     }
 
+    // unrideOnHit as bits of the ride type: KMS2 knocks a mount item's owner off on a hit of a monster attack of 1.
+    [TestCase(1, RideOnType.Default, true, true, true)]
+    [TestCase(5, RideOnType.Default, true, true, true)]
+    [TestCase(1, RideOnType.Battle, true, true, false)]
+    [TestCase(1, RideOnType.Object, true, true, false)]
+    [TestCase(2, RideOnType.Battle, true, true, true)]
+    [TestCase(5, RideOnType.Object, true, true, true)]
+    [TestCase(2, RideOnType.Default, true, true, false)]
+    [TestCase(0, RideOnType.Default, true, true, false)]
+    // A passenger stays on (its ride is the owner's), and a hit that takes no health knocks no one off.
+    [TestCase(1, RideOnType.Default, false, true, false)]
+    [TestCase(1, RideOnType.Default, true, false, false)]
+    [TestCase(7, RideOnType.None, true, true, false)]
+    public void DismountsOnHit(int unrideOnHit, RideOnType type, bool owner, bool healthTaken, bool expected) {
+        Assert.That(RideShare.DismountsOnHit(unrideOnHit, type, owner, healthTaken), Is.EqualTo(expected));
+    }
+
+    [TestCase(RideOnType.Default, false, true)]
+    [TestCase(RideOnType.Battle, false, false)]
+    [TestCase(RideOnType.Object, false, false)]
+    [TestCase(RideOnType.Battle, true, true)]
+    [TestCase(RideOnType.Object, true, true)]
+    public void MayRideOff(RideOnType dataType, bool forced, bool expected) {
+        Assert.That(RideShare.MayRideOff(dataType, forced), Is.EqualTo(expected));
+    }
+
     [TestCase(true, false, true)]
     [TestCase(true, true, false)]
     [TestCase(false, false, false)]

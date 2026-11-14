@@ -168,7 +168,11 @@ public record SkillMetadataAttack(
     int AttackMethodType = 0,
     // splashActiveSkillID: the skills whose regions, placed by the same caster and firing only when made to
     // (OnlyManualActiveSplash), fire when this attack hits (PlayedClientSkills.ReadSplashActive); null when none.
-    int[]? SplashActiveSkillIds = null);
+    int[]? SplashActiveSkillIds = null,
+    // unrideOnHit (SkillAttackData +0x7c, skillattackdata.cpp:586; the client only reads it, the server decides): the
+    // mounts a hit of this attack knocks its target off, read as bits of the ride type (1 a mount item, 2 a battle
+    // mount, 4 an object mount; RideShare.DismountsOnHit). KR: 1 on most attacks, 5 on 204 player attacks, 2 on 2.
+    int UnrideOnHit = 0);
 
 public record SkillMetadataPet(
     int TamingGroup,

@@ -586,6 +586,11 @@ public class FieldPlayer : Actor<Player> {
                 Value.Character.Name, duelist.Value.Character.Name, damage.SkillId,
                 string.Join(",", hit.Damage.Select(entry => $"{entry.Type}:{entry.Amount}")), healthBefore, Stats.Values[BasicAttribute.Health].Current);
         }
+        Ride? ride = Session.Ride?.Ride;
+        if (ride != null && RideShare.DismountsOnHit(attack.UnrideOnHit, ride.Action.Type, ride.OwnerId == ObjectId,
+                Stats.Values[BasicAttribute.Health].Current < healthBefore)) {
+            Session.Ride.Dismount(RideOffType.UnRideSkill);
+        }
         if (Stats.Values[BasicAttribute.Health].Current != healthBefore) {
             // The health a hit takes goes to the world like any other health change, so the party frames of
             // members in other fields follow it (only heals, regen and non-skill damage were sent). Hits in a
