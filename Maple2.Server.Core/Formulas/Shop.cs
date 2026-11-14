@@ -35,17 +35,4 @@ public static class Shop {
         }
         return rarity <= prices.Length ? prices[rarity - 1] : 0;
     }
-
-    public static (ShopCurrencyType CurrencyType, int Cost) ExcessRestockCost(ShopCurrencyType excessCurrencyType, int restockCount) {
-        return restockCount switch {
-            > 0 and <= 5 => (Constant.InitialTierExcessRestockCurrency, 50000),
-            6 => (excessCurrencyType, 10),
-            7 => (excessCurrencyType, 20),
-            8 => (excessCurrencyType, 40),
-            9 => (excessCurrencyType, 60),
-            10 => (excessCurrencyType, 80),
-            > 10 and <= 15 => (excessCurrencyType, 100),
-            _ => (excessCurrencyType, 150),
-        };
-    }
 }

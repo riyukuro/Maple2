@@ -19,6 +19,30 @@ public class Shop : IByteSerializable {
         Items = new SortedDictionary<int, ShopItem>();
     }
 
+    // The next instant restock's cost, the one the shop packet shows (the client, UIShopDialog: m_29c and
+    // m_nResetPriceOrg, sent back in Shop 9) and InstantRestock charges. Without the multiplier (the client's
+    // useLuaResetPayment, read into the flag after the price) it is the table's price. With it the price is
+    // the KMS2 server's Lua, which the client does not hold. Inferred: the cost climbs with the restocks made
+    // since the reset, in the excess currency the client's reset tooltip shows (m_2a0), after five meso tiers.
+    // Chosen here: the tier is the next restock's number (the count made plus one).
+    public (ShopCurrencyType Type, int Price) RestockCost {
+        get {
+            if (!RestockData.EnablePriceMultiplier) {
+                return (RestockData.CurrencyType, RestockData.Price);
+            }
+            return (RestockCount + 1) switch {
+                <= 5 => (Constant.InitialTierExcessRestockCurrency, 50000),
+                6 => (RestockData.ExcessCurrencyType, 10),
+                7 => (RestockData.ExcessCurrencyType, 20),
+                8 => (RestockData.ExcessCurrencyType, 40),
+                9 => (RestockData.ExcessCurrencyType, 60),
+                10 => (RestockData.ExcessCurrencyType, 80),
+                <= 15 => (RestockData.ExcessCurrencyType, 100),
+                _ => (RestockData.ExcessCurrencyType, 150),
+            };
+        }
+    }
+
     public virtual void WriteTo(IByteWriter writer) {
         writer.WriteInt(Id);
         writer.WriteLong(RestockTime);
@@ -36,10 +60,11 @@ public class Shop : IByteSerializable {
         writer.WriteBool(Metadata.DisplayNew);
         writer.WriteString(Metadata.Name);
         if (Metadata.EnableReset) {
-            writer.Write<ShopCurrencyType>(RestockData.CurrencyType);
+            (ShopCurrencyType restockType, int restockPrice) = RestockCost;
+            writer.Write<ShopCurrencyType>(restockType);
             writer.Write<ShopCurrencyType>(RestockData.ExcessCurrencyType);
             writer.WriteInt();
-            writer.WriteInt(RestockData.Price);
+            writer.WriteInt(restockPrice);
             writer.WriteBool(RestockData.EnablePriceMultiplier);
             writer.WriteInt(RestockCount);
             writer.Write<ResetType>(RestockData.ResetType);

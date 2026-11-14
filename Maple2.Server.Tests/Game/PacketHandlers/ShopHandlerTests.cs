@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -48,6 +49,8 @@ public class ShopHandlerTests {
     private Item shopItem = null!;
     // The shop's restock rule; a test of the instant restock sets it before Login.
     private ShopRestockData restockData = new(ResetType.Default, ShopCurrencyType.Meso, ShopCurrencyType.Meso, 0, 0, 0, false, true, false);
+    private bool enableReset;
+    private Action? beforeStart;
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
@@ -63,7 +66,7 @@ public class ShopHandlerTests {
         test = new TestGameSession();
         test.AddAchievement(trophies);
         test.SetServerTable(new ShopTable(new Dictionary<int, ShopMetadata> {
-            [ShopId] = new(ShopId, 0, "shop", default, false, false, false, false, false, false, false, 0, false,
+            [ShopId] = new(ShopId, 0, "shop", default, false, false, false, false, false, false, false, 0, enableReset,
                 restockData),
         }));
         test.SetServerTable(new ShopItemTable(new Dictionary<int, Dictionary<int, ShopItemMetadata>> {
@@ -97,6 +100,7 @@ public class ShopHandlerTests {
         shopItem = test.Store(opener with { Property = opener.Property with { ShopId = ShopId } });
         test.Register(TestGameSession.Metadata(ProductItemId));
         test.Register(TestGameSession.Metadata(FurnishingItemId, slotMax: 2));
+        beforeStart?.Invoke();
         GameSession session = test.Start();
         session.Currency.Meso = meso;
         session.Shop.Load(ShopId);
@@ -762,5 +766,75 @@ public class ShopHandlerTests {
         }));
 
         Assert.That(session.Currency[CurrencyType.Treva], Is.EqualTo(treva));
+    }
+
+    // The restock part the shop packet ends with (Shop.WriteTo): the cost's currency, the excess currency, the
+    // item id, the price, the multiplier flag, the count, the reset type and two flags.
+    private static string RestockTail(ShopCurrencyType type, int price, int count, ResetType reset) {
+        var writer = new Maple2.PacketLib.Tools.ByteWriter();
+        writer.Write<ShopCurrencyType>(type);
+        writer.Write<ShopCurrencyType>(ShopCurrencyType.Treva);
+        writer.WriteInt();
+        writer.WriteInt(price);
+        writer.WriteBool(true);
+        writer.WriteInt(count);
+        writer.Write<ResetType>(reset);
+        writer.WriteBool(false);
+        writer.WriteBool(false);
+        return Convert.ToHexString(writer.ToArray());
+    }
+
+    private static void Restock(GameSession session, int price) {
+        new ShopHandler { GameStorage = session.GameStorage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(9);
+            writer.WriteInt(price);
+        }));
+    }
+
+    // With the multiplier, the first five restocks cost 50000 mesos and the sixth 10 of the excess currency;
+    // each shop packet after a restock shows the next one's cost. Before, every restock took the table's price
+    // (300) in mesos and the packet showed it.
+    [Test]
+    public void InstantRestock_WithTheMultiplier_TakesTheCostTheShopShows() {
+        restockData = new ShopRestockData(ResetType.Default, ShopCurrencyType.Meso, ShopCurrencyType.Treva, 0, 0, 300, true, false, false);
+        enableReset = true;
+        GameSession session = Login(meso: 300000);
+        test.SetServerTable(new ConstantsTable(KarmaTokenMax: 30000));
+        session.Currency[CurrencyType.Treva] = 1000;
+
+        for (int i = 0; i < 6; i++) {
+            Restock(session, 0);
+        }
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(50000));
+        Assert.That(session.Currency[CurrencyType.Treva], Is.EqualTo(990));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).Count(hex => hex.EndsWith(RestockTail(ShopCurrencyType.Treva, 20, 6, ResetType.Default))), Is.EqualTo(1));
+    }
+
+    // A stored shop (a login after restocks the day before reset) keeps its restock count: the shop packet shows
+    // it and the next cost follows it. Before, the count read 0.
+    [Test]
+    public void Load_OfAStoredShop_KeepsItsRestockCount() {
+        restockData = new ShopRestockData(ResetType.Day, ShopCurrencyType.Meso, ShopCurrencyType.Treva, 0, 0, 300, true, false, false);
+        enableReset = true;
+        beforeStart = () => {
+            using GameStorage.Request db = test.Storage.Context();
+            db.CreateCharacterShopData(test.CharacterId, new CharacterShopData {
+                ShopId = ShopId,
+                Interval = ResetType.Day,
+                RestockTime = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds(),
+                RestockCount = 5,
+            });
+        };
+        GameSession session = Login(meso: 300000);
+        test.SetServerTable(new ConstantsTable(KarmaTokenMax: 30000));
+        session.Currency[CurrencyType.Treva] = 1000;
+
+        session.Shop.Load(ShopId);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).Count(hex => hex.EndsWith(RestockTail(ShopCurrencyType.Treva, 10, 5, ResetType.Day))), Is.EqualTo(1));
+
+        Restock(session, 10);
+        Assert.That(session.Currency.Meso, Is.EqualTo(300000));
+        Assert.That(session.Currency[CurrencyType.Treva], Is.EqualTo(990));
     }
 }

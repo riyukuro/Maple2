@@ -164,8 +164,11 @@ public sealed class ShopManager {
         }
 
         // Assemble shop
+        // The stored restock count too: the restock cost and the client's reset tooltip count it, and it read 0
+        // here after a login.
         instancedShop = new Shop(metadata) {
             RestockTime = data.RestockTime,
+            RestockCount = data.RestockCount,
             Items = GetShopItems(metadata),
         };
 
@@ -337,14 +340,10 @@ public sealed class ShopManager {
 
         var shop = new Shop(activeShop.Metadata);
 
-        int cost = activeShop.RestockData.Price;
-        ShopCurrencyType currencyType = activeShop.RestockData.CurrencyType;
-        if (activeShop.RestockData.EnablePriceMultiplier) {
-            (ShopCurrencyType CurrencyType, int Cost) multiplierCost = Core.Formulas.Shop.ExcessRestockCost(activeShop.RestockData.CurrencyType, activeShop.RestockCount);
-            cost = multiplierCost.Cost;
-            currencyType = multiplierCost.CurrencyType;
-        }
-        if (!Pay(new ShopCost { Amount = cost, Type = currencyType }, activeShop.RestockData.Price)) {
+        // The cost the shop packet showed (Shop.RestockCost). Before, with the multiplier on, the table's price was
+        // taken in the multiplier's currency, and the multiplier read the base currency, not the excess one.
+        (ShopCurrencyType currencyType, int cost) = activeShop.RestockCost;
+        if (!Pay(new ShopCost { Amount = cost, Type = currencyType }, cost)) {
             session.Send(ShopPacket.Error(ShopError.s_err_lack_shopitem)); // not neccessarily the right error.
             return;
         }
