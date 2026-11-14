@@ -609,6 +609,12 @@ public class FieldNpc : Actor<Npc> {
         // if we're at the last waypoint and we're not looping, we're done
         if (currentWaypoint.Id == lastWaypoint.Id && !Patrol.IsLoop) {
             Patrol = null;
+            // A trigger's one-way path leaves the npc at its end: its idle walks (Walk_ routines within moveArea) and
+            // its way back after a fight go around the last waypoint, not the spawn. Chosen here: a trigger moves an
+            // npc to keep it there (02000086_bf 03_wave sends 21000086, moveArea 150, along MS2PatrolData_601).
+            if (scriptPatrol) {
+                Origin = currentWaypoint.Position;
+            }
 
             return approachTask;
         }

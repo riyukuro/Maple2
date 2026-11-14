@@ -396,6 +396,22 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That(Vector3.Distance(WalkPatrol(bat, ["Idle_A", "Walk_A", "Run_A"], waveRoute).Position, new Vector3(600, 0, 0)), Is.LessThan(30));
     }
 
+    // A path a trigger's MoveNpc gives that is not a loop ends at its last waypoint, and the npc's idle walks
+    // (Walk_A routine within moveArea) start from there, not from its spawn. Chosen here: a trigger moves an npc to
+    // a place to keep it there (wave mobs into the fight, an npc to the spot of its next talk); before, the npc
+    // walked back toward its spawn once it arrived. KR row: 02000086_bf 03_wave sends 21000086 (Walk_A 5000 of
+    // 10000, moveArea 150, walk 50) along MS2PatrolData_601, 450 units, and it ended about 100 units back.
+    [Test]
+    public void MoveNpc_IdleWalkStaysAtThePathEnd() {
+        NpcMetadata mob = Npc(MobId, 0) with { Action = new NpcMetadataAction(720, 50, 200, [new NpcAction("Walk_A", 100)], 150, "") };
+        mob = mob with { Stat = mob.Stat with { Stats = new Dictionary<BasicAttribute, long> { [BasicAttribute.Health] = 100, [BasicAttribute.MovementSpeed] = 100 } } };
+        var route = new MS2PatrolData("8e1a0c11", "MS2PatrolData_601", false, 2, false,
+            [new MS2WayPoint("356aacd3", true, new Vector3(-600, 0, 0), Vector3.Zero, "", "", 0, false)]);
+
+        FieldNpc npc = WalkPatrol(mob, ["Idle_A", "Walk_A", "Run_A"], route);
+        Assert.That(Vector3.Distance(npc.Position, new Vector3(-600, 0, 0)), Is.LessThan(200));
+    }
+
     private sealed class LogSink : ILogEventSink {
         public readonly List<LogEvent> Events = [];
         public void Emit(LogEvent logEvent) => Events.Add(logEvent);
