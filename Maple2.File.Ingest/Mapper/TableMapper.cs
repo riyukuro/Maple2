@@ -2476,6 +2476,16 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 DisableMeretRevival: dungeon.limitMeratRevival,
                 MaxRevivalCount: dungeon.defaultRevivalLimitCount,
                 DurationTick: dungeon.durationTick);
+            // The reward values the client reads from its own row (PlayedRoomReward), else the server's row.
+            PlayedRoomReward reward = rules.Reward ?? new PlayedRoomReward(
+                SubRewardCount: dungeon.subRewardCount,
+                AccountWide: dungeon.isAccountReward,
+                UnionRewardId: dungeon.unionRewardID,
+                Exp: dungeon.rewardExp,
+                ExpRate: dungeon.rewardExpRate,
+                Meso: dungeon.rewardMeso,
+                ScoreBonusId: dungeon.scoreBonusId,
+                SeasonRankRewardId: dungeon.seasonRankRewardID);
             dungeons.Add(id, new DungeonRoomMetadata(
                 Id: dungeon.dungeonRoomID,
                 Level: dungeon.dungeonLevel,
@@ -2487,18 +2497,18 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 LobbyFieldId: dungeon.lobbyFieldID,
                 FieldIds: dungeon.fieldIDs,
                 Reward: new DungeonRoomRewardMetadata(
-                    AccountWide: dungeon.isAccountReward,
+                    AccountWide: reward.AccountWide,
                     Count: rules.RewardCount,
-                    SubRewardCount: dungeon.subRewardCount,
-                    Exp: dungeon.rewardExp,
-                    ExpRate: dungeon.rewardExpRate,
-                    Meso: dungeon.rewardMeso,
+                    SubRewardCount: reward.SubRewardCount,
+                    Exp: reward.Exp,
+                    ExpRate: reward.ExpRate,
+                    Meso: reward.Meso,
                     // rewardLimitedDropBoxIds2 follows, as in the client's reward list (PlayedClientRooms.Rules).
                     LimitedDropBoxIds: PlayedClientRooms.LimitedDropBoxIds(dungeon.rewardLimitedDropBoxIds, rules.LimitedDropBoxIds2),
                     UnlimitedDropBoxIds: dungeon.rewardUnlimitedDropBoxIds,
-                    UnionRewardId: dungeon.unionRewardID,
-                    SeasonRankRewardId: dungeon.seasonRankRewardID,
-                    ScoreBonusId: dungeon.scoreBonusId),
+                    UnionRewardId: reward.UnionRewardId,
+                    SeasonRankRewardId: reward.SeasonRankRewardId,
+                    ScoreBonusId: reward.ScoreBonusId),
                 Limit: new DungeonRoomLimitMetadata(
                     MinUserCount: rules.MinUserCount,
                     MaxUserCount: rules.MaxUserCount,

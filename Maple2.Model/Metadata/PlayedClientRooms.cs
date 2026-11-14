@@ -132,6 +132,11 @@ public static class PlayedClientRooms {
     // (boxes 20001002 or 20001001 in 26 of them) gave the clear without it. Of two available rows of a room the one select keeps is read, as the client's
     // table load keeps the one CFeatureManager::SelectFeatureElement picks (FUN_14028faa0, commonutil.cpp:1748; the
     // ingest passes PlayedNpcStats.SelectFeatureElement). KMS2 has no such duplicate today.
+    // The row's reward values the client reads too (dungeonroom.cpp:383-394; PlayedRoomReward): taken from the NA row,
+    // 5 KR chaos raids (23006003, 23010003, 23021003, 23022003, 23023003) kept an NA unionRewardID whose union row
+    // is NA-only, so their clears gave no reward at all (DungeonManager finds no union room and stops); 6 kept an
+    // NA seasonRankRewardID, the Colosseum 24096001 NA's exp and meso (685000, 14000; KR none) and the event room
+    // 29006001 NA's account-wide reward count.
     public static Dictionary<int, PlayedRoomRules> Rules(XmlDocument roomTable, Func<XmlElement, bool> available,
             Func<XmlElement, XmlElement, XmlElement> select) {
         var selected = new Dictionary<int, XmlElement>();
@@ -159,7 +164,17 @@ public static class PlayedClientRooms {
                 DisableMeretRevival: IsOn(row.GetAttribute("limitMeratRevival")),
                 MaxRevivalCount: Number(row, "defaultRevivalLimitCount"),
                 DurationTick: (int) Math.Min(Math.Max(Number(row, "durationSeconds"), 0) * 1000L, int.MaxValue),
-                LimitedDropBoxIds2: BoxIds(row.GetAttribute("rewardLimitedDropBoxIds2")));
+                LimitedDropBoxIds2: BoxIds(row.GetAttribute("rewardLimitedDropBoxIds2")),
+                Reward: new PlayedRoomReward(
+                    SubRewardCount: Number(row, "subRewardCount"),
+                    AccountWide: IsOn(row.GetAttribute("isAccountReward")),
+                    UnionRewardId: Number(row, "unionRewardID"),
+                    Exp: long.TryParse(row.GetAttribute("rewardExp"), out long exp) ? exp : 0,
+                    ExpRate: float.TryParse(row.GetAttribute("rewardExpRate"), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out float rate) ? rate : 0f,
+                    Meso: long.TryParse(row.GetAttribute("rewardMeso"), out long meso) ? meso : 0,
+                    ScoreBonusId: Number(row, "scoreBonusId"),
+                    SeasonRankRewardId: Number(row, "seasonRankRewardID")));
         }
         return rules;
     }
@@ -184,4 +199,19 @@ public record PlayedRoomRules(
     bool DisableMeretRevival,
     int MaxRevivalCount,
     int DurationTick = 0,
-    int[]? LimitedDropBoxIds2 = null);
+    int[]? LimitedDropBoxIds2 = null,
+    PlayedRoomReward? Reward = null);
+
+/// <summary>
+/// The reward values of a dungeon room as the played client's own row gives them (DungeonRoom::Load,
+/// dungeonroom.cpp:383-394; an attribute the row leaves out is 0). Null in rules made from the server's row.
+/// </summary>
+public record PlayedRoomReward(
+    int SubRewardCount,
+    bool AccountWide,
+    int UnionRewardId,
+    long Exp,
+    float ExpRate,
+    long Meso,
+    int ScoreBonusId,
+    int SeasonRankRewardId);

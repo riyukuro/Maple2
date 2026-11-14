@@ -118,6 +118,28 @@ public class PlayedClientRoomsTests {
         Assert.That(boxes[3], Is.EqualTo(new[] { 8 }));
     }
 
+    // KMS2 rows 23006003 (a chaos raid whose NA row names the NA-only union row 230060031 and season rank reward 10016;
+    // the KR row names neither), 24096001 (the Colosseum: NA gives 685000 exp and 14000 meso a clear, KR nothing) and
+    // 21001001 (union 1006, exp 600, meso 3200). The reward values are the client row's; an attribute it leaves out is 0.
+    [Test]
+    public void Rules_RewardValuesAreTheClientRows() {
+        XmlDocument rooms = Table("""
+            <dungeonRoom dungeonRoomID="23006003" groupType="3" rewardCount="4" subRewardCount="4" rewardExp="750400" rewardMeso="10000" rewardLimitedDropBoxIds="23200007" />
+            <dungeonRoom dungeonRoomID="24096001" groupType="13" rewardCount="13" />
+            <dungeonRoom dungeonRoomID="21001001" rewardCount="10" unionRewardID="1006" rewardExp="600" rewardExpRate="1.5" rewardMeso="3200" isAccountReward="1" scoreBonusId="2" seasonRankRewardID="10001" />
+            """);
+
+        Dictionary<int, PlayedRoomRules> rules = PlayedClientRooms.Rules(rooms, Available,
+            (a, b) => PlayedNpcStats.SelectFeatureElement(a, b, _ => 0, "KR"));
+
+        Assert.That(rules[23006003].Reward, Is.EqualTo(new PlayedRoomReward(SubRewardCount: 4, AccountWide: false, UnionRewardId: 0,
+            Exp: 750400, ExpRate: 0f, Meso: 10000, ScoreBonusId: 0, SeasonRankRewardId: 0)));
+        Assert.That(rules[24096001].Reward, Is.EqualTo(new PlayedRoomReward(SubRewardCount: 0, AccountWide: false, UnionRewardId: 0,
+            Exp: 0, ExpRate: 0f, Meso: 0, ScoreBonusId: 0, SeasonRankRewardId: 0)));
+        Assert.That(rules[21001001].Reward, Is.EqualTo(new PlayedRoomReward(SubRewardCount: 0, AccountWide: true, UnionRewardId: 1006,
+            Exp: 600, ExpRate: 1.5f, Meso: 3200, ScoreBonusId: 2, SeasonRankRewardId: 10001)));
+    }
+
     // Shaped like KMS2 rows 26001001 (party only, 4 to 10 users, gear score 2630, level 50, no revival flags, where
     // the NA row closes both revives) and 27003001 (the meso revival flag only, where the NA row also closes the
     // meret revive; three revivals). An attribute the client row leaves out reads 0, not the NA row's value.
@@ -137,9 +159,9 @@ public class PlayedClientRoomsTests {
             (a, b) => PlayedNpcStats.SelectFeatureElement(a, b, _ => 0, "KR"));
 
         Assert.That(rules.Keys.OrderBy(id => id), Is.EqualTo(new[] { 4, 5, 26001001, 27003001 }));
-        Assert.That(rules[26001001] with { LimitedDropBoxIds2 = null }, Is.EqualTo(new PlayedRoomRules(RewardCount: 1, CooldownValue: 6, MinUserCount: 4, MaxUserCount: 10,
+        Assert.That(rules[26001001] with { LimitedDropBoxIds2 = null, Reward = null }, Is.EqualTo(new PlayedRoomRules(RewardCount: 1, CooldownValue: 6, MinUserCount: 4, MaxUserCount: 10,
             GearScore: 2630, MinLevel: 50, PartyOnly: true, DisableMesoRevival: false, DisableMeretRevival: false, MaxRevivalCount: 3)));
-        Assert.That(rules[27003001] with { LimitedDropBoxIds2 = null }, Is.EqualTo(new PlayedRoomRules(RewardCount: 4, CooldownValue: 6, MinUserCount: 0, MaxUserCount: 10,
+        Assert.That(rules[27003001] with { LimitedDropBoxIds2 = null, Reward = null }, Is.EqualTo(new PlayedRoomRules(RewardCount: 4, CooldownValue: 6, MinUserCount: 0, MaxUserCount: 10,
             GearScore: 14000, MinLevel: 60, PartyOnly: false, DisableMesoRevival: true, DisableMeretRevival: false, MaxRevivalCount: 3)));
         // Of two rows of a room the client keeps the one SelectFeatureElement picks: with one feature and one locale
         // the first, otherwise the one of the client's locale.
