@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -15,6 +16,8 @@ using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Model;
+using Maple2.Tools.VectorMath;
 using Maple2.Server.World.Service;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
@@ -286,6 +289,66 @@ public class ShopHandlerTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 80));
         Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(20));
         Assert.That(Convert.ToHexString(sent[4]), Does.EndWith("04" + "022D3101" + "14000000" + "50000000" + "01" + "00"));
+    }
+
+    // A shop opened by an npc talk, the npc standing in the player's field at the given distance.
+    private FieldNpc TalkShop(GameSession session, float distance) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 1, false, 0, 0, 0, 0, [], [], 0);
+        var metadata = new NpcMetadata(11000001, "npc", "", null!, null!, basic, null!, null!, null!, null!, null!, null!, null, null!);
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        typeof(Actor<Npc>).GetField("<Value>k__BackingField", any)!.SetValue(npc, new Npc(metadata, null));
+        typeof(Actor<Npc>).GetField("<ObjectId>k__BackingField", any)!.SetValue(npc, 7001);
+        typeof(Actor<Npc>).GetField("<Transform>k__BackingField", any)!.SetValue(npc, new Transform());
+        npc.Position = session.Player.Position + new Vector3(distance, 0, 0);
+        session.Field!.Npcs[npc.ObjectId] = npc;
+        session.Shop.Load(ShopId, metadata.Id, npc);
+        test.TakeSent();
+        return npc;
+    }
+
+    // The client keeps an npc's shop only while the talk is on (UIShopDialog::vfunc_72) and ends the talk once the
+    // npc is out of talk range or gone (UITalkManager::EndTalkIfNpcGone): a buy or a sale after that does nothing,
+    // even back in range.
+    [TestCase(100f, false, ExpectedResult = 9970L)]
+    [TestCase(1000f, false, ExpectedResult = 10000L)]
+    [TestCase(100f, true, ExpectedResult = 10000L)]
+    public long Buy_FromATalkShopNeedsItsNpcInTalkRange(float distance, bool npcGone) {
+        GameSession session = Login();
+        FieldNpc npc = TalkShop(session, distance);
+        if (npcGone) {
+            session.Field!.Npcs.TryRemove(npc.ObjectId, out _);
+        }
+
+        Buy(session, ProductId, 1);
+        npc.Position = session.Player.Position;
+        session.Field!.Npcs[npc.ObjectId] = npc;
+        if (distance > 400f || npcGone) {
+            Buy(session, ProductId, 1); // the shop stays closed
+        }
+
+        return session.Currency.Meso;
+    }
+
+    [TestCase(100f, ExpectedResult = 4)]
+    [TestCase(1000f, ExpectedResult = 5)]
+    public int Sell_ToATalkShopNeedsItsNpcInTalkRange(float distance) {
+        GameSession session = Login();
+        TalkShop(session, distance);
+
+        Sell(session, bagItem.Uid, 1);
+
+        return session.Item.Inventory.Find(bagItem.Id).Sum(item => item.Amount);
+    }
+
+    // A shop opened without an npc (an item, a system shop) has no talk to keep.
+    [Test]
+    public void Buy_FromAShopWithoutNpcNeedsNoRange() {
+        GameSession session = Login();
+
+        Buy(session, ProductId, 1);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(9970));
     }
 
     // The client sends its window's shop id with a buy (UIShopDialog::SendPurchase).

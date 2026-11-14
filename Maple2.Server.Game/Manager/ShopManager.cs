@@ -7,6 +7,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -34,6 +35,10 @@ public sealed class ShopManager {
     private readonly Dictionary<int, BuyBackItem> buyBackItems;
     private Shop? activeShop;
     private int shopNpcId;
+    // The field npc whose talk opened the shop (null for a system shop). The client keeps such a shop only while
+    // the talk is on (UIShopDialog::vfunc_72 closes it once MyPC::FUN_141527e60 is 0), and ends the talk once the
+    // npc is gone or out of its talk range (UITalkManager::EndTalkIfNpcGone): only a forged client trades on.
+    private FieldNpc? talkNpc;
 
     private readonly ILogger logger = Log.Logger.ForContext<ShopManager>();
 
@@ -80,6 +85,26 @@ public sealed class ShopManager {
     public void ClearActiveShop() {
         activeShop = null;
         shopNpcId = 0;
+        talkNpc = null;
+    }
+
+    // Whether a shop is open: one opened by a talk is closed once its npc has left the player's field or the
+    // player its talk range.
+    [MemberNotNullWhen(true, nameof(activeShop))]
+    private bool ShopOpen() {
+        if (activeShop == null || talkNpc == null) {
+            return activeShop != null;
+        }
+        float radius = talkNpc.Value.Metadata.Property?.Capsule?.Radius ?? 0f;
+        bool stays = session.Field != null && session.Field.Npcs.TryGetValue(talkNpc.ObjectId, out FieldNpc? npc) && npc == talkNpc
+            && InteractRules.InReach(session.Player.Position, talkNpc.Position,
+                InteractRules.TalkReach(session.ServerTableMetadata.ConstantsTable.TalkableDistance, radius));
+        if (!stays) {
+            logger.Debug("Shop {ShopId} closed: its npc {NpcId} is gone or out of talk range", activeShop.Id, talkNpc.Value.Id);
+            ClearActiveShop();
+            return false;
+        }
+        return true;
     }
 
     private bool TryGetShopData(int shopId, [NotNullWhen(true)] out CharacterShopData? data) {
@@ -102,11 +127,12 @@ public sealed class ShopManager {
     /// </summary>
     /// <param name="shopId">Shop ID</param>
     /// <param name="npcId">Npc ID. Optional parameter. This only is used for displaying the NPC's name on the shop window top bar.</param>
-    public void Load(int shopId, int npcId = 0) {
+    public void Load(int shopId, int npcId = 0, FieldNpc? fieldNpc = null) {
         if (!session.ServerTableMetadata.ShopTable.Entries.TryGetValue(shopId, out ShopMetadata? metadata)) {
             logger.Warning("Shop {Id} not found", shopId);
             return;
         }
+        talkNpc = fieldNpc;
 
         if (metadata.EnableReset) {
             activeShop = GetInstancedShop(metadata);
@@ -334,7 +360,7 @@ public sealed class ShopManager {
     }
 
     public void InstantRestock() {
-        if (activeShop?.RestockData.DisableInstantRestock != false) {
+        if (!ShopOpen() || activeShop.RestockData.DisableInstantRestock) {
             return;
         }
 
@@ -361,7 +387,7 @@ public sealed class ShopManager {
     }
 
     public void Refresh() {
-        if (activeShop == null) {
+        if (!ShopOpen()) {
             return;
         }
 
@@ -460,7 +486,7 @@ public sealed class ShopManager {
 
     public void Buy(int shopItemId, int quantity, int shopId) {
         // The client names the shop of its window (UIShopDialog::SendPurchase); a buy for another shop is dropped.
-        if (activeShop == null || shopId != activeShop.Id) {
+        if (!ShopOpen() || shopId != activeShop.Id) {
             return;
         }
 
@@ -580,7 +606,7 @@ public sealed class ShopManager {
     }
 
     public void PurchaseBuyBack(int id) {
-        if (activeShop == null) {
+        if (!ShopOpen()) {
             return;
         }
 
@@ -629,7 +655,7 @@ public sealed class ShopManager {
     }
 
     public void Sell(long itemUid, int quantity) {
-        if (activeShop == null) {
+        if (!ShopOpen()) {
             return;
         }
 
