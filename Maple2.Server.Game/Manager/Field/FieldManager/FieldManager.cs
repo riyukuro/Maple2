@@ -894,8 +894,10 @@ public partial class FieldManager : IField {
                     return false;
                 }
 
+                // Made or refused, the move is answered (GameToGame or its error): the portal's own target
+                // (the home map, 62000000) is not entered here, which took a refused visitor into their own home.
                 session.Migrate(Constant.DefaultHomeMapId, fieldPortal.HomeId);
-                break;
+                return true;
         }
 
         if (srcPortal.TargetMapId == MapId) {
