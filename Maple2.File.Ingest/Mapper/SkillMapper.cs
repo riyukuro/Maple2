@@ -57,7 +57,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private int clientMotionsTaken;
     private int motionPointMismatches;
     // The data pack attacks put in the played client's order (MotionAttacks).
-    private int clientAttacksMoved, clientAttacksBuilt, packAttacksDropped, clientSplashesAdded;
+    private int clientAttacksMoved, clientAttacksBuilt, packAttacksDropped, clientSplashesAdded, clientSplashValues;
     // The played client's attack pushes (PlayedClientSkills.ReadAttackPushes); empty without a played client.
     private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (PlayedClientSkills.AttackPush Push, string Point)> clientPushes = [];
     private int clientPushesTaken;
@@ -371,7 +371,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             Console.WriteLine($"Skill attacks given the played client's arrow over the data pack's: {clientArrowsTaken} ({arrowPointMismatches} with another point at that place, the data pack's kept)");
         }
         if (playedSkills.Count > 0) {
-            Console.WriteLine($"Skill attacks put in the played client's order: {clientAttacksMoved} data pack attacks at another place, {clientAttacksBuilt} built from the client's row, {packAttacksDropped} data pack attacks the client lacks left out; {clientSplashesAdded} splash rows of the client's attacks added");
+            Console.WriteLine($"Skill attacks put in the played client's order: {clientAttacksMoved} data pack attacks at another place, {clientAttacksBuilt} built from the client's row, {packAttacksDropped} data pack attacks the client lacks left out; {clientSplashesAdded} splash rows of the client's attacks added, {clientSplashValues} given the client's values");
         }
         if (clientMotions.Count > 0) {
             Console.WriteLine($"Skill motions given the played client's sequence name, sequence speed, move distance and splash life tick over the data pack's: {clientMotionsTaken} ({motionPointMismatches} with other attack points, or another motion count in the level and another sequence, at that place, the data pack's kept)");
@@ -485,6 +485,11 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             }
             if (pairs[i] != i) clientAttacksMoved++;
             SkillMetadataAttack attack = PackAttack(id, level, motionIndex, i, pairs[i], pack[pairs[i]]);
+            SkillEffectMetadata[] taken = PlayedClientSkills.WithClientSplashes(client[i], attack.Skills, out int changed);
+            if (changed > 0) {
+                attack = attack with { Skills = taken };
+                clientSplashValues += changed;
+            }
             SkillEffectMetadata[] splashes = PlayedClientSkills.MissingSplashes(client[i], attack.Skills.Concat(attack.SkillsOnDamage));
             if (splashes.Length > 0) {
                 attack = attack with { Skills = [.. attack.Skills, .. splashes] };

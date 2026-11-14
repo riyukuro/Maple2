@@ -1203,4 +1203,37 @@ public class SkillCastRulesTests {
         Assert.That(missing.Select(splash => splash.Skills.Select(skill => skill.Id).ToArray()), Is.EqualTo(new[] { new[] { 20, 21 } }), "the row the pack has (30) is not added again");
         Assert.That(PlayedClientSkills.MissingSplashes(attack, []).Length, Is.EqualTo(2));
     }
+
+    // A paired attack's splash row takes the client's row of the same skills (10100191: the client's p0 fires
+    // 10100192 6 times at 500 ms, the data pack's row 2 times at 2000 ms), keeping the data pack's begin condition.
+    [Test]
+    public void PlayedClientSplashes_TakeTheClientsValues() {
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <level value="11">
+              <motion sequenceName="Attack_01_A"><attack point="p0"><actionSkill skillID="10100192" level="11" interval="500" immediateActive="1" fireCount="6" useDirection="1" /></attack></motion>
+            </level>
+            """);
+        System.Xml.XmlElement attack = PlayedClientSkills.MotionAttacks(document.DocumentElement!, 0, 1)![0];
+        var condition = (SkillEffectMetadataCondition) System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(SkillEffectMetadataCondition));
+        var splash = new SkillEffectMetadataSplash(2000, 500, 0, false, false, false, false, false, false, null);
+        SkillEffectMetadata[] pack = [
+            new(2, [new SkillEffectMetadata.Skill(10100192, 11)], condition, splash),
+            new(1, [new SkillEffectMetadata.Skill(10100193, 11)], condition, splash),
+            new(1, [new SkillEffectMetadata.Skill(10100192, 11)], condition, null),
+        ];
+        SkillEffectMetadata[] taken = PlayedClientSkills.WithClientSplashes(attack, pack, out int changed);
+        Assert.Multiple(() => {
+            Assert.That(changed, Is.EqualTo(1));
+            Assert.That(taken[0].FireCount, Is.EqualTo(6));
+            Assert.That(taken[0].Skills, Is.EqualTo(new[] { new SkillEffectMetadata.Skill(10100192, 11) }));
+            Assert.That(taken[0].Splash!.Interval, Is.EqualTo(500));
+            Assert.That(taken[0].Splash!.Delay, Is.EqualTo(0), "the client's row has no delay");
+            Assert.That(taken[0].Splash!.ImmediateActive, Is.True);
+            Assert.That(taken[0].Splash!.UseDirection, Is.True);
+            Assert.That(taken[0].Condition, Is.SameAs(condition), "the data pack's begin condition stays");
+            Assert.That(taken[1], Is.SameAs(pack[1]), "no client row of its skills");
+            Assert.That(taken[2], Is.SameAs(pack[2]), "not a splash row");
+        });
+    }
 }

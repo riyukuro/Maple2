@@ -216,6 +216,31 @@ public static partial class PlayedClientSkills {
             .Where(splash => splash.Skills.Length > 0 && splash.Skills.All(skill => !packSkills.Contains(skill.Id))).ToArray();
     }
 
+    // The data pack's splash rows of an attack, each with the values of the client attack's <actionSkill> row of the
+    // same skills, in order (BuildSplash: fire count, levels and links, interval, delay and the splash flags), where
+    // the client has one; its begin condition stays the data pack's, as the client's row has none. Changed counts the
+    // rows that took other values.
+    public static SkillEffectMetadata[] WithClientSplashes(XmlElement attack, IReadOnlyList<SkillEffectMetadata> pack, out int changed) {
+        List<SkillEffectMetadata> client = Children(attack, "actionSkill").Select(BuildSplash).ToList();
+        var result = new SkillEffectMetadata[pack.Count];
+        changed = 0;
+        for (int i = 0; i < pack.Count; i++) {
+            SkillEffectMetadata row = pack[i];
+            int match = row.Splash == null ? -1 : client.FindIndex(splash => splash.Skills.Select(skill => skill.Id).SequenceEqual(row.Skills.Select(skill => skill.Id)));
+            if (match < 0) {
+                result[i] = row;
+                continue;
+            }
+            SkillEffectMetadata taken = client[match] with { Condition = row.Condition };
+            client.RemoveAt(match);
+            if (taken.FireCount != row.FireCount || taken.Splash != row.Splash || !taken.Skills.SequenceEqual(row.Skills)) {
+                changed++;
+            }
+            result[i] = taken;
+        }
+        return result;
+    }
+
     // SkillAttackData::Load (skillattackdata.cpp:573-622; direction 3 when not given, the ctor, which the server
     // keeps as null). Its <range> (Unk_RangeProperty::LoadElement), <arrow> (SkillArrow::Load), <damage>
     // (SkillDamage::Load) and <actionSkill> rows; the client has no pet taming and no skill on damage count.
