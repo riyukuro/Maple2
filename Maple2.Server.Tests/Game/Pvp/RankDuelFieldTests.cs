@@ -386,6 +386,44 @@ public class RankDuelFieldTests {
         Assert.That(Pool(duel, duel.PlayerA, ApplyTargetType.Friendly), Does.Contain(duel.PlayerB));
     }
 
+    // The duelists get the duel's observer dialog too (Trigger dialog kind 5): at the fight start with the fight's 180 s
+    // (its timer) and both sides, after a round with the new win marks, and closed (character ids 0) at the result.
+    // Before, only onlookers got it, and the live duelists saw no timer and no opponent's bar.
+    [Test]
+    public void Duelists_GetTheDuelDialog() {
+        Duel duel = Start();
+        duel.Field.RankDuel!.Enter(duel.PlayerA);
+        duel.Field.RankDuel.Enter(duel.PlayerB);
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.LoadMs);
+        duel.A.TakeSent();
+        duel.B.TakeSent();
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.LoadMs + RankDuelMatchState.CountdownMs);
+        foreach (TestGameSession test in new[] { duel.A, duel.B }) {
+            List<string> dialogs = Dialogs(test);
+            Assert.That(dialogs, Has.Count.EqualTo(1));
+            // kind 5, the tick, 180000 ms, auto remove, then A and B with their health, 0 wins and rating 1000.
+            Assert.That(dialogs[0][..8], Is.EqualTo("4E00" + "0F" + "05"));
+            Assert.That(dialogs[0][16..26], Is.EqualTo("20BF0200" + "01"));
+            Assert.That(dialogs[0], Does.Contain(Long(duel.A.CharacterId)));
+            Assert.That(dialogs[0], Does.Contain(Long(duel.B.CharacterId) + Int((int) duel.PlayerB.Stats.Values[BasicAttribute.Health].Current)));
+            Assert.That(dialogs[0], Does.EndWith("00" + "E8030000" + "00000000"));
+        }
+
+        duel.Field.RankDuel.Death(duel.PlayerB);
+        Assert.That(Dialogs(duel.A).Single()[16..26], Is.EqualTo("00000000" + "01"));
+        Assert.That(Dialogs(duel.B).Single(), Does.Contain(Long(duel.A.CharacterId) + Int((int) duel.PlayerA.Stats.Values[BasicAttribute.Health].Current) + Int((int) duel.PlayerA.Stats.Values[BasicAttribute.Health].Total) + "01"));
+
+        WinRound(duel, duel.PlayerB);
+        duel.Field.RankDuel.Death(duel.PlayerB);
+        foreach (TestGameSession test in new[] { duel.A, duel.B }) {
+            Assert.That(Dialogs(test).Single(), Does.EndWith("01" + new string('0', 46 * 2)));
+        }
+    }
+
+    private static List<string> Dialogs(TestGameSession test) {
+        return test.TakeSent().Select(Convert.ToHexString).Where(packet => packet.StartsWith("4E000F05")).ToList();
+    }
+
     private static List<IActor> Pool(Duel duel, FieldPlayer caster, ApplyTargetType type) {
         var prisms = new[] { new Prism(new Circle(Vector2.Zero, 500), -100, 300) };
         MethodInfo pool = typeof(FieldManager).GetMethod("GetTargetPool", Any)!;

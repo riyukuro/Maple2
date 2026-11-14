@@ -162,6 +162,16 @@ public sealed class RankDuelField {
         }
     }
 
+    // The duel's observer dialog goes to the duelists too: it is their fight's timer (setTime) and both sides' health
+    // bars, names and win marks, and the client has no other (UIPvPObserverDialog reads its two characters from the
+    // packet, not from who is watching). Before, only the onlookers got it, so a duelist saw no timer and no
+    // opponent's bar.
+    private void SendDialog(Maple2.PacketLib.Tools.ByteWriter packet) {
+        Send(state.First, packet);
+        Send(state.Second, packet);
+        SendObservers(packet);
+    }
+
     private void SendObservers(Maple2.PacketLib.Tools.ByteWriter packet) {
         foreach (long characterId in observers) {
             Send(characterId, packet);
@@ -228,7 +238,7 @@ public sealed class RankDuelField {
                         Tell(onObservable);
                     }
                     if (DuelDialog((int) RankDuelMatchState.FightMs) is { } dialog) {
-                        SendObservers(dialog);
+                        SendDialog(dialog);
                     }
                     break;
                 case RankDuelEventType.RoundEnd:
@@ -280,7 +290,7 @@ public sealed class RankDuelField {
                 break;
         }
         EndFight();
-        SendObservers(TriggerPacket.PvpPlayerDialog(0, default, default));
+        SendDialog(TriggerPacket.PvpPlayerDialog(0, default, default));
         SendObservers(PvpPacket.RankDuelObserving(true));
         // The rank duel state goes back to 0, so the duelists can register again.
         Send(state.First, PvpPacket.RankDuelUnregistered());
@@ -304,7 +314,7 @@ public sealed class RankDuelField {
             Send(state.Second, PvpPacket.RankDuelDraw());
         }
         if (DuelDialog(0) is { } dialog) {
-            SendObservers(dialog);
+            SendDialog(dialog);
         }
     }
 
