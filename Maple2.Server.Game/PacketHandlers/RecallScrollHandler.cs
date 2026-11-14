@@ -63,7 +63,8 @@ public class RecallScrollHandler : FieldPacketHandler {
             return;
         }
 
-        if (!PlayerWarpUtil.GoToPlayer(session, callerInfo)) {
+        // The record's map can be one the caller just left; the move checks the map the caller's channel reads.
+        if (!PlayerWarpUtil.GoToPlayer(session, callerInfo, expectedMapId: recall.MapId)) {
             Logger.Warning("Recall of {CharacterId} to {CallerId} failed", session.CharacterId, recall.CallerId);
         }
     }

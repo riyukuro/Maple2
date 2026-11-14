@@ -1,8 +1,12 @@
-﻿using System.Numerics;
+﻿using System;
+using System.Linq;
+using System.Net;
+using System.Numerics;
 using Grpc.Core;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Commands;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -83,6 +87,63 @@ public class ReturnSpotMoveTests {
         Assert.Multiple(() => {
             Assert.That(test.World.Moves[0].MapId, Is.EqualTo(expected));
             Assert.That(test.World.Moves[0].PositionX, Is.EqualTo(1));
+        });
+    }
+
+    // The client is sent the map of the position with the new channel's address: it loads that map.
+    [Test]
+    public void GoToPlayer_OtherChannel_SendsTheMapOfThePosition() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000025));
+        test.TakeSent();
+        test.World.PlayerWarpAnswer = new Maple2.PlayerWarpResponse { RoomId = 5, MapId = 2000023, X = 1, Y = 2, Z = 3 };
+        short other = (short) (session.Player.Value.Character.Channel + 1);
+
+        Assert.That(PlayerWarpUtil.GoToPlayer(session, Target(other, ReturnMap)), Is.True);
+
+        var endpoint = new IPEndPoint(IPAddress.Parse(test.World.MoveAddress), test.World.MovePort);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString),
+            Does.Contain(Convert.ToHexString(MigrationPacket.GameToGame(endpoint, 1, 2000023).ToArray())));
+    }
+
+    // A recall goes to the map its notice named: a caller whose channel reads another map (the World's record still
+    // names the one they left) is not reached, and no move is made.
+    [TestCase(2000023, false)]
+    [TestCase(ReturnMap, true)]
+    [TestCase(0, true)]
+    public void GoToPlayer_ExpectedMap_MovesOnlyToThatMap(int warpMap, bool moves) {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000025));
+        test.World.PlayerWarpAnswer = new Maple2.PlayerWarpResponse { RoomId = 5, MapId = warpMap, X = 1, Y = 2, Z = 3 };
+        short other = (short) (session.Player.Value.Character.Channel + 1);
+
+        Assert.That(PlayerWarpUtil.GoToPlayer(session, Target(other, ReturnMap), expectedMapId: ReturnMap), Is.EqualTo(moves));
+
+        Assert.That(test.World.Moves, Has.Count.EqualTo(moves ? 1 : 0));
+    }
+
+    // The way back on this server (not from a home or a guild house): a field change that cannot be made (a map
+    // the played client does not have) leaves the player where they are with the spot kept.
+    [Test]
+    public void ReturnField_SameServerRefused_KeepsTheSpot() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.AddMap(TestGameSession.Map(ReturnMap, notInPlayedClient: true) with {
+            Limit = new MapMetadataLimit(0, 0, 0, 0, [], false, false, false, false, false, false, false),
+        });
+        test.EnterMap(TestGameSession.Map(2000023));
+        Character character = session.Player.Value.Character;
+        character.ReturnMaps.Push(ReturnMap);
+        character.ReturnPosition = new Vector3(100, 200, 300);
+
+        session.ReturnField();
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.Moves, Is.Empty);
+            Assert.That(session.Field?.MapId, Is.EqualTo(2000023));
+            Assert.That(character.ReturnPosition, Is.EqualTo(new Vector3(100, 200, 300)));
         });
     }
 

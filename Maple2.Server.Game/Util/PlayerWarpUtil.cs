@@ -52,8 +52,10 @@ public static class PlayerWarpUtil {
     /// Returns false when the target's position could not be found or the field could not be prepared.
     /// intoHome: the target's home field is entered when the target is in one, whatever its entry rules. Only
     /// the recall invite of a GM and the GM goto command set it.
+    /// expectedMapId: when not 0, the move goes only if the target stands on that map (a recall goes to the map
+    /// its notice named); the World's record can still name the map the target just left.
     /// </summary>
-    public static bool GoToPlayer(GameSession session, PlayerInfo playerInfo, bool intoHome = false) {
+    public static bool GoToPlayer(GameSession session, PlayerInfo playerInfo, bool intoHome = false, int expectedMapId = 0) {
         if (session.Field is null) return false;
 
         PlayerWarpResponse? warpResponse = session.World.PlayerWarp(new PlayerWarpRequest {
@@ -69,6 +71,9 @@ public static class PlayerWarpUtil {
         }
 
         int targetMapId = TargetMap(warpResponse.MapId, playerInfo.MapId);
+        if (expectedMapId != 0 && targetMapId != expectedMapId) {
+            return false;
+        }
         var position = new Vector3(warpResponse.X, warpResponse.Y, warpResponse.Z + VERTICAL_SPAWN_OFFSET);
         long ownerId = TargetHome(intoHome, warpResponse.OwnerId);
         long ownOwnerId = session.Field is Manager.Field.HomeFieldManager ownHome ? ownHome.OwnerId : 0;

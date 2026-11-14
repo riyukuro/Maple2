@@ -62,7 +62,7 @@ public class RecallUserHandler : FieldPacketHandler {
             // session closes with it.
             session.Send(RecallUserPacket.Recalled(recall.CallerName));
         }
-        if (!canMove || callerInfo == null || !PlayerWarpUtil.GoToPlayer(session, callerInfo, intoHome: true)) {
+        if (!canMove || callerInfo == null || !PlayerWarpUtil.GoToPlayer(session, callerInfo, intoHome: true, expectedMapId: recall.MapId)) {
             Logger.Warning("Recall of {CharacterId} to {CallerId} failed", session.CharacterId, recall.CallerId);
             UserRecallUtil.TellCaller(session, name, recall.CallerId, false, RecallUserPacket.FAIL_CANNOT_MOVE);
             return;
