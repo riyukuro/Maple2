@@ -8,6 +8,7 @@ using Maple2.Server.Global.Service;
 using Maple2.Server.World;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Maple2.Server.Tests.World;
@@ -39,6 +40,30 @@ public class LoginGateTests {
         storage = new GameStorage(options, null!, null!, null!, null!, null!, null!, NullLogger<GameStorage>.Instance, null!);
         gate = new Gate();
         service = new GlobalService(storage, gate);
+    }
+
+    // The World host builds the service the way gRPC does (ActivatorUtilities.CreateFactory with no given arguments);
+    // a second public constructor made every login throw "Multiple constructors accepting all given argument types".
+    [Test]
+    public void GrpcActivation_BuildsTheServiceWithTheContainersGate() {
+        var services = new ServiceCollection();
+        services.AddSingleton(storage);
+        services.AddSingleton<ILoginGate>(gate);
+        using ServiceProvider provider = services.BuildServiceProvider();
+        ObjectFactory factory = ActivatorUtilities.CreateFactory(typeof(GlobalService), Type.EmptyTypes);
+
+        object built = factory(provider, null);
+
+        Assert.That(built, Is.InstanceOf<GlobalService>());
+        gate.Maintenance = "checking";
+        Account("gated", AdminPermissions.None);
+        LoginResponse response = ((GlobalService) built).Login(new LoginRequest {
+            Username = "gated",
+            Password = "secret",
+            MachineId = machineId.ToString(),
+            ClientIp = "127.0.0.1",
+        }, null!).Result;
+        Assert.That(response.Code, Is.EqualTo(LoginResponse.Types.Code.Maintenance));
     }
 
     private void Account(string name, AdminPermissions permissions) {

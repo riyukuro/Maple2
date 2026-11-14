@@ -23,9 +23,9 @@ public partial class GlobalService : Global.GlobalBase {
     private readonly ILogger logger = Log.Logger.ForContext<GlobalService>();
     private static readonly object createLock = new();
 
-    public GlobalService(GameStorage gameStorage) : this(gameStorage, null) { }
-
-    public GlobalService(GameStorage gameStorage, ILoginGate? gate) {
+    // One constructor only: gRPC builds the service with ActivatorUtilities.CreateFactory, which refuses a type with
+    // two constructors it could call (every login failed with that). The gate comes from the container (WorldServer).
+    public GlobalService(GameStorage gameStorage, ILoginGate? gate = null) {
         this.gameStorage = gameStorage;
         this.gate = gate;
     }
