@@ -471,6 +471,15 @@ public record ExchangeScrollSale(
     int Rate,
     int[] ExchangeIds) : GameEventData;
 
+// The meret market sale (GameEventPremiumMarketSale, commonfiles/gameevent.cpp:1386): value1 is the rate out of
+// 10000 taken off a product's sale price, value2 a comma list of market categories it is for (0 every category, a
+// category ending in 00 its sub categories too), value3 the currency item it is for (100000 merets, 100001 red
+// merets, 100002 any currency on a coupon product). EventSaleRules.PremiumMarketPrice.
+public record PremiumMarketSale(
+    int Rate,
+    int[] CategoryIds,
+    int Currency) : GameEventData;
+
 // The beauty fee sale (GameEventSaleBeautyShop, commonfiles/gameevent.cpp:760): value1 is the beauty shop's id,
 // value2 the rate out of 10000 taken off its fees, value3 the flag of a PC room row, which lowers nothing here
 // (EventSaleRules.BeautyShopRate).
@@ -727,6 +736,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(FindDungeonHelperBonus), "FindDungeonHelperBonus")]
 [JsonDerivedType(typeof(SaleRemake), "SaleRemake")]
 [JsonDerivedType(typeof(ExchangeScrollSale), "ExchangeScrollSale")]
+[JsonDerivedType(typeof(PremiumMarketSale), "PremiumMarketSale")]
 [JsonDerivedType(typeof(SaleBeautyShop), "SaleBeautyShop")]
 [JsonDerivedType(typeof(SAHotTime), "SAHotTime")]
 [JsonDerivedType(typeof(DungeonBonusReward), "DungeonBonusReward")]

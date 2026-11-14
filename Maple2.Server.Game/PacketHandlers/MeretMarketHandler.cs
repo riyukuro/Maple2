@@ -501,7 +501,12 @@ public class MeretMarketHandler : FieldPacketHandler {
             return null;
         }
 
-        long price = entry.Metadata.SalePrice > 0 ? entry.Metadata.SalePrice : entry.Price;
+        // The client bills the sale price less the running PremiumMarketSale events (GetSalePrice); a row without a
+        // sale price (a metadata db from before the ingest filled it) keeps the list price, undiscounted.
+        long price = entry.Metadata.SalePrice > 0
+            ? EventSaleRules.PremiumMarketPrice(entry.Metadata.SalePrice, entry.Metadata.CurrencyType, entry.TabId,
+                session.FindEvent(GameEventType.PremiumMarketSale))
+            : entry.Price;
         if (price < 0) {
             return null;
         }

@@ -49,6 +49,58 @@ public static class EventSaleRules {
         return rate;
     }
 
+    // The currency item of a meret market product's money type (CDBPremiumProduct::GetCurrencyItemId): merets 100000,
+    // red merets 100001, 0 for anything else, which no sale lowers.
+    public static int PremiumCurrencyItemId(MeretMarketCurrencyType currency) => currency switch {
+        MeretMarketCurrencyType.Meret => 100000,
+        MeretMarketCurrencyType.RedMeret => 100001,
+        _ => 0,
+    };
+
+    // Whether a sale covers a market category (shopeventmanager.cpp FUN_1407cde30): the currency is the sale's, and
+    // its set holds the category's top (the category less its last two digits, when those are not 00), the category,
+    // or 0.
+    public static bool PremiumSaleCovers(PremiumMarketSale sale, int categoryId, int currency) {
+        if (currency != sale.Currency) {
+            return false;
+        }
+        int rest = categoryId % 100;
+        if (rest > 0 && sale.CategoryIds.Contains(categoryId - rest)) {
+            return true;
+        }
+        return sale.CategoryIds.Contains(categoryId) || sale.CategoryIds.Contains(0);
+    }
+
+    // The price of a meret market product under the running PremiumMarketSale events, the one the market shows, checks
+    // and sends in the buy (CDBPremiumProduct::GetSalePrice, commonfiles/meratmarketbasketinfo.cpp:685;
+    // CMeratMarketBuy::FUN_140d60a80). The products the server lists carry no coupon flags (PremiumMarketItem
+    // writes 0), so only events of the product's currency count, for category 0 and the product's category; the
+    // highest rate wins and the price is ceil(price * (10000 - rate) / 10000) (GetDiscountedPrice,
+    // shopeventmanager.cpp:97). The client multiplies in 32 bits; the server does not, so a price whose product
+    // passes 2^31 is charged the true discount (the client shows a wrapped number there).
+    public static long PremiumMarketPrice(long price, MeretMarketCurrencyType currencyType, int categoryId, IEnumerable<GameEvent> events) {
+        int currency = PremiumCurrencyItemId(currencyType);
+        if (currency == 0 || price <= 0) {
+            return price;
+        }
+        int rate = 0;
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is not PremiumMarketSale sale || sale.Rate <= rate) {
+                continue;
+            }
+            if (PremiumSaleCovers(sale, 0, currency) || (categoryId > 0 && PremiumSaleCovers(sale, categoryId, currency))) {
+                rate = sale.Rate;
+            }
+        }
+        if (rate <= 0) {
+            return price;
+        }
+        if (rate >= FullRate) {
+            return 0;
+        }
+        return (long) Math.Ceiling((float) (price * (FullRate - rate)) / 10000f);
+    }
+
     // The price of a design under a SaleUgcDesign rate, as the design window computes it
     // (uiugcitemeditdialog.cpp:1007): no rate, the price; the full rate, 0; else price * (10000 - rate) / 10000 in
     // whole numbers. A rate above the full one is free as well (chosen here; the client does not test it).

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 
 namespace Maple2.File.Ingest.Helpers;
 
@@ -83,6 +84,32 @@ public static class EventSaleReader {
             }
         }
         return ids.Length == 0 ? null : new ExchangeScrollSale(rate, ids);
+    }
+
+    // value1 the rate, value2 the market categories as a comma list kept as a set, value3 the currency item
+    // (GameEventPremiumMarketSale::vfunc_2, commonfiles/gameevent.cpp:1397). A category that is not a number gives no
+    // event (chosen here: the client's parse reads it as 0, a sale of every category); so does a row without
+    // categories or with a rate outside 1..10000 (the client would show a price below 0 above the full rate). A row
+    // without value3 is kept with currency 0, which no product matches, as in the client (KR's three 2016 rows).
+    public static PremiumMarketSale? PremiumMarket(string? value1, string? value2, string? value3) {
+        if (!int.TryParse(value1?.Trim(), out int rate) || rate is <= 0 or > EventSaleRules.FullRate) {
+            return null;
+        }
+        var ids = new SortedSet<int>();
+        foreach (string place in Split(value2)) {
+            if (!int.TryParse(place, out int id)) {
+                return null;
+            }
+            ids.Add(id);
+        }
+        if (ids.Count == 0) {
+            return null;
+        }
+        int currency = 0;
+        if (!string.IsNullOrWhiteSpace(value3) && !int.TryParse(value3.Trim(), out currency)) {
+            return null;
+        }
+        return new PremiumMarketSale(rate, ids.ToArray(), currency);
     }
 
     // value1 the special attribute ids, value2 their values, comma lists (GameEventSAHotTime,

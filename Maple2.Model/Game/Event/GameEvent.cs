@@ -487,6 +487,17 @@ public class GameEvent : IByteSerializable {
                     writer.WriteInt(exchangeId);
                 }
                 break;
+            case PremiumMarketSale premiumSale:
+                // GameEventPremiumMarketSale::vfunc_4 (gameevent.cpp:1427): the rate, the count, the categories,
+                // the currency.
+                writer.WriteInt(Id);
+                writer.WriteInt(premiumSale.Rate);
+                writer.WriteInt(premiumSale.CategoryIds.Length);
+                foreach (int categoryId in premiumSale.CategoryIds) {
+                    writer.WriteInt(categoryId);
+                }
+                writer.WriteInt(premiumSale.Currency);
+                break;
             case SaleBeautyShop saleBeautyShop:
                 writer.WriteInt(Id);
                 writer.WriteInt(saleBeautyShop.ShopId);
