@@ -120,8 +120,6 @@ public class ItemSocketScrollHandlerTests {
         });
     }
 
-    // A failed roll takes the scroll, opens nothing and answers mode 2 with result 0, the uid and the byte, which is
-    // all the client reads for a fail (FUN_14062a230). Before, every unlock opened.
     // KR 23200034 (socket_unlock_fail, grades 1, 10, 50): a failed scroll unlock counts; before, nothing sent it.
     [Test]
     public void FailedRoll_CountsSocketUnlockFail() {
@@ -149,6 +147,8 @@ public class ItemSocketScrollHandlerTests {
         Assert.That(test.TrophyCounter(trophy) ?? 0, Is.Zero);
     }
 
+    // A failed roll takes the scroll, opens nothing and answers mode 2 with result 0, the uid and the byte, which is
+    // all the client reads for a fail (FUN_14062a230). Before, every unlock opened.
     [Test]
     public void FailedRoll_TakesTheScrollAndAnswersFail() {
         GameSession session = Start(successRate: 0);
