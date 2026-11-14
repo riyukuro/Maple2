@@ -43,20 +43,69 @@ public abstract class DatabaseRequest<TContext> : IDisposable
         transaction = Context.Database.BeginTransaction();
     }
 
+    // Tests only: runs before (false) and right after (true) the transaction's commit, on this thread; a throw there
+    // is one of the commit itself (after it: a commit kept whose answer was lost).
+    [ThreadStatic] internal static Action<bool>? CommitFault;
+
+    // A commit that throws leaves the transaction open here (Dispose rolls it back, the dropped steps run): its writes
+    // may have been kept or not. A caller that can learn which (GameSession's purchase save reads its mark again) ends
+    // it with SettleCommit.
     public bool Commit() {
         if (transaction == null) {
             return false;
         }
 
+        CommitFault?.Invoke(false);
         transaction.Commit();
+        CommitFault?.Invoke(true);
         transaction.Dispose();
+        Committed();
+        return true;
+    }
+
+    private void Committed() {
         transaction = null; // transaction is completed.
         (Action Committed, Action? Dropped)[] committed = afterCommit.ToArray();
         afterCommit.Clear();
         foreach ((Action action, _) in committed) {
             action();
         }
-        return true;
+    }
+
+    // After a commit that threw: the transaction is rolled back first (nothing on the database when the commit was
+    // kept; a rollback that fails is logged), so no row lock of it is left when kept reads what was stored. kept
+    // answers true (the writes were kept), false (they were not) or null (it cannot tell). The steps of that answer
+    // run: AfterCommit's when kept, else the dropped ones, as a rollback runs them (memory then is that of a failure).
+    public bool? SettleCommit(Func<bool?> kept) {
+        IDbContextTransaction? open = transaction;
+        transaction = null;
+        if (open != null) {
+            try {
+                open.Rollback();
+            } catch (Exception ex) {
+                Logger.LogInformation(ex, "Rollback after a commit that threw failed");
+            } finally {
+                try {
+                    open.Dispose();
+                } catch (Exception ex) {
+                    Logger.LogError(ex, "Disposing a transaction whose commit threw failed");
+                }
+            }
+        }
+        bool? answer = kept();
+        (Action Committed, Action? Dropped)[] steps = afterCommit.ToArray();
+        afterCommit.Clear();
+        if (answer != true) {
+            Context.ChangeTracker.Clear();
+        }
+        foreach ((Action committed, Action? dropped) in steps) {
+            if (answer == true) {
+                committed();
+            } else {
+                dropped?.Invoke();
+            }
+        }
+        return answer;
     }
 
     // Ends an open transaction without its writes, so the request can go on outside it. The tracked entities are

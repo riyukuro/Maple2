@@ -71,6 +71,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<Mentoring> Mentoring { get; set; } = null!;
     internal DbSet<NurturingDaily> NurturingDaily { get; set; } = null!;
     internal DbSet<PromotionCount> PromotionCount { get; set; } = null!;
+    internal DbSet<StoreMark> StoreMark { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         base.OnModelCreating(modelBuilder);
@@ -144,5 +145,6 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
         modelBuilder.Entity<Mentoring>(Maple2.Database.Model.Mentoring.Configure);
         modelBuilder.Entity<NurturingDaily>(Maple2.Database.Model.NurturingDaily.Configure);
         modelBuilder.Entity<PromotionCount>(Maple2.Database.Model.PromotionCount.Configure);
+        modelBuilder.Entity<StoreMark>(Maple2.Database.Model.StoreMark.Configure);
     }
 }

@@ -9,6 +9,7 @@ using Maple2.Server.Game.Manager.Config;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Account = Maple2.Model.Game.Account;
 using Character = Maple2.Model.Game.Character;
@@ -320,6 +321,35 @@ public partial class GameStorage {
                 : Context.Account.AsNoTracking().Where(account => account.Id == accountId)
                     .Select(account => account.SessionGen).FirstOrDefault();
             return current == session;
+        }
+
+        // A purchase save's mark (StoreMark), written in its open transaction: read again after a commit that threw,
+        // it tells whether that commit was kept. False where there is no transaction to lose (the in-memory store).
+        public bool WriteStoreMark(long accountId, long mark) {
+            if (!Context.Database.IsRelational()) {
+                return false;
+            }
+            Context.Database.ExecuteSqlRaw(
+                "INSERT INTO `store-mark` (`AccountId`, `Mark`) VALUES ({0}, {1}) ON DUPLICATE KEY UPDATE `Mark` = {1}", accountId, mark);
+            return true;
+        }
+
+        // The account's stored mark (0 when none was ever stored), on this request's own connection and outside any
+        // transaction. The read locks the row, so a transaction that still holds it (a commit whose connection is
+        // ending) is waited for, up to lockWaitSeconds, and the value read is the one it left; a longer wait throws.
+        public long ReadStoreMark(long accountId, int lockWaitSeconds) {
+            Context.Database.OpenConnection();
+            try {
+                Context.Database.ExecuteSqlRaw($"SET SESSION innodb_lock_wait_timeout = {lockWaitSeconds}");
+                using IDbContextTransaction read = Context.Database.BeginTransaction();
+                long mark = Context.Database
+                    .SqlQueryRaw<long>("SELECT `Mark` AS `Value` FROM `store-mark` WHERE `AccountId` = {0} FOR UPDATE", accountId)
+                    .ToList().FirstOrDefault();
+                read.Commit();
+                return mark;
+            } finally {
+                Context.Database.CloseConnection();
+            }
         }
 
         // A character of the account that is in a game channel now: the game entry stamps the account online and the

@@ -2126,13 +2126,34 @@ public sealed partial class GameSession : Core.Network.Session {
         return false;
     }
 
-    private enum SaveResult { Stored, Failed, ResetRunning }
+    // Unknown: a purchase save whose commit threw and whose mark could not be read again (storeUnknown).
+    private enum SaveResult { Stored, Failed, ResetRunning, Unknown }
+
+    // Set by a purchase save whose commit threw and whose mark could not be read: its rows may be in the database or
+    // not, while the session's memory is that of a failed store (the caller put back what it took). A later store
+    // would write that memory over a purchase that was kept (a refund of a price the database took), so every store
+    // of the session is refused from then on, its last one at Dispose too, and the session is ended: the next login
+    // loads what the database holds, the purchase with its price or neither.
+    private volatile bool storeUnknown;
+    // How long the read of a purchase save's mark waits for the row's lock (a transaction whose connection is ending).
+    private const int MarkLockWaitSeconds = 10;
+    // Tests only: runs before the mark of a commit that threw is read again; a throw there is a read that failed.
+    internal Action? MarkReadFault;
+
+    private bool StoreRefused(string where) {
+        if (!storeUnknown) {
+            return false;
+        }
+        Logger.Error("{Where}: an earlier purchase save of this session ended unknown, nothing more is stored AccountId={AccountId} CharacterId={CharacterId}",
+            where, AccountId, CharacterId);
+        return true;
+    }
 
     // ResetRunning: a reset was being stored for longer than resetWait, and nothing was written. That is no failed
     // save: a reset must not end sessions. A save with a wait that still finds it running (a reset stuck for a
     // minute) is a failed one for its caller.
     private SaveResult LockedSave(int tries, TimeSpan resetWait) {
-        if (NestedStore("SessionSave")) {
+        if (StoreRefused("SessionSave") || NestedStore("SessionSave")) {
             return SaveResult.Failed;
         }
         bool outer = BeginStoreScope();
@@ -2400,7 +2421,7 @@ public sealed partial class GameSession : Core.Network.Session {
         SaveResult result = SaveResult.Failed;
         bool locked = false;
         bool entered = false;
-        bool nested = NestedStore("SavePurchase");
+        bool nested = StoreRefused("SavePurchase") || NestedStore("SavePurchase");
         try {
             if (nested) {
                 return result;
@@ -2438,6 +2459,9 @@ public sealed partial class GameSession : Core.Network.Session {
                 LeaveStore();
             }
             EndStoreScope(outer);
+            if (result == SaveResult.Unknown) {
+                Cut();
+            }
         }
     }
 
@@ -2466,13 +2490,58 @@ public sealed partial class GameSession : Core.Network.Session {
                 }
                 return SaveResult.Failed;
             }
-            return (tokens.Kept = db.Commit()) ? SaveResult.Stored : SaveResult.Failed;
+            // The mark tells a commit that throws (its answer lost with the connection) kept or not (CommitThrew).
+            long mark = Random.Shared.NextInt64(1, long.MaxValue);
+            bool marked = db.WriteStoreMark(AccountId, mark);
+            bool committed;
+            try {
+                committed = db.Commit();
+            } catch (Exception ex) {
+                return CommitThrew(db, tokens, ex, marked ? mark : 0);
+            }
+            return (tokens.Kept = committed) ? SaveResult.Stored : SaveResult.Failed;
         } catch (ResetRunningException ex) {
             Logger.Information("SavePurchase: {Reason}, nothing written AccountId={AccountId} CharacterId={CharacterId}", ex.Message, AccountId, CharacterId);
             return SaveResult.ResetRunning;
         } catch (Exception ex) {
             Logger.Error(ex, "SavePurchase failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return SaveResult.Failed;
+        }
+    }
+
+    // A purchase save whose commit threw: its writes may be kept or not. Its mark, read again once the transaction is
+    // let go, tells which: kept, it is stored (the caller gives what was paid for, and refunds nothing); not kept, it
+    // is a failed save as any other. A mark that cannot be read (or none, on a store without transactions) leaves it
+    // Unknown (storeUnknown): logged with the stack, and the session is ended. Before, every commit that threw was a
+    // failed one, and a purchase the database kept was refunded in memory, and stored so by the next save.
+    private SaveResult CommitThrew(GameStorage.Request db, RowTokens tokens, Exception ex, long mark) {
+        bool? kept = db.SettleCommit(() => mark == 0 ? null : MarkStored(mark));
+        switch (kept) {
+            case true:
+                Logger.Error(ex, "SavePurchase: the commit threw, but its mark is stored: the purchase is stored AccountId={AccountId} CharacterId={CharacterId}",
+                    AccountId, CharacterId);
+                tokens.Kept = true;
+                return SaveResult.Stored;
+            case false:
+                Logger.Error(ex, "SavePurchase: the commit threw and its mark is not stored, nothing stored AccountId={AccountId} CharacterId={CharacterId}",
+                    AccountId, CharacterId);
+                return SaveResult.Failed;
+        }
+        storeUnknown = true;
+        Logger.Error(ex, "SavePurchase: the commit threw and whether it was kept cannot be read; nothing more of this session is stored and it is ended, the next login loads what the database holds AccountId={AccountId} CharacterId={CharacterId}{NewLine}{Stack}",
+            AccountId, CharacterId, Environment.NewLine, Environment.StackTrace);
+        return SaveResult.Unknown;
+    }
+
+    // Whether the account's stored mark is this one, read on a connection of its own; null when the read fails.
+    private bool? MarkStored(long mark) {
+        try {
+            MarkReadFault?.Invoke();
+            using GameStorage.Request read = GameStorage.Context();
+            return read.ReadStoreMark(AccountId, MarkLockWaitSeconds) == mark;
+        } catch (Exception ex) {
+            Logger.Error(ex, "SavePurchase: the mark of a commit that threw could not be read AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            return null;
         }
     }
 
