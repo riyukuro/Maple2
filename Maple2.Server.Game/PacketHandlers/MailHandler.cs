@@ -77,6 +77,11 @@ public class MailHandler : FieldPacketHandler {
             return;
         }
 
+        // No character has a longer name: refused without a lookup.
+        if (receiverName.Length > Maple2.Model.Metadata.Constant.CharacterNameLengthMax) {
+            session.Send(MailPacket.Error(MailError.s_mail_error_username, (byte) Command.Send));
+            return;
+        }
         // Names are looked up without case (GetCharacterId), so the own name in another case is the sender too.
         if (string.Equals(receiverName, session.PlayerName, StringComparison.OrdinalIgnoreCase)) {
             session.Send(MailPacket.Error(MailError.s_mail_error_recipient_equal_sender, (byte) Command.Send));

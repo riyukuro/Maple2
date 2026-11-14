@@ -169,7 +169,8 @@ public class UserChatHandler : FieldPacketHandler {
     }
 
     private void HandleWhisper(GameSession session, string message, string recipient, ICollection<long> itemUids) {
-        if (recipient == session.PlayerName) {
+        // Names are looked up without case (GetCharacterId), so the own name in another case is the sender too.
+        if (string.Equals(recipient, session.PlayerName, StringComparison.OrdinalIgnoreCase)) {
             session.Send(ChatPacket.Alert(StringCode.s_whisper_err_myself));
             return;
         }

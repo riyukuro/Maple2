@@ -179,9 +179,11 @@ public class MailTwoSessionTests {
         Assert.That(senderTest.World.MailNotifications, Is.Empty);
     }
 
-    [Test]
-    public void Mail_ToANameNobodyHasIsRefused() {
-        SendMail("nobody");
+    // A name past the longest a character can have names nobody (refused before the lookup).
+    [TestCase("nobody")]
+    [TestCase("abcdefghijklmnopqrstuvwxyz0123456789")]
+    public void Mail_ToANameNobodyHasIsRefused(string name) {
+        SendMail(name);
 
         Assert.That(Hex(Mail(senderTest)), Is.EqualTo(new[] { Hex(MailPacket.Error(MailError.s_mail_error_username, Send)) }));
         Assert.That(senderTest.World.MailNotifications, Is.Empty);

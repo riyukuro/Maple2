@@ -215,9 +215,11 @@ public class WhisperTests {
         Assert.That(senderTest.World.Chats, Is.Empty);
     }
 
-    [Test]
-    public void Whisper_ToOneselfSendsTheNotice() {
-        Whisper(sender.PlayerName, "psst");
+    // Names are found without case, so the own name in another case is oneself too.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Whisper_ToOneselfSendsTheNotice(bool otherCase) {
+        Whisper(otherCase ? sender.PlayerName.ToUpperInvariant() : sender.PlayerName, "psst");
 
         Assert.That(Chat(senderTest), Is.EqualTo(new[] { Hex(ChatPacket.Alert(StringCode.s_whisper_err_myself)) }));
         Assert.That(senderTest.World.Chats, Is.Empty);
