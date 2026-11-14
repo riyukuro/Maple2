@@ -69,6 +69,11 @@ public class ItemUseHandler : FieldPacketHandler {
         if (limit.RequireWedding && !MarriageManager.InProgress(session.Marriage.Marriage.Status)) {
             return false;
         }
+        // The owner bind (FUN_1406343b0, the last check of the client's CanUseItem @0x140d1b610, notice 0xfe): an item
+        // bound to another character, or one with a gem in its sockets bound to another character, is not used.
+        if (FittingDollRules.BindingOwner(item, session.CharacterId).CharacterId != 0) {
+            return false;
+        }
         return item.Metadata.Function?.OnlyShadowWorld != true || session.Field?.Metadata.Property.Continent == Continent.ShadowWorld;
     }
 
