@@ -24,8 +24,10 @@ public class TransferEnchantHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
-    // With EnchantTransform01 off the inventory hides the button that opens the transform dialog (UIInventoryDialog,
-    // uiinventorydialog.cpp:1008), the only sender (uiitemenchanttransformdialog.cpp:350).
+    // The only sender is the transform dialog (uiitemenchanttransformdialog.cpp:350). With EnchantTransform01 off the
+    // inventory hides the button that opens it (UIInventoryDialog, uiinventorydialog.cpp:1008). An npc script function
+    // whose uiName is ItemEnchantTransformDialog can still open it (NpcTalk OpenDialog), as the dialog checks no feature;
+    // its submit is then dropped here, like the other silent refusals.
     public const string Feature = "EnchantTransform01";
 
     public override void Handle(GameSession session, IByteReader packet) {
