@@ -78,19 +78,26 @@ public class NpcTalkHandler : FieldPacketHandler {
     }
 
     private void HandleTalk(GameSession session, IByteReader packet) {
-        if (session.Field is null) return;
+        // Each early return logs at Debug, so a run shows whether a talk arrived and which check dropped it.
+        if (session.Field is null) {
+            Logger.Debug("Talk dropped: no field");
+            return;
+        }
         int objectId = packet.ReadInt();
         if (!session.Field.Npcs.TryGetValue(objectId, out FieldNpc? npc)) {
-            return; // Invalid Npc
+            Logger.Debug("Talk to object {ObjectId} dropped: no such npc in map {MapId}", objectId, session.Field.MapId);
+            return;
         }
         // The client hides an npc whose quest mask fails (QuestMaskRules.Visible) and sends no talk to it.
         if (!session.Quest.MaskShows(session.Field.MapId, npc.Value.Id)) {
+            Logger.Debug("Talk to npc {ObjectId} ({NpcId}) dropped: quest mask hides it", objectId, npc.Value.Id);
             return;
         }
         // Nor does it talk to an npc out of its talk reach (InteractRules.TalkReach).
         float radius = npc.Value.Metadata.Property?.Capsule?.Radius ?? 0f;
         if (!InteractRules.InReach(session.Player.Position, npc.Position, InteractRules.TalkReach(Constants.TalkableDistance, radius))) {
-            Logger.Debug("Talk to npc {ObjectId} out of reach", objectId);
+            Logger.Debug("Talk to npc {ObjectId} ({NpcId}) dropped: out of reach, player {Player}, npc {Npc}",
+                objectId, npc.Value.Id, session.Player.Position, npc.Position);
             return;
         }
 
