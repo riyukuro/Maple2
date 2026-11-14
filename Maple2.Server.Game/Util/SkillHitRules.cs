@@ -131,6 +131,30 @@ public static class SkillHitRules {
         return (int) Math.Min(MaxTargetRounds, ways + MathF.Ceiling(ways * flightMs / interval));
     }
 
+    // How many region path packets (Skill 1 2) an arrow sends: one when it ends (CMagic::FUN_14145f570, a boomerang
+    // only at the end of its way back) and, with a piercing interval, one per interval of its flight both ways
+    // (FUN_141466da0 sends at each multiple of the interval after its start, magicdata.cpp:2384: at most
+    // floor(F/I); bounce types 3 and 4 only, :1880). Fewer than TargetRounds for a boomerang without an interval
+    // (its target packets come again on the way back, its region path does not).
+    public static int RegionPathRounds(SkillMetadataAttack attack, IReadOnlyList<MagicPath>? paths) {
+        int rounds = TargetRounds(attack, paths);
+        if (attack.AttackMethodType != 1 || attack.Arrow.BounceType is not (BounceType.Pierce or BounceType.Boomerang)
+            || paths is not { Count: > 0 } || !paths.Any(path => path.PiercingAttackInterval > 0)) {
+            return 1;
+        }
+        // TargetRounds is ways + ceil(ways * F / I); the end send replaces the ways.
+        int ways = attack.Arrow.BounceType == BounceType.Boomerang ? 2 : 1;
+        return Math.Max(1, rounds - ways + 1);
+    }
+
+    // The hit count past which a piercing arrow sends no interval region path (CMagic::FUN_141465b30 returns before
+    // FUN_141466da0 once the different objects it hit, m_map1D8, reach max(1, m_n110), the bounce count;
+    // magicdata.cpp:1877-1884). 0 when there is no such cap: a boomerang clears the map on its way back
+    // (FUN_141460700) and resumes, which the server only sees from later hits.
+    public static int RegionPathHitCap(SkillMetadataAttack attack) {
+        return attack.AttackMethodType == 1 && attack.Arrow.BounceType == BounceType.Pierce ? Math.Max(1, attack.Arrow.BounceCount) : 0;
+    }
+
     // How far outside the client's own shape a target packet's object may stand and its points may lie (chosen here):
     // the server's player position is the client's detect point within 2 in KMS2 (the client syncs before it sends),
     // so most of it is the objects' movement between the client's frame and the server's.
@@ -321,6 +345,9 @@ public sealed class SkillHitBudget {
     // packets each key sent.
     private readonly Dictionary<(byte, int, int), int> arrows = new();
     private readonly Dictionary<(byte, int, int), int> regionPaths = new();
+    // The attack uids each key declared, and the region paths the key had sent when all of them reached the hit cap.
+    private readonly Dictionary<(byte, int, int), List<long>> arrowAttacks = new();
+    private readonly Dictionary<(byte, int, int), int> cappedAt = new();
 
     private sealed class Attack(byte attackPoint, int targetId) {
         public readonly byte AttackPoint = attackPoint;
@@ -404,16 +431,23 @@ public sealed class SkillHitBudget {
     // StateSkill::PickAttackTargets numbers them from 0; a bounce's linked tag carries 0) at the cast's send count
     // the packet carries (both are what the tag's Init took, so the region path packet the arrow sends carries them
     // too, magicdata.cpp:1161).
-    public void DeclareArrow(byte attackPoint, int sendCount, int arrow) {
+    // attackUid: the tag's uid (Declare), whose hits tell when a piercing arrow stops its interval sends.
+    public void DeclareArrow(byte attackPoint, int sendCount, int arrow, long attackUid = 0) {
         var key = (attackPoint, sendCount, arrow);
         arrows[key] = arrows.GetValueOrDefault(key) + 1;
+        if (!arrowAttacks.TryGetValue(key, out List<long>? uids)) {
+            arrowAttacks[key] = uids = new List<long>();
+        }
+        uids.Add(attackUid);
     }
 
     // A region path packet (Skill 1 2): false when its cast is past the hit window, when no attack point packet
     // declared its arrow, or when the arrows declared under its key already sent rounds each: an arrow
     // sends one when it ends (CMagic::FUN_14145f570) and a piercing one per interval (FUN_141466da0, bounce types 3
-    // and 4 only, magicdata.cpp:1880), so SkillHitRules.TargetRounds. Counted only when taken.
-    public bool TakeRegionPath(byte attackPoint, int sendCount, int arrow, int rounds, long tick) {
+    // and 4 only, magicdata.cpp:1880), so SkillHitRules.RegionPathRounds. hitCap (SkillHitRules.RegionPathHitCap,
+    // 0 for none): once every arrow under the key hit that many different objects (the target packets that did so
+    // came before, the client sends them first), each sends only its end one more. Counted only when taken.
+    public bool TakeRegionPath(byte attackPoint, int sendCount, int arrow, int rounds, long tick, int hitCap = 0) {
         if (TooLate(tick)) {
             return false;
         }
@@ -422,7 +456,17 @@ public sealed class SkillHitBudget {
             return false;
         }
         int used = regionPaths.GetValueOrDefault(key);
-        if (used >= declared * Math.Max(1, rounds)) {
+        int allowed = declared * Math.Max(1, rounds);
+        if (hitCap > 0 && rounds > 1) {
+            if (!cappedAt.ContainsKey(key) && arrowAttacks.TryGetValue(key, out List<long>? uids)
+                && uids.All(uid => attacks.TryGetValue(uid, out Attack? attack) && attack.Hit?.Count >= hitCap)) {
+                cappedAt[key] = used;
+            }
+            if (cappedAt.TryGetValue(key, out int capped)) {
+                allowed = Math.Min(allowed, capped + declared);
+            }
+        }
+        if (used >= allowed) {
             return false;
         }
         regionPaths[key] = used + 1;

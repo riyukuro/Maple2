@@ -229,6 +229,54 @@ public class SkillTargetHitsTests {
         Assert.That(SkillHitRules.TargetRounds(Attack(5, SkillTargetType.Owner), paths), Is.EqualTo(1), "a region");
     }
 
+    // Region paths (Skill 1 2): one at the arrow's end (CMagic::FUN_14145f570) and one per piercing interval
+    // (FUN_141466da0). Before, a boomerang without an interval was allowed 2 per arrow (its target packet rounds),
+    // and a boomerang with one 2 + ceil(2F / I).
+    [Test]
+    public void RegionPathRoundsAreTheEndAndTheIntervals() {
+        SkillMetadataAttack pierce = Attack(1, SkillTargetType.Owner, methodType: 1, bounceType: BounceType.Pierce, bounceCount: 2);
+        SkillMetadataAttack boomerang = Attack(1, SkillTargetType.Owner, methodType: 1, bounceType: BounceType.Boomerang, bounceCount: 2);
+        Assert.Multiple(() => {
+            Assert.That(SkillHitRules.RegionPathRounds(boomerang, [Path()]), Is.EqualTo(1), "boomerang, no interval");
+            Assert.That(SkillHitRules.TargetRounds(boomerang, [Path()]), Is.EqualTo(2));
+            Assert.That(SkillHitRules.RegionPathRounds(boomerang, [Path(interval: 300)]), Is.EqualTo(12), "1 + ceil(3200 / 300)");
+            Assert.That(SkillHitRules.RegionPathRounds(pierce, [Path(interval: 300)]), Is.EqualTo(7), "1 + ceil(1600 / 300)");
+            Assert.That(SkillHitRules.RegionPathRounds(pierce, [Path()]), Is.EqualTo(1), "pierce, no interval");
+            Assert.That(SkillHitRules.RegionPathRounds(pierce, null), Is.EqualTo(1));
+            Assert.That(SkillHitRules.RegionPathRounds(Attack(1, SkillTargetType.Owner, methodType: 1), [Path(interval: 300)]), Is.EqualTo(1), "no bounce");
+            Assert.That(SkillHitRules.RegionPathHitCap(pierce), Is.EqualTo(2));
+            Assert.That(SkillHitRules.RegionPathHitCap(boomerang), Is.EqualTo(0), "a boomerang resumes on its way back");
+        });
+    }
+
+    // A piercing arrow sends no interval region path once it hit max(1, m_n110) different objects
+    // (CMagic::FUN_141465b30 returns first, magicdata.cpp:1877-1884), only its end one. Before, it kept its interval
+    // allowance after the cap.
+    [Test]
+    public void PiercingRegionPathsStopAtTheHitCap() {
+        SkillMetadataAttack attack = Attack(1, SkillTargetType.Owner, methodType: 1, bounceType: BounceType.Pierce, bounceCount: 2);
+        MagicPath[] paths = [Path(interval: 300)];
+        int rounds = SkillHitRules.RegionPathRounds(attack, paths);
+        int cap = SkillHitRules.RegionPathHitCap(attack);
+        SkillHitBudget budget = Cast((1, 0));
+        budget.DeclareArrow(0, 0, 0, attackUid: 1);
+        Assert.That(budget.TakeRegionPath(0, 0, 0, rounds, 10, cap), Is.True, "interval 1");
+        Assert.That(Pay(budget, 1, attack, paths, (101, 0)), Is.EqualTo(new[] { 101 }));
+        Assert.That(budget.TakeRegionPath(0, 0, 0, rounds, 20, cap), Is.True, "interval 2, one object hit");
+        Assert.That(Pay(budget, 1, attack, paths, (101, 1)), Is.EqualTo(new[] { 101 }), "the same object again");
+        Assert.That(budget.TakeRegionPath(0, 0, 0, rounds, 30, cap), Is.True, "interval 3, still one object");
+        Assert.That(Pay(budget, 1, attack, paths, (102, 1)), Is.EqualTo(new[] { 102 }));
+        Assert.That(budget.TakeRegionPath(0, 0, 0, rounds, 40, cap), Is.True, "the end");
+        Assert.That(budget.TakeRegionPath(0, 0, 0, rounds, 50, cap), Is.False, "past the cap");
+
+        SkillHitBudget uncapped = Cast((1, 0));
+        uncapped.DeclareArrow(0, 0, 0, attackUid: 1);
+        Assert.That(Pay(uncapped, 1, attack, paths, (101, 0), (102, 1)), Is.EqualTo(new[] { 101, 102 }));
+        for (int i = 0; i < rounds; i++) {
+            Assert.That(uncapped.TakeRegionPath(0, 0, 0, rounds, 10 + i, hitCap: 0), Is.True, $"no cap, round {i}");
+        }
+    }
+
     [Test]
     public void ArrowWithNonTargetTwoHitsAnyObject() {
         // An arrow is held to its own target only with nonTarget 0; with 2 it hits what it meets.

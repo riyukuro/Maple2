@@ -303,31 +303,9 @@ public class SkillHandler : FieldPacketHandler {
         record.Position = position;
         record.Direction = direction;
 
-        for (byte i = 0; i < count; i++) {
-            var targets = new List<TargetRecord>();
-            var targetRecord = new TargetRecord {
-                Uid = packet.ReadLong(),
-                TargetId = packet.ReadInt(),
-                Unknown = packet.ReadByte(),
-            };
-            targets.Add(targetRecord);
-            record.Hits.Declare(targetRecord.Uid, attackPoint, targetRecord.TargetId);
-            record.Hits.DeclareArrow(attackPoint, iterations, targetRecord.Unknown);
-
-            // While more targets in packet.
-            while (packet.ReadBool()) {
-                targetRecord = new TargetRecord {
-                    PrevUid = targetRecord.Uid,
-                    Uid = packet.ReadLong(),
-                    TargetId = packet.ReadInt(),
-                    Unknown = packet.ReadByte(),
-                    Index = packet.ReadByte(),
-                };
-                targets.Add(targetRecord);
-                record.Hits.Declare(targetRecord.Uid, attackPoint, targetRecord.TargetId);
-                record.Hits.DeclareArrow(attackPoint, iterations, targetRecord.Index);
-            }
-
+        List<List<TargetRecord>> tags = ReadPointTags(packet, count);
+        DeclarePointTags(record.Hits, attackPoint, iterations, tags);
+        foreach (List<TargetRecord> targets in tags) {
             session.Player.InBattle = true;
 
             // When the client reports no valid target (TargetId=0), the NPC may have died since the last
@@ -374,6 +352,47 @@ public class SkillHandler : FieldPacketHandler {
 
             // Unsure if this is correct.
             session.Buffs.TriggerEvent(session.Player, session.Player, session.Player, EventConditionType.OnSkillCastEnd, skillId: record.SkillId);
+        }
+    }
+
+    // The attack point packet's tags after its count: each a first tag (uid, target id, its index m_n84,
+    // stateskill.cpp:1381) and while a bool is set a linked one (uid, target id, m_n80, m_n84, :1390-1391).
+    public static List<List<TargetRecord>> ReadPointTags(IByteReader packet, byte count) {
+        var tags = new List<List<TargetRecord>>(count);
+        for (byte i = 0; i < count; i++) {
+            var targets = new List<TargetRecord>();
+            var targetRecord = new TargetRecord {
+                Uid = packet.ReadLong(),
+                TargetId = packet.ReadInt(),
+                Unknown = packet.ReadByte(),
+            };
+            targets.Add(targetRecord);
+
+            // While more targets in packet.
+            while (packet.ReadBool()) {
+                targetRecord = new TargetRecord {
+                    PrevUid = targetRecord.Uid,
+                    Uid = packet.ReadLong(),
+                    TargetId = packet.ReadInt(),
+                    Unknown = packet.ReadByte(),
+                    Index = packet.ReadByte(),
+                };
+                targets.Add(targetRecord);
+            }
+            tags.Add(targets);
+        }
+        return tags;
+    }
+
+    // Declares each tag's attack and arrow: the arrow index is m_n84, the first tag's Unknown and a linked tag's
+    // Index (a linked bounce carries 0, stateskill.cpp:2777-2781), so a region path finds its arrow's key.
+    public static void DeclarePointTags(SkillHitBudget hits, byte attackPoint, int iterations, IEnumerable<List<TargetRecord>> tags) {
+        foreach (List<TargetRecord> targets in tags) {
+            for (int i = 0; i < targets.Count; i++) {
+                TargetRecord target = targets[i];
+                hits.Declare(target.Uid, attackPoint, target.TargetId);
+                hits.DeclareArrow(attackPoint, iterations, i == 0 ? target.Unknown : target.Index, target.Uid);
+            }
         }
     }
 
@@ -562,7 +581,8 @@ public class SkillHandler : FieldPacketHandler {
         // SkillHitRules.ReachTooFar, as a target packet's). Anything else places nothing.
         session.Field.TableMetadata.MagicPathTable.Entries.TryGetValue(record.Attack.MagicPathId, out IReadOnlyList<MagicPath>? paths);
         bool far = SkillHitRules.ReachTooFar(path.Position, record.CastPosition, record.Attack.Arrow, paths, session.Player.Position);
-        if (far || !record.Hits.TakeRegionPath(attackPoint, path.SendCount, path.Arrow, SkillHitRules.TargetRounds(record.Attack, paths), session.Field.FieldTick)) {
+        if (far || !record.Hits.TakeRegionPath(attackPoint, path.SendCount, path.Arrow, SkillHitRules.RegionPathRounds(record.Attack, paths), session.Field.FieldTick,
+                SkillHitRules.RegionPathHitCap(record.Attack))) {
             if (session.Config.HitLog.Count(session.Field.FieldTick) is > 0 and int unlogged) {
                 Logger.Information("Region path dropped: AttackPoint={AttackPoint} send count {SendCount} arrow {Arrow} at {Position}, past the paths' reach {Far}, {Unlogged} since the last line, {Player}: {Record}",
                     attackPoint, path.SendCount, path.Arrow, path.Position, far, unlogged, session.PlayerName, record);
