@@ -100,6 +100,8 @@ public sealed class BlackMarketManager {
             AccountId = session.AccountId,
             CharacterId = session.CharacterId,
             Deposit = depositFee,
+            // The client's own listings window shows it (uiblackmarketpage.cpp:1717); it was 0 (1970).
+            CreationTime = DateTime.Now.ToEpochSeconds(),
             ExpiryTime = DateTime.Now.AddDays(Constants.BlackMarketSellEndDay).ToEpochSeconds(),
             Price = price,
             Quantity = quantity,
