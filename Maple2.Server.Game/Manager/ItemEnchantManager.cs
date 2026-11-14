@@ -499,18 +499,21 @@ public class ItemEnchantManager {
                     consume.Add(new IngredientInfo(catalyst.Tag, amount));
                 }
             }
-            if (fee > 0 && (!LimitBreakRules.CanPay(session.Currency.Meso, fee) || session.Currency.CanAddMeso(-fee) != -fee)) {
+            // The fee is taken here in one step, so a spend elsewhere cannot leave it unpaid once the catalysts are
+            // gone; its balance is sent where the take used to be.
+            if (fee > 0 && (!LimitBreakRules.CanPay(session.Currency.Meso, fee) || !session.Currency.TryTakeMeso(fee, notify: false))) {
                 session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
                 return false;
             }
 
             // Note: All validation should be above this point.
             if (!session.Item.Inventory.Consume(consume)) {
+                session.Currency.ReturnMeso(fee, notify: false);
                 session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
                 return false;
             }
             if (fee > 0) {
-                session.Currency.ChangeMeso(-fee);
+                session.Currency.NotifyMeso();
             }
 
             foreach ((long fodderUid, _) in fodders) {
@@ -760,19 +763,21 @@ public class ItemEnchantManager {
             // fee text). Nothing is taken unless everything can be; KMS2 takes the meso before the materials.
             long owned = session.Item.Inventory.SpendableCount(ItemTag.CrystalPiece);
             (int fragments, long meso) = LimitBreakRules.Fee(mesoCost, owned);
-            if (!LimitBreakRules.CanPay(session.Currency.Meso, meso) || session.Currency.CanAddMeso(-meso) != -meso) {
+            // Checked and taken in one step; the balance is sent where the take used to be.
+            if (!LimitBreakRules.CanPay(session.Currency.Meso, meso) || !session.Currency.TryTakeMeso(meso, notify: false)) {
                 session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_meso));
                 return false;
             }
             foreach (IngredientInfo catalyst in catalysts) {
                 if (session.Item.Inventory.SpendableCount(catalyst.Tag) < catalyst.Amount) {
+                    session.Currency.ReturnMeso(meso, notify: false);
                     session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_ingredient));
                     return false;
                 }
             }
 
             if (meso > 0) {
-                session.Currency.ChangeMeso(-meso);
+                session.Currency.NotifyMeso();
             }
             List<IngredientInfo> materials = [.. catalysts];
             if (fragments > 0) {

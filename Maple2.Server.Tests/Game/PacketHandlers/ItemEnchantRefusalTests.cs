@@ -70,6 +70,36 @@ public class ItemEnchantRefusalTests {
         });
     }
 
+    // A spend on another thread while the catalysts are taken (every meso left goes at the first item packet): the
+    // fragment fee was taken first, so only what was left over could go and the try is made. Before, the fee was
+    // looked at, the catalysts were taken and then the fee; that take threw on the short balance with the
+    // catalysts gone.
+    [Test]
+    public void Ophelia_TheFragmentFeeIsTakenBeforeTheCatalysts() {
+        GameSession session = Login(30000, 30000, 0, 0);
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        long fee = Maple2.Model.Validators.ItemEnchantRules.CrystalFragmentShortfallFee(Cost(session)[ItemTag.CrystalPiece], 0);
+        Assert.That(fee, Is.GreaterThan(0));
+        session.Currency.Meso = fee + 50;
+        test.TakeSent();
+        long spent = -1;
+        test.OnSend = packet => {
+            if (spent >= 0 || TestGameSession.Op(packet) != SendOp.ItemInventory) {
+                return;
+            }
+            long left = session.Currency.Meso;
+            spent = session.Currency.TryTakeMeso(left, notify: false) ? left : 0;
+        };
+
+        Assert.DoesNotThrow(() => session.ItemEnchant.Enchant(gear.Uid));
+
+        Assert.Multiple(() => {
+            Assert.That(spent, Is.EqualTo(50));
+            Assert.That(session.Currency.Meso, Is.EqualTo(0));
+            Assert.That(session.Item.Inventory.Get(gear.Uid)!.Enchant!.Enchants, Is.EqualTo(1));
+        });
+    }
+
     // An item that is not the staged one, and a request with nothing staged: nothing is taken.
     [Test]
     public void Ophelia_OfAnItemThatIsNotStagedTakesNothing() {
