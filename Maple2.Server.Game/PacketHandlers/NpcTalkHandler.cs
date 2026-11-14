@@ -367,20 +367,27 @@ public class NpcTalkHandler : FieldPacketHandler {
     }
 
     // The client sends NpcTalk 7 from the talk scene only: the quest it has just accepted at this npc
-    // (CQuestAcceptCinematicComponent::SendQuestAccept, cinematiccomponent.cpp:587, short 2) or the following quest of
-    // the one it has just completed here (CQuestCompleteCinematicComponent::vfunc_2, cinematiccomponent.cpp:648,
-    // short 0). So the quest is one this npc offers now, one held and not done whose start or complete npc it is, or
-    // one that can start and requires a quest completed at this npc.
+    // (CQuestAcceptCinematicComponent::SendQuestAccept, cinematiccomponent.cpp:587, short 2; only when its start and
+    // complete npc are this npc, questdata.cpp:1713) or the following quest of the one it has just completed here
+    // (CQuestCompleteCinematicComponent::vfunc_2, cinematiccomponent.cpp:648, short 0; only when the following quest
+    // starts at this npc). So the quest is one this npc offers now, one held and not done that starts and completes
+    // here, or one not done that starts here and requires a quest completed here (it may have started already).
     internal static bool OpensAt(GameSession session, int npcId, int questId) {
-        if (session.Quest.TryGetQuest(questId, out Quest? held) && held.State != QuestState.Completed
-            && (held.Metadata.Basic.StartNpc == npcId || held.Metadata.Basic.CompleteNpc == npcId)) {
-            return true;
-        }
         if (session.Quest.GetAvailableQuests(npcId).ContainsKey(questId)) {
             return true;
         }
-        return session.QuestMetadata.TryGet(questId, out QuestMetadata? next) && session.Quest.CanStart(next)
-            && next.Require.Quest.Any(id => session.Quest.TryGetQuest(id, out Quest? done) && done.State == QuestState.Completed
+        if (!session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata) || metadata.Basic.StartNpc != npcId) {
+            return false;
+        }
+        bool held = session.Quest.TryGetQuest(questId, out Quest? quest);
+        if (held && quest!.State == QuestState.Completed) {
+            return false;
+        }
+        if (held && metadata.Basic.CompleteNpc == npcId) {
+            return true;
+        }
+        return (held || session.Quest.CanStart(metadata))
+            && metadata.Require.Quest.Any(id => session.Quest.TryGetQuest(id, out Quest? done) && done.State == QuestState.Completed
                 && done.Metadata.Basic.CompleteNpc == npcId);
     }
 

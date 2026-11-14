@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -671,7 +671,10 @@ public class QuestHandlerTests {
     // script's functions run in it. Before, any quest id opened its accept talk (100) at any npc.
     [TestCase("unrelated", null)]
     [TestCase("held", 200)]
+    [TestCase("held, completes elsewhere", null)]
     [TestCase("following", 100)]
+    [TestCase("following, started", 200)]
+    [TestCase("following, starts elsewhere", null)]
     public void QuestTalk_OpensOnlyAQuestOfThisNpc(string kind, int? opened) {
         GameSession session = Login();
         test.SetServerTable(new ScriptConditionTable(new Dictionary<int, Dictionary<int, ScriptConditionMetadata>>()));
@@ -686,14 +689,31 @@ public class QuestHandlerTests {
             case "held":
                 Started(met: false);
                 break;
+            case "held, completes elsewhere":
+                QuestMetadata elsewhere = TestGameSession.QuestData(QuestId + 1);
+                questId = QuestId + 1;
+                elsewhere = elsewhere with { Basic = elsewhere.Basic with { StartNpc = Npc, CompleteNpc = Npc + 1 } };
+                test.Register(elsewhere);
+                test.StartQuest(elsewhere);
+                break;
             case "following":
+            case "following, started":
+            case "following, starts elsewhere":
                 Started().State = QuestState.Completed;
                 questId = QuestId + 1;
                 QuestMetadata next = TestGameSession.QuestData(questId);
-                test.Register(next with {
-                    Basic = next.Basic with { StartNpc = Npc + 1, CompleteNpc = Npc + 1 },
+                next = next with {
+                    Basic = next.Basic with { StartNpc = kind == "following, starts elsewhere" ? Npc + 1 : Npc, CompleteNpc = Npc + 1 },
                     Require = next.Require with { Quest = [QuestId] },
-                });
+                };
+                if (kind == "following, started") {
+                    // Auto-started on the complete, its condition not met yet.
+                    next = next with { Conditions = Data().Conditions };
+                    test.Register(next);
+                    test.StartQuest(next).Conditions[0].Counter = 0;
+                } else {
+                    test.Register(next);
+                }
                 break;
         }
         test.Register(new ScriptMetadata(questId, ScriptType.Quest, new Dictionary<int, ScriptState> {
