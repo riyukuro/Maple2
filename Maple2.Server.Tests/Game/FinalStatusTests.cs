@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Xml;
 using Maple2.File.Ingest.Helpers;
+using Maple2.File.Ingest.Mapper;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 
@@ -239,5 +240,21 @@ public class FinalStatusTests {
         FinalStatusRows.Apply(SpecialAbility(), stats, [new("finalpapvalue", BasicAttribute.PhysicalAtk, false, 2.5f)], null, counts);
         Assert.That(stats.Values[BasicAttribute.PhysicalAtk], Is.EqualTo(2));
         Assert.That(counts.TruncatedValues, Is.EqualTo(1));
+    }
+
+    // KR 10700221, an effect only the client has: its one row is aevp 30, which the client only shows (the info
+    // dialog's defense score), so the level counts as mapped and adds no stat (before: unmapped, the effect left out).
+    [Test]
+    public void AShownOnlyTypeDoesNotHoldAnEffect() {
+        var rows = new Dictionary<string, int> { ["aevp"] = 30 };
+        var unmapped = new List<string>();
+        ClientSpecialAbility.Stats stats = PlayedAdditionalRows.SpecialAbilityStats(SpecialAbility(), rows, unmapped);
+        Assert.Multiple(() => {
+            Assert.That(AdditionalEffectMapper.Mapped(SpecialAbility(), rows), Is.True);
+            Assert.That(unmapped, Is.EqualTo(new[] { "aevp" }));
+            Assert.That(stats.Values, Is.Empty);
+            Assert.That(stats.Rates, Is.Empty);
+            Assert.That(stats.SpecialRates, Is.Empty);
+        });
     }
 }

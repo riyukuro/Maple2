@@ -237,6 +237,11 @@ public static class PlayedAdditionalRows {
     // keeps a type's row where the table gives it a value type (the 4-byte field at +8 of a table row,
     // additionalactionadditional.cpp:1240, is SpecialAbilityInfo's m_nValueType, specialability.h:24) and drops the
     // rest; unmapped gets each type it keeps that has no server stat (ClientSpecialAbility.Add).
+    // The <SpecialAbility> types the client only shows: aevp (204) is read by no calc of the client, only by the info
+    // dialog's defense score (UIPCInfoDialog::GetDefenseScore, client/ms2/uipcinfodialog.cpp:1522), and has no server
+    // stat. An effect only the client has is taken over without it (AdditionalEffectMapper.Own).
+    public static readonly IReadOnlySet<string> ShownOnly = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "aevp" };
+
     public static ClientSpecialAbility.Stats SpecialAbilityStats(ClientSpecialAbility table, IReadOnlyDictionary<string, int>? abilities, ICollection<string> unmapped) {
         var stats = new ClientSpecialAbility.Stats();
         foreach ((string type, int value) in abilities ?? new Dictionary<string, int>()) {

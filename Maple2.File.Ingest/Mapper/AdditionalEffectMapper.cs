@@ -196,11 +196,12 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         return levels;
     }
 
-    // Whether every type of a played level's <SpecialAbility> rows the client keeps has a server stat.
-    private static bool Mapped(ClientSpecialAbility table, IReadOnlyDictionary<string, int>? rows) {
+    // Whether every type of a played level's <SpecialAbility> rows the client keeps has a server stat, but those the
+    // client only shows (PlayedAdditionalRows.ShownOnly).
+    public static bool Mapped(ClientSpecialAbility table, IReadOnlyDictionary<string, int>? rows) {
         var unmapped = new List<string>();
         PlayedAdditionalRows.SpecialAbilityStats(table, rows, unmapped);
-        return unmapped.Count == 0;
+        return unmapped.All(PlayedAdditionalRows.ShownOnly.Contains);
     }
 
     // The A/B of the mapping: each played level of an effect the pack also has, mapped as an effect only the client

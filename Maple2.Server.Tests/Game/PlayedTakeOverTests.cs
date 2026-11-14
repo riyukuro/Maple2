@@ -124,6 +124,14 @@ public class PlayedTakeOverTests {
               </SpecialAbility>
             </level>
           </additional>
+          <additional id="10800217" mainType="1">
+            <level level="1">
+              <Basic durationTick="60000" />
+              <SpecialAbility>
+                <v type="defensive_damageV" value="100" />
+              </SpecialAbility>
+            </level>
+          </additional>
           <additional id="10300201">
             <level level="1">
               <Basic durationTick="2000" />
@@ -243,6 +251,7 @@ public class PlayedTakeOverTests {
           <key id="10" option="atpToBap" valueType="2" />
           <key id="19" option="fireDamage" valueType="2" />
           <key id="111" option="strToInt" valueType="2" />
+          <key id="171" option="defensive_damageV" valueType="1" />
           <key id="130" option="improve_stat_wap_u" valueType="2" />
           <key id="177" option="offensive_physicaldamage" valueType="2" />
           <key id="204" option="aevp" valueType="2" />
@@ -664,10 +673,25 @@ public class PlayedTakeOverTests {
         });
     }
 
-    // One with a type that has no server stat (aevp) is left out.
+    // One whose only type is one the client only shows (aevp, the info dialog's defense score) is taken over without
+    // it (before: left out for SpecialAbility).
+    [Test]
+    public void APlayedOnlyEffectWithAShownOnlyTypeIsTakenOver() {
+        (List<AdditionalEffectMetadata>? levels, List<string> unread) = Own(10800216);
+        Assert.Multiple(() => {
+            Assert.That(unread, Is.Empty);
+            Assert.That(levels, Has.Count.EqualTo(1));
+            Assert.That(levels![0].Property.DurationTick, Is.EqualTo(60000));
+            Assert.That(levels[0].Status.Values, Is.Empty);
+            Assert.That(levels[0].Status.Rates, Is.Empty);
+            Assert.That(levels[0].Status.SpecialRates, Is.Empty);
+        });
+    }
+
+    // One with another type that has no server stat (defensive_damageV) is left out.
     [Test]
     public void APlayedOnlyEffectWithATypeWithoutAStatIsLeftOut() {
-        (List<AdditionalEffectMetadata>? levels, List<string> unread) = Own(10800216);
+        (List<AdditionalEffectMetadata>? levels, List<string> unread) = Own(10800217);
         Assert.Multiple(() => {
             Assert.That(levels, Is.Null);
             Assert.That(unread, Is.EqualTo(new[] { "SpecialAbility" }));
