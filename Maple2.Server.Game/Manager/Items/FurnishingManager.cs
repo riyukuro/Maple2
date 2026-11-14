@@ -149,7 +149,11 @@ public class FurnishingManager {
             }
             switch (furnishingShopMetadata.FurnishingTokenType) {
                 case FurnishingCurrencyType.Meso:
-                    session.Currency.ChangeMeso(-furnishingShopMetadata.Price);
+                    // Checked and taken in one step: a take on another thread after CanPay made a later take throw.
+                    if (!session.Currency.TryTakeMeso(furnishingShopMetadata.Price)) {
+                        error = UgcMapError.s_err_ugcmap_not_enough_meso_balance;
+                        return false;
+                    }
                     break;
                 case FurnishingCurrencyType.Meret:
                     if (!session.Currency.TryTakeMeret(furnishingShopMetadata.Price, reportSpent: false)) {

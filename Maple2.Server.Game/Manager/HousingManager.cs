@@ -362,11 +362,8 @@ public class HousingManager {
     private static bool TryRemoveCost(GameSession session, int itemId, int cost) {
         switch (itemId) {
             case >= 90000001 and <= 90000003:
-                if (session.Currency.Meso < cost) {
-                    return false;
-                }
-                session.Currency.ChangeMeso(-cost);
-                return true;
+                // Checked and taken in one step, as the merets below.
+                return session.Currency.TryTakeMeso(cost);
             case 90000004 or 90000011 or 90000015 or 90000016:
                 return session.Currency.TryTakeMeret(cost);
         }
