@@ -548,7 +548,20 @@ public sealed class MarriageManager {
         if (!CanRecall(Marriage.Status)) {
             session.CloseRecall(RecallScrollType.Wedding);
         }
-        RefreshSkillBuffs();
+        ScheduleSkillBuffs();
+    }
+
+    // RefreshSkillBuffs on the field's thread, which owns the player's buffs: Reload and RemoveMarriage also run
+    // from the world server's calls (ChannelService) and from packet handlers.
+    private void ScheduleSkillBuffs() {
+        if (session.Field is not { } field) {
+            return;
+        }
+        field.Scheduler.Schedule(() => {
+            if (session.Field == field) {
+                RefreshSkillBuffs();
+            }
+        });
     }
 
     // The passive wedding skills' effects of the marriage's grade (WeddingSkillRules.PassiveEffects): a missing one is
@@ -846,7 +859,7 @@ public sealed class MarriageManager {
         if (update) {
             session.Send(WeddingPacket.UpdateMarriage(Marriage));
         }
-        RefreshSkillBuffs();
+        ScheduleSkillBuffs();
     }
 
     public void RemoveWeddingHall(bool update = true) {

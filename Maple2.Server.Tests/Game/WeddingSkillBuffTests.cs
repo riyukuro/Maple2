@@ -86,7 +86,10 @@ public class WeddingSkillBuffTests : TriggerTestBase {
         test.Session.Marriage.RefreshSkillBuffs();
         Assert.That(Held(), Is.EqualTo(new short[] { 5, 4, 3, 2 }));
 
+        // A removed marriage's effects are taken on the field's thread.
         test.Session.Marriage.RemoveMarriage();
+        Assert.That(Held(), Is.EqualTo(new short[] { 5, 4, 3, 2 }));
+        test.RunFieldQueue();
         Assert.That(Held(), Is.EqualTo(new short[] { 0, 0, 0, 0 }));
     }
 }
