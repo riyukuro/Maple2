@@ -362,16 +362,17 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
         var appliedEffects = new List<(IActor Owner, IActor Caster, SkillEffectMetadata Effect)>();
         long startTick = Field.FieldTick;
+        int damaged = SkillCastRules.DamagedCount(record, targets);
         foreach (SkillEffectMetadata effect in effects) {
             if (effect.Condition != null) {
                 float factor = effect.Condition.Condition.UseTargetCountFactor
-                    ? SkillCastRules.TargetCountFactor(Field.ServerTableMetadata.ConstantsTable, targets.Length)
+                    ? SkillCastRules.TargetCountFactor(Field.ServerTableMetadata.ConstantsTable, damaged)
                     : 1f;
                 foreach (IActor target in targets) {
                     IActor resultOwner = GetTarget(effect.Condition!.Target, caster, target, caster);
                     IActor resultCaster = GetOwner(effect.Condition.Owner, caster, target, caster);
                     if (effect.Condition.Condition.Check(resultCaster, resultOwner, target, eventSkillId: record.SkillId, probabilityFactor: factor) &&
-                        DealtDamage(target)) {
+                        SkillCastRules.DealtDamage(record, target)) {
                         appliedEffects.Add((resultOwner, resultCaster, effect));
                     }
                 }
@@ -380,11 +381,6 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
         foreach ((IActor effectOwner, IActor effectCaster, SkillEffectMetadata effect) in appliedEffects) {
             ApplyEffect(effectCaster, effectOwner, effect, startTick, skillId: record.SkillId);
-        }
-        return;
-
-        bool DealtDamage(IActor target) {
-            return record.Targets.TryGetValue(target.ObjectId, out DamageRecordTarget? targetRecord) && targetRecord.Damage.Any(x => x.Amount > 0);
         }
     }
 

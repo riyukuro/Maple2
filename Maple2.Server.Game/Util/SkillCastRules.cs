@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Skill;
 
 namespace Maple2.Server.Game.Util;
 
@@ -424,6 +425,16 @@ public static class SkillCastRules {
     // factor (TargetCountFactor, else 1).
     public static bool ProcHolds(float probability, float factor, double roll) {
         return roll <= probability * factor;
+    }
+
+    // An on-damage effect counts as targets hit only the targets the attack dealt damage to: one that evaded, was
+    // immune or took 0 is not hit (chosen here, as such a target gets no on-damage effect either).
+    public static bool DealtDamage(DamageRecord record, IActor target) {
+        return record.Targets.TryGetValue(target.ObjectId, out DamageRecordTarget? targetRecord) && targetRecord.Damage.Any(x => x.Amount > 0);
+    }
+
+    public static int DamagedCount(DamageRecord record, IActor[] targets) {
+        return targets.Count(target => DealtDamage(record, target));
     }
 
     // A skill that names fields is cast only in one of them: the client does not send it elsewhere (cast check

@@ -1,11 +1,14 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Xml.Serialization;
 using Maple2.File.Ingest;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game;
@@ -64,6 +67,40 @@ public class TargetCountFactorTests {
         }
         Assert.That(held, Is.InRange(380, 620));
         Assert.That(condition.Check(player, player, player), Is.True, "no factor");
+    }
+
+    // An on-damage proc counts only the targets the hit dealt damage to: of two targets one evades (0), so the
+    // factor is the one of 1 target, not of 2.
+    [Test]
+    public void OnDamage_CountsOnlyTheDamagedTargets() {
+        var first = new TestGameSession();
+        first.Start();
+        var second = new TestGameSession();
+        second.Start();
+        FieldPlayer hit = first.Session.Player;
+        FieldPlayer evaded = second.Session.Player;
+        typeof(Actor<Maple2.Model.Game.Player>).GetField("<ObjectId>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(evaded, hit.ObjectId + 1);
+        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
+        var skill = new SkillMetadata(10700181, 1, null, property, null!, null!);
+        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with {
+            CompulsionTypes = [],
+            Damage = new SkillMetadataDamage(Count: 1, Rate: 0, HitSpeed: 0, HitDelay: 0, IsConstDamage: true, Value: 300,
+                DamageByTargetMaxHp: 0, SuperArmorBreak: false, Push: null),
+        };
+        var record = new DamageRecord(skill, attack) { SkillId = 10700181 };
+        var hitRecord = new DamageRecordTarget(hit);
+        hitRecord.AddDamage(DamageType.Normal, 300);
+        var evadedRecord = new DamageRecordTarget(evaded);
+        evadedRecord.AddDamage(DamageType.Miss, 0);
+        record.Targets[hit.ObjectId] = hitRecord;
+        record.Targets[evaded.ObjectId] = evadedRecord;
+        Assert.Multiple(() => {
+            Assert.That(SkillCastRules.DealtDamage(record, hit), Is.True);
+            Assert.That(SkillCastRules.DealtDamage(record, evaded), Is.False);
+            Assert.That(SkillCastRules.DamagedCount(record, [hit, evaded]), Is.EqualTo(1));
+            Assert.That(SkillCastRules.TargetCountFactor(Kr, SkillCastRules.DamagedCount(record, [hit, evaded])), Is.EqualTo(1f));
+        });
     }
 
     // 10700001 lv1 p0's conditionSkill, as the pack gives it.
