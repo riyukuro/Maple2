@@ -27,7 +27,16 @@ public class BuddyBlockTwoSessionTests {
     private readonly BuddyHandler buddyHandler = new() { BanWordStorage = TestGameSession.BanWords() };
     private readonly MailHandler mailHandler = new() { BanWordStorage = TestGameSession.BanWords() };
     private GameSession player => playerTest.Session;
+    private readonly FailingSaves saves = new();
     private GameSession other => otherTest.Session;
+
+    // Every save of the shared database fails while Fail is set.
+    private sealed class FailingSaves : SaveChangesInterceptor {
+        public bool Fail;
+
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) =>
+            Fail ? throw new DbUpdateException("The test made this save fail") : result;
+    }
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
@@ -36,6 +45,7 @@ public class BuddyBlockTwoSessionTests {
         DbContextOptions options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .AddInterceptors(saves)
             .Options;
         playerTest = new TestGameSession(options);
         otherTest = new TestGameSession(options);
@@ -210,6 +220,33 @@ public class BuddyBlockTwoSessionTests {
         BlockByName(player, other.PlayerName);
         BuddyEntry block = Entry(player.CharacterId, other.CharacterId);
         Assert.That(block.Type, Is.EqualTo(BuddyType.Blocked));
+        Assert.That(player.Buddy.IsBlocked(other.CharacterId), Is.True);
+
+        UnblockOk(block.Id);
+    }
+
+    // A block whose write fails on an entry that has a row is refused, and the entry stays as it was: no second
+    // (Blocked) row is made beside it, and a block after that converts the one row.
+    [Test]
+    public void BlockByName_FailedWriteOnARealRowIsRefused() {
+        Invite(player, other.PlayerName);
+        BuddyEntry request = Entry(player.CharacterId, other.CharacterId);
+        playerTest.TakeSent();
+
+        saves.Fail = true;
+        BlockByName(player, other.PlayerName);
+        saves.Fail = false;
+
+        Assert.That(Of(playerTest, SendOp.Buddy).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Hex(BuddyPacket.Block(error: BuddyError.s_buddy_err_unknown)) }));
+        Assert.That(Rows(player.CharacterId, other.CharacterId), Is.EqualTo(1));
+        BuddyEntry kept = Entry(player.CharacterId, other.CharacterId);
+        Assert.That((kept.Id, kept.Type), Is.EqualTo((request.Id, request.Type)));
+        Assert.That(player.Buddy.IsBlocked(other.CharacterId), Is.False);
+
+        BlockByName(player, other.PlayerName);
+        BuddyEntry block = Entry(player.CharacterId, other.CharacterId);
+        Assert.That((block.Id, block.Type), Is.EqualTo((request.Id, BuddyType.Blocked)));
         Assert.That(player.Buddy.IsBlocked(other.CharacterId), Is.True);
 
         UnblockOk(block.Id);

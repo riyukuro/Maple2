@@ -388,21 +388,33 @@ public class BuddyManager : IDisposable {
         try {
             long receiverId = 0;
             Buddy? self = null;
-            if (buddies.Remove(entryId, out Buddy? existing)) {
-                EndListen(existing);
-
+            if (buddies.TryGetValue(entryId, out Buddy? existing)) {
                 receiverId = existing.Info.CharacterId;
-                existing.SetType(BuddyType.Blocked);
-                existing.Message = message;
+                // The row is written first: the entry in memory changes only once it is kept.
+                BuddyEntry row = existing;
+                row.Type = BuddyType.Blocked;
+                row.Message = message;
                 // Its own context: a failed update stays queued in the context it ran in.
                 using GameStorage.Request updateDb = session.GameStorage.Context();
-                if (updateDb.UpdateBuddy(existing)) {
+                if (updateDb.UpdateBuddy(row)) {
+                    buddies.Remove(entryId);
+                    EndListen(existing);
+                    existing.SetType(BuddyType.Blocked);
+                    existing.Message = message;
                     self = existing;
                     blocked[self.Id] = self;
                     session.Send(BuddyPacket.Block(self.Id, self.Info.Name, self.Message));
                     session.Send(BuddyPacket.UpdateInfo(self));
+                } else if (!RowGone(existing.Id)) {
+                    // A write that failed on a row that is still there (or that could not be asked): the block is
+                    // refused and the entry stays as it was, so a second (Blocked) row is never made beside it.
+                    logger.Warning("Block: entry {EntryId} could not be updated; refused", existing.Id);
+                    session.Send(BuddyPacket.Block(error: s_buddy_err_unknown));
+                    return;
                 } else {
                     // The entry had no row any more: a new block row is made below, as for a player not on the list.
+                    buddies.Remove(entryId);
+                    EndListen(existing);
                     logger.Warning("Block: entry {EntryId} had no row; a new one is made", existing.Id);
                 }
             }
@@ -452,6 +464,18 @@ public class BuddyManager : IDisposable {
         } catch (SystemException ex) {
             logger.Warning(ex, "Block failed");
             session.Send(BuddyPacket.Block(error: s_buddy_err_unknown));
+        }
+    }
+
+    // Whether the entry's row is gone, asked in a context of its own (the update's context still tracks the entry).
+    // A lookup that fails counts as a row that is there.
+    private bool RowGone(long entryId) {
+        try {
+            using GameStorage.Request db = session.GameStorage.Context();
+            return db.GetBuddy(entryId) == null;
+        } catch (SystemException ex) {
+            logger.Warning(ex, "Block: entry {EntryId} could not be looked up", entryId);
+            return false;
         }
     }
 
