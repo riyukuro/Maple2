@@ -20,6 +20,9 @@ public static class QuestRewardEventRules {
 
     // The event of a quest among the events running: the client keeps one per (quest type, repeat type), the last one
     // started (CGameRule::SetQuestAdditionalReward replaces it), so the latest start wins, then the larger id.
+    // Where two running events share a key the client can differ: it replaces the entry in packet order and erases it
+    // when either event ends (vfunc_6, gameevent.cpp:3156), so after the earlier one ends it shows no bonus while this
+    // still pays the later one. No KR or NA row overlaps (all ended by 2020-05-24).
     public static QuestAdditionalReward? Pick(IEnumerable<GameEventMetadata> running, QuestType questType, int repeat) {
         return running.Where(metadata => metadata.Data is QuestAdditionalReward data && data.QuestType == (int) questType && data.Repeat == repeat)
             .OrderByDescending(metadata => metadata.StartTime)

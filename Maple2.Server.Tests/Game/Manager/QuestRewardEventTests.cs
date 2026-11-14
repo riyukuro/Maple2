@@ -113,11 +113,12 @@ public class QuestRewardEventTests {
 
     private const int ItemId = 20000031;
     private const int OtherItemId = 20000032;
+    private const int JobItemId = 20000033;
     private TestGameSession test = null!;
 
     private GameSession Login(QuestAdditionalReward? data, DateTime? start = null, DateTime? end = null) {
         test = new TestGameSession();
-        test.Register(TestGameSession.Metadata(ItemId), TestGameSession.Metadata(OtherItemId), TestGameSession.Metadata(Constant.GuildCoinId));
+        test.Register(TestGameSession.Metadata(ItemId), TestGameSession.Metadata(OtherItemId), TestGameSession.Metadata(JobItemId), TestGameSession.Metadata(Constant.GuildCoinId));
         test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
         test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
         test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
@@ -131,7 +132,7 @@ public class QuestRewardEventTests {
         return session;
     }
 
-    private record Paid(long Exp, long Meso, long Rue, long Treva, long MenteeCoin, int Items, int OtherItems, int GuildCoins);
+    private record Paid(long Exp, long Meso, long Rue, long Treva, long MenteeCoin, int Items, int OtherItems, int JobItems, int GuildCoins);
 
     private Paid Complete(GameSession session, int repeat = 2) {
         QuestMetadata data = TestGameSession.QuestData(90000031, QuestType.WorldQuest);
@@ -140,6 +141,7 @@ public class QuestRewardEventTests {
             CompleteReward = data.CompleteReward with {
                 Exp = 1000, Meso = 1000, Rue = 10, Treva = 20, MenteeCoin = 30, GuildCoin = 4,
                 EssentialItem = [new QuestMetadataReward.Item(ItemId, 1, 3), new QuestMetadataReward.Item(OtherItemId, 1, 3)],
+                EssentialJobItem = [new QuestMetadataReward.Item(JobItemId, 1, 5)],
             },
         });
         long exp = session.Player.Value.Character.Exp, meso = session.Currency.Meso, rue = session.Currency[CurrencyType.Rue],
@@ -149,23 +151,24 @@ public class QuestRewardEventTests {
         return new Paid(session.Player.Value.Character.Exp - exp, session.Currency.Meso - meso, session.Currency[CurrencyType.Rue] - rue,
             session.Currency[CurrencyType.Treva] - treva, session.Currency[CurrencyType.MenteeToken] - mentee,
             session.Item.Inventory.Find(ItemId).Sum(item => item.Amount), session.Item.Inventory.Find(OtherItemId).Sum(item => item.Amount),
+            session.Item.Inventory.Find(JobItemId).Sum(item => item.Amount),
             session.Item.Inventory.Find(Constant.GuildCoinId).Sum(item => item.Amount));
     }
 
     // A world quest (1, 2) while an event of its key runs: each kind raised by its rate, the item it names and the guild
-    // coin too.
+    // coin too, also an item of the job rows.
     [Test]
     public void Complete_RaisesEachKind() {
         Paid plain = Complete(Login(null));
         var data = new QuestAdditionalReward(1, 2, Rates((QuestRewardEventRules.Exp, 5000), (QuestRewardEventRules.Meso, 10000),
             (QuestRewardEventRules.Rue, 10000), (QuestRewardEventRules.Treva, 5000), (QuestRewardEventRules.MenteeCoin, 10000),
             (QuestRewardEventRules.GuildCoin, 5000)),
-            [new QuestAdditionalReward.ItemRate(ItemId, 10000)]);
+            [new QuestAdditionalReward.ItemRate(ItemId, 10000), new QuestAdditionalReward.ItemRate(JobItemId, 5000)]);
         Paid raised = Complete(Login(data));
         Assert.That(plain.Meso, Is.GreaterThan(0));
         Assert.That(raised, Is.EqualTo(new Paid(plain.Exp * 3 / 2, plain.Meso * 2, plain.Rue * 2, plain.Treva * 3 / 2, plain.MenteeCoin * 2,
-            plain.Items * 2, plain.OtherItems, plain.GuildCoins * 3 / 2)));
-        Assert.That(plain, Is.EqualTo(new Paid(1000, plain.Meso, 10, 20, 30, 3, 3, 4)));
+            plain.Items * 2, plain.OtherItems, 7, plain.GuildCoins * 3 / 2)));
+        Assert.That(plain, Is.EqualTo(new Paid(1000, plain.Meso, 10, 20, 30, 3, 3, 5, 4)));
     }
 
     // Another quest type or repeat type, or an event that ended: nothing raised.

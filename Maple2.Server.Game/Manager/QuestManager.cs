@@ -798,8 +798,10 @@ public sealed class QuestManager {
     }
 
     // The essentialJobItem rows of a reward that go to the character's job (QuestRules.IsRewardForJob); an unknown item
-    // is not given, as the client shows none for it (questdata.cpp, FUN_140748050).
-    private List<Item> JobRewardItems(QuestMetadataReward reward) {
+    // is not given, as the client shows none for it (questdata.cpp, FUN_140748050). On completion the quest reward
+    // event's item rate raises these rows too: the client's check walks the job rows of the complete reward
+    // (questmanager_1.cpp:361-371).
+    private List<Item> JobRewardItems(QuestMetadataReward reward, QuestAdditionalReward? rewardEvent = null) {
         List<Item> items = [];
         JobCode job = session.Player.Value.Character.Job.Code();
         foreach (QuestMetadataReward.Item entry in reward.EssentialJobItem) {
@@ -807,7 +809,8 @@ public sealed class QuestManager {
                 continue;
             }
 
-            Item? item = session.Field?.ItemDrop.CreateItem(entry.Id, entry.Rarity, entry.Amount);
+            Item? item = session.Field?.ItemDrop.CreateItem(entry.Id, entry.Rarity,
+                (int) Math.Min(int.MaxValue, QuestRewardEventRules.Raise(entry.Amount, QuestRewardEventRules.ItemRate(rewardEvent, entry.Id))));
             if (item is null) {
                 continue;
             }
@@ -848,7 +851,7 @@ public sealed class QuestManager {
             rewards.Add(item);
         }
 
-        rewards.AddRange(JobRewardItems(reward));
+        rewards.AddRange(JobRewardItems(reward, rewardEvent));
 
         // A guild quest's reward gets the bonus of the guild's quest npc level, as the reward line shows it.
         GuildTable.QuestRewardFactor? guildFactor = quest.Metadata.Basic.Type == QuestType.GuildQuest ? session.Guild.QuestRewardFactor() : null;
