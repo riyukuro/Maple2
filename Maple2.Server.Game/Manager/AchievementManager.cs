@@ -110,12 +110,12 @@ public sealed class AchievementManager {
     // The counters that keep the highest count reported instead of adding it. item_remake_option_record and
     // pet_remake_option_record count the changes of a single item ("Change the bonus attributes on a single item {0}
     // time(s)"): each change reports that item's change count. maid_affinity reports the closeness level a maid
-    // reached (23500014 "Raise an assistant's closeness to level {0}"). set_mastery_grade reports the mastery grade
+    // reached (23500014 "Raise an assistant's closeness to level {0}"), adventure_level the prestige rank reached (21100052). set_mastery_grade reports the mastery grade
     // reached (23100330: grades 14 and 15 of mining).
     public static bool KeepsHighest(ConditionType conditionType) {
         return conditionType is ConditionType.item_gear_score or ConditionType.killcount or ConditionType.interior_level or ConditionType.fame_grade
             or ConditionType.item_remake_option_record or ConditionType.pet_remake_option_record or ConditionType.maid_affinity
-            or ConditionType.set_mastery_grade;
+            or ConditionType.set_mastery_grade or ConditionType.adventure_level;
     }
 
     /// <summary>

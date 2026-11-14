@@ -380,7 +380,7 @@ public sealed class QuestManager {
                 // quest has it; the trophies 23100330-23100337 do).
                 long counted = type switch {
                     ConditionType.interior_point => InteriorPointRules.Counter(condition.Counter, counter),
-                    ConditionType.set_mastery_grade => Math.Max(condition.Counter, counter),
+                    ConditionType.set_mastery_grade or ConditionType.adventure_level => Math.Max(condition.Counter, counter),
                     _ => condition.Counter + counter,
                 };
                 condition.Counter = (int) Math.Min(condition.Metadata.Value, counted);

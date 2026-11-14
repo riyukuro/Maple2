@@ -340,7 +340,8 @@ public sealed class ExperienceManager {
             }
         }
 
-        session.ConditionUpdate(ConditionType.adventure_level, counter: amount);
+        // The prestige rank reached (21100052 "Reach Prestige Rank {0}", grades 10, 20, ...), kept at the highest.
+        session.ConditionUpdate(ConditionType.adventure_level, counter: PrestigeLevel);
         session.ConditionUpdate(ConditionType.adventure_level_up, counter: amount);
         if (session.Field != null) {
             session.Player.Buffs.RefreshPrestigeBuffs();
