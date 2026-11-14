@@ -15,15 +15,49 @@ using static System.Char;
 namespace Maple2.File.Ingest.Mapper;
 
 public class TriggerMapper : TypeMapper<TriggerMetadata> {
-    private readonly M2dReader reader;
+    private readonly M2dReader dataReader;
+    private readonly M2dReader? playedReader;
+    // The pack the trigger being mapped comes from: its imports are read from the same pack.
+    private M2dReader reader;
 
-    public TriggerMapper(M2dReader reader) {
+    public TriggerMapper(M2dReader reader, M2dReader? playedReader = null) {
+        dataReader = reader;
         this.reader = reader;
+        this.playedReader = playedReader;
+    }
+
+    // The trigger files to map and the pack each is read from: the played client's copy of a file when it has one,
+    // else the data pack's. The client the players run is the one whose scripts the maps were built for: the data
+    // folder's pack is an older build (KR: 70 files only in the played client, among them whole maps, and 297
+    // that differ, such as 02000410's dungeon missions 24090003/04/07 where the played client sends 24090013/14/17,
+    // the ids of its dungeonmission rows). Files only the data pack has are kept. Names match case-insensitively.
+    public static List<(string Name, bool Played)> Pick(IEnumerable<string> dataNames, IEnumerable<string>? playedNames) {
+        var picked = new List<(string Name, bool Played)>();
+        var played = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string name in playedNames ?? []) {
+            if (name.StartsWith("trigger/", StringComparison.OrdinalIgnoreCase) && played.Add(name)) {
+                picked.Add((name, true));
+            }
+        }
+        foreach (string name in dataNames) {
+            if (name.StartsWith("trigger/", StringComparison.OrdinalIgnoreCase) && !played.Contains(name)) {
+                picked.Add((name, false));
+            }
+        }
+        return picked;
     }
 
     protected override IEnumerable<TriggerMetadata> Map() {
-        IEnumerable<PackFileEntry> triggers = reader.Files.Where(file => file.Name.StartsWith("trigger/"));
-        foreach (PackFileEntry file in triggers) {
+        List<(string Name, bool Played)> picked = Pick(dataReader.Files.Select(file => file.Name), playedReader?.Files.Select(file => file.Name));
+        if (playedReader != null) {
+            Console.WriteLine($"triggers: {picked.Count(pick => pick.Played)} from the played client, {picked.Count(pick => !pick.Played)} only in the data pack");
+        }
+        var entries = new Dictionary<(bool Played, string Name), PackFileEntry>();
+        foreach (PackFileEntry entry in dataReader.Files) entries.TryAdd((false, entry.Name), entry);
+        foreach (PackFileEntry entry in playedReader?.Files ?? []) entries.TryAdd((true, entry.Name), entry);
+        foreach ((string name, bool fromPlayed) in picked) {
+            reader = fromPlayed ? playedReader! : dataReader;
+            PackFileEntry file = entries[(fromPlayed, name)];
             // get the folder name from the file path after "trigger/"
             string[] filePath = file.Name["trigger/".Length..].Split('/');
             string folderName = filePath[0];
