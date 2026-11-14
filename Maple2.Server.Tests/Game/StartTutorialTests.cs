@@ -24,8 +24,7 @@ public class StartTutorialTests {
         GC.SuppressFinalize(owner);
         typeof(FieldEntity<TriggerModel>).GetField("<Field>k__BackingField", Any)!.SetValue(owner, test.Session.Field);
         typeof(FieldEntity<TriggerModel>).GetField("<Value>k__BackingField", Any)!.SetValue(owner, new TriggerModel(1, "tutorial", Vector3.Zero, Vector3.Zero));
-        var context = (TriggerContext) RuntimeHelpers.GetUninitializedObject(typeof(TriggerContext));
-        typeof(TriggerContext).GetField("owner", Any)!.SetValue(context, owner);
+        TriggerContext context = TriggerTestBase.UninitializedContext(owner);
 
         IAction action = TriggerFunctionMapping.ActionMap["start_tutorial"](null);
         Assert.That(action, Is.TypeOf<Trigger.StartTutorial>());

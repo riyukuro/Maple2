@@ -122,8 +122,7 @@ public class MiniGameBonusSessionTests {
             typeof(TriggerCollection).GetField(nameof(TriggerCollection.Boxes), Any)!.SetValue(objects, new Dictionary<int, TriggerBox>());
             typeof(FieldManager).GetField(nameof(FieldManager.TriggerObjects), Any)!.SetValue(session.Field, objects);
         }
-        var context = (TriggerContext) RuntimeHelpers.GetUninitializedObject(typeof(TriggerContext));
-        typeof(TriggerContext).GetField("owner", Any)!.SetValue(context, owner);
+        TriggerContext context = TriggerTestBase.UninitializedContext(owner);
         return context;
     }
 

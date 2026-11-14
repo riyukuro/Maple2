@@ -68,14 +68,20 @@ public abstract class TriggerTestBase {
         typeof(FieldEntity<TriggerModel>).GetField("<Value>k__BackingField", Any)!.SetValue(owner, new TriggerModel(1, "main", Vector3.Zero, Vector3.Zero));
         // The script has one state, "end", for the skip actions to name.
         typeof(FieldTrigger).GetField("trigger", Any)!.SetValue(owner, new Trigger([new Trigger.State("end", null, null, null)]));
+        TriggerContext created = UninitializedContext(owner);
+        typeof(TriggerContext).GetField(nameof(TriggerContext.Events), Any)!.SetValue(created, new EventQueue(Log.Logger.ForContext<TriggerContext>()));
+        created.StartTick = Environment.TickCount64;
+        return created;
+    }
+
+    // A context made without its ctor, on an owner that skipped its own: the fields the ctor's initializers set are
+    // set here too, so the TRIGGER_DEBUG log (a Debug build) has its logger.
+    public static TriggerContext UninitializedContext(FieldTrigger owner) {
         var created = (TriggerContext) RuntimeHelpers.GetUninitializedObject(typeof(TriggerContext));
-        ILogger logger = Log.Logger.ForContext<TriggerContext>();
         typeof(TriggerContext).GetField("owner", Any)!.SetValue(created, owner);
-        typeof(TriggerContext).GetField("logger", Any)!.SetValue(created, logger);
+        typeof(TriggerContext).GetField("logger", Any)!.SetValue(created, Log.Logger.ForContext<TriggerContext>());
         typeof(TriggerContext).GetField("lastDebugKey", Any)!.SetValue(created, "");
         typeof(TriggerContext).GetField("currentRandom", Any)!.SetValue(created, float.MaxValue);
-        typeof(TriggerContext).GetField(nameof(TriggerContext.Events), Any)!.SetValue(created, new EventQueue(logger));
-        created.StartTick = Environment.TickCount64;
         return created;
     }
 

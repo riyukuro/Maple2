@@ -796,8 +796,7 @@ public class SpringFarmSessionTests {
         if (portals.GetValue(session.Field) == null) {
             portals.SetValue(session.Field, new System.Collections.Concurrent.ConcurrentDictionary<int, FieldPortal>());
         }
-        var context = (TriggerContext) RuntimeHelpers.GetUninitializedObject(typeof(TriggerContext));
-        typeof(TriggerContext).GetField("owner", Any)!.SetValue(context, owner);
+        TriggerContext context = TriggerTestBase.UninitializedContext(owner);
         return context;
     }
 
