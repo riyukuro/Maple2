@@ -13,13 +13,10 @@ public static class FieldTriggerEventRules {
     public static DateTime? CurrentRun(FieldTriggerEventMetadata row, DateTime now) =>
         FieldInteractEventRules.CurrentRun(row.StartTime, row.EndTime, row.CycleTime, row.LifeTime, now);
 
-    // The next run start after now, late by a part of randomTime (randomPart, 0 to 1); null when none is left.
-    public static DateTime? NextRun(FieldTriggerEventMetadata row, DateTime now, double randomPart) {
-        if (FieldInteractEventRules.NextRun(row.StartTime, row.EndTime, row.CycleTime, now) is not { } next) {
-            return null;
-        }
-        return row.RandomTime > TimeSpan.Zero ? next + row.RandomTime * randomPart : next;
-    }
+    // The next run start after now, late by a part of randomTime (randomPart, 0 to 1); null when none is left. Every
+    // KR type 6 row has randomTime 0, so CurrentRun (the grid start) is the run start too.
+    public static DateTime? NextRun(FieldTriggerEventMetadata row, DateTime now, double randomPart) =>
+        FieldInteractEventRules.NextRun(row.StartTime, row.EndTime, row.CycleTime, row.RandomTime, now, randomPart);
 
     // The seconds left of a run that ends at ends (TimeEventLifeTime), rounded up; 0 when it is over.
     public static int SecondsLeft(DateTime now, DateTime ends) =>

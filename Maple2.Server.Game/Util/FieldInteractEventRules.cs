@@ -1,4 +1,4 @@
-﻿using Maple2.Model.Metadata;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Util;
 
@@ -58,6 +58,21 @@ public static class FieldInteractEventRules {
         }
         return next < endTime ? next : null;
     }
+
+    // The next run start after now, late by a part of randomTime (randomPart, 0 to 1; as World reads randomTime for
+    // the world bosses); null when no run is left.
+    public static DateTime? NextRun(DateTime startTime, DateTime endTime, TimeSpan cycleTime, TimeSpan randomTime, DateTime now, double randomPart) {
+        if (NextRun(startTime, endTime, cycleTime, now) is not { } next) {
+            return null;
+        }
+        return randomTime > TimeSpan.Zero ? next + randomTime * randomPart : next;
+    }
+
+    // The start of the run that is due (now at or past due, the next run start the field kept): the run on the grid
+    // that is alive now when it is a later one than due (the field was empty and not updated in between), else due.
+    // It is run only while start + lifeTime is ahead of now.
+    public static DateTime DueRun(DateTime due, DateTime? current) =>
+        current is { } alive && alive > due ? alive : due;
 
     // The run start on the grid at or before now whose objects still live (now before start + lifeTime); null when
     // none does.

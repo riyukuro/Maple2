@@ -197,6 +197,29 @@ public class FieldInteractEventTests {
         Assert.That(Chests(field).Values.Select(interact => interact.TimeEventId).Distinct(), Is.EqualTo(new[] { 20006 }));
     }
 
+    // An empty field is not updated: a run that came due meanwhile gets only what is left of its life, and nothing
+    // once its life is over; the next grid run still comes.
+    [Test]
+    public void ARunDueWhileTheFieldWasEmptyKeepsItsLife() {
+        FieldManager field = Field(Row(count: 1, tags: [], life: TimeSpan.FromMinutes(5)));
+        field.UpdateInteractEvents(Start.AddMinutes(11));
+        field.UpdateInteractEvents(Start.AddMinutes(17));
+        Assert.That(Chests(field), Has.Count.EqualTo(1));
+        // the run of 00:15 leaves at 00:20, not 5 minutes after the late update
+        field.UpdateInteractEvents(Start.AddMinutes(20));
+        Assert.That(Chests(field), Is.Empty);
+    }
+
+    [Test]
+    public void ARunOverWhileTheFieldWasEmptyIsNotPlaced() {
+        FieldManager field = Field(Row(count: 1, tags: [], life: TimeSpan.FromMinutes(5)));
+        field.UpdateInteractEvents(Start.AddMinutes(11));
+        field.UpdateInteractEvents(Start.AddMinutes(23));
+        Assert.That(Chests(field), Is.Empty);
+        field.UpdateInteractEvents(Start.AddMinutes(30));
+        Assert.That(Chests(field), Has.Count.EqualTo(1));
+    }
+
     // rv241 #3: a type 4 object on a point that is no chest point is opened once in its run, whatever its resetTime.
     [Test]
     public void AnObjectOnAPlainPointIsNotOpenedAgainInItsRun() {

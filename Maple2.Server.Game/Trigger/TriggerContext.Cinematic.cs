@@ -23,7 +23,7 @@ public partial class TriggerContext {
     public void CloseCinematic() {
         DebugLog("[CloseCinematic]");
         // guessing
-        Held(hold => hold.Shown = false);
+        Held(hold => TriggerHold.Set(hold.Shown, this, false));
         Broadcast(CinematicPacket.HideUi());
     }
 
@@ -66,7 +66,13 @@ public partial class TriggerContext {
         GiveBack();
     }
 
-    private bool HoldsPlayers => Field.CinematicHold.Any;
+    // What this trigger turned on and no trigger has turned off yet.
+    private bool HoldsPlayers {
+        get {
+            TriggerHold hold = Field.CinematicHold;
+            return hold.KeyMode.Contains(this) || hold.Shown.Contains(this) || hold.Locked.Contains(this);
+        }
+    }
 
     private void Held(Action<TriggerHold> change) {
         TriggerHold hold = Field.CinematicHold;
@@ -74,15 +80,17 @@ public partial class TriggerContext {
         hold.ChangeTick = Field.FieldTick;
     }
 
+    // Ends only what this trigger holds, and only where no other trigger of the field holds it too (its cutscene
+    // or lock goes on).
     private void GiveBack() {
         TriggerHold hold = Field.CinematicHold;
-        if (hold.KeyMode) {
+        if (TriggerHold.Drop(hold.KeyMode, this)) {
             SetCinematicUi(0, string.Empty, false);
         }
-        if (hold.Shown) {
+        if (TriggerHold.Drop(hold.Shown, this)) {
             CloseCinematic();
         }
-        if (hold.Locked) {
+        if (TriggerHold.Drop(hold.Locked, this)) {
             LockMyPc(false);
         }
     }
@@ -106,13 +114,13 @@ public partial class TriggerContext {
         DebugLog("[SetCinematicUI] type:{Type}, script:{Script}, arg3:{Arg3}", type, script, arg3);
         switch (type) {
             case 0 or 1:
-                Held(hold => hold.KeyMode = type == 1);
+                Held(hold => TriggerHold.Set(hold.KeyMode, this, type == 1));
                 break;
             case 2:
-                Held(hold => hold.Shown = false);
+                Held(hold => TriggerHold.Set(hold.Shown, this, false));
                 break;
             case 3:
-                Held(hold => hold.Shown = true);
+                Held(hold => TriggerHold.Set(hold.Shown, this, true));
                 break;
         }
         switch (type) {

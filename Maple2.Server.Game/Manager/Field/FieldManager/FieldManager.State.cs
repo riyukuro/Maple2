@@ -812,21 +812,17 @@ public partial class FieldManager {
             if (now < state.NextRun) {
                 continue;
             }
-            RunInteractEvent(state, now, now, now + state.Row.LifeTime);
+            // A run that came due while the field was empty (not updated) gets what is left of it, or of the later
+            // run alive now; RunInteractEvent places nothing once it is over.
+            DateTime start = FieldInteractEventRules.DueRun(state.NextRun.Value, FieldInteractEventRules.CurrentRun(state.Row, now));
+            RunInteractEvent(state, now, start, start + state.Row.LifeTime);
             state.NextRun = NextInteractEventRun(state.Row, now) ?? DateTime.MaxValue;
         }
     }
 
     // The next run start, late by a random part of randomTime (as World reads randomTime for the world bosses).
-    private static DateTime? NextInteractEventRun(FieldInteractEventMetadata row, DateTime now) {
-        if (FieldInteractEventRules.NextRun(row, now) is not { } next) {
-            return null;
-        }
-        if (row.RandomTime > TimeSpan.Zero) {
-            next += TimeSpan.FromMilliseconds(Random.Shared.NextInt64((long) row.RandomTime.TotalMilliseconds));
-        }
-        return next;
-    }
+    private static DateTime? NextInteractEventRun(FieldInteractEventMetadata row, DateTime now) =>
+        FieldInteractEventRules.NextRun(row.StartTime, row.EndTime, row.CycleTime, row.RandomTime, now, Random.Shared.NextDouble());
 
     // A run started at start (its eventDuration window is read at the start); its objects leave at leaves.
     private void RunInteractEvent(InteractEventState state, DateTime now, DateTime start, DateTime leaves) {

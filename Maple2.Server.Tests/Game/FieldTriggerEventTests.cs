@@ -109,6 +109,27 @@ public class FieldTriggerEventTests {
         Assert.That(PuzzleOn, Is.EqualTo(1));
     }
 
+    // An empty field is not updated (FieldManager.Update): a run that came due meanwhile gives only what is left of
+    // it (or of the later run alive now), so the script is back in Wait for the next grid run; a run that is over
+    // gives nothing.
+    [TestCase(23, 120)]
+    [TestCase(32, 480)]
+    [TestCase(26, -1)]
+    public void RunDueWhileTheFieldWasEmpty_GivesWhatIsLeft(int minute, int lifeTime) {
+        Setup(Row());
+        Step(2);
+        DateTime day = Start.AddDays(100);
+        field.UpdateTriggerEvents(day.AddMinutes(11));
+        field.UpdateTriggerEvents(day.AddMinutes(minute));
+        if (lifeTime < 0) {
+            Assert.That(field.UserValues.Contains(TriggerId, FieldTriggerEventRules.LifeTimeKey), Is.False);
+            field.UpdateTriggerEvents(day.AddMinutes(30));
+            Assert.That(field.UserValues.Get(TriggerId, FieldTriggerEventRules.LifeTimeKey), Is.EqualTo(600));
+        } else {
+            Assert.That(field.UserValues.Get(TriggerId, FieldTriggerEventRules.LifeTimeKey), Is.EqualTo(lifeTime));
+        }
+    }
+
     // prob 0: the row never runs.
     [Test]
     public void ProbabilityZero_NeverRuns() {
@@ -142,6 +163,9 @@ public class FieldTriggerEventTests {
         Assert.That(FieldTriggerEventRules.NextRun(row, Start.AddMinutes(1), 0), Is.EqualTo(Start.AddMinutes(15)));
         Assert.That(FieldTriggerEventRules.CurrentRun(row, Start.AddMinutes(11)), Is.Null);
         Assert.That(FieldTriggerEventRules.CurrentRun(row, Start.AddMinutes(16)), Is.EqualTo(Start.AddMinutes(15)));
+        Assert.That(FieldInteractEventRules.DueRun(Start.AddMinutes(15), null), Is.EqualTo(Start.AddMinutes(15)));
+        Assert.That(FieldInteractEventRules.DueRun(Start.AddMinutes(16), Start.AddMinutes(15)), Is.EqualTo(Start.AddMinutes(16)));
+        Assert.That(FieldInteractEventRules.DueRun(Start.AddMinutes(15), Start.AddMinutes(30)), Is.EqualTo(Start.AddMinutes(30)));
         Assert.That(FieldTriggerEventRules.NextRun(row with { EndTime = Start.AddMinutes(10) }, Start.AddMinutes(1), 0), Is.Null);
     }
 }

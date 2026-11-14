@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -33,7 +34,7 @@ public partial class TriggerContext {
 
     public void LockMyPc(bool isLock) {
         DebugLog("[LockMyPc] isLock:{IsLock}", isLock);
-        Held(hold => hold.Locked = isLock);
+        Held(hold => TriggerHold.Set(hold.Locked, this, isLock));
         if (isLock) {
             Field.AddFieldProperty(new FieldPropertyLockPlayer());
         } else {

@@ -170,6 +170,25 @@ public class TriggerStuckCinematicTests {
         Assert.That(Sent().Cinematic, Is.Empty);
     }
 
+    // The lock and the cinematic are field-wide: when another trigger set them too, the stuck trigger leaves them
+    // on for it.
+    [Test]
+    public void DeadEndState_LeavesAnotherTriggersLockOn() {
+        SetupStates("<state name=\"scene\"><onEnter>" + OpenAndLock + "</onEnter></state>");
+        Sent();
+        FieldTrigger other = field.AddTrigger(new TriggerModel(2, "main", Vector3.Zero, Vector3.Zero))!;
+        other.Context.LockMyPc(true);
+        // set at the same tick as the dead end was entered, so it is not a later change
+        field.CinematicHold.ChangeTick = trigger.Context.StartTick;
+        Sent();
+
+        Step(10, 1_000);
+        (List<(byte, int)> cinematic, List<(byte, byte)> property) = Sent();
+        Assert.That(cinematic, Is.EqualTo(new List<(byte, int)> { (1, 0), (2, -1) }));
+        Assert.That(property, Is.Empty);
+        Assert.That(field.GetFieldProperty(FieldProperty.LockPlayer), Is.InstanceOf<FieldPropertyLockPlayer>());
+    }
+
     // A state with no condition that sets a skip state waits for the player's skip key (KR 51000001's intro):
     // the skip moves it on, so nothing is given back.
     [Test]

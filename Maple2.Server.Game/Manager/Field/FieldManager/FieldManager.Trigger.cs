@@ -7,6 +7,7 @@ using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Model.Widget;
+using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.Game.Util;
 
@@ -231,7 +232,10 @@ public partial class FieldManager {
             if (now < state.NextRun) {
                 continue;
             }
-            RunTriggerEvent(state.Row, now, now + state.Row.LifeTime);
+            // An empty field is not updated (FieldManager.Update), so a run can come due late: it gets what is
+            // left of it, or of the later run alive now, and nothing once it is over.
+            DateTime start = FieldInteractEventRules.DueRun(state.NextRun.Value, FieldTriggerEventRules.CurrentRun(state.Row, now));
+            RunTriggerEvent(state.Row, now, start + state.Row.LifeTime);
             state.NextRun = FieldTriggerEventRules.NextRun(state.Row, now, Random.Shared.NextDouble()) ?? DateTime.MaxValue;
         }
     }
@@ -247,12 +251,22 @@ public partial class FieldManager {
 
 // The cinematic key mode (set_cinematic_ui 1, off with 0; UICutSceneCinematic::OnPacketKeyMode), a cinematic
 // (set_cinematic_ui 3, closed by 2 or close_cinematic; OnPacketStartCinematic, OnPacketClose) and the player lock
-// (lock_my_pc), with the field tick of the last change to any of them.
+// (lock_my_pc), each with the triggers that turned it on, and the field tick of the last change to any of them.
+// All three are field-wide: an off from any trigger ends it for all.
 internal sealed class TriggerHold {
-    public bool KeyMode;
-    public bool Shown;
-    public bool Locked;
+    public readonly HashSet<TriggerContext> KeyMode = [];
+    public readonly HashSet<TriggerContext> Shown = [];
+    public readonly HashSet<TriggerContext> Locked = [];
     public long ChangeTick;
 
-    public bool Any => KeyMode || Shown || Locked;
+    public static void Set(HashSet<TriggerContext> holders, TriggerContext by, bool on) {
+        if (on) {
+            holders.Add(by);
+        } else {
+            holders.Clear();
+        }
+    }
+
+    // by stops holding: true when it was the last holder, so the hold is to be ended.
+    public static bool Drop(HashSet<TriggerContext> holders, TriggerContext by) => holders.Remove(by) && holders.Count == 0;
 }
