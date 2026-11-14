@@ -28,8 +28,15 @@ public class MoveFieldHandler : PacketHandler<GameSession> {
         ModelHome = 6,
     }
 
+    // The blueprint designer (5, uihomemenudialog.cpp:412) and the model home (6, uimeratmarketdialog.cpp:4758) are
+    // sent only with Blueprint on (MyPC::SendRequestMoveFieldMode5 and Mode6, mypc.cpp:3116/4966).
+    public const string BlueprintFeature = "Blueprint";
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        if (command is Command.BlueprintDesigner or Command.ModelHome && !session.ServerTableMetadata.FeatureTable.IsOn(BlueprintFeature)) {
+            return;
+        }
 
         switch (command) {
             case Command.Portal:

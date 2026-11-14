@@ -45,8 +45,16 @@ public class InstrumentHandler : FieldPacketHandler {
     // ReSharper restore All
     #endregion
 
+    // With MusicInstrument off the client uses no instrument or score item (InvenSlot, invenslot.cpp:803) and its
+    // instrument manager does not start (instrumentmanager.cpp:258), so commands 0-10 come only from a forged client.
+    // The concert stage (11-15, UIMusicConcertDialog) is sent without the check and stays open.
+    public const string Feature = "MusicInstrument";
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        if (command < Command.StartPerform && !session.ServerTableMetadata.FeatureTable.IsOn(Feature)) {
+            return;
+        }
         switch (command) {
             case Command.StartImprovise:
                 HandleStartImprovise(session, packet);

@@ -56,6 +56,17 @@ public class InstrumentHandlerTests {
         Assert.That(session.Instrument!.Improvising, Is.True);
     }
 
+    // MusicInstrument off: the client uses no instrument item (invenslot.cpp:803), so the server plays none either.
+    [Test]
+    public void StartImprovise_WithMusicInstrumentOff_PlaysNothing() {
+        GameSession session = Start(DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600, out Item instrument);
+        test.SetFeaturesOff(InstrumentHandler.Feature);
+
+        StartImprovise(session, instrument.Uid);
+
+        Assert.That(session.Instrument, Is.Null);
+    }
+
     [Test]
     public void StartImprovise_RefusesAnExpiredInstrument() {
         GameSession session = Start(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 1, out Item instrument);
