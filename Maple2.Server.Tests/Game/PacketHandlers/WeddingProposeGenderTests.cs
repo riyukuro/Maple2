@@ -14,7 +14,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
 // A proposal (Wedding 0x03) to a character of the same gender is refused with 0x15 where the client's WeddingBlockSex
-// feature is on (KR) and sent where it is off (NA); the server used to send it everywhere.
+// feature is on (KR) and sent where it is off (NA), as the ingested feature table says.
 public class WeddingProposeGenderTests {
     private readonly WeddingHandler handler = new();
 
@@ -59,18 +59,22 @@ public class WeddingProposeGenderTests {
     }
 
     [Test]
-    public void SameGender_FollowsTheLocalesFeature() {
+    public void SameGender_RefusedWithTheFeatureOn() {
         (TestGameSession proposer, TestGameSession target) = Couple(Gender.Female);
         Propose(proposer, target);
-        if (WeddingProposeRules.BlocksSameGender(Maple2.Tools.Locale.Read())) {
-            Assert.Multiple(() => {
-                Assert.That(Wedding(proposer), Is.EqualTo(new List<byte[]> { new byte[] { 2, 0x15 } }));
-                Assert.That(Wedding(target), Is.Empty);
-                Assert.That(proposer.Session.Item.Inventory.Find(Constant.ProposalItemId).Count(), Is.EqualTo(1));
-            });
-        } else {
-            Assert.That(Wedding(target).Select(packet => packet[0]), Is.EqualTo(new[] { (byte) 3 }));
-        }
+        Assert.Multiple(() => {
+            Assert.That(Wedding(proposer), Is.EqualTo(new List<byte[]> { new byte[] { 2, 0x15 } }));
+            Assert.That(Wedding(target), Is.Empty);
+            Assert.That(proposer.Session.Item.Inventory.Find(Constant.ProposalItemId).Count(), Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public void SameGender_SentWithTheFeatureOff() {
+        (TestGameSession proposer, TestGameSession target) = Couple(Gender.Female);
+        proposer.SetFeaturesOff(WeddingProposeRules.BlockSexFeature);
+        Propose(proposer, target);
+        Assert.That(Wedding(target).Select(packet => packet[0]), Is.EqualTo(new[] { (byte) 3 }));
     }
 
     [Test]
@@ -81,17 +85,12 @@ public class WeddingProposeGenderTests {
         Assert.That(Wedding(target).Select(packet => packet[0]), Is.EqualTo(new[] { (byte) 3 }));
     }
 
-    [TestCase("KR", true)]
-    [TestCase("CN", true)]
-    [TestCase("TW", true)]
-    [TestCase("NA", false)]
-    [TestCase("JP", false)]
-    [TestCase("TH", false)]
-    public void BlockSex_Locales(string locale, bool blocked) {
+    [TestCase(true)]
+    [TestCase(false)]
+    public void GenderPair(bool blockSex) {
         Assert.Multiple(() => {
-            Assert.That(WeddingProposeRules.BlocksSameGender(locale), Is.EqualTo(blocked));
-            Assert.That(WeddingProposeRules.GenderPairAllowed(Gender.Male, Gender.Male, locale), Is.EqualTo(!blocked));
-            Assert.That(WeddingProposeRules.GenderPairAllowed(Gender.Male, Gender.Female, locale), Is.True);
+            Assert.That(WeddingProposeRules.GenderPairAllowed(Gender.Male, Gender.Male, blockSex), Is.EqualTo(!blockSex));
+            Assert.That(WeddingProposeRules.GenderPairAllowed(Gender.Male, Gender.Female, blockSex), Is.True);
         });
     }
 }

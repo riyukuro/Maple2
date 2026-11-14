@@ -810,7 +810,8 @@ public sealed class MarriageManager {
     }
 
     public WeddingError Propose(FieldPlayer target) {
-        if (!WeddingProposeRules.GenderPairAllowed(session.Player.Value.Character.Gender, target.Value.Character.Gender, Maple2.Tools.Locale.Read())) {
+        if (!WeddingProposeRules.GenderPairAllowed(session.Player.Value.Character.Gender, target.Value.Character.Gender,
+                session.ServerTableMetadata.FeatureTable.IsOn(WeddingProposeRules.BlockSexFeature))) {
             return WeddingError.s_wedding_result_err_wedding_block_gender;
         }
         if (!session.Item.Inventory.Find(Constant.ProposalItemId).Any()) {
