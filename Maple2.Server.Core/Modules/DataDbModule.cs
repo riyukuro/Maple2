@@ -42,6 +42,11 @@ public class DataDbModule : Module {
             throw new Exception($"Metadata database is older than this server (tables: {string.Join(", ", stale)}), run Maple2.File.Ingest again.");
         }
 
+        (int items, int ranked) = MetadataSchemaCheck.ItemClientRanks(context);
+        if (MetadataSchemaCheck.ClientRankWarning(items, ranked) is { } warning) {
+            Serilog.Log.Warning(warning);
+        }
+
         context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
         builder.RegisterInstance(context);
 

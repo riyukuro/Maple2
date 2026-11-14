@@ -22,6 +22,22 @@ public static class MetadataSchemaCheck {
         return stale;
     }
 
+    // The item rows that carry the played client's rank (ItemMetadataProperty.ClientRank). The ingest sets it only
+    // when MS2_PLAYED_CLIENT_XML names the played client's item data; without it every copy keeps the server pack's
+    // rank, and the client's lists that match a copy's rarity (the enchant fodder) stay empty.
+    public static (int Items, int Ranked) ItemClientRanks(DbContext context) {
+        int items = context.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS `Value` FROM `item`").AsEnumerable().Single();
+        int ranked = context.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*) AS `Value` FROM `item` WHERE JSON_EXTRACT(`Property`, '$.ClientRank') IS NOT NULL").AsEnumerable().Single();
+        return (items, ranked);
+    }
+
+    // The start-up warning for an item table without one client rank; null when the table has some (or no items).
+    public static string? ClientRankWarning(int items, int ranked) =>
+        items > 0 && ranked == 0
+            ? $"Metadata item table has no client rank in its {items} items: it was written by an ingest without MS2_PLAYED_CLIENT_XML (the played client's Xml.m2d), so items keep the server pack's rank. Run Maple2.File.Ingest again with it."
+            : null;
+
     public static IEnumerable<(string Table, string Sql)> Probes(IModel model) {
         foreach (IEntityType entityType in model.GetEntityTypes().OrderBy(type => type.Name)) {
             string? table = entityType.GetTableName();

@@ -49,6 +49,27 @@ public class MetadataSchemaCheckTests {
         Assert.That(MetadataSchemaCheck.StaleTables(context), Is.Empty);
     }
 
+    [Test]
+    public void ClientRankWarning_OnlyForItemsWithoutAnyRank() {
+        Assert.That(MetadataSchemaCheck.ClientRankWarning(35463, 0), Does.Contain("MS2_PLAYED_CLIENT_XML").And.Contain("35463"));
+        Assert.That(MetadataSchemaCheck.ClientRankWarning(35463, 30048), Is.Null);
+        Assert.That(MetadataSchemaCheck.ClientRankWarning(0, 0), Is.Null);
+    }
+
+    // A database written with the played client: the KR client ranks 30048 of its items.
+    [Test]
+    public void ItemClientRanks_CountsTheRankedItems() {
+        if (Connection == null) {
+            Assert.Ignore("MS2_TEST_DATA_DB is not set");
+        }
+        using var context = new MetadataContext(new DbContextOptionsBuilder().UseMySql(Connection, ServerVersion.AutoDetect(Connection)).Options);
+
+        (int items, int ranked) = MetadataSchemaCheck.ItemClientRanks(context);
+        Assert.That(items, Is.GreaterThan(0));
+        Assert.That(ranked, Is.GreaterThan(0).And.LessThanOrEqualTo(items));
+        Assert.That(MetadataSchemaCheck.ClientRankWarning(items, ranked), Is.Null);
+    }
+
     // The table an older ingest wrote: the same table without one column.
     [Test]
     public void StaleTables_NamesATableThatLacksAColumn() {
