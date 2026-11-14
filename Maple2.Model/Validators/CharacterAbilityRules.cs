@@ -10,9 +10,13 @@ public static class CharacterAbilityRules {
     // The level the feature starts at (CFeatureManager, 0x32).
     public const int OpenLevel = 50;
 
-    // The client opens the window at level 50 with the open quest rewarded (uicharacterabilitydialog.cpp:388).
-    public static bool IsOpen(int level, bool openQuestDone) {
-        return level >= OpenLevel && openQuestDone;
+    // The feature (id 45) of the ingested feature table.
+    public const string Feature = "CharacterAbility";
+
+    // The client opens the window with the CharacterAbility feature on, at level 50 and with the open quest rewarded
+    // (uicharacterabilitydialog.cpp:388; FUN_1401e0800, commonfiles/characterability.cpp:292).
+    public static bool IsOpen(bool featureOn, int level, bool openQuestDone) {
+        return featureOn && level >= OpenLevel && openQuestDone;
     }
 
     // characterability.cpp:280: one point per level above 50, plus the default points and the bonus points

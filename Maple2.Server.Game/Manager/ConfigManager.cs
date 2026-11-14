@@ -848,7 +848,7 @@ public class ConfigManager {
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
         Character character = AbilityCharacter;
         bool questDone = session.Quest.TryGetQuest(constants.CharacterAbilityOpenQuestID, out Quest? quest) && quest.State == QuestState.Completed;
-        if (!CharacterAbilityRules.IsOpen(character.Level, questDone)) {
+        if (!CharacterAbilityRules.IsOpen(session.ServerTableMetadata.FeatureTable.IsOn(CharacterAbilityRules.Feature), character.Level, questDone)) {
             return false;
         }
 
@@ -877,7 +877,11 @@ public class ConfigManager {
     }
 
     // CharacterAbility mode 1: for CharacterAbilityResetMeso mesos, once per CharacterAbilityResetCoolTimeMinute.
+    // Refused while the feature is off: the client then has no window to reset from.
     public bool ResetCharacterAbilities() {
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(CharacterAbilityRules.Feature)) {
+            return false;
+        }
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
         Character character = AbilityCharacter;
         long now = DateTime.Now.ToEpochSeconds();
@@ -911,7 +915,8 @@ public class ConfigManager {
         Character character = AbilityCharacter;
         bool questDone = session.Quest.TryGetQuest(constants.CharacterAbilityOpenQuestID, out Quest? quest) && quest.State == QuestState.Completed;
         long wait = CharacterAbilityRules.ResetWait(character.AbilityResetTime, DateTime.Now.ToEpochSeconds(), constants.CharacterAbilityResetCoolTimeMinute);
-        if (!CharacterAbilityRules.CanResetCoolTime(CharacterAbilityRules.IsOpen(character.Level, questDone), wait) || !consume()) {
+        if (!CharacterAbilityRules.CanResetCoolTime(
+                CharacterAbilityRules.IsOpen(session.ServerTableMetadata.FeatureTable.IsOn(CharacterAbilityRules.Feature), character.Level, questDone), wait) || !consume()) {
             return false;
         }
 

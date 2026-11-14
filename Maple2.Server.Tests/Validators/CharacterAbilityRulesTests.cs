@@ -12,12 +12,13 @@ using Maple2.Server.Game.Util;
 namespace Maple2.Server.Tests.Validators;
 
 public class CharacterAbilityRulesTests {
-    // The window opens at level 50 with the open quest rewarded.
-    [TestCase(50, true, true)]
-    [TestCase(49, true, false)]
-    [TestCase(60, false, false)]
-    public void Open(int level, bool questDone, bool expected) {
-        Assert.That(CharacterAbilityRules.IsOpen(level, questDone), Is.EqualTo(expected));
+    // The window opens with the feature on, at level 50 and with the open quest rewarded.
+    [TestCase(true, 50, true, true)]
+    [TestCase(true, 49, true, false)]
+    [TestCase(true, 60, false, false)]
+    [TestCase(false, 60, true, false)]
+    public void Open(bool featureOn, int level, bool questDone, bool expected) {
+        Assert.That(CharacterAbilityRules.IsOpen(featureOn, level, questDone), Is.EqualTo(expected));
     }
 
     // level - 50 + default + bonus, less the learned ones. The client's default is 10.

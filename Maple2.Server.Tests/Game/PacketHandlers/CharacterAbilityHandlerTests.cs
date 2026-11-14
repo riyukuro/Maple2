@@ -127,6 +127,23 @@ public class CharacterAbilityHandlerTests {
         Assert.That(Sent(), Is.Empty);
     }
 
+    // With CharacterAbility (id 45) off the client has no window (FUN_1401e0800 gives 0): learn and reset are refused.
+    [Test]
+    public void FeatureOff_LearnAndResetAreRefused() {
+        test.SetFeaturesOff(CharacterAbilityRules.Feature);
+        Send(CharacterAbilityRules.Learn, Strength);
+        Assert.That(Character.Abilities, Is.Empty);
+        Assert.That(Sent(), Is.Empty);
+
+        Character.Abilities.Add(Strength);
+        session.Currency.Meso = ResetMeso;
+        test.TakeSent();
+        Send(CharacterAbilityRules.Reset);
+        Assert.That(Character.Abilities, Is.EqualTo(new[] { Strength }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(ResetMeso));
+        Assert.That(Sent(), Is.Empty);
+    }
+
     [Test]
     public void Learn_RefusedBelowTheOpenLevel() {
         Character.Level = 49;
