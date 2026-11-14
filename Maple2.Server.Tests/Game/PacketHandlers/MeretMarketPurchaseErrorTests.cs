@@ -61,10 +61,10 @@ public class MeretMarketPurchaseErrorTests {
         })!.Id;
     }
 
-    private void SetPremium(long saleStart, long saleEnd, long price = 100) {
+    private void SetPremium(long saleStart, long saleEnd, long price = 100, bool pcCafe = false) {
         var entry = new MeretMarketItemMetadata(Product, 0, 1, string.Empty, MeretMarketBannerTag.None, Design, 1, 1, 0, 0,
             MeretMarketItemSaleTag.None, MeretMarketCurrencyType.Meret, price, 0, saleStart, saleEnd, (JobFilterFlag) ~0,
-            false, 0, 0, 0, 0, false, false, false, string.Empty, 0, 0);
+            false, 0, 0, 0, 0, pcCafe, false, false, string.Empty, 0, 0);
         object server = typeof(GameSession).GetField("server", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
         var table = new MeretMarketTable(new Dictionary<int, MeretMarketItemMetadata> { [Product] = entry });
         typeof(Maple2.Server.Game.GameServer).GetField("premiumMarketCache", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -146,6 +146,19 @@ public class MeretMarketPurchaseErrorTests {
         SetPremium(0, 0, price: 6000);
         Buy(Product, 0);
         AssertRefused(0x88);
+    }
+
+    // A pcCafe product is bought only at a PC bang (the client's FUN_140ebfe30); elsewhere the answer is 0xB7.
+    [Test]
+    public void Premium_PcCafeProductNeedsAPcBang() {
+        SetPremium(0, 0, pcCafe: true);
+        Buy(Product, 0);
+        AssertRefused(MeretMarketHandler.PurchaseErrorNotPcBang);
+
+        typeof(Maple2.Server.Game.Manager.PcBangManager).GetField("<Grade>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.PcBang, 1);
+        Buy(Product, 0);
+        Assert.That(session.Currency.Meret, Is.EqualTo(4900));
     }
 
     [Test]

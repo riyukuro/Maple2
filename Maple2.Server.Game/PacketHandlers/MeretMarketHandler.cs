@@ -531,6 +531,7 @@ public class MeretMarketHandler : FieldPacketHandler {
     private const int PurchaseErrorAchievementComplete = 0xB1; // s_meratmarket_error_result_buy_achieve_complete
     private const int PurchaseErrorLevel = 0xB4; // s_meratmarket_error_buy_limit_level (or the product's level text)
     private const int PurchaseErrorJob = 0xB5; // s_meratmarket_error_buy_limit_job
+    public const int PurchaseErrorNotPcBang = 0xB7; // s_meratmarket_error_buy_not_pcbang
     private const int PurchaseErrorGiftCannot = 0xA4; // s_meratmarket_error_result_gift_cannot
     private const int PurchaseErrorLackMeret = 0x88; // s_meratmarket_error_result_buy_lack_merat (the box opens the charge page)
     private const int PurchaseErrorPriceType = 0x87; // s_meratmarket_error_buy_invalid_price_type
@@ -567,6 +568,14 @@ public class MeretMarketHandler : FieldPacketHandler {
         // If JobRequirement is None, no job is eligible.
         if ((entry.Metadata.JobRequirement & session.Player.Value.Character.Job.Code().FilterFlag()) == JobFilterFlag.None) {
             error = PurchaseErrorJob;
+            return null;
+        }
+
+        // The product's pcCafe byte is the PC bang level it needs (CDBPremiumProduct +0x10c); the client buys it only at a
+        // PC bang (FUN_140ebfe30, uimeratmarketcommon.cpp:867, from CanBuyPremiumProduct). The level is 1 at most, and a
+        // PC bang's grade is at least 1, so the low level text (0xB8) is never due. No KR product sets it.
+        if (entry.Metadata.PcCafe && session.PcBang.Grade <= 0) {
+            error = PurchaseErrorNotPcBang;
             return null;
         }
 
