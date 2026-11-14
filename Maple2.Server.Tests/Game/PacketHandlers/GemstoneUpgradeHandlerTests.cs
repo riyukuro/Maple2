@@ -26,7 +26,7 @@ public class GemstoneUpgradeHandlerTests {
 
     private Item bagGem = null!;
 
-    private GameSession Start(int[] rates, int equipPart = 3, int[]? skinRates = null, params GemstoneUpgradeTable.Ingredient[] more) {
+    private GameSession Start(int[] rates, int equipPart = 3, int[]? skinRates = null, int gemAmount = 3, params GemstoneUpgradeTable.Ingredient[] more) {
         test = new TestGameSession();
         test.SetTable(new GemstoneUpgradeTable(new Dictionary<int, GemstoneUpgradeTable.Entry> {
             [40200001] = new(1, 40200002, [new GemstoneUpgradeTable.Ingredient(ItemTag.DustBlue, 10), .. more], equipPart),
@@ -37,7 +37,7 @@ public class GemstoneUpgradeHandlerTests {
         gear = test.Store(TestGameSession.Metadata(11200001, type: 1));
         ItemMetadata dustData = TestGameSession.Metadata(40300001, type: 2);
         dust = test.Store(dustData with { Property = dustData.Property with { Tag = ItemTag.DustBlue } }, amount: 100);
-        bagGem = test.Store(TestGameSession.Metadata(40200001, type: 13), amount: 3);
+        bagGem = test.Store(TestGameSession.Metadata(40200001, type: 13), amount: gemAmount);
         test.Register(TestGameSession.Metadata(40200002, type: 13));
         GameSession session = test.Start();
         test.TakeSent();
@@ -202,6 +202,41 @@ public class GemstoneUpgradeHandlerTests {
 
         Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(40200001));
         Assert.That(session.Item.Inventory.Get(dust.Uid)!.Amount, Is.EqualTo(100));
+    }
+
+    // A bag gem upgrade with no free gem slot (the client asks no room, FUN_140f76970): one gem alone in its slot leaves
+    // the slot to the upgraded gem, and an upgraded gem that stacks needs none; a gem taken off a larger stack with
+    // nowhere to go is refused before anything is taken.
+    [TestCase(1, false, true)]
+    [TestCase(3, true, true)]
+    [TestCase(3, false, false)]
+    public void InTheInventory_AFullGemTab(int gemAmount, bool upgradedStackHeld, bool upgrades) {
+        GameSession session = Start(SureRates, gemAmount: gemAmount);
+        test.EnterMap(TestGameSession.Map(90000100));
+        if (upgradedStackHeld) {
+            Assert.That(session.Item.Inventory.Add(new Item(TestGameSession.Metadata(40200002, type: 13), 1, 1), commit: true), Is.True);
+        }
+        for (int i = 0; session.Item.Inventory.FreeSlots(InventoryType.Gemstone) > 0; i++) {
+            ItemMetadata filler = TestGameSession.Metadata(40290000 + i, type: 13, slotMax: 1);
+            test.Register(filler);
+            Assert.That(session.Item.Inventory.Add(new Item(filler, 1, 1), commit: true), Is.True,
+                $"filler {i}, free {session.Item.Inventory.FreeSlots(InventoryType.Gemstone)}");
+        }
+        test.TakeSent();
+
+        new ItemSocketHandler { ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(4);
+            writer.WriteLong(0);
+            writer.WriteByte(0xFF);
+            writer.WriteLong(bagGem.Uid);
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Filter(item => item.Id == 40200001).Sum(item => item.Amount), Is.EqualTo(upgrades ? gemAmount - 1 : gemAmount));
+            Assert.That(session.Item.Inventory.Filter(item => item.Id == 40200002).Sum(item => item.Amount),
+                Is.EqualTo((upgradedStackHeld ? 1 : 0) + (upgrades ? 1 : 0)));
+            Assert.That(session.Item.Inventory.Get(dust.Uid)!.Amount, Is.EqualTo(upgrades ? 90 : 100));
+        });
     }
 
     [Test]

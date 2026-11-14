@@ -223,9 +223,16 @@ public class ItemSocketHandler : FieldPacketHandler {
                     return;
                 }
 
-                if (session.Item.Inventory.FreeSlots(InventoryType.Gemstone) < 1) {
-                    session.Send(ItemSocketPacket.Error(code: 5, error: s_itemsocketsystem_error_server_default));
-                    return;
+                // The client asks no room (FUN_140f76970). One gem is taken off its stack and the upgraded one added:
+                // a gem alone in its slot leaves that slot to it, and an upgraded gem that stacks needs none.
+                Item? held = session.Item.Inventory.Get(gemUid, InventoryType.Gemstone);
+                if (held != null && held.Amount > 1) {
+                    Item upgraded = held.Mutate(result.Value.upgrade);
+                    upgraded.Amount = 1;
+                    if (!ItemSocketRules.GemUpgradeHasRoom(held.Amount, session.Item.Inventory.CanAdd(upgraded))) {
+                        session.Send(ItemSocketPacket.Error(code: 5, error: s_itemsocketsystem_error_server_default));
+                        return;
+                    }
                 }
 
                 if (!TakeGemstoneUpgradePrice(result.Value.entry, session.Item.Inventory.Get(gemUid, InventoryType.Gemstone))) {

@@ -51,6 +51,10 @@ public static class ItemSocketRules {
     // The item kinds a gem row fits, as the client reads equipPart (CItemGemStoneData, itemgemstonedata.cpp:185-213):
     // part n is bit 1 << (n - 1), and a row with no part (or one below 1) fits 7. KR: part 3 (mask 4, accessories) and
     // part 4 (mask 8, outfits).
+    // A bag gem upgrade takes one gem off its stack and adds the upgraded one: room is asked only of a stack of more
+    // than one (`canAddOne`: a free gem slot, or a stack of the upgraded gem with room for one more).
+    public static bool GemUpgradeHasRoom(int stackAmount, bool canAddOne) => stackAmount <= 1 || canAddOne;
+
     public static int GemMask(int equipPart) => equipPart < 1 ? 7 : 1 << (equipPart - 1);
 
     // The item's kind for a gem (FUN_140222ce0, unit_1402226b0_featureenumhelpers.cpp:200): an outfit (a skin type) 8, a
