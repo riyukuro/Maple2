@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Maple2.Database.Context;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
@@ -9,7 +10,9 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -35,6 +38,8 @@ public class VipGoodsShopTests {
     private const int PeriodMinutes = 1440;
     private const int UnknownItemId = 50999999;
     private const int BonusItemId = 50000104;
+    private const int BenefitId = 1;
+    private const int NoItemBenefitId = 2;
 
     private TestGameSession test = null!;
     private GameSession session => test.Session;
@@ -47,7 +52,11 @@ public class VipGoodsShopTests {
     public void SetUp() {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(BonusItemId));
-        test.SetTable(new PremiumClubTable(new Dictionary<int, PremiumClubTable.Buff>(), new Dictionary<int, PremiumClubTable.Item>(),
+        test.SetTable(new PremiumClubTable(new Dictionary<int, PremiumClubTable.Buff>(), new Dictionary<int, PremiumClubTable.Item> {
+            [BenefitId] = new(BonusItemId, 2, 1, 0),
+            // A benefit item with no metadata: CreateItem makes nothing.
+            [NoItemBenefitId] = new(UnknownItemId, 1, 1, 0),
+        },
             new Dictionary<int, PremiumClubTable.Package> {
                 [FreeId] = Package(300),
                 [LimitedId] = Package(100, buyLimit: 2, reset: ResetType.Week, items: new PremiumClubTable.Item(BonusItemId, 3, 1, 0)),
@@ -132,6 +141,72 @@ public class VipGoodsShopTests {
     }
 
     private int BagAmount() => session.Item.Inventory.Find(BonusItemId).Sum(item => item.Amount);
+
+    private void Claim(int benefitId) => Handler().Handle(session, TestGameSession.Packet(writer => {
+        writer.WriteByte(2);
+        writer.WriteInt(benefitId);
+    }));
+
+    private List<string> Notices() => test.TakeSent()
+        .Where(packet => TestGameSession.Op(packet) == SendOp.Notice)
+        .Select(Convert.ToHexString)
+        .ToList();
+
+    private void SetMember() {
+        session.Player.Value.Account.PremiumTime = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
+        test.TakeSent();
+    }
+
+    // A benefit (PremiumClub 2) gives its item once a day: the answer is mode 2 with the benefit id.
+    [Test]
+    public void ClaimGivesTheItemOnce() {
+        SetMember();
+
+        Claim(BenefitId);
+        Assert.That(Sent(2).Select(packet => packet[3..]), Is.EqualTo(new[] { BitConverter.GetBytes(BenefitId) }));
+        Assert.That(BagAmount(), Is.EqualTo(2));
+        Assert.That(session.Player.Value.Account.PremiumRewardsClaimed, Is.EqualTo(new[] { BenefitId }));
+
+        Claim(BenefitId);
+        Assert.That(Sent(2), Is.Empty);
+        Assert.That(BagAmount(), Is.EqualTo(2));
+    }
+
+    // The dialog sends a claim without checking the inventory and has no answer for a refusal: a full tab is answered
+    // with s_err_inventory, and the benefit stays unclaimed, so a claim after room is made gives it.
+    [Test]
+    public void ClaimIntoAFullTab() {
+        SetMember();
+        Item sample = session.Field!.ItemDrop.CreateItem(BonusItemId)!;
+        var tabs = (Dictionary<InventoryType, ItemCollection>) typeof(InventoryManager)
+            .GetField("tabs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Item.Inventory)!;
+        ItemCollection room = tabs[sample.Inventory];
+        tabs[sample.Inventory] = new ItemCollection(0);
+
+        Claim(BenefitId);
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.PremiumClub), Is.Empty);
+        Assert.That(sent.Where(packet => TestGameSession.Op(packet) == SendOp.Notice).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { Convert.ToHexString(NoticePacket.MessageBox(StringCode.s_err_inventory).ToArray()) }));
+        Assert.That(session.Player.Value.Account.PremiumRewardsClaimed, Is.Empty);
+
+        tabs[sample.Inventory] = room;
+        Claim(BenefitId);
+        Assert.That(Sent(2), Has.Count.EqualTo(1));
+        Assert.That(BagAmount(), Is.EqualTo(2));
+    }
+
+    // A benefit whose item is not made is answered with s_item_err_code and the item id, and stays unclaimed.
+    [Test]
+    public void ClaimOfAnItemNotMade() {
+        SetMember();
+
+        Claim(NoItemBenefitId);
+        Assert.That(Notices(), Is.EqualTo(new[] {
+            Convert.ToHexString(NoticePacket.MessageBox(new InterfaceText(StringCode.s_item_err_code, UnknownItemId.ToString())).ToArray()),
+        }));
+        Assert.That(session.Player.Value.Account.PremiumRewardsClaimed, Is.Empty);
+    }
 
     [Test]
     public void LoadPackagesBytes() {

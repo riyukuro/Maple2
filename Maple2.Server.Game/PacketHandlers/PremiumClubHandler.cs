@@ -67,18 +67,31 @@ public class PremiumClubHandler : FieldPacketHandler {
             return;
         }
 
-        Item? item = session.Field?.ItemDrop.CreateItem(premiumMetadata.Id, premiumMetadata.Rarity, premiumMetadata.Amount);
-        if (item == null || !session.Item.Inventory.CanAdd(item)) {
-            return;
-        }
-
         if (session.Player.Value.Account.PremiumRewardsClaimed.Contains(benefitId)) {
             return;
         }
 
-        session.Player.Value.Account.PremiumRewardsClaimed.Add(benefitId);
+        // The dialog has no answer for a refused claim (UIVIPDialog::FUN_140fb87d0 reads only modes 1 and 2) and sends
+        // one without checking the inventory (OnClickGetItem, uivipdialog.cpp:152-160), so a refusal is answered with
+        // a message box: a full inventory s_err_inventory, an item not made or not added s_item_err_code with the item
+        // id. The benefit is marked claimed only once its item is in the inventory.
+        Item? item = session.Field?.ItemDrop.CreateItem(premiumMetadata.Id, premiumMetadata.Rarity, premiumMetadata.Amount);
+        if (item == null) {
+            Logger.Warning("PremiumClub: benefit {BenefitId} item {ItemId} not made", benefitId, premiumMetadata.Id);
+            session.Send(NoticePacket.MessageBox(new InterfaceText(StringCode.s_item_err_code, premiumMetadata.Id.ToString())));
+            return;
+        }
+        if (!session.Item.Inventory.CanAdd(item)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_err_inventory));
+            return;
+        }
+        if (!session.Item.Inventory.Add(item, true)) {
+            Logger.Warning("PremiumClub: benefit {BenefitId} item {ItemId} not added", benefitId, premiumMetadata.Id);
+            session.Send(NoticePacket.MessageBox(new InterfaceText(StringCode.s_item_err_code, premiumMetadata.Id.ToString())));
+            return;
+        }
 
-        session.Item.Inventory.Add(item, true);
+        session.Player.Value.Account.PremiumRewardsClaimed.Add(benefitId);
         session.Send(PremiumCubPacket.ClaimItem(benefitId));
     }
 
