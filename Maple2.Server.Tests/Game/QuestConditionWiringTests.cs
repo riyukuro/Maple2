@@ -747,6 +747,35 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(2));
     }
     #endregion
+    #region mastery_gathering (MasteryManager.Gather, a gather's end)
+    private static MasteryRecipeTable.Entry Recipe(int id, MasteryType type) =>
+        new(id, type, false, 0, 0, [], 0, 0, 0, 0, 0, [], [], []);
+
+    // 70500014: <condition type="mastery_gathering" code="30000001" value="30" />, each gather of the recipe of the
+    // code counts (the gathering and mining recipes both); another recipe does not.
+    [Test]
+    public void MasteryGathering_70500014_TheRecipesGathers() {
+        Start();
+        typeof(ConfigManager).GetField(nameof(ConfigManager.GatheringCounts), Any)!.SetValue(test.Session.Config,
+            new Dictionary<int, int> { [30000001] = 0, [30000002] = 0, [40000012] = 0 });
+        Quest quest = StartQuest(Condition(ConditionType.mastery_gathering, 30, ["30000001"], []));
+        Quest mining = test.StartQuest(TestGameSession.QuestData(QuestId + 1) with {
+            Conditions = [Condition(ConditionType.mastery_gathering, 30, ["40000012"], [])],
+        });
+
+        test.Session.Mastery.Gather(Recipe(30000002, MasteryType.Gathering), Vector3.Zero, Vector3.Zero);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        test.Session.Mastery.Gather(Recipe(30000001, MasteryType.Gathering), Vector3.Zero, Vector3.Zero);
+        test.Session.Mastery.Gather(Recipe(40000012, MasteryType.Mining), Vector3.Zero, Vector3.Zero);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.Multiple(() => {
+            Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+            Assert.That(mining.Conditions[0].Counter, Is.EqualTo(1));
+            Assert.That(test.Session.Config.GatheringCounts[30000001], Is.EqualTo(1));
+        });
+    }
+    #endregion
     #region item_move (FieldManager.PlaceCube, a liftable put down)
     // 10001060: <condition type="item_move" code="30000030" value="3" target="400" />, the liftable item of the code
     // put down on a target box of the target counts; one put down off the box, or another item, does not.
