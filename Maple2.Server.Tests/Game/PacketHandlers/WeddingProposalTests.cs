@@ -94,9 +94,13 @@ public class WeddingProposalTests {
         Assert.That(Sent(proposer), Is.EqualTo(new[] { Hex(WeddingPacket.Error(WeddingError.s_wedding_msg_box_propose_to)) }));
         Assert.That(Sent(target), Is.EqualTo(new[] { Hex(WeddingPacket.Proposal(proposer.Session.PlayerName, proposer.CharacterId)) }));
 
+        Item held = proposer.Session.Item.Inventory.Find(Constant.ProposalItemId).Single();
         SendAccept();
         Assert.That(proposer.Session.Marriage.Marriage.Status, Is.EqualTo(MaritalStatus.Engaged));
         Assert.That(target.Session.Marriage.Marriage.Status, Is.EqualTo(MaritalStatus.Engaged));
+        // The ring's row is taken in the marriage's own save, not left to the session's next save (a crash before it
+        // kept the ring with the engagement stored).
+        Assert.That(proposer.Row(held.Uid)!.OwnerId, Is.EqualTo(0));
         Assert.That(Sent(proposer), Is.EqualTo(new[] { Hex(WeddingPacket.Engaged(proposer.Session.Marriage.Marriage)) }));
         Assert.That(Sent(target), Is.EqualTo(new[] { Hex(WeddingPacket.Engaged(target.Session.Marriage.Marriage)) }));
         Assert.That(Rings(proposer), Is.EqualTo(0));

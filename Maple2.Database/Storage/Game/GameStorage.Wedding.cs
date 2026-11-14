@@ -15,7 +15,20 @@ public partial class GameStorage {
     public partial class Request {
         public Marriage? CreateMarriage(long partner1Id, long partner2Id) {
             BeginTransaction();
+            Marriage? stored = AddMarriage(partner1Id, partner2Id);
+            if (stored == null) {
+                Rollback();
+                return null;
+            }
+            return Commit() ? stored : null;
+        }
 
+        // The engaged couple's row written in the open transaction and read back. The stored row is read back inside
+        // the transaction, so a row that cannot be read (a partner without the player info it needs, such as no
+        // account or home row; a missing character is already refused by the foreign key on MySQL) is taken back out:
+        // null then, and the caller does not commit. For the proposal's accept, whose ring is stored in the same
+        // transaction (a purchase save of the proposer).
+        public Marriage? AddMarriage(long partner1Id, long partner2Id) {
             Model.Marriage marriage = new Model.Marriage {
                 Partner1Id = partner1Id,
                 Partner2Id = partner2Id,
@@ -28,23 +41,17 @@ public partial class GameStorage {
             };
             Context.Marriage.Add(marriage);
             if (!SaveChanges()) {
-                Rollback();
+                Context.ChangeTracker.Clear();
                 return null;
             }
 
-            // The stored row is read back inside the transaction, so a row that cannot be read (a partner without
-            // the player info it needs, such as no account or home row; a missing character is already refused by
-            // the foreign key on MySQL) is taken back out, not committed: the caller answers err_system and nothing
-            // stays stored. Before, it was committed first and then answered null.
             Marriage? stored = GetMarriage(partner1Id, marriage.Id);
             if (stored == null) {
                 Context.Marriage.Remove(marriage);
                 SaveChanges();
-                Rollback();
                 return null;
             }
-
-            return Commit() ? stored : null;
+            return stored;
         }
 
         // Writes only the message of one partner, so a stale copy of the other partner's text is never written back.
@@ -136,6 +143,60 @@ public partial class GameStorage {
             };
             Context.Marriage.Update(model);
             return Context.TrySaveChanges();
+        }
+
+        // One entry of a reward row in the marriage's exp log: the line of characterId by the stored order (line picks
+        // it; 0 with a couple line such as the wedding's), refused unless the marriage counts exp, the character is in
+        // it and the line is due by the row's limit (MarriageExpRules.Due). The log is read and written under the
+        // row's lock, so two partners' entries at the same moment are both kept. Inside an open transaction (the vow)
+        // it writes in that one; else in its own.
+        public bool AddMarriageExp(long marriageId, long characterId, Func<long, long, MarriageExpType> line, long amount,
+                MarriageExpLimit limit, DateTime time) {
+            if (amount <= 0) {
+                return false;
+            }
+            IDbContextTransaction? own = Context.Database.CurrentTransaction == null ? Context.Database.BeginTransaction() : null;
+            try {
+                // The in-memory store (the tests) has no row lock to take.
+                if (Context.Database.IsRelational()) {
+                    Context.Database.ExecuteSqlRaw("SELECT `Id` FROM `marriage` WHERE `Id` = {0} FOR UPDATE", marriageId);
+                }
+                Model.Marriage? model = Context.Marriage.Find(marriageId);
+                if (model == null) {
+                    return false;
+                }
+                if (own != null) {
+                    Context.Entry(model).Reload();
+                }
+                if (!MarriageExpRules.CountsWeddingExp(model.Status)
+                    || (characterId != 0 && model.Partner1Id != characterId && model.Partner2Id != characterId)) {
+                    return false;
+                }
+                MarriageExpType type = line(characterId, model.Partner1Id);
+                if (!MarriageExpRules.Due(model.ExpHistory.Select(exp => (exp.Type, exp.Time)), type, limit, time)) {
+                    return false;
+                }
+
+                model.ExpHistory = new List<Model.MarriageExp>(model.ExpHistory) {
+                    new() {
+                        Type = type,
+                        Amount = amount,
+                        Time = time,
+                    },
+                };
+                Context.Marriage.Update(model);
+                if (!Context.TrySaveChanges()) {
+                    // The write left pending would be written by this request's next save.
+                    Context.ChangeTracker.Clear();
+                    return false;
+                }
+                if (own != null) {
+                    own.Commit();
+                }
+                return true;
+            } finally {
+                own?.Dispose();
+            }
         }
 
         // The vow was completed: an engaged couple becomes married at the given time. Refused for any other

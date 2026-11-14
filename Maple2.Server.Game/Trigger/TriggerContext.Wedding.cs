@@ -145,6 +145,15 @@ public partial class TriggerContext {
                 if (!stored) {
                     logger.Error("Wedding vow complete: marriage {MarriageId} could not be stored as married", ceremony.MarriageId);
                 }
+                // The wedding's line of the exp log (s_wedding_dialog_exp_8, "wedding"), one for the couple: the
+                // marriageRegister row's exp (KR 100), stored with the marriage or not at all.
+                if (stored && Field.TableMetadata.WeddingTable.Rewards.TryGetValue(MarriageExpType.marriageRegister, out WeddingReward? register)
+                    && register.Amount > 0) {
+                    stored = db.AddMarriageExp(ceremony.MarriageId, 0, (_, _) => MarriageExpType.Wedding, register.Amount, register.Limit, now);
+                    if (!stored) {
+                        logger.Error("Wedding vow complete: marriage {MarriageId} wedding exp could not be stored", ceremony.MarriageId);
+                    }
+                }
                 foreach (long characterId in ceremony.Couple) {
                     if (!stored || !Field.TryGetPlayerById(characterId, out _)) {
                         continue;

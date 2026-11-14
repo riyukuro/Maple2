@@ -182,6 +182,35 @@ public class TriggerHallGameTests : TriggerTestBase {
         }
     }
 
+    // The vow writes the marriageRegister row's exp (KR 100, month) to the log as its wedding line (type 8,
+    // s_wedding_dialog_exp_8), stored in the vow's transaction; the couple's marriage is read again with it. Before,
+    // the vow wrote no exp.
+    [Test]
+    public void WeddingVowComplete_WritesTheWeddingExpLine() {
+        StartHall();
+        test.SetTable(new WeddingTable(new Dictionary<MarriageExpType, WeddingReward> {
+            [MarriageExpType.marriageRegister] = new(MarriageExpType.marriageRegister, 100, MarriageExpLimit.month),
+        }, new Dictionary<int, WeddingPackage>()));
+        long marriageId;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Account account = db.CreateAccount(new Account { Username = "partner" }, "pw");
+            var partner = new Character { AccountId = account.Id, Name = "partner", Mastery = new Mastery() };
+            partner.ReturnMaps.Push(2000062);
+            long partnerId = db.CreateCharacter(partner)!.Id;
+            marriageId = db.CreateMarriage(CharacterId, partnerId)!.Id;
+            test.Session.Marriage.Marriage = db.GetMarriage(CharacterId)!;
+        }
+
+        Field.Wedding = new WeddingCeremony(marriageId, CharacterId, CharacterId, CharacterId);
+        Action("""<action name="wedding_vow_complete" />""");
+        Assert.That(Field.Wedding.Complete, Is.True);
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            Assert.That(context.Marriage.Single(row => row.Id == marriageId).ExpHistory.Select(exp => (exp.Type, exp.Amount)),
+                Is.EqualTo(new[] { (MarriageExpType.Wedding, 100L) }));
+        }
+        Assert.That(test.Session.Marriage.Marriage.Exp, Is.EqualTo(100));
+    }
+
     // A gift mail that cannot be stored fails the vow's transaction: the ceremony is not complete (a later vow may try
     // again) and the couple's marriage is not turned married. The in-memory store keeps no rollback, so the stored row
     // is not checked here.

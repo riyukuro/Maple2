@@ -19,6 +19,50 @@ public static class MarriageExpRules {
         return characterId == firstId ? MarriageExpType.weddingExpItem : MarriageExpType.WeddingExpItemBride;
     }
 
+    // The couple message's line (reward row coupleMessage): s_wedding_dialog_exp_2 the groom's, _3 the bride's.
+    public static MarriageExpType CoupleMessage(long characterId, long firstId) {
+        return characterId == firstId ? MarriageExpType.coupleMessage : MarriageExpType.CoupleMessageBride;
+    }
+
+    // A partner's game entry (reward row attendance): s_wedding_dialog_exp_4 the groom's, _5 the bride's.
+    public static MarriageExpType Attendance(long characterId, long firstId) {
+        return characterId == firstId ? MarriageExpType.AttendanceGroom : MarriageExpType.AttendanceBride;
+    }
+
+    // Whether a line may take its reward row's exp again, by the client's own rule (WeddingTable::GetRewardExp,
+    // weddingrewarditem.cpp:712, with the line's last time): day passes once the calendar day changed since its last
+    // entry (IsNotRecentDayChange, timeutil.cpp:344; an entry not in the past keeps it closed), month once the
+    // calendar month changed (IsMonthChanged), a row without a limit always. A line with no entry is due.
+    public static bool Due(IEnumerable<(MarriageExpType Type, DateTime Time)> history, MarriageExpType type, MarriageExpLimit limit, DateTime now) {
+        DateTime? last = null;
+        foreach ((MarriageExpType entryType, DateTime time) in history) {
+            if (entryType == type && (last == null || time > last)) {
+                last = time;
+            }
+        }
+        if (last is not DateTime previous) {
+            return true;
+        }
+        return limit switch {
+            MarriageExpLimit.day => previous < now && previous.Date != now.Date,
+            MarriageExpLimit.month => previous.Year * 100 + previous.Month != now.Year * 100 + now.Month,
+            _ => true,
+        };
+    }
+
+    // The marriage's exp as the client counts it (WeddingProxy::GetExp, weddingproxy.cpp:705) and grades it (the
+    // skill page, WeddingManager::ApplyHallTicket, weddingmanager.cpp:434): the marriedLife row's exp for each calendar
+    // day since the vow (GetDayNumberDifference) plus the exp the server sends, which is the log's sum; nothing below
+    // 0, and 0 unless married (also while a divorce is filed). The server sends only the log's sum, as the client adds
+    // the days itself.
+    public static long GradeExp(MaritalStatus status, DateTime marriageTime, DateTime now, long marriedLifeExp, long logSum) {
+        if (!CountsWeddingExp(status)) {
+            return 0;
+        }
+        long total = marriedLifeExp * (now.Date - marriageTime.Date).Days + logSum;
+        return Math.Max(total, 0);
+    }
+
     // The charm's reward row limits it to month; its description gives the rule: once used, it can be used again
     // 30 days later (koritemdescription 20001703). Each partner's own use counts against their own line.
     public static readonly TimeSpan WeddingExpItemCooldown = TimeSpan.FromDays(30);
@@ -51,6 +95,10 @@ public static class MarriageExpRules {
             MarriageExpType.WeddingMissionBride => MarriageExpType.WeddingMissionGroom,
             MarriageExpType.weddingExpItem => MarriageExpType.WeddingExpItemBride,
             MarriageExpType.WeddingExpItemBride => MarriageExpType.weddingExpItem,
+            MarriageExpType.coupleMessage => MarriageExpType.CoupleMessageBride,
+            MarriageExpType.CoupleMessageBride => MarriageExpType.coupleMessage,
+            MarriageExpType.AttendanceGroom => MarriageExpType.AttendanceBride,
+            MarriageExpType.AttendanceBride => MarriageExpType.AttendanceGroom,
             _ => type,
         };
     }

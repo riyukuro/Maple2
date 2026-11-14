@@ -119,7 +119,8 @@ public class WeddingHandler : FieldPacketHandler {
     private void HandleReceiveSkillItem(GameSession session, IByteReader packet) {
         int skillId = packet.ReadInt();
         Marriage marriage = session.Marriage.Marriage;
-        WeddingSkill? skill = WeddingSkillRules.ItemToGive(skillId, marriage.Status, marriage.Exp,
+        // The grade as the client's skill page reads it (MarriageExpRules.GradeExp), so the button it shows active works.
+        WeddingSkill? skill = WeddingSkillRules.ItemToGive(skillId, marriage.Status, session.Marriage.GradeExp(),
             session.TableMetadata.WeddingTable, itemId => session.Item.Inventory.Find(itemId).Any());
         if (skill == null) {
             Logger.Debug("Wedding skill item {Id} refused for {CharacterId}", skillId, session.CharacterId);

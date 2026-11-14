@@ -110,12 +110,23 @@ public sealed class MarriageManager {
 
         // Only this player's column is written, and both messages are then read back: the copy held here is
         // stale when the partner changed theirs on another channel.
+        bool saved;
         using (GameStorage.Request db = session.GameStorage.Context()) {
-            db.SaveCoupleMessage(Marriage.Id, session.CharacterId, CoupleMessageRule.Clean(message));
+            saved = db.SaveCoupleMessage(Marriage.Id, session.CharacterId, CoupleMessageRule.Clean(message));
             Marriage? fresh = db.GetMarriage(session.CharacterId);
             if (fresh != null) {
                 CoupleMessageRule.Merge(Marriage, fresh);
             }
+        }
+        // A stored message of a married partner: the coupleMessage row's exp (KR 5, limit day) in this partner's line
+        // (s_wedding_dialog_exp_2 and _3, "couple message written"), once a calendar day. Both partners read the
+        // marriage again then.
+        if (saved && MarriageExpRules.CountsWeddingExp(Marriage.Status)
+            && session.TableMetadata.WeddingTable.Rewards.TryGetValue(MarriageExpType.coupleMessage, out WeddingReward? reward)
+            && AddRewardExp(MarriageExpRules.CoupleMessage, reward, DateTime.Now)) {
+            Reload();
+            ReloadPartner(Partner.CharacterId);
+            return;
         }
         session.Send(WeddingPacket.UpdateMarriage(Marriage));
 
@@ -157,6 +168,42 @@ public sealed class MarriageManager {
                 partnerSession.Send(WeddingPacket.UpdateMarriage(other));
             }
         }
+    }
+
+    // A married partner's game entry: the attendance row's exp (KR 5, limit day) in this partner's line of the exp log
+    // (s_wedding_dialog_exp_4 and _5, "game entry"), once a calendar day (MarriageExpRules.Due, stored under the row's
+    // lock). Tried at the first field entry of each day of the session; the partner reads the marriage again.
+    private DateTime attendTried;
+
+    private void Attend() {
+        DateTime now = DateTime.Now;
+        if (attendTried.Date == now.Date || Marriage.Id == 0 || !MarriageExpRules.CountsWeddingExp(Marriage.Status)
+            || !session.TableMetadata.WeddingTable.Rewards.TryGetValue(MarriageExpType.attendance, out WeddingReward? reward)) {
+            return;
+        }
+        attendTried = now;
+        if (!AddRewardExp(MarriageExpRules.Attendance, reward, now)) {
+            return;
+        }
+        ReadAgain();
+        ReloadPartner(Partner.CharacterId);
+    }
+
+    // A reward row's entry in this player's line (line), stored as MarriageExpRules.Due allows.
+    private bool AddRewardExp(Func<long, long, MarriageExpType> line, WeddingReward reward, DateTime now) {
+        using GameStorage.Request db = session.GameStorage.Context();
+        return db.AddMarriageExp(Marriage.Id, session.CharacterId, line, reward.Amount, reward.Limit, now);
+    }
+
+    // The marriage read again without sending it (the caller sends it); a read that fails keeps the copy held.
+    private void ReadAgain() {
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            Marriage? fresh = db.GetMarriage(session.CharacterId);
+            if (fresh != null) {
+                Marriage = fresh;
+            }
+        }
+        Marriage.Exp = GetExp();
     }
 
     // A completed wedding mission (quest weddingExp): this player's entry in the marriage's exp log, shown to both
@@ -239,6 +286,7 @@ public sealed class MarriageManager {
         CheckEngagementExpiration();
         CheckMarriageHallExpiration();
         CheckDivorceExpiration();
+        Attend();
         session.Send(WeddingPacket.UpdateMarriage(Marriage));
         session.Send(WeddingPacket.UpdateHall(WeddingHall));
         // The client keeps a ticket until it is told to drop it, so a field entry clears its list first: a ticket
@@ -401,6 +449,8 @@ public sealed class MarriageManager {
             return;
         }
 
+        // Read again: the vow stored the wedding's line of the exp log with the state.
+        ReadAgain();
         Marriage.Status = MaritalStatus.Married;
         Marriage.MarriageTime = marriageTime;
         MarriageInfo info = session.Player.Value.Character.MarriageInfo;
@@ -607,7 +657,7 @@ public sealed class MarriageManager {
         if (!MarriageExpRules.CountsWeddingExp(Marriage.Status) && skillEffects.Count == 0) {
             return;
         }
-        List<(int Id, short Level)> effects = WeddingSkillRules.PassiveEffects(Marriage.Status, Marriage.Exp,
+        List<(int Id, short Level)> effects = WeddingSkillRules.PassiveEffects(Marriage.Status, GradeExp(),
             session.TableMetadata.WeddingTable, (id, level) => field.SkillMetadata.TryGetEffect(id, level, out _));
         lock (skillEffects) {
             foreach ((int id, short level) in skillEffects.ToArray()) {
@@ -903,11 +953,19 @@ public sealed class MarriageManager {
         }
     }
 
+    // The exp sent to the client (Wedding 0's exp long): the log's sum only. The client adds the marriedLife row's exp
+    // for each day since the vow itself (WeddingProxy::GetExp, weddingproxy.cpp:705); the days were sent in it too,
+    // counted from the engagement, so the client counted them twice.
     private long GetExp() {
-        DateTime creationTime = DateTimeOffset.FromUnixTimeSeconds(Marriage.CreationTime).LocalDateTime;
-        int daysMarried = (DateTime.Now - creationTime).Days;
+        return Marriage.ExpHistory.Sum(exp => exp.Amount);
+    }
 
-        return daysMarried * 5 + Marriage.ExpHistory.Sum(exp => exp.Amount);
+    // The exp the marriage's grade is read from, as the client counts it (MarriageExpRules.GradeExp): the passive
+    // wedding skills and the skill item (Wedding 37) use it.
+    public long GradeExp() {
+        int marriedLife = session.TableMetadata.WeddingTable.Rewards.TryGetValue(MarriageExpType.marriedLife, out WeddingReward? reward)
+            ? reward.Amount : 0;
+        return MarriageExpRules.GradeExp(Marriage.Status, Marriage.MarriageTime.FromEpochSeconds(), DateTime.Now, marriedLife, GetExp());
     }
 
     public WeddingError Propose(FieldPlayer target) {
@@ -942,30 +1000,48 @@ public sealed class MarriageManager {
 
     // This player accepts the proposal of target. The proposal uses up one ring of the proposer, the only one the
     // client asks for (WeddingManager::CheckPropose, weddingmanager.cpp:1047); the one who accepts needs none.
-    // The ring is taken only once the marriage row is stored: a save that fails leaves the ring with the proposer
-    // (it used to be taken first and lost), and a ring gone by then takes the stored row back out.
+    // The marriage row and the ring's bag row are stored in one transaction (a purchase save of the proposer, under
+    // the proposer's account lock), the ring taken from the bag at its commit: a save that fails leaves the ring with
+    // the proposer and stores no marriage. Before, the ring was taken only in memory after the marriage was
+    // committed, so a crash before the proposer's next session save kept both the marriage and the ring.
     public WeddingError AcceptProposal(FieldPlayer target) {
-        Item? ring = target.Session.Item.Inventory.Find(Constant.ProposalItemId).FirstOrDefault();
-        if (ring == null) {
+        if (!target.Session.Item.Inventory.Find(Constant.ProposalItemId).Any()) {
             return WeddingError.s_wedding_result_err_not_find_propose_item;
         }
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        Marriage? marriage = db.CreateMarriage(session.CharacterId, target.Session.CharacterId);
-        if (marriage == null) {
-            return WeddingError.s_wedding_result_err_system;
-        }
-        // The ring is looked up again: the stack found before the save may have moved or merged since.
-        ring = target.Session.Item.Inventory.Find(Constant.ProposalItemId).FirstOrDefault();
-        if (ring == null || !target.Session.Item.Inventory.Consume(ring.Uid, 1)) {
-            if (!db.DeleteMarriage(marriage.Id)) {
-                logger.Error("Failed to delete marriage {MarriageId} after the proposal ring was not taken", marriage.Id);
+        Marriage? marriage = null;
+        bool ringTaken = true;
+        bool noRing = false;
+        bool stored = target.Session.TrySavePurchase(db => {
+            if (!target.Session.Item.Inventory.Find(Constant.ProposalItemId).Any()) {
+                noRing = true;
+                return false;
             }
-            return WeddingError.s_wedding_result_err_not_find_propose_item;
+            marriage = db.AddMarriage(session.CharacterId, target.Session.CharacterId);
+            if (marriage == null) {
+                return false;
+            }
+            // The ring is looked up after the row is written: the stack found before may have moved or merged since.
+            Item? ring = target.Session.Item.Inventory.Find(Constant.ProposalItemId).FirstOrDefault();
+            if (ring == null || !target.Session.Item.Inventory.SaveConsumed(db, ring.Uid, 1)) {
+                noRing = true;
+                marriage = null;
+                return false;
+            }
+            long ringUid = ring.Uid;
+            db.AfterCommit(() => ringTaken = target.Session.Item.Inventory.ConsumeStored(ringUid, 1));
+            return true;
+        });
+        if (!stored || marriage == null) {
+            return noRing ? WeddingError.s_wedding_result_err_not_find_propose_item : WeddingError.s_wedding_result_err_system;
+        }
+        if (!ringTaken) {
+            logger.Error("Proposal ring of {CharacterId}: stored as used but not taken from the bag", target.Session.CharacterId);
         }
         Marriage = marriage;
         session.Send(WeddingPacket.Engaged(Marriage));
 
+        using GameStorage.Request db = session.GameStorage.Context();
         Marriage? targetMarriage = db.GetMarriage(target.Session.CharacterId);
         if (targetMarriage == null) {
             return WeddingError.s_wedding_result_err_system;

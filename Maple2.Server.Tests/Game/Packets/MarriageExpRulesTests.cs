@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.Model.Game;
 
 namespace Maple2.Server.Tests.Game.Packets;
@@ -32,7 +32,11 @@ public class MarriageExpRulesTests {
 
     [TestCase(MarriageExpType.WeddingMissionGroom, MarriageExpType.WeddingMissionBride)]
     [TestCase(MarriageExpType.WeddingMissionBride, MarriageExpType.WeddingMissionGroom)]
-    [TestCase(MarriageExpType.coupleMessage, MarriageExpType.coupleMessage)]
+    [TestCase(MarriageExpType.coupleMessage, MarriageExpType.CoupleMessageBride)]
+    [TestCase(MarriageExpType.CoupleMessageBride, MarriageExpType.coupleMessage)]
+    [TestCase(MarriageExpType.AttendanceGroom, MarriageExpType.AttendanceBride)]
+    [TestCase(MarriageExpType.AttendanceBride, MarriageExpType.AttendanceGroom)]
+    [TestCase(MarriageExpType.Wedding, MarriageExpType.Wedding)]
     public void Swapped(MarriageExpType type, MarriageExpType swapped) {
         Assert.That(MarriageExpRules.Swapped(type), Is.EqualTo(swapped));
     }

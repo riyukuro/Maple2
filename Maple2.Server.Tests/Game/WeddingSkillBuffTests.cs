@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Caching;
@@ -73,12 +73,13 @@ public class WeddingSkillBuffTests : TriggerTestBase {
         Assert.That(Held(), Is.EqualTo(new short[] { 0, 0, 0, 0 }));
 
         test.Session.Marriage.Marriage = new Marriage {
-            Id = 1, Status = MaritalStatus.Married, Exp = 2600, Partner1 = new MarriagePartner(), Partner2 = new MarriagePartner(),
+            Id = 1, Status = MaritalStatus.Married, Partner1 = new MarriagePartner(), Partner2 = new MarriagePartner(),
+            ExpHistory = [new MarriageExp { Type = MarriageExpType.WeddingMissionGroom, Amount = 2600 }],
         };
         test.Session.Marriage.RefreshSkillBuffs();
         Assert.That(Held(), Is.EqualTo(new short[] { 3, 2, 1, 0 }));
 
-        test.Session.Marriage.Marriage.Exp = 7000;
+        test.Session.Marriage.Marriage.ExpHistory.Add(new MarriageExp { Type = MarriageExpType.WeddingMissionBride, Amount = 4400 });
         test.Session.Marriage.RefreshSkillBuffs();
         Assert.That(Held(), Is.EqualTo(new short[] { 5, 4, 3, 2 }));
 

@@ -14,10 +14,19 @@ public enum MaritalStatus : short {
 
 public enum MarriageExpType : short {
     None = 0,
+    // The couple message (s_wedding_dialog_exp_2 the groom's, _3 the bride's); 2 also keys the reward row.
     coupleMessage = 2,
-    Online = 4, // ??
+    CoupleMessageBride = 3,
+    // A partner's game entry (s_wedding_dialog_exp_4 the groom's, _5 the bride's), paid by the attendance row.
+    AttendanceGroom = 4,
+    AttendanceBride = 5,
+    // The no-login lines (_6 the groom's, _7 the bride's; shown without a plus). Nothing writes them: the client has
+    // no rule for how many days count. 6 keys the logoutPanelty row and 7 the attendance row (the ingest keys a row
+    // by its name, WeddingRewardMapping); those keys are not log types.
     logoutPanelty = 6,
-    attendance = 7, // ??
+    attendance = 7,
+    // The wedding (s_wedding_dialog_exp_8), one line for the couple, paid by the marriageRegister row at the vow.
+    Wedding = 8,
 
     // Wedding reward table rows whose log type is not known yet: kept apart from the client's log types (1-13).
     marriedLife = 101,
