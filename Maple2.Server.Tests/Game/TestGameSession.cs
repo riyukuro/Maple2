@@ -353,6 +353,8 @@ public sealed class TestGameSession {
         }
         eventCache.SetValue(server, cache);
         typeof(Maple2.Server.Game.GameServer).GetField("endedOpenPeriods", Any)!.SetValue(server, new List<GameEvent>());
+        // No other player on the server: a lookup of another character's session (a partner, a party member) finds none.
+        typeof(Maple2.Server.Game.GameServer).GetField("sessions", Any)!.SetValue(server, new ConcurrentDictionary<long, GameSession>());
         typeof(GameSession).GetField("server", Any)!.SetValue(session, server);
         var metadataOptions = new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         var quests = new QuestMetadataStorage(new MetadataContext(metadataOptions));

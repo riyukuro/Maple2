@@ -108,6 +108,30 @@ public class GuildQuestContributionTests {
         Assert.That(world.Requests, Is.Empty);
     }
 
+    // The guild's exp and fund of the completeReward (KR guild daily quest 73000001: guildExp 120, guildFund 20000)
+    // go to World for the guild before the quest's contribution row; without the guild's quest reward factors no
+    // bonus is added.
+    [Test]
+    public void GuildQuest_SendsTheGuildExpAndFund() {
+        GameSession session = Start();
+        QuestMetadata data = TestGameSession.QuestData(73000001, QuestType.GuildQuest);
+        Quest quest = test.StartQuest(data with {
+            Basic = data.Basic with { Repeat = 2 },
+            CompleteReward = data.CompleteReward with { GuildExp = 120, GuildFund = 20000 },
+            Conditions = [new ConditionMetadata(ConditionType.jump, 1, null, null)],
+        });
+        quest.Conditions[0].Counter = 1;
+
+        Assert.That(session.Quest.Complete(quest), Is.True);
+
+        Assert.That(world.Requests.TryDequeue(out GuildRequest? first), Is.True);
+        Assert.That((first!.RequestorId, first.AddExpFund?.GuildId, first.AddExpFund?.Exp, first.AddExpFund?.Fund),
+            Is.EqualTo((test.CharacterId, (long?) GuildId, (int?) 120, (int?) 20000)));
+        Assert.That(world.Requests.TryDequeue(out GuildRequest? second), Is.True);
+        Assert.That(second!.AddContribution?.Kind, Is.EqualTo(GuildContributionKind.DailyQuest));
+        Assert.That(world.Requests, Is.Empty);
+    }
+
     // A guild quest done once, another quest type of a daily repeat, or a player without a guild: nothing is sent.
     [TestCase(QuestType.GuildQuest, 0, true)]
     [TestCase(QuestType.EpicQuest, 2, true)]

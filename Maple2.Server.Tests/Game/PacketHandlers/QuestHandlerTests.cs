@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -862,6 +863,138 @@ public class QuestHandlerTests {
         Assert.Multiple(() => {
             Assert.That(Held(session), Is.EqualTo(expected));
             Assert.That(session.Config.ExplorationProgress, Is.EqualTo(expected > 0 ? 5 : 0));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A started quest of the KR row's type with this complete reward, its one condition met.
+    private Quest StartedWith(QuestType type, Func<QuestMetadataReward, QuestMetadataReward> reward, AllianceType alliance = AllianceType.AnyFaction,
+                              int rank = 5) {
+        QuestMetadata data = Data();
+        Quest quest = test.StartQuest(data with {
+            Basic = data.Basic with { Type = type, Alliance = alliance, Rank = rank },
+            CompleteReward = reward(data.CompleteReward),
+        });
+        quest.Conditions[0].Counter = 1;
+        return quest;
+    }
+
+    // KR 10002660 (a world quest): completeReward lu 1, the rue (a made-up cap).
+    [Test]
+    public void Complete_PaysTheRue() {
+        GameSession session = Login();
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { LuTokenMax = 30000 });
+        long rue = session.Currency[CurrencyType.Rue];
+        Quest quest = StartedWith(QuestType.WorldQuest, reward => reward with { Rue = 1 });
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(session.Currency[CurrencyType.Rue], Is.EqualTo(rue + 1));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // KR 70200001 (a daily mission): completeReward missionPoint 30 counts 30 on the mission point rows (70900001).
+    [Test]
+    public void Complete_CountsTheMissionPoints() {
+        GameSession session = Login();
+        Quest points = test.StartQuest(TestGameSession.QuestData(70900001, QuestType.DailyMission) with {
+            Conditions = [new ConditionMetadata(ConditionType.mission_point, 100, null, null)],
+        });
+        Quest quest = StartedWith(QuestType.DailyMission, reward => reward with { MissionPoint = 30 });
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(points.Conditions[0].Counter, Is.EqualTo(30));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // KR 73000001 (a guild quest): completeReward guildCoin 8, the guild coin item; without a guild no bonus.
+    [Test]
+    public void Complete_GivesTheGuildCoin() {
+        var prepared = new TestGameSession();
+        prepared.Register(TestGameSession.Metadata(Constant.GuildCoinId));
+        GameSession session = Login(prepared: prepared);
+        Quest quest = StartedWith(QuestType.GuildQuest, reward => reward with { GuildCoin = 8 });
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(session.Item.Inventory.Find(Constant.GuildCoinId).Sum(item => item.Amount), Is.EqualTo(8));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // KR 10001172: essentialJobItem lists a weapon of each job (rarity 3); the player gets the ones recommended to its
+    // job. 13000020 recommends the newbie (JobCode 1), 13100069 the thief (70).
+    [Test]
+    public void Complete_GivesTheJobItemsOfThePlayersJob() {
+        var prepared = new TestGameSession();
+        foreach ((int id, JobCode job) in new[] { (13000020, JobCode.Newbie), (13100069, JobCode.Thief) }) {
+            ItemMetadata metadata = TestGameSession.Metadata(id);
+            prepared.Register(metadata with { Limit = metadata.Limit with { JobRecommends = [job] } });
+        }
+        GameSession session = Login(prepared: prepared);
+        Quest quest = StartedWith(QuestType.EpicQuest, reward => reward with {
+            EssentialJobItem = [new QuestMetadataReward.Item(13000020, 3, 1), new QuestMetadataReward.Item(13100069, 3, 1)],
+        });
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(session.Item.Inventory.Find(13000020).Sum(item => item.Amount), Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Find(13000020).Single().Rarity, Is.EqualTo(3));
+            Assert.That(session.Item.Inventory.Find(13100069), Is.Empty);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // KR 91000080 (an alliance quest of the Kritias Maple Alliance, rank S 0): completeReward useMainFamePoint 1 adds
+    // the Lua fame points of the later alliances' table, 230, to the alliance and sends them.
+    [Test]
+    public void Complete_AddsTheAlliancesFame() {
+        GameSession session = Login();
+        Quest quest = StartedWith(QuestType.AllianceQuest, reward => reward with { UseMainFamePoint = 1 }, AllianceType.KritiasMapleAlliance, rank: 0);
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(session.Player.Value.Unlock.FamePoints[AllianceType.KritiasMapleAlliance], Is.EqualTo(230));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Has.Member(Convert.ToHexString(UserEnvPacket.FamePoint(AllianceType.KritiasMapleAlliance, 230).ToArray())));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // KR 50000001 (a wedding mission): completeReward weddingExp 5 adds the completing partner's entry of 5 to the
+    // marriage's exp log, and the player's marriage is read again with it.
+    [Test]
+    public void Complete_AddsTheWeddingMissionExp() {
+        GameSession session = Login();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Account account = db.CreateAccount(new Account { Username = "partner" }, "pw");
+            var partner = new Character { AccountId = account.Id, Name = "partner", Mastery = new Mastery() };
+            partner.ReturnMaps.Push(2000062);
+            long partnerId = db.CreateCharacter(partner)!.Id;
+            Marriage marriage = db.CreateMarriage(test.CharacterId, partnerId)!;
+            Assert.That(db.SetMarried(marriage.Id, DateTime.Now), Is.True);
+            session.Marriage.Marriage = db.GetMarriage(test.CharacterId)!;
+        }
+        Quest quest = StartedWith(QuestType.WeddingMission, reward => reward with { WeddingExp = 5 });
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+            Assert.That(session.Marriage.Marriage.ExpHistory.Select(exp => exp.Amount), Is.EqualTo(new[] { 5L }));
             Assert.That(test.Errors, Is.Empty);
         });
     }
