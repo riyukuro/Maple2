@@ -21,7 +21,10 @@ public sealed class Ms2ContextFactory : IDesignTimeDbContextFactory<Ms2Context> 
         DbContextOptions options = new DbContextOptionsBuilder()
             .UseMySql(gameDbConnection, ServerVersion.AutoDetect(gameDbConnection), options => {
                 options.MigrationsAssembly(typeof(Ms2ContextFactory).Assembly.FullName);
-            }).Options;
+            })
+            // The migrations' own NOW() and new column defaults take the server's zone, as the game's connections do.
+            .AddInterceptors(LocalTimeZoneInterceptor.Instance)
+            .Options;
         return new Ms2Context(options);
     }
 }

@@ -24,9 +24,7 @@ public class WebDbModule : Module {
 
         string gameDbConnection = $"Server={server};Port={port};Database={database};User={user};Password={password};oldguids=true";
 
-        options = new DbContextOptionsBuilder()
-            .UseMySql(gameDbConnection, ServerVersion.AutoDetect(gameDbConnection))
-            .Options;
+        options = GameDbModule.Options(gameDbConnection);
     }
 
     protected override void Load(ContainerBuilder builder) {

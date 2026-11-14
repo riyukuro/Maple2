@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using Autofac;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Microsoft.EntityFrameworkCore;
 using Module = Autofac.Module;
@@ -24,8 +25,14 @@ public class GameDbModule : Module {
 
         string gameDbConnection = $"Server={server};Port={port};Database={database};User={user};Password={password};oldguids=true";
 
-        options = new DbContextOptionsBuilder()
-            .UseMySql(gameDbConnection, ServerVersion.AutoDetect(gameDbConnection))
+        options = Options(gameDbConnection);
+    }
+
+    // The game database's options, for every server: each connection runs in the server's local time zone.
+    public static DbContextOptions Options(string connection) {
+        return new DbContextOptionsBuilder()
+            .UseMySql(connection, ServerVersion.AutoDetect(connection))
+            .AddInterceptors(LocalTimeZoneInterceptor.Instance)
             .Options;
     }
 
