@@ -486,4 +486,77 @@ public class BuffAttributeTests {
         Assert.That(config.GetSkillCooldown(10200051)?.EndTick, Is.EqualTo(0));
         Assert.That(config.GetSkillCooldown(10200052)?.EndTick, Is.EqualTo(60000));
     }
+
+    // shield hpValue: the buff takes that much damage before it breaks. 62100016 (KR: level 1 hpValue 95000).
+    [Test]
+    public void ShieldHpValue_GivesTheShield() {
+        Start(MapType.None, Effect(62100016, Plain) with { Shield = new AdditionalEffectMetadataShield(95000, 0f) });
+        Add(62100016);
+
+        Assert.That(Only(62100016).ShieldHealth, Is.EqualTo(95000));
+    }
+
+    // shield hpByTargetMaxHP: the shield is that share of the holder's maximum health, rounded down. 10300131 (KR:
+    // level 1 hpByTargetMaxHP 0.06).
+    [Test]
+    public void ShieldByTargetMaxHp_TakesAShareOfTheHoldersHealth() {
+        Start(MapType.None, Effect(10300131, Plain) with { Shield = new AdditionalEffectMetadataShield(0, 0.06f) });
+        Player.Stats.Values[BasicAttribute.Health].AddTotal(50010 - Player.Stats.Values[BasicAttribute.Health].Total);
+        Add(10300131);
+
+        Assert.That(Only(10300131).ShieldHealth, Is.EqualTo(3000));
+    }
+
+    // dotBuff: each proc gives the second buff to the caster (target 0, the default) or to the holder (target 1).
+    // 10200035 (KR: dotBuff 10200036 level 1, no target, interval 1000, 1 s); 70001041 (KR: dotBuff 70001011 level 1,
+    // target 1, interval 1000, 3 s). The field actor casts both on the player.
+    [TestCase(10200035, 10200036, DotTargetType.Caster, false, true)]
+    [TestCase(70001041, 70001011, DotTargetType.Owner, true, false)]
+    public void DotBuff_GoesToTheCasterOrTheHolder(int id, int given, DotTargetType target, bool holder, bool caster) {
+        Start(MapType.None,
+            Effect(id, Plain with { DurationTick = 3000, IntervalTick = 1000 }) with {
+                Dot = new AdditionalEffectMetadataDot(null, new AdditionalEffectMetadataDot.DotBuff(target, given, 1)),
+            },
+            Effect(given, Plain));
+        Add(id, tick: 1000, caster: Field.FieldActor);
+        Buffs.Update(1000);
+
+        Assert.Multiple(() => {
+            Assert.That(Buffs.EnumerateBuffs(given).Any(), Is.EqualTo(holder));
+            // The caster's buffs as the effect reaches them (IActor.Buffs; FieldActor hides it with a second manager).
+            Assert.That(((IActor) Field.FieldActor).Buffs.EnumerateBuffs(given).Any(), Is.EqualTo(caster));
+        });
+    }
+
+    // tickSkill: each proc casts its skills on the holder (owner 1, target 1). 10200183 (KR: tickSkill 10200191 level
+    // 1, owner and target 1, probability 1, interval 2000, 2 s).
+    [Test]
+    public void TickSkill_GivesTheHolderItsSkillOnAProc() {
+        AdditionalEffectMetadata held = Effect(10200183, Plain with { DurationTick = 2000, IntervalTick = 2000 });
+        var tick = new SkillEffectMetadata(1, [new SkillEffectMetadata.Skill(10200191, 1)],
+            new SkillEffectMetadataCondition(held.Condition, SkillTargetType.Owner, SkillTargetType.Owner, 1, false), null);
+        Start(MapType.None, held with { TickSkills = [tick], Dot = new AdditionalEffectMetadataDot(null, null) }, Effect(10200191, Plain));
+        Add(10200183, tick: 1000);
+        Assert.That(Held(), Is.EqualTo(new[] { 10200183 }));
+
+        Buffs.Update(1000);
+
+        Assert.That(Held(), Is.EqualTo(new[] { 10200183, 10200191 }));
+    }
+
+    // reflectionAdditionalEffectId: a hit on the holder gives its attacker the reflect effect. 50003300 (KR:
+    // reflectionRate 1, reflectionCount 99999, reflectionAdditionalEffectId 50003301 level 1).
+    [Test]
+    public void Reflect_GivesTheAttackerTheEffect() {
+        Start(MapType.None,
+            Effect(50003300, Plain) with {
+                Reflect = new AdditionalEffectMetadataReflect(1f, 50003301, 1, 99999, 0, 0, new Dictionary<BasicAttribute, long>(), new Dictionary<BasicAttribute, float>()),
+            },
+            Effect(50003301, Plain));
+        Add(50003300);
+
+        Player.Reflect(Field.FieldActor);
+
+        Assert.That(((IActor) Field.FieldActor).Buffs.EnumerateBuffs(50003301), Has.Count.EqualTo(1));
+    }
 }
