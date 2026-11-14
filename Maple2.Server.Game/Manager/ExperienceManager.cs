@@ -360,7 +360,13 @@ public sealed class ExperienceManager {
         }
 
         // KMS2 order: the level (Prestige 2), the missions (7), the level's item, then the trophies.
-        session.Send(PrestigePacket.LevelUp(session.Player.ObjectId, PrestigeLevel));
+        // The client finds the PC by object id and sets its level and plays the effect for any PC in
+        // the field, so the level goes to the whole field like the character level up.
+        if (session.Field != null) {
+            session.Field.Broadcast(PrestigePacket.LevelUp(session.Player.ObjectId, PrestigeLevel));
+        } else {
+            session.Send(PrestigePacket.LevelUp(session.Player.ObjectId, PrestigeLevel));
+        }
         session.Send(PrestigePacket.LoadMissions(session.Player.Value.Account));
 
         for (int i = 0; i < amount; i++) {
