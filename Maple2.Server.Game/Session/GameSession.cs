@@ -55,6 +55,8 @@ public sealed partial class GameSession : Core.Network.Session {
     public string PlayerName => FieldEntryRules.LogName(Player?.Value.Character.Name);
     public Guid MachineId { get; private set; }
     private volatile bool preMigrationSaved;
+    // How long a move's save waits for a handler the receive thread runs to end (MigrationSave).
+    internal static readonly TimeSpan InlineGateWait = TimeSpan.FromSeconds(5);
     // The session made the save of a move to another server or to the character select, and has not been refused it:
     // a packet handled after it would change state no save stores (FieldManager.ProcessPackets drops it).
     internal bool MigrationSaved => preMigrationSaved;
@@ -1865,7 +1867,23 @@ public sealed partial class GameSession : Core.Network.Session {
     // 30 s each); before the share-lock read, the same save waited on the reset's rows in the database, up to 50 s.
     public void MigrationSave() {
         if (preMigrationSaved) return;
-        preMigrationSaved = true;
+        // A handler the receive thread runs (a guild fund donation, a limit break) ends before the flag is set, and
+        // the ones read after it are dropped: none changes the wallet or the inventory while the save reads them, or
+        // after it. Every move's save comes here (channel change, quit, portal and warp moves, dungeon and PvP moves,
+        // the global portal and the field war). A handler that leads to the save itself (a portal move) holds the
+        // gate already. The wait is bounded: a handler stuck past InlineGateWait (a World call without a deadline)
+        // does not hold the field thread longer; the save then goes on, logged.
+        bool gated = Monitor.TryEnter(InlineGate, InlineGateWait);
+        try {
+            if (preMigrationSaved) return;
+            preMigrationSaved = true;
+        } finally {
+            if (gated) Monitor.Exit(InlineGate);
+        }
+        if (!gated) {
+            Logger.Warning("MigrationSave: a receive-thread handler still runs after {Wait}, saving beside it AccountId={AccountId} CharacterId={CharacterId}",
+                InlineGateWait, AccountId, CharacterId);
+        }
 
         // An open trade ends first, as cancelled: the mesos offered (taken from the wallet when set) come back to it
         // before the wallet is stored. Cancelled later, at LeaveField, they came back in memory only and the save at

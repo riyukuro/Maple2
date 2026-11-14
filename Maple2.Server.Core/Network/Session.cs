@@ -192,6 +192,13 @@ public abstract class Session : IDisposable {
     // move to another server.
     public virtual bool DropsPackets => false;
 
+    // Held by PacketRouter around each handler it runs on the receive thread. A game session's move save takes it to
+    // set its flag (GameSession.MigrationSave), so the save never runs beside such a handler: one that already runs
+    // ends first, and one read after the flag is set is dropped.
+    // Made on first use (a session built without its constructor, as the tests make one, has it too).
+    protected internal object InlineGate => LazyInitializer.EnsureInitialized(ref inlineGate);
+    private object? inlineGate;
+
     public void MarkReceived(long now) {
         Interlocked.Exchange(ref lastReceivedMs, now);
         Interlocked.Exchange(ref unansweredAsks, 0);

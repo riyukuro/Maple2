@@ -34,13 +34,18 @@ public class PacketRouter<T> where T : Session {
             return;
         }
 
-        try {
-            handler.Handle(session, new BoundedPacketReader(reader, reader.Available));
-        } catch (PacketOverreadException ex) {
-            // The handler reads more than the client wrote: drop the packet, keep the session.
-            if (session.DropLog.ShouldLog(DateTime.UtcNow, out int drops)) {
-                logger.Warning("Dropped packet {OpCode} in {Handler}: read of {Wanted} bytes with {Left} left ({Session}, account {AccountId}, {Drops} dropped since the last line)",
-                    $"0x{(ushort) op:X4}", handler.GetType().Name, ex.Wanted, ex.Left, session, session.AccountId, drops);
+        // A handler run here holds the session's gate: a move's save waits for it to end, and the check above is made
+        // again under it for a save that ran while this thread waited (Session.InlineGate).
+        lock (session.InlineGate) {
+            if (session.DropsPackets) return;
+            try {
+                handler.Handle(session, new BoundedPacketReader(reader, reader.Available));
+            } catch (PacketOverreadException ex) {
+                // The handler reads more than the client wrote: drop the packet, keep the session.
+                if (session.DropLog.ShouldLog(DateTime.UtcNow, out int drops)) {
+                    logger.Warning("Dropped packet {OpCode} in {Handler}: read of {Wanted} bytes with {Left} left ({Session}, account {AccountId}, {Drops} dropped since the last line)",
+                        $"0x{(ushort) op:X4}", handler.GetType().Name, ex.Wanted, ex.Left, session, session.AccountId, drops);
+                }
             }
         }
     }

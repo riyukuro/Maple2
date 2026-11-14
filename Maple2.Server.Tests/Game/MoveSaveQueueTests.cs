@@ -36,6 +36,17 @@ public class MoveSaveQueueTests {
         public override void Handle(GameSession session, IByteReader packet) => Handled++;
     }
 
+    // A receive-thread handler that runs the given action (one that blocks, or one that moves the player).
+    private sealed class InlineAction : PacketHandler<GameSession> {
+        public override RecvOp OpCode => RecvOp.Guild;
+        public Action<GameSession> Run = _ => { };
+        public int Handled;
+        public override void Handle(GameSession session, IByteReader packet) {
+            Handled++;
+            Run(session);
+        }
+    }
+
     // The test session starts as saved and closed (TestGameSession.Start); these play on as a live session does.
     private static GameSession Unsaved(TestGameSession test) {
         GameSession session = test.Start();
@@ -193,6 +204,59 @@ public class MoveSaveQueueTests {
         typeof(GameSession).GetMethod("MigrationRefused", Any)!.Invoke(session, null);
         Send();
         Assert.That(inline.Handled, Is.EqualTo(2));
+    }
+
+    // A move's save made on the field thread (a portal, a dungeon or a PvP move) while a receive-thread handler runs
+    // (a guild fund donation) waits for that handler to end: the save then holds what it changed, and a handler read
+    // after the save is dropped.
+    [Test]
+    public void ReceiveThreadHandlerRunning_TheMoveSaveWaitsForIt() {
+        var test = new TestGameSession();
+        GameSession session = Unsaved(test);
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var inline = new InlineAction();
+        inline.Run = _ => {
+            entered.Set();
+            release.Wait(TimeSpan.FromSeconds(10));
+        };
+        var router = new PacketRouter<GameSession>(new PacketHandler<GameSession>[] { inline });
+        void Send() => router.OnPacket(session, TestGameSession.Packet(writer => writer.WriteShort((short) RecvOp.Guild)));
+
+        Task donation = Task.Run(Send);
+        Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Task save = Task.Run(session.MigrationSave);
+        Assert.Multiple(() => {
+            Assert.That(save.Wait(300), Is.False);
+            Assert.That(session.MigrationSaved, Is.False);
+        });
+
+        release.Set();
+        Assert.Multiple(() => {
+            Assert.That(donation.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(save.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(session.MigrationSaved, Is.True);
+        });
+        inline.Run = _ => { };
+        Send();
+        Assert.That(inline.Handled, Is.EqualTo(1));
+    }
+
+    // A receive-thread handler that leads to the save itself (a portal move on that thread) saves at once: the gate
+    // it holds is its own.
+    [Test]
+    public void ReceiveThreadHandlerThatMoves_SavesWithoutWaiting() {
+        var test = new TestGameSession();
+        GameSession session = Unsaved(test);
+        var inline = new InlineAction { Run = moving => moving.MigrationSave() };
+        var router = new PacketRouter<GameSession>(new PacketHandler<GameSession>[] { inline });
+
+        Task move = Task.Run(() => router.OnPacket(session, TestGameSession.Packet(writer => writer.WriteShort((short) RecvOp.Guild))));
+        Assert.Multiple(() => {
+            Assert.That(move.Wait(TimeSpan.FromSeconds(2)), Is.True);
+            Assert.That(session.MigrationSaved, Is.True);
+            Assert.That(inline.Handled, Is.EqualTo(1));
+        });
     }
 
     // A refused change: the player plays on here, and the next packets are handled (the session saves again later).
