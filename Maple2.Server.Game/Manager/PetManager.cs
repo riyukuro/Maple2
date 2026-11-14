@@ -343,7 +343,7 @@ public sealed class PetManager : IDisposable {
         lock (session.Item) {
             db.SavePetConfig(Pet.Uid, config);
             db.SaveItems(Pet.Uid, items.ToArray());
-            // The bag goes with the pet item (InventoryManager.LoadPetBags); the client's compose and evolve tabs read
+            // The bag goes with the pet item (GameStorage reads it at load); the client's compose and evolve tabs read
             // it too (s_err_cannot_compose_petitem_hasitem, s_err_cannot_evolution_petitem_hasitem).
             bool hasItems = items.Count > 0;
             if (ItemPet.HasItems != hasItems) {

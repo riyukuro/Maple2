@@ -188,6 +188,7 @@ public partial class GameStorage {
             Item? item = ToItem(model);
             if (item != null) {
                 SeedLoaded(seeding, item, model!);
+                MarkPetBags([item]);
             }
             return item;
         }
@@ -271,7 +272,20 @@ public partial class GameStorage {
                     items.Add(item);
                 }
             }
+            MarkPetBags(items);
             return items;
+        }
+
+        // ItemPet.HasItems is not a column: it says whether the pet's bag (rows owned by the pet's uid, PetManager)
+        // holds items, so it is read from the bag rows wherever a pet item is loaded (inventory, account storage,
+        // a mail's items). Destroy, dismantle, sell, evolve and fusion refuse such a pet; the flag goes with the
+        // item object (Item.Clone) through a trade, and PetManager writes it when the pet is put away.
+        private void MarkPetBags(List<Item> items) {
+            List<Item> pets = items.Where(item => item.Pet != null).ToList();
+            HashSet<long> withItems = OwnersWithItems(pets.Select(item => item.Uid).ToList());
+            foreach (Item pet in pets) {
+                pet.Pet!.HasItems = withItems.Contains(pet.Uid);
+            }
         }
 
         // A load's start: the write clock read before its query, and which rows it gives may not be the DB's. In a
