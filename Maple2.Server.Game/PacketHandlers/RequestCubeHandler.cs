@@ -1046,6 +1046,13 @@ public class RequestCubeHandler : FieldPacketHandler {
         long blueprintId = packet.ReadLong();
 
         using GameStorage.Request db = session.GameStorage.Context();
+        // As for a preview: only a blueprint in the own bag or listed on the market, not any stored layout by uid.
+        bool inOwnBag = session.Item.Inventory.Filter(item => item.Blueprint != null && item.Blueprint.BlueprintUid == blueprintId).Count > 0;
+        bool listed = !inOwnBag && db.IsUgcMarketBlueprintListed(blueprintId);
+        if (!BlueprintPreviewRule.BlueprintAllows(listed, inOwnBag)) {
+            return;
+        }
+
         HomeLayout? layout = db.GetHomeLayout(blueprintId);
         if (layout is null) {
             Logger.Error("Failed to load layout for {AccountId}", session.AccountId);

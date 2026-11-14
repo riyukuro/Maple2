@@ -351,6 +351,11 @@ public partial class GameStorage {
 
         // One query for one blueprint: is a live listing selling it? The blueprint is a JSON column.
         public bool IsUgcMarketBlueprintListed(long blueprintUid) {
+            // The JSON lookup needs MySQL; an in-memory store reads the rows.
+            if (!Context.Database.IsRelational()) {
+                return Context.UgcMarketItem.AsEnumerable()
+                    .Any(item => item.Blueprint?.BlueprintUid == blueprintUid && item.ListingEndTime > DateTime.Now);
+            }
             return Context.UgcMarketItem
                 .FromSql($"SELECT * FROM `ugc-market-item` WHERE JSON_EXTRACT(Blueprint, '$.BlueprintUid') = {blueprintUid}")
                 .Any(item => item.ListingEndTime > DateTime.Now);
