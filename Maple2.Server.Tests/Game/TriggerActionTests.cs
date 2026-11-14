@@ -1320,6 +1320,20 @@ public class TriggerNpcTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="npc_damage" spawn_id="6" damage_rate="0" />"""), Is.False);
     }
 
+    // A rate of exactly the script's value holds: 300 of 1000 hp is a damage_rate of 0.3, compared in float.
+    [Test]
+    public void NpcDamage_ExactlyTheRate() {
+        WithNpcTable();
+        FieldNpc npc = Mob(9001, 5);
+        Health(npc, 700, 1000);
+        Damaged(npc, 300);
+
+        Assert.That(Condition("""<condition name="npc_damage" spawn_id="5" damage_rate="0.3" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_damage" spawn_id="5" damage_rate="0.3" operator="LessEqual" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_damage" spawn_id="5" damage_rate="0.3" operator="Greater" />"""), Is.False);
+        Assert.That(Condition("""<condition name="npc_damage" spawn_id="5" damage_rate="0.3" operator="Less" />"""), Is.False);
+    }
+
     // npc_extra_data (10): the AI extra data of the spawn point's npc (an unset key reads 0) against the value; no npc
     // of the spawn point fails.
     [Test]

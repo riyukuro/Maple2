@@ -126,7 +126,9 @@ public partial class TriggerContext : ITriggerContext {
         return CompareRate(rate, damage, operatorType);
     }
 
-    public static bool CompareRate(double rate, float value, OperatorType operatorType) {
+    // In float, as the script's value is: 300 of 1000 hp is a damage_rate of exactly 0.3.
+    public static bool CompareRate(double exact, float value, OperatorType operatorType) {
+        float rate = (float) exact;
         return operatorType switch {
             OperatorType.Greater => rate > value,
             OperatorType.GreaterEqual => rate >= value,
