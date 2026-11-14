@@ -1163,14 +1163,24 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
     }
 
+    // The client's search condition always asks 0x12 items a page (CMeratMarketSchCond's constructor,
+    // meratmarketbasketinfo.cpp:1793, and UIMeratMarketDialog, uimeratmarketdialog.cpp:6647).
+    public const int MaxItemsPerPage = 0x12;
+
     /// <summary>
-    /// Limits the amount of market items returned to the client.
+    /// Limits the amount of market items returned to the client: the five pages from startPage, at most
+    /// MaxItemsPerPage a page (a larger page byte is not the client's and answered as the client's page size). The
+    /// offset is long math, so a large startPage gives no entries instead of wrapping to an earlier page.
     /// </summary>
-    /// <returns>Limited Market Items. 5 * itemsPerPage</returns>
-    private static ICollection<MarketItem> TakeLimit(IEnumerable<MarketItem> entries, int startPage, int itemsPerPage) {
+    internal static ICollection<MarketItem> TakeLimit(IEnumerable<MarketItem> entries, int startPage, int itemsPerPage) {
         const int numPages = 5;
-        int offset = startPage * itemsPerPage - itemsPerPage;
-        return entries.Skip(offset).Take(numPages * itemsPerPage + Math.Min(0, offset)).ToList();
+        int perPage = Math.Min(itemsPerPage, MaxItemsPerPage);
+        long offset = ((long) startPage - 1) * perPage;
+        long take = numPages * perPage + Math.Min(0, offset);
+        if (offset > int.MaxValue || take <= 0) {
+            return [];
+        }
+        return entries.Skip((int) Math.Max(0, offset)).Take((int) take).ToList();
     }
     #endregion
 

@@ -478,6 +478,23 @@ public class ItemFunctionUseTests {
         });
     }
 
+    // The client's password box holds 6 characters (itemfunctiondispatch.cpp:1864): a longer password opens nothing
+    // and keeps the item; it opened a portal holding it before.
+    [Test]
+    public void OpenMassive_PasswordLongerThanTheBox_KeepsTheItem() {
+        Item item = Login(20301053, ItemFunction.OpenMassive, "<v fieldID=\"81000001\" portalDurationTick=\"180000\" maxCount=\"20\" />");
+        var portals = new ConcurrentDictionary<int, FieldPortal>();
+        typeof(FieldManager).GetField("fieldPortals", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Field, portals);
+
+        Use(item, new string('1', OpenMassive.MaxPasswordLength + 1));
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
+            Assert.That(Sent(), Is.Empty);
+            Assert.That(portals, Is.Empty);
+        });
+    }
+
     private FieldPortal MassivePortal(int id, System.Numerics.Vector3 position, string owner) {
         var value = new Portal(id, 81000001, 0, PortalType.Event, PortalActionType.Interact, position,
             System.Numerics.Vector3.Zero, new System.Numerics.Vector3(150, 150, 150), 0, 0, true, true, true);

@@ -734,12 +734,20 @@ public class RequestCubeHandler : FieldPacketHandler {
         }
     }
 
+    // The save slot dialog's name box holds 0x14 characters (UIHomeSaveSlotDialog, uihomesaveslotdialog.cpp:452 for a
+    // layout, :485 for a blueprint, SetInput's nMax); a longer name, or one with a control character, is not the
+    // client's and is not stored (it was saved and sent back as it came).
+    public const int LayoutNameMax = 0x14;
+
     private void HandleSaveLayout(GameSession session, IByteReader packet) {
         int slot = packet.ReadInt();
         string name = packet.ReadUnicodeString();
 
         Home home = session.Player.Value.Home;
         if (slot is > Constant.HomeMaxLayoutSlots or < 0) {
+            return;
+        }
+        if (!UgcRules.DesignNameValid(name, LayoutNameMax)) {
             return;
         }
 
@@ -999,6 +1007,9 @@ public class RequestCubeHandler : FieldPacketHandler {
 
         Home home = session.Player.Value.Home;
         if (slot is > Constant.HomeMaxLayoutSlots or < 0) {
+            return;
+        }
+        if (!UgcRules.DesignNameValid(name, LayoutNameMax)) {
             return;
         }
 

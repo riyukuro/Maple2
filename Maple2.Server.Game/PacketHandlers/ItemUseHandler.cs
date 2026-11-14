@@ -804,6 +804,9 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
         string password = packet.ReadUnicodeString();
+        if (password.Length > OpenMassive.MaxPasswordLength) {
+            return;
+        }
         Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
 
         // weddingParty (the wedding hall items 20001698-20001702) is not handled: no client or data source says what

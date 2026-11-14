@@ -10,6 +10,10 @@ public static class OpenMassive {
     /// opens no more (s_msg_item_open_massive_error_too_many_portal).</summary>
     public const int MaxNamedPortals = 10;
 
+    /// <summary>The password box of the open holds 6 characters (the item function's message box, SetInput(5, "", 6),
+    /// itemfunctiondispatch.cpp:1864): a longer password is not the client's, and the portal kept it as it came.</summary>
+    public const int MaxPasswordLength = 6;
+
     /// <summary>
     /// The client's own refusals before it sends the open (UIMessageBox::HandleOpenMassiveButton, uimessagebox.cpp:2193):
     /// standing in a portal's box (s_msg_item_open_massive_error_another_portal), a field whose field type is not 0

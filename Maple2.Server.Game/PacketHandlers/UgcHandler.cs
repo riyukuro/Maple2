@@ -436,6 +436,12 @@ public class UgcHandler : FieldPacketHandler {
             Logger.Error("Failed to find staged item for UGC {ItemUid} {ItemId}", itemUid, itemId);
             return UgcError.Refused;
         }
+        // The blueprint window's name field holds UgcNameLengthMax characters (UIItemBlueprintCreateDialog,
+        // uiitemblueprintcreatedialog.cpp:5272-5275), as the design window's does: a longer name is not the client's.
+        if (!UgcRules.DesignNameValid(name, session.ServerTableMetadata.ConstantsTable.UgcNameLengthMax)) {
+            Logger.Debug("Refused blueprint name of {Length} characters from {CharacterId}", name.Length, session.CharacterId);
+            return UgcError.Refused;
+        }
 
         using WebStorage.Request request = WebStorage.Context();
         UgcResource? resource = request.CreateUgc(UgcType.LayoutBlueprint, session.CharacterId, itemId, DateTime.UtcNow + UgcRules.UploadWindow);
