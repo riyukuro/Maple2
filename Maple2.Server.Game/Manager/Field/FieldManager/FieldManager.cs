@@ -439,6 +439,11 @@ public partial class FieldManager : IField {
                         npcIds.Add(tagNpcId);
                     }
                 }
+                if (NpcMetadata.TryLookupSubTag(tag, out IReadOnlyCollection<int>? subTagNpcIds)) {
+                    foreach (int tagNpcId in subTagNpcIds) {
+                        npcIds.Add(tagNpcId);
+                    }
+                }
             }
 
             if (npcIds.Count > 0 && spawn.Population > 0) {

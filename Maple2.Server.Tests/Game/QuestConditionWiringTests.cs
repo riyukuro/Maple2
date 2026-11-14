@@ -79,6 +79,7 @@ public class QuestConditionWiringTests : TriggerTestBase {
         animations.AddReplace("test_model", new AnimationMetadata("test_model", new Dictionary<string, AnimationSequenceMetadata>()));
         typeof(NpcMetadataStorage).GetField("AniCache", Any)!.SetValue(storage, animations);
         typeof(NpcMetadataStorage).GetField("tagLookup", Any)!.SetValue(storage, new Dictionary<string, HashSet<int>>());
+        typeof(NpcMetadataStorage).GetField("subTagLookup", Any)!.SetValue(storage, new Dictionary<string, HashSet<int>>());
         return storage;
     }
 

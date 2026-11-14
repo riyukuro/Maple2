@@ -13,7 +13,6 @@ using Maple2.Model.Game.Field;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
-using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Core.Packets;
@@ -557,11 +556,10 @@ public partial class FieldManager {
             if (!NpcMetadata.TryGet(npcId, out NpcMetadata? npc)) {
                 continue;
             }
-            if (npc.Basic.Difficulty < metadata.MinDifficulty || npc.Basic.Difficulty > metadata.MaxDifficulty) {
+            // The npcs of the row's tags that the client's rule keeps, at its weights (RegionSpawnRules).
+            if (RegionSpawnRules.Weight(npc.Basic, metadata.Tags, metadata.MinDifficulty, metadata.MaxDifficulty) is not { } spawnWeight) {
                 continue;
             }
-
-            int spawnWeight = (int) Lua.CalcNpcSpawnWeight(npc.Basic.MainTags.Length, npc.Basic.SubTags.Length, npc.Basic.RareDegree, npc.Basic.Difficulty);
             spawnNpcs.Add(npc, spawnWeight);
         }
 

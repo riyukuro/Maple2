@@ -12,10 +12,13 @@ public class NpcMetadataStorage : MetadataStorage<int, NpcMetadata>, ISearchable
     private const int MOB_BASE_ID = 20000000; // Starting id for mobs
 
     private readonly Dictionary<string, HashSet<int>> tagLookup;
+    // The mobs of each sub tag: a region spawn also picks an npc by its sub tags (RegionSpawnRules).
+    private readonly Dictionary<string, HashSet<int>> subTagLookup;
     protected readonly LRUCache<string, AnimationMetadata> AniCache;
 
     public NpcMetadataStorage(MetadataContext context) : base(context, CACHE_SIZE) {
         tagLookup = new Dictionary<string, HashSet<int>>();
+        subTagLookup = new Dictionary<string, HashSet<int>>();
         AniCache = new LRUCache<string, AnimationMetadata>(ANI_CACHE_SIZE, (int) (ANI_CACHE_SIZE * 0.05));
 
         foreach (NpcMetadata npc in Context.NpcMetadata.Where(npc => npc.Id > MOB_BASE_ID)) {
@@ -26,6 +29,13 @@ public class NpcMetadataStorage : MetadataStorage<int, NpcMetadata>, ISearchable
                 }
 
                 tagLookup[tag].Add(npc.Id);
+            }
+            foreach (string tag in npc.Basic.SubTags) {
+                if (!subTagLookup.ContainsKey(tag)) {
+                    subTagLookup[tag] = [];
+                }
+
+                subTagLookup[tag].Add(npc.Id);
             }
         }
     }
@@ -55,6 +65,13 @@ public class NpcMetadataStorage : MetadataStorage<int, NpcMetadata>, ISearchable
 
     public bool TryLookupTag(string tag, [NotNullWhen(true)] out IReadOnlyCollection<int>? npcIds) {
         bool result = tagLookup.TryGetValue(tag, out HashSet<int>? set);
+        npcIds = set;
+
+        return result;
+    }
+
+    public bool TryLookupSubTag(string tag, [NotNullWhen(true)] out IReadOnlyCollection<int>? npcIds) {
+        bool result = subTagLookup.TryGetValue(tag, out HashSet<int>? set);
         npcIds = set;
 
         return result;
