@@ -58,7 +58,10 @@ public record SkillMetadataState(
     // stateAttr clearCooldownFromPVPZone: entering a PvP zone ends the skill's cooldown.
     bool ClearCooldownOnPvpZone = false,
     // stateAttr superArmorApplyFieldType: where the cast's SuperArmor counts (0 anywhere, 1 off PvP maps, 2 on them).
-    int SuperArmorApplyField = 0);
+    int SuperArmorApplyField = 0,
+    // stateAttr splashMaxCount: the regions of this skill one caster holds at most (FieldManager.AddSkill); 0 for no
+    // limit. The client loads it (skilloverlapcompare.cpp:872) and shows no use of it.
+    int SplashMaxCount = 0);
 
 public record SkillMetadataLevel(
     BeginCondition Condition,

@@ -92,7 +92,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (playedReader != null) {
             played = PlayedClientSkills.Read(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)));
-            Console.WriteLine($"Skills in the played client's skill data: {played.Count} ({played.Values.Count(entry => PlayedClientSkills.UnrideMainType(entry.MainType))} of a main type that leaves the ride, {played.Values.Count(entry => entry.RechargeMaxCount > 0)} with recharge uses, {played.Values.Count(entry => entry.Weapons.Length > 0)} with hand weapons)");
+            Console.WriteLine($"Skills in the played client's skill data: {played.Count} ({played.Values.Count(entry => PlayedClientSkills.UnrideMainType(entry.MainType))} of a main type that leaves the ride, {played.Values.Count(entry => entry.RechargeMaxCount > 0)} with recharge uses, {played.Values.Count(entry => entry.Weapons.Length > 0)} with hand weapons, {played.Values.Count(entry => entry.SplashMaxCount > 0)} with a region limit)");
             clientEffects = PlayedClientActionAdditionals.Read(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)), out int unsupported, ClientListedRows.Available, SelectLevel);
             foreach ((int effectId, IList<Maple2.File.Parser.Xml.AdditionalEffect.AdditionalEffectData> datas) in new AdditionalEffectParser(xmlReader).Parse()) {
@@ -319,7 +319,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     RechargeMaxCount: client?.RechargeMaxCount ?? data.basic.stateAttr.rechargeMaxCount,
                     RechargeShared: client?.RechargeShared ?? false,
                     ClearCooldownOnPvpZone: data.basic.stateAttr.clearCooldownFromPVPZone != 0,
-                    SuperArmorApplyField: data.basic.stateAttr.superArmorApplyFieldType),
+                    SuperArmorApplyField: data.basic.stateAttr.superArmorApplyFieldType,
+                    SplashMaxCount: client?.SplashMaxCount ?? data.basic.stateAttr.splashMaxCount),
                 Levels: levels
             );
         }

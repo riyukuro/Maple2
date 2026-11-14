@@ -50,7 +50,8 @@ public static partial class PlayedClientSkills {
             RechargeMaxCount: Number(state, "rechargeMaxCount"),
             RechargeShared: Number(state, "rechargeShareOrigin") != 0 && origin != 0 && origin != id,
             ClearCooldownOnPvpZone: Number(state, "clearCooldownFromPVPZone") != 0,
-            SuperArmorApplyField: Number(state, "superArmorApplyFieldType"));
+            SuperArmorApplyField: Number(state, "superArmorApplyFieldType"),
+            SplashMaxCount: Number(state, "splashMaxCount"));
     }
 
     // One <level> of the skill. The condition is the skill's <condition> (SkillCondition::Load,

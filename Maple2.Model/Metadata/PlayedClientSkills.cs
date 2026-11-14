@@ -20,7 +20,8 @@ namespace Maple2.Model.Metadata;
 public static partial class PlayedClientSkills {
     public const string SkillFolder = "skilldata/";
 
-    public readonly record struct Entry(int MainType, int RechargeMaxCount, bool RechargeShared, (int LeftHand, int RightHand)[] Weapons);
+    public readonly record struct Entry(int MainType, int RechargeMaxCount, bool RechargeShared, (int LeftHand, int RightHand)[] Weapons,
+        int SplashMaxCount = 0);
 
     public static bool IsSkillFile(string name) => name.StartsWith(SkillFolder, StringComparison.OrdinalIgnoreCase);
 
@@ -37,7 +38,8 @@ public static partial class PlayedClientSkills {
                 MainType: Number(basic, "mainType"),
                 RechargeMaxCount: Number(state, "rechargeMaxCount"),
                 RechargeShared: Number(state, "rechargeShareOrigin") != 0 && origin != 0 && origin != id,
-                Weapons: weapons);
+                Weapons: weapons,
+                SplashMaxCount: Number(state, "splashMaxCount"));
         }
         return entries;
     }

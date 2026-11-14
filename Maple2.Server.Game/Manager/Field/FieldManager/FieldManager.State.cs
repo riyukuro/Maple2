@@ -1107,6 +1107,12 @@ public partial class FieldManager {
                 continue;
             }
 
+            if (metadata.State is { SplashMaxCount: > 0 } state) {
+                foreach (int objectId in RegionsOverLimit(fieldSkills.Values.Select(held => (held.ObjectId, held.Caster.ObjectId, held.Value.Id)),
+                             caster.ObjectId, metadata.Id, state.SplashMaxCount)) {
+                    RemoveSkill(objectId);
+                }
+            }
             int fireCount = effect.FireCount > 0 ? effect.FireCount : -1;
             var fieldSkill = new FieldSkill(this, NextLocalId(), caster, metadata, fireCount, effect.Splash, points) {
                 Position = points[0],
@@ -1116,6 +1122,19 @@ public partial class FieldManager {
             fieldSkills[fieldSkill.ObjectId] = fieldSkill;
             Broadcast(RegionSkillPacket.Add(fieldSkill));
         }
+    }
+
+    // stateAttr splashMaxCount (SkillMetadataState.SplashMaxCount): a caster holds at most that many regions of the
+    // skill. The client loads it and shows no use, so the rule is chosen here: placing one more ends the caster's
+    // oldest regions of that skill (the lowest object ids, given out in placing order) until one place is left.
+    // KR: 11 skills, as 10400292 (2, placed by the priest's 10400291) and 10800202 (6, placed by 10800201).
+    internal static List<int> RegionsOverLimit(IEnumerable<(int ObjectId, int CasterId, int SkillId)> regions, int casterId, int skillId, int max) {
+        if (max <= 0) {
+            return [];
+        }
+        List<int> held = regions.Where(region => region.CasterId == casterId && region.SkillId == skillId)
+            .Select(region => region.ObjectId).Order().ToList();
+        return held.Take(Math.Max(0, held.Count - (max - 1))).ToList();
     }
 
     // The caster's attack that names skills in splashActiveSkillID hit (Actor.TargetAttack): every region of those
