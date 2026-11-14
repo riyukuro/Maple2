@@ -274,7 +274,7 @@ public class PartyManager : IDisposable {
             return;
         }
 
-        // Sent at logout, before the session is saved: an unreachable World is only logged, so the save still runs.
+        // Sent at logout, after the session is saved: an unreachable World is only logged, so the logout still ends.
         try {
             world.Party(new PartyRequest {
                 Disband = new PartyRequest.Types.Disband {

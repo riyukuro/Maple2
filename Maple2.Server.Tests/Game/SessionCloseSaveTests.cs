@@ -116,6 +116,22 @@ public class SessionCloseSaveTests {
         Assert.That(server.GetSessionOrClosing(session.CharacterId, out _), Is.False);
     }
 
+    // A World heartbeat round during the last save: the player stays online (else the World marks them offline and
+    // the next login loads before the save ends); once the save ended the session is unknown.
+    [Test]
+    public void AHeartbeatDuringTheLastSave_KeepsThePlayerOnline() {
+        GameServer server = Server();
+        ClosingElsewhere();
+        server.OnDisconnected(session);
+        var channel = new ChannelService(server, null!, test.Storage, null!, null!, null!);
+        var request = new HeartbeatRequest { CharacterId = session.CharacterId };
+
+        Assert.That(channel.Heartbeat(request, null!).Result.Success, Is.True);
+        DisposeEnds();
+        server.OnClosed(session);
+        Assert.That(channel.Heartbeat(request, null!).Result.Success, Is.False);
+    }
+
     [Test]
     public void AKickOfAPlayingSession_RunsItsDispose() {
         GameServer server = Playing();

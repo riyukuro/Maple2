@@ -13,6 +13,13 @@ public partial class ChannelService {
             });
         }
         if (!server.GetSession(request.CharacterId, out GameSession? session)) {
+            // A session whose client is gone and that still writes its final save: the World keeps the player online
+            // until the save ends (the logout's offline update), else a login could load before it.
+            if (server.GetSessionOrClosing(request.CharacterId, out _)) {
+                return Task.FromResult(new HeartbeatResponse {
+                    Success = true,
+                });
+            }
             logger.Warning("Heartbeat from unknown session: {CharacterId}", request.CharacterId);
             return Task.FromResult(new HeartbeatResponse {
                 Success = false,
