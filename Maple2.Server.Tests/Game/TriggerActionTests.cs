@@ -19,6 +19,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
+using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger;
@@ -607,6 +608,49 @@ public class TriggerFieldStateTests : TriggerTestBase {
             info.SetValue(Field, Activator.CreateInstance(info.FieldType));
         }
         typeof(FieldManager).GetField("triggerBreakable", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldBreakable>());
+    }
+
+    // A zone of the box that has ended or not; only what pvp_zone_ended reads is real.
+    private sealed class Zone(int boxId, bool ended) : IPvpZoneField {
+        public int BoxId => boxId;
+        public bool Ended => ended;
+        public bool Hostile(FieldPlayer caster, FieldPlayer target) => false;
+        public bool IsParticipant(FieldPlayer player) => false;
+        public void Update(long tick) { }
+        public void Damage(FieldPlayer attacker, FieldPlayer victim, long amount) { }
+        public void Death(FieldPlayer victim) { }
+        public void Enter(FieldPlayer player) { }
+        public void Leave(FieldPlayer player) { }
+    }
+
+    // pvp_zone_ended (19): the field's PvP zone is the box's and has ended; with no zone it has not.
+    [Test]
+    public void PvpZoneEnded_TheBoxsZone() {
+        Start();
+        FieldInfo zone = typeof(FieldManager).GetField("<PvpZone>k__BackingField", Any)!;
+        Assert.That(Condition("""<condition name="pvp_zone_ended" box_id="101" />"""), Is.False);
+
+        zone.SetValue(Field, new Zone(101, false));
+        Assert.That(Condition("""<condition name="pvp_zone_ended" box_id="101" />"""), Is.False);
+
+        zone.SetValue(Field, new Zone(101, true));
+        Assert.That(Condition("""<condition name="pvp_zone_ended" box_id="101" />"""), Is.True);
+        Assert.That(Condition("""<condition name="pvp_zone_ended" box_id="102" />"""), Is.False);
+    }
+
+    // bonus_game_reward (3): a notice win of a player in the box holds once; a box the field lacks, a player outside
+    // the box or another type does not take it.
+    [Test]
+    public void BonusGameReward_AWinInTheBox() {
+        StartWithBoxes();
+        typeof(FieldManager).GetField("<BonusGameWins>k__BackingField", Any)!.SetValue(Field, new BonusGameWins());
+        Field.BonusGameWins.Add(test.Session.Player.Value.Character.Id, BonusGameWins.NoticeType);
+
+        Assert.That(Condition("""<condition name="bonus_game_reward" box_id="9" type="1" />"""), Is.False);
+        Assert.That(Condition("""<condition name="bonus_game_reward" box_id="2" type="1" />"""), Is.False);
+        Assert.That(Condition("""<condition name="bonus_game_reward" box_id="1" type="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="bonus_game_reward" box_id="1" type="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="bonus_game_reward" box_id="1" type="1" />"""), Is.False);
     }
 
     // check_same_user_tag (128): the box holds a player and all of them carry one user tag; an empty box is false.
@@ -1254,6 +1298,65 @@ public class TriggerNpcTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="npc_hp" spawn_id="7" is_relative="0" value="0" compare="lower" />"""), Is.False);
     }
 
+    // The damage the npc took (DamageTaken sums its dealers' records), as one dealer's.
+    private static void Damaged(FieldNpc npc, long amount) {
+        var record = new DamageRecordTarget(npc);
+        record.AddDamage(DamageType.Normal, amount);
+        typeof(Actor<Npc>).GetField("DamageDealers", Any)!.SetValue(npc, new ConcurrentDictionary<int, DamageRecordTarget> { [1] = record });
+    }
+
+    // npc_damage (3, 02000410): the damage the spawn point's npc took over its max hp, against the rate (at least, when
+    // the script gives no operator); no npc of the spawn point fails.
+    [Test]
+    public void NpcDamage_TakenOverMaxHp() {
+        WithNpcTable();
+        FieldNpc npc = Mob(9001, 5);
+        Health(npc, 699, 1000);
+        Damaged(npc, 301);
+
+        Assert.That(Condition("""<condition name="npc_damage" spawn_id="5" damage_rate="0.3" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_damage" spawn_id="5" damage_rate="0.31" />"""), Is.False);
+        Assert.That(Condition("""<condition name="npc_damage" spawn_id="5" damage_rate="0.5" operator="Less" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_damage" spawn_id="6" damage_rate="0" />"""), Is.False);
+    }
+
+    // npc_extra_data (10): the AI extra data of the spawn point's npc (an unset key reads 0) against the value; no npc
+    // of the spawn point fails.
+    [Test]
+    public void NpcExtraData_TheAiValue() {
+        WithNpcTable();
+        Mob(9001, 5).AiExtraData["Phase"] = 2;
+
+        Assert.That(Condition("""<condition name="npc_extra_data" spawn_point_id="5" extra_data_key="Phase" extra_data_value="2" operator="Equal" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_extra_data" spawn_point_id="5" extra_data_key="Phase" extra_data_value="3" operator="Equal" />"""), Is.False);
+        Assert.That(Condition("""<condition name="npc_extra_data" spawn_point_id="5" extra_data_key="Phase" extra_data_value="3" operator="Less" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_extra_data" spawn_point_id="5" extra_data_key="Other" extra_data_value="0" operator="Equal" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_extra_data" spawn_point_id="6" extra_data_key="Phase" extra_data_value="0" operator="LessEqual" />"""), Is.False);
+    }
+
+    // A monster whose npc row carries the basic stringID.
+    private FieldNpc Named(int objectId, int spawnPointId, string stringId, bool dead = false) {
+        FieldNpc npc = Mob(objectId, spawnPointId, dead);
+        typeof(NpcMetadata).GetField("<Basic>k__BackingField", Any)!.SetValue(npc.Value.Metadata,
+            new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 1, false, 0, 0, 0, 0, [], [], 0, StringId: stringId));
+        return npc;
+    }
+
+    // npc_is_dead_by_string_id (1, 02020051_bf): a monster of the string id died here and none with it is alive.
+    [Test]
+    public void NpcIsDeadByStringId_DiedAndNoneAlive() {
+        typeof(FieldManager).GetField("<StringIdDeaths>k__BackingField", Any)!.SetValue(Field, new NpcStringIdDeaths());
+        Named(9001, 5, "Boss", dead: true);
+        Assert.That(Condition("""<condition name="npc_is_dead_by_string_id" string_id="Boss" />"""), Is.False);
+
+        Field.StringIdDeaths.Died("Boss");
+        Assert.That(Condition("""<condition name="npc_is_dead_by_string_id" string_id="Boss" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_is_dead_by_string_id" string_id="Other" />"""), Is.False);
+
+        Named(9002, 6, "Boss");
+        Assert.That(Condition("""<condition name="npc_is_dead_by_string_id" string_id="Boss" />"""), Is.False);
+    }
+
     // A monster that can take an emote task: its model has the sequences, and the task queue is its own.
     private FieldNpc Emoting(int objectId, int spawnPointId, params string[] sequences) {
         var animation = new AnimationMetadata("model", sequences.Select((name, i) => new AnimationSequenceMetadata(name, (short) (i + 1), 1f, []))
@@ -1641,6 +1744,32 @@ public class TriggerFieldGameTests : TriggerTestBase {
         ((ConcurrentDictionary<int, FieldSpawnGroup>) typeof(FieldManager).GetField("fieldSpawnGroups", Any)!.GetValue(Field)!).GetValueOrDefault(groupId);
 
     private static bool Active(FieldSpawnGroup group) => (bool) typeof(FieldSpawnGroup).GetField("active", Any)!.GetValue(group)!;
+
+    // guild_vs_game_scored_team (18) and guild_vs_game_winner_team (3): the team that took the last round (0 for an
+    // even one) and the team ahead (0 for a draw); with no game neither holds.
+    [Test]
+    public void GuildVsGame_ScoredAndWinnerTeam() {
+        Assert.That(Condition("""<condition name="guild_vs_game_scored_team" team_id="0" />"""), Is.False);
+        Assert.That(Condition("""<condition name="guild_vs_game_winner_team" team_id="0" />"""), Is.False);
+
+        typeof(FieldManager).GetField(nameof(FieldManager.Widgets))!.SetValue(Field, new Dictionary<string, Widget>());
+        Action("""<action name="create_field_game" type="GuildVsGame" />""");
+        GuildVsGameState state = Field.GuildVsGame!.State;
+        state.ScoreRound(3, 1, 10);
+        Assert.That(Condition("""<condition name="guild_vs_game_scored_team" team_id="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="guild_vs_game_scored_team" team_id="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="guild_vs_game_winner_team" team_id="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="guild_vs_game_winner_team" team_id="2" />"""), Is.False);
+
+        state.ScoreRound(0, 2, 30);
+        Assert.That(Condition("""<condition name="guild_vs_game_scored_team" team_id="2" />"""), Is.True);
+        Assert.That(Condition("""<condition name="guild_vs_game_winner_team" team_id="2" />"""), Is.True);
+        Assert.That(Condition("""<condition name="guild_vs_game_winner_team" team_id="1" />"""), Is.False);
+
+        state.ScoreRound(1, 1, 5);
+        Assert.That(Condition("""<condition name="guild_vs_game_scored_team" team_id="0" />"""), Is.True);
+        Assert.That(Condition("""<condition name="guild_vs_game_scored_team" team_id="2" />"""), Is.False);
+    }
 
     // start_combine_spawn (356): each listed group of the field's own map turns on (is_start 1) or off; a group of
     // another map whose spawn point the field lacks, and a group of no map, are not made. The groups here have no
@@ -2151,6 +2280,25 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That(reader.Available, Is.Zero);
     }
 
+    // shadow_expedition_points (32): the open boss gauge holds the points; with no gauge open the test waits when a
+    // script of the field opens one and passes when none does; a score board is no gauge.
+    [Test]
+    public void ShadowExpeditionPoints_TheOpenGauge() {
+        Start();
+        FieldInfo opens = typeof(FieldManager).GetField("opensShadowGauge", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        opens.SetValue(Field, (bool?) true);
+        Assert.That(Condition("""<condition name="shadow_expedition_points" point="150" />"""), Is.False);
+        opens.SetValue(Field, (bool?) false);
+        Assert.That(Condition("""<condition name="shadow_expedition_points" point="150" />"""), Is.True);
+
+        opens.SetValue(Field, (bool?) true);
+        Field.ScoreBoardOpen = new ScoreBoard.Board(ShadowExpeditionPacket.BossGauge, "", 150, 1000);
+        Assert.That(Condition("""<condition name="shadow_expedition_points" point="150" />"""), Is.True);
+        Assert.That(Condition("""<condition name="shadow_expedition_points" point="151" />"""), Is.False);
+        Field.ScoreBoardOpen = new ScoreBoard.Board(ShadowExpeditionPacket.TopCenterScore, "", 150, 1000);
+        Assert.That(Condition("""<condition name="shadow_expedition_points" point="150" />"""), Is.False);
+    }
+
     // score_board_remove (16): the open board closes (ShadowExpedition command 2) and the score is cleared; with no
     // board open only the score is cleared and nothing is sent.
     [Test]
@@ -2277,6 +2425,30 @@ public class TriggerDungeonTests : TriggerTestBase {
 
         Start();
         Assert.That(Condition("""<condition name="dungeon_play_time" play_seconds="0" />"""), Is.False);
+    }
+
+    // dungeon_first_user_mission_score (10): the first entrant's user mission scores summed (party missions left out)
+    // against the score, at least when the script gives no operator; outside a dungeon room the sum is 0.
+    [Test]
+    public void DungeonFirstUserMissionScore_TheFirstEntrantsSum() {
+        StartRoom();
+        DungeonUserRecord user = test.Session.Dungeon.UserRecord!;
+        var scored = new DungeonMission(new DungeonMissionMetadata(1, DungeonMissionType.Trigger, [], 0, 500, 0, false), isUserMission: true);
+        var party = new DungeonMission(new DungeonMissionMetadata(2, DungeonMissionType.Trigger, [], 0, 500, 0, false));
+        scored.Complete();
+        party.Complete();
+        user.Missions[1] = scored;
+        user.Missions[2] = party;
+        record.UserResults[test.CharacterId] = user;
+        record.SetFirstUser(test.CharacterId);
+
+        Assert.That(Condition("""<condition name="dungeon_first_user_mission_score" score="500" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_first_user_mission_score" score="501" />"""), Is.False);
+        Assert.That(Condition("""<condition name="dungeon_first_user_mission_score" score="1000" operator="Less" />"""), Is.True);
+
+        Start();
+        Assert.That(Condition("""<condition name="dungeon_first_user_mission_score" score="0" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_first_user_mission_score" score="1" />"""), Is.False);
     }
 
     // dungeon_mission_complete: a mission the player holds gets its full score and is sent; another id is skipped.
