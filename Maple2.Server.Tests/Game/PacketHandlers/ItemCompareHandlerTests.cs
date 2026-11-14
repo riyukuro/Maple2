@@ -14,7 +14,7 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class ItemCompareHandlerTests {
     private const int ItemId = 11300001;
 
-    private static List<byte[]> Compare(AdminPermissions permissions, int count = 100, byte rank = 4) {
+    private static List<byte[]> Compare(AdminPermissions permissions, int count = 100, byte rank = 4, int itemId = ItemId) {
         var test = new TestGameSession();
         test.Register(TestGameSession.Metadata(ItemId, EquipSlot.CP, type: 1, slotMax: 1));
         GameSession session = test.Start();
@@ -25,7 +25,7 @@ public class ItemCompareHandlerTests {
 
         // CCCreateItemPacket::vfunc_0, then CCCompareItemPacket's int.
         new ItemCompareHandler().Handle(session, TestGameSession.Packet(writer => {
-            writer.WriteInt(ItemId);
+            writer.WriteInt(itemId);
             writer.WriteInt(1); // amount
             writer.WriteByte(rank);
             writer.WriteInt(0); // period
@@ -57,6 +57,12 @@ public class ItemCompareHandlerTests {
     [TestCase(AdminPermissions.GameMaster)]
     public void WithoutGmAndSpawnItem_NothingIsSent(AdminPermissions permissions) {
         Assert.That(Compare(permissions), Is.Empty);
+    }
+
+    // An id no item has: the start, rolls and end are not sent.
+    [Test]
+    public void AnUnknownItemIsRefused() {
+        Assert.That(Compare(AdminPermissions.Admin, itemId: ItemId + 1), Is.Empty);
     }
 
     [TestCase(0, (byte) 4)]
