@@ -36,6 +36,22 @@ public static class Target {
     public static readonly IPAddress BindAddress =
         IPAddress.TryParse(Environment.GetEnvironmentVariable("MS2_BIND_IP"), out IPAddress? bindAddress) ? bindAddress : IPAddress.Loopback;
 
+    // The networks whose players are at a PC bang (grade 1): PCBANG_IP_RANGES, a comma list of CIDR networks
+    // ("203.0.113.0/24,198.51.100.7/32"). Unset = none, so no player gets the PC bang bonus but by the pcbang command.
+    public static readonly IReadOnlyList<IPNetwork> PcBangNetworks = ParseNetworks(Environment.GetEnvironmentVariable("PCBANG_IP_RANGES"));
+
+    public static IReadOnlyList<IPNetwork> ParseNetworks(string? value) {
+        var networks = new List<IPNetwork>();
+        foreach (string part in (value ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+            if (IPNetwork.TryParse(part, out IPNetwork network)) {
+                networks.Add(network);
+            } else if (IPAddress.TryParse(part, out IPAddress? address)) {
+                networks.Add(new IPNetwork(address, address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 32 : 128));
+            }
+        }
+        return networks;
+    }
+
     static Target() {
         if (IPAddress.TryParse(Environment.GetEnvironmentVariable("LOGIN_IP"), out IPAddress? loginIpAddress)) {
             LoginIp = loginIpAddress;

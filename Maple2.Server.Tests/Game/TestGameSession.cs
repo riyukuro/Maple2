@@ -488,6 +488,7 @@ public sealed class TestGameSession {
         session.GameEvent = new GameEventManager(session);
         session.Mentoring = new MentoringManager(session);
         session.AdventureProtect = new AdventureProtectManager(session);
+        session.PcBang = new PcBangManager(session);
 
         Session = session;
         return session;

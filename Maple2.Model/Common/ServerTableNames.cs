@@ -33,4 +33,5 @@ public static class ServerTableNames {
     public const string TERM_TAG = "TermTag.xml";
     public const string FEATURE = "feature.xml";
     public const string WORLD_CHAMPION = "WorldChampionBase.xml";
+    public const string PC_BANG = "PcBangBonus.xml";
 }

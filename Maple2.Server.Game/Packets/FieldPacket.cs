@@ -352,7 +352,7 @@ public static class FieldPacket {
                 writer.WriteUnicodeString(); // Club Name
             }
         }
-        writer.WriteByte(); // charObj+0xff8, set by SetPcBang (0xB5)
+        writer.WriteByte((byte) (session.PcBang?.Grade ?? 0)); // charObj+0xff8, the PC bang grade (SetPcBang, 0xB5)
         writer.WriteClass<Mastery>(character.Mastery);
         PlatformBlock.Write(writer); // the region's platform part (PlatformBlock)
         writer.WriteInt(); // count for long list

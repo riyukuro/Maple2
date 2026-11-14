@@ -67,6 +67,9 @@ namespace Maple2.Server.World.Migrations
                     b.Property<string>("Payback")
                         .HasColumnType("json");
 
+                    b.Property<string>("PcBang")
+                        .HasColumnType("json");
+
                     b.Property<string>("Permissions")
                         .IsRequired()
                         .HasColumnType("longtext");

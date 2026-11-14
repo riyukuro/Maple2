@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
 using System.IO.Pipelines;
+using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -46,6 +47,8 @@ public abstract class Session : IDisposable {
 
     private readonly string name;
     private readonly TcpClient client;
+    // The client's address (null when the socket has none, as a test session's).
+    public IPAddress? RemoteAddress { get; }
     private readonly NetworkStream networkStream;
     private readonly MapleCipher.Encryptor sendCipher;
     private readonly MapleCipher.Decryptor recvCipher;
@@ -79,6 +82,7 @@ public abstract class Session : IDisposable {
         // Allow client to close immediately
         tcpClient.LingerState = new LingerOption(true, 0);
         name = tcpClient.Client.RemoteEndPoint?.ToString() ?? "Unknown";
+        RemoteAddress = (tcpClient.Client.RemoteEndPoint as IPEndPoint)?.Address;
 
         byte[] sivBytes = RandomNumberGenerator.GetBytes(4);
         byte[] rivBytes = RandomNumberGenerator.GetBytes(4);

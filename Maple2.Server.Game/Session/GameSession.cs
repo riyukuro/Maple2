@@ -178,6 +178,7 @@ public sealed partial class GameSession : Core.Network.Session {
     public DungeonManager Dungeon { get; set; } = null!;
     public AnimationManager Animation { get; set; } = null!;
     public RideManager Ride { get; set; } = null!;
+    public PcBangManager PcBang { get; set; } = null!;
     public MentoringManager Mentoring { get; set; } = null!;
     public AdventureProtectManager AdventureProtect { get; set; } = null!;
 
@@ -338,6 +339,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Dungeon = new DungeonManager(this);
         AdventureProtect = new AdventureProtectManager(this);
         Ride = new RideManager(this);
+        PcBang = new PcBangManager(this);
         Mentoring = new MentoringManager(this);
         // The managers are made: a reset stored since the load is taken now (by the entry's save at the latest).
         resetsSeen!.Ready = true;
@@ -493,7 +495,8 @@ public sealed partial class GameSession : Core.Network.Session {
             MapleSurvivalHandler.SendState(this);
         }
         // MeretMarket
-        // PCBangBonus
+        // PCBangBonus: the grade and the day's record; the client clears its PC bang info at game start.
+        PcBang.Load();
         Guild.Load();
         Guild.LoadExpelNotices();
         foreach ((int id, GroupChatManager groupChat) in GroupChats) {
@@ -1323,6 +1326,12 @@ public sealed partial class GameSession : Core.Network.Session {
         });
         // Death Counter
         ResetStep(reset, "revival", () => Config.AddInstantReviveCount(-1));
+        // PC bang: the new day's play and claims start empty (the open dialog asks for the info again).
+        ResetStep(reset, "pc bang", () => {
+            if (PcBang.On) {
+                PcBang.SendStatus();
+            }
+        });
         // Premium Rewards Claimed
         ResetStep(reset, "premium", () => {
             Player.Value.Account.PremiumRewardsClaimed.Clear();
@@ -2021,6 +2030,10 @@ public sealed partial class GameSession : Core.Network.Session {
         BeginWithResets(db, resetWait);
         if (!HoldsSession(db)) {
             return false;
+        }
+        // The PC bang play since the last fold is part of the account's day record.
+        if (PcBang != null && PcBang.On) {
+            PcBang.Fold(DateTime.Now);
         }
         if (!db.SavePlayer(Player)) {
             Logger.Error("Save: player not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);

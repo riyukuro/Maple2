@@ -28,6 +28,8 @@ internal class Account {
     public IList<VipGoodsPurchase>? VipGoodsPurchases { get; set; }
     // Null when no payback month is counted.
     public PaybackMonth? Payback { get; set; }
+    // Null when no PC bang day is counted.
+    public PcBangDay? PcBang { get; set; }
     public required AccountCurrency Currency { get; set; }
     public required MarketLimits MarketLimits { get; set; }
 
@@ -84,6 +86,12 @@ internal class Account {
                 Spent = other.Payback.Spent,
                 StartLevel = other.Payback.StartLevel,
             },
+            PcBang = other.PcBang == null ? null : new PcBangDay {
+                Day = other.PcBang.Day,
+                PlayMs = other.PcBang.PlayMs,
+                Claimed = other.PcBang.Claimed,
+                Gifts = other.PcBang.Gifts.ToList(),
+            },
             Currency = new AccountCurrency(),
             MarketLimits = new MarketLimits {
                 MesoListed = other.MesoMarketListed,
@@ -129,6 +137,7 @@ internal class Account {
                 LastPurchase = purchase.LastPurchase,
             }).ToList() ?? [],
             Payback = other.Payback == null ? null : new Maple2.Model.Game.PaybackRecord(other.Payback.Month, other.Payback.Spent, other.Payback.StartLevel),
+            PcBang = other.PcBang == null ? null : new Maple2.Model.Game.PcBangRecord(other.PcBang.Day, other.PcBang.PlayMs, other.PcBang.Claimed, other.PcBang.Gifts?.ToList() ?? []),
             MesoMarketListed = other.MarketLimits.MesoListed,
             MesoMarketPurchased = other.MarketLimits.MesoPurchased,
             SurvivalLevel = other.SurvivalLevel,
@@ -154,6 +163,7 @@ internal class Account {
         builder.Property(account => account.PremiumRewardsClaimed).HasJsonConversion();
         builder.Property(account => account.VipGoodsPurchases).HasJsonConversion();
         builder.Property(account => account.Payback).HasJsonConversion();
+        builder.Property(account => account.PcBang).HasJsonConversion();
         builder.Property(account => account.PrestigeMissions).HasJsonConversion();
         builder.Property(account => account.PrestigeRewardsClaimed).HasJsonConversion();
 
@@ -185,6 +195,13 @@ internal class PaybackMonth {
     public int Month { get; set; }
     public long Spent { get; set; }
     public int StartLevel { get; set; }
+}
+
+internal class PcBangDay {
+    public int Day { get; set; }
+    public long PlayMs { get; set; }
+    public int Claimed { get; set; }
+    public IList<int>? Gifts { get; set; }
 }
 
 internal class PrestigeMission {

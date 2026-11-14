@@ -71,6 +71,7 @@ public class BuffManager : IUpdatable {
             player.Session.Config.RefreshLapenshardBuffs();
             player.Session.Config.RefreshCharacterAbilityBuffs();
             player.Session.Config.RefreshPremiumClubBuffs();
+            player.Session.PcBang.RefreshBuffs();
             player.Session.GameEvent.RefreshBurningLevelupBuff();
             player.Session.Guild.LoadSkillBuffs();
 

@@ -197,6 +197,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.WORLD_CHAMPION,
             Table = ParseWorldChampion(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.PC_BANG,
+            Table = ParsePcBang(),
+        };
     }
 
     // The features the rows were filtered by (FeatureLevels: the data folder's tables, or the played client's), in name
@@ -3223,6 +3227,81 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 rewardDamage, IntAttribute(row, "systemMailID"), steps);
         }
         return new WorldChampionTable(seasons);
+
+        static int IntAttribute(XmlElement element, string name) {
+            return int.TryParse(element.GetAttribute(name), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : 0;
+        }
+    }
+
+    // The locale's PcBangBonus.xml and PcBangGiftItem.xml, else the NA ones (KR and NA ship the same rows); an empty
+    // table when the PCBang feature is off, so a locale without PC bangs gives no buff, bonus or gift.
+    private PcBangTable ParsePcBang() {
+        if (!FeatureLocaleFilter.FeatureEnabled("PCBang")) {
+            Console.WriteLine("PcBang: feature PCBang off, empty table");
+            return MapPcBang(null, null);
+        }
+        XmlDocument? bonus = ReadServerDocument("PcBangBonus.xml");
+        XmlDocument? gifts = ReadServerDocument("PcBangGiftItem.xml");
+        PcBangTable table = MapPcBang(bonus, gifts);
+        Console.WriteLine($"PcBang: {table.Buffs.Count} buff grades, {table.PlayBonuses.Count} play bonus rows, {table.Gifts.Count} gifts");
+        return table;
+    }
+
+    private XmlDocument? ReadServerDocument(string name) {
+        string[] paths = [$"table/Server/{FeatureLocaleFilter.Locale}/{name}", $"table/Server/NA/{name}"];
+        foreach (string path in paths) {
+            string? text = overlay.Read(path);
+            if (text != null) {
+                var document = new XmlDocument();
+                document.LoadXml(text);
+                Console.WriteLine($"{name}: {path} from {ServerOverlay.Option}");
+                return document;
+            }
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+                file.Name.Equals(path, StringComparison.OrdinalIgnoreCase));
+            if (entry != null) {
+                return xmlReader.GetXmlDocument(entry);
+            }
+        }
+        return null;
+    }
+
+    // Play bonus rows keep their file order (the client's row index is the claim's index); a row or gift without an
+    // item or count is left out. The play bonus grade defaults to 1 (KR rows carry none).
+    public static PcBangTable MapPcBang(XmlDocument? bonus, XmlDocument? gifts) {
+        var buffs = new Dictionary<int, IReadOnlyList<int>>();
+        var playBonuses = new List<PcBangTable.PlayBonus>();
+        var giftRows = new Dictionary<int, PcBangTable.Gift>();
+        foreach (XmlElement row in bonus?.SelectNodes("/ms2/buffs")?.OfType<XmlElement>() ?? []) {
+            int level = IntAttribute(row, "level");
+            List<int> ids = row.SelectNodes("buff")?.OfType<XmlElement>()
+                .Select(buff => IntAttribute(buff, "additionalEffectID"))
+                .Where(id => id > 0)
+                .ToList() ?? [];
+            if (level > 0 && ids.Count > 0) {
+                buffs[level] = ids;
+            }
+        }
+        foreach (XmlElement row in bonus?.SelectNodes("/ms2/playBonus/item")?.OfType<XmlElement>() ?? []) {
+            int itemId = IntAttribute(row, "itemID");
+            int count = IntAttribute(row, "count");
+            if (itemId <= 0 || count <= 0) {
+                continue;
+            }
+            int rarity = IntAttribute(row, "grade");
+            playBonuses.Add(new PcBangTable.PlayBonus(IntAttribute(row, "requireMins"), itemId, rarity > 0 ? rarity : 1, count, IntAttribute(row, "systemMailID")));
+        }
+        foreach (XmlElement row in gifts?.SelectNodes("/ms2/item")?.OfType<XmlElement>() ?? []) {
+            int id = IntAttribute(row, "giftID");
+            int itemId = IntAttribute(row, "itemID");
+            int count = IntAttribute(row, "count");
+            if (id <= 0 || itemId <= 0 || count <= 0) {
+                continue;
+            }
+            int rarity = IntAttribute(row, "grade");
+            giftRows[id] = new PcBangTable.Gift(id, itemId, rarity > 0 ? rarity : 1, count);
+        }
+        return new PcBangTable(buffs, playBonuses, giftRows);
 
         static int IntAttribute(XmlElement element, string name) {
             return int.TryParse(element.GetAttribute(name), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : 0;

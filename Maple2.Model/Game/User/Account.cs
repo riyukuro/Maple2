@@ -27,6 +27,8 @@ public class Account {
     public IList<VipGoodsPurchase> VipGoodsPurchases { get; set; }
     // The merat payback's month (PaybackRules); null when none is counted.
     public PaybackRecord? Payback { get; set; }
+    // The PC bang play time and claims of the day (PcBangRules); null when none is counted.
+    public PcBangRecord? PcBang { get; set; }
     public int MesoMarketListed { get; set; }
     public int MesoMarketPurchased { get; set; }
 
