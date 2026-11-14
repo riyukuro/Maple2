@@ -460,6 +460,18 @@ public record SaleAutoFishing(
 public record EventRate(
     int Rate) : GameEventData;
 
+// The tab the merat market opens on while the event runs (GameEventMeratMarketOpenTab, commonfiles/gameevent.cpp:3475):
+// value1 a tab name (UIMeratMarketDialog::TabFromName; KR's one row has "limited"). Client only: the packet carries the
+// id and the name.
+public record MeratMarketOpenTab(
+    string Tab) : GameEventData;
+
+// The star point shop (GameEventStarShop, commonfiles/gameevent.cpp:4970): value1 the shop's npc. The client shows the
+// star point shop while the npc exists (IsStarPointEventActive, meratmarketbasketinfo.cpp:2573). The packet carries the
+// id and the npc.
+public record StarShop(
+    int NpcId) : GameEventData;
+
 // The pet taming mastery event (GameEventPetMastery, commonfiles/gameevent.cpp:4010): value1 the kinds, value2 their
 // rates in 1/10000, comma lists of one length; kind 1 is a capture's mastery, kind 2 the other pet taming mastery (the
 // last place of a kind counts). The client keeps the highest of each (CGameRule::SetPetMasteryRate) and names a pet
@@ -827,6 +839,8 @@ public record UserCondition(
 [JsonDerivedType(typeof(SaleAutoFishing), "SaleAutoFishing")]
 [JsonDerivedType(typeof(EventRate), "EventRate")]
 [JsonDerivedType(typeof(PetMastery), "PetMastery")]
+[JsonDerivedType(typeof(MeratMarketOpenTab), "MeratMarketOpenTab")]
+[JsonDerivedType(typeof(StarShop), "StarShop")]
 [JsonDerivedType(typeof(TransferItemBound), "TransferItemBound")]
 [JsonDerivedType(typeof(MesoRevival), "MesoRevival")]
 [JsonDerivedType(typeof(RankDuelRewardRate), "RankDuelRewardRate")]

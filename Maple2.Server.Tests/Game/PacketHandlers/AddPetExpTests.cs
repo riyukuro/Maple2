@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
@@ -24,8 +25,11 @@ public class AddPetExpTests {
     private Item stone = null!;
     private Item pet = null!;
 
-    private GameSession Start(string parameters = "3000", int petType = 1, bool summon = true) {
+    private GameSession Start(string parameters = "3000", int petType = 1, bool summon = true, int battleRate = 0) {
         test = new TestGameSession();
+        if (battleRate > 0) {
+            test.AddEvent(630001, GameEventType.PetBattleExp, new EventRate(battleRate));
+        }
         test.RegisterPet(PetId, petType);
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { PetMaxLevel = MaxLevel });
         // 1000 exp a level for every rarity.
@@ -146,5 +150,29 @@ public class AddPetExpTests {
 
         // 100 * 48 / 100 = 48.
         Assert.That(pet.Pet.Exp, Is.EqualTo(PetFusionRules.KillExp(100, 3)).And.EqualTo(48));
+    }
+
+    // A running PetBattleExp event (KR 630001: 10000) adds its share to the kill's: 48 + 48.
+    [Test]
+    public void KillExp_PetBattleExpEventAddsItsShare() {
+        GameSession session = Start(battleRate: 10000);
+        Assert.That(session.ItemMetadata.TryGetPet(PetId, out PetMetadata? petMetadata), Is.True);
+        const System.Reflection.BindingFlags any = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+        object fieldPet = typeof(PetManager).GetField("pet", any)!.GetValue(session.Pet)!;
+        typeof(FieldPet).GetField(nameof(FieldPet.Metadata), any)!.SetValue(fieldPet, petMetadata);
+
+        session.Pet!.AddKillExp(100, 3);
+
+        Assert.That(pet.Pet!.Exp, Is.EqualTo(96));
+    }
+
+    // CGameRule::ApplyPetBattleExpBonus: gain + gain * (float) (rate / 10000), truncated; no rate leaves the gain.
+    [TestCase(48, 0, 48)]
+    [TestCase(48, 10000, 96)]
+    [TestCase(48, 5000, 72)]
+    [TestCase(7, 3333, 9)]
+    [TestCase(0, 10000, 0)]
+    public void ApplyBattleExp(long gain, int rate, long expected) {
+        Assert.That(PetFusionRules.ApplyBattleExp(gain, rate), Is.EqualTo(expected));
     }
 }

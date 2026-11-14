@@ -2167,7 +2167,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             case GameEventType.GuildExp:
             case GameEventType.MasteryReduce:
             case GameEventType.AdventureLevelBonusExpRate:
+            case GameEventType.PetBattleExp:
                 return EventSaleReader.Rate(value1);
+            case GameEventType.MeratMarketOpenTab:
+                return EventSaleReader.MeratMarketOpenTab(value1);
+            case GameEventType.StarShop:
+                return EventSaleReader.StarShop(value1);
             case GameEventType.PetMastery:
                 return EventSaleReader.PetMastery(value1, value2);
             case GameEventType.RankDuelReward:

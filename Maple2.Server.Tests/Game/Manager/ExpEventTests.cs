@@ -88,6 +88,11 @@ public class ExpEventTests {
             Assert.That(EventSaleReader.PetMastery("1", "x"), Is.Null);
             Assert.That(EventSaleReader.PetMastery("3", "10000"), Is.Null);
             Assert.That(EventSaleReader.PetMastery("1", "0"), Is.Null);
+            Assert.That(EventSaleReader.MeratMarketOpenTab(" limited "), Is.EqualTo(new MeratMarketOpenTab("limited")));
+            Assert.That(EventSaleReader.MeratMarketOpenTab(""), Is.Null);
+            Assert.That(EventSaleReader.StarShop("11003775"), Is.EqualTo(new StarShop(11003775)));
+            Assert.That(EventSaleReader.StarShop("0"), Is.Null);
+            Assert.That(EventSaleReader.StarShop("npc"), Is.Null);
             Assert.That(EventSaleReader.PetMastery("1,2", "5000,-100"), Is.Null); // a negative rate drops the row
             Assert.That(EventSaleReader.PetMastery("1,1", "-100,5000"), Is.EqualTo(new PetMastery(5000, 0))); // overridden
         });
@@ -107,6 +112,13 @@ public class ExpEventTests {
                 Is.EqualTo("41EF0700" + "30750000"));
             Assert.That(Written(session.AddEvent(730001, GameEventType.AdventureLevelBonusExpRate, new EventRate(10000)), "AdventureLevelBonusExpRate"),
                 Is.EqualTo("91230B00" + "10270000"));
+            Assert.That(Written(session.AddEvent(630001, GameEventType.PetBattleExp, new EventRate(10000)), "PetBattleExp"),
+                Is.EqualTo("F19C0900" + "10270000"));
+            // GameEventMeratMarketOpenTab::vfunc_4 reads the tab name, GameEventStarShop::vfunc_4 the npc.
+            Assert.That(Written(session.AddEvent(600001, GameEventType.MeratMarketOpenTab, new MeratMarketOpenTab("limited")), "MeratMarketOpenTab"),
+                Is.EqualTo("C1270900" + "0700" + "6C0069006D006900740065006400"));
+            Assert.That(Written(session.AddEvent(11000001, GameEventType.StarShop, new StarShop(11003775)), "StarShop"),
+                Is.EqualTo("C1D8A700" + "7FE7A700"));
         });
     }
 

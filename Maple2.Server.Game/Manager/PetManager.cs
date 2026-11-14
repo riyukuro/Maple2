@@ -76,8 +76,10 @@ public sealed class PetManager : IDisposable {
     // sent the new exp (ResponsePet 10), then the new level if it rose. It runs on the field thread and holds the
     // item lock, as the fusion stone use, fusion and training do, so a gain in the same tick as one of those is kept.
     // Nothing that holds the item lock waits on the field thread, and this takes no other lock inside it.
+    // A running PetBattleExp event raises the share (the highest rate, as CGameRule keeps its rates).
     public void AddKillExp(int npcLevel, int npcClass) {
-        long gain = PetFusionRules.KillExp(npcLevel, npcClass);
+        long gain = PetFusionRules.ApplyBattleExp(PetFusionRules.KillExp(npcLevel, npcClass),
+            EventSaleRules.HighestRate(session.FindEvent(GameEventType.PetBattleExp)));
         if (gain <= 0) {
             return;
         }

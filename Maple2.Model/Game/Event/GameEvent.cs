@@ -445,6 +445,16 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(Id);
                 writer.WriteInt(eventRate.Rate);
                 break;
+            case MeratMarketOpenTab openTab:
+                // GameEventMeratMarketOpenTab::vfunc_4: the tab name.
+                writer.WriteInt(Id);
+                writer.WriteUnicodeString(openTab.Tab);
+                break;
+            case StarShop starShop:
+                // GameEventStarShop::vfunc_4: the npc id.
+                writer.WriteInt(Id);
+                writer.WriteInt(starShop.NpcId);
+                break;
             case PetMastery petMastery:
                 // GameEventPetMastery::vfunc_4: the capture rate, then the other rate.
                 writer.WriteInt(Id);

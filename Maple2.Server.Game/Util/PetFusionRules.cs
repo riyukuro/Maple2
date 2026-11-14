@@ -155,6 +155,16 @@ public static class PetFusionRules {
             : LuaFunctions.Lua.CalcPetEnchantBookCost(target.Rarity);
     }
 
+    // CGameRule::ApplyPetBattleExpBonus (gamerule.cpp:2803): a PetBattleExp event rate in 1/10000 adds
+    // gain * rate / 10000 (a float rate, truncated, 32 bits unsigned); 0 leaves the gain.
+    public static long ApplyBattleExp(long gain, int rate) {
+        if (rate <= 0 || gain <= 0) {
+            return gain;
+        }
+        float ratio = (float) ((uint) rate / 10000.0);
+        return gain + (uint) (long) ((uint) gain * (double) ratio + 1e-06);
+    }
+
     // CGameRule::ApplyPetComposeSale: a PetComposeSale event rate in 1/10000; 0 leaves the cost.
     public static long ApplySale(long cost, int rate) {
         if (rate == 0) {

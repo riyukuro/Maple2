@@ -60,6 +60,17 @@ public static class EventSaleReader {
         return int.TryParse(value1?.Trim(), out int rate) && rate > 0 ? new RankDuelRewardRate(rate) : null;
     }
 
+    // The tab the merat market opens on (value1, a tab name such as "limited"); an empty name gives no event.
+    public static MeratMarketOpenTab? MeratMarketOpenTab(string? value1) {
+        string tab = value1?.Trim() ?? string.Empty;
+        return tab.Length == 0 ? null : new MeratMarketOpenTab(tab);
+    }
+
+    // The star shop npc (value1); no number or 0 gives no event (the client's shop stays closed for 0).
+    public static StarShop? StarShop(string? value1) {
+        return int.TryParse(value1?.Trim(), out int npcId) && npcId > 0 ? new StarShop(npcId) : null;
+    }
+
     public static EventRate? Rate(string? value1) {
         return int.TryParse(value1?.Trim(), out int rate) && rate > 0 ? new EventRate(rate) : null;
     }
