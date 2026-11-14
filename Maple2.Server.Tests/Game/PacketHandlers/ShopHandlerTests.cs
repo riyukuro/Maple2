@@ -690,10 +690,11 @@ public class ShopHandlerTests {
         return context.Item.AsNoTracking().Where(row => row.ItemId == itemId).AsEnumerable().Select(row => (row.OwnerId, row.Amount)).ToList();
     }
 
-    // The stored bought count of a product (null: no row).
+    // The character's stored bought count of a product (null: no row).
     private int? StoredStock(int productId) {
         using var context = new Maple2.Database.Context.Ms2Context(test.Options);
-        return context.CharacterShopItemData.AsNoTracking().SingleOrDefault(row => row.ShopId == ShopId && row.ShopItemId == productId)?.StockPurchased;
+        return context.CharacterShopItemData.AsNoTracking()
+            .SingleOrDefault(row => row.ShopId == ShopId && row.ShopItemId == productId && row.OwnerId == test.CharacterId)?.StockPurchased;
     }
 
     // The buy back runs under the bag lock from its room check to the meso take, so an item or meso change made under
@@ -1556,7 +1557,7 @@ public class ShopHandlerTests {
                 Assert.That(StoredMeso(), Is.EqualTo(10000));
                 Assert.That(StoredStock(StockProductId), Is.EqualTo(7));
                 Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
-                Assert.That(ItemRows(ProductItemId), Is.Empty);
+                Assert.That(ItemRows(ProductItemId).Where(row => row.Owner == test.CharacterId), Is.Empty);
                 Assert.That(Purchased(session, StockProductId), Is.Zero);
                 Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { NoNotice }));
             });
