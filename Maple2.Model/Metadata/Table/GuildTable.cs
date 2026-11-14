@@ -81,4 +81,23 @@ public record GuildTable(
         int DonateCoin,
         int WinMiniGameCoin,
         int LoseMiniGameCoin);
+
+    // A member's contribution of one kind (CGuildXmlData::GetContribution, guilddef_2.cpp:661): the kind's row, 0
+    // without one (as data ingested before the table was read).
+    public int ContributionOf(string kind) {
+        return Contributions?.GetValueOrDefault(kind) ?? 0;
+    }
+}
+
+// The contribution kinds of table/guildcontribution.xml (Parse_14021a0a0, commonenum.cpp:688).
+public static class GuildContributionKind {
+    public const string Attend = "attend";
+    public const string Donation = "donation";
+    public const string WinMiniGame = "winMiniGame";
+    public const string LoseMiniGame = "loseMiniGame";
+    public const string DailyQuest = "dailyQuest";
+    public const string WeeklyQuest = "weeklyQuest";
+    public const string Raid = "raid";
+    public const string WinPvp = "winPvp";
+    public const string LosePvp = "losePvp";
 }

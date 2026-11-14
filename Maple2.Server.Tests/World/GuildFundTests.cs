@@ -66,6 +66,18 @@ public class GuildFundTests {
         return new GuildMember { GuildId = guild.Id, Info = info, Rank = rank, JoinTime = 1000 };
     }
 
+    // The guild table's contribution rows (table/guildcontribution.xml) the test gives.
+    private void SetContributions(Dictionary<string, int> contributions) {
+        test.SetTable(test.TableMetadata.GuildTable with { Contributions = contributions });
+    }
+
+    // The master's stored contribution (the master's row is made with the guild).
+    private (int Weekly, int Total) StoredContribution() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        var row = context.GuildMember.Single(row => row.CharacterId == master.CharacterId);
+        return (row.WeeklyContribution, row.TotalContribution);
+    }
+
     private int StoredFunds() {
         using GameStorage.Request db = test.Storage.Context();
         return db.GetGuild(guild.Id)!.Funds;
@@ -117,6 +129,20 @@ public class GuildFundTests {
         Assert.That(manager.SpendFund(master.CharacterId, 10), Is.Not.EqualTo(GuildError.none));
 
         Assert.That((guild.Funds, member.DailyDonationCount, member.DonationTime), Is.EqualTo((100, 0, 0L)));
+    }
+
+    // Each donation is worth the table's donation row to the member (2 here, so a donation of 3 gives 6), stored at
+    // once; a refused donation gives nothing.
+    [Test]
+    public void Donate_GivesTheTablesContributionPerDonation() {
+        SetContributions(new Dictionary<string, int> { [GuildContributionKind.Donation] = 2 });
+
+        Assert.That(manager.Donate(master.CharacterId, 3, 30, out _), Is.EqualTo(GuildError.none));
+        Assert.That((master.WeeklyContribution, master.TotalContribution), Is.EqualTo((6, 6)));
+        Assert.That(StoredContribution(), Is.EqualTo((6, 6)));
+
+        Assert.That(manager.Donate(master.CharacterId, 1, 10, out _), Is.Not.EqualTo(GuildError.none));
+        Assert.That((master.WeeklyContribution, master.TotalContribution), Is.EqualTo((6, 6)));
     }
 
     // Two donations of one member at once, each of two of the day's three: one is taken.

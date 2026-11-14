@@ -1016,6 +1016,8 @@ public class GuildManager : IDisposable {
                 GuildFund = guildFund,
             },
         });
+        // Each donation is worth the table's donation row to the member (after the locks: AddContribution takes them).
+        AddContribution(member.CharacterId, GuildContributionKind.Donation, count);
 
         return GuildError.none;
     }
@@ -1093,6 +1095,11 @@ public class GuildManager : IDisposable {
         });
 
         return GuildError.none;
+    }
+
+    // A member's contribution of one kind (table/guildcontribution.xml), times times: nothing when the kind has no row.
+    public GuildError AddContribution(long requestorId, string kind, int times = 1) {
+        return AddContribution(requestorId, TableMetadata.GuildTable.ContributionOf(kind) * times);
     }
 
     // A member's contribution earned outside the guild dialog (the guild vs game's result): the member's weekly and
