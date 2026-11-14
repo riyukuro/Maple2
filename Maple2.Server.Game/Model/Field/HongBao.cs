@@ -22,7 +22,9 @@ public class HongBao : IUpdatable {
         this.field = field;
         SourceItemId = sourceItemId;
         Owner = owner;
-        MaxUserCount = maxUserCount;
+        // Chosen here: an envelope with fewer items than users (totalCount < totalUser) has one share of 1 for each
+        // item, so no user gets a 0 or negative share. The client shows the server's count (PlayerHost UseHongBao).
+        MaxUserCount = Math.Min(maxUserCount, Math.Max(itemCount, 1));
         EndTick = startTick + (long) TimeSpan.FromSeconds(durationSec).TotalMilliseconds;
         ItemId = itemId;
         ItemCount = itemCount;

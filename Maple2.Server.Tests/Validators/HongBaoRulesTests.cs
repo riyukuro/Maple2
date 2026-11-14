@@ -114,4 +114,21 @@ public class HongBaoRulesTests {
             Assert.That(shares.Count, Is.EqualTo(6));
         }
     }
+
+    // An envelope of 3 items for 6 users gives 3 shares of 1: no share is 0 or negative, and no more is given than it
+    // holds. The KR envelopes (50 or 500 for 6) each give 6 shares of at least 1 that add up to the count.
+    [TestCase(3, 6, 3)]
+    [TestCase(1, 6, 1)]
+    [TestCase(50, 6, 6)]
+    [TestCase(500, 6, 6)]
+    public void Distributions_GiveEachShareAtLeastOne(int itemCount, int totalUser, int shares) {
+        for (int i = 0; i < 200; i++) {
+            var hongBao = new Maple2.Server.Game.Model.HongBao(null!, null!, 20300964, 1, 90000020, totalUser, 0, 300, itemCount);
+
+            Assert.That(hongBao.MaxUserCount, Is.EqualTo(shares));
+            Assert.That(hongBao.Distributions, Has.Length.EqualTo(shares));
+            Assert.That(hongBao.Distributions, Has.All.GreaterThanOrEqualTo(1));
+            Assert.That(hongBao.Distributions.Sum(), Is.EqualTo(itemCount));
+        }
+    }
 }
