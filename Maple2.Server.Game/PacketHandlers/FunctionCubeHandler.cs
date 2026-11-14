@@ -53,9 +53,9 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 }
                 for (int i = 0; i < count; i++) {
                     string interactId = packet.ReadUnicodeString();
-                    packet.ReadByte();
+                    byte via = packet.ReadByte();
                     if (command == Command.Use) {
-                        HandleUseCube(session, interactId);
+                        HandleUseCube(session, interactId, via);
                     } else {
                         HandleBeginCube(session, interactId);
                     }
@@ -98,7 +98,11 @@ public class FunctionCubeHandler : FieldPacketHandler {
         session.CubeStarted.Add(interactId);
     }
 
-    private void HandleUseCube(GameSession session, string interactId) {
+    // The byte after each cube id: 1 from the action key, the furniture state and the gathering states; 2 from a skill
+    // hit (functioncubeobject.cpp:2838) on a cube whose StateChangeAction is Attack (objectdata.cpp:150).
+    private const byte UseBySkillHit = 2;
+
+    private void HandleUseCube(GameSession session, string interactId, byte via) {
         if (!interactId.Contains('_')) {
             Logger.Error("Unexpected interactId {0}", interactId);
             return;
@@ -131,14 +135,16 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 if (fieldInteract.InteractCube.State is InteractCubeState.InUse && fieldInteract.InteractCube.InteractingCharacterId != session.CharacterId) {
                     return;
                 }
-                // The client sends this use from the cube's action key (CFunctionCubeObject::vfunc_8,
-                // functioncubeobject.cpp:615), so only for a cube by the character; a use from across the map toggled
-                // any furniture or switch of the field and counted for the controller condition each time.
-                if (!InteractRules.InReach(session.Player.Position, fieldInteract.Position, InteractRules.OtherReach)) {
+                bool isInDefaultState = fieldInteract.InteractCube.State == fieldInteract.InteractCube.Metadata.DefaultState;
+                // The client takes a cube into use from its action key (CFunctionCubeObject::vfunc_8,
+                // functioncubeobject.cpp:615), so only by the character, or from a skill hit within the skill's
+                // area; a use from across the map toggled any furniture or switch of the field and counted for the
+                // controller condition each time. A release is not checked: a player moved away from their seat
+                // (a home shrink's safe move) still gets up from it.
+                float reach = via == UseBySkillHit ? InteractRules.SkillHitReach : InteractRules.OtherReach;
+                if (isInDefaultState && !InteractRules.InReach(session.Player.Position, fieldInteract.Position, reach)) {
                     return;
                 }
-
-                bool isInDefaultState = fieldInteract.InteractCube.State == fieldInteract.InteractCube.Metadata.DefaultState;
                 long tick = Environment.TickCount64;
                 if (fieldInteract.Value.ControlType == InteractCubeControlType.Switch) {
                     // A switch has no sitting state on the client, so no second request follows.

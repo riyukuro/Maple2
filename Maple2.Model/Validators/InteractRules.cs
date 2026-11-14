@@ -27,6 +27,10 @@ public static class InteractRules {
     // Server rule: the reach of an object that is not gathered when its row's interactionDistance is not loaded
     // (data from before the ingest read it, or a row of 0).
     public const float OtherReach = 1500f;
+    // Server rule: the reach of a cube used by a skill hit (FunctionCube 5 with flag 2). The client sends it for a
+    // cube of a skill's area (CFunctionCubeService::FUN_141231730, functioncubeobject.cpp:2786-2844), so a skill's
+    // range and area away; the server keeps no skill area for that check and allows twice OtherReach.
+    public const float SkillHitReach = 2 * OtherReach;
 
     // Liftable 1: the client lifts only an object within its ActionDistance (LiftCubeAction::FUN_140957890,
     // actionkeyobject.cpp:1320; CLiftableObject::BindEntity, liftableobject.cpp:191). The flat default is 150 and the

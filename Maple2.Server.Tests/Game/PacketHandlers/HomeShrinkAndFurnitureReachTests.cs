@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -18,7 +18,8 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // RequestCube 38 / 45 (shrink the area / the height) take cubes off the plot only when the size changed. At the
 // minimum height (3) a cube of the top layer (z 3) is in bounds; the decrease kept the height and still took it off.
 // FunctionCube 5 on furniture or a switch is taken only within reach of the character (the client sends it from the
-// cube's action key, functioncubeobject.cpp:615); a use from across the map toggled it.
+// cube's action key, functioncubeobject.cpp:615); a use from across the map toggled it. A skill hit reaches farther,
+// and getting up is not checked.
 public class HomeShrinkAndFurnitureReachTests {
     private const int CubeItemId = 50200001;
 
@@ -82,6 +83,41 @@ public class HomeShrinkAndFurnitureReachTests {
     }
 
     [Test]
+    public void DecreaseHeight_SaveFails_KeepsTheHeightAndTheCubes() {
+        (GameSession session, Plot plot) = StartInHome();
+        session.Player.Value.Home.SetHeight(5);
+        var top = new Vector3B(-1, -1, 5);
+        Cube(plot, top);
+        test.FailSave = _ => true;
+
+        SendCube(session, 45);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Home.Height, Is.EqualTo(5));
+            Assert.That(plot.Cubes.Keys, Is.EqualTo(new[] { top }));
+        });
+    }
+
+    [Test]
+    public void DecreaseHeight_InThePlanner_ShrinksThePlannerOnly() {
+        (GameSession session, Plot plot) = StartInHome();
+        session.Player.Value.Home.SetHeight(5);
+        session.Player.Value.Home.EnterPlanner(PlotMode.DecorPlanner);
+        var kept = new Vector3B(-1, -1, 4);
+        Cube(plot, kept);
+        Cube(plot, new Vector3B(-2, -1, 5));
+
+        SendCube(session, 45);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Home.PlannerHeight, Is.EqualTo(4));
+            Assert.That(session.Player.Value.Home.Height, Is.EqualTo(5));
+            Assert.That(plot.Cubes.Keys, Is.EqualTo(new[] { kept }));
+        });
+    }
+
+    [Test]
     public void DecreaseArea_AtTheMinimum_KeepsTheCubes() {
         (GameSession session, Plot plot) = StartInHome();
         session.Player.Value.Home.SetArea(Constant.MinHomeArea);
@@ -96,7 +132,7 @@ public class HomeShrinkAndFurnitureReachTests {
         });
     }
 
-    private void Use(GameSession session, FieldFunctionInteract cube) {
+    private void Use(GameSession session, FieldFunctionInteract cube, byte via = 1) {
         new FunctionCubeHandler {
             FunctionCubeMetadataStorage = session.FunctionCubeMetadata,
             ServerTableMetadataStorage = test.ServerTableMetadata,
@@ -104,7 +140,7 @@ public class HomeShrinkAndFurnitureReachTests {
             writer.WriteByte(5);
             writer.WriteInt(1);
             writer.WriteUnicodeString(cube.InteractCube.Id);
-            writer.WriteByte(1);
+            writer.WriteByte(via);
         }));
     }
 
@@ -113,13 +149,47 @@ public class HomeShrinkAndFurnitureReachTests {
     [TestCase(InteractCubeControlType.Switch, InteractRules.OtherReach + InteractRules.ReachSlack + 500f, false, TestName = "Switch_AcrossTheMap_NotTaken")]
     public void Use_TakenOnlyInReach(InteractCubeControlType control, float distance, bool taken) {
         (GameSession session, _) = StartInHome();
-        var interact = new InteractCube(new Vector3B(0, 0, 0), new FunctionCubeMetadata(CubeItemId, 0, ConfigurableCubeType.None,
-            InteractCubeState.Available, control, [], 0, null));
-        FieldFunctionInteract cube = test.AddFunctionCube(interact);
-        cube.Position = session.Player.Position + new Vector3(distance, 0, 0);
+        (InteractCube interact, FieldFunctionInteract cube) = AddCube(session, control, distance);
 
         Use(session, cube);
 
         Assert.That(interact.State, Is.EqualTo(taken ? InteractCubeState.InUse : InteractCubeState.Available));
+    }
+
+    private (InteractCube, FieldFunctionInteract) AddCube(GameSession session, InteractCubeControlType control, float distance) {
+        var interact = new InteractCube(new Vector3B(0, 0, 0), new FunctionCubeMetadata(CubeItemId, 0, ConfigurableCubeType.None,
+            InteractCubeState.Available, control, [], 0, null));
+        FieldFunctionInteract cube = test.AddFunctionCube(interact);
+        cube.Position = session.Player.Position + new Vector3(distance, 0, 0);
+        return (interact, cube);
+    }
+
+    // A skill hit (flag 2) reaches as far as a skill's area: within SkillHitReach, not beyond.
+    [TestCase(InteractRules.OtherReach + InteractRules.ReachSlack + 500f, true, TestName = "Switch_SkillHitBeyondTheActionKeyReach_Taken")]
+    [TestCase(InteractRules.SkillHitReach + InteractRules.ReachSlack + 500f, false, TestName = "Switch_SkillHitAcrossTheMap_NotTaken")]
+    public void SkillHit_TakenWithinTheSkillReach(float distance, bool taken) {
+        (GameSession session, _) = StartInHome();
+        (InteractCube interact, FieldFunctionInteract cube) = AddCube(session, InteractCubeControlType.Switch, distance);
+
+        Use(session, cube, via: 2);
+
+        Assert.That(interact.State, Is.EqualTo(taken ? InteractCubeState.InUse : InteractCubeState.Available));
+    }
+
+    // A seated player moved away (a home shrink's safe move) still gets up: the seat is free for the others.
+    [Test]
+    public void Furniture_InUse_ReleasedFromAfar() {
+        (GameSession session, _) = StartInHome();
+        (InteractCube interact, FieldFunctionInteract cube) = AddCube(session, InteractCubeControlType.None, 0f);
+        Use(session, cube);
+        Assert.That(interact.State, Is.EqualTo(InteractCubeState.InUse));
+        cube.Position = session.Player.Position + new Vector3(InteractRules.OtherReach + InteractRules.ReachSlack + 500f, 0, 0);
+
+        Use(session, cube);
+
+        Assert.Multiple(() => {
+            Assert.That(interact.State, Is.EqualTo(InteractCubeState.Available));
+            Assert.That(interact.InteractingCharacterId, Is.EqualTo(0));
+        });
     }
 }
