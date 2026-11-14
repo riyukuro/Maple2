@@ -184,7 +184,9 @@ public class PlayerCommand : GameCommand {
 
         private void Handle(InvocationContext ctx, long exp) {
             try {
-                session.Exp.AddExp(ExpType.expDrop, exp);
+                // The amount itself. AddExp(ExpType.expDrop, exp) bound the long to the float multiplier of the expDrop
+                // row: at level 50 on KR, `exp 1000` gave 248726 x 1000 x 0.4 exp, two levels.
+                session.Exp.AddExp(exp);
 
                 ctx.ExitCode = 0;
             } catch (SystemException ex) {
