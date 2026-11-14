@@ -74,10 +74,12 @@ public class FieldPropertyUserTagSymbol : IFieldProperty {
 public class FieldPropertySightRange : IFieldProperty {
     public FieldProperty Type => FieldProperty.SightRange;
 
-    public float Range { get; set; } = 450;
-    public float[] Fades { get; init; } = new float[3];
-    public bool Unknown { get; set; }
-    public byte Opacity { get; set; }
+    // Defaults of the client's FieldPropertySightRange ctor: the sight radius, the height limits up and down, the fade
+    // band, two flags and the fog's alpha percent.
+    public float Range { get; set; } = 60000;
+    public float[] Fades { get; init; } = [30000, 30000, 115];
+    public bool Unknown { get; set; } = true;
+    public byte Opacity { get; set; } = 45;
     public bool Opaque { get; set; } = false;
 
     public void WriteTo(IByteWriter writer) {

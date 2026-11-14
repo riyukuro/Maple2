@@ -85,15 +85,25 @@ public partial class TriggerContext {
 
     public void SightRange(bool enabled, int range, int rangeZ, int border) {
         DebugLog("[SightRange] enabled:{Enabled}, range:{Range}, rangeZ:{RangeZ}, border:{Border}", enabled, range, rangeZ, border);
-        var sightRange = (Field.GetFieldProperty(FieldProperty.SightRange) as FieldPropertySightRange)!;
-        for (int i = 0; i < range; i++) {
-            sightRange.Fades[i] = rangeZ;
+        // The client limits sight while a SightRange property exists, whatever its flags (WorldService::FUN_141bd6810,
+        // worldservice_1.cpp:7785: no property resets the limit), so turning it off removes the property.
+        if (!enabled) {
+            Field.RemoveFieldProperty(FieldProperty.SightRange);
+            return;
         }
 
-        sightRange.Opacity = (byte) border;
-        sightRange.Opaque = false;
-        sightRange.Unknown = enabled;
-        Broadcast(FieldPropertyPacket.Add(sightRange));
+        // Fades are the height limits up and down and the fade band (worldservice_1.cpp:7846-7848); a missing range_z or
+        // border keeps the client's default (FieldPropertySightRange ctor, fieldproperty.cpp:150). Chosen here: range
+        // counts blocks of 150 (KR always sends 3, the 450 the server used before).
+        var sightRange = new FieldPropertySightRange { Range = range * 150f };
+        if (rangeZ > 0) {
+            sightRange.Fades[0] = rangeZ;
+            sightRange.Fades[1] = rangeZ;
+        }
+        if (border > 0) {
+            sightRange.Opacity = (byte) border;
+        }
+        Field.AddFieldProperty(sightRange);
     }
 
     // The PvP zone of a map script. Its type is the client's PvP mode (CPvPInfo m_nMode): 1 the Red Arena's face-offs,

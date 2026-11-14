@@ -1825,6 +1825,31 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That((reader.ReadByte(), reader.ReadByte(), reader.ReadFloat()), Is.EqualTo(((byte) 1, (byte) 1, -0.5f)));
     }
 
+    // sight_range (13 KR uses, the survival maps): enable adds the SightRange (6) property as the client reads it
+    // (radius, up, down, fade band, flag, alpha, flag); a missing range_z or border keeps the client's defaults, and
+    // enable="0" removes the property, since the client limits sight while one exists.
+    [Test]
+    public void SightRange_AddsAndRemovesTheProperty() {
+        StartWithProperties();
+
+        Action("""<action name="sight_range" enable="1" range="3" border="75" range_z="300" />""");
+        ByteReader reader = Sent(SendOp.FieldProperty).Single();
+        Assert.That((reader.ReadByte(), reader.ReadByte()), Is.EqualTo(((byte) 1, (byte) 6)));
+        Assert.That(new[] { reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat() },
+            Is.EqualTo(new[] { 450f, 300f, 300f, 115f }));
+        Assert.That((reader.ReadBool(), reader.ReadByte(), reader.ReadBool()), Is.EqualTo((true, (byte) 75, false)));
+
+        Action("""<action name="sight_range" enable="0" range="3" />""");
+        Assert.That(PropertySent(), Is.EqualTo(((byte) 2, (byte) 6)));
+
+        Action("""<action name="sight_range" enable="1" range="3" />""");
+        reader = Sent(SendOp.FieldProperty).Single();
+        Assert.That((reader.ReadByte(), reader.ReadByte()), Is.EqualTo(((byte) 1, (byte) 6)));
+        Assert.That(new[] { reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat() },
+            Is.EqualTo(new[] { 450f, 30000f, 30000f, 115f }));
+        Assert.That((reader.ReadBool(), reader.ReadByte(), reader.ReadBool()), Is.EqualTo((true, (byte) 45, false)));
+    }
+
     // set_ambient_light (82): the AmbientLight (8) property is added.
     [Test]
     public void SetAmbientLight_AddsTheProperty() {
