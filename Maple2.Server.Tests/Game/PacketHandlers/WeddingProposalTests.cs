@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -11,6 +11,7 @@ using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using StoredMarriage = Maple2.Database.Model.Marriage;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -22,6 +23,7 @@ public class WeddingProposalTests {
     private const byte Reply = 4;
     private const short Accept = 1;
 
+    private readonly MarriageFault fault = new();
     private TestGameSession proposer = null!;
     private TestGameSession target = null!;
     private readonly WeddingHandler handler = new();
@@ -31,6 +33,7 @@ public class WeddingProposalTests {
         DbContextOptions options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .AddInterceptors(fault)
             .Options;
         proposer = new TestGameSession(options, Gender.Male);
         target = new TestGameSession(options, Gender.Female);
@@ -131,5 +134,38 @@ public class WeddingProposalTests {
         Assert.That(target.Session.Marriage.Marriage.Status, Is.Not.EqualTo(MaritalStatus.Engaged));
         using GameStorage.Request db = proposer.Storage.Context();
         Assert.That(db.GetMarriage(proposer.CharacterId), Is.Null);
+    }
+
+    // The marriage row is not stored: the proposer keeps the ring, nobody is engaged, the one who accepts gets the
+    // system error and the proposer a no.
+    [Test]
+    public void Accept_WhenTheMarriageIsNotStored_KeepsTheRing() {
+        SendPropose();
+        proposer.TakeSent();
+        target.TakeSent();
+        fault.Fail = true;
+
+        SendAccept();
+        fault.Fail = false;
+        Assert.That(Rings(proposer), Is.EqualTo(1));
+        Assert.That(Sent(target), Is.EqualTo(new[] { Hex(WeddingPacket.Error(WeddingError.s_wedding_result_err_system)) }));
+        Assert.That(Sent(proposer), Is.EqualTo(new[] { Hex(WeddingPacket.Error(WeddingError.s_wedding_result_decline_propose)) }));
+        Assert.That(proposer.Session.Marriage.Marriage.Status, Is.Not.EqualTo(MaritalStatus.Engaged));
+        Assert.That(target.Session.Marriage.Marriage.Status, Is.Not.EqualTo(MaritalStatus.Engaged));
+        using GameStorage.Request db = proposer.Storage.Context();
+        Assert.That(db.GetMarriage(proposer.CharacterId), Is.Null);
+    }
+
+    // Fails every save that adds a marriage row while set.
+    private sealed class MarriageFault : SaveChangesInterceptor {
+        public bool Fail;
+
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
+            if (Fail && eventData.Context != null && eventData.Context.ChangeTracker.Entries<StoredMarriage>()
+                    .Any(entry => entry.State == EntityState.Added)) {
+                throw new DbUpdateException("The test made this save fail");
+            }
+            return result;
+        }
     }
 }

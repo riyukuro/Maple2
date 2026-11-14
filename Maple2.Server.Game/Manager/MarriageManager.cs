@@ -842,9 +842,11 @@ public sealed class MarriageManager {
 
     // This player accepts the proposal of target. The proposal uses up one ring of the proposer, the only one the
     // client asks for (WeddingManager::CheckPropose, weddingmanager.cpp:1047); the one who accepts needs none.
+    // The ring is taken only once the marriage row is stored: a save that fails leaves the ring with the proposer
+    // (it used to be taken first and lost), and a ring gone by then takes the stored row back out.
     public WeddingError AcceptProposal(FieldPlayer target) {
         Item? ring = target.Session.Item.Inventory.Find(Constant.ProposalItemId).FirstOrDefault();
-        if (ring == null || !target.Session.Item.Inventory.Consume(ring.Uid, 1)) {
+        if (ring == null) {
             return WeddingError.s_wedding_result_err_not_find_propose_item;
         }
 
@@ -852,6 +854,10 @@ public sealed class MarriageManager {
         Marriage? marriage = db.CreateMarriage(session.CharacterId, target.Session.CharacterId);
         if (marriage == null) {
             return WeddingError.s_wedding_result_err_system;
+        }
+        if (!target.Session.Item.Inventory.Consume(ring.Uid, 1)) {
+            db.DeleteMarriage(marriage.Id);
+            return WeddingError.s_wedding_result_err_not_find_propose_item;
         }
         Marriage = marriage;
         session.Send(WeddingPacket.Engaged(Marriage));
