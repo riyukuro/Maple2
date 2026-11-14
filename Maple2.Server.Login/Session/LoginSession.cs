@@ -180,6 +180,12 @@ public class LoginSession : Core.Network.Session {
         // A step that fails sends the create error and returns; the request's dispose rolls back what was written.
         Character? character = db.CreateCharacter(createCharacter);
         if (character == null) {
+            // The name check passed before the save; a create of the same name that saved in between makes this save
+            // hit the unique name index. The client gets the taken-name answer of the check, not the system error.
+            if (IsNameTaken(createCharacter.Name)) {
+                Send(CharacterListPacket.CreateError(s_char_err_already_taken));
+                return;
+            }
             Logger.Error("Failed to create character {Name} of account {AccountId}", createCharacter.Name, AccountId);
             Send(CharacterListPacket.CreateError(s_char_err_system));
             return;
@@ -221,6 +227,12 @@ public class LoginSession : Core.Network.Session {
             new Dictionary<ItemGroup, List<Item>> {
                 { ItemGroup.Outfit, outfits },
             }));
+    }
+
+    // Read on a new context: the failed save leaves its own context with the refused row tracked.
+    private bool IsNameTaken(string name) {
+        using GameStorage.Request db = GameStorage.Context();
+        return db.GetCharacterId(name) != 0;
     }
 
     #region Dispose

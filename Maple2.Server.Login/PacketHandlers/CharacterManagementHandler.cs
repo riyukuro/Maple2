@@ -192,12 +192,13 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             return;
         }
 
-        // The client sends gender 0 or 1; the job must be one the job table (job.xml) holds.
+        // The client sends gender 0 or 1; the job must be one of the eleven the client's create reader allows
+        // (job.xml also holds the beginner row) and one the job table holds.
         if (!CharacterCreateRules.IsCreateGender(gender)) {
             session.Send(CharacterListPacket.CreateError(s_char_err_system));
             return;
         }
-        if (!TableMetadata.JobTable.Entries.TryGetValue(jobCode, out JobTable.Entry? entry)) {
+        if (!CharacterCreateRules.IsCreateJob(jobCode) || !TableMetadata.JobTable.Entries.TryGetValue(jobCode, out JobTable.Entry? entry)) {
             session.Send(CharacterListPacket.CreateError(s_char_err_job_forbidden));
             return;
         }

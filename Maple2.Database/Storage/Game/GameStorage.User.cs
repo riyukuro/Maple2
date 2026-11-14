@@ -92,7 +92,9 @@ public partial class GameStorage {
                 return (null, null);
             }
 
-            IList<Character>? characters = model.Characters?.Select<Model.Character, Character>(c => c).ToList();
+            // In creation order: the client lists the characters as sent, and appends a new one at the end
+            // (UICharacterListDialog::OnCharacterListPacket, modes 0 and 1).
+            IList<Character>? characters = model.Characters?.OrderBy(c => c.Id).Select<Model.Character, Character>(c => c).ToList();
             if (characters != null) {
                 foreach (Character character in characters) {
                     character.AchievementInfo = GetAchievementInfo(accountId, character.Id);
