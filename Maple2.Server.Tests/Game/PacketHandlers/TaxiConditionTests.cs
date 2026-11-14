@@ -9,6 +9,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -52,13 +53,18 @@ public class TaxiConditionTests {
         };
     }
 
+    // A field's entities with a taxi station at the origin.
+    private static MapEntityMetadata Station() {
+        var entities = (MapEntityMetadata) RuntimeHelpers.GetUninitializedObject(typeof(MapEntityMetadata));
+        typeof(MapEntityMetadata).GetField("<Taxi>k__BackingField", Any)!.SetValue(entities, new TaxiStation(Vector3.Zero, Vector3.Zero));
+        return entities;
+    }
+
     // The taxi stop's entities: a station, which the ride needs.
     private static MapEntityStorage Entities() {
         var storage = (MapEntityStorage) RuntimeHelpers.GetUninitializedObject(typeof(MapEntityStorage));
         var cache = new LRUCache<string, MapEntityMetadata>(16, 1);
-        var entities = (MapEntityMetadata) RuntimeHelpers.GetUninitializedObject(typeof(MapEntityMetadata));
-        typeof(MapEntityMetadata).GetField("<Taxi>k__BackingField", Any)!.SetValue(entities, new TaxiStation(Vector3.Zero, Vector3.Zero));
-        cache.AddReplace(XBlock, entities);
+        cache.AddReplace(XBlock, Station());
         typeof(MetadataStorage<string, MapEntityMetadata>).GetField("Cache", Any)!.SetValue(storage, cache);
         return storage;
     }
@@ -70,6 +76,9 @@ public class TaxiConditionTests {
         test.SetTable(new FieldMetaTable(new Dictionary<int, IReadOnlyList<int>> { [From] = [To] }, new Dictionary<int, IReadOnlyList<int>>()));
         GameSession session = test.Start();
         test.EnterMap(from);
+        // The client rides only from its field's station: the player stands on it.
+        typeof(FieldManager).GetField("<Entities>k__BackingField", Any)!.SetValue(session.Field, Station());
+        session.Player.Position = Vector3.Zero;
         session.Player.Value.Character.MapId = From;
         session.Player.Value.Unlock.Taxis.Add(To);
         session.Currency.Meso = meso;
