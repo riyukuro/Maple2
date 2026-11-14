@@ -143,12 +143,9 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
     }
 
     // UIDungeonSearchUnitedReward::SendRoomDungeon (uidungeonhelper.cpp:291): the confirmed reset of the united
-    // reward's weekly clear count; no body. The client's refusals (DungeonRecordManagerCli::OnError cases 0x1f to
-    // 0x21, dungeonrecordcli.cpp:323) say the reset is once a week for the whole account and only at the weekly
-    // limit. The server keeps no account-wide mark of a used reset, and the client does not show whether the reset
-    // has a price, so no count is reset: the answer is the client's text for the reset being switched off (0x21).
+    // reward's weekly clear count; no body (DungeonManager.ResetUnitedReward).
     private static void HandleResetUnitedReward(GameSession session) {
-        session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_error_shutdown_united_reawrd_reset));
+        session.Dungeon.ResetUnitedReward();
     }
 
     // The hall buttons of the dungeon search window (DungeonHallRules): the player moves to the group's hall field

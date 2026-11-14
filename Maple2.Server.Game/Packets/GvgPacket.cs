@@ -8,6 +8,7 @@ namespace Maple2.Server.Game.Packets;
 // count, then per group its kind (int) and the kind's body. Kinds 1, 7, 25, 34, 42 and 43; any other is an assert.
 public static class GvgPacket {
     private const int ContentShutdownKind = 7;
+    private const int DungeonRewardRatesKind = 42;
 
     // Kind 7, the content shutdown flags: a count (short), then the shut contents (short each). The client clears its
     // flags and sets each one listed (CContentShutdownManager::FUN_140cca720, CContentShutdown::Decode,
@@ -20,6 +21,18 @@ public static class GvgPacket {
         foreach (short content in contents) {
             pWriter.WriteShort(content);
         }
+
+        return pWriter;
+    }
+
+    // Kind 42, the united reward boost's rates (DungeonRecordManagerCli::OnRates, dungeonrecordcli.cpp:466): float exp
+    // rate, float meso rate.
+    public static ByteWriter DungeonRewardRates(float expRate, float mesoRate) {
+        var pWriter = Packet.Of(SendOp.Gvg);
+        pWriter.WriteInt(1);
+        pWriter.WriteInt(DungeonRewardRatesKind);
+        pWriter.WriteFloat(expRate);
+        pWriter.WriteFloat(mesoRate);
 
         return pWriter;
     }

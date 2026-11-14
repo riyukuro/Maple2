@@ -119,6 +119,12 @@ namespace Maple2.Server.World.Migrations
                     b.Property<int>("SurvivalSilverLevelRewardClaimed")
                         .HasColumnType("int");
 
+                    b.Property<long>("UnitedRewardResetCharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("UnitedRewardResetExpiry")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("Username")
                         .IsRequired()
                         .HasColumnType("varchar(255)");

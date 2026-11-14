@@ -577,6 +577,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(CashPacket.Enabled(true));
         // Gvg: the content shutdown flags, cleared and set again at every game server entry (ContentShutdownConfig).
         Send(GvgPacket.ContentShutdown(ContentShutdownConfig.Contents));
+        // Gvg kind 42: the rates of the united reward boost (DungeonRoomPacket.BoostState, sent with the dungeon records).
+        Send(GvgPacket.DungeonRewardRates(DungeonRoomRules.UnitedRewardBoostExpRate, DungeonRoomRules.UnitedRewardBoostMesoRate));
         // Pvp
         Send(StateSyncPacket.SyncNumber(0));
         // SyncWorld

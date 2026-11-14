@@ -106,6 +106,48 @@ public class DungeonManager {
         session.Send(DungeonRoomPacket.Load(Records));
         session.Send(DungeonRoomPacket.RankRewards(RankRewards));
         session.Send(FieldEntrancePacket.Load(EnterLimits));
+        Account account = session.Player.Value.Account;
+        session.Send(DungeonRoomPacket.BoostState(account.UnitedRewardResetExpiry, account.UnitedRewardResetCharacterId));
+    }
+
+    // The reset of the united weekly count (RoomDungeon 0x15, DungeonRoomRules.UnitedRewardResetError): record 1006's
+    // weekly count goes to 0, and the account keeps the character and the end of its reward week, so no character of
+    // the account resets again before then and the client shows the boost (0x16) for that character. The record and
+    // the account's mark are stored at once, together; a failed store keeps both as they were and answers nothing.
+    // The client shows no price for the reset, so it is free. The steps earned again pay what they pay the first time.
+    public void ResetUnitedReward() {
+        Account account = session.Player.Value.Account;
+        long now = DateTime.Now.ToEpochSeconds();
+        Records.TryGetValue(DungeonRoomRules.UnitedRewardRoomId, out DungeonRecord? record);
+        int weeklyMax = 0;
+        if (record != null && session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(DungeonRoomRules.UnitedRewardRoomId, out DungeonRoomMetadata? metadata)) {
+            weeklyMax = metadata.Reward.Count + DungeonRoomRules.BonusCountNow(record, now);
+        }
+        DungeonRoomError? error = DungeonRoomRules.UnitedRewardResetError(session.Player.Value.Character.Level,
+            session.ServerTableMetadata.ConstantsTable.DungeonUnitedRewardCountResetLevel, RewardCount(record, now), weeklyMax,
+            account.UnitedRewardResetExpiry, now);
+        if (error != null || record == null) {
+            session.Send(DungeonRoomPacket.Error(error ?? DungeonRoomError.s_room_dungeon_error_still_have_united_reawrd));
+            return;
+        }
+
+        var clears = record.UnionClears;
+        (long characterId, long expiry) = (account.UnitedRewardResetCharacterId, account.UnitedRewardResetExpiry);
+        record.UnionClears = 0;
+        account.UnitedRewardResetCharacterId = session.CharacterId;
+        account.UnitedRewardResetExpiry = record.UnionCooldownTimestamp;
+        if (!session.TrySavePurchase(db => db.SaveUnitedRewardReset(session.Player)
+                && db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, record))) {
+            record.UnionClears = clears;
+            account.UnitedRewardResetCharacterId = characterId;
+            account.UnitedRewardResetExpiry = expiry;
+            logger.Error("Failed to store the united reward reset of {CharacterId}", session.CharacterId);
+            return;
+        }
+
+        session.Send(DungeonRoomPacket.Update(record));
+        session.Send(DungeonRoomPacket.BoostState(account.UnitedRewardResetExpiry, account.UnitedRewardResetCharacterId));
+        session.Send(DungeonRoomPacket.UnitedRewardReset());
     }
 
     public void ResetDailyClears() {

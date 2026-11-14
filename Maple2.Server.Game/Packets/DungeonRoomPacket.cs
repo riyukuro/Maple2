@@ -17,6 +17,8 @@ public static class DungeonRoomPacket {
         Error = 18,
         RankRewards = 19, // the whole map
         RankReward = 20, // one reward (OnAddReward, dungeonrecordcli.cpp:451)
+        BoostState = 22, // OnBoostState (dungeonrecordcli.cpp:459)
+        UnitedRewardReset = 23, // the search and reward windows' own handlers; the record manager skips it
     }
 
     public static ByteWriter Load(IDictionary<int, DungeonRecord> records) {
@@ -68,6 +70,28 @@ public static class DungeonRoomPacket {
         pWriter.Write<Command>(Command.Error);
         pWriter.Write<DungeonRoomError>(error);
         pWriter.WriteInt(arg);
+
+        return pWriter;
+    }
+
+    // The boost of the account's united reward reset (DungeonRecordManagerCli::OnBoostState): u64 expiry, i64 character
+    // id. The client applies the rates (GvgPacket.DungeonRewardRates) only for that character until the expiry
+    // (IsBoostActive, dungeonrecordcli.cpp:528); 0, 0 for none.
+    public static ByteWriter BoostState(long expiry, long characterId) {
+        var pWriter = Packet.Of(SendOp.RoomDungeon);
+        pWriter.Write<Command>(Command.BoostState);
+        pWriter.WriteLong(expiry);
+        pWriter.WriteLong(characterId);
+
+        return pWriter;
+    }
+
+    // The united weekly count was reset: no body. The open dungeon search window (UIDungeonSearchDialog::
+    // OnUnitedRewardReset, uidungeonsearchdialog.cpp:625) or reward popup (uidungeonpopuprewarddialog.cpp:97) redraws
+    // the united reward from record 1006 and shows s_dungeonSearch_success_united_reward_reset.
+    public static ByteWriter UnitedRewardReset() {
+        var pWriter = Packet.Of(SendOp.RoomDungeon);
+        pWriter.Write<Command>(Command.UnitedRewardReset);
 
         return pWriter;
     }

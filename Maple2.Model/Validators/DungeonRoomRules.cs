@@ -347,6 +347,32 @@ public static class DungeonRoomRules {
     public static int? UnitedWeeklyStep(IReadOnlyDictionary<int, int> steps, int countBefore, int countAfter) =>
         countAfter > countBefore && steps.TryGetValue(countAfter, out int rewardId) ? rewardId : null;
 
+    // The united weekly reward's record (DungeonRecordManagerCli::GetRecord(0x3ee), uidungeonhelper.cpp:233): the room
+    // every united dungeon's clear counts on (unionRewardID), its weekly count the steps of UnitedWeeklyRewards.
+    public const int UnitedRewardRoomId = 1006;
+
+    // The rates the client applies to the united weekly steps' meso and exp it shows while the boost of a reset is
+    // active (Gvg kind 42, DungeonRecordManagerCli::OnRates; ApplyBoostRates, uidungeonhelper.cpp:158). Neither the
+    // client nor the server pack has a value: 1, so the window shows what the steps give.
+    public const float UnitedRewardBoostExpRate = 1f;
+    public const float UnitedRewardBoostMesoRate = 1f;
+
+    // The reset of the united weekly count (RoomDungeon 0x15 from UIDungeonSearchUnitedReward::SendRoomDungeon,
+    // uidungeonhelper.cpp:291), as the client's confirm box and refusals tell (DungeonRecordManagerCli::OnError,
+    // dungeonrecordcli.cpp:428): once a week for the whole account (0x1f while the account's last reset is in its
+    // week), and only at the weekly limit (0x20). The server pack's DungeonUnitedRewardCountResetLevel (50) is the
+    // level a character needs; the client tests none and has no text for it, so a lower one gets 0x20 (no united
+    // dungeon is open below it). Null: the reset is allowed.
+    public static DungeonRoomError? UnitedRewardResetError(int level, int resetLevel, int weeklyCount, int weeklyMax, long accountResetExpiry, long now) {
+        if (now < accountResetExpiry) {
+            return DungeonRoomError.s_room_dungeon_error_used_reset_united_reward;
+        }
+        if (level < resetLevel || weeklyMax <= 0 || weeklyCount < weeklyMax) {
+            return DungeonRoomError.s_room_dungeon_error_still_have_united_reawrd;
+        }
+        return null;
+    }
+
     // The weekly reset zeroes a record's period counts only when its own period is over (the record's
     // UnionCooldownTimestamp, the day the room's cooldownValue names, which the client counts down to), as
     // RewardCount reads them; a record still in its period keeps them.

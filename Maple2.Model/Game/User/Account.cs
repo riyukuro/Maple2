@@ -40,6 +40,10 @@ public class Account {
     // The Maple Survival period (maplesurvivalopenperiod id) the survival level, exp and pass above belong to; 0 when
     // none was recorded yet (SurvivalRules.EnterSeason).
     public int SurvivalSeason { get; set; }
+    // The account's weekly reset of the united dungeon reward count (DungeonRoomRules.UnitedRewardResetError): the
+    // character that used it and the end of that character's reward week; 0 when none was used.
+    public long UnitedRewardResetCharacterId { get; set; }
+    public long UnitedRewardResetExpiry { get; set; }
     public bool Online { get; set; }
     public AdminPermissions AdminPermissions { get; set; }
 
