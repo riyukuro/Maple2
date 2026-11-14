@@ -1576,18 +1576,12 @@ public sealed partial class GameSession : Core.Network.Session {
         // Snapshot values needed after teardown
         long fieldTickSnapshot = Field?.FieldTick ?? Environment.TickCount64;
 
-        if (State == SessionState.Connected) {
-            PlayerInfo.SendUpdate(new PlayerUpdateRequest {
-                AccountId = AccountId,
-                CharacterId = CharacterId,
-                LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
-                MapId = 0,
-                Channel = -1,
-                Async = false,
-            });
-
-            Party.CheckDisband();
-        }
+        // A session that plays here tells the World it went offline only after its last save: while the World still
+        // has it online, a login of the account kicks it (World.Disconnect), and the channel answers that kick only
+        // once this Dispose has ended (ChannelService.Disconnect), so the next load reads what the save stored. Told
+        // before the save, the login went on at once, and a load that claimed the account first (ClaimSession) left
+        // that save writing nothing: what the session used up since its timed save came back.
+        bool sendOffline = State == SessionState.Connected;
 
         // A host that leaves the channel (a logout, a channel change) ends its OX quiz event: the stadium script runs
         // its cancel.
@@ -1598,6 +1592,9 @@ public sealed partial class GameSession : Core.Network.Session {
         // The character was never loaded (an arrival with a used or unknown token): there is nothing to save.
         if (Player == null) {
             try {
+                if (sendOffline) {
+                    SendOffline();
+                }
                 Scheduler.Stop();
                 if (OnLoop != null) OnLoop -= Scheduler.InvokeAll;
                 server.OnDisconnected(this);
@@ -1607,6 +1604,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 Logger.Error(ex, "Error during cleanup of a session without a character");
             } finally {
                 Interlocked.Exchange(ref gameDisposeState, 2);
+                server?.OnClosed(this);
             }
             return;
         }
@@ -1637,6 +1635,9 @@ public sealed partial class GameSession : Core.Network.Session {
         } catch (Exception ex) {
             Logger.Error(ex, "Error during session cleanup for {Player}", PlayerName);
         } finally {
+            if (sendOffline) {
+                try { SendOffline(); } catch (Exception ex) { Logger.Error(ex, "Error sending the logout of {Player}", PlayerName); }
+            }
             SafeDispose(Guild);
             SafeDispose(Buddy);
             SafeDispose(Mentoring);
@@ -1649,8 +1650,22 @@ public sealed partial class GameSession : Core.Network.Session {
             }
             try { Player.Dispose(); } catch (Exception ex) { Logger.Error(ex, "Error disposing player for {Player}", PlayerName); }
             Interlocked.Exchange(ref gameDisposeState, 2);
+            server?.OnClosed(this);
         }
         return;
+
+        void SendOffline() {
+            PlayerInfo.SendUpdate(new PlayerUpdateRequest {
+                AccountId = AccountId,
+                CharacterId = CharacterId,
+                LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
+                MapId = 0,
+                Channel = -1,
+                Async = false,
+            });
+
+            Party.CheckDisband();
+        }
 
         void SafeDispose(IDisposable? disp) {
             if (disp == null) return;
@@ -1716,6 +1731,20 @@ public sealed partial class GameSession : Core.Network.Session {
 
     public override string ToString() {
         return $"GameSession: {Player?.Value?.Character?.Name} ({CharacterId}) [{State}] // Account: {AccountId}, Machine: {MachineId}, Channel: {Player?.Value?.Character?.Channel}, Map: {Player?.Value?.Character?.MapId}]";
+    }
+
+    // True once Dispose has ended (its last save stored or given up), waiting up to `timeout` for a Dispose that runs
+    // on another thread (the client's own close, a move's disconnect). False after the timeout, or for a session
+    // whose Dispose has not started by then.
+    internal bool WaitDisposed(TimeSpan timeout) {
+        long end = Environment.TickCount64 + (long) timeout.TotalMilliseconds;
+        while (Volatile.Read(ref gameDisposeState) != 2) {
+            if (Environment.TickCount64 >= end) {
+                return false;
+            }
+            Thread.Sleep(10);
+        }
+        return true;
     }
 
     // Runs once: the save before a migration is not tried again when the session is disposed, since the client was

@@ -26,6 +26,11 @@ public class GameServer : Server<GameSession> {
     private readonly FieldManager.Factory fieldFactory;
     private readonly HashSet<GameSession> connectingSessions;
     private readonly ConcurrentDictionary<long, GameSession> sessions;
+    // The sessions that left `sessions` and whose Dispose still runs (its last save), by character: a kick from the
+    // World (ChannelService.Disconnect) finds them here and waits for that save. Made on first use (a test's
+    // server is uninitialized).
+    private ConcurrentDictionary<long, GameSession>? closing;
+    private ConcurrentDictionary<long, GameSession> Closing => LazyInitializer.EnsureInitialized(ref closing);
     private readonly List<GameEvent> endedOpenPeriods = [];
     private readonly ImmutableList<SystemBanner> bannerCache;
     private readonly ConcurrentDictionary<int, PremiumMarketItem> premiumMarketCache;
@@ -91,8 +96,20 @@ public class GameServer : Server<GameSession> {
         // OnDisconnected would remove the new session, leaving the player unregistered
         // and causing all subsequent heartbeats to fail.
         // For cross-channel migration this is a non-issue since each server has its own dict.
-        sessions.TryRemove(KeyValuePair.Create(session.CharacterId, session));
+        if (session.CharacterId > 0 && sessions.TryRemove(KeyValuePair.Create(session.CharacterId, session))) {
+            Closing[session.CharacterId] = session;
+        }
         GameEvents.Drop(session);
+    }
+
+    // The end of a session's Dispose (GameSession.Dispose, after its last save).
+    public void OnClosed(GameSession session) {
+        Closing.TryRemove(KeyValuePair.Create(session.CharacterId, session));
+    }
+
+    // The character's session that plays here, or else the one whose Dispose still runs.
+    public bool GetSessionOrClosing(long characterId, [NotNullWhen(true)] out GameSession? session) {
+        return sessions.TryGetValue(characterId, out session) || Closing.TryGetValue(characterId, out session);
     }
 
     public bool GetSession(long characterId, [NotNullWhen(true)] out GameSession? session) {
