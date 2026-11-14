@@ -485,10 +485,11 @@ public sealed class AgentNavigation {
         return SetPathTo(end);
     }
 
-    // True when the npc stands on the navmesh but no navmesh poly lies near the goal, so PathTo fails for it.
+    // True when the goal is off the navmesh (no poly lies near it, so PathTo fails) or the npc itself stands off it
+    // after a flown leg (no path starts there). Chosen here: such an npc flies the leg back, as it flew off.
     public bool GoalOffMesh(Vector3 goal) {
-        if (!field.FindNearestPoly(agent.npos, out long startRef, out _) || startRef == 0) {
-            return false;
+        if (!NpcPoly(out long startRef, out _) || startRef == 0) {
+            return true;
         }
         return field.FindNearestPoly(goal, out long endRef, out _) && endRef == 0;
     }
@@ -496,13 +497,20 @@ public sealed class AgentNavigation {
     // True when the npc and the goal both stand on the navmesh but no path joins them (a ledge one block up, a gap):
     // PathTo then walks the npc only to the edge of its own part of the mesh.
     public bool GoalCutOff(Vector3 goal) {
-        if (!field.FindNearestPoly(agent.npos, out long startRef, out RcVec3f start) || startRef == 0) {
+        if (!NpcPoly(out long startRef, out RcVec3f start) || startRef == 0) {
             return false;
         }
         if (!field.FindNearestPoly(goal, out long endRef, out RcVec3f end) || endRef == 0) {
             return false;
         }
         return PathCutOff(crowd.GetNavMeshQuery(), crowd.GetFilter(0), startRef, endRef, start, end);
+    }
+
+    // The poly under the npc's own position. The agent is not used: a flown leg (MovementState's fly advance) moves
+    // the npc and leaves the agent where the last walk ended, so checks from the agent judged the next leg from
+    // there (02000422_bf: the navy's agent stayed on the lower floor by its spawn after it flew onto the deck).
+    private bool NpcPoly(out long polyRef, out RcVec3f position) {
+        return field.FindNearestPoly(npc.Position, out polyRef, out position);
     }
 
     // True when the best path from startRef ends on a poly other than endRef (a partial path).

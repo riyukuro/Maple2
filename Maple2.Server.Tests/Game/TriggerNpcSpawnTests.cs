@@ -339,7 +339,7 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
 
     // An npc of spawn 101 at the origin with the made-up npc's model playing these sequences (each 1 s with its end key), sent along the patrol
     // by move_npc and updated for ten seconds of field ticks.
-    private FieldNpc WalkPatrol(NpcMetadata npc, string[] sequences, MS2PatrolData patrol) {
+    private FieldNpc WalkPatrol(NpcMetadata npc, string[] sequences, MS2PatrolData patrol, Action<FieldNpc>? onStep = null) {
         StartSpawns(Spawn(101, Vector3.Zero, new SpawnPointNPCListEntry(npc.Id, 1)));
         NpcMetadataStorage table = NpcTable(npc);
         var animations = new LRUCache<string, AnimationMetadata>(10, 1);
@@ -358,8 +358,36 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
             typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(Field, tick);
             Field.Scheduler.InvokeAll();
             walker.Update(tick);
+            onStep?.Invoke(walker);
         }
         return walker;
+    }
+
+    // A leg after one flown off the navmesh starts where the npc is, not where its navmesh agent was left: a flight
+    // does not move the agent, and the next leg's checks (cut off, off the mesh) and path started from the place of
+    // the last walk. KR row: 02000422_bf's navy 11003553 (MS2PatrolData uuid a2db5e76) climbs to the deck in a straight
+    // line, and its agent stayed on the lower floor by its spawn; from there waypoint 12's poly (on the lower floor
+    // under the deck) was reachable, so the npc walked instead of flying and missed the waypoint by 155, every lap.
+    // Here the npc flies off the flat mesh (2,000 across each way) to (2600, 0); before, the next leg was a path from
+    // the agent at the spawn, which the npc at (2600, 0) never followed.
+    [Test]
+    public void MoveNpc_LegAfterAFlightStartsWhereTheNpcIs() {
+        NpcMetadata mob = Npc(MobId, 0) with { Action = new NpcMetadataAction(0, 100, 200, [], 0, "") };
+        var route = new MS2PatrolData("a2db5e76", "MS2PatrolData9", false, 5, false, [
+            new MS2WayPoint("1", true, new Vector3(2600, 0, 0), Vector3.Zero, "Walk_A", "", 0, false),
+            new MS2WayPoint("2", true, new Vector3(1500, 1000, 0), Vector3.Zero, "Walk_A", "", 0, false),
+        ]);
+
+        float nearestSpawn = float.MaxValue;
+        bool flown = false;
+        FieldNpc npc = WalkPatrol(mob, ["Idle_A", "Walk_A", "Run_A"], route, walker => {
+            flown |= walker.Position.X > 2500;
+            if (flown) {
+                nearestSpawn = Math.Min(nearestSpawn, walker.Position.Length());
+            }
+        });
+        Assert.That(Vector3.Distance(npc.Position, new Vector3(1500, 1000, 0)), Is.LessThan(10));
+        Assert.That(nearestSpawn, Is.GreaterThan(1500)); // the straight leg from (2600, 0) passes 1,664 from the spawn
     }
 
     // An npc whose model gives no walk or run speed (npcdata reads them from the model's walkSpeed/runSpeed and

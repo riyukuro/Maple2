@@ -583,14 +583,14 @@ public class FieldNpc : Actor<Npc> {
                 Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
             }
         } else {
-            bool cutOff = Navigation!.GoalCutOff(currentWaypoint.Position);
-            if (!cutOff && Navigation.PathTo(currentWaypoint.Position)) {
+            bool offMesh = Navigation!.GoalCutOff(currentWaypoint.Position) || Navigation.GoalOffMesh(currentWaypoint.Position);
+            if (!offMesh && Navigation.PathTo(currentWaypoint.Position)) {
                 if (PatrolSequence(currentWaypoint.ApproachAnimation, air: false) is { } sequence) {
                     approachTask = PatrolLeg(currentWaypoint.Position, sequence, fly: false, air: false);
                 } else {
                     Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
                 }
-            } else if (cutOff || Navigation.GoalOffMesh(currentWaypoint.Position)) {
+            } else if (offMesh) {
                 // The waypoint stands on ground the navmesh does not cover (e.g. a train track that is not path geometry),
                 // or on a part of the mesh no path reaches (a ledge one block up): go there in a straight line at the
                 // patrol's speed instead of skipping it or stopping at the edge, so boxes waiting for the npc see it.
