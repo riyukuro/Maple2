@@ -1,11 +1,15 @@
 using System;
 using System.Linq;
+using System.Reflection;
+using Maple2.Database.Context;
+using Maple2.Database.Storage;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Login.PacketHandlers;
 using Maple2.Server.Login.Session;
 using Maple2.Server.Tests.Game;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Login;
 
@@ -25,6 +29,58 @@ public class RequestServerListTests {
             Assert.That(session.Server.GetSession(test.AccountId, out _), Is.False);
             Assert.That(test.TakeSent(), Is.Empty);
             Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    private static bool Ended(LoginSession session) =>
+        (int) typeof(Maple2.Server.Core.Network.Session).GetField("disconnecting", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(session)! == 1;
+
+    // A session that left the character list acts for the account no more: the client keeps the socket open on the
+    // server list, and a login of the account from elsewhere gets in meanwhile (its entry was released), so a
+    // delete (or a create) on the old socket would run next to that login, or delete the character it plays. The
+    // client sends none from the server list; such a packet cuts the session and changes nothing.
+    [Test]
+    public void ADeleteAfterLeavingTheCharacterListIsRefused() {
+        var test = new TestLoginSession();
+        var words = new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var handler = new CharacterManagementHandler {
+            World = test.World, GameStorage = test.Storage, BanWordStorage = new BanWordStorage(words),
+            ItemMetadata = null!, TableMetadata = test.Rows.TableMetadata, ServerTableMetadata = test.Rows.ServerTableMetadata,
+        };
+        LoginSession session = test.Start();
+        session.ListCharacters();
+        new RequestServerListHandler().Handle(session, TestGameSession.Packet(_ => { }));
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(2);
+            writer.WriteLong(test.CharacterId);
+        }));
+
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(db.GetCharacter(test.CharacterId, test.AccountId), Is.Not.Null);
+            Assert.That(test.TakeSent(), Is.Empty);
+            Assert.That(Ended(session), Is.True);
+        });
+    }
+
+    // Two logins of one account at the same moment both pass the login's check before either is entered: the later
+    // entry cuts the earlier session, so the account has one character list.
+    [Test]
+    public void ALaterEntryCutsTheEarlierSession() {
+        var test = new TestLoginSession();
+        LoginSession first = test.Start();
+        var other = new TestLoginSession();
+        LoginSession second = other.Start(init: false);
+        TestLoginSession.SetField(second, nameof(LoginSession.Server), first.Server);
+
+        second.Init(test.AccountId, Guid.NewGuid());
+
+        Assert.Multiple(() => {
+            Assert.That(first.Server.GetSession(test.AccountId, out LoginSession? current), Is.True);
+            Assert.That(current, Is.SameAs(second));
+            Assert.That((Ended(first), Ended(second)), Is.EqualTo((true, false)));
         });
     }
 

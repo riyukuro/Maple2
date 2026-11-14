@@ -23,6 +23,9 @@ public class UgcHandler : PacketHandler<LoginSession> {
 
     public override void Handle(LoginSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        if (session.LeftCharacterListRefuses($"Ugc {command}")) {
+            return;
+        }
         switch (command) {
             case Command.ProfilePicture:
                 HandleProfilePicture(session, packet);

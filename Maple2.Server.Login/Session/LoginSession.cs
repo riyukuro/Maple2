@@ -53,6 +53,28 @@ public class LoginSession : Core.Network.Session {
         State = SessionState.ChangeMap;
     }
 
+    // Set when the client left the character list (RequestServerList): after a LoginToGame that succeeded or on the
+    // back-to-server-list button. The account's entry is released then, so another login of the account may get in
+    // while this socket stays open (the client keeps it on the server list until it picks a server); this session
+    // no longer acts for the account (LeftCharacterListRefuses), else it could delete or create next to that login.
+    public bool LeftCharacterList { get; private set; }
+
+    public void LeaveCharacterList() {
+        LeftCharacterList = true;
+        Server.Release(this);
+    }
+
+    // True, and the session is cut, when a packet that acts for the account comes after the client left the character
+    // list. The client sends none of them from the server list (it logs in anew on a new connection first).
+    public bool LeftCharacterListRefuses(string what) {
+        if (!LeftCharacterList) {
+            return false;
+        }
+        Logger.Warning("{What} from account {AccountId} after it left the character list: cut", what, AccountId);
+        Cut();
+        return true;
+    }
+
     public void Init(long accountId, Guid machineId) {
         AccountId = accountId;
         MachineId = machineId;

@@ -19,6 +19,9 @@ public class EventRewardHandler : PacketHandler<LoginSession> {
             Logger.Debug("EventReward {Command} from account {AccountId} at the login", command, session.AccountId);
             return;
         }
+        if (session.LeftCharacterListRefuses("EventReward burning levelup pick")) {
+            return;
+        }
         session.PickBurningLevelup(packet.ReadLong());
     }
 }

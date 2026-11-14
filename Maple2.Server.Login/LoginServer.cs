@@ -31,11 +31,19 @@ public class LoginServer : Server<LoginSession> {
         bannerCache = db.GetBanners();
     }
 
+    // Two logins of one account at the same moment can both pass LoginHandler's check (GetSession) before either is
+    // entered here. The later entry wins and the session it replaces is cut, so the account never has two character
+    // lists acting on it (two deletes, two creates past the slot cap).
     public override void OnConnected(LoginSession session) {
+        LoginSession? replaced = null;
         lock (mutex) {
             connectingSessions.Remove(session);
+            if (sessions.TryGetValue(session.AccountId, out LoginSession? current) && current != session) {
+                replaced = current;
+            }
             sessions[session.AccountId] = session;
         }
+        replaced?.Cut();
     }
 
     public override void OnDisconnected(LoginSession session) {

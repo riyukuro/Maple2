@@ -54,6 +54,9 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
 
     public override void Handle(LoginSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        if (session.LeftCharacterListRefuses($"CharacterManagement {command}")) {
+            return;
+        }
         switch (command) {
             case Command.Select:
                 HandleSelect(session, packet);
