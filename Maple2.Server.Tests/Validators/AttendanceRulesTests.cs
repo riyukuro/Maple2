@@ -86,6 +86,16 @@ public class AttendanceRulesTests {
         Assert.That(AttendanceRules.PayCheck(meret, 0, 7, 0, true, 0, 9999, 9999), Is.EqualTo(AttendanceRules.PayStep.NoCoupon));
     }
 
+    // A price below 0 (a PayAttend not made by ParsePay) is refused: the handler takes a price that is not above 0
+    // with ChangeMeso / ChangeMeret(-price), so it was added.
+    [TestCase(AttendGiftCurrencyType.Meso)]
+    [TestCase(AttendGiftCurrencyType.Meret)]
+    public void PayCheck_ANegativePrice_IsRefused(AttendGiftCurrencyType type) {
+        var pay = new AttendGift.PayAttend(type, -100, 3, 0);
+
+        Assert.That(AttendanceRules.PayCheck(pay, 0, 7, 0, false, 0, 9999, 9999), Is.EqualTo(AttendanceRules.PayStep.Refuse));
+    }
+
     // The event as the client reads it (gameeventcontext.cpp:424-445): the pay type byte, then with a
     // pay type the limit, the price and the coupon item id, then the gifts.
     [TestCase(false)]

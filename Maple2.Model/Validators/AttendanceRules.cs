@@ -68,7 +68,9 @@ public static class AttendanceRules {
     }
 
     public static PayStep PayCheck(AttendGift.PayAttend? pay, int attended, int rewardCount, int paid, bool useCoupon, int couponItemId, long meso, long meret) {
-        if (pay == null || pay.Type == AttendGiftCurrencyType.None || RewardIndex(attended, rewardCount) < 0
+        // A price below 0 is refused here too (ParsePay already drops it): the take of a price that is not above 0
+        // is ChangeMeso / ChangeMeret(-price), which would add it.
+        if (pay == null || pay.Type == AttendGiftCurrencyType.None || pay.Price < 0 || RewardIndex(attended, rewardCount) < 0
             || paid < 0 || paid >= pay.MaxCount) {
             return PayStep.Refuse;
         }
