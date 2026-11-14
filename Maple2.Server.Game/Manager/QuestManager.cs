@@ -1116,16 +1116,18 @@ public sealed class QuestManager {
 
     // A login or channel change between midnight and the reset already granted the day (stamp = day): the reset's
     // drop took those rows and the grant is not due again. The ones granted that day and not completed are started
-    // again; a completed one stays dropped (its reward was paid), as a second grant would pay it twice.
+    // again; a completed one stays dropped (its reward was paid), as a second grant would pay it twice. The daily
+    // missions start again only while the DailyMission feature is on (a re-ingest may have turned it off since).
     private void RestartGrantedToday(List<Quest> dropped, DateTime day) {
         Character character = session.Player.Value.Character;
         long dayStart = day.ToEpochSeconds();
+        bool dailyMission = session.ServerTableMetadata.FeatureTable.IsOn("DailyMission");
         List<int> restarted = [];
         foreach (Quest quest in dropped) {
             long stamp = QuestDailyReset.KindOf(quest.Metadata.Basic) switch {
                 QuestDailyReset.Kind.FieldQuest => character.FieldQuestGrantTime,
                 QuestDailyReset.Kind.WeddingMission => character.WeddingMissionGrantTime,
-                QuestDailyReset.Kind.DailyMission when DailyQuestGrant.IsDailyMission(quest.Metadata) => character.DailyMissionGrantTime,
+                QuestDailyReset.Kind.DailyMission when dailyMission && DailyQuestGrant.IsDailyMission(quest.Metadata) => character.DailyMissionGrantTime,
                 _ => 0,
             };
             if (stamp != dayStart || quest.StartTime < dayStart || quest.State == QuestState.Completed) {

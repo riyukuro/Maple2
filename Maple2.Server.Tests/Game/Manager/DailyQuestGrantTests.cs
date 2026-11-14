@@ -517,6 +517,21 @@ public class DailyQuestGrantTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // The same login before the reset, then a re-ingest turns the DailyMission feature off before the reset: the
+    // window is shut, so the reset's drop takes the day's missions and starts none of them again.
+    [Test]
+    public void DailyMission_LoginBeforeReset_FeatureTurnedOff_NotRestarted() {
+        RegisterDailyMissions();
+        test.Session.Quest.Load();
+        Assume.That(Held(DailyMissions), Has.Length.EqualTo(6));
+        test.SetFeaturesOff("DailyMission");
+
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+
+        Assert.That(Held(DailyMissions), Is.Empty);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     [Test]
     public void DailyMission_GrantIsStored() {
         RegisterDailyMissions();
