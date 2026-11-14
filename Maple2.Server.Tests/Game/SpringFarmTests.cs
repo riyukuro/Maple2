@@ -936,6 +936,31 @@ public class SpringFarmSessionTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // Each variant's start_round opens the round with the buttons, and its end_game ends a running game with the
+    // result. clear_round changes nothing (the rounds cleared are the rounds won), so it has no test of its own.
+    [TestCase("arcade_three_two_one", 3)]
+    [TestCase("arcade_three_two_one2", 4)]
+    [TestCase("arcade_three_two_one3", 5)]
+    public void ThreeTwoOne_StartRoundEndGame(string prefix, int arcadeId) {
+        TriggerContext context = Context();
+        Run(context, $"""<action name="{prefix}_start_game" type="StartGame" life_count="3" init_score="10000" />""");
+        Assert.That(Arcade(test.TakeSent()[0], 0).ReadInt(), Is.EqualTo(arcadeId));
+        ThreeTwoOneGame game = session.Field!.ThreeTwoOne!;
+
+        Run(context, $"""<action name="{prefix}_start_round" type="StartRound" round="2" ui_duration="5" />""");
+        Assert.That(game.Round, Is.EqualTo(2));
+        ByteReader buttons = Arcade(test.TakeSent().Single(), 7);
+        Assert.That(buttons.ReadBool(), Is.True);
+        Assert.That(buttons.ReadInt(), Is.EqualTo(5));
+        Assert.That(game.Pick(test.CharacterId, 1), Is.True);
+
+        Run(context, $"""<action name="{prefix}_end_game" type="EndGame" />""");
+        Assert.That(game.Ended, Is.True);
+        ByteReader result = Arcade(ResultOf(test.TakeSent()), 2);
+        Assert.That(result.ReadInt(), Is.EqualTo(10000));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // A pick outside 1 to 3, or before a round opens, is dropped; without a game the pick does nothing.
     [Test]
     public void ThreeTwoOne_PickDropped() {
