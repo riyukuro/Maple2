@@ -843,6 +843,11 @@ public class GuildHandler : PacketHandler<GameSession> {
     // feature 0x110 on, named GuildPvP (featuremanager.cpp:674). With the feature off both requests are dropped.
     public const string PvpFeature = "GuildPvP";
 
+    // Both house requests return at once with GuildHouse01 off (CGuildManager::FUN_1413ba820 and FUN_1413babf0,
+    // guildmanager.cpp:940/971), and the guild window then draws no house page (UIGuildDialog, uiguilddialog.cpp:2455).
+    // With the feature off only a forged request reaches the World server's house rank or theme.
+    public const string HouseFeature = "GuildHouse01";
+
     // CGuildManager::RequestPvpHistoryAndSeason (guildmanager.cpp:1144): sent when the guild PvP tab opens,
     // with the end time (fb8) of the newest match the client holds; the client adds the rows it gets, so only
     // the guild's matches after that time are sent.
@@ -1179,6 +1184,9 @@ public class GuildHandler : PacketHandler<GameSession> {
     // gets the new fund (51) and the house (57).
     private void HandleUpgradeHouseRank(GameSession session, IByteReader packet) {
         int theme = packet.ReadInt();
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(HouseFeature)) {
+            return;
+        }
         if (session.Guild.Guild == null) {
             return; // Not in a guild.
         }
@@ -1205,6 +1213,9 @@ public class GuildHandler : PacketHandler<GameSession> {
     // and saves; every member gets the new fund (51) and the house (57).
     private void HandleUpgradeHouseTheme(GameSession session, IByteReader packet) {
         int theme = packet.ReadInt();
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(HouseFeature)) {
+            return;
+        }
         if (session.Guild.Guild == null) {
             return; // Not in a guild.
         }

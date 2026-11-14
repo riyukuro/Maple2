@@ -24,6 +24,15 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class RequestCubeHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestCube;
 
+    // The client offers the shrink buttons only with HousingDownsize on (UIHomeResizeDialog::OnShrinkArea and
+    // OnShrinkHeight, uihomeresizedialog.cpp:134/159; the dialog and the housing point page grey them out, :274 and
+    // uiugchousingpointdialog.cpp:331), so with it off only a forged request shrinks a home.
+    public const string DownsizeFeature = "HousingDownsize";
+    // The party menu entry that adds a build helper is registered only with UGCMapDelegator on (UIPopUpMenu,
+    // uipartydialog.cpp:2440/3425). The chat command AddUGCMapPriv sends the same request without the check
+    // (usercommandcli.cpp:1151); with the feature off it adds no helper either.
+    public const string DelegatorFeature = "UGCMapDelegator";
+
     private enum Command : byte {
         BuildState = 0,
         HoldCube = 1,
@@ -236,7 +245,9 @@ public class RequestCubeHandler : FieldPacketHandler {
             // and the user command AddUgcMapPriv (usercommandcli.cpp:1151): character name. Adds a build helper
             // to the sender's own home; the answer is ResponseCube 0x39.
             case Command.AddBuildPermission:
-                session.Housing.AddBuilder(packet.ReadUnicodeString());
+                if (session.ServerTableMetadata.FeatureTable.IsOn(DelegatorFeature)) {
+                    session.Housing.AddBuilder(packet.ReadUnicodeString());
+                }
                 break;
             // UIHomeInfoDialog::SendRequestCubeMode58 (uihomeinfodialog.cpp:674, the remove button of the helper
             // list) and the user command RemoveUgcMapPriv (usercommandcli.cpp:1157): character name. The answer
@@ -572,7 +583,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleDecreaseArea(GameSession session) {
-        if (session.Field is null || !InOwnHome(session)) return;
+        if (session.Field is null || !InOwnHome(session) || !session.ServerTableMetadata.FeatureTable.IsOn(DownsizeFeature)) return;
         // The client sends this only when its area table has a smaller step (uihomeresizedialog.cpp, OnShrinkArea);
         // a decrease that does not change the area (at the minimum, or a save that failed) removes no cube.
         int newArea;
@@ -630,7 +641,7 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleDecreaseHeight(GameSession session) {
-        if (session.Field is null || !InOwnHome(session)) return;
+        if (session.Field is null || !InOwnHome(session) || !session.ServerTableMetadata.FeatureTable.IsOn(DownsizeFeature)) return;
         // As the area: at the minimum height (3) SetHeight keeps the height, and the cubes of the top layer stayed in
         // bounds but were taken off the plot.
         int newHeight;

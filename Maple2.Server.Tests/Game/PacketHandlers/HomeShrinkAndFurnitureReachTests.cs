@@ -132,6 +132,45 @@ public class HomeShrinkAndFurnitureReachTests {
         });
     }
 
+    // HousingDownsize off: the client offers no shrink button (uihomeresizedialog.cpp:134/159), so nothing shrinks.
+    [TestCase((byte) 38)]
+    [TestCase((byte) 45)]
+    public void Decrease_WithHousingDownsizeOff_KeepsTheSize(byte command) {
+        (GameSession session, Plot plot) = StartInHome();
+        session.Player.Value.Home.SetHeight(5);
+        session.Player.Value.Home.SetArea(Constant.MinHomeArea + 2);
+        var top = new Vector3B(-1, -1, 5);
+        Cube(plot, top);
+        test.SetFeaturesOff(RequestCubeHandler.DownsizeFeature);
+
+        SendCube(session, command);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Home.Height, Is.EqualTo(5));
+            Assert.That(session.Player.Value.Home.Area, Is.EqualTo(Constant.MinHomeArea + 2));
+            Assert.That(plot.Cubes.Keys, Is.EqualTo(new[] { top }));
+        });
+    }
+
+    // UGCMapDelegator off: no build helper is added and nothing is answered; on, the request is answered (here with
+    // the error of a name no account has).
+    [TestCase(true, ExpectedResult = 1)]
+    [TestCase(false, ExpectedResult = 0)]
+    public int AddBuildPermission_NeedsUgcMapDelegator(bool on) {
+        (GameSession session, _) = StartInHome();
+        if (!on) {
+            test.SetFeaturesOff(RequestCubeHandler.DelegatorFeature);
+        }
+
+        new RequestCubeHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(57);
+            writer.WriteUnicodeString("NoSuchName");
+        }));
+
+        Assert.That(session.Player.Value.Home.Builders, Is.Empty);
+        return test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.ResponseCube);
+    }
+
     private void Use(GameSession session, FieldFunctionInteract cube, byte via = 1) {
         new FunctionCubeHandler {
             FunctionCubeMetadataStorage = session.FunctionCubeMetadata,
