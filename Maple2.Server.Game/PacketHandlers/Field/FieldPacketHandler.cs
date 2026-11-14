@@ -53,7 +53,7 @@ public abstract class FieldPacketHandler : PacketHandler<GameSession> {
         }
         long end = Environment.TickCount64 + (long) MoveWait.TotalMilliseconds;
         while (!awaited.Done.Wait(20)) {
-            if (session.State is SessionState.Disconnected || session.MigrationSaved || field.Disposed || session.Field != field) {
+            if (session.State is SessionState.Disconnected || session.DropsPackets || field.Disposed || session.Field != field) {
                 break;
             }
             if (Environment.TickCount64 > end) {

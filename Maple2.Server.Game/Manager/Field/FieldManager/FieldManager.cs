@@ -531,13 +531,27 @@ public partial class FieldManager : IField {
         }
     }
 
+    // Runs action between two packet batches: a batch ProcessPackets runs ends first (up to timeout; false then, and
+    // action is not run). On the field thread inside a batch it runs at once (the lock is its own).
+    internal bool AfterPacketBatch(TimeSpan timeout, Action action) {
+        if (!Monitor.TryEnter(queuedPackets, timeout)) {
+            return false;
+        }
+        try {
+            action();
+        } finally {
+            Monitor.Exit(queuedPackets);
+        }
+        return true;
+    }
+
     private void ProcessPackets() {
         lock (queuedPackets) {
             foreach ((FieldPacketHandler handler, GameSession session, ByteReader reader) packet in queuedPackets) {
                 try {
                     // A session that made the save of its move: what a later packet gives (an item row is stored at once)
                     // or takes would not be saved, and the next server loads the saved state.
-                    if (packet.session.State is SessionState.Disconnected || packet.session.MigrationSaved) {
+                    if (packet.session.State is SessionState.Disconnected || packet.session.DropsPackets) {
                         continue;
                     }
                     // The copy's buffer is rented and can be longer than the packet: the handler's reader ends at the packet.

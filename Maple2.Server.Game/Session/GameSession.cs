@@ -60,8 +60,12 @@ public sealed partial class GameSession : Core.Network.Session {
     // The session made the save of a move to another server or to the character select, and has not been refused it:
     // a packet handled after it would change state no save stores (FieldManager.ProcessPackets drops it).
     internal bool MigrationSaved => preMigrationSaved;
-    // Every packet after that save is dropped, also those of handlers that run on the receive thread.
-    public override bool DropsPackets => preMigrationSaved;
+    // Every packet after that save is dropped, also those of handlers that run on the receive thread; and every
+    // packet once the session closes (ClosePackets).
+    public override bool DropsPackets => preMigrationSaved || packetsClosed;
+    private volatile bool packetsClosed;
+    // How long a closing session waits for its field's running packet batch to end (ClosePackets).
+    internal static readonly TimeSpan PacketBatchWait = TimeSpan.FromSeconds(10);
     // The account's and character's item rows, held from an entry that took the account lock (see EnterServer).
     private IDisposable? heldRows;
     // The account's session generation this entry claimed (GameStorage.ClaimSession): a save writes only while the
@@ -1716,6 +1720,8 @@ public sealed partial class GameSession : Core.Network.Session {
             return;
         }
 
+        ClosePackets();
+
         try {
             UserRecallUtil.DropPending(this);
         } catch (Exception ex) {
@@ -1905,6 +1911,34 @@ public sealed partial class GameSession : Core.Network.Session {
             Logger.Error(ex, "MigrationSave failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
         } finally {
             ReleaseLock(AccountId);
+        }
+    }
+
+    // The start of a close (a dropped connection, a kick, the server's stop): no packet of the session is handled from
+    // here on, and the one that runs ends first. Dispose runs on the closing thread, while the field thread may be in
+    // one of the player's handlers (a reward claim): its item row is stored at once, and the save after LeaveField
+    // read the claim, the wallet and the inventory beside it, or before it. The flag is set under the field's packet
+    // queue (the running batch ends first) and under the receive-thread gate (a running inline handler ends first);
+    // on the field thread inside a handler, or on the receive thread inside an inline one, the lock is its own.
+    // Both waits are bounded (PacketBatchWait, InlineGateWait): a batch stuck past it (a move's save in a reset
+    // wait) does not hold the close longer, which then goes on as before, logged.
+    internal void ClosePackets() {
+        if (packetsClosed) return;
+        FieldManager? field = Field;
+        if (field != null) {
+            try {
+                if (!field.AfterPacketBatch(PacketBatchWait, () => packetsClosed = true)) {
+                    Logger.Warning("Close of {Session}: the field's packet batch still runs after {Wait}, closing beside it", this, PacketBatchWait);
+                }
+            } catch (Exception ex) {
+                Logger.Error(ex, "Close of {Session}: waiting for the field's packet batch failed", this);
+            }
+        }
+        packetsClosed = true;
+        if (Monitor.TryEnter(InlineGate, InlineGateWait)) {
+            Monitor.Exit(InlineGate);
+        } else {
+            Logger.Warning("Close of {Session}: a receive-thread handler still runs after {Wait}, closing beside it", this, InlineGateWait);
         }
     }
 

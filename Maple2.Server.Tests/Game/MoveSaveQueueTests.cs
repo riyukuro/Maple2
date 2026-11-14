@@ -259,6 +259,81 @@ public class MoveSaveQueueTests {
         });
     }
 
+    // A field handler that blocks until released (a reward claim the field thread is in when the connection drops).
+    private sealed class Blocking : FieldPacketHandler {
+        public override RecvOp OpCode => RecvOp.RequestQuit;
+        public readonly ManualResetEventSlim Entered = new();
+        public readonly ManualResetEventSlim Release = new();
+        public override void Handle(GameSession session, IByteReader packet) {
+            Entered.Set();
+            Release.Wait(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    // A close (a dropped connection, the server's stop) on another thread waits for the field's running packet batch:
+    // the close's save comes after the claim the field thread is in, and no later packet of the session runs.
+    [Test]
+    public void Close_WaitsForTheFieldsRunningBatch_ThenDropsLaterPackets() {
+        var test = new TestGameSession();
+        GameSession session = Unsaved(test);
+        FieldManager field = session.Field!;
+        ProcessPackets(field);
+        var claim = new Blocking();
+        var after = new Recorder();
+
+        Queue(session, claim, _ => { });
+        Task batch = Task.Run(() => ProcessPackets(field));
+        Assert.That(claim.Entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Task close = Task.Run(session.ClosePackets);
+        Assert.Multiple(() => {
+            Assert.That(close.Wait(300), Is.False);
+            Assert.That(session.DropsPackets, Is.False);
+        });
+
+        claim.Release.Set();
+        Assert.Multiple(() => {
+            Assert.That(batch.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(close.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(session.DropsPackets, Is.True);
+        });
+        Queue(session, after, _ => { });
+        ProcessPackets(field);
+        Assert.That(after.Handled, Is.EqualTo(0));
+    }
+
+    // The close waits for a running receive-thread handler too, and drops the ones read after it; a refused move
+    // (which clears the move's flag) does not open a closed session again.
+    [Test]
+    public void Close_WaitsForARunningReceiveThreadHandler() {
+        var test = new TestGameSession();
+        GameSession session = Unsaved(test);
+        session.Field = null;
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var inline = new InlineAction();
+        inline.Run = _ => {
+            entered.Set();
+            release.Wait(TimeSpan.FromSeconds(10));
+        };
+        var router = new PacketRouter<GameSession>(new PacketHandler<GameSession>[] { inline });
+        void Send() => router.OnPacket(session, TestGameSession.Packet(writer => writer.WriteShort((short) RecvOp.Guild)));
+
+        Task donation = Task.Run(Send);
+        Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Task close = Task.Run(session.ClosePackets);
+        Assert.That(close.Wait(300), Is.False);
+        release.Set();
+        Assert.Multiple(() => {
+            Assert.That(donation.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(close.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        });
+
+        inline.Run = _ => { };
+        typeof(GameSession).GetMethod("MigrationRefused", Any)!.Invoke(session, null);
+        Send();
+        Assert.That(inline.Handled, Is.EqualTo(1));
+    }
+
     // A refused change: the player plays on here, and the next packets are handled (the session saves again later).
     [Test]
     public void RefusedMove_LaterPacketsRun() {
