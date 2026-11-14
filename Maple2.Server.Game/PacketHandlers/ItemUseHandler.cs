@@ -197,6 +197,10 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.SurvivalScan:
                 HandleSurvivalScan(session, item);
                 break;
+            case ItemFunction.SurvivalSkin:
+                // A medal row in the bag: learned with the item used, in one transaction (SurvivalManager.UseMedal).
+                session.Survival.UseMedal(item);
+                break;
             case ItemFunction.CreateReactor:
                 HandleCreateReactor(session, item);
                 break;

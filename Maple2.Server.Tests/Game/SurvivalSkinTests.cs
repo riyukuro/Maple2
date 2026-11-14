@@ -5,22 +5,33 @@ using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
 // SurvivalSkin (KR 20900009, 20910009, 20920006): a medal item (group 2, type 9) becomes a survival medal when it
 // is added (InventoryManager.Add, SurvivalManager.AddMedal) and never reaches the bag, so the client has no use to
-// send. A second medal of the same id renews the one held.
+// send. A second medal of the same id renews the one held. A medal row that is in the bag all the same (stored before
+// that, placed by a load) is used with the plain use (ItemUseHandler, SurvivalManager.UseMedal).
 public class SurvivalSkinTests {
     private const int TailId = 20900001;
     private const int RidingId = 20910001;
     private TestGameSession test = null!;
 
-    private GameSession Start() {
+    private Item bagMedal = null!;
+
+    // bagParameters: a medal row stored in the bag (owner the character, as a row stored before Add learned medals).
+    private GameSession Start(string? bagParameters = null) {
         test = new TestGameSession();
+        if (bagParameters != null) {
+            bagMedal = test.Store(TestGameSession.Metadata(20900009,
+                function: new ItemMetadataFunction(ItemFunction.SurvivalSkin, "SurvivalSkin", bagParameters, false), type: 10));
+        }
         test.SetTable(new SurvivalSkinInfoTable(new Dictionary<int, MedalType> {
             [TailId] = MedalType.Tail,
             [RidingId] = MedalType.Riding,
@@ -140,6 +151,96 @@ public class SurvivalSkinTests {
         session.Survival.Load();
         Assert.That(medal.Slot, Is.EqualTo(-1));
         Assert.That(session.Survival.Find(MedalType.Riding, RidingId), Is.Not.Null);
+    }
+
+    private void Use(GameSession session) {
+        var handler = new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! };
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteLong(bagMedal.Uid);
+            writer.WriteUnicodeString(string.Empty);
+        }));
+    }
+
+    private Maple2.Database.Model.Medal? StoredMedal(int id) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Medal.AsNoTracking().SingleOrDefault(medal => medal.OwnerId == test.CharacterId && medal.Id == id);
+    }
+
+    private bool BagRowStored() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Item.Any(item => item.Id == bagMedal.Uid && item.OwnerId == test.CharacterId);
+    }
+
+    // Before, the server had no SurvivalSkin use: a medal row in the bag stayed there and was never learned. Now the
+    // medal and the used item are stored together, then the skin is sent as AddMedal sends it.
+    [Test]
+    public void Use_BagMedal_LearnsItWithTheItemUsed() {
+        WithRestoredClient("1", () => {
+            GameSession session = Start($"<v id=\"{TailId}\" type=\"effectTail\" endDate=\"2030-01-01-00-00-00\"/>");
+            Use(session);
+            long end = new DateTime(2030, 1, 1).ToEpochSeconds();
+            Assert.That(session.Survival.Find(MedalType.Tail, TailId)?.ExpiryTime, Is.EqualTo(end));
+            Assert.That(session.Item.Inventory.Get(bagMedal.Uid), Is.Null);
+            Assert.That(StoredMedal(TailId)?.ExpiryTime, Is.EqualTo(new DateTime(2030, 1, 1)));
+            Assert.That(BagRowStored(), Is.False);
+            // The item's removal from the bag, then the skin and the learned line.
+            Assert.That(test.TakeSent().Skip(1), Is.EqualTo(new[] {
+                MapleSurvivalPacket.SkinAdded(0, TailId, end).ToArray(),
+                MapleSurvivalPacket.SkinLearned(0, TailId).ToArray(),
+            }));
+        });
+    }
+
+    // A held medal is renewed as AddMedal renews it, the renewed end stored with the used item; the list is sent.
+    [Test]
+    public void Use_HeldMedal_RenewsIt() {
+        GameSession session = Start($"<v id=\"{RidingId}\" type=\"riding\" durationSec=\"10080\"/>");
+        long before = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        session.Survival.AddMedal(Medal(20910009, $"<v id=\"{RidingId}\" type=\"riding\" durationSec=\"10080\"/>"));
+        test.TakeSent();
+        Use(session);
+        long after = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        long end = session.Survival.Find(MedalType.Riding, RidingId)!.ExpiryTime;
+        Assert.That(end, Is.InRange(before + 2 * 10080, after + 2 * 10080));
+        Assert.That(StoredMedal(RidingId)!.ExpiryTime.ToEpochSeconds(), Is.EqualTo(end));
+        Assert.That((session.Item.Inventory.Get(bagMedal.Uid), BagRowStored()), Is.EqualTo(((Item?) null, false)));
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Count(packet => packet[2] == 0x1e), Is.EqualTo(1));
+    }
+
+    // When the used item cannot be stored, no medal is learned and the item is kept.
+    [Test]
+    public void Use_ItemNotStored_NothingLearned() {
+        GameSession session = Start($"<v id=\"{TailId}\" type=\"effectTail\"/>");
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any(entry => entry.State == EntityState.Modified);
+        Use(session);
+        test.FailSave = null;
+        Assert.That(session.Survival.Find(MedalType.Tail, TailId), Is.Null);
+        Assert.That((session.Item.Inventory.Get(bagMedal.Uid) != null, BagRowStored()), Is.EqualTo((true, true)));
+        Assert.That(test.TakeSent().Any(packet => packet[2] is 0x1e or 0x1f or 0x21), Is.False);
+    }
+
+    // When the medal cannot be stored, the item is kept.
+    [Test]
+    public void Use_MedalNotStored_ItemKept() {
+        GameSession session = Start($"<v id=\"{TailId}\" type=\"effectTail\"/>");
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Medal>().Any(entry => entry.State == EntityState.Added);
+        Use(session);
+        test.FailSave = null;
+        Assert.That(session.Survival.Find(MedalType.Tail, TailId), Is.Null);
+        Assert.That((session.Item.Inventory.Get(bagMedal.Uid) != null, BagRowStored()), Is.EqualTo((true, true)));
+    }
+
+    // A skin the skin table lacks (or of another type there) is not learned; the item is kept.
+    [Test]
+    public void Use_UnknownSkin_Kept() {
+        GameSession session = Start("<v id=\"20900099\" type=\"effectTail\"/>");
+        Use(session);
+        Assert.That((session.Item.Inventory.Get(bagMedal.Uid) != null, StoredMedal(20900099)), Is.EqualTo((true, (Maple2.Database.Model.Medal?) null)));
+
+        session = Start($"<v id=\"{TailId}\" type=\"riding\"/>");
+        Use(session);
+        Assert.That((session.Item.Inventory.Get(bagMedal.Uid) != null, session.Survival.Find(MedalType.Riding, TailId)), Is.EqualTo((true, (Medal?) null)));
     }
 
     private static bool Contains(byte[] haystack, byte[] needle) {
