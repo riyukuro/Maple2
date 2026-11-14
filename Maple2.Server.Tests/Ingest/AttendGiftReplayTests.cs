@@ -17,6 +17,20 @@ public class AttendGiftReplayTests {
             new AttendGift([], "", "", "", "", 0, null), "", "", "", "");
     }
 
+    // The ingest ends an event against the server's local clock, as the server reads the event times
+    // (GameEvent.IsActive(DateTime.Now)). With the UTC clock a host west of UTC ended events still running for the
+    // server (and one east of it kept ended ones); an event ending in one minute was ended on a UTC-6 host.
+    [Test]
+    public void IngestNow_IsTheServersLocalClock() {
+        Assume.That(TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow), Is.Not.EqualTo(TimeSpan.Zero), "the host is on UTC");
+        DateTime local = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Unspecified);
+        GameEventMetadata running = Event(800, GameEventType.AttendGift, local.AddDays(-3).ToString("yyyy-MM-dd HH:mm:ss"),
+            local.AddMinutes(1).ToString("yyyy-MM-dd HH:mm:ss"));
+        GameEventMetadata ended = Event(801, GameEventType.AttendGift, local.AddDays(-3).ToString("yyyy-MM-dd HH:mm:ss"),
+            local.AddMinutes(-1).ToString("yyyy-MM-dd HH:mm:ss"));
+        Assert.That(AttendGiftReplay.Candidates([running, ended], AttendGiftReplay.IngestNow()).Select(e => e.Id), Is.EqualTo(new[] { 801 }));
+    }
+
     [TestCase(null, false)]
     [TestCase("", false)]
     [TestCase("0", false)]

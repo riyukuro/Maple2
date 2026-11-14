@@ -104,6 +104,10 @@ public static class AttendGiftReplay {
         };
     }
 
+    // The ingest's clock: the server's local time. The event times keep no time zone and the server compares them
+    // with its local clock (GameEvent.IsActive), so an event is ended at ingest when it has ended for the server.
+    public static DateTime IngestNow() => DateTime.Now;
+
     // An eventStart/eventEnd text, to the minute or to the second; DateTime.MinValue when it is neither.
     public static DateTime ParseTime(string? text) {
         return DateTime.TryParseExact(text, TimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime time)

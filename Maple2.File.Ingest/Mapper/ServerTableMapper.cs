@@ -1176,7 +1176,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
     private GameEventTable ParseGameEventTable() {
         var results = new Dictionary<int, GameEventMetadata>();
-        DateTime now = DateTime.UtcNow;
+        DateTime now = AttendGiftReplay.IngestNow();
         var ended = new List<GameEventMetadata>();
         foreach ((int id, GameEvent data) in overlay.GameEvents(parser.ParseGameEvent())) {
             if (!Enum.TryParse(data.eventType, out GameEventType eventType)) {
@@ -1246,7 +1246,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     if (replay == null) {
                         Console.WriteLine($"{AttendGiftReplay.Option}: no ended {type} event to replay");
                     } else if (!results.ContainsKey(replay.Id)) {
-                        GameEventMetadata moved = AttendGiftReplay.Redate(replay, DateTime.Now); // the local ingest day
+                        GameEventMetadata moved = AttendGiftReplay.Redate(replay, now); // the local ingest day
                         results.Add(moved.Id, moved);
                         Console.WriteLine($"{AttendGiftReplay.Option}: {type} {replay.Id} ({replay.StartTime:yyyy-MM-dd HH:mm} to {replay.EndTime:yyyy-MM-dd HH:mm}) replayed {moved.StartTime:yyyy-MM-dd HH:mm} to {moved.EndTime:yyyy-MM-dd HH:mm}");
                         foreach (GameEventMetadata companion in AttendGiftReplay.Companions(replay, ended)) {
