@@ -108,6 +108,10 @@ public sealed class ExperienceManager {
 
     public long AddExp(long expGained, ExpMessageCode message = ExpMessageCode.s_msg_take_exp) => AddExp(expGained, message, kill: false);
 
+    // Exp whose prestige is given apart (a reward contents row with an adventureExpTableID): ExpType.none brings none.
+    public long AddExp(long expGained, ExpMessageCode message, ExpType prestigeType) =>
+        AddExp(expGained, message, kill: false, prestigeType: prestigeType);
+
     // A quest's complete reward: its reason (1010 or 1053) and the prestige type of its quest type.
     public long AddQuestExp(long expGained, ExpMessageCode message, ExpType prestigeType) =>
         AddExp(expGained, message, kill: false, prestigeType: prestigeType);

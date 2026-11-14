@@ -1164,9 +1164,15 @@ public sealed partial class GameSession : Core.Network.Session {
                     Currency.AddMeso(meso, message);
                 }
             }
-            Exp.AddExp(exp, message);
             if (prestigeExp > 0) {
+                // Chosen here: the row's prestige is its fixed amount alone, so the exp brings no prestige of the
+                // message's type (dungeonClear for the Colosseum rounds). The client's reward of a row has a single
+                // adventure exp, filled from the adventureExpTableID alone (RewardContentsTable::GetReward,
+                // rewardcontentstable.cpp:222; the client's lookup gives 0).
+                Exp.AddExp(exp, message, ExpType.none);
                 Exp.AddPrestigeExp(prestigeExp);
+            } else {
+                Exp.AddExp(exp, message);
             }
             foreach (Item item in items) {
                 if (!Item.Inventory.Add(item, true)) {
