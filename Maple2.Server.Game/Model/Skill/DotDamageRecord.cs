@@ -19,6 +19,13 @@ public class DotDamageRecord {
     public readonly int RecoverHp;
     // The tick's damage was taken away by an invincible buff of the target; the 0 is still sent.
     public readonly bool Invincible;
+    // A typed dot that is not constant damage sends its tick even at 0 (a dot with no rate, share or value, as KR
+    // 49289032, 70002111 and Priest 10400221 lv1-12): the client's tick (PC::vfunc_34) flashes the hit color, plays the
+    // effect's invokeEvent 0 effects and its hit sound.
+    public readonly bool Typed;
+
+    // The tick is sent: it takes health, spirit or stamina, an invincible buff took it, or it is a typed dot's.
+    public bool Sends => HpAmount != 0 || SpAmount != 0 || EpAmount != 0 || Invincible || Typed;
 
     /// <param name="invokeRate">The caster's dot damage invokes (type 5) on the effect: they raise its rate (DotRate).</param>
     /// <param name="effectId">The dot's effect: an attackPossible limit of the target lets only the dots it names hit.</param>
@@ -32,6 +39,7 @@ public class DotDamageRecord {
             Rate = DotRate(dotDamage.Rate, invokeRate),
         };
         Type = DamageType.Normal;
+        Typed = dotDamage.Type != AttackType.None && !dotDamage.IsConstDamage;
         // A target that takes no damage: an invincible buff, or an attackPossible limit that refuses this dot.
         bool shielded = target.Buffs.Invincible || target.Buffs.AttackRefused(caster, 0, effectId);
 

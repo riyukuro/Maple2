@@ -409,7 +409,7 @@ public class Buff : IUpdatable, IByteSerializable {
             targetUpdated.Add(BasicAttribute.Stamina);
         }
 
-        if (targetUpdated.Count <= 0 && !record.Invincible) {
+        if (!record.Sends) {
             return;
         }
 

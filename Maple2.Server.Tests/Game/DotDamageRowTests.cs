@@ -103,6 +103,23 @@ public class DotDamageRowTests {
         }
     }
 
+    // 49289032 (KR: Type 1, no rate, share or value; invokeEffect Eff_NPC_Attack_Hit_01): a Normal tick of 0, still sent
+    // for the client's hit flash, effects and sound. An untyped dot (or a constant one) without a value sends nothing.
+    [Test]
+    public void TypedDotWithoutDamage_StillSendsANormalZeroTick() {
+        FieldPlayer caster = Player(5000, 5000);
+        FieldPlayer target = Player(10000, 10000);
+
+        var typed = new DotDamageRecord(caster, target, Dot(AttackType.Physical));
+        Assert.That(typed.Type, Is.EqualTo(DamageType.Normal));
+        Assert.That(typed.HpAmount, Is.EqualTo(0));
+        Assert.That(typed.Sends, Is.True);
+
+        Assert.That(new DotDamageRecord(caster, target, Dot()).Sends, Is.False);
+        Assert.That(new DotDamageRecord(caster, target, Dot(AttackType.Physical, isConstDamage: true)).Sends, Is.False);
+        Assert.That(new DotDamageRecord(caster, target, Dot(spValue: 10)).Sends, Is.True);
+    }
+
     // A hit of the field's own actor is not rolled for evasion, but the target's block and evasion compulsions hold:
     // the KR rows 10100081 (BlockChance 1 on every skill) block it, 10700193 (EvasionChanceOverride 1) make it a Miss.
     [TestCase(10100081, BuffCompulsionEventType.BlockChance, DamageType.Block)]
