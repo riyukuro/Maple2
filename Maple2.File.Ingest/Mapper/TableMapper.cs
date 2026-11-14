@@ -3071,6 +3071,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         var results = new Dictionary<int, IReadOnlyList<int>>();
         var outdoor = new Dictionary<int, bool>();
         var indoorPortals = new Dictionary<int, IReadOnlyList<int>>();
+        var portalFields = new List<int>();
         foreach (XmlNode node in document?.SelectNodes("ms2/fieldPortal")?.Cast<XmlNode>() ?? []) {
             if (node is not XmlElement fieldPortal || !int.TryParse(fieldPortal.GetAttribute("field"), out int field)) continue;
             var targets = new List<int>();
@@ -3090,11 +3091,12 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 }
             }
             results[field] = targets;
+            portalFields.Add(field);
             int.TryParse(fieldPortal.GetAttribute("indoor"), out int indoor);
             outdoor[field] = indoor == 0;
             indoorPortals[field] = indoorTargets;
         }
-        Dictionary<int, IReadOnlyList<int>> indoorParents = FieldMetaTable.BuildIndoorParents(outdoor, indoorPortals);
+        Dictionary<int, int> indoorParents = FieldMetaTable.BuildIndoorParents(portalFields, outdoor, indoorPortals);
 
         var npcFields = new Dictionary<int, List<int>>();
         foreach (XmlNode node in document?.SelectNodes("ms2/npc")?.Cast<XmlNode>() ?? []) {
