@@ -135,8 +135,9 @@ public partial class ChannelService {
     private GuildResponse GuildInvite(long guildId, IEnumerable<long> receiverIds, GuildRequest.Types.Invite invite) {
         // There really should only be 1 receiver here, but whatever.
         foreach (long receiverId in receiverIds) {
+            // Gone from this channel (logged out on the way): not found (10), as for an offline player.
             if (!server.GetSession(receiverId, out GameSession? session)) {
-                return new GuildResponse { Error = (int) GuildError.s_guild_err_wait_inviting };
+                return new GuildResponse { Error = (int) GuildError.s_guild_err_null_user };
             }
             if (session.Buddy.IsBlocked(invite.SenderId)) {
                 return new GuildResponse { Error = (int) GuildError.s_guild_err_blocked };

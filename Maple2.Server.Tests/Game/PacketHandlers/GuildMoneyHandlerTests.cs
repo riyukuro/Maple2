@@ -105,6 +105,20 @@ public class GuildMoneyHandlerTests {
     private string[] GuildAnswers() => test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Guild).Select(Convert.ToHexString).ToArray();
     private static string Hex(ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
+    // Guild 3 (invite) with a name no character has: the client's "player not found" text (10, s_guild_err_null_user),
+    // and the World is not asked.
+    [Test]
+    public void Invite_UnknownName_NullUser() {
+        Join();
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteUnicodeString("NoSuchName");
+        }));
+
+        Assert.That(test.World.GuildRequests, Is.Empty);
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildError.s_guild_err_null_user)) }));
+    }
+
     // Guild 84 in the client writer's order (CGuildManager::SendGuildMode84): u8 0x54, i64 the id of the accept page
     // row (the script sends the request id), u8 accept. The id goes to the World as it came; the answer echoes it.
     [Test]

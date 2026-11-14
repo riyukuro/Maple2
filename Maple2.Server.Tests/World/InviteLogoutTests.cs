@@ -237,4 +237,31 @@ public class InviteLogoutTests {
         Assert.That(manager.InviteeLoggedOut(ids[2], "Guest"), Is.False);
         Assert.That(channel.ClubRequests, Is.Empty);
     }
+
+    // A guild invite to a player who is offline (channel -1) or no longer on the channel: the client's "player not
+    // found" text, s_guild_err_null_user (10). 5 (s_guild_err_wait_inviting) is its "waiting for an answer" text.
+    [Test]
+    public void Guild_OfflineInvitee_NullUser() {
+        GuildManager manager = Guild();
+        infos[ids[2]].Channel = -1;
+
+        Assert.That(manager.Invite(ids[0], infos[ids[2]]), Is.EqualTo(GuildError.s_guild_err_null_user));
+        Assert.That(channel.GuildRequests, Is.Empty);
+        Assert.That(manager.InviteeLoggedOut(ids[2], "Guest"), Is.False);
+    }
+
+    [Test]
+    public void Guild_InviteeGoneFromTheChannel_NullUser() {
+        var server = (GameServer) RuntimeHelpers.GetUninitializedObject(typeof(GameServer));
+        typeof(GameServer).GetField("sessions", Any)!.SetValue(server, new ConcurrentDictionary<long, GameSession>());
+        var service = new ChannelService(server, null!, test.Storage, null!, null!, null!);
+
+        GuildResponse response = service.Guild(new GuildRequest {
+            GuildId = 1,
+            ReceiverIds = { ids[2] },
+            Invite = new GuildRequest.Types.Invite { GuildName = "Guild", SenderId = ids[0], SenderName = "Leader" },
+        }, null!).GetAwaiter().GetResult();
+
+        Assert.That(response.Error, Is.EqualTo((int) GuildError.s_guild_err_null_user));
+    }
 }

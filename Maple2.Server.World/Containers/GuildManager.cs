@@ -101,8 +101,9 @@ public class GuildManager : IDisposable {
         if (Guild.Members.ContainsKey(player.CharacterId)) {
             return GuildError.s_guild_err_already_exist;
         }
+        // An offline player (channel -1) or one on no known channel: the client's "player not found" text (10), not 5.
         if (!ChannelClients.TryGetClient(player.Channel, out ChannelClient? client)) {
-            return GuildError.s_guild_err_wait_inviting;
+            return GuildError.s_guild_err_null_user;
         }
 
         try {

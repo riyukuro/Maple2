@@ -311,8 +311,9 @@ public class GuildHandler : PacketHandler<GameSession> {
         string playerName = packet.ReadUnicodeString();
         using GameStorage.Request db = session.GameStorage.Context();
         long characterId = db.GetCharacterId(playerName);
+        // No such character: the client's "player not found" text (10, s_guild_err_null_user), not 5 (waiting for an answer).
         if (characterId == 0) {
-            session.Send(GuildPacket.Error(GuildError.s_guild_err_wait_inviting));
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_null_user));
             return;
         }
 
