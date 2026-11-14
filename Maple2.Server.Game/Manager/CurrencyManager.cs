@@ -57,7 +57,7 @@ public class CurrencyManager {
     public void ChangeMeret(long delta, bool reportSpent = true) {
         long change;
         lock (walletLock) {
-            long value = Currency.Meret + delta;
+            long value = Sum(Currency.Meret, delta);
             if (value < 0) {
                 throw new ArgumentException("Not enough Merets");
             }
@@ -156,7 +156,7 @@ public class CurrencyManager {
     public void ChangeGameMeret(long delta) {
         long change;
         lock (walletLock) {
-            long value = Currency.GameMeret + delta;
+            long value = Sum(Currency.GameMeret, delta);
             if (value < 0) {
                 throw new ArgumentException("Not enough RedMerets");
             }
@@ -257,7 +257,7 @@ public class CurrencyManager {
     // than is held throws, as the setter does, and changes nothing.
     public void ChangeMeso(long delta) {
         lock (walletLock) {
-            long value = Currency.Meso + delta;
+            long value = Sum(Currency.Meso, delta);
             if (value < 0) {
                 throw new ArgumentException("Not enough Mesos");
             }
@@ -365,10 +365,16 @@ public class CurrencyManager {
             return;
         }
         lock (walletLock) {
-            Currency.Meso = Math.Min(Currency.Meso + amount, Constant.MaxMeso);
+            Currency.Meso = Math.Min(Sum(Currency.Meso, amount), Constant.MaxMeso);
             SendMeso((int) code);
         }
         session.Quest?.UpdateMeso();
+    }
+
+    // balance + delta, a gain past long.MaxValue held there: MaxMeso and MaxMeret are long.MaxValue, so the sum
+    // wrapped to a negative balance (AddMeso set it; the Change methods threw, the gain lost).
+    private static long Sum(long balance, long delta) {
+        return delta > 0 && balance > long.MaxValue - delta ? long.MaxValue : balance + delta;
     }
 
     // Sends the balance; the caller holds walletLock.
@@ -429,7 +435,7 @@ public class CurrencyManager {
         long change;
         ConditionType? condition;
         lock (walletLock) {
-            long value = this[type] + delta;
+            long value = Sum(this[type], delta);
             if (value < 0) {
                 throw new ArgumentException($"Not enough {type}");
             }
