@@ -131,6 +131,15 @@ public static class SkillCastCheck {
             Logger.Debug("Cast refused, no client path gives skill {SkillId} to a player", record.SkillId);
             return false;
         }
+        if (!laterMotion && !inAnyTree && SkillCastRules.ShardSourceRefuses(record.SkillId, record.Level, laterMotion, inAnyTree,
+                ShardSkills(session).Contains(record.SkillId),
+                record.ItemUid > 0 && session.Item.Inventory.Get(record.ItemUid)?.Metadata.Skill?.Id == record.SkillId,
+                session.ServerTableMetadata.FeatureTable.IsOn(SkillCastRules.LapenshardFeature),
+                ContentShutdownConfig.Contents.Contains(SkillCastRules.LapenshardSkillContent),
+                session.Config.WornLapenshards().Select(itemId => session.ItemMetadata.TryGet(itemId, out ItemMetadata? item) ? item.Skill : null))) {
+            Logger.Debug("Cast refused, skill {SkillId} level {Level} is a shard's skill and no worn shard gives it at that level", record.SkillId, record.Level);
+            return false;
+        }
         // A running ShutdownSkillItem event stops the skill of an item it lists (SkillCastRules.ItemShutdownRefuses).
         int? inventoryItemId = laterMotion || record.ItemUid <= 0 ? null : session.Item.Inventory.Get(record.ItemUid)?.Id;
         if (SkillCastRules.ItemShutdownRefuses(laterMotion, inventoryItemId, () => session.FindEvent(GameEventType.ShutdownSkillItem))) {
@@ -154,6 +163,13 @@ public static class SkillCastCheck {
         blocking = session.Config.BlockingCooldown(record.Metadata, tick);
         return blocking == null;
     }
+
+    // The skills of the shards with an itemLapenshardUpgrade row (SkillCastRules.ShardSourceRefuses), once per table.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<LapenshardUpgradeTable, HashSet<int>> shardSkills = new();
+
+    private static HashSet<int> ShardSkills(GameSession session) => shardSkills.GetValue(session.TableMetadata.LapenshardUpgradeTable,
+        table => table.Entries.Keys.Select(itemId => session.ItemMetadata.TryGet(itemId, out ItemMetadata? item) ? item.Skill?.Id ?? 0 : 0)
+            .Where(skillId => skillId > 0).ToHashSet());
 
     // The two timing checks (ConfigManager.CastTimingRefusal) refuse only when CastCheckSetting says so, else they log.
     private static bool TimingAllows(GameSession session, SkillRecord record, bool useItem, bool inAnyTree, int castTick, long tick) {

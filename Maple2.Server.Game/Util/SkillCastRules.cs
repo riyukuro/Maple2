@@ -646,6 +646,31 @@ public static class SkillCastRules {
         return wornShardSkills.Any(skill => skill != null && skill.Id == skillId);
     }
 
+    // The feature whose test (id 0xd3) the client makes before it counts a worn shard's skill (JobSystemCli, jobsystemcli.cpp:70, :99).
+    public const string LapenshardFeature = "Lapenshard01";
+
+    // A shard's skill (the item skill of a shard with an itemLapenshardUpgrade row; in the KR data 120010001-120010023,
+    // main type 2, which needs learning) is one the client casts only while it holds it: CSkillSystem::FUN_141764e30
+    // (skillslot.cpp:2084) asks JobSystemCli::vfunc_2 (jobsystemcli.cpp:80), which finds it in no skill set, no tree and
+    // no sub skill, so only a worn shard of it passes, with feature 0xd3 on and content 0x5b open; vfunc_1 (:56) then
+    // gives the cast the highest worn grade of it (MyPC::UpdateLapenshardGrades, mypc.cpp:4292). Every worn shard's
+    // skill is read here, a superset of the client's EquipPart 1 shards (as LapenshardFieldRefuses), and an item skill
+    // of level 0 counts as 1. A cast naming a bag item that gives the skill is the client's inventory path
+    // (CreateSkillRecord, :2142, which asks no vfunc_2) and is not refused. Refused: the first motion of such a skill in
+    // no tree with the feature off or the content shut, with no worn shard of it, or above the highest worn grade.
+    public static bool ShardSourceRefuses(int skillId, short castLevel, bool laterMotion, bool inAnyTree, bool shardSkill,
+            bool bagItemGivesIt, bool featureOn, bool contentShut, IEnumerable<ItemMetadataSkill?> wornShardSkills) {
+        if (laterMotion || inAnyTree || !shardSkill || bagItemGivesIt || skillId == UncheckedCastSkill) {
+            return false;
+        }
+        if (!featureOn || contentShut) {
+            return true;
+        }
+        int grade = wornShardSkills.Where(skill => skill != null && skill.Id == skillId)
+            .Select(skill => Math.Max((int) skill!.Level, 1)).DefaultIfEmpty(0).Max();
+        return grade == 0 || castLevel > grade;
+    }
+
     // FUN_14176a8c0's answer 0x20 (skillslot.cpp:3321-3326): a skill of the player's job at job level 2 (awakening;
     // JobSystem::FindSkill finds main and sub skills, a sub skill carrying its parent's level) is not cast on a field
     // whose instance type is GuildPvp (the RequestFieldEnter type the client keeps, DAT_143ab287c == 7). The server's

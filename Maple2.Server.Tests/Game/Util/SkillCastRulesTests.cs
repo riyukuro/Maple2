@@ -403,6 +403,33 @@ public class SkillCastRulesTests {
         });
     }
 
+    // JobSystemCli::vfunc_2 / vfunc_1: a shard's skill in no tree is cast only up to the highest worn grade of it
+    // (KR 41000011 gives 120010001 with no skillLevel, so grade 1; 41000013 gives it at 3), with feature 0xd3 on and
+    // content 0x5b open; a bag item giving it is the inventory path. Other skills are not checked here.
+    [Test]
+    public void ShardSourceRefuses_WithoutAWornShardOfIt() {
+        ItemMetadataSkill?[] worn = [null, new ItemMetadataSkill(120010001, 0, 0, 0), new ItemMetadataSkill(120010001, 3, 0, 0)];
+        bool Refuses(short level = 3, bool later = false, bool tree = false, bool shardSkill = true, bool bag = false, bool on = true,
+                bool shut = false, ItemMetadataSkill?[]? shards = null, int skillId = 120010001) =>
+            SkillCastRules.ShardSourceRefuses(skillId, level, later, tree, shardSkill, bag, on, shut, shards ?? worn);
+        Assert.Multiple(() => {
+            Assert.That(Refuses(), Is.False);
+            Assert.That(Refuses(level: 1), Is.False);
+            Assert.That(Refuses(level: 4), Is.True);
+            Assert.That(Refuses(shards: [new ItemMetadataSkill(120010001, 0, 0, 0)], level: 1), Is.False);
+            Assert.That(Refuses(shards: [new ItemMetadataSkill(120010001, 0, 0, 0)], level: 2), Is.True);
+            Assert.That(Refuses(shards: [null, new ItemMetadataSkill(120010002, 5, 0, 0)]), Is.True);
+            Assert.That(Refuses(shards: []), Is.True);
+            Assert.That(Refuses(on: false), Is.True);
+            Assert.That(Refuses(shut: true), Is.True);
+            Assert.That(Refuses(level: 9, later: true), Is.False);
+            Assert.That(Refuses(level: 9, tree: true), Is.False);
+            Assert.That(Refuses(level: 9, shardSkill: false), Is.False);
+            Assert.That(Refuses(level: 9, bag: true), Is.False);
+            Assert.That(Refuses(shards: [], skillId: SkillCastRules.UncheckedCastSkill), Is.False);
+        });
+    }
+
     // FUN_14176a8c0's field answers for a glide (0xf, no checkFly; a GM glides anywhere) and a climb (0x10, no checkClimb).
     [Test]
     public void StateFieldRefusal_IsTheClientsAnswer() {

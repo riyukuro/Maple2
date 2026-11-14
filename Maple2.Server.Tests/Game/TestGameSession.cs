@@ -146,6 +146,9 @@ public sealed class TestGameSession {
         SetServerTable(new GameEventTable(new Dictionary<int, GameEventMetadata>()));
         // An eventTag quest asks for its term tag: no terms until a test sets them.
         SetServerTable(new TermTagTable(new Dictionary<int, TermTagTable.Entry>()));
+        // A cast of a skill in no tree asks which skills a shard gives (SkillCastRules.ShardSourceRefuses): no shard
+        // rows until a test sets them.
+        SetTable(new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry>()));
         // Every feature is on until a test turns one off (SetFeaturesOff).
         SetServerTable(new FeatureTable(new AllFeatures([])));
         // A field init asks whether a world champion season is fought on its map: none until a test sets them.
