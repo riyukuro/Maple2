@@ -14,7 +14,8 @@ namespace Maple2.Server.Tests.Login;
 
 // The restore of a character whose delete is pending (CharacterManagement 3). It only ends the wait; the blocks of a
 // delete do not hold it back. Every answer is CharacterList 6, the client's restore answer (UICharacterListDialog
-// mode 6: 0 clears the timer, another code shows its delete text and leaves the timer).
+// mode 6: 0 clears the timer, another code shows its delete text; the client zeroed the countdown when it sent the
+// restore, so a refusal sends the delete time again).
 public class CharacterRestoreTests {
     private TestLoginSession test = null!;
     private CharacterManagementHandler handler = null!;
@@ -110,6 +111,27 @@ public class CharacterRestoreTests {
             }));
             using GameStorage.Request db = test.Storage.Context();
             Assert.That(db.GetCharacter(others, 2000)!.DeleteTime, Is.GreaterThan(0));
+        });
+    }
+
+    // A restore the database refuses: the client zeroed the countdown when it sent the restore (CancelDelete), so the
+    // refusal (error 6) is followed by the pending delete's time again (mode 5, no box), and the character does not show
+    // as ready for the final delete while the wait still runs.
+    [Test]
+    public void ARefusedRestoreGivesBackTheCountdown() {
+        SetPending(test.CharacterId);
+        long deleteTime = DeleteTime(test.CharacterId);
+        test.Rows.FailSave = _ => true;
+
+        Restore(test.CharacterId);
+
+        test.Rows.FailSave = null;
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Answer(test.CharacterId, s_char_err_destroy),
+                Convert.ToHexString(CharacterListPacket.BeginDelete(test.CharacterId, deleteTime).ToArray()),
+            }));
+            Assert.That(DeleteTime(test.CharacterId), Is.EqualTo(deleteTime));
         });
     }
 }

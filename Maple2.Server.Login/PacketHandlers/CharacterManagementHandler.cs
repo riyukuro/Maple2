@@ -402,7 +402,9 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
 
     // The restore of a character whose delete is pending. It only ends the wait: the blocks of a delete (a guild,
     // unread mail, listings, a marriage) are for the delete itself. Every answer is CharacterList 6, whose error the
-    // client shows with its delete texts, leaving the character's timer as it was (UICharacterListDialog mode 6).
+    // client shows with its delete texts (UICharacterListDialog mode 6). The client zeroes the character's countdown
+    // when it sends the restore (CancelDelete), so a refused restore of a character still in its wait also sends the
+    // delete time again (mode 5 with no error, no box), or the client would offer the final delete at once.
     private void HandleCancelDelete(LoginSession session, long characterId) {
         using GameStorage.Request db = GameStorage.Context();
         Character? character = db.GetCharacter(characterId, session.AccountId);
@@ -418,6 +420,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
 
         if (!db.UpdateDelete(session.AccountId, characterId, 0)) {
             session.Send(CharacterListPacket.CancelDelete(characterId, s_char_err_destroy));
+            session.Send(CharacterListPacket.BeginDelete(characterId, character.DeleteTime));
             return;
         }
         session.Send(CharacterListPacket.CancelDelete(characterId));
