@@ -64,10 +64,11 @@ public class HealDamageRecord : IByteSerializable {
     }
 
     // The caster's special ability 206 (reduce_do_heal_hp, Reduced HP Recovery Skill Effect, in thousandths) cuts the
-    // health its heals give, rounded down: KR Priest effect 10400251 (an attack stance) holds 900, so its holder's
-    // heals give a tenth. The client sums the ability for its stat window only; the heal amount is the server's.
-    // Chosen here: every heal the holder casts but a potion's (sub-type Consumable, itemHeal), to itself or another,
-    // the whole health amount after its caster's invokes; spirit and stamina heals unchanged, nothing below 0.
+    // health its heals give (the cut rounds down, so the health kept rounds up): KR Priest effect 10400251 (an attack
+    // stance) holds 900, so its holder's heals give a tenth. The client sums the ability for its stat window only;
+    // the heal amount is the server's. Chosen here: every heal the holder casts but a potion's (sub-type Consumable,
+    // itemHeal), to itself or another, the whole health amount after its caster's invokes; spirit and stamina heals
+    // unchanged, nothing below 0.
     public static long DoneCut(long amount, long reduction) {
         if (reduction <= 0 || amount <= 0) {
             return amount;
