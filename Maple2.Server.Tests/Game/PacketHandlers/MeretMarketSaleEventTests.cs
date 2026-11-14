@@ -194,6 +194,8 @@ public class MeretMarketSaleEventTests {
             Assert.That(EventSaleReader.PremiumMarket("0", "40300", "100000"), Is.Null);
             Assert.That(EventSaleReader.PremiumMarket("10001", "40300", "100000"), Is.Null);
             Assert.That(EventSaleReader.PremiumMarket("5000", "", "100000"), Is.Null);
+            Assert.That(EventSaleReader.PremiumMarket("5000", ",40300,,41000,", "100000")!.CategoryIds, Is.EqualTo(new[] { 40300, 41000 }));
+            Assert.That(EventSaleReader.PremiumMarket("5000", " , ,", "100000"), Is.Null);
             Assert.That(EventSaleReader.PremiumMarket("5000", "40300,x", "100000"), Is.Null);
             Assert.That(EventSaleReader.PremiumMarket("5000", "40300", "x"), Is.Null);
         });

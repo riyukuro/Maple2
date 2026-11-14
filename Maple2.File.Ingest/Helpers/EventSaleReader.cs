@@ -117,12 +117,14 @@ public static class EventSaleReader {
     // event (chosen here: the client's parse reads it as 0, a sale of every category); so does a row without
     // categories or with a rate outside 1..10000 (the client would show a price below 0 above the full rate). A row
     // without value3 is kept with currency 0, which no product matches, as in the client (KR's three 2016 rows).
+    // The client splits the list with CStringT::Tokenize, which skips empty places ("40300,,41000", a trailing
+    // comma), so they are skipped here too.
     public static PremiumMarketSale? PremiumMarket(string? value1, string? value2, string? value3) {
         if (!int.TryParse(value1?.Trim(), out int rate) || rate is <= 0 or > EventSaleRules.FullRate) {
             return null;
         }
         var ids = new SortedSet<int>();
-        foreach (string place in Split(value2)) {
+        foreach (string place in Split(value2).Where(place => place.Length > 0)) {
             if (!int.TryParse(place, out int id)) {
                 return null;
             }

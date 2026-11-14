@@ -204,9 +204,10 @@ public static class EventSaleRules {
     // total turned into a rate out of 10000 (total / 1000 * 10000). The enchant window adds the two the same way for
     // its sale text (uiitemenchantdialog.cpp:992 and :1000, CEquipment::GetAbilityRate, equipment.cpp:731), but it
     // tests the inventory against the counts of the staged item's reply as they are (:1885), so the server lowers
-    // them (EnchantIngredientCount).
+    // them (EnchantIngredientCount). The counts are the server's own, so the rate is taken in whole numbers
+    // (feeTotal * 10): the single-float form gives 559 for a total of 56.
     public static int EnchantDiscount(int saleRate, long feeTotal) {
-        int feeRate = feeTotal <= 0 ? 0 : (int) Math.Min((float) feeTotal / 1000f * 10000f, int.MaxValue / 2);
+        int feeRate = feeTotal <= 0 ? 0 : (int) Math.Min(Math.Min(feeTotal, int.MaxValue) * 10, int.MaxValue / 2);
         return (int) Math.Min((long) Math.Max(saleRate, 0) + feeRate, int.MaxValue / 2);
     }
 

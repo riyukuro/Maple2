@@ -149,6 +149,8 @@ public class ItemEnchantSaleTests {
     [TestCase(0, 100, 1000)]
     [TestCase(3000, 100, 4000)]
     [TestCase(-5, 50, 500)]
+    [TestCase(0, 56, 560)] // the single-float form gave 559
+    [TestCase(0, long.MaxValue, int.MaxValue / 2)]
     public void EnchantDiscount_AddsTheRateAndTheAttribute(int saleRate, long fee, int expected) {
         Assert.That(EventSaleRules.EnchantDiscount(saleRate, fee), Is.EqualTo(expected));
     }

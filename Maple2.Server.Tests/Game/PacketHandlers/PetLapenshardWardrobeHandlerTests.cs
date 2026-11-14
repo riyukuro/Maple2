@@ -74,6 +74,45 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));
     }
 
+    // Two rows naming one tag need their sum: 30 crystals cover each 20 alone but not both, so the fusion is
+    // refused with the fodder, the meso and the crystals untouched (a check per row let the fodder and the meso
+    // go before Consume failed on the second row).
+    [Test]
+    public void LapenshardUpgrade_RowsOfOneTagNeedTheirSum() {
+        var test = new TestGameSession();
+        ItemMetadata crystalData = TestGameSession.Metadata(40100001, type: 2);
+        crystalData = crystalData with { Property = crystalData.Property with { Tag = ItemTag.RedCrystal } };
+        Item shards = test.Store(TestGameSession.Metadata(ShardId, type: 21), amount: 9);
+        Item crystals = test.Store(crystalData, amount: 30);
+        test.Register(TestGameSession.Metadata(NextShardId, type: 21));
+        test.SetTable(new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry> {
+            [ShardId] = new(1, 1, NextShardId, 4, [
+                new LapenshardUpgradeTable.Ingredient(ItemTag.RedCrystal, 20),
+                new LapenshardUpgradeTable.Ingredient(ItemTag.RedCrystal, 20),
+            ], 1000),
+        }));
+        GameSession session = test.Start();
+        var handler = new LapenshardHandler { TableMetadata = test.TableMetadata, ItemMetadata = session.ItemMetadata };
+        session.Currency.Meso = 5000;
+
+        Assert.DoesNotThrow(() => handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(5);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(ShardId);
+            writer.WriteInt(0);
+            writer.WriteInt(1);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(4);
+        })));
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Get(shards.Uid)?.Amount, Is.EqualTo(9));
+            Assert.That(session.Item.Inventory.Get(crystals.Uid)?.Amount, Is.EqualTo(30));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(session.Item.Inventory.Find(NextShardId), Is.Empty);
+        });
+    }
+
     // A running SaleLapenshardUpgradeRGB event lowers the crystal counts by the highest rate (the counts the
     // dialog checks and shows); another ingredient and the meso keep theirs, and an ended event is left out.
     [TestCase(0, false, 30, 40)]

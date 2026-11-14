@@ -184,9 +184,11 @@ public class LapenshardHandler : FieldPacketHandler {
             .Select(ingredient => new IngredientInfo(ingredient.ItemTag,
                 LapenshardRules.SaleIngredientAmount(ingredient.ItemTag, ingredient.Amount, saleRate)))
             .ToArray();
-        foreach (IngredientInfo ingredient in ingredients) {
-            long owned = session.Item.Inventory.SpendableCount(ingredient.Tag);
-            if (owned < ingredient.Amount) {
+        // Rows naming one tag add up, as Consume takes them: a check per row passed two rows that together need
+        // more than is held, and Consume then failed after the meso and the fodders were taken.
+        foreach (IGrouping<ItemTag, IngredientInfo> tag in ingredients.GroupBy(ingredient => ingredient.Tag)) {
+            long needed = tag.Sum(ingredient => (long) Math.Max(ingredient.Amount, 0));
+            if (session.Item.Inventory.SpendableCount(tag.Key) < needed) {
                 return false;
             }
         }
