@@ -905,6 +905,11 @@ public sealed class QuestManager {
                 effect => SpecialEffectRules.QuestApplies(effect, basic.Repeat, exp, meso, reward.Rue)),
             exp, meso, reward.Rue);
 
+        // The quest exp rate (special attribute) takes its share of the same exp as the type 7 extra: the two add, neither
+        // is raised by the other.
+        exp = QuestExpRules.StatBonus(exp, session.Player.Stats.Values[SpecialAttribute.QuestExp].Multiplier(), basic.StandardLevel,
+            session.ServerTableMetadata.ConstantsTable.QuestRewardSAIgnoreLevel);
+
         if (meso + extraMeso > 0) {
             session.Currency.ChangeMeso(meso + extraMeso);
         }

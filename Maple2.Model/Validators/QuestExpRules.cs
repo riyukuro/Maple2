@@ -66,4 +66,16 @@ public static class QuestExpRules {
         }
         return exp;
     }
+
+    // The player's quest exp rate (SpecialAttribute.QuestExp, seg_questrewardrate: guild buff 110000113 +30% to +38%,
+    // buff 100000009 +10%; a fraction) adds its share of the exp for a quest of standardLevel QuestRewardSAIgnoreLevel
+    // (10 in KR) and up: CQuest::ShowRewards (questmanager_1.cpp:333-344) skips the rate below that level and adds
+    // exp * (1 + rate) - exp, in float, to the exp.
+    public static long StatBonus(long exp, double rate, int standardLevel, int ignoreLevel) {
+        if (exp <= 0 || rate == 0 || standardLevel < ignoreLevel) {
+            return exp;
+        }
+        long extra = (long) ((float) exp * (1f + (float) rate) - (float) exp);
+        return Math.Max(0, exp + extra);
+    }
 }

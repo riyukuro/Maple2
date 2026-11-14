@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -6,6 +6,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Maple2.Server.Tests.Validators;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
@@ -208,6 +209,53 @@ public class QuestRewardTierTests {
             Assert.That(quest.State, Is.EqualTo(completed ? QuestState.Completed : QuestState.Started));
             Assert.That(Held(session, TicketId), Is.EqualTo(left));
             Assert.That(Held(session, RewardId), Is.EqualTo(completed ? 1 : 0));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // The quest exp rate (SpecialAttribute.QuestExp, in thousandths: KR guild buff 110000113 level 1 is
+    // seg_questrewardrate 0.3) adds its share of the exp for a quest of standardLevel 10 (QuestRewardSAIgnoreLevel in
+    // KR) and up, as the client's reward line adds it; below that level, and without the rate, the exp is the reward's.
+    [TestCase(300, 10, 1300L)]
+    [TestCase(300, 60, 1300L)]
+    [TestCase(100, 60, 1100L)]
+    [TestCase(300, 9, 1000L)]
+    [TestCase(0, 60, 1000L)]
+    public void QuestExpRate_AddsItsShareFromTheIgnoreLevel(int rate, int standardLevel, long gained) {
+        GameSession session = Login(Job.Knight);
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { QuestRewardSAIgnoreLevel = 10 });
+        session.Player.Stats.Values[SpecialAttribute.QuestExp].AddTotal(rate);
+        QuestMetadata data = TestGameSession.QuestData(90000021);
+        Quest quest = test.StartQuest(data with {
+            Basic = data.Basic with { StandardLevel = standardLevel },
+            CompleteReward = data.CompleteReward with { Exp = 1000 },
+        });
+        long before = session.Player.Value.Character.Exp;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Quest.Complete(quest), Is.True);
+            Assert.That(session.Player.Value.Character.Exp - before, Is.EqualTo(gained));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+    // The quest exp rate and a type 7 quest reward effect held (110001021, 4 times more exp for a daily quest) each take
+    // their share of the same exp, so they add: 1000 + 300 + 4000, not the effect's share of the raised 1300.
+    [Test]
+    public void QuestExpRate_AddsToTheQuestRewardEffect() {
+        GameSession session = Login(Job.Knight);
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { QuestRewardSAIgnoreLevel = 10 });
+        session.Player.Stats.Values[SpecialAttribute.QuestExp].AddTotal(300);
+        SpecialEffectWiringTests.Hold(session.Player, SpecialEffectRulesTests.QuestExp);
+        QuestMetadata data = TestGameSession.QuestData(90000021);
+        Quest quest = test.StartQuest(data with {
+            Basic = data.Basic with { StandardLevel = 60, Repeat = 2 },
+            CompleteReward = data.CompleteReward with { Exp = 1000 },
+        });
+        long before = session.Player.Value.Character.Exp;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Quest.Complete(quest), Is.True);
+            Assert.That(session.Player.Value.Character.Exp - before, Is.EqualTo(5300L));
             Assert.That(test.Errors, Is.Empty);
         });
     }
