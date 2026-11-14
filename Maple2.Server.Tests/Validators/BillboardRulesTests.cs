@@ -16,8 +16,8 @@ public class BillboardRulesTests {
         var writer = new ByteWriter();
         writer.WriteUnicodeString(text);
         var packet = new ByteReader(writer.ToArray(), 0);
-        int parts = packet.ReadUnicodeString().Split("'").Length;
-        Assert.That(BillboardRules.InstallResult(parts, itemParameters, placed), Is.EqualTo(expected));
+        bool allowed = BillboardRules.TextAllowed(packet.ReadUnicodeString().Split("'"));
+        Assert.That(BillboardRules.InstallResult(allowed, itemParameters, placed), Is.EqualTo(expected));
     }
 
     // InteractObject add: after the four strings the client reads f32 scale, bool, and for a billboard i64 board id, name.

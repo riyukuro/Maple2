@@ -699,8 +699,8 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
         // Every refusal answers the dialog's install banner (PlayerHost mode 7) instead of nothing.
-        if (fieldParameters.Length < BillboardRules.InstallTextParts) {
-            session.Send(PlayerHostPacket.BillboardInstallResult(BillboardRules.InstallResult(fieldParameters.Length, true, true)));
+        if (!BillboardRules.TextAllowed(fieldParameters)) {
+            session.Send(PlayerHostPacket.BillboardInstallResult(BillboardRules.InstallResult(false, true, true)));
             return;
         }
 
@@ -708,7 +708,7 @@ public class ItemUseHandler : FieldPacketHandler {
         if (!functionParameters.ContainsKey("interactID") || !int.TryParse(functionParameters["interactID"], out int interactId) ||
             !functionParameters.ContainsKey("durationSec") || !int.TryParse(functionParameters["durationSec"], out int durationSec) ||
             !functionParameters.ContainsKey("model") || !functionParameters.ContainsKey("normal") || !functionParameters.ContainsKey("reactable")) {
-            session.Send(PlayerHostPacket.BillboardInstallResult(BillboardRules.InstallResult(fieldParameters.Length, false, true)));
+            session.Send(PlayerHostPacket.BillboardInstallResult(BillboardRules.InstallResult(true, false, true)));
             return;
         }
 
@@ -730,13 +730,13 @@ public class ItemUseHandler : FieldPacketHandler {
 
         FieldInteract? fieldInteract = session.Field.AddInteract(interactMesh, billboard);
         if (fieldInteract == null) {
-            session.Send(PlayerHostPacket.BillboardInstallResult(BillboardRules.InstallResult(fieldParameters.Length, true, false)));
+            session.Send(PlayerHostPacket.BillboardInstallResult(BillboardRules.InstallResult(true, true, false)));
             return;
         }
         session.ConditionUpdate(ConditionType.install_billboard, targetLong: session.Field.MapId);
         session.Field.Broadcast(InteractObjectPacket.Add(fieldInteract.Object));
         session.Item.Inventory.Consume(item.Uid, 1);
-        session.Send(PlayerHostPacket.BillboardInstallResult(BillboardRules.InstallResult(fieldParameters.Length, true, true)));
+        session.Send(PlayerHostPacket.BillboardInstallResult(BillboardRules.InstallResult(true, true, true)));
     }
 
     private static void HandleOpenMassive(GameSession session, IByteReader packet, Item item) {

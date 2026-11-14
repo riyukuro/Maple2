@@ -11,9 +11,19 @@ public enum BillboardInstallResult {
 public static class BillboardRules {
     // The install item's text is title'description'public flag; the item must name its interact object.
     public const int InstallTextParts = 3;
+    public const int TitleLengthMax = 15;
+    public const int DescriptionLengthMax = 100;
 
-    public static BillboardInstallResult InstallResult(int textParts, bool itemParameters, bool placed) {
-        return textParts >= InstallTextParts && itemParameters && placed
+    // The dialog sends a title of 1-15 and a description of 1-100 characters, its quotes turned into backquotes, so
+    // the text has exactly three parts (UIItemBillBoardDialog::FUN_140c33840, uiitembillboarddialog.cpp:535-546).
+    public static bool TextAllowed(string[] parts) {
+        return parts.Length == InstallTextParts
+            && parts[0].Length is >= 1 and <= TitleLengthMax
+            && parts[1].Length is >= 1 and <= DescriptionLengthMax;
+    }
+
+    public static BillboardInstallResult InstallResult(bool text, bool itemParameters, bool placed) {
+        return text && itemParameters && placed
             ? BillboardInstallResult.Success
             : BillboardInstallResult.Fail;
     }

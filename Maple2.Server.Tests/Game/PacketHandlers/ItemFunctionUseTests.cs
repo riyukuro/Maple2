@@ -284,6 +284,28 @@ public class ItemFunctionUseTests {
         Assert.That(Sent().Last(), Is.EqualTo(Hex(PlayerHostPacket.BillboardInstallResult(BillboardInstallResult.Success))));
     }
 
+    // The dialog sends a title of 1-15 and a description of 1-100 characters and no quote of its own: other text
+    // places no board, keeps the item and answers the banner's failure.
+    [TestCase("SixteenCharTitle'Text'0")]
+    [TestCase("'Text'0")]
+    [TestCase("Title''0")]
+    [TestCase("Title'Text'0'1")]
+    [TestCase("Title'" + "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789x'0")]
+    public void InstallBillBoard_RefusesTextTheDialogCannotSend(string text) {
+        var metadata = new InteractObjectMetadata(19300001, InteractType.BillBoard, Collection: 0, ReactCount: 0, TargetPortalId: 0, GuildPosterId: 0,
+            WeaponItemId: 0, new InteractObjectMetadataItem(0, 0, 0, 0, 0), new InteractObjectMetadataTime(0, 0, 0),
+            new InteractObjectMetadataDrop(0, [], [], 0, 0), new InteractObjectMetadataEffect([], [], 0, 0), []);
+        Item item = Login(20600001, ItemFunction.InstallBillBoard,
+            "<v interactID=\"19300001\" model=\"MS2InteractMesh\" normal=\"Interaction_advertisement_A01\" " +
+            "reactable=\"Interaction_advertisement_A01\" durationSec=\"86400\" />",
+            setup: () => test.SetTable(new InteractObjectTable(new Dictionary<int, InteractObjectMetadata> { [19300001] = metadata })));
+
+        Use(item, text);
+
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(Sent(), Is.EqualTo(new[] { Hex(PlayerHostPacket.BillboardInstallResult(BillboardInstallResult.Fail)) }));
+    }
+
     // 20301023 (ItemRePackingScroll 10000001): the client sends the use once its repack window is closed
     // (itemfunctiondispatch ItemRePackingScroll) and the server opens the window for the scroll, which stays.
     [Test]
