@@ -205,6 +205,30 @@ public class VibrateTrustTests {
         Assert.That(Vibrate(scene, "tree"), Is.EqualTo(1));
     }
 
+    // The player cast three more skills before the cast's magic met the tree: the pending queue dropped the cast, and
+    // the client still sends the tag with its uid, so the tree takes it. Before, the packet was refused.
+    [Test]
+    public void ACastPushedOutOfThePendingQueueStillTakesTheTag() {
+        Scene scene = Start();
+        AttackPoint(scene);
+        for (long uid = CastUid + 1; uid <= CastUid + 3; uid++) {
+            scene.Test.Session.Player.ActiveSkills.Add(new SkillRecord(scene.Record.Metadata, uid, scene.Test.Session.Player),
+                scene.Test.Session.Field!.FieldTick);
+        }
+        Assert.That(scene.Test.Session.Player.ActiveSkills.Get(CastUid), Is.Null, "no longer pending");
+        Assert.That(Vibrate(scene, "tree"), Is.EqualTo(1));
+    }
+
+    // Past the cast's keep time the tag is refused.
+    [Test]
+    public void ACastPastItsKeepTimeIsRefused() {
+        Scene scene = Start();
+        AttackPoint(scene);
+        FieldManager field = scene.Test.Session.Field!;
+        typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(field, field.FieldTick + SkillHitRules.HitWindowMs + 1000);
+        Assert.That(Vibrate(scene, "tree"), Is.EqualTo(0));
+    }
+
     [Test]
     public void TheCastKeepsItsPosition() {
         Scene scene = Start();

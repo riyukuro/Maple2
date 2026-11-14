@@ -30,7 +30,10 @@ public class VibrateHandler : FieldPacketHandler {
         byte motionPoint = packet.ReadByte();
         byte attackPoint = packet.ReadByte();
 
-        SkillRecord? record = session.Player.ActiveSkills.Get(skillUid);
+        // The cast is looked up among the player's recent casts, not the three pending ones: the client keeps a cast's
+        // areas after the player cast again, so a magic still on its way tags with a cast the pending queue has dropped
+        // (as for Breakable; SkillQueue, SkillHitRules.CastKeepMs).
+        SkillRecord? record = session.Field == null ? null : session.Player.ActiveSkills.GetRecent(skillUid, session.Field.FieldTick);
         if (record == null) {
             Logger.Warning("Invalid Skill {SkillUid}", skillUid);
             return;
