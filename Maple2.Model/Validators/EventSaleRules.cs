@@ -399,6 +399,36 @@ public static class EventSaleRules {
         return rate;
     }
 
+    // The rate of a shop's NpcShopResetPriceSale events. The client keeps one rate per shop and a later event of the
+    // list overwrites it (CGameEventValueNpcShopResetPriceSale::Set, gameeventvalue.cpp:1270), so this is the rate
+    // of the shop's last running event by start, then by id: the order the event list is sent in at login.
+    public static int NpcShopResetRate(IEnumerable<GameEvent> events, int shopId) {
+        GameEvent? last = null;
+        int rate = 0;
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is not NpcShopResetPriceSale sale || sale.ShopId != shopId) {
+                continue;
+            }
+            if (last == null || gameEvent.StartTime > last.StartTime
+                || gameEvent.StartTime == last.StartTime && gameEvent.Id > last.Id) {
+                last = gameEvent;
+                rate = sale.Rate;
+            }
+        }
+        return rate;
+    }
+
+    // An instant restock's price under a rate, as the shop window shows it and sends it back (UIShopDialog::UpdateMoney
+    // and ResetList, uishopdialog.cpp:3309 and 2552; ApplyDiscount, itemexchangescrolltable.cpp:158):
+    // (price * (1 - rate / 10000) + 0.000001) in doubles, cut to a whole number. Chosen here: the rate is held to
+    // 0..10000 and a price of 0 or less stays as it is.
+    public static int NpcShopResetPrice(int price, int rate) {
+        if (price <= 0 || rate <= 0) {
+            return price;
+        }
+        return (int) (price * (1.0 - Math.Min(rate, FullRate) / 10000.0) + 1e-06);
+    }
+
     // A beauty fee under a rate (CGameRule::GetDiscountedPrice): price - price * rate / 10000 in unsigned 32 bit
     // whole numbers. Chosen here: the rate is held to 0..10000 (the client does not test it).
     public static int BeautyShopPrice(int price, int rate) {

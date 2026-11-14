@@ -117,4 +117,5 @@ public enum GameEventType {
     DungeonBuff,
     QuestTag,
     EnchantRate,
+    NpcShopResetPriceSale,
 }

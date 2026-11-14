@@ -592,6 +592,13 @@ public record SaleBeautyShop(
     int Rate,
     bool Flag) : GameEventData;
 
+// The npc shop restock sale (GameEventNpcShopResetPriceSale, commonfiles/gameevent.cpp:5408): value1 is the shop's
+// id, value2 the rate out of 10000 taken off the shop's instant restock price (UIShopDialog::UpdateMoney,
+// client/ms2/uishopdialog.cpp:3309; EventSaleRules.NpcShopResetRate).
+public record NpcShopResetPriceSale(
+    int ShopId,
+    int Rate) : GameEventData;
+
 // The special attribute bonus (GameEventSAHotTime, commonfiles/gameevent.cpp:664): value1 is a comma list of
 // special attribute ids, value2 the list of their values, value4 the text of the event icon's tooltip. While the
 // event runs the client adds each value to the character's total of the attribute (CEquipment::GetAbilityTotal,
@@ -895,6 +902,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(ExchangeScrollSale), "ExchangeScrollSale")]
 [JsonDerivedType(typeof(PremiumMarketSale), "PremiumMarketSale")]
 [JsonDerivedType(typeof(SaleBeautyShop), "SaleBeautyShop")]
+[JsonDerivedType(typeof(NpcShopResetPriceSale), "NpcShopResetPriceSale")]
 [JsonDerivedType(typeof(SAHotTime), "SAHotTime")]
 [JsonDerivedType(typeof(DungeonBonusReward), "DungeonBonusReward")]
 [JsonDerivedType(typeof(QuestAdditionalReward), "QuestAdditionalReward")]

@@ -564,6 +564,12 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(saleBeautyShop.Rate);
                 writer.WriteBool(saleBeautyShop.Flag);
                 break;
+            case NpcShopResetPriceSale shopResetSale:
+                // GameEventNpcShopResetPriceSale::vfunc_4 (gameevent.cpp:5425): the shop, the rate.
+                writer.WriteInt(Id);
+                writer.WriteInt(shopResetSale.ShopId);
+                writer.WriteInt(shopResetSale.Rate);
+                break;
             case SAHotTime:
                 // The client reads the two lists and the tooltip text itself; value3 is read and not used.
                 writer.WriteInt(Id);

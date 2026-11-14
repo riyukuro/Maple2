@@ -937,6 +937,25 @@ public class ShopHandlerTests {
         return session.Currency[CurrencyType.Treva];
     }
 
+    // An NpcShopResetPriceSale event of the shop lowers the restock price the window shows and sends back (300 at
+    // 2500 of 10000: 225); the shop packet keeps the full price, as the client lowers it itself. An event of another
+    // shop or one that ended takes nothing off. Before, the full price was taken whatever the window showed.
+    [TestCase(ShopId, false, ExpectedResult = 1000 - 225)]
+    [TestCase(ShopId + 1, false, ExpectedResult = 1000 - 300)]
+    [TestCase(ShopId, true, ExpectedResult = 1000 - 300)]
+    public long InstantRestock_UnderTheResetSale_TakesTheLoweredPrice(int saleShopId, bool over) {
+        restockData = new ShopRestockData(ResetType.Default, ShopCurrencyType.Meso, ShopCurrencyType.Treva, 0, 0, 300, false, false, false);
+        enableReset = true;
+        beforeStart = () => test.AddEvent(990001, GameEventType.NpcShopResetPriceSale, new NpcShopResetPriceSale(saleShopId, 2500),
+            over ? DateTime.Now.AddDays(-9) : DateTime.Now.AddDays(-1), over ? DateTime.Now.AddDays(-2) : DateTime.Now.AddDays(1));
+        GameSession session = Login(meso: 1000);
+
+        Restock(session, 225);
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).Count(hex => hex.EndsWith(RestockTail(ShopCurrencyType.Meso, 300, 1, ResetType.Default, multiplier: false))), Is.EqualTo(1));
+        return session.Currency.Meso;
+    }
+
     // A shop with its reset on and reset type 99 (the KR event shops 226 and 260 to 280) opens and is stored with a
     // time the database holds. Before, its first opening threw on long.MaxValue and the shop did not open.
     [Test]
@@ -1012,13 +1031,13 @@ public class ShopHandlerTests {
 
     // The restock part the shop packet ends with (Shop.WriteTo): the cost's currency, the excess currency, the
     // item id, the price, the multiplier flag, the count, the reset type and two flags.
-    private static string RestockTail(ShopCurrencyType type, int price, int count, ResetType reset) {
+    private static string RestockTail(ShopCurrencyType type, int price, int count, ResetType reset, bool multiplier = true) {
         var writer = new Maple2.PacketLib.Tools.ByteWriter();
         writer.Write<ShopCurrencyType>(type);
         writer.Write<ShopCurrencyType>(ShopCurrencyType.Treva);
         writer.WriteInt();
         writer.WriteInt(price);
-        writer.WriteBool(true);
+        writer.WriteBool(multiplier);
         writer.WriteInt(count);
         writer.Write<ResetType>(reset);
         writer.WriteBool(false);

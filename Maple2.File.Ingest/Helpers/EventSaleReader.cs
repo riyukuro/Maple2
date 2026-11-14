@@ -201,6 +201,17 @@ public static class EventSaleReader {
         return bonus.Count == 0 ? null : new SAHotTime(bonus.ToArray());
     }
 
+    // value1: the shop, value2: the rate out of 10000 (GameEventNpcShopResetPriceSale, commonfiles/gameevent.cpp:5408,
+    // both read with _wtoi). A row without a shop or a rate gives no event. Chosen here: a rate above 10000 gives
+    // none either: the client would show a price below 0 and send it back.
+    public static NpcShopResetPriceSale? NpcShopReset(string? value1, string? value2) {
+        if (!int.TryParse(value1?.Trim(), out int shop) || shop <= 0 || !int.TryParse(value2?.Trim(), out int rate)
+            || rate is <= 0 or > 10000) {
+            return null;
+        }
+        return new NpcShopResetPriceSale(shop, rate);
+    }
+
     // value1: the beauty shop, value2: the rate, value3: the flag, 0 when empty (GameEventSaleBeautyShop,
     // commonfiles/gameevent.cpp:760).
     public static SaleBeautyShop? BeautyShop(string? value1, string? value2, string? value3) {

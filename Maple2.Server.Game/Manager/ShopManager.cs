@@ -379,6 +379,8 @@ public sealed class ShopManager {
         // The cost the shop packet showed (Shop.RestockCost). Before, with the multiplier on, the table's price was
         // taken in the multiplier's currency, and the multiplier read the base currency, not the excess one.
         (ShopCurrencyType currencyType, int cost) = activeShop.RestockCost;
+        // The window shows the price lowered by the shop's NpcShopResetPriceSale event; the packet keeps the full one.
+        cost = EventSaleRules.NpcShopResetPrice(cost, EventSaleRules.NpcShopResetRate(session.FindEvent(GameEventType.NpcShopResetPriceSale), activeShop.Id));
         if (!Pay(new ShopCost { Amount = cost, Type = currencyType }, cost)) {
             session.Send(ShopPacket.Error(ShopError.s_err_lack_shopitem)); // not neccessarily the right error.
             return;
