@@ -91,10 +91,10 @@ public class AttendanceHandler : FieldPacketHandler {
         return AttendanceRules.AttendedToday(completeTime, DateTime.Now);
     }
 
-    // Gives the day's gift and then marks the day attended; false when nothing was given.
+    // Gives the day's gift and marks the day attended, stored together; false when nothing was given.
     private bool Attend(GameSession session, AttendGift attendGift, GameEvent gameEvent) {
-        return AttendanceRules.GiveThenTake(() => GetRewards(session, attendGift, gameEvent),
-            () => session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceCompletedTimestamp, DateTime.Now.ToEpochSeconds()));
+        return GetRewards(session, attendGift, gameEvent, GameEventUserValueType.AttendanceCompletedTimestamp,
+            DateTime.Now.ToEpochSeconds(), couponUid: 0, out _);
     }
 
     // The event's requirement, tested on the player's user values with id 0 as the client tests them; a kind 2
@@ -124,14 +124,22 @@ public class AttendanceHandler : FieldPacketHandler {
         }
     }
 
-    // Mails the next reward. The claim is counted only after the mail and its item are stored; false
-    // when nothing was given (no reward left, no item, or the mail could not be stored).
-    private bool GetRewards(GameSession session, AttendGift attendGift, GameEvent gameEvent) {
-        int rewardsClaimed = session.GameEvent.Get(GameEventUserValueType.AttendanceRewardsClaimed, gameEvent.Id, gameEvent.EndTime).Int();
+    // Mails the next reward. The mail, its item, the claim count and the day's mark (markType set to markValue: the
+    // attended time, or the bought days) are stored in one transaction with the session's currency (a bought day's
+    // price, already held) and the used coupon, so a crash cannot keep the mail and lose the claim (a second gift
+    // after the restart) or the other way round. Memory takes the values once the transaction committed. False when
+    // nothing was given (no reward left, no item, or the transaction was not stored). couponTaken is false when the
+    // coupon left the bag between its save and the commit.
+    private bool GetRewards(GameSession session, AttendGift attendGift, GameEvent gameEvent, GameEventUserValueType markType,
+                            long markValue, long couponUid, out bool couponTaken) {
+        couponTaken = true;
+        GameEventUserValue claimedValue = session.GameEvent.Get(GameEventUserValueType.AttendanceRewardsClaimed, gameEvent.Id, gameEvent.EndTime);
+        int rewardsClaimed = claimedValue.Int();
         int index = AttendanceRules.RewardIndex(rewardsClaimed, attendGift.Items.Length);
         if (index < 0) {
             return false;
         }
+        GameEventUserValue markCurrent = session.GameEvent.Get(markType, gameEvent.Id, gameEvent.EndTime);
 
         RewardItem reward = attendGift.Items[index];
 
@@ -148,31 +156,52 @@ public class AttendanceHandler : FieldPacketHandler {
             Content = attendGift.MailContent,
         };
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        try {
-            receiverMail = db.CreateMail(receiverMail);
-            if (receiverMail == null) {
+        var claimed = new GameEventUserValue(GameEventUserValueType.AttendanceRewardsClaimed, claimedValue.ExpirationTime, gameEvent.Id);
+        claimed.SetValue((rewardsClaimed + 1).ToString());
+        var mark = new GameEventUserValue(markType, markCurrent.ExpirationTime, gameEvent.Id);
+        mark.SetValue(markValue.ToString());
+
+        Mail? storedMail = null;
+        Item? storedItem = null;
+        bool taken = true;
+        bool stored = session.TrySavePurchase(db => {
+            storedMail = db.CreateMail(receiverMail);
+            if (storedMail == null) {
                 Logger.Error("Failed to create mail for attendance reward to user {CharacterId}", session.CharacterId);
                 return false;
             }
-
-            item = db.CreateItem(receiverMail.Id, item);
-            if (item == null) {
+            storedItem = db.CreateItem(storedMail.Id, item);
+            if (storedItem == null) {
                 Logger.Error("Failed to create attendance reward item {ItemId}", reward.ItemId);
                 return false;
             }
-        } catch (Exception ex) {
-            Logger.Error(ex, "Failed to store attendance reward {ItemId} for {CharacterId}", reward.ItemId, session.CharacterId);
+            if (!db.SaveGameEventUserValues(session.CharacterId, [claimed, mark])) {
+                return false;
+            }
+            if (couponUid != 0 && !session.Item.Inventory.SaveConsumed(db, couponUid, 1)) {
+                return false;
+            }
+            // Under the account lock, so no session save between the commit and memory writes the old values.
+            db.AfterCommit(() => {
+                session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceRewardsClaimed, rewardsClaimed + 1);
+                session.GameEvent.Set(gameEvent.Id, markType, markValue);
+                if (couponUid != 0) {
+                    taken = session.Item.Inventory.ConsumeStored(couponUid, 1);
+                }
+            });
+            return true;
+        });
+        couponTaken = taken;
+        if (!stored || storedMail == null || storedItem == null) {
+            Logger.Error("Attendance reward {ItemId} of event {EventId} not stored for {CharacterId}", reward.ItemId, gameEvent.Id, session.CharacterId);
             return false;
         }
 
-        receiverMail.Items.Add(item);
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceRewardsClaimed, rewardsClaimed + 1);
-
+        storedMail.Items.Add(storedItem);
         try {
             session.World.MailNotification(new MailNotificationRequest {
                 CharacterId = session.CharacterId,
-                MailId = receiverMail.Id,
+                MailId = storedMail.Id,
             });
         } catch { /* ignored */ }
         return true;
@@ -225,12 +254,20 @@ public class AttendanceHandler : FieldPacketHandler {
             return;
         }
 
-        // The gift first: the price is taken and the bought day counted only when the mail is stored,
-        // so a failed gift costs nothing. The coupon was tested above, so its consume does not fail.
-        bool given = AttendanceRules.GiveThenTake(() => GetRewards(session, attendGift, gameEvent), () => {
+        // The gift, the held price, the used coupon and the bought day are stored together (GetRewards), so a failed
+        // gift costs nothing and a crash cannot keep one without the others.
+        long usedCoupon = step == AttendanceRules.PayStep.Coupon ? couponUid : 0;
+        bool given = GetRewards(session, attendGift, gameEvent, GameEventUserValueType.AttendanceEarlyParticipationRemaining,
+            paid + 1, usedCoupon, out bool couponTaken);
+        if (given) {
             switch (step) {
                 case AttendanceRules.PayStep.Coupon:
-                    session.Item.Inventory.Consume(couponUid, 1);
+                    // The row is stored as used; the item that left the bag before the commit keeps its amount in
+                    // memory and its next save writes it back (as the cash attend item does). Logged so it is seen.
+                    if (!couponTaken) {
+                        Logger.Error("Attendance {EventId}: the coupon {ItemUid} was stored as used but not taken from the bag of {CharacterId}",
+                            gameEvent.Id, couponUid, session.CharacterId);
+                    }
                     break;
                 case AttendanceRules.PayStep.Meso:
                     if (mesoPrice > 0) {
@@ -247,8 +284,7 @@ public class AttendanceHandler : FieldPacketHandler {
                     }
                     break;
             }
-            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceEarlyParticipationRemaining, paid + 1);
-        });
+        }
         if (!given && meretPrice > 0) {
             session.Currency.ReturnMeret(meretPrice);
         }
