@@ -3,6 +3,7 @@ using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Xml;
 using Maple2.Model.Common;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
@@ -10,6 +11,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger;
+using Maple2.Server.Game.Trigger.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Serilog;
@@ -73,6 +75,14 @@ public class WeddingRoleActionTests {
         }
     }
 
+    // A hall script's action line, parsed and run the way the trigger runs it.
+    private void Action(string xml) {
+        var document = new XmlDocument();
+        document.LoadXml(xml);
+        XmlAttributeCollection attributes = document.DocumentElement!.Attributes;
+        TriggerFunctionMapping.ActionMap[attributes["name"]!.Value](attributes).Execute(context);
+    }
+
     private static string[] Sent(TestGameSession test, SendOp op) =>
         test.TakeSent().Where(packet => TestGameSession.Op(packet) == op).Select(Convert.ToHexString).ToArray();
 
@@ -90,9 +100,10 @@ public class WeddingRoleActionTests {
     }
 
     // Wedding 0x27, result 2 (OnMode27Accept): the row id, keep-item false, loop false, and no time after it.
+    // wedding_set_user_emotion (48 KR uses): ids 4 and 6, 12 uses each for each role.
     [Test]
     public void Emotion_GoesToTheRoleOnly() {
-        context.WeddingSetUserEmotion("Bride", 6);
+        Action("""<action name="wedding_set_user_emotion" id="6" entry_type="Bride" />""");
 
         string expected = Convert.ToHexString(WeddingPacket.Emotion(6).ToArray());
         Assert.That(expected[4..], Is.EqualTo("27" + "02" + "06000000" + "00" + "00"));
@@ -102,9 +113,10 @@ public class WeddingRoleActionTests {
     }
 
     // Trigger Ui 0xb: the point as three shorts and the immediate flag, to the one who looks.
+    // wedding_set_user_look_at (24 KR uses): Bride at Groom and Groom at Bride, always immediate.
     [Test]
     public void LookAt_SendsThePartnersPosition() {
-        context.WeddingSetUserLookAt("Bride", "Groom", true);
+        Action("""<action name="wedding_set_user_look_at" immediate="1" entry_type="Bride" look_at_entry_type="Groom" />""");
 
         string expected = Convert.ToHexString(TriggerPacket.UiLookAt(new Vector3(100, 200, 300), true).ToArray());
         Assert.That(expected[^14..], Is.EqualTo("6400" + "C800" + "2C01" + "01"));
@@ -114,12 +126,13 @@ public class WeddingRoleActionTests {
     }
 
     // Trigger Ui 10: the rotation and the immediate flag, to the one who turns.
+    // wedding_set_user_rotation (4 KR uses): rotation 0,0,0, immediate, for each role.
     [Test]
     public void Rotation_GoesToTheRoleOnly() {
-        context.WeddingSetUserRotation("Groom", new Vector3(0, 0, 90), true);
+        Action("""<action name="wedding_set_user_rotation" rotation="0,0,0" immediate="1" entry_type="Groom" />""");
 
-        string expected = Convert.ToHexString(TriggerPacket.UiPlayerRotation(new Vector3S(0, 0, 90), true).ToArray());
-        Assert.That(expected[^14..], Is.EqualTo("0000" + "0000" + "5A00" + "01"));
+        string expected = Convert.ToHexString(TriggerPacket.UiPlayerRotation(new Vector3S(0, 0, 0), true).ToArray());
+        Assert.That(expected[^14..], Is.EqualTo("0000" + "0000" + "0000" + "01"));
         Assert.That(Sent(groom, SendOp.Trigger), Is.EqualTo(new[] { expected }));
         Assert.That(Sent(bride, SendOp.Trigger), Is.Empty);
         Assert.That(Sent(guest, SendOp.Trigger), Is.Empty);
