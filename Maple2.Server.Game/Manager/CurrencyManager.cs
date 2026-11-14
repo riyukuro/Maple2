@@ -359,6 +359,66 @@ public class CurrencyManager {
         }
     }
 
+    // Adds mesos and merets inside a purchase transaction: nothing is sent and no quest is counted there, since a
+    // quest it completes starts a purchase save of its own, which would wait on this one's account lock and rows.
+    // Returns what was added (each capped at its maximum); the caller sends it with NotifyAdded once the save is
+    // stored, or takes it back with TakeBackAdded.
+    public (long Meso, long Meret, long GameMeret) AddUnsent(long meso, long meret, long gameMeret) {
+        lock (walletLock) {
+            (long Meso, long Meret, long GameMeret) before = (Currency.Meso, Currency.Meret, Currency.GameMeret);
+            if (meso > 0) {
+                Currency.Meso = Math.Min(Sum(Currency.Meso, meso), Constant.MaxMeso);
+            }
+            if (meret > 0) {
+                Currency.Meret = Math.Min(Sum(Currency.Meret, meret), Constant.MaxMeret);
+            }
+            if (gameMeret > 0) {
+                Currency.GameMeret = Math.Min(Sum(Currency.GameMeret, gameMeret), Constant.MaxMeret);
+            }
+            return (Currency.Meso - before.Meso, Currency.Meret - before.Meret, Currency.GameMeret - before.GameMeret);
+        }
+    }
+
+    // The packets of an AddUnsent, as ChangeMeso, ChangeMeret and ChangeGameMeret send them, and the meso quests.
+    public void NotifyAdded((long Meso, long Meret, long GameMeret) added) {
+        lock (walletLock) {
+            if (added.Meso != 0) {
+                SendMeso();
+            }
+            if (added.Meret != 0) {
+                session.Send(CurrencyPacket.UpdateMeret(Currency, added.Meret));
+            }
+            if (added.GameMeret != 0) {
+                session.Send(CurrencyPacket.UpdateGameMeret(Currency, added.GameMeret));
+            }
+        }
+        if (added.Meso != 0) {
+            session.Quest?.UpdateMeso();
+        }
+    }
+
+    // Takes back an AddUnsent whose save was not stored. Chosen here: the balances are sent (change 0), since a
+    // packet sent meanwhile on another thread may have shown the add; a part already spent meanwhile stays spent.
+    public void TakeBackAdded((long Meso, long Meret, long GameMeret) added) {
+        lock (walletLock) {
+            if (added.Meso != 0) {
+                Currency.Meso = Math.Max(0, Currency.Meso - added.Meso);
+                SendMeso();
+            }
+            if (added.Meret != 0) {
+                Currency.Meret = Math.Max(0, Currency.Meret - added.Meret);
+                session.Send(CurrencyPacket.UpdateMeret(Currency, 0));
+            }
+            if (added.GameMeret != 0) {
+                Currency.GameMeret = Math.Max(0, Currency.GameMeret - added.GameMeret);
+                session.Send(CurrencyPacket.UpdateGameMeret(Currency, 0));
+            }
+        }
+        if (added.Meso != 0) {
+            session.Quest?.UpdateMeso();
+        }
+    }
+
     // Sends the balance (after TryTakeMeso with notify false).
     public void NotifyMeso() {
         lock (walletLock) {

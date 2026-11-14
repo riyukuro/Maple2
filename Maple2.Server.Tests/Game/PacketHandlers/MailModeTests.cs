@@ -46,7 +46,12 @@ public class MailModeTests {
     private Mail StoreMail(long meso = 0, long meret = 0, int amount = 0, bool locked = false) {
         using GameStorage.Request db = test.Storage.Context();
         Mail mail = db.CreateMail(new Mail {
-            ReceiverId = test.CharacterId, Type = MailType.System, Title = "t", Content = "c", Meso = meso, Meret = meret,
+            ReceiverId = test.CharacterId,
+            Type = MailType.System,
+            Title = "t",
+            Content = "c",
+            Meso = meso,
+            Meret = meret,
         }) ?? throw new InvalidOperationException("mail row not created");
         if (amount > 0) {
             ItemMetadata metadata = TestGameSession.Metadata(ItemId);
@@ -173,6 +178,29 @@ public class MailModeTests {
             Assert.That(storedMeso, Is.EqualTo(1300), "the mesos are stored with the mark");
             Assert.That(storedMeret, Is.EqualTo(meretsBefore + 7), "the merets are stored with the mark");
             Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A collect whose currency store fails gives nothing: what the transaction added is taken back (TakeBackAdded) and
+    // the balances are sent as they were. The mesos are sent only after the save, so no gain was shown before it.
+    [Test]
+    public void Collect_AFailedCurrencyStoreTakesTheCurrencyBack() {
+        Begin();
+        Mail mail = StoreMail(meso: 300, meret: 7);
+        GameSession session = Login();
+        long meretsBefore = session.Currency.Meret;
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry =>
+            entry.Entity is Maple2.Database.Model.Character or Maple2.Database.Model.Account && entry.State != EntityState.Unchanged);
+
+        MailError error = session.Mail.Collect(mail.Id);
+        test.FailSave = null;
+
+        List<byte[]> currency = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Meso).ToList();
+        Assert.Multiple(() => {
+            Assert.That(error, Is.EqualTo(MailError.s_mail_error));
+            Assert.That(session.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(session.Currency.Meret, Is.EqualTo(meretsBefore));
+            Assert.That(currency.Select(packet => BitConverter.ToInt64(packet, 2)), Is.All.EqualTo(1000L), "no gain is shown");
         });
     }
 

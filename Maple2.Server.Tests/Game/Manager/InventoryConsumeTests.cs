@@ -119,4 +119,28 @@ public class InventoryConsumeTests {
             Is.EqualTo(new[] { (session.Item.Inventory.Find(KeyId).Single().Uid, 2) }));
         Assert.That(Held(session, KeyId), Is.EqualTo(2), "a plan takes nothing");
     }
+
+    // An item that leaves the bag between its stored take and the commit (another thread; here during the take's own
+    // write) is not taken in memory, so ConsumeNow answers false and the caller gives nothing for it. Before, it
+    // answered true: the gift was given while the item, kept where it went, was written back by the next save.
+    [Test]
+    public void ConsumeNow_AnItemThatLeftBeforeTheCommitGivesNothing() {
+        var test = new TestGameSession();
+        Maple2.Model.Game.Item ticket = test.Store(TestGameSession.Metadata(KeyId), 2);
+        GameSession session = test.Start();
+        test.FailSave = context => {
+            if (context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any()) {
+                test.FailSave = null;
+                session.Item.Inventory.Remove(ticket.Uid, out _);
+            }
+            return false;
+        };
+
+        bool taken = session.Item.Inventory.ConsumeNow([(ticket.Uid, 1)]);
+
+        Assert.Multiple(() => {
+            Assert.That(taken, Is.False);
+            Assert.That(session.Item.Inventory.Get(ticket.Uid), Is.Null, "the item had left the bag");
+        });
+    }
 }

@@ -520,13 +520,14 @@ public class ItemUseHandler : FieldPacketHandler {
         // and the box could be opened again.
         Mail? sentMail = null;
         bool taken = true;
+        var held = new List<int>();
         if (!session.TrySavePurchase(purchase => {
                 sentMail = purchase.CreateMail(receiverMail);
                 if (sentMail == null || purchase.CreateItem(sentMail.Id, receiverItem) == null
                     || !session.Item.Inventory.SaveConsumed(purchase, item.Uid, 1)) {
                     return false;
                 }
-                purchase.AfterCommit(() => taken = session.Item.Inventory.ConsumeStored(item.Uid, 1));
+                purchase.AfterCommit(() => taken = session.Item.Inventory.ConsumeStored(item.Uid, 1, held));
                 return true;
             }) || sentMail == null) {
             // The rollback drops the mail and the badge; a store without transactions (the in-memory test store)
@@ -538,9 +539,7 @@ public class ItemUseHandler : FieldPacketHandler {
             Logger.Error("Failed to send buddy badge {ItemId} to character id: {CharacterId}", buddyBadgeBoxParams[0], receiverInfo.CharacterId);
             return;
         }
-        if (!taken) {
-            Logger.Error("Buddy badge box {ItemUid} was stored as used but not taken from the bag of {CharacterId}", item.Uid, session.CharacterId);
-        }
+        session.Item.Inventory.UpdateHeld(held);
 
         try {
             session.World.MailNotification(new MailNotificationRequest {
@@ -550,6 +549,13 @@ public class ItemUseHandler : FieldPacketHandler {
         } catch { /* ignored */
         }
 
+        // Not taken: the box left the bag between its save and the commit; the place it went keeps it in memory and
+        // writes it back. The partner's mail is committed, so chosen here: the opener's badge is not given, so the
+        // kept box does not give it a second time.
+        if (!taken) {
+            Logger.Error("Buddy badge box {ItemUid} was stored as used but not taken from the bag of {CharacterId}; own badge not given", item.Uid, session.CharacterId);
+            return;
+        }
         session.Item.Inventory.Add(selfBadge, true);
         session.Send(NoticePacket.MessageBox(new InterfaceText(StringCode.s_couple_effect_mail_send_partner, receiverInfo.Name)));
     }

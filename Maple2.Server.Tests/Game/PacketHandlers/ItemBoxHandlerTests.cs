@@ -409,6 +409,7 @@ public class ItemBoxHandlerTests {
         Assert.That(Held(session, BoxId), Is.EqualTo(12 - opened));
         Assert.That(Held(session, RewardA), Is.EqualTo(3 * opened));
         Assert.That(session.Item.Inventory.Find(RewardA).All(item => item.GachaDismantleId == GachaInfoId), Is.True);
+        Assert.That(test.Row(box.Uid)?.Amount, Is.EqualTo(12 - opened), "each capsule is stored taken at its open");
     }
 
     // A capsule naming a machine item (KeyId here): with GachaCapsuleMachine on it opens only with as many machines as
@@ -576,7 +577,42 @@ public class ItemBoxHandlerTests {
         Assert.That(spent, Is.EqualTo(50));
         Assert.That(session.Currency.Meso, Is.EqualTo(0));
         Assert.That(Held(session, KeyId), Is.EqualTo(1));
+        Assert.That(test.Row(key.Uid)?.Amount, Is.EqualTo(1), "the key is stored taken at the open");
         Assert.That(Held(session, RewardA) + Held(session, RewardB), Is.GreaterThan(0));
+    }
+
+    // A simple Lulu box (OpenItemBoxLulluSimple) and a pet box (OpenPetBox) take one item of their tag per open and
+    // store the take before the box's items are given (ConsumeNow).
+    [TestCase(ItemFunction.OpenItemBoxLulluSimple, "keyItemTag")]
+    [TestCase(ItemFunction.OpenPetBox, "itemTag")]
+    public void TaggedBox_StoresTheTakeAtTheOpen(ItemFunction function, string tagParameter) {
+        test = new TestGameSession();
+        string parameters = function == ItemFunction.OpenPetBox
+            ? $"<v {tagParameter}=\"LulluKey\" unCommonBoxId=\"{DropBoxId}\" />"
+            : $"<v commonBoxId=\"{DropBoxId}\" {tagParameter}=\"LulluKey\" />";
+        ItemMetadata keyMetadata = TestGameSession.Metadata(KeyId, function: new ItemMetadataFunction(function, function.ToString(), parameters, false));
+        keyMetadata = keyMetadata with { Property = keyMetadata.Property with { Tag = ItemTag.LulluKey } };
+        test.Register(TestGameSession.Metadata(RewardA), TestGameSession.Metadata(RewardB));
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+            [DropBoxId] = TestGameSession.DropBox([(RewardA, 3)], [(RewardB, 1)]),
+        }));
+        test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
+            new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
+        Item key = test.Store(keyMetadata, amount: 2);
+        GameSession session = test.Start();
+        test.TakeSent();
+
+        var handler = new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! };
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteLong(key.Uid);
+            writer.WriteUnicodeString("");
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, KeyId), Is.EqualTo(1));
+            Assert.That(test.Row(key.Uid)?.Amount, Is.EqualTo(1), "the take is stored at the open");
+            Assert.That(Held(session, RewardA) + Held(session, RewardB), Is.GreaterThan(0));
+        });
     }
 
     // 110001024 (here on this test's box, the KR row names 30001133): a box of its item ids opens a second time on

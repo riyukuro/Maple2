@@ -637,12 +637,14 @@ public class InventoryManager {
     // Takes a plan's amounts from the bag and stores their rows at once, in one purchase save (with the currency) or
     // not at all, for a use whose gift gets its rows at once (an item box's items, a ticket's reward): left to the
     // session save, a crash after the gift was stored kept the box, key or ticket, which then gave it again. Memory
-    // follows once the save is committed. False when the plan is null or the save is refused; nothing is taken then.
+    // follows once the save is committed. False when the plan is null or the save is refused (nothing is taken then),
+    // or when a stored take was not taken from the bag (below): no gift is given then.
     public bool ConsumeNow(IReadOnlyList<(long Uid, int Amount)>? plan) {
         if (plan == null || plan.Count == 0) {
             return false;
         }
         bool taken = true;
+        var held = new List<int>();
         if (!session.TrySavePurchase(db => {
                 foreach ((long uid, int amount) in plan) {
                     if (!SaveConsumed(db, uid, amount)) {
@@ -652,19 +654,32 @@ public class InventoryManager {
                 // Under the account lock, so no session save between the commit and memory writes the old amount.
                 db.AfterCommit(() => {
                     foreach ((long uid, int amount) in plan) {
-                        taken &= ConsumeStored(uid, amount);
+                        taken &= ConsumeStored(uid, amount, held);
                     }
                 });
                 return true;
             })) {
             return false;
         }
+        // The held counts after the save, which no longer holds the account lock: a quest they complete stores
+        // itself with a purchase save of its own (QuestManager.Complete).
+        UpdateHeld(held);
         // Not taken: an item left the bag between its save and the commit (the bag lock is not held across the
-        // transaction); its row is stored as spent while the item where it went keeps its amount in memory.
+        // transaction); its row is stored as spent while the item where it went keeps its amount in memory, and that
+        // place's next save writes it back. Chosen here: no gift then, so the kept item does not give it a second
+        // time; what of the plan was taken stays taken.
         if (!taken) {
-            logger.Error("ConsumeNow: a stored take was not taken from the bag of {CharacterId}", session.CharacterId);
+            logger.Error("ConsumeNow: a stored take was not taken from the bag of {CharacterId}; nothing given", session.CharacterId);
+            return false;
         }
         return true;
+    }
+
+    // The held counts of quests for the items a ConsumeStored with a held list took (once per item id).
+    public void UpdateHeld(IEnumerable<int> itemIds) {
+        foreach (int itemId in itemIds.Distinct()) {
+            session.Quest.UpdateHeld(itemId);
+        }
     }
 
     // The materials of a mastery craft as the client counts them before it sends the craft (CMasteryManager,
@@ -1056,7 +1071,9 @@ public class InventoryManager {
         return false;
     }
 
-    private bool ConsumeInternal(long uid, int amount, bool commit = false) {
+    // held: when given, the item id is added to it instead of updating the quests' held counts (the caller does it
+    // once no purchase save holds the account lock).
+    private bool ConsumeInternal(long uid, int amount, bool commit = false, List<int>? held = null) {
         ItemCollection? items = tabs.Values.FirstOrDefault(collection => collection.Contains(uid));
         if (items == null || amount == 0) {
             return false;
@@ -1073,7 +1090,11 @@ public class InventoryManager {
                 item.Amount -= amount;
 
                 session.Send(ItemInventoryPacket.UpdateAmount(uid, item.Amount));
-                session.Quest.UpdateHeld(item.Id);
+                if (held != null) {
+                    held.Add(item.Id);
+                } else {
+                    session.Quest.UpdateHeld(item.Id);
+                }
                 return true;
             }
         }
@@ -1082,7 +1103,11 @@ public class InventoryManager {
         if (items.Remove(uid, out Item? removed)) {
             Discard(removed, commit);
             session.Send(ItemInventoryPacket.Remove(uid));
-            session.Quest.UpdateHeld(removed.Id);
+            if (held != null) {
+                held.Add(removed.Id);
+            } else {
+                session.Quest.UpdateHeld(removed.Id);
+            }
             return true;
         }
 
@@ -1178,11 +1203,13 @@ public class InventoryManager {
     // Consume(uid, amount) after SaveConsumed(db, uid, amount) committed: the row is already stored as this leaves it.
     // A stack's lower amount is the amount the next bag save writes again (the same value, not a second decrement); the
     // last ones given up are not put on the delete list, since their row is at owner 0 already.
-    public bool ConsumeStored(long uid, int amount) {
+    // held: called in an AfterCommit (still under the account lock), the taken item's id is added to it and the caller
+    // updates the held counts after the save (UpdateHeld): a quest they complete starts a purchase save of its own.
+    public bool ConsumeStored(long uid, int amount, List<int>? held = null) {
         lock (session.Item) {
             Item? item = tabs.Values.FirstOrDefault(collection => collection.Contains(uid))?.Get(uid);
             bool last = item != null && item.Amount == amount;
-            if (!ConsumeInternal(uid, amount)) {
+            if (!ConsumeInternal(uid, amount, held: held)) {
                 return false;
             }
             if (last) {

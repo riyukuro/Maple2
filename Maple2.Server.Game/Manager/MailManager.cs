@@ -323,52 +323,31 @@ public sealed class MailManager {
         }
 
         // Only one collect marks the mail collected (CollectMail): a second one that read the mail before the first
-        // wrote it gives nothing. The currency is given only after the mark is written in the transaction.
-        bool marked = false;
-        long mesoAdded = 0;
+        // wrote it gives nothing. The currency is added only after the mark is written in the transaction, and sent
+        // (with the meso quests, which may complete a quest and store it) once the transaction is committed.
+        bool lostRace = false;
+        (long Meso, long Meret, long GameMeret) added = default;
         if (!session.TrySavePurchase(purchase => {
                 if (!purchase.CollectMail(mail, read)) {
+                    lostRace = true;
                     return false;
                 }
-                marked = true;
-                if (collectMeso) {
-                    long before = session.Currency.Meso;
-                    session.Currency.ChangeMeso(mail.Meso);
-                    mesoAdded = session.Currency.Meso - before;
-                }
-                if (collectMeret) {
-                    session.Currency.ChangeMeret(mail.Meret);
-                }
-                if (collectGameMeret) {
-                    session.Currency.ChangeGameMeret(mail.GameMeret);
-                }
+                added = session.Currency.AddUnsent(collectMeso ? mail.Meso : 0, collectMeret ? mail.Meret : 0,
+                    collectGameMeret ? mail.GameMeret : 0);
                 return purchase.SaveCurrency(session.Player);
-            })) {
+            }, () => lostRace, out _)) {
             (mail.MesoCollectTime, mail.MeretCollectTime, mail.GameMeretCollectTime) = read;
-            if (marked) {
-                TakeBack(mesoAdded, collectMeret ? mail.Meret : 0, collectGameMeret ? mail.GameMeret : 0);
+            if (added != default) {
+                session.Currency.TakeBackAdded(added);
             }
             return MailError.s_mail_error;
         }
 
+        session.Currency.NotifyAdded(added);
         if (collectMeso) {
             session.Send(MailPacket.CollectMeso(mail.Id, now));
         }
         return MailError.none;
-    }
-
-    // Takes back currency given in a collect whose store failed (nothing of it was stored).
-    private void TakeBack(long meso, long meret, long gameMeret) {
-        if (meso > 0) {
-            session.Currency.TakeMesoUpTo(meso);
-            session.Currency.NotifyMeso();
-        }
-        if (meret > 0 && !session.Currency.TryTakeMeret(meret, reportSpent: false)) {
-            logger.Error("Mail collect: {Amount} merets of a failed store could not be taken back from {CharacterId}", meret, session.CharacterId);
-        }
-        if (gameMeret > 0 && !session.Currency.TryTakeGameMeret(gameMeret, reportSpent: false)) {
-            logger.Error("Mail collect: {Amount} red merets of a failed store could not be taken back from {CharacterId}", gameMeret, session.CharacterId);
-        }
     }
 
     // Items on input mail will be cleared.
