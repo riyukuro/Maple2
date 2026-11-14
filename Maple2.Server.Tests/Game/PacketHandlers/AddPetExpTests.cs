@@ -111,8 +111,9 @@ public class AddPetExpTests {
         Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.ResponsePet));
     }
 
-    // The client's UseItem (CanUseItem @0x140d1b610) does not ask the item lock: a locked item is used as any other.
-    // CItemLockManager::CanUseItem guards only the trade, the black market, the drop/destroy and the dismantle.
+    // The client's UseItem (@0x140d1bd60) does not ask the item lock: a locked item is used as any other.
+    // CItemLockManager::CanUseItem guards only the trade, the black market, the shop sell, the drop/destroy and the
+    // dismantle.
     [Test]
     public void Use_LockedStone_IsUsed() {
         GameSession session = Start();
