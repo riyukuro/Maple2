@@ -286,6 +286,8 @@ public class FieldNpc : Actor<Npc> {
     public MS2PatrolData? Patrol { get; private set; }
     private bool scriptPatrol;
     private int currentWaypointIndex;
+    // The last waypoint of a one-way patrol, whose ArriveAnimation still plays once the npc is there.
+    private MS2WayPoint? arriveAtEnd;
 
     private bool hasBeenBattling;
     private NpcTask? idleTask;
@@ -527,6 +529,17 @@ public class FieldNpc : Actor<Npc> {
             return NextWaypoint();
         }
 
+        // A one-way patrol's end plays its arrive animation as every other waypoint does (584 KR one-way patrols
+        // name one at their last waypoint: Idle_A on 368, Attack_Idle_A on 60, Bore_A on 34, Talk_A on 27); before, the
+        // npc went straight to its routines.
+        if (arriveAtEnd is not null) {
+            MS2WayPoint end = arriveAtEnd;
+            arriveAtEnd = null;
+            if (ArriveTask(end) is { } arrive) {
+                return arrive;
+            }
+        }
+
         string? routineName = defaultRoutines.Count == 0 ? null : defaultRoutines.Get();
         if (routineName is null || !Value.Animations.TryGetValue(routineName, out AnimationSequenceMetadata? sequence)) {
             return MovementState.TryStandby(null, true);
@@ -559,6 +572,7 @@ public class FieldNpc : Actor<Npc> {
     // names while the npc moves, so a model without Walk_A (52000116_qd's Nelf 11003163: Idle_A, Talk_A) or without
     // Fly_A on an air waypoint (52020036_qd's WavePatrolData bat 29000371: Walk_A, Run_A) still follows its route.
     private string? PatrolSequence(string approach, bool air) {
+        approach = PatrolRules.SequenceName(approach);
         if (Value.Animations.ContainsKey(approach)) {
             return approach;
         }
@@ -585,10 +599,8 @@ public class FieldNpc : Actor<Npc> {
             waypointBefore = Patrol.WayPoints[currentWaypointIndex - 1];
         }
 
-        if (waypointBefore is not null && !string.IsNullOrEmpty(waypointBefore.ArriveAnimation) && idleTask is not (MovementState.NpcEmoteTask or null)) {
-            if (Value.Animations.TryGetValue(waypointBefore.ArriveAnimation, out AnimationSequenceMetadata? arriveSequence)) {
-                return MovementState.TryEmote(arriveSequence.Name, false);
-            }
+        if (waypointBefore is not null && idleTask is not (MovementState.NpcEmoteTask or null) && ArriveTask(waypointBefore) is { } arrive) {
+            return arrive;
         }
 
         NpcTask? approachTask = null;
@@ -626,6 +638,7 @@ public class FieldNpc : Actor<Npc> {
         // if we're at the last waypoint and we're not looping, we're done
         if (currentWaypoint.Id == lastWaypoint.Id && !Patrol.IsLoop) {
             Patrol = null;
+            arriveAtEnd = approachTask is null ? null : currentWaypoint;
             // A trigger's one-way path leaves the npc at its end: its idle walks (Walk_ routines within moveArea) and
             // its way back after a fight go around the last waypoint, not the spawn. Chosen here: a trigger moves an
             // npc to keep it there (02000086_bf 03_wave sends 21000086, moveArea 150, along MS2PatrolData_601).
@@ -644,6 +657,16 @@ public class FieldNpc : Actor<Npc> {
         }
 
         return approachTask;
+    }
+
+    // The waypoint's arrive animation, held for its ArriveAnimationTime (PatrolRules.ArriveDuration); null when it
+    // names none or the model has no such sequence.
+    private NpcTask? ArriveTask(MS2WayPoint waypoint) {
+        string name = PatrolRules.SequenceName(waypoint.ArriveAnimation);
+        if (name.Length == 0 || !Value.Animations.TryGetValue(name, out AnimationSequenceMetadata? arriveSequence)) {
+            return null;
+        }
+        return MovementState.TryEmote(arriveSequence.Name, false, PatrolRules.ArriveDuration(waypoint.ArriveAnimationTime));
     }
 
     // Damage taken since spawn, shown by the top hp bar of an npc with the damaged_hp_upper_hp_bar tag.
@@ -1040,6 +1063,7 @@ public class FieldNpc : Actor<Npc> {
     public void SetPatrolData(MS2PatrolData newPatrolData, bool byScript = false) {
         Patrol = newPatrolData;
         currentWaypointIndex = 0;
+        arriveAtEnd = null;
         scriptPatrol = byScript;
         if (byScript) {
             Logger.Debug("Npc {NpcId} ({ObjectId}) on map {MapId} takes patrol {Patrol} from a trigger at {Position}",

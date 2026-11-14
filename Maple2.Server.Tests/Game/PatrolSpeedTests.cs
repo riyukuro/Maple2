@@ -1,4 +1,4 @@
-using Maple2.Server.Game.Util;
+﻿using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -54,5 +54,22 @@ public class PatrolSpeedTests {
     public void LargeGroundSpeedIsUnitsPerSecond() {
         Assert.That(PatrolRules.GroundMultiplier(220, "Run_A", 240, 400) * 400, Is.EqualTo(220f).Within(0.001f));
         Assert.That(PatrolRules.GroundMultiplier(99, "Run_A", 240, 400) * 400, Is.EqualTo(9900f).Within(0.001f));
+    }
+
+    // 02000255_bf MS2PatrolData4 holds Idle_A 3000 ms at a waypoint; 52000045_qd's 15 is not read as ms (one play).
+    [TestCase(3000, 3000f)]
+    [TestCase(100, 100f)]
+    [TestCase(99, -1f)]
+    [TestCase(15, -1f)]
+    [TestCase(0, -1f)]
+    public void ArriveAnimationTimeIsMillisecondsFromHundred(int time, float duration) {
+        Assert.That(PatrolRules.ArriveDuration(time), Is.EqualTo(duration));
+    }
+
+    // 52000064_qd MS2PatrolData_1103 names "Run_A " (trailing space) as its approach animation.
+    [Test]
+    public void SequenceNameIsTrimmed() {
+        Assert.That(PatrolRules.SequenceName("Run_A "), Is.EqualTo("Run_A"));
+        Assert.That(PatrolRules.SequenceName(null), Is.EqualTo(string.Empty));
     }
 }
