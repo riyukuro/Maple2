@@ -248,4 +248,26 @@ public class AiSummonTests {
             Assert.That(AiSummon.SharedHealth(total - 10, total, [(total, total - 10), (total - 10, total - 10)]), Is.EqualTo(total));
         });
     }
+
+    // Every KR linkHP npc (23000120-23000135) is no_die: each hit is floored at 1 health on its member, but two such
+    // hits on two copies in one share would add up past 0 and kill the group without its hpLess 1 phase step. The
+    // link floors at its highest member floor (1 for no_die, an AI MinimumHp floor) instead.
+    [Test]
+    public void LinkHp_DamageStopsAtTheMembersFloor() {
+        const long total = 61888412906;
+        Assert.Multiple(() => {
+            Assert.That(AiSummon.MemberFloor(true, 0), Is.EqualTo(1));
+            Assert.That(AiSummon.MemberFloor(false, 0), Is.EqualTo(0));
+            Assert.That(AiSummon.MemberFloor(true, 1000), Is.EqualTo(1000));
+            // Two copies each floored at 1 from 5000000: the link holds 1, not 0.
+            Assert.That(AiSummon.SharedHealth(5000000, total, [(1, 5000000), (1, 5000000)], floor: 1), Is.EqualTo(1));
+            // A MinimumHp floor of 2000000 stops the summed damage there.
+            Assert.That(AiSummon.SharedHealth(5000000, total, [(2000000, 5000000), (3000000, 5000000)], floor: 2000000), Is.EqualTo(2000000));
+            // Damage that stays above the floor is taken whole; a heal is not held by it.
+            Assert.That(AiSummon.SharedHealth(5000000, total, [(4000000, 5000000), (5000000, 5000000)], floor: 1), Is.EqualTo(4000000));
+            Assert.That(AiSummon.SharedHealth(1, total, [(501, 1), (1, 1)], floor: 1), Is.EqualTo(501));
+            // At the floor already, further damage takes nothing.
+            Assert.That(AiSummon.SharedHealth(1, total, [(1, 1), (1, 1)], floor: 1), Is.EqualTo(1));
+        });
+    }
 }

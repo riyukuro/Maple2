@@ -38,7 +38,8 @@ public sealed class HealthLink {
     public void Share() {
         lock (members) {
             shared = AiSummon.SharedHealth(shared, owner.Stats.Values[BasicAttribute.Health].Total,
-                members.Select(member => (member.Npc.Stats.Values[BasicAttribute.Health].Current, member.Seen)));
+                members.Select(member => (member.Npc.Stats.Values[BasicAttribute.Health].Current, member.Seen)),
+                members.Select(member => AiSummon.MemberFloor(member.Npc.NoDie, member.Npc.MinimumHealth)).DefaultIfEmpty(0).Max());
             members.RemoveAll(member => member.Npc.IsDead || !member.Npc.Field.Mobs.ContainsKey(member.Npc.ObjectId) && !member.Npc.Field.Npcs.ContainsKey(member.Npc.ObjectId));
             for (int i = 0; i < members.Count; i++) {
                 FieldNpc npc = members[i].Npc;

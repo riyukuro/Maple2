@@ -1,4 +1,4 @@
-﻿namespace Maple2.Server.Game.Util;
+namespace Maple2.Server.Game.Util;
 
 // How fast an npc follows a patrol (MS2PatrolData). The client plays what the server sends: each NpcControl entry
 // places the npc and gives it the velocity it moves by until the next one (CNpc::ApplySyncBlock, CNpc::vfunc_53), so
