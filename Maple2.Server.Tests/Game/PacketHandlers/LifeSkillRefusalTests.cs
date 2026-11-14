@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -245,6 +246,91 @@ public class LifeSkillRefusalTests {
         Assert.That(session.Mastery[type], Is.EqualTo(expected));
         Assert.That(test.TakeSent().Exists(packet => TestGameSession.Op(packet) == SendOp.Mastery && packet[2] == 0
             && packet[3] == (byte) type && BitConverter.ToInt32(packet, 4) == expected), Is.True);
+    }
+
+    // KR 70000055 (smithing, mastery 45810, 5000 meso): 33000075 x13 at 1, 30000447 x50 at 4, a RedCrystal
+    // (40100002) x20 at 3 and a BlueCrystal (40100003) x20 at 3, giving 37000037 at 3.
+    private const int KrRecipeId = 70000055;
+    private const int KrRewardId = 37000037;
+
+    private GameSession StartKrRecipe(params (int Id, ItemTag Tag, int Rarity, int Amount)[] held) {
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(KrRewardId));
+        foreach ((int id, ItemTag tag, int rarity, int amount) in held) {
+            ItemMetadata metadata = TestGameSession.Metadata(id, slotMax: 100);
+            metadata = metadata with { Property = metadata.Property with { Tag = tag } };
+            test.Register(metadata);
+            using GameStorage.Request db = test.Storage.Context();
+            Assert.That(db.CreateItem(test.CharacterId, new Item(metadata, rarity, amount)), Is.Not.Null);
+        }
+        test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>>()));
+        test.SetTable(new MasteryRecipeTable(new Dictionary<int, MasteryRecipeTable.Entry> {
+            [KrRecipeId] = new(KrRecipeId, MasteryType.Blacksmithing, NoRewardExp: true, RequiredMastery: 45810, RequiredMeso: 5000,
+                RequiredQuests: [], RequiredLevel: 0, RewardExp: 0, RewardMastery: 0, HighRateLimitCount: 0, NormalRateLimitCount: 0,
+                RequiredItems: [
+                    new ItemComponent(33000075, 1, 13, ItemTag.None),
+                    new ItemComponent(30000447, 4, 50, ItemTag.None),
+                    new ItemComponent(40100002, 3, 20, ItemTag.RedCrystal),
+                    new ItemComponent(40100003, 3, 20, ItemTag.BlueCrystal),
+                ], HabitatMapId: [],
+                RewardItems: [new ItemComponent(KrRewardId, 3, 1, ItemTag.None)]),
+        }));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> { [ExpType.manufacturing] = new(1, 1f) }));
+        test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
+            [1] = Enumerable.Range(1, 99).ToDictionary(level => level, _ => 100L),
+        }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        session.Mastery[MasteryType.Blacksmithing] = 45810;
+        session.Currency.Meso = 5000;
+        test.TakeSent();
+        return session;
+    }
+
+    // The client counts a tagged material by its tag (GetItemCountByTag(tag, 0)): 40100044 is a RedCrystal too
+    // (KR item data), so 20 of it pay the recipe's RedCrystal row. Before, only 40100002 was counted and the craft
+    // the client sent was refused.
+    [Test]
+    public void Craft_KR70000055_ATaggedRowTakesAnyItemOfTheTag() {
+        GameSession session = StartKrRecipe((33000075, ItemTag.None, 1, 13), (30000447, ItemTag.None, 4, 50),
+            (40100044, ItemTag.RedCrystal, 3, 20), (40100003, ItemTag.BlueCrystal, 3, 20));
+
+        Send(session, 2, KrRecipeId);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(Count(session, KrRewardId), Is.EqualTo(1));
+        Assert.That(Count(session, 40100044) + Count(session, 40100003) + Count(session, 30000447) + Count(session, 33000075), Is.Zero);
+        Assert.That(session.Currency.Meso, Is.Zero);
+    }
+
+    // The client counts a material at any rarity (FUN_140a5f180(id, 0)): 30000447 held at 5 pays the row at 4.
+    // Before, the server matched the row's rarity and refused the craft.
+    [Test]
+    public void Craft_KR70000055_ARowTakesItsItemAtAnyRarity() {
+        GameSession session = StartKrRecipe((33000075, ItemTag.None, 1, 13), (30000447, ItemTag.None, 5, 50),
+            (40100002, ItemTag.RedCrystal, 3, 20), (40100003, ItemTag.BlueCrystal, 3, 20));
+
+        Send(session, 2, KrRecipeId);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(Count(session, KrRewardId), Is.EqualTo(1));
+        Assert.That(Count(session, 30000447), Is.Zero);
+    }
+
+    // A short tag (19 RedCrystals) is refused with error 4, and the fee and every material stay.
+    [Test]
+    public void Craft_KR70000055_AShortTagKeepsEverything() {
+        GameSession session = StartKrRecipe((33000075, ItemTag.None, 1, 13), (30000447, ItemTag.None, 4, 50),
+            (40100044, ItemTag.RedCrystal, 3, 19), (40100003, ItemTag.BlueCrystal, 3, 20));
+
+        Send(session, 2, KrRecipeId);
+
+        AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_lack_item);
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        Assert.That(Count(session, 40100044), Is.EqualTo(19));
+        Assert.That(Count(session, 33000075), Is.EqualTo(13));
+        Assert.That(Count(session, KrRewardId), Is.Zero);
     }
 
     [Test]

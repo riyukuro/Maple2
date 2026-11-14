@@ -105,7 +105,7 @@ public class MasteryHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Item.Inventory.ConsumeItemComponents(entry.RequiredItems)) {
+        if (!session.Item.Inventory.ConsumeCraftIngredients(entry.RequiredItems)) {
             session.Currency.ReturnMeso(entry.RequiredMeso, notify: false);
             session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_lack_item));
             return;

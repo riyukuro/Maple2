@@ -622,6 +622,46 @@ public class InventoryManager {
         }
     }
 
+    // The materials of a mastery craft as the client counts them before it sends the craft (CMasteryManager,
+    // FUN_140b6d470): a row with a tag by its tag, every item of the tag (GetItemCountByTag(tag, 0)), a row without
+    // one by its id (FUN_140a5f180(id, 0)), both at any rarity. The row's rarity is not tested. Locked and expired
+    // items are not taken. Each row reserves what it takes, so two rows matching one stack cannot both be paid by it.
+    public bool ConsumeCraftIngredients(IReadOnlyList<ItemComponent> ingredients) {
+        lock (session.Item) {
+            var reserved = new Dictionary<long, int>();
+            foreach (ItemComponent ingredient in ingredients) {
+                IEnumerable<Item> items = ingredient.Tag != ItemTag.None ? Find(ingredient.Tag) : Find(ingredient.ItemId);
+                int remaining = ingredient.Amount;
+                foreach (Item item in items) {
+                    if (remaining <= 0) {
+                        break;
+                    }
+                    if (!item.IsSpendable()) {
+                        continue;
+                    }
+                    int taken = reserved.GetValueOrDefault(item.Uid);
+                    int consume = Math.Min(remaining, item.Amount - taken);
+                    if (consume <= 0) {
+                        continue;
+                    }
+                    reserved[item.Uid] = taken + consume;
+                    remaining -= consume;
+                }
+                if (remaining > 0) {
+                    return false;
+                }
+            }
+
+            foreach ((long uid, int amount) in reserved) {
+                if (!ConsumeInternal(uid, amount)) {
+                    Log.Error("Failed to consume craft material uid: {ItemUid}", uid);
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
     // keepUid: an item that is not a material (an upgrade's target, taken on its own).
     public bool ConsumeItemComponents(IReadOnlyList<ItemComponent> components, int quantityMultiplier = 1, long keepUid = 0) {
         lock (session.Item) {
