@@ -11,8 +11,8 @@ public static class MaidRules {
         return planner ? 0 : metadata.Housing?.MaidId ?? 0;
     }
 
-    // The maid record of a maid cube placed at now (epoch seconds): affinity level 1, mood 0 (a new CMaid's
-    // values), hired for PeriodOfMaidEmployment days.
+    // The maid record of a maid cube placed at now (epoch seconds): affinity level 1, mood 0 and both talk times now
+    // (a new CMaid's values), hired for PeriodOfMaidEmployment days.
     public static Maid Hire(PlotCube cube, int maidId, long ownerId, long now, int periodDays) {
         return new Maid {
             Uid = cube.Id,
@@ -20,6 +20,8 @@ public static class MaidRules {
             ItemId = cube.ItemId,
             MaidId = maidId,
             CreationTime = now,
+            MoodTime = now,
+            AffinityTime = now,
             ExpiryTime = now + (long) Math.Max(periodDays, 0) * 24 * 60 * 60,
         };
     }
@@ -65,6 +67,48 @@ public static class MaidRules {
         }
         return maid != null && IsExpired(maid, now) == wanted;
     }
+
+    // CMaid::IsTime38Over/IsTime40Over (commonfiles/maid.cpp:269): more than seconds have passed since time.
+    public static bool IsTimeOver(long time, int seconds, long now) => seconds + time < now;
+
+    // maid_mood_time and maid_affinity_time: "1800" passes once more than 1800 seconds have passed since the last talk
+    // of its kind, "!1800" while they have not (maid 11000512: the mood talks 1000-1700 or the "later" talks
+    // 2000-2200). No value (key 0) passes; a npc with no placed maid fails a check.
+    public static bool TimeMatches(KeyValuePair<int, bool> condition, Maid? maid, Func<Maid, long> time, long now) {
+        if (condition.Key <= 0) {
+            return true;
+        }
+        return maid != null && IsTimeOver(time(maid), condition.Key, now) == condition.Value;
+    }
+
+    // CMaid::GetRemainDays (commonfiles/maid.cpp:233): whole days to the contract end, -1 once it has passed.
+    public static int RemainDays(Maid maid, long now) => maid.ExpiryTime > now ? (int) ((maid.ExpiryTime - now) / (24 * 60 * 60)) : -1;
+
+    // maid_ready_to_pay: the salary talk (maidPay) is open in the last MaidReadyToPay days of the contract (KR 7 of
+    // the 30 that PeriodOfMaidEmployment hires for) and after it has ended (script 8010 has maid_ready_to_pay and
+    // maid_expired). Inferred from the data and the constant's name; the client never tests it.
+    public static bool IsReadyToPay(Maid maid, long now, int readyDays) => RemainDays(maid, now) <= readyDays;
+
+    // maid_ready_to_pay "1"/"!1"; null passes, a npc with no placed maid fails a check.
+    public static bool ReadyToPayMatches(bool? ready, Maid? maid, long now, int readyDays) {
+        if (ready is not { } wanted) {
+            return true;
+        }
+        return maid != null && IsReadyToPay(maid, now, readyDays) == wanted;
+    }
+
+    // maid_day_before_expired: "3" passes in the contract's last 3 days (or after its end), "!3" before (maid
+    // 11000512: the renewal reminder 8020 or the plain talk 20). Key 0 passes; no placed maid fails a check.
+    public static bool DaysBeforeExpiredMatches(KeyValuePair<int, bool> condition, Maid? maid, long now) {
+        if (condition.Key <= 0) {
+            return true;
+        }
+        return maid != null && (RemainDays(maid, now) <= condition.Key) == condition.Value;
+    }
+
+    // maid_affinity_grade: the maid's affinity level is at least the grade (maid 11000512's affinity topics: 5000 and
+    // 5100 at 1, 6000 at 3, 7000 at 6, offered together, so a higher level opens more). 0 passes; no placed maid fails.
+    public static bool AffinityGradeMatches(int grade, Maid? maid) => grade <= 0 || maid != null && maid.Level >= grade;
 
     // CMaid::GetMoodGrade: 0 up to mood 30, 1 up to 70, else 2 (the recipe lead time of the mood).
     public static int MoodGrade(int mood) => mood <= 30 ? 0 : mood <= 70 ? 1 : 2;

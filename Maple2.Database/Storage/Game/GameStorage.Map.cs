@@ -821,7 +821,7 @@ public partial class GameStorage {
                 .ToList();
         }
 
-        // Writes the mood, affinity, contract end and profile of a maid; false when its row is gone. The running craft
+        // Writes the mood, affinity, talk times, contract end and profile of a maid; false when its row is gone. The running craft
         // is written only by SetMaidCraft, which tests the stored craft first.
         public bool SaveMaid(Maid maid) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
@@ -832,6 +832,8 @@ public partial class GameStorage {
             model.Mood = maid.Mood;
             model.Level = maid.Level;
             model.Exp = maid.Exp;
+            model.MoodTime = maid.MoodTime;
+            model.AffinityTime = maid.AffinityTime;
             model.ExpiryTime = maid.ExpiryTime.FromEpochSeconds();
             model.Profile = maid.Profile;
             return Context.TrySaveChanges();

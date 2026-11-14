@@ -19,6 +19,9 @@ internal class Maid {
     public int Exp { get; set; }
     public DateTime CreationTime { get; set; }
     public DateTime ExpiryTime { get; set; }
+    // The last mood talk and the last affinity talk, epoch seconds (0 for a maid saved before they were kept).
+    public long MoodTime { get; set; }
+    public long AffinityTime { get; set; }
     public required Maple2.Model.Game.MaidProfile Profile { get; set; }
     // The running craft (MaidCraftItem): recipe id (0: none), start in epoch seconds, lead time in seconds.
     public int CraftRecipeId { get; set; }
@@ -37,6 +40,8 @@ internal class Maid {
             Exp = other.Exp,
             CreationTime = other.CreationTime.FromEpochSeconds(),
             ExpiryTime = other.ExpiryTime.FromEpochSeconds(),
+            MoodTime = other.MoodTime,
+            AffinityTime = other.AffinityTime,
             Profile = other.Profile,
             CraftRecipeId = other.CraftRecipeId,
             CraftStartTime = other.CraftStartTime,
@@ -56,6 +61,8 @@ internal class Maid {
             Exp = other.Exp,
             CreationTime = other.CreationTime.ToEpochSeconds(),
             ExpiryTime = other.ExpiryTime.ToEpochSeconds(),
+            MoodTime = other.MoodTime,
+            AffinityTime = other.AffinityTime,
             Profile = other.Profile,
             CraftRecipeId = other.CraftRecipeId,
             CraftStartTime = other.CraftStartTime,

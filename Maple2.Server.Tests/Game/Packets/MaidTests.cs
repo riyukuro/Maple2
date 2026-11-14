@@ -36,6 +36,8 @@ public class MaidTests {
             Level = 2,
             Exp = 30,
             CreationTime = 1000,
+            MoodTime = 1100,
+            AffinityTime = 1200,
             ExpiryTime = 2000,
             Profile = new MaidProfile { Name = "n", BelongTo = "b" },
         };
@@ -47,8 +49,8 @@ public class MaidTests {
             Assert.That(reader.ReadByte(), Is.EqualTo(0)); // the maid's mode
             Assert.That(reader.ReadLong(), Is.EqualTo(0));
             Assert.That(reader.ReadLong(), Is.EqualTo(77));
-            Assert.That(reader.ReadLong(), Is.EqualTo(1000));
-            Assert.That(reader.ReadLong(), Is.EqualTo(1000));
+            Assert.That(reader.ReadLong(), Is.EqualTo(1100)); // +0x38 (mood talk time)
+            Assert.That(reader.ReadLong(), Is.EqualTo(1200)); // +0x40 (affinity talk time)
             Assert.That(reader.ReadLong(), Is.EqualTo(0));
             Assert.That(reader.ReadInt(), Is.EqualTo(CubeItemId));
             Assert.That(reader.ReadInt(), Is.EqualTo(MaidId));

@@ -16,6 +16,12 @@ public class Maid : IByteSerializable {
     public int Exp { get; set; }
     public required long CreationTime { get; init; }
     public required long ExpiryTime { get; set; } // the contract end; the client shows the maid as expired after it
+    // The last mood talk and the last affinity talk (a script function with maidMoodUp or maidAffinityUp), epoch
+    // seconds: CMaid's two times (+0x38 and +0x40, IsTime38Over/IsTime40Over), which a new CMaid sets to the server
+    // time. maid_mood_time and maid_affinity_time test them. Which of the two is the mood time is a guess (the client
+    // never reads them; the mood comes first in every row that has both). 0 for a maid saved before they were kept.
+    public long MoodTime { get; set; }
+    public long AffinityTime { get; set; }
     public MaidProfile Profile { get; set; } = new();
     // The running craft (MaidCraftItem, CManufacture): the recipe (0: none), its start in epoch seconds and its lead
     // time in seconds. The product is ready at CraftStartTime + CraftDuration.
@@ -27,9 +33,8 @@ public class Maid : IByteSerializable {
         writer.WriteByte(); // the maid's mode (CMaid::SetMode)
         writer.WriteLong(); // unknown, 0
         writer.WriteLong(Uid);
-        // Two times a new CMaid sets to the server time (IsTime38Over, IsTime40Over).
-        writer.WriteLong(CreationTime);
-        writer.WriteLong(CreationTime);
+        writer.WriteLong(MoodTime);
+        writer.WriteLong(AffinityTime);
         writer.WriteLong(); // unknown, 0
         writer.WriteInt(ItemId);
         writer.WriteInt(MaidId);

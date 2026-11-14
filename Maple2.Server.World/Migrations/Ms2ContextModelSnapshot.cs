@@ -1443,6 +1443,9 @@ namespace Maple2.Server.World.Migrations
                     b.Property<long>("Id")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("AffinityTime")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("CraftDuration")
                         .HasColumnType("int");
 
@@ -1472,6 +1475,9 @@ namespace Maple2.Server.World.Migrations
 
                     b.Property<int>("Mood")
                         .HasColumnType("int");
+
+                    b.Property<long>("MoodTime")
+                        .HasColumnType("bigint");
 
                     b.Property<long>("OwnerId")
                         .HasColumnType("bigint");

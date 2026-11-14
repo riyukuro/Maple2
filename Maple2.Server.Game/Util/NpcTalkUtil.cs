@@ -155,6 +155,14 @@ public static class NpcTalkUtil {
         return true;
     }
 
+    public static bool MaidMatches(ScriptConditionMetadata.MaidData condition, Maid? maid, long now, int readyToPayDays) {
+        return MaidRules.TimeMatches(condition.MoodTime, maid, m => m.MoodTime, now)
+            && MaidRules.TimeMatches(condition.ClosenessTime, maid, m => m.AffinityTime, now)
+            && MaidRules.ReadyToPayMatches(condition.ReadyToPay, maid, now, readyToPayDays)
+            && MaidRules.DaysBeforeExpiredMatches(condition.DaysBeforeExpired, maid, now)
+            && MaidRules.AffinityGradeMatches(condition.ClosenessRank, maid);
+    }
+
     public static bool ConditionCheck(this ScriptConditionMetadata scriptCondition, GameSession session, long maidUid = 0) {
         if (session.Field is null) return false;
         // maid_auth: the talker owns the maid npc's maid.
@@ -164,6 +172,12 @@ public static class NpcTalkUtil {
         // maid_expired: the contract of the npc's maid has ended, or not.
         if (scriptCondition.Maid is { Expired: not null } maidCondition && !MaidRules.ExpiredMatches(maidCondition.Expired,
                 maidUid == 0 ? null : session.Field.GetMaid(maidUid), DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+            return false;
+        }
+        // maid_mood_time, maid_affinity_time, maid_ready_to_pay, maid_day_before_expired and maid_affinity_grade: the
+        // talk times, contract and affinity level of the npc's maid (MaidRules).
+        if (scriptCondition.Maid is { } maidData && !MaidMatches(maidData, maidUid == 0 ? null : session.Field.GetMaid(maidUid),
+                DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.ServerTableMetadata.ConstantsTable.MaidReadyToPay)) {
             return false;
         }
         if (scriptCondition.JobCode.Count > 0 && !scriptCondition.JobCode.Contains(session.Player.Value.Character.Job.Code())) {

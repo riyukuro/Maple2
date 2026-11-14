@@ -187,8 +187,8 @@ public class FieldMiscLayoutTests {
         writer.WriteByte(0);
         writer.WriteLong(0);
         writer.WriteLong(0x0102030405060708);
-        writer.WriteLong(0x51);
-        writer.WriteLong(0x51);
+        writer.WriteLong(0x58); // +0x38 mood talk time
+        writer.WriteLong(0x59); // +0x40 affinity talk time
         writer.WriteLong(0);
         writer.WriteInt(0x52);
         writer.WriteInt(0x53);
@@ -216,6 +216,8 @@ public class FieldMiscLayoutTests {
         Level = 0x55,
         Exp = 0x56,
         CreationTime = 0x51,
+        MoodTime = 0x58,
+        AffinityTime = 0x59,
         ExpiryTime = 0x57,
         Profile = new MaidProfile { Title = "title", Name = "name", OwnerName = "owner" },
     };

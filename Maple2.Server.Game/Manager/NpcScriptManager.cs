@@ -589,8 +589,16 @@ public sealed class NpcScriptManager {
             if (!MaidRules.StillPlaced(field.GetMaid(maidUid), maid) || maid.OwnerId != session.AccountId) {
                 return; // removed meanwhile: nothing was taken
             }
+            long now = DateTime.UtcNow.ToEpochSeconds();
             bool changed = mood != 0 && MaidRules.AddMood(maid, mood);
+            // The talk of each kind starts its maid_mood_time / maid_affinity_time wait, also when the value is at its end.
+            if (mood != 0) {
+                maid.MoodTime = now;
+                changed = true;
+            }
             if (exp != 0) {
+                maid.AffinityTime = now;
+                changed = true;
                 int level = maid.Level, oldExp = maid.Exp;
                 MaidRules.AddExp(maid, exp, exps, constants.MaidAffinityMax);
                 changed |= maid.Level != level || maid.Exp != oldExp;
@@ -599,7 +607,7 @@ public sealed class NpcScriptManager {
                 }
             }
             if (salary != null) {
-                changed |= MaidRules.Pay(maid, () => TakeSalary(salary), DateTime.UtcNow.ToEpochSeconds(), constants.PeriodOfMaidEmployment);
+                changed |= MaidRules.Pay(maid, () => TakeSalary(salary), now, constants.PeriodOfMaidEmployment);
             }
             if (changed) {
                 field.SaveMaid(maid);
