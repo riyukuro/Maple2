@@ -15,7 +15,7 @@ public class HealDamageRecord : IByteSerializable {
 
     public const float CritMultiplier = 1.5f;
 
-    public HealDamageRecord(IActor caster, IActor target, int ownerId, AdditionalEffectMetadataRecovery recovery, int stacks = 1, float healingRate = 0f, float recoveryRate = 0f) {
+    public HealDamageRecord(IActor caster, IActor target, int ownerId, AdditionalEffectMetadataRecovery recovery, int stacks = 1, float healingRate = 0f, float recoveryRate = 0f, bool itemHeal = false) {
         Caster = caster;
         Target = target;
         OwnerId = ownerId;
@@ -34,6 +34,9 @@ public class HealDamageRecord : IByteSerializable {
         long casterPart = CasterPart(recovery.RecoveryRate, caster.Stats.Values[BasicAttribute.MagicalAtk].Current,
             caster.Stats.Values[SpecialAttribute.RecoveryBonus].Total, multiplier > 1f);
         long health = HealingRaised((long) (recovery.HpValue + recovery.HpRate * target.Stats.Values[BasicAttribute.Health].Total + casterPart), healingRate);
+        if (!itemHeal) {
+            health = DoneCut(health, caster.Stats.Values[SpecialAttribute.HealDoneReduction].Total);
+        }
         long receivedBonus = caster == target ? 0 : target.Stats.Values[SpecialAttribute.BonusRecoveryFromAlly].Total;
         HpAmount = Buff.AmountByStacks(RecoveryCut(ReceivedRaised(health, receivedBonus), recoveryRate), stacks);
         SpAmount = Buff.AmountByStacks((long) (recovery.SpValue + recovery.SpRate * target.Stats.Values[BasicAttribute.Spirit].Total * multiplier), stacks);
@@ -58,6 +61,18 @@ public class HealDamageRecord : IByteSerializable {
     public static long HealingRaised(long amount, float healingRate) {
         // In decimal, so a rate of 0.04 (0.0399999 as a float) raises 1,000 to 1,040.
         return healingRate == 0f ? amount : (long) (amount * (1m + (decimal) healingRate));
+    }
+
+    // The caster's special ability 206 (reduce_do_heal_hp, Reduced HP Recovery Skill Effect, in thousandths) cuts the
+    // health its heals give, rounded down: KR Priest effect 10400251 (an attack stance) holds 900, so its holder's
+    // heals give a tenth. The client sums the ability for its stat window only; the heal amount is the server's.
+    // Chosen here: every heal the holder casts but a potion's (sub-type Consumable, itemHeal), to itself or another,
+    // the whole health amount after its caster's invokes; spirit and stamina heals unchanged, nothing below 0.
+    public static long DoneCut(long amount, long reduction) {
+        if (reduction <= 0 || amount <= 0) {
+            return amount;
+        }
+        return Math.Max(0, amount - amount * reduction / 1000);
     }
 
     // The target's s_item_opt_sa_improve_recovery_regen_receiveheal (Bonus Recovery from Allies, item option

@@ -164,6 +164,14 @@ public static class DamageCalculator {
             return DamageType.Miss;
         }
 
+        // True Evasion (special ability 204, aevp, in thousandths): the target evades at that chance whatever the
+        // caster's accuracy (KR 10700182 and its 10 kin, Thief buffs of 3 %). The client sums it for its stat window
+        // only; the server rolls the hit. Chosen here: rolled after the compulsions and against every caster the
+        // accuracy roll is made for, and not against a super armor break.
+        if (caster is not FieldActor && !property.SuperArmorBreak && TrueEvade(target.Stats.Values[SpecialAttribute.TrueEvasion].Total, Random.Shared.NextDouble())) {
+            return DamageType.Miss;
+        }
+
         // Get hit rate. The field's own actor (the caster of triggers, regions and cubes) has no stats: an accuracy of 0
         // would miss every hit (Damage.HitRate below 0), so its hits, dots and hits without damage are not rolled for
         // evasion. The target's block and evasion compulsions above still hold against them.
@@ -173,6 +181,9 @@ public static class DamageCalculator {
         }
         return null;
     }
+
+    // Whether a roll in [0, 1) falls within a True Evasion of |thousandths| (none at 0 or below).
+    internal static bool TrueEvade(long thousandths, double roll) => thousandths > 0 && roll < thousandths / 1000.0;
 
     public static (DamageType, long) CalculateDamage(IActor caster, IActor target, DamagePropertyRecord property) {
         if (HitRoll(caster, target, property) is { } missed) {

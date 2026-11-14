@@ -88,7 +88,7 @@ public class PlayedTakeOverTests {
               <Basic durationTick="60000" />
               <SpecialAbility>
                 <v type="offensive_physicaldamage" value="30" />
-                <v type="aevp" value="100" />
+                <v type="defensive_damageV" value="100" />
                 <v type="notInTheTable" value="5" />
               </SpecialAbility>
             </level>
@@ -471,7 +471,7 @@ public class PlayedTakeOverTests {
         });
     }
 
-    // A type the client keeps with no server stat (aevp) holds the level; one the table lacks the client drops.
+    // A type the client keeps with no server stat (defensive_damageV) holds the level; one the table lacks the client drops.
     [Test]
     public void KeepsALevelWholeWhileASpecialAbilityTypeHasNoStat() {
         (AdditionalEffectMetadata pack, AdditionalEffectMetadata mapped, List<string> unread, XmlElement row, XmlElement packRow) = LevelsWithRow(10800212);
@@ -481,7 +481,7 @@ public class PlayedTakeOverTests {
         var unmapped = new List<string>();
         PlayedAdditionalRows.SpecialAbilityStats(Table, Abilities(10800212), unmapped);
         Assert.Multiple(() => {
-            Assert.That(unmapped, Is.EqualTo(new[] { "aevp" }));
+            Assert.That(unmapped, Is.EqualTo(new[] { "defensive_damageV" }));
             Assert.That(holding, Is.EqualTo(new[] { "SpecialAbility" }));
             Assert.That(metadata, Is.SameAs(pack));
         });
@@ -679,10 +679,9 @@ public class PlayedTakeOverTests {
         });
     }
 
-    // One whose only type is one the client only shows (aevp, the info dialog's defense score) is taken over without
-    // it (before: left out for SpecialAbility).
+    // One whose only type is aevp is taken over with it as the TrueEvasion rate (aevp 100: 10%).
     [Test]
-    public void APlayedOnlyEffectWithAShownOnlyTypeIsTakenOver() {
+    public void APlayedOnlyEffectWithTrueEvasionIsTakenOver() {
         (List<AdditionalEffectMetadata>? levels, List<string> unread) = Own(10800216);
         Assert.Multiple(() => {
             Assert.That(unread, Is.Empty);
@@ -690,7 +689,8 @@ public class PlayedTakeOverTests {
             Assert.That(levels![0].Property.DurationTick, Is.EqualTo(60000));
             Assert.That(levels[0].Status.Values, Is.Empty);
             Assert.That(levels[0].Status.Rates, Is.Empty);
-            Assert.That(levels[0].Status.SpecialRates, Is.Empty);
+            Assert.That(levels[0].Status.SpecialRates.Keys, Is.EqualTo(new[] { SpecialAttribute.TrueEvasion }));
+            Assert.That(levels[0].Status.SpecialRates[SpecialAttribute.TrueEvasion], Is.EqualTo(0.1f).Within(1e-6f));
         });
     }
 

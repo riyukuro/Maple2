@@ -368,6 +368,14 @@ public enum SpecialAttribute : byte {
     CriticalRateIgnoreLimit = 202,
     [Description("cad_ignore_limit")]
     CriticalDamageIgnoreLimit = 203,
+    // The client's special ability 204, True Evasion (thousandths): a chance to evade a hit whatever the attacker's
+    // accuracy. KR: 11 Thief effects (10700182 and on, 3 %).
+    [Description("aevp")]
+    TrueEvasion = 204,
     [Description("cap_ignore_limit_extra")]
     CriticalRateIgnoreLimitExtra = 205,
+    // The client's special ability 206, Reduced HP Recovery Skill Effect (thousandths): the health the holder's own
+    // heals give is cut by it. KR: Priest effect 10400251, 90 %.
+    [Description("reduce_do_heal_hp")]
+    HealDoneReduction = 206,
 }

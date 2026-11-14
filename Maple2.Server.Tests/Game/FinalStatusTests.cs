@@ -27,6 +27,8 @@ public class FinalStatusTests {
           <key id="203" option="cad_ignore_limit" valueType="1" />
           <key id="204" option="aevp" valueType="2" />
           <key id="205" option="cap_ignore_limit_extra" valueType="2" />
+          <key id="206" option="reduce_do_heal_hp" valueType="2" />
+          <key id="171" option="defensive_damageV" valueType="1" />
           <key id="195" option="pap" valueType="1" />
           <key id="196" option="map" valueType="1" />
           <key id="199" option="pen" valueType="2" />
@@ -86,9 +88,9 @@ public class FinalStatusTests {
     public void CountsTypesWithoutAServerStat() {
         ClientSpecialAbility specialAbility = SpecialAbility();
         var stats = new ClientSpecialAbility.Stats();
-        Assert.That(specialAbility.Add(stats, "aevp", 100), Is.False);
+        Assert.That(specialAbility.Add(stats, "defensive_damageV", -45), Is.False);
         Assert.That(specialAbility.Add(stats, "notAType", 100), Is.False);
-        Assert.That(specialAbility.Unmapped, Is.EqualTo(new Dictionary<string, int> { ["aevp"] = 1, ["notAType"] = 1 }));
+        Assert.That(specialAbility.Unmapped, Is.EqualTo(new Dictionary<string, int> { ["defensive_damageV"] = 1, ["notAType"] = 1 }));
         Assert.That(stats.Rates, Is.Empty);
     }
 
@@ -242,19 +244,29 @@ public class FinalStatusTests {
         Assert.That(counts.TruncatedValues, Is.EqualTo(1));
     }
 
-    // KR 10700221, an effect only the client has: its one row is aevp 30, which the client only shows (the info
-    // dialog's defense score), so the level counts as mapped and adds no stat (before: unmapped, the effect left out).
+    // KR 10700221, an effect only the client has: its one row is aevp 30, the TrueEvasion rate 0.03 (the Thief's 3%
+    // chance to evade any hit); the level counts as mapped.
     [Test]
-    public void AShownOnlyTypeDoesNotHoldAnEffect() {
+    public void AevpIsTrueEvasion() {
         var rows = new Dictionary<string, int> { ["aevp"] = 30 };
         var unmapped = new List<string>();
         ClientSpecialAbility.Stats stats = PlayedAdditionalRows.SpecialAbilityStats(SpecialAbility(), rows, unmapped);
         Assert.Multiple(() => {
             Assert.That(AdditionalEffectMapper.Mapped(SpecialAbility(), rows), Is.True);
-            Assert.That(unmapped, Is.EqualTo(new[] { "aevp" }));
+            Assert.That(unmapped, Is.Empty);
             Assert.That(stats.Values, Is.Empty);
             Assert.That(stats.Rates, Is.Empty);
-            Assert.That(stats.SpecialRates, Is.Empty);
+            Assert.That(stats.SpecialRates[SpecialAttribute.TrueEvasion], Is.EqualTo(0.03f).Within(1e-6));
         });
+    }
+
+    // KR 10400251 (the Priest's job change effect) has reduce_do_heal_hp 900: the HealDoneReduction rate 0.9.
+    [Test]
+    public void ReduceDoHealHpIsHealDoneReduction() {
+        ClientSpecialAbility specialAbility = SpecialAbility();
+        var stats = new ClientSpecialAbility.Stats();
+        Assert.That(specialAbility.Add(stats, "reduce_do_heal_hp", 900), Is.True);
+        Assert.That(specialAbility.Unmapped, Is.Empty);
+        Assert.That(stats.SpecialRates[SpecialAttribute.HealDoneReduction], Is.EqualTo(0.9f).Within(1e-6));
     }
 }

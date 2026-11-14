@@ -216,12 +216,12 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         return unread;
     }
 
-    // Whether every type of a played level's <SpecialAbility> rows the client keeps has a server stat, but those the
-    // client only shows (PlayedAdditionalRows.ShownOnly).
+    // Whether every type of a played level's <SpecialAbility> rows the client keeps has a server stat. aevp (204), which
+    // the client reads only for the info dialog's defense score, is the server's TrueEvasion: the server rolls the hit.
     public static bool Mapped(ClientSpecialAbility table, IReadOnlyDictionary<string, int>? rows) {
         var unmapped = new List<string>();
         PlayedAdditionalRows.SpecialAbilityStats(table, rows, unmapped);
-        return unmapped.All(PlayedAdditionalRows.ShownOnly.Contains);
+        return unmapped.Count == 0;
     }
 
     // The A/B of the mapping: each played level of an effect the pack also has, mapped as an effect only the client

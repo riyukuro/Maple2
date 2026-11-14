@@ -33,8 +33,8 @@ namespace Maple2.File.Ingest.Helpers;
 //   10900041, and the client has no statChange attributes). A level holds one conversion; a second one is unmapped.
 // - cap_ignore_limit, cad_ignore_limit and cap_ignore_limit_extra (ids 202, 203, 205): the special stats of the same
 //   ids, which the client adds after the clamps of its crit rate and crit damage functions;
-// The rest (defensive_damageV, aevp, reduce_do_heal_hp, ...) has no server stat; Add returns false and counts it in
-// Unmapped.
+// - aevp and reduce_do_heal_hp (ids 204 and 206, valueType 2): the TrueEvasion and HealDoneReduction special rates;
+// The rest (defensive_damageV, ...) has no server stat; Add returns false and counts it in Unmapped.
 public sealed class ClientSpecialAbility {
     // The stats an additional effect level adds, as AdditionalEffectMetadataStatus holds them.
     public sealed class Stats {
@@ -172,6 +172,8 @@ public sealed class ClientSpecialAbility {
         special["cap_ignore_limit"] = SpecialAttribute.CriticalRateIgnoreLimit;
         special["cad_ignore_limit"] = SpecialAttribute.CriticalDamageIgnoreLimit;
         special["cap_ignore_limit_extra"] = SpecialAttribute.CriticalRateIgnoreLimitExtra;
+        special["aevp"] = SpecialAttribute.TrueEvasion;
+        special["reduce_do_heal_hp"] = SpecialAttribute.HealDoneReduction;
         return special;
     }
 

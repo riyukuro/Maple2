@@ -342,8 +342,9 @@ public class Buff : IUpdatable, IByteSerializable {
         // The caster's healing invokes on this effect (type 58) raise its heal (HealDamageRecord.HealingRate).
         (_, float healingRate) = Caster.Buffs.GetEffectInvokeValues(InvokeEffectType.IncreaseHealing, Id, Metadata.Property.InvokeGroupId);
         // The holder's recovery rate for a potion's heal (sub-type Consumable) or any other heal.
-        float recoveryRate = Owner.Buffs.RecoveryRate(IsItemHeal(Metadata.Property.SubType));
-        var record = new HealDamageRecord(Caster, Owner, ObjectId, Metadata.Recovery, Stacks, healingRate, recoveryRate);
+        bool itemHeal = IsItemHeal(Metadata.Property.SubType);
+        float recoveryRate = Owner.Buffs.RecoveryRate(itemHeal);
+        var record = new HealDamageRecord(Caster, Owner, ObjectId, Metadata.Recovery, Stacks, healingRate, recoveryRate, itemHeal);
         var updated = new List<BasicAttribute>(3);
         if (record.HpAmount != 0) {
             Stat health = Owner.Stats.Values[BasicAttribute.Health];
