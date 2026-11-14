@@ -226,7 +226,8 @@ public class VipGoodsShopTests {
     [Test]
     public void ClaimStoreRefused_GivesNothing() {
         SetMember();
-        test.FailSave = _ => true;
+        // Only the claim's own store fails: an item stored before the claim would still be given.
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Account>().Any(entry => entry.State == EntityState.Modified);
 
         Claim(BenefitId);
         test.FailSave = null;
