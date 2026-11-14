@@ -382,16 +382,23 @@ public sealed class NpcScriptManager {
             return;
         }
 
-        // A divorce step (attribute divorce). When it is refused the client is sent the reason and the rest of
-        // the function is not run.
-        if (!string.IsNullOrEmpty(scriptFunction.Divorce) && !session.Marriage.DivorceFunction(scriptFunction.Divorce)) {
+        // The price first: a talker who cannot pay gets none of the function (no divorce step, window, warp, trigger
+        // value, presents or exp). The client runs no function step itself, so the server is the only check.
+        long sendsBefore = session.Currency.MesoSends;
+        var taken = new List<Item>();
+        if (!PayScriptFunction(scriptFunction, out long meso, taken)) {
             return;
         }
 
-        // The price first: a talker who cannot pay gets none of the function (no window, warp, trigger value, presents
-        // or exp). The client runs no function step itself (functionID is only stored, scriptcontent.cpp).
-        if (!PayScriptFunction(scriptFunction)) {
+        // A divorce step (attribute divorce). When it is refused the client is sent the reason, the price is given
+        // back and the rest of the function is not run. (A filing's fee is checked against the mesos left after the
+        // price.) KR: no row has both a price and a divorce step.
+        if (!string.IsNullOrEmpty(scriptFunction.Divorce) && !session.Marriage.DivorceFunction(scriptFunction.Divorce)) {
+            GiveBackPrice(scriptFunction, meso, sendsBefore, taken);
             return;
+        }
+        if (meso > 0) {
+            session.Currency.NotifyMeso();
         }
 
         // NpcTalk packets have to be sent first before any movement, items, etc
@@ -462,8 +469,10 @@ public sealed class NpcScriptManager {
     // mesos: npc 11000600 asks 10000 of 90000001, which is never a bag item), then the other collected items. The
     // mesos are held while the items are taken and given back when the items are short, so either all is taken or
     // nothing.
-    private bool PayScriptFunction(ScriptFunctionMetadata scriptFunction) {
-        long meso = scriptFunction.CollectMeso;
+    // Takes the price (mesos held: the caller sends the balance with NotifyMeso or gives them back); taken gets the
+    // items taken. All or nothing.
+    private bool PayScriptFunction(ScriptFunctionMetadata scriptFunction, out long meso, List<Item> taken) {
+        meso = scriptFunction.CollectMeso;
         var items = new List<ItemComponent>();
         foreach (ItemComponent item in scriptFunction.CollectItems) {
             if (item.ItemId is >= 90000001 and <= 90000003) {
@@ -476,19 +485,31 @@ public sealed class NpcScriptManager {
         long sendsBefore = session.Currency.MesoSends;
         if (meso > 0 && !session.Currency.TryTakeMeso(meso, notify: false)) {
             logger.Information("Not enough mesos for script function {FunctionId} on npc {NpcId}", scriptFunction.FunctionId, Npc?.Value.Id);
+            meso = 0;
             return false;
         }
-        if (items.Count > 0 && !session.Item.Inventory.ConsumeItemComponents(items)) {
+        if (items.Count > 0 && !session.Item.Inventory.ConsumeItemComponents(items, taken: taken)) {
             if (meso > 0) {
                 session.Currency.ReturnHeldMeso(meso, sendsBefore);
             }
+            meso = 0;
             logger.Information("Missing items for script function {FunctionId} on npc {NpcId}", scriptFunction.FunctionId, Npc?.Value.Id);
             return false;
         }
-        if (meso > 0) {
-            session.Currency.NotifyMeso();
-        }
         return true;
+    }
+
+    // A price whose function was refused afterwards (its divorce step): the mesos go back and each item taken comes
+    // back as a copy of the taken part (to the bag, or by mail when it is full).
+    private void GiveBackPrice(ScriptFunctionMetadata scriptFunction, long meso, long sendsBefore, List<Item> taken) {
+        if (meso > 0) {
+            session.Currency.ReturnHeldMeso(meso, sendsBefore);
+        }
+        foreach (Item item in taken) {
+            if (!session.Item.AddOrMail(item, true)) {
+                logger.Error("Script function {FunctionId} price {ItemId} x{Amount} of {CharacterId} not given back", scriptFunction.FunctionId, item.Id, item.Amount, session.CharacterId);
+            }
+        }
     }
 
     // The maid functions of a maid npc's script (maidMoodUp, maidAffinityUp, maidPay), for its owner only: the talk

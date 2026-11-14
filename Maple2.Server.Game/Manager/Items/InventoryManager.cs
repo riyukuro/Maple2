@@ -668,8 +668,9 @@ public class InventoryManager {
         }
     }
 
-    // keepUid: an item that is not a material (an upgrade's target, taken on its own).
-    public bool ConsumeItemComponents(IReadOnlyList<ItemComponent> components, int quantityMultiplier = 1, long keepUid = 0) {
+    // keepUid: an item that is not a material (an upgrade's target, taken on its own). taken: gets a copy of each part
+    // taken (no uid, the amount taken from that stack), so a caller can give the price back.
+    public bool ConsumeItemComponents(IReadOnlyList<ItemComponent> components, int quantityMultiplier = 1, long keepUid = 0, List<Item>? taken = null) {
         lock (session.Item) {
 
             // Check for components
@@ -716,11 +717,16 @@ public class InventoryManager {
                 if (ingredient.Tag != ItemTag.None) {
                     foreach (Item material in materialsByTag[ingredient.Tag]) {
                         int consume = Math.Min(remainingIngredients, material.Amount);
+                        Item? part = taken == null ? null : material.Clone(newRow: true);
                         if (!session.Item.Inventory.Consume(material.Uid, consume)) {
                             Log.Error("Failed to consume item uid: {ItemUid}, item id: {ItemId}", material.Uid, material.Id);
                             return false;
                         }
 
+                        if (part != null) {
+                            part.Amount = consume;
+                            taken!.Add(part);
+                        }
                         remainingIngredients -= consume;
                         if (remainingIngredients <= 0) {
                             break;
@@ -729,11 +735,16 @@ public class InventoryManager {
                 } else {
                     foreach (Item material in materialsById[ingredient.ItemId]) {
                         int consume = Math.Min(remainingIngredients, material.Amount);
+                        Item? part = taken == null ? null : material.Clone(newRow: true);
                         if (!session.Item.Inventory.Consume(material.Uid, consume)) {
                             Log.Error("Failed to consume item uid: {ItemUid}, item id: {ItemId}", material.Uid, material.Id);
                             return false;
                         }
 
+                        if (part != null) {
+                            part.Amount = consume;
+                            taken!.Add(part);
+                        }
                         remainingIngredients -= consume;
                         if (remainingIngredients <= 0) {
                             break;
