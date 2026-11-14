@@ -208,6 +208,40 @@ public class VipGoodsShopTests {
         Assert.That(session.Player.Value.Account.PremiumRewardsClaimed, Is.Empty);
     }
 
+    // The claim is stored at once, with the item's row written by the add: a crash after the claim cannot give the
+    // benefit again, as the next login reads it claimed.
+    [Test]
+    public void ClaimIsStoredWithItsItem() {
+        SetMember();
+
+        Claim(BenefitId);
+        Assert.Multiple(() => {
+            Assert.That(Sent(2), Has.Count.EqualTo(1));
+            Assert.That(StoredAccount().PremiumRewardsClaimed, Is.EqualTo(new[] { BenefitId }));
+            Assert.That(StoredBonusItems().Sum(item => item.Amount), Is.EqualTo(2));
+        });
+    }
+
+    // A claim the database refuses gives nothing and stays unclaimed: s_item_err_code with the item id.
+    [Test]
+    public void ClaimStoreRefused_GivesNothing() {
+        SetMember();
+        test.FailSave = _ => true;
+
+        Claim(BenefitId);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Notices(), Is.EqualTo(new[] {
+                Convert.ToHexString(NoticePacket.MessageBox(new InterfaceText(StringCode.s_item_err_code, BonusItemId.ToString())).ToArray()),
+            }));
+            Assert.That(BagAmount(), Is.EqualTo(0));
+            Assert.That(session.Player.Value.Account.PremiumRewardsClaimed, Is.Empty);
+            Assert.That(StoredAccount().PremiumRewardsClaimed, Is.Empty);
+            Assert.That(StoredBonusItems(), Is.Empty);
+        });
+    }
+
     [Test]
     public void LoadPackagesBytes() {
         Assert.That(PremiumCubPacket.LoadPackages([(LimitedId, 2), (RedId, 0)]).ToArray(), Is.EqualTo(new byte[] {

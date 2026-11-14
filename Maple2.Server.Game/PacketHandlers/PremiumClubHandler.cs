@@ -73,8 +73,8 @@ public class PremiumClubHandler : FieldPacketHandler {
 
         // The dialog has no answer for a refused claim (UIVIPDialog::FUN_140fb87d0 reads only modes 1 and 2) and sends
         // one without checking the inventory (OnClickGetItem, uivipdialog.cpp:152-160), so a refusal is answered with
-        // a message box: a full inventory s_err_inventory, an item not made or not added s_item_err_code with the item
-        // id. The benefit is marked claimed only once its item is in the inventory.
+        // a message box: a full inventory s_err_inventory, an item not made or a claim not stored s_item_err_code with
+        // the item id.
         Item? item = session.Field?.ItemDrop.CreateItem(premiumMetadata.Id, premiumMetadata.Rarity, premiumMetadata.Amount);
         if (item == null) {
             Logger.Warning("PremiumClub: benefit {BenefitId} item {ItemId} not made", benefitId, premiumMetadata.Id);
@@ -85,13 +85,29 @@ public class PremiumClubHandler : FieldPacketHandler {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_inventory));
             return;
         }
-        if (!session.Item.Inventory.Add(item, true)) {
-            Logger.Warning("PremiumClub: benefit {BenefitId} item {ItemId} not added", benefitId, premiumMetadata.Id);
+
+        // The claim is in the database before its item is given (as the PC bang claim, PcBangManager.Store), so a crash
+        // between them cannot give the benefit twice. It is added inside the save, after any daily reset the save takes
+        // first (which clears the list), so a reset taken there does not drop it; a failed save takes it back out.
+        IList<int> claimed = session.Player.Value.Account.PremiumRewardsClaimed;
+        bool added = false;
+        if (!session.TrySavePurchase(db => {
+            added = true;
+            claimed.Add(benefitId);
+            return db.SavePremiumRewardsClaimed(session.Player);
+        })) {
+            if (added) {
+                claimed.Remove(benefitId);
+            }
+            Logger.Warning("PremiumClub: benefit {BenefitId} claim not stored, nothing given", benefitId);
             session.Send(NoticePacket.MessageBox(new InterfaceText(StringCode.s_item_err_code, premiumMetadata.Id.ToString())));
             return;
         }
 
-        session.Player.Value.Account.PremiumRewardsClaimed.Add(benefitId);
+        // The stored claim's item: to the inventory, or by mail when the inventory no longer takes it.
+        if (!session.Item.Inventory.Add(item, true, commit: true) && !session.Item.MailItem(item)) {
+            Logger.Error("PremiumClub: claimed benefit {BenefitId} item {ItemId} x{Amount} neither added nor mailed", benefitId, item.Id, item.Amount);
+        }
         session.Send(PremiumCubPacket.ClaimItem(benefitId));
     }
 

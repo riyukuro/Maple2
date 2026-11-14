@@ -692,6 +692,31 @@ public partial class GameStorage {
             return true;
         }
 
+        /// <summary>
+        /// Writes only the account's premium club benefits claimed today, before the claimed item is given, so a claim
+        /// is stored before its item exists (PremiumClubHandler). Callers hold the account lock.
+        /// </summary>
+        public bool SavePremiumRewardsClaimed(Player player) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.Account? account = Context.Account.Find(player.Account.Id);
+            if (account == null) {
+                return false;
+            }
+
+            account.PremiumRewardsClaimed = player.Account.PremiumRewardsClaimed.ToList();
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(player.Character.Id);
+            if (updated != null) {
+                player.Account.LastModified = updated.Value.AccountLastModified;
+                player.Character.LastModified = updated.Value.CharacterLastModified;
+            }
+            return true;
+        }
+
         private static AccountCurrency ToAccountCurrency(Currency currency) {
             return new AccountCurrency {
                 Meret = currency.Meret,
