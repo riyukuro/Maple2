@@ -65,6 +65,14 @@ public class TaxiHandler : FieldPacketHandler {
     private void HandleTaxi(GameSession session, IByteReader packet) {
         int mapId = packet.ReadInt();
 
+        // The client rides only when alive and at its field's station (TaxiRules.StationReach); it waits for no answer.
+        TaxiStation? station = session.Field?.Entities.Taxi;
+        if (session.Player.IsDead || station == null
+            || !InteractRules.InReach(session.Player.Position, station.Position, TaxiRules.StationReach(Constants.TaxiStationFindDistance))) {
+            Logger.Debug("Refused taxi ride to {MapId}: dead or away from a station", mapId);
+            return;
+        }
+
         if (!CheckMapCashCall(session, mapId, MapMetadata)) {
             return;
         }

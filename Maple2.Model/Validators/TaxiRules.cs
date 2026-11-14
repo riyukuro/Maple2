@@ -11,6 +11,13 @@ public static class TaxiRules {
         return mode is DiscoverAtStation or DiscoverByFinder;
     }
 
+    // A car taxi ride (mode 1) is sent only from the world map's TakeTaxi (uiworldmapdialog.cpp:1369): not dead, and a
+    // taxi station of the field within TaxiStationFindDistance of the character (3D, WorldService::FUN_141bcfd30,
+    // worldservice_1.cpp:5837; KR 200). A field has one station at most.
+    public const int DefaultStationFindDistance = 200;
+
+    public static float StationReach(int findDistance) => findDistance > 0 ? findDistance : DefaultStationFindDistance;
+
     // A station is found once, and only in a field that has one.
     public static bool CanDiscover(bool known, bool fieldHasStation) {
         return !known && fieldHasStation;
