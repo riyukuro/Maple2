@@ -38,7 +38,11 @@ public class ResponseKeyHandler : FieldPacketHandler {
 
             MigrateInResponse response = World.MigrateIn(request);
             if (!session.EnterServer(accountId, machineId, response)) {
-                throw new InvalidOperationException($"Invalid player: {accountId}, {response.CharacterId}");
+                // Each refusal of EnterServer sent its move error (MoveResult) already: a second one showed the
+                // client's error box twice. Only the close is left.
+                Logger.Error("Failed to login to game for accountId:{AccountId}: character {CharacterId} was refused", accountId, response.CharacterId);
+                session.Disconnect();
+                return;
             }
 
             // Finalize
