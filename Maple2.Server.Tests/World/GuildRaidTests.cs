@@ -128,19 +128,27 @@ public class GuildRaidTests {
             ItemMetadata = test.ItemMetadata,
             ServerTableMetadata = test.ServerTableMetadata,
         };
-        Task<Task> donor = Task.Factory.StartNew(() => {
+        var reset = new Thread(() => own.WeeklyReset()) { IsBackground = true };
+        bool blocked = false;
+        Task donor = Task.Factory.StartNew(() => {
             lock (donorMember) {
-                Task reset = Task.Run(() => own.WeeklyReset());
-                Thread.Sleep(300); // the reset now waits for the member's lock
+                reset.Start();
+                // The reset runs until it waits for the member's lock (every other lock it takes is free), so
+                // the guild lock is taken only once the reset is blocked, however loaded the machine.
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                while (!(blocked = (reset.ThreadState & ThreadState.WaitSleepJoin) != 0) && clock.Elapsed < TimeSpan.FromSeconds(5)) {
+                    Thread.Yield();
+                }
                 own.PvpSnapshot(); // the guild lock, as Donate takes it under the member's
-                return reset;
             }
-        });
+        }, TaskCreationOptions.LongRunning);
 
-        bool ended = donor.Wait(TimeSpan.FromSeconds(5));
+        bool ended = donor.Wait(TimeSpan.FromSeconds(10));
+        bool resetEnded = ended && reset.Join(TimeSpan.FromSeconds(5));
         guild.Members.TryRemove(donorMember.CharacterId, out _); // no row: the teardown's save leaves it out
+        Assert.That(blocked, Is.True, "the reset never waited for the member's lock");
         Assert.That(ended, Is.True, "deadlock");
-        Assert.That(donor.Result.Wait(TimeSpan.FromSeconds(5)), Is.True, "the reset never ended");
+        Assert.That(resetEnded, Is.True, "the reset never ended");
         Assert.That(donorMember.WeeklyContribution, Is.EqualTo(0));
     }
 
