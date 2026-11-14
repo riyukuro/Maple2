@@ -5,6 +5,7 @@ using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
@@ -71,6 +72,65 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(Convert.ToHexString(sent[^1]), Is.EqualTo(Hex(LapenshardPacket.Upgrade(0, ShardId, (LapenshardSlot) 0))));
         Assert.That(session.Currency.Meso, Is.EqualTo(4000));
         Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));
+    }
+
+    // A running SaleLapenshardUpgradeRGB event lowers the crystal counts by the highest rate (the counts the
+    // dialog checks and shows); another ingredient and the meso keep theirs, and an ended event is left out.
+    [TestCase(0, false, 30, 40)]
+    [TestCase(3000, false, 36, 40)]
+    [TestCase(9999, false, 49, 40)]
+    [TestCase(3000, true, 33, 40)] // the ended 3000 is left out; the running 1500 counts
+    public void LapenshardUpgrade_SaleLowersTheCrystals(int rate, bool over, int crystalsLeft, int dustLeft) {
+        var test = new TestGameSession();
+        if (rate > 0) {
+            test.AddEvent(7300, GameEventType.SaleLapenshardUpgradeRGB, new EventRate(rate),
+                over ? DateTime.Now.AddDays(-9) : null, over ? DateTime.Now.AddDays(-2) : null);
+            test.AddEvent(7301, GameEventType.SaleLapenshardUpgradeRGB, new EventRate(rate / 2));
+        }
+        ItemMetadata crystalData = TestGameSession.Metadata(40100001, type: 2);
+        crystalData = crystalData with { Property = crystalData.Property with { Tag = ItemTag.RedCrystal } };
+        ItemMetadata dustData = TestGameSession.Metadata(40300001, type: 2);
+        dustData = dustData with { Property = dustData.Property with { Tag = ItemTag.DustBlue } };
+        Item shards = test.Store(TestGameSession.Metadata(ShardId, type: 21), amount: 9);
+        Item crystals = test.Store(crystalData, amount: 50);
+        Item dust = test.Store(dustData, amount: 50);
+        test.Register(TestGameSession.Metadata(NextShardId, type: 21));
+        test.SetTable(new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry> {
+            [ShardId] = new(1, 1, NextShardId, 4, [
+                new LapenshardUpgradeTable.Ingredient(ItemTag.RedCrystal, 20),
+                new LapenshardUpgradeTable.Ingredient(ItemTag.DustBlue, 10),
+            ], 1000),
+        }));
+        GameSession session = test.Start();
+        var handler = new LapenshardHandler { TableMetadata = test.TableMetadata, ItemMetadata = session.ItemMetadata };
+        session.Currency.Meso = 5000;
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(5);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(ShardId);
+            writer.WriteInt(0);
+            writer.WriteInt(1);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(4);
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Get(crystals.Uid)?.Amount, Is.EqualTo(crystalsLeft));
+            Assert.That(session.Item.Inventory.Get(dust.Uid)?.Amount, Is.EqualTo(dustLeft));
+            Assert.That(session.Currency.Meso, Is.EqualTo(4000));
+            Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));
+        });
+    }
+
+    [TestCase(ItemTag.RedCrystal, 20, 0, 20)]
+    [TestCase(ItemTag.GreenCrystal, 20, 3000, 14)]
+    [TestCase(ItemTag.BlueCrystal, 7, 3000, 4)]
+    [TestCase(ItemTag.BlueCrystal, 3, 9000, 1)]
+    [TestCase(ItemTag.BlueCrystal, 3, 20000, 1)]
+    [TestCase(ItemTag.DustBlue, 20, 5000, 20)]
+    public void LapenshardSale_CrystalCounts(ItemTag tag, int amount, int rate, int expected) {
+        Assert.That(LapenshardRules.SaleIngredientAmount(tag, amount, rate), Is.EqualTo(expected));
     }
 
     // A spend on another thread while the fodder leaves: the meso was held before, so the fusion is done and only

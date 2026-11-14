@@ -482,7 +482,8 @@ public class GuildManager : IDisposable {
 
         UpdateProperties();
         bool hasEffect = row != null && session.Player.Buffs.HasBuff(row.Id, row.Level);
-        GuildError error = GuildRules.PersonalSkillCharge(buffId, row, Properties.Level, session.Currency.Meso, hasEffect, out long charge);
+        int saleRate = EventSaleRules.HighestRate(session.FindEvent(GameEventType.GuildPersonalSkillSale));
+        GuildError error = GuildRules.PersonalSkillCharge(buffId, row, Properties.Level, session.Currency.Meso, hasEffect, out long charge, saleRate);
         if (error != GuildError.none) {
             return error;
         }

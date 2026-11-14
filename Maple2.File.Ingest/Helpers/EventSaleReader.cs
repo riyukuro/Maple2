@@ -33,6 +33,24 @@ public static class EventSaleReader {
         return new SaleHousing(cubes);
     }
 
+    // value1: the rate in 1/10000 of the events whose client class reads one int (GameEventSale::vfunc_4,
+    // commonfiles/gameevent.cpp:1952). A row without a rate above 0 is not stored.
+    // The TransferItemBound flag as GameEventTransferItemBound::vfunc_2 reads it: an empty value1 keeps the default
+    // true; else ParseBoolW (packetlogger.cpp:183), true when the text holds one of "1oOtT".
+    public static TransferItemBound TransferItemBound(string? value1) {
+        string text = value1?.Trim() ?? string.Empty;
+        return new TransferItemBound(text.Length == 0 || text.IndexOfAny(['1', 'o', 'O', 't', 'T']) >= 0);
+    }
+
+    // The black market fee rate: 0..10000 (the client asserts on anything else); else no event.
+    public static BlackMarketFeeDiscount? FeeRate(string? value1) {
+        return int.TryParse(value1?.Trim(), out int rate) && rate is >= 0 and <= 10000 ? new BlackMarketFeeDiscount(rate) : null;
+    }
+
+    public static EventRate? Rate(string? value1) {
+        return int.TryParse(value1?.Trim(), out int rate) && rate > 0 ? new EventRate(rate) : null;
+    }
+
     // value1: the bonus (GameEventFindDungeonHelperBonus, commonfiles/gameevent.cpp:4560).
     public static FindDungeonHelperBonus? HelperBonus(string? value1) {
         return int.TryParse(value1?.Trim(), out int bonus) && bonus > 0 ? new FindDungeonHelperBonus(bonus) : null;

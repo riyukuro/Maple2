@@ -302,10 +302,11 @@ public class ItemSocketHandler : FieldPacketHandler {
 
     // The upgrade's sale (FUN_140627a20): the higher of the SaleGemStoneUpgrade game rule and the ReduceGemstoneUpgradeFee
     // attribute (SA 172), none for a row whose equipPart mask has bit 8; each count is then lowered as an unlock's is
-    // (FUN_140627b80). Chosen here: the server keeps no SaleGemStoneUpgrade event data, so only the attribute applies.
+    // (FUN_140627b80).
     private static IEnumerable<SocketCost> GemstoneUpgradeCosts(GameSession session, GemstoneUpgradeTable.Entry entry) {
         int rate = (entry.EquipPart & 8) != 0 ? 0
-            : EventSaleRules.RemakeDiscount(0, session.Player.Stats.Values[SpecialAttribute.ReduceGemstoneUpgradeFee].Total);
+            : EventSaleRules.RemakeDiscount(EventSaleRules.HighestRate(session.FindEvent(GameEventType.SaleGemStoneUpgrade)),
+                session.Player.Stats.Values[SpecialAttribute.ReduceGemstoneUpgradeFee].Total);
         float limit = session.ServerTableMetadata.ConstantsTable.IngredientFeeReduceLimit;
         // An ingredient named by id is a copy of that item's rank (GetItemRank, commonfiles/itemdata.cpp:2084, the rarity
         // FUN_140f6dc70 builds it with); FUN_140f6e580 counts it with Unk_Inventory::FUN_140a5f180 (client/ms2/inventory.cpp:782-803),

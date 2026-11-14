@@ -286,10 +286,10 @@ public class PetHandler : FieldPacketHandler {
         }
     }
 
-    // The rate of an active PetComposeSale event in 1/10000, 0 without one.
+    // The rate of the running PetComposeSale events in 1/10000 (the highest, as CGameRule::GetPetComposeSaleRate
+    // reads it), 0 without one.
     private static int PetComposeSaleRate(GameSession session) {
-        GameEvent? saleEvent = session.FindEvent(GameEventType.PetComposeSale).FirstOrDefault();
-        return saleEvent != null && int.TryParse(saleEvent.Metadata.Value1, out int rate) ? rate : 0;
+        return EventSaleRules.HighestRate(session.FindEvent(GameEventType.PetComposeSale));
     }
 
     // Mode 15: the game menu's pet attack button, shown for a pet whose row has type 1 (feature 0x97). The

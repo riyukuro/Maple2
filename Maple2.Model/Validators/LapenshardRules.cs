@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Validators;
@@ -12,6 +13,20 @@ public static class LapenshardRules {
         }
 
         return amount <= (isUpgradedStack ? owned - 1 : owned);
+    }
+
+    // The count of one upgrade ingredient under a SaleLapenshardUpgradeRGB rate in 1/10000
+    // (CItemLapenshardData::GetIngredients, itemlapensharddata.cpp:126): a rate of 0 leaves the counts; otherwise
+    // the red, green and blue crystals (tags 0x5d-0x5f in the client's list) cost (count * (1 - rate / 10000) +
+    // 0.000001) in doubles, cut to a whole number and at least 1 (FUN_140482050), and any other ingredient keeps its
+    // count. Chosen here: a rate above 10000 counts as 10000 (the client's unsigned cast of a negative is undefined).
+    public static int SaleIngredientAmount(ItemTag tag, int amount, int rate) {
+        if (rate <= 0 || tag is not (ItemTag.RedCrystal or ItemTag.GreenCrystal or ItemTag.BlueCrystal)) {
+            return amount;
+        }
+
+        double factor = 1.0 - Math.Min(rate, 10000) / 10000.0;
+        return Math.Max(1, (int) (amount * factor + 1e-06));
     }
 
     // The tier a fusion makes (lapenshard_upgrade_result, 21100060-21100064 "Fuse lapenshards to tier 6" to 10): the

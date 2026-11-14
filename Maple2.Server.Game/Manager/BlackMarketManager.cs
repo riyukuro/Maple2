@@ -260,9 +260,10 @@ public sealed class BlackMarketManager {
         bool stored = false;
         try {
             bool sellerIsPremium = session.PlayerInfo.GetOrFetch(listing.CharacterId, out PlayerInfo? seller) && seller.PremiumTime > DateTime.Now.ToEpochSeconds();
+            int feeRate = EventSaleRules.BlackMarketFeeRate(session.FindEvent(GameEventType.BlackMarketFeeDiscount));
             using GameStorage.Request db = session.GameStorage.Context();
             listing = db.BuyBlackMarketListing(listingId, quantity, listing.Price, BuyerMail(listing, quantity),
-                after => SellerMail(after, quantity, sellerIsPremium), out receivingMail, out sellerMail, out gone, out stored);
+                after => SellerMail(after, quantity, sellerIsPremium, feeRate), out receivingMail, out sellerMail, out gone, out stored);
         } catch {
             // A throw before the commit undoes the transaction, so the mesos go back. A throw after it (the answer's
             // shaping) leaves the buy stored and the item mailed, so the price stays taken.
@@ -331,9 +332,16 @@ public sealed class BlackMarketManager {
         return receivingMail;
     }
 
-    // The seller's mail for quantity sold of listing, which holds the count left after the sale.
-    private static Mail SellerMail(BlackMarketListing listing, int quantity, bool sellerIsPremium) {
-        float costRate = Lua.CalcBlackMarketCostRate();
+    // The sale fee rate: the event's rate / 10000 while one runs, else the Lua rate.
+    public static float BlackMarketCostRate(int feeRate) {
+        return feeRate >= 0 ? feeRate / 10000f : Lua.CalcBlackMarketCostRate();
+    }
+
+    // The seller's mail for quantity sold of listing, which holds the count left after the sale. feeRate is a running
+    // BlackMarketFeeDiscount rate in 1/10000 (-1: none); it replaces the normal fee rate as the client's
+    // GetBlackMarketCostRate does (commonfiles/blackmarketitemoption.cpp:233), and the rate at the sale counts.
+    private static Mail SellerMail(BlackMarketListing listing, int quantity, bool sellerIsPremium, int feeRate) {
+        float costRate = BlackMarketCostRate(feeRate);
         long tax = (long) (costRate * (quantity * listing.Price));
 
         long savings = tax;
@@ -347,7 +355,7 @@ public sealed class BlackMarketManager {
             ("money", $"{listing.Price * quantity}"),
             ("money", $"{listing.Price}"),
             ("money", $"{tax}"),
-            ("str", $"{costRate * 100}" + "%"),
+            ("str", (feeRate >= 0 ? $"{feeRate / 100.0}" : $"{costRate * 100}") + "%"),
         ];
 
         if (listing.Quantity == 0) {

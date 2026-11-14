@@ -4,9 +4,11 @@ using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -30,8 +32,13 @@ public class PetPaymentHandlerTests {
     // The events the next Login gives the server: the session takes them as it starts.
     private readonly List<(int Id, SaleRemake Sale, bool Over)> sales = [];
 
-    private GameSession Login(long meso, int fragments = 0, int stones = 5, int cells = 100, int pets = 1) {
+    private GameSession Login(long meso, int fragments = 0, int stones = 5, int cells = 100, int pets = 1, (int Rate, bool Over)[]? events = null) {
         test = new TestGameSession();
+        int eventId = 7100;
+        foreach ((int rate, bool over) in events ?? []) {
+            test.AddEvent(eventId++, GameEventType.PetComposeSale, new EventRate(rate),
+                over ? DateTime.Now.AddDays(-9) : null, over ? DateTime.Now.AddDays(-2) : null);
+        }
         foreach ((int id, SaleRemake sale, bool over) in sales) {
             test.AddEvent(id, GameEventType.SaleRemake, sale, over ? DateTime.Now.AddDays(-9) : null, over ? DateTime.Now.AddDays(-2) : null);
         }
@@ -405,5 +412,31 @@ public class PetPaymentHandlerTests {
         Assert.That(ops, Does.Contain(SendOp.ResponsePet));
         Assert.That(session.Currency.Meso, Is.LessThan(10_000_000));
         Assert.That(session.Item.Inventory.Get(Fodders[0].Uid), Is.Null);
+    }
+
+    // A running PetComposeSale event lowers each fodder's fee by its rate (CGameRule::GetPetComposeSaleRate, the
+    // highest of the running events); an ended one does not.
+    [Test]
+    public void Fusion_ComposeSaleLowersTheFee() {
+        long Spent(params (int Rate, bool Over)[] events) {
+            GameSession session = Login(meso: 10_000_000, pets: 2, events: events);
+            new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+                writer.WriteByte(12);
+                writer.WriteLong(pet.Uid);
+                writer.WriteShort(1);
+                writer.WriteLong(Fodders[0].Uid);
+                writer.WriteInt(1);
+            }));
+            Assert.That(session.Item.Inventory.Get(Fodders[0].Uid), Is.Null);
+            return 10_000_000 - session.Currency.Meso;
+        }
+
+        long full = Spent();
+        Assert.Multiple(() => {
+            Assert.That(full, Is.GreaterThan(0));
+            Assert.That(Spent((3000, false)), Is.EqualTo(PetFusionRules.ApplySale(full, 3000)));
+            Assert.That(Spent((1000, false), (3000, false)), Is.EqualTo(PetFusionRules.ApplySale(full, 3000)));
+            Assert.That(Spent((3000, true)), Is.EqualTo(full));
+        });
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -137,10 +138,17 @@ public sealed class StorageManager : IDisposable {
                 return;
             }
 
+            // An item bound to another character stays in, except a gemless skin while a TransferItemBound event runs
+            // (StoreSlot::vfunc_26, storeslot.cpp:441, tests the same before it asks): it leaves with the binding of
+            // the character that takes it.
             ItemBinding? bound = withdraw.Transfer?.Binding;
+            bool transfer = false;
             if (bound != null && bound.CharacterId != session.CharacterId) {
-                session.Send(StorageInventoryPacket.Error(s_item_err_binditem_store_out));
-                return;
+                if (!EventSaleRules.TransfersBound(session.FindEvent(GameEventType.TransferItemBound), withdraw)) {
+                    session.Send(StorageInventoryPacket.Error(s_item_err_binditem_store_out));
+                    return;
+                }
+                transfer = true;
             }
             // A moveDisable item leaves with the character that stored it (the client tests the same before it
             // asks, store.cpp:633, with the same text).
@@ -163,10 +171,17 @@ public sealed class StorageManager : IDisposable {
             short storedSlot = withdraw.Slot;
             withdraw.Slot = slot;
             withdraw.Binding = null;
+            ItemBinding? heldBinding = withdraw.Transfer?.Binding;
+            if (transfer) {
+                withdraw.Transfer?.Rebind(session.Player.Value.Character);
+            }
             if (!session.Item.Inventory.Add(withdraw, commit: true)) {
                 // The bag did not take it (no field yet, or no such tab): it goes back into the storage.
                 withdraw.Slot = storedSlot;
                 withdraw.Binding = storedBy;
+                if (transfer && heldBinding != null) {
+                    withdraw.Transfer?.RestoreBinding(heldBinding);
+                }
                 foreach ((Item item, int _) in items.Add(withdraw, true)) {
                     session.Send(withdraw.Uid == item.Uid
                         ? StorageInventoryPacket.Add(item)

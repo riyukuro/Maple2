@@ -25,8 +25,11 @@ public class GemstoneUpgradePriceTests {
     private Item bagGem = null!;
     private Item? chips;
 
-    private GameSession Start(GemstoneUpgradeTable.Ingredient[] ingredients, int chipCount = 0, long mesos = 0, int bagGems = 3) {
+    private GameSession Start(GemstoneUpgradeTable.Ingredient[] ingredients, int chipCount = 0, long mesos = 0, int bagGems = 3, int saleRate = 0) {
         test = new TestGameSession();
+        if (saleRate > 0) {
+            test.AddEvent(7200, GameEventType.SaleGemStoneUpgrade, new EventRate(saleRate));
+        }
         test.SetTable(new GemstoneUpgradeTable(new Dictionary<int, GemstoneUpgradeTable.Entry> {
             [40200001] = new(1, 40200002, ingredients, 3),
         }));
@@ -181,6 +184,23 @@ public class GemstoneUpgradePriceTests {
         Assert.Multiple(() => {
             Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(40200002));
             Assert.That(Amount(session, dust), Is.EqualTo(91));
+        });
+    }
+
+    // A running SaleGemStoneUpgrade event lowers the counts by its rate; with the fee attribute the larger of the
+    // two counts (FUN_140627a20: max of the rule's rate and the attribute's).
+    [TestCase(5000, 0, 95)]
+    [TestCase(500, 100, 91)]
+    [TestCase(3000, 100, 93)]
+    public void SaleEvent_LowersTheCounts(int rate, int fee, int left) {
+        GameSession session = Start([new GemstoneUpgradeTable.Ingredient(ItemTag.DustBlue, 10)], saleRate: rate);
+        session.Player.Stats.Values[SpecialAttribute.ReduceGemstoneUpgradeFee].AddTotal(fee);
+
+        UpgradeSocketed(session);
+
+        Assert.Multiple(() => {
+            Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(40200002));
+            Assert.That(Amount(session, dust), Is.EqualTo(left));
         });
     }
 }

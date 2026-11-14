@@ -10,6 +10,45 @@ namespace Maple2.Model.Validators;
 public static class EventSaleRules {
     public const int FullRate = 10000;
 
+    // The rate of the running events of one EventRate type: the client keeps each event's rate under its id and reads
+    // the highest (Unk_GameRuleRateMap::Recompute, gamerule.h:85; CGameRule::GetSaleGemStoneUpgradeRate and
+    // GetPetComposeSaleRate read entry 0), 0 when none runs.
+    public static int HighestRate(IEnumerable<GameEvent> events) {
+        int rate = 0;
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is EventRate eventRate && eventRate.Rate > rate) {
+                rate = eventRate.Rate;
+            }
+        }
+        return rate;
+    }
+
+    // Whether a running TransferItemBound event lets item move to another character: the event's flag is on, the
+    // item has a skin type and no gem in any socket (the client refuses a skin with a gem with its own text, reason 2
+    // of Unk_Inventory::FUN_140a66200, inventory.cpp:1673, and the same test in StoreSlot::vfunc_26).
+    public static bool TransfersBound(IEnumerable<GameEvent> events, Item item) {
+        if (!events.Any(gameEvent => gameEvent.Metadata.Data is TransferItemBound { Enabled: true })) {
+            return false;
+        }
+        if (item.Metadata.Property.SkinType == 0) {
+            return false;
+        }
+        return !(item.Socket?.Sockets.Any(gem => gem != null && gem.ItemId != 0) ?? false);
+    }
+
+    // The black market fee rate of the running BlackMarketFeeDiscount events in 1/10000, -1 when none runs (the
+    // client's "no event" value, CGameRule::GetBlackMarketFeeDiscountRate). The client keeps the last started event's
+    // rate; the server takes the lowest, so overlapping rows never charge more than one of them says.
+    public static int BlackMarketFeeRate(IEnumerable<GameEvent> events) {
+        int rate = -1;
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is BlackMarketFeeDiscount fee && fee.Rate is >= 0 and <= FullRate && (rate < 0 || fee.Rate < rate)) {
+                rate = fee.Rate;
+            }
+        }
+        return rate;
+    }
+
     // The price of a design under a SaleUgcDesign rate, as the design window computes it
     // (uiugcitemeditdialog.cpp:1007): no rate, the price; the full rate, 0; else price * (10000 - rate) / 10000 in
     // whole numbers. A rate above the full one is free as well (chosen here; the client does not test it).

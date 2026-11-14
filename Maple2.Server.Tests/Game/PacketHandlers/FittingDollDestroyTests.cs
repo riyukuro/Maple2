@@ -47,14 +47,20 @@ public class FittingDollDestroyTests {
     }
 
     // A doll in the session's home holding a top bound to |bound| (0: unbound), with one gem per |gems| entry bound to
-    // that character (0: an unbound gem).
-    private void Start(Func<long> bound, Func<long[]>? gems = null) {
+    // that character (0: an unbound gem). transfer adds a TransferItemBound event with that flag (null: none),
+    // running unless ended; skinType is the top's.
+    private void Start(Func<long> bound, Func<long[]>? gems = null, bool? transfer = null, bool ended = false, int skinType = 0) {
         test = new TestGameSession();
+        if (transfer != null) {
+            test.AddEvent(20203, GameEventType.TransferItemBound, new TransferItemBound(transfer.Value),
+                end: ended ? DateTime.Now.AddDays(-1) : null);
+        }
         test.Start();
         plot = test.EnterHome();
         plot.Id = PlotId;
         ItemMetadata dollMetadata = TestGameSession.Metadata(DollItem);
         ItemMetadata topMetadata = TestGameSession.Metadata(Top, EquipSlot.CL);
+        topMetadata = topMetadata with { Property = topMetadata.Property with { SkinType = skinType } };
         test.Register(dollMetadata, topMetadata);
         long character = bound();
         long[] gemOwners = gems?.Invoke() ?? [];
@@ -294,6 +300,32 @@ public class FittingDollDestroyTests {
         test.SetFeaturesOff(FittingDollRules.EquipAllFeature);
         Assert.That(TakeOff(), Is.EqualTo(new[] { Error(0x12) }));
         AssertKept();
+    }
+
+    // While a TransferItemBound event runs a gemless skin bound to another character comes off (the client's
+    // FUN_140a66200 lets it through, inventory.cpp:1673) and takes the binding of the character that took it, so it can
+    // be worn; one of another account's characters as well, as the client does not test the owner then. A skin with a
+    // gem (even a free one), an item without a skin type, an off flag, an ended event or no event: refused as before.
+    [TestCase(true, false, true, false, 1, true)]
+    [TestCase(false, false, true, false, 1, true)]
+    [TestCase(true, true, true, false, 1, false)]
+    [TestCase(true, false, true, false, 0, false)]
+    [TestCase(true, false, false, false, 1, false)]
+    [TestCase(true, false, true, true, 1, false)]
+    [TestCase(true, false, null, false, 1, false)]
+    public void TakeOff_TransferItemBoundEventMovesAGemlessSkin(bool inAccount, bool gem, bool? transfer, bool ended, int skinType, bool moved) {
+        Start(() => NewCharacter(inAccount ? test.AccountId : OtherAccount), gem ? () => [0] : null, transfer, ended, skinType);
+        if (!moved) {
+            Assert.That(TakeOff(), Is.EqualTo(new[] { Error(0x12) }));
+            AssertKept();
+            return;
+        }
+        Assert.That(TakeOff(), Is.EqualTo(new[] { PutOff() }));
+        Assert.Multiple(() => {
+            Assert.That(doll.Items, Is.Empty);
+            Assert.That(Row(top.Uid)?.Owner, Is.EqualTo(test.CharacterId));
+            Assert.That(session.Item.Inventory.Get(top.Uid)?.Transfer?.Binding?.CharacterId, Is.EqualTo(test.CharacterId));
+        });
     }
 
     [Test]

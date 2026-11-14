@@ -1905,6 +1905,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new GuildChampionship();
             case GameEventType.FreeAirTaxi:
                 return new FreeAirTaxi();
+            case GameEventType.TransferItemBound:
+                return EventSaleReader.TransferItemBound(value1);
             case GameEventType.ShutdownMapleSurvival:
                 return new ShutdownMapleSurvival();
             case GameEventType.LevelUpPackage:
@@ -1975,6 +1977,14 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new SaleAutoFishing(
                     Discount: fishingDiscount,
                     ContentType: value2);
+            case GameEventType.PetComposeSale:
+            case GameEventType.SaleGemStoneUpgrade:
+            case GameEventType.SaleLapenshardUpgradeRGB:
+            case GameEventType.GuildSkillSale:
+            case GameEventType.GuildPersonalSkillSale:
+                return EventSaleReader.Rate(value1);
+            case GameEventType.BlackMarketFeeDiscount:
+                return EventSaleReader.FeeRate(value1);
             default:
                 return null;
         }

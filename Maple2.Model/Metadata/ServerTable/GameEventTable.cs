@@ -369,6 +369,15 @@ public record GuildChampionship : GameEventData;
 /// </summary>
 public record FreeAirTaxi : GameEventData;
 
+/// <summary>
+/// The bound skin transfer (GameEventTransferItemBound, commonfiles/gameevent.cpp:3800): while one runs, an item with
+/// a skin type and no gem leaves the storage or a fitting doll for another character of the account
+/// (Unk_Inventory::FUN_140a66200, inventory.cpp:1673; StoreSlot::vfunc_26, storeslot.cpp:441). value1 is the flag the
+/// event sets (true when the row leaves it empty, as all KR rows do); the packet carries the id and the flag.
+/// </summary>
+public record TransferItemBound(
+    bool Enabled) : GameEventData;
+
 
 /// <summary>
 /// Closes Maple Survival (Mushking Royale)
@@ -398,6 +407,18 @@ public record SaleAutoPlayInstrument(
 public record SaleAutoFishing(
     int Discount,
     string ContentType) : GameEventData;
+
+// One rate in 1/10000 (value1), for the events whose client class keeps a single int (GameEventSale::vfunc_4,
+// commonfiles/gameevent.cpp:1952, and the classes that read the same): the event's type says what the rate lowers or
+// raises. The packet carries the id and the rate.
+public record EventRate(
+    int Rate) : GameEventData;
+
+// The black market fee event (GameEventBlackMarketFeeDiscount, commonfiles/gameevent.cpp:1283): value1 is the fee
+// rate in 1/10000 that replaces the normal one while the event runs (GetBlackMarketCostRate,
+// commonfiles/blackmarketitemoption.cpp:233). The client asserts on a rate outside 0..10000; 0 is a free sale.
+public record BlackMarketFeeDiscount(
+    int Rate) : GameEventData;
 
 // The level-up package (GameEventLevelUpPackage, commonfiles/gameevent.cpp:2541): value1 is the quest scroll item
 // that starts the package's quests, value2 their ids as the row writes them ("a,b,c"). The client keeps both
@@ -695,6 +716,9 @@ public record UserCondition(
 [JsonDerivedType(typeof(DailyLoginReward), "DailyLoginReward")]
 [JsonDerivedType(typeof(SaleAutoPlayInstrument), "SaleAutoPlayInstrument")]
 [JsonDerivedType(typeof(SaleAutoFishing), "SaleAutoFishing")]
+[JsonDerivedType(typeof(EventRate), "EventRate")]
+[JsonDerivedType(typeof(TransferItemBound), "TransferItemBound")]
+[JsonDerivedType(typeof(BlackMarketFeeDiscount), "BlackMarketFeeDiscount")]
 [JsonDerivedType(typeof(LevelUpPackage), "LevelUpPackage")]
 [JsonDerivedType(typeof(DungeonEnterTimeLimit), "DungeonEnterTimeLimit")]
 [JsonDerivedType(typeof(DungeonOpenPeriod), "DungeonOpenPeriod")]

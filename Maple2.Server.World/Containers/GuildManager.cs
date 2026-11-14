@@ -471,14 +471,16 @@ public class GuildManager : IDisposable {
             GuildBuff buff = Guild.Buffs[index];
             levels.TryGetValue((short) buff.Level, out row);
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            int saleRate = EventSaleRules.HighestRate(ServerTableMetadata.GetGameEvents()
+                .Where(gameEvent => gameEvent.Metadata.Type == GameEventType.GuildSkillSale && gameEvent.IsActive(DateTime.Now)));
             GuildError error = GuildRules.CheckUseSkill(requestorId == Guild.LeaderCharacterId, buffId, row,
-                GuildProperty().Level, Guild.Funds, buff.ExpiryTime, now);
+                GuildProperty().Level, Guild.Funds, buff.ExpiryTime, now, saleRate);
             if (error != GuildError.none) {
                 return error;
             }
 
             int oldFunds = Guild.Funds;
-            Guild.Funds -= row!.Cost;
+            Guild.Funds -= GuildRules.SaleCost(row!.Cost, saleRate);
             used = buff with { ExpiryTime = now };
             Guild.Buffs[index] = used;
             if (!TrySave(stored => stored.Funds == Guild.Funds && stored.Buffs.Contains(used))) {

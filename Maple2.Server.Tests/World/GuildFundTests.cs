@@ -337,4 +337,40 @@ public class GuildFundTests {
         Assert.That(reward, Is.False);
         Assert.That(master.TotalContribution, Is.EqualTo(0));
     }
+
+    // Guild 90 under a running GuildSkillSale event: the fund pays the cost less the highest rate
+    // (GetSkillCostWithEventDiscount), checked and taken alike; an ended event is left out.
+    [TestCase(0, false, 100, GuildError.none, 20)]
+    [TestCase(2500, false, 100, GuildError.none, 40)]
+    [TestCase(2500, false, 70, GuildError.none, 10)]
+    [TestCase(0, false, 70, GuildError.s_guild_err_not_enough_guild_fund, 70)]
+    [TestCase(2500, true, 70, GuildError.s_guild_err_not_enough_guild_fund, 70)]
+    public void UseSkill_SaleLowersTheCost(int rate, bool over, int funds, GuildError error, int fundsLeft) {
+        test.SetTable(test.TableMetadata.GuildTable with {
+            Buffs = new Dictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>> {
+                [1] = new Dictionary<short, GuildTable.Buff> { [1] = new(Id: 90000001, Level: 1, RequireLevel: 1, Cost: 80, UpgradeCost: 0, Duration: 60) },
+            },
+        });
+        var events = new Dictionary<int, GameEventMetadata>();
+        if (rate > 0) {
+            DateTime start = over ? DateTime.Now.AddDays(-9) : DateTime.Now.AddDays(-1);
+            DateTime end = over ? DateTime.Now.AddDays(-2) : DateTime.Now.AddDays(1);
+            events[7400] = new GameEventMetadata(7400, GameEventType.GuildSkillSale, start, end, TimeSpan.Zero, TimeSpan.Zero, [],
+                new EventRate(rate), "", "", "", "");
+            events[7401] = new GameEventMetadata(7401, GameEventType.GuildSkillSale, DateTime.Now.AddDays(-1), DateTime.Now.AddDays(1),
+                TimeSpan.Zero, TimeSpan.Zero, [], new EventRate(rate / 5), "", "", "", "");
+        }
+        test.SetServerTable(new GameEventTable(events));
+        guild.Buffs.Add(new GuildBuff(1, 1, 0));
+        guild.Funds = funds;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.SaveGuild(guild);
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(manager.UseBuff(master.CharacterId, 1), Is.EqualTo(error));
+            Assert.That(guild.Funds, Is.EqualTo(fundsLeft));
+            Assert.That(StoredFunds(), Is.EqualTo(fundsLeft));
+        });
+    }
 }

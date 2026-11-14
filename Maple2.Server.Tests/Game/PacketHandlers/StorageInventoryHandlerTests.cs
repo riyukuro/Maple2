@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
@@ -16,8 +17,11 @@ public class StorageInventoryHandlerTests {
     private readonly StorageInventoryHandler handler = new();
     private Item stack = null!;
 
-    private GameSession Open(long meso = 0) {
+    private GameSession Open(long meso = 0, bool transferEvent = false) {
         test = new TestGameSession();
+        if (transferEvent) {
+            test.AddEvent(20203, Maple2.Model.Enum.GameEventType.TransferItemBound, new Maple2.Model.Metadata.TransferItemBound(true));
+        }
         test.SetServerTable(new Maple2.Model.Metadata.ConstantsTable(
             bagSlotTabGameCount: [48, 48], bagSlotTabSkinCount: [48, 48], bagSlotTabSummonCount: [48, 48],
             bagSlotTabMaterialCount: [48, 48], bagSlotTabMasteryCount: [48, 48], bagSlotTabLifeCount: [48, 48],
@@ -204,6 +208,40 @@ public class StorageInventoryHandlerTests {
         Item(session, 1, item.Uid, 1);
         Assert.That(session.Item.Inventory.Get(item.Uid)?.Binding, Is.Null);
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A gemless skin bound to another character leaves the storage while a TransferItemBound event runs (the
+    // client's StoreSlot::vfunc_26 lets it through, storeslot.cpp:441) with the binding of the character that takes
+    // it; without the event, or with a gem in it, it stays in with the bound-item refusal.
+    [TestCase(true, false, true)]
+    [TestCase(false, false, false)]
+    [TestCase(true, true, false)]
+    public void BoundSkin_LeavesWhileTheTransferEventRuns(bool transferEvent, bool gem, bool moved) {
+        GameSession session = Open(transferEvent: transferEvent);
+        Maple2.Model.Metadata.ItemMetadata metadata = TestGameSession.Metadata(11400002, EquipSlot.CL);
+        metadata = metadata with { Property = metadata.Property with { SkinType = 1 } };
+        Item item = test.Store(metadata);
+        item.Transfer = new ItemTransfer(binding: new ItemBinding(test.CharacterId, "other"));
+        if (gem) {
+            item.Socket = new ItemSocket(1, [new ItemGemstone(40000001, null, new ItemStats())]);
+        }
+        session.Item.Inventory.Add(item);
+        Item(session, 0, item.Uid, 1);
+        typeof(ItemBinding).GetProperty(nameof(ItemBinding.CharacterId))!.SetValue(item.Transfer.Binding, test.CharacterId + 1);
+        test.TakeSent();
+
+        Item(session, 1, item.Uid, 1);
+        if (!moved) {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_item_err_binditem_store_out)),
+            }));
+            Assert.That(session.Item.Inventory.Get(item.Uid), Is.Null);
+            return;
+        }
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Get(item.Uid)?.Transfer?.Binding?.CharacterId, Is.EqualTo(test.CharacterId));
+            Assert.That(test.Errors, Is.Empty);
+        });
     }
 
     // Two characters store the same stackable moveDisable item: the copies stay on two stacks with their own

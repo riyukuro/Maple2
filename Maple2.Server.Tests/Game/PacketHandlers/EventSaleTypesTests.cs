@@ -319,4 +319,93 @@ public class EventSaleTypesTests {
     public void BeautyShopPrice_TakesTheRateOff(int price, int rate, int expected) {
         Assert.That(EventSaleRules.BeautyShopPrice(price, rate), Is.EqualTo(expected));
     }
+
+    // PetComposeSale and SaleGemStoneUpgrade: the name, the id and the rate (GameEventSale::vfunc_4).
+    [TestCase(GameEventType.PetComposeSale, "PetComposeSale")]
+    [TestCase(GameEventType.SaleGemStoneUpgrade, "SaleGemStoneUpgrade")]
+    public void EventRate_WritesTheRate(GameEventType type, string name) {
+        Assert.That(Written(type, new EventRate(3000)), Is.EqualTo(Name(name) + "591B0000" + "B80B0000"));
+    }
+
+    [Test]
+    public void EventRate_RowsAndTheHighestRate() {
+        Assert.Multiple(() => {
+            Assert.That(EventSaleReader.Rate(" 5000 "), Is.EqualTo(new EventRate(5000)));
+            Assert.That(EventSaleReader.Rate("0"), Is.Null);
+            Assert.That(EventSaleReader.Rate(null), Is.Null);
+            Assert.That(EventSaleReader.Rate("x"), Is.Null);
+
+            var test = new TestGameSession();
+            GameEvent low = test.AddEvent(1, GameEventType.PetComposeSale, new EventRate(1000));
+            GameEvent high = test.AddEvent(2, GameEventType.PetComposeSale, new EventRate(3000));
+            Assert.That(EventSaleRules.HighestRate([low, high]), Is.EqualTo(3000));
+            Assert.That(EventSaleRules.HighestRate([]), Is.EqualTo(0));
+        });
+    }
+
+    // BlackMarketFeeDiscount (GameEventBlackMarketFeeDiscount::vfunc_4): the name, the id, the rate, then the start and
+    // end time as two longs (the fee notice shows them).
+    [Test]
+    public void BlackMarketFeeDiscount_WritesTheRateAndTimes() {
+        var test = new TestGameSession();
+        GameEvent gameEvent = test.AddEvent(EventId, GameEventType.BlackMarketFeeDiscount, new BlackMarketFeeDiscount(150));
+        var writer = new ByteWriter();
+        gameEvent.WriteTo(writer);
+        var expected = new ByteWriter();
+        expected.WriteUnicodeString("BlackMarketFeeDiscount");
+        expected.WriteInt(EventId);
+        expected.WriteInt(150);
+        expected.WriteLong(gameEvent.StartTime);
+        expected.WriteLong(gameEvent.EndTime);
+        Assert.That(Convert.ToHexString(writer.ToArray()), Is.EqualTo(Convert.ToHexString(expected.ToArray())));
+    }
+
+    // The fee rows: 0..10000 (0 is a free sale), anything else is no event; the lowest running rate, -1 without one.
+    [Test]
+    public void BlackMarketFeeDiscount_RowsAndTheRate() {
+        Assert.Multiple(() => {
+            Assert.That(EventSaleReader.FeeRate("150"), Is.EqualTo(new BlackMarketFeeDiscount(150)));
+            Assert.That(EventSaleReader.FeeRate("0"), Is.EqualTo(new BlackMarketFeeDiscount(0)));
+            Assert.That(EventSaleReader.FeeRate("10000"), Is.EqualTo(new BlackMarketFeeDiscount(10000)));
+            Assert.That(EventSaleReader.FeeRate("10001"), Is.Null);
+            Assert.That(EventSaleReader.FeeRate("-1"), Is.Null);
+            Assert.That(EventSaleReader.FeeRate(null), Is.Null);
+
+            var test = new TestGameSession();
+            GameEvent a = test.AddEvent(1, GameEventType.BlackMarketFeeDiscount, new BlackMarketFeeDiscount(300));
+            GameEvent b = test.AddEvent(2, GameEventType.BlackMarketFeeDiscount, new BlackMarketFeeDiscount(150));
+            GameEvent bad = test.AddEvent(3, GameEventType.BlackMarketFeeDiscount, new BlackMarketFeeDiscount(-5));
+            Assert.That(EventSaleRules.BlackMarketFeeRate([a, b, bad]), Is.EqualTo(150));
+            Assert.That(EventSaleRules.BlackMarketFeeRate([bad]), Is.EqualTo(-1));
+            Assert.That(EventSaleRules.BlackMarketFeeRate([]), Is.EqualTo(-1));
+        });
+    }
+
+    // TransferItemBound (GameEventTransferItemBound::vfunc_4): the name, the id and the flag as one bool.
+    [Test]
+    public void TransferItemBound_WritesTheFlag() {
+        var test = new TestGameSession();
+        GameEvent gameEvent = test.AddEvent(EventId, GameEventType.TransferItemBound, new TransferItemBound(true));
+        var writer = new ByteWriter();
+        gameEvent.WriteTo(writer);
+        var expected = new ByteWriter();
+        expected.WriteUnicodeString("TransferItemBound");
+        expected.WriteInt(EventId);
+        expected.WriteBool(true);
+        Assert.That(Convert.ToHexString(writer.ToArray()), Is.EqualTo(Convert.ToHexString(expected.ToArray())));
+    }
+
+    // The flag rows: no value (all 20 KR rows) is on, as the client's default; otherwise the client's ParseBoolW, on
+    // when the text holds 1, o, O, t or T.
+    [Test]
+    public void TransferItemBound_RowsReadTheFlag() {
+        Assert.Multiple(() => {
+            Assert.That(EventSaleReader.TransferItemBound(null), Is.EqualTo(new TransferItemBound(true)));
+            Assert.That(EventSaleReader.TransferItemBound(""), Is.EqualTo(new TransferItemBound(true)));
+            Assert.That(EventSaleReader.TransferItemBound("1"), Is.EqualTo(new TransferItemBound(true)));
+            Assert.That(EventSaleReader.TransferItemBound("true"), Is.EqualTo(new TransferItemBound(true)));
+            Assert.That(EventSaleReader.TransferItemBound("0"), Is.EqualTo(new TransferItemBound(false)));
+            Assert.That(EventSaleReader.TransferItemBound("false"), Is.EqualTo(new TransferItemBound(false)));
+        });
+    }
 }

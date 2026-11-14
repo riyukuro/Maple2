@@ -400,6 +400,29 @@ public class GuildApplicationRulesTests {
         Assert.That(charge, Is.EqualTo(0));
     }
 
+    // The sale on a guild skill use: cost - cost * rate / 10000, cut toward 0 (GetSkillCostWithEventDiscount and
+    // GetPersonalSkillDiscountedCost); the check and the charge both use it.
+    [Test]
+    public void SkillSale_LowersTheCheckAndTheCharge() {
+        Assert.Multiple(() => {
+            Assert.That(GuildRules.SaleCost(500, 0), Is.EqualTo(500));
+            Assert.That(GuildRules.SaleCost(500, 3000), Is.EqualTo(350));
+            Assert.That(GuildRules.SaleCost(333, 5000), Is.EqualTo(167)); // 333 - 166
+            Assert.That(GuildRules.SaleCost(500, 10000), Is.EqualTo(0));
+            Assert.That(GuildRules.SaleCost(500, 20000), Is.EqualTo(0));
+            Assert.That(GuildRules.SaleCost(500, -100), Is.EqualTo(500));
+            Assert.That(GuildRules.SaleCost(int.MaxValue, 1), Is.EqualTo(int.MaxValue - int.MaxValue / 10000));
+
+            var row = new GuildTable.Buff(Id: 950, Level: 1, RequireLevel: 3, Cost: 500, UpgradeCost: 0, Duration: 60);
+            Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 350, 0, 1000, 3000), Is.EqualTo(GuildError.none));
+            Assert.That(GuildRules.CheckUseSkill(true, 1, row, 3, 349, 0, 1000, 3000), Is.EqualTo(GuildError.s_guild_err_not_enough_guild_fund));
+            Assert.That(GuildRules.PersonalSkillCharge(10001, row, 3, 350, false, out long charge, 3000), Is.EqualTo(GuildError.none));
+            Assert.That(charge, Is.EqualTo(350));
+            Assert.That(GuildRules.PersonalSkillCharge(10001, row, 3, 349, false, out charge, 3000), Is.EqualTo(GuildError.s_guild_err_no_money));
+            Assert.That(charge, Is.EqualTo(0));
+        });
+    }
+
     // LoadSkillBuffs gives what this lists: one effect per running guild skill, for the time left.
     [Test]
     public void RunningSkillEffects_OnePerSkill_NothingAfterTheEnd() {

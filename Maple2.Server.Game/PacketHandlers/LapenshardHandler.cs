@@ -177,8 +177,12 @@ public class LapenshardHandler : FieldPacketHandler {
 
     // The cost in the order KMS2 takes it: the fodder lapenshards, the meso, then the ingredients.
     private static bool ConsumeCost(GameSession session, Dictionary<long, int> fodders, LapenshardUpgradeTable.Entry entry) {
+        // The crystals are counted after the running SaleLapenshardUpgradeRGB events' highest rate
+        // (CGameRule::GetLapenshardUpgradeSaleRate, the counts the dialog checks and shows).
+        int saleRate = EventSaleRules.HighestRate(session.FindEvent(GameEventType.SaleLapenshardUpgradeRGB));
         IngredientInfo[] ingredients = entry.Ingredients
-            .Select(ingredient => new IngredientInfo(ingredient.ItemTag, ingredient.Amount))
+            .Select(ingredient => new IngredientInfo(ingredient.ItemTag,
+                LapenshardRules.SaleIngredientAmount(ingredient.ItemTag, ingredient.Amount, saleRate)))
             .ToArray();
         foreach (IngredientInfo ingredient in ingredients) {
             long owned = session.Item.Inventory.SpendableCount(ingredient.Tag);

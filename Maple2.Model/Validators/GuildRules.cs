@@ -332,8 +332,9 @@ public static class GuildRules {
     // skill is neither running nor cooling down (CGuildSkill::IsUsable: the time of use plus the duration,
     // and the time of use plus the cooltime, are both over). The skills
     // above 10000 are the personal ones (Guild 91) and are refused here.
+    // saleRate: the running GuildSkillSale events' rate, which lowers the cost (SaleCost).
     public static GuildError CheckUseSkill(bool isMaster, int skillId, GuildTable.Buff? row, int guildLevel, int funds,
-                                           long useTime, long now) {
+                                           long useTime, long now, int saleRate = 0) {
         if (!isMaster) {
             return GuildError.s_guild_err_no_master;
         }
@@ -345,7 +346,7 @@ public static class GuildRules {
         if (row.RequireLevel > guildLevel) {
             return GuildError.s_guild_err_not_enough_guild_level;
         }
-        if (IsEventFundSkill(skillId) || row.Cost < 0 || row.Cost > funds) {
+        if (IsEventFundSkill(skillId) || row.Cost < 0 || SaleCost(row.Cost, saleRate) > funds) {
             return GuildError.s_guild_err_not_enough_guild_fund;
         }
         if (SkillRemainingSeconds(row, useTime, now) > 0 || SkillCooldownSeconds(row, useTime, now) > 0) {
@@ -398,14 +399,15 @@ public static class GuildRules {
     // exist and be a personal skill (above 10000), its requireLevel must not be above the guild level, the
     // member's meso pays its cost, and the member does not have the effect already. A row without an effect
     // would take the meso and give nothing, so it is refused.
-    public static GuildError CheckUsePersonalSkill(int skillId, GuildTable.Buff? row, int guildLevel, long meso, bool hasEffect) {
+    // saleRate: the running GuildPersonalSkillSale events' rate, which lowers the cost (SaleCost).
+    public static GuildError CheckUsePersonalSkill(int skillId, GuildTable.Buff? row, int guildLevel, long meso, bool hasEffect, int saleRate = 0) {
         if (row == null || skillId <= 10000 || row.Duration <= 0 || row.Id <= 0) {
             return GuildError.s_guild_err_unknown;
         }
         if (row.RequireLevel > guildLevel) {
             return GuildError.s_guild_err_not_enough_guild_level;
         }
-        if (row.Cost < 0 || row.Cost > meso) {
+        if (row.Cost < 0 || SaleCost(row.Cost, saleRate) > meso) {
             return GuildError.s_guild_err_no_money;
         }
         if (hasEffect) {
@@ -434,10 +436,24 @@ public static class GuildRules {
     }
 
     // Guild 91: the meso a personal skill takes from the member. Nothing is taken when the use is refused.
-    public static GuildError PersonalSkillCharge(int skillId, GuildTable.Buff? row, int guildLevel, long meso, bool hasEffect, out long charge) {
-        GuildError error = CheckUsePersonalSkill(skillId, row, guildLevel, meso, hasEffect);
-        charge = error == GuildError.none ? row!.Cost : 0;
+    public static GuildError PersonalSkillCharge(int skillId, GuildTable.Buff? row, int guildLevel, long meso, bool hasEffect, out long charge,
+                                                 int saleRate = 0) {
+        GuildError error = CheckUsePersonalSkill(skillId, row, guildLevel, meso, hasEffect, saleRate);
+        charge = error == GuildError.none ? SaleCost(row!.Cost, saleRate) : 0;
         return error;
+    }
+
+    // The cost of a guild skill use under a sale rate in 1/10000, as the client checks and shows it
+    // (CGuildManager::GetSkillCostWithEventDiscount, guildmanager.cpp:1500, for the guild skills, and
+    // GetPersonalSkillDiscountedCost, :1512, for the personal ones): cost - cost * rate / 10000 in 64-bit whole
+    // numbers, cut toward 0. An event fund skill gets no sale in the client; the server refuses those anyway.
+    // Chosen here: a rate outside 0..10000 is held to it, so the cost is never below 0. The client keeps the rate
+    // of the last event that started (CGameEventValueGuild[Personal]SkillSale::SetRate); the server takes the
+    // highest of the running ones.
+    public static int SaleCost(int cost, int saleRate) {
+        long rate = Math.Clamp(saleRate, 0, 10000);
+        long value = cost;
+        return (int) (value - value * rate / 10000);
     }
 
     // The guild skills (ids up to 10000) that are running at `now`, one entry per skill, with the seconds

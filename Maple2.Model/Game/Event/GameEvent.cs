@@ -231,6 +231,11 @@ public class GameEvent : IByteSerializable {
                 // GameEventGuildChampionship has no vfunc_4 of its own: the base reads the id.
                 writer.WriteInt(Id);
                 break;
+            case TransferItemBound transferItemBound:
+                // GameEventTransferItemBound::vfunc_4: the flag after the id.
+                writer.WriteInt(Id);
+                writer.WriteBool(transferItemBound.Enabled);
+                break;
             case FreeAirTaxi:
                 // GameEventFreeAirTaxi reads only the base event's id (gameeventbase.cpp:196).
                 writer.WriteInt(Id);
@@ -414,6 +419,17 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(Id);
                 writer.WriteInt(fishing.Discount);
                 writer.WriteUnicodeString(fishing.ContentType);
+                break;
+            case EventRate eventRate:
+                writer.WriteInt(Id);
+                writer.WriteInt(eventRate.Rate);
+                break;
+            case BlackMarketFeeDiscount feeDiscount:
+                // GameEventBlackMarketFeeDiscount::vfunc_4: the rate, then the start and end time the fee notice shows.
+                writer.WriteInt(Id);
+                writer.WriteInt(feeDiscount.Rate);
+                writer.WriteLong(StartTime);
+                writer.WriteLong(EndTime);
                 break;
             case LevelUpPackage levelUpPackage:
                 writer.WriteInt(Id);

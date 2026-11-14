@@ -47,6 +47,22 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
         return true;
     }
 
+    // A bound item moved to another character by a TransferItemBound event takes that character's binding, so the
+    // character it moved to can wear it. False when the item is not bound.
+    public bool Rebind(Character character) {
+        if (Binding == null) {
+            return false;
+        }
+
+        Binding = new ItemBinding(character.Id, character.Name);
+        return true;
+    }
+
+    // Puts back a binding Rebind replaced (a move that did not happen).
+    public void RestoreBinding(ItemBinding binding) {
+        Binding = binding;
+    }
+
     // A binding the item takes whatever its transfer rule, e.g. at a skin socket unlock; false when it is bound already.
     public bool BindAnyway(Character character) {
         if (Binding != null) {

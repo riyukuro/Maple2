@@ -296,11 +296,16 @@ public class FittingDollHandler : FieldPacketHandler {
                 // one with an unlocked gem bound to another character: while FittingDollEquipAll (0xd4) is on the
                 // client takes off neither (FUN_140a66200, inventory.cpp:1661, through FittingDollRules.BindingOwner;
                 // FittingDollSlot::DestroyDollItem, fittingdollslot_2.cpp:325). It lets a gemless skin through only
-                // while a TransferItemBound game event sets CGameRule::m_transferItemBound, which the server never
-                // sends. While 0xd4 is off the client tests nothing; the server still refuses, so a bound item never
-                // moves to another character by a take-off.
+                // while a TransferItemBound game event sets CGameRule::m_transferItemBound; the server does the same,
+                // and the skin takes the binding of the character it moves to (EventSaleRules.TransfersBound). While
+                // 0xd4 is off the client tests nothing; the server still refuses, so a bound item never moves to
+                // another character by a take-off outside the event.
+                bool transfer = false;
                 if (FittingDollRules.BindingOwner(item, session.CharacterId).CharacterId != 0) {
-                    return FittingDollRules.Error.InvalidBinding;
+                    if (!EventSaleRules.TransfersBound(session.FindEvent(GameEventType.TransferItemBound), item)) {
+                        return FittingDollRules.Error.InvalidBinding;
+                    }
+                    transfer = true;
                 }
                 // The client refuses a take-off into a full inventory the same way (FittingDollPC::FUN_14121c9d0).
                 if (session.Item.Inventory.FreeSlots(item.Inventory) <= 0) {
@@ -308,6 +313,9 @@ public class FittingDollHandler : FieldPacketHandler {
                 }
 
                 doll.Items.Remove(slot);
+                if (transfer) {
+                    item.Transfer?.Rebind(session.Player.Value.Character);
+                }
                 session.Field?.Broadcast(FittingDollPacket.PutOff(doll, slot));
                 return ToInventoryOrMail(session, doll.Uid, item) ? FittingDollRules.Error.None : FittingDollRules.Error.InvalidItem;
             }

@@ -557,6 +557,46 @@ public class BlackMarketRefusalTests {
         Assert.That(test.Errors.Concat(buyerTest.Errors), Is.Empty);
     }
 
+    // A BlackMarketFeeDiscount event replaces the sale fee rate while it runs (the client's GetBlackMarketCostRate):
+    // KR's row 540001 is 150 (1.5%). All 4 sold at 300: 1200 less the fee, plus the deposit of the emptied listing.
+    // The lowest running rate counts; an ended row does not; 0 is a sale without a fee.
+    [TestCase(new int[0], false, 60L, "5%")]
+    [TestCase(new[] { 150 }, false, 18L, "1.5%")]
+    [TestCase(new[] { 300, 150 }, false, 18L, "1.5%")]
+    [TestCase(new[] { 0 }, false, 0L, "0%")]
+    [TestCase(new[] { 0 }, true, 60L, "5%")]
+    public void Purchase_FeeDiscountEventSetsTheFee(int[] rates, bool ended, long fee, string shown) {
+        test = new TestGameSession();
+        BlackMarketListing listing = List(4);
+        for (int i = 0; i < rates.Length; i++) {
+            test.AddEvent(540001 + i, GameEventType.BlackMarketFeeDiscount, new BlackMarketFeeDiscount(rates[i]),
+                end: ended ? DateTime.Now.AddDays(-1) : null);
+        }
+        GameSession session = Login(test, 5000);
+        float normal = Maple2.Server.Game.LuaFunctions.Lua.CalcBlackMarketCostRate();
+        if (normal != 0.05f) {
+            fee = rates.Length > 0 && !ended ? fee : (long) (normal * 4 * Price);
+            shown = rates.Length > 0 && !ended ? shown : $"{normal * 100}%";
+        }
+
+        Send(test, session, 5, listing.Id, 4);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000 - 4 * Price));
+        using GameStorage.Request db = test.Storage.Context();
+        Mail mail = db.GetAllMail(test.CharacterId + 100).Single();
+        Assert.That(mail.Meso, Is.EqualTo(4 * Price - fee + 10));
+        Assert.That(mail.ContentArgs.Select(arg => arg.Value), Does.Contain(shown));
+        Assert.That(mail.ContentArgs.Select(arg => arg.Value), Does.Contain($"{fee}"));
+    }
+
+    // The fee rate: the event's rate / 10000, the Lua rate without one.
+    [Test]
+    public void BlackMarketCostRate_EventOrLua() {
+        Assert.That(Maple2.Server.Game.Manager.BlackMarketManager.BlackMarketCostRate(150), Is.EqualTo(0.015f));
+        Assert.That(Maple2.Server.Game.Manager.BlackMarketManager.BlackMarketCostRate(0), Is.EqualTo(0f));
+        Assert.That(Maple2.Server.Game.Manager.BlackMarketManager.BlackMarketCostRate(-1), Is.EqualTo(Maple2.Server.Game.LuaFunctions.Lua.CalcBlackMarketCostRate()));
+    }
+
     // A row with nothing left is what another buyer's transaction shows between its two saves on a database
     // without transactions: it is a sold listing, so the answer is the one for no row.
     [Test]
