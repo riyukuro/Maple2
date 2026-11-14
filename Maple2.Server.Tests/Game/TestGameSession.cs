@@ -69,7 +69,7 @@ public sealed class TestGameSession {
     // that expects a save should also expect this to be empty.
     public readonly List<string> Errors = [];
     // A save this returns true for throws, as a database that refuses the write would; TrySaveChanges then answers
-    // false. In-memory store only.
+    // false. Also on a MySQL store passed in, where the refused save rolls back the whole store.
     public Func<DbContext, bool>? FailSave {
         get => faults.Fail;
         set => faults.Fail = value;
@@ -94,7 +94,7 @@ public sealed class TestGameSession {
 
     public TestGameSession(DbContextOptions? options = null, Gender gender = Gender.Male) {
         sendQueue = NewSendQueue();
-        Options = options ?? new DbContextOptionsBuilder()
+        Options = options != null ? new DbContextOptionsBuilder(options).AddInterceptors(faults).Options : new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .AddInterceptors(faults)

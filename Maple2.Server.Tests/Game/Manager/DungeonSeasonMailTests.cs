@@ -73,6 +73,40 @@ public class DungeonSeasonMailTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // A weekly reset stored before a season rank clear is taken inside the clear's store (BeginWithResets). The ended
+    // week's mail stores on its own; it used to do so inside the clear's store, taking the account lock again (the
+    // World's lock is not re-entrant: the inner store went on without it and gave the clear's lock back). It now runs
+    // once the clear's store has given its lock back: no lock is taken while one is held, and the week goes once.
+    [Test]
+    public void WeeklyResetInsideTheClearStore_MailsAfterTheStoreOnce() {
+        long now = DateTime.Now.ToEpochSeconds();
+        (TestGameSession test, GameSession session) = StartInSeasonRoom(0, (OtherRoom, 500, now - 3600));
+        Assume.That(session.TrySavePurchase(_ => true), Is.True, "the session holds the resets stored up to now");
+        using (var context = new Ms2Context(test.Options)) {
+            context.ServerInfo.Add(new Maple2.Database.Model.ServerInfo { Key = "WeeklyReset", LastModified = DateTime.Now.AddSeconds(1) });
+            context.SaveChanges();
+        }
+        int held = 0, maxHeld = 0, mailsWhileHeld = -1;
+        test.World.OnAcquire = () => maxHeld = Math.Max(maxHeld, ++held);
+        test.World.OnRelease = () => {
+            if (--held == 0 && mailsWhileHeld < 0) {
+                mailsWhileHeld = Mails(test).Count;
+            }
+        };
+
+        session.Dungeon.CompleteDungeon(now);
+
+        Assert.Multiple(() => {
+            Assert.That(maxHeld, Is.EqualTo(1), "no lock taken while one is held");
+            Assert.That(held, Is.EqualTo(0));
+            Assert.That(mailsWhileHeld, Is.EqualTo(0), "nothing mailed before the clear's store gave its lock back");
+            Assert.That(Mails(test).Select(mail => mail.Content), Is.EqualTo(new[] { MailId.ToString() }));
+            Assert.That(session.Dungeon.Records[OtherRoom].CurrentRecord, Is.EqualTo(0));
+        });
+        session.Dungeon.MailSeasonRewards();
+        Assert.That(Mails(test), Has.Count.EqualTo(1));
+    }
+
     [Test]
     public void ClearInTheRunningWeek_MailsNothing() {
         (TestGameSession test, GameSession session) = StartInSeasonRoom();

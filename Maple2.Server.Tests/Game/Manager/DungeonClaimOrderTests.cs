@@ -17,15 +17,18 @@ namespace Maple2.Server.Tests.Game.Manager;
 // scores set to 0 with its mail. Before, the marks stayed in memory until the next session save, so a crash in
 // between let the same reward be paid again. The ids are made up.
 public class DungeonClaimOrderTests {
-    private const int Room = 24090004, RewardId = 10005, FirstItem = 20301316, FirstMail = 53000006;
-    private const int SeasonRoom = 23000101, SeasonItem = 20300001, SeasonMail = 9001;
+    // The session under test; the MySQL subclass gives one on a real database.
+    protected virtual TestGameSession NewSession() => new();
 
-    private TestGameSession test = null!;
-    private GameSession session => test.Session;
+    protected const int Room = 24090004, RewardId = 10005, FirstItem = 20301316, FirstMail = 53000006;
+    protected const int SeasonRoom = 23000101, SeasonItem = 20300001, SeasonMail = 9001;
+
+    protected TestGameSession test = null!;
+    protected GameSession session => test.Session;
 
     // A room with meso, a season rank reward of 5 ranks (rank table 6: C 100 ... S+ 500), 3 counts.
-    private void StartInRoom() {
-        test = new TestGameSession();
+    protected void StartInRoom() {
+        test = NewSession();
         DungeonRoomMetadata room = TestGameSession.DungeonRoom(Room, 2000062, rewardCount: 3);
         room = room with {
             GroupType = DungeonGroupType.worldBossDungeon,
@@ -52,32 +55,32 @@ public class DungeonClaimOrderTests {
         test.TakeSent();
     }
 
-    private void Clear(short score, long now) {
+    protected void Clear(short score, long now) {
         session.Dungeon.UserRecord!.Missions.Clear();
         session.Dungeon.UserRecord.Missions[1] = new DungeonMission(new DungeonMissionMetadata(1, DungeonMissionType.PlayTime, [], 0, score, 1, true));
         session.Dungeon.CompleteDungeon(now);
     }
 
-    private List<string> Mails() {
+    protected List<string> Mails() {
         using var context = new Ms2Context(test.Options);
         return context.Mail.AsNoTracking().Where(mail => mail.ReceiverId == test.CharacterId).OrderBy(mail => mail.Id)
             .Select(mail => mail.Content).ToList();
     }
 
-    private (int Clears, short Score)? StoredRecord(int dungeonId) {
+    protected (int Clears, short Score)? StoredRecord(int dungeonId) {
         using var context = new Ms2Context(test.Options);
         return context.DungeonRecord.AsNoTracking().Where(record => record.OwnerId == test.CharacterId && record.DungeonId == dungeonId)
             .Select(record => new { Clears = (int) record.CurrentClears, Score = record.CurrentRecord })
             .AsEnumerable().Select(record => ((int, short)?) (record.Clears, record.Score)).FirstOrDefault();
     }
 
-    private int StoredRankClaimed() {
+    protected int StoredRankClaimed() {
         using var context = new Ms2Context(test.Options);
         Maple2.Database.Model.CharacterUnlock unlock = context.CharacterUnlock.AsNoTracking().Single(row => row.CharacterId == test.CharacterId);
         return unlock.DungeonRankRewards.TryGetValue(RewardId, out Maple2.Database.Model.DungeonRankReward? reward) ? reward.RankClaimed : 0;
     }
 
-    private static Func<DbContext, bool> Fails(string type) => context =>
+    protected static Func<DbContext, bool> Fails(string type) => context =>
         context.ChangeTracker.Entries().Any(entry => entry.State is EntityState.Added or EntityState.Modified && entry.Metadata.ClrType.Name == type);
 
     // The clear's count is in the database when its rewards are given, with no session save.
@@ -138,8 +141,8 @@ public class DungeonClaimOrderTests {
     }
 
     // A chaos raid room in a season whose week ended with a score of 500 (the season reward at 100).
-    private DungeonRecord StartInSeasonRoom(long now) {
-        test = new TestGameSession();
+    protected DungeonRecord StartInSeasonRoom(long now) {
+        test = NewSession();
         DungeonRoomMetadata room = TestGameSession.DungeonRoom(SeasonRoom, 2000062) with { GroupType = DungeonGroupType.chaosRaid };
         test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> { [SeasonRoom] = room }));
         test.SetTable(new DungeonConfigTable(new Dictionary<int, int>(), new Dictionary<int, DungeonMissionRankMetadata> {

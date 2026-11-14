@@ -175,6 +175,9 @@ public class DungeonManager {
     // ended while the player was offline is mailed at the next login. The season of a week is the one holding the
     // second before its end. A week whose reward item cannot be made keeps its scores and is tried again. One run at
     // a time (the reset and a clear come on different threads), and a mailed week's scores are 0, so it goes once.
+    // How long a clear's store waits for a reset being stored (tests shorten it).
+    internal static TimeSpan ClearResetWait { get; set; } = TimeSpan.FromSeconds(30);
+
     public void MailSeasonRewards() {
         lock (seasonMailLock) {
             MailSeasonRewardsLocked();
@@ -222,10 +225,11 @@ public class DungeonManager {
                 }
                 return db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, records)
                     && (item == null || (mail = StoreRewardMail(db, item, systemMailId)) != null);
-            })) {
+            }, undo: () => {
                 for (int i = 0; i < records.Length; i++) {
                     records[i].CurrentRecord = scores[i];
                 }
+            })) {
                 logger.Error("Season reward of the week ending {Week} not stored for {CharacterId}", week.Key, session.CharacterId);
                 continue;
             }
@@ -276,7 +280,9 @@ public class DungeonManager {
     }
 
     public void ResetWeeklyClears() {
-        MailSeasonRewards();
+        // The ended week's mail is stored after the reset: a reset is taken inside a store (BeginWithResets), where
+        // the mail's own store would take the account lock again (GameSession.AfterStore).
+        session.AfterStore(MailSeasonRewards);
         // Each record by its own period (PeriodOver), not the world's weekly day: one still in its period keeps its
         // counts. The bought extra counts expire with the record's period (DungeonRecordCli::GetBonusCountNow).
         long now = DateTime.Now.ToEpochSeconds();
@@ -826,9 +832,11 @@ public class DungeonManager {
         // session save kept the counts unspent, so the clear could be paid again. A refused store gives nothing:
         // the counts go back as they were, and the result names no reward. Conditions the counting already fired
         // (a first clear) stay.
-        if (!session.TrySavePurchase(db => db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray()))) {
+        // The store waits for a reset being stored (ClearResetWait) rather than refuse the clear: the dungeon field's
+        // thread holds only the room's party, and a reset is stored in 1 to 5 s (30 s at most, its command timeout).
+        if (!session.TrySavePurchase(db => db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray()),
+                undo: () => RestoreRecords(before), ClearResetWait)) {
             logger.Error("Dungeon {DungeonId}: the clear's records of {CharacterId} not stored, no reward given", Metadata.Id, session.CharacterId);
-            RestoreRecords(before);
             grants.Clear();
             UserRecord.ClearResult();
             session.Send(DungeonRoomPacket.Load(Records));
@@ -975,12 +983,13 @@ public class DungeonManager {
                 stored.Add(mail);
             }
             return true;
-        })) {
+        }, undo: () => {
             if (reward != null) {
                 RankRewards[entry.Id] = reward;
             } else {
                 RankRewards.Remove(entry.Id);
             }
+        })) {
             logger.Error("Rank reward {RewardId} rank {Rank} not stored for {CharacterId}", entry.Id, given, session.CharacterId);
             return;
         }
@@ -1227,8 +1236,12 @@ public class DungeonManager {
                 grants.Add(() => GiveItem(item));
             }
         }
-        session.Send(DungeonRoomPacket.Update(record));
-        session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveDungeonHelperReward, Lobby.DungeonId));
+        // Told after the clear is stored, with the other grants.
+        int dungeonId = Lobby.DungeonId;
+        grants.Add(() => {
+            session.Send(DungeonRoomPacket.Update(record));
+            session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveDungeonHelperReward, dungeonId));
+        });
     }
 
     // The room whose record and coupon count the rewards: the unionRewardID room if it is set (DungeonRoom::GetCoupon,

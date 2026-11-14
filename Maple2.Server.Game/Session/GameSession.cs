@@ -1339,22 +1339,29 @@ public sealed partial class GameSession : Core.Network.Session {
             Interlocked.CompareExchange(ref resetsSeen, new ResetsSeen(stamps) { Ready = true }, null);
             return;
         }
-        // One at a time: a save waits here until a reset taken on another thread is done, before it writes.
-        lock (seen) {
-            if (!seen.Ready) {
-                return;
+        // A step's own store (AfterStore) runs after the reset, outside this lock: a store of another thread holding
+        // the account lock may be waiting here.
+        bool outer = BeginStoreScope();
+        try {
+            // One at a time: a save waits here until a reset taken on another thread is done, before it writes.
+            lock (seen) {
+                if (!seen.Ready) {
+                    return;
+                }
+                GameStorage.ResetStamps held = seen.Stamps;
+                seen.Stamps = new GameStorage.ResetStamps(Max(held.Daily, stamps.Daily), Max(held.Weekly, stamps.Weekly), Max(held.Monthly, stamps.Monthly));
+                if (stamps.Daily > held.Daily) {
+                    DailyReset();
+                }
+                if (stamps.Weekly > held.Weekly) {
+                    WeeklyReset();
+                }
+                if (stamps.Monthly > held.Monthly) {
+                    MonthlyReset();
+                }
             }
-            GameStorage.ResetStamps held = seen.Stamps;
-            seen.Stamps = new GameStorage.ResetStamps(Max(held.Daily, stamps.Daily), Max(held.Weekly, stamps.Weekly), Max(held.Monthly, stamps.Monthly));
-            if (stamps.Daily > held.Daily) {
-                DailyReset();
-            }
-            if (stamps.Weekly > held.Weekly) {
-                WeeklyReset();
-            }
-            if (stamps.Monthly > held.Monthly) {
-                MonthlyReset();
-            }
+        } finally {
+            EndStoreScope(outer);
         }
 
         static DateTime Max(DateTime a, DateTime b) => a > b ? a : b;
@@ -2105,6 +2112,7 @@ public sealed partial class GameSession : Core.Network.Session {
     // save: a reset must not end sessions. A save with a wait that still finds it running (a reset stuck for a
     // minute) is a failed one for its caller.
     private SaveResult LockedSave(int tries, TimeSpan resetWait) {
+        bool outer = BeginStoreScope();
         try {
             AcquireLock(AccountId, 5);
             for (int i = 0; i < tries; i++) {
@@ -2121,6 +2129,7 @@ public sealed partial class GameSession : Core.Network.Session {
             return SaveResult.Failed;
         } finally {
             ReleaseLock(AccountId);
+            EndStoreScope(outer);
         }
     }
 
@@ -2241,6 +2250,50 @@ public sealed partial class GameSession : Core.Network.Session {
         return result == SaveResult.Stored;
     }
 
+    // TrySavePurchase whose refusal puts the caller's memory back (undo) before the account lock is given back, so a
+    // session save waiting for the lock writes the old values, not the ones the refused store held. resetWait: how
+    // long the store waits for a reset being stored before it is refused (none for the others).
+    public bool TrySavePurchase(Func<GameStorage.Request, bool> alsoSave, Action undo, TimeSpan resetWait = default) =>
+        PurchaseSave(alsoSave, undo: undo, resetWait: resetWait) == SaveResult.Stored;
+
+    // A reset step reached inside a store (BeginWithResets takes the stored resets) that stores on its own (a mail
+    // with what marks it sent) must not take the account lock again: the World's lock is not re-entrant, so the inner
+    // store waited for it, went on without it, and gave the outer store's lock back. Such a step runs through
+    // AfterStore: inside a store of this thread it runs once that store has given its lock back, else at once.
+    [ThreadStatic] private static List<Action>? afterStore;
+
+    public void AfterStore(Action action) {
+        if (afterStore != null) {
+            afterStore.Add(action);
+            return;
+        }
+        action();
+    }
+
+    // True for the outermost store of this thread, which runs what AfterStore queued (EndStoreScope).
+    private static bool BeginStoreScope() {
+        if (afterStore != null) {
+            return false;
+        }
+        afterStore = [];
+        return true;
+    }
+
+    private void EndStoreScope(bool outer) {
+        if (!outer) {
+            return;
+        }
+        List<Action> queued = afterStore ?? [];
+        afterStore = null;
+        foreach (Action action in queued) {
+            try {
+                action();
+            } catch (Exception ex) {
+                Logger.Error(ex, "After a store: a queued step failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            }
+        }
+    }
+
     // The session still plays on the field (a try again queued on the field's queue runs only then).
     public bool PlaysOn(FieldManager field) => TimedSaveDue(field);
 
@@ -2273,13 +2326,33 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
-    private SaveResult PurchaseSave(Func<GameStorage.Request, bool> alsoSave, Func<bool>? refused = null) {
+    private SaveResult PurchaseSave(Func<GameStorage.Request, bool> alsoSave, Func<bool>? refused = null, Action? undo = null,
+            TimeSpan resetWait = default) {
+        bool outer = BeginStoreScope();
+        SaveResult result = SaveResult.Failed;
         try {
             AcquireLock(AccountId);
+            return result = PurchaseRows(alsoSave, refused, resetWait);
+        } finally {
+            if (result != SaveResult.Stored && undo != null) {
+                try {
+                    undo();
+                } catch (Exception ex) {
+                    Logger.Error(ex, "SavePurchase: undo failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                }
+            }
+            ReleaseLock(AccountId);
+            EndStoreScope(outer);
+        }
+    }
+
+    // PurchaseSave's rows, under the account lock.
+    private SaveResult PurchaseRows(Func<GameStorage.Request, bool> alsoSave, Func<bool>? refused, TimeSpan resetWait) {
+        try {
             using GameStorage.Request db = GameStorage.Context();
             using var tokens = new RowTokens(Player);
             // A reset stored since the session's state was read is taken first, so the rows written hold it.
-            BeginWithResets(db, TimeSpan.Zero);
+            BeginWithResets(db, resetWait);
             if (!HoldsSession(db)) {
                 return SaveResult.Failed;
             }
@@ -2305,8 +2378,6 @@ public sealed partial class GameSession : Core.Network.Session {
         } catch (Exception ex) {
             Logger.Error(ex, "SavePurchase failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return SaveResult.Failed;
-        } finally {
-            ReleaseLock(AccountId);
         }
     }
 
