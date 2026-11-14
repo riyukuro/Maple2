@@ -894,8 +894,12 @@ public sealed class TestGameSession {
         // Where the world hands a chat line on (the recipient's game server); it may throw what the world would.
         public Action<ChatRequest>? ChatDelivery;
 
+        // The deadline of each chat call.
+        public readonly List<DateTime?> ChatDeadlines = [];
+
         public override ChatResponse Chat(ChatRequest request, CallOptions options) {
             Chats.Add(request);
+            ChatDeadlines.Add(options.Deadline);
             ChatDelivery?.Invoke(request);
             return new ChatResponse();
         }

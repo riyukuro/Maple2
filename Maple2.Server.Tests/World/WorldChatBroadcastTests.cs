@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -18,9 +19,11 @@ public class WorldChatBroadcastTests {
 
     private sealed class FakeChannel : ChannelClient {
         public readonly List<ChatRequest> Chats = [];
+        public readonly List<DateTime?> Deadlines = [];
         public bool Down;
 
         public override ChatResponse Chat(ChatRequest request, CallOptions options) {
+            Deadlines.Add(options.Deadline);
             if (Down) {
                 throw new RpcException(new Status(StatusCode.Unavailable, "down"));
             }
@@ -62,6 +65,8 @@ public class WorldChatBroadcastTests {
 
         for (int id = 1; id <= 3; id++) {
             Assert.That(channels[id].Chats, Has.Count.EqualTo(id == down ? 0 : 1), $"channel {id}");
+            // A channel that hangs is cut off by its own deadline, not waited on with the rest behind it.
+            Assert.That(channels[id].Deadlines.Single(), Is.Not.Null.And.LessThanOrEqualTo(DateTime.UtcNow + WorldService.ChannelChatDeadline), $"channel {id}");
         }
     }
 }

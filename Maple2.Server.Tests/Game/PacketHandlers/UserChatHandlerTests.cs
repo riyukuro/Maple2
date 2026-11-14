@@ -100,17 +100,24 @@ public class UserChatHandlerTests {
         Assert.That(session.Currency.Meret, Is.EqualTo(100000));
     }
 
-    // The free world chat coupon is taken only for a line that went out too.
-    [Test]
-    public void WorldChat_WithTheWorldDownKeepsTheCoupon() {
+    // A session holding one free world chat coupon.
+    private (GameSession, Item) LoginWithCoupon(long meret = 0) {
         test = new TestGameSession();
         test.AddMap(TestGameSession.Map(2000023));
         ItemMetadata coupon = TestGameSession.Metadata(20300001);
-        test.Store(coupon with { Property = coupon.Property with { Tag = ItemTag.FreeWorldChatCoupon } });
+        Item item = test.Store(coupon with { Property = coupon.Property with { Tag = ItemTag.FreeWorldChatCoupon } });
         handler = new UserChatHandler { World = test.World, GameStorage = test.Storage, ServerTableMetadata = test.ServerTableMetadata };
         GameSession session = test.Start();
         test.EnterMap(TestGameSession.Map(2000023));
+        session.Currency.Meret = meret;
         test.TakeSent();
+        return (session, item);
+    }
+
+    // The free world chat coupon is taken only for a line that went out too.
+    [Test]
+    public void WorldChat_WithTheWorldDownKeepsTheCoupon() {
+        (GameSession session, _) = LoginWithCoupon();
         test.World.ChatDelivery = _ => throw Down();
 
         Say(session, ChatType.World, "hello");
@@ -121,6 +128,34 @@ public class UserChatHandlerTests {
         test.World.ChatDelivery = null;
         Say(session, ChatType.World, "hello");
 
+        Assert.That(session.Item.Inventory.Find(20300001), Is.Empty);
+    }
+
+    // An expired coupon is no coupon (Consume refuses it): the line costs the merets, not a free line.
+    [Test]
+    public void WorldChat_WithAnExpiredCouponCostsTheMerets() {
+        (GameSession session, Item coupon) = LoginWithCoupon(meret: 100000);
+        Assume.That(test.ServerTableMetadata.ConstantsTable.MeratConsumeWorldChat, Is.GreaterThan(0));
+        session.Item.Inventory.Get(coupon.Uid)!.ExpiryTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
+
+        Say(session, ChatType.World, "hello");
+
+        Assert.That(test.World.Chats, Has.Count.EqualTo(1));
+        Assert.That(session.Currency.Meret, Is.EqualTo(100000 - test.ServerTableMetadata.ConstantsTable.MeratConsumeWorldChat));
+    }
+
+    // The inventory is not locked while a paid line waits for the World (the field thread takes the same lock for
+    // item skills and rewards), and the call has a deadline.
+    [Test]
+    public void WorldChat_CouponLineWaitsForTheWorldUnlocked() {
+        (GameSession session, _) = LoginWithCoupon();
+        bool locked = true;
+        test.World.ChatDelivery = _ => locked = Monitor.IsEntered(session.Item);
+
+        Say(session, ChatType.World, "hello");
+
+        Assert.That(locked, Is.False);
+        Assert.That(test.World.ChatDeadlines.Single(), Is.Not.Null);
         Assert.That(session.Item.Inventory.Find(20300001), Is.Empty);
     }
 
@@ -478,6 +513,21 @@ public class UserChatHandlerTests {
         Assert.That(test.World.Chats, Has.Count.EqualTo(1));
         Assert.That(session.Item.Inventory.Find(MegaphoneId), Is.Not.Empty);
         Assert.That(session.SuperChatId, Is.EqualTo(MegaphoneId));
+    }
+
+    [TestCase(ItemFunction.SuperWorldChat, ChatType.Super)]
+    [TestCase(ItemFunction.WeddingChat, ChatType.Wedding)]
+    public void MegaphoneLine_WaitsForTheWorldUnlocked(ItemFunction function, ChatType type) {
+        GameSession session = LoginWithMegaphone(function);
+        Reserve(session, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 600);
+        bool locked = true;
+        test.World.ChatDelivery = _ => locked = Monitor.IsEntered(session.Item);
+
+        Say(session, type, "come");
+
+        Assert.That(locked, Is.False);
+        Assert.That(test.World.ChatDeadlines.Single(), Is.Not.Null);
+        Assert.That(session.Item.Inventory.Find(MegaphoneId), Is.Empty);
     }
 
     // Without a reservation the line goes nowhere, the item stays and the sender gets the client's text.

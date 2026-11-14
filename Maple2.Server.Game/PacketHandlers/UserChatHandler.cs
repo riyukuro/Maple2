@@ -2,6 +2,7 @@
 using System.Xml;
 using Grpc.Core;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -290,19 +291,18 @@ public class UserChatHandler : FieldPacketHandler {
             World = new ChatRequest.Types.World(),
         };
 
-        lock (session.Item) {
-            Item? voucher = session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.FreeWorldChatCoupon).FirstOrDefault();
-            if (voucher != null) {
-                if (!SendToWorld(session, request)) {
-                    return;
-                }
-                if (!session.Item.Inventory.Consume(voucher.Uid, 1)) {
-                    Logger.Error("World chat coupon {Uid} of {CharacterId} was not taken", voucher.Uid, session.CharacterId);
-                    return;
-                }
-                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_worldchat_use_coupon));
+        // An expired coupon is no coupon (Find skips it, and Consume would refuse it after the line went out).
+        Item? voucher = session.Item.Inventory.Find(ItemTag.FreeWorldChatCoupon).FirstOrDefault();
+        if (voucher != null) {
+            if (!SendToWorld(session, request)) {
                 return;
             }
+            if (!session.Item.Inventory.Consume(voucher.Uid, 1)) {
+                Logger.Error("World chat coupon {Uid} of {CharacterId} was not taken", voucher.Uid, session.CharacterId);
+                return;
+            }
+            session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_worldchat_use_coupon));
+            return;
         }
 
         int meretCost = Constants.MeratConsumeWorldChat;
@@ -321,10 +321,13 @@ public class UserChatHandler : FieldPacketHandler {
         session.Currency.NotifyMeretTaken(meretCost);
     }
 
-    // Hands a paid line to the World; false when it is unreachable, and the line went nowhere.
+    // How long a paid line waits for the World. The inventory is not locked meanwhile (the field thread needs it).
+    internal static readonly TimeSpan ChatDeadline = TimeSpan.FromSeconds(10);
+
+    // Hands a paid line to the World; false when it is unreachable or too slow, and the line counts as not sent.
     private bool SendToWorld(GameSession session, ChatRequest request) {
         try {
-            World.Chat(request);
+            World.Chat(request, deadline: DateTime.UtcNow + ChatDeadline);
             return true;
         } catch (RpcException ex) {
             Logger.Error(ex, "Chat {Type} of {CharacterId} was not sent", request.ChatCase, session.CharacterId);
@@ -407,16 +410,15 @@ public class UserChatHandler : FieldPacketHandler {
         SendWithMegaphone(session, superChatItem, request);
     }
 
-    // A megaphone line takes its item in one step with the hand-off to the World: a line the World does not take
-    // keeps the item and its selection.
+    // A megaphone line takes its item only after the World took the line: a line the World does not take keeps the
+    // item and its selection. The item is looked at again first (gone or expired since it was selected: no line).
     private void SendWithMegaphone(GameSession session, Item megaphone, ChatRequest request) {
-        lock (session.Item) {
-            if (session.Item.Inventory.Get(megaphone.Uid) == null || !SendToWorld(session, request)) {
-                return;
-            }
-            if (!session.Item.Inventory.Consume(megaphone.Uid, 1)) {
-                Logger.Error("Megaphone {Uid} of {CharacterId} was not taken", megaphone.Uid, session.CharacterId);
-            }
+        Item? held = session.Item.Inventory.Get(megaphone.Uid);
+        if (held == null || held.IsExpired() || !SendToWorld(session, request)) {
+            return;
+        }
+        if (!session.Item.Inventory.Consume(megaphone.Uid, 1)) {
+            Logger.Error("Megaphone {Uid} of {CharacterId} was not taken", megaphone.Uid, session.CharacterId);
         }
         Deselect(session);
     }

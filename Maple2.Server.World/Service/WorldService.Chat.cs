@@ -120,12 +120,15 @@ public partial class WorldService {
         return Task.FromResult(new ChatResponse());
     }
 
-    // A line for every channel: one channel that is down misses it, the rest still get it, and the line counts as
-    // sent (its cost is not given back).
+    // How long a broadcast line waits for one channel.
+    internal static readonly TimeSpan ChannelChatDeadline = TimeSpan.FromSeconds(2);
+
+    // A line for every channel: one channel that is down or hangs misses it, the rest still get it, and the line
+    // counts as sent (its cost is not given back).
     private void BroadcastChat(ChatRequest request) {
         foreach ((int channel, ChannelClient client) in channelClients) {
             try {
-                client.Chat(request);
+                client.Chat(request, deadline: DateTime.UtcNow + ChannelChatDeadline);
             } catch (RpcException ex) {
                 logger.Error(ex, "Chat {Type} not delivered to channel {Channel}", request.ChatCase, channel);
             }
