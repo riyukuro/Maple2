@@ -35,6 +35,33 @@ public class TimeEventPacketTests {
         Assert.That(update.Length, Is.EqualTo(2 + 1 + 4 + 4 + 8));
     }
 
+    // A row without a next spawn (its event over) is left out of Load, and its end removes the client's row (mode 2,
+    // i32 key) rather than setting a time of 0, which the game dictionary would show as a spawn clock.
+    [Test]
+    public void LegionBattle_EndedRowIsNotATime() {
+        var ended = new WorldBossMetadata(2000, 100, DateTime.Now.AddDays(-3), DateTime.Now.AddDays(-2),
+            TimeSpan.FromHours(1), TimeSpan.Zero, TimeSpan.FromMinutes(5), [2000001], [100], [23000002], 2000, true, false, 1, false, false);
+        ByteWriter load = LegionBattlePacket.Load(new Dictionary<int, WorldBossMetadata> { [1000] = Boss(1000, 23000001), [2000] = ended });
+        var reader = new ByteReader(load.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.LegionBattle));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadShort(), Is.EqualTo(1));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1000));
+        reader.ReadInt();
+        Assert.That(reader.ReadLong(), Is.GreaterThan(0));
+        Assert.That(load.Length, Is.EqualTo(2 + 1 + 2 + 4 + 4 + 8));
+
+        ByteWriter end = LegionBattlePacket.Next(2000, 23000002, 0);
+        reader = new ByteReader(end.Buffer, 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.LegionBattle));
+        Assert.That(reader.ReadByte(), Is.EqualTo(2));
+        Assert.That(reader.ReadInt(), Is.EqualTo(2000));
+        Assert.That(end.Length, Is.EqualTo(2 + 1 + 4));
+
+        Assert.That(LegionBattlePacket.Next(1000, 23000001, 1234567890L).ToArray(),
+            Is.EqualTo(LegionBattlePacket.Update(1000, 23000001, 1234567890L).ToArray()));
+    }
+
     [TestCase(1)]
     [TestCase(3)]
     [TestCase(4)]

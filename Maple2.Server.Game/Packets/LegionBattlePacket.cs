@@ -10,17 +10,42 @@ public static class LegionBattlePacket {
     private enum Mode : byte {
         Load = 0,
         Update = 1,
+        Remove = 2,
     }
 
+    // The client keeps a spawn time per key (CFieldMetaTable::SetSpawnNpcGuarantee) and the game dictionary shows
+    // the first time of a field boss's npc as its guaranteed spawn clock (uigamedictionarydialog.cpp:531). A row
+    // without a next spawn (its event over, or no cycle) has no time to show: Load leaves it out and its end is
+    // sent as mode 2 (RemoveSpawnNpcGuarantee), not as a time of 0.
+
     public static ByteWriter Load(IReadOnlyDictionary<int, WorldBossMetadata> bosses) {
+        var rows = new List<(WorldBossMetadata Metadata, long Next)>();
+        foreach ((int _, WorldBossMetadata metadata) in bosses) {
+            long next = WorldBossUtil.ComputeNextSpawnTimestamp(metadata);
+            if (next > 0) {
+                rows.Add((metadata, next));
+            }
+        }
         ByteWriter pWriter = Packet.Of(SendOp.LegionBattle);
         pWriter.Write<Mode>(Mode.Load);
-        pWriter.WriteShort((short) bosses.Count);
-        foreach ((int _, WorldBossMetadata metadata) in bosses) {
+        pWriter.WriteShort((short) rows.Count);
+        foreach ((WorldBossMetadata metadata, long next) in rows) {
             pWriter.WriteInt(metadata.Id);
             pWriter.WriteInt(metadata.NpcIds.Length > 0 ? metadata.NpcIds[0] : 0);
-            pWriter.WriteLong(WorldBossUtil.ComputeNextSpawnTimestamp(metadata));
+            pWriter.WriteLong(next);
         }
+        return pWriter;
+    }
+
+    // The next spawn of a row: its time, or its removal when there is none.
+    public static ByteWriter Next(int metadataId, int npcId, long nextSpawnTimestamp) {
+        return nextSpawnTimestamp > 0 ? Update(metadataId, npcId, nextSpawnTimestamp) : Remove(metadataId);
+    }
+
+    public static ByteWriter Remove(int metadataId) {
+        ByteWriter pWriter = Packet.Of(SendOp.LegionBattle);
+        pWriter.Write<Mode>(Mode.Remove);
+        pWriter.WriteInt(metadataId);
         return pWriter;
     }
 

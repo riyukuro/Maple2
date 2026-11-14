@@ -80,7 +80,7 @@ public partial class ChannelService {
 
         foreach (GameSession session in server.GetSessions()) {
             session.Send(WorldShareInfoPacket.BossAlive(npcId, mapId, channel, spawnTimestamp, true));
-            session.Send(LegionBattlePacket.Update(boss.MetadataId, npcId, boss.NextSpawnTimestamp));
+            session.Send(LegionBattlePacket.Next(boss.MetadataId, npcId, boss.NextSpawnTimestamp));
         }
 
         // Spawn the boss NPC in each target map
