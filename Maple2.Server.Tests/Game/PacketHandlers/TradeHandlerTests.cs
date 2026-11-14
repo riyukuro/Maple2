@@ -237,6 +237,23 @@ public class TradeHandlerTests {
         });
     }
 
+    // Both windows are told the slot's own uid: before, the client's uid was echoed, so a wrong one dropped
+    // another offer from the windows while this slot's item came back to the bag.
+    [Test]
+    public void RemoveItem_EchoesTheSlotsUid() {
+        Offer();
+        giverTest.TakeSent();
+        takerTest.TakeSent();
+        Send(giver, 9, writer => {
+            writer.WriteLong(item.Uid + 1);
+            writer.WriteInt(0);
+        });
+
+        byte[][] sent = takerTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Trade).ToArray();
+        Assert.That(sent, Has.Length.EqualTo(1));
+        Assert.That(BitConverter.ToInt64(sent[0], 2 + 1 + 1 + 4), Is.EqualTo(item.Uid));
+    }
+
     // The rows of |characterId| holding item 20000001, as the next login loads them.
     private int Held(long characterId) {
         using GameStorage.Request db = giverTest.Storage.Context();

@@ -302,8 +302,10 @@ public class TradeManager : IDisposable {
                 }
 
                 OnTradeModified();
-                self.Session.Send(TradePacket.RemoveItem(true, tradeSlot, itemUid));
-                other.Session.Send(TradePacket.RemoveItem(false, tradeSlot, itemUid));
+                // Both windows are told the slot's own uid, not the client's: a stale or forged one named another
+                // offer there while this slot's item came back.
+                self.Session.Send(TradePacket.RemoveItem(true, tradeSlot, item.Uid));
+                other.Session.Send(TradePacket.RemoveItem(false, tradeSlot, item.Uid));
                 // The room was checked under the same lock, so the add takes it; should it not, the item's row (the
                 // caller's own) goes to the mail and is not dropped. Written at once, so the piece's row and the
                 // lowered stack's are one stack again.
