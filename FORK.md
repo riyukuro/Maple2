@@ -21,6 +21,7 @@ The ingest (`Maple2.File.Ingest`) fills the metadata database from the folder `M
 - `MS2_PLAYED_CLIENT_XML` is optional: the path of the played client's own `Xml.m2d`, for a client of another version than the data pack. The ingest then takes the client-side rows (prices, furnishing rows, item merge ids) from it and leaves out maps, npcs, items and missions that client does not have. The bullets below that name this setting say what each does.
 - `MS2_ORIGINAL_DROP_TABLE=1` is optional: the ingest reads the pack's original drop table instead of today's (see "Original (KMS) drop table").
 - After pulling a commit that touches `Maple2.File.Ingest`, run the ingest again. The bullets below that say "needs a re-ingest" depend on it, and the servers stop at start when the metadata database is older than they are.
+  - A commit that adds a server table (the server-table rows, such as `feature.xml`, the features turned on for the locale) is such a commit: a Release server throws `Row does not exist` at start on a metadata database ingested before it, so after the deploy run the ingest before starting the servers. A re-ingest that turns a feature off takes effect at the next server start; a quest granted under it earlier that day (a daily mission) is dropped at the daily reset and not started again.
 
 ## How packet layouts are checked
 
