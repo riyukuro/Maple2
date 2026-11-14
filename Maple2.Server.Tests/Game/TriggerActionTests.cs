@@ -1569,6 +1569,66 @@ public class TriggerFieldGameTests : TriggerTestBase {
         Assert.That((GameConstant("RequireUserCount"), GameConstant("EnterableSeconds"), GameConstant("DivideTeamsSeconds")),
             Is.EqualTo(("4", (string?) null, "7")));
     }
+
+    // create_field_game HideAndSeek (7 KR rows, all reset="1"): a new game on the field, which sets its first step on
+    // the calling trigger; reset makes a new one over a running game, without it the running game stays.
+    [Test]
+    public void CreateFieldGame_HideAndSeek() {
+        Action("""<action name="create_field_game" type="HideAndSeek" reset="1" />""");
+        HideAndSeekField? game = Field.HideAndSeek;
+        Assert.That(game, Is.Not.Null);
+        Assert.That(Field.UserValues.Get(1, nameof(HideAndSeekStep.WaitForEnterUser)), Is.EqualTo(1));
+
+        Action("""<action name="create_field_game" type="HideAndSeek" />""");
+        Assert.That(Field.HideAndSeek, Is.SameAs(game));
+        Action("""<action name="create_field_game" type="HideAndSeek" reset="1" />""");
+        Assert.That(Field.HideAndSeek, Is.Not.SameAs(game).And.Not.Null);
+        Assert.That((Field.Survival, Field.GuildVsGame), Is.EqualTo(((SurvivalGameField?) null, (GuildVsGameField?) null)));
+    }
+
+    // MapleSurvival (4 rows) and MapleSurvivalTeam (2) start the survival game with the players here (one player: it
+    // ends at once, so the next row starts another; a running one stays, see FieldGameStartsSurvival); GuildVsGame (2)
+    // makes the guild game.
+    [Test]
+    public void CreateFieldGame_SurvivalAndGuildVsGame() {
+        // The test field has no constructor run: its widget table is set here.
+        typeof(FieldManager).GetField(nameof(FieldManager.Widgets))!.SetValue(Field, new Dictionary<string, Widget>());
+        Action("""<action name="create_field_game" type="MapleSurvival" />""");
+        SurvivalGameField? survival = Field.Survival;
+        Assert.That(survival is { Ended: true }, Is.True);
+        Action("""<action name="create_field_game" type="MapleSurvivalTeam" />""");
+        Assert.That(Field.Survival, Is.Not.SameAs(survival).And.Not.Null);
+
+        Assert.That(Field.GuildVsGame, Is.Null);
+        Action("""<action name="create_field_game" type="GuildVsGame" />""");
+        Assert.That(Field.GuildVsGame, Is.Not.Null);
+        Assert.That(Field.HideAndSeek, Is.Null);
+    }
+
+    // field_game_message (14 rows, custom 1 and 2, type SetEventUI): the text banner goes to the players of that team
+    // only (custom 1 the hiders, 2 the seekers); without a game nothing is sent.
+    [Test]
+    public void FieldGameMessage_BannerToTheTeam() {
+        Action("""<action name="field_game_message" custom="2" type="SetEventUI" arg1="1" script="$s$" duration="30000" />""");
+        Assert.That(test.TakeSent(), Is.Empty);
+
+        // The moves look up the portals (none: the player stays).
+        typeof(FieldManager).GetField("fieldPortals", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldPortal>());
+        Field.StartHideAndSeek(1);
+        HideAndSeekField game = Field.HideAndSeek!;
+        // The one player is the seeker once the teams are split.
+        for (int i = 0; i < 20 && game.Step != HideAndSeekStep.LookingForATeams; i++) {
+            game.Update(Field.FieldTick);
+        }
+        Assert.That(game.Step, Is.EqualTo(HideAndSeekStep.LookingForATeams));
+        test.TakeSent();
+
+        Action("""<action name="field_game_message" custom="1" type="SetEventUI" arg1="1" script="$s$" duration="30000" />""");
+        Action("""<action name="field_game_message" custom="2" type="Other" arg1="1" script="$s$" duration="30000" />""");
+        Assert.That(test.TakeSent(), Is.Empty);
+        Action("""<action name="field_game_message" custom="2" type="SetEventUI" arg1="1" script="$s$" duration="30000" />""");
+        Assert.That(test.TakeSent(), Is.EqualTo(new[] { MassiveEventPacket.Banner(BannerType.Text, "$s$", 30000).ToArray() }));
+    }
 }
 
 public class TriggerInterfaceTests : TriggerTestBase {

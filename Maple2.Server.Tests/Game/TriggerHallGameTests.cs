@@ -254,4 +254,19 @@ public class TriggerHallGameTests : TriggerTestBase {
         Action("""<action name="move_to_portal" portal_id="3" box_id="1" />""");
         Assert.That(Moves(), Is.EqualTo(new[] { (test.Session.Player.ObjectId, new Vector3(1000, 0, 25)) }));
     }
+
+    // start_mini_game (16): each player in the box gets a fresh record of the game's rounds; a player outside it
+    // gets none.
+    [Test]
+    public void StartMiniGame_RecordsThePlayersInTheBox() {
+        StartHall();
+        Action("""<action name="start_mini_game" round="5" box_id="2" game_name="springbeach" />""");
+        Assert.That(test.Session.MiniGameRecord, Is.Null);
+
+        Action("""<action name="start_mini_game" round="5" box_id="1" game_name="springbeach" />""");
+        MiniGameUserRecord? record = test.Session.MiniGameRecord;
+        Assert.That(record, Is.Not.Null);
+        Assert.That((record!.CharacterId, record.TotalRounds, record.MinRound, record.ClearedRounds), Is.EqualTo((CharacterId, 5, 1, 0)));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
 }
