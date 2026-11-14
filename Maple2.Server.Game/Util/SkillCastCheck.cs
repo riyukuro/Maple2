@@ -68,6 +68,12 @@ public static class SkillCastCheck {
             Logger.Debug("Cast refused, skill {SkillId}: the home's {Row} row stops it", record.SkillId, row);
             return false;
         }
+        if (SkillCastRules.StateFieldRefusal(SkillCastRules.ExpectedState(record.Metadata.Property.MainType, record.Metadata.Property.State), laterMotion,
+                session.Field.Metadata.Property.CanFly, session.Field.Metadata.Property.CanClimb,
+                AdminLevel.Of(session.Player.Value.Account.AdminPermissions)) is { } fieldAnswer) {
+            Logger.Debug("Cast refused, skill {SkillId}: field {MapId} answers {Answer:X} for its state", record.SkillId, session.Field.MapId, fieldAnswer);
+            return false;
+        }
         // The same holds for a buff that disables the skill itself (answer 0x1f): checked on the first motion only.
         if (!laterMotion && session.Player.Buffs.SkillUseDisabled(record.SkillId)) {
             Logger.Debug("Cast refused, a buff held disables skill {SkillId}", record.SkillId);

@@ -299,9 +299,10 @@ public sealed class TestGameSession {
         return new BanWordStorage(words, storage);
     }
 
+    // checkClimb is on, as it is in the client for a field that does not set it (fielddata.cpp:554).
     public static MapMetadata Map(int id, bool homeReturnable = true, bool notInPlayedClient = false) {
         var property = new MapMetadataProperty(Continent.VictoriaIsland, MapRegion.None, 0, MapType.None, false, 0, 0, 0, 0, AutoReviveType.None, 0,
-            false, false, false, false, homeReturnable, false, false, false, false, false, 0f, NotInPlayedClient: notInPlayedClient);
+            false, false, false, false, homeReturnable, false, false, false, false, true, 0f, NotInPlayedClient: notInPlayedClient);
         return new MapMetadata(id, $"{id}", string.Empty, property, null!, null!, [], null!, []);
     }
 

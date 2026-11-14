@@ -63,9 +63,30 @@ public static class SkillCastRules {
     // the played client has no main type, so the data pack's own state stands in (the two agree on every skill
     // the client has).
     public static bool StateRefuses(ActorState sent, int mainType, ActorState dataState, long itemUid) {
-        ActorState expected = mainType != 0 ? StateOf(mainType) : dataState;
+        ActorState expected = ExpectedState(mainType, dataState);
         if (expected is ActorState.None or ActorState.Summon || sent != expected) return true;
         return expected == ActorState.Glide && itemUid == 0;
+    }
+
+    public static ActorState ExpectedState(int mainType, ActorState dataState) => mainType != 0 ? StateOf(mainType) : dataState;
+
+    // The client's field tests of a glide and a climb on their first motion (CSkillSystem::FUN_14176a8c0,
+    // skillslot.cpp:3155-3198): a glide only on a field with checkFly (answer 0xf), a climb only on one with
+    // checkClimb (0x10). The fields' defaults are the client's (checkFly 0, checkClimb 1; fielddata.cpp:554). A GM
+    // (account level 50 or more) glides anywhere, as HomePermissionRules.SkillRowApplies lets the glide through.
+    // The test that a glide with onGroundDisable starts off the ground (0xe) needs the client's physics and is left
+    // out. null: none refuses.
+    public static int? StateFieldRefusal(ActorState state, bool laterMotion, bool fieldCanFly, bool fieldCanClimb, byte adminLevel) {
+        if (laterMotion) {
+            return null;
+        }
+        if (state == ActorState.Glide && !fieldCanFly && adminLevel < 50) {
+            return 0xf;
+        }
+        if (state == ActorState.Climb && !fieldCanClimb) {
+            return 0x10;
+        }
+        return null;
     }
 
     public static bool OnCooldown(long tick, long endTick) => tick < endTick - CooldownSlackMs;

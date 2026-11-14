@@ -28,9 +28,15 @@ public class StateSkillCastTests : TriggerTestBase {
         };
     }
 
-    private void Begin(params SkillMetadata[] skills) {
+    private void Begin(params SkillMetadata[] skills) => Begin(climb: true, skills);
+
+    private void Begin(bool climb, params SkillMetadata[] skills) {
         Start();
-        test.EnterMap(TestGameSession.Map(2000001) with { Limit = new MapMetadataLimit(0, 0, 0, 0, [], true, true, true, true, true, true, true) });
+        MapMetadata map = TestGameSession.Map(2000001);
+        test.EnterMap(map with {
+            Limit = new MapMetadataLimit(0, 0, 0, 0, [], true, true, true, true, true, true, true),
+            Property = map.Property with { CanClimb = climb },
+        });
         QuestConditionWiringTests.SetSkills(test, skills);
         test.TakeSent();
     }
@@ -76,6 +82,13 @@ public class StateSkillCastTests : TriggerTestBase {
             Assert.That(Send(ActorState.Hold, uid: 1), Is.False);
             Assert.That(Send(ActorState.Climb, uid: 2), Is.True);
         });
+    }
+
+    // A climb is taken only on a field with checkClimb (FUN_14176a8c0 answer 0x10).
+    [Test]
+    public void AClimb_IsNotTakenOnAFieldWithoutCheckClimb() {
+        Begin(climb: false, StateSkill(ActorState.Climb, mainType: 13));
+        Assert.That(Send(ActorState.Climb), Is.False);
     }
 
     [Test]

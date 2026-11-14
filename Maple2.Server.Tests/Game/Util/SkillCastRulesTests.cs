@@ -403,6 +403,27 @@ public class SkillCastRulesTests {
         });
     }
 
+    // FUN_14176a8c0's field answers for a glide (0xf, no checkFly; a GM glides anywhere) and a climb (0x10, no checkClimb).
+    [Test]
+    public void StateFieldRefusal_IsTheClientsAnswer() {
+        int? Refusal(ActorState state, bool later = false, bool canFly = false, bool canClimb = true, byte admin = 0) =>
+            SkillCastRules.StateFieldRefusal(state, later, canFly, canClimb, admin);
+        Assert.Multiple(() => {
+            Assert.That(Refusal(ActorState.Glide), Is.EqualTo(0xf));
+            Assert.That(Refusal(ActorState.Glide, canFly: true), Is.Null);
+            Assert.That(Refusal(ActorState.Glide, admin: 50), Is.Null);
+            Assert.That(Refusal(ActorState.Glide, admin: 49), Is.EqualTo(0xf));
+            Assert.That(Refusal(ActorState.Climb, canClimb: false), Is.EqualTo(0x10));
+            Assert.That(Refusal(ActorState.Climb, canClimb: false, admin: 50), Is.EqualTo(0x10));
+            Assert.That(Refusal(ActorState.Climb), Is.Null);
+            Assert.That(Refusal(ActorState.Glide, later: true), Is.Null);
+            Assert.That(Refusal(ActorState.Climb, later: true, canClimb: false), Is.Null);
+            Assert.That(Refusal(ActorState.None, canClimb: false), Is.Null);
+            Assert.That(SkillCastRules.ExpectedState(7, ActorState.None), Is.EqualTo(ActorState.Glide));
+            Assert.That(SkillCastRules.ExpectedState(0, ActorState.Climb), Is.EqualTo(ActorState.Climb));
+        });
+    }
+
     // FUN_14176a8c0's effect answers: every requireEffect code held (0x14), no buff held of a hasNotAdditionalEffectGroup
     // group (0x18). KR 10200281 requires its own buff 10200281; item skills 90000596-90000601 refuse groups 10 and 11.
     // A buff state that changed within BuffStateSlackMs counts both ways, as the client may not have it yet.
