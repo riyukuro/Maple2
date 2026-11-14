@@ -135,7 +135,8 @@ public class StatsManager {
         float criticalChance = 0;
         switch (Actor) {
             case FieldPlayer player:
-                criticalChance = Lua.CalcPlayerCritRate((int) player.Value.Character.Job.Code(), player.Stats.Values[BasicAttribute.Luck].Total, player.Stats.Values[BasicAttribute.CriticalRate].Total, targetCriticalEvasion, 0, 0);
+                criticalChance = Lua.CalcPlayerCritRate((int) player.Value.Character.Job.Code(), player.Stats.Values[BasicAttribute.Luck].Total, player.Stats.Values[BasicAttribute.CriticalRate].Total, targetCriticalEvasion,
+                    player.Stats.Values[SpecialAttribute.CriticalRateIgnoreLimit].Total, player.Stats.Values[SpecialAttribute.CriticalRateIgnoreLimitExtra].Total);
                 casterCriticalOverride = player.Buffs.TotalCompulsionRate(BuffCompulsionEventType.CritChanceOverride, skillId);
                 break;
             case FieldNpc npc:

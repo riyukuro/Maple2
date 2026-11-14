@@ -55,20 +55,25 @@ public static class Lua {
         return Math.Clamp(1 + (critDamage / 1000 * rate), 1, 2.5f);
     }
 
-    public static float CalcPlayerCritRate(int jobCode, long luk, long critRate, long critResistance, int finalCapV, int mode) {
-        float criticalMajorValue = GetCriticalMajorValue(jobCode);
-
-        float finalCritRate = luk * criticalMajorValue;
-        finalCritRate += critRate * 5.3f;
-        finalCritRate /= critResistance * 2;
-
-        finalCritRate *= CorrectCritical;
-
-        if (mode == 14) {
-            return Math.Clamp(finalCritRate, 0, 0.9f);
+    // The client's crit rate (luautil.cpp CLua::FUN_1406747a0(job, luk, critRate, res, bonus, rate)), in doubles: a
+    // resistance of 0 or less counts as 1, the rate is clamped to 0.4, and then the special 202 (bonus, flat, scaled as
+    // the crit rate is) and the special 205 (rate, thousandths) are added past the clamp.
+    public static float CalcPlayerCritRate(int jobCode, long luk, long critRate, long critResistance, long bonus, long rate) {
+        double factor = GetCriticalMajorValue(jobCode);
+        if (critResistance <= 0) {
+            critResistance = 1;
         }
 
-        return Math.Clamp(finalCritRate, 0, 0.4f);
+        double result = ((double) luk * factor + (double) critRate * 5.3) * 0.015 / (double) (critResistance << 1);
+        result = Math.Clamp(result, 0, 0.4);
+        if (bonus != 0) {
+            result += (double) bonus * 5.3 * 0.015 / (double) (critResistance << 1);
+        }
+        if (rate != 0) {
+            result += (double) ((float) rate / 1000f);
+        }
+
+        return (float) result;
     }
 
     public static float CalcNpcCritRate(float luk, float critRate, float critResistance) {
@@ -3111,22 +3116,22 @@ public static class Lua {
         };
     }
 
-    private static float GetCriticalMajorValue(int jobCode) {
+    // The client's luck factors (CLua::FUN_1406747a0); any other job code, None and GM included, has 0.
+    private static double GetCriticalMajorValue(int jobCode) {
         return jobCode switch {
-            (int) JobCode.Newbie => 1.63625f,
-            (int) JobCode.Knight => 3.78f,
-            (int) JobCode.Berserker => 4.305f,
-            (int) JobCode.Wizard => 3.40375f,
-            (int) JobCode.Priest => 7.34125f,
-            (int) JobCode.Archer => 6.4575f,
-            (int) JobCode.HeavyGunner => 2.03875f,
-            (int) JobCode.Thief => 0.60375f,
-            (int) JobCode.Assassin => 0.55125f,
-            (int) JobCode.RuneBlader => 3.78f,
-            (int) JobCode.Striker => 2.03875f,
-            (int) JobCode.SoulBinder => 3.40375f,
-            (int) JobCode.None or (int) JobCode.GameMaster => 0.7f, // "GM"
-            _ => throw new ArgumentOutOfRangeException(nameof(jobCode), "Invalid job code"),
+            (int) JobCode.Newbie => 1.63625,
+            (int) JobCode.Knight => 3.78,
+            (int) JobCode.Berserker => 4.305,
+            (int) JobCode.Wizard => 3.40375,
+            (int) JobCode.Priest => 7.34125,
+            (int) JobCode.Archer => 6.4575,
+            (int) JobCode.HeavyGunner => 2.03875,
+            (int) JobCode.Thief => 0.60375,
+            (int) JobCode.Assassin => 0.55125,
+            (int) JobCode.RuneBlader => 3.78,
+            (int) JobCode.Striker => 2.03875,
+            (int) JobCode.SoulBinder => 3.40375,
+            _ => 0,
         };
     }
     #endregion
