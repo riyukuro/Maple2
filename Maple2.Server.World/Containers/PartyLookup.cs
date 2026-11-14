@@ -293,6 +293,13 @@ public class PartyLookup : IDisposable {
             made = true;
         }
 
+        // The party's requested room: Party 0x19 with false and the room. The client names it in the party window
+        // (UIPartyDialog::UpdateDungeonName), asks before a recruit for another room (UIDungeonRoomInfo::OnFindHelper,
+        // s_dungeonRoom_change_help_dungeon) and shows s_party_change_help_dungeon when it changes. A made room
+        // (DungeonSet) for another room was refused above.
+        if (!manager.Party.DungeonSet && manager.Party.DungeonId != room.Id) {
+            manager.SetDungeon(manager.Party.LeaderCharacterId, room.Id, false);
+        }
         DungeonRecruit recruit = DungeonRecruits.Start(manager.Party.Id, requestor.CharacterId, kind, room);
         if (made) {
             manager.SendLoad(manager.Party.Members.Values);

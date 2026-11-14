@@ -726,6 +726,42 @@ public class PartyLookupTests {
         Assert.That(lookup.Notices, Has.Count.EqualTo(1));
     }
 
+    // A recruit gives a party with no made room its requested room (DungeonSet false, the client's Party 0x19 with
+    // false); after the cooldown a recruit for another room switches it (the client's confirm box, then its notice
+    // s_party_change_help_dungeon), and the open recruit is the new room's.
+    [Test]
+    public void ARecruitSetsAndSwitchesThePartysRequestedRoom() {
+        PartyManager party = Party(2);
+        Assert.That(Recruit(Leader(party), []).Error, Is.EqualTo(0));
+        Assert.Multiple(() => {
+            Assert.That(party.Party.DungeonId, Is.EqualTo(RecruitRoom.Id));
+            Assert.That(party.Party.DungeonSet, Is.False);
+            Assert.That(lookup.DungeonRecruits.Get(party.Party.Id), Is.Not.Null);
+        });
+
+        var other = new DungeonRecruitRoom(RecruitRoom.Id + 1, 50, 0, 4);
+        Assert.That(Recruit(Leader(party), [], other).CooldownMilliseconds, Is.GreaterThan(0));
+        Assert.That(party.Party.DungeonId, Is.EqualTo(RecruitRoom.Id));
+        lookup.Now += TimeSpan.FromSeconds(10);
+        Assert.That(Recruit(Leader(party), [], other).Error, Is.EqualTo(0));
+        Assert.Multiple(() => {
+            Assert.That(party.Party.DungeonId, Is.EqualTo(other.Id));
+            Assert.That(party.Party.DungeonSet, Is.False);
+            Assert.That(lookup.DungeonRecruits.Get(party.Party.Id)?.Room.Id, Is.EqualTo(other.Id));
+            Assert.That(lookup.Notices, Has.Count.EqualTo(2));
+        });
+    }
+
+    // A player with no party who recruits gets a party of one whose requested room is the room.
+    [Test]
+    public void ARecruitWithNoPartyGivesTheNewPartyTheRoom() {
+        PlayerInfo solo = Player();
+        Assert.That(Recruit(solo, [solo]).Error, Is.EqualTo(0));
+        Assert.That(lookup.TryGetByCharacter(solo.CharacterId, out PartyManager? made), Is.True);
+        Assert.That(made!.Party.DungeonId, Is.EqualTo(RecruitRoom.Id));
+        Assert.That(made.Party.DungeonSet, Is.False);
+    }
+
     // rv46 MINOR 4: the requester is held to the room's level and gear score (17, 18), with no party of one made.
     [Test]
     public void ARequesterBelowTheRoomsLimitsDoesNotRecruit() {
