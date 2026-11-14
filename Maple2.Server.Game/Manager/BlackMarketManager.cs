@@ -253,32 +253,39 @@ public sealed class BlackMarketManager {
         // while it still holds it at this price, so two buyers cannot both get the last of a listing; the one
         // that comes second gets its mesos back and is told the count is short.
         // The seller's mail (the mesos of the sale) is stored in that transaction too: a buy without it would
-        // leave the seller without the item and without the mesos.
-        Mail? receivingMail;
-        Mail? sellerMail;
-        bool gone;
-        bool stored = false;
+        // leave the seller without the item and without the mesos. So is the buyer's wallet with the price taken
+        // (TrySavePurchase): a buy stored without it (left to the session's next save before) gave the item by mail
+        // and, after a crash or a failed save, the price back too. A buy that is not stored, or whose wallet is not,
+        // writes nothing and the price is given back.
+        Mail? receivingMail = null;
+        Mail? sellerMail = null;
+        bool gone = false;
+        bool sellerIsPremium;
+        int feeRate;
         try {
-            bool sellerIsPremium = session.PlayerInfo.GetOrFetch(listing.CharacterId, out PlayerInfo? seller) && seller.PremiumTime > DateTime.Now.ToEpochSeconds();
-            int feeRate = EventSaleRules.BlackMarketFeeRate(session.FindEvent(GameEventType.BlackMarketFeeDiscount));
-            using GameStorage.Request db = session.GameStorage.Context();
-            listing = db.BuyBlackMarketListing(listingId, quantity, listing.Price, BuyerMail(listing, quantity),
-                after => SellerMail(after, quantity, sellerIsPremium, feeRate), out receivingMail, out sellerMail, out gone, out stored);
+            sellerIsPremium = session.PlayerInfo.GetOrFetch(listing.CharacterId, out PlayerInfo? seller) && seller.PremiumTime > DateTime.Now.ToEpochSeconds();
+            feeRate = EventSaleRules.BlackMarketFeeRate(session.FindEvent(GameEventType.BlackMarketFeeDiscount));
         } catch {
-            // A throw before the commit undoes the transaction, so the mesos go back. A throw after it (the answer's
-            // shaping) leaves the buy stored and the item mailed, so the price stays taken.
-            if (!stored) {
-                session.Currency.ReturnHeldMeso(cost, mesoSends);
-            } else {
-                session.Currency.NotifyMeso();
-            }
+            // Nothing is stored yet: the mesos go back.
+            session.Currency.ReturnHeldMeso(cost, mesoSends);
             throw;
         }
-        if (listing == null || receivingMail == null) {
+        BlackMarketListing? bought = null;
+        BlackMarketListing look = listing;
+        bool refused = false; // the listing no longer holds the count at this price: no failure
+        bool stored = session.TrySavePurchase(save => {
+            int failed = save.FailedSaves;
+            bought = save.BuyBlackMarketListing(listingId, quantity, look.Price, BuyerMail(look, quantity),
+                after => SellerMail(after, quantity, sellerIsPremium, feeRate), out receivingMail, out sellerMail, out gone, out _);
+            refused = bought == null && save.FailedSaves == failed;
+            return bought != null && receivingMail != null;
+        }, () => refused, out _);
+        if (!stored || bought == null || receivingMail == null) {
             session.Currency.ReturnHeldMeso(cost, mesoSends);
             session.Send(BlackMarketPacket.Error(gone ? BlackMarketError.s_err_lack_itemcount : BlackMarketError.s_blackmarket_error_purchase_count, 5, listingId));
             return;
         }
+        listing = bought;
 
         session.Currency.NotifyMeso();
 

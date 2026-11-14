@@ -13,6 +13,7 @@ using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -684,29 +685,81 @@ public class BlackMarketRefusalTests {
         });
     }
 
-    // A throw after the buy is stored (while its answer is shaped): the item is mailed, so the price stays taken.
-    // Before, the refund on a throw also ran here, and the buyer had the item and the mesos back.
+    // The buyer's wallet with the price taken is stored with the buy, in one transaction (the purchase save): the
+    // stored wallet holds the take at once. Before, the buy and the mails were stored and the wallet was left to the
+    // session's next save, so a crash or a failed save before it gave the buyer the item and the price back.
     [Test]
-    public void Purchase_AThrowAfterTheBuyIsStoredKeepsThePrice() {
+    public void Purchase_StoresTheWalletWithTheBuy() {
+        test = new TestGameSession();
+        BlackMarketListing listing = List(4);
+        GameSession session = Login(test, 5000);
+
+        Send(test, session, 5, listing.Id, 1);
+
+        using var context = new Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(1));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000 - Price));
+            Assert.That(StoredMeso(context, session.CharacterId), Is.EqualTo(5000 - Price));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // The wallet cannot be stored: nothing is bought. The price goes back, the listing keeps its count, no mail is
+    // sent, and the answer is the one of a buy the server could not make.
+    [Test]
+    public void Purchase_WalletNotStored_BuysNothing() {
+        test = new TestGameSession();
+        BlackMarketListing listing = List(4);
+        GameSession session = Login(test, 5000);
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Character>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified);
+
+        Send(test, session, 5, listing.Id, 1);
+        test.FailSave = null;
+
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(db.GetBlackMarketListing(listing.Id)?.Quantity, Is.EqualTo(4));
+            Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(0));
+            Assert.That(db.GetAllMail(test.CharacterId + 100), Is.Empty);
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Hex(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_purchase_count, 5, listing.Id)),
+            }));
+            Assert.That(test.World.MailNotifications, Is.Empty);
+        });
+    }
+
+    // A throw while the buy is shaped (after its rows are written): the buy is inside the purchase save, which is
+    // not committed, so nothing is bought (on MySQL the rows roll back: BlackMarketPurchaseMySqlTests) and the price
+    // goes back. Before, the buy was committed on its own and the price stayed taken.
+    [Test]
+    public void Purchase_AThrowInsideThePurchaseSaveGivesThePriceBack() {
         test = new TestGameSession();
         BlackMarketListing listing = List(4);
         GameSession session = Login(test, 5000);
         Maple2.Database.Storage.GameStorage.Request.OnBuyStored = id => {
             if (id == listing.Id) {
-                throw new InvalidOperationException("after the commit");
+                throw new InvalidOperationException("before the commit");
             }
         };
         try {
-            Assert.Throws<InvalidOperationException>(() => Send(test, session, 5, listing.Id, 1));
+            Assert.DoesNotThrow(() => Send(test, session, 5, listing.Id, 1));
         } finally {
             Maple2.Database.Storage.GameStorage.Request.OnBuyStored = null;
         }
 
         Assert.Multiple(() => {
-            Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(1));
-            Assert.That(session.Currency.Meso, Is.EqualTo(5000 - Price));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Hex(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_purchase_count, 5, listing.Id)),
+            }));
         });
     }
+
+    private static long StoredMeso(Ms2Context context, long characterId) =>
+        context.Character.AsNoTracking().Single(row => row.Id == characterId).Currency.Meso;
 
     // The transaction refuses the buy (here the row is sold out at the seller's look-up). Without a meso packet
     // meanwhile the price goes back silently: the client still shows the balance before the take. With one

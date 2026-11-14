@@ -515,7 +515,9 @@ public partial class GameStorage {
         // sellerMail makes the seller's mail from the listing as it is after the buy; it is stored in the same
         // transaction, so a buy whose seller mail cannot be made or saved changes nothing.
         // Returns the listing as it is after the buy; mail is the stored mail holding the bought item. stored is set
-        // as soon as the transaction is committed, so a caller still sees it when a later step throws.
+        // as soon as the transaction is committed, so a caller still sees it when a later step throws. Inside a
+        // transaction the request already holds (a purchase save that stores the buyer's wallet with the buy), the buy
+        // is part of it and commits or rolls back with the wallet; stored then says only that its rows were written.
         public BlackMarketListing? BuyBlackMarketListing(long listingId, int quantity, long price, Maple2.Model.Game.Mail buyerMail,
                                                          Func<BlackMarketListing, Maple2.Model.Game.Mail>? sellerMail,
                                                          out Maple2.Model.Game.Mail? mail, out Maple2.Model.Game.Mail? sellerStored, out bool gone,
@@ -538,7 +540,7 @@ public partial class GameStorage {
             long written = 0; // the listed item's row: forgotten by item objects once the transaction ends (ForgetRows)
             lock (BlackMarketLock) {
                 try {
-                    using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                    using IDbContextTransaction? transaction = Context.Database.CurrentTransaction == null ? Context.Database.BeginTransaction() : null;
                     if (Context.Database.IsRelational()) {
                         int rows = Context.BlackMarketListing
                             .Where(row => row.Id == listingId && row.Quantity >= quantity && row.Price == price)
@@ -599,7 +601,7 @@ public partial class GameStorage {
                         itemModel.Amount = model.Quantity;
                     }
                     Context.SaveChanges();
-                    transaction.Commit();
+                    transaction?.Commit();
                     stored = true;
                 } catch (Exception ex) {
                     Context.ChangeTracker.Clear();
