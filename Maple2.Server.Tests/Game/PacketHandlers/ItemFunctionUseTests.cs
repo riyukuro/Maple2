@@ -418,6 +418,48 @@ public class ItemFunctionUseTests {
         Assert.That(sent.Last(), Is.EqualTo(Hex(FieldEnterPacket.Error(MigrationError.s_move_err_default))));
     }
 
+    // The client opens no massive portal for a dead player, standing in a portal's box, or with 10 owner-named portals
+    // in the field (UIMessageBox::HandleOpenMassiveButton): the server opens none either and keeps the item.
+    [TestCase("dead")]
+    [TestCase("inPortalBox")]
+    [TestCase("tenNamedPortals")]
+    public void OpenMassive_RefusedAsTheClientRefuses_KeepsTheItem(string refusal) {
+        Item item = Login(20301053, ItemFunction.OpenMassive, "<v fieldID=\"81000001\" portalDurationTick=\"180000\" maxCount=\"20\" />");
+        var portals = new ConcurrentDictionary<int, FieldPortal>();
+        typeof(FieldManager).GetField("fieldPortals", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Field, portals);
+        switch (refusal) {
+            case "dead":
+                typeof(FieldPlayer).GetField("isDead", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Player, true);
+                break;
+            case "inPortalBox":
+                portals[1] = MassivePortal(1, session.Player.Position, "");
+                break;
+            default:
+                for (int i = 1; i <= OpenMassive.MaxNamedPortals; i++) {
+                    portals[i] = MassivePortal(i, session.Player.Position + new System.Numerics.Vector3(5000 * i, 0, 0), "owner");
+                }
+                break;
+        }
+
+        Use(item, "");
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
+            Assert.That(Sent(), Is.Empty);
+            Assert.That(portals, Has.Count.EqualTo(refusal == "tenNamedPortals" ? OpenMassive.MaxNamedPortals : refusal == "inPortalBox" ? 1 : 0));
+        });
+    }
+
+    private FieldPortal MassivePortal(int id, System.Numerics.Vector3 position, string owner) {
+        var value = new Portal(id, 81000001, 0, PortalType.Event, PortalActionType.Interact, position,
+            System.Numerics.Vector3.Zero, new System.Numerics.Vector3(150, 150, 150), 0, 0, true, true, true);
+        return new FieldPortal(session.Field!, 0x1000 + id, value) {
+            Position = position,
+            Rotation = System.Numerics.Vector3.Zero,
+            OwnerName = owner,
+        };
+    }
+
     // 20600001 places billboard interact 19300001 for a day from the dialog's title'description'public text, and is
     // used up; the dialog's banner gets the success.
     [Test]

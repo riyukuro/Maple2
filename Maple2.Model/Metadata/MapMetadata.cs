@@ -75,7 +75,10 @@ public record MapMetadataProperty(
     // field table has only an empty row for this map (no xblock name) or no row at all: that client cannot load the map and
     // hangs when it is sent there. The server then refuses every way in. False when the option is not set;
     // the JSON store omits false values, so the default must be false.
-    bool NotInPlayedClient = false) {
+    bool NotInPlayedClient = false,
+    // Field property "limitContent": bit flags of contents the client refuses on the map (CFieldData::HasLimitContent;
+    // 8 = no instrument, see InstrumentRules.CanStart). 0 when absent, and in a row ingested before this field.
+    int LimitContent = 0) {
     // The map xml's survival element (82000000-82000003, 82000006, 82000012). Null where the map has none, and in a
     // row ingested before this field existed. The client reads none of it: it is server data (SurvivalItemRules).
     public MapMetadataSurvival? Survival { get; init; }

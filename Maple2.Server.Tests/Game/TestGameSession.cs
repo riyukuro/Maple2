@@ -304,9 +304,10 @@ public sealed class TestGameSession {
     }
 
     // checkClimb is on, as it is in the client for a field that does not set it (fielddata.cpp:554).
-    public static MapMetadata Map(int id, bool homeReturnable = true, bool notInPlayedClient = false) {
+    public static MapMetadata Map(int id, bool homeReturnable = true, bool notInPlayedClient = false, int limitContent = 0) {
         var property = new MapMetadataProperty(Continent.VictoriaIsland, MapRegion.None, 0, MapType.None, false, 0, 0, 0, 0, AutoReviveType.None, 0,
-            false, false, false, false, homeReturnable, false, false, false, false, true, 0f, NotInPlayedClient: notInPlayedClient);
+            false, false, false, false, homeReturnable, false, false, false, false, true, 0f, NotInPlayedClient: notInPlayedClient,
+            LimitContent: limitContent);
         return new MapMetadata(id, $"{id}", string.Empty, property, null!, null!, [], null!, []);
     }
 

@@ -794,6 +794,14 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
+        ICollection<FieldPortal> portals = session.Field.GetPortals();
+        Vector3 position = session.Player.Position;
+        bool inPortalBox = portals.Any(portal => PortalRules.InBox(position, portal.Position, portal.Rotation, portal.Value.Dimension, portal.Value.Offset, 0));
+        int namedPortals = portals.Count(portal => !string.IsNullOrEmpty(portal.OwnerName));
+        if (!OpenMassive.CanOpen(session.Field.FieldType == FieldType.Default, session.Player.IsDead, inPortalBox, namedPortals)) {
+            return;
+        }
+
         if (!session.Item.Inventory.Consume(item.Uid, 1)) {
             throw new InvalidOperationException($"Failed to consume item: {item.Uid}");
         }

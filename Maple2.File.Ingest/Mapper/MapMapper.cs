@@ -161,7 +161,8 @@ public class MapMapper : TypeMapper<MapMetadata> {
                 CanClimb: data.property.checkClimb,
                 IndoorType: data.indoor.type,
                 MinimapPing: data.property.minimapPing,
-                NotInPlayedClient: lacking) {
+                NotInPlayedClient: lacking,
+                LimitContent: data.property.limitContent) {
                 // The parser gives every map a survival object; only the 6 maps whose xml has the element
                 // carry values, so an all-zero object is a map without one.
                 Survival = !HasSurvival(data.survival) ? null : new MapMetadataSurvival(

@@ -48,4 +48,38 @@ public class InstrumentItemUseTests {
             }));
         Assert.That(session.Instrument?.Improvising, Is.True);
     }
+
+    // The client plays no instrument while dead or on a field with limitContent bit 8 (OpenInstrument, 0x140d23c50):
+    // a play sent anyway starts nothing.
+    [TestCase(true, 0)]
+    [TestCase(false, 8)]
+    [TestCase(false, 72)]
+    public void PlayInstrument_RefusedWhereTheClientRefusesTheItem(bool dead, int limitContent) {
+        var test = new TestGameSession();
+        ItemMetadata instrument = TestGameSession.Metadata(InstrumentItemId,
+            function: new ItemMetadataFunction(ItemFunction.OpenInstrument, "OpenInstrument", "6", false), type: 6);
+        test.Register(instrument);
+        test.SetTable(new InstrumentTable(new Dictionary<int, InstrumentMetadata> {
+            [6] = new(6, 0, 3, 1, 0, 0),
+        }));
+        Item item = test.Store(instrument);
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001, limitContent: limitContent));
+        if (dead) {
+            typeof(Maple2.Server.Game.Model.FieldPlayer).GetField("isDead", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(session.Player, true);
+        }
+        test.TakeSent();
+
+        new InstrumentHandler { TableMetadata = test.TableMetadata, BanWordStorage = null! }
+            .Handle(session, TestGameSession.Packet(writer => {
+                writer.WriteByte(0);
+                writer.WriteLong(item.Uid);
+            }));
+
+        Assert.Multiple(() => {
+            Assert.That(session.Instrument, Is.Null);
+            Assert.That(test.TakeSent(), Is.Empty);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
 }

@@ -393,7 +393,8 @@ public class InstrumentHandler : FieldPacketHandler {
     private bool TryUseInstrument(GameSession session, long itemUid, long startTick, bool ensemble, [NotNullWhen(true)] out FieldInstrument? fieldInstrument) {
         Item? instrument = session.Item.Inventory.Get(itemUid, InventoryType.FishingMusic);
         if (instrument == null || instrument.Metadata.Function?.Type != ItemFunction.OpenInstrument || session.Field is null ||
-            !InstrumentRules.IsPlayable(instrument.ExpiryTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) || MusicBlocked(session)) {
+            !InstrumentRules.IsPlayable(instrument.ExpiryTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) || MusicBlocked(session) ||
+            !InstrumentRules.CanStart(session.Player.IsDead, session.Field.Metadata.Property.LimitContent)) {
             fieldInstrument = null;
             return false;
         }

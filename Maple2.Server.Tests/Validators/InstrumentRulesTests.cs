@@ -103,4 +103,17 @@ public class InstrumentRulesTests {
     public void IsPlayable_RefusesAnExpiredInstrument(long expiryTime, long now, bool expected) {
         Assert.That(InstrumentRules.IsPlayable(expiryTime, now), Is.EqualTo(expected));
     }
+
+    // OpenInstrument (0x140d23c50): no play for a dead player or on a field whose limitContent has bit 8
+    // (KR 8, 72, 667, 767, 1032 and 1263; 128, 528, 656 and 659 leave it clear).
+    [TestCase(false, 0, true)]
+    [TestCase(true, 0, false)]
+    [TestCase(false, 8, false)]
+    [TestCase(false, 72, false)]
+    [TestCase(false, 1263, false)]
+    [TestCase(false, 656, true)]
+    [TestCase(false, 659, true)]
+    public void CanStart_AsTheClientInstrumentUse(bool dead, int limitContent, bool expected) {
+        Assert.That(InstrumentRules.CanStart(dead, limitContent), Is.EqualTo(expected));
+    }
 }

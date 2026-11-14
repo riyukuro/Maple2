@@ -21,6 +21,16 @@ public static class InstrumentRules {
     // 34000038 and 34000051 among them), and an expired one stays in the bag until a sort takes it out.
     public static bool IsPlayable(long expiryTime, long now) => expiryTime <= 0 || now < expiryTime;
 
+    // The field limitContent bit of a map with no instrument play (KR: 177 fields, as the 50000015 event map).
+    public const int NoInstrumentContent = 8;
+
+    // The client's own refusals when an instrument item is used (OpenInstrument, 0x140d23c50), before it enters the
+    // play state and sends a play: a dead player (s_play_instrument_invalid_state) and a field whose limitContent
+    // has bit 8 (s_play_instrument_invalid_map). Its other refusals have no server side: a state other than standing
+    // or a move mode other than 1-5 (the server only knows death), an item held from an interact object (the server
+    // sends no hold), a breakable object underfoot, the client's block 0xf and its open dialogs.
+    public static bool CanStart(bool dead, int limitContent) => !dead && (limitContent & NoInstrumentContent) == 0;
+
     // The time a played score counts for: from the start to the stop, and no longer than the score itself
     // (a written score's length, a ready-made score's playTime). A score that gives no length counts nothing: every
     // KR ready-made score has a playTime, so only a blank written score has none, and the client plays no blank score.
