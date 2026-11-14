@@ -48,7 +48,9 @@ public class TreasureMapHandlerTests {
         return session;
     }
 
-    private void Use(GameSession session, string text) {
+    // The dialog sends "free" when the npc talk opened it free (NpcScriptManager sets TreasureMapFree).
+    private void Use(GameSession session, string text, bool openedFree = true) {
+        session.TreasureMapFree = openedFree && text == TreasureMapRules.FreeArgument;
         var handler = new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! };
         handler.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteLong(map.Uid);
@@ -136,6 +138,18 @@ public class TreasureMapHandlerTests {
         Assert.That(Held(session, reward), Is.EqualTo(1));
         Assert.That(Held(session, reward == PaidReward ? FreeReward : PaidReward), Is.EqualTo(0));
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // "free" from a dialog no npc opened free rolls nothing and keeps the map.
+    [Test]
+    public void Appraise_FreeWithoutTheNpcOpeningItFree_KeepsTheMap() {
+        GameSession session = Login();
+
+        Use(session, "free", openedFree: false);
+
+        Assert.That(test.TakeSent().Select(packet => Convert.ToHexString(packet)), Is.EqualTo(new[] { Hex(ItemScriptPacket.TreasureMapFailed()) }));
+        Assert.That(Held(session, MapItemId), Is.EqualTo(2));
+        Assert.That(Held(session, FreeReward), Is.EqualTo(0));
     }
 
     // A box of more than one group (the free box 330001824 in the KR data): every group's roll is given, the answer

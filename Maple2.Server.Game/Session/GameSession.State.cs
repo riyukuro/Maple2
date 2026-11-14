@@ -57,6 +57,9 @@ public partial class GameSession {
     // The roulette the current npc talk opened (OpenDialog RouletteDialog): the only game a BonusGame load may take.
     // Each new talk (NpcScriptManager) starts with none.
     public int BonusGameOffered;
+    // Whether the current npc talk opened the treasure map appraise free (OpenDialog ItemTreasureMapDialog "free"):
+    // only then may an appraise roll the map's free box. Each new talk (NpcScriptManager) starts without it.
+    public bool TreasureMapFree;
 
     // The card game (CardReverseGameDialog) of the Ui object last used: its deck, cost and picks left.
     public CardReverseGame? CardReverseGame;

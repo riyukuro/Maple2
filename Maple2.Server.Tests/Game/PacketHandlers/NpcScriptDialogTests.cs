@@ -72,6 +72,7 @@ public class NpcScriptDialogTests {
         Assert.Multiple(() => {
             Assert.That(session.NpcScript?.State?.Id, Is.EqualTo(21 + pick));
             Assert.That(sent.Select(packet => packet.Skip(2).ToArray()), Has.Some.EqualTo(expected.ToArray()));
+            Assert.That(session.TreasureMapFree, Is.EqualTo(arg == "free"));
         });
     }
 }

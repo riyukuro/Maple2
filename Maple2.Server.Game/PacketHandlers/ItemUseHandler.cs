@@ -1380,6 +1380,11 @@ public class ItemUseHandler : FieldPacketHandler {
     // to its list.
     private void HandleTreasureMap(GameSession session, IByteReader packet, Item item) {
         bool free = packet.ReadUnicodeString() == TreasureMapRules.FreeArgument;
+        // The dialog sends "free" only when the npc opened it free.
+        if (free && !session.TreasureMapFree) {
+            session.Send(ItemScriptPacket.TreasureMapFailed());
+            return;
+        }
         if (!TreasureMapRules.TryPick(item.Metadata.Function?.Parameters, free, out int boxId, out long cost)) {
             session.Send(ItemScriptPacket.TreasureMapFailed());
             return;

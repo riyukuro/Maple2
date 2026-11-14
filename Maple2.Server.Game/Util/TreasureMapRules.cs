@@ -13,6 +13,13 @@ public static class TreasureMapRules {
     public const long CannotAppraise = -1;
 
     public const string FreeArgument = "free";
+    public const string Dialog = "ItemTreasureMapDialog";
+
+    // The talk opens the dialog by name and sets it free by its argument, both compared without case
+    // (UITalkCinematic, uitalkcinematic.cpp:1221; UIItemTreasureMapDialog::FUN_140c55b50).
+    public static bool IsDialog(string? uiName) => string.Equals(uiName, Dialog, System.StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsFree(string? uiArg) => string.Equals(uiArg, FreeArgument, System.StringComparison.OrdinalIgnoreCase);
 
     public static bool TryParse(string? parameters, out int dropId, out int freeDropId) {
         Dictionary<string, string> values = XmlParseUtil.GetParameters(parameters);
