@@ -1,6 +1,8 @@
 using System.Numerics;
 using System.Reflection;
+using Maple2.Model.Common;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager.Field;
@@ -70,6 +72,23 @@ public class LiftableReachTests {
         Assert.Multiple(() => {
             Assert.That(test.Session.HeldCube, Is.Not.Null);
             Assert.That(liftable.State, Is.EqualTo(LiftableState.Removed));
+            Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Liftable, SendOp.SetCraftMode }));
+        });
+    }
+
+    // A plot cube on the map liftable's cell (a placed liftable) is another object: the last pickup leaves it.
+    [Test]
+    public void TheLastOfAMapLiftable_KeepsAPlotCubeOnItsCell() {
+        (TestGameSession test, FieldLiftable liftable) = Start(new Vector3(4500, 2850, 3250), 1, new Vector3(4500, 2850, 3300));
+        var plot = new Plot(new UgcMapGroup(0, 0, 0, new UgcMapGroup.Cost(0, 0, 0), new UgcMapGroup.Cost(0, 0, 0),
+            new UgcMapGroup.Limits(0, 0, 0, 0, 0, 0)));
+        var placed = new PlotCube(TestGameSession.Metadata(30000001)) { Position = new Vector3B(30, 19, 22), Type = PlotCube.CubeType.Liftable };
+        plot.Cubes[placed.Position] = placed;
+        test.Session.Field!.Plots[0] = plot;
+        Pickup(test);
+        Assert.Multiple(() => {
+            Assert.That(liftable.State, Is.EqualTo(LiftableState.Removed));
+            Assert.That(plot.Cubes, Does.ContainKey(new Vector3B(30, 19, 22)));
             Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Liftable, SendOp.SetCraftMode }));
         });
     }

@@ -42,11 +42,8 @@ public class FieldLiftable : FieldEntity<Liftable> {
 
             // The state hides the object (CLiftableObject::SetState 1). A map liftable is no cube the client holds: a
             // cube remove at its cell makes the client log "[ERROR] No cube on that position", which shows in chat
-            // (CubeMapInformationService::FUN_1410c1910, cubemapinformationservice_3.cpp:5208), so one is sent only
-            // for a cube of the field's plot.
-            if (Field.Plots.TryGetValue(0, out Plot? plot) && plot.Cubes.Remove(Position)) {
-                Field.Broadcast(CubePacket.RemoveCube(ObjectId, Position));
-            }
+            // (CubeMapInformationService::FUN_1410c1910, cubemapinformationservice_3.cpp:5208), so none is sent. A
+            // plot cube on the same cell is another object (a placed liftable) and stays.
         }
 
         return new LiftableCube(Value);
