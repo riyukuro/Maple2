@@ -782,9 +782,12 @@ public class AiState {
     }
 
     // timeTick (13 nodes: 80000, 300000, -30000, -90000) adds to or takes from the room's timer; isShowEffect (11)
-    // shows the client's notice of the added or removed seconds. A field without a room timer has nothing to change.
+    // shows the client's notice of the added or removed seconds. A field without a room timer has nothing to change,
+    // nor has one that has not started, was stopped or ran out (as a dead npc's extendRoomTime).
     private void ProcessNode(ModifyRoomTimeNode node) {
-        actor.Field.RoomTimer?.Modify(node.TimeTick, node.IsShowEffect);
+        if (actor.Field.RoomTimer is { Counting: true } timer) {
+            timer.Modify(node.TimeTick, node.IsShowEffect);
+        }
     }
 
     // Every shown vibrate object of a hidden group fades out again (AiVibrate).

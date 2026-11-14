@@ -2867,7 +2867,7 @@ public class TriggerDungeonTests : TriggerTestBase {
     // A dead npc's extendRoomTime (60000 ms on most of the 115 KR npcs) adds its time to the running timer with the
     // client's notice; none before the timer starts, for no time, or once the time function was ended.
     [Test]
-    public void DeadExtendRoomTime_AddsToTheRunningTimer() {
+    public void DeadExtendRoomTime_AddsToTheCountingTimer() {
         StartRoom();
         Field.SetRoomTimer(RoomTimerType.Clock, 60_000, false);
         Assert.That(Field.RoomTimer!.Extend(60_000), Is.False);
@@ -2878,8 +2878,14 @@ public class TriggerDungeonTests : TriggerTestBase {
         Assert.That(test.TakeSent().Select(Convert.ToHexString).ToArray(),
             Is.EqualTo(new[] { Hex(RoomTimerPacket.Modify(Field.RoomTimer.StartTick, 120_000, 60_000, true)) }));
 
+        // An ended time function still closes the room at its time, so a kill still adds to it.
         Action("""<action name="dungeon_set_end_time" />""");
-        Assert.That((Field.RoomTimer.Extend(60_000), Field.RoomTimer.Duration), Is.EqualTo((false, 120_000)));
+        Assert.That((Field.RoomTimer.Extend(60_000), Field.RoomTimer.Duration), Is.EqualTo((true, 180_000)));
+        test.TakeSent();
+
+        Action("""<action name="dungeon_stop_timer" />""");
+        test.TakeSent();
+        Assert.That((Field.RoomTimer.Extend(60_000), Field.RoomTimer.Duration), Is.EqualTo((false, 180_000)));
         Assert.That(test.TakeSent(), Is.Empty);
     }
 }

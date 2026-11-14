@@ -93,16 +93,17 @@ public class RoomTimer : IUpdatable {
     }
 
     /// <summary>
-    /// The time runs and counts: started, its window open, not stopped, not ended (dungeon_set_end_time) and not run out.
+    /// The time still counts down to the room's close: started, not stopped and not run out. An ended time function
+    /// (dungeon_set_end_time) or a closed window (dungeon_close_timer) still closes the room at its time, so it counts.
     /// </summary>
-    public bool Running => started && !Closed && !Clock.Stopped && !Clock.Ended && !expiredHandled;
+    public bool Counting => started && !Clock.Stopped && !expiredHandled;
 
     /// <summary>
-    /// A dead npc's extendRoomTime: adds that time, with the client's notice, while the time runs. A stopped, ended or
-    /// expired timer, or a closed window, is left alone.
+    /// A dead npc's extendRoomTime: adds that time, with the client's notice, while the time counts. A timer that has
+    /// not started, was stopped or ran out is left alone.
     /// </summary>
     public bool Extend(int tick) {
-        if (tick <= 0 || !Running) {
+        if (tick <= 0 || !Counting) {
             return false;
         }
         Modify(tick, showEffect: true);
