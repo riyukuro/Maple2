@@ -802,6 +802,38 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
     }
     #endregion
+    #region item_pickup (ItemPickupHandler, a drop taken into the bag)
+    // 72000320: <condition type="item_pickup" code="33000131" value="20" />, the amount of each drop of the item
+    // picked up counts; another item does not. 74000023: <condition type="item_pickup" value="50" />, any item.
+    [Test]
+    public void ItemPickup_72000320_TheItemsAmount() {
+        Start();
+        test.Register(TestGameSession.Metadata(33000131), TestGameSession.Metadata(33000132));
+        Quest quest = StartQuest(Condition(ConditionType.item_pickup, 20, ["33000131"], []));
+        Quest any = test.StartQuest(TestGameSession.QuestData(QuestId + 1) with {
+            Conditions = [Condition(ConditionType.item_pickup, 50, [], [])],
+        });
+        void Pickup(int itemId, int amount) {
+            Item item = Field.ItemDrop.CreateItem(itemId)!;
+            item.Amount = amount;
+            FieldItem drop = Field.SpawnItem(test.Session.Player.Position, test.Session.Player.Rotation, item, null);
+            new ItemPickupHandler().Handle(test.Session, TestGameSession.Packet(writer => {
+                writer.WriteInt(drop.ObjectId);
+                writer.WriteByte(0);
+            }));
+        }
+
+        Pickup(33000132, 2);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Pickup(33000131, 3);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.Multiple(() => {
+            Assert.That(quest.Conditions[0].Counter, Is.EqualTo(3));
+            Assert.That(any.Conditions[0].Counter, Is.EqualTo(5));
+        });
+    }
+    #endregion
     #region item_move (FieldManager.PlaceCube, a liftable put down)
     // 10001060: <condition type="item_move" code="30000030" value="3" target="400" />, the liftable item of the code
     // put down on a target box of the target counts; one put down off the box, or another item, does not.
