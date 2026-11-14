@@ -50,6 +50,8 @@ public class ResetSaveTests {
             }, []),
         }));
         test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        // The daily reset's alliance missions step reads the fame table (no mission lists here).
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
         using (GameStorage.Request db = test.Storage.Context()) {
             session.Config = new ConfigManager(db, session);
         }
