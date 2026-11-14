@@ -36,6 +36,7 @@ public class ServerTableMetadataStorage {
     private readonly Lazy<ArcadeRewardTable> arcadeRewardTable;
     private readonly Lazy<HideAndSeekTable> hideAndSeekTable;
     private readonly Lazy<TermTagTable> termTagTable;
+    private readonly Lazy<FeatureTable> featureTable;
 
     public InstanceFieldTable InstanceFieldTable => instanceFieldTable.Value;
     public ScriptConditionTable ScriptConditionTable => scriptConditionTable.Value;
@@ -67,6 +68,7 @@ public class ServerTableMetadataStorage {
     public ArcadeRewardTable ArcadeRewardTable => arcadeRewardTable.Value;
     public HideAndSeekTable HideAndSeekTable => hideAndSeekTable.Value;
     public TermTagTable TermTagTable => termTagTable.Value;
+    public FeatureTable FeatureTable => featureTable.Value;
 
     public ServerTableMetadataStorage(MetadataContext context) {
         instanceFieldTable = Retrieve<InstanceFieldTable>(context, ServerTableNames.INSTANCE_FIELD);
@@ -99,6 +101,7 @@ public class ServerTableMetadataStorage {
         arcadeRewardTable = Retrieve<ArcadeRewardTable>(context, ServerTableNames.ARCADE_REWARD);
         hideAndSeekTable = Retrieve<HideAndSeekTable>(context, ServerTableNames.HIDE_AND_SEEK);
         termTagTable = Retrieve<TermTagTable>(context, ServerTableNames.TERM_TAG);
+        featureTable = Retrieve<FeatureTable>(context, ServerTableNames.FEATURE);
     }
 
     public IEnumerable<GameEvent> GetGameEvents() {

@@ -141,6 +141,8 @@ public sealed class TestGameSession {
         SetServerTable(new GameEventTable(new Dictionary<int, GameEventMetadata>()));
         // An eventTag quest asks for its term tag: no terms until a test sets them.
         SetServerTable(new TermTagTable(new Dictionary<int, TermTagTable.Entry>()));
+        // Every feature is on until a test turns one off (SetFeaturesOff).
+        SetServerTable(new FeatureTable(new AllFeatures([])));
 
         // The rows a login finds. The account row is added directly: CreateAccount hashes a password, which is slow.
         string name = Guid.NewGuid().ToString("N")[..12];
@@ -296,6 +298,25 @@ public sealed class TestGameSession {
     // A client table (TableMetadata) or a server table (ServerTableMetadata) the handler reads.
     public void SetTable<T>(T table) where T : Table => SetLazy(TableMetadata, table);
     public void SetServerTable<T>(T table) where T : ServerTable => SetLazy(ServerTableMetadata, table);
+
+    // The features the server reads as off; every other name is on.
+    public void SetFeaturesOff(params string[] names) => SetServerTable(new FeatureTable(new AllFeatures(names)));
+
+    // A feature table that holds every name but the given ones, at level 1.
+    private sealed class AllFeatures(IEnumerable<string> off) : IReadOnlyDictionary<string, int> {
+        private readonly HashSet<string> off = new(off, StringComparer.Ordinal);
+        public int this[string key] => ContainsKey(key) ? 1 : throw new KeyNotFoundException(key);
+        public IEnumerable<string> Keys => [];
+        public IEnumerable<int> Values => [];
+        public int Count => 0;
+        public bool ContainsKey(string key) => !off.Contains(key);
+        public bool TryGetValue(string key, out int value) {
+            value = ContainsKey(key) ? 1 : 0;
+            return value == 1;
+        }
+        public IEnumerator<KeyValuePair<string, int>> GetEnumerator() => Enumerable.Empty<KeyValuePair<string, int>>().GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
 
     // A live event (started three days ago, ending in thirty) of the game server the session asks for its events.
     // Added before Start: the login reads the character's stored user values of it.

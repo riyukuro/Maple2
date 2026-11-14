@@ -186,7 +186,20 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.TERM_TAG,
             Table = ParseTermTag(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.FEATURE,
+            Table = MapFeatures(FeatureLocaleFilter.Features),
+        };
+    }
 
+    // The features the rows were filtered by (FeatureLevels: the data folder's tables, or the played client's), in name
+    // order so the same features give the same row.
+    public static FeatureTable MapFeatures(IReadOnlyDictionary<string, int> enabled) {
+        var features = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        foreach ((string name, int level) in enabled) {
+            features[name] = level;
+        }
+        return new FeatureTable(features);
     }
 
     private InstanceFieldTable ParseInstanceField() {
