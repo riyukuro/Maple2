@@ -415,7 +415,17 @@ public class ItemCollection : IEnumerable<Item> {
                // A merge keeps one item's storage record (the character that stored a moveDisable item), so items
                // stored by two characters, or one with a record and one without, never merge.
                && Equals(item.Binding, stack.Binding)
+               && !Timed(item) && !Timed(stack)
                && item.ExpiryTime / 60 == stack.ExpiryTime / 60; // Expiry time is in seconds, convert to minutes
+    }
+
+    // The client never stacks an item with an expiry whose data gives it a lifetime (life usePeriod):
+    // CItem::IsStackable (commonfiles/item.cpp:837) is false for it, so it shows no count, offers no split
+    // (item.cpp:1421) and its field drop does not stack into the bag (CDropItem::CanStackIntoInventory). Two such
+    // items made in the same minute were merged here, one of them taking the other's expiry. Items of weeks or
+    // months (life expirationType 1 or 2, usePeriod 0 in every KR row) end on the calendar and still stack.
+    internal static bool Timed(Item item) {
+        return item.ExpiryTime > 0 && item.Metadata.Life.ExpirationType == 0 && item.Metadata.Life.ExpirationDuration > 0;
     }
 
     private static int SortItem(Item? x, Item? y) {
