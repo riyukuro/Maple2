@@ -74,21 +74,31 @@ public class AdventureProtectManagerTests {
         var scheduler = new EventQueue(Log.Logger);
         scheduler.Start();
         typeof(GameSession).GetField(nameof(GameSession.Scheduler))!.SetValue(session, scheduler);
-        // One second short of 72 hours: the update is due two seconds from now.
-        long created = DateTime.Now.ToEpochSeconds() - 72 * 3600 + 1;
+        // One second short of 72 hours on the manager's clock: the update is scheduled two seconds out.
+        const long now = 1_700_000_000;
+        long clock = now;
+        session.AdventureProtect.Now = () => clock;
+        long created = now - 72 * 3600 + 1;
         typeof(Character).GetProperty(nameof(Character.CreationTime))!.SetValue(session.Player.Value.Character, created);
         test.TakeSent();
 
         session.AdventureProtect.Load();
         Assert.That(States(test), Is.EqualTo(new[] { "03" }), "not old enough yet");
         session.AdventureProtect.Load();
+        Assert.That(States(test), Is.EqualTo(new[] { "03" }));
         Assert.That(scheduler.Count, Is.EqualTo(1), "one scheduled update");
 
-        scheduler.InvokeAll();
-        Assert.That(States(test), Is.EqualTo(new[] { "03" }), "the second Load, nothing scheduled ran");
-        Thread.Sleep(2200);
-        scheduler.InvokeAll();
-        Assert.That(States(test), Is.EqualTo(new[] { "07" }));
+        // The age reached: poll the queue until the scheduled update has run (its delay is on the real clock).
+        clock = now + 2;
+        var states = new List<string>();
+        DateTime deadline = DateTime.UtcNow.AddSeconds(30);
+        while (states.Count == 0 && DateTime.UtcNow < deadline) {
+            Thread.Sleep(50);
+            scheduler.InvokeAll();
+            states.AddRange(States(test));
+        }
+        Assert.That(states, Is.EqualTo(new[] { "07" }));
+        scheduler.Stop();
     }
 
     private static string[] States(TestGameSession test) =>

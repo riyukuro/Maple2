@@ -19,6 +19,9 @@ public sealed class AdventureProtectManager {
         this.session = session;
     }
 
+    // The clock the age is measured with (epoch seconds); tests set their own.
+    internal Func<long> Now { get; set; } = () => DateTime.Now.ToEpochSeconds();
+
     private ConstantsTable Constants => session.ServerTableMetadata.ConstantsTable;
 
     public byte State {
@@ -26,7 +29,7 @@ public sealed class AdventureProtectManager {
             Character character = session.Player.Value.Character;
             int questId = Constants.AdventureProtectRequireQuest;
             bool questDone = questId > 0 && session.Quest.TryGetQuest(questId, out Quest? quest) && quest.State == QuestState.Completed;
-            return AdventureProtectRules.State(character.Level, questDone, character.CreationTime, DateTime.Now.ToEpochSeconds(),
+            return AdventureProtectRules.State(character.Level, questDone, character.CreationTime, Now(),
                 Constants.AdventureProtectRequireLevel, questId, Constants.AdventureProtectCharCreateTime);
         }
     }
@@ -56,7 +59,7 @@ public sealed class AdventureProtectManager {
         if (ageScheduled) {
             return;
         }
-        long remaining = AdventureProtectRules.AgeRemaining(session.Player.Value.Character.CreationTime, DateTime.Now.ToEpochSeconds(),
+        long remaining = AdventureProtectRules.AgeRemaining(session.Player.Value.Character.CreationTime, Now(),
             Constants.AdventureProtectCharCreateTime);
         if (remaining > 0) {
             ageScheduled = true;
