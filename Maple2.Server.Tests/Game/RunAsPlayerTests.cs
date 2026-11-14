@@ -50,4 +50,51 @@ public class RunAsPlayerTests {
         session.RunAsPlayer(() => ran.Add(1));
         Assert.That(ran, Is.EqualTo(new[] { 1 }));
     }
+
+    // The field the task was queued on runs no queue once the player left it (no players there, FieldManager.Update):
+    // the task waits on the session and the next field runs it when the player enters it.
+    [Test]
+    public void LeftFieldNeverRuns_TheEntryOfTheNextFieldRunsIt() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        var ran = new List<int>();
+
+        session.RunAsPlayer(() => ran.Add(1));
+        test.EnterMap(TestGameSession.Map(2000002));
+        session.RunPlayerActionsAtEntry();
+        test.RunFieldQueue();
+        Assert.That(ran, Is.EqualTo(new[] { 1 }));
+    }
+
+    // A closed session drops what waits (its last save takes the resets).
+    [Test]
+    public void ClosedSession_DropsThem() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        var ran = new List<int>();
+
+        session.RunAsPlayer(() => ran.Add(1));
+        typeof(GameSession).GetField("playerActionsClosed", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(session, true);
+        test.RunFieldQueue();
+        session.RunPlayerActionsAtEntry();
+        test.RunFieldQueue();
+        Assert.That(ran, Is.Empty);
+    }
+
+    // The tasks run in the order they were asked for, one failing does not stop the next.
+    [Test]
+    public void InOrder_AFailedOneDoesNotStopTheNext() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        var ran = new List<int>();
+
+        session.RunAsPlayer(() => ran.Add(1));
+        session.RunAsPlayer(() => throw new System.InvalidOperationException("test"));
+        session.RunAsPlayer(() => ran.Add(3));
+        test.RunFieldQueue();
+        Assert.That(ran, Is.EqualTo(new[] { 1, 3 }));
+    }
 }

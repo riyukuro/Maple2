@@ -996,6 +996,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Field.OnAddPlayer(Player);
         Scheduler.Start();
         State = SessionState.Connected;
+        RunPlayerActionsAtEntry();
         // A field that allows no pet keeps the uid for the next field that does.
         if (resummonPetUid != 0 && Field.Metadata.Limit.Pet) {
             // Before the stats packets below: the summon rebuilds the owner's stats with the pet's.
@@ -1357,19 +1358,54 @@ public sealed partial class GameSession : Core.Network.Session {
     // of the player's field, so it never runs during one of the player's field handlers. A session without a field
     // (between fields, or one a test made) runs it at once. A task whose session moved to another field before it
     // ran follows the session there.
+    // The actions wait on the session, not on the field's queue alone: a field runs its queue only while it has
+    // players (FieldManager.Update), so a task queued on a field the player left in the same tick (a dungeon, a home)
+    // never ran, and a guild or club join count was lost. The next field runs them when the player enters it
+    // (EnterField). A closed session drops them: its last save takes the resets (BeginWithResets).
     internal void RunAsPlayer(Action action) {
         FieldManager? field = Field;
         if (field == null) {
             action();
             return;
         }
-        field.Scheduler.Schedule(() => {
-            if (Field != field) {
-                RunAsPlayer(action);
-                return;
+        PlayerActions.Enqueue(action);
+        field.Scheduler.Schedule(() => RunPlayerActions(field), TimeSpan.Zero);
+    }
+
+    private ConcurrentQueue<Action>? playerActions;
+    // Set by Dispose: what still waits is dropped.
+    private volatile bool playerActionsClosed;
+    // Made on first use (a session built without its constructor, as the tests make one, has it too).
+    private ConcurrentQueue<Action> PlayerActions => LazyInitializer.EnsureInitialized(ref playerActions);
+
+    // The player's waiting actions, run once the player has entered its field (EnterField).
+    internal void RunPlayerActionsAtEntry() {
+        FieldManager? field = Field;
+        if (field != null && !PlayerActions.IsEmpty) {
+            field.Scheduler.Schedule(() => RunPlayerActions(field), TimeSpan.Zero);
+        }
+    }
+
+    // On the thread of `field`; runs the waiting actions when the session still plays on it.
+    private void RunPlayerActions(FieldManager field) {
+        if (playerActionsClosed) {
+            PlayerActions.Clear();
+            return;
+        }
+        FieldManager? now = Field;
+        if (now != field) {
+            if (now != null) {
+                now.Scheduler.Schedule(() => RunPlayerActions(now), TimeSpan.Zero);
             }
-            action();
-        }, TimeSpan.Zero);
+            return;
+        }
+        while (PlayerActions.TryDequeue(out Action? action)) {
+            try {
+                action();
+            } catch (Exception ex) {
+                Logger.Error(ex, "A player action failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            }
+        }
     }
 
     // Whether TakeResets(stamps) would reset the session's state.
@@ -1755,6 +1791,7 @@ public sealed partial class GameSession : Core.Network.Session {
             Player.Value.Character.Channel = -1;
             Player.Value.Account.Online = false;
             State = SessionState.Disconnected;
+            playerActionsClosed = true;
 
             // Early base dispose to stop further network sends
             base.Dispose(disposing);

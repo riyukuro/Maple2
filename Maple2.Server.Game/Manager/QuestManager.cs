@@ -685,7 +685,9 @@ public sealed class QuestManager {
     public void ResetMissionAttacks(DateTime now) {
         DateTime day = AllianceMissions.ResetPeriodStart(2, 0, now);
         if (now < day) {
-            session.Scheduler.Schedule(() => ResetMissionAttacks(day), day - now);
+            // At midnight, on the player's field as the reset itself (RunAsPlayer), not on the session's queue beside
+            // the quest handlers.
+            session.Scheduler.Schedule(() => session.RunAsPlayer(() => ResetMissionAttacks(day)), day - now);
             return;
         }
         Character character = session.Player.Value.Character;
@@ -1221,7 +1223,8 @@ public sealed class QuestManager {
     public void ResetDailyQuests(DateTime now) {
         DateTime day = AllianceMissions.ResetPeriodStart(2, 0, now);
         if (now < day) {
-            session.Scheduler.Schedule(() => ResetDailyQuests(day), day - now);
+            // At midnight, on the player's field (see ResetMissionAttacks).
+            session.Scheduler.Schedule(() => session.RunAsPlayer(() => ResetDailyQuests(day)), day - now);
             return;
         }
         List<Quest> dropped = DropDailyQuests(day, true);
