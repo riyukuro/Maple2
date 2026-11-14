@@ -9,6 +9,9 @@ namespace Maple2.Server.Game.Manager.Field;
 // is answered: the step's npc (spawned at the season's spawn point) with the health all channels left it. The npc
 // does not die in the field; a step cleared by any channel swaps it for the next step's npc (without a death, so no
 // channel drops loot or exp for it), and a cleared or ended season removes it. The rewards are mailed after the end.
+// Only a season fought on the field's map shows here; while another map's season is on, the field shows none.
+// Each batch of damage carries the field's sender id and a sequence number, so that a batch sent again after a lost
+// answer is counted once by the World server.
 // Runs on the field thread; only the World call runs in the background, one at a time.
 public sealed class WorldChampionSync {
     public interface IHost {
@@ -19,24 +22,31 @@ public sealed class WorldChampionSync {
     }
 
     // The World server's answer (season 0: none on), or null when the call failed.
-    public delegate (int Season, int Step, long StepDamage)? Report(int season, int step, long maxHealth, IReadOnlyCollection<WorldChampionDamage> damages);
+    // sender and sequence: the field's id and the batch's number (0 for a report without damage).
+    public delegate (int Season, int Step, long StepDamage)? Report(int season, int step, long maxHealth, IReadOnlyCollection<WorldChampionDamage> damages,
+        long sender, long sequence);
 
     public static readonly TimeSpan Interval = TimeSpan.FromSeconds(1);
 
     // The damage dealt to the npc of a step, not reported yet.
     private sealed record Batch(int Season, int Step, long MaxHealth) {
         public readonly Dictionary<long, WorldChampionDamage> Damages = [];
+        // Set when first sent, kept when sent again.
+        public long Sequence;
     }
 
     private readonly ILogger logger = Log.Logger.ForContext<WorldChampionSync>();
     private readonly Func<WorldChampionTable> table;
     private readonly Func<DateTime> now;
+    private readonly int mapId;
+    private readonly long sender;
     private readonly IHost host;
     private readonly Report report;
     private readonly Action<Action> background;
     private readonly Action<Action> post;
     private readonly List<Batch> pending = [];
     private bool inFlight;
+    private long lastSequence;
     private long maxHealth;
     private (int Season, int Step) spawnFailed;
 
@@ -45,10 +55,14 @@ public sealed class WorldChampionSync {
     // The npc shown, 0 for none.
     public int ObjectId { get; private set; }
 
-    // background runs the World call off the field thread, post runs its answer back on it.
-    public WorldChampionSync(Func<WorldChampionTable> table, Func<DateTime> now, IHost host, Report report, Action<Action> background, Action<Action> post) {
+    // mapId is the field's map; sender is an id no other field uses (FieldManager: a random one per field). background
+    // runs the World call off the field thread, post runs its answer back on it.
+    public WorldChampionSync(Func<WorldChampionTable> table, Func<DateTime> now, int mapId, long sender, IHost host, Report report,
+        Action<Action> background, Action<Action> post) {
         this.table = table;
         this.now = now;
+        this.mapId = mapId;
+        this.sender = sender;
         this.host = host;
         this.report = report;
         this.background = background;
@@ -80,8 +94,8 @@ public sealed class WorldChampionSync {
         if (inFlight) {
             return;
         }
-        // No season on and nothing shown or to report: no call.
-        if (ObjectId == 0 && pending.Count == 0 && WorldChampionRules.Current(table(), now()) == null) {
+        // No season of the field's map on and nothing shown or to report: no call.
+        if (ObjectId == 0 && pending.Count == 0 && WorldChampionRules.Current(table(), now())?.MapId != mapId) {
             Season = 0;
             Step = 0;
             return;
@@ -90,7 +104,11 @@ public sealed class WorldChampionSync {
         if (pending.Count > 0) {
             batch = pending[0];
             pending.RemoveAt(0);
+            if (batch.Sequence == 0) {
+                batch.Sequence = ++lastSequence;
+            }
         }
+        long sequence = batch?.Sequence ?? 0;
         int season = batch?.Season ?? Season;
         int step = batch?.Step ?? Step;
         long health = batch?.MaxHealth ?? maxHealth;
@@ -99,7 +117,7 @@ public sealed class WorldChampionSync {
         background(() => {
             (int, int, long)? answer = null;
             try {
-                answer = report(season, step, health, damages);
+                answer = report(season, step, health, damages, sender, sequence);
             } catch (Exception ex) {
                 logger.Warning(ex, "World champion report failed");
             }
@@ -112,14 +130,17 @@ public sealed class WorldChampionSync {
 
     private void Answer(Batch? sent, (int Season, int Step, long StepDamage)? answer) {
         if (answer == null) {
-            // Reported again at the next tick.
+            // Reported again at the next tick, with its sequence: if the World server applied it and only the answer
+            // was lost, it is not counted again.
             if (sent != null) {
                 pending.Insert(0, sent);
             }
             return;
         }
         (int season, int step, long stepDamage) = answer.Value;
-        WorldChampionTable.Season? row = season != 0 && table().Entries.TryGetValue(season, out WorldChampionTable.Season? found) ? found : null;
+        // A season of another map: none here.
+        WorldChampionTable.Season? row = season != 0 && table().Entries.TryGetValue(season, out WorldChampionTable.Season? found)
+            && found.MapId == mapId ? found : null;
         WorldChampionTable.Step? stepRow = row == null ? null : WorldChampionRules.StepOf(row, step);
         if (row == null || stepRow == null) {
             Despawn();

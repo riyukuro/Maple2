@@ -34,7 +34,8 @@ public partial class WorldService {
 
     private TimeEventResponse WorldChampion(TimeEventRequest.Types.WorldChampion report) {
         (int season, int step, long stepDamage) = worldChampionLookup.Report(report.Season, report.Step, report.MaxHealth,
-            report.Damages.Select(damage => new WorldChampionDamage(damage.AccountId, damage.CharacterId, damage.Damage)));
+            report.Damages.Select(damage => new WorldChampionDamage(damage.AccountId, damage.CharacterId, damage.Damage)),
+            report.Sender, report.Sequence);
         return new TimeEventResponse {
             WorldChampionInfo = new WorldChampionInfo { Season = season, Step = step, StepDamage = stepDamage },
         };

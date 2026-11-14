@@ -19,6 +19,9 @@ public sealed class WorldChampionLookup : IDisposable {
         public long StepDamage;
         public readonly Dictionary<long, WorldChampionDamage> Damages = [];
         public readonly HashSet<long> Changed = [];
+        // The last batch applied of each reporting field (its sender id): a batch sent again is not counted twice.
+        // Not saved: a World server restart loses the damage not saved yet anyway.
+        public readonly Dictionary<long, long> Sequences = [];
         public bool Dirty;
     }
 
@@ -53,10 +56,14 @@ public sealed class WorldChampionLookup : IDisposable {
     }
 
     // Adds a field's damage to the npc of damageStep (whose health is maxHealth) when the season is the one on, and
-    // answers the season on (0: none), its step and the step's damage. Damage of a season that is no longer on is
-    // dropped; damage to a step that is no longer out still counts for the characters (their reward damage), not for
-    // the step.
-    public (int Season, int Step, long StepDamage) Report(int season, int damageStep, long maxHealth, IEnumerable<WorldChampionDamage> damages) {
+    // answers the season on (0: none), its step and the step's damage. One rule for late damage: a batch of the season
+    // on counts for its characters (their reward damage) whatever the step, also once the last step is cleared; it
+    // counts for the step only when damageStep is the step out. Damage of a season that is no longer on is dropped.
+    // The damage counted is the hits dealt (overkill included, as the trophy counter); the step damage past the npc's
+    // health is not carried to the next step. A batch whose sequence the sender already had applied (sent again after
+    // a lost answer) is not counted again.
+    public (int Season, int Step, long StepDamage) Report(int season, int damageStep, long maxHealth, IEnumerable<WorldChampionDamage> damages,
+        long sender = 0, long sequence = 0) {
         WorldChampionTable.Season? current = WorldChampionRules.Current(table(), now());
         if (current == null) {
             return (0, 0, 0);
@@ -65,7 +72,11 @@ public sealed class WorldChampionLookup : IDisposable {
         (int, int, long) result;
         lock (mutex) {
             State state = Get(current.Id);
-            if (season == current.Id && !WorldChampionRules.Cleared(current, state.Step)) {
+            bool repeated = sender != 0 && sequence != 0 && state.Sequences.TryGetValue(sender, out long last) && sequence <= last;
+            if (season == current.Id && !repeated) {
+                if (sender != 0 && sequence != 0) {
+                    state.Sequences[sender] = sequence;
+                }
                 long total = 0;
                 foreach (WorldChampionDamage damage in damages) {
                     if (damage.Damage <= 0 || damage.CharacterId == 0) {

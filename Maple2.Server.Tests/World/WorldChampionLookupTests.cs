@@ -85,7 +85,41 @@ public class WorldChampionLookupTests {
         Assert.That(lookup.Report(1, 3, 1000, Hit(7, 1000)), Is.EqualTo((1, 4, 0L)));
         Assert.Multiple(() => {
             Assert.That(lookup.Report(1, 4, 1000, Hit(7, 1000)), Is.EqualTo((1, 4, 0L)));
-            Assert.That(lookup.DamageOf(1, 7), Is.EqualTo(3000));
+            Assert.That(lookup.Report(2, 3, 1000, Hit(8, 1000)), Is.EqualTo((1, 4, 0L)));
+            Assert.That(lookup.DamageOf(2, 8), Is.Zero);
+        });
+    }
+
+    // One rule for late damage: a batch of the season on counts for its characters whatever its step, also once the
+    // last step is cleared (a slower channel's last second still counts toward rewardDamage); it never counts for a
+    // step that is not out. The damage counted is the hits (overkill included).
+    [Test]
+    public void LateDamageAfterTheLastStep() {
+        WorldChampionLookup lookup = Lookup();
+        lookup.Report(1, 1, 1000, Hit(7, 1000));
+        lookup.Report(1, 2, 1000, Hit(7, 1000));
+        Assert.Multiple(() => {
+            Assert.That(lookup.Report(1, 3, 1000, Hit(7, 1200)), Is.EqualTo((1, 4, 0L)));
+            Assert.That(lookup.Report(1, 3, 1000, Hit(8, 300)), Is.EqualTo((1, 4, 0L)));
+            Assert.That(lookup.Report(1, 2, 1000, Hit(9, 200)), Is.EqualTo((1, 4, 0L)));
+            Assert.That(lookup.DamageOf(1, 7), Is.EqualTo(3200));
+            Assert.That(lookup.DamageOf(1, 8), Is.EqualTo(300));
+            Assert.That(lookup.DamageOf(1, 9), Is.EqualTo(200));
+        });
+    }
+
+    // A batch sent again after a lost answer (the same sender and sequence) is counted once; another field's batch of
+    // the same sequence and the sender's next batch count; a report without a sequence always counts.
+    [Test]
+    public void BatchSentAgainCountsOnce() {
+        WorldChampionLookup lookup = Lookup();
+        Assert.Multiple(() => {
+            Assert.That(lookup.Report(1, 1, 1000, Hit(7, 100), sender: 5, sequence: 1), Is.EqualTo((1, 1, 100L)));
+            Assert.That(lookup.Report(1, 1, 1000, Hit(7, 100), sender: 5, sequence: 1), Is.EqualTo((1, 1, 100L)));
+            Assert.That(lookup.Report(1, 1, 1000, Hit(8, 50), sender: 6, sequence: 1), Is.EqualTo((1, 1, 150L)));
+            Assert.That(lookup.Report(1, 1, 1000, Hit(7, 10), sender: 5, sequence: 2), Is.EqualTo((1, 1, 160L)));
+            Assert.That(lookup.Report(1, 1, 1000, Hit(7, 1)), Is.EqualTo((1, 1, 161L)));
+            Assert.That(lookup.DamageOf(1, 7), Is.EqualTo(111));
         });
     }
 

@@ -34,16 +34,27 @@ public class WorldChampionSyncTests {
         public void SetHealth(int objectId, long health) => Calls.Add($"health {objectId} {health}");
     }
 
+    // Season 1 as above and season 2 on another map (2000062) at the same time.
+    private static readonly WorldChampionTable TwoMaps = new(new Dictionary<int, WorldChampionTable.Season> {
+        [1] = Table.Entries[1],
+        [2] = new(2, 2000062, 100, Begin, Begin.AddDays(3).AddSeconds(-1), 1500, 180510006, [
+            new WorldChampionTable.Step(1, 23500120, 20000001),
+        ]),
+    });
+
+    private const long Sender = 5;
+
     private DateTime now;
+    private WorldChampionTable table = Table;
     private Host host = null!;
-    private readonly List<(int Season, int Step, long MaxHealth, List<WorldChampionDamage> Damages)> reports = [];
+    private readonly List<(int Season, int Step, long MaxHealth, List<WorldChampionDamage> Damages, long Sender, long Sequence)> reports = [];
     private (int, int, long)? answer;
     private Action? held;
     private bool hold;
 
-    private WorldChampionSync Sync() {
-        return new WorldChampionSync(() => Table, () => now, host, (season, step, maxHealth, damages) => {
-            reports.Add((season, step, maxHealth, damages.ToList()));
+    private WorldChampionSync Sync(int mapId = 2000423) {
+        return new WorldChampionSync(() => table, () => now, mapId, Sender, host, (season, step, maxHealth, damages, sender, sequence) => {
+            reports.Add((season, step, maxHealth, damages.ToList(), sender, sequence));
             return answer;
         }, run => {
             if (hold) {
@@ -57,6 +68,7 @@ public class WorldChampionSyncTests {
     [SetUp]
     public void SetUp() {
         now = Begin.AddHours(1);
+        table = Table;
         host = new Host();
         reports.Clear();
         answer = (1, 1, 0);
@@ -192,6 +204,54 @@ public class WorldChampionSyncTests {
         answer = (1, 1, 100);
         sync.Tick();
         Assert.That(reports[2].Damages, Is.EqualTo(new[] { new WorldChampionDamage(107, 7, 100) }));
+    }
+
+    // The batch sent again carries its first sequence (so the World server counts it once); the next batch the next
+    // one; a report without damage none. Every report carries the field's sender id.
+    [Test]
+    public void SentAgainWithTheSameSequence() {
+        WorldChampionSync sync = Sync();
+        sync.Tick();
+        sync.Damaged(11, 107, 7, 100);
+        answer = null;
+        sync.Tick();
+        answer = (1, 1, 100);
+        sync.Tick();
+        sync.Damaged(11, 107, 7, 20);
+        sync.Tick();
+        sync.Tick();
+        Assert.Multiple(() => {
+            Assert.That(reports.Select(report => report.Sequence), Is.EqualTo(new long[] { 0, 1, 1, 2, 0 }));
+            Assert.That(reports.Select(report => report.Sender), Is.All.EqualTo(Sender));
+        });
+    }
+
+    // Two seasons on at once on different maps: a field shows only its map's season. Answered the other map's season,
+    // it shows no npc; with only another map's season on, it makes no call.
+    [Test]
+    public void OnlyTheFieldsMapsSeason() {
+        table = TwoMaps;
+        answer = (2, 1, 0);
+        WorldChampionSync sync = Sync();
+        sync.Tick();
+        Assert.Multiple(() => {
+            Assert.That(host.Calls, Is.Empty);
+            Assert.That(sync.ObjectId, Is.Zero);
+        });
+
+        // The npc of season 1 shown, then the World server answers season 2: the npc goes.
+        answer = (1, 1, 0);
+        sync = Sync();
+        sync.Tick();
+        answer = (2, 1, 0);
+        sync.Tick();
+        Assert.That(host.Calls, Is.EqualTo(new[] { "spawn 23500110 at 100", "health 11 1000", "remove 11" }));
+
+        // Season 1 over (only season 2 of map 2000062 left on): a field of 2000423 with nothing shown makes no call.
+        table = new WorldChampionTable(new Dictionary<int, WorldChampionTable.Season> { [2] = TwoMaps.Entries[2] });
+        reports.Clear();
+        Sync().Tick();
+        Assert.That(reports, Is.Empty);
     }
 
     // A spawn point the field does not have: tried once per step, not every second.

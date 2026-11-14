@@ -48,16 +48,20 @@ public partial class FieldManager {
         if (GetType() != typeof(FieldManager) || !WorldChampionSync.Runs(ServerTableMetadata.WorldChampionTable, ServerTableMetadata.FeatureTable, MapId)) {
             return;
         }
-        WorldChampion = new WorldChampionSync(() => ServerTableMetadata.WorldChampionTable, () => DateTime.Now, new WorldChampionHost(this),
+        WorldChampion = new WorldChampionSync(() => ServerTableMetadata.WorldChampionTable, () => DateTime.Now, MapId,
+            Random.Shared.NextInt64(1, long.MaxValue), new WorldChampionHost(this),
             ReportWorldChampion, run => Task.Run(run), run => Scheduler.Schedule(run));
         Scheduler.ScheduleRepeated(() => WorldChampion.Tick(), WorldChampionSync.Interval);
     }
 
-    private (int Season, int Step, long StepDamage)? ReportWorldChampion(int season, int step, long maxHealth, IReadOnlyCollection<WorldChampionDamage> damages) {
+    private (int Season, int Step, long StepDamage)? ReportWorldChampion(int season, int step, long maxHealth, IReadOnlyCollection<WorldChampionDamage> damages,
+        long sender, long sequence) {
         var request = new WorldTimeEventRequest.Types.WorldChampion {
             Season = season,
             Step = step,
             MaxHealth = maxHealth,
+            Sender = sender,
+            Sequence = sequence,
         };
         request.Damages.AddRange(damages.Select(damage => new WorldTimeEventRequest.Types.WorldChampion.Types.Hit {
             AccountId = damage.AccountId,

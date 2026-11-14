@@ -859,6 +859,10 @@ message TimeEventRequest {
     int32 step = 2;
     int64 max_health = 3;
     repeated Hit damages = 4;
+    // The reporting field's id and the batch's number: a batch sent again after a lost answer is counted once
+    // (0: no batch, nothing to count twice).
+    int64 sender = 5;
+    int64 sequence = 6;
   }
 
   oneof TimeEvent {
