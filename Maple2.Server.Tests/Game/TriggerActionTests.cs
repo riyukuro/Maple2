@@ -801,6 +801,25 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="30000611" negate="1" />"""), Is.False);
     }
 
+    // item_id 0 is any item (the mart customers of 02000387_bf wait for any liftable on their counter, then tell the
+    // asked item from a wrong one); a liftable still held or taken away is not on the counter.
+    [Test]
+    public void DetectLiftableObject_ItemZeroIsAnyItem() {
+        StartWithBoxes();
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="0" />"""), Is.False);
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="0" negate="true" />"""), Is.True);
+
+        FieldLiftable? liftable = Field.AddLiftable("aa", new Liftable(30000680, 1, 0, 0, 0, "", "", "", "", false, new Vector3(10, 0, 0), Vector3.Zero));
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="0" />"""), Is.True);
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="2" item_id="0" />"""), Is.False);
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="0" negate="true" />"""), Is.False);
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="30000680" />"""), Is.True);
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="30000652" />"""), Is.False);
+
+        liftable!.State = LiftableState.Removed;
+        Assert.That(Condition("""<condition name="detect_liftable_object" box_ids="1" item_id="0" />"""), Is.False);
+    }
+
     // set_portal (2292): the portal takes the switches and the field is told (FieldPortal Update: id, visible,
     // enabled, minimap).
     [Test]

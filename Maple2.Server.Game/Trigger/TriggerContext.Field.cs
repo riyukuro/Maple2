@@ -627,19 +627,18 @@ public partial class TriggerContext {
     #endregion
 
     #region Conditions
+    // Item id 0 is any item: 02000387_bf (the mart's part-time job) has 1352 such conditions, each customer waiting
+    // for any liftable put down in its counter box and then telling the asked item from a wrong one.
+    // Read as no item, no customer was ever served and the room stopped at its first round.
     public bool DetectLiftableObject(int[] boxIds, int itemId, bool negate) {
         DebugLog("[DetectLiftableObject] boxIds:{Ids}, itemId:{ItemId}", string.Join(", ", boxIds), itemId);
-
-        if (itemId == 0) {
-            return negate;
-        }
 
         IEnumerable<TriggerBox> boxes = boxIds
             .Select(boxId => Objects.Boxes.GetValueOrDefault(boxId))
             .Where(box => box != null)!;
 
         // Gets the list of valid fieldliftables, only check ones that are placed
-        var liftables = Field.EnumerateLiftables().Where(x => x.Value.ItemId == itemId && (x.State == LiftableState.Default || x.State == LiftableState.Disabled));
+        var liftables = Field.EnumerateLiftables().Where(x => (itemId == 0 || x.Value.ItemId == itemId) && (x.State == LiftableState.Default || x.State == LiftableState.Disabled));
         foreach (FieldLiftable liftable in liftables) {
             if (boxes.Any(box => box.Contains(liftable.Position))) {
                 return !negate;
