@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Numerics;
+﻿using System.Numerics;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -23,7 +22,11 @@ public class LoadUgcMapHandler : FieldPacketHandler {
     #endregion
 
     public override void Handle(GameSession session, IByteReader packet) {
-        Debug.Assert(packet.ReadInt() == GameSession.FIELD_KEY);
+        // Sent with the field key of the loaded map, as ResponseFieldEnter (CSceneStateGame::vfunc_1).
+        if (!GameSession.FieldKeyMatches(packet.ReadInt())) {
+            Logger.Debug("Dropped a ugc map load with another field key");
+            return;
+        }
         if (session.Field == null) {
             return;
         }

@@ -42,6 +42,9 @@ public sealed partial class GameSession : Core.Network.Session {
     protected override PatchType Type => PatchType.Ignore;
     public const int FIELD_KEY = 0x1234;
 
+    // The client echoes the key of the RequestFieldEnter it loaded in ResponseFieldEnter and RequestLoadUgcMap.
+    public static bool FieldKeyMatches(int key) => key == FIELD_KEY;
+
     // gameDisposeState: 0 = active, 1 = disposing, 2 = disposed
     private int gameDisposeState;
     private readonly GameServer server;

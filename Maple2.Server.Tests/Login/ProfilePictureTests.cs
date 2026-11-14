@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
@@ -13,6 +13,8 @@ namespace Maple2.Server.Tests.Login;
 
 // The login scene's profile picture (Ugc 11) writes only the picture: the character's mesos and event merets are
 // kept (the save of the whole character stored them as 0, since the game character has no currency to convert).
+// The packet carries only the web server's path, which names the character (any of the account's characters in the
+// list, not only one made in this session); a path the web server did not answer is not stored.
 public class ProfilePictureTests {
     private TestLoginSession test = null!;
     private LoginSession session = null!;
@@ -22,7 +24,6 @@ public class ProfilePictureTests {
     public void SetUp() {
         test = new TestLoginSession();
         session = test.Start();
-        typeof(LoginSession).GetProperty(nameof(LoginSession.CharacterId))!.SetValue(session, test.CharacterId);
         handler = new UgcHandler { GameStorage = test.Storage };
         using var context = new Ms2Context(test.Rows.Options);
         Maple2.Database.Model.Character row = context.Character.Single(character => character.Id == test.CharacterId);
@@ -49,13 +50,20 @@ public class ProfilePictureTests {
         return context.Character.AsNoTracking().Single(character => character.Id == test.CharacterId);
     }
 
+    private static string PathOf(long characterId) => $"data/profiles/avatar/{characterId}/new-01.png";
+
+    private string Picture(long characterId) {
+        using var context = new Ms2Context(test.Rows.Options);
+        return context.Character.AsNoTracking().Single(character => character.Id == characterId).Profile.Picture;
+    }
+
     [Test]
     public void Picture_KeepsCurrency() {
-        SetPicture("/profile/new.png");
+        SetPicture(PathOf(test.CharacterId));
 
         Maple2.Database.Model.Character stored = Stored();
         Assert.Multiple(() => {
-            Assert.That(stored.Profile.Picture, Is.EqualTo("/profile/new.png"));
+            Assert.That(stored.Profile.Picture, Is.EqualTo(PathOf(test.CharacterId)));
             Assert.That((stored.Currency.Meso, stored.Currency.EventMeret, stored.Currency.ValorToken), Is.EqualTo((777L, 55L, 3L)));
             Assert.That((stored.Profile.Motto, stored.Profile.Title), Is.EqualTo(("motto", 9)));
             Assert.That(test.TakeSent().Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.Ugc }));
@@ -83,12 +91,47 @@ public class ProfilePictureTests {
     [Test]
     public void OtherAccountsCharacter_IsNotChanged() {
         long other = test.AddCharacter("Other", test.AccountId + 1);
-        typeof(LoginSession).GetProperty(nameof(LoginSession.CharacterId))!.SetValue(session, other);
 
-        SetPicture("/profile/new.png");
+        SetPicture(PathOf(other));
 
-        using var context = new Ms2Context(test.Rows.Options);
-        Assert.That(context.Character.AsNoTracking().Single(character => character.Id == other).Profile.Picture, Is.Not.EqualTo("/profile/new.png"));
+        Assert.That(Picture(other), Is.Not.EqualTo(PathOf(other)));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // The character the path names gets the picture, not the one made last in this session.
+    [Test]
+    public void ThePathsCharacter_GetsThePicture() {
+        long created = test.AddCharacter("Created");
+        typeof(LoginSession).GetProperty(nameof(LoginSession.CharacterId))!.SetValue(session, created);
+
+        SetPicture(PathOf(test.CharacterId));
+
+        Assert.Multiple(() => {
+            Assert.That(Picture(test.CharacterId), Is.EqualTo(PathOf(test.CharacterId)));
+            Assert.That(Picture(created), Is.Not.EqualTo(PathOf(test.CharacterId)));
+            Assert.That(test.TakeSent().Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.Ugc }));
+        });
+    }
+
+    // Text the web server never answers is not made the picture (every player that sees the character is shown it).
+    [TestCase("/profile/new.png")]
+    [TestCase("http://elsewhere/x.png")]
+    [TestCase("data/profiles/avatar/{0}/../x.png")]
+    [TestCase("data/profiles/avatar/{0}/new.jpg")]
+    [TestCase("data/profiles/avatar/0{0}/new.png")]
+    [TestCase("data/profiles/avatar/+{0}/new.png")]
+    public void APathTheWebServerDidNotAnswer_IsNotStored(string format) {
+        SetPicture(string.Format(format, test.CharacterId));
+
+        Assert.That(Picture(test.CharacterId), Is.EqualTo("old"));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    [Test]
+    public void APathLongerThanTheWebServersCap_IsNotStored() {
+        SetPicture($"data/profiles/avatar/{test.CharacterId}/{new string('a', 200)}.png");
+
+        Assert.That(Picture(test.CharacterId), Is.EqualTo("old"));
         Assert.That(test.TakeSent(), Is.Empty);
     }
 }

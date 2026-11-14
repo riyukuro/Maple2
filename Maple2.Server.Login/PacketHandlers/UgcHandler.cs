@@ -1,5 +1,6 @@
 ﻿using Maple2.Database.Storage;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
@@ -33,13 +34,22 @@ public class UgcHandler : PacketHandler<LoginSession> {
         }
     }
 
+    // The character list sends mode 11 with the path the web server answered for a profile upload of one of the
+    // account's characters (any of them, not only one made in this session): the path names the character, and it is
+    // checked as the game server checks it (UgcRules.ProfilePathValid), since every player that sees the character
+    // is shown it.
     private void HandleProfilePicture(LoginSession session, IByteReader packet) {
         string picture = packet.ReadUnicodeString();
+        long characterId = UgcRules.ProfilePathCharacter(picture);
+        if (!UgcRules.ProfilePathValid(picture, characterId)) {
+            Logger.Warning("Refused profile picture path from account {AccountId}", session.AccountId);
+            return;
+        }
 
         using GameStorage.Request db = GameStorage.Context();
-        Character? character = db.GetCharacter(session.CharacterId, session.AccountId);
+        Character? character = db.GetCharacter(characterId, session.AccountId);
         if (character == null) {
-            Logger.Warning("Unable to locate character {CharacterId} for account {AccountId}", session.CharacterId, session.AccountId);
+            Logger.Warning("Unable to locate character {CharacterId} for account {AccountId}", characterId, session.AccountId);
             return;
         }
 

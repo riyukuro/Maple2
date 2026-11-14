@@ -1,3 +1,4 @@
+using System.Globalization;
 using Maple2.Model.Enum;
 using Maple2.Model.Game.Ugc;
 using Maple2.PacketLib.Tools;
@@ -263,6 +264,20 @@ public static class UgcRules {
         }
         string file = path.Substring(prefix.Length, path.Length - prefix.Length - suffix.Length);
         return file.All(c => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '-');
+    }
+
+    // The character a profile picture path names (data/profiles/avatar/<character id>/...), 0 when it names none. The
+    // login scene's mode 11 carries only the path: the character list sends it for the character whose picture was
+    // uploaded (CUgcManager upload result, UICharacterListDialog), whichever of the account's characters that is.
+    public static long ProfilePathCharacter(string? path) {
+        const string prefix = "data/profiles/avatar/";
+        if (path == null || !path.StartsWith(prefix, StringComparison.Ordinal)) {
+            return 0;
+        }
+        int end = path.IndexOf('/', prefix.Length);
+        // ProfilePathValid then compares the whole path with the one built from the id (no sign, no leading zero).
+        return end > prefix.Length && long.TryParse(path.AsSpan(prefix.Length, end - prefix.Length), NumberStyles.None,
+            CultureInfo.InvariantCulture, out long characterId) ? characterId : 0;
     }
 
     // The price of one hour of the banner, -1 when the table has none for it.

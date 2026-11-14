@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Server.Core.Constants;
@@ -39,5 +39,33 @@ public class ServerEnterTests {
             SendOp.GameEvent,
         }));
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The client sends ServerEnter only on the MoveResult that follows the entry (ResponseKey): one before it lists
+    // nothing (there is no account yet).
+    [Test]
+    public void ServerEnterBeforeTheLogin_ListsNothing() {
+        var test = new TestLoginSession();
+        LoginSession session = test.Start(init: false);
+        session.State = Maple2.Model.Enum.SessionState.ChangeMap;
+
+        Assert.DoesNotThrow(() => new ServerEnterHandler().Handle(session, TestGameSession.Packet(writer => writer.WriteInt(1))));
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // From the server list the client logs in anew before it lists characters: a ServerEnter there is refused as
+    // the session's other account packets are.
+    [Test]
+    public void ServerEnterAfterLeavingTheCharacterList_ListsNothing() {
+        var test = new TestLoginSession();
+        LoginSession session = test.Start();
+        typeof(LoginSession).GetProperty(nameof(LoginSession.LeftCharacterList))!.SetValue(session, true);
+        test.TakeSent();
+
+        new ServerEnterHandler().Handle(session, TestGameSession.Packet(writer => writer.WriteInt(1)));
+
+        Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.CharacterList));
     }
 }

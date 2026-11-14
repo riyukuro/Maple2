@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -11,8 +10,12 @@ public class FieldEnterHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.ResponseFieldEnter;
 
     public override void Handle(GameSession session, IByteReader packet) {
-        int fieldKey = packet.ReadInt();
-        Debug.Assert(fieldKey == GameSession.FIELD_KEY);
+        // The client answers with the key of the RequestFieldEnter it loaded (WorldService::LoadMap keeps it): another
+        // key answers no field the server prepared.
+        if (!GameSession.FieldKeyMatches(packet.ReadInt())) {
+            Logger.Debug("Dropped a field enter with another field key");
+            return;
+        }
 
         // The client answers each RequestFieldEnter once, when the field has loaded (scenestategame.cpp:2284, or
         // cubemapinformationservice_3.cpp:5703 once a home's cubes are in). Every field the server prepares sets
