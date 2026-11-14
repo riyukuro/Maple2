@@ -481,4 +481,79 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
     #endregion
+    #region quest completion (QuestManager.Complete)
+    private void StartCompletion() {
+        Start();
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+    }
+
+    private Quest Completed(int id, QuestMetadataBasic basic) =>
+        test.StartQuest(TestGameSession.QuestData(id) with { Basic = basic });
+
+    // 10002504: <condition type="quest" code="10002540" value="1" />, completing the quest of the code counts;
+    // completing another quest does not.
+    [Test]
+    public void Quest_10002504_TheQuestOfTheCode() {
+        StartCompletion();
+        Quest quest = StartQuest(Condition(ConditionType.quest, 1, ["10002540"], []));
+        QuestMetadataBasic basic = TestGameSession.QuestData(0).Basic;
+
+        Assert.That(test.Session.Quest.Complete(Completed(10002541, basic)), Is.True);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Assert.That(test.Session.Quest.Complete(Completed(10002540, basic)), Is.True);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
+    // 71000132: <condition type="quest_daily" value="5" />, each completed daily quest (repeat 2) counts; a quest
+    // without the daily repeat does not.
+    [Test]
+    public void QuestDaily_71000132_EachDailyQuest() {
+        StartCompletion();
+        Quest quest = StartQuest(Condition(ConditionType.quest_daily, 5, [], []));
+        QuestMetadataBasic basic = TestGameSession.QuestData(0).Basic;
+
+        Assert.That(test.Session.Quest.Complete(Completed(10002541, basic)), Is.True);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Assert.That(test.Session.Quest.Complete(Completed(10002542, basic with { Repeat = 2 })), Is.True);
+        Assert.That(test.Session.Quest.Complete(Completed(10002543, basic with { Repeat = 2 })), Is.True);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(2));
+    }
+
+    // 74000017: <condition type="quest_guide" value="1" />, a completed daily mission counts; an epic quest does not.
+    [Test]
+    public void QuestGuide_74000017_ADailyMission() {
+        StartCompletion();
+        Quest quest = StartQuest(Condition(ConditionType.quest_guide, 1, [], []));
+        QuestMetadataBasic basic = TestGameSession.QuestData(0).Basic;
+
+        Assert.That(test.Session.Quest.Complete(Completed(10002541, basic)), Is.True);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Assert.That(test.Session.Quest.Complete(Completed(10002542, basic with { Type = QuestType.DailyMission })), Is.True);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
+    // 89010120: <condition type="quest_alliance" value="10" />, each completed alliance quest of an alliance counts;
+    // one of no alliance does not.
+    [Test]
+    public void QuestAlliance_89010120_EachAllianceMission() {
+        StartCompletion();
+        Quest quest = StartQuest(Condition(ConditionType.quest_alliance, 10, [], []));
+        QuestMetadataBasic alliance = TestGameSession.QuestData(0, QuestType.AllianceQuest).Basic;
+
+        Assert.That(test.Session.Quest.Complete(Completed(10002541, alliance)), Is.True);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Assert.That(test.Session.Quest.Complete(Completed(10002542, alliance with { Alliance = AllianceType.MapleAlliance })), Is.True);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
 }
