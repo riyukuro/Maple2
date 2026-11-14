@@ -98,6 +98,23 @@ public class BreakableCastTests {
         Assert.That(Hit(scene), Is.Not.EqualTo(BreakableState.Break));
     }
 
+    // A region skill's tags carry uid 0 and the region's skill (scenestategame.cpp:5567): taken while the player's
+    // region of that skill and level is in the field.
+    [TestCase(true, SkillId, (short) 1, ExpectedResult = true)]
+    [TestCase(false, SkillId, (short) 1, ExpectedResult = false)]
+    [TestCase(true, 10000002, (short) 1, ExpectedResult = false)]
+    [TestCase(true, SkillId, (short) 2, ExpectedResult = false)]
+    public bool ARegionOfThePlayerBreaksTheBox(bool ownRegion, int skillId, short level) {
+        Scene scene = Start();
+        FieldManager field = scene.Test.Session.Field!;
+        typeof(FieldManager).GetField("fieldSkills", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldSkill>());
+        if (ownRegion) {
+            var region = new FieldSkill(field, 900, scene.Test.Session.Player, scene.Record.Metadata, 1000, Vector3.Zero);
+            ((ConcurrentDictionary<int, FieldSkill>) typeof(FieldManager).GetField("fieldSkills", Any)!.GetValue(field)!)[900] = region;
+        }
+        return Hit(scene, 0, skillId, level) == BreakableState.Break;
+    }
+
     [TestCase(78, SkillId, (short) 1)]
     [TestCase(CastUid, 10000002, (short) 1)]
     [TestCase(CastUid, SkillId, (short) 2)]

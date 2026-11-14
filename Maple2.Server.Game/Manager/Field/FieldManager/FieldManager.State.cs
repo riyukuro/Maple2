@@ -82,6 +82,11 @@ public partial class FieldManager {
     private readonly object reactorAddLock = new(); // the cell and limit tests and the add are one step
 
     public IEnumerable<FieldSkill> DebugFieldSkills => fieldSkills.Values;
+
+    // Whether a region skill the caster placed, of this skill and level, is still in the field.
+    public bool HasFieldSkill(IActor caster, int skillId, short level) {
+        return fieldSkills.Values.Any(skill => skill.Caster == caster && skill.Value.Id == skillId && skill.Value.Level == level);
+    }
     public IEnumerable<FieldSkill> DebugCubeSkills => cubeSkills.Values;
 
     private int worldBossObjectId;
