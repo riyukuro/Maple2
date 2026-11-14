@@ -160,6 +160,16 @@ public class SkillHandler : FieldPacketHandler {
     // its hand weapons held and its spirit threshold met.
     // No cast comes before the motion of the last cast lets the next one in. The two timing checks
     // (ConfigManager.CastTimingRefusal) refuse only when CastCheckSetting says so, else they log.
+    // The home row that stops a first-motion cast of the main type for this player, or null. The client asks it on
+    // the base skill (CreateSkillRecord); the server has the cast id, whose main type is the same for every KR combo.
+    internal static HomePermission? HomeRowStops(GameSession session, int mainType, bool laterMotion) {
+        if (laterMotion || HomePermissionRules.SkillRow(mainType) is not { } row
+            || !HomePermissionRules.SkillRowApplies(row, AdminLevel.Of(session.Player.Value.Account.AdminPermissions))) {
+            return null;
+        }
+        return HomeRowCheck.Blocks(session, row) ? row : null;
+    }
+
     private bool CastAllowed(GameSession session, SkillRecord record, long tick, int castTick, out SkillCooldown? blocking) {
         blocking = null;
         BeginCondition condition = record.Metadata.Data.Condition;
@@ -175,9 +185,7 @@ public class SkillHandler : FieldPacketHandler {
         }
         // A home's row for the skill's main type (potion, glide, climb or a learned skill) stops it there for the
         // player it covers (HomeRowCheck): checked on the first motion only, as the client checks it before the cast.
-        if (!laterMotion && HomePermissionRules.SkillRow(record.Metadata.Property.MainType) is { } row
-            && HomePermissionRules.SkillRowApplies(row, AdminLevel.Of(session.Player.Value.Account.AdminPermissions))
-            && HomeRowCheck.Blocks(session, row)) {
+        if (HomeRowStops(session, record.Metadata.Property.MainType, laterMotion) is { } row) {
             Logger.Debug("Cast refused, skill {SkillId}: the home's {Row} row stops it", record.SkillId, row);
             return false;
         }

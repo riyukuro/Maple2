@@ -162,6 +162,27 @@ public class HomeRowTests {
         Assert.That(Sent(), Is.Empty);
     }
 
+    // SkillHandler's step for a cast (HomeRowStops, before any cost): a first motion of a learned skill is stopped
+    // for the player the row covers; a later motion of a cast already taken is not asked again, and a GM's glide
+    // passes.
+    [Test]
+    public void Cast_StopsAtTheRow_OnTheFirstMotionOnly() {
+        InAHome(owner: false, HomePermission.Skill, HomePermissionSetting.Self);
+        Assert.Multiple(() => {
+            Assert.That(SkillHandler.HomeRowStops(session, 0, laterMotion: false), Is.EqualTo(HomePermission.Skill));
+            Assert.That(SkillHandler.HomeRowStops(session, 0, laterMotion: true), Is.Null);
+            // A free main type (FUN_1407e9f30 leaves it out) is not stopped.
+            Assert.That(SkillHandler.HomeRowStops(session, 1, laterMotion: false), Is.Null);
+        });
+        InAHome(owner: true, HomePermission.Skill, HomePermissionSetting.Self);
+        Assert.That(SkillHandler.HomeRowStops(session, 0, laterMotion: false), Is.Null);
+
+        InAHome(owner: false, HomePermission.AirMount, HomePermissionSetting.Self);
+        Assert.That(SkillHandler.HomeRowStops(session, 7, laterMotion: false), Is.EqualTo(HomePermission.AirMount));
+        session.Player.Value.Account.AdminPermissions = AdminPermissions.GameMaster;
+        Assert.That(SkillHandler.HomeRowStops(session, 7, laterMotion: false), Is.Null);
+    }
+
     // The skill rows by the skill's main type (SkillData::FUN_1407e9bd0): 5 potion, 7 glide, 13 climb; the types
     // FUN_1407e9f30 leaves out are free; every other type is the skill row. A GM of level 50 glides anyway.
     [Test]
