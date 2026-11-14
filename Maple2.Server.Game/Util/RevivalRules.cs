@@ -114,6 +114,13 @@ public static class RevivalRules {
         return instant || revivalReturnId == 0 || revivalReturnId == mapId;
     }
 
+    // A revive that sends the player to the return field is done once the field change went through, here or by a
+    // move to another channel. When it did not (a GM-only or missing map, a field that failed to load), the player
+    // is revived where they stand: the lasting buffs, the HP and the revive packet, as for a revive in place.
+    public static bool LeftForTheReturnField(bool prepared, bool migrated) {
+        return prepared || migrated;
+    }
+
     // A player who leaves a field dead (a GM warp, a trigger move) gets a new, living actor in the next field:
     // without a fill it arrives at 0 HP, still drawn dead with no tombstone the revival dialog could use.
     public static bool FillsHpOnFieldEntry(bool leftDead, long currentHp) {

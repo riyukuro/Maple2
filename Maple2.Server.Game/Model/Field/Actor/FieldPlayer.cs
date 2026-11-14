@@ -699,6 +699,12 @@ public class FieldPlayer : Actor<Player> {
         return property.AutoRevivalTime * 1000;
     }
 
+    private void RestoreLastingBuffs() {
+        Session.Config.Skill.UpdatePassiveBuffs();
+        Buffs.LoadFieldBuffs();
+        Session.Stats.Refresh();
+    }
+
     /// <summary>
     /// Revives the player from death state.
     /// </summary>
@@ -718,9 +724,7 @@ public class FieldPlayer : Actor<Player> {
         // gives them again; a revive must too, or the player keeps the lower stats (a character ability's +31 HP)
         // until the next map. Before the HP fill, so the player comes back at the full total.
         if (RevivalRules.RestoresLastingBuffs(instant, Field.Metadata.Property.RevivalReturnId, Field.Metadata.Id)) {
-            Session.Config.Skill.UpdatePassiveBuffs();
-            Buffs.LoadFieldBuffs();
-            Session.Stats.Refresh();
+            RestoreLastingBuffs();
         }
         RecoverHp((int) Stats.Values[BasicAttribute.Health].Total);
 
@@ -736,9 +740,17 @@ public class FieldPlayer : Actor<Player> {
         Tombstone.Clear();
 
         // Handle revival return to different map
+        // When the return field cannot be entered (a GM-only or missing map, a field that failed to load), the player
+        // has the move error and comes back here: before, the revive stopped with the player alive on the server and
+        // no revive packet, the client still showing the death.
         if (!instant && Field.Metadata.Property.RevivalReturnId != 0 && Field.Metadata.Property.RevivalReturnId != Field.Metadata.Id) {
-            Session.SendFieldEnter(Session.PrepareField(Field.Metadata.Property.RevivalReturnId));
-            return true;
+            bool prepared = Session.PrepareField(Field.Metadata.Property.RevivalReturnId);
+            Session.SendFieldEnter(prepared);
+            if (RevivalRules.LeftForTheReturnField(prepared, Session.FieldChangeMigrated)) {
+                return true;
+            }
+            RestoreLastingBuffs();
+            RecoverHp((int) Stats.Values[BasicAttribute.Health].Total);
         }
 
         // Send revival packets

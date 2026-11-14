@@ -12,6 +12,14 @@ public class RevivalRulesTests {
         Assert.That(RevivalRules.RestoresLastingBuffs(instant, returnId, mapId), Is.EqualTo(restores));
     }
 
+    // A revive whose return field cannot be entered revives in place instead of stopping with no revive packet.
+    [TestCase(true, false, true)]   // entered a field here
+    [TestCase(false, true, true)]   // moved to another channel
+    [TestCase(false, false, false)] // GM-only, missing or not loaded: revive where the player stands
+    public void ReturnFieldMoveFailed_RevivesInPlace(bool prepared, bool migrated, bool left) {
+        Assert.That(RevivalRules.LeftForTheReturnField(prepared, migrated), Is.EqualTo(left));
+    }
+
     [TestCase(true, 0, true)]
     [TestCase(false, 0, true)]
     [TestCase(false, 1, false)]

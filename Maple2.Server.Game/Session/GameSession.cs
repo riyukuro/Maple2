@@ -773,6 +773,8 @@ public sealed partial class GameSession : Core.Network.Session {
     // Set by a field change that became a move to another server (a dungeon left for a map outside it): the move
     // is answered by GameToGame or its error box (CNetworkService::OnGameToGame), so no FieldEnter error follows.
     private bool fieldChangeMigrated;
+    // The last PrepareField moved the player to another channel or server instead of a field here.
+    public bool FieldChangeMigrated => fieldChangeMigrated;
 
     // The answer to a field change on this server: FieldEnter's request, or its error unless the change was handed
     // to the World server as a move and answered there.
