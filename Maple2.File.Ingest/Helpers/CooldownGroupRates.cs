@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Xml;
 using Maple2.File.IO;
 using Maple2.File.IO.Crypto.Common;
@@ -11,7 +11,7 @@ namespace Maple2.File.Ingest.Helpers;
 // starts the cooldown of a skill of that cooldown group shorter by the rate (CSkillSystem::FUN_1417664e0,
 // skillslot.cpp). Read from the same files as the parser, by effect id and level; a level row that is not available
 // for the locale and features is skipped, and so is a property whose probability is under 1 (the client rolls
-// for it at each cooldown, which the server cannot repeat).
+// for it at each cooldown, which the server cannot repeat). An absent probability is 1 (SpecialEffects.Probability).
 public sealed class CooldownGroupRates {
     private readonly Dictionary<(int Id, short Level), List<CooldownGroupRate>> rates = new();
 
@@ -51,7 +51,7 @@ public sealed class CooldownGroupRates {
     public static List<CooldownGroupRate> Read(IEnumerable<(string Type, string Probability, string Values)> properties) {
         var found = new List<CooldownGroupRate>();
         foreach ((string type, string probability, string values) in properties) {
-            if (type != "4" || !float.TryParse(probability, NumberStyles.Float, CultureInfo.InvariantCulture, out float chance) || chance < 1) {
+            if (type != "4" || SpecialEffects.Probability(probability) < 1) {
                 continue;
             }
             var fragment = new XmlDocument();

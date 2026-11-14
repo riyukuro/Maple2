@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -16,6 +16,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Tests.Validators;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
@@ -294,6 +295,28 @@ public class CharacterAbilityHandlerTests {
         session.Config.RefreshCharacterAbilityBuffs();
 
         Assert.That(session.Player.Buffs.HasBuff(90000321), Is.EqualTo(on));
+    }
+
+    // An ability's special effect (110000101, fishing exp) is held only while CharacterAbility is on.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Refresh_GivesTheSpecialEffectsOnlyWithTheFeatureOn(bool on) {
+        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(skills)!;
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [((int) 90000321, (short) 1),
+            BuffAttributeTests.Effect(90000321, DisabledBuffTests.Property with { SpecialEffect = SpecialEffectRulesTests.Fishing4 })]);
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Field, skills);
+        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!
+            .SetValue(session.Field, new FieldActor(session.Field!, 99, session.Field!.Metadata, null!));
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Player, session.Field);
+        if (!on) {
+            test.SetFeaturesOff(CharacterAbilityRules.Feature);
+        }
+        Character.Abilities.Add(Strength);
+
+        session.Config.RefreshCharacterAbilityBuffs();
+
+        Assert.That(session.Player.Buffs.TakeSpecialEffects(SpecialEffectRules.Fishing), Is.EqualTo(on ? new[] { SpecialEffectRulesTests.Fishing4 } : Array.Empty<SpecialEffectMetadata>()));
     }
 
     // The learned list and the reset time are columns of the character row.

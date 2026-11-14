@@ -56,7 +56,8 @@ public record AdditionalEffectMetadataProperty(
     int SuperArmorApplyField = 0, // MotionProperty superArmorApplyFieldType: where it counts (0 anywhere, 1 off PvP maps, 2 on them)
     int ForceApplyTarget = 0, // BasicProperty forceApplyTarget: target bits the holder's skills also take (1 hostile, 2 friendly)
     AttackPossibleMetadata? AttackPossible = null, // BasicProperty attackPossible*: the only hits the holder takes
-    bool PvpOnOff = false); // BasicProperty pvpOnOff: on a pk field no other player is hostile to the holder, nor the holder to them
+    bool PvpOnOff = false, // BasicProperty pvpOnOff: on a pk field no other player is hostile to the holder, nor the holder to them
+    SpecialEffectMetadata? SpecialEffect = null); // SpecialEffectProperty of the types the server applies (SpecialEffectRules)
 
 // BasicProperty attackPossibleSkillIDs, attackPossibleDotEffectIDs and attackPossibleEffectID (additionalactionadditional.cpp:1080):
 // the skills and the damage over time effects that still hit the holder, and an effect whose holders hit it with anything.
@@ -64,6 +65,30 @@ public record AdditionalEffectMetadataProperty(
 public record AttackPossibleMetadata(int[] SkillIds, int[] DotEffectIds, int EffectId);
 
 public record CooldownGroupRate(int GroupId, float Rate);
+
+// A level's SpecialEffectProperty (additionalactionadditional.h:502, one per level): its type, the chance it takes
+// effect (an absent probability is 1, as the client's Clear sets it) and the activateMsg string key, with the values
+// of the types the server applies. The client applies only type 4 (the cooldown groups, CooldownGroupRates); the
+// others are applied by the server (SpecialEffectRules). Rates are extras on top of the base amount: 1 doubles it.
+public record SpecialEffectMetadata(
+    int Type,
+    float Probability,
+    string ActivateMessage,
+    float ExpRate = 0, // types 7, 9, 10 improveExpRate
+    float MesoRate = 0, // type 7 improveMesoRate
+    float RueRate = 0, // type 7 improveLuRate
+    float MasteryRate = 0, // type 9 improveMasteryRate
+    bool OnlyBigSize = false, // type 9 onlyBigSize: a prize fish only
+    int RepeatType = 0, // type 7 repeatType: the quests' repeat type (2 daily)
+    float RewardRate = 0, // type 11 improveRewardRate
+    ExpType ExpType = ExpType.none, // type 13 expType, the client's exp kind (4 rareChest, 6 normalChest)
+    int GlobalDropBoxId = 0, // type 13
+    int IndividualDropBoxId = 0, // type 13
+    int EnchantLevel = 0, // type 5
+    float ImproveRate = 0, // type 5
+    int[]? ItemIds = null, // type 8 itemIDs
+    int[]? NpcRanks = null, // type 2 npcRank
+    float ReduceRate = 0); // type 2
 
 public record AdditionalEffectMetadataConsume(
     float HpRate,

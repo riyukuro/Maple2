@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.CompilerServices;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -30,7 +30,7 @@ public class NpcRankDamageTests {
     }
 
     // An npc of a class with only what the rank bonus reads: its metadata's class and friendly.
-    private static FieldNpc Npc(int npcClass, int friendly = 0) {
+    internal static FieldNpc Npc(int npcClass, int friendly = 0) {
         var basic = (NpcMetadataBasic) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadataBasic));
         typeof(NpcMetadataBasic).GetField("<Class>k__BackingField", Any)!.SetValue(basic, npcClass);
         typeof(NpcMetadataBasic).GetField("<Friendly>k__BackingField", Any)!.SetValue(basic, friendly);
@@ -75,8 +75,12 @@ public class NpcRankDamageTests {
         stats[BasicAttribute.MaxWeaponAtk].AddTotal(1000 - stats[BasicAttribute.MaxWeaponAtk].Total);
         stats[BasicAttribute.PhysicalAtk].AddTotal(1000);
         var hit = new DamagePropertyRecord {
-            CanCrit = false, Element = Element.Fire, RangeType = RangeType.Melee, AttackType = AttackType.Physical,
-            Rate = 1, SuperArmorBreak = true,
+            CanCrit = false,
+            Element = Element.Fire,
+            RangeType = RangeType.Melee,
+            AttackType = AttackType.Physical,
+            Rate = 1,
+            SuperArmorBreak = true,
         };
         (_, long full) = DamageCalculator.CalculateDamage(player, player, hit);
         stats[SpecialAttribute.NormalNpcDamage].AddTotal(500);

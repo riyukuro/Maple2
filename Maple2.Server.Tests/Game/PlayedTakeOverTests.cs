@@ -285,6 +285,9 @@ public class PlayedTakeOverTests {
         var rates = (CooldownGroupRates) RuntimeHelpers.GetUninitializedObject(typeof(CooldownGroupRates));
         typeof(CooldownGroupRates).GetField("rates", Any)!.SetValue(rates, System.Activator.CreateInstance(typeof(CooldownGroupRates).GetField("rates", Any)!.FieldType));
         typeof(AdditionalEffectMapper).GetField("groupRates", Any)!.SetValue(mapper, rates);
+        var specials = (SpecialEffects) RuntimeHelpers.GetUninitializedObject(typeof(SpecialEffects));
+        typeof(SpecialEffects).GetField("effects", Any)!.SetValue(specials, System.Activator.CreateInstance(typeof(SpecialEffects).GetField("effects", Any)!.FieldType));
+        typeof(AdditionalEffectMapper).GetField("specialEffects", Any)!.SetValue(mapper, specials);
         MethodInfo build = typeof(AdditionalEffectMapper).GetMethod("Build", Any)!;
         MethodInfo complete = typeof(AdditionalEffectMapper).GetMethod("Complete", Any, [typeof(XmlElement)])!;
 
@@ -654,6 +657,9 @@ public class PlayedTakeOverTests {
         var rates = (CooldownGroupRates) RuntimeHelpers.GetUninitializedObject(typeof(CooldownGroupRates));
         typeof(CooldownGroupRates).GetField("rates", Any)!.SetValue(rates, System.Activator.CreateInstance(typeof(CooldownGroupRates).GetField("rates", Any)!.FieldType));
         typeof(AdditionalEffectMapper).GetField("groupRates", Any)!.SetValue(mapper, rates);
+        var specials = (SpecialEffects) RuntimeHelpers.GetUninitializedObject(typeof(SpecialEffects));
+        typeof(SpecialEffects).GetField("effects", Any)!.SetValue(specials, System.Activator.CreateInstance(typeof(SpecialEffects).GetField("effects", Any)!.FieldType));
+        typeof(AdditionalEffectMapper).GetField("specialEffects", Any)!.SetValue(mapper, specials);
         var unread = new List<string>();
         object?[] args = [id, played[id], unread, null];
         var levels = (List<AdditionalEffectMetadata>?) typeof(AdditionalEffectMapper).GetMethod("Own", Any)!.Invoke(mapper, args);

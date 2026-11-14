@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Context;
@@ -10,6 +10,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Tests.Validators;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -449,5 +450,31 @@ public class ItemBoxHandlerTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(0));
         Assert.That(Held(session, KeyId), Is.EqualTo(1));
         Assert.That(Held(session, RewardA) + Held(session, RewardB), Is.GreaterThan(0));
+    }
+
+    // 110001024 (here on this test's box, the KR row names 30001133): a box of its item ids opens a second time on
+    // a 10 % roll, the box taken once.
+    [TestCase(0, 2)]
+    [TestCase(0.999, 1)]
+    public void OpenItemBox_ItemBoxEffectOpensItAgain(double roll, int times) {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 2);
+        SpecialEffectWiringTests.Hold(session.Player, SpecialEffectRulesTests.PrestigeBox with { ItemIds = [BoxId] }, roll);
+
+        Use(session);
+
+        Assert.That(Held(session, BoxId), Is.EqualTo(1));
+        Assert.That(Held(session, RewardA), Is.EqualTo(3 * times));
+        Assert.That(Held(session, RewardB), Is.EqualTo(times));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    [Test]
+    public void OpenItemBox_ItemBoxEffectOfAnotherBox() {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 2);
+        SpecialEffectWiringTests.Hold(session.Player, SpecialEffectRulesTests.PrestigeBox);
+
+        Use(session);
+
+        Assert.That(Held(session, RewardA), Is.EqualTo(3));
     }
 }

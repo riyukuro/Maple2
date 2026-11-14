@@ -159,7 +159,9 @@ public class InteractObjectHandler : FieldPacketHandler {
                 SendAnswer(session, interact);
                 // A map treasure chest: its exp, more for a golden chest this character opens the first time.
                 if (interact.Chest != MapChestRules.Kind.None) {
-                    session.Exp.AddExp(MapChestRules.Exp(interact.Chest, firstOpen));
+                    ExpType chestExp = MapChestRules.Exp(interact.Chest, firstOpen);
+                    session.Exp.AddExp(chestExp);
+                    GiveChestDropBoxes(session, chestExp);
                 }
                 break;
             case InteractType.Ui:
@@ -243,6 +245,30 @@ public class InteractObjectHandler : FieldPacketHandler {
             session.Field.DropItem(interact.Position with {
                 Z = interact.Position.Z + interact.Value.Drop.DropHeight,
             }, interact.Rotation, item, characterId: session.CharacterId, dropKind: ItemDropKind.InteractObject);
+        }
+    }
+
+    // The chest special effects held (type 13): a chest whose opening gives the effect's exp type gives the items of
+    // its drop boxes more, to the inventory or, when it is full, to the mail.
+    internal static void GiveChestDropBoxes(GameSession session, ExpType chestExp) {
+        if (session.Field == null) {
+            return;
+        }
+        var items = new List<Item>();
+        foreach (SpecialEffectMetadata effect in session.Buffs.TakeSpecialEffects(SpecialEffectRules.ChestDropBox,
+                     effect => SpecialEffectRules.ChestApplies(effect, chestExp))) {
+            int level = session.Player.Value.Character.Level;
+            if (effect.GlobalDropBoxId != 0) {
+                items.AddRange(session.Field.ItemDrop.GetGlobalDropItems(effect.GlobalDropBoxId, level, session));
+            }
+            if (effect.IndividualDropBoxId != 0) {
+                items.AddRange(session.Field.ItemDrop.GetIndividualDropItems(session, level, effect.IndividualDropBoxId));
+            }
+        }
+        foreach (Item item in items) {
+            if (!session.Item.Inventory.Add(item, true)) {
+                session.Item.MailItem(item);
+            }
         }
     }
 }

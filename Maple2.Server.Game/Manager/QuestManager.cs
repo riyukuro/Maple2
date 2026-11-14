@@ -880,9 +880,6 @@ public sealed class QuestManager {
             : null;
         long meso = QuestMesoRules.Meso(reward.Meso, relativeMeso, session.ServerTableMetadata.ConstantsTable.QuestRewardMesoFactor(quest.Metadata.Basic.Type),
             quest.Metadata.Basic.Type == QuestType.GuildQuest ? guildFactor?.UserMeso : null);
-        if (meso > 0) {
-            session.Currency.ChangeMeso(meso);
-        }
 
         // The exp the reward line shows: the fixed exp or the relativeExp curve at the player's level, whichever is
         // larger, with the rank factor of field and alliance quests.
@@ -891,16 +888,26 @@ public sealed class QuestManager {
         if (guildFactor != null) {
             exp = GuildRules.QuestRewardBonus(exp, guildFactor.UserExp);
         }
-        if (exp > 0) {
-            session.Exp.AddQuestExp(exp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message(), QuestExpRules.PrestigeType(basic.Type));
+
+        // The quest reward special effects held (type 7): more exp, meso or rue for a quest of their repeat type.
+        (long extraExp, long extraMeso, long extraRue) = SpecialEffectRules.QuestExtra(
+            session.Buffs.TakeSpecialEffects(SpecialEffectRules.QuestReward,
+                effect => SpecialEffectRules.QuestApplies(effect, basic.Repeat, exp, meso, reward.Rue)),
+            exp, meso, reward.Rue);
+
+        if (meso + extraMeso > 0) {
+            session.Currency.ChangeMeso(meso + extraMeso);
+        }
+        if (exp + extraExp > 0) {
+            session.Exp.AddQuestExp(exp + extraExp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message(), QuestExpRules.PrestigeType(basic.Type));
         }
 
         if (reward.Treva > 0) {
             session.Currency.Change(CurrencyType.Treva, reward.Treva);
         }
 
-        if (reward.Rue > 0) {
-            session.Currency.Change(CurrencyType.Rue, reward.Rue);
+        if (reward.Rue + extraRue > 0) {
+            session.Currency.Change(CurrencyType.Rue, reward.Rue + extraRue);
         }
 
         // menteeCoin: the mentee token the mentoring page shows on the reward line (FUN_140762be0,

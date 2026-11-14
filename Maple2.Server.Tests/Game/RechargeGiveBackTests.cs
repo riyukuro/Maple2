@@ -83,6 +83,9 @@ public class RechargeGiveBackTests {
         var rates = (CooldownGroupRates) RuntimeHelpers.GetUninitializedObject(typeof(CooldownGroupRates));
         typeof(CooldownGroupRates).GetField("rates", Any)!.SetValue(rates, System.Activator.CreateInstance(typeof(CooldownGroupRates).GetField("rates", Any)!.FieldType));
         typeof(AdditionalEffectMapper).GetField("groupRates", Any)!.SetValue(mapper, rates);
+        var specials = (SpecialEffects) RuntimeHelpers.GetUninitializedObject(typeof(SpecialEffects));
+        typeof(SpecialEffects).GetField("effects", Any)!.SetValue(specials, System.Activator.CreateInstance(typeof(SpecialEffects).GetField("effects", Any)!.FieldType));
+        typeof(AdditionalEffectMapper).GetField("specialEffects", Any)!.SetValue(mapper, specials);
         MethodInfo build = typeof(AdditionalEffectMapper).GetMethod("Build", Any)!;
         var metadata = (AdditionalEffectMetadata) build.Invoke(mapper, [10600280, AdditionalEffectMapper.PlayedOnly(played[10600280]).Single(), 0, null])!;
         Assert.Multiple(() => {

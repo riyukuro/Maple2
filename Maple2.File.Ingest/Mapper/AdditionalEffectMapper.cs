@@ -15,6 +15,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
     // The played client's own legacy rows (additionaleffect/<id>.xml in its pack), for the A/B only.
     private readonly AdditionalEffectParser? playedParser;
     private readonly CooldownGroupRates groupRates;
+    private readonly SpecialEffects specialEffects;
     private readonly FinalStatusRows finals;
     private readonly ClientSpecialAbility specialAbility;
     // The same table for the played levels' own <SpecialAbility> (PlayedAdditionalRows.SpecialAbility), apart so its
@@ -33,6 +34,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         parser = new AdditionalEffectParser(xmlReader);
         groupRates = new CooldownGroupRates(xmlReader);
         Console.WriteLine($"Additional effects with a cooldown group reduction: {groupRates.Count}");
+        specialEffects = new SpecialEffects(xmlReader);
+        Console.WriteLine($"Additional effect levels with a server special effect: {specialEffects.Count}");
         finals = new FinalStatusRows(xmlReader);
         specialAbility = new ClientSpecialAbility(playedReader, xmlReader);
         if (playedReader != null) {
@@ -386,7 +389,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 SuperArmorApplyField: data.MotionProperty.superArmorApplyFieldType,
                 ForceApplyTarget: data.BasicProperty.forceApplyTarget,
                 AttackPossible: AttackPossible(data.BasicProperty),
-                PvpOnOff: data.BasicProperty.pvpOnOff),
+                PvpOnOff: data.BasicProperty.pvpOnOff,
+                SpecialEffect: specialEffects.Get(id, data.BasicProperty.level)),
             Consume: new AdditionalEffectMetadataConsume(
                 HpRate: data.ConsumeProperty.hpRate,
                 SpRate: data.ConsumeProperty.spRate),

@@ -3,6 +3,7 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -373,6 +374,13 @@ public sealed class RankDuelField {
             try {
                 if (change.Reward > 0) {
                     player.Session.Currency.Change(CurrencyType.ValorToken, change.Reward);
+                    // The valor token special effects held (type 11) give a winner more, apart from the result's reward.
+                    int extra = characterId == winner
+                        ? SpecialEffectRules.ValorExtra(player.Buffs.TakeSpecialEffects(SpecialEffectRules.ValorToken), change.Reward)
+                        : 0;
+                    if (extra > 0) {
+                        player.Session.Currency.Change(CurrencyType.ValorToken, extra);
+                    }
                 }
                 player.Session.Exp.AddExp(characterId == winner ? ExpType.rankDuelWin : ExpType.rankDuelLose);
             } catch (Exception ex) {

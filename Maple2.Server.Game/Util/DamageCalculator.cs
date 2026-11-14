@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Formulas;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
@@ -116,6 +117,15 @@ public static class DamageCalculator {
             4 or 6 => SpecialAttribute.BossNpcDamage,
             _ => SpecialAttribute.NormalNpcDamage,
         };
+    }
+
+    // The npc rank special effects the target holds (type 2): less damage from an npc of the ranks (its Basic class,
+    // 110001013 elites 3 and 7). 1 from a pet or a player.
+    internal static float NpcRankDamageFactor(IActor caster, IActor target) {
+        if (caster is not FieldNpc npc || caster is FieldPet) {
+            return 1;
+        }
+        return SpecialEffectRules.NpcRankDamageFactor(target.Buffs.SpecialEffects(), npc.Value.Metadata.Basic.Class, target.Buffs.SpecialEffectRandom);
     }
 
     // The caster's rank bonus rate against the target (RankBonusOf), 0 against a player.
@@ -263,6 +273,7 @@ public static class DamageCalculator {
         if (physicalHit is bool physical) {
             attackDamage *= DamageTakenFactor(target.Buffs.DamageTakenRate(physical));
         }
+        attackDamage *= NpcRankDamageFactor(caster, target);
 
         // Apply any shields
         foreach (Buff buff in BuffManager.Shields(target.Buffs.EnumerateBuffs())) {

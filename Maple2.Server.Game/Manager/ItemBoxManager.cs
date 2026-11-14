@@ -393,22 +393,28 @@ public class ItemBoxManager {
                 return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
             }
 
-            if (itemId > 0) {
-                // A fixed item that cannot be made does not cost the box its roll (it was skipped with the box taken).
-                Item? newItem = session.Field.ItemDrop.CreateItem(itemId, item.Metadata.Option?.ConstantId ?? 1);
-                if (newItem != null && !AddFromBox(item, newItem)) {
-                    session.Item.MailItem(newItem);
-                    error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+            // The item box special effects held (type 8) open a box of their item ids a second time, the box not
+            // taken again.
+            int opens = 1 + session.Buffs.TakeSpecialEffects(SpecialEffectRules.ItemBoxAgain,
+                effect => SpecialEffectRules.ItemBoxApplies(effect, item.Id)).Count;
+            for (int round = 0; round < opens; round++) {
+                if (itemId > 0) {
+                    // A fixed item that cannot be made does not cost the box its roll (it was skipped with the box taken).
+                    Item? newItem = session.Field.ItemDrop.CreateItem(itemId, item.Metadata.Option?.ConstantId ?? 1);
+                    if (newItem != null && !AddFromBox(item, newItem)) {
+                        session.Item.MailItem(newItem);
+                        error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                    }
                 }
-            }
 
-            IEnumerable<Item> itemList = session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session: session);
+                IEnumerable<Item> itemList = session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session: session);
 
-            itemList = itemList.Concat(session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, individualDropBoxId));
-            foreach (Item newItem in itemList) {
-                if (!AddFromBox(item, newItem)) {
-                    session.Item.MailItem(newItem);
-                    error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                itemList = itemList.Concat(session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, individualDropBoxId));
+                foreach (Item newItem in itemList) {
+                    if (!AddFromBox(item, newItem)) {
+                        session.Item.MailItem(newItem);
+                        error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                    }
                 }
             }
             BoxCount++;

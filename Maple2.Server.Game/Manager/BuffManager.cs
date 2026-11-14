@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
@@ -438,6 +439,29 @@ public class BuffManager : IUpdatable {
     // The share the enabled buffs held cut from the cooldowns of a cooldown group (SkillCastRules.GroupReduceRate).
     public float CooldownGroupRate(int groupId) {
         return Util.SkillCastRules.GroupReduceRate(EnumerateBuffs().Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property.CooldownGroupRates), groupId);
+    }
+
+    // The special effects (SpecialEffectRules) of the enabled buffs held, one per buff.
+    public IEnumerable<SpecialEffectMetadata> SpecialEffects() => SpecialEffects(EnumerateBuffs());
+
+    public static IEnumerable<SpecialEffectMetadata> SpecialEffects(IEnumerable<Buff> held) {
+        return held.Where(buff => buff.Enabled && buff.Metadata.Property.SpecialEffect != null)
+            .Select(buff => buff.Metadata.Property.SpecialEffect!).ToList();
+    }
+
+    // The random the special effects roll with (tests set their own).
+    public Random SpecialEffectRandom { get; set; } = Random.Shared;
+
+    // The special effects of a type held that take effect this time (SpecialEffectRules.Taken). A player holder is
+    // sent the activateMsg of each one taken.
+    public List<SpecialEffectMetadata> TakeSpecialEffects(int type, Func<SpecialEffectMetadata, bool>? applies = null) {
+        List<SpecialEffectMetadata> taken = SpecialEffectRules.Taken(SpecialEffects(), type, SpecialEffectRandom, applies);
+        if (Actor is FieldPlayer player) {
+            foreach (string message in SpecialEffectRules.Messages(taken)) {
+                player.Session.Send(NoticePacket.Message(message));
+            }
+        }
+        return taken;
     }
 
     // The resistance rates of the buffs held, each times its stack count (Buff.StackFactor).

@@ -184,7 +184,12 @@ public class InstrumentHandler : FieldPacketHandler {
 
         // Subtracting 500ms to account for the delay between the client and server and exp abuse.
         // Modifier is the number of 500ms ticks that have passed.
-        session.Exp.AddExp(expType, InstrumentRules.ExpTicks(totalTickTime));
+        // The music special effects held (type 10): more exp, some for a whole score only.
+        float ticks = InstrumentRules.ExpTicks(totalTickTime);
+        bool wholeScore = scoreLength > 0 && totalTickTime >= scoreLength;
+        float expFactor = ticks <= 0 ? 1 : SpecialEffectRules.ExpFactor(
+            session.Buffs.TakeSpecialEffects(SpecialEffectRules.Music, effect => SpecialEffectRules.MusicApplies(effect, wholeScore)));
+        session.Exp.AddExp(expType, ticks * expFactor);
 
         ReportPlayTime(session, session.Instrument.Value, totalTickTime);
         if (session.Instrument.Ensemble) {

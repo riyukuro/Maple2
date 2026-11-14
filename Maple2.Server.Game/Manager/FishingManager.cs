@@ -502,6 +502,11 @@ public class FishingManager {
             masteryExp = selectedFish.MasteryExp * 2; // double mastery exp if prize fish
         }
 
+        // The fishing special effects held (type 9): more exp and mastery for the catch, some on a prize fish only.
+        (float expFactor, float masteryFactor) = SpecialEffectRules.FishingFactors(
+            session.Buffs.TakeSpecialEffects(SpecialEffectRules.Fishing, effect => SpecialEffectRules.FishingApplies(effect, prizeFish)));
+        masteryExp = (int) (masteryExp * masteryFactor);
+
         if (masteryExp != 0) {
             session.Mastery[MasteryType.Fishing] += masteryExp;
             short masteryLevel = session.Mastery.GetLevel(MasteryType.Fishing);
@@ -526,7 +531,7 @@ public class FishingManager {
             session.ConditionUpdate(ConditionType.fish, codeLong: fish.Id, targetLong: mapId);
             ReportAutoCatch(session, hasAutoFish);
             // Every catch gives the common exp table's fishing award for the character's level.
-            session.Exp.AddExp(ExpType.fishing);
+            session.Exp.AddExp(ExpType.fishing, expFactor);
         };
     }
 
