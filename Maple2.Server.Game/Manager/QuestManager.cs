@@ -1427,18 +1427,42 @@ public sealed class QuestManager {
     }
 
     /// <summary>
-    /// Quest 7: drops the named quests that can expire (QuestRules.CanExpire) and tells the client which.
+    /// Quest 7: drops the named quests that can expire (QuestRules.CanExpire) and whose end time has come (IsExpired),
+    /// and tells the client which. The client sends a quest only once its own end time has come (CQuestManager::
+    /// FUN_1416d3010, questmanager_2.cpp:2157), so one that is not over yet stays: it used to be dropped on the word
+    /// of the client, a quest that cannot be abandoned (disableGiveup) too.
     /// </summary>
     public void Expired(IList<int> questIds) {
         var expired = new List<int>();
         foreach (int questId in questIds) {
-            if (TryGetQuest(questId, out Quest? quest) && QuestRules.CanExpire(quest.Metadata.Basic, quest.State) && Remove(quest)) {
+            if (TryGetQuest(questId, out Quest? quest) && QuestRules.CanExpire(quest.Metadata.Basic, quest.State) && IsExpired(quest)
+                && Drop(quest)) {
                 expired.Add(questId);
             }
         }
         if (expired.Count > 0) {
             session.Send(QuestPacket.Expired(expired));
         }
+    }
+
+    /// <summary>
+    /// Takes a quest in progress off the player's list, for an abandon (Quest 2) or an expiry (Quest 7): the client
+    /// drops it the same way on either answer (modes 6 and 7, questmanager_2.cpp:1058-1075). A quest that was
+    /// completed before and started again goes back to what it was before that start: completed, with its count and
+    /// the start and end time of its last completion (Start kept them). The client offers it again, and with the old
+    /// start time the server takes that accept as it took the one just dropped. Any other quest's row is deleted.
+    /// Before, an expired repeat quest lost its row and with it its completion count.
+    /// </summary>
+    public bool Drop(Quest quest) {
+        if (quest.CompletionCount > 0) {
+            quest.State = QuestState.Completed;
+            quest.StartTime = quest.LastStartTime;
+            quest.EndTime = quest.LastEndTime;
+            quest.LastStartTime = 0;
+            quest.LastEndTime = 0;
+            return true;
+        }
+        return Remove(quest);
     }
 
     public bool Remove(Quest quest) {
