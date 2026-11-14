@@ -53,8 +53,15 @@ public partial class WorldService : World.WorldBase {
 
     public override Task<ChannelsResponse> Channels(ChannelsRequest request, ServerCallContext context) {
         var response = new ChannelsResponse();
-        response.Channels.AddRange(channelClients.Keys);
-        response.Online = playerLookup.GetOnlinePlayerInfos().Length;
+        var channels = channelClients.Keys.ToHashSet();
+        response.Channels.AddRange(channels);
+        response.Online = OnlineOn(playerLookup.GetOnlinePlayerInfos().Select(player => player.Channel), channels);
         return Task.FromResult(response);
+    }
+
+    // The traffic is the online characters over the listed channels' capacity, so only the characters on a listed
+    // channel count: one on an instanced-content or inactive channel, which is not listed, does not.
+    internal static int OnlineOn(IEnumerable<short> playerChannels, IReadOnlySet<int> channels) {
+        return playerChannels.Count(channel => channels.Contains(channel));
     }
 }

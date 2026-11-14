@@ -108,7 +108,9 @@ public partial class GameStorage {
 
         // An outdoor plot (a bought ugc map, not the home) is the account's: BuyPlot writes the account id as owner.
         public bool OwnsOutdoorPlot(long accountId) {
-            return Context.UgcMap.Any(map => map.OwnerId == accountId && !map.Indoor);
+            // A plot past its expiry is no longer owned, even before World takes it back (FieldPlotExpiryCheck).
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            return Context.UgcMap.Any(map => map.OwnerId == accountId && !map.Indoor && map.ExpiryTime >= now);
         }
 
         // LastModified is the row version (ON UPDATE CURRENT_TIMESTAMP): assigning it to itself keeps its value, so an
