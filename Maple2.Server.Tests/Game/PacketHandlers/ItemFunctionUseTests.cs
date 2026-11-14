@@ -207,7 +207,8 @@ public class ItemFunctionUseTests {
     [Test]
     public void CallAirTaxi_TakesOneTicketToAVisitedField() {
         const int to = 2000914;
-        const string xBlock = "item_air_taxi_test";
+        // A name of its own: the navmesh file sits in the shared build output, where another test run may delete it.
+        string xBlock = $"item_air_taxi_test_{Guid.NewGuid():N}";
         string mesh = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Navmeshes", $"{xBlock}.navmesh");
         Directory.CreateDirectory(Path.GetDirectoryName(mesh)!);
         bool made = !System.IO.File.Exists(mesh);

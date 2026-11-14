@@ -17,7 +17,8 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // PrepareField, which stops at the test field (one the played client lacks). The field ids are made up.
 public class FreeAirTaxiTests {
     private const int From = 2000911, To = 2000912;
-    private const string XBlock = "free_air_taxi_test";
+    // A name of its own per run: the navmesh file sits in the shared build output, where another test run may delete it.
+    private static readonly string XBlock = $"free_air_taxi_test_{Guid.NewGuid():N}";
     private const long Meso = 1_000_000;
     private static string MeshPath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Navmeshes", $"{XBlock}.navmesh");
     private bool madeMesh;

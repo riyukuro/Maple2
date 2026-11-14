@@ -22,7 +22,8 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class TaxiConditionTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private const int From = 2000913, To = 2000914;
-    private const string XBlock = "taxi_condition_test";
+    // A name of its own per run: the navmesh file sits in the shared build output, where another test run may delete it.
+    private static readonly string XBlock = $"taxi_condition_test_{Guid.NewGuid():N}";
     private static string MeshPath => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Navmeshes", $"{XBlock}.navmesh");
     private bool madeMesh;
 
