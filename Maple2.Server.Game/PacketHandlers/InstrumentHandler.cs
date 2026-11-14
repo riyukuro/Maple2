@@ -218,14 +218,19 @@ public class InstrumentHandler : FieldPacketHandler {
         session.Instrument = null;
     }
 
+    // The client puts its player in the ensemble wait (pc state 0x80) as it sends 5 (CInstrumentManager, the
+    // request 5 writer, instrumentmanager.cpp:763), and only Instrument 6 (the ensemble was cancelled: dialog
+    // mode 1, state 0x7d) or a start takes it out. So a refused request, and a leader whose own instrument does not
+    // start, get 6; a player already playing gets nothing, as 6 would end the play's state.
     private void HandleJoinEnsemble(GameSession session, IByteReader packet) {
-        if (session.Field == null || session.Instrument != null || session.Party.Party == null) {
+        if (session.Field == null || session.Instrument != null) {
             return;
         }
 
         long itemUid = packet.ReadLong();
         long scoreUid = packet.ReadLong();
-        if (!TryGetScore(session, scoreUid, out Item? score) || IsBlank(score) || MusicBlocked(session)) {
+        if (session.Party.Party == null || !TryGetScore(session, scoreUid, out Item? score) || IsBlank(score) || MusicBlocked(session)) {
+            CancelReady(session);
             return;
         }
 
@@ -284,6 +289,9 @@ public class InstrumentHandler : FieldPacketHandler {
                 memberSession.ConditionUpdate(ConditionType.music_play_score, codeLong: memberScore.Id, targetLong: memberSession.Field.MapId);
             }
         }
+        if (!started.Contains(session)) {
+            CancelReady(session);
+        }
     }
 
     private void HandleLeaveEnsemble(GameSession session) {
@@ -291,6 +299,10 @@ public class InstrumentHandler : FieldPacketHandler {
             return;
         }
 
+        CancelReady(session);
+    }
+
+    private static void CancelReady(GameSession session) {
         session.EnsembleReady = false;
         session.StagedInstrumentItem = null;
         session.StagedScoreItem = null;

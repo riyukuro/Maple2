@@ -174,6 +174,39 @@ public class EnsembleConditionTests {
         Assert.That(leaderQuests.Select(quest => quest.Conditions[0].Counter), Is.EqualTo(new[] { 0, 1, 0 }));
     }
 
+    // A leader whose own instrument does not start (here it has expired) is not left in the client's ensemble
+    // wait: it gets Instrument 6 (cancelled) and is no longer ready; the ready guest still starts, alone, so solo.
+    [Test]
+    public void LeaderWhoseInstrumentFails_GetsTheCancel() {
+        Party(0);
+        (long guestInstrument, long guestScore) = Items(guestTest);
+        (long leaderInstrument, long leaderScore) = Items(leaderTest);
+        leader.Item.Inventory.Get(leaderInstrument, InventoryType.FishingMusic)!.ExpiryTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60;
+        Send(guestTest, 5, guestInstrument, guestScore);
+        guestTest.TakeSent();
+        Send(leaderTest, 5, leaderInstrument, leaderScore);
+
+        byte[] cancel = Maple2.Server.Game.Packets.InstrumentPacket.LeaveEnsemble().ToArray();
+        Assert.That(leader.Instrument, Is.Null);
+        Assert.That(leaderTest.TakeSent().Count(packet => packet.SequenceEqual(cancel)), Is.EqualTo(1));
+        Assert.That(leader.EnsembleReady, Is.False);
+        Assert.That(guest.Instrument?.Ensemble, Is.False, "the guest plays alone");
+        Assert.That(guestTest.TakeSent().Any(packet => packet.SequenceEqual(cancel)), Is.False);
+    }
+
+    // A refused request (here a score with no use left) cancels the wait the client entered as it sent 5.
+    [Test]
+    public void RefusedRequest_GetsTheCancel() {
+        Party(0);
+        (long guestInstrument, long guestScore) = Items(guestTest);
+        guest.Item.Inventory.Get(guestScore, InventoryType.FishingMusic)!.RemainUses = 0;
+        Send(guestTest, 5, guestInstrument, guestScore);
+
+        byte[] cancel = Maple2.Server.Game.Packets.InstrumentPacket.LeaveEnsemble().ToArray();
+        Assert.That(guestTest.TakeSent().Count(packet => packet.SequenceEqual(cancel)), Is.EqualTo(1));
+        Assert.That(guest.EnsembleReady, Is.False);
+    }
+
     // Two ready members are an ensemble: both starts carry the flag and count the ensemble, not the solo score.
     [Test]
     public void TwoReady_PlayAnEnsemble() {
