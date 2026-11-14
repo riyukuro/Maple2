@@ -17,6 +17,12 @@ public class RideSyncHandler : FieldPacketHandler {
         if (session.State != SessionState.Connected || session.Field == null) {
             return;
         }
+        // The client sends RideSync only from its mount's controller (StateRideeController, state.cpp:536), and the
+        // other clients drop one for a player without a mount (CSceneStateGame::OnRideSync, scenestategame.cpp:2478).
+        // Without a ride the records would still move the player and set its state to Ride.
+        if (session.Ride?.Ride == null) {
+            return;
+        }
 
         StateSync[]? stateSyncs = ReadRecords(packet);
         if (stateSyncs == null) {
