@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Model;
@@ -30,12 +31,14 @@ public class StateSkillCastTests : TriggerTestBase {
 
     private void Begin(params SkillMetadata[] skills) => Begin(climb: true, skills);
 
-    private void Begin(bool climb, params SkillMetadata[] skills) {
+    private void Begin(bool climb, params SkillMetadata[] skills) => Begin(climb, fly: false, skills);
+
+    private void Begin(bool climb, bool fly, params SkillMetadata[] skills) {
         Start();
         MapMetadata map = TestGameSession.Map(2000001);
         test.EnterMap(map with {
             Limit = new MapMetadataLimit(0, 0, 0, 0, [], true, true, true, true, true, true, true),
-            Property = map.Property with { CanClimb = climb },
+            Property = map.Property with { CanClimb = climb, CanFly = fly },
         });
         QuestConditionWiringTests.SetSkills(test, skills);
         test.TakeSent();
@@ -89,6 +92,37 @@ public class StateSkillCastTests : TriggerTestBase {
     public void AClimb_IsNotTakenOnAFieldWithoutCheckClimb() {
         Begin(climb: false, StateSkill(ActorState.Climb, mainType: 13));
         Assert.That(Send(ActorState.Climb), Is.False);
+    }
+
+    // A glide with its glider is taken only on a field with checkFly, or by a GM anywhere (FUN_14176a8c0 answer 0xf).
+    private const int Glider = 50000911;
+
+    private long BeginGlide(bool fly, AdminPermissions admin = AdminPermissions.None) {
+        Begin(climb: true, fly, StateSkill(ActorState.Glide));
+        test.Session.Player.Value.Account.AdminPermissions = admin;
+        ItemMetadata glider = TestGameSession.Metadata(Glider, type: StateSkillHandler.GliderType);
+        test.Register(glider);
+        Assert.That(test.Session.Item.Inventory.Add(new Item(glider), commit: true), Is.True);
+        test.TakeSent();
+        return test.Session.Item.Inventory.Find(Glider).Single().Uid;
+    }
+
+    [Test]
+    public void AGlide_IsTakenOnAFieldWithCheckFly() {
+        long glider = BeginGlide(fly: true);
+        Assert.That(Send(ActorState.Glide, itemUid: glider), Is.True);
+    }
+
+    [Test]
+    public void AGlide_IsNotTakenOnAFieldWithoutCheckFly() {
+        long glider = BeginGlide(fly: false);
+        Assert.That(Send(ActorState.Glide, itemUid: glider), Is.False);
+    }
+
+    [Test]
+    public void AGmGlide_IsTakenOnAFieldWithoutCheckFly() {
+        long glider = BeginGlide(fly: false, AdminPermissions.GameMaster);
+        Assert.That(Send(ActorState.Glide, itemUid: glider), Is.True);
     }
 
     [Test]
