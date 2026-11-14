@@ -1618,7 +1618,9 @@ public sealed class QuestManager {
     }
 
     public void CompleteFieldMission(int mission) {
-        if (!session.TableMetadata.FieldMissionTable.Entries.TryGetValue(mission, out FieldMissionTable.Entry? metadata)) {
+        IReadOnlyDictionary<int, FieldMissionTable.Entry> rounds = session.TableMetadata.FieldMissionTable.Entries;
+        if (mission != QuestRules.NextFieldMissionRound(rounds.Keys, session.Config.ExplorationProgress) ||
+            !rounds.TryGetValue(mission, out FieldMissionTable.Entry? metadata)) {
             return;
         }
 

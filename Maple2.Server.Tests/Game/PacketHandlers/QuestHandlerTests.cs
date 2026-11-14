@@ -867,6 +867,33 @@ public class QuestHandlerTests {
         });
     }
 
+    // KR kr_fieldmission.xml rounds 5 (an item) and 10: the client claims the round after the last one claimed
+    // (CQuestManager::GetNextRound), so with 10 missions completed a claim of round 10 before round 5 gives
+    // nothing; then 5 and 10 each give theirs. Made-up items.
+    [Test]
+    public void FieldMission_TakesOnlyTheNextRound() {
+        GameSession session = Login();
+        test.SetTable(new FieldMissionTable(new Dictionary<int, FieldMissionTable.Entry> {
+            [10] = new(10, new ItemComponent(RewardId, 1, 3, ItemTag.None), 0),
+            [5] = new(5, new ItemComponent(RewardId, 1, 1, ItemTag.None), 0),
+        }));
+        for (int i = 0; i < 10; i++) {
+            test.StartQuest(TestGameSession.QuestData(QuestId + 1 + i, QuestType.FieldMission)).State = QuestState.Completed;
+        }
+        void Claim(int round) => handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(26);
+            writer.WriteInt(round);
+        }));
+
+        Claim(10);
+        Assert.That((Held(session), session.Config.ExplorationProgress), Is.EqualTo((0, 0)));
+        Claim(5);
+        Assert.That((Held(session), session.Config.ExplorationProgress), Is.EqualTo((1, 5)));
+        Claim(10);
+        Assert.That((Held(session), session.Config.ExplorationProgress), Is.EqualTo((4, 10)));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // A started quest of the KR row's type with this complete reward, its one condition met.
     private Quest StartedWith(QuestType type, Func<QuestMetadataReward, QuestMetadataReward> reward, AllianceType alliance = AllianceType.AnyFaction,
                               int rank = 5) {
