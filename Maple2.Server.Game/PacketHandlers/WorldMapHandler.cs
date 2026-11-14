@@ -14,6 +14,15 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class WorldMapHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestWorldmap;
 
+    // The client asks for the crowd view on every world button click (uiworldmapdialog.cpp:496-502), so the world's
+    // answer is kept for a few seconds and the call has a deadline; a failed call is kept as no answer for as long.
+    internal static readonly TimeSpan PopulationLifetime = TimeSpan.FromSeconds(5);
+    internal static readonly TimeSpan PopulationDeadline = TimeSpan.FromSeconds(2);
+    internal Func<DateTime> Now = () => DateTime.UtcNow;
+    private readonly object populationLock = new();
+    private MapPopulationResponse? population;
+    private DateTime populationExpiry = DateTime.MinValue;
+
     private enum Command : byte {
         Load = 0,
         Population = 1,
@@ -57,13 +66,13 @@ public class WorldMapHandler : FieldPacketHandler {
 
     // The crowd view: the asked world's three busiest fields, ranked 1 to 3 (WorldMapPopulationRules). The world's
     // counts are of its online players; without an answer from the world nothing is ranked.
-    private static void HandlePopulation(GameSession session, IByteReader packet) {
+    private void HandlePopulation(GameSession session, IByteReader packet) {
         // 102 = Victoria, 103 = Karkar, 105 = Kritias
         int mapCode = packet.ReadInt();
 
         var populations = new List<MapPopulation>();
-        try {
-            MapPopulationResponse response = session.World.MapPopulation(new MapPopulationRequest());
+        MapPopulationResponse? response = Population(session);
+        if (response != null) {
             HashSet<int> tiles = session.TableMetadata.WorldMapTable.Entries.Select(entry => entry.Code).ToHashSet();
             bool OnWorld(int mapId) => tiles.Contains(mapId) && session.MapMetadata.TryGet(mapId, out MapMetadata? map)
                                        && (int) map.Property.Continent == mapCode;
@@ -71,7 +80,23 @@ public class WorldMapHandler : FieldPacketHandler {
             foreach ((int mapId, int rank, short channel) in WorldMapPopulationRules.Rank(counts, OnWorld)) {
                 populations.Add(new MapPopulation { MapId = mapId, Population = rank, Channel = channel });
             }
-        } catch (RpcException) { }
+        }
         session.Send(WorldMapPacket.Population(populations));
+    }
+
+    private MapPopulationResponse? Population(GameSession session) {
+        lock (populationLock) {
+            DateTime now = Now();
+            if (now < populationExpiry) {
+                return population;
+            }
+            try {
+                population = session.World.MapPopulation(new MapPopulationRequest(), deadline: now + PopulationDeadline);
+            } catch (RpcException) {
+                population = null;
+            }
+            populationExpiry = Now() + PopulationLifetime;
+            return population;
+        }
     }
 }

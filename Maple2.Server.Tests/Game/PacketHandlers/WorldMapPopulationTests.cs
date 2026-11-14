@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
@@ -16,9 +17,9 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class WorldMapPopulationTests {
     private const int Busy = 2000901, Quiet = 2000902, NoTile = 2000903, Karkar = 2000904, Calm = 2000905, Empty = 2000906;
 
-    private static List<(int MapId, int Rank, short Channel)> Request(TestGameSession test, GameSession session, int world) {
+    private static List<(int MapId, int Rank, short Channel)> Request(TestGameSession test, GameSession session, int world, WorldMapHandler? handler = null) {
         test.TakeSent();
-        new WorldMapHandler().Handle(session, TestGameSession.Packet(writer => {
+        (handler ?? new WorldMapHandler()).Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(1);
             writer.WriteInt(world);
         }));
@@ -70,5 +71,44 @@ public class WorldMapPopulationTests {
         TestGameSession test = Setup();
         GameSession session = test.Start();
         Assert.That(Request(test, session, 102), Is.Empty);
+    }
+
+    // The world's answer is kept for 5 s, for every world asked, and the call has a 2 s deadline; each click called
+    // the world with no deadline. A failed call is kept as no answer for as long.
+    [Test]
+    public void TheWorldsAnswer_IsKeptForFiveSeconds() {
+        TestGameSession test = Setup();
+        GameSession session = test.Start();
+        var now = new DateTime(2026, 11, 13, 12, 0, 0, DateTimeKind.Utc);
+        var handler = new WorldMapHandler { Now = () => now };
+        test.World.Population = new MapPopulationResponse { Entries = { Entry(Busy, 1, 4) } };
+
+        Assert.That(Request(test, session, 102, handler), Is.EqualTo(new[] { (Busy, 1, (short) 1) }));
+        test.World.Population = new MapPopulationResponse { Entries = { Entry(Quiet, 1, 4) } };
+        now += TimeSpan.FromSeconds(4);
+        Assert.Multiple(() => {
+            Assert.That(Request(test, session, 102, handler), Is.EqualTo(new[] { (Busy, 1, (short) 1) }));
+            Assert.That(Request(test, session, 103, handler), Is.Empty);
+            Assert.That(test.World.PopulationDeadlines, Is.EqualTo(new DateTime?[] { now - TimeSpan.FromSeconds(4) + TimeSpan.FromSeconds(2) }));
+        });
+
+        now += TimeSpan.FromSeconds(1);
+        Assert.That(Request(test, session, 102, handler), Is.EqualTo(new[] { (Quiet, 1, (short) 1) }));
+        Assert.That(test.World.PopulationDeadlines, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void AFailedCall_IsKeptAsNoAnswer() {
+        TestGameSession test = Setup();
+        GameSession session = test.Start();
+        var now = new DateTime(2026, 11, 13, 12, 0, 0, DateTimeKind.Utc);
+        var handler = new WorldMapHandler { Now = () => now };
+
+        Assert.That(Request(test, session, 102, handler), Is.Empty);
+        test.World.Population = new MapPopulationResponse { Entries = { Entry(Busy, 1, 4) } };
+        Assert.That(Request(test, session, 102, handler), Is.Empty);
+        now += TimeSpan.FromSeconds(5);
+        Assert.That(Request(test, session, 102, handler), Is.EqualTo(new[] { (Busy, 1, (short) 1) }));
+        Assert.That(test.World.PopulationDeadlines, Has.Count.EqualTo(2));
     }
 }

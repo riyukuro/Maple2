@@ -636,8 +636,10 @@ public sealed class TestGameSession {
 
         // The world's online counts per field and channel (MapPopulation); none when null.
         public MapPopulationResponse? Population;
+        public readonly List<DateTime?> PopulationDeadlines = [];
 
         public override MapPopulationResponse MapPopulation(MapPopulationRequest request, CallOptions options) {
+            PopulationDeadlines.Add(options.Deadline);
             return Population ?? throw new RpcException(new Status(StatusCode.Unavailable, "no world"));
         }
 
