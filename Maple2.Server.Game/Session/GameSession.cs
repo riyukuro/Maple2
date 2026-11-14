@@ -1655,12 +1655,18 @@ public sealed partial class GameSession : Core.Network.Session {
         return;
 
         void SendOffline() {
+            // The logout comes after the final save. A newer session of the character on this channel (a login after
+            // the World had already set the player offline) is the one online: it is not ended here.
+            if (server.GetSession(CharacterId, out GameSession? newer) && newer != this) {
+                return;
+            }
             PlayerInfo.SendUpdate(new PlayerUpdateRequest {
                 AccountId = AccountId,
                 CharacterId = CharacterId,
                 LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
                 MapId = 0,
                 Channel = -1,
+                FromChannel = GameServer.GetChannel(),
                 Async = false,
             });
 

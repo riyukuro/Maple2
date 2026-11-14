@@ -132,6 +132,23 @@ public class SessionCloseSaveTests {
         Assert.That(channel.Heartbeat(request, null!).Result.Success, Is.False);
     }
 
+    // The old session of a character whose newer session already plays here: its close leaves the newer one in
+    // place and is not kept as closing.
+    [Test]
+    public void TheCloseOfAnOldSession_LeavesTheNewerOne() {
+        GameServer server = Server();
+        var sessions = (ConcurrentDictionary<long, GameSession>) typeof(GameServer).GetField("sessions", Any)!.GetValue(server)!;
+        var newer = (GameSession) RuntimeHelpers.GetUninitializedObject(typeof(GameSession));
+        GC.SuppressFinalize(newer); // Never built: its Dispose must not run on the finalizer thread.
+        sessions[session.CharacterId] = newer;
+
+        server.OnDisconnected(session);
+        Assert.That(server.GetSession(session.CharacterId, out GameSession? found), Is.True);
+        Assert.That(found, Is.SameAs(newer));
+        var closing = (ConcurrentDictionary<long, GameSession>?) typeof(GameServer).GetField("closing", Any)!.GetValue(server);
+        Assert.That(closing?.ContainsKey(session.CharacterId) ?? false, Is.False);
+    }
+
     [Test]
     public void AKickOfAPlayingSession_RunsItsDispose() {
         GameServer server = Playing();

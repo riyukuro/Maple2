@@ -40,6 +40,13 @@ public partial class WorldService {
             throw new RpcException(new Status(StatusCode.InvalidArgument, $"Player updated with invalid job: {request.Job}"));
         }
 
+        // A channel's logout is checked against the record (ApplyLogout): a login on another channel since keeps it,
+        // and the late logout (sent after the final save) changes nothing, its cleanups below included.
+        bool logout = request is { HasChannel: true, Channel: < 0, HasFromChannel: true };
+        if (logout && !playerLookup.ApplyLogout(request)) {
+            return Task.FromResult(new PlayerUpdateResponse());
+        }
+
         // A written channel ends the channel change of that player: the login on the new channel or a logout.
         if (request.HasChannel) {
             worldServer.Migrations.End(request.CharacterId);
@@ -55,7 +62,9 @@ public partial class WorldService {
         }
 
         // TODO: How should we handle failed updated?
-        playerLookup.Update(request);
+        if (!logout) {
+            playerLookup.Update(request);
+        }
         return Task.FromResult(new PlayerUpdateResponse());
     }
 

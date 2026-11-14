@@ -87,6 +87,10 @@ message PlayerUpdateRequest {
   optional int32 room_id = 25;
   // The dungeon room of that field (0 outside a dungeon instance); sent together with room_id.
   optional int32 dungeon_id = 27;
+  // A logout (channel -1) sent by a channel at the end of a session: the channel it leaves. The World applies it only
+  // while its record still names that channel, so a late logout (sent after the final save) never marks a login on
+  // another channel offline.
+  optional int32 from_channel = 28;
 }
 
 message PlayerUpdateResponse {

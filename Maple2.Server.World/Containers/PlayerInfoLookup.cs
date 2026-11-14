@@ -145,6 +145,16 @@ public class PlayerInfoLookup : IPlayerInfoProvider, IDisposable {
         return @event != null && Notify(info, @event.Type);
     }
 
+    // A channel's logout (channel -1 with from_channel, sent after the session's final save): applied while the
+    // record names that channel or is already offline (the World set it so first), each compare and write in one
+    // step. False: the record names another channel, a login there since, and the late logout changes nothing.
+    public bool ApplyLogout(PlayerUpdateRequest request) {
+        if (UpdateIfOn(request.FromChannel, request) || UpdateIfOn(-1, request)) {
+            return true;
+        }
+        return !cache.TryGetValue(request.CharacterId, out PlayerInfo? info) || info.Channel < 0;
+    }
+
     private bool Notify(PlayerInfo info, UpdateField type) {
         var request = new PlayerUpdateRequest {
             AccountId = info.AccountId,

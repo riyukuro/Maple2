@@ -96,8 +96,12 @@ public class GameServer : Server<GameSession> {
         // OnDisconnected would remove the new session, leaving the player unregistered
         // and causing all subsequent heartbeats to fail.
         // For cross-channel migration this is a non-issue since each server has its own dict.
-        if (session.CharacterId > 0 && sessions.TryRemove(KeyValuePair.Create(session.CharacterId, session))) {
+        // Into Closing before it leaves `sessions`: a heartbeat or kick in between finds it in one of the two.
+        if (session.CharacterId > 0 && sessions.TryGetValue(session.CharacterId, out GameSession? registered) && registered == session) {
             Closing[session.CharacterId] = session;
+            if (!sessions.TryRemove(KeyValuePair.Create(session.CharacterId, session))) {
+                Closing.TryRemove(KeyValuePair.Create(session.CharacterId, session));
+            }
         }
         GameEvents.Drop(session);
     }
