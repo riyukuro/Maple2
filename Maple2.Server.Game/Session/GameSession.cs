@@ -54,7 +54,10 @@ public sealed partial class GameSession : Core.Network.Session {
     public int Latency;
     public string PlayerName => FieldEntryRules.LogName(Player?.Value.Character.Name);
     public Guid MachineId { get; private set; }
-    private bool preMigrationSaved;
+    private volatile bool preMigrationSaved;
+    // The session made the save of a move to another server or to the character select, and has not been refused it:
+    // a packet handled after it would change state no save stores (FieldManager.ProcessPackets drops it).
+    internal bool MigrationSaved => preMigrationSaved;
     // The account's and character's item rows, held from an entry that took the account lock (see EnterServer).
     private IDisposable? heldRows;
     // The account's session generation this entry claimed (GameStorage.ClaimSession): a save writes only while the

@@ -535,7 +535,9 @@ public partial class FieldManager : IField {
         lock (queuedPackets) {
             foreach ((FieldPacketHandler handler, GameSession session, ByteReader reader) packet in queuedPackets) {
                 try {
-                    if (packet.session.State is SessionState.Disconnected) {
+                    // A session that made the save of its move: what a later packet gives (an item row is stored at once)
+                    // or takes would not be saved, and the next server loads the saved state.
+                    if (packet.session.State is SessionState.Disconnected || packet.session.MigrationSaved) {
                         continue;
                     }
                     // The copy's buffer is rented and can be longer than the packet: the handler's reader ends at the packet.
