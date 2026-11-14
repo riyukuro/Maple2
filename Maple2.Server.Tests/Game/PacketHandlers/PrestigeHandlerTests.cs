@@ -176,4 +176,54 @@ public class PrestigeHandlerTests {
         Claim(session, 3, 3);
         Assert.That(Held(session), Is.EqualTo(2));
     }
+
+    private Maple2.Model.Game.Account StoredAccount() {
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        return db.GetAccount(test.AccountId)!;
+    }
+
+    private static bool AccountWrite(Microsoft.EntityFrameworkCore.DbContext context) =>
+        context.ChangeTracker.Entries<Maple2.Database.Model.Account>().Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified);
+
+    // The claim is in the account row before the item is given, so a crash between them cannot give the reward again
+    // after a relog; a refused store gives nothing and leaves the level to claim.
+    [Test]
+    public void LevelReward_TheClaimIsStoredBeforeTheItem() {
+        GameSession session = Login();
+
+        test.FailSave = AccountWrite;
+        Claim(session, 3, 3);
+        test.FailSave = null;
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(TestGameSession.Op), Has.No.Member(SendOp.Prestige));
+            Assert.That(Held(session), Is.EqualTo(0));
+            Assert.That(session.Exp.PrestigeRewardsClaimed, Is.Empty);
+            Assert.That(StoredAccount().PrestigeRewardsClaimed, Is.Empty);
+        });
+        test.Errors.Clear();
+
+        Claim(session, 3, 3);
+        Assert.That(Held(session), Is.EqualTo(2));
+        Assert.That(StoredAccount().PrestigeRewardsClaimed, Is.EqualTo(new[] { 3 }));
+    }
+
+    [Test]
+    public void MissionReward_TheClaimIsStoredBeforeTheItem() {
+        GameSession session = Login();
+
+        test.FailSave = AccountWrite;
+        Claim(session, 5, MissionId);
+        test.FailSave = null;
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(TestGameSession.Op), Has.No.Member(SendOp.Prestige));
+            Assert.That(Held(session), Is.EqualTo(0));
+            Assert.That(session.Exp.PrestigeMissions[0].Awarded, Is.False);
+        });
+        test.Errors.Clear();
+
+        Claim(session, 5, MissionId);
+        Assert.That(Held(session), Is.EqualTo(4));
+        PrestigeMission stored = StoredAccount().PrestigeMissions.Single(mission => mission.Id == MissionId);
+        Assert.That((stored.Awarded, stored.GainedLevels), Is.EqualTo((true, 5L)));
+    }
 }

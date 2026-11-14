@@ -848,6 +848,43 @@ public class TrophyWiringTests {
         int[] after = session.Config.ExtraSkillPoints();
         Assert.That((after[0] - before[0], after[1] - before[1]), Is.EqualTo((first, awakening)));
     }
+
+    // The claimed grade of an item reward is in the trophy's row before the item is given, so a crash between them
+    // cannot give the item again after a relog; a refused store gives nothing and leaves the grade to claim.
+    [Test]
+    public void Claim_AnItemGradeIsStoredBeforeTheItem() {
+        const int RewardItem = 20000001;
+        test.Register(TestGameSession.Metadata(RewardItem));
+        AchievementMetadata trophy = TestGameSession.Trophy(Trophy, ConditionType.use_merat, [10, Goal]);
+        var grades = new Dictionary<int, AchievementMetadataGrade>(trophy.Grades);
+        grades[1] = grades[1] with { Reward = new AchievementMetadataReward(AchievementRewardType.item, RewardItem, 3, 1) };
+        GameSession session = Start(trophy with { Grades = grades });
+        session.Currency.Meret = 100;
+        session.Currency.Meret -= 10;
+        test.TakeSent();
+        int Held() => session.Item.Inventory.Find(RewardItem).Sum(item => item.Amount);
+        int StoredGrade() {
+            using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+            return db.GetAchievements(test.CharacterId)[Trophy].RewardGrade;
+        }
+
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Achievement>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified);
+        session.Achievement.ClaimReward(Trophy);
+        test.FailSave = null;
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSentOps(), Is.Empty);
+            Assert.That(Held(), Is.EqualTo(0));
+            Assert.That(StoredGrade(), Is.EqualTo(1));
+        });
+        test.Errors.Clear();
+
+        session.Achievement.ClaimReward(Trophy);
+        Assert.That(Held(), Is.EqualTo(3));
+        Assert.That(StoredGrade(), Is.EqualTo(2));
+        session.Achievement.ClaimReward(Trophy);
+        Assert.That(Held(), Is.EqualTo(3));
+    }
     #endregion
 
     #region fame_grade

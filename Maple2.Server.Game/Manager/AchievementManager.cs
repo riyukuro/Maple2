@@ -309,10 +309,20 @@ public sealed class AchievementManager {
                 if (item == null) {
                     return;
                 }
-                if (!session.Item.Inventory.Add(item, true)) {
+                // The claimed grade is stored before the item's row is made, so a crash between them cannot give the
+                // item again after a relog; a refused store gives nothing and leaves the grade to claim.
+                achievement.RewardGrade++;
+                long ownerId = achievement.Metadata.AccountWide ? session.AccountId : session.CharacterId;
+                if (!session.TrySavePurchase(db => db.SaveAchievements(ownerId, [achievement]))) {
+                    achievement.RewardGrade--;
+                    logger.Warning("Trophy {AchievementId} grade {Grade} claim not stored, nothing given CharacterId={CharacterId}",
+                        achievement.Id, achievement.RewardGrade, session.CharacterId);
+                    return;
+                }
+                if (!session.Item.Inventory.Add(item, true, commit: true)) {
                     session.Item.MailItem(item);
                 }
-                break;
+                return;
             case AchievementRewardType.title:
                 if (!manualClaim) {
                     return;

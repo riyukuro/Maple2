@@ -717,6 +717,34 @@ public partial class GameStorage {
             return true;
         }
 
+        // The account's claimed prestige rank rewards and its prestige missions, stored at a claim before its item is
+        // given (as SavePcBang).
+        public bool SavePrestigeClaims(Player player) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.Account? account = Context.Account.Find(player.Account.Id);
+            if (account == null) {
+                return false;
+            }
+
+            account.PrestigeRewardsClaimed = player.Account.PrestigeRewardsClaimed.ToList();
+            account.PrestigeMissions = player.Account.PrestigeMissions.Select(mission => new Model.PrestigeMission {
+                Id = mission.Id,
+                GainedLevels = mission.GainedLevels,
+                Awarded = mission.Awarded,
+            }).ToList();
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(player.Character.Id);
+            if (updated != null) {
+                player.Account.LastModified = updated.Value.AccountLastModified;
+                player.Character.LastModified = updated.Value.CharacterLastModified;
+            }
+            return true;
+        }
+
         private static AccountCurrency ToAccountCurrency(Currency currency) {
             return new AccountCurrency {
                 Meret = currency.Meret,

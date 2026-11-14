@@ -69,10 +69,16 @@ public class PrestigeHandler : FieldPacketHandler {
             return;
         }
 
-        // KMS2 order: the claim, then the item.
+        // KMS2 order: the claim, then the item. The claim is stored before the item's row is made, so a crash between
+        // them cannot give the reward again after a relog; a refused store gives nothing and leaves the level to claim.
         session.Exp.PrestigeRewardsClaimed.Add(level);
+        if (!session.TrySavePurchase(db => db.SavePrestigeClaims(session.Player))) {
+            session.Exp.PrestigeRewardsClaimed.Remove(level);
+            Logger.Warning("Prestige rank reward {Level} claim not stored, nothing given CharacterId={CharacterId}", level, session.CharacterId);
+            return;
+        }
         session.Send(PrestigePacket.ClaimReward(level));
-        if (!session.Item.Inventory.Add(item, true)) {
+        if (!session.Item.Inventory.Add(item, true, commit: true)) {
             session.Item.MailItem(item);
         }
     }
@@ -102,10 +108,15 @@ public class PrestigeHandler : FieldPacketHandler {
             return;
         }
 
-        // KMS2 order: the missions, then the item.
+        // KMS2 order: the missions, then the item; the claim is stored first, as for the rank reward.
         mission.Awarded = true;
+        if (!session.TrySavePurchase(db => db.SavePrestigeClaims(session.Player))) {
+            mission.Awarded = false;
+            Logger.Warning("Prestige mission {MissionId} claim not stored, nothing given CharacterId={CharacterId}", missionId, session.CharacterId);
+            return;
+        }
         session.Send(PrestigePacket.UpdateMissions(session.Player.Value.Account));
-        if (!session.Item.Inventory.Add(item, true)) {
+        if (!session.Item.Inventory.Add(item, true, commit: true)) {
             session.Item.MailItem(item);
         }
     }
