@@ -64,7 +64,7 @@ public static class MapleSurvivalProgress {
         Account account = session.Player.Value.Account;
         MapleSurvivalTable? table = Table(session);
         MapleSurvivalTable.Period? period = Period(session, table);
-        if (!paid || period == null || account.ActiveGoldPass || price != period.PassPrice || !session.Currency.TryTakeMeret(period.PassPrice)) {
+        if (!SurvivalRules.PassOn(session.ServerTableMetadata.FeatureTable) || !paid || period == null || account.ActiveGoldPass || price != period.PassPrice || !session.Currency.TryTakeMeret(period.PassPrice)) {
             session.Send(SurvivalPacket.UpdateStats(account));
             return;
         }
@@ -83,7 +83,7 @@ public static class MapleSurvivalProgress {
         MapleSurvivalTable.Period? period = Period(session, table);
         // Without a field (a field change under way) no reward item can be made: the claim is refused, nothing is
         // marked claimed.
-        if (table == null || period == null || session.Field == null) {
+        if (!SurvivalRules.PassOn(session.ServerTableMetadata.FeatureTable) || table == null || period == null || session.Field == null) {
             session.Send(SurvivalPacket.UpdateStats(account));
             return;
         }

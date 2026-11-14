@@ -444,6 +444,40 @@ public class MapleSurvivalTests {
         Assert.That((move.MapId, move.RoomId, move.Type), Is.EqualTo((MapleSurvivalRules.MapId, 41, MigrationType.PvpMatch)));
     }
 
+    // The played pack's switches, off (SurvivalRules): SurvivalContents01 refuses every request (the queue and the
+    // accept state 0, the squad Party 0x37 false, the pass the record) and nothing reaches the World;
+    // SurvivalContents03 refuses the pass at its price; SurvivalObserver answers no watch.
+    [Test]
+    public void FeaturesOff_Refuse() {
+        var test = new TestGameSession();
+        test.SetFeaturesOff(SurvivalRules.Feature);
+        GameSession session = test.Start();
+        test.SetTable(Table());
+        session.Currency.Meret = 1000;
+        Assert.That(Send(test, session, "00"), Is.EqualTo(new[] { "1901" + "01" }));
+        Assert.That(Send(test, session, "01"), Is.EqualTo(new[] { "1901" + "01" }));
+        Assert.That(Send(test, session, "04"), Is.EqualTo(new[] { Hex(PartyPacket.SurvivalPartySearch(false, false)) }));
+        Assert.That(Send(test, session, "22" + "01" + Long(800)), Is.EqualTo(new[] { Hex(SurvivalPacket.UpdateStats(session.Player.Value.Account)) }));
+        Assert.That(Send(test, session, "12"), Is.Empty);
+        Assert.That((test.World.PvpRequests.Count, session.Player.Value.Account.ActiveGoldPass, session.Currency.Meret), Is.EqualTo((0, false, 1000L)));
+
+        test = new TestGameSession();
+        test.SetFeaturesOff(SurvivalRules.PassFeature, SurvivalRules.ObserverFeature);
+        session = test.Start();
+        test.SetTable(Table());
+        session.Currency.Meret = 1000;
+        Send(test, session, "22" + "01" + Long(800));
+        Assert.That((session.Player.Value.Account.ActiveGoldPass, session.Currency.Meret), Is.EqualTo((false, 1000L)));
+        Assert.That(Send(test, session, "00"), Is.EqualTo(new[] { "1901" + "00" }));
+        test.TakeSent();
+        new SpectateMushtopiaHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(0);
+            writer.WriteLong(session.CharacterId);
+        }));
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(SurvivalRules.ObserverOn(session.ServerTableMetadata.FeatureTable), Is.False);
+    }
+
     // A running ShutdownMapleSurvival event closes the queue: state 0 at once and nothing reaches the World.
     [Test]
     public void Shutdown_RefusesTheQueue() {

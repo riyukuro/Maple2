@@ -38,6 +38,8 @@ public class SurvivalSquadTests {
         Assert.That(MapleSurvivalHandler.SquadRefusal(Party(2), 1, true, true), Is.EqualTo(PartyError.s_party_err_inside_survival));
         Assert.That(MapleSurvivalHandler.SquadRefusal(Party(2), 1, false, false), Is.EqualTo(PartyError.none));
         Assert.That(MapleSurvivalHandler.SquadRefusal(Party(4), 1, true, false), Is.Null);
+        // SurvivalContentsTeam off: a squad that would go is refused with no line.
+        Assert.That(MapleSurvivalHandler.SquadRefusal(Party(4), 1, true, false, squadOn: false), Is.EqualTo(PartyError.none));
     }
 
     [Test]

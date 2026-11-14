@@ -2255,8 +2255,16 @@ public class TableMapper : TypeMapper<TableMetadata> {
     }
 
     // The NA Maple Survival tables (table/na in the server's Xml), read as the restored client reads its copies.
+    // With the played pack's SurvivalContents01 off none is read, with SurvivalContents03 off not the pass tables
+    // (SurvivalRules.Feature, PassFeature).
     private MapleSurvivalTable ParseMapleSurvivalTable() {
+        bool on = FeatureLocaleFilter.FeatureEnabled(Maple2.Model.Game.Pvp.SurvivalRules.Feature);
+        bool passOn = on && FeatureLocaleFilter.FeatureEnabled(Maple2.Model.Game.Pvp.SurvivalRules.PassFeature);
+        Console.WriteLine($"maple survival: tables {(on ? "on" : "off")}, pass {(passOn ? "on" : "off")}");
         IEnumerable<XmlElement> Rows(string file, string node) {
+            if (!on || (!passOn && file.StartsWith("survivalpassreward"))) {
+                return [];
+            }
             Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(f => f.Name == $"table/na/{file}");
             if (entry == null) {
                 Console.WriteLine($"maple survival: table/na/{file} not found");

@@ -8,6 +8,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
+using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Model.Validators;
@@ -847,7 +848,7 @@ public class ItemUseHandler : FieldPacketHandler {
     // position packet, so the effect is all the item does. Chosen here: only a participant still playing a running game
     // with SurvivalContents01 on can use it; otherwise, or when the effect does not start, the item is kept.
     private static void HandleSurvivalScan(GameSession session, Item item) {
-        if (!session.ServerTableMetadata.FeatureTable.IsOn("SurvivalContents01") ||
+        if (!SurvivalRules.On(session.ServerTableMetadata.FeatureTable) ||
             session.Field?.Survival?.Playing(session.CharacterId) != true || session.Player.IsDead) {
             return;
         }

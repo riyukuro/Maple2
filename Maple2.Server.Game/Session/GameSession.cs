@@ -11,6 +11,7 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Pvp;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Validators;
 using Maple2.Model.Metadata;
@@ -503,14 +504,15 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(MigrationPacket.MoveResult(MigrationError.ok));
 
         // The survival lobby and queue state go only to the restored client (MapleSurvivalRules.RestoredClient); the
-        // KR client gets the record and medals as before.
-        if (MapleSurvivalRules.RestoredClient) {
+        // KR client gets the record and medals as before, as does the restored client with SurvivalContents01 off.
+        bool survivalLobby = MapleSurvivalRules.RestoredClient && SurvivalRules.On(ServerTableMetadata.FeatureTable);
+        if (survivalLobby) {
             MapleSurvivalProgress.SendLobby(this);
         } else {
             Survival.Load();
         }
         RankDuelStanding.Send(this);
-        if (MapleSurvivalRules.RestoredClient) {
+        if (survivalLobby) {
             MapleSurvivalHandler.SendState(this);
         }
         // MeretMarket

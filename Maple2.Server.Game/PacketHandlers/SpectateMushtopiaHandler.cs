@@ -1,3 +1,4 @@
+using Maple2.Model.Game.Pvp;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -19,7 +20,8 @@ public class SpectateMushtopiaHandler : FieldPacketHandler {
 
     public override void Handle(GameSession session, IByteReader packet) {
         byte mode = packet.ReadByte();
-        if (mode is not (Watch or Switch)) {
+        // SurvivalObserver off: no one is watched.
+        if (mode is not (Watch or Switch) || !SurvivalRules.ObserverOn(session.ServerTableMetadata.FeatureTable)) {
             return;
         }
         long wanted = packet.ReadLong();

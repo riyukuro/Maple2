@@ -31,7 +31,12 @@ public class MapleSurvivalHandler : FieldPacketHandler {
     }
 
     public override void Handle(GameSession session, IByteReader packet) {
-        switch ((Command) packet.ReadByte()) {
+        var command = (Command) packet.ReadByte();
+        if (!SurvivalRules.On(session.ServerTableMetadata.FeatureTable)) {
+            Refuse(session, command);
+            return;
+        }
+        switch (command) {
             case Command.Queue:
                 Queue(session);
                 return;
@@ -81,6 +86,27 @@ public class MapleSurvivalHandler : FieldPacketHandler {
         }
     }
 
+    // SurvivalContents01 off: nothing is queued or bought. The windows that wait for an answer get the one they take
+    // as a refusal (state 0, Party 0x37 false, the record); the rest get none.
+    private static void Refuse(GameSession session, Command command) {
+        switch (command) {
+            case Command.Queue:
+            case Command.Accept:
+            case Command.AcceptReinvite:
+            case Command.Cancel:
+            case Command.Refuse:
+                session.Send(MapleSurvivalPacket.Idle());
+                return;
+            case Command.RegisterSquad:
+                RefuseSquad(session, PartyError.none);
+                return;
+            case Command.BuyPass:
+            case Command.ClaimPass:
+                session.Send(SurvivalPacket.UpdateStats(session.Player.Value.Account));
+                return;
+        }
+    }
+
     // A ShutdownMapleSurvival game event runs (its window closes the queue; the client has no line for it).
     public static bool Shutdown(GameSession session) => session.FindEvent(GameEventType.ShutdownMapleSurvival).Count > 0;
 
@@ -109,8 +135,9 @@ public class MapleSurvivalHandler : FieldPacketHandler {
     public const int SquadMax = 4;
 
     // The reason the chief's register is refused before the World sees it: null = go on; none = refused with no line.
-    public static PartyError? SquadRefusal(Maple2.Model.Game.Party.Party? party, long characterId, bool canLeave, bool inArena) {
-        if (party == null || party.Members.Count < 2) {
+    // SurvivalContentsTeam off (squadOn false): no squad is registered, with no line.
+    public static PartyError? SquadRefusal(Maple2.Model.Game.Party.Party? party, long characterId, bool canLeave, bool inArena, bool squadOn = true) {
+        if (!squadOn || party == null || party.Members.Count < 2) {
             return PartyError.none;
         }
         if (party.LeaderCharacterId != characterId) {
@@ -147,7 +174,8 @@ public class MapleSurvivalHandler : FieldPacketHandler {
 
     private static void QueueSquad(GameSession session) {
         Maple2.Model.Game.Party.Party? party = session.Party.Party;
-        if (SquadRefusal(party, session.CharacterId, PvpHandler.CanLeave(session) && !Shutdown(session), session.Field?.Arena != null) is { } refusal) {
+        if (SquadRefusal(party, session.CharacterId, PvpHandler.CanLeave(session) && !Shutdown(session), session.Field?.Arena != null,
+                SurvivalRules.SquadOn(session.ServerTableMetadata.FeatureTable)) is { } refusal) {
             RefuseSquad(session, refusal);
             return;
         }

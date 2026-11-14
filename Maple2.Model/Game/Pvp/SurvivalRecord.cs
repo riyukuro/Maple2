@@ -17,6 +17,23 @@ public sealed class SurvivalSeasonRecord {
 // starts at StartRating and moves by RatingChange; a game gives GameExp.
 public static class SurvivalRules {
     public const int StartRating = 1000;
+
+    // The played pack's switches (feature.xml; ids 158-162 in featuremanager.cpp:446-454; the GMS client registers
+    // the same names as 0xad-0xb2 with SurvivalContentsGroggy at 0xb1, which KMS lacks). SurvivalContents01 is the
+    // whole of Maple Survival: lobby, queue, game, season and level tables. SurvivalContents03 (GMS 0xaf) picks the
+    // reward mode: on, the pass (pass reward tables, buy and claim; GMS opens the pass dialog); off, the level
+    // rewards (survivallevelreward, given at each level reached; GMS opens the lobby and loads no pass table). GMS
+    // tests SurvivalContents02 nowhere, so nothing here does. SurvivalContentsTeam is the squad register,
+    // SurvivalObserver the watch (GMS 0xb2). Off: the ingest leaves the tables out and the server refuses the requests.
+    public const string Feature = "SurvivalContents01";
+    public const string PassFeature = "SurvivalContents03";
+    public const string SquadFeature = "SurvivalContentsTeam";
+    public const string ObserverFeature = "SurvivalObserver";
+
+    public static bool On(FeatureTable features) => features.IsOn(Feature);
+    public static bool PassOn(FeatureTable features) => On(features) && features.IsOn(PassFeature);
+    public static bool SquadOn(FeatureTable features) => On(features) && features.IsOn(SquadFeature);
+    public static bool ObserverOn(FeatureTable features) => On(features) && features.IsOn(ObserverFeature);
     // A squad game's record is kept apart from the solo one: under the squad season (SeasonData_MapleSurvivalSquad)
     // plus this offset in the same table (chosen; the restored windows show only the solo season).
     public const int SquadSeasonOffset = 1_000_000;
