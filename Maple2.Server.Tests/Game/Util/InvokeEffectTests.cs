@@ -4,6 +4,7 @@ using System.Xml;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 
 namespace Maple2.Server.Tests.Game.Util;
@@ -199,5 +200,18 @@ public class InvokeEffectTests {
         // A damage invoke on the same effect adds no evasion.
         (AdditionalEffectMetadataInvokeEffect?, int)[] damage = [(Invoke(InvokeEffectType.IncreaseOffensivePhysicalDamage, 20f, 0f, effectId: 11100242), 1)];
         Assert.That(StatsManager.InvokeDebuffBonus(type => BuffManager.SumEffectInvokes(damage, type, 11100242, 0).Item1), Is.Empty);
+    }
+
+    [Test]
+    public void AHeldEffectWithoutACasterGetsNoEvasionDebuffBonus() {
+        // 11100242 evasion -8 and critical evasion -20 (level 1): held with no caster, only its own values count.
+        AdditionalEffectMetadata named = DisabledBuffTests.Effect(11100242, values: new Dictionary<BasicAttribute, long> {
+            { BasicAttribute.Evasion, -8 }, { BasicAttribute.CriticalEvasion, -20 },
+        });
+        var stats = new Stats(new Dictionary<BasicAttribute, long> { { BasicAttribute.Evasion, 100 }, { BasicAttribute.CriticalEvasion, 100 } }, 0);
+        StatsManager.AddBuffs(stats, [DisabledBuffTests.Held(named, true)]);
+        stats.Total();
+        Assert.That(stats[BasicAttribute.Evasion].Total, Is.EqualTo(92));
+        Assert.That(stats[BasicAttribute.CriticalEvasion].Total, Is.EqualTo(80));
     }
 }

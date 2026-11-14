@@ -25,9 +25,12 @@ public static class Damage {
     /// the dexterity term is left out (unmeasured), which changes nothing. Fitted to KMS2 player hits on npcs: at
     /// accuracy 82 and luck 18 to 26 the misses at evasion 82, 86, 87, 91, 97 and 103 are 0.7 %, 2.6 %, 3.1 %, 5.2 %, 11.5 % and 13.0 %,
     /// where this gives 1.1 %, 3.7 %, 3.9 %, 6.7 %, 10.1 % and 13.3 % and the rate without the luck gives 2.4 %,
-    /// 5.0 %, 5.6 %, 8.0 %, 11.4 % and 14.6 %.
+    /// 5.0 %, 5.6 %, 8.0 %, 11.4 % and 14.6 %. Chosen here: an evasion below 0 (debuffs such as 11100242 on a
+    /// target with little evasion) counts as 0, where every hit lands at an accuracy of 17 or more; below 0 it could
+    /// reach a divisor of 0 or less, a rate that evades every hit.
     /// </summary>
     public static double HitRate(double casterAccuracy, double targetEvasion, long casterLuck) {
+        targetEvasion = Math.Max(0, targetEvasion);
         double luck = casterLuck > 0 ? Math.Min(0.05, casterLuck / (casterLuck + 50.0) * 0.05) : 0;
         return (casterAccuracy - 10) / (targetEvasion + (0.8 * casterAccuracy)) * 2 + luck;
     }

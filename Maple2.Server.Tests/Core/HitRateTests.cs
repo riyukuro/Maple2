@@ -23,4 +23,13 @@ public class HitRateTests {
     public void NpcWithoutLuckIsUnchanged() {
         Assert.That(Damage.HitRate(80, 70, 0), Is.EqualTo((80 - 10) / (70 + 0.8 * 80) * 2).Within(1e-9));
     }
+
+    [Test]
+    public void EvasionBelowZeroCountsAsZero() {
+        // 11100242 at level 12 is evasion -41 in the played client's row, and 11100252 adds -12 more: two casters'
+        // on an npc with evasion 26 leave -80, which at accuracy 82 would divide by -14.4 and evade every hit.
+        Assert.That(Damage.HitRate(82, -80, 0), Is.EqualTo(Damage.HitRate(82, 0, 0)));
+        Assert.That(Damage.HitRate(82, -65.6, 0), Is.EqualTo(Damage.HitRate(82, 0, 0)));
+        Assert.That(Damage.HitRate(82, 0, 0), Is.GreaterThan(1));
+    }
 }
