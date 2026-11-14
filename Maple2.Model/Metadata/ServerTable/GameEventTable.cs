@@ -390,6 +390,11 @@ public record GuildChampionship : GameEventData;
 /// </summary>
 public record FreeAirTaxi : GameEventData;
 
+// April Fools' reverse OX quiz (KR 581001, no values): while it runs, the 61000003 OX quiz judges the false side the
+// winner. The client has no class for it (the event is the server's judge alone); its CustomTriggerString rows tell the
+// players.
+public record ReverseOxQuiz : GameEventData;
+
 /// <summary>
 /// The bound skin transfer (GameEventTransferItemBound, commonfiles/gameevent.cpp:3800): while one runs, an item with
 /// a skin type and no gem leaves the storage or a fitting doll for another character of the account
@@ -901,6 +906,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(GuildVsGameOpen), "GuildVsGameOpen")]
 [JsonDerivedType(typeof(GuildChampionship), "GuildChampionship")]
 [JsonDerivedType(typeof(FreeAirTaxi), "FreeAirTaxi")]
+[JsonDerivedType(typeof(ReverseOxQuiz), "ReverseOxQuiz")]
 [JsonDerivedType(typeof(ShutdownMapleSurvival), "ShutdownMapleSurvival")]
 [JsonDerivedType(typeof(ShutdownMapleSurvivalSquad), "ShutdownMapleSurvivalSquad")]
 [JsonDerivedType(typeof(ShutdownMapleSurvivalPass), "ShutdownMapleSurvivalPass")]

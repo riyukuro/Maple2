@@ -2183,6 +2183,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return new GuildChampionship();
             case GameEventType.FreeAirTaxi:
                 return new FreeAirTaxi();
+            case GameEventType.ReverseOxQuiz:
+                return new ReverseOxQuiz();
             case GameEventType.TransferItemBound:
                 return EventSaleReader.TransferItemBound(value1);
             case GameEventType.MesoRevival:

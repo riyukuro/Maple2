@@ -25,7 +25,7 @@ public class GameEvent : IByteSerializable {
     public bool SentToClient => Metadata.Data is not (NewUser or ReturnUserCandidate or ActiveUser
         or MapleSurvivalOpenPeriod or MiniGameBonusReward or SpawnNpcEvent or NpcShopShowItem
         or CharacterFirstConnectMail or SendMailEvent or ReturnUserYearRound or DailyLoginReward or RankDuelRewardRate or PlayGift
-        or ReverseRaidDungeonOpen)
+        or ReverseRaidDungeonOpen or ReverseOxQuiz)
         && (RestoredSurvivalClient || Metadata.Data is not (ShutdownMapleSurvival or ShutdownMapleSurvivalSquad
             or ShutdownMapleSurvivalPass or ShutdownSurvivalObserver or MapleSurvivalPassBundle));
 

@@ -1,4 +1,6 @@
 ﻿using System.Collections.Concurrent;
+using Maple2.Model.Enum;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
@@ -105,9 +107,17 @@ public class OxQuizWidget : Widget {
         if (!questions.TryGetValue(round, out OxQuizTable.Entry? question)) {
             return;
         }
-        Conditions["Correct"] = question.IsTrue ? 1 : 0;
-        Conditions["Incorrect"] = question.IsTrue ? 0 : 1;
+        // The game's events are the channel's: any player here finds them (no player, no one to judge).
+        bool reversed = Field.Players.Values.FirstOrDefault()?.Session.FindEvent(GameEventType.ReverseOxQuiz) is { Count: > 0 };
+        bool oWins = OWins(question.IsTrue, reversed);
+        Conditions["Correct"] = oWins ? 1 : 0;
+        Conditions["Incorrect"] = oWins ? 0 : 1;
     }
+
+    // The script's "Correct" branch makes the O box (101) the round's winner, "Incorrect" the X box (102). A running
+    // ReverseOxQuiz event (April Fools, "today the wrong answer is right") makes the false side win. The answer the
+    // players are shown (ShowAnswer) stays the true one: the client's panel marks it and shows its explanation.
+    internal static bool OWins(bool isTrue, bool reversed) => isTrue != reversed;
 
     private void Judge(string stringArg, int numericArg) { }
 
