@@ -26,6 +26,9 @@ public sealed class GameEventManager {
     // Set when the level, exp or job may have changed (and at login), so the next second step looks at the user
     // condition rows again.
     private volatile bool userConditionDue = true;
+    // The running UserCondition events the last step saw: an event that starts or ends while the player is online
+    // sets userConditionDue as well, so rows already met are given at once.
+    private int[] userConditionEvents = [];
 
     // The server's local time; each step reads it once, so that a step across midnight tests and stores its values
     // against one day (tests set it).
@@ -342,13 +345,19 @@ public sealed class GameEventManager {
     // notice: UserConditionEvent 1 with the last such row, whose preview row the client keeps as the one noticed.
     // The given rows are stored before the mails are made: a stop between the two loses a mail instead of sending
     // it twice. Chosen here: per character (each character's levels are its own), on the second step after a
-    // level, exp or job change and at login, so rows already met when an event starts are given too; one notice
-    // per step (the client shows one dialog).
+    // level, exp or job change, at login and when the running events change, so rows already met when an event
+    // starts are given too; one notice per step (the client shows one dialog).
     private void UpdateUserCondition() {
-        if (session.Field is null || !userConditionDue) return;
+        if (session.Field is null) return;
+        IList<GameEvent> events = session.FindEvent(GameEventType.UserCondition);
+        int[] running = events.Select(found => found.Id).Order().ToArray();
+        if (!running.SequenceEqual(userConditionEvents)) {
+            userConditionEvents = running;
+            userConditionDue = true;
+        }
+        if (!userConditionDue) return;
         userConditionDue = false;
 
-        IList<GameEvent> events = session.FindEvent(GameEventType.UserCondition);
         if (events.Count == 0) {
             return;
         }
@@ -378,10 +387,13 @@ public sealed class GameEventManager {
                 Get(GameEventUserValueType.UserConditionNotice, gameEvent.Id, gameEvent.EndTime, now);
                 Set(gameEvent.Id, GameEventUserValueType.UserConditionNotice, notice.Id);
             }
-            if (!Store(gameEvent.Id, GameEventUserValueType.UserConditionDone)
-                || (notice != null && !Store(gameEvent.Id, GameEventUserValueType.UserConditionNotice))) {
+            if (!Store(gameEvent.Id, GameEventUserValueType.UserConditionDone)) {
                 logger.Error("Failed to store the user condition rows of event {EventId} for {CharacterId}", gameEvent.Id, session.CharacterId);
                 continue;
+            }
+            // The rows are stored as given: a notice that fails to store loses only the login's preview, not the mails.
+            if (notice != null && !Store(gameEvent.Id, GameEventUserValueType.UserConditionNotice)) {
+                logger.Error("Failed to store the user condition notice of event {EventId} for {CharacterId}", gameEvent.Id, session.CharacterId);
             }
 
             bool mailed = false;

@@ -42,14 +42,16 @@ public class UserConditionEventTests {
         Row(90, 3, ConditionType.level, 0, 1, preview: 91, context: 50000200, new Attachment(0, Common, 1, 9)),
     ];
 
-    private static TestGameSession Test(int group = 1) {
+    private static TestGameSession Test(int group = 1, bool withEvent = true) {
         var test = new TestGameSession();
         test.Register(TestGameSession.Metadata(Common), TestGameSession.Metadata(Knight), TestGameSession.Metadata(Berserker));
         test.SetTable(new UserConditionEventTable(Rows.ToDictionary(row => row.Id)));
         test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>>(), new Dictionary<int, long> {
             [1] = 100, [5] = 1000,
         }));
-        test.AddEvent(EventId, GameEventType.UserCondition, new UserCondition(group, "https://example.com/"));
+        if (withEvent) {
+            test.AddEvent(EventId, GameEventType.UserCondition, new UserCondition(group, "https://example.com/"));
+        }
         return test;
     }
 
@@ -117,6 +119,32 @@ public class UserConditionEventTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // An event that starts while the player is online: the rows already met are given on the next second step,
+    // without waiting for a level, exp or job change.
+    [Test]
+    public void UserCondition_EventStartingOnline_GivesTheMetRowsAtOnce() {
+        TestGameSession test = Test(withEvent: false);
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        Character character = session.Player.Value.Character;
+        character.Level = 2;
+        character.Exp = 0;
+        character.Job = Job.Newbie;
+        session.GameEvent.Update(1000);
+        test.TakeSent();
+
+        // The server adds the event (as its event refresh does when an event's start comes).
+        var server = (Maple2.Server.Game.GameServer) typeof(GameSession)
+            .GetField("server", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(session)!;
+        server.AddEvent(test.AddEvent(EventId, GameEventType.UserCondition, new UserCondition(1, "https://example.com/")));
+        session.GameEvent.Update(2000);
+
+        // Level 2: rows 1 (any exp of a higher level) and 2; one notice, row 2.
+        Assert.That(Mails(test), Is.EqualTo(new[] { ("50000101", new[] { (Common, 1) }) }));
+        Assert.That(Notices(test), Is.EqualTo(new[] { Hex(UserConditionEventPacket.Notice(2)) }));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // The live KR event runs group 2, which no row has: nothing is given and the login sends 0.
     [Test]
     public void UserCondition_GroupWithoutRows_GivesNothing() {
@@ -174,7 +202,8 @@ public class UserConditionEventTests {
         var document = new XmlDocument();
         document.LoadXml("<ms2>"
             + "<event id=\"7\" gameEventID=\"1\"><condition type=\"level\" code=\"\" target=\"5\"/>"
-            + "<notify useNotify=\"1\" preview=\"13\" descKey=\"k\" descArg=\"attachment\"><attachment job=\"0\" itemID=\"59200079\" itemCount=\"1\"/></notify>"
+            + "<notify useNotify=\"1\" preview=\"13\" descKey=\"k\" descArg=\"attachment\"><attachment job=\"0\" itemID=\"59200079\" itemCount=\"1\"/>"
+            + "<attachment job=\"0\" itemID=\"59200079\" itemRank=\"\" itemCount=\"1\"/><attachment job=\"0\" itemID=\"59200079\" itemRank=\"x\" itemCount=\"1\"/></notify>"
             + "<mail useMail=\"1\" context=\"50000102\" meso=\"5\"><attachment job=\"10\" itemID=\"59200080\" itemRank=\"3\" itemCount=\"2\"/></mail></event>"
             + "<event id=\"8\" gameEventID=\"1\"><condition type=\"job\" code=\"10\" target=\"\"/><notify useNotify=\"0\" preview=\"1\"/>"
             + "<mail useMail=\"1\" context=\"50000100\"/></event>"
@@ -189,7 +218,10 @@ public class UserConditionEventTests {
         Assert.Multiple(() => {
             Assert.That((row.Group, row.Type, row.Code, row.Target), Is.EqualTo((1, ConditionType.level, 0L, 5L)));
             Assert.That(row.Notify?.Preview, Is.EqualTo(13));
-            Assert.That(row.Notify!.Attachments, Is.EqualTo(new[] { new Attachment(0, 59200079, 1, 1) }));
+            // itemRank missing, empty or not a number: 1, as the client keeps.
+            Assert.That(row.Notify!.Attachments, Is.EqualTo(new[] {
+                new Attachment(0, 59200079, 1, 1), new Attachment(0, 59200079, 1, 1), new Attachment(0, 59200079, 1, 1),
+            }));
             Assert.That((row.Mail?.Context, row.Mail?.Meso), Is.EqualTo(((int?) 50000102, (long?) 5)));
             Assert.That(row.Mail!.Attachments, Is.EqualTo(new[] { new Attachment(10, 59200080, 3, 2) }));
             Assert.That(table.Entries[8].Notify, Is.Null);

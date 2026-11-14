@@ -2849,7 +2849,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
     // As CUserConditionEventData::Load reads the rows (commonfiles/userconditioneventdata.cpp): <event id gameEventID>
     // with its <condition> (a row whose condition type is unknown is skipped, as the client skips a condition that
     // does not load), <notify useNotify preview descKey descArg> and <mail useMail context meso merat>, each with its
-    // <attachment job itemID itemRank itemCount/> (itemRank 1 when missing). Id 0 is skipped (GetEvent(0) finds
+    // <attachment job itemID itemRank itemCount/> (itemRank 1 when missing or not a number: the client's reader
+    // leaves the default when the attribute does not read). Id 0 is skipped (GetEvent(0) finds
     // nothing); an id listed again replaces the row.
     public static UserConditionEventTable UserConditionEvents(XmlDocument document) {
         var rows = new Dictionary<int, UserConditionEventMetadata>();
@@ -2886,7 +2887,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
             .Select(attachment => new UserConditionEventMetadata.Attachment(
                 Job: Int(attachment, "job"),
                 ItemId: Int(attachment, "itemID"),
-                Rarity: attachment.HasAttribute("itemRank") ? Int(attachment, "itemRank") : 1,
+                Rarity: int.TryParse(attachment.GetAttribute("itemRank"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int rank) ? rank : 1,
                 Amount: Int(attachment, "itemCount")))
             .ToArray();
 
