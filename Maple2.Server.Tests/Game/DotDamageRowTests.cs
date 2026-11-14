@@ -65,4 +65,21 @@ public class DotDamageRowTests {
         var record = new DotDamageRecord(caster, target, Dot(AttackType.All, useGrade: true, damageByTargetMaxHp: 0.1f, notKill: true));
         Assert.That(record.HpAmount, Is.EqualTo(-299));
     }
+
+    // 70000114 (KR: Type 1, DamageByTargetMaxHp 0.2), Snowfield's Intense Cold, which the Glacial Canyon (52000082)
+    // trigger adds each second to the players in box 701. Its caster is the field's own actor, which has no stats: no
+    // tick is rolled, each is a Normal fifth of the max health (an accuracy of 0 used to make each tick a Miss).
+    [Test]
+    public void FieldActorDot_IsNotRolled() {
+        FieldPlayer target = Player(10000, 10000);
+        var field = new FieldActor(target.Session.Field!, 1, target.Session.Field!.Metadata, null!);
+        Assert.That(field.Stats.Values[BasicAttribute.Accuracy].Total, Is.EqualTo(0));
+        AdditionalEffectMetadataDot.DotDamage dot = Dot(AttackType.Physical, damageByTargetMaxHp: 0.2f);
+        for (int i = 0; i < 20; i++) {
+            var record = new DotDamageRecord(field, target, dot);
+            Assert.That(record.Type, Is.EqualTo(DamageType.Normal));
+            // 2000, and the 1 CalculateDamage gives at the least for a typed dot without a rate (any caster's).
+            Assert.That(record.HpAmount, Is.InRange(-2001, -2000));
+        }
+    }
 }

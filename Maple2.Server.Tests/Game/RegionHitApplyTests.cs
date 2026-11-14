@@ -154,6 +154,18 @@ public class RegionHitApplyTests : TriggerTestBase {
         Assert.That(NpcControlRules.PushOffset(2, queued[0], npc.Position, 100).X, Is.EqualTo(50).Within(0.01));
     }
 
+    // A rate hit of the field's own actor is not rolled either: it lands (Normal) each time. No KR trap skill has a
+    // rate (the 106 skills the KR maps place and chain deal max-health shares or values); the rule is the dots' one.
+    [Test]
+    public void ATrapRateHitAlwaysLands() {
+        FieldNpc npc = SpawnMob(new Vector3(400, 0, 0));
+        var trap = new FieldActor(Field, 1, Field.Metadata, null!);
+        for (int i = 0; i < 20; i++) {
+            (DamageRecordTarget hit, _) = Fire(npc, Vector3.Zero, Attack(1, 4), trap);
+            Assert.That(hit.Damage.Single().Type, Is.EqualTo(DamageType.Normal));
+        }
+    }
+
     // A caster at the map origin (a trigger's field actor) is no object the client finds: no attacker, so a type 2
     // pull takes the full pushdistance.
     [Test]

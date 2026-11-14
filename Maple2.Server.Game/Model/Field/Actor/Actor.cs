@@ -122,15 +122,12 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             } else if (!DamageCalculator.HasDamage(attack.Damage)) {
                 // An attack with no value, rate, constDamageByTargetHP or damageByTargetMaxHP (SkillDamage::HasDamage)
                 // takes nothing: a hit of 0, still a hit for the hit events (KR: 645 pack attacks, 10800202 lv1-12),
-                // unless the block or evasion roll takes it (a Block or a Miss). The field's own actor (triggers, regions,
-                // cubes) has no stats to roll with, so its hit always lands.
+                // unless the block or evasion roll takes it (a Block or a Miss; the field's own actor does not roll).
                 DamageType hitType = DamageType.Normal;
-                if (caster is not FieldActor) {
-                    try {
-                        hitType = DamageCalculator.HitRoll(caster, this, damage.Properties) ?? DamageType.Normal;
-                    } catch (Exception e) {
-                        Logger.Error(e, "Error rolling the hit for {Caster} on {Target} with attack {Attack}", caster, this, attack);
-                    }
+                try {
+                    hitType = DamageCalculator.HitRoll(caster, this, damage.Properties) ?? DamageType.Normal;
+                } catch (Exception e) {
+                    Logger.Error(e, "Error rolling the hit for {Caster} on {Target} with attack {Attack}", caster, this, attack);
                 }
                 targetRecord.AddDamage(hitType, 0);
             } else if (attack.Damage.ConstDamageByTargetHp > 0) {
