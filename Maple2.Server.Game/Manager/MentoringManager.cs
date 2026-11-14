@@ -29,9 +29,13 @@ public class MentoringManager : IDisposable {
     private static readonly object StoreLock = new();
 
     // The running ReturnUser season. Without one the client's menu does not open the mentoring dialogs, and no
-    // request or pair is stored or sent.
+    // request or pair is stored or sent. Only a mentoring row is a season (value3 the season number, value2 10003):
+    // the stamp ReturnUser rows have no value3 and run at the same time as some seasons (KR/NA 180112 in season 5's
+    // 180110, CN 180017 in 180018, CN 180003 in 180001), so the first running row is not always the season.
     private ReturnUser? Season => SeasonEvent?.Metadata.Data as ReturnUser;
-    private GameEvent? SeasonEvent => session.FindEvent(GameEventType.ReturnUser).FirstOrDefault();
+    private GameEvent? SeasonEvent => session.FindEvent(GameEventType.ReturnUser)
+        .Where(gameEvent => gameEvent.Metadata.Data is ReturnUser { SeasonId: > 0 })
+        .MinBy(gameEvent => gameEvent.Id);
 
     // The partners whose login and logout are pushed as Mentor 15 (the online flag last sent for each).
     // A listener stops once its partner's entry is removed or replaced.
@@ -60,8 +64,7 @@ public class MentoringManager : IDisposable {
         if (role is not (MentorRole.Mentee or MentorRole.Mentor)) {
             return;
         }
-        GameEvent? gameEvent = session.FindEvent(GameEventType.ReturnUser).FirstOrDefault();
-        if (gameEvent?.Metadata.Data is not ReturnUser returnUser) {
+        if (Season is not { } returnUser) {
             // No season runs; the client's menu does not open the dialog then, so only a dialog left open from
             // the season gets here. The register box waits for Mentor 4 or 8, so each refusal sends a notice:
             // a mentee "not a returning user" (1), a mentor "invalid target" (3), as the client's error list
@@ -79,6 +82,14 @@ public class MentoringManager : IDisposable {
             } else {
                 session.Send(role == MentorRole.Mentee ? MentorPacket.AssignReturningUser() : MentorPacket.AssignMentor());
             }
+            return;
+        }
+        // The client opens the mentee register page only for role 1 and the mentor register page only for role 4
+        // (UIMentoringDialog::GetTabs, uimentoringrewardpage.cpp:115); the role is set at the season's login (Load).
+        // A request from another role gets the same notices as the no-season refusal: a mentee "not a returning
+        // user" (1, the text the client has for it), a mentor "invalid target" (3).
+        if (Role != (role == MentorRole.Mentee ? MentorRole.MenteeCandidate : MentorRole.MentorCandidate)) {
+            session.Send(MentorPacket.Error(role == MentorRole.Mentee ? MentorError.IsNotReturnUser : MentorError.InvalidTarget));
             return;
         }
 
@@ -120,6 +131,7 @@ public class MentoringManager : IDisposable {
     // The login: the waiting requests to a mentee (Mentor 2), the pairs (Mentor 3) and whether their other
     // characters are online (Mentor 15). Without a season only the empty pair list, as before.
     public void Load() {
+        LoadCandidate();
         if (Season == null) {
             session.Send(MentorPacket.MyList());
             return;
@@ -131,6 +143,88 @@ public class MentoringManager : IDisposable {
         session.Send(MentorPacket.PairOnline(pairs));
         ListenPartners(pairs);
         SendAttend();
+    }
+
+    // The candidate role, set before the field entry so the field's character block carries it (the client reads the
+    // role only from there and from Mentor 1, and its menu opens the register pages only for roles 1 and 4,
+    // UIMentoringDialog::GetTabs; a mentee is the party's returning user, uipartydialog.cpp:1080). A registered or
+    // unregistered role (2, 3, 5, 6) is kept as it is. While a ReturnUser season runs, any other player is a mentee
+    // candidate (1) when it returns and a mentor candidate (4) otherwise; without a season a candidate role goes
+    // back to none.
+    // Returning, from the server data (GameEvent.xml): a mentoring ReturnUser row (value3 the season, value4 its
+    // quests) gives the days away in value1 (KR/NA 30, CN 20); a date there would be read as "last online before
+    // it" (only stamp rows, which are no season, have one). A ReturnUserCandidate row (KR 180105, CN 180004: value1 30,
+    // value3 the next season, value4 that season's end; its note: players who return in its window are that
+    // season's mentees too) keeps a return made while it runs for its season. A return is stored with its season,
+    // so a later entry or a channel move keeps it. The days are a character's (its last save before this entry):
+    // the data does not say account or character, and per character no returning account is left out. The rows'
+    // levels are not read: the client's menu checks the constants' levels, as UpdateRole does.
+    private void LoadCandidate() {
+        MentorRole role = Role;
+        if (role is not (MentorRole.None or MentorRole.MenteeCandidate or MentorRole.MentorCandidate)) {
+            return;
+        }
+        MentorRole candidate = MentorRole.None;
+        GameEvent? season = SeasonEvent;
+        if (season?.Metadata.Data is ReturnUser returnUser) {
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long lastSave = session.EntryLastSave;
+            // A return already kept for this season (from a window, or from an earlier entry) is stored on the season's
+            // row too, so it lasts to the season's end when the event was extended after it was stored.
+            if (Returning(returnUser.DateInactiveSince, returnUser.DaysInactive, lastSave, now)
+                || session.GameEvent.HasValue(GameEventUserValueType.MentoringReturnUser, returnUser.SeasonId.ToString(), now)) {
+                StoreReturn(season.Id, season.EndTime, returnUser.SeasonId);
+            }
+            foreach (GameEvent window in session.FindEvent(GameEventType.ReturnUserCandidate)) {
+                // MinLevel is value1, the days away (named a level by the ingest; the row's note and the matching
+                // ReturnUser rows read it as days).
+                if (window.Metadata.Data is ReturnUserCandidate next && Returning(DateTimeOffset.MinValue, next.MinLevel, lastSave, now)) {
+                    long until = next.UnknownDate > DateTimeOffset.MinValue ? next.UnknownDate.ToUnixTimeSeconds() : window.EndTime;
+                    StoreReturn(window.Id, Math.Max(until, window.EndTime), next.Season);
+                }
+            }
+            bool returning = session.GameEvent.HasValue(GameEventUserValueType.MentoringReturnUser, returnUser.SeasonId.ToString(), now);
+            candidate = returning ? MentorRole.MenteeCandidate : MentorRole.MentorCandidate;
+        }
+        if (candidate == role) {
+            return;
+        }
+        session.Player.Value.Character.MentorRole = candidate;
+        session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
+            AccountId = session.AccountId,
+            CharacterId = session.CharacterId,
+            MentorRole = (int) candidate,
+            Async = true,
+        });
+    }
+
+    // The return for `seasonNumber`, kept on the event `eventId` until `until`; stored at once. A stored return is
+    // kept to the later end when the event (or the season a window names) was extended after it was stored.
+    private void StoreReturn(int eventId, long until, int seasonNumber) {
+        GameEventUserValue value = session.GameEvent.Get(GameEventUserValueType.MentoringReturnUser, eventId, until);
+        string text = seasonNumber.ToString();
+        if (value.Value == text && value.ExpirationTime >= until) {
+            return;
+        }
+        if (value.Value != text) {
+            session.GameEvent.Set(eventId, GameEventUserValueType.MentoringReturnUser, seasonNumber);
+        }
+        session.GameEvent.Extend(GameEventUserValueType.MentoringReturnUser, eventId, until);
+        if (!session.GameEvent.Store(eventId, GameEventUserValueType.MentoringReturnUser)) {
+            logger.Warning("Mentoring return of {CharacterId} not stored", session.CharacterId);
+        }
+    }
+
+    // Whether a character last saved at `lastSave` (epoch seconds; 0 never saved) returns at `now`: its last save is
+    // before `since`, or its days away reach `days`. Neither given: no return.
+    public static bool Returning(DateTimeOffset since, int days, long lastSave, long now) {
+        if (lastSave <= 0) {
+            return false;
+        }
+        if (since > DateTimeOffset.MinValue && lastSave < since.ToUnixTimeSeconds()) {
+            return true;
+        }
+        return days > 0 && now - lastSave >= days * 86400L;
     }
 
     // The mentee's attend streak and next claim time (Mentor 10), kept per season. Only a mentee has the reward

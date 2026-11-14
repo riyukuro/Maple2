@@ -9,6 +9,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Sync;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -35,7 +36,7 @@ public class MentorHandlerTests {
 
     private DbContextOptions options = null!;
 
-    private void Login(bool season, int[]? questIds = null) {
+    private void Login(bool season, int[]? questIds = null, int daysInactive = 0) {
         options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
@@ -46,7 +47,7 @@ public class MentorHandlerTests {
             each.AddMap(TestGameSession.Map(2000023));
             if (season) {
                 each.AddEvent(77, GameEventType.ReturnUser, new ReturnUser(SeasonId: 1, QuestIds: questIds ?? [], RequiredUserValue: 0,
-                    DateInactiveSince: DateTimeOffset.MinValue, DaysInactive: 0, RequiredLevel: 0));
+                    DateInactiveSince: DateTimeOffset.MinValue, DaysInactive: daysInactive, RequiredLevel: 0));
             }
             each.Start();
             each.EnterMap(TestGameSession.Map(2000023));
@@ -71,6 +72,12 @@ public class MentorHandlerTests {
     }
 
     private void Send(GameSession from, byte command, Action<Maple2.PacketLib.Tools.ByteWriter>? body = null) {
+        // A registration comes from a register page, which the client shows only to the matching candidate; in a
+        // season every player with no role is one from its login (MentoringManager.Load, tested below).
+        if (command is RegisterMentee or RegisterMentor && from.Player.Value.Character.MentorRole == MentorRole.None
+            && from.FindEvent(GameEventType.ReturnUser).Any()) {
+            from.Player.Value.Character.MentorRole = command == RegisterMentee ? MentorRole.MenteeCandidate : MentorRole.MentorCandidate;
+        }
         handler.Handle(from, TestGameSession.Packet(writer => {
             writer.WriteByte(command);
             body?.Invoke(writer);
@@ -179,8 +186,8 @@ public class MentorHandlerTests {
     }
 
     // The client's menu opens the register page only from MentorRequireLevel (mentor) or MenteeRequireLevel (mentee)
-    // of constants.xml (KR 50 and 30, uigamemenudialog.cpp:2078-2090): one level lower gets the refusal and no role,
-    // the level itself registers.
+    // of constants.xml (KR 50 and 30, uigamemenudialog.cpp:2078-2090): one level lower gets the refusal and keeps
+    // its candidate role, the level itself registers.
     [TestCase(RegisterMentor, MentorRole.Mentor, MentorError.InvalidTarget)]
     [TestCase(RegisterMentee, MentorRole.Mentee, MentorError.IsNotReturnUser)]
     public void Register_BelowTheRequiredLevelIsRefused(byte command, MentorRole role, MentorError error) {
@@ -191,12 +198,198 @@ public class MentorHandlerTests {
         Send(session, command);
 
         Assert.That(Mentor(test), Is.EqualTo(new[] { Error(error) }));
-        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.None));
+        Assert.That(session.Player.Value.Character.MentorRole,
+            Is.EqualTo(role == MentorRole.Mentor ? MentorRole.MentorCandidate : MentorRole.MenteeCandidate));
         Assert.That(test.World.PlayerUpdates.Any(update => update.HasMentorRole), Is.False);
 
         session.Player.Value.Character.Level = required;
         Send(session, command);
         Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(role));
+    }
+
+    // The season's login sets the candidate role before the field entry: a character away for the season's days is
+    // a mentee candidate (1), and stays one at a later entry of the season; one back sooner, or never saved, is a
+    // mentor candidate (4). The world learns the role. Before, the role stayed none, so the client's dialog had no
+    // tab and neither register page could be reached.
+    [Test]
+    public void Load_SetsTheCandidateRole() {
+        Login(season: true, daysInactive: 30);
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        session.EntryLastSave = now - 31 * 86400L;
+        other.EntryLastSave = now - 29 * 86400L;
+        session.Mentoring.Load();
+        other.Mentoring.Load();
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.MenteeCandidate));
+        Assert.That(other.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.MentorCandidate));
+        Assert.That(test.World.PlayerUpdates.Single(update => update.HasMentorRole).MentorRole, Is.EqualTo((int) MentorRole.MenteeCandidate));
+
+        // A later entry of the season (a channel move, a new login) keeps the return.
+        session.EntryLastSave = now;
+        session.Mentoring.Load();
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.MenteeCandidate));
+
+        // The mentee candidate registers as a mentee; the mentor candidate's mentee request is refused.
+        test.TakeSent();
+        otherTest.TakeSent();
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(RegisterMentee)));
+        handler.Handle(other, TestGameSession.Packet(writer => writer.WriteByte(RegisterMentee)));
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentee));
+        Assert.That(Mentor(otherTest), Is.EqualTo(new[] { Error(MentorError.IsNotReturnUser) }));
+        Assert.That(other.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.MentorCandidate));
+    }
+
+    // A registration from a player the season's login did not make the matching candidate is refused: a mentee
+    // request without role 1 gets error 1, a mentor request without role 4 error 3; the role stays.
+    [TestCase(RegisterMentee, MentorRole.None, MentorError.IsNotReturnUser)]
+    [TestCase(RegisterMentee, MentorRole.MentorCandidate, MentorError.IsNotReturnUser)]
+    [TestCase(RegisterMentor, MentorRole.None, MentorError.InvalidTarget)]
+    [TestCase(RegisterMentor, MentorRole.MenteeCandidate, MentorError.InvalidTarget)]
+    public void Register_WithoutTheCandidateRoleIsRefused(byte command, MentorRole held, MentorError error) {
+        Login(season: true);
+        session.Player.Value.Character.MentorRole = held;
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(command)));
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(error) }));
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(held));
+        Assert.That(test.World.PlayerUpdates.Any(update => update.HasMentorRole), Is.False);
+    }
+
+    // Without a season a candidate role goes back to none at login (the dialog does not open then); a registered
+    // role stays.
+    [TestCase(MentorRole.MenteeCandidate, MentorRole.None)]
+    [TestCase(MentorRole.MentorCandidate, MentorRole.None)]
+    [TestCase(MentorRole.Mentee, MentorRole.Mentee)]
+    public void Load_WithoutASeasonDropsTheCandidateRole(MentorRole held, MentorRole after) {
+        Login(season: false);
+        session.Player.Value.Character.MentorRole = held;
+        session.Mentoring.Load();
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(after));
+    }
+
+    // The season's date: a last save before it returns, one after it does not; the days count back from now. A
+    // character never saved, or a row with neither, has no return.
+    [Test]
+    public void Returning_ReadsTheDateAndDays() {
+        var since = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        long at = since.ToUnixTimeSeconds();
+        Assert.That(MentoringManager.Returning(since, 0, at - 1, at + 100), Is.True);
+        Assert.That(MentoringManager.Returning(since, 0, at + 1, at + 100), Is.False);
+        Assert.That(MentoringManager.Returning(DateTimeOffset.MinValue, 7, 1000, 1000 + 7 * 86400L), Is.True);
+        Assert.That(MentoringManager.Returning(DateTimeOffset.MinValue, 7, 1000, 999 + 7 * 86400L), Is.False);
+        Assert.That(MentoringManager.Returning(DateTimeOffset.MinValue, 7, 0, 1000 + 7 * 86400L), Is.False);
+        Assert.That(MentoringManager.Returning(DateTimeOffset.MinValue, 0, 1, 1000000), Is.False);
+    }
+
+    // A ReturnUserCandidate row (KR 180105: days 30, the next season 2 until that season's end) keeps a return made
+    // while it runs for the next season, which starts after the row has ended: the character is that season's
+    // mentee candidate at an entry with no days away. Without the row it is a mentor candidate.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void CandidateWindow_KeepsTheReturnForTheNextSeason(bool window) {
+        options = new DbContextOptionsBuilder()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var first = new TestGameSession(options);
+        first.AddEvent(77, GameEventType.ReturnUser, new ReturnUser(SeasonId: 1, QuestIds: [], RequiredUserValue: 0,
+            DateInactiveSince: DateTimeOffset.MinValue, DaysInactive: 30, RequiredLevel: 0));
+        if (window) {
+            first.AddEvent(78, GameEventType.ReturnUserCandidate, new ReturnUserCandidate(Season: 2, SeasonId: 10004, MinLevel: 30,
+                UnknownDate: DateTimeOffset.UtcNow.AddDays(90)), end: DateTime.Now.AddDays(1));
+        }
+        first.AddMap(TestGameSession.Map(2000023));
+        first.Start();
+        first.Session.EntryLastSave = now - 31 * 86400L;
+        first.Session.Mentoring.Load();
+        Assert.That(first.Session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.MenteeCandidate));
+
+        // The next season, after the window: the same character (its stored rows moved to the new session's
+        // character), back the day before.
+        var next = new TestGameSession(options);
+        using (var context = new Ms2Context(options)) {
+            foreach (Maple2.Database.Model.GameEventUserValue row in context.GameEventUserValue.AsNoTracking()
+                         .Where(row => row.CharacterId == first.CharacterId).ToList()) {
+                row.CharacterId = next.CharacterId;
+                context.GameEventUserValue.Add(row);
+            }
+            context.SaveChanges();
+        }
+        next.AddEvent(79, GameEventType.ReturnUser, new ReturnUser(SeasonId: 2, QuestIds: [], RequiredUserValue: 0,
+            DateInactiveSince: DateTimeOffset.MinValue, DaysInactive: 30, RequiredLevel: 0));
+        next.AddMap(TestGameSession.Map(2000023));
+        next.Start();
+        next.Session.EntryLastSave = now - 86400L;
+        next.Session.Mentoring.Load();
+        Assert.That(next.Session.Player.Value.Character.MentorRole, Is.EqualTo(window ? MentorRole.MenteeCandidate : MentorRole.MentorCandidate));
+    }
+
+    // A stamp ReturnUser row (KR/NA 180112: value1 a date, no value3) running inside a mentoring season (180110,
+    // season 5, 30 days) is no season: the character 31 days away is the season's mentee candidate, its return is
+    // stored for season 5, and its mentee registration is taken.
+    [Test]
+    public void StampReturnUserRow_IsNotTheSeason() {
+        options = new DbContextOptionsBuilder()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+        test = new TestGameSession(options);
+        test.AddEvent(70, GameEventType.ReturnUser, new ReturnUser(SeasonId: 0, QuestIds: [], RequiredUserValue: 0,
+            DateInactiveSince: new DateTimeOffset(2018, 3, 31, 0, 0, 0, TimeSpan.Zero), DaysInactive: 0, RequiredLevel: 0));
+        test.AddEvent(77, GameEventType.ReturnUser, new ReturnUser(SeasonId: 5, QuestIds: [], RequiredUserValue: 0,
+            DateInactiveSince: DateTimeOffset.MinValue, DaysInactive: 30, RequiredLevel: 0));
+        test.AddMap(TestGameSession.Map(2000023));
+        test.Start();
+        test.EnterMap(TestGameSession.Map(2000023));
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { MentorMaxWaitingCount = 100, MenteeMaxReceivedCount = 20 });
+        session.EntryLastSave = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 31 * 86400L;
+        session.Mentoring.Load();
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.MenteeCandidate));
+        Assert.That(session.GameEvent.HasValue(GameEventUserValueType.MentoringReturnUser, "5", DateTimeOffset.UtcNow.ToUnixTimeSeconds()), Is.True);
+
+        test.TakeSent();
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(RegisterMentee)));
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentee));
+    }
+
+    // A return stored while the season was to end in a day is kept to the season's later end once the event is
+    // extended, at an entry with no days away.
+    [Test]
+    public void StoredReturn_FollowsAnExtendedSeason() {
+        options = new DbContextOptionsBuilder()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var first = new TestGameSession(options);
+        first.AddEvent(77, GameEventType.ReturnUser, new ReturnUser(SeasonId: 1, QuestIds: [], RequiredUserValue: 0,
+            DateInactiveSince: DateTimeOffset.MinValue, DaysInactive: 30, RequiredLevel: 0), end: DateTime.Now.AddDays(1));
+        first.AddMap(TestGameSession.Map(2000023));
+        first.Start();
+        first.Session.EntryLastSave = now - 31 * 86400L;
+        first.Session.Mentoring.Load();
+
+        var next = new TestGameSession(options);
+        using (var context = new Ms2Context(options)) {
+            foreach (Maple2.Database.Model.GameEventUserValue row in context.GameEventUserValue.AsNoTracking()
+                         .Where(row => row.CharacterId == first.CharacterId).ToList()) {
+                row.CharacterId = next.CharacterId;
+                context.GameEventUserValue.Add(row);
+            }
+            context.SaveChanges();
+        }
+        DateTime end = DateTime.Now.AddDays(10);
+        next.AddEvent(77, GameEventType.ReturnUser, new ReturnUser(SeasonId: 1, QuestIds: [], RequiredUserValue: 0,
+            DateInactiveSince: DateTimeOffset.MinValue, DaysInactive: 30, RequiredLevel: 0), end: end);
+        next.AddMap(TestGameSession.Map(2000023));
+        next.Start();
+        next.Session.EntryLastSave = now - 86400L;
+        next.Session.Mentoring.Load();
+        Assert.That(next.Session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.MenteeCandidate));
+        Assert.That(next.Session.GameEvent.HasValue(GameEventUserValueType.MentoringReturnUser, "1", now + 5 * 86400L), Is.True);
+        using (var context = new Ms2Context(options)) {
+            Assert.That(context.GameEventUserValue.AsNoTracking().Single(row => row.CharacterId == next.CharacterId
+                && row.Type == GameEventUserValueType.MentoringReturnUser).ExpirationTime, Is.GreaterThan(now + 5 * 86400L));
+        }
     }
 
     [Test]

@@ -127,6 +127,9 @@ public sealed partial class GameSession : Core.Network.Session {
     public ItemBoxManager ItemBox { get; set; } = null!;
     public BeautyManager Beauty { get; set; } = null!;
     public GameEventManager GameEvent { get; set; } = null!;
+    // The character's last save before this entry stamped it (epoch seconds, 0 for a character never saved): how
+    // long it was away, which the ReturnUser season's mentee candidacy reads (MentoringManager.Load).
+    public long EntryLastSave { get; set; }
     public ExperienceManager Exp { get; set; } = null!;
     public AchievementManager Achievement { get; set; } = null!;
     public QuestManager Quest { get; set; } = null!;
@@ -292,9 +295,11 @@ public sealed partial class GameSession : Core.Network.Session {
             // MigrationSave without the lock, or past the lock's 30 s) is waited for, and one that comes later writes
             // nothing; the rows loaded below stay as read while this session plays.
             sessionGen = db.ClaimSession(AccountId);
-            player = db.LoadPlayer(AccountId, CharacterId, objectId, GameServer.GetChannel(), lastSave =>
-                EventMailRules.ReturnUser(sendMail.Select(gameEvent => gameEvent.Metadata), CharacterId, lastSave,
-                    DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+            player = db.LoadPlayer(AccountId, CharacterId, objectId, GameServer.GetChannel(), lastSave => {
+                EntryLastSave = lastSave;
+                return EventMailRules.ReturnUser(sendMail.Select(gameEvent => gameEvent.Metadata), CharacterId, lastSave,
+                    DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            });
             db.Commit();
         } finally {
             ReleaseLock(AccountId);

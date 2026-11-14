@@ -90,6 +90,10 @@ public enum GameEventUserValueType {
     MentoringAttendNext = 2411,
     // The mentee coins of the mentoring rewards today, until the next midnight (Mentor 11). Not a KMS2 value.
     MentoringMenteeCoinToday = 2412,
+    // The mentoring season (ReturnUser value3) a character entered as a returning user for: kept on the ReturnUser
+    // row until it ends, or on a ReturnUserCandidate row until its value4 date (the next season's end). Not a KMS2
+    // value.
+    MentoringReturnUser = 2413,
 
     // Daily login mail (DailyLoginReward): 1 once today's mail is sent. Not a KMS2 value; the client keeps any
     // type in its list and reads this one nowhere.
