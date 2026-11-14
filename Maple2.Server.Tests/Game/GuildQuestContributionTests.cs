@@ -124,9 +124,12 @@ public class GuildQuestContributionTests {
 
         Assert.That(session.Quest.Complete(quest), Is.True);
 
+        // World is told on another thread: each request is waited for before it is taken.
+        Assert.That(world.Received.Wait(TimeSpan.FromSeconds(10)), Is.True);
         Assert.That(world.Requests.TryDequeue(out GuildRequest? first), Is.True);
         Assert.That((first!.RequestorId, first.AddExpFund?.GuildId, first.AddExpFund?.Exp, first.AddExpFund?.Fund),
             Is.EqualTo((test.CharacterId, (long?) GuildId, (int?) 120, (int?) 20000)));
+        Assert.That(world.Received.Wait(TimeSpan.FromSeconds(10)), Is.True);
         Assert.That(world.Requests.TryDequeue(out GuildRequest? second), Is.True);
         Assert.That(second!.AddContribution?.Kind, Is.EqualTo(GuildContributionKind.DailyQuest));
         Assert.That(world.Requests, Is.Empty);
