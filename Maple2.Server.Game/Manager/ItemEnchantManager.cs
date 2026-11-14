@@ -599,8 +599,10 @@ public class ItemEnchantManager {
             return;
         }
 
-        int rateWithoutCharges = Math.Clamp(rates.Total - rates.Charge, 0, MaxRate);
-        int maxCharges = (int) Math.Ceiling((MaxRate - rateWithoutCharges) / (float) ChargeRate);
+        // The rate before charges is the one the try rolls (OpheliaRate, raised by a running EnchantRate event), so no
+        // charge is taken once the try is already at 100.
+        float rateWithoutCharges = Math.Clamp(OpheliaRate() - rates.Charge, 0f, MaxRate);
+        int maxCharges = (int) Math.Ceiling((MaxRate - rateWithoutCharges) / ChargeRate);
         useCharges = Math.Clamp(count, 0, maxCharges);
         rates.Charge = Math.Clamp(useCharges * ChargeRate, 0, MaxRate);
     }

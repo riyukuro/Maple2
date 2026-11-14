@@ -101,4 +101,26 @@ public class EnchantRateEventTests {
         Assert.That(test.Errors, Is.Empty);
         Assert.That(session.ItemEnchant.OpheliaRate(), Is.EqualTo(expected).Within(0.0001f));
     }
+
+    // Charges (1 each) fill only up to 100 from the raised rate: none is taken when the event already gives 100.
+    [TestCase(900, 0f, 100f)]
+    [TestCase(800, 10f, 100f)]
+    [TestCase(0, 20f, 30f)]
+    public void Charges_CappedOnTheRaisedRate(int raise, float charge, float expected) {
+        test = new TestGameSession();
+        Item stored = test.Store(TestGameSession.Metadata(11400001, EquipSlot.CL, type: 1));
+        if (raise > 0) {
+            test.AddEvent(990001, GameEventType.EnchantRate, new EnchantRate(14, raise));
+        }
+        test.SetServerTable(new EnchantOptionTable(new Dictionary<int, EnchantOptionMetadata>()));
+        GameSession session = test.Start();
+        Item gear = session.Item.Inventory.Get(stored.Uid)!;
+        gear.Enchant = new ItemEnchant(enchants: 13, charges: 20);
+
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        Assert.That(session.ItemEnchant.UpdateCharges(20), Is.True);
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(session.ItemEnchant.OpheliaRate(), Is.EqualTo(expected).Within(0.0001f));
+        Assert.That(session.ItemEnchant.OpheliaRate() - EventSaleRules.EnchantSuccessWithEvent(10, raise), Is.EqualTo(charge).Within(0.0001f));
+    }
 }
