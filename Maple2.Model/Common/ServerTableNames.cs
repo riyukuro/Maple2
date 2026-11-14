@@ -36,4 +36,5 @@ public static class ServerTableNames {
     public const string WORLD_CHAMPION = "WorldChampionBase.xml";
     public const string PC_BANG = "PcBangBonus.xml";
     public const string ENCHANT_LIMIT = "enchantLimitTable.xml";
+    public const string PROMOTION = "promotionContents.xml";
 }

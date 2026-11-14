@@ -209,6 +209,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.ENCHANT_LIMIT,
             Table = ParseEnchantLimit(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.PROMOTION,
+            Table = ParsePromotion(),
+        };
     }
 
     // The features the rows were filtered by (FeatureLevels: the data folder's tables, or the played client's), in name
@@ -2477,6 +2481,65 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             }
         }
         return sources.ToArray();
+    }
+
+    private PromotionTable ParsePromotion() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/Server/promotionContents.xml", StringComparison.OrdinalIgnoreCase));
+        if (entry == null) {
+            return new PromotionTable([]);
+        }
+        PromotionTable table = MapPromotion(xmlReader.GetXmlDocument(entry),
+            row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")));
+        Console.WriteLine($"Promotion: {table.Entries.Length} rows");
+        return table;
+    }
+
+    private static readonly string[] PromotionTimeFormats = ["yyyy-MM-dd-HH-mm", "yyyy-MM-dd-HH-mm-ss"];
+
+    // The promotionContents rows of the locale and its features, but for the Snowman rows (MapSnowmanSources). The
+    // times are read to the minute or to the second, as the rows have both. Left out: a row whose type is not a
+    // ConditionType name (case is ignored: one row has "Npc"), or is playinstrument_time, which no handler counts (its
+    // rows' value, the minutes played, would need a timer); a row with no drop box, no chance or an unreadable time; a
+    // promotionType the client's notice has no type for. rewardLimitShareID names the counter, the row's own id without
+    // it; a row without a limit type or count (or with a count of 0) has no limit; the chance is capped at 10000.
+    public static PromotionTable MapPromotion(XmlDocument document, Func<XmlElement, bool> available) {
+        var entries = new List<PromotionTable.Entry>();
+        foreach (XmlElement row in document.SelectNodes("ms2/promotion")?.OfType<XmlElement>() ?? []) {
+            string promotionType = row.GetAttribute("promotionType");
+            if (promotionType == "Snowman" || !available(row)
+                || !Enum.TryParse(promotionType, out PromotionKind kind) || !Enum.IsDefined(kind)
+                || !int.TryParse(row.GetAttribute("id"), out int id)
+                || !Enum.TryParse(row.GetAttribute("type"), true, out Maple2.Model.Enum.ConditionType type) || !Enum.IsDefined(type)
+                || type is Maple2.Model.Enum.ConditionType.playinstrument_time
+                || !int.TryParse(row.GetAttribute("individualDropBoxID"), out int boxId) || boxId <= 0
+                || !int.TryParse(row.GetAttribute("prop"), out int prop) || prop <= 0
+                || !DateTime.TryParseExact(row.GetAttribute("startTime"), PromotionTimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime start)
+                || !DateTime.TryParseExact(row.GetAttribute("endTime"), PromotionTimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime end)) {
+                continue;
+            }
+            int.TryParse(row.GetAttribute("rewardLimitCount"), out int limitCount);
+            PromotionLimit limit = Enum.TryParse(row.GetAttribute("rewardLimitType"), out PromotionLimit parsedLimit) && Enum.IsDefined(parsedLimit) && limitCount > 0
+                ? parsedLimit : PromotionLimit.none;
+            int shareId = int.TryParse(row.GetAttribute("rewardLimitShareID"), out int parsedShare) && parsedShare > 0 ? parsedShare : id;
+            int.TryParse(row.GetAttribute("requireLevel"), out int requireLevel);
+            var condition = new ConditionMetadata(type, 1, PromotionCodes(row.GetAttribute("code")), PromotionCodes(row.GetAttribute("target")));
+            entries.Add(new PromotionTable.Entry(id, kind, condition, start, end, Math.Min(prop, 10000), boxId, requireLevel,
+                limit, limit == PromotionLimit.none ? 0 : limitCount, shareId, row.GetAttribute("isAccount") == "1"));
+        }
+        return new PromotionTable(entries.ToArray());
+    }
+
+    // A code or target as the quest and trophy conditions read theirs (MapperExtensions.ConvertCodes): a list split
+    // at commas, or one id, one range ("80000001-80000010") or one string; none when empty.
+    private static ConditionMetadata.Parameters? PromotionCodes(string value) {
+        string[] codes = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        // ConvertCodes parses one dashed code as a range; a dashed code that is not two numbers stays a string.
+        if (codes.Length == 1 && codes[0].Split('-') is { Length: > 1 } parts
+            && !(parts.Length == 2 && int.TryParse(parts[0], out _) && int.TryParse(parts[1], out _))) {
+            return new ConditionMetadata.Parameters(Strings: codes);
+        }
+        return codes.ConvertCodes();
     }
 
     private static XmlElement? LoadElement(string value, string name) {

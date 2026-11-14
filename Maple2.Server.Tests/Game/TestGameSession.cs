@@ -155,6 +155,8 @@ public sealed class TestGameSession {
         // An enchant reads the row of the gear's subtype: the test gear (Metadata, subtype 0) may be enchanted at any
         // level to the last grade until a test sets the client's rows.
         SetServerTable(new EnchantLimitTable(new Dictionary<int, EnchantLimitTable.Limit> { [0] = new(0, 99, ItemEnchantRules.MaxGrade) }));
+        // Every counted condition reads the promotionContents rows: none until a test sets them.
+        SetServerTable(new PromotionTable([]));
 
         // The rows a login finds. The account row is added directly: CreateAccount hashes a password, which is slow.
         string name = Guid.NewGuid().ToString("N")[..12];

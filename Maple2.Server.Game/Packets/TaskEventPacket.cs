@@ -1,3 +1,5 @@
+﻿using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -18,6 +20,24 @@ public static class TaskEventPacket {
         pWriter.WriteShort(0);
         pWriter.WriteInt(0);
         pWriter.WriteByte(1);
+
+        return pWriter;
+    }
+
+    // A promotionContents box (PromotionTable): the row's type, no id, the items given and no notice. The client lists
+    // each item in the reward notifier: type 0 the item and its amount, 1 to 3 the npc's portrait with its
+    // s_<npc>_promotion_reward text and the item's name.
+    public static ByteWriter Reward(PromotionKind kind, ICollection<Item> items) {
+        var pWriter = Packet.Of(SendOp.TaskEvent);
+        pWriter.WriteByte((byte) kind);
+        pWriter.WriteInt(0);
+        pWriter.WriteShort(0);
+        pWriter.WriteInt(items.Count);
+        pWriter.WriteByte(0);
+        foreach (Item item in items) {
+            pWriter.WriteInt(item.Id);
+            pWriter.WriteShort((short) Math.Min(item.Amount, short.MaxValue));
+        }
 
         return pWriter;
     }

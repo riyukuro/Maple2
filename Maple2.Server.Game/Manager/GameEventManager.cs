@@ -639,6 +639,54 @@ public sealed class GameEventManager {
         }
     }
 
+    // The promotionContents rows (PromotionTable): each running row of this condition whose code and target the
+    // condition meets (ConditionUtil.Check, as a quest or trophy condition) gives its individual drop box with its
+    // chance, to a player of its level, while its counter (the account's or the character's) is below its limit for
+    // the period. The counter is taken and stored first, in its own write, so a failed write gives nothing; then the
+    // box's items go to the bag (else by mail), and the reward notifier lists them (TaskEvent with the row's type).
+    // Chosen here: one box per counted action, whatever its count (a gathering of several counts once), and the row's
+    // limit is taken also when the box's roll gives no item.
+    public void PromotionCondition(ConditionType type, string targetString, long targetLong, string codeString, long codeLong) {
+        if (session.Field is null) return;
+        PromotionTable table = session.ServerTableMetadata.PromotionTable;
+        if (!table.ByType.Contains(type)) {
+            return;
+        }
+        DateTime now = Clock();
+        int level = session.Player.Value.Character.Level;
+        foreach (PromotionTable.Entry entry in table.ByType[type]) {
+            if (!PromotionRules.Runs(entry, now) || level < entry.RequireLevel
+                || !entry.Condition.Check(session, targetString, targetLong, codeString, codeLong)
+                || Roll(10000) >= entry.Prop) {
+                continue;
+            }
+            if (entry.LimitType != PromotionLimit.none && !TakePromotionCount(entry, now)) {
+                continue;
+            }
+            ICollection<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, level, entry.IndividualDropBoxId);
+            foreach (Item item in items) {
+                if (!session.Item.Inventory.Add(item, true)) {
+                    session.Item.MailItem(item);
+                }
+            }
+            if (items.Count > 0) {
+                session.Send(TaskEventPacket.Reward(entry.Kind, items));
+            }
+        }
+    }
+
+    // A failed read or write (no promotion-count table) takes nothing and is logged; the counted action goes on.
+    private bool TakePromotionCount(PromotionTable.Entry entry, DateTime now) {
+        try {
+            using GameStorage.Request db = session.GameStorage.Context();
+            return db.TakePromotionCount(session.AccountId, entry.IsAccount ? 0 : session.CharacterId, entry.ShareId,
+                entry.LimitCount, PromotionRules.Expiration(entry, now), now.ToEpochSeconds());
+        } catch (Exception ex) {
+            logger.Error(ex, "Promotion {Id} limit of {CharacterId} not taken", entry.Id, session.CharacterId);
+            return false;
+        }
+    }
+
     // The running burning levelup event this character was picked for (the account's 2000 value is its id) and
     // has not completed (2001): the lowest id when several run.
     public GameEvent? BurningLevelupEvent() {

@@ -1797,6 +1797,29 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("player-reports", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.PromotionCount", b =>
+                {
+                    b.Property<long>("AccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("ShareId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Count")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.Property<long>("ExpirationTime")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("AccountId", "CharacterId", "ShareId");
+
+                    b.ToTable("promotion-count", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.Quest", b =>
                 {
                     b.Property<long>("OwnerId")
@@ -2745,6 +2768,15 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.Item", null)
                         .WithOne()
                         .HasForeignKey("Maple2.Database.Model.PetConfig", "ItemUid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.PromotionCount", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

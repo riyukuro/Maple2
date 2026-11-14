@@ -1188,6 +1188,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Achievement.Update(conditionType, counter, targetString, targetLong, codeString, codeLong);
         Quest.Update(conditionType, counter, targetString, targetLong, codeString, codeLong);
         GameEvent.SnowmanCondition(conditionType);
+        GameEvent.PromotionCondition(conditionType, targetString, targetLong, codeString, codeLong);
         GameEvent.UserConditionChanged(conditionType);
     }
 
