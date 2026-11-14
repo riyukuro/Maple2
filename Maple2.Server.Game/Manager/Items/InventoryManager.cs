@@ -1164,11 +1164,16 @@ public class InventoryManager {
         return true;
     }
 
+    // Counted once the session's store has given its lock back (GameSession.AfterStore), at once outside one: a
+    // stack's last ones are taken in a store's AfterCommit (ConsumeStored), and a quest or trophy the count fills
+    // starts a store of its own, which was refused there.
     private void CountDestroyed(Item item) {
-        lock (session.Item) {
-            if (item.Type is { IsSkin: false, IsHair: false, IsDecal: false, IsEar: false, IsFace: false }) {
-                session.ConditionUpdate(ConditionType.item_destroy, codeLong: item.Id);
-            }
+        if (item.Type is { IsSkin: false, IsHair: false, IsDecal: false, IsEar: false, IsFace: false }) {
+            session.AfterStore(() => {
+                lock (session.Item) {
+                    session.ConditionUpdate(ConditionType.item_destroy, codeLong: item.Id);
+                }
+            });
         }
     }
 

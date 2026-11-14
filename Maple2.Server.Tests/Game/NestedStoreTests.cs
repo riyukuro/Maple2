@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.Reflection;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game;
@@ -108,5 +110,52 @@ public class NestedStoreTests {
         }), Is.True);
         Assert.That(inner, Is.True);
         Assert.That(nested, Is.Empty);
+    }
+
+    // The last of a stack taken in a store's AfterCommit (the paid materials of a craft, a dismantle, an upgrade:
+    // ConsumeStored) counts item_destroy, and a field mission that fills completes with a store of its own. It is
+    // counted once the outer store gave its lock back (AfterStore): it completes, nothing nests. It used to count
+    // inside the store, where the completion's store was refused and the mission stayed filled and not completed.
+    [Test]
+    public void TheLastOfAStackTakenAfterCommit_CompletesItsMissionAfterTheStore() {
+        const int itemId = 50000102;
+        test.EnterMap(TestGameSession.Map(2000023));
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        Quest quest = test.StartQuest(TestGameSession.QuestData(990801, QuestType.FieldMission) with {
+            Conditions = [new ConditionMetadata(ConditionType.item_destroy, 1, new ConditionMetadata.Parameters(Integers: [itemId]), null)],
+        });
+        Item stack = test.Store(TestGameSession.Metadata(itemId), 2);
+        Assert.That(session.Item.Inventory.Add(stack), Is.True);
+        int conditionAtCommit = -1;
+
+        Assert.That(session.TrySavePurchase(db => {
+            db.AfterCommit(() => {
+                session.Item.Inventory.ConsumeStored(stack.Uid, 2);
+                conditionAtCommit = quest.Conditions[0].Counter;
+            });
+            return true;
+        }), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(nested, Is.Empty);
+            Assert.That(conditionAtCommit, Is.EqualTo(0), "counted after the store, not inside it");
+            Assert.That((quest.Conditions[0].Counter, quest.State, quest.CompletionCount), Is.EqualTo((1, QuestState.Completed, 1)));
+        });
+    }
+
+    // Outside a store the count is at once.
+    [Test]
+    public void TheLastOfAStackTakenOutsideAStore_CountsAtOnce() {
+        const int itemId = 50000102;
+        Quest quest = test.StartQuest(TestGameSession.QuestData(990802, QuestType.EpicQuest) with {
+            Conditions = [new ConditionMetadata(ConditionType.item_destroy, 5, new ConditionMetadata.Parameters(Integers: [itemId]), null)],
+        });
+        Item stack = test.Store(TestGameSession.Metadata(itemId), 1);
+        Assert.That(session.Item.Inventory.Add(stack), Is.True);
+
+        Assert.That(session.Item.Inventory.ConsumeStored(stack.Uid, 1), Is.True);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
 }
