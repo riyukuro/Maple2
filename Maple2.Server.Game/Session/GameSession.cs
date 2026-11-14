@@ -1353,6 +1353,25 @@ public sealed partial class GameSession : Core.Network.Session {
         static DateTime Max(DateTime a, DateTime b) => a > b ? a : b;
     }
 
+    // Runs a change the World asks for (a reset, a condition count) where the player's packets are handled: as a task
+    // of the player's field, so it never runs during one of the player's field handlers. A session without a field
+    // (between fields, or one a test made) runs it at once. A task whose session moved to another field before it
+    // ran follows the session there.
+    internal void RunAsPlayer(Action action) {
+        FieldManager? field = Field;
+        if (field == null) {
+            action();
+            return;
+        }
+        field.Scheduler.Schedule(() => {
+            if (Field != field) {
+                RunAsPlayer(action);
+                return;
+            }
+            action();
+        }, TimeSpan.Zero);
+    }
+
     // Whether TakeResets(stamps) would reset the session's state.
     private bool ResetsDue(GameStorage.ResetStamps stamps) {
         ResetsSeen? seen = resetsSeen;
@@ -1440,14 +1459,14 @@ public sealed partial class GameSession : Core.Network.Session {
         ResetStep(reset, "shop", () => Shop.DailyReset());
         // Dungeon daily clears
         ResetStep(reset, "dungeon", () => Dungeon.ResetDailyClears());
-        // Alliance missions: the reset drops held quests, so it runs on the session's own queue, where the packets
-        // that read the quests are handled, with the time of the reset.
+        // Alliance missions, with the time of the reset. The reset runs on the player's field thread (RunAsPlayer),
+        // where the quest and attendance packets are handled.
         DateTime resetTime = DateTime.Now;
-        Scheduler.Schedule(() => Quest.ResetAllianceMissions(resetTime));
-        // Daily missions, daily field quests and wedding missions (Quest 0x19, 0x1E, 0x26), on the same queue.
-        Scheduler.Schedule(() => Quest.ResetDailyQuests(resetTime));
-        // Long-term attendance: the day's attend point, on the session's own queue like the handler's grant.
-        Scheduler.Schedule(() => GameEvent.GrantLongTermAttendPoints());
+        ResetStep(reset, "alliance missions", () => Quest.ResetAllianceMissions(resetTime));
+        // Daily missions, daily field quests and wedding missions (Quest 0x19, 0x1E, 0x26).
+        ResetStep(reset, "daily quests", () => Quest.ResetDailyQuests(resetTime));
+        // Long-term attendance: the day's attend point.
+        ResetStep(reset, "attend point", () => GameEvent.GrantLongTermAttendPoints());
         // Pet fusion count
         ResetStep(reset, "pet fusion", () => {
             Player.Value.Character.PetFusionCount = 0;
@@ -1457,8 +1476,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // Mini-Game M extra rewards
         Player.Value.Character.MassiveExtraRewardCount = 0;
         Player.Value.Character.MassiveExtraRewardTime = DateTime.Now.ToEpochSeconds();
-        // Sky fortress mission attacks, on the session's queue (where the attacks are counted) with the reset's time.
-        Scheduler.Schedule(() => Quest.ResetMissionAttacks(resetTime));
+        // Sky fortress mission attacks, with the reset's time.
+        ResetStep(reset, "mission attacks", () => Quest.ResetMissionAttacks(resetTime));
     }
 
     public void WeeklyReset() {

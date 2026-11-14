@@ -107,7 +107,7 @@ public partial class ChannelService {
             manager.Club.State = ClubState.Established;
             manager.Load();
             if (ClubRules.CountsAsJoin(manager.Club.State)) {
-                session.ConditionUpdate(ConditionType.club_join);
+                session.RunAsPlayer(() => session.ConditionUpdate(ConditionType.club_join));
             }
 
             if (receiverId == manager.Club.Leader.CharacterId) {

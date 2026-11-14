@@ -359,7 +359,8 @@ public class GameServer : Server<GameSession> {
     }
 
     // The World's message after a reset: each session takes the resets stored since its state was read, once (a
-    // session's save may have taken them already). One session that fails does not stop the others'.
+    // session's save may have taken them already), as a task of its field (the reset changes what the player's
+    // field handlers change). One session that fails does not stop the others'.
     private void TakeResets() {
         GameStorage.ResetStamps stamps;
         using (GameStorage.Request db = gameStorage.Context()) {
@@ -367,7 +368,13 @@ public class GameServer : Server<GameSession> {
         }
         foreach (GameSession session in sessions.Values) {
             try {
-                session.TakeResets(stamps);
+                session.RunAsPlayer(() => {
+                    try {
+                        session.TakeResets(stamps);
+                    } catch (Exception ex) {
+                        Logger.Error(ex, "Reset not taken by {CharacterId}", session.CharacterId);
+                    }
+                });
             } catch (Exception ex) {
                 Logger.Error(ex, "Reset not taken by {CharacterId}", session.CharacterId);
             }
