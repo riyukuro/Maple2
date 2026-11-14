@@ -20,6 +20,10 @@ public class MapMapper : TypeMapper<MapMetadata> {
     // The played client's useEPSkill of each row (PlayedClientMaps.UseEpSkill); empty without one.
     private readonly Dictionary<int, bool> playedUseEp = [];
 
+    // Of two available environments of a field row, the one the client keeps (CFeatureManager::SelectFeatureElement).
+    private static System.Xml.XmlElement SelectEnvironment(System.Xml.XmlElement a, System.Xml.XmlElement b) =>
+        Utils.PlayedNpcStats.SelectFeatureElement(a, b, feature => M2dXmlGenerator.FeatureLocaleFilter.Features.GetValueOrDefault(feature), M2dXmlGenerator.FeatureLocaleFilter.Locale);
+
     public MapMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         spawnParser = PackTables.NewParser(xmlReader, language);
         parser = new MapParser(xmlReader, language);
@@ -29,8 +33,8 @@ public class MapMapper : TypeMapper<MapMetadata> {
             System.Xml.XmlDocument fieldTable = playedReader.GetXmlDocument(entry);
             notInPlayedClient = PlayedClientMaps.Missing(fieldTable);
             playedClientRows = PlayedClientMaps.Rows(fieldTable);
-            playedDisableSkills = PlayedClientMaps.SkillUseDisable(fieldTable, Helpers.ClientListedRows.Available);
-            playedUseEp = PlayedClientMaps.UseEpSkill(fieldTable, Helpers.ClientListedRows.Available);
+            playedDisableSkills = PlayedClientMaps.SkillUseDisable(fieldTable, Helpers.ClientListedRows.Available, SelectEnvironment);
+            playedUseEp = PlayedClientMaps.UseEpSkill(fieldTable, Helpers.ClientListedRows.Available, SelectEnvironment);
         }
     }
 

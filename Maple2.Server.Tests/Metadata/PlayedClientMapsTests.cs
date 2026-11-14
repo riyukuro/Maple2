@@ -8,6 +8,28 @@ namespace Maple2.Server.Tests.Metadata;
 
 // MS2_PLAYED_CLIENT_XML: which maps the played client's field table marks as not loadable.
 public class PlayedClientMapsTests {
+    // The client's choice of two available environments (CFeatureManager::SelectFeatureElement), with Live at level 2
+    // and Test at level 1 for the tests.
+    private static XmlElement Select(XmlElement a, XmlElement b) =>
+        Maple2.File.Ingest.Utils.PlayedNpcStats.SelectFeatureElement(a, b, feature => feature switch { "Live" => 2, "Test" => 1, _ => 0 }, "KR");
+
+    // Of two available environments the client keeps the first on a tie and the higher feature level otherwise, not
+    // the last: 900006 is 0 and 1 (the first, 0, is kept), 900007 is Live 0 then Test 1 (Live is kept).
+    [Test]
+    public void FieldFlags_TakeTheEnvironmentTheClientSelects() {
+        XmlDocument table = Table("""
+            <fieldData id="900006"><environment><ui useEPSkill="0" /><property skillUseDisable="2" /></environment><environment><ui useEPSkill="1" /><property skillUseDisable="1" /></environment></fieldData>
+            <fieldData id="900007"><environment feature="Live"><ui useEPSkill="0" /><property skillUseDisable="2" /></environment><environment feature="Test"><ui useEPSkill="1" /><property skillUseDisable="1" /></environment></fieldData>
+            """);
+        Dictionary<int, bool> flags = PlayedClientMaps.UseEpSkill(table, _ => true, Select);
+        Dictionary<int, int[]> lists = PlayedClientMaps.SkillUseDisable(table, _ => true, Select);
+
+        Assert.That(flags[900006], Is.False);
+        Assert.That(flags[900007], Is.False);
+        Assert.That(lists[900006], Is.EqualTo(new[] { 2 }));
+        Assert.That(lists[900007], Is.EqualTo(new[] { 2 }));
+    }
+
     private static XmlDocument Table(string rows) {
         var document = new XmlDocument();
         document.LoadXml($"<ms2>{rows}</ms2>");
@@ -39,7 +61,7 @@ public class PlayedClientMapsTests {
             <fieldData id="900004"><environment><property skillUseDisable="4" /></environment><environment feature="Off"><property skillUseDisable="1" /></environment></fieldData>
             <fieldData id="900005" />
             """);
-        Dictionary<int, int[]> lists = PlayedClientMaps.SkillUseDisable(table, environment => environment.GetAttribute("feature") != "Off");
+        Dictionary<int, int[]> lists = PlayedClientMaps.SkillUseDisable(table, environment => environment.GetAttribute("feature") != "Off", Select);
 
         Assert.That(lists[51000001], Is.EqualTo(new[] { 1, 2, 3, 5 }));
         Assert.That(lists[900002], Is.Empty);
@@ -60,7 +82,7 @@ public class PlayedClientMapsTests {
             <fieldData id="900003"><environment feature="Off"><ui useEPSkill="0" /></environment></fieldData>
             <fieldData id="900004"><environment><ui useEPSkill="0" /></environment><environment feature="Off"><ui useEPSkill="1" /></environment></fieldData>
             """);
-        Dictionary<int, bool> flags = PlayedClientMaps.UseEpSkill(table, environment => environment.GetAttribute("feature") != "Off");
+        Dictionary<int, bool> flags = PlayedClientMaps.UseEpSkill(table, environment => environment.GetAttribute("feature") != "Off", Select);
 
         Assert.That(flags[61000003], Is.False);
         Assert.That(flags[2000001], Is.True);

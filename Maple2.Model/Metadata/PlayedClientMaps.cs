@@ -38,9 +38,10 @@ public static class PlayedClientMaps {
     // The main types each row's skillUseDisable lists (<environment><property skillUseDisable="1,2">), as the client
     // reads them into its field mask (CFieldData::vfunc_1, fielddata.cpp:708): an empty list for a row whose
     // environment lists none. available: whether an environment's feature and locale are on; of several available
-    // environments the last is taken (chosen here; in the KR table no field has two that differ). A row with no
-    // available environment is left out.
-    public static Dictionary<int, int[]> SkillUseDisable(XmlDocument fieldTable, Func<XmlElement, bool> available) {
+    // environments the one select keeps (the client folds them with CFeatureManager::SelectFeatureElement,
+    // featuremanager.cpp:1049, through FUN_14028f8d0, commonutil.cpp:1064). A row with no available environment is
+    // left out.
+    public static Dictionary<int, int[]> SkillUseDisable(XmlDocument fieldTable, Func<XmlElement, bool> available, Func<XmlElement, XmlElement, XmlElement> select) {
         var lists = new Dictionary<int, int[]>();
         XmlNodeList? rows = fieldTable.SelectNodes("ms2/fieldData");
         if (rows == null) {
@@ -50,20 +51,22 @@ public static class PlayedClientMaps {
             if (node is not XmlElement row || !int.TryParse(row.GetAttribute("id"), out int id)) {
                 continue;
             }
-            foreach (XmlElement environment in row.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "environment" && available(child))) {
-                string list = environment.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "property")?.GetAttribute("skillUseDisable") ?? "";
-                lists[id] = list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .Select(text => int.TryParse(text, out int type) ? type : -1).Where(type => type >= 0).ToArray();
+            XmlElement? environment = Selected(row, available, select);
+            if (environment == null) {
+                continue;
             }
+            string list = environment.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "property")?.GetAttribute("skillUseDisable") ?? "";
+            lists[id] = list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(text => int.TryParse(text, out int type) ? type : -1).Where(type => type >= 0).ToArray();
         }
         return lists;
     }
 
     // Whether each row's skills with an EP cost may be cast (<environment><ui useEPSkill="0">), as the client reads it
     // (CFieldDataCli::vfunc_1, fielddatacli.cpp:228; 1 when the attribute is absent, fielddata.h:118) and tests it in
-    // its cast check (skillslot.cpp:3111-3115). Of several available environments the last is taken, as for
+    // its cast check (skillslot.cpp:3111-3115). Of several available environments the one select keeps, as for
     // SkillUseDisable. A row with no available environment is left out.
-    public static Dictionary<int, bool> UseEpSkill(XmlDocument fieldTable, Func<XmlElement, bool> available) {
+    public static Dictionary<int, bool> UseEpSkill(XmlDocument fieldTable, Func<XmlElement, bool> available, Func<XmlElement, XmlElement, XmlElement> select) {
         var flags = new Dictionary<int, bool>();
         XmlNodeList? rows = fieldTable.SelectNodes("ms2/fieldData");
         if (rows == null) {
@@ -73,12 +76,23 @@ public static class PlayedClientMaps {
             if (node is not XmlElement row || !int.TryParse(row.GetAttribute("id"), out int id)) {
                 continue;
             }
-            foreach (XmlElement environment in row.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "environment" && available(child))) {
-                string flag = environment.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "ui")?.GetAttribute("useEPSkill") ?? "";
-                flags[id] = !int.TryParse(flag, out int value) || value != 0;
+            XmlElement? environment = Selected(row, available, select);
+            if (environment == null) {
+                continue;
             }
+            string flag = environment.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "ui")?.GetAttribute("useEPSkill") ?? "";
+            flags[id] = !int.TryParse(flag, out int value) || value != 0;
         }
         return flags;
+    }
+
+    // The available environment of a row the client keeps: the fold of select over them in row order; null when none is available.
+    private static XmlElement? Selected(XmlElement row, Func<XmlElement, bool> available, Func<XmlElement, XmlElement, XmlElement> select) {
+        XmlElement? selected = null;
+        foreach (XmlElement environment in row.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "environment" && available(child))) {
+            selected = selected == null ? environment : select(selected, environment);
+        }
+        return selected;
     }
 
     // The ids of all rows, loadable or not.
