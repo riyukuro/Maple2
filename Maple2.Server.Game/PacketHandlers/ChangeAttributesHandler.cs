@@ -167,10 +167,14 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
                 return false;
             }
-            if (meso > 0) {
-                session.Currency.ChangeMeso(-meso);
+            // Checked and taken in one step, so a spend elsewhere cannot leave the fee unpaid; given back when the
+            // ingredients cannot be taken.
+            if (meso > 0 && !session.Currency.TryTakeMeso(meso)) {
+                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
+                return false;
             }
             if (!session.Item.Inventory.Consume(ingredients)) {
+                session.Currency.ReturnMeso(meso);
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
                 return false;
             }

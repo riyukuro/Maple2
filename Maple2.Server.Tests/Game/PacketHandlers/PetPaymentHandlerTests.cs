@@ -246,6 +246,35 @@ public class PetPaymentHandlerTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
     }
 
+    // The materials leave between the fee and their take (another thread uses them while the meso packet goes out):
+    // the take refuses and the fee comes back. Before, the fee was kept with nothing changed.
+    [Test]
+    public void GearChange_MaterialsGoneAfterTheFee_TheFeeComesBack() {
+        GameSession session = Login(meso: 10_000_000, fragments: 0, stones: 999, cells: 999);
+        Item gear = new(TestGameSession.Metadata(11300001, EquipSlot.CL), rarity: 4);
+        List<IngredientInfo> price = ChangeAttributesHandler.GetIngredients(gear);
+        ItemTag[] others = price.Select(info => info.Tag).Where(tag => tag != ItemTag.CrystalPiece).ToArray();
+        Assert.That(others, Is.Not.Empty);
+        bool used = false;
+        test.OnSend = packet => {
+            if (used || TestGameSession.Op(packet) != SendOp.Meso) {
+                return;
+            }
+            used = true;
+            foreach (ItemTag tag in others) {
+                foreach (Item material in session.Item.Inventory.Find(tag)) {
+                    material.IsLocked = true;
+                }
+            }
+        };
+
+        Assert.That(ChangeAttributesHandler.PayChange(session, gear, price, null), Is.False);
+
+        Assert.That(used, Is.True);
+        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
+        Assert.That(Owned(session, ItemTag.RedCrystal), Is.EqualTo(999));
+    }
+
     // Evolve points: 2 fodders of rarity 1 cost 20,000 each.
     [Test]
     public void EvolvePoints_TakesTheMesoThenTheFodders() {
