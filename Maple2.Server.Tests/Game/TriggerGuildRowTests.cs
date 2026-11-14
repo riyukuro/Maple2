@@ -104,4 +104,26 @@ public class TriggerGuildRowTests : TriggerTestBase {
         Action("""<action name="guild_vs_game_give_reward" type="exp" team_id="1" is_win="1" desc="" />""");
         Assert.That(NextRequest(300), Is.Null);
     }
+
+    // guild_vs_game_give_contribution (10 KR uses; 66200001_gd team_id="2" is_win="false", then team_id="1"): each player
+    // of the team asks for the member contribution of a lost (or won) mini game, once per team; a team with no player
+    // here asks for nothing.
+    [Test]
+    public void GuildVsGameGiveContribution_TheTeamsPlayersOnce() {
+        StartMatch();
+        GuildTable table = test.Session.TableMetadata.GuildTable;
+        test.SetTable(table with {
+            Contributions = new Dictionary<string, int> { [GuildContributionKind.WinMiniGame] = 20, [GuildContributionKind.LoseMiniGame] = 5 },
+        });
+
+        Action("""<action name="guild_vs_game_give_contribution" team_id="2" is_win="false" />""");
+        Action("""<action name="guild_vs_game_give_contribution" team_id="1" is_win="false" />""");
+        GuildRequest? request = NextRequest(10_000);
+        Assert.That(request, Is.Not.Null);
+        Assert.That((request!.RequestorId, request.AddContribution.GuildId, request.AddContribution.Kind),
+            Is.EqualTo((test.CharacterId, GuildId, GuildContributionKind.LoseMiniGame)));
+
+        Action("""<action name="guild_vs_game_give_contribution" team_id="1" is_win="true" />""");
+        Assert.That(NextRequest(300), Is.Null);
+    }
 }

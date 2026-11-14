@@ -1,10 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Numerics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Xml;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Trigger;
+using Maple2.Server.Game.Trigger.Helpers;
+using Serilog;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
@@ -83,5 +91,31 @@ public class RewardContentPrestigeTests {
 
         Assert.That(record.Exp, Is.EqualTo(1000));
         Assert.That(session.Exp.PrestigeCurrentExp - before, Is.EqualTo(gained));
+    }
+
+    private static void Set<T>(object target, string field, object? value) {
+        (typeof(T).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+         ?? throw new MissingFieldException(typeof(T).Name, field)).SetValue(target, value);
+    }
+
+    // give_reward_content (9 KR uses; 02020061_bf main reward_id="31000001", the field war's end): every player of
+    // the field gets the row, run from the script line on a bare trigger context.
+    [Test]
+    public void ScriptLine_EachPlayerOfTheFieldGetsTheRow() {
+        GameSession session = Start(IdExp, 60);
+        long before = session.Exp.PrestigeCurrentExp;
+
+        var trigger = (FieldTrigger) RuntimeHelpers.GetUninitializedObject(typeof(FieldTrigger));
+        Set<FieldEntity<TriggerModel>>(trigger, "<Field>k__BackingField", session.Field);
+        Set<FieldEntity<TriggerModel>>(trigger, "<Value>k__BackingField", new TriggerModel(1, "main", Vector3.Zero, Vector3.Zero));
+        var context = (TriggerContext) RuntimeHelpers.GetUninitializedObject(typeof(TriggerContext));
+        Set<TriggerContext>(context, "owner", trigger);
+        Set<TriggerContext>(context, "logger", new LoggerConfiguration().CreateLogger());
+        Set<TriggerContext>(context, "lastDebugKey", "");
+        var document = new XmlDocument();
+        document.LoadXml($"""<action name="give_reward_content" reward_id="{Row}" />""");
+        TriggerFunctionMapping.ActionMap["give_reward_content"](document.DocumentElement!.Attributes).Execute(context);
+
+        Assert.That(session.Exp.PrestigeCurrentExp - before, Is.EqualTo(Amount));
     }
 }

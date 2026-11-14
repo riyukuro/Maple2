@@ -2908,6 +2908,21 @@ public class TriggerDungeonTests : TriggerTestBase {
         Assert.That((Field.RoomTimer.Extend(60_000), Field.RoomTimer.Duration), Is.EqualTo((false, 180_000)));
         Assert.That(test.TakeSent(), Is.Empty);
     }
+
+    // dungeon_reset_time (8 KR uses; 02020019_bf battle seconds="300"): an ended and stopped room timer runs again for
+    // that time from now, and its window is told (Restart).
+    [Test]
+    public void DungeonResetTime_TheTimerRunsAgain() {
+        StartRoom();
+        Field.SetRoomTimer(RoomTimerType.Clock, 60_000, false);
+        Field.RoomTimer!.End();
+        Field.RoomTimer.Stop();
+        test.TakeSent();
+
+        Action("""<action name="dungeon_reset_time" seconds="300" />""");
+        Assert.That((Field.RoomTimer.Clock.Duration, Field.RoomTimer.Clock.Ended, Field.RoomTimer.Clock.Stopped), Is.EqualTo((300_000, false, false)));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] { Hex(RoomTimerPacket.Restart(Field.RoomTimer)) }));
+    }
 }
 
 public class TriggerRoundUiTests : TriggerTestBase {

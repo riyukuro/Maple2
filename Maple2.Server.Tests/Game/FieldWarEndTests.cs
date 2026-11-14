@@ -84,4 +84,16 @@ public class FieldWarEndTests {
             Assert.That(test.Session.Currency.Meso, Is.EqualTo(meso));
         });
     }
+
+    // field_war_end (8 KR uses; 02020061_bf main is_clear="1" and is_clear="0"): the script line ends the war; the
+    // clear pays the war's reward, a later fail line pays nothing more.
+    [Test]
+    public void ScriptLine_EndsTheWar() {
+        (TestGameSession test, FieldManager field) = Start();
+        long meso = test.Session.Currency.Meso;
+
+        ScriptAction.Run(field, """<action name="field_war_end" is_clear="1" />""");
+        ScriptAction.Run(field, """<action name="field_war_end" is_clear="0" />""");
+        Assert.That(test.Session.Currency.Meso, Is.EqualTo(meso + 5000));
+    }
 }
