@@ -28,7 +28,8 @@ public static class DynamicBanWordRules {
     // A 1-letter word would mask or drop nearly every chat line.
     public const int MinWordLength = 2;
 
-    // 0 for the empty list, the client's version while it holds none.
+    // 0 for the empty list, the client's version while it holds none. The FNV multiplies wrap on purpose (unchecked:
+    // the Debug build checks overflow).
     public static long Version(IEnumerable<DynamicBanWord> words) {
         const ulong offset = 14695981039346656037;
         const ulong prime = 1099511628211;
@@ -44,12 +45,12 @@ public static class DynamicBanWordRules {
         if (!any) {
             return 0;
         }
-        long version = (long) hash;
+        long version = unchecked((long) hash);
         return version == 0 ? 1 : version;
 
         static ulong Add(ulong value, long field) {
             for (int shift = 0; shift < 64; shift += 16) {
-                value = (value ^ (ulong) ((field >> shift) & 0xFFFF)) * prime;
+                value = unchecked((value ^ (ulong) ((field >> shift) & 0xFFFF)) * prime);
             }
             return value;
         }
@@ -57,7 +58,7 @@ public static class DynamicBanWordRules {
         static ulong AddText(ulong value, string field) {
             value = Add(value, field.Length);
             foreach (char c in field) {
-                value = (value ^ c) * prime;
+                value = unchecked((value ^ c) * prime);
             }
             return value;
         }
