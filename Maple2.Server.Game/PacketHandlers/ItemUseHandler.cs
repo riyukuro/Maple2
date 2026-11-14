@@ -37,8 +37,9 @@ public class ItemUseHandler : FieldPacketHandler {
     #endregion
 
     // The checks an item use passes before its function runs: not expired (pets and maid furnishings excepted), a
-    // PC bang item only at a PC bang, a premium-club item only with premium club, a shadow world item only in the
-    // shadow world. RequestItemBox runs them too (ItemBoxHandler). A locked item is used like any other: the
+    // PC bang item only at a PC bang, a premium-club item only with premium club, a wedding item only while married,
+    // not an item (or a socketed gem) bound to another character, a shadow world item only in the shadow world.
+    // RequestItemBox runs them too (ItemBoxHandler). A locked item is used like any other: the
     // client's UseItem (@0x140d1bd60) does not ask the item lock, which (CItemLockManager::CanUseItem) guards only
     // the trade, the black market, the shop sell, the drop/destroy and the dismantle.
     public static bool UseAllowed(GameSession session, Item item) {
@@ -220,10 +221,14 @@ public class ItemUseHandler : FieldPacketHandler {
                 HandleRecallParty(session, item);
                 break;
             case ItemFunction.RecallGuild:
-                HandleRecallGuild(session, item);
+                if (!CashCallCooling(session, item)) {
+                    HandleRecallGuild(session, item);
+                }
                 break;
             case ItemFunction.RecallWedding:
-                HandleRecallWedding(session, item);
+                if (!CashCallCooling(session, item)) {
+                    HandleRecallWedding(session, item);
+                }
                 break;
             case ItemFunction.CallAirTaxi:
                 HandleCallAirTaxi(session, packet, item);
@@ -244,7 +249,9 @@ public class ItemUseHandler : FieldPacketHandler {
                 HandleTreasureMap(session, packet, item);
                 break;
             case ItemFunction.OpenBank:
-                HandleOpenBank(session);
+                if (!CashCallCooling(session, item)) {
+                    HandleOpenBank(session, item);
+                }
                 break;
             case ItemFunction.OpenInstrument:
                 // The client plays the instrument itself: its OpenInstrument use (0x140d23c50) enters the play
@@ -252,7 +259,9 @@ public class ItemUseHandler : FieldPacketHandler {
                 // server takes the instrument from PlayInstrument (InstrumentHandler), which checks the item.
                 break;
             case ItemFunction.CallBlackMarket:
-                HandleCallBlackMarket(session);
+                if (!CashCallCooling(session, item)) {
+                    HandleCallBlackMarket(session, item);
+                }
                 break;
             case ItemFunction.CallMedic:
                 HandleCallMedic(session, item);
@@ -1109,20 +1118,48 @@ public class ItemUseHandler : FieldPacketHandler {
     // The answer opens the window: StorageInventory 14 (CStore::OnReset, store.cpp:869) opens the bank 0x4e47, which
     // asks for its items itself (StorageInventory Load), and BlackMarket 9 (CBlackMarketMan::OnBlackMarket,
     // blackmarketman.cpp:143) opens the black market 0x4e97.
-    private static void HandleOpenBank(GameSession session) {
+    private static void HandleOpenBank(GameSession session, Item item) {
         if (!CashCallRules.CanOpenBank(session.Player.IsDead)) {
             return;
         }
 
         session.Send(StorageInventoryPacket.OpenDialog());
+        StartCashCallCooldown(session, item);
     }
 
-    private static void HandleCallBlackMarket(GameSession session) {
+    private static void HandleCallBlackMarket(GameSession session, Item item) {
         if (session.Field is null || !CashCallRules.CanCallBlackMarket(session.Player.IsDead, session.Field.Metadata.CashCall?.Market == true)) {
             return;
         }
 
         session.Send(BlackMarketPacket.Open());
+        StartCashCallCooldown(session, item);
+    }
+
+    // The item's skill (<skill skillID>) carries the cooldown of a cash call item: KR's bank passes 30 s (group
+    // 100000017), black market passes 60 s (group 100000006), the guild recall 60 s and the wedding recall 120 s. The
+    // client's CanUseItem (@0x140d1b610) refuses the item while that skill, or its cooldown group, is cooling; the
+    // cash call casts no skill to the server, so the server keeps the cooldown itself: a use inside it is refused
+    // without an answer, and a use that is carried out starts it and sends it to the client.
+    private static SkillMetadata? CashCallSkill(GameSession session, Item item) {
+        return item.Metadata.Skill is { Id: > 0 } skill && session.SkillMetadata.TryGet(skill.Id, Math.Max((short) 1, skill.Level), out SkillMetadata? metadata)
+            ? metadata : null;
+    }
+
+    private static bool CashCallCooling(GameSession session, Item item) {
+        SkillMetadata? skill = CashCallSkill(session, item);
+        return skill != null && session.Field != null && session.Config.BlockingCooldown(skill, session.Field.FieldTick) != null;
+    }
+
+    private static void StartCashCallCooldown(GameSession session, Item item) {
+        SkillMetadata? skill = CashCallSkill(session, item);
+        if (skill == null || session.Field == null || skill.Data.Condition.CooldownTime <= 0) {
+            return;
+        }
+        session.Config.SaveSkillCooldown(skill, session.Field.FieldTick);
+        if (session.Config.GetSkillCooldown(skill.Id) is { } cooldown) {
+            session.Send(SkillPacket.Cooldown(cooldown));
+        }
     }
 
     // The medic call (CCashCallManager @0x140b03590, cash call kind 5) cures the death penalty. The client starts it
@@ -1351,6 +1388,7 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         session.Item.Inventory.Consume(item.Uid, 1);
+        StartCashCallCooldown(session, item);
     }
 
     private void HandleRecallWedding(GameSession session, Item item) {
@@ -1359,6 +1397,7 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         session.Item.Inventory.Consume(item.Uid, 1);
+        StartCashCallCooldown(session, item);
     }
 
     // The client's ItemActiveCodiTab: the parameter is the number of days, 0 = no end. It asks before sending and
