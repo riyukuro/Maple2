@@ -1039,7 +1039,7 @@ public class FieldPlayer : Actor<Player> {
         }
 
         bool consumesItem = SkillCastRules.ConsumesItem(metadata.Data.Consume.UseItem, metadata.Property.MainType, record.ItemConsumed);
-        Item? castItem = consumesItem ? Session.Pet?.Get(record.ItemUid) ?? Session.Item.Inventory.Get(record.ItemUid) : null;
+        Item? castItem = consumesItem ? Session.Item.Inventory.Get(record.ItemUid) ?? Session.Pet?.Get(record.ItemUid) : null;
         if (SkillCastRules.ItemMissing(consumesItem, record.ItemUid, castItem?.Metadata, metadata.Id)) {
             Logger.Error("Invalid item uid for skill: {SkillId},{Level}", metadata.Id, metadata.Level);
             return false;
@@ -1058,7 +1058,8 @@ public class FieldPlayer : Actor<Player> {
 
         // One item per cast: a tick sync of the same cast pays the other costs again, not the item.
         if (consumesItem) {
-            // The uid may name an item in the summoned pet's bag: the client looks there first.
+            // The uid may name an item in the summoned pet's bag. The client looks in its own bag first and then the
+            // pet's (MyPC, mypc.cpp:1171-1173); a uid names one item, so the order changes nothing.
             if (Session.Pet != null && Session.Pet.Contains(record.ItemUid)) {
                 if (!Session.Pet.Consume(record.ItemUid, 1, out Item? taken)) {
                     Logger.Error("Failed to consume pet bag item {ItemUid} for skill: {SkillId},{Level}", record.ItemUid, metadata.Id, metadata.Level);

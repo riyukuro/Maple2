@@ -135,6 +135,23 @@ public static class MaidRules {
             profile.SpecialDetail, profile.Like, profile.Hate, profile.Hobby, profile.OwnerName, profile.BelongTo];
     }
 
+    // The profile dialog gives its movie two input limits, MaidNameLengthMax and MaidDescLengthMax (UIMaidDialog,
+    // uimaiddialog.cpp:371-372, maxChars1 and maxChars2; KR 12 and 16); which field takes which is in the movie,
+    // so every text it edits is held to the larger. Before, any length was saved and shown to visitors. A limit of 0
+    // (not ingested) leaves the length unchecked. Specialty is not one of the dialog's 12 fields
+    // (UIMaidDialog::FUN_1412d8e10): the client sends back the text it holds, so the server keeps its own (KeepSpecialty).
+    public static bool ProfileTextsFit(MaidProfile profile, int nameLengthMax, int descLengthMax) {
+        int max = Math.Max(nameLengthMax, descLengthMax);
+        return max <= 0 || EditedTexts(profile).All(text => text.Length <= max);
+    }
+
+    // The dialog's 12 fields, in its order: name, title, birthday, constellation, height, weight, special detail,
+    // like, hate, hobby, owner name, belong to.
+    public static IEnumerable<string> EditedTexts(MaidProfile profile) {
+        return [profile.Name, profile.Title, profile.BirthDay, profile.Constellation, profile.Height, profile.Weight, profile.SpecialDetail,
+            profile.Like, profile.Hate, profile.Hobby, profile.OwnerName, profile.BelongTo];
+    }
+
     // The contract end after a salary payment of periodDays: from the current end, or from now once it has passed.
     public static long PaidUntil(long expiryTime, long now, int periodDays) {
         return Math.Max(expiryTime, now) + (long) Math.Max(periodDays, 0) * 24 * 60 * 60;

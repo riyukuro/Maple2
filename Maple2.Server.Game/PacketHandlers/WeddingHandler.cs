@@ -216,6 +216,8 @@ public class WeddingHandler : FieldPacketHandler {
 
         var hall = packet.ReadClass<WeddingHall>();
         bool useCoupon = packet.ReadBool();
+        // A new reservation gets its row id from the database; before, the id the packet named was inserted as sent.
+        hall.Id = 0;
 
         WeddingError error = session.Marriage.ReserveHall(hall, useCoupon);
         session.Send(WeddingPacket.Error(error));

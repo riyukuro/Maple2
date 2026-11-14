@@ -1,3 +1,4 @@
+using Maple2.Tools.Extensions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -121,6 +122,26 @@ public class WeddingReservationTests {
             Assert.That(accepter.Session.Currency.Meret, Is.EqualTo(1000 - Cost));
             Assert.That(proposer.Session.Currency.Meret, Is.EqualTo(1000));
         });
+    }
+
+    // Wedding 13 carries a whole hall; its id is not the client's to pick: the stored row gets its own. Before, the
+    // id the packet named was inserted as sent.
+    [Test]
+    public void Reserve_ThePacketsHallId_IsNotStored() {
+        WeddingHall sent = Reservation(proposer, 0);
+        sent.Id = 777;
+        handler.Handle(proposer.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(13);
+            writer.WriteClass<WeddingHall>(sent);
+            writer.WriteBool(false);
+        }));
+        Answer(accepter, 7);
+
+        using var context = new Ms2Context(options);
+        long marriageId = proposer.Session.Marriage.Marriage.Id;
+        long[] ids = context.WeddingHall.Where(hall => hall.MarriageId == marriageId).Select(hall => hall.Id).ToArray();
+        Assert.That(ids, Has.Length.EqualTo(1));
+        Assert.That(ids[0], Is.Not.EqualTo(777));
     }
 
     // The one who reserved cannot answer their own ask: that stored the hall on the other partner's merets.

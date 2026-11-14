@@ -10,6 +10,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -160,6 +161,17 @@ public class MeretMarketGiftTests {
         Buy(List(sellerTest.AccountId), receiverName, PayMeret, message: "a \"<b>\" & c");
 
         Assert.That(ReceiverMail().Single().ContentArgs.Last().Value, Is.EqualTo("a &quot;&lt;b&gt;&quot; &amp; c"));
+    }
+
+    // The message is stored in the receiver's mail: one longer than a mail's content is refused before anything is
+    // paid (code 1, the generic text); one of exactly that length goes through.
+    [Test]
+    public void AGiftMessage_LongerThanAMail_IsRefused() {
+        Buy(List(sellerTest.AccountId), receiverName, PayMeret, message: new string('a', MailRules.MaxContentLength + 1));
+        AssertRefused(1);
+
+        Buy(List(sellerTest.AccountId), receiverName, PayMeret, message: new string('a', MailRules.MaxContentLength));
+        Assert.That(ReceiverMail(), Has.Count.EqualTo(1));
     }
 
     // The client offers a gift only on a design; a premium product as a gift is refused.

@@ -329,9 +329,20 @@ public class MeretMarketHandler : FieldPacketHandler {
     // description pass the ban word check (CBanTextChecker::CheckMarketProductName, CheckMarketDescription) and the
     // description is at most 200 characters.
     internal const int MaxDescription = 200;
+    // The tag line comes from the dialog's three tag inputs (m_inputTag1..3), each capped at the UgcTagLengthMax
+    // constant (SetTagInputMaxChars(GetTagInputLimit()), uimeratmarketregisterdialog.cpp:332, 478, 1100; KR 6).
+    internal const int MaxTags = 3;
 
     private bool TextsAllowed(string tagText, string description) {
-        return description.Length <= MaxDescription && !BanWordStorage.ContainsBannedWord(tagText) && !BanWordStorage.ContainsBannedWord(description);
+        return description.Length <= MaxDescription && TagsAllowed(tagText, Constants.UgcTagLengthMax)
+            && !BanWordStorage.ContainsBannedWord(tagText) && !BanWordStorage.ContainsBannedWord(description);
+    }
+
+    // Before, the tag line had no length at all: a changed client stored and showed any length. Empty parts and the
+    // spaces around a tag are not counted; a constant of 0 (not ingested) leaves the length unchecked.
+    internal static bool TagsAllowed(string tagText, int maxTagLength) {
+        string[] tags = tagText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return tags.Length <= MaxTags && (maxTagLength <= 0 || tags.All(tag => tag.Length <= maxTagLength));
     }
 
     private void HandleRelistItem(GameSession session, IByteReader packet) {
@@ -706,6 +717,11 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
         if (payType != PayTypeMeret) {
             return PurchaseErrorPriceType;
+        }
+        // The message goes into the receiver's mail; the bill dialog's gift box sets no length the C++ shows
+        // (UIMarketBillDialog, uimarketbilldialog.cpp:915), so the mail's own content cap bounds it. Before, any length was stored.
+        if (message.Length > MailRules.MaxContentLength) {
+            return PurchaseErrorUnknown;
         }
 
         using GameStorage.Request db = session.GameStorage.Context();

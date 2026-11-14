@@ -76,7 +76,8 @@ public class MaidHandler : FieldPacketHandler {
             OwnerName = packet.ReadUnicodeString(),
             BelongTo = packet.ReadUnicodeString(),
         };
-        if (MaidRules.ProfileTexts(profile).Any(BanWordStorage.ContainsBannedWord)) {
+        if (!MaidRules.ProfileTextsFit(profile, Constants.MaidNameLengthMax, Constants.MaidDescLengthMax)
+                || MaidRules.ProfileTexts(profile).Any(BanWordStorage.ContainsBannedWord)) {
             return;
         }
         // The change and the save run on the field thread of the maid's field, which owns it: the maid is read and
@@ -94,6 +95,8 @@ public class MaidHandler : FieldPacketHandler {
             if (!MaidRules.CanEditProfile(maid, session.AccountId, debug)) {
                 return;
             }
+            // The dialog does not edit the specialty (MaidRules.ProfileTextsFit): the maid keeps hers.
+            profile.Specialty = maid.Profile.Specialty;
             maid.Profile = profile;
             if (field.SaveMaid(maid)) {
                 session.ConditionUpdate(ConditionType.maid_profile); // 23500015 "Change an assistant's profile {0} time(s)"

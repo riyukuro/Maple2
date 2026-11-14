@@ -72,8 +72,16 @@ public class ItemSkillCastTests : TriggerTestBase {
     }
 
     [Test]
-    public void AnItemWithoutTheSkill_PaysForNothing() {
+    public void AnItemWithNoSkill_PaysForNothing() {
         Cast(PotionSkill, Uid(Junk));
+        Assert.Multiple(() => {
+            Assert.That((Held(Junk), Held(Potion)), Is.EqualTo((5, 5)));
+            Assert.That(test.Session.Player.ActiveSkills.Get(1), Is.Null, "no cast runs");
+        });
+    }
+
+    [Test]
+    public void AnotherItemSkillsItem_PaysForNothing() {
         Cast(OtherSkill, Uid(Potion));
         Assert.Multiple(() => {
             Assert.That((Held(Junk), Held(Potion)), Is.EqualTo((5, 5)));
