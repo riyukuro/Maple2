@@ -523,22 +523,9 @@ public partial class TriggerContext {
                 continue;
             }
 
-            ItemDropManager.SpawnBoxDrops box = SpawnBox(spawn);
-            ICollection<Item> items = box.Shared.ToList();
-
-            if (spawn.GlobalDropBoxId > 0) {
-                items = items.Concat(Field.ItemDrop.GetGlobalDropItems(spawn.GlobalDropBoxId, spawn.GlobalDropLevel)).ToList();
-            }
-
-            foreach (Item item in items) {
-                Field.DropItem(spawn.Position, spawn.Rotation, item, characterId: 0, fixedPosition: true,
-                    dropKind: ItemDropKind.Trigger, msDuration: FieldItem.SpawnPointDurationMs(spawn.Lifetime));
-                sent++;
-                firstPosition ??= spawn.Position;
-            }
-            int owned = DropQuestItems(spawn, box);
-            sent += owned;
-            if (owned > 0) {
+            int dropped = DropSpawnPointItems(spawn, spawn.Lifetime);
+            sent += dropped;
+            if (dropped > 0) {
                 firstPosition ??= spawn.Position;
             }
         }
@@ -546,6 +533,42 @@ public partial class TriggerContext {
         // Logged in every build (not only TRIGGER_DEBUG), so a Release run shows what the drops were.
         logger.Information("[SpawnItemRange] map {MapId}, trigger {Trigger}: picked {Picked}, sent {Sent} items, first at {Position}, players {Players}",
             Field.MapId, owner.Value.Name, string.Join(",", pickedIds), sent, firstPosition, Field.Players.Count);
+    }
+
+    // The spawn point's shared items (its box and the global drop box) and each player's own quest items, lasting
+    // lifetime seconds; the count dropped.
+    private int DropSpawnPointItems(EventSpawnPointItem spawn, float lifetime) {
+        ItemDropManager.SpawnBoxDrops box = SpawnBox(spawn);
+        ICollection<Item> items = box.Shared.ToList();
+
+        if (spawn.GlobalDropBoxId > 0) {
+            items = items.Concat(Field.ItemDrop.GetGlobalDropItems(spawn.GlobalDropBoxId, spawn.GlobalDropLevel)).ToList();
+        }
+
+        int dropped = 0;
+        foreach (Item item in items) {
+            Field.DropItem(spawn.Position, spawn.Rotation, item, characterId: 0, fixedPosition: true,
+                dropKind: ItemDropKind.Trigger, msDuration: FieldItem.SpawnPointDurationMs(lifetime));
+            dropped++;
+        }
+        return dropped + DropQuestItems(spawn, box);
+    }
+
+    // SpawnItemGroup (61000035's item rush): random_pick_count spawn points of each group drop their items like
+    // spawn_item_range's, for life_time seconds (the spawn point's own lifetime when 0). Chosen here: the pick is
+    // per group, so the drops spread over the groups' areas (every group of the shipped rows has 3 points, 2 picked).
+    public void SpawnItemGroup(int[][] groups, int randomPickCount, float lifeTime) {
+        DebugLog("[SpawnItemGroup] groups:{Groups}, randomPickCount:{Count}, lifeTime:{LifeTime}",
+            string.Join(" | ", groups.Select(group => string.Join(",", group))), randomPickCount, lifeTime);
+        int sent = 0;
+        foreach (int[] group in groups) {
+            foreach (int spawnId in TriggerRandomPick.Pick(group, randomPickCount, Random.Shared)) {
+                if (Field.Entities.EventItemSpawns.TryGetValue(spawnId, out EventSpawnPointItem? spawn)) {
+                    sent += DropSpawnPointItems(spawn, lifeTime > 0 ? lifeTime : spawn.Lifetime);
+                }
+            }
+        }
+        DebugLog("[SpawnItemGroup] sent {Sent} items", sent);
     }
 
     public void StartCombineSpawn(int[] groupIds, bool isStart) {

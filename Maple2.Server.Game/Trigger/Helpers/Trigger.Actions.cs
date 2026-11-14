@@ -3,6 +3,30 @@
 namespace Maple2.Server.Game.Trigger.Helpers;
 
 public partial class Trigger {
+    public class AddAdditionalEffect(int boxId, int additionalEffectId, int level, int targetCount, bool skipHolders, int skipEffectId) : IAction {
+        public void Execute(TriggerContext context) => context.AddAdditionalEffect(boxId, additionalEffectId, level, targetCount, skipHolders, skipEffectId);
+    }
+
+    public class LookCenterCameraOnOff(int boxId, bool on) : IAction {
+        public void Execute(TriggerContext context) => context.LookCenterCameraOnOff(boxId, on);
+    }
+
+    public class LookCenterCameraRadian(int boxId, bool on, float radian) : IAction {
+        public void Execute(TriggerContext context) => context.LookCenterCameraRadian(boxId, on, radian);
+    }
+
+    public class LookCenterCameraSetting(int boxId, Vector3 centerPos, int outDist, int inDist) : IAction {
+        public void Execute(TriggerContext context) => context.LookCenterCameraSetting(boxId, centerPos, outDist, inDist);
+    }
+
+    public class RemoveAdditionalEffect(int boxId, int additionalEffectId) : IAction {
+        public void Execute(TriggerContext context) => context.RemoveAdditionalEffect(boxId, additionalEffectId);
+    }
+
+    public class SpawnItemGroup(int[][] groups, int randomPickCount, float lifeTime) : IAction {
+        public void Execute(TriggerContext context) => context.SpawnItemGroup(groups, randomPickCount, lifeTime);
+    }
+
     public class AddBalloonTalk(int spawnId, string msg, int duration, int delayTick, int npcId) : IAction {
         public void Execute(TriggerContext context) => context.AddBalloonTalk(spawnId, msg, duration, delayTick, npcId);
     }

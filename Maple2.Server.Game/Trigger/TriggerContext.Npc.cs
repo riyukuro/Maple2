@@ -257,6 +257,15 @@ public partial class TriggerContext {
         return negate ? !hasAnyBuff : hasAnyBuff;
     }
 
+    // CheckNpcSlaveCount: a monster from the spawn point has exactly count live summons of summon_group (all of its
+    // summons when 0), as the AI's SlaveCount condition counts them.
+    public bool CheckNpcSlaveCount(int spawnPointId, int count, int summonGroup) {
+        DebugLog("[CheckNpcSlaveCount] spawnPointId:{SpawnId}, count:{Count}, summonGroup:{Group}", spawnPointId, count, summonGroup);
+        int? group = summonGroup > 0 ? summonGroup : null;
+        return Field.GetActorsBySpawnId(spawnPointId).OfType<FieldNpc>()
+            .Any(npc => !npc.IsDead && AiSummon.SlaveCountPasses(count, npc.SlaveCount(group)));
+    }
+
     public bool MonsterDead(int[] spawnIds, bool autoTarget, bool negate) {
         DebugLog("[MonsterDead] spawnIds:{SpawnIds}, arg2:{Arg2}, negate:{Negate}", string.Join(", ", spawnIds), autoTarget, negate);
         IEnumerable<FieldNpc> npcs = Field.Npcs.Values.Where(npc => !NotWaitedOn(Field.MapId, npc.SpawnPointId));

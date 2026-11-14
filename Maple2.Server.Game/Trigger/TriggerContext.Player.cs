@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Maple2.PacketLib.Tools;
 using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -257,6 +258,56 @@ public partial class TriggerContext {
         Field.States[triggerId] = owner.GetStates(states);
     }
 
+    // AddAdditionalEffect arg1 box, arg2 effect, arg3 level (1 when absent), arg6 how many players get it (all when
+    // 0), arg7/arg8 skip the players who hold effect arg8. 02200001 swapped its RandomAdditionalEffect
+    // target="pc" targetCount="1" for it (one random player in the box); 02200002 gives the two marks to a player
+    // without the other one. A player who holds the effect already is not picked.
+    public void AddAdditionalEffect(int boxId, int additionalEffectId, int level, int targetCount, bool skipHolders, int skipEffectId) {
+        DebugLog("[AddAdditionalEffect] boxId:{BoxId}, additionalEffectId:{EffectId}, level:{Level}, targetCount:{Count}, skip:{Skip} {SkipEffectId}",
+            boxId, additionalEffectId, level, targetCount, skipHolders, skipEffectId);
+        FieldPlayer[] candidates = PlayersInBox(boxId)
+            .Where(player => !player.IsDead && !player.Buffs.HasBuff(additionalEffectId, 0))
+            .Where(player => !skipHolders || skipEffectId == 0 || !player.Buffs.HasBuff(skipEffectId, 0))
+            .ToArray();
+        foreach (FieldPlayer player in TriggerRandomPick.Pick(candidates, targetCount, Random.Shared)) {
+            player.Buffs.AddBuff(Field.FieldActor, player, additionalEffectId, (short) (level > 0 ? level : 1), Field.FieldTick);
+        }
+    }
+
+    // RemoveAdditionalEffect arg1 box, arg2 effect: the players in the box lose the trigger's effect.
+    public void RemoveAdditionalEffect(int boxId, int additionalEffectId) {
+        DebugLog("[RemoveAdditionalEffect] boxId:{BoxId}, additionalEffectId:{EffectId}", boxId, additionalEffectId);
+        foreach (FieldPlayer player in PlayersInBox(boxId)) {
+            player.Buffs.Remove(additionalEffectId, Field.FieldActor.ObjectId);
+        }
+    }
+
+    // The look-centre camera (trigger command 6, OnTargetLookCenterCamera): the setting puts the players in the box
+    // (all when 0) on it, looking at center_pos and kept within out_dist of it (0: no limit) and, while the inner
+    // check is on, out of in_dist. 02200001 sends it every 200 ms, so a player who died and lost it gets it back.
+    public void LookCenterCameraSetting(int boxId, Vector3 centerPos, int outDist, int inDist) {
+        DebugLog("[LookCenterCameraSetting] boxId:{BoxId}, centerPos:{Center}, outDist:{Out}, inDist:{In}", boxId, centerPos, outDist, inDist);
+        SendInBox(boxId, TriggerPacket.LookCenterCamera(centerPos, outDist, inDist));
+    }
+
+    // Sub type 1: the inner ring check on or off.
+    public void LookCenterCameraOnOff(int boxId, bool on) {
+        DebugLog("[LookCenterCameraOnOff] boxId:{BoxId}, on:{On}", boxId, on);
+        SendInBox(boxId, TriggerPacket.LookCenterCameraInnerCheck(on));
+    }
+
+    // Sub type 2: on keeps the camera's yaw at radian.
+    public void LookCenterCameraRadian(int boxId, bool on, float radian) {
+        DebugLog("[LookCenterCameraRadian] boxId:{BoxId}, on:{On}, radian:{Radian}", boxId, on, radian);
+        SendInBox(boxId, TriggerPacket.LookCenterCameraYaw(on, radian));
+    }
+
+    private void SendInBox(int boxId, ByteWriter packet) {
+        foreach (FieldPlayer player in PlayersInBox(boxId)) {
+            player.Session.Send(packet);
+        }
+    }
+
     #region Conditions
     public bool CheckAnyUserAdditionalEffect(int boxId, int additionalEffectId, int level, bool negate) {
         DebugLog("[CheckAnyUserAdditionalEffect] boxId:{BoxId}, additionalEffectId:{EffectId}, level:{Level}", boxId, additionalEffectId, level);
@@ -268,6 +319,17 @@ public partial class TriggerContext {
 
         return negate;
     }
+
+    // 02200002's spotlights: the players in the boxes who hold the effect at the level or above are counted, and
+    // the condition passes when they fill the spotlights lit (spot_light_count: 2, 3 or 4), the boss's death.
+    public bool CheckUserAdditionalCountInRose(int[] boxIds, int additionalEffectId, int level, int spotLightCount) {
+        DebugLog("[CheckUserAdditionalCountInRose] boxIds:{BoxIds}, additionalEffectId:{EffectId}, level:{Level}, spotLightCount:{Count}",
+            string.Join(", ", boxIds), additionalEffectId, level, spotLightCount);
+        int holders = PlayersInBox(boxIds).Count(player => player.Buffs.HasBuff(additionalEffectId, (short) level));
+        return RoseFilled(holders, spotLightCount);
+    }
+
+    public static bool RoseFilled(int holders, int spotLightCount) => holders > 0 && holders >= spotLightCount;
 
     // True when the box holds at least one player and all of them carry the same user tag.
     public bool CheckSameUserTag(int boxId, bool negate) {

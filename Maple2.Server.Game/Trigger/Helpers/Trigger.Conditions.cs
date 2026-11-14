@@ -59,6 +59,27 @@ public partial class Trigger {
         public bool Evaluate(TriggerContext context) => context.CheckSameUserTag(boxId, negate);
     }
 
+    public class CheckMaxUserCount(int count) : ICondition {
+        public string Name => "check_max_user_count";
+        public string? NextState { get; set; }
+        public LinkedList<IAction> Actions { get; set; } = [];
+        public bool Evaluate(TriggerContext context) => context.CheckMaxUserCount(count);
+    }
+
+    public class CheckNpcSlaveCount(int spawnPointId, int count, int summonGroup) : ICondition {
+        public string Name => "check_npc_slave_count";
+        public string? NextState { get; set; }
+        public LinkedList<IAction> Actions { get; set; } = [];
+        public bool Evaluate(TriggerContext context) => context.CheckNpcSlaveCount(spawnPointId, count, summonGroup);
+    }
+
+    public class CheckUserAdditionalCountInRose(int[] boxIds, int additionalEffectId, int level, int spotLightCount) : ICondition {
+        public string Name => "check_user_additional_count_in_rose";
+        public string? NextState { get; set; }
+        public LinkedList<IAction> Actions { get; set; } = [];
+        public bool Evaluate(TriggerContext context) => context.CheckUserAdditionalCountInRose(boxIds, additionalEffectId, level, spotLightCount);
+    }
+
     public class CheckUser(bool negate) : ICondition {
         public string Name => "check_user";
         public string? NextState { get; set; }

@@ -139,18 +139,20 @@ public abstract class TriggerTestBase {
 
     // The effect is known to the field's skill data, and the field's own actor (the caster of trigger buffs) is a
     // real one.
-    protected void WithEffect(int id) {
+    protected void WithEffect(params int[] ids) {
         var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
         object cache = typeof(SkillMetadataStorage).GetField("EffectCache", Any)!.GetValue(skills)!;
         // No begin condition: the effect is on once held.
         var always = new BeginCondition(0, 0, Gender.All, [], 1, 0, 0, 0, false, false, false, true, false, true, [],
             new Dictionary<BasicAttribute, long>(), [], [], [], [], null, null, null, null);
-        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(id, (short) 1), DisabledBuffTests.Effect(id) with {
-            Condition = always,
-            Reflect = new AdditionalEffectMetadataReflect(0, 0, 0, 0, 0, 0, new Dictionary<BasicAttribute, long>(), new Dictionary<BasicAttribute, float>()),
-            Update = new AdditionalEffectMetadataUpdate(null, [], [], [], []),
-            Consume = new AdditionalEffectMetadataConsume(0, 0),
-        }]);
+        foreach (int id in ids) {
+            cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(id, (short) 1), DisabledBuffTests.Effect(id) with {
+                Condition = always,
+                Reflect = new AdditionalEffectMetadataReflect(0, 0, 0, 0, 0, 0, new Dictionary<BasicAttribute, long>(), new Dictionary<BasicAttribute, float>()),
+                Update = new AdditionalEffectMetadataUpdate(null, [], [], [], []),
+                Consume = new AdditionalEffectMetadataConsume(0, 0),
+            }]);
+        }
         typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, skills);
         typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), Any)!.SetValue(Field, new FieldActor(Field, 99, Field.Metadata, null!));
         typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
@@ -1092,6 +1094,86 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Action("""<action name="show_event_result" type="winner" text="$t$" duration="3000" />""");
         Assert.That(Sent(SendOp.MassiveEvent), Is.Empty);
     }
+
+    // AddAdditionalEffect (02200001, 02200002): arg6 players of the box get the effect, never one who holds it;
+    // arg7 with arg8 skips the holders of effect arg8.
+    [Test]
+    public void AddAdditionalEffect_PicksPlayersWithoutIt() {
+        StartWithBoxes();
+        TestGameSession other = SecondPlayer();
+        WithEffect(70000107, 70000108);
+        FieldPlayer first = test.Session.Player;
+        FieldPlayer second = other.Session.Player;
+
+        Action("""<action name="add_additional_effect" arg1="2" arg2="70000107" arg3="1" arg6="1" />""");
+        Assert.That(first.Buffs.HasBuff(70000107) || second.Buffs.HasBuff(70000107), Is.False);
+
+        Action("""<action name="add_additional_effect" arg1="1" arg2="70000107" arg3="1" arg6="1" />""");
+        Assert.That(new[] { first, second }.Count(player => player.Buffs.HasBuff(70000107)), Is.EqualTo(1));
+        // The holder is not picked again: the other player gets it.
+        Action("""<action name="add_additional_effect" arg1="1" arg2="70000107" arg3="1" arg6="1" />""");
+        Assert.That(new[] { first, second }.Count(player => player.Buffs.HasBuff(70000107)), Is.EqualTo(2));
+
+        // Removed from the far box: both keep it; from the near box: both lose it.
+        Action("""<action name="remove_additional_effect" arg1="2" arg2="70000107" />""");
+        Assert.That(new[] { first, second }.Count(player => player.Buffs.HasBuff(70000107)), Is.EqualTo(2));
+        Action("""<action name="remove_additional_effect" arg1="1" arg2="70000107" />""");
+        Assert.That(new[] { first, second }.Count(player => player.Buffs.HasBuff(70000107)), Is.EqualTo(0));
+
+        // The holder of the other mark is skipped; arg6 0 gives it to every other player.
+        first.Buffs.AddBuff(Field.FieldActor, first, 70000108, 1, Field.FieldTick);
+        Action("""<action name="add_additional_effect" arg1="1" arg2="70000107" arg3="1" arg6="0" arg7="1" arg8="70000108" />""");
+        Assert.That((first.Buffs.HasBuff(70000107), second.Buffs.HasBuff(70000107)), Is.EqualTo((false, true)));
+    }
+
+    // CheckUserAdditionalCountInRose (02200002): the holders in the boxes fill the lit spotlights.
+    [Test]
+    public void CheckUserAdditionalCountInRose_HoldersFillTheSpotlights() {
+        StartWithBoxes();
+        WithEffect(70000107);
+        Assert.That(Condition("""<condition name="check_user_additional_count_in_rose" trigger_box_ids="1,2" additional_effect_id="70000107" level="1" spot_light_count="1" />"""), Is.False);
+
+        test.Session.Player.Buffs.AddBuff(Field.FieldActor, test.Session.Player, 70000107, 1, Field.FieldTick);
+        Assert.That(Condition("""<condition name="check_user_additional_count_in_rose" trigger_box_ids="1,2" additional_effect_id="70000107" level="1" spot_light_count="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="check_user_additional_count_in_rose" trigger_box_ids="1,2" additional_effect_id="70000107" level="1" spot_light_count="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="check_user_additional_count_in_rose" trigger_box_ids="2" additional_effect_id="70000107" level="1" spot_light_count="1" />"""), Is.False);
+        Assert.That(TriggerContext.RoseFilled(0, 0), Is.False);
+        Assert.That(TriggerContext.RoseFilled(4, 3), Is.True);
+    }
+
+    // CheckMaxUserCount outside a dungeon room: the players in the field.
+    [Test]
+    public void CheckMaxUserCount_PlayersOfAPlainField() {
+        StartWithBoxes();
+        Assert.That(Condition("""<condition name="check_max_user_count" check_count="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="check_max_user_count" check_count="2" />"""), Is.False);
+        SecondPlayer();
+        Assert.That(Condition("""<condition name="check_max_user_count" check_count="2" />"""), Is.True);
+    }
+
+    // The look-centre camera (trigger command 6): sub 0 the setting, 1 the inner check, 2 the yaw; box 0 is everyone.
+    [Test]
+    public void LookCenterCamera_SubTypesToTheBox() {
+        StartWithBoxes();
+        Action("""<action name="look_center_camera_setting" box_id="2" center_pos="1,2,3" out_dist="500" in_dist="100" />""");
+        Assert.That(Sent(SendOp.Trigger), Is.Empty);
+
+        Action("""<action name="look_center_camera_setting" box_id="0" center_pos="1,2,3" out_dist="500" in_dist="100" />""");
+        ByteReader setting = Sent(SendOp.Trigger).Single();
+        Assert.That((setting.ReadByte(), setting.ReadByte(), setting.ReadFloat(), setting.ReadFloat(), setting.ReadFloat(), setting.ReadInt(), setting.ReadInt()),
+            Is.EqualTo(((byte) 6, (byte) 0, 1f, 2f, 3f, 500, 100)));
+        Assert.That(setting.Available, Is.Zero);
+
+        Action("""<action name="look_center_camera_on_off" box_id="1" on="1" />""");
+        ByteReader onOff = Sent(SendOp.Trigger).Single();
+        Assert.That((onOff.ReadByte(), onOff.ReadByte(), onOff.ReadBool()), Is.EqualTo(((byte) 6, (byte) 1, true)));
+        Assert.That(onOff.Available, Is.Zero);
+
+        Action("""<action name="look_center_camera_radian" box_id="1" on="1" radian="1.5" />""");
+        ByteReader radian = Sent(SendOp.Trigger).Single();
+        Assert.That((radian.ReadByte(), radian.ReadByte(), radian.ReadBool(), radian.ReadFloat()), Is.EqualTo(((byte) 6, (byte) 2, true, 1.5f)));
+        Assert.That(radian.Available, Is.Zero);
+    }
 }
 
 public class TriggerNpcTests : TriggerTestBase {
@@ -1603,6 +1685,37 @@ public class TriggerNpcTests : TriggerTestBase {
         Action("""<action name="npc_remove_additional_effect" spawn_id="5" additional_effect_id="70000107" />""");
         Assert.That(held.Select(mob => mob.Buffs.HasBuff(70000107)), Is.EqualTo(new[] { false, false, true }));
         Assert.That(Sent(SendOp.Buff), Has.Count.EqualTo(2));
+    }
+
+    // NpcIsDead, SpawnNpc's twin RemoveNpc: the live scripts' names for monster_dead and destroy_monster (arg1).
+    [Test]
+    public void NpcIsDeadAndRemoveNpc_AreMonsterDeadAndDestroyMonster() {
+        Mob(9001, 5);
+        Mob(9002, 6, dead: true);
+        Assert.That(Condition("""<condition name="npc_is_dead" arg1="6" />"""), Is.True);
+        Assert.That(Condition("""<condition name="npc_is_dead" arg1="5" />"""), Is.False);
+
+        Action("""<action name="remove_npc" arg1="5" />""");
+        Field.Scheduler.InvokeAll();
+        Assert.That(mobs.Keys, Is.EqualTo(new[] { 9002 }));
+        Assert.That(Condition("""<condition name="npc_is_dead" arg1="5" />"""), Is.True);
+    }
+
+    // CheckNpcSlaveCount: a monster of the spawn point has exactly count live slaves of the group (0: all groups).
+    [Test]
+    public void CheckNpcSlaveCount_LiveSlavesOfTheGroup() {
+        typeof(FieldManager).GetField("<Npcs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
+        typeof(FieldManager).GetField("<Pets>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldPet>());
+        FieldNpc boss = Mob(9001, 5);
+        var summons = (List<(int Group, FieldNpc Npc, bool LeavesWithSummoner)>) typeof(FieldNpc).GetField("summons", Any)!.GetValue(boss)!;
+        summons.Add((1, Mob(9002, 0), true));
+        summons.Add((2, Mob(9003, 0), true));
+        summons.Add((2, Mob(9004, 0, dead: true), true));
+
+        Assert.That(Condition("""<condition name="check_npc_slave_count" spawn_point_id="5" count="2" summon_group="0" />"""), Is.True);
+        Assert.That(Condition("""<condition name="check_npc_slave_count" spawn_point_id="5" count="1" summon_group="2" />"""), Is.True);
+        Assert.That(Condition("""<condition name="check_npc_slave_count" spawn_point_id="5" count="2" summon_group="2" />"""), Is.False);
+        Assert.That(Condition("""<condition name="check_npc_slave_count" spawn_point_id="6" count="0" summon_group="0" />"""), Is.False);
     }
 }
 

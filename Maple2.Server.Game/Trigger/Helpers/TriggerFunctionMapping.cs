@@ -7,6 +7,7 @@ namespace Maple2.Server.Game.Trigger.Helpers;
 public static class TriggerFunctionMapping {
     public static readonly Dictionary<string, Func<XmlAttributeCollection?, IAction>> ActionMap = new Dictionary<string, Func<XmlAttributeCollection?, IAction>> {
         { "add_balloon_talk", attrs => new Trigger.AddBalloonTalk(ParseInt(attrs?["spawn_id"]?.Value), attrs?["msg"]?.Value ?? string.Empty, ParseInt(attrs?["duration"]?.Value), ParseInt(attrs?["delay_tick"]?.Value), ParseInt(attrs?["npc_id"]?.Value)) },
+        { "add_additional_effect", attrs => new Trigger.AddAdditionalEffect(ParseInt(attrs?["arg1"]?.Value), ParseInt(attrs?["arg2"]?.Value), ParseInt(attrs?["arg3"]?.Value), ParseInt(attrs?["arg6"]?.Value), ParseBool(attrs?["arg7"]?.Value), ParseInt(attrs?["arg8"]?.Value)) },
         { "add_buff", attrs => new Trigger.AddBuff(ParseIntArray(attrs?["box_ids"]?.Value), ParseInt(attrs?["skill_id"]?.Value), ParseInt(attrs?["level"]?.Value), ParseBool(attrs?["ignore_player"]?.Value), ParseBool(attrs?["is_skill_set"]?.Value), attrs?["feature"]?.Value ?? string.Empty) },
         { "add_cinematic_talk", attrs => new Trigger.AddCinematicTalk(ParseInt(attrs?["npc_id"]?.Value), attrs?["illust_id"]?.Value ?? string.Empty, attrs?["msg"]?.Value ?? string.Empty, ParseInt(attrs?["duration"]?.Value), ParseAlign(attrs?["align"]?.Value), ParseInt(attrs?["delay_tick"]?.Value)) },
         { "add_effect_nif", attrs => new Trigger.AddEffectNif(ParseInt(attrs?["spawn_id"]?.Value), attrs?["nif_path"]?.Value ?? string.Empty, ParseBool(attrs?["is_outline"]?.Value), ParseFloat(attrs?["scale"]?.Value), ParseInt(attrs?["rotate_z"]?.Value)) },
@@ -92,6 +93,9 @@ public static class TriggerFunctionMapping {
         { "init_npc_rotation", attrs => new Trigger.InitNpcRotation(ParseIntArray(attrs?["spawn_ids"]?.Value)) },
         { "kick_music_audience", attrs => new Trigger.KickMusicAudience(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["portal_id"]?.Value)) },
         { "limit_spawn_npc_count", attrs => new Trigger.LimitSpawnNpcCount(ParseInt(attrs?["limit_count"]?.Value), attrs?["desc"]?.Value ?? string.Empty) },
+        { "look_center_camera_on_off", attrs => new Trigger.LookCenterCameraOnOff(ParseInt(attrs?["box_id"]?.Value), ParseBool(attrs?["on"]?.Value)) },
+        { "look_center_camera_radian", attrs => new Trigger.LookCenterCameraRadian(ParseInt(attrs?["box_id"]?.Value), ParseBool(attrs?["on"]?.Value), ParseFloat(attrs?["radian"]?.Value)) },
+        { "look_center_camera_setting", attrs => new Trigger.LookCenterCameraSetting(ParseInt(attrs?["box_id"]?.Value), ParseVector3(attrs?["center_pos"]?.Value), ParseInt(attrs?["out_dist"]?.Value), ParseInt(attrs?["in_dist"]?.Value)) },
         { "lock_my_pc", attrs => new Trigger.LockMyPc(ParseBool(attrs?["is_lock"]?.Value)) },
         { "mini_game_camera_direction", attrs => new Trigger.MiniGameCameraDirection(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["camera_id"]?.Value)) },
         { "mini_game_give_exp", attrs => new Trigger.MiniGameGiveExp(ParseInt(attrs?["box_id"]?.Value), ParseFloat(attrs?["exp_rate"]?.Value), ParseBool(attrs?["is_outside"]?.Value)) },
@@ -115,8 +119,12 @@ public static class TriggerFunctionMapping {
                 new Trigger.RandomAdditionalEffect(attrs?["target"]?.Value ?? string.Empty, ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["spawn_id"]?.Value),
                     ParseInt(attrs?["target_count"]?.Value), ParseInt(attrs?["tick"]?.Value), ParseInt(attrs?["wait_tick"]?.Value), attrs?["target_effect"]?.Value ?? string.Empty, ParseInt(attrs?["additional_effect_id"]?.Value))
         },
+        { "remove_additional_effect", attrs => new Trigger.RemoveAdditionalEffect(ParseInt(attrs?["arg1"]?.Value), ParseInt(attrs?["arg2"]?.Value)) },
         { "remove_balloon_talk", attrs => new Trigger.RemoveBalloonTalk(ParseInt(attrs?["spawn_id"]?.Value)) },
         { "remove_buff", attrs => new Trigger.RemoveBuff(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["skill_id"]?.Value), ParseBool(attrs?["is_player"]?.Value)) },
+        // RemoveNpc, SpawnNpc and NpcIsDead are the live scripts' names for destroy_monster, spawn_monster and
+        // monster_dead (arg1 the spawn points, SpawnNpc's arg2 the auto target flag).
+        { "remove_npc", attrs => new Trigger.DestroyMonster(ParseIntArray(attrs?["arg1"]?.Value), false) },
         { "remove_cinematic_talk", _ => new Trigger.RemoveCinematicTalk() },
         { "remove_effect_nif", attrs => new Trigger.RemoveEffectNif(ParseInt(attrs?["spawn_id"]?.Value)) },
         { "reset_camera", attrs => new Trigger.ResetCamera(ParseFloat(attrs?["interpolation_time"]?.Value)) },
@@ -191,8 +199,10 @@ public static class TriggerFunctionMapping {
         { "side_npc_talk", attrs => new Trigger.SideNpcTalk(ParseInt(attrs?["npc_id"]?.Value), attrs?["illust"]?.Value ?? string.Empty, ParseInt(attrs?["duration"]?.Value), attrs?["script"]?.Value ?? string.Empty, attrs?["voice"]?.Value ?? string.Empty) },
         { "side_npc_talk_bottom", attrs => new Trigger.SideNpcTalkBottom(ParseInt(attrs?["npc_id"]?.Value), attrs?["illust"]?.Value ?? string.Empty, ParseInt(attrs?["duration"]?.Value), attrs?["script"]?.Value ?? string.Empty) },
         { "sight_range", attrs => new Trigger.SightRange(ParseBool(attrs?["enable"]?.Value), ParseInt(attrs?["range"]?.Value), ParseInt(attrs?["range_z"]?.Value), ParseInt(attrs?["border"]?.Value)) },
+        { "spawn_item_group", ParseSpawnItemGroup },
         { "spawn_item_range", attrs => new Trigger.SpawnItemRange(ParseIntArray(attrs?["range_ids"]?.Value), ParseInt(attrs?["random_pick_count"]?.Value)) },
         { "spawn_monster", attrs => new Trigger.SpawnMonster(ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBoolOr(attrs?["auto_target"]?.Value, true), ParseInt(attrs?["delay"]?.Value)) },
+        { "spawn_npc", attrs => new Trigger.SpawnMonster(ParseIntArray(attrs?["arg1"]?.Value), ParseBoolOr(attrs?["arg2"]?.Value, true), 0) },
         { "spawn_npc_range", attrs => new Trigger.SpawnNpcRange(ParseIntArray(attrs?["range_ids"]?.Value), ParseBool(attrs?["is_auto_targeting"]?.Value), ParseInt(attrs?["random_pick_count"]?.Value), ParseInt(attrs?["score"]?.Value)) },
         { "start_combine_spawn", attrs => new Trigger.StartCombineSpawn(ParseIntArray(attrs?["group_id"]?.Value), ParseBool(attrs?["is_start"]?.Value)) },
         { "start_mini_game", attrs => new Trigger.StartMiniGame(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["round"]?.Value), attrs?["game_name"]?.Value ?? string.Empty, ParseBoolOr(attrs?["is_show_result_ui"]?.Value, true)) },
@@ -223,11 +233,14 @@ public static class TriggerFunctionMapping {
         { "bonus_game_reward", attrs => new Trigger.BonusGameReward(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["type"]?.Value)) },
         { "check_any_user_additional_effect", attrs => new Trigger.CheckAnyUserAdditionalEffect(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["additional_effect_id"]?.Value), ParseInt(attrs?["level"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "check_dungeon_lobby_user_count", attrs => new Trigger.CheckDungeonLobbyUserCount(ParseBool(attrs?["negate"]?.Value)) },
+        { "check_max_user_count", attrs => new Trigger.CheckMaxUserCount(ParseInt(attrs?["check_count"]?.Value)) },
         { "check_npc_additional_effect", attrs => new Trigger.CheckNpcAdditionalEffect(ParseInt(attrs?["spawn_id"]?.Value), ParseInt(attrs?["additional_effect_id"]?.Value), ParseInt(attrs?["level"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
+        { "check_npc_slave_count", attrs => new Trigger.CheckNpcSlaveCount(ParseInt(attrs?["spawn_point_id"]?.Value), ParseInt(attrs?["count"]?.Value), ParseInt(attrs?["summon_group"]?.Value)) },
         { "npc_damage", attrs => new Trigger.NpcDamage(ParseInt(attrs?["spawn_id"]?.Value), ParseFloat(attrs?["damage_rate"]?.Value ?? attrs?["damageRate"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
         { "npc_extra_data", attrs => new Trigger.NpcExtraData(ParseInt(attrs?["spawn_point_id"]?.Value), attrs?["extra_data_key"]?.Value ?? string.Empty, ParseInt(attrs?["extra_data_value"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
         { "npc_hp", attrs => new Trigger.NpcHp(ParseInt(attrs?["spawn_id"]?.Value), ParseBool(attrs?["is_relative"]?.Value), ParseInt(attrs?["value"]?.Value), ParseCompareType(attrs?["compare"]?.Value ?? attrs?["compare_type"]?.Value)) },
         { "check_same_user_tag", attrs => new Trigger.CheckSameUserTag(ParseInt(attrs?["box_id"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
+        { "check_user_additional_count_in_rose", attrs => new Trigger.CheckUserAdditionalCountInRose(ParseIntArray(attrs?["trigger_box_ids"]?.Value), ParseInt(attrs?["additional_effect_id"]?.Value), ParseInt(attrs?["level"]?.Value), ParseInt(attrs?["spot_light_count"]?.Value)) },
         { "check_user", attrs => new Trigger.CheckUser(ParseBool(attrs?["negate"]?.Value)) },
         { "user_count", attrs => new Trigger.UserCount(ParseInt(attrs?["check_count"]?.Value)) },
         { "count_users", attrs => new Trigger.CountUsers(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["user_tag_id"]?.Value), ParseInt(attrs?["min_users"]?.Value), ParseOperatorType(attrs?["operator"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
@@ -249,10 +262,12 @@ public static class TriggerFunctionMapping {
         { "monster_dead", attrs => new Trigger.MonsterDead(ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBool(attrs?["auto_target"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "monster_in_combat", attrs => new Trigger.MonsterInCombat(ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "npc_detected", attrs => new Trigger.NpcDetected(ParseInt(attrs?["box_id"]?.Value), ParseIntArray(attrs?["spawn_ids"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
+        { "npc_is_dead", attrs => new Trigger.MonsterDead(ParseIntArray(attrs?["arg1"]?.Value), false, false) },
         { "npc_is_dead_by_string_id", attrs => new Trigger.NpcIsDeadByStringId(attrs?["string_id"]?.Value ?? string.Empty) },
         { "object_interacted", attrs => new Trigger.ObjectInteracted(ParseIntArray(attrs?["interact_ids"]?.Value), ParseInt(attrs?["state"]?.Value)) },
         { "pvp_zone_ended", attrs => new Trigger.PvpZoneEnded(ParseInt(attrs?["box_id"]?.Value)) },
         { "quest_user_detected", attrs => new Trigger.QuestUserDetected(ParseIntArray(attrs?["box_ids"]?.Value), ParseIntArray(attrs?["quest_ids"]?.Value), ParseIntArray(attrs?["quest_states"]?.Value), ParseInt(attrs?["job_code"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
+        { "random", ParseRandom },
         { "random_condition", attrs => new Trigger.RandomCondition(ParseFloat(attrs?["weight"]?.Value), attrs?["desc"]?.Value ?? string.Empty) },
         { "score_board_score", attrs => new Trigger.ScoreBoardScore(ParseInt(attrs?["score"]?.Value), ParseOperatorType(attrs?["operator"]?.Value ?? attrs?["compare_op"]?.Value)) },
         { "shadow_expedition_points", attrs => new Trigger.ShadowExpeditionPoints(ParseInt(attrs?["point"]?.Value)) },
@@ -332,6 +347,28 @@ public static class TriggerFunctionMapping {
             negate = !negate;
         }
         return new Trigger.UserDetected(ParseIntArray(boxIds), ParseJobCode(attrs?["job_code"]?.Value), negate);
+    }
+
+    // Random (02200001's ball index and pattern): the state's random conditions take equal shares of one roll
+    // ("random one of 1~8"), so each is a random_condition with 100 / their count as its weight. arg1 numbers
+    // the outcome only.
+    public static ICondition ParseRandom(XmlAttributeCollection? attrs) {
+        XmlNode? parent = attrs is { Count: > 0 } ? attrs[0].OwnerElement?.ParentNode : null;
+        int siblings = parent?.SelectNodes("condition[@name='random']")?.Count ?? 0;
+        return new Trigger.RandomCondition(RandomShare(siblings), string.Empty);
+    }
+
+    public static float RandomShare(int siblings) => siblings > 0 ? 100f / siblings : 100f;
+
+    // SpawnItemGroup (61000035's item rush): group_count lists group0..groupN-1, each a few item spawn points
+    // close together; random_pick_count points of each group drop their items, which last life_time seconds.
+    public static IAction ParseSpawnItemGroup(XmlAttributeCollection? attrs) {
+        int count = ParseInt(attrs?["group_count"]?.Value);
+        var groups = new int[Math.Max(count, 0)][];
+        for (int i = 0; i < groups.Length; i++) {
+            groups[i] = ParseIntArray(attrs?["group" + i]?.Value);
+        }
+        return new Trigger.SpawnItemGroup(groups, ParseInt(attrs?["random_pick_count"]?.Value), ParseFloat(attrs?["life_time"]?.Value));
     }
 
     public static int[] ParseIntArray(string? value) {

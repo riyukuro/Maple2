@@ -76,6 +76,28 @@ public static class TriggerPacket {
         return pWriter;
     }
 
+    // Sub type 1 (OnTargetLookCenterCamera, triggerservice.cpp:451): a bool that turns the inner ring check on or
+    // off. The client drops it unless the look-centre camera is up.
+    public static ByteWriter LookCenterCameraInnerCheck(bool enabled) {
+        var pWriter = Packet.Of(SendOp.Trigger);
+        pWriter.WriteByte((byte) Command.LookCenterCamera);
+        pWriter.WriteByte(1);
+        pWriter.WriteBool(enabled);
+
+        return pWriter;
+    }
+
+    // Sub type 2: a bool (keep the yaw fixed) and the yaw in radians. Dropped unless the camera is up.
+    public static ByteWriter LookCenterCameraYaw(bool fixedYaw, float yaw) {
+        var pWriter = Packet.Of(SendOp.Trigger);
+        pWriter.WriteByte((byte) Command.LookCenterCamera);
+        pWriter.WriteByte(2);
+        pWriter.WriteBool(fixedYaw);
+        pWriter.WriteFloat(yaw);
+
+        return pWriter;
+    }
+
     public static ByteWriter EditScript(string scriptXml) {
         var pWriter = Packet.Of(SendOp.Trigger);
         pWriter.Write<Command>(Command.EditScript);

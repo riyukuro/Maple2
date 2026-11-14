@@ -7,12 +7,12 @@
 /// 52010038, 3 of 20 on 99999908), and every id of those ranges is a placed one-npc spawn point.
 /// </summary>
 public static class TriggerRandomPick {
-    public static int[] Pick(int[] ids, int randomPickCount, Random random) {
+    public static T[] Pick<T>(T[] ids, int randomPickCount, Random random) {
         if (randomPickCount <= 0 || randomPickCount >= ids.Length) {
             return ids;
         }
 
-        int[] shuffled = ids.ToArray();
+        T[] shuffled = ids.ToArray();
         random.Shuffle(shuffled);
         return shuffled[..randomPickCount];
     }

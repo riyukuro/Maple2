@@ -7,6 +7,11 @@ public interface ITriggerContext {
     // Actions
     public void AddBalloonTalk(int spawnId, string msg, int duration, int delayTick, int npcId);
     public void AddBuff(int[] boxIds, int skillId, int level, bool ignorePlayer, bool isSkillSet, string feature);
+    public void AddAdditionalEffect(int boxId, int additionalEffectId, int level, int targetCount, bool skipHolders, int skipEffectId);
+    public void LookCenterCameraOnOff(int boxId, bool on);
+    public void LookCenterCameraRadian(int boxId, bool on, float radian);
+    public void LookCenterCameraSetting(int boxId, Vector3 centerPos, int outDist, int inDist);
+    public void RemoveAdditionalEffect(int boxId, int additionalEffectId);
     public void AddCinematicTalk(int npcId, string illustId, string msg, int duration, Align align, int delayTick);
     public void AddEffectNif(int spawnId, string nifPath, bool isOutline, float scale, int rotateZ);
     public void AddUserValue(string key, int value);
@@ -184,6 +189,7 @@ public interface ITriggerContext {
     public void SideNpcTalkBottom(int npcId, string illust, int duration, string script);
     public void SightRange(bool enable, int range, int rangeZ, int border);
     public void SpawnItemRange(int[] rangeIds, int randomPickCount);
+    public void SpawnItemGroup(int[][] groups, int randomPickCount, float lifeTime);
     public void SpawnMonster(int[] spawnIds, bool autoTarget, int delay);
     public void SpawnNpcRange(int[] rangeIds, bool isAutoTargeting, int randomPickCount, int score);
     public void StartCombineSpawn(int[] groupId, bool isStart);
@@ -212,6 +218,9 @@ public interface ITriggerContext {
     // Conditions
     public bool BonusGameReward(int boxId, int type);
     public bool CheckAnyUserAdditionalEffect(int boxId, int additionalEffectId, int level, bool negate);
+    public bool CheckMaxUserCount(int count);
+    public bool CheckNpcSlaveCount(int spawnPointId, int count, int summonGroup);
+    public bool CheckUserAdditionalCountInRose(int[] boxIds, int additionalEffectId, int level, int spotLightCount);
     public bool CheckDungeonLobbyUserCount(bool negate);
     public bool CheckNpcAdditionalEffect(int spawnId, int additionalEffectId, int level, bool negate);
     public bool NpcDamage(int spawnId, float damageRate, OperatorType operatorType);

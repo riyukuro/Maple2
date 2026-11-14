@@ -198,6 +198,17 @@ public partial class TriggerContext : ITriggerContext {
         return DungeonMaxUserCountMatches(RoomMaxUserCount(limit.ChangeMaxUsers, limit.MaxUserCount, dungeonField.Size), value);
     }
 
+    // CheckMaxUserCount: the room's maximum user count (DungeonRoom::GetMaxUserCount) is check_count; outside a
+    // dungeon room the players in the field are counted.
+    public bool CheckMaxUserCount(int count) {
+        DebugLog("[CheckMaxUserCount] count:{Count}", count);
+        if (Field is not DungeonFieldManager dungeonField) {
+            return Field.Players.Count == count;
+        }
+        DungeonRoomLimitMetadata limit = dungeonField.DungeonMetadata.Limit;
+        return RoomMaxUserCount(limit.ChangeMaxUsers, limit.MaxUserCount, dungeonField.Size) == count;
+    }
+
     public static bool DungeonMaxUserCountMatches(int roomMaxUserCount, int value) {
         return roomMaxUserCount > 4 ? value == 1 : roomMaxUserCount == value;
     }
