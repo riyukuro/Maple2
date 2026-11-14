@@ -56,6 +56,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private readonly Dictionary<(int Skill, short Level, int Motion), PlayedClientSkills.MotionTiming> clientMotions = [];
     private int clientMotionsTaken;
     private int motionPointMismatches;
+    // The data pack attacks put in the played client's order (MotionAttacks).
+    private int clientAttacksMoved, clientAttacksBuilt, packAttacksDropped, clientSplashesAdded;
     // The played client's attack pushes (PlayedClientSkills.ReadAttackPushes); empty without a played client.
     private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (PlayedClientSkills.AttackPush Push, string Point)> clientPushes = [];
     private int clientPushesTaken;
@@ -238,77 +240,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         SpValue: level.recoveryProperty.spValue,
                         SpRate: level.recoveryProperty.spRate),
                     Skills: level.conditionSkill.Select(skill => skill.Convert()).ToArray(),
-                    Motions: level.motion.Select((motion, motionIndex) => new SkillMetadataMotion(
-                        WithClientMotion(id, level.value, motionIndex, level.motion.Count, string.Join(",", motion.attack.Select(attack => attack.point)), new SkillMetadataMotionProperty(
-                            SequenceName: motion.motionProperty.sequenceName,
-                            SequenceSpeed: motion.motionProperty.sequenceSpeed,
-                            MoveDistance: motion.motionProperty.movedistance,
-                            FaceTarget: motion.motionProperty.faceTarget,
-                            MoveType: moveTypes.Get(id, level.value, motionIndex),
-                            SplashLifeTick: motion.motionProperty.splashLifeTick,
-                            SplashInvokeCoolTick: motion.motionProperty.splashInvokeCoolTick)),
-                        Attacks: motion.attack.Select((attack, attackIndex) => new SkillMetadataAttack(
-                            Point: attack.point,
-                            PointGroup: attack.pointGroupID,
-                            TargetCount: TargetCount(id, level.value, motionIndex, attackIndex, attack.point, attack.targetCount),
-                            MagicPathId: attack.magicPathID,
-                            CubeMagicPathId: attack.cubeMagicPathID == int.MaxValue ? 9000073111 : attack.cubeMagicPathID,
-                            HitImmuneBreak: attack.hitImmuneBreak,
-                            BrokenOffence: attack.brokenOffence,
-                            CompulsionTypes: attack.compulsionType.Select(type => (CompulsionType) type).ToArray(),
-                            Pet: attack.petTamingProperty != null ? new SkillMetadataPet(
-                                TamingGroup: attack.petTamingProperty.tamingGroup,
-                                TrapLevel: attack.petTamingProperty.trapLevel,
-                                TamingPoint: attack.petTamingProperty.tamingPoint,
-                                ForcedTaming: attack.petTamingProperty.forcedTaming
-                            ) : null,
-                            Range: WithClientRange(id, level.value, motionIndex, attackIndex, attack.point, Convert(attack.rangeProperty)),
-                            Arrow: WithClientArrow(id, level.value, motionIndex, attackIndex, attack.point, new SkillMetadataArrow(
-                                Overlap: attack.arrowProperty.overlap,
-                                Explosion: attack.arrowProperty.explosion,
-                                RayPhysXTest: attack.arrowProperty.rayPhysxTest,
-                                NonTarget: (SkillTargetType) attack.arrowProperty.nonTarget,
-                                BounceType: (BounceType) attack.arrowProperty.bounceType,
-                                BounceCount: attack.arrowProperty.bounceCount,
-                                BounceRadius: attack.arrowProperty.bounceRadius,
-                                BounceOverlap: attack.arrowProperty.bounceType > 0 && attack.arrowProperty.bounceOverlap,
-                                Collision: attack.arrowProperty.collision,
-                                CollisionAdd: attack.arrowProperty.collisionAdd,
-                                RayType: attack.arrowProperty.rayType)),
-                            Damage: new SkillMetadataDamage(
-                                Count: attack.damageProperty.count,
-                                Rate: DamageRate(id, level.value, motionIndex, attackIndex, attack.point, attack.damageProperty.rate),
-                                HitSpeed: attack.damageProperty.hitSpeedRate,
-                                HitDelay: attack.damageProperty.hitPauseTime,
-                                IsConstDamage: attack.damageProperty.isConstDamageValue != 0,
-                                Value: attack.damageProperty.value,
-                                DamageByTargetMaxHp: attack.damageProperty.damageByTargetMaxHP,
-                                SuperArmorBreak: attack.damageProperty.superArmorBreak,
-                                Push: WithClientPush(id, level.value, motionIndex, attackIndex, attack.point, PlayedClientSkills.IsPush(attack.damageProperty.push) ? new SkillMetadataPush(
-                                    Type: attack.damageProperty.push,
-                                    EaseType: attack.damageProperty.pushEaseType,
-                                    ApplyField: attack.damageProperty.pushApplyField,
-                                    Distance: attack.damageProperty.pushdistance,
-                                    UpDistance: attack.damageProperty.pushUpDistance,
-                                    Down: attack.damageProperty.pushDown,
-                                    Fall: attack.damageProperty.pushFall,
-                                    Duration: attack.damageProperty.pushduration,
-                                    Probability: attack.damageProperty.pushprob,
-                                    Priority: attack.damageProperty.pushPriority,
-                                    PriorityHitImmune: attack.damageProperty.pushPriorityHitImmune
-                                ) : null),
-                                ConstDamageByTargetHp: attack.damageProperty.constDamageByTargetHP,
-                                ConstDamageByTargetSp: attack.damageProperty.constDamageByTargetSP
-                            ),
-                            Skills: attack.conditionSkill.Where(skill => !skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
-                            SkillsOnDamage: attack.conditionSkill.Where(skill => skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
-                            GrabTargetType: attack.grabTargetType,
-                            Direction: directions.Get(id, level.value, motionIndex, attackIndex),
-                            AttackMethodType: AttackMethod(id, level.value, motionIndex, attackIndex, attack.point, (int) attack.attackMethodType),
-                            SplashActiveSkillIds: SplashActive(id, level.value, motionIndex, attackIndex, attack.point)
-                        )).ToArray(),
-                        AttackPoints: motion.CollectAttackPoints()
-                    )).ToArray(),
+                    Motions: level.motion.Select((motion, motionIndex) => Motion(id, level.value, motionIndex, level.motion.Count, motion)).ToArray(),
                     Upgrade: level.upgrade == null ? null : new SkillMetadataUpgrade(
                         Level: level.upgrade.level,
                         SkillIds: level.upgrade.skillIDs,
@@ -438,6 +370,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         if (clientArrows.Count > 0) {
             Console.WriteLine($"Skill attacks given the played client's arrow over the data pack's: {clientArrowsTaken} ({arrowPointMismatches} with another point at that place, the data pack's kept)");
         }
+        if (playedSkills.Count > 0) {
+            Console.WriteLine($"Skill attacks put in the played client's order: {clientAttacksMoved} data pack attacks at another place, {clientAttacksBuilt} built from the client's row, {packAttacksDropped} data pack attacks the client lacks left out; {clientSplashesAdded} splash rows of the client's attacks added");
+        }
         if (clientMotions.Count > 0) {
             Console.WriteLine($"Skill motions given the played client's sequence name, sequence speed, move distance and splash life tick over the data pack's: {clientMotionsTaken} ({motionPointMismatches} with other attack points, or another motion count in the level and another sequence, at that place, the data pack's kept)");
         }
@@ -505,6 +440,128 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         }
         return taken;
     }
+    // A data pack motion, its attacks in the played client's order where the client pairs them (MotionAttacks), and the
+    // client's timing where its motion at that place has the same attack points (WithClientMotion).
+    private SkillMetadataMotion Motion(int id, short level, int motionIndex, int motions, SkillMotionData motion) {
+        SkillMetadataAttack[] attacks = MotionAttacks(id, level, motionIndex, motions, motion, out IReadOnlyDictionary<string, byte> points);
+        return new SkillMetadataMotion(
+            WithClientMotion(id, level, motionIndex, motions, string.Join(",", attacks.Select(attack => attack.Point)), new SkillMetadataMotionProperty(
+                SequenceName: motion.motionProperty.sequenceName,
+                SequenceSpeed: motion.motionProperty.sequenceSpeed,
+                MoveDistance: motion.motionProperty.movedistance,
+                FaceTarget: motion.motionProperty.faceTarget,
+                MoveType: moveTypes.Get(id, level, motionIndex),
+                SplashLifeTick: motion.motionProperty.splashLifeTick,
+                SplashInvokeCoolTick: motion.motionProperty.splashInvokeCoolTick)),
+            Attacks: attacks,
+            AttackPoints: points);
+    }
+
+    // A motion's attacks in the played client's order where the client's level has as many motions as the data pack's
+    // (PlayedClientSkills.MotionAttacks): the client fires an attack by its place in its motion (StateSkill), so each
+    // client attack takes the data pack attack its point pairs with (PlayedClientSkills.AlignAttacks), with the
+    // client's splash rows the data pack's attack lacks (PlayedClientSkills.MissingSplashes); a client attack with no
+    // data pack attack is built from the client's row (PlayedClientSkills.BuildAttack), and a data pack attack no client
+    // attack takes is left out. Else the data pack's attacks as they are.
+    private SkillMetadataAttack[] MotionAttacks(int id, short level, int motionIndex, int motions, SkillMotionData motion,
+            out IReadOnlyDictionary<string, byte> points) {
+        List<SkillAttackData> pack = motion.attack;
+        System.Xml.XmlElement[]? client = playedSkills.TryGetValue(id, out var playedSkill)
+            && playedSkill.Levels.FirstOrDefault(entry => entry.Value == level).Level is { } clientLevel
+            ? PlayedClientSkills.MotionAttacks(clientLevel, motionIndex, motions) : null;
+        if (client == null) {
+            points = motion.CollectAttackPoints();
+            return pack.Select((attack, attackIndex) => PackAttack(id, level, motionIndex, attackIndex, attackIndex, attack)).ToArray();
+        }
+
+        string[] clientPoints = client.Select(attack => attack.GetAttribute("point")).ToArray();
+        int[] pairs = PlayedClientSkills.AlignAttacks(pack.Select(attack => attack.point).ToArray(), clientPoints);
+        var attacks = new SkillMetadataAttack[client.Length];
+        for (int i = 0; i < client.Length; i++) {
+            if (pairs[i] < 0) {
+                attacks[i] = PlayedClientSkills.BuildAttack(client[i]);
+                clientAttacksBuilt++;
+                continue;
+            }
+            if (pairs[i] != i) clientAttacksMoved++;
+            SkillMetadataAttack attack = PackAttack(id, level, motionIndex, i, pairs[i], pack[pairs[i]]);
+            SkillEffectMetadata[] splashes = PlayedClientSkills.MissingSplashes(client[i], attack.Skills.Concat(attack.SkillsOnDamage));
+            if (splashes.Length > 0) {
+                attack = attack with { Skills = [.. attack.Skills, .. splashes] };
+                clientSplashesAdded += splashes.Length;
+            }
+            attacks[i] = attack;
+        }
+        packAttacksDropped += pack.Count - pairs.Count(pair => pair >= 0);
+        points = PlayedClientSkills.AttackPoints(clientPoints);
+        return attacks;
+    }
+    // A data pack attack, with the played client's values of the client attack at that place in the motion
+    // (attackIndex) where the client has one; its target order is the data pack's attack's (packIndex).
+    private SkillMetadataAttack PackAttack(int id, short level, int motionIndex, int attackIndex, int packIndex, SkillAttackData attack) {
+        return new SkillMetadataAttack(
+
+            Point: attack.point,
+            PointGroup: attack.pointGroupID,
+            TargetCount: TargetCount(id, level, motionIndex, attackIndex, attack.point, attack.targetCount),
+            MagicPathId: attack.magicPathID,
+            CubeMagicPathId: attack.cubeMagicPathID == int.MaxValue ? 9000073111 : attack.cubeMagicPathID,
+            HitImmuneBreak: attack.hitImmuneBreak,
+            BrokenOffence: attack.brokenOffence,
+            CompulsionTypes: attack.compulsionType.Select(type => (CompulsionType) type).ToArray(),
+            Pet: attack.petTamingProperty != null ? new SkillMetadataPet(
+                TamingGroup: attack.petTamingProperty.tamingGroup,
+                TrapLevel: attack.petTamingProperty.trapLevel,
+                TamingPoint: attack.petTamingProperty.tamingPoint,
+                ForcedTaming: attack.petTamingProperty.forcedTaming
+            ) : null,
+            Range: WithClientRange(id, level, motionIndex, attackIndex, attack.point, Convert(attack.rangeProperty)),
+            Arrow: WithClientArrow(id, level, motionIndex, attackIndex, attack.point, new SkillMetadataArrow(
+                Overlap: attack.arrowProperty.overlap,
+                Explosion: attack.arrowProperty.explosion,
+                RayPhysXTest: attack.arrowProperty.rayPhysxTest,
+                NonTarget: (SkillTargetType) attack.arrowProperty.nonTarget,
+                BounceType: (BounceType) attack.arrowProperty.bounceType,
+                BounceCount: attack.arrowProperty.bounceCount,
+                BounceRadius: attack.arrowProperty.bounceRadius,
+                BounceOverlap: attack.arrowProperty.bounceType > 0 && attack.arrowProperty.bounceOverlap,
+                Collision: attack.arrowProperty.collision,
+                CollisionAdd: attack.arrowProperty.collisionAdd,
+                RayType: attack.arrowProperty.rayType)),
+            Damage: new SkillMetadataDamage(
+                Count: attack.damageProperty.count,
+                Rate: DamageRate(id, level, motionIndex, attackIndex, attack.point, attack.damageProperty.rate),
+                HitSpeed: attack.damageProperty.hitSpeedRate,
+                HitDelay: attack.damageProperty.hitPauseTime,
+                IsConstDamage: attack.damageProperty.isConstDamageValue != 0,
+                Value: attack.damageProperty.value,
+                DamageByTargetMaxHp: attack.damageProperty.damageByTargetMaxHP,
+                SuperArmorBreak: attack.damageProperty.superArmorBreak,
+                Push: WithClientPush(id, level, motionIndex, attackIndex, attack.point, PlayedClientSkills.IsPush(attack.damageProperty.push) ? new SkillMetadataPush(
+                    Type: attack.damageProperty.push,
+                    EaseType: attack.damageProperty.pushEaseType,
+                    ApplyField: attack.damageProperty.pushApplyField,
+                    Distance: attack.damageProperty.pushdistance,
+                    UpDistance: attack.damageProperty.pushUpDistance,
+                    Down: attack.damageProperty.pushDown,
+                    Fall: attack.damageProperty.pushFall,
+                    Duration: attack.damageProperty.pushduration,
+                    Probability: attack.damageProperty.pushprob,
+                    Priority: attack.damageProperty.pushPriority,
+                    PriorityHitImmune: attack.damageProperty.pushPriorityHitImmune
+                ) : null),
+                ConstDamageByTargetHp: attack.damageProperty.constDamageByTargetHP,
+                ConstDamageByTargetSp: attack.damageProperty.constDamageByTargetSP
+            ),
+            Skills: attack.conditionSkill.Where(skill => !skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
+            SkillsOnDamage: attack.conditionSkill.Where(skill => skill.dependOnDamageCount).Select(skill => skill.Convert()).ToArray(),
+            GrabTargetType: attack.grabTargetType,
+            Direction: directions.Get(id, level, motionIndex, packIndex),
+            AttackMethodType: AttackMethod(id, level, motionIndex, attackIndex, attack.point, (int) attack.attackMethodType),
+            SplashActiveSkillIds: SplashActive(id, level, motionIndex, attackIndex, attack.point)
+        );
+    }
+
 
     // The played client's sequence name, sequence speed, move distance, splash life tick and key move where it has the
     // motion at that place (PlayedClientSkills.SameMotion), else the data pack's (which has no key move); the rest of

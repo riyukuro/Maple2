@@ -153,11 +153,7 @@ public static partial class PlayedClientSkills {
     // ctor). The attack points as the data pack's (CollectAttackPoints): a point named twice is 0xFF.
     private static SkillMetadataMotion BuildMotion(XmlElement motion) {
         XmlElement[] attacks = Children(motion, "attack").ToArray();
-        var points = new Dictionary<string, byte>();
-        for (int i = 0; i < attacks.Length && i < byte.MaxValue; i++) {
-            string point = attacks[i].GetAttribute("point");
-            points[point] = points.ContainsKey(point) ? byte.MaxValue : (byte) i;
-        }
+        IReadOnlyDictionary<string, byte> points = AttackPoints(attacks.Select(attack => attack.GetAttribute("point")));
         return new SkillMetadataMotion(
             MotionProperty: new SkillMetadataMotionProperty(
                 SequenceName: motion.GetAttribute("sequenceName"),
@@ -172,10 +168,58 @@ public static partial class PlayedClientSkills {
             AttackPoints: points);
     }
 
+    // The attack points of a motion's attacks in their order, as the data pack's (CollectAttackPoints): a point named
+    // twice is 0xFF.
+    public static IReadOnlyDictionary<string, byte> AttackPoints(IEnumerable<string> attackPoints) {
+        var points = new Dictionary<string, byte>();
+        int i = 0;
+        foreach (string point in attackPoints) {
+            if (i >= byte.MaxValue) break;
+            points[point] = points.ContainsKey(point) ? byte.MaxValue : (byte) i;
+            i++;
+        }
+        return points;
+    }
+
+    // The <attack> rows of the level's motion at that place (SkillMotionData::Load), where the level has as many
+    // motions as the data pack's level; else none, the motions do not pair by place.
+    public static XmlElement[]? MotionAttacks(XmlElement level, int motion, int motions) {
+        XmlElement[] all = Children(level, "motion").ToArray();
+        return all.Length == motions && motion < all.Length ? Children(all[motion], "attack").ToArray() : null;
+    }
+
+    // For each of the client's attacks of a motion, in its order, the place of the data pack's attack of that motion
+    // it pairs with, or -1. They pair by point, in order: each client attack takes the first data pack attack with
+    // its point after the last one taken. The client fires its own list (StateSkill takes the attack by its place in
+    // the motion), so a data pack attack no client attack takes has no place in the cast.
+    public static int[] AlignAttacks(IReadOnlyList<string> pack, IReadOnlyList<string> client) {
+        var result = new int[client.Count];
+        int next = 0;
+        for (int j = 0; j < client.Count; j++) {
+            result[j] = -1;
+            for (int i = next; i < pack.Count; i++) {
+                if (pack[i] == client[j]) {
+                    result[j] = i;
+                    next = i + 1;
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
+    // The client attack's <actionSkill> rows (BuildSplash) none of whose skills is fired by the data pack's rows of
+    // the attack: the splashes the client fires that the data pack's attack lacks.
+    public static SkillEffectMetadata[] MissingSplashes(XmlElement attack, IEnumerable<SkillEffectMetadata> pack) {
+        var packSkills = pack.SelectMany(effect => effect.Skills).Select(skill => skill.Id).ToHashSet();
+        return Children(attack, "actionSkill").Select(BuildSplash)
+            .Where(splash => splash.Skills.Length > 0 && splash.Skills.All(skill => !packSkills.Contains(skill.Id))).ToArray();
+    }
+
     // SkillAttackData::Load (skillattackdata.cpp:573-622; direction 3 when not given, the ctor, which the server
     // keeps as null). Its <range> (Unk_RangeProperty::LoadElement), <arrow> (SkillArrow::Load), <damage>
     // (SkillDamage::Load) and <actionSkill> rows; the client has no pet taming and no skill on damage count.
-    private static SkillMetadataAttack BuildAttack(XmlElement attack) {
+    public static SkillMetadataAttack BuildAttack(XmlElement attack) {
         string point = attack.GetAttribute("point");
         int direction = Number(attack, "direction", 3);
         XmlElement? arrow = Child(attack, "arrow");

@@ -1169,4 +1169,38 @@ public class SkillCastRulesTests {
             Assert.That(PlayedClientSkills.NearestLevel(new short[] { }, 3), Is.Null);
         });
     }
+
+    // The client fires an attack by its place in its motion, so the data pack's attacks of a motion take the client's
+    // order: each client attack pairs with the first data pack attack of its point after the last one paired, a client
+    // attack with none is built from the client's row and a data pack attack no client attack takes is left out; the
+    // points are then counted again (a point named twice is 0xFF). Made-up rows.
+    [Test]
+    public void PlayedClientAttacks_PairWithThePacksByPointInOrder() {
+        Assert.Multiple(() => {
+            Assert.That(PlayedClientSkills.AlignAttacks(new[] { "a", "b", "c" }, new[] { "a", "b", "c" }), Is.EqualTo(new[] { 0, 1, 2 }));
+            Assert.That(PlayedClientSkills.AlignAttacks(new[] { "a", "c" }, new[] { "a", "b", "c" }), Is.EqualTo(new[] { 0, -1, 1 }), "a client attack the pack lacks");
+            Assert.That(PlayedClientSkills.AlignAttacks(new[] { "a", "b", "c" }, new[] { "a", "c" }), Is.EqualTo(new[] { 0, 2 }), "a pack attack the client lacks");
+            Assert.That(PlayedClientSkills.AlignAttacks(new[] { "b", "a" }, new[] { "a", "b" }), Is.EqualTo(new[] { 1, -1 }), "in order only");
+            Assert.That(PlayedClientSkills.AlignAttacks(new[] { "a", "a" }, new[] { "a", "a", "a" }), Is.EqualTo(new[] { 0, 1, -1 }));
+            Assert.That(PlayedClientSkills.AttackPoints(new[] { "a", "b", "a" }), Is.EquivalentTo(new Dictionary<string, byte> { ["a"] = 0xFF, ["b"] = 1 }));
+        });
+
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <level value="1">
+              <motion><attack point="a" /></motion>
+              <motion><attack point="a"><actionSkill skillID="20,21" level="1,1" /><actionSkill skillID="30" level="2" /></attack><attack point="b" /></motion>
+            </level>
+            """);
+        System.Xml.XmlElement level = document.DocumentElement!;
+        Assert.That(PlayedClientSkills.MotionAttacks(level, 1, 2)!.Select(attack => attack.GetAttribute("point")), Is.EqualTo(new[] { "a", "b" }));
+        Assert.That(PlayedClientSkills.MotionAttacks(level, 1, 3), Is.Null, "another motion count: no pair by place");
+        Assert.That(PlayedClientSkills.MotionAttacks(level, 2, 2), Is.Null);
+
+        System.Xml.XmlElement attack = PlayedClientSkills.MotionAttacks(level, 1, 2)![0];
+        SkillEffectMetadata pack = PlayedClientSkills.BuildAttack(attack).Skills[1];
+        SkillEffectMetadata[] missing = PlayedClientSkills.MissingSplashes(attack, [pack]);
+        Assert.That(missing.Select(splash => splash.Skills.Select(skill => skill.Id).ToArray()), Is.EqualTo(new[] { new[] { 20, 21 } }), "the row the pack has (30) is not added again");
+        Assert.That(PlayedClientSkills.MissingSplashes(attack, []).Length, Is.EqualTo(2));
+    }
 }
