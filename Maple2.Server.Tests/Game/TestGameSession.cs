@@ -754,8 +754,12 @@ public sealed class TestGameSession {
         // The character ids the PlayerInfo requests asked for.
         public readonly List<long> PlayerInfoAsked = [];
 
+        // Runs at each PlayerInfo request, before the answer: a test acts there in the middle of the step that asked.
+        public Action<long>? OnPlayerInfo;
+
         public override PlayerInfoResponse PlayerInfo(PlayerInfoRequest request, CallOptions options) {
             PlayerInfoAsked.Add(request.CharacterId);
+            OnPlayerInfo?.Invoke(request.CharacterId);
             // As the world server: no character id is a refused request, not a missing character.
             if (request.CharacterId <= 0) {
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "AccountId and CharacterId not specified"));

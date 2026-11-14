@@ -235,31 +235,40 @@ public sealed class BlackMarketManager {
             return;
         }
 
+        // The mesos are taken before the buy, checked and taken in one step, and given back when the buy fails. Taken
+        // after it, a spend meanwhile (a shop on the field's thread) left the buyer short once the item was mailed: the
+        // take threw and the item was free.
         long cost = listing.Price * quantity;
-        if (cost > session.Currency.Meso) {
+        if (!session.Currency.TryTakeMeso(cost, notify: false)) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_meso, 5, listingId));
             return;
         }
 
         // The listing above is only a look. The buy itself is one transaction that takes the count from the row
         // while it still holds it at this price, so two buyers cannot both get the last of a listing; the one
-        // that comes second pays nothing and is told the count is short.
+        // that comes second gets its mesos back and is told the count is short.
         // The seller's mail (the mesos of the sale) is stored in that transaction too: a buy without it would
         // leave the seller without the item and without the mesos.
         Mail? receivingMail;
         Mail? sellerMail;
         bool gone;
-        bool sellerIsPremium = session.PlayerInfo.GetOrFetch(listing.CharacterId, out PlayerInfo? seller) && seller.PremiumTime > DateTime.Now.ToEpochSeconds();
-        using (GameStorage.Request db = session.GameStorage.Context()) {
+        try {
+            bool sellerIsPremium = session.PlayerInfo.GetOrFetch(listing.CharacterId, out PlayerInfo? seller) && seller.PremiumTime > DateTime.Now.ToEpochSeconds();
+            using GameStorage.Request db = session.GameStorage.Context();
             listing = db.BuyBlackMarketListing(listingId, quantity, listing.Price, BuyerMail(listing, quantity),
                 after => SellerMail(after, quantity, sellerIsPremium), out receivingMail, out sellerMail, out gone);
+        } catch {
+            // The transaction is undone with the throw, so the mesos go back.
+            session.Currency.ReturnMeso(cost);
+            throw;
         }
         if (listing == null || receivingMail == null) {
+            session.Currency.ReturnMeso(cost);
             session.Send(BlackMarketPacket.Error(gone ? BlackMarketError.s_err_lack_itemcount : BlackMarketError.s_blackmarket_error_purchase_count, 5, listingId));
             return;
         }
 
-        session.Currency.ChangeMeso(-cost);
+        session.Currency.NotifyMeso();
 
         // The world refreshes its search copy and tells the seller. The buy is done, so a failure here is logged.
         try {

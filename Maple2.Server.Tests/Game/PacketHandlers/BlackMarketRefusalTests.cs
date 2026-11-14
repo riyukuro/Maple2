@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -424,13 +424,41 @@ public class BlackMarketRefusalTests {
                 List<byte[]> sent = tests[i].TakeSent();
                 if (paid[i] == 0) {
                     BlackMarketError error = left == 0 ? BlackMarketError.s_err_lack_itemcount : BlackMarketError.s_blackmarket_error_purchase_count;
-                    Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(BlackMarketPacket.Error(error, 5, listing.Id)) }), $"round {round}");
+                    // Refused at the look, only the refusal. Refused by the transaction, the price taken first is
+                    // given back and the balance is sent before the refusal.
+                    Assert.That(sent.SkipLast(1).Select(TestGameSession.Op), Is.EqualTo(new SendOp[] { }).Or.EqualTo(new[] { SendOp.Meso }), $"round {round}");
+                    Assert.That(Convert.ToHexString(sent[^1]), Is.EqualTo(Hex(BlackMarketPacket.Error(error, 5, listing.Id))), $"round {round}");
                 } else {
                     Assert.That(sent.Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.Meso, SendOp.BlackMarket, SendOp.Mail }), $"round {round}");
                 }
             }
             Assert.That(tests.SelectMany(buyer => buyer.Errors), Is.Empty, $"round {round}");
         }
+    }
+
+    // The buyer spends mesos while the buy runs (here at the seller's look-up, between the check and the database
+    // transaction): the price was taken first, so only what was left could be spent. Before, the price was taken
+    // after the item was mailed; that take threw on the short balance, and the item was free.
+    [Test]
+    public void Purchase_PaysBeforeTheItemIsMailed() {
+        test = new TestGameSession();
+        BlackMarketListing listing = List(4);
+        GameSession session = Login(test, 5000);
+        long spent = 0;
+        test.World.OnPlayerInfo = _ => {
+            long left = session.Currency.Meso;
+            if (session.Currency.TryTakeMeso(left)) {
+                spent += left;
+            }
+        };
+
+        Assert.DoesNotThrow(() => Send(test, session, 5, listing.Id, 1));
+
+        Assert.Multiple(() => {
+            Assert.That(spent, Is.EqualTo(5000 - Price));
+            Assert.That(session.Currency.Meso, Is.EqualTo(0));
+            Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(1));
+        });
     }
 
     // A buyer and the seller's take-back at once: the buyer gets its 3 and the seller the 1 left, or the seller
