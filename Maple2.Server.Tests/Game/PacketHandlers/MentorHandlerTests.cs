@@ -386,10 +386,41 @@ public class MentorHandlerTests {
         next.Session.Mentoring.Load();
         Assert.That(next.Session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.MenteeCandidate));
         Assert.That(next.Session.GameEvent.HasValue(GameEventUserValueType.MentoringReturnUser, "1", now + 5 * 86400L), Is.True);
+    }
+
+    // A return stored on the season's row (77) or on a window (78, no longer running), whose stored end has passed,
+    // while season 1 runs on, extended: the first entry after the old end is still the season's mentee candidate.
+    // Another season's return is not kept.
+    [TestCase(77, 1, MentorRole.MenteeCandidate)]
+    [TestCase(78, 1, MentorRole.MenteeCandidate)]
+    [TestCase(78, 2, MentorRole.MentorCandidate)]
+    public void StoredReturn_PastItsOldEnd_FollowsTheExtendedSeason(int eventId, int storedSeason, MentorRole expected) {
+        options = new DbContextOptionsBuilder()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var next = new TestGameSession(options);
         using (var context = new Ms2Context(options)) {
-            Assert.That(context.GameEventUserValue.AsNoTracking().Single(row => row.CharacterId == next.CharacterId
-                && row.Type == GameEventUserValueType.MentoringReturnUser).ExpirationTime, Is.GreaterThan(now + 5 * 86400L));
+            context.GameEventUserValue.Add(new Maple2.Database.Model.GameEventUserValue {
+                CharacterId = next.CharacterId,
+                EventId = eventId,
+                Type = GameEventUserValueType.MentoringReturnUser,
+                Value = storedSeason.ToString(),
+                ExpirationTime = now - 3600,
+            });
+            context.SaveChanges();
         }
+        next.AddEvent(77, GameEventType.ReturnUser, new ReturnUser(SeasonId: 1, QuestIds: [], RequiredUserValue: 0,
+            DateInactiveSince: DateTimeOffset.MinValue, DaysInactive: 30, RequiredLevel: 0), end: DateTime.Now.AddDays(10));
+        next.AddMap(TestGameSession.Map(2000023));
+        next.Start();
+        next.Session.EntryLastSave = now - 86400L;
+        next.Session.Mentoring.Load();
+
+        Assert.That(next.Session.Player.Value.Character.MentorRole, Is.EqualTo(expected));
+        Assert.That(next.Session.GameEvent.HasValue(GameEventUserValueType.MentoringReturnUser, "1", now + 5 * 86400L),
+            Is.EqualTo(expected == MentorRole.MenteeCandidate));
     }
 
     [Test]

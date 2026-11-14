@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Validators;
 
@@ -27,12 +29,33 @@ public static class EventValueRules {
             GameEventType.Snowman => value.Type is GameEventUserValueType.AccumCompleteCount or GameEventUserValueType.AccumCompleteRewardReceived,
             GameEventType.BurningLevelup => BurningLevelupRules.ValueTypes.Contains(value.Type),
             GameEventType.UserCondition => value.Type is GameEventUserValueType.UserConditionDone or GameEventUserValueType.UserConditionNotice,
+            // A mentoring return stored on its season's row (MentoringManager.LoadCandidate).
+            GameEventType.ReturnUser => value.Type is GameEventUserValueType.MentoringReturnUser,
             _ => false,
         };
         if (!follows || value.ExpirationTime == gameEvent.EndTime) {
             return value;
         }
         var moved = new GameEventUserValue(value.Type, gameEvent.EndTime, value.EventId);
+        moved.SetValue(value.Value);
+        return moved;
+    }
+
+    // A mentoring return (MentoringReturnUser, its value the season number) is kept to the end of a running ReturnUser
+    // row of that season, also when it was stored on another row (a ReturnUserCandidate window) or at an end the season
+    // has since passed: an operator who extends a season extends its mentees' returns with it. The value at that
+    // later end, or the value itself.
+    public static GameEventUserValue FollowSeason(GameEventUserValue value, IEnumerable<GameEvent> events, long now) {
+        if (value.Type != GameEventUserValueType.MentoringReturnUser) {
+            return value;
+        }
+        long end = events.Where(gameEvent => gameEvent.Metadata.Data is ReturnUser { SeasonId: > 0 } returnUser
+                && returnUser.SeasonId.ToString() == value.Value && gameEvent.StartTime <= now)
+            .Select(gameEvent => gameEvent.EndTime).DefaultIfEmpty(0).Max();
+        if (end <= value.ExpirationTime) {
+            return value;
+        }
+        var moved = new GameEventUserValue(value.Type, end, value.EventId);
         moved.SetValue(value.Value);
         return moved;
     }

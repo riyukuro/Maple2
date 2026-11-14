@@ -108,13 +108,15 @@ public sealed class GameEventManager {
     // lasts as long as its event is first moved to the event's end (FollowEventEnd), then tested: tested at its
     // stored end, a value of an event whose end was moved while it was live would be dropped after the old end.
     // A mentoring return (MentoringReturnUser) is read until its own end also after its event: a ReturnUserCandidate
-    // row keeps a return for the next season, which starts after the row ends (MentoringManager.LoadCandidate).
+    // row keeps a return for the next season, which starts after the row ends (MentoringManager.LoadCandidate). It
+    // is also kept to the end of a running season of its number (EventValueRules.FollowSeason).
     public static GameEventUserValue? LoadValue(GameEventUserValue userValue, IEnumerable<GameEvent> events, long now) {
         GameEvent? gameEvent = events.FirstOrDefault(gameEvent => gameEvent.Id == userValue.EventId);
         if (gameEvent == null) {
-            return userValue.Type == GameEventUserValueType.MentoringReturnUser && userValue.ExpirationTime > now ? userValue : null;
+            GameEventUserValue kept = EventValueRules.FollowSeason(userValue, events, now);
+            return kept.Type == GameEventUserValueType.MentoringReturnUser && kept.ExpirationTime > now ? kept : null;
         }
-        GameEventUserValue loaded = FollowEventEnd(userValue, gameEvent);
+        GameEventUserValue loaded = EventValueRules.FollowSeason(FollowEventEnd(userValue, gameEvent), events, now);
         return loaded.ExpirationTime < now ? null : loaded;
     }
 
@@ -124,8 +126,8 @@ public sealed class GameEventManager {
     // starts a new run (GameStorage BeginEventRun).
     public static bool Outdated(GameEventUserValue userValue, IEnumerable<GameEvent> events, long now) {
         GameEvent? gameEvent = events.FirstOrDefault(gameEvent => gameEvent.Id == userValue.EventId);
-        long end = gameEvent == null ? userValue.ExpirationTime : FollowEventEnd(userValue, gameEvent).ExpirationTime;
-        return end < now;
+        GameEventUserValue followed = gameEvent == null ? userValue : FollowEventEnd(userValue, gameEvent);
+        return EventValueRules.FollowSeason(followed, events, now).ExpirationTime < now;
     }
 
     // The values stored for the account instead of the character.
