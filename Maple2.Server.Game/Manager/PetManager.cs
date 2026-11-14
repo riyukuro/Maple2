@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using Maple2.Database.Storage;
 using Maple2.Model;
 using Maple2.Model.Enum;
@@ -29,6 +30,11 @@ public sealed class PetManager : IDisposable {
 
     private ItemPet ItemPet => Pet.Pet!;
     public int OwnerId => session.Player.ObjectId;
+    // The summoned pet in the field: its object id (the picker a pet's pickup names), where the server holds it,
+    // and how far it may trail its owner before it follows (the client's pet is that much behind the server's).
+    public int ObjectId => pet.ObjectId;
+    public Vector3 Position => pet.Position;
+    public float FollowDistance => PetFollow.Distances(pet.Metadata.Distance).Follow;
 
     public PetManager(GameSession session, FieldPet pet) {
         this.session = session;

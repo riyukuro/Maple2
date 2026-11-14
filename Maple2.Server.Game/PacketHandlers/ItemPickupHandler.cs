@@ -4,10 +4,12 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -16,7 +18,8 @@ public class ItemPickupHandler : FieldPacketHandler {
 
     public override void Handle(GameSession session, IByteReader packet) {
         int objectId = packet.ReadInt();
-        packet.ReadByte();
+        // CDropItem::SendRequestItemPickup (dropitem.cpp:936): a bool, then the picker's object id when a pet picks.
+        int pickerId = packet.ReadBool() ? packet.ReadInt() : 0;
 
         if (session.Field == null) {
             return;
@@ -29,6 +32,13 @@ public class ItemPickupHandler : FieldPacketHandler {
 
         // A refused pickup of a drop that stays is answered, so the client asks again later.
         if (fieldItem.ReceiverId != 0 && fieldItem.ReceiverId != session.CharacterId) {
+            session.Send(ItemPickupPacket.Refuse(objectId));
+            return;
+        }
+
+        // The client asks only for a drop in its picker's range: the player, or the summoned pet it names.
+        if (!InReach(session, fieldItem, pickerId)) {
+            Logger.Debug("Pickup of drop {ObjectId} out of reach", objectId);
             session.Send(ItemPickupPacket.Refuse(objectId));
             return;
         }
@@ -83,5 +93,15 @@ public class ItemPickupHandler : FieldPacketHandler {
                 session.Item.Bind(item);
             }
         }
+    }
+
+    private static bool InReach(GameSession session, FieldItem fieldItem, int pickerId) {
+        float reach = PickupRules.Reach(session.ServerTableMetadata.ConstantsTable.DropItemMaxLength);
+        if (PickupRules.InReach(session.Player.Position, fieldItem.Position, reach)) {
+            return true;
+        }
+        PetManager? pet = session.Pet;
+        return pet != null && pickerId != 0 && pickerId == pet.ObjectId
+               && PickupRules.InReach(pet.Position, fieldItem.Position, reach + pet.FollowDistance);
     }
 }
