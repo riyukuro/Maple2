@@ -130,6 +130,25 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
             Is.EqualTo(new[] { "Regen_A", "", "Regen_A" }));
     }
 
+    // An event spawn point's PatrolData goes with the npc a trigger creates there (52020036_qd's 10060: created by
+    // spawn_monster, never given a move order); a point without one leaves the npc to its routines.
+    [Test]
+    public void SpawnMonster_WalksThePointsPatrol() {
+        StartSpawns();
+        var patrol = new MS2PatrolData("6f2c145f8a4d4a08a2206eab6df9b65b", "LoudFist_Ending_PatrolData_0", false, 1, false,
+            [new MS2WayPoint("w1", true, new Vector3(500, 0, 0), Vector3.Zero, "", "", 0, false)]);
+        typeof(MapEntityMetadata).GetField("<Patrols>k__BackingField", Any)!.SetValue(Field.Entities, new List<MS2PatrolData> { patrol });
+        typeof(MapEntityMetadata).GetField("<EventNpcSpawns>k__BackingField", Any)!.SetValue(Field.Entities,
+            new Dictionary<int, EventSpawnPointNPC> {
+                [5] = new("", 5, new Vector3(300, 0, 0), default, true, false, 0, 1, [new SpawnPointNPCListEntry(MobId, 1)], 0, 0, "",
+                    "6f2c145f8a4d4a08a2206eab6df9b65b"),
+                [6] = new("", 6, new Vector3(-300, 0, 0), default, true, false, 0, 1, [new SpawnPointNPCListEntry(MobId, 1)], 0, 0, ""),
+            });
+
+        Action("""<action name="spawn_monster" spawn_ids="5,6" />""");
+        Assert.That(Field.Mobs.Values.OrderBy(npc => npc.SpawnPointId).Select(npc => npc.Patrol), Is.EqualTo(new[] { patrol, null }));
+    }
+
     // move_user_path (366): each player gets a dummy npc of their gender at their position that walks the named
     // patrol, and is told to follow it (FollowNpc); a path the map lacks spawns nothing.
     [Test]

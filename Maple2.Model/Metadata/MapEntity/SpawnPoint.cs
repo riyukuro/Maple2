@@ -39,8 +39,11 @@ public record EventSpawnPointNPC(
     IList<SpawnPointNPCListEntry> NpcList,
     int RegenCheckTime,
     int LifeTime,
-    string SpawnAnimation
-) : SpawnPointNPC(EntityId, SpawnPointId, Position, Rotation, Visible, SpawnOnFieldCreate, SpawnRadius, NpcList, RegenCheckTime, String.Empty);
+    string SpawnAnimation,
+    // The point's MS2PatrolData uuid (no dashes), as on a plain point: 484 KR event points name one, and an npc a
+    // trigger creates there walks it (52020036_qd's 10060 and 10061 get no move order).
+    string? PatrolData = null
+) : SpawnPointNPC(EntityId, SpawnPointId, Position, Rotation, Visible, SpawnOnFieldCreate, SpawnRadius, NpcList, RegenCheckTime, PatrolData);
 
 // One group of an EventSpawnGroupNPC point: Count npcs, each a random one of NpcIds (the npcs of the server table
 // groupSpawn.xml's group GroupId whose tag list holds the point's tag). The point picks one of its groups by Weight.

@@ -133,14 +133,14 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                                 continue;
                             }
 
+                            string? patrolData = SpawnPatrolData(npcSpawn.PatrolData);
                             switch (npcSpawn) {
                                 case IEventSpawnPointNPC eventNpcSpawn:
                                     yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                        Block = new EventSpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, npcSpawn.Position, npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, (int) npcSpawn.NpcCount, npcList, (int) npcSpawn.RegenCheckTime, (int) eventNpcSpawn.LifeTime, eventNpcSpawn.SpawnAnimation),
+                                        Block = new EventSpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, npcSpawn.Position, npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, (int) npcSpawn.NpcCount, npcList, (int) npcSpawn.RegenCheckTime, (int) eventNpcSpawn.LifeTime, eventNpcSpawn.SpawnAnimation, patrolData),
                                     };
                                     continue;
                                 default:
-                                    string? patrolData = npcSpawn.PatrolData != "00000000-0000-0000-0000-000000000000" ? npcSpawn.PatrolData.Replace("-", string.Empty) : null;
                                     yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
                                         Block = new SpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, npcSpawn.Position, npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, npcList, (int) npcSpawn.RegenCheckTime, patrolData),
                                     };
@@ -275,6 +275,15 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
             }
         }
 
+    }
+
+    // A spawn point's PatrolData: the MS2PatrolData entity's uuid without dashes (MapEntity.Guid's form), or null for
+    // the empty guid the points without a patrol carry.
+    public static string? SpawnPatrolData(string? patrolData) {
+        if (string.IsNullOrEmpty(patrolData) || patrolData == "00000000-0000-0000-0000-000000000000") {
+            return null;
+        }
+        return patrolData.Replace("-", string.Empty);
     }
 
     private MapEntity? ParseTrigger(string xblock, IMS2TriggerObject trigger) {
