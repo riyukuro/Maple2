@@ -312,6 +312,7 @@ public class SkillHandler : FieldPacketHandler {
             };
             targets.Add(targetRecord);
             record.Hits.Declare(targetRecord.Uid, attackPoint, targetRecord.TargetId);
+            record.Hits.DeclareArrow(attackPoint, iterations, targetRecord.Unknown);
 
             // While more targets in packet.
             while (packet.ReadBool()) {
@@ -324,6 +325,7 @@ public class SkillHandler : FieldPacketHandler {
                 };
                 targets.Add(targetRecord);
                 record.Hits.Declare(targetRecord.Uid, attackPoint, targetRecord.TargetId);
+                record.Hits.DeclareArrow(attackPoint, iterations, targetRecord.Index);
             }
 
             session.Player.InBattle = true;
@@ -529,10 +531,18 @@ public class SkillHandler : FieldPacketHandler {
     }
 
     private void HandleCubeMagicPath(GameSession session, IByteReader packet) {
+        if (session.Field == null) {
+            return;
+        }
+
         long skillUid = packet.ReadLong();
         SkillRecord? record = session.Player.ActiveSkills.Get(skillUid);
         if (record == null) {
             Logger.Warning("Invalid Attack-Splash Skill {SkillUid}", skillUid);
+            return;
+        }
+        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick)) {
+            Logger.Debug("Region path dropped, cast {SkillUid} of skill {SkillId} was cancelled {Ms} ms ago", skillUid, record.SkillId, session.Field.FieldTick - record.CancelTick);
             return;
         }
 
@@ -547,14 +557,27 @@ public class SkillHandler : FieldPacketHandler {
             session.Send(NoticePacket.Message($"Skill.Attack.Region: {skillUid}; AttackPoint: {attackPoint}; SendCount: {path.SendCount}; Arrow: {path.Arrow}"));
         }
 
+        // Only an arrow an attack point packet of the cast declared sends one, once at its end and once per piercing
+        // interval, in the hit window, from a point its paths reach (SkillHitBudget.TakeRegionPath and
+        // SkillHitRules.ReachTooFar, as a target packet's). Anything else places nothing.
+        session.Field.TableMetadata.MagicPathTable.Entries.TryGetValue(record.Attack.MagicPathId, out IReadOnlyList<MagicPath>? paths);
+        bool far = SkillHitRules.ReachTooFar(path.Position, record.CastPosition, record.Attack.Arrow, paths, session.Player.Position);
+        if (far || !record.Hits.TakeRegionPath(attackPoint, path.SendCount, path.Arrow, SkillHitRules.TargetRounds(record.Attack, paths), session.Field.FieldTick)) {
+            if (session.Config.HitLog.Count(session.Field.FieldTick) is > 0 and int unlogged) {
+                Logger.Information("Region path dropped: AttackPoint={AttackPoint} send count {SendCount} arrow {Arrow} at {Position}, past the paths' reach {Far}, {Unlogged} since the last line, {Player}: {Record}",
+                    attackPoint, path.SendCount, path.Arrow, path.Position, far, unlogged, session.PlayerName, record);
+            }
+            return;
+        }
+
         record.Position = path.Position;
         record.Rotation = path.Rotation;
 
         // Hide and Seek: where a seek shot lands decides whether it missed (HideAndSeekField.Landed).
         if (record.SkillId == Manager.Field.HideAndSeekField.SeekSkillId) {
-            session.Field?.HideAndSeek?.Landed(session.Player, record.Position);
+            session.Field.HideAndSeek?.Landed(session.Player, record.Position);
         }
-        session.Field?.AddSkill(record);
+        session.Field.AddSkill(record);
     }
 
     private void HandleSync(GameSession session, IByteReader packet) {

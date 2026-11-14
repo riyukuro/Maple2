@@ -20,6 +20,37 @@ public class SkillHitRulesTests {
         Assert.That(budget.TakeTarget(14, 0, 0), Is.False);
     }
 
+    // Skill 1 2 places the attack's regions where an arrow ends (CMagic::FUN_14145f570) and, piercing, once per
+    // interval (FUN_141466da0); the arrow carries the index and send count its attack point packet declared it with
+    // (StateSkill::PickAttackTargets). Before, any number of them placed regions, declared or not.
+    [Test]
+    public void RegionPathNeedsADeclaredArrowOncePerRound() {
+        var budget = new SkillHitBudget();
+        Assert.That(budget.TakeRegionPath(0, 0, 0, rounds: 1, tick: 0), Is.False, "nothing declared");
+        Assert.That(budget.TakePoint(0, 0, held: false, count: 2, tick: 0), Is.True);
+        budget.DeclareArrow(0, 0, 0);
+        budget.DeclareArrow(0, 0, 1);
+        Assert.That(budget.TakeRegionPath(0, 0, 2, rounds: 1, tick: 10), Is.False, "an arrow index the attack did not fire");
+        Assert.That(budget.TakeRegionPath(1, 0, 0, rounds: 1, tick: 10), Is.False, "another attack point");
+        Assert.That(budget.TakeRegionPath(0, 1, 0, rounds: 1, tick: 10), Is.False, "another send count");
+        Assert.That(budget.TakeRegionPath(0, 0, 0, rounds: 1, tick: 10), Is.True);
+        Assert.That(budget.TakeRegionPath(0, 0, 0, rounds: 1, tick: 20), Is.False, "the arrow ended once");
+        Assert.That(budget.TakeRegionPath(0, 0, 1, rounds: 1, tick: 20), Is.True);
+        Assert.That(budget.TakeRegionPath(0, 0, 1, rounds: 1, tick: SkillHitRules.HitWindowMs + 1), Is.False);
+    }
+
+    [Test]
+    public void PiercingRegionPathOncePerInterval() {
+        var budget = new SkillHitBudget();
+        Assert.That(budget.TakePoint(0, 0, held: false, count: 1, tick: 0), Is.True);
+        budget.DeclareArrow(0, 0, 0);
+        for (int i = 0; i < 4; i++) {
+            Assert.That(budget.TakeRegionPath(0, 0, 0, rounds: 4, tick: i), Is.True, $"round {i}");
+        }
+        Assert.That(budget.TakeRegionPath(0, 0, 0, rounds: 4, tick: 5), Is.False);
+        Assert.That(budget.TakeRegionPath(0, 0, 0, rounds: 4, tick: SkillHitRules.HitWindowMs + 1), Is.False, "late");
+    }
+
     [Test]
     public void BouncingArrowPaysOncePerBounce() {
         var budget = new SkillHitBudget();

@@ -317,6 +317,10 @@ public sealed class SkillHitBudget {
     private readonly Dictionary<long, Attack> attacks = new();
     // The objects each point group hit since the cast's last tick sync: (point group << 32) | object id.
     private readonly HashSet<long> pointGroupHits = new();
+    // The arrows attack point packets declared, by (attack point, send count, arrow index), and the region path
+    // packets each key sent.
+    private readonly Dictionary<(byte, int, int), int> arrows = new();
+    private readonly Dictionary<(byte, int, int), int> regionPaths = new();
 
     private sealed class Attack(byte attackPoint, int targetId) {
         public readonly byte AttackPoint = attackPoint;
@@ -394,6 +398,35 @@ public sealed class SkillHitBudget {
     // targetId: the object the attack point packet names for the attack (the client's tag caster id).
     public void Declare(long attackUid, byte attackPoint, int targetId) {
         attacks.TryAdd(attackUid, new Attack(attackPoint, targetId));
+    }
+
+    // An arrow the attack point packet declares: the tag's index among the attack's (SkillTargetRecord::m_n84,
+    // StateSkill::PickAttackTargets numbers them from 0; a bounce's linked tag carries 0) at the cast's send count
+    // the packet carries (both are what the tag's Init took, so the region path packet the arrow sends carries them
+    // too, magicdata.cpp:1161).
+    public void DeclareArrow(byte attackPoint, int sendCount, int arrow) {
+        var key = (attackPoint, sendCount, arrow);
+        arrows[key] = arrows.GetValueOrDefault(key) + 1;
+    }
+
+    // A region path packet (Skill 1 2): false when its cast is past the hit window, when no attack point packet
+    // declared its arrow, or when the arrows declared under its key already sent rounds each: an arrow
+    // sends one when it ends (CMagic::FUN_14145f570) and a piercing one per interval (FUN_141466da0, bounce types 3
+    // and 4 only, magicdata.cpp:1880), so SkillHitRules.TargetRounds. Counted only when taken.
+    public bool TakeRegionPath(byte attackPoint, int sendCount, int arrow, int rounds, long tick) {
+        if (TooLate(tick)) {
+            return false;
+        }
+        var key = (attackPoint, sendCount, arrow);
+        if (!arrows.TryGetValue(key, out int declared)) {
+            return false;
+        }
+        int used = regionPaths.GetValueOrDefault(key);
+        if (used >= declared * Math.Max(1, rounds)) {
+            return false;
+        }
+        regionPaths[key] = used + 1;
+        return true;
     }
 
     // rounds: how many times the attack's arrow may send its 1 + bounceCount packets (SkillHitRules.TargetRounds).
