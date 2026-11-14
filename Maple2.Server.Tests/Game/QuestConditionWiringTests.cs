@@ -557,6 +557,40 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
+
+    // 70700001: quest_clear_by_chapter codes 2010 and 3074, value 2: a completed quest of either chapter counts; one
+    // of another chapter, or of none, does not.
+    [Test]
+    public void QuestClearByChapter_70700001_TheChaptersQuests() {
+        StartCompletion();
+        Quest quest = StartQuest(Condition(ConditionType.quest_clear_by_chapter, 2, ["2010", "3074"], []));
+        QuestMetadataBasic basic = TestGameSession.QuestData(0).Basic;
+
+        Assert.That(test.Session.Quest.Complete(Completed(10002541, basic)), Is.True);
+        Assert.That(test.Session.Quest.Complete(Completed(10002542, basic with { ChapterId = 2011 })), Is.True);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Assert.That(test.Session.Quest.Complete(Completed(10002543, basic with { ChapterId = 2010 })), Is.True);
+        Assert.That(test.Session.Quest.Complete(Completed(10002544, basic with { ChapterId = 3074 })), Is.True);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(2));
+    }
+    #endregion
+    #region buff (BuffManager.AddBuff, a buff taken on)
+    // 90000501: <condition type="buff" code="90000342" value="1" />, the player taking on the buff of the code counts;
+    // another buff does not.
+    [TestCase(90000342, 1)]
+    [TestCase(90000343, 0)]
+    public void Buff_90000501_TheBuffOfTheCode(int buffId, int expected) {
+        Start();
+        WithEffect(buffId);
+        Quest quest = StartQuest(Condition(ConditionType.buff, 1, ["90000342"], []));
+
+        test.Session.Player.Buffs.AddBuff(test.Session.Player, test.Session.Player, buffId, 1, Field.FieldTick);
+
+        Assert.That(test.Session.Player.Buffs.HasBuff(buffId), Is.True);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
+    }
     #endregion
     #region dialogue (NpcTalkHandler.BeginTalk, a talk's start)
     private FieldNpc TalkNpc(int id) {
@@ -616,7 +650,7 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
     #endregion
-    #region run, swim, glide, climb, swimtime, laddertime, ropetime (FieldPlayer.OnStateSync)
+    #region run, swim, glide, climb, fall, crawl, swimtime, laddertime, ropetime (FieldPlayer.OnStateSync)
     // The player on the given map, with the syncs kept where they are sent (as for riding).
     private FieldPlayer StateSyncField(int mapId) {
         Start();
@@ -630,13 +664,16 @@ public class QuestConditionWiringTests : TriggerTestBase {
         return player;
     }
 
-    // 40001860 run 500, 40001730 swim 500, 40001670 glide 200, 40001650 climb 100: each meter (150 units) moved in
-    // the state counts (both swim states for swim); the same distance in another state does not.
+    // 40001860 run 500, 40001730 swim 500, 40001670 glide 200, 40001650 climb 100, 40002260 fall 100, 40001740
+    // crawl 50: each meter (150 units) moved in the state counts (both swim states for swim); the same distance in
+    // another state does not.
     [TestCase(ConditionType.run, ActorState.Walk, 500)]
     [TestCase(ConditionType.swim, ActorState.Swim, 500)]
     [TestCase(ConditionType.swim, ActorState.SwimDash, 500)]
     [TestCase(ConditionType.glide, ActorState.Glide, 200)]
     [TestCase(ConditionType.climb, ActorState.Climb, 100)]
+    [TestCase(ConditionType.fall, ActorState.Fall, 100)]
+    [TestCase(ConditionType.crawl, ActorState.Crawl, 50)]
     public void Distance_EachMeterInItsState(ConditionType type, ActorState state, long value) {
         FieldPlayer player = StateSyncField(2000001);
         Quest quest = StartQuest(Condition(type, value, [], []));
