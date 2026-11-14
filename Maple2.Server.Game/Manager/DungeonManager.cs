@@ -1329,16 +1329,19 @@ public class DungeonManager {
             MigrateOutResponse response = session.World.MigrateOut(request);
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Dungeon lobby", response.IpAddress, response.Port);
+                session.MigrationRefused();
                 session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
                 return;
             }
             session.Send(MigrationPacket.GameToGame(endpoint, response.Token, Metadata.LobbyFieldId));
             session.State = SessionState.ChangeMap;
-        } catch (RpcException ex) {
-            session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
-            session.Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
-        } finally {
             session.Disconnect();
+        } catch (RpcException ex) {
+            // A refused move (the client shows its move error box, CNetworkService::OnGameToGame) leaves the player
+            // where they stand, as GameSession.Migrate does; it used to end the connection.
+            logger.Warning("Move to the dungeon lobby {MapId} refused by the World server: {Status}", Metadata.LobbyFieldId, ex.StatusCode);
+            session.MigrationRefused();
+            session.Send(MigrationPacket.GameToGameError(GameSession.MoveRefusedError(ex.StatusCode)));
         }
     }
 

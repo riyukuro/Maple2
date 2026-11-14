@@ -118,10 +118,15 @@ public static class PlayerWarpUtil {
                 session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             }
         } catch (RpcException ex) {
-            session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
-            session.Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
-        } finally {
+            Log.Warning("GoToPlayer: the move to channel {Channel} was refused by the World server: {Status}", playerInfo.Channel, ex.StatusCode);
+            session.Send(MigrationPacket.GameToGameError(GameSession.MoveRefusedError(ex.StatusCode)));
+        }
+        // Only a move that was sent ends the connection; a refused one (the client shows its move error box) leaves
+        // the player where they stand, as GameSession.Migrate does, and the session saves again.
+        if (moved) {
             session.Disconnect();
+        } else {
+            session.MigrationRefused();
         }
         return moved; // false: the World server refused the channel change
     }

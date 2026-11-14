@@ -810,7 +810,7 @@ public sealed class TestGameSession {
             return new FieldPlotResponse();
         }
 
-        // The world's open global portal (the answer to GetGlobalPortal); none is open while it is null.
+        // The world's open global portal (the answer to GetGlobalPortal and JoinGlobalPortal); none is open while it is null.
         public GlobalPortalInfo? OpenPortal;
         public int TimeEventError;
         public FieldWarInfo? OpenFieldWar;
@@ -819,7 +819,7 @@ public sealed class TestGameSession {
 
         public override TimeEventResponse TimeEvent(TimeEventRequest request, CallOptions options) {
             var response = new TimeEventResponse { Error = TimeEventError };
-            if (request.GetGlobalPortal != null && OpenPortal != null) {
+            if ((request.GetGlobalPortal != null || request.JoinGlobalPortal != null) && OpenPortal != null) {
                 response.GlobalPortalInfo = OpenPortal;
             }
             if (request.GetFieldWar != null && OpenFieldWar != null) {
