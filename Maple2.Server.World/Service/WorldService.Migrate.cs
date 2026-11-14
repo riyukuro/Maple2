@@ -15,13 +15,30 @@ public partial class WorldService {
 
     private readonly IMemoryCache tokenCache;
 
+    // The account's newest token, kept in the token cache next to the tokens. An account has one client, so only its
+    // newest move is live: a new token ends the earlier one. Else a token left unused (the client was closed on the
+    // way, or another login of the account picked a character before it arrived) still let a second game session of
+    // the account in next to the first one.
+    private readonly record struct AccountTokenKey(long AccountId);
+    private static readonly object TokenIssue = new();
+
+    private void Issue(ulong token, TokenEntry entry) {
+        lock (TokenIssue) {
+            if (tokenCache.TryGetValue(new AccountTokenKey(entry.AccountId), out ulong earlier)) {
+                tokenCache.Remove(earlier);
+            }
+            tokenCache.Set(token, entry, AuthExpiry);
+            tokenCache.Set(new AccountTokenKey(entry.AccountId), token, AuthExpiry);
+        }
+    }
+
     public override Task<MigrateOutResponse> MigrateOut(MigrateOutRequest request, ServerCallContext context) {
         ulong token = UniqueToken();
 
         switch (request.Server) {
             case Server.Login:
                 var loginEntry = new TokenEntry(request.Server, request.AccountId, request.CharacterId, new Guid(request.MachineId), 0, 0, 0, 0, 0, MigrationType.Normal);
-                tokenCache.Set(token, loginEntry, AuthExpiry);
+                Issue(token, loginEntry);
                 return Task.FromResult(new MigrateOutResponse {
                     IpAddress = Target.LoginIp.ToString(),
                     Port = Target.LoginPort,
@@ -57,7 +74,7 @@ public partial class WorldService {
                 }
 
                 var gameEntry = new TokenEntry(request.Server, request.AccountId, request.CharacterId, new Guid(request.MachineId), channel, request.MapId, request.PortalId, request.RoomId, request.OwnerId, request.Type, request.PetUid);
-                tokenCache.Set(token, gameEntry, AuthExpiry);
+                Issue(token, gameEntry);
                 return Task.FromResult(new MigrateOutResponse {
                     IpAddress = endpoint.Address.ToString(),
                     Port = endpoint.Port,
@@ -97,7 +114,12 @@ public partial class WorldService {
             throw new RpcException(new Status(StatusCode.FailedPrecondition, "Mismatched machineId for account"));
         }
 
-        tokenCache.Remove(request.Token);
+        lock (TokenIssue) {
+            tokenCache.Remove(request.Token);
+            if (tokenCache.TryGetValue(new AccountTokenKey(data.AccountId), out ulong newest) && newest == request.Token) {
+                tokenCache.Remove(new AccountTokenKey(data.AccountId));
+            }
+        }
         return Task.FromResult(new MigrateInResponse {
             CharacterId = data.CharacterId,
             Channel = data.Channel,

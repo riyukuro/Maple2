@@ -102,6 +102,8 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
                 return;
             }
 
+            EndGameSession(session);
+
             var request = new MigrateOutRequest {
                 AccountId = session.AccountId,
                 CharacterId = characterId,
@@ -136,6 +138,26 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             Logger.Error(ex, "Login to game failed for character {CharacterId}", characterId);
             session.Send(MigrationPacket.LoginToGameError(s_move_err_default, ex.Message));
             session.CutAfterSend();
+        }
+    }
+
+    // The account still in game: another client of it entered with a character it picked after this login was let
+    // in (a login is refused only while the account is in game, LoginHandler), so both would play. That session is
+    // ended first, as a login of an account in game ends it. Its end saves it before the answer comes back (the
+    // channel's Disconnect cuts the session, and the cut runs its Dispose and its save), so the entry of this
+    // character loads what it saved. A record that went offline in between is not found: nothing to end.
+    private void EndGameSession(LoginSession session) {
+        PlayerInfoResponse online = World.AccountInfo(new PlayerInfoRequest { AccountId = session.AccountId });
+        if (online is not { CharacterId: > 0 } || online.Channel == -1) {
+            return;
+        }
+
+        Logger.Information("Account {AccountId} picked a character while {CharacterId} is in game on channel {Channel}: ending that session",
+            session.AccountId, online.CharacterId, online.Channel);
+        try {
+            World.Disconnect(new DisconnectRequest { CharacterId = online.CharacterId, Force = true });
+        } catch (RpcException ex) when (ex.StatusCode == StatusCode.NotFound) {
+            Logger.Information("Character {CharacterId} went offline before the disconnect", online.CharacterId);
         }
     }
 

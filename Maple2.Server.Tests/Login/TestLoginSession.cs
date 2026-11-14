@@ -150,6 +150,23 @@ public sealed class TestLoginSession {
             return new MigrateOutResponse { IpAddress = "127.0.0.1", Port = 20002, Token = 1 };
         }
 
+        // The account's online record (AccountInfo); offline (channel -1) unless set. Disconnect ends it.
+        public PlayerInfoResponse Account = new() { Channel = -1 };
+        public readonly List<DisconnectRequest> Disconnects = [];
+        // Thrown by Disconnect after the request is recorded.
+        public RpcException? DisconnectError;
+
+        public override PlayerInfoResponse AccountInfo(PlayerInfoRequest request, CallOptions options) => Account;
+
+        public override DisconnectResponse Disconnect(DisconnectRequest request, CallOptions options) {
+            Disconnects.Add(request);
+            if (DisconnectError != null) {
+                throw DisconnectError;
+            }
+            Account = new PlayerInfoResponse { Channel = -1 };
+            return new DisconnectResponse { Success = true };
+        }
+
         public override LockResponse AcquireLock(LockRequest request, CallOptions options) => new();
 
         public override LockResponse ReleaseLock(LockRequest request, CallOptions options) => new();
