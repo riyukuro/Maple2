@@ -38,7 +38,8 @@ public class GuildRaidTests {
             new Dictionary<int, IReadOnlyDictionary<int, GuildTable.House>>(),
             new Dictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>>(),
             new Dictionary<short, GuildTable.Property> { [1] = property },
-            Raids: new Dictionary<int, GuildTable.Raid> { [Room] = new(Room, 300, 1f, 1f) }));
+            Raids: new Dictionary<int, GuildTable.Raid> { [Room] = new(Room, 300, 1f, 1f) },
+            Contributions: new Dictionary<string, int> { [GuildContributionKind.Raid] = 30 }));
 
         using (GameStorage.Request db = test.Storage.Context()) {
             guild = db.CreateGuild("Raid", test.CharacterId) ?? throw new InvalidOperationException("guild row not created");
@@ -80,11 +81,25 @@ public class GuildRaidTests {
         Assert.That(StoredRaids(), Is.EquivalentTo(new Dictionary<int, int> { [Room] = 600 }));
     }
 
+    // Each clear is worth the table's raid row (30 here) to the member, stored at once.
+    [Test]
+    public void Clear_GivesTheTablesRaidContribution() {
+        Assert.That(manager.RaidClear(master.CharacterId, Room), Is.EqualTo(GuildError.none));
+        Assert.That(manager.RaidClear(master.CharacterId, Room), Is.EqualTo(GuildError.none));
+
+        Assert.That((master.WeeklyContribution, master.TotalContribution), Is.EqualTo((60, 60)));
+        using var context = new Ms2Context(test.Options);
+        var row = context.GuildMember.Single(member => member.CharacterId == master.CharacterId);
+        Assert.That((row.WeeklyContribution, row.TotalContribution), Is.EqualTo((60, 60)));
+    }
+
+    // A refused clear gives no contribution either.
     [Test]
     public void Clear_RefusedForAStrangerOrARoomNotInTheTable() {
         Assert.That(manager.RaidClear(999, Room), Is.EqualTo(GuildError.s_guild_err_null_member));
         Assert.That(manager.RaidClear(master.CharacterId, Room + 1), Is.EqualTo(GuildError.s_guild_err_unknown));
         Assert.That(master.Raids, Is.Empty);
+        Assert.That(master.TotalContribution, Is.EqualTo(0));
     }
 
     [Test]

@@ -1094,6 +1094,8 @@ public class GuildManager : IDisposable {
                 Value = value,
             },
         });
+        // A clear is worth the table's raid row to the member (after the guild's lock: AddContribution takes it).
+        AddContribution(requestor.CharacterId, GuildContributionKind.Raid);
 
         return GuildError.none;
     }
