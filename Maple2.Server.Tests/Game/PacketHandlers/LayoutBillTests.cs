@@ -27,12 +27,14 @@ public class LayoutBillTests {
         Install = new ItemMetadataInstall(true, 0, 0, false, MapAttribute.none),
     };
 
-    private GameSession StartInHome(params int[] layoutCubes) {
+    private GameSession StartInHome(params int[] layoutCubes) => StartPriced(1000, layoutCubes);
+
+    private GameSession StartPriced(int mesoPrice, params int[] layoutCubes) {
         test = new TestGameSession();
         test.SetTable(new UgcHousingPointRewardTable(new Dictionary<int, UgcHousingPointRewardTable.Entry>()));
         test.SetTable(new MasteryUgcHousingTable(new Dictionary<int, MasteryUgcHousingTable.Entry> { [1] = new(1, 0, 0) }));
         test.SetTable(new FurnishingShopTable(new Dictionary<int, FurnishingShopTable.Entry> {
-            [MesoCube] = new(MesoCube, true, FurnishingCurrencyType.Meso, 1000),
+            [MesoCube] = new(MesoCube, true, FurnishingCurrencyType.Meso, mesoPrice),
             [MeretCube] = new(MeretCube, true, FurnishingCurrencyType.Meret, 30),
         }));
         test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>()));
@@ -67,6 +69,21 @@ public class LayoutBillTests {
         }
         Assert.That(reader.Available, Is.EqualTo(0));
         return (count, cubes, costs);
+    }
+
+    // The bill is a long per money type; the price times the count was int math, so two cubes of 2^30 meso wrapped
+    // to a negative total and the meso entry was dropped from the bill.
+    [Test]
+    public void ALargeTotal_DoesNotWrap() {
+        const int price = 1 << 30;
+        GameSession session = StartPriced(price, MesoCube, MesoCube);
+
+        (int count, int cubes, Dictionary<byte, long> costs) = RequestBill(session);
+        Assert.Multiple(() => {
+            Assert.That(count, Is.EqualTo(1));
+            Assert.That(cubes, Is.EqualTo(2));
+            Assert.That(costs[(byte) FurnishingCurrencyType.Meso], Is.EqualTo(2L * price));
+        });
     }
 
     [Test]

@@ -1432,7 +1432,7 @@ public class HousingManager {
                 if (shopEntry is null) {
                     continue;
                 }
-                cubeCosts[shopEntry.FurnishingTokenType] += shopEntry.Price * amount;
+                cubeCosts[shopEntry.FurnishingTokenType] += (long) shopEntry.Price * amount;
                 cubeCount += amount;
                 continue;
             }
@@ -1446,7 +1446,7 @@ public class HousingManager {
             }
 
             int missingCubes = amount - item.Amount;
-            cubeCosts[shopEntry.FurnishingTokenType] += shopEntry.Price * missingCubes;
+            cubeCosts[shopEntry.FurnishingTokenType] += (long) shopEntry.Price * missingCubes;
             cubeCount += missingCubes;
         }
 
