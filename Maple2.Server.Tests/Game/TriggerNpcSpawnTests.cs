@@ -14,6 +14,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -227,5 +228,31 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Action("""<action name="arcade_spring_farm_spawn_monster" type="SpawnMonster" score="5000" spawn_ids="1001,1002" />""");
         Assert.That(Field.Mobs.Values.Select(npc => npc.SpawnPointId).Order(), Is.EqualTo(new[] { 1001, 1002 }));
         Assert.That((Field.SpringFarm!.SpawnCleared(1001), Field.SpringFarm.SpawnCleared(1002), Field.SpringFarm.Score), Is.EqualTo((true, true, 10000)));
+    }
+
+    // The boss gauge as 02000403_bf opens it (the siege fields: spawn_monster, then the gauge) and closes it:
+    // shadow_expedition_open_boss_gauge (12 KR uses) sends board kind 1 with the title, 0 and the most points,
+    // and counts the monsters alive now; each kill moves the gauge (command 1); shadow_expedition_close_boss_gauge
+    // (19) closes the board (command 2) and stops the count.
+    [Test]
+    public void ShadowExpeditionBossGauge_OpenCountClose() {
+        StartSpawns(Spawn(2002, new Vector3(300, 0, 0), new SpawnPointNPCListEntry(MobId, 2)));
+        // The test field skips the FieldManager ctor: its board lock is made here.
+        typeof(FieldManager).GetField("scoreBoardLock", Any)!.SetValue(Field, new object());
+        Action("""<action name="spawn_monster" spawn_ids="2002" auto_target="0" />""");
+        test.TakeSent();
+
+        Action("""<action name="shadow_expedition_open_boss_gauge" type="OpenBossGauge" title="$02000403_BF__EVENT_02__9$" max_gauge_point="1000" />""");
+        ByteReader open = Sent(SendOp.ShadowExpedition).Single();
+        Assert.That((open.ReadByte(), open.ReadByte(), open.ReadString(), open.ReadInt(), open.ReadInt(), open.Available),
+            Is.EqualTo(((byte) 0, (byte) 1, "$02000403_BF__EVENT_02__9$", 0, 1000, 0)));
+
+        Field.ShadowGaugeKilled(Field.Mobs.Keys.First());
+        ByteReader points = Sent(SendOp.ShadowExpedition).Single();
+        Assert.That((points.ReadByte(), points.ReadInt()), Is.EqualTo(((byte) 1, 500)));
+
+        Action("""<action name="shadow_expedition_close_boss_gauge" type="CloseBossGauge" />""");
+        Assert.That(Sent(SendOp.ShadowExpedition).Select(reader => reader.ReadByte()), Is.EqualTo(new[] { (byte) 2 }));
+        Assert.That((Field.ShadowGauge, Field.ScoreBoardOpen), Is.EqualTo(((ShadowGauge?) null, (ScoreBoard.Board?) null)));
     }
 }
