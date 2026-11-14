@@ -56,6 +56,7 @@ public sealed class GameEventManager {
         nextUpdateTick = tickCount + 1000;
 
         UpdateDtReward();
+        UpdatePlayGift();
         UpdateDailyLoginReward();
         UpdateUserCondition();
         // Chosen here: the SAHotTime bonus follows its events within this one second step.
@@ -241,6 +242,97 @@ public sealed class GameEventManager {
             if (item == null) {
                 logger.Error("Failed to create item for DTReward. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
                 return;
+            }
+
+            mail.Items.Add(item);
+            session.Mail.Notify(true);
+        }
+    }
+
+    // The play-time gift's step after `elapsed` more seconds: the gift at `index` is due once the seconds since the
+    // last gift reach its requireMins. Past the last gift nothing is due and the seconds stay.
+    public static (long Seconds, bool Due) PlayGiftStep(PlayGift.Gift[] gifts, int index, long seconds, long elapsed) {
+        if (index < 0 || index >= gifts.Length) {
+            return (seconds, false);
+        }
+        seconds += elapsed;
+        return (seconds, seconds >= gifts[index].RequireMinutes * 60L);
+    }
+
+    // The second of the last play-time gift step of this session.
+    private long playGiftStep;
+
+    // The play-time gifts (PlayGift). The client has no part in this event (no GameEventPlayGift class; its table is
+    // read only by the server), so the steps follow the play-time reward's: once a second, per event, the seconds
+    // since the last gift grow by the time since the last step, and the gift whose requireMins they reach is mailed
+    // as a system mail with the gift's systemMailID and item; the seconds start again from 0. Chosen here: the gifts
+    // and seconds are per character and per server-local day, as the play-time reward's (DtRewardExpiry), and the
+    // first step of a session counts one second. The next index is stored before the mail is made: a stop between
+    // the two loses that gift instead of giving it twice.
+    private void UpdatePlayGift() {
+        if (session.Field is null) return;
+
+        IList<GameEvent> events = session.FindEvent(GameEventType.PlayGift);
+        if (events.Count == 0) {
+            return;
+        }
+
+        DateTime now = Clock();
+        long nowSeconds = now.ToEpochSeconds();
+        long elapsed = playGiftStep == 0 ? 1 : nowSeconds - playGiftStep;
+        if (elapsed <= 0) {
+            return;
+        }
+        playGiftStep = nowSeconds;
+        long expiry = DtRewardExpiry(now);
+
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is not PlayGift playGift) {
+                continue;
+            }
+
+            int index = Get(GameEventUserValueType.PlayGiftIndex, gameEvent.Id, expiry, nowSeconds).Int();
+            if (index >= playGift.Gifts.Length) {
+                continue;
+            }
+            long seconds = Get(GameEventUserValueType.PlayGiftSeconds, gameEvent.Id, expiry, nowSeconds).Long();
+            (seconds, bool due) = PlayGiftStep(playGift.Gifts, index, seconds, elapsed);
+            if (!due) {
+                Set(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds, seconds);
+                continue;
+            }
+
+            PlayGift.Gift gift = playGift.Gifts[index];
+            Item? item = session.Field?.ItemDrop.CreateItem(gift.Item.ItemId, gift.Item.Rarity, gift.Item.Amount);
+            if (item == null) {
+                Set(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds, seconds);
+                continue;
+            }
+
+            Set(gameEvent.Id, GameEventUserValueType.PlayGiftIndex, index + 1);
+            Set(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds, 0L);
+            if (!Store(gameEvent.Id, GameEventUserValueType.PlayGiftIndex)
+                || !Store(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds)) {
+                logger.Error("Failed to store the PlayGift index. Event ID: {EventId}, Gift: {GiftId}", gameEvent.Id, gift.GiftId);
+                continue;
+            }
+
+            using GameStorage.Request db = session.GameStorage.Context();
+            Mail? mail = db.CreateMail(new Mail {
+                Type = MailType.System,
+                ReceiverId = session.CharacterId,
+                SenderId = session.CharacterId,
+                Content = gift.MailContentId.ToString(),
+            });
+            if (mail == null) {
+                logger.Error("Failed to create mail for PlayGift. Event ID: {EventId}, Gift: {GiftId}", gameEvent.Id, gift.GiftId);
+                continue;
+            }
+
+            item = db.CreateItem(mail.Id, item);
+            if (item == null) {
+                logger.Error("Failed to create item for PlayGift. Event ID: {EventId}, Gift: {GiftId}", gameEvent.Id, gift.GiftId);
+                continue;
             }
 
             mail.Items.Add(item);

@@ -215,6 +215,21 @@ public record DTReward(
 }
 
 /// <summary>
+/// Play-time gifts (PlayGift): the event row's value1 names an eventID of the client's table/playgiftevent.xml, whose
+/// items (PlayBonusItemGift rows, commonfiles/itemgift.cpp) are the gifts in giftID order. Each gift is mailed with its
+/// item once the player has played its RequireMinutes since the last one.
+/// </summary>
+public record PlayGift(
+    int GiftEventId,
+    PlayGift.Gift[] Gifts) : GameEventData {
+    public record Gift(
+        int GiftId,
+        int RequireMinutes,
+        int MailContentId,
+        RewardItem Item);
+}
+
+/// <summary>
 /// Enables the specified items to be shown/bought in the building menu
 /// </summary>
 public record ConstructShowItem(
@@ -766,6 +781,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(Reactor), "Reactor")]
 [JsonDerivedType(typeof(WorldmapIcon), "WorldmapIcon")]
 [JsonDerivedType(typeof(DTReward), "DTReward")]
+[JsonDerivedType(typeof(PlayGift), "PlayGift")]
 [JsonDerivedType(typeof(ConstructShowItem), "ConstructShowItem")]
 [JsonDerivedType(typeof(MassiveConstructionEvent), "MassiveConstructionEvent")]
 [JsonDerivedType(typeof(UGCMapContractSale), "UGCMapContractSale")]

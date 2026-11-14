@@ -95,6 +95,11 @@ public enum GameEventUserValueType {
     UserConditionDone = 2430,
     UserConditionNotice = 2431,
 
+    // Play-time gifts (PlayGift): the gifts mailed today and the play seconds since the last one. Not KMS2 values;
+    // the event has no client class, so the client never gets them.
+    PlayGiftIndex = 2440,
+    PlayGiftSeconds = 2441,
+
     // Long-term attendance (LongTermAttendGift), read by its dialog (uilongtermattendgiftdialog.cpp)
     LongTermAttendClaimedDays = 2700, // claimed reward days, "5,11,20"
     LongTermAttendPoints = 2701,

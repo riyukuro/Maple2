@@ -1210,6 +1210,57 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         return results;
     }
 
+    // The gifts of the client's table/playgiftevent.xml by eventID; the data folder's pack first, then the played
+    // client's, whose events win.
+    private Dictionary<int, PlayGift.Gift[]>? playGiftEvents;
+
+    private Dictionary<int, PlayGift.Gift[]> ClientPlayGiftEvents() {
+        var results = new Dictionary<int, PlayGift.Gift[]>();
+        foreach (M2dReader? reader in new[] { clientReader, playedReader }) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file =>
+                file.Name.Equals("table/playgiftevent.xml", StringComparison.OrdinalIgnoreCase));
+            if (entry == null) {
+                continue;
+            }
+            foreach ((int eventId, PlayGift.Gift[] gifts) in MapPlayGiftEvents(reader!.GetXmlDocument(entry))) {
+                results[eventId] = gifts;
+            }
+        }
+        return results;
+    }
+
+    // <playGiftEvent eventID><item giftID itemID count grade requireMins systemMailID/></playGiftEvent>, the rows
+    // PlayBonusItemGift reads (commonfiles/itemgift.cpp vfunc_4), gifts in giftID order. A row whose numbers do not
+    // read is skipped; an event left without gifts is not listed.
+    public static Dictionary<int, PlayGift.Gift[]> MapPlayGiftEvents(XmlDocument document) {
+        var results = new Dictionary<int, PlayGift.Gift[]>();
+        if (document.DocumentElement == null) {
+            return results;
+        }
+        foreach (XmlElement node in document.DocumentElement.ChildNodes.OfType<XmlElement>()) {
+            if (node.Name != "playGiftEvent" || !int.TryParse(node.GetAttribute("eventID"), out int eventId)) {
+                continue;
+            }
+            var gifts = new List<PlayGift.Gift>();
+            foreach (XmlElement item in node.ChildNodes.OfType<XmlElement>()) {
+                if (item.Name != "item"
+                    || !int.TryParse(item.GetAttribute("giftID"), out int giftId)
+                    || !int.TryParse(item.GetAttribute("itemID"), out int itemId) || itemId <= 0
+                    || !int.TryParse(item.GetAttribute("count"), out int count) || count <= 0
+                    || !int.TryParse(item.GetAttribute("requireMins"), out int requireMins) || requireMins < 0
+                    || !int.TryParse(item.GetAttribute("systemMailID"), out int mailId)) {
+                    continue;
+                }
+                short grade = short.TryParse(item.GetAttribute("grade"), out short g) ? g : (short) 1;
+                gifts.Add(new PlayGift.Gift(giftId, requireMins, mailId, new RewardItem(itemId, grade, count)));
+            }
+            if (gifts.Count > 0) {
+                results[eventId] = gifts.OrderBy(gift => gift.GiftId).ToArray();
+            }
+        }
+        return results;
+    }
+
     private GameEventTable ParseGameEventTable() {
         var results = new Dictionary<int, GameEventMetadata>();
         DateTime now = AttendGiftReplay.IngestNow();
@@ -1226,6 +1277,14 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
             if (eventData is Snowman snowman) {
                 eventData = snowman with { Sources = SnowmanSources(data.eventStart, data.eventEnd) };
+            }
+            if (eventData is PlayGift playGift) {
+                playGiftEvents ??= ClientPlayGiftEvents();
+                if (!playGiftEvents.TryGetValue(playGift.GiftEventId, out PlayGift.Gift[]? gifts)) {
+                    Console.WriteLine($"PlayGift {id}: no playGiftEvent {playGift.GiftEventId} in the client's table, row dropped");
+                    continue;
+                }
+                eventData = playGift with { Gifts = gifts };
             }
             GameEventMetadata metadata = MapGameEvent(id, data, eventType, eventData);
             DateTime endTime = metadata.EndTime;
@@ -1726,6 +1785,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     ActionsHtml: value2);
             case GameEventType.CoupleDance:
                 return ReadCoupleDance(value1, value2);
+            case GameEventType.PlayGift:
+                // value1 is the client table's eventID; value2 an event page address, value3 a notice text (unused).
+                return int.TryParse(value1, out int giftEventId) ? new PlayGift(giftEventId, []) : null;
             case GameEventType.DailyLoginReward:
                 return ReadDailyLoginReward(value1, value2, value3);
             case GameEventType.LoginNotice:
