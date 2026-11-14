@@ -135,6 +135,24 @@ public class MasteryConditionTests {
         Assert.That((quest.Conditions[0].Counter, locked.Conditions[0].Counter), Is.EqualTo((1, 0)));
     }
 
+    // A recipe with exceptRewardExp gives no exp for its craft, as a gather of one gives none (MasteryManager.Gather):
+    // the KR quest recipes 70000001 (10 meso, no ingredients), 80000001, 80000002, 90000001 and 10000001 have it.
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    public void Craft_ExceptRewardExp_GivesNoExp(bool noRewardExp, bool gains) {
+        GameSession session = Start(Recipe(70000001, MasteryType.Blacksmithing) with { NoRewardExp = noRewardExp });
+        var handler = new MasteryHandler { ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata };
+        long before = session.Player.Value.Character.Exp;
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(2);
+            writer.WriteInt(70000001);
+        }));
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(session.Player.Value.Character.Exp > before, Is.EqualTo(gains));
+    }
+
     // The mastery grade trophies of mining (code 3), as the KR rows have them: 23100241 "Master Miner (1)"
     // mastery_grade value 13 (each grade gained), 23100330 "Master Miner (2)" set_mastery_grade values 14 and 15 (the
     // grade reached), and 23100331 the same of breeding (code 5). Grades here are 100 mastery apart (grade 1 at 0).
