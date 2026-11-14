@@ -221,38 +221,22 @@ public sealed class GameEventManager {
                 continue;
             }
 
-            // The next row's index and the restarted seconds are stored before the mail is made: a stop between the
-            // two loses this row's mail instead of giving it again after the restart.
-            Set(gameEvent.Id, GameEventUserValueType.DTRewardRewardIndex, rewardIndexValue.Int() + 1);
-            Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, entry.StartDuration);
-            if (!Store(gameEvent.Id, GameEventUserValueType.DTRewardRewardIndex)
-                || !Store(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime)) {
-                logger.Error("Failed to store the DTReward index. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
-                continue;
-            }
-
-            using GameStorage.Request db = session.GameStorage.Context();
+            // The mail with its item, the next row's index and the restarted seconds are stored in one transaction
+            // (EventClaim.Mail): a stop can neither give this row's mail again nor lose it. When it is not stored the
+            // row stays due and is tried again on the next step.
             var mail = new Mail {
                 Type = MailType.System,
                 ReceiverId = session.CharacterId,
                 SenderId = session.CharacterId,
                 Content = entry.MailContentId.ToString(),
             };
-
-            mail = db.CreateMail(mail);
-            if (mail == null) {
-                logger.Error("Failed to create mail for DTReward. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
-                return;
+            if (!EventClaim.Mail(session, [new EventClaim.Gift(mail, [item])], [
+                    EventClaim.Of(gameEvent.Id, GameEventUserValueType.DTRewardRewardIndex, rewardIndexValue.Int() + 1),
+                    EventClaim.Of(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, entry.StartDuration),
+                ])) {
+                logger.Error("DTReward mail not stored. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
+                Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, current);
             }
-
-            item = db.CreateItem(mail.Id, item);
-            if (item == null) {
-                logger.Error("Failed to create item for DTReward. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
-                return;
-            }
-
-            mail.Items.Add(item);
-            session.Mail.Notify(true);
         }
     }
 
@@ -274,8 +258,8 @@ public sealed class GameEventManager {
     // since the last gift grow by the time since the last step, and the gift whose requireMins they reach is mailed
     // as a system mail with the gift's systemMailID and item; the seconds start again from 0. Chosen here: the gifts
     // and seconds are per character and per server-local day, as the play-time reward's (DtRewardExpiry), and the
-    // first step of a session counts one second. The next index is stored before the mail is made: a stop between
-    // the two loses that gift instead of giving it twice.
+    // first step of a session counts one second. The mail, the next index and the restarted seconds are stored in
+    // one transaction (EventClaim.Mail); a gift not stored stays due and is tried again on the next step.
     private void UpdatePlayGift() {
         if (session.Field is null) return;
 
@@ -316,34 +300,19 @@ public sealed class GameEventManager {
                 continue;
             }
 
-            Set(gameEvent.Id, GameEventUserValueType.PlayGiftIndex, index + 1);
-            Set(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds, 0L);
-            if (!Store(gameEvent.Id, GameEventUserValueType.PlayGiftIndex)
-                || !Store(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds)) {
-                logger.Error("Failed to store the PlayGift index. Event ID: {EventId}, Gift: {GiftId}", gameEvent.Id, gift.GiftId);
-                continue;
-            }
-
-            using GameStorage.Request db = session.GameStorage.Context();
-            Mail? mail = db.CreateMail(new Mail {
+            var mail = new Mail {
                 Type = MailType.System,
                 ReceiverId = session.CharacterId,
                 SenderId = session.CharacterId,
                 Content = gift.MailContentId.ToString(),
-            });
-            if (mail == null) {
-                logger.Error("Failed to create mail for PlayGift. Event ID: {EventId}, Gift: {GiftId}", gameEvent.Id, gift.GiftId);
-                continue;
+            };
+            if (!EventClaim.Mail(session, [new EventClaim.Gift(mail, [item])], [
+                    EventClaim.Of(gameEvent.Id, GameEventUserValueType.PlayGiftIndex, index + 1),
+                    EventClaim.Of(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds, 0L),
+                ])) {
+                logger.Error("PlayGift mail not stored. Event ID: {EventId}, Gift: {GiftId}", gameEvent.Id, gift.GiftId);
+                Set(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds, seconds);
             }
-
-            item = db.CreateItem(mail.Id, item);
-            if (item == null) {
-                logger.Error("Failed to create item for PlayGift. Event ID: {EventId}, Gift: {GiftId}", gameEvent.Id, gift.GiftId);
-                continue;
-            }
-
-            mail.Items.Add(item);
-            session.Mail.Notify(true);
         }
     }
 
@@ -351,8 +320,8 @@ public sealed class GameEventManager {
     // with the row's mail text, for a character of at least the row's level (value3). Chosen here: once per account
     // (the client has no part in this event, so nothing tells), so that a new character of the same account does
     // not get the day's mail again; on the first second step in a field of the day (the server's local day, as the
-    // play-time reward's), so a player online at midnight gets the next day's mail too. The day's mark is stored
-    // before the mail is made: a stop between the two loses that day's mail instead of sending it twice.
+    // play-time reward's), so a player online at midnight gets the next day's mail too. The mail and the day's mark
+    // are stored in one transaction (EventClaim.Mail); a mail not stored is tried again on the next step.
     private void UpdateDailyLoginReward() {
         if (session.Field is null) return;
 
@@ -372,12 +341,6 @@ public sealed class GameEventManager {
             if (Get(GameEventUserValueType.DailyLoginRewardGiven, gameEvent.Id, expiry, nowSeconds).Int() != 0) {
                 continue;
             }
-            Set(gameEvent.Id, GameEventUserValueType.DailyLoginRewardGiven, 1);
-            if (!Store(gameEvent.Id, GameEventUserValueType.DailyLoginRewardGiven)) {
-                logger.Error("Failed to store the daily login mail of event {EventId} for {CharacterId}", gameEvent.Id, session.CharacterId);
-                continue;
-            }
-
             var items = new List<Item>();
             foreach (RewardItem rewardItem in reward.Items) {
                 Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
@@ -385,30 +348,16 @@ public sealed class GameEventManager {
                     items.Add(item);
                 }
             }
-            if (items.Count == 0) {
-                continue;
-            }
-
-            using GameStorage.Request db = session.GameStorage.Context();
-            Mail? mail = db.CreateMail(new Mail {
+            // Rows none of which can be made still mark the day (as before), with no mail.
+            EventClaim.Gift[] gifts = items.Count == 0 ? [] : [new EventClaim.Gift(new Mail {
                 Type = MailType.System,
                 ReceiverId = session.CharacterId,
                 SenderId = session.CharacterId,
                 Content = reward.MailId > 0 ? reward.MailId.ToString() : string.Empty,
-            });
-            if (mail == null) {
-                logger.Error("Failed to create the daily login mail of event {EventId} for {CharacterId}", gameEvent.Id, session.CharacterId);
-                continue;
+            }, items)];
+            if (!EventClaim.Mail(session, gifts, [EventClaim.Of(gameEvent.Id, GameEventUserValueType.DailyLoginRewardGiven, 1)])) {
+                logger.Error("Daily login mail of event {EventId} not stored for {CharacterId}", gameEvent.Id, session.CharacterId);
             }
-            foreach (Item item in items) {
-                Item? created = db.CreateItem(mail.Id, item);
-                if (created == null) {
-                    logger.Error("Failed to create item {ItemId} of the daily login mail of event {EventId}", item.Id, gameEvent.Id);
-                    continue;
-                }
-                mail.Items.Add(created);
-            }
-            session.Mail.Notify(true);
         }
     }
 
@@ -423,8 +372,8 @@ public sealed class GameEventManager {
     // and has not been given (UserConditionRules) is given now: its mail, a system mail with the row's mail text
     // (context) and the attachments for every job and the character's (as the notice dialog shows them), and its
     // notice: UserConditionEvent 1 with the last such row, whose preview row the client keeps as the one noticed.
-    // The given rows are stored before the mails are made: a stop between the two loses a mail instead of sending
-    // it twice. Chosen here: per character (each character's levels are its own), on the second step after a
+    // The mails, the given rows and the notice are stored in one transaction (EventClaim.Mail): a stop can neither
+    // send a mail twice nor lose it; rows not stored are tried again on the next step. Chosen here: per character (each character's levels are its own), on the second step after a
     // level, exp or job change, at login and when the running events change, so rows already met when an event
     // starts are given too; one notice per step (the client shows one dialog).
     private void UpdateUserCondition() {
@@ -461,29 +410,24 @@ public sealed class GameEventManager {
                 continue;
             }
             done.UnionWith(due.Select(row => row.Id));
-            Set(gameEvent.Id, GameEventUserValueType.UserConditionDone, UserConditionRules.Join(done));
+            var marks = new List<EventClaim.Mark> {
+                EventClaim.Of(gameEvent.Id, GameEventUserValueType.UserConditionDone, UserConditionRules.Join(done)),
+            };
             UserConditionEventMetadata? notice = due.LastOrDefault(row => row.Notify != null);
             if (notice != null) {
                 Get(GameEventUserValueType.UserConditionNotice, gameEvent.Id, gameEvent.EndTime, now);
-                Set(gameEvent.Id, GameEventUserValueType.UserConditionNotice, notice.Id);
+                marks.Add(EventClaim.Of(gameEvent.Id, GameEventUserValueType.UserConditionNotice, notice.Id));
             }
-            if (!Store(gameEvent.Id, GameEventUserValueType.UserConditionDone)) {
-                logger.Error("Failed to store the user condition rows of event {EventId} for {CharacterId}", gameEvent.Id, session.CharacterId);
-                continue;
-            }
-            // The rows are stored as given: a notice that fails to store loses only the login's preview, not the mails.
-            if (notice != null && !Store(gameEvent.Id, GameEventUserValueType.UserConditionNotice)) {
-                logger.Error("Failed to store the user condition notice of event {EventId} for {CharacterId}", gameEvent.Id, session.CharacterId);
-            }
-
-            bool mailed = false;
+            var gifts = new List<EventClaim.Gift>();
             foreach (UserConditionEventMetadata row in due) {
-                if (row.Mail != null) {
-                    mailed |= SendUserConditionMail(gameEvent.Id, row.Mail, jobCode);
+                if (row.Mail != null && UserConditionGift(row.Mail, jobCode) is { } gift) {
+                    gifts.Add(gift);
                 }
             }
-            if (mailed) {
-                session.Mail.Notify(true);
+            if (!EventClaim.Mail(session, gifts, marks)) {
+                logger.Error("User condition rows of event {EventId} not stored for {CharacterId}", gameEvent.Id, session.CharacterId);
+                userConditionDue = true;
+                continue;
             }
             if (notice != null) {
                 session.Send(UserConditionEventPacket.Notice(notice.Id));
@@ -491,7 +435,9 @@ public sealed class GameEventManager {
         }
     }
 
-    private bool SendUserConditionMail(int eventId, UserConditionEventMetadata.MailData mailData, int jobCode) {
+    // A row's mail as it is to be made: the attachments for every job and the character's; null when it carries
+    // nothing (no item made, no meso, no merets).
+    private EventClaim.Gift? UserConditionGift(UserConditionEventMetadata.MailData mailData, int jobCode) {
         var items = new List<Item>();
         foreach (UserConditionEventMetadata.Attachment attachment in UserConditionRules.ForJob(mailData.Attachments, jobCode)) {
             Item? item = session.Field?.ItemDrop.CreateItem(attachment.ItemId, attachment.Rarity, attachment.Amount);
@@ -500,31 +446,16 @@ public sealed class GameEventManager {
             }
         }
         if (items.Count == 0 && mailData.Meso <= 0 && mailData.Merat <= 0) {
-            return false;
+            return null;
         }
-
-        using GameStorage.Request db = session.GameStorage.Context();
-        Mail? mail = db.CreateMail(new Mail {
+        return new EventClaim.Gift(new Mail {
             Type = MailType.System,
             ReceiverId = session.CharacterId,
             SenderId = session.CharacterId,
             Content = mailData.Context > 0 ? mailData.Context.ToString() : string.Empty,
             Meso = Math.Max(0, mailData.Meso),
             Meret = Math.Max(0, mailData.Merat),
-        });
-        if (mail == null) {
-            logger.Error("Failed to create the user condition mail {Context} of event {EventId} for {CharacterId}", mailData.Context, eventId, session.CharacterId);
-            return false;
-        }
-        foreach (Item item in items) {
-            Item? created = db.CreateItem(mail.Id, item);
-            if (created == null) {
-                logger.Error("Failed to create item {ItemId} of the user condition mail of event {EventId}", item.Id, eventId);
-                continue;
-            }
-            mail.Items.Add(created);
-        }
-        return true;
+        }, items);
     }
 
     // The preview row of the last row noticed, sent at login (UserConditionEvent 0): the row the client keeps as the

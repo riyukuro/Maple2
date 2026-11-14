@@ -85,6 +85,36 @@ public class PlayGiftTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // A save that writes a new mail fails, as a database that refused it.
+    private static bool NewMail(Microsoft.EntityFrameworkCore.DbContext context) =>
+        context.ChangeTracker.Entries().Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Added && entry.Entity.GetType().Name == "Mail");
+
+    // A gift whose mail is not stored is not marked either (one transaction, EventClaim.Mail): it stays due and the
+    // next step mails it once. Before, the index was stored first and the gift lost.
+    [Test]
+    public void Gift_NotStored_MailedOnTheNextStep() {
+        TestGameSession test = Test();
+        GameSession session = test.Start();
+        DateTime start = DateTime.Today.AddHours(12);
+        DateTime now = start;
+        session.GameEvent.Clock = () => now;
+
+        session.GameEvent.Update(1000);
+        now = start.AddSeconds(59);
+        test.FailSave = NewMail;
+        session.GameEvent.Update(2000);
+        test.FailSave = null;
+        Assert.That(Mails(test), Is.Empty);
+        Assert.That(test.StoredEventValues(EventId).ContainsKey(GameEventUserValueType.PlayGiftIndex), Is.False);
+
+        now = start.AddSeconds(60);
+        session.GameEvent.Update(3000);
+        now = start.AddSeconds(61);
+        session.GameEvent.Update(4000);
+        Assert.That(Mails(test), Is.EqualTo(new[] { ("51000003", Box, 1) }));
+        Assert.That(test.StoredEventValues(EventId).GetValueOrDefault(GameEventUserValueType.PlayGiftIndex), Is.EqualTo("1"));
+    }
+
     // A new session goes on from the stored index: the first gift is not mailed again and the second follows its
     // requireMins from the session's first step.
     [Test]

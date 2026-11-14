@@ -119,6 +119,37 @@ public class UserConditionEventTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // A save that writes a new mail fails, as a database that refused it.
+    private static bool NewMail(Microsoft.EntityFrameworkCore.DbContext context) =>
+        context.ChangeTracker.Entries().Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Added && entry.Entity.GetType().Name == "Mail");
+
+    // Rows whose mails are not stored are not marked given either (one transaction, EventClaim.Mail) and send no
+    // notice; the next step gives them once. Before, the rows were stored first and their mails lost.
+    [Test]
+    public void UserCondition_NotStored_GivenOnTheNextStep() {
+        TestGameSession test = Test();
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        Character character = session.Player.Value.Character;
+        character.Level = 1;
+        character.Exp = 1;
+        character.Job = Job.Newbie;
+        test.TakeSent();
+
+        test.FailSave = NewMail;
+        session.GameEvent.Update(1000);
+        test.FailSave = null;
+        Assert.That(Mails(test), Is.Empty);
+        Assert.That(Notices(test), Is.Empty);
+        Assert.That(test.StoredEventValues(EventId).ContainsKey(GameEventUserValueType.UserConditionDone), Is.False);
+
+        session.GameEvent.Update(2000);
+        session.GameEvent.Update(3000);
+        Assert.That(Mails(test), Is.EqualTo(new[] { ("50000101", new[] { (Common, 1) }) }));
+        Assert.That(Notices(test), Is.EqualTo(new[] { Hex(UserConditionEventPacket.Notice(1)) }));
+        Assert.That(test.StoredEventValues(EventId).GetValueOrDefault(GameEventUserValueType.UserConditionDone), Is.EqualTo("1"));
+    }
+
     // An event that starts while the player is online: the rows already met are given on the next second step,
     // without waiting for a level, exp or job change.
     [Test]

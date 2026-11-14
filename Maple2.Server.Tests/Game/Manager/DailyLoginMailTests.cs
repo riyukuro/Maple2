@@ -78,6 +78,29 @@ public class DailyLoginMailTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // A save that writes a new mail fails, as a database that refused it.
+    private static bool NewMail(Microsoft.EntityFrameworkCore.DbContext context) =>
+        context.ChangeTracker.Entries().Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Added && entry.Entity.GetType().Name == "Mail");
+
+    // A day's mail that is not stored leaves the day unmarked (one transaction, EventClaim.Mail); the next step
+    // mails it once. Before, the mark was stored first and the mail lost.
+    [Test]
+    public void DailyLoginReward_NotStored_MailedOnTheNextStep() {
+        TestGameSession test = Test();
+        GameSession session = test.Start();
+
+        test.FailSave = NewMail;
+        session.GameEvent.Update(1000);
+        test.FailSave = null;
+        Assert.That(Mails(test), Is.Empty);
+        Assert.That(StoredAccountValues(test), Is.Empty);
+
+        session.GameEvent.Update(2000);
+        session.GameEvent.Update(3000);
+        Assert.That(Mails(test), Has.Length.EqualTo(1));
+        Assert.That(StoredAccountValues(test).GetValueOrDefault(GameEventUserValueType.DailyLoginRewardGiven), Is.EqualTo("1"));
+    }
+
     // Today's account mark stored before a restart, by this character or another of the account: the next login
     // does not mail again.
     [Test]
@@ -179,6 +202,35 @@ public class DailyLoginMailTests {
         Assert.That(stored.GetValueOrDefault(GameEventUserValueType.DTRewardRewardIndex), Is.EqualTo("1"));
         Assert.That(stored.GetValueOrDefault(GameEventUserValueType.DTRewardCurrentTime), Is.EqualTo("0"));
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A row whose mail is not stored keeps its index (one transaction, EventClaim.Mail): it stays due and the next
+    // step mails it once. Before, the index was stored first and the row's mail lost.
+    [Test]
+    public void DtReward_NotStored_MailedOnTheNextStep() {
+        var test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(Ticket));
+        test.AddEvent(EventId, GameEventType.DTReward, new DTReward([
+            new DTReward.Entry(StartDuration: 0, EndDuration: 1, MailContentId: MailText, Item: new RewardItem(Ticket, 1, 3)),
+            new DTReward.Entry(StartDuration: 0, EndDuration: 600, MailContentId: MailText, Item: new RewardItem(Ticket, 1, 3)),
+        ]));
+        GameSession session = test.Start();
+        DateTime start = DateTime.Today.AddHours(12);
+        DateTime now = start;
+        session.GameEvent.Clock = () => now;
+
+        test.FailSave = NewMail;
+        session.GameEvent.Update(1000);
+        test.FailSave = null;
+        Assert.That(Mails(test), Is.Empty);
+        Assert.That(test.StoredEventValues(EventId).ContainsKey(GameEventUserValueType.DTRewardRewardIndex), Is.False);
+
+        now = start.AddSeconds(1);
+        session.GameEvent.Update(2000);
+        now = start.AddSeconds(2);
+        session.GameEvent.Update(3000);
+        Assert.That(Mails(test), Is.EqualTo(new[] { (MailText.ToString(), new[] { Ticket }, 3) }));
+        Assert.That(test.StoredEventValues(EventId).GetValueOrDefault(GameEventUserValueType.DTRewardRewardIndex), Is.EqualTo("1"));
     }
 
     // The play-time reward across midnight: the old day's index (row 0 given) holds at the day's last millisecond,
