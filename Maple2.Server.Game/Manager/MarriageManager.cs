@@ -280,14 +280,27 @@ public sealed class MarriageManager {
         if (!send) {
             return error;
         }
+        // The price is taken here, without a packet, so that no take on another thread can come between the
+        // check and the stored guests; it goes back when the store refuses or throws.
+        if (!session.Currency.TryTakeMeso(cost, notify: false)) {
+            return WeddingError.s_wedding_result_lack_meso_invitation;
+        }
 
         // The stored list is tested again under the row lock; nothing is paid or mailed when it refuses.
-        Dictionary<long, long>? list = db.AddWeddingGuests(WeddingHall.Id, accounts, constants.WeddingInvitationMaxCount, out WeddingError addError);
+        Dictionary<long, long>? list;
+        WeddingError addError;
+        try {
+            list = db.AddWeddingGuests(WeddingHall.Id, accounts, constants.WeddingInvitationMaxCount, out addError);
+        } catch {
+            session.Currency.ReturnMeso(cost, notify: false);
+            throw;
+        }
         if (list == null) {
+            session.Currency.ReturnMeso(cost, notify: false);
             return addError != WeddingError.none ? addError : WeddingError.s_wedding_result_not_find_weddinghall;
         }
         WeddingHall.GuestList = list;
-        session.Currency.ChangeMeso(-cost);
+        session.Currency.NotifyMeso();
 
         MailGuests(db, WeddingHall, guests, WeddingGuestMail.Invite);
 
@@ -665,13 +678,19 @@ public sealed class MarriageManager {
             return true;
         }
 
+        // The filing fee was checked above against the balance; it is taken in one step here, and a take on
+        // another thread in between answers as the check would have.
+        if (function == DivorceRules.FunctionFile && !session.Currency.TryTakeMeso(fee)) {
+            session.Send(WeddingPacket.Error(WeddingError.s_wedding_result_lack_meso_divorce));
+            return false;
+        }
+
         bool stored;
         using (GameStorage.Request db = session.GameStorage.Context()) {
             switch (function) {
                 case DivorceRules.FunctionFile:
-                    // The fee is taken first and saved in the transaction of the filing, so that no filed
+                    // The fee is taken first (above) and saved in the transaction of the filing, so that no filed
                     // divorce is stored without its fee paid; a filing that is not stored gives it back.
-                    session.Currency.ChangeMeso(-fee);
                     stored = db.FileDivorce(marriageId, session.CharacterId, now.FromEpochSeconds(), session.Player);
                     if (!stored) {
                         // In one step, as the take above: a gain on the field's thread meanwhile is kept.
