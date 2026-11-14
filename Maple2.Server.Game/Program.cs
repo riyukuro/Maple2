@@ -166,11 +166,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(autofac => {
     autofac.RegisterModule<WebDbModule>();
 
     // Make all packet handlers available to PacketRouter
-    autofac.RegisterAssemblyTypes(Assembly.GetExecutingAssembly())
-        .Where(type => typeof(PacketHandler<GameSession>).IsAssignableFrom(type))
-        .As<PacketHandler<GameSession>>()
-        .PropertiesAutowired()
-        .SingleInstance();
+    PacketHandlerScan.Register<GameSession>(autofac, Assembly.GetExecutingAssembly());
 
     // ChatCommand Handlers
     autofac.RegisterType<CommandRouter>();

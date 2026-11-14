@@ -91,11 +91,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(autofac => {
         .AsSelf();
 
     // Make all packet handlers available to PacketRouter
-    autofac.RegisterAssemblyTypes(Assembly.GetExecutingAssembly())
-        .Where(type => typeof(PacketHandler<LoginSession>).IsAssignableFrom(type))
-        .As<PacketHandler<LoginSession>>()
-        .PropertiesAutowired()
-        .SingleInstance();
+    PacketHandlerScan.Register<LoginSession>(autofac, Assembly.GetExecutingAssembly());
 });
 
 
