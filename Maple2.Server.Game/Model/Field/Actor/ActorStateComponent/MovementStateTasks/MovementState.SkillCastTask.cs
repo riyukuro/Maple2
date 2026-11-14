@@ -79,6 +79,13 @@ public partial class MovementState {
             return;
         }
 
+        // A later motion that plays nothing ends the cast after the one before it, and is not sent.
+        if (motion > 0 && actor.Field.SkillMetadata.TryGet(id, level, out SkillMetadata? chained) && SkillCastRules.MotionPlaysNothing(chained.Data.Motions, motion)) {
+            task.Completed();
+
+            return;
+        }
+
         Velocity = new Vector3(0, 0, 0);
 
         // The npc turns before the cast goes out: the cast and the control entry sent with it carry the new facing.

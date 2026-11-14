@@ -242,6 +242,13 @@ public static class SkillCastRules {
     public static CastStart StartOf(IEnumerable<SkillMetadataMotion> motions, Func<bool> playSequence) =>
         CastsWithoutSequence(motions) ? CastStart.FireNow : playSequence() ? CastStart.Play : CastStart.Cancel;
 
+    // A motion that names no sequence in a level whose other motions name one plays nothing: the client starts the skill
+    // state with an empty name (StateSkill::FUN_1417f0940), so no key comes and no attack fires, and the state ends at
+    // its 5 s limit (StateSkill::FUN_1417ee120). KR Mason 50102201 (the light circle npc 24120004) is the one such level:
+    // motion 0 Attack_01_A, motion 1 with none. Such a motion is not sent; the cast ends with the motion before it.
+    public static bool MotionPlaysNothing(IReadOnlyList<SkillMetadataMotion> motions, int motion) =>
+        motion < motions.Count && string.IsNullOrEmpty(motions[motion].MotionProperty.SequenceName) && !CastsWithoutSequence(motions);
+
     // The last accepted cast that plays a motion: the times of its keys, its speed and when it came.
     public readonly record struct LastMotion(int SkillId, float NextKey, float SelfKey, float SequenceSpeed, long AttackSpeed, long ServerTick, int CastTick, int MoveType = 0);
 

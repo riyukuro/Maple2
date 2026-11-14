@@ -1061,6 +1061,21 @@ public class SkillCastRulesTests {
         });
     }
 
+    // KR Mason 50102201 level 1: motion 0 plays Attack_01_A, motion 1 names no sequence. Motion 1 plays nothing, so the
+    // cast ends after motion 0 (it was sent and then cancelled). A level with no sequence at all fires at once instead,
+    // and motion 0 is never held back.
+    [Test]
+    public void MixedLevelEndsBeforeAMotionWithoutSequence() {
+        SkillMetadataMotion[] mason = [Motion("Attack_01_A"), Motion("")];
+        Assert.Multiple(() => {
+            Assert.That(SkillCastRules.MotionPlaysNothing(mason, 0), Is.False);
+            Assert.That(SkillCastRules.MotionPlaysNothing(mason, 1), Is.True);
+            Assert.That(SkillCastRules.MotionPlaysNothing(mason, 2), Is.False);
+            Assert.That(SkillCastRules.MotionPlaysNothing([Motion(""), Motion("")], 1), Is.False);
+            Assert.That(SkillCastRules.MotionPlaysNothing([Motion("Attack_01_A"), Motion("Attack_01_B")], 1), Is.False);
+        });
+    }
+
     [Test]
     public void PlayedOnlyLevelIsBuiltAsTheClientLoadsIt() {
         // Made-up rows. What the level does not give is the client loaders' default: sequence speed 1 and faceTarget 1
