@@ -776,6 +776,32 @@ public class QuestConditionWiringTests : TriggerTestBase {
         });
     }
     #endregion
+    #region emotiontime (FieldPlayer.UpdateTimeConditions, the seconds held in an emotion)
+    // 10002698: <condition type="emotiontime" code="Sit_Ground_A,Sit_Chair_A" value="300" />, and the rows with
+    // target="63000072": the seconds held in an emotion of the code count, on the target's map when it has one;
+    // another emotion, or another map, does not.
+    [TestCase("Sit_Chair_A", "", 2000001, 5)]
+    [TestCase("Sit_Ground_A", "63000072", 63000072, 5)]
+    [TestCase("Sit_Ground_A", "63000072", 2000001, 0)]
+    [TestCase("Dance_A", "", 2000001, 0)]
+    public void EmotionTime_TheEmotionsSeconds(string emotion, string target, int mapId, long expected) {
+        FieldPlayer player = StateSyncField(mapId);
+        SkillMetadata cast = CastSkill(90000001);
+        SkillMetadata skill = cast with { Property = cast.Property with { Emotion = emotion } };
+        var storage = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", Any)!.GetValue(storage)!;
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(skill.Id, skill.Level), skill]);
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, storage);
+        Quest quest = StartQuest(Condition(ConditionType.emotiontime, 300, ["Sit_Ground_A", "Sit_Chair_A"], target == "" ? [] : [target]));
+        // Five seconds and a half in the emotion since the last count.
+        typeof(FieldPlayer).GetField("emotionSkillId", Any)!.SetValue(player, skill.Id);
+        typeof(FieldPlayer).GetField("emotionTick", Any)!.SetValue(player, Environment.TickCount64 - 5500);
+        typeof(FieldPlayer).GetField("emotionMs", Any)!.SetValue(player, 0L);
+        typeof(FieldPlayer).GetMethod("UpdateTimeConditions", Any)!.Invoke(player, null);
+
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
+    }
+    #endregion
     #region item_move (FieldManager.PlaceCube, a liftable put down)
     // 10001060: <condition type="item_move" code="30000030" value="3" target="400" />, the liftable item of the code
     // put down on a target box of the target counts; one put down off the box, or another item, does not.
