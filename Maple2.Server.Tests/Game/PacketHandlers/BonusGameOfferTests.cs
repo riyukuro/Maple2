@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 
@@ -22,11 +23,14 @@ public class BonusGameOfferTests {
     }
 
     // A load of gameId after the talk offered `offered`; the game loaded and the packets sent.
-    private static (int Loaded, int Sent) Load(int offered, int gameId) {
+    private static (int Loaded, int Sent) Load(int offered, int gameId, bool laterTalk = false) {
         var test = new TestGameSession();
         test.SetServerTable(Table());
         GameSession session = test.Start();
         session.BonusGameOffered = offered;
+        if (laterTalk) {
+            session.NpcScript = new NpcScriptManager(session, []);
+        }
         test.TakeSent();
         new BonusGameHandler { TableMetadata = null!, ServerTableMetadata = test.ServerTableMetadata }.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(0);
@@ -46,6 +50,12 @@ public class BonusGameOfferTests {
             Assert.That(Load(6, 7), Is.EqualTo((0, 0)));
             Assert.That(Load(0, 7), Is.EqualTo((0, 0)));
         });
+    }
+
+    // A roulette an earlier talk opened is not taken in a later talk that opened none.
+    [Test]
+    public void AnEarlierTalksGame_IsNotLoaded() {
+        Assert.That(Load(6, 6, laterTalk: true), Is.EqualTo((0, 0)));
     }
 
     [Test]

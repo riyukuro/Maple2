@@ -36,6 +36,8 @@ public sealed class NpcScriptManager {
 
     public NpcScriptManager(GameSession session, FieldNpc? npc, ScriptMetadata? metadata, ScriptState? state, NpcTalkType talkType) {
         this.session = session;
+        // A new talk offers no roulette until it opens one (BonusGameHandler.HandleLoad).
+        session.BonusGameOffered = 0;
         Npc = npc;
         this.metadata = metadata;
         TalkType = talkType;
@@ -60,6 +62,7 @@ public sealed class NpcScriptManager {
     /// </summary>
     public NpcScriptManager(GameSession session, CinematicEventScript[] eventScripts) {
         this.session = session;
+        session.BonusGameOffered = 0;
         this.eventScripts = eventScripts;
     }
 

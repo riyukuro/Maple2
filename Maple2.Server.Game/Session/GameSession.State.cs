@@ -54,7 +54,8 @@ public partial class GameSession {
     public BeautyShop? BeautyShop;
 
     public int BonusGameId;
-    // The roulette the last npc talk opened (OpenDialog RouletteDialog): the only game a BonusGame load may take.
+    // The roulette the current npc talk opened (OpenDialog RouletteDialog): the only game a BonusGame load may take.
+    // Each new talk (NpcScriptManager) starts with none.
     public int BonusGameOffered;
 
     // The card game (CardReverseGameDialog) of the Ui object last used: its deck, cost and picks left.
