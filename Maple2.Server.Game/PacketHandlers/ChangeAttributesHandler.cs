@@ -163,23 +163,28 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
                 return false;
             }
-            if (lockItem != null && lockItem.Amount < 1) {
+            // The lock item as its consume tests it (in the bag, not expired, one left), so a lock item that cannot be
+            // taken refuses before anything is. Before, the fee and the materials went and the lock item's consume
+            // then refused.
+            if (lockItem != null && !LockItemTakeable(session, lockItem)) {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
                 return false;
             }
-            // Checked and taken in one step, so a spend elsewhere cannot leave the fee unpaid; given back when the
-            // ingredients cannot be taken.
+            // Checked and taken in one step, so a spend elsewhere cannot leave the fee unpaid; given back when an
+            // item cannot be taken.
             if (meso > 0 && !session.Currency.TryTakeMeso(meso)) {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
+                return false;
+            }
+            // The lock item (one) before the materials, so a refusal after the fee loses no material.
+            if (lockItem != null && !session.Item.Inventory.Consume(lockItem.Uid, 1)) {
+                session.Currency.ReturnMeso(meso);
+                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
                 return false;
             }
             if (!session.Item.Inventory.Consume(ingredients)) {
                 session.Currency.ReturnMeso(meso);
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
-                return false;
-            }
-            if (lockItem != null && !session.Item.Inventory.Consume(lockItem.Uid, 1)) {
-                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
                 return false;
             }
             // A pet's change binds the pet: the pet page asks first when the pet has a binding rule and no binding
@@ -339,6 +344,12 @@ public class ChangeAttributesHandler : FieldPacketHandler {
     }
 
     // How many options the lock item keeps: one for gear, the candy's count for a pet (ItemRemakeRules.LocksAllowed).
+    // What the lock item's Consume(uid, 1) needs: the same item in the bag, not expired, at least one.
+    private static bool LockItemTakeable(GameSession session, Item lockItem) {
+        Item? held = session.Item.Inventory.Get(lockItem.Uid);
+        return held != null && !held.IsExpired() && held.Amount >= 1;
+    }
+
     internal static int LockLimit(Item changeItem, Item lockItem) {
         if (!changeItem.Type.IsPet) {
             return 1;

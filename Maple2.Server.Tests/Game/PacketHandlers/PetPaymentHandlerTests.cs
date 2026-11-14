@@ -275,6 +275,54 @@ public class PetPaymentHandlerTests {
         Assert.That(Owned(session, ItemTag.RedCrystal), Is.EqualTo(999));
     }
 
+    private Item AddLockItem(GameSession session) {
+        test.Register(Tagged(40100004, ItemTag.LockItemOptionPet));
+        Item created = session.Field!.ItemDrop.CreateItem(40100004)!;
+        Assert.That(session.Item.Inventory.Add(created, commit: true), Is.True);
+        return session.Item.Inventory.Find(40100004).Single();
+    }
+
+    // An expired lock item cannot be consumed: the change is refused before the fee and the materials are taken.
+    // Before, both went and the lock item's consume then refused.
+    [Test]
+    public void GearChange_ExpiredLockItem_TakesNothing() {
+        GameSession session = Login(meso: 10_000_000, fragments: 0, stones: 999, cells: 999);
+        Item lockItem = AddLockItem(session);
+        lockItem.ExpiryTime = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds();
+        Item gear = new(TestGameSession.Metadata(11300001, EquipSlot.CL), rarity: 4);
+        test.TakeSent();
+
+        Assert.That(ChangeAttributesHandler.PayChange(session, gear, ChangeAttributesHandler.GetIngredients(gear), lockItem), Is.False);
+
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.ChangeAttributes }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
+        Assert.That(Owned(session, ItemTag.RedCrystal), Is.EqualTo(999));
+    }
+
+    // The lock item leaves while the meso packet goes out (another thread): the fee comes back and no material is
+    // taken. Before, the fee and the materials were kept with nothing changed.
+    [Test]
+    public void GearChange_LockItemGoneAfterTheFee_TakesNothing() {
+        GameSession session = Login(meso: 10_000_000, fragments: 0, stones: 999, cells: 999);
+        Item lockItem = AddLockItem(session);
+        Item gear = new(TestGameSession.Metadata(11300001, EquipSlot.CL), rarity: 4);
+        test.TakeSent();
+        bool used = false;
+        test.OnSend = packet => {
+            if (used || TestGameSession.Op(packet) != SendOp.Meso) {
+                return;
+            }
+            used = session.Item.Inventory.Consume(lockItem.Uid);
+        };
+
+        Assert.That(ChangeAttributesHandler.PayChange(session, gear, ChangeAttributesHandler.GetIngredients(gear), lockItem), Is.False);
+        test.OnSend = null;
+
+        Assert.That(used, Is.True);
+        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
+        Assert.That(Owned(session, ItemTag.RedCrystal), Is.EqualTo(999));
+    }
+
     // Evolve points: 2 fodders of rarity 1 cost 20,000 each.
     [Test]
     public void EvolvePoints_TakesTheMesoThenTheFodders() {
