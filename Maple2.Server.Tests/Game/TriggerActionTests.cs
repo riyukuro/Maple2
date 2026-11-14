@@ -517,6 +517,24 @@ public class TriggerCinematicTests : TriggerTestBase {
         reader.ReadByte();
         Assert.That(reader.Available, Is.EqualTo(0));
     }
+
+    // An align the enum lacks (52010055 writes "Reft") is the center, as a missing one; the row still sends its talk.
+    [Test]
+    public void AddCinematicTalk_UnknownAlignIsTheCenter() {
+        Start();
+
+        Action("""<action name="add_cinematic_talk" npc_id="11003584" illust_id="Schatten_normal" msg="hi" duration="2000" align="Reft" />""");
+        Action("""<action name="add_cinematic_talk" npc_id="11003584" illust_id="Schatten_normal" msg="hi" duration="2000" align="Left" />""");
+
+        List<ByteReader> sent = Sent(SendOp.Cinematic);
+        Assert.That(sent.Select(reader => {
+            reader.Skip(1 + 4);
+            reader.ReadString();
+            reader.ReadUnicodeString();
+            reader.ReadInt();
+            return reader.ReadByte();
+        }), Is.EqualTo(new byte[] { (byte) Align.center, (byte) Align.left }));
+    }
 }
 
 public class TriggerFieldStateTests : TriggerTestBase {
@@ -575,6 +593,9 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="count_users" box_id="9" min_users="0" />"""), Is.False);
         Assert.That(Condition("""<condition name="count_users" box_id="1" min_users="1" user_tag_id="2" />"""), Is.False);
         Assert.That(Condition("""<condition name="count_users" box_id="1" min_users="1" user_tag_id="1" />"""), Is.True);
+        // An operator the enum lacks (the dev map 99999912 writes ">=") is the default, at least that many.
+        Assert.That(Condition("""<condition name="count_users" box_id="1" min_users="1" operator="&gt;=" />"""), Is.True);
+        Assert.That(Condition("""<condition name="count_users" box_id="1" min_users="2" operator="&gt;=" />"""), Is.False);
     }
 
     // quest_user_detected (1844): a player in the boxes with the quest in a listed state (3 = completed).
@@ -1603,6 +1624,16 @@ public class TriggerFieldGameTests : TriggerTestBase {
         Action("""<action name="create_field_game" type="GuildVsGame" />""");
         Assert.That(Field.GuildVsGame, Is.Not.Null);
         Assert.That(Field.HideAndSeek, Is.Null);
+    }
+
+    // A type of no field game (the dev map 99999913 names "MapleSurvive") reads as Unknown and makes no game; the
+    // script's other rows still load.
+    [Test]
+    public void CreateFieldGame_UnknownTypeMakesNone() {
+        Action("""<action name="create_field_game" type="MapleSurvive" />""");
+        Action("""<action name="create_field_game" />""");
+        Assert.That((Field.Survival, Field.HideAndSeek, Field.GuildVsGame),
+            Is.EqualTo(((SurvivalGameField?) null, (HideAndSeekField?) null, (GuildVsGameField?) null)));
     }
 
     // field_game_message (14 rows, custom 1 and 2, type SetEventUI): the text banner goes to the players of that team

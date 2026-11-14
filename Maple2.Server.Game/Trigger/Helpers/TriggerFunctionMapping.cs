@@ -297,36 +297,26 @@ public static class TriggerFunctionMapping {
         };
     }
 
-    private static Locale ParseLocale(string? value) {
-        if (string.IsNullOrEmpty(value)) return Locale.ALL;
-        return (Locale) Enum.Parse(typeof(Locale), value, true);
+    // A value the enum lacks reads as the missing attribute does: a throw here lost the map's whole script, not just
+    // the row. Chosen here (no client code reads these names): the KR quest map 52010055 writes align "Reft" four
+    // times, the dev maps 99999913 a field game "MapleSurvive" and 99999912 a count_users operator ">=".
+    private static T ParseEnumOr<T>(string? value, T absent) where T : struct, Enum {
+        return Enum.TryParse(value, true, out T parsed) ? parsed : absent;
     }
 
-    private static FieldGame ParseFieldGame(string? value) {
-        if (string.IsNullOrEmpty(value)) return FieldGame.Unknown;
-        return (FieldGame) Enum.Parse(typeof(FieldGame), value, true);
-    }
+    private static Locale ParseLocale(string? value) => ParseEnumOr(value, Locale.ALL);
 
-    private static Align ParseAlign(string? align) {
-        if (string.IsNullOrEmpty(align)) return Align.center;
-        return (Align) Enum.Parse(typeof(Align), align, true);
-    }
+    // A type of no field game is Unknown and makes none.
+    private static FieldGame ParseFieldGame(string? value) => ParseEnumOr(value, FieldGame.Unknown);
 
-    private static OperatorType ParseOperatorType(string? operatorType) {
-        if (string.IsNullOrEmpty(operatorType)) return OperatorType.GreaterEqual;
-        return (OperatorType) Enum.Parse(typeof(OperatorType), operatorType, true);
-    }
+    private static Align ParseAlign(string? align) => ParseEnumOr(align, Align.center);
+
+    private static OperatorType ParseOperatorType(string? operatorType) => ParseEnumOr(operatorType, OperatorType.GreaterEqual);
 
     // user_value without an operator tests equality; shipped scripts write GreaterEqual and LessEqual.
-    private static OperatorType ParseUserValueOperator(string? operatorType) {
-        if (string.IsNullOrEmpty(operatorType)) return OperatorType.Equal;
-        return (OperatorType) Enum.Parse(typeof(OperatorType), operatorType, true);
-    }
+    private static OperatorType ParseUserValueOperator(string? operatorType) => ParseEnumOr(operatorType, OperatorType.Equal);
 
-    private static CompareType ParseCompareType(string? compareType) {
-        if (string.IsNullOrEmpty(compareType)) return CompareType.higher;
-        return (CompareType) Enum.Parse(typeof(CompareType), compareType, true);
-    }
+    private static CompareType ParseCompareType(string? compareType) => ParseEnumOr(compareType, CompareType.higher);
 
     // A box list written "!100" (51000001_dg tutorial) is the negated test on box 100: the scripts' own "!"
     // marks "not in the box" in event UI box lists (EventUiBoxes), and every other arcade script ends a round with
