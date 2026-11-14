@@ -559,4 +559,17 @@ public class BuffAttributeTests {
 
         Assert.That(((IActor) Field.FieldActor).Buffs.EnumerateBuffs(50003301), Has.Count.EqualTo(1));
     }
+
+    // Status rates: a held buff's rate adds that share of the stat. 10100071 (KR: Rates Defense -0.01, one stack) on
+    // a defense of 1000 gives 990.
+    [Test]
+    public void StatusRate_AddsItsShareOfTheStat() {
+        AdditionalEffectMetadata metadata = DisabledBuffTests.Effect(10100071, rates: new Dictionary<BasicAttribute, float> { { BasicAttribute.Defense, -0.01f } });
+        var stats = new Stats(new Dictionary<BasicAttribute, long> { { BasicAttribute.Defense, 1000 } }, 0);
+
+        StatsManager.AddBuffs(stats, [DisabledBuffTests.Held(metadata, enabled: true)]);
+        stats.Total();
+
+        Assert.That(stats[BasicAttribute.Defense].Total, Is.EqualTo(990));
+    }
 }
