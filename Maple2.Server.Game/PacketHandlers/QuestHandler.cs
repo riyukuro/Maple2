@@ -545,6 +545,9 @@ public class QuestHandler : FieldPacketHandler {
     // to the field.
     // Chosen here: the player arrives at the field's default spawn (the packet names no portal); a refused attack gets
     // no answer and is not counted; the attack is counted only once the move is prepared, and a failed move is not.
+    // A refusal has no answer because no packet sets the client's count back: Quest 0x15 also empties the client's
+    // quest lists, 0x010B sets the count to 0, and the quest error reply has no mission attack code. The client's
+    // count stays one above the server's (fewer attacks shown left, never more) until login or the daily reset.
     private void HandleSkyFortressMission(GameSession session, IByteReader packet) {
         int mapId = packet.ReadInt();
         if (!session.Quest.CanMissionAttack(mapId)) {
