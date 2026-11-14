@@ -64,7 +64,7 @@ public class MeretMarketPaybackTests {
     }
 
     private byte Buy() {
-        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+        new MeretMarketHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata, BanWordStorage = null! }
             .Handle(session, TestGameSession.Packet(writer => {
                 writer.WriteByte(30);
                 writer.WriteByte(0);
