@@ -649,15 +649,21 @@ public static class SkillCastRules {
     // The feature whose test (id 0xd3) the client makes before it counts a worn shard's skill (JobSystemCli, jobsystemcli.cpp:70, :99).
     public const string LapenshardFeature = "Lapenshard01";
 
+    // The main types whose skills need no learning: SkillData::FUN_1407e9f30 (skilloverlapcompare.cpp:1111) is false
+    // for them, and JobSystemCli::vfunc_2 passes such a skill at once (the ingest's PlayerSkillSources.NoLearnMainTypes).
+    public static readonly HashSet<int> NoLearnMainTypes = [1, 3, 4, 5, 7, 10, 11, 13, 14, 15, 17, 18, 19];
+
     // A shard's skill (the item skill of a shard with an itemLapenshardUpgrade row; in the KR data 120010001-120010023,
-    // main type 2, which needs learning) is one the client casts only while it holds it: CSkillSystem::FUN_141764e30
-    // (skillslot.cpp:2084) asks JobSystemCli::vfunc_2 (jobsystemcli.cpp:80), which finds it in no skill set, no tree and
-    // no sub skill, so only a worn shard of it passes, with feature 0xd3 on and content 0x5b open; vfunc_1 (:56) then
-    // gives the cast the highest worn grade of it (MyPC::UpdateLapenshardGrades, mypc.cpp:4292). Every worn shard's
-    // skill is read here, a superset of the client's EquipPart 1 shards (as LapenshardFieldRefuses), and an item skill
-    // of level 0 counts as 1. A cast naming a bag item that gives the skill is the client's inventory path
-    // (CreateSkillRecord, :2142, which asks no vfunc_2) and is not refused. Refused: the first motion of such a skill in
-    // no tree with the feature off or the content shut, with no worn shard of it, or above the highest worn grade.
+    // all of main type 2) of a main type that needs learning is one the client casts only while it holds it:
+    // CSkillSystem::FUN_141764e30 (skillslot.cpp:2084) asks JobSystemCli::vfunc_2 (jobsystemcli.cpp:80), which finds it
+    // in no skill set, no tree and no sub skill, so only a worn shard of it passes, with feature 0xd3 on and content 0x5b
+    // open; vfunc_1 (:56) then gives the cast the highest worn grade of it (MyPC::UpdateLapenshardGrades, mypc.cpp:4292).
+    // Every worn shard's skill is read here, a superset of the client's EquipPart 1 shards (as LapenshardFieldRefuses),
+    // and an item skill of level 0 counts as 1. The client's inventory path (Unk_Inventory::FUN_140a62d30,
+    // inventory.cpp:1310) casts the skill of a bag consumable, skill or ride item at level 1 through CreateSkillRecord
+    // (skillslot.cpp:2142), which asks no vfunc_2: a cast at level 1 or below naming a bag item that gives the skill and
+    // is no shard (bagItemGivesIt) is not refused. Refused: the first motion of such a skill in no tree with the feature
+    // off or the content shut, with no worn shard of it, or above the highest worn grade.
     public static bool ShardSourceRefuses(int skillId, short castLevel, bool laterMotion, bool inAnyTree, bool shardSkill,
             bool bagItemGivesIt, bool featureOn, bool contentShut, IEnumerable<ItemMetadataSkill?> wornShardSkills) {
         if (laterMotion || inAnyTree || !shardSkill || bagItemGivesIt || skillId == UncheckedCastSkill) {

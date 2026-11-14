@@ -132,8 +132,9 @@ public static class SkillCastCheck {
             return false;
         }
         if (!laterMotion && !inAnyTree && SkillCastRules.ShardSourceRefuses(record.SkillId, record.Level, laterMotion, inAnyTree,
-                ShardSkills(session).Contains(record.SkillId),
-                record.ItemUid > 0 && session.Item.Inventory.Get(record.ItemUid)?.Metadata.Skill?.Id == record.SkillId,
+                ShardSkills(session).Contains(record.SkillId) && !SkillCastRules.NoLearnMainTypes.Contains(record.Metadata.Property.MainType),
+                record.ItemUid > 0 && record.Level <= 1 && session.Item.Inventory.Get(record.ItemUid) is { } bagItem
+                    && !bagItem.Type.IsLapenshard && bagItem.Metadata.Skill?.Id == record.SkillId,
                 session.ServerTableMetadata.FeatureTable.IsOn(SkillCastRules.LapenshardFeature),
                 ContentShutdownConfig.Contents.Contains(SkillCastRules.LapenshardSkillContent),
                 session.Config.WornLapenshards().Select(itemId => session.ItemMetadata.TryGet(itemId, out ItemMetadata? item) ? item.Skill : null))) {

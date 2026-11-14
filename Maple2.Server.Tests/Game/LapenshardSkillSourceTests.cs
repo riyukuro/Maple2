@@ -18,7 +18,7 @@ public class LapenshardSkillSourceTests : TriggerTestBase {
 
     private ItemMetadata potion = null!;
 
-    private void Enter() {
+    private void Enter(int mainType = 2) {
         Start();
         MapMetadata map = TestGameSession.Map(2000001);
         test.EnterMap(map with {
@@ -27,7 +27,7 @@ public class LapenshardSkillSourceTests : TriggerTestBase {
         });
         SkillMetadata skill = QuestConditionWiringTests.CastSkill(ShardSkill);
         BeginCondition always = skill.Data.Condition with { Probability = 1f, Gender = Gender.All, PvpZone = PvpZoneApply.Everywhere };
-        skill = skill with { Property = skill.Property with { MaxLevel = 2 }, Data = skill.Data with { Condition = always } };
+        skill = skill with { Property = skill.Property with { MaxLevel = 2, MainType = mainType }, Data = skill.Data with { Condition = always } };
         QuestConditionWiringTests.SetSkills(test, skill, skill with { Level = 2 });
         test.Session.Player.Stats.Values[BasicAttribute.Health].Current = 100;
         potion = TestGameSession.Metadata(Potion) with { Skill = new ItemMetadataSkill(ShardSkill, 1, 0, 0) };
@@ -89,6 +89,33 @@ public class LapenshardSkillSourceTests : TriggerTestBase {
         test.SetFeaturesOff(SkillCastRules.LapenshardFeature);
         Cast(1);
         Assert.That(Ran(), Is.False);
+    }
+
+    // The client casts a bag item's skill at level 1 only, and never a shard's from the bag (inventory.cpp:1316-1324):
+    // a cast naming an unworn shard, or a bag item at a higher level, is checked as any other.
+    [Test]
+    public void BagShardOfTheSkill_IsRefused() {
+        Enter();
+        Item shard = new(test.Session.ItemMetadata.TryGet(Shard, out ItemMetadata? metadata) ? metadata : null!, amount: 1);
+        Assert.That(test.Session.Item.Inventory.Add(shard, commit: true), Is.True);
+        Cast(1, test.Session.Item.Inventory.Find(Shard).Single().Uid);
+        Assert.That(Ran(), Is.False);
+    }
+
+    [Test]
+    public void BagItemOfTheSkill_AboveLevel1_IsRefused() {
+        Enter();
+        Assert.That(test.Session.Item.Inventory.Add(new Item(potion, amount: 1), commit: true), Is.True);
+        Cast(2, test.Session.Item.Inventory.Find(Potion).Single().Uid);
+        Assert.That(Ran(), Is.False);
+    }
+
+    // A skill of a main type that needs no learning (here 1) passes the client's vfunc_2 at once: not checked.
+    [Test]
+    public void NoLearnMainType_Runs() {
+        Enter(mainType: 1);
+        Cast(1);
+        Assert.That(Ran(), Is.True);
     }
 
     [Test]
