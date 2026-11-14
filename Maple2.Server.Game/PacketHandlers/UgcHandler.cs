@@ -245,7 +245,7 @@ public class UgcHandler : FieldPacketHandler {
         }
 
         using WebStorage.Request request = WebStorage.Context();
-        UgcResource? resource = request.CreateUgc(ugcType, session.CharacterId);
+        UgcResource? resource = request.CreateUgc(ugcType, session.CharacterId, itemId, DateTime.UtcNow + UgcRules.UploadWindow);
         if (resource == null) {
             GiveBack(session, paid);
             Logger.Fatal("Failed to create UGC resource for item {ItemUid}", item.Uid);
@@ -316,7 +316,7 @@ public class UgcHandler : FieldPacketHandler {
 
         // The resource is made first, so a failure here takes nothing.
         using WebStorage.Request request = WebStorage.Context();
-        UgcResource? resource = request.CreateUgc(UgcType.Banner, session.CharacterId);
+        UgcResource? resource = request.CreateUgc(UgcType.Banner, session.CharacterId, bannerId, DateTime.UtcNow + UgcRules.UploadWindow);
         if (resource == null) {
             session.Currency.ReturnMeret(fee);
             Logger.Fatal("Failed to create UGC resource for banner {BannerId}", bannerId);
@@ -368,7 +368,7 @@ public class UgcHandler : FieldPacketHandler {
         }
 
         using WebStorage.Request request = WebStorage.Context();
-        UgcResource? resource = request.CreateUgc(UgcType.GuildBanner, session.CharacterId);
+        UgcResource? resource = request.CreateUgc(UgcType.GuildBanner, session.CharacterId, session.Guild.Id, DateTime.UtcNow + UgcRules.UploadWindow);
         if (resource == null) {
             Logger.Fatal("Failed to create UGC resource for banner {BannerId}", bannerId);
             throw new InvalidOperationException($"Fatal: Creating UGC resource: {bannerId}");
@@ -403,7 +403,7 @@ public class UgcHandler : FieldPacketHandler {
         }
 
         using WebStorage.Request request = WebStorage.Context();
-        UgcResource? resource = request.CreateUgc(UgcType.GuildEmblem, session.CharacterId);
+        UgcResource? resource = request.CreateUgc(UgcType.GuildEmblem, session.CharacterId, session.Guild.Id, DateTime.UtcNow + UgcRules.UploadWindow);
         if (resource == null) {
             Logger.Fatal("Failed to create UGC resource for guild id {GuildId}", session.Guild.Id);
             throw new InvalidOperationException($"Fatal: Creating UGC resource: {session.Guild.Id}");
@@ -427,7 +427,7 @@ public class UgcHandler : FieldPacketHandler {
         }
 
         using WebStorage.Request request = WebStorage.Context();
-        UgcResource? resource = request.CreateUgc(UgcType.LayoutBlueprint, session.CharacterId);
+        UgcResource? resource = request.CreateUgc(UgcType.LayoutBlueprint, session.CharacterId, itemId, DateTime.UtcNow + UgcRules.UploadWindow);
         if (resource == null) {
             Logger.Fatal("Failed to create UGC resource for layout blueprint for character {CharacterId}", session.CharacterId);
             throw new InvalidOperationException($"Fatal: Creating UGC resource for layout blueprint for character: {session.CharacterId}");

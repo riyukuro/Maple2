@@ -322,6 +322,14 @@ public partial class GameStorage {
             return current == session;
         }
 
+        // A character of the account that is in a game channel now: the game entry stamps the account online and the
+        // character's channel (LoadPlayer), the logout clears both (-1).
+        public bool InGame(long accountId, long characterId) {
+            return accountId > 0 && characterId > 0
+                && Context.Character.Any(character => character.Id == characterId && character.AccountId == accountId && character.Channel >= 0)
+                && Context.Account.Any(account => account.Id == accountId && account.Online);
+        }
+
         // We pass in objectId only for Player initialization.
         // entryMails gets the time of the character's last save (its row version before this entry stamps it, epoch
         // seconds) and gives the mails the entry sends; they are stored in the same save as the entry's stamp, so a

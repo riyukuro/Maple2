@@ -27,10 +27,14 @@ public partial class WebStorage {
 
     public partial class Request(WebContext context, ILogger logger) : DatabaseRequest<WebContext>(context, logger) {
 
-        public UgcResource? CreateUgc(UgcType type, long ownerId) {
+        // uploadUntil opens the resource's upload (the web server takes its files until then, once each); targetId is the
+        // folder its files go under (the design's item, the banner, the guild).
+        public UgcResource? CreateUgc(UgcType type, long ownerId, long targetId = 0, DateTime? uploadUntil = null) {
             var model = new Model.UgcResource {
                 Type = type,
                 OwnerId = ownerId,
+                TargetId = targetId,
+                UploadUntil = uploadUntil,
             };
             Context.UgcResource.Add(model);
 
@@ -58,6 +62,33 @@ public partial class WebStorage {
 
         public UgcResource? GetUgc(long id) {
             return Context.UgcResource.Find(id);
+        }
+
+        // Takes one file of an open upload: the resource's upload is still open at now and the part not taken yet. A
+        // taken part is never taken again, so nothing replaces it; the window stays, so a retry of the same file inside
+        // it can be answered with the stored one (WebController). The save checks the row's LastModified, so of two
+        // requests that read the same row only one takes the part.
+        public bool TakeUpload(long id, byte part, DateTime now) {
+            Model.UgcResource? model = Context.UgcResource.Find(id);
+            if (model?.UploadUntil == null || now > model.UploadUntil.Value || (model.UploadedParts & part) != 0) {
+                return false;
+            }
+
+            model.UploadedParts |= part;
+            Context.UgcResource.Update(model);
+            return Context.TrySaveChanges();
+        }
+
+        // Undoes a TakeUpload whose file was not written: the part is free again for the client's next try.
+        public bool GiveBackUpload(long id, byte part) {
+            Model.UgcResource? model = Context.UgcResource.Find(id);
+            if (model == null || (model.UploadedParts & part) == 0) {
+                return false;
+            }
+
+            model.UploadedParts &= (byte) ~part;
+            Context.UgcResource.Update(model);
+            return Context.TrySaveChanges();
         }
     }
 }

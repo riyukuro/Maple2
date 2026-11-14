@@ -8,6 +8,7 @@ using Maple2.Database.Model.Ranking;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Web.Packet;
 using Maple2.Tools;
@@ -116,7 +117,14 @@ public class WebController : ControllerBase {
         return Results.File(ZlibCompress(MenteeList(accountId, characterId)), "application/octet-stream");
     }
 
+    // The client's upload (CSoapClient::UploadUgcFile, soapclient.cpp:302): i32 user type, i32 kind, i64 account,
+    // i64 character, i64 resource uid, i64, i64 size, then the file. UploadPendingUgc (:129) sends only a file of 1 byte
+    // to under 1 MiB, and no session token: the ids are all the request names.
+    public const int UploadHeaderSize = 4 + 4 + 8 + 8 + 8 + 8 + 8;
+    public const int MaxUploadFileSize = 0x100000 - 1;
+
     [HttpPost("urq.aspx")]
+    [RequestSizeLimit(UploadHeaderSize + MaxUploadFileSize)]
     public async Task<IResult> Upload() {
         Stream bodyStream = Request.Body;
         var memoryStream = new MemoryStream();
@@ -132,13 +140,12 @@ public class WebController : ControllerBase {
         long accountId = packet.ReadLong();
         long characterId = packet.ReadLong();
         long ugcUid = packet.ReadLong();
-        int id = packet.ReadInt(); // item id, guild id, others?
-        packet.ReadInt();
-        packet.ReadLong();
+        packet.ReadLong(); // the upload's own value (FUN_1418a41a0); the folder id comes from the resource
+        packet.ReadLong(); // the file size
 
         byte[] fileBytes = packet.ReadBytes(packet.Available);
 
-        Log.Logger.Debug("Upload: type={Type}, accountId={AccountId}, characterId={CharacterId}, ugcUid={UgcUid}, id={Id}", type, accountId, characterId, ugcUid, id);
+        Log.Logger.Debug("Upload: type={Type}, accountId={AccountId}, characterId={CharacterId}, ugcUid={UgcUid}", type, accountId, characterId, ugcUid);
 
         UgcResource? resource = null;
         if (ugcUid != 0) {
@@ -149,156 +156,162 @@ public class WebController : ControllerBase {
             }
         }
 
-        if (type is UgcType.ItemIcon or UgcType.Item or UgcType.BlueprintIcon or UgcType.LayoutBlueprint && resource == null) {
-            return Results.BadRequest("Invalid UGC resource.");
+        DateTime now = DateTime.UtcNow;
+        string? refusal = UploadRefusal(type, accountId, characterId, resource, fileBytes.Length, now);
+        if (refusal == null && type == UgcType.ProfileAvatar) {
+            using GameStorage.Request db = gameStorage.Context();
+            if (!db.InGame(accountId, characterId)) {
+                refusal = "Character not in game.";
+            } else if (!ProfileUploads.Take(characterId, now)) {
+                refusal = ProfileTooSoon;
+            }
+        } else if (refusal == null) {
+            using WebStorage.Request db = webStorage.Context();
+            byte part = UgcRules.UploadPart(type);
+            if (!db.TakeUpload(resource!.Id, part, now)) {
+                refusal = UploadTaken;
+            }
+        }
+        // The client's retry (up to 3 tries 500 ms apart, UploadPendingUgc) of a file the server already stored, its
+        // answer lost: the same bytes are answered with the stored file's key, and nothing is written.
+        if (refusal is UploadTaken or ProfileTooSoon) {
+            string? key = StoredKey(Paths.WEB_DATA_DIR, type, characterId, resource, fileBytes);
+            if (key != null) {
+                Log.Logger.Information("Upload repeated: {Key}", key);
+                return Results.Text($"0,{key}");
+            }
+        }
+        if (refusal != null) {
+            Log.Logger.Warning("Upload refused: {Refusal} (type={Type}, accountId={AccountId}, characterId={CharacterId}, ugcUid={UgcUid}, size={Size})",
+                refusal, type, accountId, characterId, ugcUid, fileBytes.Length);
+            return Results.BadRequest(refusal);
         }
 
-        return type switch {
-            UgcType.ProfileAvatar => UploadProfileAvatar(fileBytes, characterId),
-            UgcType.Item or UgcType.Mount or UgcType.Furniture => UploadItem(fileBytes, id, ugcUid, resource!),
-            UgcType.ItemIcon => UploadItemIcon(fileBytes, id, ugcUid, resource!),
-            UgcType.Banner => UploadBanner(fileBytes, id, ugcUid),
-            UgcType.GuildEmblem => HandleGuildEmblem(fileBytes, id, ugcUid),
-            UgcType.GuildBanner => HandleGuildBanner(fileBytes, id, ugcUid),
-            UgcType.BlueprintIcon => HandleBlueprintIcon(fileBytes, ugcUid, resource!),
-            UgcType.LayoutBlueprint => HandleBlueprintPreview(fileBytes, ugcUid, resource!),
-            _ => HandleUnknownMode(type),
-        };
+        UploadTarget? target = Target(type, characterId, resource, Guid.NewGuid().ToString());
+        return target == null ? HandleUnknownMode(type) : Store(type, target, characterId, resource, now, fileBytes);
     }
 
     #region Ugc
-    private static IResult UploadProfileAvatar(byte[] fileBytes, long characterId) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "profiles", characterId.ToString());
-        try {
-            // Deleting old files in the character folder
-            if (Path.Exists(filePath)) {
-                Directory.Delete(filePath, true);
+    // Why an upload is refused, or null. The file is the size the client sends (1 byte to under 1 MiB). Every kind but
+    // the profile picture writes to a resource the game server made for the uploading character (UgcHandler:
+    // CreateUgc(type, session character)): it must exist, be that character's, and be of the kind's resource type. An
+    // item icon goes with its item's resource (Item, Furniture or Mount; the client posts the image first,
+    // UploadPendingUgc :114-116), a blueprint icon with its layout blueprint's. Before, any request could write to any
+    // resource, and of any size.
+    // A profile picture's ids must both be real (the client asks the game server nothing before it, CUgcManager
+    // FUN_141882020 ugcmanager_4.cpp:1175-1205, and sends Ugc 11 with the answered path after): the controller then
+    // needs that character of that account in game, and one picture per character in ProfileUploads.Gap. Every other
+    // kind needs the upload the game server opened for the resource (UgcRules.UploadWindow), each file once.
+    public static string? UploadRefusal(UgcType type, long accountId, long characterId, UgcResource? resource, int fileSize, DateTime now) {
+        if (fileSize is < 1 or > MaxUploadFileSize) {
+            return "Invalid file size.";
+        }
+        if (type == UgcType.ProfileAvatar) {
+            return accountId <= 0 || characterId <= 0 ? "Invalid character." : null;
+        }
+        if (resource == null) {
+            return "Invalid UGC resource.";
+        }
+        if (resource.OwnerId != characterId) {
+            return "Not the resource's owner.";
+        }
+        bool matches = type switch {
+            UgcType.Item or UgcType.Furniture or UgcType.Mount or UgcType.ItemIcon => resource.Type is UgcType.Item or UgcType.Furniture or UgcType.Mount,
+            UgcType.LayoutBlueprint or UgcType.BlueprintIcon => resource.Type == UgcType.LayoutBlueprint,
+            _ => resource.Type == type,
+        };
+        if (!matches) {
+            return "Wrong UGC resource type.";
+        }
+        if (resource.UploadUntil == null || now > resource.UploadUntil.Value) {
+            return "No upload open.";
+        }
+        return (resource.UploadedParts & UgcRules.UploadPart(type)) != 0 ? UploadTaken : null;
+    }
+
+    public const string UploadTaken = "Upload already taken.";
+    public const string ProfileTooSoon = "Profile picture too soon.";
+
+    // The key of the file already stored under root for this upload when it holds exactly these bytes, else null. A
+    // profile picture's file name is new for each upload, so its folder's one file is compared.
+    public static string? StoredKey(string root, UgcType type, long characterId, UgcResource? resource, byte[] fileBytes) {
+        UploadTarget? target = Target(type, characterId, resource, "");
+        if (target == null) {
+            return null;
+        }
+        string folder = Path.Combine(root, target.Folder);
+        string file = Path.Combine(folder, target.File);
+        if (type == UgcType.ProfileAvatar) {
+            string[] files = Directory.Exists(folder) ? Directory.GetFiles(folder) : [];
+            if (files.Length != 1) {
+                return null;
             }
-            Directory.CreateDirectory(filePath);
-        } catch (Exception ex) {
-            Log.Error(ex, "Failed preparing directory: {Path}", filePath);
-            return Results.Problem("Internal Server Error", statusCode: 500);
+            file = files[0];
+            target = Target(type, characterId, resource, Path.GetFileNameWithoutExtension(file))!;
         }
-
-        string uniqueFileName = Guid.NewGuid().ToString();
-        System.IO.File.WriteAllBytes(Path.Combine(filePath, $"{uniqueFileName}.png"), fileBytes);
-        return Results.Text($"0,data/profiles/avatar/{characterId}/{uniqueFileName}.png");
-    }
-
-    private IResult UploadItem(byte[] fileBytes, int itemId, long ugcId, UgcResource resource) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "items", itemId.ToString());
         try {
-            Directory.CreateDirectory(filePath);
-        } catch (Exception ex) {
-            Log.Error(ex, "Failed preparing directory: {Path}", filePath);
-            return Results.Problem("Internal Server Error", statusCode: 500);
+            return System.IO.File.Exists(file) && new FileInfo(file).Length == fileBytes.Length
+                && System.IO.File.ReadAllBytes(file).AsSpan().SequenceEqual(fileBytes) ? target.Key : null;
+        } catch (IOException) {
+            return null;
         }
-        using WebStorage.Request db = webStorage.Context();
-        string ugcPath = $"item/ms2/01/{itemId}/{resource.Id}.m2u";
-
-        db.UpdatePath(ugcId, ugcPath);
-        System.IO.File.WriteAllBytes(Path.Combine(filePath, $"{resource.Id}.m2u"), fileBytes);
-        return Results.Text($"0,{ugcPath}");
     }
 
-    private IResult UploadItemIcon(byte[] fileBytes, int itemId, long ugcId, UgcResource resource) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "itemicon", itemId.ToString());
+    // Where an upload's file goes (under Paths.WEB_DATA_DIR), the key the reply answers (the client keeps it as the
+    // resource's path and fetches it from the GET routes), and whether the key is stored as the resource's path. The
+    // folder id is the one the game server recorded with the resource (TargetId: the design's item, the banner, the
+    // guild), never the request's. Null for a kind with no upload.
+    public record UploadTarget(string Folder, string File, string Key, bool SavesPath);
+
+    public static UploadTarget? Target(UgcType type, long characterId, UgcResource? resource, string fileName) {
+        if (type == UgcType.ProfileAvatar) {
+            return new UploadTarget(Path.Combine("profiles", characterId.ToString()), $"{fileName}.png",
+                $"data/profiles/avatar/{characterId}/{fileName}.png", false);
+        }
+        if (resource == null) {
+            return null;
+        }
+        long id = resource.Id;
+        long target = resource.TargetId;
+        return type switch {
+            UgcType.Item or UgcType.Mount or UgcType.Furniture => new UploadTarget(Path.Combine("items", target.ToString()), $"{id}.m2u", $"item/ms2/01/{target}/{id}.m2u", true),
+            UgcType.ItemIcon => new UploadTarget(Path.Combine("itemicon", target.ToString()), $"{id}.png", $"itemicon/ms2/01/{target}/{id}.png", false),
+            UgcType.Banner => new UploadTarget(Path.Combine("banner", target.ToString()), $"{id}.m2u", $"banner/ms2/01/{target}/{id}.m2u", true),
+            UgcType.GuildEmblem => new UploadTarget(Path.Combine("guildmark", target.ToString()), $"{id}.png", $"guildmark/ms2/01/{target}/{id}.png", true),
+            UgcType.GuildBanner => new UploadTarget(Path.Combine("guildmark", target.ToString(), "banner"), $"{id}.png", $"guildmark/ms2/01/{target}/banner/{id}.png", true),
+            UgcType.BlueprintIcon => new UploadTarget(Path.Combine("blueprint", id.ToString()), $"{id}_icon.png", $"blueprint/ms2/01/{id}/{id}_icon.png", false),
+            UgcType.LayoutBlueprint => new UploadTarget(Path.Combine("blueprint", id.ToString()), $"{id}.png", $"blueprint/ms2/01/{id}/{id}.png", true),
+            _ => null,
+        };
+    }
+
+    // Writes the file and answers its key ("0,<key>", CSoapClient::UploadUgcFile reads code and text). A profile picture
+    // replaces the character's old one (its folder is emptied first). A file that cannot be written gives its part (or
+    // the profile picture's turn) back, so the client's next try (up to 3, UploadPendingUgc) can still take it.
+    private IResult Store(UgcType type, UploadTarget target, long characterId, UgcResource? resource, DateTime now, byte[] fileBytes) {
+        string folder = Path.Combine(Paths.WEB_DATA_DIR, target.Folder);
         try {
-            Directory.CreateDirectory(filePath);
+            if (type == UgcType.ProfileAvatar && Path.Exists(folder)) {
+                Directory.Delete(folder, true);
+            }
+            Directory.CreateDirectory(folder);
+            System.IO.File.WriteAllBytes(Path.Combine(folder, target.File), fileBytes);
         } catch (Exception ex) {
-            Log.Error(ex, "Failed preparing directory: {Path}", filePath);
+            Log.Error(ex, "Failed storing upload: {Path}", folder);
+            if (resource == null) {
+                ProfileUploads.GiveBack(characterId, now);
+            } else {
+                using WebStorage.Request db = webStorage.Context();
+                db.GiveBackUpload(resource.Id, UgcRules.UploadPart(type));
+            }
             return Results.Problem("Internal Server Error", statusCode: 500);
         }
-        //TODO: Verify that the item exists in the database
-        string ugcPath = $"itemicon/ms2/01/{itemId}/{resource.Id}.png";
-
-        System.IO.File.WriteAllBytes(Path.Combine(filePath, $"{ugcId}.png"), fileBytes);
-        return Results.Text($"0,{ugcPath}");
-    }
-
-    private IResult UploadBanner(byte[] fileBytes, int bannerId, long ugcId) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "banner", bannerId.ToString());
-        try {
-            Directory.CreateDirectory(filePath);
-        } catch (Exception ex) {
-            Log.Error(ex, "Failed preparing directory: {Path}", filePath);
-            return Results.Problem("Internal Server Error", statusCode: 500);
+        if (target.SavesPath) {
+            using WebStorage.Request db = webStorage.Context();
+            db.UpdatePath(resource!.Id, target.Key);
         }
-        using WebStorage.Request db = webStorage.Context();
-        string ugcPath = $"banner/ms2/01/{bannerId}/{ugcId}.m2u";
-
-        db.UpdatePath(ugcId, ugcPath);
-
-        System.IO.File.WriteAllBytes(Path.Combine(filePath, $"{ugcId}.m2u"), fileBytes);
-        return Results.Text($"0,{ugcPath}");
+        return Results.Text($"0,{target.Key}");
     }
-
-    private IResult HandleGuildEmblem(byte[] fileBytes, int guildId, long ugcId) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "guildmark", guildId.ToString());
-        try {
-            Directory.CreateDirectory(filePath);
-        } catch (Exception ex) {
-            Log.Error(ex, "Failed preparing directory: {Path}", filePath);
-            return Results.Problem("Internal Server Error", statusCode: 500);
-        }
-        using WebStorage.Request db = webStorage.Context();
-        string ugcPath = $"guildmark/ms2/01/{guildId}/{ugcId}.png";
-
-        db.UpdatePath(ugcId, ugcPath);
-
-        System.IO.File.WriteAllBytes(Path.Combine(filePath, $"{ugcId}.png"), fileBytes);
-        return Results.Text($"0,{ugcPath}");
-    }
-
-    private IResult HandleGuildBanner(byte[] fileBytes, int guildId, long ugcId) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "guildmark", guildId.ToString(), "banner");
-        try {
-            Directory.CreateDirectory(filePath);
-        } catch (Exception ex) {
-            Log.Error(ex, "Failed preparing directory: {Path}", filePath);
-            return Results.Problem("Internal Server Error", statusCode: 500);
-        }
-        using WebStorage.Request db = webStorage.Context();
-        string ugcPath = $"guildmark/ms2/01/{guildId}/banner/{ugcId}.png";
-
-        db.UpdatePath(ugcId, ugcPath);
-
-        System.IO.File.WriteAllBytes(Path.Combine(filePath, $"{ugcId}.png"), fileBytes);
-        return Results.Text($"0,{ugcPath}");
-    }
-
-    private IResult HandleBlueprintIcon(byte[] fileBytes, long ugcUid, UgcResource resource) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "blueprint", ugcUid.ToString());
-        try {
-            Directory.CreateDirectory(filePath);
-        } catch (Exception ex) {
-            Log.Error(ex, "Failed preparing directory: {Path}", filePath);
-            return Results.Problem("Internal Server Error", statusCode: 500);
-        }
-
-        string ugcPath = $"blueprint/ms2/01/{ugcUid}/{resource.Id}_icon.png";
-
-        System.IO.File.WriteAllBytes(Path.Combine(filePath, $"{resource.Id}_icon.png"), fileBytes);
-        return Results.Text($"0,{ugcPath}");
-    }
-
-    private IResult HandleBlueprintPreview(byte[] fileBytes, long ugcUid, UgcResource resource) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "blueprint", ugcUid.ToString());
-        try {
-            Directory.CreateDirectory(filePath);
-        } catch (Exception ex) {
-            Log.Error(ex, "Failed preparing directory: {Path}", filePath);
-            return Results.Problem("Internal Server Error", statusCode: 500);
-        }
-        using WebStorage.Request db = webStorage.Context();
-        string ugcPath = $"blueprint/ms2/01/{ugcUid}/{resource.Id}.png";
-
-        db.UpdatePath(ugcUid, ugcPath);
-
-        System.IO.File.WriteAllBytes(Path.Combine(filePath, $"{resource.Id}.png"), fileBytes);
-        return Results.Text($"0,{ugcPath}");
-    }
-
 
     private static IResult HandleUnknownMode(UgcType mode) {
         Log.Logger.Warning("Invalid upload mode: {Mode}", mode);

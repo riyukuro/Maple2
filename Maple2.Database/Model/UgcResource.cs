@@ -10,6 +10,9 @@ internal class UgcResource {
     public long OwnerId { get; set; }
     public string Path { get; set; } = string.Empty;
     public UgcType Type { get; set; }
+    public DateTime? UploadUntil { get; set; }
+    public byte UploadedParts { get; set; }
+    public long TargetId { get; set; }
 
     public DateTime LastModified { get; set; }
 
@@ -19,6 +22,10 @@ internal class UgcResource {
             Id = other.Id,
             Path = other.Path,
             Type = other.Type,
+            OwnerId = other.OwnerId,
+            UploadUntil = other.UploadUntil,
+            UploadedParts = other.UploadedParts,
+            TargetId = other.TargetId,
         };
     }
 
@@ -28,6 +35,10 @@ internal class UgcResource {
             Id = other.Id,
             Path = other.Path,
             Type = other.Type,
+            OwnerId = other.OwnerId,
+            UploadUntil = other.UploadUntil,
+            UploadedParts = other.UploadedParts,
+            TargetId = other.TargetId,
         };
     }
 

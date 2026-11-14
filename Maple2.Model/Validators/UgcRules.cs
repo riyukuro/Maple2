@@ -8,6 +8,17 @@ namespace Maple2.Model.Validators;
 // hour i64, i32, i64, i32 date (yyyymmdd), i32 hour, i64. Mode 1 with the banner kind then pays for the
 // reserved slots: i64 banner id, u8 count and the same records, the first i64 being the slot's id.
 public static class UgcRules {
+    // The upload the game server opens with its Upload reply (UgcPacket.Upload). The client posts the files at once on
+    // that reply (CUgcManager::OnUploadAccepted, ugcmanager_4.cpp:3554: PrepareUpload, then UploadPendingUgc, up to
+    // 3 tries 500 ms apart, soapclient.cpp:318-333). Chosen here: the web server takes them for 5 minutes.
+    public static readonly TimeSpan UploadWindow = TimeSpan.FromMinutes(5);
+    // The files of an upload, each taken once: the file itself, and the icon a design (ItemIcon) or a blueprint
+    // (BlueprintIcon) sends before it (UploadPendingUgc :114-116).
+    public const byte UploadFile = 1;
+    public const byte UploadIcon = 2;
+
+    public static byte UploadPart(UgcType kind) => kind is UgcType.ItemIcon or UgcType.BlueprintIcon ? UploadIcon : UploadFile;
+
     // The hour of a day and a date that exists; the slot's start time is built from them.
     public static bool BannerTimeValid(int date, int hour) {
         if (hour is < 0 or > 23) {

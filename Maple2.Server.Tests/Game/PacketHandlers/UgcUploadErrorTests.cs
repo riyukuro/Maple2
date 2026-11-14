@@ -93,6 +93,32 @@ public class UgcUploadErrorTests {
         writer.WriteBool(false);
     });
 
+    // The accepted upload (Ugc 2: kind, uid) opens the resource's web upload for the uploading character, under the
+    // design's item, for UgcRules.UploadWindow (the web server takes the files only then).
+    [Test]
+    public void AcceptedUpload_OpensTheResourcesWebUpload() {
+        GameSession session = Start(MeretMarketCurrencyType.Meso);
+        session.Currency.Meso = 5000;
+        var web = new WebStorage(new DbContextOptionsBuilder().UseInMemoryDatabase(System.Guid.NewGuid().ToString()).Options, NullLogger<WebStorage>.Instance);
+        var handler = new UgcHandler {
+            WebStorage = web,
+            ItemMetadata = session.ItemMetadata,
+            TableMetadata = test.TableMetadata,
+            World = null!,
+        };
+        System.DateTime before = System.DateTime.UtcNow;
+
+        handler.Handle(session, Upload());
+
+        byte[] upload = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.Ugc);
+        Assert.That(upload[2], Is.EqualTo(2));
+        long uid = System.BitConverter.ToInt64(upload, 4);
+        using WebStorage.Request db = web.Context();
+        Maple2.Model.Game.UgcResource resource = db.GetUgc(uid)!;
+        Assert.That((resource.OwnerId, resource.TargetId, resource.UploadedParts), Is.EqualTo((session.CharacterId, (long) Design, (byte) 0)));
+        Assert.That(resource.UploadUntil, Is.InRange(before + Maple2.Model.Validators.UgcRules.UploadWindow, System.DateTime.UtcNow + Maple2.Model.Validators.UgcRules.UploadWindow));
+    }
+
     [Test]
     public void ErrorPacket_IsModeZero_KindThenError() {
         byte[] packet = Maple2.Server.Core.Packets.UgcPacket.Error(UgcType.Item, UgcError.s_err_lack_meso).ToArray();

@@ -2299,7 +2299,16 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<long>("TargetId")
+                        .HasColumnType("bigint");
+
                     b.Property<byte>("Type")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<DateTime?>("UploadUntil")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<byte>("UploadedParts")
                         .HasColumnType("tinyint unsigned");
 
                     b.HasKey("Id");
