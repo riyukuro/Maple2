@@ -9,6 +9,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -91,11 +92,17 @@ public class AttendanceHandler : FieldPacketHandler {
         return AttendanceRules.AttendedToday(completeTime, DateTime.Now);
     }
 
-    // Gives the day's gift and marks the day attended, stored together; false when nothing was given.
-    private bool Attend(GameSession session, AttendGift attendGift, GameEvent gameEvent) {
+    // Gives the day's gift and marks the day attended, stored together; false when nothing was given. resetRunning:
+    // a reset being stored refused it (nothing was stored).
+    private bool Attend(GameSession session, AttendGift attendGift, GameEvent gameEvent, out bool resetRunning) {
         return GetRewards(session, attendGift, gameEvent, GameEventUserValueType.AttendanceCompletedTimestamp,
-            DateTime.Now.ToEpochSeconds(), couponUid: 0, out _);
+            DateTime.Now.ToEpochSeconds(), couponUid: 0, out _, out resetRunning);
     }
+
+    private bool Attend(GameSession session, AttendGift attendGift, GameEvent gameEvent) => Attend(session, attendGift, gameEvent, out _);
+
+    // The wait before an attend at game start that a reset being stored refused comes back, as a purchase save does.
+    internal static readonly TimeSpan AttendRetryDelay = TimeSpan.FromSeconds(2);
 
     // The event's requirement, tested on the player's user values with id 0 as the client tests them; a kind 2
     // event on the player's unexpired item start (user value 104 of the event).
@@ -117,11 +124,29 @@ public class AttendanceHandler : FieldPacketHandler {
             }
 
             // An event without play time is attended here: the client sends no claim for it (AttendsAtGameStart).
-            if (gameEvent.Metadata.Data is AttendGift attendGift && AttendanceRules.AttendsAtGameStart(attendGift.RequiredPlaySeconds)
-                && RequirementMet(session, attendGift, gameEvent) && !AttendedToday(session, gameEvent)) {
-                Attend(session, attendGift, gameEvent);
-            }
+            AttendAtGameStart(session, gameEvent);
         }
+    }
+
+    // A reset being stored refuses the attend (its save does not wait on the field thread); the client sends nothing
+    // more for this event, so it comes back 2 s later on the field's queue while the session plays on that field, as
+    // a purchase save does. A session that left the field is attended at its next BeginTimer.
+    private void AttendAtGameStart(GameSession session, GameEvent gameEvent) {
+        if (gameEvent.Metadata.Data is not AttendGift attendGift || !AttendanceRules.AttendsAtGameStart(attendGift.RequiredPlaySeconds)
+            || !RequirementMet(session, attendGift, gameEvent) || AttendedToday(session, gameEvent)) {
+            return;
+        }
+        if (!Attend(session, attendGift, gameEvent, out bool resetRunning) && resetRunning && session.Field is { } field) {
+            int eventId = gameEvent.Id;
+            field.Scheduler.Schedule(() => AttendAtGameStartRetry(session, field, eventId), AttendRetryDelay);
+        }
+    }
+
+    private void AttendAtGameStartRetry(GameSession session, FieldManager field, int eventId) {
+        if (!session.PlaysOn(field) || session.FindEvent(eventId) is not { } gameEvent) {
+            return;
+        }
+        AttendAtGameStart(session, gameEvent);
     }
 
     // Mails the next reward. The mail, its item, the claim count and the day's mark (markType set to markValue: the
@@ -131,8 +156,9 @@ public class AttendanceHandler : FieldPacketHandler {
     // nothing was given (no reward left, no item, or the transaction was not stored). couponTaken is false when the
     // coupon left the bag between its save and the commit.
     private bool GetRewards(GameSession session, AttendGift attendGift, GameEvent gameEvent, GameEventUserValueType markType,
-                            long markValue, long couponUid, out bool couponTaken) {
+                            long markValue, long couponUid, out bool couponTaken, out bool resetRunning) {
         couponTaken = true;
+        resetRunning = false;
         GameEventUserValue claimedValue = session.GameEvent.Get(GameEventUserValueType.AttendanceRewardsClaimed, gameEvent.Id, gameEvent.EndTime);
         int rewardsClaimed = claimedValue.Int();
         int index = AttendanceRules.RewardIndex(rewardsClaimed, attendGift.Items.Length);
@@ -190,8 +216,13 @@ public class AttendanceHandler : FieldPacketHandler {
                 }
             });
             return true;
-        });
+        }, out resetRunning);
         couponTaken = taken;
+        if (!stored && resetRunning) {
+            Logger.Information("Attendance reward {ItemId} of event {EventId} not stored for {CharacterId}: a reset is being stored",
+                reward.ItemId, gameEvent.Id, session.CharacterId);
+            return false;
+        }
         if (!stored || storedMail == null || storedItem == null) {
             Logger.Error("Attendance reward {ItemId} of event {EventId} not stored for {CharacterId}", reward.ItemId, gameEvent.Id, session.CharacterId);
             return false;
@@ -258,7 +289,7 @@ public class AttendanceHandler : FieldPacketHandler {
         // gift costs nothing and a crash cannot keep one without the others.
         long usedCoupon = step == AttendanceRules.PayStep.Coupon ? couponUid : 0;
         bool given = GetRewards(session, attendGift, gameEvent, GameEventUserValueType.AttendanceEarlyParticipationRemaining,
-            paid + 1, usedCoupon, out bool couponTaken);
+            paid + 1, usedCoupon, out bool couponTaken, out _);
         if (given) {
             switch (step) {
                 case AttendanceRules.PayStep.Coupon:
