@@ -827,6 +827,7 @@ public class DungeonManager {
         List<Action> grants = [];
         Dictionary<int, DungeonRecord> before = CopyRecords();
         CalculateRewards(clearTimestamp, withRookie, grants);
+        Dictionary<int, DungeonRecord> counted = CopyRecords();
         // The counts this clear took (the room's, its reward room's, the helper room's) are in the database before
         // any reward of it exists: the items are rows at once (Inventory.Add, a mail), and a crash before the next
         // session save kept the counts unspent, so the clear could be paid again. A refused store gives nothing:
@@ -835,7 +836,7 @@ public class DungeonManager {
         // The store waits for a reset being stored (ClearResetWait) rather than refuse the clear: the dungeon field's
         // thread holds only the room's party, and a reset is stored in 1 to 5 s (30 s at most, its command timeout).
         if (!session.TrySavePurchase(db => db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray()),
-                undo: () => RestoreRecords(before), ClearResetWait)) {
+                undo: () => UndoClear(before, counted), ClearResetWait)) {
             logger.Error("Dungeon {DungeonId}: the clear's records of {CharacterId} not stored, no reward given", Metadata.Id, session.CharacterId);
             grants.Clear();
             UserRecord.ClearResult();
@@ -1522,21 +1523,42 @@ public class DungeonManager {
         record.ExtraCooldownTimestamp = account.ExtraCooldownTimestamp;
     }
 
-    // The records as they are, to put back when a store that took counts is refused (RestoreRecords).
+    // The records as they are, to take back what a refused clear store changed (UndoClear).
     private Dictionary<int, DungeonRecord> CopyRecords() => Records.ToDictionary(pair => pair.Key, pair => {
         var copy = new DungeonRecord(pair.Key);
         CopyRecord(pair.Value, copy);
         return copy;
     });
 
-    // Back into the same record objects (the clear's code holds them); a record made since is dropped.
-    private void RestoreRecords(Dictionary<int, DungeonRecord> copies) {
+    // A refused clear store takes back only what the clear changed: a field still as the clear left it (counted) goes
+    // back to its value before the clear; one a reset taken inside the store changed since (a daily or weekly reset
+    // zeroes the counts, BeginWithResets) keeps the reset's value, as the reset is stored and marked taken. A record
+    // the clear made is dropped.
+    private void UndoClear(Dictionary<int, DungeonRecord> before, Dictionary<int, DungeonRecord> counted) {
         foreach (int id in Records.Keys.ToList()) {
-            if (copies.TryGetValue(id, out DungeonRecord? copy)) {
-                CopyRecord(copy, Records[id]);
-            } else {
-                Records.Remove(id);
+            if (!before.TryGetValue(id, out DungeonRecord? from)) {
+                if (counted.ContainsKey(id)) {
+                    Records.Remove(id);
+                }
+                continue;
             }
+            if (!counted.TryGetValue(id, out DungeonRecord? left)) {
+                continue;
+            }
+            DungeonRecord to = Records[id];
+            to.UnionSubClears = to.UnionSubClears == left.UnionSubClears ? from.UnionSubClears : to.UnionSubClears;
+            to.UnionClears = to.UnionClears == left.UnionClears ? from.UnionClears : to.UnionClears;
+            to.UnionSubCooldownTimestamp = to.UnionSubCooldownTimestamp == left.UnionSubCooldownTimestamp ? from.UnionSubCooldownTimestamp : to.UnionSubCooldownTimestamp;
+            to.UnionCooldownTimestamp = to.UnionCooldownTimestamp == left.UnionCooldownTimestamp ? from.UnionCooldownTimestamp : to.UnionCooldownTimestamp;
+            to.CooldownTimestamp = to.CooldownTimestamp == left.CooldownTimestamp ? from.CooldownTimestamp : to.CooldownTimestamp;
+            to.ClearTimestamp = to.ClearTimestamp == left.ClearTimestamp ? from.ClearTimestamp : to.ClearTimestamp;
+            to.TotalClears = to.TotalClears == left.TotalClears ? from.TotalClears : to.TotalClears;
+            to.LifetimeRecord = to.LifetimeRecord == left.LifetimeRecord ? from.LifetimeRecord : to.LifetimeRecord;
+            to.CurrentRecord = to.CurrentRecord == left.CurrentRecord ? from.CurrentRecord : to.CurrentRecord;
+            to.ExtraSubClears = to.ExtraSubClears == left.ExtraSubClears ? from.ExtraSubClears : to.ExtraSubClears;
+            to.ExtraClears = to.ExtraClears == left.ExtraClears ? from.ExtraClears : to.ExtraClears;
+            to.ExtraCooldownTimestamp = to.ExtraCooldownTimestamp == left.ExtraCooldownTimestamp ? from.ExtraCooldownTimestamp : to.ExtraCooldownTimestamp;
+            to.Flag = to.Flag == left.Flag ? from.Flag : to.Flag;
         }
     }
 

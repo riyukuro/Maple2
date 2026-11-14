@@ -194,4 +194,57 @@ public class DungeonClaimOrderTests {
         Assert.That(Mails(), Has.Count.EqualTo(1));
         Assert.That(record.CurrentRecord, Is.EqualTo(0));
     }
+
+    // A World error at the account lock other than an unreachable World (here Internal) refuses the clear's store
+    // rather than throw out of the clear: nothing given, the counts back, no lock given back that was not taken.
+    [Test]
+    public void AWorldErrorAtTheLock_RefusesTheClear() {
+        StartInRoom();
+        test.World.OnAcquire = () => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Internal, "test"));
+        int released = test.World.Released;
+        Clear(250, DateTime.Now.ToEpochSeconds());
+        test.World.OnAcquire = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(0));
+            Assert.That(session.Dungeon.Records.TryGetValue(Room, out DungeonRecord? record) ? record.UnionClears : 0, Is.EqualTo(0));
+            Assert.That(StoredRecord(Room)?.Clears ?? 0, Is.EqualTo(0));
+            Assert.That(test.World.Released, Is.EqualTo(released));
+        });
+    }
+
+    // A daily reset taken inside a clear's store (BeginWithResets) that is then refused: the clear's counts are taken
+    // back, the reset's are not. The reset is stored and marked taken, so putting back the counts from before it
+    // would have the next session save store the old day's counts over the reset.
+    [Test]
+    public void ARefusedClearStore_KeepsAResetTakenInsideIt() {
+        StartInRoom();
+        // The daily reset queues its quest steps on the session's queue, which a test session does not make.
+        typeof(GameSession).GetField(nameof(GameSession.Scheduler))!.SetValue(session, new Maple2.Tools.Scheduler.EventQueue(Serilog.Log.Logger));
+        long now = DateTime.Now.ToEpochSeconds();
+        Clear(250, now);
+        DungeonRecord record = session.Dungeon.Records[Room];
+        int clears = record.UnionClears;
+        Assume.That(record.UnionSubClears, Is.GreaterThan(0), "the first clear spent a daily count");
+        using (var context = new Ms2Context(test.Options)) {
+            Maple2.Database.Model.ServerInfo? daily = context.ServerInfo.Find("DailyReset");
+            if (daily == null) {
+                context.ServerInfo.Add(new Maple2.Database.Model.ServerInfo { Key = "DailyReset", LastModified = DateTime.Now.AddSeconds(1) });
+            } else {
+                daily.LastModified = DateTime.Now.AddSeconds(1);
+            }
+            context.SaveChanges();
+        }
+        int recordSaves = 0;
+        Func<DbContext, bool> records = Fails("DungeonRecord");
+        test.FailSave = context => records(context) && ++recordSaves == 2; // the reset's save, then the clear's
+        Clear(250, now);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(recordSaves, Is.EqualTo(2), "the reset was stored inside the clear's store");
+            Assert.That(record.UnionSubClears, Is.EqualTo(0), "the reset's daily count stays");
+            Assert.That(record.UnionClears, Is.EqualTo(clears), "the refused clear's count is taken back");
+        });
+    }
 }

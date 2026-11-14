@@ -2330,8 +2330,16 @@ public sealed partial class GameSession : Core.Network.Session {
             TimeSpan resetWait = default) {
         bool outer = BeginStoreScope();
         SaveResult result = SaveResult.Failed;
+        bool locked = false;
         try {
-            AcquireLock(AccountId);
+            // AcquireLock answers only an unreachable World itself; any other World error refuses the store.
+            try {
+                AcquireLock(AccountId);
+                locked = true;
+            } catch (Exception ex) {
+                Logger.Error(ex, "SavePurchase: account lock failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                return result;
+            }
             return result = PurchaseRows(alsoSave, refused, resetWait);
         } finally {
             if (result != SaveResult.Stored && undo != null) {
@@ -2341,7 +2349,9 @@ public sealed partial class GameSession : Core.Network.Session {
                     Logger.Error(ex, "SavePurchase: undo failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
                 }
             }
-            ReleaseLock(AccountId);
+            if (locked) {
+                ReleaseLock(AccountId);
+            }
             EndStoreScope(outer);
         }
     }
