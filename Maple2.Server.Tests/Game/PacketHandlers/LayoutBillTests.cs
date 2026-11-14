@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -91,6 +92,21 @@ public class LayoutBillTests {
             Assert.That(cubes, Is.EqualTo(2));
             Assert.That(costs, Is.EqualTo(new Dictionary<byte, long> { [(byte) FurnishingCurrencyType.Meso] = 2000 }));
         });
+    }
+
+    // A layout bill (35) or blueprint load (65) of a slot the server has no row in is answered with 0x02 s_ugcmap_db,
+    // as a layout load (48) is; both got no answer before.
+    [TestCase(35)]
+    [TestCase(65)]
+    public void MissingSlot_IsAnsweredWithTheDbError(int command) {
+        GameSession session = StartInHome(MesoCube);
+        test.TakeSent();
+        new RequestCubeHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte((byte) command);
+            writer.WriteInt(7);
+        }));
+        byte[] error = CubePacket.Error(UgcMapError.s_ugcmap_db).ToArray();
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(error) }));
     }
 
     // The blueprint bill (ResponseCube 0x43 from a blueprint item) comes from the same RequestLayout.

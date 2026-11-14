@@ -527,8 +527,11 @@ public class RequestCubeHandler : FieldPacketHandler {
 
         int slot = packet.ReadInt();
 
+        // A slot the server has no layout in is answered with 0x02 s_ugcmap_db (13), as a layout load is (RequestCube
+        // 48): the client shows it with ShowBuildNotice (scenestategame.cpp:9913). Before, it got no answer at all.
         HomeLayout? layout = session.Player.Value.Home.Layouts.FirstOrDefault(homeLayout => homeLayout.Id == slot);
         if (layout == null) {
+            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
             return;
         }
 
@@ -1002,8 +1005,10 @@ public class RequestCubeHandler : FieldPacketHandler {
         int slot = packet.ReadInt();
 
         Home home = session.Player.Value.Home;
+        // A missing slot gets 0x02 s_ugcmap_db, as a layout load and a layout bill do; before, no answer.
         HomeLayout? layout = home.Blueprints.FirstOrDefault(homeLayout => homeLayout.Id == slot);
         if (layout is null) {
+            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
             return;
         }
 
