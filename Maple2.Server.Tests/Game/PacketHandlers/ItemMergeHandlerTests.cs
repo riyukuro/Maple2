@@ -30,12 +30,12 @@ public class ItemMergeHandlerTests {
         new CinematicContent("", NpcTalkButton.None, 0, [], [new CinematicEventScript(8001, [Staged]), new CinematicEventScript(8002, [Done])]),
     ]);
 
-    private GameSession Login(bool script = true, int crystals = 2, int materials = 10) {
+    private GameSession Login(bool script = true, int crystals = 2, int materials = 10, ItemTag crystalTag = ItemTag.None) {
         test = new TestGameSession();
         ItemMetadata gearMetadata = TestGameSession.Metadata(11400001, EquipSlot.CL, type: 1);
         gearMetadata = gearMetadata with { Limit = gearMetadata.Limit with { Level = 50 } };
         ItemMetadata crystalMetadata = TestGameSession.Metadata(37000002, type: 19);
-        crystalMetadata = crystalMetadata with { Limit = crystalMetadata.Limit with { Level = 60 } };
+        crystalMetadata = crystalMetadata with { Limit = crystalMetadata.Limit with { Level = 60 }, Property = crystalMetadata.Property with { Tag = crystalTag } };
         gear = test.Store(gearMetadata);
         crystal = test.Store(crystalMetadata, amount: crystals);
         ItemMetadata materialMetadata = TestGameSession.Metadata(40100001, type: 2);
@@ -295,6 +295,78 @@ public class ItemMergeHandlerTests {
             Assert.That(session.Currency.Meso, Is.EqualTo(800));
             Assert.That(Materials(session), Is.EqualTo(4));
             Assert.That(session.Item.Inventory.Get(crystal.Uid)!.Amount, Is.EqualTo(1));
+        });
+    }
+
+    // A crystal locked (or still unlocking) after it was picked is not taken, and nothing else is.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Empower_ALockedCrystalTakesNothing(bool unlocking) {
+        GameSession session = Login();
+        Send(session, 1, gear.Uid);
+        Send(session, 2, gear.Uid, crystal.Uid);
+        Item held = session.Item.Inventory.Get(crystal.Uid)!;
+        if (unlocking) {
+            held.UnlockTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+        } else {
+            held.IsLocked = true;
+        }
+        test.TakeSent();
+
+        Send(session, 3, gear.Uid, crystal.Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Hex(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_material)),
+            }));
+            Assert.That(session.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(Materials(session), Is.EqualTo(10));
+            Assert.That(session.Item.Inventory.Get(crystal.Uid)!.Amount, Is.EqualTo(2));
+            Assert.That(session.Item.Inventory.Get(gear.Uid)!.Stats?.HasMergeOption ?? false, Is.False);
+        });
+    }
+
+    // A crystal with the materials' tag does not pay for a material too: one crystal and two materials are short
+    // of the three materials, and the refusal takes nothing (the materials were taken, then the crystal refused).
+    [Test]
+    public void Empower_TheCrystalDoesNotCountAsAMaterial() {
+        GameSession session = Login(crystals: 1, materials: 2, crystalTag: ItemTag.Onix);
+        Send(session, 1, gear.Uid);
+        Send(session, 2, gear.Uid, crystal.Uid);
+        test.TakeSent();
+
+        Send(session, 3, gear.Uid, crystal.Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Hex(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_lack_material)),
+            }));
+            Assert.That(session.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(Materials(session), Is.EqualTo(3));
+            Assert.That(session.Item.Inventory.Get(crystal.Uid), Is.Not.Null);
+        });
+    }
+
+    // A locked revert item is refused as no revert item, and nothing is taken.
+    [Test]
+    public void Revert_ALockedRevertItemTakesNothing() {
+        GameSession session = Login();
+        Send(session, 1, gear.Uid);
+        Send(session, 2, gear.Uid, crystal.Uid);
+        Send(session, 3, gear.Uid, crystal.Uid);
+        session.Item.Inventory.Get(revertScroll.Uid)!.IsLocked = true;
+        long meso = session.Currency.Meso;
+        test.TakeSent();
+
+        Send(session, 6, revertScroll.Uid, gear.Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Hex(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll)),
+            }));
+            Assert.That(session.Currency.Meso, Is.EqualTo(meso));
+            Assert.That(session.Item.Inventory.Get(revertScroll.Uid), Is.Not.Null);
+            Assert.That(session.Item.Inventory.Get(gear.Uid)!.Stats!.HasMergeOption, Is.True);
         });
     }
 }

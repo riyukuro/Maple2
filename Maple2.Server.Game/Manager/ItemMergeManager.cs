@@ -138,7 +138,15 @@ public sealed class ItemMergeManager {
         session.Send(ItemMergePacket.Select(mergeSlot, ItemMerge.CostMultiplier(upgradeItem.Rarity)));
     }
 
+    // The checks and the takes are one step under the inventory lock, so a take on another thread cannot leave a
+    // material taken and the merge refused.
     public void Empower(long itemUid, long catalystUid) {
+        lock (session.Item) {
+            EmpowerLocked(itemUid, catalystUid);
+        }
+    }
+
+    private void EmpowerLocked(long itemUid, long catalystUid) {
         // The error codes are the ones the client's own check gives (UIItemMergeOptionDialog::CheckMerge).
         if (pending != null) {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_unknown));
@@ -154,10 +162,10 @@ public sealed class ItemMergeManager {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_material));
             return;
         }
-        // The crystal picked can be gone by now (the last one was used by the request before this one):
-        // refuse before the materials are taken.
+        // The crystal picked can be gone by now (the last one was used by the request before this one), or locked
+        // since it was picked: refuse before the materials are taken.
         Item? heldCatalyst = session.Item.Inventory.Get(catalystUid);
-        if (heldCatalyst == null || heldCatalyst.Amount < 1 || heldCatalyst.IsExpired()) {
+        if (heldCatalyst == null || heldCatalyst.Amount < 1 || !heldCatalyst.IsSpendable()) {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_material));
             return;
         }
@@ -170,6 +178,18 @@ public sealed class ItemMergeManager {
 
         int multiplier = ItemMerge.CostMultiplier(upgradeItem.Rarity);
         long totalMesoCost = mergeSlot.MesoCost * multiplier;
+        List<IngredientInfo> ingredients = [];
+        foreach (ItemComponent component in mergeSlot.Materials) {
+            ingredients.Add(new IngredientInfo(component.Tag, component.Amount * multiplier));
+        }
+        // The materials are counted before anything is taken (locked and expired stacks do not count, nor the
+        // crystal itself if it has a material's tag), then the crystal is taken before them: no material is gone
+        // with the crystal refused.
+        ItemTag crystalTag = heldCatalyst.Metadata.Property.Tag;
+        if (ingredients.Any(ingredient => session.Item.Inventory.SpendableCount(ingredient.Tag) - (ingredient.Tag == crystalTag ? 1 : 0) < ingredient.Amount)) {
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_lack_material));
+            return;
+        }
         // The price is taken in one step where it was checked, before the materials: a take on another thread
         // could leave too little for a take after them, and the materials were gone with no merge. A refused
         // material gives it back unseen (no balance was sent); the balance goes out where the take used to.
@@ -178,20 +198,17 @@ public sealed class ItemMergeManager {
             return;
         }
 
-        List<IngredientInfo> ingredients = [];
-        foreach (ItemComponent component in mergeSlot.Materials) {
-            ingredients.Add(new IngredientInfo(component.Tag, component.Amount * multiplier));
-        }
-        if (!session.Item.Inventory.Consume(ingredients)) {
-            session.Currency.ReturnMeso(totalMesoCost, notify: false);
-            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_lack_material));
-            return;
-        }
-
         int crystalId = catalystItem.Id;
         if (!session.Item.Inventory.Consume(catalystItem.Uid, 1)) {
             session.Currency.ReturnMeso(totalMesoCost, notify: false);
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_invalid_merge_scroll));
+            return;
+        }
+
+        if (!session.Item.Inventory.Consume(ingredients)) {
+            logger.Error("Failed to consume merge materials of {CharacterId} after counting them", session.CharacterId);
+            session.Currency.ReturnMeso(totalMesoCost, notify: false);
+            session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_lack_material));
             return;
         }
 
@@ -256,6 +273,12 @@ public sealed class ItemMergeManager {
     // OnItemDropped, uiitemmergerevertdialog.cpp:150 and :234), and the client's mode 6 reader updates
     // the inventory's item only (scenestategame.cpp, OnItemFusion), so an equipped item is no target.
     public void Revert(long revertItemUid, long itemUid) {
+        lock (session.Item) {
+            RevertLocked(revertItemUid, itemUid);
+        }
+    }
+
+    private void RevertLocked(long revertItemUid, long itemUid) {
         if (pending != null) {
             session.Send(ItemMergePacket.Error(ItemMergeError.s_item_merge_option_error_unknown));
             return;
@@ -264,6 +287,10 @@ public sealed class ItemMergeManager {
         Item? revertItem = session.Item.Inventory.Get(revertItemUid);
         Item? item = RevertTarget(itemUid, uid => session.Item.Inventory.Get(uid));
         ItemMergeError error = CheckRevert(revertItem, item);
+        // A locked or expired revert item is not taken.
+        if (error == ItemMergeError.ok && revertItem?.IsSpendable() != true) {
+            error = ItemMergeError.s_item_merge_option_error_invalid_merge_scroll;
+        }
         if (error != ItemMergeError.ok || revertItem == null || item?.Stats == null) {
             session.Send(ItemMergePacket.Error(error == ItemMergeError.ok ? ItemMergeError.s_item_merge_option_error_unknown : error));
             return;

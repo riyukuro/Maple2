@@ -101,6 +101,27 @@ public class MagicScrollCraftTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(left == 0 ? 0 : Meso));
     }
 
+    // The client does not count a locked stack or one still unlocking (and the server must not take one):
+    // 1500 free stones and 1000 locked ones do not pay for 2000.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Craft_ALockedStackIsNotTaken(bool unlocking) {
+        GameSession session = Start(1500, 1000, Meso);
+        Item locked = session.Item.Inventory.Find(OtherStoneId).Single();
+        if (unlocking) {
+            locked.UnlockTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+        } else {
+            locked.IsLocked = true;
+        }
+
+        Craft(session);
+
+        Assert.That(Count(session, StoneId), Is.EqualTo(1500));
+        Assert.That(Count(session, OtherStoneId), Is.EqualTo(1000));
+        Assert.That(session.Currency.Meso, Is.EqualTo(Meso));
+        Assert.That(Count(session, ScrollId), Is.EqualTo(0));
+    }
+
     // Without a field no reward can be made, so nothing is taken.
     [Test]
     public void Craft_WithoutAFieldTakesNothing() {

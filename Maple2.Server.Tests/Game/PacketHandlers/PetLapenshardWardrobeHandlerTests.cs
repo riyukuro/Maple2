@@ -178,6 +178,48 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(session.Item.Inventory.Get(shards.Uid)?.Amount, Is.EqualTo(9));
     }
 
+    // A locked fodder stack (or one still unlocking) is not taken: the fusion is refused and nothing is paid.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void LapenshardUpgrade_ALockedFodderTakesNothing(bool unlocking) {
+        var test = new TestGameSession();
+        ItemMetadata crystalData = TestGameSession.Metadata(40100001, type: 2);
+        crystalData = crystalData with { Property = crystalData.Property with { Tag = ItemTag.RedCrystal } };
+        Item shard = test.Store(TestGameSession.Metadata(ShardId, type: 21), amount: 1);
+        Item fodder = test.Store(TestGameSession.Metadata(ShardId, type: 21), amount: 4);
+        Item crystals = test.Store(crystalData, amount: 50);
+        test.Register(TestGameSession.Metadata(NextShardId, type: 21));
+        test.SetTable(new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry> {
+            [ShardId] = new(1, 1, NextShardId, 4, [new LapenshardUpgradeTable.Ingredient(ItemTag.RedCrystal, 20)], 1000),
+        }));
+        GameSession session = test.Start();
+        var handler = new LapenshardHandler { TableMetadata = test.TableMetadata, ItemMetadata = session.ItemMetadata };
+        session.Currency.Meso = 5000;
+        Item held = session.Item.Inventory.Get(fodder.Uid)!;
+        if (unlocking) {
+            held.UnlockTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+        } else {
+            held.IsLocked = true;
+        }
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(5);
+            writer.WriteLong(shard.Uid);
+            writer.WriteInt(ShardId);
+            writer.WriteInt(0);
+            writer.WriteInt(1);
+            writer.WriteLong(fodder.Uid);
+            writer.WriteInt(4);
+        }));
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        Assert.That(session.Item.Inventory.Get(fodder.Uid)?.Amount, Is.EqualTo(4));
+        Assert.That(session.Item.Inventory.Get(shard.Uid)?.Id, Is.EqualTo(ShardId));
+        Assert.That(session.Item.Inventory.Get(crystals.Uid)?.Amount, Is.EqualTo(50));
+    }
+
     private static Wardrobe Closet(GameSession session, int type, params (Item Item, EquipSlot Slot)[] items) {
         var wardrobe = new Wardrobe(type, "tab");
         foreach ((Item item, EquipSlot slot) in items) {

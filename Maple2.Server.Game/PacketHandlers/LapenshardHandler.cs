@@ -1,4 +1,5 @@
 ﻿using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -126,6 +127,9 @@ public class LapenshardHandler : FieldPacketHandler {
                 Item? fodder = session.Item.Inventory.Get(uid, InventoryType.Lapenshard);
                 if (fodder == null || !LapenshardRules.IsMaterialAmount(amount, fodder.Amount, uid == lapenshardUid)) {
                     return; // Invalid amount for fodder
+                }
+                if (!fodder.IsSpendable()) {
+                    return; // A locked or expired fodder is not taken
                 }
                 if (!TableMetadata.LapenshardUpgradeTable.Entries.TryGetValue(fodder.Id, out LapenshardUpgradeTable.Entry? fodderEntry)) {
                     return; // Fodder is not a valid lapenshard

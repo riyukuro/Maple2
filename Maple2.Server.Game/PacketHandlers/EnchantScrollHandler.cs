@@ -227,11 +227,9 @@ public class EnchantScrollHandler : FieldPacketHandler {
             return;
         }
 
-        bool consumed;
-        lock (session.Item) {
-            consumed = ConsumeIngredients(session, recipe.RequiredItems);
-        }
-        if (!consumed) {
+        // The ingredients are counted as the client counts them (a tag by any item of the tag, an id at any rank);
+        // locked and expired items are not taken, and the check and the take are one step under the inventory lock.
+        if (!session.Item.Inventory.ConsumeCraftIngredients(recipe.RequiredItems)) {
             session.Currency.ReturnMeso(recipe.RequiredMeso);
             return;
         }
@@ -252,41 +250,5 @@ public class EnchantScrollHandler : FieldPacketHandler {
         }
         // Client OnEnchantScroll mode 4: the notice of the items made, then the mastery window is refreshed.
         session.Send(EnchantScrollPacket.Reward(given));
-    }
-
-    // The client counts an ingredient with a tag by its tag (any item of the tag, any rank), one without a tag
-    // by its id (GetMaxCraftCount kind 1), and needs the row's count once per craft. Each row reserves what it
-    // takes, so two rows that match the same stack (the same tag twice) cannot both be paid by it.
-    private bool ConsumeIngredients(GameSession session, IReadOnlyList<ItemComponent> ingredients) {
-        var reserved = new Dictionary<long, int>();
-        foreach (ItemComponent ingredient in ingredients) {
-            IEnumerable<Item> items = ingredient.Tag != ItemTag.None
-                ? session.Item.Inventory.Find(ingredient.Tag)
-                : session.Item.Inventory.Find(ingredient.ItemId);
-            int remaining = ingredient.Amount;
-            foreach (Item item in items) {
-                if (remaining <= 0) {
-                    break;
-                }
-                int taken = reserved.GetValueOrDefault(item.Uid);
-                int consume = Math.Min(remaining, item.Amount - taken);
-                if (consume <= 0) {
-                    continue;
-                }
-                reserved[item.Uid] = taken + consume;
-                remaining -= consume;
-            }
-            if (remaining > 0) {
-                return false;
-            }
-        }
-
-        foreach ((long uid, int amount) in reserved) {
-            if (!session.Item.Inventory.Consume(uid, amount)) {
-                Logger.Error("Failed to consume magic scroll ingredient {ItemUid} of {CharacterId}", uid, session.CharacterId);
-                return false;
-            }
-        }
-        return true;
     }
 }
