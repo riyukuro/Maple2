@@ -95,4 +95,25 @@ public class WorldDownGuardTests {
             Convert.ToHexString(PartyPacket.Error(PartyError.s_party_err_not_found).ToArray()),
         }));
     }
+
+    // With FindDungeonHelp off the room info's find-helper button stays disabled (uidungeonroomdialog.cpp:822): mode 15
+    // reaches neither the world nor an answer; the find-member search (16) is not tied to it.
+    [TestCase((byte) 15, ExpectedResult = false)]
+    [TestCase((byte) 16, ExpectedResult = true)]
+    public bool DungeonRecruit_WithFindDungeonHelpOff(byte mode) {
+        bool asked = false;
+        test.World.PartyWorld = _ => {
+            asked = true;
+            throw Down();
+        };
+        test.SetFeaturesOff(DungeonRoomHandler.FindHelperFeature);
+        var handler = new DungeonRoomHandler { TableMetadata = test.TableMetadata, World = test.World };
+
+        handler.Handle(test.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(mode);
+            writer.WriteInt(Room);
+        }));
+
+        return asked;
+    }
 }

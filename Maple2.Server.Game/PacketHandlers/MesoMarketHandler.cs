@@ -42,6 +42,7 @@ public class MesoMarketHandler : FieldPacketHandler {
     // (UIBlackMarketDialog::OnLoadComplete, uiblackmarketdialog.cpp:227); modes 5-8 are sent only from them
     // (uiblackmarketpagemeso.cpp:284/407/620/635). The load (3) is sent on every open of the window and stays.
     public const string Feature = "MesoMarket";
+    public const string AdventureProtectFeature = "AdventureProtect";
 
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
@@ -244,8 +245,9 @@ public class MesoMarketHandler : FieldPacketHandler {
     private void HandlePurchase(GameSession session, IByteReader packet) {
         long listingId = packet.ReadLong();
 
-        // The client asks only once its protection state is 7 (AdventureProtectRules); the server checks it again.
-        if (!session.AdventureProtect.Cleared) {
+        // With AdventureProtect on the client asks only once its protection state is 7 (AdventureProtectRules,
+        // uiblackmarketpagemeso.cpp:180); the server checks it again. With it off the client does not ask, nor does the server.
+        if (session.ServerTableMetadata.FeatureTable.IsOn(AdventureProtectFeature) && !session.AdventureProtect.Cleared) {
             session.Send(MesoMarketPacket.Error(s_adventure_protect_err));
             return;
         }

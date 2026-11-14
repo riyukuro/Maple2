@@ -6,6 +6,7 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
@@ -26,10 +27,14 @@ public class ItemDismantleHandlerTests {
 
     // box: the donation box was used first (the client opens the type 2 dialog only from it).
     private GameSession Login(int rarity, EquipSlot slot = EquipSlot.CL, byte dialog = 1, int itemType = 1, bool box = true,
+        params AchievementMetadata[] trophies) => Login(rarity, slot, dialog, itemType, box, null, trophies);
+
+    private GameSession Login(int rarity, EquipSlot slot, byte dialog, int itemType, bool box, Func<ItemMetadata, ItemMetadata>? edit,
         params AchievementMetadata[] trophies) {
         test = new TestGameSession();
         ItemMetadata metadata = TestGameSession.Metadata(11400001, slot, type: itemType);
         metadata = metadata with { Property = metadata.Property with { SellPrices = [100, 200, 7139, 9000, 0, 0] } };
+        metadata = edit?.Invoke(metadata) ?? metadata;
         gear = test.Store(metadata);
         test.Register(TestGameSession.Metadata(Onyx, type: 4, slotMax: 9999), TestGameSession.Metadata(ChaosOnyx, type: 4, slotMax: 9999));
         test.SetTable(new ItemBreakTable(new Dictionary<int, IReadOnlyList<ItemBreakTable.Ingredient>>()));
@@ -96,6 +101,36 @@ public class ItemDismantleHandlerTests {
             Hex(ItemDismantlePacket.Stage(gear.Uid, 0, 1)),
             Hex(ItemDismantlePacket.Preview(new Dictionary<int, (int Min, int Max)> { [Onyx] = (onyx, onyx), [ChaosOnyx] = (chaosMin, chaosMax) })),
         }));
+    }
+
+    // CItemTransfer::CanBreak (itemsocketsystemutil.cpp:2993): a gacha item passes first; else enableBreak without the
+    // no-dismantle flag, no PC bang item, and an item with a skin type only with SkinBreak on and, when it has a ucc mesh,
+    // not with a socket of no opened slot.
+    [TestCase(true, false, 0, false, false, true, false, ExpectedResult = true)]
+    [TestCase(true, false, 0, true, false, true, false, ExpectedResult = false)]
+    [TestCase(true, false, 0, false, true, true, false, ExpectedResult = true)]
+    [TestCase(true, false, 0, false, true, false, false, ExpectedResult = false)]
+    [TestCase(true, false, 0, false, true, true, true, ExpectedResult = false)]
+    [TestCase(true, false, 0, false, false, false, true, ExpectedResult = true)]
+    [TestCase(false, false, 7, true, true, false, true, ExpectedResult = true)]
+    [TestCase(false, false, 0, false, false, true, false, ExpectedResult = false)]
+    public bool Breakable_AsCanBreak(bool enableBreak, bool disableBreak, int gacha, bool pcBang, bool skin, bool skinBreakOn, bool closedTemplate) =>
+        DismantleRules.Breakable(enableBreak, disableBreak, gacha, pcBang, skin, skinBreakOn, closedTemplate);
+
+    // An outfit (skin type 1) is staged only with SkinBreak on; a PC bang item never.
+    [TestCase(false, false, ExpectedResult = true)]
+    [TestCase(true, false, ExpectedResult = false)]
+    [TestCase(false, true, ExpectedResult = false)]
+    public bool Stage_SkinNeedsSkinBreak_PcBangNever(bool skinBreakOff, bool pcBang) {
+        GameSession session = Login(3, EquipSlot.CL, 1, 1, true, metadata => metadata with {
+            Property = metadata.Property with { SkinType = 1 },
+            Limit = metadata.Limit with { RequirePcBang = pcBang },
+        });
+        if (skinBreakOff) {
+            test.SetFeaturesOff(ItemDismantleHandler.SkinBreakFeature);
+        }
+        Stage(session);
+        return test.TakeSent().Any(p => Convert.ToHexString(p).StartsWith(Hex(ItemDismantlePacket.Stage(gear.Uid, 0, 1))));
     }
 
     // The confirm: the item leaves the bag, the onyx comes in, and the result lists the chaos onyx with 0.

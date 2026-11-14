@@ -16,6 +16,8 @@ using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 namespace Maple2.Server.Game.PacketHandlers;
 
 public class DungeonRoomHandler : PacketHandler<GameSession> {
+    public const string FindHelperFeature = "FindDungeonHelp";
+
     public override RecvOp OpCode => RecvOp.RoomDungeon;
 
     private enum Command : byte {
@@ -67,6 +69,11 @@ public class DungeonRoomHandler : PacketHandler<GameSession> {
                 HandleAddExtraRewardCount(session, packet);
                 break;
             case Command.FindHelper:
+                // With FindDungeonHelp off the room info leaves its find-helper button disabled
+                // (UIDungeonRoomInfo, uidungeonroomdialog.cpp:822), so no RequestFindHelper is sent.
+                if (!session.ServerTableMetadata.FeatureTable.IsOn(FindHelperFeature)) {
+                    break;
+                }
                 HandleFindRecruit(session, packet, DungeonRecruitKind.Helper);
                 break;
             case Command.FindMember:

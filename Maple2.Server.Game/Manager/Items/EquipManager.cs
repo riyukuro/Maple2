@@ -448,13 +448,15 @@ public class EquipManager {
 
     // The client's checks before it sends an equip (Unk_Inventory::RequestEquipItem, inventory.cpp:1242, through
     // GetItemUseError and GetItemRequirementError, :1578-1601), in its order: an expired item (a maid furnishing
-    // excepted; the shared expiry check also excepts a pet, item type 11, which has no equip slot), a PC bang item away from a PC bang, the gender (CItemData::IsGenderAllowed: 2 is either, notice
-    // s_err_gender), the job (ItemLimit::IsJobAllowed: a job in disableJobLimit is refused, a beginner counts as a knight, a list naming job 0 or the
-    // beginner allows all), the level, a premium-club item without premium club, a wedding item unless married (also
-    // with a divorce filed, WeddingManager::IsInProgress). The premium-club and wedding refusals are by-key strings with
-    // no code to send, so a packet the client would not send gets s_item_err_puton for them. A binding to another
-    // character is the server's own check, last. The client's badge equip (EquipGem, gemslot_2.cpp:441) runs none of
-    // these; the server runs them on badges too (KR: the 566 badges have no gender, premium-club or wedding limit).
+    // excepted; the shared expiry check also excepts a pet, item type 11, which has no equip slot), a PC bang item
+    // away from a PC bang, the gender (CItemData::IsGenderAllowed: 2 is either, notice s_err_gender), the job
+    // (ItemLimit::IsJobAllowed: a job in disableJobLimit is refused, a beginner counts as a knight, a list naming
+    // job 0 or the beginner allows all), the level, a premium-club item without premium club, a wedding item unless
+    // married (also with a divorce filed, WeddingManager::IsInProgress). The premium-club and wedding refusals are
+    // by-key strings with no code to send, so a packet the client would not send gets s_item_err_puton for them. A
+    // binding to another character is the server's own check, last. The client's badge equip (EquipGem,
+    // gemslot_2.cpp:441) runs none of these; the server runs them on badges too (KR: the 566 badges have no gender,
+    // premium-club or wedding limit).
     public static StringCode ValidateEquipItem(GameSession session, Item item) {
         Character character = session.Player.Value.Character;
         ItemMetadataLimit limit = item.Metadata.Limit;

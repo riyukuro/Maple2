@@ -16,6 +16,8 @@ using Maple2.Server.Game.Util;
 namespace Maple2.Server.Game.PacketHandlers;
 
 public partial class HomeActionHandler : FieldPacketHandler {
+    public const string VisitorActionFeature = "UGCMapFun";
+
     public override RecvOp OpCode => RecvOp.HomeAction;
 
     private enum Command : byte {
@@ -52,6 +54,11 @@ public partial class HomeActionHandler : FieldPacketHandler {
             case Command.Smite:
             case Command.Kick:
             case Command.Revive:
+                // The visitor menu's smite, kick and revive entries are added only with UGCMapFun on
+                // (UIPartyDialog popup, uipartydialog.cpp:2773); nothing else sends these modes.
+                if (!session.ServerTableMetadata.FeatureTable.IsOn(VisitorActionFeature)) {
+                    break;
+                }
                 HandleVisitor(session, command, packet);
                 break;
             case Command.Quiz:

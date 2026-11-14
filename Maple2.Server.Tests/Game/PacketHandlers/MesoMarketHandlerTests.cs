@@ -585,6 +585,21 @@ public class MesoMarketHandlerTests {
         Assert.That(db.GetMesoListing(listing.Id), Is.Not.Null);
     }
 
+    // With AdventureProtect off the client buys without asking the protection state (uiblackmarketpagemeso.cpp:180),
+    // and so does the server.
+    [Test]
+    public void Buy_WithAdventureProtectOff_TheProtectionIsNotAsked() {
+        GameSession session = Login(tokens: 500);
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { AdventureProtectRequireLevel = 200 });
+        test.SetFeaturesOff(MesoMarketHandler.AdventureProtectFeature);
+        MesoListing listing = OtherListing(BASE, 200);
+
+        Send(session, 8, listing.Id);
+
+        Assert.That(Sent(), Does.Not.Contain("00" + Int(20)));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(300));
+    }
+
     // The average price of the window's load follows the sales: 200 until 10 are sold, then the mean price per
     // base price of the sales, and the register range moves with it. A register the client let through with its
     // older average gets the limits with the average of now before the code 16.

@@ -82,6 +82,17 @@ public class ItemMergeHandlerTests {
         }));
     }
 
+    // With ItemMerge off the client has no merge window (uiinventorydialog.cpp:998): a stage gets no answer.
+    [Test]
+    public void Stage_WithItemMergeOff_IsDropped() {
+        GameSession session = Login(script: false);
+        test.SetFeaturesOff(ItemMergeHandler.Feature);
+
+        Send(session, 1, gear.Uid);
+
+        Assert.That(test.TakeSentOps(), Is.Empty);
+    }
+
     [Test]
     public void Stage_WithoutTheScriptSendsTheMaterialsOnly() {
         GameSession session = Login(script: false);

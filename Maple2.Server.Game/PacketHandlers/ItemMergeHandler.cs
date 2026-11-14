@@ -19,8 +19,16 @@ public class ItemMergeHandler : FieldPacketHandler {
         SelectMaterial = 7,
     }
 
+    // With ItemMerge off the inventory hides its merge button (UIInventoryDialog, uiinventorydialog.cpp:998), the only
+    // way to the merge window (ItemMergeOptionDialog, which sends 0-4 and 7); no script opens it. The revert (6) comes
+    // from the revert scroll's use (InvenSlot, invenslot.cpp:1082) and is not tied to the feature.
+    public const string Feature = "ItemMerge";
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        if (command != Command.Revert && !session.ServerTableMetadata.FeatureTable.IsOn(Feature)) {
+            return;
+        }
         switch (command) {
             case Command.Info:
                 HandleInfo(session);

@@ -17,8 +17,18 @@ public static class DismantleRules {
     // CItemBreakManager::CanBreakItem: an item from a gacha that can be dismantled (FUN_140531510) passes first;
     // any other needs CItemTransfer::CanBreak, which refuses an item whose data has no enableBreak (m_b3E) and one
     // given with the no-dismantle flag (m_b3F).
-    public static bool Breakable(bool enableBreak, bool disableBreak, int gachaDismantleId) {
-        return gachaDismantleId != 0 || enableBreak && !disableBreak;
+    // CanBreak (itemsocketsystemutil.cpp:2993) also refuses a PC bang item, and an item with a skin type (CItem::HasSkin)
+    // while the SkinBreak feature is off, or when it has a ucc mesh (CItemData::HasCubeTextureMesh) and a socket with no
+    // opened slot.
+    public static bool Breakable(bool enableBreak, bool disableBreak, int gachaDismantleId, bool pcBang = false, bool skin = false,
+                                 bool skinBreakOn = true, bool templateWithClosedSocket = false) {
+        if (gachaDismantleId != 0) {
+            return true;
+        }
+        if (!enableBreak || disableBreak || pcBang) {
+            return false;
+        }
+        return !skin || skinBreakOn && !templateWithClosedSocket;
     }
 
     // The donation box (dialog type 2, UIItemBreakDonationDialog): CItemBreakManager::TryAddItem refuses with

@@ -90,13 +90,13 @@ public class ItemDismantleHandler : FieldPacketHandler {
         long itemUid = packet.ReadLong();
         int amount = packet.ReadInt();
         Item? item = session.Item.Inventory.Get(itemUid);
-        if (item == null || !DismantleRules.Breakable(item.Metadata.Limit.EnableBreak, item.Transfer?.DisableBreak == true, item.GachaDismantleId)) {
+        if (item == null || !Breakable(session, item)) {
             return;
         }
         if (!DismantleRules.CanStage(amount, item.Amount, item.IsLockedOrUnlocking(), itemUid, session.Pet?.Pet.Uid ?? 0)) {
             return;
         }
-        if (session.DismantleType == DONATION_TYPE && !CanDonate(item)) {
+        if (session.DismantleType == DONATION_TYPE && !CanDonate(session, item)) {
             return;
         }
 
@@ -147,9 +147,18 @@ public class ItemDismantleHandler : FieldPacketHandler {
         session.Send(ItemDismantlePacket.Preview(GetRewards(session)));
     }
 
-    private static bool CanDonate(Item item) {
+    public const string SkinBreakFeature = "SkinBreak";
+
+    // CItemBreakManager::CanBreakItem's item test (DismantleRules.Breakable) with the item's facts.
+    private static bool Breakable(GameSession session, Item item) =>
+        DismantleRules.Breakable(item.Metadata.Limit.EnableBreak, item.Transfer?.DisableBreak == true, item.GachaDismantleId,
+            item.Metadata.Limit.RequirePcBang, item.Metadata.Property.SkinType != 0,
+            session.ServerTableMetadata.FeatureTable.IsOn(SkinBreakFeature),
+            !string.IsNullOrEmpty(item.Metadata.Mesh) && item.Socket is { UnlockSlots: 0 });
+
+    private static bool CanDonate(GameSession session, Item item) {
         return DismantleRules.CanDonate(
-            DismantleRules.Breakable(item.Metadata.Limit.EnableBreak, item.Transfer?.DisableBreak == true, item.GachaDismantleId),
+            Breakable(session, item),
             item.Metadata.Property.Type, item.Metadata.Property.SkinType);
     }
 
@@ -167,7 +176,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 }
                 Item? item = session.Item.Inventory.Get(uid);
                 if (item == null || !DismantleRules.CanStage(amount, item.Amount, item.IsLockedOrUnlocking(), uid, session.Pet?.Pet.Uid ?? 0)
-                        || session.DismantleType == DONATION_TYPE && !CanDonate(item)) {
+                        || session.DismantleType == DONATION_TYPE && !CanDonate(session, item)) {
                     session.DismantleStaging[slot] = default;
                 }
             }
@@ -279,10 +288,10 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 }
 
                 // The same rule as Stage, for every type (pets had none before).
-                if (item.IsLocked || !DismantleRules.Breakable(item.Metadata.Limit.EnableBreak, item.Transfer?.DisableBreak == true, item.GachaDismantleId)) {
+                if (item.IsLocked || !Breakable(session, item)) {
                     continue;
                 }
-                if (session.DismantleType == DONATION_TYPE && !CanDonate(item)) {
+                if (session.DismantleType == DONATION_TYPE && !CanDonate(session, item)) {
                     continue;
                 }
 
