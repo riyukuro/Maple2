@@ -185,9 +185,79 @@ public class SkillTargetHitsTests {
         budget.Declare(2, 0, 0);
         Assert.That(Pay(budget, 1, attack, null, (101, 0)), Is.EqualTo(new[] { 101 }));
         Assert.That(Pay(budget, 2, attack, null, (101, 0), (102, 0)), Is.EqualTo(new[] { 102 }), "the group hit it");
-        budget.Sync();
+        Assert.That(budget.Sync(tick: 1000, loops: true, intervalMs: 800), Is.True);
         budget.Declare(3, 0, 0);
         Assert.That(Pay(budget, 3, attack, null, (101, 0)), Is.EqualTo(new[] { 101 }), "after the cast's tick sync");
+    }
+
+    // The client sends a tick sync only at a loop end of a held motion (stateskill.cpp:867-927), once per loop.
+    // Before, any sync forgot what the point groups hit: a skill whose attack points share a point group (10100031,
+    // 10900101 and others, none of them held) hit each object again at every sync the packet stream carried.
+    [Test]
+    public void TickSyncForgetsPointGroupHitsOncePerLoop() {
+        SkillMetadataAttack attack = Attack(5, SkillTargetType.Owner, pointGroup: 1);
+        long uid = 0;
+        List<int> Hit(SkillHitBudget b) {
+            b.Declare(++uid, 0, 0);
+            return Pay(b, uid, attack, null, (101, 0));
+        }
+
+        // A motion that does not loop: the client never sends one, the group's hits stay.
+        var plain = new SkillHitBudget();
+        plain.Open(0);
+        Assert.That(plain.TakePoint(0, 0, held: false, count: 1, tick: 0), Is.True);
+        Assert.That(Hit(plain), Is.EqualTo(new[] { 101 }));
+        Assert.That(plain.Sync(tick: 50, loops: SkillCastRules.SyncLoops(0, continueSkill: false)), Is.False);
+        Assert.That(Hit(plain), Is.Empty, "no loop, no sync");
+
+        // A loop of 1000 ms: a sync per loop end forgets the hits, more syncs within the loop do not.
+        long interval = SkillHitRules.HeldInterval(1.0f, 1.0f);
+        var loop = new SkillHitBudget();
+        loop.Open(0);
+        Assert.That(loop.TakePoint(0, 0, held: false, count: 5, tick: 0), Is.True);
+        Assert.That(Hit(loop), Is.EqualTo(new[] { 101 }));
+        Assert.That(loop.Sync(1, loops: true, interval), Is.False, "right after the cast");
+        Assert.That(Hit(loop), Is.Empty);
+        Assert.That(loop.Sync(1000, loops: true, interval), Is.True, "the first loop end");
+        Assert.That(Hit(loop), Is.EqualTo(new[] { 101 }));
+        Assert.That(loop.Sync(1010, loops: true, interval), Is.False, "a second sync in the same loop");
+        Assert.That(loop.Sync(1020, loops: true, interval), Is.False);
+        Assert.That(Hit(loop), Is.Empty);
+        Assert.That(loop.Sync(2000, loops: true, interval), Is.True, "the next loop end");
+        Assert.That(Hit(loop), Is.EqualTo(new[] { 101 }));
+    }
+
+    [Test]
+    public void TickSyncTakesWhatAnHonestLoopSends() {
+        long interval = SkillHitRules.HeldInterval(1.0f, 1.0f);
+        Assert.That(interval, Is.GreaterThan(0));
+
+        // Every loop end on time, some late, one up to the iterations' allowance early: all taken.
+        var budget = new SkillHitBudget();
+        budget.Open(0);
+        long[] ends = [1000, 2000, 3150, 4000, 5000 - SkillHitRules.HeldArrivalAllowanceMs + 100, 6000];
+        foreach (long end in ends) {
+            Assert.That(budget.Sync(end, loops: true, interval), Is.True, $"loop end at {end}");
+        }
+
+        // A burst the link held up arrives together: the lag budget takes the early ones.
+        var lag = new LagBudget();
+        var held = new SkillHitBudget();
+        held.Open(0);
+        Assert.That(held.Sync(1000, loops: true, interval, lag), Is.True);
+        Assert.That(held.Sync(1000, loops: true, interval, lag), Is.True, "the next loop end, held up by the link");
+        Assert.That(lag.Level(1000), Is.LessThan(LagBudget.CapacityMs));
+
+        // A skill that continues while held whose loop is not known: every sync, as before.
+        var unknown = new SkillHitBudget();
+        unknown.Open(0);
+        Assert.That(SkillCastRules.SyncLoops(0, continueSkill: true), Is.True);
+        for (int i = 1; i <= 5; i++) {
+            Assert.That(unknown.Sync(i, loops: true), Is.True);
+        }
+
+        // An attack speed buff: the loop gets shorter, the interval with it.
+        Assert.That(SkillHitRules.HeldInterval(1.0f, 1.5f), Is.LessThan(interval));
     }
 
     [Test]

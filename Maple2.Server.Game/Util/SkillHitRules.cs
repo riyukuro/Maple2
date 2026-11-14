@@ -369,6 +369,7 @@ public enum HitRefusal {
 // iteration of a held skill starts it again, so a hold pays for as long as its iterations keep coming.
 public sealed class SkillHitBudget {
     private long windowTick;
+    private long syncTick; // the cast's tick, or the time the last sync taken was due (Sync)
     private readonly Dictionary<byte, int> iterations = new();
     private readonly Dictionary<byte, long> dueTicks = new(); // when an attack point's next iteration is due
     private readonly Dictionary<long, Attack> attacks = new();
@@ -395,7 +396,10 @@ public sealed class SkillHitBudget {
     }
 
     // The cast: the time window starts here.
-    public void Open(long tick) => windowTick = tick;
+    public void Open(long tick) {
+        windowTick = tick;
+        syncTick = tick;
+    }
 
     // The cast's tick, or a held skill's last taken attack point packet's.
     public long WindowTick => windowTick;
@@ -603,6 +607,23 @@ public sealed class SkillHitBudget {
         return HitRefusal.None;
     }
 
-    // The cast's tick sync: the client forgets what its point groups hit (CSkillRecord::SendSkill).
-    public void Sync() => pointGroupHits.Clear();
+    // The cast's tick sync: the client forgets what its point groups hit (CSkillRecord::SendSkill). The client
+    // sends one only at the loop end of a held motion (StateSkill, stateskill.cpp:867-927), so once per loop: a sync
+    // forgets the hits only when the motion loops (loops) and, when the loop's length is known (intervalMs:
+    // SkillHitRules.HeldInterval, 0 when not), not before that length after the cast or the last sync it took, with
+    // the iterations' allowance and the session's lag budget (lag) for one that arrives early. False, and the hits
+    // kept, for any other: a sync that only comes early does not move the next one's time.
+    public bool Sync(long tick, bool loops, long intervalMs = 0, LagBudget? lag = null) {
+        if (!loops) {
+            return false;
+        }
+        long due = syncTick + intervalMs;
+        long earlyBy = intervalMs > 0 ? SkillHitRules.IterationEarlyBy(tick, due) : 0;
+        if (earlyBy > 0 && (lag == null || !lag.TryDraw(earlyBy, tick))) {
+            return false;
+        }
+        syncTick = intervalMs > 0 ? Math.Min(tick, due - earlyBy) : tick;
+        pointGroupHits.Clear();
+        return true;
+    }
 }
