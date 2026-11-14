@@ -102,6 +102,7 @@ public class GroupSpawnTests {
             Assert.That(ids.All(id => id is 21000001 or 21000002), Is.True);
         });
         Assert.That(GroupSpawnRules.NpcIds(Point(1002), new Random(7)), Is.Empty);
+        Assert.That(GroupSpawnRules.NpcIds(Point(1003, Group(1, 5, 1)), new Random(7)), Is.Empty);
     }
 
     // A 03100001 row as the ingest writes it (weight 0 left out) reads back as a group point through the map-entity

@@ -18,6 +18,8 @@ public static class ServerGroupSpawn {
     public static Dictionary<int, List<Npc>> Read(M2dReader? reader) {
         PackFileEntry? entry = reader?.Files.FirstOrDefault(e => e.Name.EndsWith(File, StringComparison.OrdinalIgnoreCase));
         if (reader == null || entry == null) {
+            // Without the table no EventSpawnGroupNPC point has a group, and the mapper drops every such point.
+            Console.WriteLine($"Warning: {File} not found; EventSpawnGroupNPC points (Dark Stream) are not ingested.");
             return new Dictionary<int, List<Npc>>();
         }
         return Read(reader.GetXmlReader(entry));

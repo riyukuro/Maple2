@@ -26,7 +26,8 @@ public static class GroupSpawnRules {
     }
 
     public static List<int> NpcIds(EventSpawnGroupNPC point, Random random) {
-        if (point.Groups.Count == 0 || Pick(point.Groups, random.Next(TotalWeight(point.Groups))) is not { } group) {
+        // The ingest keeps only groups with npcs; a group without any (a hand-made row) spawns none.
+        if (point.Groups.Count == 0 || Pick(point.Groups, random.Next(TotalWeight(point.Groups))) is not { NpcIds.Length: > 0 } group) {
             return [];
         }
         return Enumerable.Range(0, group.Count).Select(_ => group.NpcIds[random.Next(group.NpcIds.Length)]).ToList();
