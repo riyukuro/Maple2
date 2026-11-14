@@ -1,6 +1,7 @@
 ﻿using Maple2.Database.Extensions;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.Tools.Extensions;
 using Z.EntityFramework.Plus;
 
@@ -102,7 +103,10 @@ public partial class GameStorage {
                 .ToList();
         }
 
-        public Guild? CreateGuild(string name, long leaderId) {
+        // rankNames: the six rank names, master first (GuildRules.DefaultRankNames for the region); the English
+        // defaults when not given.
+        public Guild? CreateGuild(string name, long leaderId, IReadOnlyList<string>? rankNames = null) {
+            rankNames ??= GuildRules.DefaultRankNames("NA");
             BeginTransaction();
 
             var guild = new Model.Guild {
@@ -111,12 +115,12 @@ public partial class GameStorage {
                 HouseRank = 1,
                 HouseTheme = 1,
                 Ranks = [
-                    new Model.GuildRank {Name = "Master", Permission = GuildPermission.All},
-                    new Model.GuildRank {Name = "Jr. Master", Permission = GuildPermission.Default},
-                    new Model.GuildRank {Name = "Member 1", Permission = GuildPermission.Default},
-                    new Model.GuildRank {Name = "Member 2", Permission = GuildPermission.Default},
-                    new Model.GuildRank {Name = "New Member 1", Permission = GuildPermission.Default},
-                    new Model.GuildRank {Name = "New Member 2", Permission = GuildPermission.Default},
+                    new Model.GuildRank {Name = rankNames[0], Permission = GuildPermission.All},
+                    new Model.GuildRank {Name = rankNames[1], Permission = GuildPermission.Default},
+                    new Model.GuildRank {Name = rankNames[2], Permission = GuildPermission.Default},
+                    new Model.GuildRank {Name = rankNames[3], Permission = GuildPermission.Default},
+                    new Model.GuildRank {Name = rankNames[4], Permission = GuildPermission.Default},
+                    new Model.GuildRank {Name = rankNames[5], Permission = GuildPermission.Default},
                 ],
                 Buffs = [
                     new Model.GuildBuff {Id = 1, Level = 1},

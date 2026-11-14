@@ -134,6 +134,41 @@ public class GuildModeHandlerTests {
         Assert.That(GuildAnswers(), Is.EqualTo(Unknown));
     }
 
+    // Guild 67 (a rank): the window sends every changed rank with its name. A name that is the rank's stored one
+    // is not checked again, so a rank that keeps a long name from before the rule (here 10 characters, over the
+    // KR maximum of 7) still gets new rights; a changed name over the region's maximum is refused.
+    private void SendRank(byte id, string name, GuildPermission permission) {
+        Send(67, writer => {
+            writer.WriteByte(id);
+            new GuildRank { Id = id, Name = name, Permission = permission }.WriteTo(writer);
+        });
+    }
+
+    [Test]
+    public void UpdateRank_RightsOnlyOnAStoredLongName_GoesToTheWorld() {
+        session.Guild.Guild!.Ranks[1].Name = "Jr. Master";
+        test.World.GuildWorld = _ => new GuildResponse { GuildId = 7 };
+        SendRank(1, "Jr. Master", GuildPermission.Default | GuildPermission.InviteMembers);
+
+        Assert.That(test.World.GuildRequests.Single().UpdateRank.Name, Is.EqualTo("Jr. Master"));
+    }
+
+    [Test]
+    public void UpdateRank_NewNameOverTheMaximum_Refused() {
+        SendRank(1, "A rank name of 16", GuildPermission.Default);
+
+        Assert.That(test.World.GuildRequests, Is.Empty);
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildError.s_guild_err_invalid_grade_data)) }));
+    }
+
+    [Test]
+    public void UpdateRank_NewBannedName_Refused() {
+        SendRank(1, BannedWord, GuildPermission.Default);
+
+        Assert.That(test.World.GuildRequests, Is.Empty);
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildError.s_guild_err_invalid_grade_data)) }));
+    }
+
     // Guild 13 (the member's own message).
     [Test]
     public void UpdateMemberMessage_WorldDown_Unknown() {

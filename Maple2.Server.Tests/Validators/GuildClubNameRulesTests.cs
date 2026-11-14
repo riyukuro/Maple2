@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Validators;
+﻿using System.Collections.Generic;
+using Maple2.Model.Validators;
 
 namespace Maple2.Server.Tests.Validators;
 
@@ -23,6 +24,37 @@ public class GuildClubNameRulesTests {
     [TestCase("\u4E2D\u6587", "CN", true)]
     public void GuildName_FollowsTheRegionRule(string name, string locale, bool expected) {
         Assert.That(GuildRules.IsGuildName(name, 2, 10, locale), Is.EqualTo(expected));
+    }
+
+    // Rank names (CheckGuildGradeName): the guild name's characters, 1 to 7 characters, 15 on NA.
+    [TestCase("a", "KR", true)]
+    [TestCase("\uAE38\uB4DC \uC7A5", "KR", true)]
+    [TestCase("Elder-1", "KR", true)]
+    [TestCase("Elder-12", "KR", false)]
+    [TestCase("Elder-12", "NA", true)]
+    [TestCase("Senior Officer1", "NA", true)]
+    [TestCase("Senior Officer12", "NA", false)]
+    [TestCase("", "KR", false)]
+    [TestCase(" a", "KR", false)]
+    [TestCase("a@b", "KR", false)]
+    public void RankName_FollowsTheClientRule(string name, string locale, bool expected) {
+        Assert.That(GuildRules.IsRankName(name, locale), Is.EqualTo(expected));
+    }
+
+    // A new guild's ranks carry the client's default names of the region, which the rank name rule takes.
+    [TestCase("KR")]
+    [TestCase("NA")]
+    [TestCase("CN")]
+    public void DefaultRankNames_PassTheRankNameRule(string locale) {
+        IReadOnlyList<string> names = GuildRules.DefaultRankNames(locale);
+        Assert.That(names, Has.Count.EqualTo(6));
+        Assert.That(names, Has.All.Matches<string>(name => GuildRules.IsRankName(name, locale)));
+    }
+
+    [Test]
+    public void DefaultRankNames_AreTheClientStrings() {
+        Assert.That(GuildRules.DefaultRankNames("KR")[1], Is.EqualTo("\uBD80\uAE38\uB4DC\uC7A5"));
+        Assert.That(GuildRules.DefaultRankNames("NA")[4], Is.EqualTo("Guild Member 2"));
     }
 
     [TestCase("\uBA54\uC774\uD50C\uD074\uB7FD", true)]

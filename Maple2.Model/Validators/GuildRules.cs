@@ -32,6 +32,35 @@ public static class GuildRules {
         return NameValidator.ValidGuildName(name, locale, min, max);
     }
 
+    // Guild 67 (rank name): CBanTextChecker::CheckGuildGradeName (commonstringtable.cpp:825), which the guild
+    // window runs on each changed rank before it sends 67 (uiguilddialog.cpp:959). The guild name's character
+    // rule (a space inside, ' - _ . allowed), 1 to 7 characters, 15 on NA (the ban words are checked apart).
+    public static int RankNameMax(string locale) => locale == "NA" ? 15 : 7;
+
+    public static bool IsRankName(string name, string locale) {
+        return NameValidator.ValidGuildName(name, locale, 1, RankNameMax(locale));
+    }
+
+    // The window checks the name of every rank it sends, also when only the rights changed; the server checks a
+    // name only when it is not the rank's stored name, so a rank that keeps a name the rule would refuse (one
+    // from before the rule, as the old English default names on KR) can still get new rights.
+    public static bool IsRankNameChange(string name, string? storedName) => name != storedName;
+
+    // The rank names of a new guild: the client's own defaults (CGuildInfo::ResetGrades, guilddef_1.cpp:2269,
+    // the strings s_guild_grade_default_master and _group1 to _group5 of the region's string table), all inside
+    // the rank name rule. NA and every other region take the English table.
+    public static IReadOnlyList<string> DefaultRankNames(string locale) => locale switch {
+        "KR" => [
+            "\uAE38\uB4DC\uC7A5", "\uBD80\uAE38\uB4DC\uC7A5", "\uAE38\uB4DC\uC6D0",
+            "\uC2E0\uC785\uAE38\uB4DC\uC6D0", "\uAE38\uB4DC\uC6D02", "\uC2E0\uC785\uAE38\uB4DC\uC6D02",
+        ],
+        "CN" => [
+            "\u516C\u4F1A\u4F1A\u957F", "\u516C\u4F1A\u526F\u4F1A\u957F", "\u516C\u4F1A\u6210\u5458",
+            "\u65B0\u516C\u4F1A\u6210\u5458", "\u516C\u4F1A\u6210\u54582", "\u65B0\u664B\u516C\u4F1A\u6210\u54582",
+        ],
+        _ => ["Leader", "Co-Leader", "Guild Member", "Initiate", "Guild Member 2", "Initiate 2"],
+    };
+
     // Rank 0 is the master's rank.
     public const byte MasterRank = 0;
 

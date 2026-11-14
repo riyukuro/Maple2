@@ -699,8 +699,12 @@ public class GuildHandler : PacketHandler<GameSession> {
         if (session.Guild.Guild == null) {
             return;
         }
-        if (rank.Id != rankId || rankId >= MaxRanks || (int) rank.Permission is < 0 or > MaxRankPermission
-            || rank.Name.Length is 0 or > MaxRankNameLength) {
+        // A new name as the client checks it (GuildRules.IsRankName), with the ban words; the stored name is kept
+        // as it is (GuildRules.IsRankNameChange).
+        string? storedName = session.Guild.Guild.Ranks.FirstOrDefault(stored => stored.Id == rankId)?.Name;
+        bool badName = GuildRules.IsRankNameChange(rank.Name, storedName)
+            && (!GuildRules.IsRankName(rank.Name, Target.LOCALE) || BanWordStorage.ContainsBannedWord(rank.Name));
+        if (rank.Id != rankId || rankId >= MaxRanks || (int) rank.Permission is < 0 or > MaxRankPermission || badName) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_invalid_grade_data));
             return;
         }
@@ -731,7 +735,6 @@ public class GuildHandler : PacketHandler<GameSession> {
 
     private const int MaxRanks = 6;
     private const int MaxRankPermission = 4095;
-    private const int MaxRankNameLength = 15;
 
     // CGuildManager::SendGuildMode68: a byte, listed in the guild search or not, then the focus bits. The client
     // sends it from a member with the invite right (2) when one of the two changed.

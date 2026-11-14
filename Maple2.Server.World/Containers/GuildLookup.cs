@@ -6,6 +6,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.Server.Channel.Service;
+using Maple2.Server.Core.Constants;
 using Serilog;
 using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
 using ChannelGuildRequest = Maple2.Server.Channel.Service.GuildRequest;
@@ -92,7 +93,7 @@ public class GuildLookup : IDisposable {
                 return GuildError.s_guild_err_name_exist;
             }
 
-            guild = db.CreateGuild(name, leaderId);
+            guild = db.CreateGuild(name, leaderId, GuildRules.DefaultRankNames(Target.LOCALE));
         }
         if (guild == null) {
             return GuildError.s_guild_err_unknown;
