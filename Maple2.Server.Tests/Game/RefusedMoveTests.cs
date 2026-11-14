@@ -119,6 +119,22 @@ public class RefusedMoveTests {
         AssertStays(badAddress);
     }
 
+    // A World server that does not answer the join: nothing is sent, nothing is moved or saved, the player stays.
+    [Test]
+    public void GlobalPortal_WorldDownStays() {
+        test.World.TimeEventFailure = new RpcException(new Status(StatusCode.Unavailable, "no world"));
+
+        Assert.DoesNotThrow(EnterGlobalPortal);
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.Moves, Is.Empty);
+            Assert.That(test.TakeSent(), Is.Empty);
+            Assert.That(session.State, Is.Not.EqualTo(SessionState.ChangeMap));
+            Assert.That(Closing(), Is.False);
+            Assert.That(SavesAgain(), Is.True);
+        });
+    }
+
     [Test]
     public void GlobalPortal_MovesAndCloses() {
         EnterGlobalPortal();

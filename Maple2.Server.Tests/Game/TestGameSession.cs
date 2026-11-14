@@ -832,7 +832,13 @@ public sealed class TestGameSession {
         // The world champion state the World answers (none: the call answers no info).
         public WorldChampionInfo? WorldChampion;
 
+        // A World server that does not answer TimeEvent (the call throws it) when set.
+        public RpcException? TimeEventFailure;
+
         public override TimeEventResponse TimeEvent(TimeEventRequest request, CallOptions options) {
+            if (TimeEventFailure != null) {
+                throw TimeEventFailure;
+            }
             var response = new TimeEventResponse { Error = TimeEventError };
             if ((request.GetGlobalPortal != null || request.JoinGlobalPortal != null) && OpenPortal != null) {
                 response.GlobalPortalInfo = OpenPortal;

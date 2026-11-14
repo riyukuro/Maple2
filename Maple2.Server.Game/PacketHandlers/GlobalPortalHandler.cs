@@ -52,12 +52,20 @@ public class GlobalPortal : FieldPacketHandler {
             return;
         }
 
-        TimeEventResponse eventResponse = World.TimeEvent(new TimeEventRequest {
-            JoinGlobalPortal = new TimeEventRequest.Types.JoinGlobalPortal {
-                EventId = eventId,
-                Index = index,
-            },
-        });
+        // A World server that does not answer is a portal that cannot be joined now, as one it refuses (no answer
+        // sent, the player stays); the exception used to end the connection.
+        TimeEventResponse eventResponse;
+        try {
+            eventResponse = World.TimeEvent(new TimeEventRequest {
+                JoinGlobalPortal = new TimeEventRequest.Types.JoinGlobalPortal {
+                    EventId = eventId,
+                    Index = index,
+                },
+            });
+        } catch (RpcException ex) {
+            Logger.Warning("Global portal {EventId} enter: the World server did not answer: {Status}", eventId, ex.StatusCode);
+            return;
+        }
 
         if (eventResponse.Error != 0 || eventResponse.GlobalPortalInfo == null) {
             return;
