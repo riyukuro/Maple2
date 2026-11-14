@@ -24,7 +24,7 @@ public class MoveEventFieldHandler : FieldPacketHandler {
         }
 
         // Only checked and asked for a request the client could have sent.
-        if (EventFieldRules.Decide(true, session.Player.IsDead, session.Field.MapId, fieldId, [fieldId]) != EventFieldRules.Result.Move) {
+        if (EventFieldRules.Decide(true, session.Player.IsDead, session.Player.InBattle, session.Field.MapId, fieldId, [fieldId]) != EventFieldRules.Result.Move) {
             return;
         }
 
@@ -70,7 +70,7 @@ public class MoveEventFieldHandler : FieldPacketHandler {
             }
         }
 
-        switch (EventFieldRules.Decide(true, session.Player.IsDead, session.Field.MapId, fieldId, eventFields)) {
+        switch (EventFieldRules.Decide(true, session.Player.IsDead, session.Player.InBattle, session.Field.MapId, fieldId, eventFields)) {
             case EventFieldRules.Result.NoEvent:
                 session.Send(MoveEventFieldPacket.Refuse(MoveEventFieldPacket.NO_EVENT));
                 return;

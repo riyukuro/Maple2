@@ -13,9 +13,9 @@ public class EventFieldRulesTests {
     public void Decide_MovesOnlyToAFieldWithARunningEvent() {
         int[] running = [2000100, 2000200];
 
-        Assert.That(EventFieldRules.Decide(true, false, 2000001, 2000100, running), Is.EqualTo(EventFieldRules.Result.Move));
-        Assert.That(EventFieldRules.Decide(true, false, 2000001, 2000300, running), Is.EqualTo(EventFieldRules.Result.NoEvent));
-        Assert.That(EventFieldRules.Decide(true, false, 2000001, 2000300, []), Is.EqualTo(EventFieldRules.Result.NoEvent));
+        Assert.That(EventFieldRules.Decide(true, false, false, 2000001, 2000100, running), Is.EqualTo(EventFieldRules.Result.Move));
+        Assert.That(EventFieldRules.Decide(true, false, false, 2000001, 2000300, running), Is.EqualTo(EventFieldRules.Result.NoEvent));
+        Assert.That(EventFieldRules.Decide(true, false, false, 2000001, 2000300, []), Is.EqualTo(EventFieldRules.Result.NoEvent));
     }
 
     // The client never sends these, so they get no answer.
@@ -23,11 +23,12 @@ public class EventFieldRulesTests {
     public void Decide_IgnoresWhatTheClientRefusesItself() {
         int[] running = [2000100];
 
-        Assert.That(EventFieldRules.Decide(false, false, 0, 2000100, running), Is.EqualTo(EventFieldRules.Result.Ignore));
-        Assert.That(EventFieldRules.Decide(true, true, 2000001, 2000100, running), Is.EqualTo(EventFieldRules.Result.Ignore));
-        Assert.That(EventFieldRules.Decide(true, false, 2000100, 2000100, running), Is.EqualTo(EventFieldRules.Result.Ignore));
-        Assert.That(EventFieldRules.Decide(true, false, 2000001, 0, running), Is.EqualTo(EventFieldRules.Result.Ignore));
-        Assert.That(EventFieldRules.Decide(true, false, 2000001, -5, running), Is.EqualTo(EventFieldRules.Result.Ignore));
+        Assert.That(EventFieldRules.Decide(false, false, false, 0, 2000100, running), Is.EqualTo(EventFieldRules.Result.Ignore));
+        Assert.That(EventFieldRules.Decide(true, true, false, 2000001, 2000100, running), Is.EqualTo(EventFieldRules.Result.Ignore));
+        Assert.That(EventFieldRules.Decide(true, false, true, 2000001, 2000100, running), Is.EqualTo(EventFieldRules.Result.Ignore));
+        Assert.That(EventFieldRules.Decide(true, false, false, 2000100, 2000100, running), Is.EqualTo(EventFieldRules.Result.Ignore));
+        Assert.That(EventFieldRules.Decide(true, false, false, 2000001, 0, running), Is.EqualTo(EventFieldRules.Result.Ignore));
+        Assert.That(EventFieldRules.Decide(true, false, false, 2000001, -5, running), Is.EqualTo(EventFieldRules.Result.Ignore));
     }
 
     // A plain (non-GM) session that is in no field: the request is read whole and nothing else is touched.

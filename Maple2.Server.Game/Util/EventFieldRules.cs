@@ -11,9 +11,10 @@ public static class EventFieldRules {
         Move,
     }
 
-    // eventFields: the target fields of the time events that are running now.
-    public static Result Decide(bool hasField, bool isDead, int currentFieldId, int targetFieldId, IEnumerable<int> eventFields) {
-        if (!hasField || isDead || targetFieldId <= 0 || targetFieldId == currentFieldId) {
+    // eventFields: the target fields of the time events that are running now. In battle the client refuses the
+    // move itself (UIWorldMapDialog::MoveByPortal, uiworldmapdialog.cpp:1516: its battle flag, notice 0xa2) and sends nothing.
+    public static Result Decide(bool hasField, bool isDead, bool inBattle, int currentFieldId, int targetFieldId, IEnumerable<int> eventFields) {
+        if (!hasField || isDead || inBattle || targetFieldId <= 0 || targetFieldId == currentFieldId) {
             return Result.Ignore;
         }
 
