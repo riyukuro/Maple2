@@ -62,6 +62,31 @@ public class ItemEnchantRefusalTests {
         Assert.That(session.Item.Inventory.Get(gear.Uid)!.Enchant?.Enchants ?? 0, Is.EqualTo(0));
     }
 
+    // The row of the gear's subtype (enchantlimittable.xml, itemenchantlimittable.cpp:199): no row, or the item's
+    // required level (50) outside the band, is not staged (s_itemenchant_invalid_item); inside it is.
+    [TestCase(false, 20, 99, false)]
+    [TestCase(true, 60, 99, false)]
+    [TestCase(true, 20, 49, false)]
+    [TestCase(true, 50, 50, true)]
+    public void Stage_BySlotRow(bool hasRow, int minLevel, int maxLevel, bool staged) {
+        GameSession session = Login(30000, 30000, 30000, 1000000);
+        var slots = new Dictionary<int, EnchantLimitTable.Limit> { [30] = new(20, 99, 15) };
+        if (hasRow) {
+            slots[0] = new EnchantLimitTable.Limit(minLevel, maxLevel, 15);
+        }
+        test.SetServerTable(new EnchantLimitTable(slots));
+
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.EqualTo(staged));
+
+        byte[] refusal = Maple2.Server.Game.Packets.ItemEnchantPacket.Error(Maple2.Model.Error.ItemEnchantError.s_itemenchant_invalid_item).ToArray();
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.ItemEnchant).Contains(refusal, new BytesEqual()), Is.EqualTo(!staged));
+    }
+
+    private sealed class BytesEqual : IEqualityComparer<byte[]> {
+        public bool Equals(byte[]? a, byte[]? b) => a != null && b != null && a.SequenceEqual(b);
+        public int GetHashCode(byte[] bytes) => bytes.Length;
+    }
+
     // A catalyst is lacking: nothing is taken and the grade stays.
     [TestCase(0, 30000, 30000, 0)] // no onyx
     [TestCase(30000, 30000, 0, 0)] // no fragments and no meso for them

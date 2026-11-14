@@ -1,9 +1,17 @@
+using System.Collections.Generic;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
 namespace Maple2.Server.Tests.Validators;
 
 public class ItemEnchantRulesTests {
+    // KR rows: slot 30 at levels 20-99, slot 13 at 60-99, both to grade 15; slot 12 has none.
+    private static readonly EnchantLimitTable Limits = new(new Dictionary<int, EnchantLimitTable.Limit> {
+        [30] = new(20, 99, 15),
+        [13] = new(60, 99, 15),
+    });
+
     [TestCase(true, 0, 0, 0L, true)]
     [TestCase(true, 14, 0, 0L, true)]
     [TestCase(true, 15, 0, 0L, false)]
@@ -15,7 +23,28 @@ public class ItemEnchantRulesTests {
     [TestCase(true, 0, 0, 1L, false)]
     [TestCase(true, 0, 0, 4102444800L, false)]
     public void CanEnchant(bool enable, int enchants, int limitBreak, long expiry, bool expected) {
-        Assert.That(ItemEnchantRules.CanEnchant(enable, enchants, limitBreak, expiry), Is.EqualTo(expected));
+        Assert.That(ItemEnchantRules.CanEnchant(Limits, 1, 30, 50, enable, enchants, limitBreak, expiry), Is.EqualTo(expected));
+    }
+
+    // The slot's row: the item's type is gear, its subtype has a row and its required level is inside the band.
+    [TestCase(1, 30, 20, true)]
+    [TestCase(1, 30, 99, true)]
+    [TestCase(1, 30, 19, false)]
+    [TestCase(1, 30, 100, false)]
+    [TestCase(1, 13, 59, false)]
+    [TestCase(1, 13, 60, true)]
+    [TestCase(1, 12, 50, false)]
+    [TestCase(2, 30, 50, false)]
+    public void CanEnchant_BySlotRow(int type, int subType, int level, bool expected) {
+        Assert.That(ItemEnchantRules.CanEnchant(Limits, type, subType, level, true, 0, 0, 0L), Is.EqualTo(expected));
+    }
+
+    // A row's maxGrade below the last grade stops the item there.
+    [TestCase(9, true)]
+    [TestCase(10, false)]
+    public void CanEnchant_RowMaxGrade(int enchants, bool expected) {
+        var limits = new EnchantLimitTable(new Dictionary<int, EnchantLimitTable.Limit> { [30] = new(20, 99, 10) });
+        Assert.That(ItemEnchantRules.CanEnchant(limits, 1, 30, 50, true, enchants, 0, 0L), Is.EqualTo(expected));
     }
 
     [TestCase(20, 20, 0L)]

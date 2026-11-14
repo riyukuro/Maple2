@@ -201,6 +201,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.PC_BANG,
             Table = ParsePcBang(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.ENCHANT_LIMIT,
+            Table = ParseEnchantLimit(),
+        };
     }
 
     // The features the rows were filtered by (FeatureLevels: the data folder's tables, or the played client's), in name
@@ -1208,6 +1212,46 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             results[id] = new FieldWarMetadata(id, groupId, pickWeight, mapId, rewardId, uiMapId);
         }
         return results;
+    }
+
+    // The client's table/enchantlimittable.xml (the parser has no reader for it). CItemEnchantLimitTable::Load
+    // (commonfiles/itemenchantlimittable.cpp) reads the <limit> rows FUN_14028faa0 keeps, as for fieldwardata.xml: the
+    // available ones (feature and locale), and of rows with one slot the one SelectFeatureElement picks.
+    private EnchantLimitTable ParseEnchantLimit() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = clientReader?.Files.FirstOrDefault(file =>
+            file.Name.Equals("table/enchantlimittable.xml", StringComparison.OrdinalIgnoreCase));
+        EnchantLimitTable table = entry == null ? new EnchantLimitTable(new Dictionary<int, EnchantLimitTable.Limit>())
+            : MapEnchantLimit(clientReader!.GetXmlDocument(entry),
+                row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")),
+                (a, b) => PlayedNpcStats.SelectFeatureElement(a, b, feature => FeatureLocaleFilter.Features.GetValueOrDefault(feature), FeatureLocaleFilter.Locale));
+        Console.WriteLine($"EnchantLimit: {table.Slots.Count} slots");
+        return table;
+    }
+
+    // minLv and maxLv are read as unsigned shorts, maxGrade and slot as ints; an attribute that does not read leaves 0.
+    public static EnchantLimitTable MapEnchantLimit(XmlDocument document, Func<XmlElement, bool> available,
+            Func<XmlElement, XmlElement, XmlElement> select) {
+        var results = new Dictionary<int, EnchantLimitTable.Limit>();
+        if (document.DocumentElement == null) {
+            return new EnchantLimitTable(results);
+        }
+        // Keyed by the slot text, as the client's.
+        var rows = new Dictionary<string, XmlElement>();
+        foreach (XmlNode node in document.DocumentElement.ChildNodes) {
+            if (node is not XmlElement { Name: "limit" } row || !available(row)) {
+                continue;
+            }
+            string key = row.GetAttribute("slot");
+            rows[key] = rows.TryGetValue(key, out XmlElement? kept) ? select(kept, row) : row;
+        }
+        foreach (XmlElement row in rows.Values) {
+            int.TryParse(row.GetAttribute("slot"), out int slot);
+            ushort.TryParse(row.GetAttribute("minLv"), out ushort minLevel);
+            ushort.TryParse(row.GetAttribute("maxLv"), out ushort maxLevel);
+            int.TryParse(row.GetAttribute("maxGrade"), out int maxGrade);
+            results[slot] = new EnchantLimitTable.Limit(minLevel, maxLevel, maxGrade);
+        }
+        return new EnchantLimitTable(results);
     }
 
     // The gifts of the client's table/playgiftevent.xml by eventID; the data folder's pack first, then the played

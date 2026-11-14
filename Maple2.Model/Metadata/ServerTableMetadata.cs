@@ -57,4 +57,5 @@ public class ServerTableMetadata {
 [JsonDerivedType(typeof(FeatureTable), typeDiscriminator: "feature")]
 [JsonDerivedType(typeof(WorldChampionTable), typeDiscriminator: "worldChampion")]
 [JsonDerivedType(typeof(PcBangTable), typeDiscriminator: "pcBang")]
+[JsonDerivedType(typeof(EnchantLimitTable), typeDiscriminator: "enchantLimit")]
 public abstract record ServerTable;

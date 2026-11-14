@@ -1,16 +1,30 @@
+using Maple2.Model.Metadata;
+
 namespace Maple2.Model.Validators;
 
 // RequestItemEnchant 0x005E, modes 1 (stage) and 4 (enchant).
 public static class ItemEnchantRules {
-    // The last enchant grade. The client reads the grade limit per slot from enchantLimitTable.xml
-    // (maxGrade); the server's cost, rate and option tables end at this grade for every slot.
+    // The last enchant grade the server's cost, rate and option tables have, for every slot. The client reads the
+    // grade limit per slot from enchantLimitTable.xml (maxGrade, 15 for every KR row).
     public const int MaxGrade = 15;
 
-    // The client's test before it lists or stages an item (itemenchantlimittable.cpp:185): the item can be
-    // enchanted at all, has no expiry (any item with a time limit, expired or not: CItem::FUN_140525c60 is
-    // expiry > 0), is not limit broken, and is below the last grade.
-    public static bool CanEnchant(bool enableEnchant, int enchants, int limitBreakLevel, long expiryTime) {
-        return enableEnchant && expiryTime <= 0 && limitBreakLevel <= 0 && enchants is >= 0 and < MaxGrade;
+    // The client's test before it lists or stages an item (CItemEnchantLimitTable::CanEnchant,
+    // itemenchantlimittable.cpp:185), in its order: gear (item type 1), no expiry (any item with a time limit,
+    // expired or not: CItem::FUN_140525c60 is expiry > 0), not limit broken, a row for the gear subtype, the item's
+    // required level inside the row's band, the grade below the row's maxGrade (and below the server's last grade),
+    // and the item not excepted from enchanting (<limit exceptEnchant>, CItemData+0x1a1).
+    public static bool CanEnchant(EnchantLimitTable limits, int type, int subType, int requiredLevel, bool enableEnchant,
+                                  int enchants, int limitBreakLevel, long expiryTime) {
+        if (type != 1 || expiryTime > 0 || limitBreakLevel > 0) {
+            return false;
+        }
+        if (!limits.Slots.TryGetValue(subType, out EnchantLimitTable.Limit? limit)) {
+            return false;
+        }
+        if (requiredLevel < limit.MinLevel || requiredLevel > limit.MaxLevel) {
+            return false;
+        }
+        return enchants >= 0 && enchants < Math.Min(limit.MaxGrade, MaxGrade) && enableEnchant;
     }
 
     // Mesos per Crystal Fragment the player is short of. The client's ingredient list

@@ -39,6 +39,7 @@ public class ServerTableMetadataStorage {
     private readonly Lazy<FeatureTable> featureTable;
     private readonly Lazy<WorldChampionTable> worldChampionTable;
     private readonly Lazy<PcBangTable> pcBangTable;
+    private readonly Lazy<EnchantLimitTable> enchantLimitTable;
 
     public InstanceFieldTable InstanceFieldTable => instanceFieldTable.Value;
     public ScriptConditionTable ScriptConditionTable => scriptConditionTable.Value;
@@ -73,6 +74,7 @@ public class ServerTableMetadataStorage {
     public FeatureTable FeatureTable => featureTable.Value;
     public WorldChampionTable WorldChampionTable => worldChampionTable.Value;
     public PcBangTable PcBangTable => pcBangTable.Value;
+    public EnchantLimitTable EnchantLimitTable => enchantLimitTable.Value;
 
     public ServerTableMetadataStorage(MetadataContext context) {
         instanceFieldTable = Retrieve<InstanceFieldTable>(context, ServerTableNames.INSTANCE_FIELD);
@@ -108,6 +110,7 @@ public class ServerTableMetadataStorage {
         featureTable = Retrieve<FeatureTable>(context, ServerTableNames.FEATURE);
         worldChampionTable = Retrieve<WorldChampionTable>(context, ServerTableNames.WORLD_CHAMPION);
         pcBangTable = Retrieve<PcBangTable>(context, ServerTableNames.PC_BANG);
+        enchantLimitTable = Retrieve<EnchantLimitTable>(context, ServerTableNames.ENCHANT_LIMIT);
     }
 
     public IEnumerable<GameEvent> GetGameEvents() {

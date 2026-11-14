@@ -108,9 +108,10 @@ public class ItemEnchantManager {
         }
 
         Item? item = session.Item.GetGear(itemUid);
-        // The client's own test (itemenchantlimittable.cpp:185): an item at the last grade, limit broken or with a
-        // time limit is not staged. Without it the grade passed the last row of every table.
-        if (item == null || !ItemEnchantRules.CanEnchant(item.Metadata.Limit.EnableEnchant, item.Enchant?.Enchants ?? 0, item.LimitBreak?.Level ?? 0, item.ExpiryTime)) {
+        // The client's own test (itemenchantlimittable.cpp:185): an item limit broken, with a time limit, without a
+        // row for its subtype in enchantlimittable.xml, outside the row's level band or at its last grade is not
+        // staged. Without it the grade passed the last row of every table.
+        if (item == null || !CanEnchant(item, item.Enchant?.Enchants ?? 0)) {
             session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_invalid_item));
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_invalid_item);
             return false;
@@ -172,6 +173,10 @@ public class ItemEnchantManager {
     }
 
     private ConstantsTable Constants => session.ServerTableMetadata.ConstantsTable;
+
+    private bool CanEnchant(Item item, int enchants) => ItemEnchantRules.CanEnchant(session.ServerTableMetadata.EnchantLimitTable,
+        item.Metadata.Property.Type, item.Metadata.Property.SubType, item.Metadata.Limit.Level, item.Metadata.Limit.EnableEnchant,
+        enchants, item.LimitBreak?.Level ?? 0, item.ExpiryTime);
 
     // The copies the next grade asks for: none below the KR open level and rarity (FodderOpen).
     private int RequiredFodder(int enchants) {
@@ -335,7 +340,7 @@ public class ItemEnchantManager {
 
         upgradeItem.Enchant ??= new ItemEnchant();
         // The staged item may have reached the last grade by the enchant before this one.
-        if (!ItemEnchantRules.CanEnchant(upgradeItem.Metadata.Limit.EnableEnchant, upgradeItem.Enchant.Enchants, upgradeItem.LimitBreak?.Level ?? 0, upgradeItem.ExpiryTime)) {
+        if (!CanEnchant(upgradeItem, upgradeItem.Enchant.Enchants)) {
             session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_invalid_item));
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_invalid_item);
             return false;
@@ -409,7 +414,7 @@ public class ItemEnchantManager {
                 // What was staged is spent: a request that follows without a new stage pays the cost of the
                 // item's grade as it is now, at that grade's rate, with no fodder and no charges. The last grade
                 // has no next cost (the tables end with it): nothing stays staged.
-                if (ItemEnchantRules.CanEnchant(upgradeItem.Metadata.Limit.EnableEnchant, upgradeItem.Enchant.Enchants, upgradeItem.LimitBreak?.Level ?? 0, upgradeItem.ExpiryTime)) {
+                if (CanEnchant(upgradeItem, upgradeItem.Enchant.Enchants)) {
                     Prepare();
                 } else {
                     Reset();
