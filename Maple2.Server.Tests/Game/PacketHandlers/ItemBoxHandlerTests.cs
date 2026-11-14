@@ -304,6 +304,26 @@ public class ItemBoxHandlerTests {
         Assert.That(session.Item.Inventory.Find(RewardA).All(item => item.GachaDismantleId == GachaInfoId), Is.True);
     }
 
+    // A capsule naming a machine item (KeyId here): with GachaCapsuleMachine on it opens only with as many machines as
+    // capsules, which stay in the bag; off, the machine is not asked.
+    [TestCase(true, 1, 1)]
+    [TestCase(true, 0, 0)]
+    [TestCase(false, 0, 1)]
+    public void OpenGachaBox_Machine_FollowsTheFeature(bool featureOn, int machines, int opened) {
+        GameSession session = Login(ItemFunction.OpenGachaBox, $"{GachaInfoId},{KeyId}", amount: 2, keys: machines);
+        if (!featureOn) {
+            test.SetFeaturesOff(Maple2.Server.Game.Manager.ItemBoxManager.CapsuleMachineFeature);
+        }
+
+        Use(session, "");
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, BoxId), Is.EqualTo(2 - opened));
+            Assert.That(Held(session, RewardA), Is.EqualTo(3 * opened));
+            Assert.That(Held(session, KeyId), Is.EqualTo(machines));
+        });
+    }
+
     // RewardA x3 at SlotMax 1 goes in as three pieces; with the second piece's write failing, one is in the bag and
     // the rest is mailed, and the gacha script still shows the 3 the capsule gave (it showed the mailed 2).
     [Test]

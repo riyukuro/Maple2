@@ -95,7 +95,7 @@ public class ItemBoxManager {
             ItemFunction.SelectItemBox => SelectItemBox(item, itemBoxParams[0], itemBoxParams[1], selection, count),
             ItemFunction.OpenItemBox => OpenItemBox(item, itemBoxParams[0], itemBoxParams[1], itemBoxParams[2], itemBoxParams[3], itemBoxParams.Length == 5 ? itemBoxParams[4] : 1, count),
             ItemFunction.OpenItemBoxWithKey => OpenItemBoxWithKey(item, itemBoxParams[0], itemBoxParams[1], itemBoxParams[2], itemBoxParams[5], count),
-            ItemFunction.OpenGachaBox => OpenGachaBox(item, itemBoxParams[0], count),
+            ItemFunction.OpenGachaBox => OpenGachaBox(item, itemBoxParams[0], itemBoxParams.Length > 1 ? itemBoxParams[1] : 0, count),
             _ => LogAndReturnError(item.Metadata.Function?.Type.ToString()),
         };
     }
@@ -466,8 +466,18 @@ public class ItemBoxManager {
         return ItemBoxError.ok;
     }
 
-    private ItemBoxError OpenGachaBox(Item item, int gachaInfoId, int count) {
+    // While GachaCapsuleMachine (id 266, 0x10a) is on, the client opens a capsule only while the bag also holds as many
+    // of the machine item (the function's second parameter, when not 0) as capsules it opens: 1, or 10 for a multi open
+    // (UIItemGachaBoxDialog::FUN_140c41700, uiitemgachaboxdialog.cpp:358, s_itemgacha_dialog_not_enough_capsulemachine).
+    // The server refuses an open short of them; the machines are not taken, as the client source shows no take.
+    public const string CapsuleMachineFeature = "GachaCapsuleMachine";
+
+    private ItemBoxError OpenGachaBox(Item item, int gachaInfoId, int machineId, int count) {
         if (session.Field is null) return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+        if (machineId != 0 && session.ServerTableMetadata.FeatureTable.IsOn(CapsuleMachineFeature)
+                           && session.Item.Inventory.Find(machineId).Sum(machine => machine.Amount) < count) {
+            return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+        }
         // Check if the gachaInfoId is in the drop table
         if (!session.TableMetadata.GachaInfoTable.Entries.TryGetValue(gachaInfoId, out GachaInfoTable.Entry? gachaEntry)) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
