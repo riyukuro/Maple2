@@ -179,8 +179,8 @@ public sealed class PcBangManager {
 
     // The stored claim's item: to the inventory, or by mail when the inventory no longer takes it.
     private void Give(Item item) {
-        if (!session.Item.Inventory.Add(item, true, commit: true)) {
-            session.Item.MailItem(item);
+        if (!session.Item.Inventory.Add(item, true, commit: true) && !session.Item.MailItem(item)) {
+            logger.Error("PcBang: claimed item {ItemId} x{Amount} neither added nor mailed CharacterId={CharacterId}", item.Id, item.Amount, session.CharacterId);
         }
     }
 
