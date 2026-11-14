@@ -509,6 +509,10 @@ public static class SkillCastRules {
         return mainOf;
     }
 
+    // A cast of a skill in no job tree is refused when no client path gives the skill to a player (the ingest's
+    // NoPlayerSource, PlayerSkillSources): an NPC or boss skill, or one only the server casts from a condition or an effect.
+    public static bool SourceRefuses(bool inAnyTree, bool noPlayerSource) => !inAnyTree && noPlayerSource;
+
     // A cast of a skill that is in a job's skill tree is refused when the caster's own tree lacks it or holds
     // it at a lower level. A skill in no tree (mount, lift-up, a skill a buff gives or changes to) is not checked.
     // learnedLevel: the level in the caster's tree (a sub skill's is its main skill's), null when not in it.

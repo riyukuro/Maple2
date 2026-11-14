@@ -39,7 +39,11 @@ public record SkillMetadataProperty(
     short MaxLevel,
     string Emotion,
     // The played client's main type of the skill (PlayedClientSkills); 0 when it has none or no played client was given.
-    int MainType = 0);
+    int MainType = 0,
+    // No client path gives the skill to a player (PlayerSkillSources): not a main type that needs no learning, not in a
+    // job tree, skill set, item or skill constant, and no such skill turns into it. Only the server casts it (NPC and
+    // boss skills, condition and effect skills). False in metadata ingested before it was added.
+    bool NoPlayerSource = false);
 
 public record SkillMetadataState(
     bool InBattle,

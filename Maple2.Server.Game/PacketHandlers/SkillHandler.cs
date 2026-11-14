@@ -155,7 +155,7 @@ public class SkillHandler : FieldPacketHandler {
 
     // Checked before any cost is paid. A dead player casts only a skill that allows it, and no one casts a skill
     // that a buff held disables or that names other fields, or a skill that takes the caster off the ride while on it. A skill of a job's tree
-    // must be in the caster's own tree at that level or above. An item skill must also pass its own condition and
+    // must be in the caster's own tree at that level or above; a skill of no tree must be one some client path gives a player. An item skill must also pass its own condition and
     // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast and must find
     // its hand weapons held and its spirit threshold met.
     // No cast comes before the motion of the last cast lets the next one in. The two timing checks
@@ -191,6 +191,10 @@ public class SkillHandler : FieldPacketHandler {
         bool inAnyTree = skillInfo.InAnyTree(record.SkillId);
         if (SkillCastRules.TreeRefuses(inAnyTree, skillInfo.TreeLevel(record.SkillId), record.Level)) {
             Logger.Debug("Cast refused, skill {SkillId} level {Level} is not in the tree of {Job} at that level", record.SkillId, record.Level, skillInfo.Job);
+            return false;
+        }
+        if (SkillCastRules.SourceRefuses(inAnyTree, record.Metadata.Property.NoPlayerSource)) {
+            Logger.Debug("Cast refused, no client path gives skill {SkillId} to a player", record.SkillId);
             return false;
         }
         bool useItem = record.Metadata.Data.Consume.UseItem;

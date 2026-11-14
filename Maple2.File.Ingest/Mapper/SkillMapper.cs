@@ -68,8 +68,16 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     // the levels and skills the data pack lacks (PlayedClientSkills.BuildLevel); empty without a played client.
     private readonly Dictionary<int, (System.Xml.XmlElement Skill, List<(short Value, System.Xml.XmlElement Level)> Levels)> playedSkills = [];
 
+    // The data pack and the played client, for the skills a player's client can cast (PlayerSkillSources).
+    private readonly M2dReader xmlReader;
+    private readonly M2dReader? playedReader;
+    // The skills each data pack skill's cast turns into (combo output, change skill, default skill, jump), filled by MapSkills.
+    private readonly Dictionary<int, HashSet<int>> castEdges = [];
+
     public SkillMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new SkillParser(xmlReader, language);
+        this.xmlReader = xmlReader;
+        this.playedReader = playedReader;
         if (playedReader != null) {
             played = PlayedClientSkills.Read(playedReader.Files.Where(file => PlayedClientSkills.IsSkillFile(file.Name))
                 .Select(file => playedReader.GetXmlDocument(file)));
@@ -135,7 +143,63 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private static System.Xml.XmlElement SelectLevel(System.Xml.XmlElement a, System.Xml.XmlElement b) =>
         PlayedNpcStats.SelectFeatureElement(a, b, feature => FeatureLocaleFilter.Features.GetValueOrDefault(feature), FeatureLocaleFilter.Locale);
 
+    // A skill no client path gives to a player is marked NoPlayerSource (PlayerSkillSources): the cast handler refuses
+    // it outside the job trees. Nothing is marked without a played client or without the item ingest's items.
     protected override IEnumerable<StoredSkillMetadata> Map() {
+        List<StoredSkillMetadata> skills = MapSkills().ToList();
+        if (playedReader == null || played.Count == 0 || ItemMapper.ItemMetadataById.Count == 0) {
+            return skills;
+        }
+        foreach ((int id, (System.Xml.XmlElement skill, _)) in playedSkills) {
+            AddCastEdges(id, PlayerSkillSources.Edges(skill));
+        }
+        var granted = new HashSet<int>();
+        foreach (M2dReader reader in new[] { xmlReader, playedReader }) {
+            foreach (Maple2.File.IO.Crypto.Common.PackFileEntry file in reader.Files.Where(file => file.Name.StartsWith("table/"))) {
+                switch (Path.GetFileName(file.Name)) {
+                    case "job.xml":
+                        granted.UnionWith(PlayerSkillSources.TreeSkills(reader.GetXmlDocument(file)));
+                        break;
+                    case "skillset.xml":
+                        granted.UnionWith(PlayerSkillSources.SkillSetSkills(reader.GetXmlDocument(file)));
+                        break;
+                    case "constants.xml":
+                        granted.UnionWith(PlayerSkillSources.ConstantSkills(reader.GetXmlDocument(file)));
+                        break;
+                }
+            }
+        }
+        foreach (ItemMetadata item in ItemMapper.ItemMetadataById.Values) {
+            if (item.Skill is { } itemSkill) {
+                granted.Add(itemSkill.Id);
+                granted.Add(itemSkill.WeaponId);
+            }
+        }
+        HashSet<int> castable = PlayerSkillSources.Castable(played.ToDictionary(entry => entry.Key, entry => entry.Value.MainType), castEdges, granted);
+        int marked = 0;
+        for (int i = 0; i < skills.Count; i++) {
+            if (!castable.Contains(skills[i].Id)) {
+                skills[i] = skills[i] with { Property = skills[i].Property with { NoPlayerSource = true } };
+                marked++;
+            }
+        }
+        Console.WriteLine($"Skills no client path gives to a player (refused outside the job trees): {marked} of {skills.Count} ({castable.Count} castable)");
+        return skills;
+    }
+
+    private void AddCastEdges(int id, IEnumerable<int> targets) {
+        foreach (int target in targets) {
+            if (target == 0 || target == id) {
+                continue;
+            }
+            if (!castEdges.TryGetValue(id, out HashSet<int>? set)) {
+                castEdges[id] = set = [];
+            }
+            set.Add(target);
+        }
+    }
+
+    private IEnumerable<StoredSkillMetadata> MapSkills() {
         List<long> magicPaths = [];
         List<long> cubeMagicPaths = [];
         int clientAdded = 0, clientUnmatched = 0, clientSkills = 0, clientNotBuffOwned = 0;
@@ -146,6 +210,8 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             if (data.basic == null) continue; // Old_JobChange_01
             PlayedClientSkills.Entry? client = played.TryGetValue(id, out PlayedClientSkills.Entry entry) ? entry : null;
             Debug.Assert(data.basic.kinds.groupIDs.Length <= 1);
+            AddCastEdges(id, data.level.SelectMany(level => (level.combo?.outputSkill ?? []).Concat(level.changeSkill?.changeSkillID ?? []))
+                .Append(data.basic.stateAttr.useDefaultSkillID).Append(data.basic.kinds.jump));
 
 
             // Note: 90000775 has cubeMagicPathID="2147483647" which should be cubeMagicPathID="9000073111"
