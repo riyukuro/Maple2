@@ -1922,6 +1922,20 @@ public class TriggerDungeonTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="dungeon_state" check_state="Fail" />"""), Is.False);
     }
 
+    // dungeon_max_user_count (dungeon_common checkusercount, 245 KR nodes) reads value: in the test room (maximum 4,
+    // fixed) only 4 holds; outside a room only 1.
+    [Test]
+    public void DungeonMaxUserCount_ReadsValue() {
+        StartRoom();
+        Assert.That(Condition("""<condition name="dungeon_max_user_count" value="4" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_max_user_count" value="3" />"""), Is.False);
+        Assert.That(Condition("""<condition name="dungeon_max_user_count" value="1" />"""), Is.False);
+
+        Start();
+        Assert.That(Condition("""<condition name="dungeon_max_user_count" value="1" />"""), Is.True);
+        Assert.That(Condition("""<condition name="dungeon_max_user_count" value="4" />"""), Is.False);
+    }
+
     // dungeon_play_time counts from the room's start tick; outside a room it is false.
     [Test]
     public void DungeonPlayTime_FromTheRoomStart() {

@@ -236,7 +236,7 @@ public static class TriggerFunctionMapping {
         { "dungeon_first_user_mission_score", attrs => new Trigger.DungeonFirstUserMissionScore(ParseInt(attrs?["score"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
         { "dungeon_id", attrs => new Trigger.DungeonId(ParseInt(attrs?["dungeon_id"]?.Value)) },
         { "dungeon_level", attrs => new Trigger.DungeonLevel(ParseInt(attrs?["level"]?.Value)) },
-        { "dungeon_max_user_count", attrs => new Trigger.DungeonMaxUserCount(ParseInt(attrs?["level"]?.Value)) },
+        { "dungeon_max_user_count", attrs => new Trigger.DungeonMaxUserCount(ParseInt(attrs?["value"]?.Value)) },
         { "dungeon_round", attrs => new Trigger.DungeonRound(ParseInt(attrs?["round"]?.Value)) },
         { "dungeon_timeout", _ => new Trigger.DungeonTimeout() },
         { "dungeon_variable", attrs => new Trigger.DungeonVariable(ParseInt(attrs?["var_id"]?.Value), ParseInt(attrs?["value"]?.Value)) },
