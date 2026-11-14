@@ -21,12 +21,14 @@ public class MesoMarketHandlerTests {
     private TestGameSession test = null!;
     private MesoMarketHandler handler = null!;
 
-    private GameSession Login(long meso = 0, long tokens = 0) {
+    private GameSession Login(long meso = 0, long tokens = 0, int payType = 16, int iconType = 0) {
         test = new TestGameSession();
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
             MesoMarketBasePrice = (int) BASE,
             MesoMarketProductUnit0 = (int) BASE,
             MesoMarketProductUnit1 = (int) (2 * BASE),
+            MesoMarketBuyPayType = payType,
+            MesoMarketIconType = iconType,
         });
         handler = new MesoMarketHandler { ServerTableMetadata = test.ServerTableMetadata };
         GameSession session = test.Start();
@@ -276,6 +278,115 @@ public class MesoMarketHandlerTests {
         Assert.That(db.GetAllMail(session.CharacterId), Is.Empty);
     }
 
+    // Mode 8 where MesoMarketBuyPayType is a meret currency (KR's 3): the price leaves the merets the client showed
+    // (3 the merets, 9 the red merets, 10 the red merets when they cover it, else the merets), the tokens stay, and
+    // the wallet's packet goes out with the sale.
+    [TestCase(3, 500L, 500L, 80L, 500L)]
+    [TestCase(9, 500L, 500L, 500L, 80L)]
+    [TestCase(10, 500L, 500L, 500L, 80L)]
+    [TestCase(10, 500L, 419L, 80L, 419L)]
+    public void Buy_PaysThePayTypesMerets(int payType, long meret, long red, long meretAfter, long redAfter) {
+        GameSession session = Login(tokens: 500, payType: payType);
+        session.Currency.Meret = meret;
+        session.Currency.GameMeret = red;
+        test.TakeSent();
+        MesoListing listing = OtherListing(2 * BASE, 420);
+
+        Send(session, 8, listing.Id);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "08" + Int(0) + Long(listing.Id) + Int(1), "02" + Int(0) + Int(1) }));
+        Assert.That((session.Currency.Meret, session.Currency.GameMeret), Is.EqualTo((meretAfter, redAfter)));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(listing.Id), Is.Null);
+        Assert.That(db.GetAllMail(session.CharacterId).Single().Meso, Is.EqualTo(2 * BASE));
+    }
+
+    // The take's packet goes out once the sale is stored: Meret for the merets, MeretUse for the red ones.
+    [TestCase(3, SendOp.Meret)]
+    [TestCase(9, SendOp.MeretUse)]
+    public void Buy_MeretPacketAfterTheSale(int payType, SendOp op) {
+        GameSession session = Login(payType: payType);
+        session.Currency.Meret = 500;
+        session.Currency.GameMeret = 500;
+        test.TakeSent();
+        MesoListing listing = OtherListing(BASE, 200);
+
+        Send(session, 8, listing.Id);
+
+        Assert.That(test.TakeSent().Count(packet => TestGameSession.Op(packet) == op), Is.EqualTo(1));
+    }
+
+    // Too few merets for a meret pay type: 6, on which the client asks to charge merets (ShowLackMeratAsk); nothing
+    // is taken, the listing stays.
+    [TestCase(3)]
+    [TestCase(9)]
+    [TestCase(10)]
+    public void Buy_LackOfMeretsAnswersSix(int payType) {
+        GameSession session = Login(tokens: 500, payType: payType);
+        session.Currency.Meret = 199;
+        session.Currency.GameMeret = 199;
+        test.TakeSent();
+        MesoListing listing = OtherListing(BASE, 200);
+
+        Send(session, 8, listing.Id);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(6) }));
+        Assert.That((session.Currency.Meret, session.Currency.GameMeret), Is.EqualTo((199L, 199L)));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(listing.Id), Is.Not.Null);
+    }
+
+    // A meret sale that is not stored gives the merets back (no meret spent) and answers sold out.
+    [TestCase(3)]
+    [TestCase(9)]
+    public void Buy_RefusedSaveGivesTheMeretsBack(int payType) {
+        GameSession session = Login(payType: payType);
+        session.Currency.Meret = 500;
+        session.Currency.GameMeret = 500;
+        test.AddAchievement(TestGameSession.Trophy(23200041, ConditionType.use_merat, [1_000_000]));
+        test.TakeSent();
+        MesoListing listing = OtherListing(2 * BASE, 420);
+        test.FailSave = _ => true;
+
+        Send(session, 8, listing.Id);
+        test.FailSave = null;
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "08" + Int(17) + Long(listing.Id) + Int(0) }));
+        Assert.That((session.Currency.Meret, session.Currency.GameMeret), Is.EqualTo((500L, 500L)));
+        Assert.That(test.TrophyCounter(23200041), Is.Null);
+    }
+
+    // A pay type that is no currency the market takes (a broken table) is refused with 3 (shutDown), nothing paid.
+    [Test]
+    public void Buy_UnknownPayTypeIsRefused() {
+        GameSession session = Login(tokens: 500, payType: 1);
+        MesoListing listing = OtherListing(BASE, 200);
+
+        Send(session, 8, listing.Id);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(3) }));
+        Assert.That(session.Currency[CurrencyType.MesoToken], Is.EqualTo(500));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(listing.Id), Is.Not.Null);
+    }
+
+    // The seller's share comes in the currency the register page shows (MesoMarketIconType): 0 merets, 1 and 2 red
+    // merets.
+    [TestCase(0, 399L, 0L)]
+    [TestCase(1, 0L, 399L)]
+    [TestCase(2, 0L, 399L)]
+    public void Buy_SellerPaidInTheIconTypesMerets(int iconType, long meret, long red) {
+        GameSession session = Login(tokens: 500, iconType: iconType);
+        MesoListing listing = OtherListing(2 * BASE, 420);
+
+        Send(session, 8, listing.Id);
+
+        using GameStorage.Request db = test.Storage.Context();
+        Mail seller = db.GetAllMail(OTHER_CHARACTER).Single();
+        Assert.That((seller.Meret, seller.GameMeret), Is.EqualTo((meret, red)));
+    }
+
     // Mode 8 on a listing that is gone: mode 8 with code 17, on which the client drops the row from its list.
     [Test]
     public void Buy_GoneListingAnswersSoldOut() {
@@ -310,7 +421,10 @@ public class MesoMarketHandlerTests {
         using (GameStorage.Request db = test.Storage.Context()) {
             foreach (int hours in new[] { -1, 1 }) {
                 db.CreateMesoListing(new MesoListing(TimeSpan.FromHours(hours)) {
-                    AccountId = OTHER_ACCOUNT, CharacterId = OTHER_CHARACTER, Amount = BASE, Price = 200 + hours,
+                    AccountId = OTHER_ACCOUNT,
+                    CharacterId = OTHER_CHARACTER,
+                    Amount = BASE,
+                    Price = 200 + hours,
                 });
             }
         }

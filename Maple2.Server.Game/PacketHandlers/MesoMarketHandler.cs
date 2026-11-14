@@ -8,6 +8,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using static Maple2.Model.Error.MesoMarketError;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -256,11 +257,11 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        // The tokens are taken before the sale and given back when it is not stored: the old take after the sale threw
+        // The price is taken before the sale and given back when it is not stored: the old take after the sale threw
         // when the tokens were spent on another thread meanwhile (a shop, a beauty salon), with the sale and its mails
         // already stored, mesos for nothing.
-        if (!session.Currency.TryTake(CurrencyType.MesoToken, listing.Price)) {
-            session.Send(MesoMarketPacket.Error(s_err_lack_meso_makret_token_ask));
+        Payment? payment = TakePrice(session, Constants.MesoMarketBuyPayType, listing.Price);
+        if (payment == null) {
             return;
         }
 
@@ -268,17 +269,18 @@ public class MesoMarketHandler : FieldPacketHandler {
         // the seller's price.
         (Mail Buyer, Mail Seller)? mails = null;
         try {
-            (Mail buyerMail, Mail sellerMail) = PurchaseMails(session, listing);
+            (Mail buyerMail, Mail sellerMail) = PurchaseMails(session, listing, Constants.MesoMarketIconType);
             mails = db.SellMesoListing(listingId, buyerMail, sellerMail);
         } finally {
             if (mails == null) {
-                session.Currency.Change(CurrencyType.MesoToken, listing.Price);
+                GiveBack(session, payment.Value, listing.Price);
             }
         }
         if (mails == null) {
             SendSoldOut(session, listingId);
             return;
         }
+        Paid(session, payment.Value, listing.Price);
 
         session.Player.Value.Account.MesoMarketPurchased++;
 
@@ -295,11 +297,79 @@ public class MesoMarketHandler : FieldPacketHandler {
         session.Send(MesoMarketPacket.Quota(session.Player.Value.Account.MesoMarketListed, session.Player.Value.Account.MesoMarketPurchased));
     }
 
+    // The buy price's currency is MesoMarketBuyPayType, a client currency id: the search page shows the price and
+    // the own amount with its icon (GetCurrencyIconHtml, uiblackmarketpagemeso.cpp:306/694), read by
+    // GetCurrencyAmount (uicommon.cpp:1020). 16 is the meso market tokens (token type 13, the MesoMarketToken pocket;
+    // the NA rows), 3 the merets (KR, CN, JP, TH, TW), 9 the red merets, 10 the red merets when they cover the price,
+    // else the merets (MeretCost). A lack is answered as the client answers it (CMesoMarketMan::ShowResultMessage,
+    // mesomarketproductcli.cpp:426): 7 asks to charge tokens, 6 merets.
+    internal readonly record struct Payment(MeretCost.Wallet? Wallet, bool Red);
+
+    internal const int TokenPayType = 16;
+
+    internal static MeretCost.Wallet? MeretWallet(int payType) {
+        return payType switch {
+            3 => MeretCost.Wallet.Meret,
+            9 => MeretCost.Wallet.Red,
+            10 => MeretCost.Wallet.RedElseMeret,
+            _ => null,
+        };
+    }
+
+    // Takes the price, the refusal sent when it cannot; null then. Merets are taken without their packet, which
+    // goes out once the sale is stored (Paid) or with the give-back (GiveBack).
+    private Payment? TakePrice(GameSession session, int payType, long price) {
+        MeretCost.Wallet? wallet = MeretWallet(payType);
+        if (wallet != null) {
+            if (!session.Currency.TryTakeMerets(wallet.Value, price, out bool red, notify: false)) {
+                session.Send(MesoMarketPacket.Error(s_err_lack_merat_ask));
+                return null;
+            }
+            return new Payment(wallet, red);
+        }
+        if (payType != TokenPayType) {
+            Logger.Error("MesoMarketBuyPayType {PayType} is no currency the meso market can take", payType);
+            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_shutDown));
+            return null;
+        }
+        if (!session.Currency.TryTake(CurrencyType.MesoToken, price)) {
+            session.Send(MesoMarketPacket.Error(s_err_lack_meso_makret_token_ask));
+            return null;
+        }
+        return new Payment(null, false);
+    }
+
+    private static void GiveBack(GameSession session, Payment payment, long price) {
+        if (payment.Wallet == null) {
+            session.Currency.Change(CurrencyType.MesoToken, price);
+        } else if (payment.Red) {
+            session.Currency.ReturnGameMeret(price);
+        } else {
+            session.Currency.ReturnMeret(price);
+        }
+    }
+
+    // The merets' packet and use_merat once the sale is stored; the tokens' packet went out with their take.
+    private static void Paid(GameSession session, Payment payment, long price) {
+        if (payment.Wallet == null) {
+            return;
+        }
+        if (payment.Red) {
+            session.Currency.NotifyGameMeretTaken(price);
+        } else {
+            session.Currency.NotifyMeretTaken(price);
+        }
+    }
+
     private static void SendSoldOut(GameSession session, long listingId) {
         session.Send(MesoMarketPacket.Purchase(listingId, session.Player.Value.Account.MesoMarketPurchased, s_mesoMarket_error_alreadySoldProduct));
     }
 
-    private static (Mail Buyer, Mail Seller) PurchaseMails(GameSession session, MesoListing listing) {
+    // The seller is paid the price less the fee in the currency the register page shows for it (MesoMarketIconType,
+    // BlackMarketPageMesoRegister::RefreshAll, uiblackmarketpagemeso.cpp:696): 0 the merets (currency 3), 2 the red
+    // merets (currency 9). 1 shows currency 10, the red merets else the merets, which a mail cannot hold as one: paid
+    // here in red merets (chosen; no locale's row has it).
+    private static (Mail Buyer, Mail Seller) PurchaseMails(GameSession session, MesoListing listing, int iconType) {
         var buyerMail = new Mail {
             ReceiverId = session.CharacterId,
             Type = MailType.MesoMarket,
@@ -324,8 +394,12 @@ public class MesoMarketHandler : FieldPacketHandler {
                 ("money", $"{(int) (Constant.MesoMarketTaxRate * 100)}"),
                 ("money", $"{listing.Price - meretFee}"),
             ],
-            Meret = listing.Price - meretFee,
         };
+        if (iconType is 1 or 2) {
+            sellerMail.GameMeret = listing.Price - meretFee;
+        } else {
+            sellerMail.Meret = listing.Price - meretFee;
+        }
         sellerMail.SetSenderName(StringCode.s_mesoMarket_mail_to_sender);
         sellerMail.SetTitle(StringCode.s_mesoMarket_mail_to_seller_title);
         sellerMail.SetContent(StringCode.s_mesoMarket_mail_to_seller_content);
