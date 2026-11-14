@@ -81,7 +81,9 @@ public sealed class WorldChampionSync {
             return;
         }
         Batch? batch = pending.Count > 0 ? pending[^1] : null;
-        if (batch == null || batch.Season != Season || batch.Step != Step) {
+        // A batch sent once (put back after a lost answer) keeps its sequence, so a hit goes in a new batch: the World
+        // server skips the resend when it applied the first send, and the hit would go with it.
+        if (batch == null || batch.Sequence != 0 || batch.Season != Season || batch.Step != Step) {
             batch = new Batch(Season, Step, maxHealth);
             pending.Add(batch);
         }

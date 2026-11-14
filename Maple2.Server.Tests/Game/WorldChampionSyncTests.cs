@@ -226,6 +226,27 @@ public class WorldChampionSyncTests {
         });
     }
 
+    // A hit between a failed answer and the resend goes in a new batch with its own sequence: in the batch sent
+    // again it would carry the old sequence, and the World server (which may have applied the first send) would skip
+    // it with the resend.
+    [Test]
+    public void HitAfterAFailedAnswerGetsItsOwnSequence() {
+        WorldChampionSync sync = Sync();
+        sync.Tick();
+        sync.Damaged(11, 107, 7, 100);
+        answer = null;
+        sync.Tick();
+        sync.Damaged(11, 107, 7, 20);
+        answer = (1, 1, 100);
+        sync.Tick();
+        sync.Tick();
+        Assert.Multiple(() => {
+            Assert.That(reports.Select(report => report.Sequence), Is.EqualTo(new long[] { 0, 1, 1, 2 }));
+            Assert.That(reports[2].Damages, Is.EqualTo(new[] { new WorldChampionDamage(107, 7, 100) }));
+            Assert.That(reports[3].Damages, Is.EqualTo(new[] { new WorldChampionDamage(107, 7, 20) }));
+        });
+    }
+
     // Two seasons on at once on different maps: a field shows only its map's season. Answered the other map's season,
     // it shows no npc; with only another map's season on, it makes no call.
     [Test]
