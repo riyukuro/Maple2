@@ -49,6 +49,10 @@ public class StateReactHandler : FieldPacketHandler {
             return;
         }
 
+        // An event reactor's reward state takes its condition items in the claim's transaction (ReactorEvent.Claim),
+        // so a claim not stored takes nothing; the other states take them here.
+        bool eventReward = gameEvent != null && state.Type != ReactorStateType.Connect;
+        List<(long Uid, int Amount)>? plan;
         lock (session.Item) {
             // Every condition item must be held before any is taken (ReactorRules.Plan).
             (long Uid, int ItemId, int Rarity, int Amount)[] stacks = state.ConditionItems
@@ -58,7 +62,7 @@ public class StateReactHandler : FieldPacketHandler {
                 .SelectMany(itemId => session.Item.Inventory.Find(itemId))
                 .Select(item => (item.Uid, item.Id, item.Rarity, item.Amount))
                 .ToArray();
-            List<(long Uid, int Amount)>? plan = ReactorRules.Plan(state.ConditionItems, stacks);
+            plan = ReactorRules.Plan(state.ConditionItems, stacks);
             if (plan == null) {
                 return;
             }
@@ -68,10 +72,12 @@ public class StateReactHandler : FieldPacketHandler {
             if (plan.Any(entry => (session.Item.Inventory.Get(entry.Uid)?.Amount ?? 0) < entry.Amount)) {
                 return;
             }
-            foreach ((long uid, int amount) in plan) {
-                if (!session.Item.Inventory.Consume(uid, amount)) {
-                    Logger.Error("Reactor {ReactorId}: failed to take {Amount} of item {ItemUid} from {CharacterId}", reactor.Metadata.Id, amount, uid, session.CharacterId);
-                    return;
+            if (!eventReward) {
+                foreach ((long uid, int amount) in plan) {
+                    if (!session.Item.Inventory.Consume(uid, amount)) {
+                        Logger.Error("Reactor {ReactorId}: failed to take {Amount} of item {ItemUid} from {CharacterId}", reactor.Metadata.Id, amount, uid, session.CharacterId);
+                        return;
+                    }
                 }
             }
         }
@@ -92,7 +98,7 @@ public class StateReactHandler : FieldPacketHandler {
         if (gameEvent != null) {
             // An event reactor's reward and the day's count are stored together (ReactorEvent.Claim); when they are
             // not, nothing is given and the count stays.
-            if (!ReactorEvent.Claim(session, gameEvent, items)) {
+            if (!ReactorEvent.Claim(session, gameEvent, items, plan)) {
                 reactor.Disconnect(session.CharacterId);
                 return;
             }

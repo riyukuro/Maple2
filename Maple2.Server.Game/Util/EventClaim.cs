@@ -99,10 +99,21 @@ public static class EventClaim {
                         }
                     }
                 }
+                // The claim is stored: a throw from here on is logged and the claim still answers as given (a throw out
+                // of the commit's actions answered "not stored" for a claim that was, and the handler sent no reply).
+                // Each mark is set on its own, so one that throws does not keep the others from memory.
                 foreach (Mark mark in marks) {
-                    session.GameEvent.Set(mark.EventId, mark.Type, mark.Value);
+                    try {
+                        session.GameEvent.Set(mark.EventId, mark.Type, mark.Value);
+                    } catch (Exception ex) {
+                        Logger.Error(ex, "Event claim: stored mark {Type} of event {EventId} not set in memory for {CharacterId}", mark.Type, mark.EventId, session.CharacterId);
+                    }
                 }
-                afterCommit?.Invoke();
+                try {
+                    afterCommit?.Invoke();
+                } catch (Exception ex) {
+                    Logger.Error(ex, "Event claim of {Marks} stored for {CharacterId}, but its commit action threw", string.Join(",", marks.Select(mark => $"{mark.EventId}:{mark.Type}")), session.CharacterId);
+                }
             });
             return true;
         });

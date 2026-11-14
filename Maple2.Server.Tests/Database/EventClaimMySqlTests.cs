@@ -9,6 +9,7 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -148,13 +149,17 @@ public class EventClaimMySqlTests {
                     break;
                 }
             case "reactor":
+                // The reward state's condition item: three held, one taken by each claim.
+                test.Store(TestGameSession.Metadata(Piece), 3);
                 data = new Reactor([CharacterField], 1);
                 mark = GameEventUserValueType.ReactorRewardCount;
-                // As StateReactHandler: the reactor's event check (the day's count under DailyCount), then the reward.
+                // As StateReactHandler: the reactor's event check (the day's count under DailyCount), then the reward
+                // with the condition item's take.
                 claim = session => {
                     var reactor = new ReactorTable.Entry(1, 0, 0, EventId, [], []);
                     if (ReactorEvent.Check(session, reactor, out GameEvent? found) && found != null) {
-                        ReactorEvent.Claim(session, found, [session.Field!.ItemDrop.CreateItem(Reward, 1, 2)!]);
+                        long piece = session.Item.Inventory.Find(Piece).Single().Uid;
+                        ReactorEvent.Claim(session, found, [session.Field!.ItemDrop.CreateItem(Reward, 1, 2)!], [(piece, 1)]);
                     }
                 };
                 break;
@@ -300,6 +305,90 @@ public class EventClaimMySqlTests {
         Assert.That(Held(session), Is.GreaterThan(0));
         Assert.That(StoredReward(), Is.EqualTo(Held(session)));
         Assert.That(StoredMark(), Is.Not.Null.And.EqualTo(session.GameEvent.Peek(mark, EventId)));
+    }
+
+    // The reactor's condition item is taken in the claim's transaction: a failed store keeps it in the bag and in its
+    // row, a stored claim takes it from both, and the refused second claim takes nothing.
+    [Test]
+    public void Reactor_TakesTheConditionItemOnlyWithTheStoredClaim() {
+        GameSession session = Login("reactor");
+        Assert.That(HeldPiece(session), Is.EqualTo(3));
+
+        fault.Fail = true;
+        claim(session);
+        fault.Fail = false;
+
+        Assert.That(fault.Failed, Is.GreaterThan(0), "the claim reached its store");
+        Assert.That(HeldPiece(session), Is.EqualTo(3));
+        Assert.That(StoredPiece(), Is.EqualTo(3));
+
+        test.Errors.Clear();
+        claim(session);
+
+        Assert.That(Held(session), Is.GreaterThan(0));
+        Assert.That(HeldPiece(session), Is.EqualTo(2));
+        Assert.That(StoredPiece(), Is.EqualTo(2));
+        Assert.That(test.Errors, Is.Empty);
+
+        claim(session);
+
+        Assert.That(HeldPiece(session), Is.EqualTo(2));
+        Assert.That(StoredPiece(), Is.EqualTo(2));
+    }
+
+    // A claim whose commit action throws is stored: it answers as given, with the items and the mark (the throw is
+    // logged by EventClaim's own logger).
+    [Test]
+    public void Give_ACommitActionThatThrows_StillAnswersTheStoredClaim() {
+        GameSession session = Login("reactor");
+        session.GameEvent.Get(mark, EventId, gameEvent.EndTime);
+
+        List<Item>? given = EventClaim.Give(session, [session.Field!.ItemDrop.CreateItem(Reward, 1, 2)!], [EventClaim.Of(EventId, mark, 1)],
+            afterCommit: () => throw new InvalidOperationException("the test's commit action"));
+
+        Assert.That(given, Is.Not.Null);
+        Assert.That(Held(session), Is.EqualTo(2));
+        Assert.That(StoredReward(), Is.EqualTo(2));
+        Assert.That(session.GameEvent.Peek(mark, EventId), Is.EqualTo("1"));
+        Assert.That(StoredMark(), Is.EqualTo("1"));
+    }
+
+    // A throw while the stored take leaves the bag (here the bag's packet) does not undo the stored claim: the reward
+    // comes, the day's count is set in memory (else the next session save writes the old one back: a reward more that
+    // day), and a second claim is refused.
+    [Test]
+    public void Reactor_ATakeThatThrowsAtTheCommit_StillSetsTheCount() {
+        GameSession session = Login("reactor");
+        bool thrown = false;
+        test.OnSend = packet => {
+            if (!thrown && TestGameSession.Op(packet) == SendOp.ItemInventory) {
+                thrown = true;
+                // Not an InvalidOperationException: Session.SendInternal catches that one (a completed queue).
+                throw new TimeoutException("the test's bag packet");
+            }
+        };
+
+        claim(session);
+        test.OnSend = null;
+
+        Assert.That(thrown, Is.True, "the take reached the bag");
+        Assert.That(Held(session), Is.GreaterThan(0));
+        Assert.That(session.GameEvent.Peek(mark, EventId), Is.EqualTo("1"));
+        Assert.That(StoredMark(), Is.EqualTo("1"));
+        Assert.That(StoredPiece(), Is.EqualTo(2));
+
+        int given = Held(session);
+        claim(session);
+
+        Assert.That(Held(session), Is.EqualTo(given));
+        Assert.That(StoredMark(), Is.EqualTo("1"));
+    }
+
+    private static int HeldPiece(GameSession session) => session.Item.Inventory.Find(Piece).Sum(item => item.Amount);
+
+    private int StoredPiece() {
+        using var context = new Ms2Context(plain);
+        return context.Item.AsNoTracking().Where(item => item.ItemId == Piece && item.OwnerId == test.CharacterId).Sum(item => item.Amount);
     }
 
     // Fails a save that writes an event value (the character's or the account's).
