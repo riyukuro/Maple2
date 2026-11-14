@@ -74,7 +74,8 @@ public class BreakableHandler : FieldPacketHandler {
                 IReadOnlyDictionary<long, IReadOnlyList<MagicPath>> paths = session.Field.TableMetadata.MagicPathTable.Entries;
                 paths.TryGetValue(attack.MagicPathId, out IReadOnlyList<MagicPath>? magicPaths);
                 paths.TryGetValue(attack.CubeMagicPathId, out IReadOnlyList<MagicPath>? cubePaths);
-                if (SkillHitRules.BreakableTooFar(breakable.Position, record.CastPosition, session.Player.Position, attack, magicPaths, cubePaths)) {
+                float boxReach = SkillHitRules.BreakableReach(breakable.Value.MoveDistance, breakable.Value.ShapeDimensions);
+                if (SkillHitRules.BreakableTooFar(breakable.Position, record.CastPosition, session.Player.Position, attack, magicPaths, cubePaths, boxReach)) {
                     Logger.Information("Breakable {EntityId} refused: at {Position}, past the reach of cast {SkillUid} skill {SkillId} point {MotionPoint},{AttackPoint} from {Cast} (player at {Player})",
                         entityId, breakable.Position, skillUid, skillId, motionPoint, attackPoint, record.CastPosition, session.Player.Position);
                     return;

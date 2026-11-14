@@ -307,18 +307,24 @@ public static class SkillHitRules {
         return reach;
     }
 
-    // How much farther than a hit a breakable may lie: the client tests the tag's area against the breakable's box
-    // (its model's bounds, which the server does not have), not its position. Chosen generous.
+    // How much farther than a hit a breakable may lie, besides its own box and travel (BreakableReach): the client
+    // tests the tag's area against the box at the object's moved position. Chosen generous (old map data has neither).
     public const float BreakableMargin = 600f;
+
+    // How far a breakable's box reaches from its position: the client moves it up to moveDistance along its move
+    // direction (breakableobject.cpp:424, :596-605), and a hit meets its box of ShapeDimensions (m_ptSize), taken
+    // whole as half sizes.
+    public static float BreakableReach(float moveDistance, Vector3 shapeDimensions) =>
+        MathF.Max(0, moveDistance) + shapeDimensions.Length();
 
     // Whether a breakable at the position is past where the cast's attack can reach it. The client registers the
     // tag's own magic area for a breakable (WorldService::FUN_141bc3470, worldservice_1.cpp:4205), the area the
     // attack hits with, so the reach is the hit's: a region's ImpactReach of its largest side (distance, height,
     // width or end width) with its range offsets, or the reach of the attack's magic paths (ArrowReach), from the
-    // cast or the player's position now (a held cast or a dash moves), with BreakableMargin for the box. A path
-    // from a fixed point is not checked.
+    // cast or the player's position now (a held cast or a dash moves), with the breakable's own reach (boxReach,
+    // BreakableReach) and BreakableMargin. A path from a fixed point is not checked.
     public static bool BreakableTooFar(Vector3 breakable, Vector3 cast, Vector3 player, SkillMetadataAttack attack,
-                                       IReadOnlyList<MagicPath>? paths, IReadOnlyList<MagicPath>? cubePaths) {
+                                       IReadOnlyList<MagicPath>? paths, IReadOnlyList<MagicPath>? cubePaths, float boxReach = 0) {
         SkillMetadataRange range = attack.Range;
         float extent = MathF.Max(MathF.Max(range.Distance, range.Height), MathF.Max(range.Width, range.EndWidth));
         float reach = ImpactReach(extent) + range.RangeAdd.Length() + range.RangeOffset.Length();
@@ -329,7 +335,7 @@ public static class SkillHitRules {
             }
             reach = MathF.Max(reach, arrow.Value + TargetMargin);
         }
-        return MathF.Min(Vector3.Distance(breakable, cast), Vector3.Distance(breakable, player)) > reach + BreakableMargin;
+        return MathF.Min(Vector3.Distance(breakable, cast), Vector3.Distance(breakable, player)) > reach + MathF.Max(0, boxReach) + BreakableMargin;
     }
 
     // What an arrow packet's points refuse its hits for: only a current point past the paths' reach (ReachTooFar).

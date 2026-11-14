@@ -38,7 +38,7 @@ public class BreakableCastTests {
     private static readonly SkillMetadataArrow NoArrow = new(false, false, false, SkillTargetType.None, BounceType.None, 0, 0,
         false, default, default, 0);
 
-    private static Scene Start(long magicPathId = 0, params MagicPath[] paths) {
+    private static Scene Start(long magicPathId = 0, float moveDistance = 0, Vector3 shapeDimensions = default, params MagicPath[] paths) {
         var test = new TestGameSession();
         test.Start();
         FieldManager field = test.Session.Field!;
@@ -47,7 +47,8 @@ public class BreakableCastTests {
             info.SetValue(field, Activator.CreateInstance(info.FieldType));
         }
         typeof(FieldManager).GetField("triggerBreakable", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldBreakable>());
-        FieldBreakable box = field.AddBreakable("box", new BreakableActor(true, 0, 1000, 1000, 0, Vector3.Zero, Vector3.Zero))!;
+        FieldBreakable box = field.AddBreakable("box", new BreakableActor(true, 0, 1000, 1000, 0, Vector3.Zero, Vector3.Zero,
+            MoveDistance: moveDistance, ShapeDimensions: shapeDimensions))!;
 
         // Attack point 0 has a brokenOffence, attack point 1 has none: the client makes a breakable area of 0 only.
         var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with {
@@ -268,6 +269,29 @@ public class BreakableCastTests {
         return Hit(scene) == BreakableState.Break;
     }
 
+    // A box that moves 3000 along its path (moveDistance), hit at the far end 4500 from where it was placed: the
+    // client tests the area against the moved box, so it breaks; past its path and the attack's reach it does not.
+    [TestCase(4500f, ExpectedResult = true)]
+    [TestCase(8000f, ExpectedResult = false)]
+    public bool AMovingBoxHitAtItsPathsFarEndBreaks(float away) {
+        Scene scene = Start(moveDistance: 3000);
+        scene.Record.CastPosition = new Vector3(away, 0, 0);
+        scene.Test.Session.Player.Position = new Vector3(away, 0, 0);
+        AttackPoint(scene);
+        return Hit(scene) == BreakableState.Break;
+    }
+
+    // A large box (ShapeDimensions 500 each way) is hit at its side, past the margin from its position: it breaks.
+    [TestCase(2400f, ExpectedResult = true)]
+    [TestCase(5000f, ExpectedResult = false)]
+    public bool ALargeBoxHitAtItsSideBreaks(float away) {
+        Scene scene = Start(shapeDimensions: new Vector3(500, 500, 500));
+        scene.Record.CastPosition = new Vector3(away, 0, 0);
+        scene.Test.Session.Player.Position = new Vector3(away, 0, 0);
+        AttackPoint(scene);
+        return Hit(scene) == BreakableState.Break;
+    }
+
     // A held cast or a dash moved the player since the cast: the box near the player now breaks.
     [Test]
     public void ABoxNearThePlayerNowBreaks() {
@@ -287,7 +311,7 @@ public class BreakableCastTests {
         var path = (MagicPath) RuntimeHelpers.GetUninitializedObject(typeof(MagicPath)) with {
             Distance = 3000, FireFixed = fixedPoint ? new Vector3(0, 0, 100) : Vector3.Zero,
         };
-        Scene scene = Start(5, path);
+        Scene scene = Start(5, paths: [path]);
         scene.Record.CastPosition = new Vector3(away, 0, 0);
         scene.Test.Session.Player.Position = new Vector3(away, 0, 0);
         AttackPoint(scene);

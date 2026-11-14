@@ -175,7 +175,8 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                 case IMS2BreakableNIF nif: {
                         int.TryParse(nif.additionGlobalDropBoxId, out int globalDropBoxId);
                         yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                            Block = new Breakable(nif.IsVisible, (int) nif.TriggerBreakableID, nif.hideTimer, nif.resetTimer, globalDropBoxId, nif.moveTimeOffset, nif.Position, nif.Rotation),
+                            Block = new Breakable(nif.IsVisible, (int) nif.TriggerBreakableID, nif.hideTimer, nif.resetTimer, globalDropBoxId, nif.moveTimeOffset, nif.Position, nif.Rotation,
+                                nif.moveDistance, nif.ShapeDimensions),
                         };
                         continue;
                     }
@@ -247,7 +248,8 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                             case IMS2BreakableActor breakable:
                                 int.TryParse(breakable.additionGlobalDropBoxId, out int globalDropBoxId);
                                 yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                    Block = new BreakableActor(actor.IsVisible, (int) breakable.TriggerBreakableID, breakable.hideTimer, breakable.resetTimer, globalDropBoxId, breakable.Position, breakable.Rotation, breakable.moveTimeOffset),
+                                    Block = new BreakableActor(actor.IsVisible, (int) breakable.TriggerBreakableID, breakable.hideTimer, breakable.resetTimer, globalDropBoxId, breakable.Position, breakable.Rotation, breakable.moveTimeOffset,
+                                        breakable.moveDistance, breakable.ShapeDimensions),
                                 };
                                 continue;
                         }

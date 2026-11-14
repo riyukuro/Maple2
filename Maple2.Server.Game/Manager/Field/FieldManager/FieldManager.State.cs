@@ -462,7 +462,8 @@ public partial class FieldManager {
         }
         foreach ((Guid guid, Breakable breakable) in Entities.Breakables) {
             AddBreakable(guid.ToString("N"), new BreakableActor(breakable.Visible, breakable.Id, breakable.HideTime, breakable.ResetTime,
-                breakable.GlobalDropBoxId, breakable.Position, breakable.Rotation), (int) MathF.Round(breakable.MoveTimeOffset * 1000));
+                breakable.GlobalDropBoxId, breakable.Position, breakable.Rotation, MoveDistance: breakable.MoveDistance,
+                ShapeDimensions: breakable.ShapeDimensions), (int) MathF.Round(breakable.MoveTimeOffset * 1000));
         }
     }
 
