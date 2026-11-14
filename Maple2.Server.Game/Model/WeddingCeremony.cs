@@ -1,4 +1,5 @@
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
@@ -184,10 +185,15 @@ public sealed class WeddingCeremony {
         return (marriage, WeddingHall.Default);
     }
 
-    // A dungeon room is left by moving to another channel process, which carries no room owner, so the way
-    // into a hall is closed from there.
-    public static bool CanEnterFrom(bool dungeonField) {
-        return !dungeonField;
+    // Why a visit by invitation is refused before the hall is looked up, or null. A tombstoned player gets the
+    // dead notice (0x3a). A dungeon room is left by moving to another channel process, which carries no room
+    // owner, so the way into a hall is closed from there with the dungeon notice (0x3c); the client prints both
+    // as chat (WeddingManager::OnResult, weddingmanager.cpp:541/543).
+    public static WeddingError? VisitRefusal(bool dead, bool dungeonField) {
+        if (dead) {
+            return WeddingError.s_wedding_visit_failed_dead;
+        }
+        return dungeonField ? WeddingError.s_wedding_visit_failed_solo_instance : null;
     }
 
     // The two wedding hall tests of an npc script condition (weddingHallState, weddingHallEntryType; value false

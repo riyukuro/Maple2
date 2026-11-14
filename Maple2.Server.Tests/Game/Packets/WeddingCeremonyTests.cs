@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Xml;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -304,11 +305,15 @@ public class WeddingCeremonyTests {
         }
     }
 
-    // No way into a hall from a dungeon room; from any other field it is open.
+    // No way into a hall while tombstoned (0x3a) or from a dungeon room (0x3c); the dead notice comes first.
     [Test]
-    public void CanEnterFrom_NotFromADungeonRoom() {
-        Assert.That(WeddingCeremony.CanEnterFrom(dungeonField: true), Is.False);
-        Assert.That(WeddingCeremony.CanEnterFrom(dungeonField: false), Is.True);
+    public void VisitRefusal_DeadOrFromADungeonRoom() {
+        Assert.That(WeddingCeremony.VisitRefusal(dead: false, dungeonField: false), Is.Null);
+        Assert.That(WeddingCeremony.VisitRefusal(dead: true, dungeonField: false), Is.EqualTo(WeddingError.s_wedding_visit_failed_dead));
+        Assert.That(WeddingCeremony.VisitRefusal(dead: false, dungeonField: true), Is.EqualTo(WeddingError.s_wedding_visit_failed_solo_instance));
+        Assert.That(WeddingCeremony.VisitRefusal(dead: true, dungeonField: true), Is.EqualTo(WeddingError.s_wedding_visit_failed_dead));
+        Assert.That((byte) WeddingError.s_wedding_visit_failed_dead, Is.EqualTo(0x3a));
+        Assert.That((byte) WeddingError.s_wedding_visit_failed_solo_instance, Is.EqualTo(0x3c));
     }
 
     // The stored trigger attributes are snake case; success is absent on the plain test.

@@ -294,6 +294,10 @@ public class WeddingHandler : FieldPacketHandler {
         if (session.Field == null) {
             return;
         }
+        if (WeddingCeremony.VisitRefusal(session.Player.IsDead, session.Field is DungeonFieldManager) is { } refusal) {
+            session.Send(WeddingPacket.Error(refusal));
+            return;
+        }
 
         WeddingHall? hall;
         Marriage? marriage;
@@ -329,13 +333,6 @@ public class WeddingHandler : FieldPacketHandler {
         ceremony.Gifts = WeddingCeremony.CompleteGifts(hallData.CompleteItems, night: mapId != hallData.MapId);
         if (session.Field.MapId == mapId && session.Field.Wedding?.MarriageId == marriageId) {
             session.Send(WeddingPacket.Error(WeddingError.s_wedding_visit_failed_same_place));
-            return;
-        }
-
-        // From a dungeon room the field change is a migration that is already under way when PrepareField
-        // returns, and it would arrive in a room that is not the couple's.
-        if (!WeddingCeremony.CanEnterFrom(session.Field is DungeonFieldManager)) {
-            session.Send(WeddingPacket.Error(WeddingError.s_wedding_visit_failed_common));
             return;
         }
 

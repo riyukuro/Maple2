@@ -7,6 +7,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Microsoft.EntityFrameworkCore;
@@ -193,6 +194,23 @@ public class WeddingProposalTests {
         Marriage? found = db.GetMarriage(proposer.CharacterId);
         Assert.That(found, Is.Not.Null);
         Assert.That(new[] { found!.Partner1.CharacterId, found.Partner2.CharacterId }, Is.EquivalentTo(new[] { proposer.CharacterId, target.CharacterId }));
+    }
+
+    // Wedding 26 from a tombstoned player is refused with the dead notice (0x3a) before any hall is looked up.
+    [Test]
+    public void EnterCeremony_WhileDead_IsRefused() {
+        typeof(FieldPlayer).GetField("isDead", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(proposer.Session.Player, true);
+        Assume.That(proposer.Session.Player.IsDead, Is.True);
+        proposer.TakeSent();
+
+        handler.Handle(proposer.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(26);
+            writer.WriteLong(1);
+        }));
+        string expected = Hex(WeddingPacket.Error(WeddingError.s_wedding_visit_failed_dead));
+        Assert.That(expected[4..], Is.EqualTo("02" + "3A"));
+        Assert.That(Sent(proposer), Is.EqualTo(new[] { expected }));
     }
 
     // Fails every save that adds a marriage row while set; OnSave runs at such a save.
