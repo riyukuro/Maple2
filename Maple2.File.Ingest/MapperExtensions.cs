@@ -348,7 +348,8 @@ public static class MapperExtensions {
             Owner: Convert(beginCondition.skillOwner),
             Caster: Convert(beginCondition.skillCaster),
             RechargeGap: beginCondition.defaultRechargingCooldownTime,
-            PvpZone: Enum.IsDefined((PvpZoneApply) beginCondition.applyPvPZoneType) ? (PvpZoneApply) beginCondition.applyPvPZoneType : PvpZoneApply.Everywhere);
+            PvpZone: Enum.IsDefined((PvpZoneApply) beginCondition.applyPvPZoneType) ? (PvpZoneApply) beginCondition.applyPvPZoneType : PvpZoneApply.Everywhere,
+            UseTargetCountFactor: beginCondition.useTargetCountFactor);
     }
 
     // We use this default to avoid writing useless checks

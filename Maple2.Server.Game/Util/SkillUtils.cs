@@ -144,12 +144,12 @@ public static class SkillUtils {
         }
     }
 
-    public static bool Check(this BeginCondition condition, IActor caster, IActor owner, IActor target, EventConditionType eventType = EventConditionType.Activate, int eventSkillId = 0, int eventBuffId = 0, IActor? ownedBy = null) {
+    public static bool Check(this BeginCondition condition, IActor caster, IActor owner, IActor target, EventConditionType eventType = EventConditionType.Activate, int eventSkillId = 0, int eventBuffId = 0, IActor? ownedBy = null, float probabilityFactor = 1f) {
         if (condition.PvpZone != PvpZoneApply.Everywhere && !PvpZoneHolds(condition.PvpZone, owner.Field.Metadata.Property.Type)) {
             return false;
         }
         if (caster is FieldPlayer player) {
-            if (condition is not { Probability: 1 } && condition.Probability < Random.Shared.NextDouble()) {
+            if (!SkillCastRules.ProcHolds(condition.Probability, probabilityFactor, Random.Shared.NextDouble())) {
                 return false;
             }
             if (!condition.AllowDead && caster.IsDead) {

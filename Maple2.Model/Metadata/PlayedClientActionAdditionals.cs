@@ -13,11 +13,11 @@ namespace Maple2.Model.Metadata;
 // (SkillHasBuffCondition::Load: one hasBuffID, hasBuffCount, hasBuffOwner, hasNotBuffID and hasNotBuffOwner). A row
 // whose condition has any other field or child is counted as unsupported and left out. useTargetCountFactor is read
 // by the client (SkillBeginCondition::Load, skilloverlapcompare.cpp:392) but nothing in the client source uses the
-// value, so it is not taken over: the plain probability is kept.
+// value: the server's proc roll does (SkillCastRules.TargetCountFactor), so it is taken over.
 public static class PlayedClientActionAdditionals {
     public readonly record struct Use(int EffectId, short Level, int Target, int Owner, bool OnDamage, int OverlapCount, int LinkSkillId,
                                       bool AllowOnBattleMount, float Probability, bool OnlyOnBattleMount = false,
-                                      BuffTest? CasterTest = null, BuffTest? TargetTest = null);
+                                      BuffTest? CasterTest = null, BuffTest? TargetTest = null, bool UseTargetCountFactor = false);
 
     // A <caster> or <target> buff test: the buff the actor must have, its stack count (0 for any) and hasBuffOwner,
     // and the buff it must not have with hasNotBuffOwner. An id of 0 is no buff.
@@ -194,7 +194,7 @@ public static class PlayedClientActionAdditionals {
             DurationWithoutDamage: 0, DurationWithoutMoving: 0, OnlyShadowWorld: false, OnlyFlyableMap: false, AllowDead: false,
             AllowOnBattleMount: use.AllowOnBattleMount, OnlyOnBattleMount: use.OnlyOnBattleMount, AllowOnSurvival: false, DungeonGroupType: [],
             Stat: new Dictionary<BasicAttribute, long>(), Maps: [], MapTypes: [], Continents: [], ActiveSkill: [], Weapon: [],
-            Target: Convert(use.TargetTest), Owner: null, Caster: Convert(use.CasterTest));
+            Target: Convert(use.TargetTest), Owner: null, Caster: Convert(use.CasterTest), UseTargetCountFactor: use.UseTargetCountFactor);
         return new SkillEffectMetadata(
             FireCount: 1,
             Skills: [new SkillEffectMetadata.Skill(use.EffectId, use.Level, use.LinkSkillId)],
@@ -264,7 +264,8 @@ public static class PlayedClientActionAdditionals {
                 Probability: condition != null && float.TryParse(condition.GetAttribute("probability"), NumberStyles.Float, CultureInfo.InvariantCulture, out float rate) ? rate : 1f,
                 OnlyOnBattleMount: condition != null && Flag(condition, "onlyBattleRidingState"),
                 CasterTest: Test(condition, "caster"),
-                TargetTest: Test(condition, "target")));
+                TargetTest: Test(condition, "target"),
+                UseTargetCountFactor: condition != null && Flag(condition, "useTargetCountFactor")));
         }
         return uses.ToArray();
     }

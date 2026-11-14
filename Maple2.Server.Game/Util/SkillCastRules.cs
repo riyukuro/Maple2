@@ -398,6 +398,34 @@ public static class SkillCastRules {
         return false;
     }
 
+    // A proc whose begin condition has useTargetCountFactor (KR: the conditionSkill rows of 10200205, 10200206,
+    // 10700001, 10700002, 10700181 and 10700182) rolls its probability times the server constant
+    // invokeEffectTargetCountFactor<n>, n the number of targets the attack hit (KR: 1, 0.5, 0.33 ... 0.1 for 1 to
+    // 10), so a hit on more targets does not proc more often in all. The client reads the flag but leaves the roll
+    // to the server. Chosen here: more than 10 targets take the factor of 10, no target the factor of 1, and a
+    // factor the server table does not give (0) counts as 1.
+    public static float TargetCountFactor(ConstantsTable constants, int targetCount) {
+        float factor = targetCount switch {
+            <= 1 => constants.invokeEffectTargetCountFactor1,
+            2 => constants.invokeEffectTargetCountFactor2,
+            3 => constants.invokeEffectTargetCountFactor3,
+            4 => constants.invokeEffectTargetCountFactor4,
+            5 => constants.invokeEffectTargetCountFactor5,
+            6 => constants.invokeEffectTargetCountFactor6,
+            7 => constants.invokeEffectTargetCountFactor7,
+            8 => constants.invokeEffectTargetCountFactor8,
+            9 => constants.invokeEffectTargetCountFactor9,
+            _ => constants.invokeEffectTargetCountFactor10,
+        };
+        return factor > 0 ? factor : 1f;
+    }
+
+    // A begin condition's probability roll: it holds when the roll (0 to 1) is at most the probability times the
+    // factor (TargetCountFactor, else 1).
+    public static bool ProcHolds(float probability, float factor, double roll) {
+        return roll <= probability * factor;
+    }
+
     // A skill that names fields is cast only in one of them: the client does not send it elsewhere (cast check
     // answer 0x17). A code of 0 names no field.
     // The client does not cast a skill that takes its caster off the ride (kinds unrideOnUse) while it rides: it

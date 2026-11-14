@@ -31,7 +31,10 @@ public record BeginCondition(
     // Seconds a recharge skill is not cast again after a use (defaultRechargingCooldownTime).
     float RechargeGap = 0,
     // Outside PvP zones only, in them only, or anywhere (applyPvPZoneType).
-    PvpZoneApply PvpZone = PvpZoneApply.Everywhere);
+    PvpZoneApply PvpZone = PvpZoneApply.Everywhere,
+    // The proc's probability is cut by the number of targets the attack hit (useTargetCountFactor): times the
+    // server constant invokeEffectTargetCountFactor<n>, n the target count (SkillCastRules.TargetCountFactor).
+    bool UseTargetCountFactor = false);
 
 public record BeginConditionWeapon(
     ItemType LeftHand,

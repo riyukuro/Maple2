@@ -328,10 +328,13 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
         foreach (SkillEffectMetadata effect in effects) {
             if (effect.Condition != null) {
+                float factor = effect.Condition.Condition.UseTargetCountFactor
+                    ? SkillCastRules.TargetCountFactor(Field.ServerTableMetadata.ConstantsTable, targets.Length)
+                    : 1f;
                 foreach (IActor target in targets) {
                     IActor resultOwner = GetTarget(effect.Condition!.Target, caster, target, owner);
                     IActor resultCaster = GetOwner(effect.Condition.Owner, caster, target, owner);
-                    if (effect.Condition.Condition.Check(resultCaster, resultOwner, target, type, skillId, buffId, ownedBy)) {
+                    if (effect.Condition.Condition.Check(resultCaster, resultOwner, target, type, skillId, buffId, ownedBy, factor)) {
                         appliedEffects.Add((resultOwner, resultCaster, effect));
                     }
                 }
@@ -361,10 +364,13 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         long startTick = Field.FieldTick;
         foreach (SkillEffectMetadata effect in effects) {
             if (effect.Condition != null) {
+                float factor = effect.Condition.Condition.UseTargetCountFactor
+                    ? SkillCastRules.TargetCountFactor(Field.ServerTableMetadata.ConstantsTable, targets.Length)
+                    : 1f;
                 foreach (IActor target in targets) {
                     IActor resultOwner = GetTarget(effect.Condition!.Target, caster, target, caster);
                     IActor resultCaster = GetOwner(effect.Condition.Owner, caster, target, caster);
-                    if (effect.Condition.Condition.Check(resultCaster, resultOwner, target, eventSkillId: record.SkillId) &&
+                    if (effect.Condition.Condition.Check(resultCaster, resultOwner, target, eventSkillId: record.SkillId, probabilityFactor: factor) &&
                         DealtDamage(target)) {
                         appliedEffects.Add((resultOwner, resultCaster, effect));
                     }
