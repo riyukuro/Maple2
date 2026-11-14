@@ -531,7 +531,8 @@ public class MeretMarketHandler : FieldPacketHandler {
             if (!buy.RecordSale(db) || (paybackCounted && !db.SavePayback(session.Player))) {
                 return false;
             }
-            if (session.Item.Inventory.CanAdd(buy.Item)) {
+            // All of it (pieces of SlotMax; a currency or medal item needs no slot), as Add takes all or none.
+            if (session.Item.Inventory.HasRoomFor(buy.Item)) {
                 bagRow = db.CreateItem(session.CharacterId, buy.Item);
                 return bagRow != null;
             }
@@ -547,9 +548,12 @@ public class MeretMarketHandler : FieldPacketHandler {
             return;
         }
         Settle(session, buy.Price, buy.Currency, stored: true, mesoSends);
+        // The room was checked in the transaction; a bag filled meanwhile (on the field's thread) gets the stored row
+        // by mail. Logged either way; a row neither added nor mailed is still the character's, so a relog has it.
         if (bagRow != null && !session.Item.Inventory.Add(bagRow, true)) {
-            // The room was checked in the transaction; the stored row is the character's bag item, so the next login has it.
-            Logger.Error("Meret market item {ItemId} stored but not added to the bag of {CharacterId}", bagRow.Id, session.CharacterId);
+            bool mailedNow = session.Item.MailHeldItem(bagRow);
+            Logger.Error("Meret market item {ItemId} x{Amount} (paid {Price} {Currency}) not added to the bag of {CharacterId}: {Outcome}",
+                bagRow.Id, bagRow.Amount, buy.Price, buy.Currency, session.CharacterId, mailedNow ? "mailed" : "not mailed, the row stays the character's");
         }
         if (mailed != null) {
             try {

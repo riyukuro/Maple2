@@ -330,14 +330,17 @@ public class MeretMarketPremiumTests {
         Assert.That(test.TrophyCounter(Trophy) ?? 0, Is.Zero);
     }
 
-    // A bag that does not take the item: it goes by mail, stored with the wallet.
-    [Test]
-    public void APremiumBuyIntoAFullBag_MailsTheItem() {
-        SetMarket(Row(Package));
+    // A bag that does not take the item: it goes by mail, stored with the wallet. Also a pack above SlotMax with one
+    // slot open: the bag takes it only whole (pieces of SlotMax), so it is mailed; before, the bag row was stored, the
+    // add refused it, and the buyer saw nothing until a relog.
+    [TestCase(1, 0)]
+    [TestCase(1500, 1)]
+    public void APremiumBuyIntoAFullBag_MailsTheItem(int quantity, int slots) {
+        SetMarket(Row(Package, quantity: quantity));
         var tabs = (Dictionary<InventoryType, Maple2.Server.Game.Manager.Items.ItemCollection>) typeof(Maple2.Server.Game.Manager.Items.InventoryManager)
             .GetField("tabs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Item.Inventory)!;
         InventoryType type = session.Field!.ItemDrop.CreateItem(ItemId)!.Inventory;
-        tabs[type] = new Maple2.Server.Game.Manager.Items.ItemCollection(0);
+        tabs[type] = new Maple2.Server.Game.Manager.Items.ItemCollection((short) slots);
 
         Buy(Package);
 
@@ -346,9 +349,36 @@ public class MeretMarketPremiumTests {
         Assert.Multiple(() => {
             Assert.That(Answer().Sub, Is.EqualTo(0x1E));
             Assert.That(StoredMeret(), Is.EqualTo(4900));
-            Assert.That(mail.Items.Select(item => (item.Id, item.Amount)), Is.EqualTo(new[] { (ItemId, 1) }));
-            Assert.That(ItemRows(), Is.EqualTo(new[] { (mail.Id, 1) }));
+            Assert.That(mail.Items.Select(item => (item.Id, item.Amount)), Is.EqualTo(new[] { (ItemId, quantity) }));
+            Assert.That(ItemRows(), Is.EqualTo(new[] { (mail.Id, quantity) }));
             Assert.That(test.World.MailNotifications.Select(notice => notice.MailId), Is.EqualTo(new[] { mail.Id }));
+        });
+    }
+    // The bag fills between the room check and the add (here while the purchase is stored): the stored item is mailed
+    // (the handler logs an error naming the character, the item and the price). Before, the row stayed unshown.
+    [Test]
+    public void APremiumBuyWhoseBagFillsMeanwhile_MailsTheItem() {
+        SetMarket(Row(Package));
+        var tabs = (Dictionary<InventoryType, Maple2.Server.Game.Manager.Items.ItemCollection>) typeof(Maple2.Server.Game.Manager.Items.InventoryManager)
+            .GetField("tabs", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Item.Inventory)!;
+        InventoryType type = session.Field!.ItemDrop.CreateItem(ItemId)!.Inventory;
+        test.FailSave = context => {
+            if (context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any(entry => entry.State == EntityState.Added)) {
+                tabs[type] = new Maple2.Server.Game.Manager.Items.ItemCollection(0);
+            }
+            return false;
+        };
+
+        Buy(Package);
+        test.FailSave = null;
+
+        using GameStorage.Request db = test.Storage.Context();
+        Mail mail = db.GetAllMail(test.CharacterId).Single();
+        Assert.Multiple(() => {
+            Assert.That(Answer().Sub, Is.EqualTo(0x1E));
+            Assert.That(StoredMeret(), Is.EqualTo(4900));
+            Assert.That(ItemRows(), Is.EqualTo(new[] { (mail.Id, 1) }));
+            Assert.That(Owned(), Is.Zero);
         });
     }
 }
