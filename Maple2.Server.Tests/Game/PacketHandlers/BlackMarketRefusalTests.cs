@@ -12,6 +12,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.World.Service;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -150,6 +151,188 @@ public class BlackMarketRefusalTests {
         using GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetBlackMarketListings(test.CharacterId), Is.Empty);
         Assert.That(test.World.BlackMarketRequests, Is.Empty);
+    }
+
+    // An item the market does not take (CanListOnBlackMarket): locked, bound, of no trade, of a limited trade with
+    // no trades left, a written music score. The generic refusal; no deposit, the stack in the bag, nothing listed.
+    // A tradeable one and one of a limited trade with a trade left are listed.
+    [TestCase("locked", true)]
+    [TestCase("bound", true)]
+    [TestCase("untradeable", true)]
+    [TestCase("noTradesLeft", true)]
+    [TestCase("writtenScore", true)]
+    [TestCase("tradeable", false)]
+    [TestCase("tradesLeft", false)]
+    public void Add_ItemTheMarketDoesNotTake(string kind, bool refused) {
+        test = new TestGameSession();
+        Item stored = test.Store(metadata, amount: 5);
+        GameSession session = Login(test, 100000);
+        Item item = session.Item.Inventory.Get(stored.Uid)!;
+        switch (kind) {
+            case "locked":
+                item.IsLocked = true;
+                break;
+            case "bound":
+                item.Transfer = new ItemTransfer(TransferFlag.Trade, binding: new ItemBinding(test.CharacterId, "bound"));
+                break;
+            case "untradeable":
+                item.Transfer = new ItemTransfer(TransferFlag.Split);
+                break;
+            case "noTradesLeft":
+                item.Transfer = new ItemTransfer(TransferFlag.LimitTrade, remainTrades: 0);
+                break;
+            case "writtenScore":
+                item.Music = new ItemCustomMusicScore { Author = "writer", Title = "song" };
+                break;
+            case "tradeable":
+                item.Transfer = new ItemTransfer(TransferFlag.Trade);
+                break;
+            case "tradesLeft":
+                item.Transfer = new ItemTransfer(TransferFlag.LimitTrade, remainTrades: 1);
+                break;
+        }
+
+        Send(test, session, 2, item.Uid, 1000, 2);
+
+        List<string> sent = test.TakeSent().Select(Convert.ToHexString).ToList();
+        string refusal = Hex(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_disable_registitem, 2));
+        using GameStorage.Request db = test.Storage.Context();
+        if (refused) {
+            Assert.That(sent, Is.EqualTo(new[] { refusal }));
+            Assert.That(session.Currency.Meso, Is.EqualTo(100000));
+            Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(5));
+            Assert.That(db.GetBlackMarketListings(test.CharacterId), Is.Empty);
+            Assert.That(test.World.BlackMarketRequests, Is.Empty);
+        } else {
+            Assert.That(sent, Does.Not.Contain(refusal));
+            Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(3));
+            Assert.That(db.GetBlackMarketListings(test.CharacterId).Count(), Is.EqualTo(1));
+        }
+    }
+
+    // A deposit the wallet cannot pay: s_err_lack_meso; the mesos, the stack and the listings as they were. One meso
+    // more and it is listed.
+    [TestCase(-1, true)]
+    [TestCase(0, false)]
+    public void Add_TheDepositIsCheckedServerSide(long off, bool refused) {
+        test = new TestGameSession();
+        Item item = test.Store(metadata, amount: 5);
+        long deposit = Maple2.Server.Game.LuaFunctions.Lua.CalcBlackMarketRegisterDeposit(2000);
+        GameSession session = Login(test, deposit + off);
+
+        Send(test, session, 2, item.Uid, 1000, 2);
+
+        List<string> sent = test.TakeSent().Select(Convert.ToHexString).ToList();
+        string lack = Hex(BlackMarketPacket.Error(BlackMarketError.s_err_lack_meso, 2));
+        using GameStorage.Request db = test.Storage.Context();
+        if (refused) {
+            Assert.That(sent, Is.EqualTo(new[] { lack }));
+            Assert.That(session.Currency.Meso, Is.EqualTo(deposit + off));
+            Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(5));
+            Assert.That(db.GetBlackMarketListings(test.CharacterId), Is.Empty);
+        } else {
+            Assert.That(sent, Does.Not.Contain(lack));
+            Assert.That(session.Currency.Meso, Is.EqualTo(0));
+            Assert.That(db.GetBlackMarketListings(test.CharacterId).Single().Deposit, Is.EqualTo(deposit));
+        }
+    }
+
+    // Mode 1: the character's own listings, and no other's, in the one mode 1 answer.
+    [Test]
+    public void MyListings_OnlyTheCharactersOwn() {
+        test = new TestGameSession();
+        BlackMarketListing own = List(2, test);
+        List(3);
+        GameSession session = Login(test, 0);
+
+        new BlackMarketHandler { TableMetadata = test.TableMetadata, World = test.World }
+            .Handle(session, TestGameSession.Packet(writer => writer.WriteByte(1)));
+
+        List<byte[]> sent = test.TakeSent().ToList();
+        Assert.That(sent, Has.Count.EqualTo(1));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(Convert.ToHexString(sent[0]), Is.EqualTo(Hex(BlackMarketPacket.MyListings(db.GetBlackMarketListings(test.CharacterId).ToList()))));
+        Assert.That(sent[0][3..7], Is.EqualTo(BitConverter.GetBytes(1)));
+        Assert.That(db.GetBlackMarketListings(test.CharacterId).Single().Id, Is.EqualTo(own.Id));
+    }
+
+    // Mode 4 as CBlackMarketSchCond::WriteStream writes it, with KR blackmarkettable rows: the tabs in the id
+    // range give the categories asked of World (31130 and 31131, not 32122), a stat line with no value is left out,
+    // and the listings World finds are answered in its order. A refusal by World is the mode 4 error.
+    [TestCase(0)]
+    [TestCase((int) BlackMarketError.s_err_null_product)]
+    public void Search_AsksWorldAndListsItsFinds(int answer) {
+        test = new TestGameSession();
+        test.SetTable(new BlackMarketTable(new Dictionary<int, string[]> {
+            [31130] = ["130_equip"],
+            [31131] = ["131_equip"],
+            [32122] = ["122_equip"],
+        }));
+        BlackMarketListing first = List(1);
+        BlackMarketListing second = List(2);
+        GameSession session = Login(test, 0);
+        test.World.BlackMarketReply = _ => answer != 0
+            ? new BlackMarketResponse { Error = answer }
+            : new BlackMarketResponse { Search = new BlackMarketResponse.Types.Search { ListingIds = { second.Id, first.Id } } };
+
+        new BlackMarketHandler { TableMetadata = test.TableMetadata, World = test.World }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(4);
+            writer.WriteInt(31130); // tab id range
+            writer.WriteInt(31131);
+            writer.WriteInt(50); // level range
+            writer.WriteInt(60);
+            writer.WriteInt(0); // job flag
+            writer.WriteInt(4); // rarity
+            writer.WriteInt(0); // enchant range
+            writer.WriteInt(15);
+            writer.WriteByte(0); // socket range
+            writer.WriteByte(3);
+            writer.WriteUnicodeString("");
+            writer.WriteInt(1); // page
+            writer.WriteByte(1); // sort
+            writer.WriteByte(0);
+            writer.WriteInt(0);
+            writer.WriteInt(0);
+            writer.WriteByte(0);
+            writer.WriteByte(1);
+            for (int i = 0; i < 3; i++) {
+                writer.WriteInt(0);
+                writer.WriteInt(0);
+            }
+        }));
+
+        BlackMarketRequest.Types.Search search = test.World.BlackMarketRequests.Single().Search;
+        Assert.That(search.Categories, Is.EqualTo(new[] { "130_equip", "131_equip" }));
+        Assert.That((search.MinLevel, search.MaxLevel, search.Rarity, search.MaxEnchantLevel, search.MaxSocketCount, search.StartPage),
+            Is.EqualTo((50, 60, 4, 15, 3, 1)));
+        Assert.That(search.StatOptions, Is.Empty);
+        List<string> sent = test.TakeSent().Select(Convert.ToHexString).ToList();
+        if (answer != 0) {
+            Assert.That(sent, Is.EqualTo(new[] { Hex(BlackMarketPacket.Error((BlackMarketError) answer, 4)) }));
+        } else {
+            Assert.That(sent, Has.Count.EqualTo(1));
+            Assert.That(sent[0][6..14], Is.EqualTo(Convert.ToHexString(BitConverter.GetBytes(2))));
+        }
+    }
+
+    // Mode 8 (CBlackMarketMan::SendBlackMarketMode8): the item id and rarity come back with the item's npc sell
+    // price, read by FUN_140a21be0 as int, int, long. An unknown item id is not answered.
+    [Test]
+    public void Preview_TheSellPrice() {
+        test = new TestGameSession();
+        test.Register(metadata);
+        GameSession session = Login(test, 0);
+
+        foreach (int id in new[] { ItemId, 1 }) {
+            new BlackMarketHandler { TableMetadata = test.TableMetadata, World = test.World }.Handle(session, TestGameSession.Packet(writer => {
+                writer.WriteByte(8);
+                writer.WriteInt(id);
+                writer.WriteInt(3);
+            }));
+        }
+
+        long price = Maple2.Server.Core.Formulas.Shop.SellPrice(metadata, 3, test.ServerTableMetadata.ConstantsTable);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(BlackMarketPacket.Preview(ItemId, 3, price)) }));
     }
 
     // An item past its time: the refusal is answered (it used to be dropped without a word, the client left

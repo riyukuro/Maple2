@@ -804,10 +804,12 @@ public sealed class TestGameSession {
         // The black market's world side: every listing change is answered with BlackMarketAnswer (none: accepted).
         public readonly List<BlackMarketRequest> BlackMarketRequests = [];
         public int BlackMarketAnswer;
+        // The answer to a request when set (a search's listing ids); BlackMarketAnswer's otherwise.
+        public Func<BlackMarketRequest, BlackMarketResponse>? BlackMarketReply;
 
         public override BlackMarketResponse BlackMarket(BlackMarketRequest request, CallOptions options) {
             BlackMarketRequests.Add(request);
-            return new BlackMarketResponse { Error = BlackMarketAnswer };
+            return BlackMarketReply?.Invoke(request) ?? new BlackMarketResponse { Error = BlackMarketAnswer };
         }
 
         // The other players the world knows; a character that was not added is not found.
