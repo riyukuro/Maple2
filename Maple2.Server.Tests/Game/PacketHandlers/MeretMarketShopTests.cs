@@ -204,6 +204,25 @@ public class MeretMarketShopTests {
         Assert.That(SaleStored(sale), Is.False);
     }
 
+    // The merets of a failed collect were spent before they could be taken back: the sale goes, stored with the
+    // wallet, and cannot be collected again.
+    [Test]
+    public void CollectProfit_SpentBeforeTheFailedSave_RemovesTheSale() {
+        long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());
+        long sale = CreateSale(listing, 350, DateTime.Now.AddDays(-Constant.UGCShopProfitDelayDays - 1));
+        Start();
+        session.Currency.ChangeMeret(350);
+
+        session.UgcMarket.ProfitSpentBeforeSave(sale);
+        Assert.That(SaleStored(sale), Is.False);
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            Assert.That(context.Account.Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(1350));
+        }
+        test.TakeSent();
+        Assert.That(IdRequest(20, sale), Is.Empty);
+        Assert.That(session.Currency.Meret, Is.EqualTo(1350));
+    }
+
     [Test]
     public void CollectProfit_NotBeforeTheDelay() {
         long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());

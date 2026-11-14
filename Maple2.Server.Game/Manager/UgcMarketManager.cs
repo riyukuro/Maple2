@@ -151,11 +151,7 @@ public sealed class UgcMarketManager {
         if (!session.TrySavePurchase(db => db.DeleteSoldUgcMarketItem(id))) {
             // The profit was not stored: it goes back out of the wallet, which is no meret spent (use_merat).
             if (!session.Currency.TryTakeMeret(sale.Profit, reportSpent: false)) {
-                // Spent already: the profit stays paid, so the sale may not be collected again.
-                sales.Remove(id);
-                using GameStorage.Request db = session.GameStorage.Context();
-                bool deleted = db.DeleteSoldUgcMarketItem(id);
-                logger.Error("Profit of SoldUgcMarketItem {Id} spent before its failed save; row deleted: {Deleted}.", id, deleted);
+                ProfitSpentBeforeSave(id);
                 return;
             }
             logger.Error("Unable to collect profit and delete SoldUgcMarketItem {Id}.", id);
@@ -168,6 +164,19 @@ public sealed class UgcMarketManager {
 
         session.Send(MeretMarketPacket.CollectProfit(sale.Id, sale.Profit));
         session.Send(MeretMarketPacket.UpdateProfit(SalesTotal(items.Values)));
+    }
+
+    // A collect whose save failed while its merets were spent already: the profit stays paid, so the sale goes. Its
+    // removal is stored with the wallet (TrySavePurchase), as the collect's own save would have; if that fails as
+    // well the sale is still dropped from this session and the error is logged.
+    internal void ProfitSpentBeforeSave(long id) {
+        sales.Remove(id);
+        bool stored = session.TrySavePurchase(db => db.DeleteSoldUgcMarketItem(id));
+        logger.Error("Profit of SoldUgcMarketItem {Id} spent before its failed save; removal stored: {Stored}.", id, stored);
+        if (stored) {
+            using GameStorage.Request db = session.GameStorage.Context();
+            LoadSalesCounts(db);
+        }
     }
 
     public void RemoveListing(long id) {

@@ -20,12 +20,21 @@ public class SetCraftModeHandlerTests {
 
     private static string Hex(byte[] packet) => Convert.ToHexString(packet);
 
+    // A session in its own home: the plot it may build on.
+    private static GameSession InOwnHome(TestGameSession test) {
+        GameSession session = test.Start();
+        session.Housing.InitNewHome("home", null);
+        test.EnterHome();
+        test.TakeSent();
+        return session;
+    }
+
     // Start: the guide (with the player's heading), then the mode with the cube the client sent. Stop: the
     // mode, then the guide's removal.
     [Test]
     public void StartAndStop_SendTheGuideAndTheModeInOrder() {
         var test = new TestGameSession();
-        GameSession session = test.Start();
+        GameSession session = InOwnHome(test);
         session.Player.Rotation = new Vector3(0, 0, 270);
         test.TakeSent();
 
@@ -64,6 +73,33 @@ public class SetCraftModeHandlerTests {
         Send(session, "01" + "00");
         Send(session, "00" + "00");
 
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.GuideObject, Is.Null);
+    }
+
+    // The client asks for the build mode only where it may build (MyPC::FUN_14152feb0): a start outside a plot of
+    // its own (or of a home that lets it build), or while dead, holds nothing and sends nothing.
+    [Test]
+    public void StartWhereItMayNotBuild_SendsNothing() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        test.TakeSent();
+
+        Send(session, "01" + "01" + CUBE);
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.GuideObject, Is.Null);
+        Assert.That(session.HeldCube, Is.Null);
+    }
+
+    [Test]
+    public void StartWhileDead_SendsNothing() {
+        var test = new TestGameSession();
+        GameSession session = InOwnHome(test);
+        typeof(Maple2.Server.Game.Model.FieldPlayer).GetField("isDead", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(session.Player, true);
+
+        Send(session, "01" + "01" + CUBE);
         Assert.That(test.TakeSent(), Is.Empty);
         Assert.That(session.GuideObject, Is.Null);
     }

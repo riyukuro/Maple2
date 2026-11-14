@@ -52,6 +52,12 @@ public class SetCraftModeHandler : FieldPacketHandler {
         if (firstCubeItem == null || session.Field == null || session.GuideObject != null) {
             return;
         }
+        // The client asks for the build mode only where it may build (MyPC::FUN_14152feb0): not while dead, and on
+        // the cells of a plot of its own, of the home it owns or of a home whose owner lets it build
+        // (CubeMapInformationService::FUN_1410cd440). Anywhere else nothing is held and nothing is shown.
+        if (session.Player.IsDead || session.Housing.GetBuildFieldPlot(out _) == null) {
+            return;
+        }
 
         session.GuideObject = session.Field.SpawnGuideObject(session.Player, new ConstructionGuideObject());
         // KMS2 sends the guide with the player's heading: x and y 0, z the angle from 0 to 360. The client turns the
