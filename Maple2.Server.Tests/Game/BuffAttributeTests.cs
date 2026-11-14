@@ -717,4 +717,18 @@ public class BuffAttributeTests {
         Buffs.EnabledChanged(held, enabledMoved: true);
         Assert.That(Buffs.GroupHeldSettled(10, later), Is.False, "a move of Enabled does");
     }
+
+    // A copy of the held buffs taken while the field thread removes one can hold a null slot without throwing; the
+    // cast checks' copy drops it, and a copy that throws is taken again.
+    [Test]
+    public void CopyFromHandler_DropsARacedSlotAndRetries() {
+        Buff held = DisabledBuffTests.Held(DisabledBuffTests.Effect(10000051), enabled: true);
+        Assert.That(BuffManager.CopyFromHandler(() => [held, null!]), Is.EqualTo(new[] { held }));
+        int calls = 0;
+        List<Buff> copied = BuffManager.CopyFromHandler(() => ++calls < 3 ? throw new InvalidOperationException() : [held]);
+        Assert.Multiple(() => {
+            Assert.That(copied, Is.EqualTo(new[] { held }));
+            Assert.That(calls, Is.EqualTo(3));
+        });
+    }
 }

@@ -261,11 +261,14 @@ public class BuffManager : IUpdatable {
     public List<Buff> EnumerateBuffs() => buffs.Values.SelectMany(list => list).ToList();
     public List<Buff> EnumerateBuffs(int buffId) => this.buffs.TryGetValue(buffId, out List<Buff>? buffs) ? buffs.ToList() : [];
     // A copy of the held buffs taken off the field thread (a cast check runs on the packet handler's): the field thread
-    // may add or remove one while the lists are copied, and the copy is then taken again.
-    private List<Buff> CopyFromHandler(Func<List<Buff>> copy) {
+    // may add or remove one while the lists are copied, and the copy is then taken again. A copy that raced a removal
+    // without throwing can hold an empty slot (a null at the list's end): it is dropped.
+    internal static List<Buff> CopyFromHandler(Func<List<Buff>> copy) {
         for (int attempt = 0; ; attempt++) {
             try {
-                return copy();
+                List<Buff> copied = copy();
+                copied.RemoveAll(buff => buff is null);
+                return copied;
             } catch (Exception ex) when (attempt < 4 && ex is InvalidOperationException or ArgumentException) {
                 // A held list moved while it was copied.
             }
