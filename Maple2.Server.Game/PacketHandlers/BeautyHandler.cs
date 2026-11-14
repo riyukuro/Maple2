@@ -456,6 +456,10 @@ public class BeautyHandler : FieldPacketHandler {
         session.Send(BeautyPacket.RandomHair(prevHair.Id, newHair.Id));
         session.ConditionUpdate(ConditionType.beauty_random, codeLong: newHair.Id);
     }
+    // The game menu's and the beauty list's move to a salon (UIGameMenuDialog::SendBeauty, uigamemenudialog.cpp:2267;
+    // UIBeautyListDialog, uibeautylistdialog.cpp:111-139): 1 the hair salon, 3 the face shop, 5 the dye shop, sent
+    // after a confirm box only. The client checks nothing else before it; its texts for a refused move
+    // (s_beauty_goto_map_invalid_dead, _battle, _samefield) are the server's to send, and it never shows them itself.
     private void HandleWarp(GameSession session, IByteReader packet) {
         short type = packet.ReadShort();
         int mapId = type switch {
@@ -471,7 +475,27 @@ public class BeautyHandler : FieldPacketHandler {
             _ => 0,
         };
 
+        if (mapId == 0 || session.Field == null) {
+            return;
+        }
+        StringCode? refusal = WarpRefusal(session.Player.IsDead, session.Player.InBattle, session.Field.MapId == mapId);
+        if (refusal != null) {
+            session.Send(NoticePacket.Message(refusal.Value, NoticePacket.Flags.Message | NoticePacket.Flags.Alert));
+            return;
+        }
+
         session.SendFieldEnter(session.PrepareField(mapId, portalId: portalId));
+    }
+
+    // A dead player (a tombstone), one in combat and one already in the salon's field do not move.
+    public static StringCode? WarpRefusal(bool dead, bool inBattle, bool sameField) {
+        if (dead) {
+            return StringCode.s_beauty_goto_map_invalid_dead;
+        }
+        if (inBattle) {
+            return StringCode.s_beauty_goto_map_invalid_battle;
+        }
+        return sameField ? StringCode.s_beauty_goto_map_invalid_samefield : null;
     }
 
     private void HandleConfirmRandomHair(GameSession session, IByteReader packet) {
