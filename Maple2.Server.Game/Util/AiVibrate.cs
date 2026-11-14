@@ -26,6 +26,9 @@ public class AiVibrate {
     /// <summary>The objects a player entering the field must be sent HideVibrate for.</summary>
     public IEnumerable<string> Hidden => groups.Keys.Where(id => !shown.Contains(id));
 
+    /// <summary>Whether the object is hidden now: the client has taken its collision away.</summary>
+    public bool IsHidden(string id) => groups.ContainsKey(id) && !shown.Contains(id);
+
     /// <summary>Shows the group's hidden objects; returns the ones to send ShowVibrate for.</summary>
     public List<string> Show(int groupId) {
         List<string> ids = groups.Where(entry => entry.Value == groupId && !shown.Contains(entry.Key))

@@ -24,6 +24,7 @@ public class SkillRecord {
     public Vector3 Position;
     public Vector3 CastPosition; // the cast's position as taken at the use; attack packets are held to it
     public readonly SkillHitBudget Hits = new();
+    public readonly VibrateRules.Budget Vibrates = new(); // the Vibrate packets taken, per attack point and object
     public Vector3 ImpactPosition;
     public Vector3 Direction; // Sometimes Rotation
     public Vector3 CastDirection; // the use's direction (CSkillRecord m_ptDir), zero when the cast is not moved by key

@@ -422,6 +422,9 @@ public sealed class SkillHitBudget {
         return true;
     }
 
+    // How many iterations of the attack point were counted (0 before its first packet).
+    public int PointIterations(byte attackPoint) => iterations.TryGetValue(attackPoint, out int last) ? last + 1 : 0;
+
     // targetId: the object the attack point packet names for the attack (the client's tag caster id).
     public void Declare(long attackUid, byte attackPoint, int targetId) {
         attacks.TryAdd(attackUid, new Attack(attackPoint, targetId));
