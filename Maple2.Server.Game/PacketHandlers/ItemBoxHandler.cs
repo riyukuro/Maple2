@@ -34,6 +34,13 @@ public class ItemBoxHandler : FieldPacketHandler {
         if (held.Count == 0) {
             return;
         }
+        // Only a box the dialog opens: the client reads the answer only for OpenItemBox and SelectItemBox
+        // (CSceneStateGame::OnItemBox), and the key box goes the same way. Any other item is dropped. Its function
+        // parameters are not a box's (int.Parse threw on them and ended the session), and a gacha or timed box
+        // would skip its own dialog and cooldown.
+        if (held[0].Metadata.Function?.Type is not (ItemFunction.OpenItemBox or ItemFunction.SelectItemBox or ItemFunction.OpenItemBoxWithKey)) {
+            return;
+        }
         Item? item = held.FirstOrDefault(stack => ItemUseHandler.UseAllowed(session, stack));
         if (item == null) {
             session.Send(ItemBoxPacket.Open(itemId, 0, ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail));

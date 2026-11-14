@@ -103,6 +103,22 @@ public class ItemBoxHandlerTests {
         return context.Mail.Count(mail => mail.ReceiverId == test.CharacterId);
     }
 
+    // The dialog's request for an item that is no multi-open box (a name change voucher, a gacha box, a timed box) is
+    // dropped: nothing is opened or answered. Before, the voucher's text parameters threw in int.Parse, which ended
+    // the session, and the gacha box opened.
+    [TestCase(ItemFunction.ChangeCharName, "name")]
+    [TestCase(ItemFunction.OpenGachaBox, "300")]
+    [TestCase(ItemFunction.OpenItemBoxLimitedQuantity, "<v cooldownTime=\"3\" individualDropBoxId=\"100\"/>")]
+    public void MultiOpen_OfAnItemThatIsNoBoxIsDropped(ItemFunction function, string parameters) {
+        GameSession session = Login(function, parameters, amount: 2);
+
+        Assert.DoesNotThrow(() => MultiOpen(session, 1));
+
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(Held(session, box), Is.EqualTo(2));
+        Assert.That(Held(session, RewardA) + Held(session, RewardB), Is.EqualTo(0));
+    }
+
     // KMS2 answers a box used from the bag with the inventory packets alone: the box first, then what it gave.
     [Test]
     public void OpenItemBox_Use_TakesOneBoxThenAddsItsItems() {
