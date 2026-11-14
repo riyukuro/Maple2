@@ -19,8 +19,10 @@ public partial class WorldService {
     // (MigrateOutRequest.EndsEarlier): else a token left unused (another login of the account picked a character
     // before it arrived, the client was closed on the way, a channel change of a session a login kicked) still let
     // a second game session of the account in next to the first one. A move from a game session ends none: two moves
-    // of one session can be under way at once (a field's warp next to the client's own move), and the client goes
-    // with the first GameToGame it was sent.
+    // of one session can be under way at once (a field's warp next to the client's own move): the client stores the
+    // address and token of each GameToGame it reads over the one before (CNetworkService::OnGameToGame), so it goes
+    // with the last one it read before it reconnects. The entry (MigrateIn) then ends every token of the account,
+    // the one it used and the others.
     private readonly record struct AccountTokenKey(long AccountId);
     private static readonly object TokenIssue = new();
 
