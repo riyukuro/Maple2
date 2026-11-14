@@ -230,8 +230,9 @@ public sealed class ExperienceManager {
     }
 
     // The exp of a kill: the monster exp table's column for the npc's class (elite, boss, dungeon elite or boss, else
-    // common) at its level; a level the table lacks falls back to the exp base table 2, its common column.
-    public void AddMobExp(int moblevel, int npcClass = 1, float modifier = 1f, long additionalExp = 0, int npcObjectId = 0) {
+    // common) at its level; a level the table lacks falls back to the exp base table 2, its common column. The
+    // modifier is a double: in float, 225 at +4% came to 233, not 234.
+    public void AddMobExp(int moblevel, int npcClass = 1, double modifier = 1d, long additionalExp = 0, int npcObjectId = 0) {
         long expValue = MobExp(moblevel, npcClass);
         if (expValue <= 0) {
             return;

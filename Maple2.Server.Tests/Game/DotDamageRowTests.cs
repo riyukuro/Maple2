@@ -105,6 +105,19 @@ public class DotDamageRowTests {
         }
     }
 
+    // A dot only takes (AdditionalLevelData::IsDotDamage counts a positive value only): a negative health, spirit or
+    // stamina value deals nothing instead of healing the target.
+    [Test]
+    public void NegativeValue_DoesNotHeal() {
+        FieldPlayer caster = Player(5000, 5000);
+        FieldPlayer target = Player(10000, 10000);
+
+        var record = new DotDamageRecord(caster, target, Dot(hpValue: -10, spValue: -10, epValue: -10, isConstDamage: true), stacks: 2);
+        Assert.That(record.HpAmount, Is.EqualTo(0));
+        Assert.That(record.SpAmount, Is.EqualTo(0));
+        Assert.That(record.EpAmount, Is.EqualTo(0));
+    }
+
     // 49289032 (KR: Type 1, no rate, share or value; invokeEffect Eff_NPC_Attack_Hit_01): a Normal tick of 0, still sent
     // for the client's hit flash, effects and sound. An untyped dot (or a constant one) without a value sends nothing.
     [Test]

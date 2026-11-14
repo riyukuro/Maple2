@@ -27,6 +27,7 @@ public class AdventureExpTests {
         }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
         test.SetServerTable(new MonsterExpTable(new Dictionary<int, MonsterExpMetadata> {
             [50] = new(100, 200, 300, 400, 500),
+            [51] = new(225, 200, 300, 400, 500),
         }));
         // The KR server pack's rows (AdventureExpTable).
         test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long> {
@@ -62,6 +63,18 @@ public class AdventureExpTests {
         }
         Assert.That(prestige, Is.GreaterThan(expUp));
         return (Reason(sent[expUp]), PrestigeGain(sent[prestige]));
+    }
+
+    // A kill's exp times the rate is taken in double: in float, 225 at a +4% stat rate came to 233.
+    [Test]
+    public void Kill_RateIsNotTruncatedByFloat() {
+        GameSession session = Start();
+
+        session.Exp.AddMobExp(51, 1, modifier: 1d + 40 / 1000.0, npcObjectId: 7001);
+
+        // ExpUp: op, byte, i64 gain.
+        byte[] expUp = test.TakeSent().First(packet => TestGameSession.Op(packet) == SendOp.ExpUp);
+        Assert.That(BitConverter.ToInt64(expUp, 3), Is.EqualTo(234));
     }
 
     // KMS2 adds 250 for a common kill and 2500 for an elite (AdventureExpFactorElite 10); a boss is

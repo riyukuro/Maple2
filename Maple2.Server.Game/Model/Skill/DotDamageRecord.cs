@@ -65,7 +65,9 @@ public class DotDamageRecord {
             }
             hpAmount += DamageCalculator.TargetMaxHpDamage(caster, target, dotDamage.DamageByTargetMaxHp);
         }
-        hpAmount = Buff.AmountByStacks(hpAmount, stacks);
+        // A dot only takes: the client counts it as damage only for a positive rate or value (AdditionalLevelData::
+        // IsDotDamage, additionalactionadditional.cpp:1410), and a negative value made the tick a heal.
+        hpAmount = Math.Max(0, Buff.AmountByStacks(hpAmount, stacks));
         if (hpAmount > 0 && shielded) {
             // A tick on a holder of an invincible buff (or a refused one) is sent as Normal with amount 0.
             hpAmount = 0;
@@ -76,8 +78,8 @@ public class DotDamageRecord {
         }
 
         HpAmount = (int) -hpAmount;
-        SpAmount = -Buff.AmountByStacks(dotDamage.SpValue, stacks);
-        EpAmount = -Buff.AmountByStacks(dotDamage.EpValue, stacks);
+        SpAmount = -Math.Max(0, Buff.AmountByStacks(dotDamage.SpValue, stacks));
+        EpAmount = -Math.Max(0, Buff.AmountByStacks(dotDamage.EpValue, stacks));
         RecoverHp = (int) (dotDamage.RecoverHpByDamage * HpAmount);
     }
 
