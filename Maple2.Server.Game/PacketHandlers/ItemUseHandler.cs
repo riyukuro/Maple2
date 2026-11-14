@@ -852,9 +852,8 @@ public class ItemUseHandler : FieldPacketHandler {
         if (!MapleSurvivalProgress.CanAddItemExp(session) || session.Item.Inventory.Get(item.Uid) == null) {
             return;
         }
-        if (MapleSurvivalProgress.AddItemExp(session, exp)) {
-            session.Item.Inventory.Consume(item.Uid, 1);
-        }
+        // The tonic is stored as used with the exp and its level rewards (one transaction), then taken from the bag.
+        MapleSurvivalProgress.AddItemExp(session, exp, item.Uid);
     }
 
     // SurvivalScan (30001099 "Position Tracker", `<v duration="10000" isAnnounce="false"/>`): the client sends the plain

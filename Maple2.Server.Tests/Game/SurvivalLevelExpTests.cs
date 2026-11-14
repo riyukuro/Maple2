@@ -117,6 +117,11 @@ public class SurvivalLevelExpTests {
         return context.Account.AsNoTracking().Single(account => account.Id == test.AccountId);
     }
 
+    private int StoredTonics() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Item.Where(item => item.Id == tonic.Uid && item.OwnerId == test.CharacterId).Select(item => item.Amount).SingleOrDefault();
+    }
+
     private void FailAccountSave() {
         test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Account>().Any(entry => entry.State == EntityState.Modified);
     }
@@ -131,6 +136,31 @@ public class SurvivalLevelExpTests {
         Assert.That((stored.SurvivalLevel, stored.SurvivalExp), Is.EqualTo((2, 100L)));
         using var context = new Maple2.Database.Context.Ms2Context(test.Options);
         Assert.That(context.Item.Count(item => item.ItemId == RewardId), Is.EqualTo(1));
+        // The tonic used is stored with them: a crash after the store cannot give it back for another use.
+        Assert.That((StoredTonics(), session.Item.Inventory.Get(tonic.Uid)!.Amount), Is.EqualTo((1, 1)));
+    }
+
+    // Without a level reached the exp and the used tonic are stored together too.
+    [Test]
+    public void Use_NoLevelUp_StoresTheExpWithTheTonic() {
+        GameSession session = Start("<v SurvivalExp=\"100\" />");
+        Use(session);
+        Assert.That((StoredAccount().SurvivalExp, StoredTonics()), Is.EqualTo((100L, 1)));
+        Assert.That((session.Player.Value.Account.SurvivalExp, session.Item.Inventory.Get(tonic.Uid)!.Amount), Is.EqualTo((100L, 1)));
+    }
+
+    // When the used tonic cannot be stored, no exp or level reward is given and the tonic is kept.
+    [Test]
+    public void Use_TonicNotStored_NothingGiven() {
+        GameSession session = Start();
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any(entry => entry.State == EntityState.Modified);
+        Use(session);
+        test.FailSave = null;
+        Account account = session.Player.Value.Account;
+        Assert.That((account.SurvivalLevel, account.SurvivalExp, Amount(session, RewardId)), Is.EqualTo((1, 0L, 0)));
+        // The in-memory test database ignores transactions, so the account row written before the failed item row
+        // is not rolled back here; MySQL rolls both back.
+        Assert.That((session.Item.Inventory.Get(tonic.Uid)!.Amount, StoredTonics()), Is.EqualTo((2, 2)));
     }
 
     // When the level and exp cannot be stored, no level reward is given, the level stays and the tonic is kept.
@@ -142,7 +172,7 @@ public class SurvivalLevelExpTests {
         test.FailSave = null;
         Account account = session.Player.Value.Account;
         Assert.That((account.SurvivalLevel, account.SurvivalExp, Amount(session, RewardId)), Is.EqualTo((1, 0L, 0)));
-        Assert.That(session.Item.Inventory.Get(tonic.Uid)!.Amount, Is.EqualTo(2));
+        Assert.That((session.Item.Inventory.Get(tonic.Uid)!.Amount, StoredTonics()), Is.EqualTo((2, 2)));
         Assert.That(StoredAccount().SurvivalLevel, Is.Not.EqualTo(2));
     }
 

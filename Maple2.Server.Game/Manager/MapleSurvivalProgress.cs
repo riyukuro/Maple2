@@ -144,7 +144,7 @@ public static class MapleSurvivalProgress {
             Collect(session, table.PaidPass, period.RewardId, level, rewards);
         }
         // The levels claimed and their items are stored together; when they are not, nothing is claimed.
-        if (!Store(session, rewards, Math.Max(1, account.SurvivalLevel), account.SurvivalExp, freeTo, paidTo)) {
+        if (!Store(session, rewards, account.SurvivalLevel, account.SurvivalExp, freeTo, paidTo)) {
             session.Send(SurvivalPacket.UpdateStats(account));
             return;
         }
@@ -171,9 +171,11 @@ public static class MapleSurvivalProgress {
     // The rewards with the progress that gives them (the survival level and exp, the pass levels claimed), stored in
     // one transaction (EventClaim): a crash cannot keep the items and lose the progress, which gave them again. The
     // progress reaches the account once the transaction committed; the buffs are added then. With no item there is
-    // nothing stored at once, and the progress is kept in memory for the session save as before. False when nothing
-    // was stored: no item, buff or progress is given.
-    private static bool Store(GameSession session, Rewards rewards, int level, long exp, int silverClaimed, int goldClaimed) {
+    // nothing stored at once, and the progress is kept in memory for the session save as before. usedUid: a bag item
+    // the progress takes (a tonic), stored as used in the same transaction (InventoryManager.SaveConsumed) and taken
+    // from the bag after the commit, so a crash cannot keep the progress and give the item back. False when nothing
+    // was stored: no item, buff or progress is given and the used item is kept.
+    private static bool Store(GameSession session, Rewards rewards, int level, long exp, int silverClaimed, int goldClaimed, long usedUid = 0) {
         Account account = session.Player.Value.Account;
         void Apply() {
             account.SurvivalLevel = level;
@@ -181,13 +183,25 @@ public static class MapleSurvivalProgress {
             account.SurvivalSilverLevelRewardClaimed = silverClaimed;
             account.SurvivalGoldLevelRewardClaimed = goldClaimed;
         }
-        if (rewards.Items.Count == 0) {
+        bool taken = true;
+        if (rewards.Items.Count == 0 && usedUid == 0) {
             Apply();
         } else if (EventClaim.Give(session, rewards.Items, [],
-                       db => db.SaveSurvivalProgress(session.Player, level, exp, silverClaimed, goldClaimed), Apply) == null) {
+                       db => db.SaveSurvivalProgress(session.Player, level, exp, silverClaimed, goldClaimed)
+                             && (usedUid == 0 || session.Item.Inventory.SaveConsumed(db, usedUid, 1)),
+                       () => {
+                           Apply();
+                           if (usedUid != 0) {
+                               taken = session.Item.Inventory.ConsumeStored(usedUid, 1);
+                           }
+                       }) == null) {
             Logger.Error("Maple Survival progress of {CharacterId} (level {Level}, pass {Silver}/{Gold}) not stored, its rewards not given",
                 session.CharacterId, level, silverClaimed, goldClaimed);
             return false;
+        }
+        // Not taken: the item left the bag between its save and the commit; logged as the other SaveConsumed uses.
+        if (!taken) {
+            Logger.Error("Maple Survival: item {ItemUid} stored as used but not taken from the bag of {CharacterId}", usedUid, session.CharacterId);
         }
         foreach ((int id, short buffLevel) in rewards.Buffs) {
             session.Player.Buffs.AddBuff(session.Player, session.Player, id, buffLevel, session.Field?.FieldTick ?? 0);
@@ -236,7 +250,8 @@ public static class MapleSurvivalProgress {
     // off, SurvivalRules.PassFeature); in the pass mode the levels give the pass rewards to claim instead. False when
     // the rewards and the progress were not stored: the account keeps its level and exp, level and exp come back as
     // they were.
-    private static bool AddExp(GameSession session, MapleSurvivalTable table, ref int level, ref long exp, long gained, List<ResultItem>? items = null) {
+    private static bool AddExp(GameSession session, MapleSurvivalTable table, ref int level, ref long exp, long gained, List<ResultItem>? items = null,
+            long usedUid = 0) {
         Account account = session.Player.Value.Account;
         int levelBefore = level;
         long expBefore = exp;
@@ -249,7 +264,7 @@ public static class MapleSurvivalProgress {
                 }
             }
         }
-        if (!Store(session, rewards, level, exp, account.SurvivalSilverLevelRewardClaimed, account.SurvivalGoldLevelRewardClaimed)) {
+        if (!Store(session, rewards, level, exp, account.SurvivalSilverLevelRewardClaimed, account.SurvivalGoldLevelRewardClaimed, usedUid)) {
             level = levelBefore;
             exp = expBefore;
             return false;
@@ -268,8 +283,9 @@ public static class MapleSurvivalProgress {
 
     // An item's survival exp: the level rewards of the levels reached, then the record (0x17) with the exp gained and
     // for the restored client the lobby's level and exp (0x15: the record only refreshes the pass window, so the lobby
-    // kept the old level). False when nothing was added: the level rewards and the progress were not stored.
-    public static bool AddItemExp(GameSession session, long gained) {
+    // kept the old level). The item (tonicUid) is used up with the exp, in the transaction that stores it. False when
+    // nothing was added: the level rewards, the progress and the used item were not stored, the item is kept.
+    public static bool AddItemExp(GameSession session, long gained, long tonicUid) {
         MapleSurvivalTable? table = Table(session);
         if (table == null) {
             return false;
@@ -278,7 +294,7 @@ public static class MapleSurvivalProgress {
         Account account = session.Player.Value.Account;
         int level = Math.Max(1, account.SurvivalLevel);
         long exp = account.SurvivalExp;
-        if (!AddExp(session, table, ref level, ref exp, gained)) {
+        if (!AddExp(session, table, ref level, ref exp, gained, usedUid: tonicUid)) {
             session.Send(SurvivalPacket.UpdateStats(account));
             return false;
         }
