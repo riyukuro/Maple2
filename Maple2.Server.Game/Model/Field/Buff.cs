@@ -445,26 +445,29 @@ public class Buff : IUpdatable, IByteSerializable {
         }
     }
 
+    // ModifyEffectDuration: each held copy of a named effect gets its time left times the factor plus the value in
+    // seconds. The client loads these rows (additionalactionadditional.cpp:1136-1180: a factor alone keeps value 0,
+    // values alone take factor 1) and never applies them, so the server does. In the KR data the factors scale the
+    // time left (50003004 doubles or triples 50003000 and 50003001, 50003005 halves it) and the one value is seconds
+    // (62100150 level 2 adds 8 to the 30 s or 90 s buff 73000004, with factor 1). Chosen here: a copy without an
+    // end (unlimited duration) is left alone, the time left is not below 0, and a lengthened copy procs again.
     public void ModifyDuration() {
         foreach (AdditionalEffectMetadataUpdate.ModifyDuration modifyDuration in Metadata.Update.Duration) {
-            List<Buff> buffs = Owner.Buffs.EnumerateBuffs(modifyDuration.Id);
-            if (buffs.Count == 0) {
-                continue;
-            }
-            foreach (Buff buff in buffs) {
-                buff.EndTick += (long) modifyDuration.Value;
-                if (modifyDuration.Rate > 0) {
-                    long remainingDuration = (long) (modifyDuration.Rate * (buff.EndTick - Environment.TickCount64));
-                    buff.EndTick += (modifyDuration.Rate >= 1) ? remainingDuration : -remainingDuration;
+            foreach (Buff buff in Owner.Buffs.EnumerateBuffs(modifyDuration.Id)) {
+                if (!buff.canExpire) {
+                    continue;
                 }
-
-                // restart proc if possible
-                if (NextProcTick < EndTick) {
-                    canProc = true;
-                }
+                buff.EndTick = ModifiedEndTick(buff.EndTick, Field.FieldTick, modifyDuration.Rate, modifyDuration.Value);
+                buff.canProc = buff.NextProcTick <= buff.EndTick
+                    && buff.ProcCount < ProcLimit(buff.Metadata.Property, buff.EndTick - buff.StartTick, buff.IntervalTick);
                 Field.Broadcast(BuffPacket.Update(buff));
             }
         }
+    }
+
+    public static long ModifiedEndTick(long endTick, long tickCount, float factor, float seconds) {
+        long left = Math.Max(0, endTick - tickCount);
+        return tickCount + Math.Max(0, (long) (left * factor + seconds * 1000));
     }
 
     public void UpdateEndTime(int modifyValue) {
