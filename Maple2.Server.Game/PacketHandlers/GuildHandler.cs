@@ -449,7 +449,10 @@ public class GuildHandler : PacketHandler<GameSession> {
             }
 
             session.Send(GuildPacket.Expelled(playerName));
-        } catch (RpcException) { /* ignored */ }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to expel {Name} from guild", playerName);
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleUpdateMemberRank(GameSession session, IByteReader packet) {
@@ -499,7 +502,10 @@ public class GuildHandler : PacketHandler<GameSession> {
             }
 
             session.Send(GuildPacket.UpdateMemberRank(playerName, rankId));
-        } catch (RpcException) { /* ignored */ }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to change the guild rank of {Name}", playerName);
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleUpdateMemberMessage(GameSession session, IByteReader packet) {
@@ -508,6 +514,13 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
 
         string message = packet.ReadUnicodeString();
+        // CGuildManager::SendGuildMode13 runs the text through its ban-text check before it sends, so a banned
+        // text on the wire did not come from the client's box: the client's forbidden-word text, the World not asked.
+        if (GuildRules.TextBanned(message, BanWordStorage.ContainsBannedWord)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
+            return;
+        }
+
         try {
             var request = new GuildRequest {
                 RequestorId = session.CharacterId,
@@ -526,7 +539,10 @@ public class GuildHandler : PacketHandler<GameSession> {
             }
 
             session.Send(GuildPacket.UpdateMemberMessage(message));
-        } catch (RpcException) { /* ignored */ }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to update the guild message of {CharacterId}", session.CharacterId);
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleCheckIn(GameSession session) {
@@ -573,7 +589,10 @@ public class GuildHandler : PacketHandler<GameSession> {
                     Logger.Error("Guild check-in coin of {CharacterId} not given", session.CharacterId);
                 }
             }
-        } catch (RpcException) { /* ignored */ }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to check in to guild");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleUpdateLeader(GameSession session, IByteReader packet) {
@@ -584,8 +603,10 @@ public class GuildHandler : PacketHandler<GameSession> {
             return;
         }
 
+        // A name no member has: the client's "member not found" text, as for an expel or a rank change.
         GuildMember? newLeader = session.Guild.GetMember(leaderName);
         if (newLeader == null) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_null_member));
             return;
         }
 
@@ -606,7 +627,10 @@ public class GuildHandler : PacketHandler<GameSession> {
             }
 
             session.Send(GuildPacket.UpdateLeader(leaderName));
-        } catch (RpcException) { /* ignored */ }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to make {Name} the guild master", leaderName);
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleUpdateNotice(GameSession session, IByteReader packet) {
@@ -619,6 +643,11 @@ public class GuildHandler : PacketHandler<GameSession> {
 
         if (!session.Guild.HasPermission(session.CharacterId, GuildPermission.EditNotice)) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_no_authority));
+            return;
+        }
+        // The client runs the notice through its ban-text check before it sends (FUN_1413b7c70), as the message (13).
+        if (GuildRules.TextBanned(notice, BanWordStorage.ContainsBannedWord)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
             return;
         }
 
@@ -639,7 +668,10 @@ public class GuildHandler : PacketHandler<GameSession> {
             }
 
             session.Send(GuildPacket.UpdateNotice(notice));
-        } catch (RpcException) { /* ignored */ }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to update the guild notice");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     private void HandleIncreaseCapacity(GameSession session) {
@@ -725,7 +757,10 @@ public class GuildHandler : PacketHandler<GameSession> {
             }
 
             session.Send(GuildPacket.UpdateFocus(listed != 0, (GuildFocus) focus));
-        } catch (RpcException) { /* ignored */ }
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to update the guild focus");
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+        }
     }
 
     // CGuildManager::SendGuildMail: a title of 1 to 100 characters and a text of 1 to 2000, sent by a member

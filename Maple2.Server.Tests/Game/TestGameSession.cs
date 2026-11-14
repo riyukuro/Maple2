@@ -898,10 +898,12 @@ public sealed class TestGameSession {
         // The club requests handed to the world; ClubError is what the world answers (0: done).
         public readonly List<ClubRequest> Clubs = [];
         public int ClubError;
+        // When set, answers in place of ClubError (a test of a World that cannot be reached throws from it).
+        public Func<ClubRequest, Maple2.Server.World.Service.ClubResponse>? ClubWorld;
 
         public override Maple2.Server.World.Service.ClubResponse Club(ClubRequest request, CallOptions options) {
             Clubs.Add(request);
-            return new Maple2.Server.World.Service.ClubResponse { Error = ClubError };
+            return ClubWorld?.Invoke(request) ?? new Maple2.Server.World.Service.ClubResponse { Error = ClubError };
         }
 
         // The friend changes handed to the world; BuddyWorld answers as the world would (the other player's game

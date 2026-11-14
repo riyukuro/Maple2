@@ -251,8 +251,9 @@ public partial class WorldService {
             };
         }
 
-        manager.SetBuff(buff.BuffId, buff.BuffLevel);
-        return new ClubResponse();
+        return new ClubResponse {
+            Error = (int) manager.SetBuff(requesterId, buff.BuffId, buff.BuffLevel),
+        };
     }
 
     // The character is about to be deleted (ClubLookup.RemoveCharacter): this runs before the character row goes, so

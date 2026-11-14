@@ -336,12 +336,31 @@ public class ClubManager : IDisposable {
         return ClubError.none;
     }
 
-    // The game server tested the buff against table/clubbuff.xml and the caller the leader.
-    public void SetBuff(int buffId, int buffLevel) {
-        Club.BuffId = buffId;
-        Club.BuffLevel = buffLevel;
-        using (GameStorage.Request db = GameStorage.Context()) {
-            db.SaveClub(Club);
+    // The game server tested the buff against table/clubbuff.xml and the caller the leader. The buff is stored under
+    // the club's lock before the members are told, and a failed write keeps the old buff; before, the members were
+    // shown a buff the row did not hold, and the write ran beside a leave or a leader change of the same row.
+    public ClubError SetBuff(long requesterId, int buffId, int buffLevel) {
+        lock (clubLock) {
+            if (disbanded) {
+                return ClubError.s_club_err_null_club;
+            }
+            // Under the lock, so a leader who handed the club on a moment before is refused.
+            if (Club.LeaderId != requesterId) {
+                return ClubError.s_club_err_no_master;
+            }
+            int oldId = Club.BuffId;
+            int oldLevel = Club.BuffLevel;
+            Club.BuffId = buffId;
+            Club.BuffLevel = buffLevel;
+            bool saved;
+            using (GameStorage.Request db = GameStorage.Context()) {
+                saved = db.SaveClub(Club);
+            }
+            if (!saved) {
+                Club.BuffId = oldId;
+                Club.BuffLevel = oldLevel;
+                return ClubError.s_club_err_unknown;
+            }
         }
         Broadcast(new ClubRequest {
             UpdateBuff = new ClubRequest.Types.UpdateBuff {
@@ -350,6 +369,7 @@ public class ClubManager : IDisposable {
             },
             ClubId = Club.Id,
         });
+        return ClubError.none;
     }
 
     public ClubError Rename(string newName) {

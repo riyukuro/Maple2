@@ -1210,7 +1210,16 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_unknown;
         }
 
-        Guild.Notice = message;
+        // Stored at once under the guild lock, as a rank or the focus: before, the notice was kept only in memory
+        // until another change saved the row, so a crash of the World server lost it. A failed save keeps the old one.
+        lock (guildLock) {
+            string old = Guild.Notice;
+            Guild.Notice = message;
+            if (!TrySave(row => row.Notice == message)) {
+                Guild.Notice = old;
+                return GuildError.s_guild_err_unknown;
+            }
+        }
         Broadcast(new GuildRequest {
             UpdateNotice = new GuildRequest.Types.UpdateNotice {
                 RequestorName = requestor.Name,

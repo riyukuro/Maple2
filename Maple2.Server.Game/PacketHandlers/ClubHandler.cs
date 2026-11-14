@@ -71,6 +71,18 @@ public class ClubHandler : FieldPacketHandler {
         }
     }
 
+    // Every mode but the create let an RpcException out of the handler, which ends the session (Session.StartInternal):
+    // a World server that could not be reached threw the player out. The caller now gets the client's unknown error
+    // as the create does; the request may or may not have reached the World.
+    private ClubResponse? TryClub(GameSession session, ClubRequest request) {
+        try {
+            return World.Club(request);
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Club {Case} failed for {CharacterId}", request.ClubCase, session.CharacterId);
+            return null;
+        }
+    }
+
     private void HandleCreate(GameSession session, IByteReader packet) {
         string clubName = packet.ReadUnicodeString();
 
@@ -121,13 +133,17 @@ public class ClubHandler : FieldPacketHandler {
         long clubId = packet.ReadLong();
         var reply = packet.Read<Maple2.Model.Enum.ClubResponse>();
 
-        ClubResponse response = World.Club(new ClubRequest {
+        ClubResponse? response = TryClub(session, new ClubRequest {
             NewClubInvite = new ClubRequest.Types.NewClubInvite {
                 ClubId = clubId,
                 ReceiverId = session.CharacterId,
                 Reply = (int) reply,
             },
         });
+        if (response == null) {
+            session.Send(ClubPacket.StagedInviteResult(clubId, ClubError.s_club_err_unknown));
+            return;
+        }
 
         // The replier gets Club 4 for its own reply: a refused reply carries the error code, a decline result 0 (the
         // client drops the club). An accept needs no answer: Club 1 comes once every member has accepted.
@@ -153,13 +169,17 @@ public class ClubHandler : FieldPacketHandler {
             return;
         }
 
-        ClubResponse response = World.Club(new ClubRequest {
+        ClubResponse? response = TryClub(session, new ClubRequest {
             RequestorId = session.CharacterId,
             Invite = new ClubRequest.Types.Invite {
                 ClubId = clubId,
                 ReceiverId = characterid,
             },
         });
+        if (response == null) {
+            session.Send(ClubPacket.Error(ClubError.s_club_err_unknown));
+            return;
+        }
 
         if (response.Error != 0) {
             session.Send(ClubPacket.Error((ClubError) response.Error));
@@ -181,7 +201,7 @@ public class ClubHandler : FieldPacketHandler {
             return;
         }
 
-        ClubResponse response = World.Club(new ClubRequest {
+        ClubResponse? response = TryClub(session, new ClubRequest {
             RequestorId = session.CharacterId,
             RespondInvite = new ClubRequest.Types.RespondInvite {
                 ClubId = clubId,
@@ -199,6 +219,12 @@ public class ClubHandler : FieldPacketHandler {
             Invitee = invitee,
         }));
 
+        // With the World not reached the invite is dropped all the same (mode 8 above): kept listed, the next invite
+        // to the club would stop the client.
+        if (response == null) {
+            session.Send(ClubPacket.Error(ClubError.s_club_err_unknown));
+            return;
+        }
         if (response.Error != 0) {
             session.Send(ClubPacket.Error((ClubError) response.Error));
             return;
@@ -229,14 +255,16 @@ public class ClubHandler : FieldPacketHandler {
             return;
         }
 
-        ClubResponse response = World.Club(new ClubRequest {
+        ClubResponse? response = TryClub(session, new ClubRequest {
             RequestorId = session.CharacterId,
             Leave = new ClubRequest.Types.Leave {
                 ClubId = clubId,
             },
         });
 
-        if (response.Error != 0) {
+        if (response == null) {
+            session.Send(ClubPacket.Error(ClubError.s_club_err_unknown));
+        } else if (response.Error != 0) {
             session.Send(ClubPacket.Error((ClubError) response.Error));
         }
     }
@@ -257,7 +285,7 @@ public class ClubHandler : FieldPacketHandler {
             return;
         }
 
-        ClubResponse response = World.Club(new ClubRequest {
+        ClubResponse? response = TryClub(session, new ClubRequest {
             RequestorId = session.CharacterId,
             Buff = new ClubRequest.Types.Buff {
                 ClubId = clubId,
@@ -266,7 +294,9 @@ public class ClubHandler : FieldPacketHandler {
             },
         });
 
-        if (response.Error != 0) {
+        if (response == null) {
+            session.Send(ClubPacket.Error(ClubError.s_club_err_unknown));
+        } else if (response.Error != 0) {
             session.Send(ClubPacket.Error((ClubError) response.Error));
         }
     }
@@ -284,7 +314,7 @@ public class ClubHandler : FieldPacketHandler {
             return;
         }
 
-        ClubResponse response = World.Club(new ClubRequest {
+        ClubResponse? response = TryClub(session, new ClubRequest {
             RequestorId = session.CharacterId,
             ChangeLeader = new ClubRequest.Types.ChangeLeader {
                 ClubId = clubId,
@@ -292,7 +322,9 @@ public class ClubHandler : FieldPacketHandler {
             },
         });
 
-        if (response.Error != 0) {
+        if (response == null) {
+            session.Send(ClubPacket.Error(ClubError.s_club_err_unknown));
+        } else if (response.Error != 0) {
             session.Send(ClubPacket.Error((ClubError) response.Error));
         }
     }
@@ -324,7 +356,7 @@ public class ClubHandler : FieldPacketHandler {
             return;
         }
 
-        ClubResponse response = World.Club(new ClubRequest {
+        ClubResponse? response = TryClub(session, new ClubRequest {
             RequestorId = session.CharacterId,
             Rename = new ClubRequest.Types.Rename {
                 ClubId = clubId,
@@ -332,7 +364,9 @@ public class ClubHandler : FieldPacketHandler {
             },
         });
 
-        if (response.Error != 0) {
+        if (response == null) {
+            session.Send(ClubPacket.Error(ClubError.s_club_err_unknown));
+        } else if (response.Error != 0) {
             session.Send(ClubPacket.Error((ClubError) response.Error));
         }
     }

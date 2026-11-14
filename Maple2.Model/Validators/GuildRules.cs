@@ -51,6 +51,12 @@ public static class GuildRules {
         return kind == NoticeKind && text.Length <= MaxNoticeLength;
     }
 
+    // The member's message (13) and the notice (64): the client runs both through its ban-text check before it
+    // sends, so a banned text on the wire did not come from its box. A blank text is not checked.
+    public static bool TextBanned(string text, Func<string, bool> isBanned) {
+        return !string.IsNullOrWhiteSpace(text) && isBanned(text);
+    }
+
     // Guild 68 (CGuildManager::SendGuildMode68): a byte, listed in the guild search or not, then the focus bits.
     // The guild window sets the 16 bits of GuildFocus.
     public const int FocusMask = 0xFFFF;
