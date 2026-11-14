@@ -677,9 +677,10 @@ public sealed class GameEventManager {
     // The jumping item (jumpingOption): on entering the field the tutorial ends in (tutorialEndFieldId), the picked
     // character below the item's target level gets it once, to the bag or by mail; 2003 is set and stored, and
     // EventReward 0x11 opens the client's notify box. Called on each field entry.
-    // 2003 is stored first and the item after it in its own committed write (bag row or mail), so a failed store
-    // gives nothing and the next entry tries again (no second item), and a failed item write puts 2003 back (no
-    // item lost). The client gets the 2003 Update only once both are kept.
+    // The item (bag row, or a mail when the bag refuses it) and 2003 are written in one transaction (EventClaim.Give),
+    // so a crash cannot keep the item and lose 2003 (a second item at the next entry) or the other way round; nothing
+    // is given or marked when it is not stored, and the next entry tries again. The client gets the 2003 Update (Set,
+    // once committed) and the notify box only once both are kept.
     public void BurningLevelupFieldEnter() {
         if (session.Field is null || BurningLevelupEvent() is not { Metadata.Data: BurningLevelup { Jumping: not null } data } gameEvent
             || BurningLevelupRules.IsSet(Peek(GameEventUserValueType.BurningLevelupJumpingDone, gameEvent.Id))
@@ -694,31 +695,11 @@ public sealed class GameEventManager {
             return;
         }
         const GameEventUserValueType notify = GameEventUserValueType.BurningLevelupJumpingNotify;
-        GameEventUserValue value = Get(notify, gameEvent.Id, gameEvent.EndTime);
-        string before = value.Value;
-        lock (valuesLock) {
-            SetLocked(gameEvent.Id, notify, 1);
-        }
-        if (!Store(gameEvent.Id, notify)) {
-            lock (valuesLock) {
-                SetLocked(gameEvent.Id, notify, before);
-            }
-            logger.Error("Failed to store the burning levelup jumping item notice; no item given. Event ID: {EventId}", gameEvent.Id);
+        Get(notify, gameEvent.Id, gameEvent.EndTime);
+        if (EventClaim.Give(session, [item], [EventClaim.Of(gameEvent.Id, notify, 1)]) == null) {
+            logger.Error("Burning levelup jumping item {ItemId} of event {EventId} not stored; no item given", reward.ItemId, gameEvent.Id);
             return;
         }
-        if (!session.Item.AddOrMail(item, true, commit: true)) {
-            lock (valuesLock) {
-                SetLocked(gameEvent.Id, notify, before);
-            }
-            if (!Store(gameEvent.Id, notify)) {
-                logger.Error("Burning levelup jumping item {ItemId} of event {EventId} not given, and its notice could not be put back",
-                    reward.ItemId, gameEvent.Id);
-                return;
-            }
-            logger.Error("Burning levelup jumping item {ItemId} of event {EventId} went to neither bag nor mail", reward.ItemId, gameEvent.Id);
-            return;
-        }
-        session.Send(GameEventUserValuePacket.Update(value));
         session.Send(BurningLevelupPacket.JumpingItem(gameEvent.Id));
     }
 

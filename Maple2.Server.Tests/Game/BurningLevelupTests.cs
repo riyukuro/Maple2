@@ -415,6 +415,34 @@ public class BurningLevelupTests {
         Assert.That(Held(session, Reward), Is.EqualTo(1));
     }
 
+    // The items and 2002 are written in one transaction: an item write that fails gives nothing, marks nothing and
+    // sends no answer, and the next claim gives the rewards once. Before, the items were given first and a failed
+    // 2002 store left the claim open for another set.
+    [Test]
+    public void Claim_NotStored_GivesNothingAndTheNextClaimGivesOnce() {
+        GameSession session = Login(reached: true);
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added && entry.Entity.GetType().Name == "Item");
+
+        Claim(session);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, Reward), Is.EqualTo(0));
+            Assert.That(BurningLevelupRules.IsSet(Value(session, GameEventUserValueType.BurningLevelupRewardTaken)), Is.False);
+            Assert.That(StoredValue(GameEventUserValueType.BurningLevelupRewardTaken), Is.Null);
+            Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.EventReward).And.Not.Contain(SendOp.GameEventUserValue));
+        });
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.GetAllMail(test.CharacterId), Is.Empty);
+        }
+
+        Claim(session);
+        Claim(session);
+
+        Assert.That(Held(session, Reward), Is.EqualTo(1));
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupRewardTaken), Is.EqualTo("1"));
+    }
+
     [Test]
     public void Claim_BeforeTheEndLevel_IsRefused() {
         GameSession session = Login();
@@ -488,6 +516,8 @@ public class BurningLevelupTests {
 
         session.GameEvent.BurningLevelupFieldEnter();
         test.FailSave = null;
+        Assert.That(test.Errors, Is.Not.Empty);
+        test.Errors.Clear();
 
         Assert.Multiple(() => {
             Assert.That(Held(session, JumpingItem), Is.EqualTo(0));
@@ -504,10 +534,10 @@ public class BurningLevelupTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
-    // The item is written at once (bag row, or a mail when the bag refuses it): a write that fails puts the stored
-    // notice back, so the item is not lost and the next entry gives it once.
+    // The item (bag row, or a mail when the bag refuses it) and the notice are written in one transaction: a write
+    // that fails stores neither, so the item is not lost and the next entry gives it once.
     [Test]
-    public void FieldEnter_TheItemWriteFails_PutsTheNoticeBack() {
+    public void FieldEnter_TheItemWriteFails_StoresNoNotice() {
         GameSession session = Login(data: JumpingData());
         test.EnterMap(TestGameSession.Map(TutorialEnd));
         test.TakeSent();
@@ -515,10 +545,11 @@ public class BurningLevelupTests {
 
         session.GameEvent.BurningLevelupFieldEnter();
         test.FailSave = null;
+        Assert.That(test.Errors, Is.Not.Empty);
+        test.Errors.Clear();
 
         Assert.Multiple(() => {
             Assert.That(Held(session, JumpingItem), Is.EqualTo(0));
-            Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingNotify), Is.Not.Null);
             Assert.That(BurningLevelupRules.IsSet(StoredValue(GameEventUserValueType.BurningLevelupJumpingNotify)), Is.False);
             Assert.That(BurningLevelupRules.IsSet(Value(session, GameEventUserValueType.BurningLevelupJumpingNotify)), Is.False);
             Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.EventReward).And.Not.Contain(SendOp.GameEventUserValue));
