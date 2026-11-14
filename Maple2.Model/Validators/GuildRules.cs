@@ -507,6 +507,13 @@ public static class GuildRules {
         return memberRank != MasterRank;
     }
 
+    // Guild 8 (expel) and Guild 10 (set a rank): the client asks only for the right (0x04, 0x20), so the server keeps
+    // the order of the ranks: a lower index is the higher rank, and a member acts only on a rank below its own (the
+    // master, rank 0, on every other). The same rank is not below: no peer and not the requestor itself.
+    public static bool Outranks(byte requestorRank, byte rank) {
+        return requestorRank < rank;
+    }
+
     // guild_exp ("Obtain 100 guild experience", 70300016): the guild exp a member's own action added. Every
     // member gets the new total; only the contributor counts the rise, and a total that did not rise counts nothing.
     public static long ContributedExp(long characterId, long contributorId, int oldExp, int newExp) {

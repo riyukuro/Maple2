@@ -188,7 +188,8 @@ public class GuildManager : IDisposable {
         if (!Guild.Members.TryGetValue(characterId, out GuildMember? member)) {
             return GuildError.s_guild_err_not_join_member;
         }
-        if (member.Rank < requestor.Rank) {
+        // Only a member of a lower rank (the client asks only for the right and leaves out the requestor itself).
+        if (!GuildRules.Outranks(requestor.Rank, member.Rank)) {
             return GuildError.s_guild_err_no_authority;
         }
 
@@ -243,7 +244,15 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // Under the guild lock, as an expel: a member expelled or a master changed meanwhile is not given a rank. The
+    // member's row is stored at once; a failed write keeps the old rank and motto.
     public GuildError UpdateMember(long requestorId, long characterId, byte? rankId, string? message) {
+        lock (guildLock) {
+            return UpdateMemberLocked(requestorId, characterId, rankId, message);
+        }
+    }
+
+    private GuildError UpdateMemberLocked(long requestorId, long characterId, byte? rankId, string? message) {
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
             return GuildError.s_guild_err_null_member;
         }
@@ -267,8 +276,21 @@ public class GuildManager : IDisposable {
             if (!GuildRules.CanChangeRankOf(member.Rank)) {
                 return GuildError.s_guild_err_set_grade_failed;
             }
+            // The order of the ranks holds: only a member of a lower rank, and only to a rank below the requestor's
+            // own (so not the requestor's own rank either).
+            if (!GuildRules.Outranks(requestor.Rank, member.Rank)) {
+                return GuildError.s_guild_err_no_authority;
+            }
+            if (!GuildRules.Outranks(requestor.Rank, (byte) rankId)) {
+                return GuildError.s_guild_err_invalid_grade_range;
+            }
 
+            byte oldRank = member.Rank;
             member.Rank = (byte) rankId;
+            if (!TrySaveMember(member)) {
+                member.Rank = oldRank;
+                return GuildError.s_guild_err_unknown;
+            }
             Broadcast(new GuildRequest {
                 UpdateMember = new GuildRequest.Types.UpdateMember {
                     RequestorId = requestor.CharacterId,
@@ -282,7 +304,12 @@ public class GuildManager : IDisposable {
                 return GuildError.s_guild_err_none;
             }
 
+            string oldMessage = member.Message;
             member.Message = message;
+            if (!TrySaveMember(member)) {
+                member.Message = oldMessage;
+                return GuildError.s_guild_err_unknown;
+            }
             Broadcast(new GuildRequest {
                 UpdateMember = new GuildRequest.Types.UpdateMember {
                     RequestorId = requestor.CharacterId,
@@ -1028,7 +1055,16 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    // Under the guild lock, as an expel and a leave: a new master expelled or gone meanwhile is not made master, and a
+    // rank change cannot land between the two ranks. Stored at once (the guild row and both members); a failed write
+    // keeps the old master.
     public GuildError UpdateLeader(long requestorId, long newLeaderId) {
+        lock (guildLock) {
+            return UpdateLeaderLocked(requestorId, newLeaderId);
+        }
+    }
+
+    private GuildError UpdateLeaderLocked(long requestorId, long newLeaderId) {
         if (requestorId != Guild.LeaderCharacterId) {
             return GuildError.s_guild_err_no_master;
         }
@@ -1039,11 +1075,23 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_null_member;
         }
 
+        if (newLeader == oldLeader) {
+            return GuildError.s_guild_err_unknown;
+        }
+
+        byte oldLeaderRank = oldLeader.Rank, newLeaderRank = newLeader.Rank;
+        (long leaderCharacterId, long leaderAccountId, string leaderName) = (Guild.LeaderCharacterId, Guild.LeaderAccountId, Guild.LeaderName);
         oldLeader.Rank = 1; // Jr. Master
         newLeader.Rank = 0; // Master
         Guild.LeaderCharacterId = newLeader.CharacterId;
         Guild.LeaderAccountId = newLeader.AccountId;
         Guild.LeaderName = newLeader.Name;
+        if (!TrySave(row => row.LeaderCharacterId == newLeader.CharacterId)) {
+            oldLeader.Rank = oldLeaderRank;
+            newLeader.Rank = newLeaderRank;
+            (Guild.LeaderCharacterId, Guild.LeaderAccountId, Guild.LeaderName) = (leaderCharacterId, leaderAccountId, leaderName);
+            return GuildError.s_guild_err_unknown;
+        }
 
         Broadcast(new GuildRequest {
             UpdateLeader = new GuildRequest.Types.UpdateLeader {
