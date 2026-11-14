@@ -118,11 +118,11 @@ public class LifeSkillRefusalTests {
         AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_unknown);
     }
 
-    private const int RecipeId = 30000019;
-    private const int QuestId = 90000600;
+    private const int RecipeId = 70000001;
+    private const int QuestId = 90000710;
 
-    // A tutorial recipe as the KR table has it: nothing to pay, one item, the quest or a level asked.
-    private GameSession StartRecipe(int questId, short requiredLevel, MasteryType type = MasteryType.Mining, int rewardMastery = 0,
+    // A smithing tutorial recipe like the KR table's: the quest or a level asked, one item.
+    private GameSession StartRecipe(int questId, short requiredLevel, MasteryType type = MasteryType.Blacksmithing, int rewardMastery = 0,
                                     long requiredMeso = 0, int materialId = 0) {
         GameSession session = StartMastery(materialId);
         test.SetTable(new MasteryRecipeTable(new Dictionary<int, MasteryRecipeTable.Entry> {
@@ -254,6 +254,23 @@ public class LifeSkillRefusalTests {
         Send(session, 2, 12345);
 
         AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_unknown);
+    }
+
+    // The craft dialog never sends a craft of a gathering recipe (it has no craft on the gathering tab), and
+    // one costs nothing: refused as an unknown recipe, with no item and no mastery. Before, a mining recipe
+    // sent as a craft gave its ore and mastery without the object.
+    [TestCase(MasteryType.Mining)]
+    [TestCase(MasteryType.Gathering)]
+    [TestCase(MasteryType.Breeding)]
+    [TestCase(MasteryType.Farming)]
+    public void Craft_OfAGatheringRecipeIsRefused(MasteryType type) {
+        GameSession session = StartRecipe(0, 0, type, rewardMastery: 30);
+
+        Send(session, 2, RecipeId);
+
+        AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_unknown);
+        Assert.That(Count(session, RewardItemId), Is.EqualTo(0));
+        Assert.That(session.Mastery[type], Is.EqualTo(0));
     }
 
     // Fishing 2: i16 error. The client refuses by itself in a house (error 8).

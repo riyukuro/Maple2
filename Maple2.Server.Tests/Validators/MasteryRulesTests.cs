@@ -209,4 +209,17 @@ public class MasteryRulesTests {
     public void RewardStep_SplitsTheClientId(int id, int type, int grade) {
         Assert.That(MasteryRules.RewardStep(id), Is.EqualTo((type, grade)));
     }
+
+    // The craft dialog's tabs send crafts of smithing, handicraft, alchemy, cooking and pet taming only.
+    [TestCase(MasteryType.Unknown, false)]
+    [TestCase(MasteryType.Fishing, false)]
+    [TestCase(MasteryType.Music, false)]
+    [TestCase(MasteryType.Mining, false)]
+    [TestCase(MasteryType.Farming, false)]
+    [TestCase(MasteryType.Blacksmithing, true)]
+    [TestCase(MasteryType.Cooking, true)]
+    [TestCase(MasteryType.PetTaming, true)]
+    public void IsCraft_IsTheCraftDialogsTypes(MasteryType type, bool expected) {
+        Assert.That(MasteryRules.IsCraft(type), Is.EqualTo(expected));
+    }
 }

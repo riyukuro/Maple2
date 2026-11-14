@@ -35,6 +35,13 @@ public static class MasteryRules {
         return 0;
     }
 
+    // The recipe types the client's craft dialog sends a craft for (UIMasteryDialog: onCraftOk is handled on the
+    // smithing/handicraft/alchemy/cooking tab and the pet taming tab, never on the gathering tab; the slots map to
+    // types 7-10 and 11). Mining, gathering, breeding and farming recipes are got only by gathering an object.
+    public static bool IsCraft(MasteryType type) {
+        return type is >= MasteryType.Blacksmithing and <= MasteryType.PetTaming;
+    }
+
     // The client checks a recipe in this order before it sends the craft: mastery, quest, meso (items come after).
     // Its craft dialog also greys out a recipe above the player's level (UIMasteryDialog::HasRequiredLevel, 0 is
     // no limit); that check comes first here, as in the dialog's state text. 0 means the recipe may be crafted.

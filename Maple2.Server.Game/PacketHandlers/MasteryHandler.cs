@@ -82,7 +82,9 @@ public class MasteryHandler : FieldPacketHandler {
     private void HandleCraft(GameSession session, IByteReader packet) {
         int recipeId = packet.ReadInt();
 
-        if (!TableMetadata.MasteryRecipeTable.Entries.TryGetValue(recipeId, out MasteryRecipeTable.Entry? entry)) {
+        // A gathering recipe (mining, gathering, breeding, farming) is not a craft: it costs nothing and is
+        // got by gathering its object, so a craft of one is answered as an unknown recipe.
+        if (!TableMetadata.MasteryRecipeTable.Entries.TryGetValue(recipeId, out MasteryRecipeTable.Entry? entry) || !MasteryRules.IsCraft(entry.Type)) {
             session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_unknown));
             return;
         }
