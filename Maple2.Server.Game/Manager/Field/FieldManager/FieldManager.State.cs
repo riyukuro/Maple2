@@ -427,6 +427,30 @@ public partial class FieldManager {
         return fieldBreakable;
     }
 
+    // How far across (map units) from a breakable's position an npc on its top can stand, and how far the floor
+    // beside it is looked for.
+    public const float BREAKABLE_DROP_REACH = 300f;
+
+    // Npcs left standing on the top of a breakable that broke or went away are put on the floor beside it and sent
+    // to the clients (AgentNavigation.FloorBelowBreakable): the client keeps a live npc where the server says.
+    public void DropNpcsOffBreakable(FieldBreakable breakable) {
+        foreach (FieldNpc npc in Mobs.Values.Concat(Npcs.Values)) {
+            if (npc.IsDead || npc.Navigation is null) {
+                continue;
+            }
+            Vector3 offset = npc.Position - breakable.Position;
+            if (offset.X * offset.X + offset.Y * offset.Y > BREAKABLE_DROP_REACH * BREAKABLE_DROP_REACH) {
+                continue;
+            }
+            if (!npc.Navigation.DropOffBreakable(breakable.Position, BREAKABLE_DROP_REACH)) {
+                continue;
+            }
+
+            npc.MovementState.DropWalkSegment();
+            npc.SendControl = true;
+        }
+    }
+
     public FieldLiftable? AddLiftable(string entityId, Liftable liftable) {
         if (fieldLiftables.ContainsKey(entityId)) {
             return null;

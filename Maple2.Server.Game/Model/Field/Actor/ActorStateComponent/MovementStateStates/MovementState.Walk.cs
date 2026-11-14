@@ -59,6 +59,13 @@ public partial class MovementState {
         }
     }
 
+    // The npc was put somewhere else under its walk (off a breakable that broke): the segment it was on is dropped,
+    // so the next update asks the navigation again and the walk ends there when its path was cleared.
+    public void DropWalkSegment() {
+        walkSegmentSet = false;
+        Velocity = Vector3.Zero;
+    }
+
     public bool IsMovingToTarget() {
         return State == ActorState.Walk && walkType switch {
             WalkType.MoveTo => true,

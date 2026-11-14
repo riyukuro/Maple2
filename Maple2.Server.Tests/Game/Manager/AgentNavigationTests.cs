@@ -208,4 +208,77 @@ public class AgentNavigationTests {
         Assert.That(off.X, Is.EqualTo(30));
         Assert.That(AgentNavigation.RandomPointNear(query, filter, center, float.NaN, random, out _), Is.False);
     }
+
+    // A floor (x 0..5, z 0..10, height 0) and a raised quad (x 5.5..7.5, height 3): the top of a breakable as the
+    // navmesh has it. With ramp, a ramp poly joins the two (a ledge reached on foot); without, the top is an island.
+    private static DtNavMesh TopOverFloor(bool ramp) {
+        const int none = 0xffff;
+        int[] polys = ramp
+            ? [
+                0, 1, 2, 3, none, none, none, none, 1, none, none, none,
+                3, 2, 4, 5, none, none, 0, none, 2, none, none, none,
+                5, 4, 6, 7, none, none, 1, none, none, none, none, none,
+            ]
+            : [
+                0, 1, 2, 3, none, none, none, none, none, none, none, none,
+                5, 4, 6, 7, none, none, none, none, none, none, none, none,
+            ];
+        int count = ramp ? 3 : 2;
+        var option = new DtNavMeshCreateParams {
+            verts = [0, 0, 0, 0, 0, 100, 50, 0, 100, 50, 0, 0, 55, 30, 100, 55, 30, 0, 75, 30, 100, 75, 30, 0],
+            vertCount = 8,
+            polys = polys,
+            polyAreas = new int[count],
+            polyFlags = Enumerable.Repeat(1, count).ToArray(),
+            polyCount = count,
+            nvp = 6,
+            walkableHeight = 2,
+            walkableRadius = 0.5f,
+            walkableClimb = 0.5f,
+            bmin = new RcVec3f(0, 0, 0),
+            bmax = new RcVec3f(7.5f, 4, 10),
+            cs = 0.1f,
+            ch = 0.1f,
+            buildBvTree = true,
+            offMeshConVerts = [],
+            offMeshConRad = [],
+            offMeshConDir = [],
+            offMeshConAreas = [],
+            offMeshConFlags = [],
+            offMeshConUserID = [],
+        };
+        DtMeshData? data = DtNavMeshBuilder.CreateNavMeshData(option);
+        Assert.That(data, Is.Not.Null);
+        var navMesh = new DtNavMesh();
+        Assert.That(navMesh.Init(data, 6, 0).Succeeded(), Is.True);
+        return navMesh;
+    }
+
+    // An npc on the top of a breakable that broke is on a poly island 3 units up: its floor is the nearest point at
+    // the breakable's base height, beside the breakable. Before, nothing moved it and it stayed in the air.
+    [Test]
+    public void FloorBelowBreakable_PutsAnNpcOnAnIslandTopOnTheFloor() {
+        var query = new DtNavMeshQuery(TopOverFloor(ramp: false));
+        var filter = new DtQueryDefaultFilter();
+
+        Assert.That(AgentNavigation.FloorBelowBreakable(query, filter, new RcVec3f(6.5f, 3, 5), 0, 3, out RcVec3f floor), Is.True);
+        Assert.That(floor.X, Is.EqualTo(5).Within(0.01));
+        Assert.That(floor.Y, Is.EqualTo(0).Within(0.01));
+        Assert.That(floor.Z, Is.EqualTo(5).Within(0.01));
+    }
+
+    // An npc on the floor, one on a top a path leaves (a ledge, not a breakable's top), and one beyond the reach of
+    // any floor stay where they are.
+    [Test]
+    public void FloorBelowBreakable_LeavesNpcsThatAreNotStranded() {
+        var filter = new DtQueryDefaultFilter();
+        var island = new DtNavMeshQuery(TopOverFloor(ramp: false));
+        Assert.That(AgentNavigation.FloorBelowBreakable(island, filter, new RcVec3f(2, 0, 5), 0, 3, out RcVec3f kept), Is.False);
+        Assert.That(kept.X, Is.EqualTo(2));
+        Assert.That(AgentNavigation.FloorBelowBreakable(island, filter, new RcVec3f(6.5f, 3, 5), 0, 1, out _), Is.False);
+        Assert.That(AgentNavigation.FloorBelowBreakable(island, filter, new RcVec3f(float.NaN, 3, 5), 0, 3, out _), Is.False);
+
+        var ledge = new DtNavMeshQuery(TopOverFloor(ramp: true));
+        Assert.That(AgentNavigation.FloorBelowBreakable(ledge, filter, new RcVec3f(6.5f, 3, 5), 0, 3, out _), Is.False);
+    }
 }

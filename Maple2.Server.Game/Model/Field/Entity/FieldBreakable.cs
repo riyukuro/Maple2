@@ -9,6 +9,9 @@ public class FieldBreakable : FieldEntity<BreakableActor> {
     public readonly string EntityId;
 
     private long nextTick;
+    // The breakable broke or went away: the npcs on its top are put on the floor on the next field update (the
+    // break comes from a packet handler, the npcs move on the field's thread).
+    private bool dropPending;
 
     public BreakableState State { get; private set; }
     public long BaseTick { get; private set; }
@@ -38,6 +41,9 @@ public class FieldBreakable : FieldEntity<BreakableActor> {
 
         State = state;
         Field.Broadcast(BreakablePacket.Update(this));
+        if (state is BreakableState.Break or BreakableState.Hide) {
+            dropPending = true;
+        }
 
         nextTick = State switch {
             BreakableState.Show => 0,
@@ -52,6 +58,11 @@ public class FieldBreakable : FieldEntity<BreakableActor> {
     }
 
     public override void Update(long tickCount) {
+        if (dropPending) {
+            dropPending = false;
+            Field.DropNpcsOffBreakable(this);
+        }
+
         if (nextTick == 0 || tickCount < nextTick) {
             return;
         }

@@ -247,6 +247,60 @@ public sealed class AgentNavigation {
         return true;
     }
 
+    // How far up (navmesh units) a standing point may be above a breakable's base and still be on the floor: the
+    // navmesh's agentMaxClimb.
+    public const float BREAKABLE_CLIMB = 0.7f;
+
+    // The floor for an npc left standing on a breakable that broke or went away. The navmesh is built with the
+    // breakables in it (their tops are walkable polys, the ground under them is not), and the client does not
+    // drop a live npc: it puts the npc where its NpcControl says. An npc on such a top is on a poly island that
+    // no path leaves, so it would stay in the air. The floor is the nearest poly at the breakable's base height
+    // within reach (navmesh units) across; none is given when the point is no higher than a climb above the base,
+    // when no floor is in reach, or when a path from the point reaches that floor (a ramp or a ledge, not a top).
+    public static bool FloorBelowBreakable(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f point, float baseHeight, float reach, out RcVec3f floor) {
+        floor = point;
+        if (!float.IsFinite(point.X) || !float.IsFinite(point.Y) || !float.IsFinite(point.Z) || point.Y - baseHeight <= BREAKABLE_CLIMB) {
+            return false;
+        }
+
+        DtStatus status = query.FindNearestPoly(point, new RcVec3f(0.5f, 1f, 0.5f), filter, out long standRef, out RcVec3f stand, out _);
+        if (status.Failed() || standRef == 0 || stand.Y - baseHeight <= BREAKABLE_CLIMB) {
+            return false;
+        }
+
+        var baseCenter = new RcVec3f(point.X, baseHeight, point.Z);
+        status = query.FindNearestPoly(baseCenter, new RcVec3f(reach, BREAKABLE_CLIMB, reach), filter, out long floorRef, out RcVec3f floorPoint, out _);
+        if (status.Failed() || floorRef == 0) {
+            return false;
+        }
+
+        var path = new List<long>();
+        status = query.FindPath(standRef, floorRef, stand, floorPoint, filter, ref path, new DtFindPathOption(0, float.MaxValue));
+        if (status.Succeeded() && path.Count > 0 && path[^1] == floorRef) {
+            return false;
+        }
+
+        floor = floorPoint;
+        return true;
+    }
+
+    // Puts the npc on the floor when it stands on the top of a breakable that broke (FloorBelowBreakable). Its walk
+    // ends there: the rest of a path on the top is no longer walkable.
+    public bool DropOffBreakable(Vector3 breakablePosition, float reach) {
+        RcVec3f basePoint = DotRecastHelper.ToNavMeshSpace(breakablePosition);
+        if (!FloorBelowBreakable(crowd.GetNavMeshQuery(), crowd.GetFilter(0), DotRecastHelper.ToNavMeshSpace(npc.Position), basePoint.Y,
+                reach * DotRecastHelper.MapRotation.GetRightAxis().Length(), out RcVec3f floor)) {
+            return false;
+        }
+
+        currentPath = [];
+        currentPathIndex = 0;
+        currentPathProgress = 0;
+        agent.npos = floor;
+        npc.Position = DotRecastHelper.FromNavMeshSpace(floor);
+        return true;
+    }
+
     // Moves the npc in a straight line over the navmesh towards the position and stops it at the first wall or
     // ledge (StraightMove). False when it could not move at all.
     public bool MoveStraight(Vector3 position) {
