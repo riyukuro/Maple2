@@ -502,6 +502,15 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
+        // The client opens one capsule, or ten with "multi", only while the bag holds that many of the item
+        // (UIItemGachaBoxDialog::FUN_140c41700, uiitemgachaboxdialog.cpp:333, s_itemgacha_dialog_not_enough_item_shop_link),
+        // counted as the client counts them (FUN_140a5f180 with rarity 0: every stack of the id, locked ones too).
+        // Checked before the first capsule: a multi open with fewer than ten held opened them and then stopped. Past it,
+        // the opens below spend only spendable capsules and stop at a shortfall, as before (9 spendable and 1 locked).
+        if (session.Item.Inventory.Find(item.Id).Sum(box => (long) box.Amount) < count) {
+            return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+        }
+
         var totalItems = new List<Item>();
         var ingredient = new ItemComponent(item.Id, item.Rarity, 1, ItemTag.None);
         ItemBoxError error = ItemBoxError.ok;

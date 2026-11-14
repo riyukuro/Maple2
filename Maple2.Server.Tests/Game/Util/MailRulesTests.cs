@@ -1,4 +1,5 @@
 using System;
+using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Util;
 
@@ -30,5 +31,19 @@ public class MailRulesTests {
     [TestCase(1, 2001, false)]
     public void CanSend_UsesTheClientsLimits(int titleLength, int contentLength, bool expected) {
         Assert.That(MailRules.CanSend(new string('a', titleLength), new string('b', contentLength)), Is.EqualTo(expected));
+    }
+
+    // The client keeps a mail whose uncollected item is locked or still unlocking (HasLockedAttachment).
+    [TestCase(false, 0L, ExpectedResult = false)]
+    [TestCase(true, 0L, ExpectedResult = true)]
+    [TestCase(false, 3600L, ExpectedResult = true)]
+    [TestCase(false, -3600L, ExpectedResult = false)]
+    public bool HasLockedItem_LockedOrUnlocking(bool locked, long unlockIn) {
+        var mail = new Mail();
+        mail.Items.Add(new Item(TestGameSession.Metadata(20000001)) {
+            IsLocked = locked,
+            UnlockTime = unlockIn == 0 ? 0 : DateTimeOffset.UtcNow.ToUnixTimeSeconds() + unlockIn,
+        });
+        return MailRules.HasLockedItem(mail);
     }
 }

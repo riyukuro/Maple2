@@ -32,7 +32,7 @@ public class ItemBoxHandlerTests {
     // The box in the bag, and drop box 100 = two groups: RewardA x3 | RewardB x1.
     private GameSession Login(ItemFunction function, string parameters, int amount, int rewardSlotMax = 100, short[]? tabCount = null,
                               int otherRarityAmount = 0, int keys = 0, bool requireVip = false,
-                              Func<ItemMetadataLimit, ItemMetadataLimit>? limit = null, int rewardA = RewardA) {
+                              Func<ItemMetadataLimit, ItemMetadataLimit>? limit = null, int rewardA = RewardA, int lockedAmount = 0) {
         test = new TestGameSession();
         ItemMetadata boxMetadata = TestGameSession.Metadata(BoxId, function: new ItemMetadataFunction(function, function.ToString(), parameters, false));
         if (requireVip) {
@@ -61,6 +61,11 @@ public class ItemBoxHandlerTests {
         }
         if (keys > 0) {
             test.Store(TestGameSession.Metadata(KeyId), amount: keys);
+        }
+        if (lockedAmount > 0) {
+            // A second, locked stack of the box.
+            using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+            db.CreateItem(test.CharacterId, new Item(boxMetadata, amount: lockedAmount) { IsLocked = true });
         }
         GameSession session = test.Start();
         test.TakeSent();
@@ -430,6 +435,26 @@ public class ItemBoxHandlerTests {
             Assert.That(BitConverter.ToInt32(script, 11), Is.EqualTo(1));
             Assert.That(Held(session, RewardA), Is.EqualTo(2));
             Assert.That(Mails(), Is.EqualTo(1));
+        });
+    }
+
+    // The client opens ten capsules only with ten in the bag, locked ones counted; nine are not opened one by one up
+    // to the shortfall (before, the nine were opened and the open stopped at the tenth). With nine spendable and one
+    // locked the client starts, and the nine spendable ones are opened.
+    [TestCase(9, 0, 0)]
+    [TestCase(10, 0, 10)]
+    [TestCase(9, 1, 9)]
+    public void OpenGachaBox_Multi_NeedsTenHeld(int held, int locked, int opened) {
+        GameSession session = Login(ItemFunction.OpenGachaBox, $"{GachaInfoId}", amount: held, lockedAmount: locked);
+
+        Use(session, "multi");
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, BoxId), Is.EqualTo(held + locked - opened));
+            Assert.That(Held(session, RewardA), Is.EqualTo(3 * opened));
+            if (opened == 0) {
+                Assert.That(test.TakeSent(), Is.Empty);
+            }
         });
     }
 

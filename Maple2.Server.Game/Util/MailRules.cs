@@ -1,3 +1,4 @@
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -49,9 +50,11 @@ public static class MailRules {
         return mail.Items.Count > 0 || !mail.MesoCollected() || !mail.MeretCollected() || !mail.GameMeretCollected();
     }
 
-    // UIMailListDialog::HasLockedAttachment: an uncollected item that is locked keeps the mail from being deleted.
+    // UIMailListDialog::HasLockedAttachment (uimaillistdialog.cpp:1075): an uncollected item that is locked, or still
+    // unlocking (CItem::FUN_140528e20: its unlock time not reached), keeps the mail from being deleted. An unlocking
+    // item was deleted with the mail.
     public static bool HasLockedItem(Mail mail) {
-        return mail.Items.Any(item => item.IsLocked);
+        return mail.Items.Any(item => item.IsLockedOrUnlocking());
     }
 
     // What refuses a collect before anything is given.
