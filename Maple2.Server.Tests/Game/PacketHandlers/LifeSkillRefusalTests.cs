@@ -23,9 +23,12 @@ public class LifeSkillRefusalTests {
     private TestGameSession test = null!;
 
     // Mining: grade 1 at 0 without an item, grade 2 at 50 with one item.
-    private GameSession StartMastery() {
+    private GameSession StartMastery(int materialId = 0) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(RewardItemId));
+        if (materialId != 0) {
+            test.Store(TestGameSession.Metadata(materialId, slotMax: 100), amount: 10);
+        }
         test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>> {
             [MasteryType.Mining] = new Dictionary<int, MasteryRewardTable.Entry> {
                 [1] = new(0, 0, 0, 0),
@@ -119,12 +122,14 @@ public class LifeSkillRefusalTests {
     private const int QuestId = 90000600;
 
     // A tutorial recipe as the KR table has it: nothing to pay, one item, the quest or a level asked.
-    private GameSession StartRecipe(int questId, short requiredLevel, MasteryType type = MasteryType.Mining, int rewardMastery = 0) {
-        GameSession session = StartMastery();
+    private GameSession StartRecipe(int questId, short requiredLevel, MasteryType type = MasteryType.Mining, int rewardMastery = 0,
+                                    long requiredMeso = 0, int materialId = 0) {
+        GameSession session = StartMastery(materialId);
         test.SetTable(new MasteryRecipeTable(new Dictionary<int, MasteryRecipeTable.Entry> {
-            [RecipeId] = new(RecipeId, type, NoRewardExp: rewardMastery == 0, RequiredMastery: 0, RequiredMeso: 0,
+            [RecipeId] = new(RecipeId, type, NoRewardExp: rewardMastery == 0, RequiredMastery: 0, RequiredMeso: requiredMeso,
                 RequiredQuests: questId == 0 ? [] : [questId], RequiredLevel: requiredLevel, RewardExp: 0, RewardMastery: rewardMastery,
-                HighRateLimitCount: 5, NormalRateLimitCount: 10, RequiredItems: [], HabitatMapId: [],
+                HighRateLimitCount: 5, NormalRateLimitCount: 10,
+                RequiredItems: materialId == 0 ? [] : [new ItemComponent(materialId, -1, 1, ItemTag.None)], HabitatMapId: [],
                 RewardItems: [new ItemComponent(RewardItemId, 1, 1, ItemTag.None)]),
         }));
         // A craft adds manufacturing experience.
@@ -165,6 +170,49 @@ public class LifeSkillRefusalTests {
 
         Assert.That(test.Errors, Is.Empty);
         Assert.That(Count(session, RewardItemId), Is.EqualTo(1));
+    }
+
+    // A spend on another thread while the material leaves: the fee was held at the check, so the craft is done and
+    // only what was left could go. Before, the fee was taken after the material; that take threw on the short
+    // balance, and the material was gone with no craft.
+    [Test]
+    public void Craft_ASpendWhileTheMaterialLeavesCannotSkipTheFee() {
+        const int materialId = 30000002;
+        GameSession session = StartRecipe(0, 0, requiredMeso: 1000, materialId: materialId);
+        session.Currency.Meso = 1500;
+        test.TakeSent();
+        long spent = -1;
+        test.OnSend = packet => {
+            if (spent >= 0 || TestGameSession.Op(packet) != SendOp.ItemInventory) {
+                return;
+            }
+            long left = session.Currency.Meso;
+            spent = session.Currency.TryTakeMeso(left, notify: false) ? left : 0;
+        };
+
+        Assert.DoesNotThrow(() => Send(session, 2, RecipeId));
+
+        Assert.That(spent, Is.EqualTo(500));
+        Assert.That(session.Currency.Meso, Is.Zero);
+        Assert.That(Count(session, materialId), Is.EqualTo(9));
+        Assert.That(Count(session, RewardItemId), Is.EqualTo(1));
+    }
+
+    // The material cannot be taken (locked): the craft is refused and the fee stays.
+    [Test]
+    public void Craft_WithTheMaterialLockedKeepsTheFee() {
+        const int materialId = 30000002;
+        GameSession session = StartRecipe(0, 0, requiredMeso: 1000, materialId: materialId);
+        session.Currency.Meso = 1500;
+        foreach (Item material in session.Item.Inventory.Find(materialId)) {
+            material.IsLocked = true;
+        }
+        test.TakeSent();
+
+        Send(session, 2, RecipeId);
+
+        AssertMasteryError(test.TakeSent(), MasteryError.s_mastery_error_lack_item);
+        Assert.That(session.Currency.Meso, Is.EqualTo(1500));
     }
 
     // The craft dialog greys out a recipe above the player's level; the server answers error 7.

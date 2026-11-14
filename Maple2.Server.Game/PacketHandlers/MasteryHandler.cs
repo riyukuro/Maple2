@@ -95,13 +95,21 @@ public class MasteryHandler : FieldPacketHandler {
             session.Send(MasteryPacket.Error(error));
             return;
         }
+        // The fee is held here without a packet (the materials' packets go out before it was taken, and a spend on
+        // another thread could come in between), given back when the materials cannot be taken; the packet goes
+        // where the take was. A short balance here gets the check's lack of meso answer.
+        if (!session.Currency.TryTakeMeso(entry.RequiredMeso, notify: false)) {
+            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_lack_meso));
+            return;
+        }
 
         if (!session.Item.Inventory.ConsumeItemComponents(entry.RequiredItems)) {
+            session.Currency.ReturnMeso(entry.RequiredMeso, notify: false);
             session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_lack_item));
             return;
         }
 
-        session.Currency.ChangeMeso(-entry.RequiredMeso);
+        session.Currency.NotifyMeso();
 
         if (!entry.NoRewardExp) {
             // The gain the client's craft dialog shows: the recipe's mastery raised by the type's ability.
