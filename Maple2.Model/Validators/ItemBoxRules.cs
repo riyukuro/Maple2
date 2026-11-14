@@ -1,4 +1,4 @@
-namespace Maple2.Model.Validators;
+﻿namespace Maple2.Model.Validators;
 
 // RequestItemBox: i32 item id, i16 slot, i32 count, the key string.
 public static class ItemBoxRules {
@@ -26,6 +26,43 @@ public static class ItemBoxRules {
         }
 
         return rows;
+    }
+
+    // An item function's comma parameters as the client reads them (FUN_14025a680, CStringW::Tokenize on ","): empty
+    // parts are skipped, so "1,,330001622" is two values, and each part is read by _wtol (white space, a sign, the
+    // digits in front; 0 with no number in front).
+    public static int[] FunctionArgs(string? parameters) {
+        string[] parts = (parameters ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries);
+        var args = new int[parts.Length];
+        for (int i = 0; i < parts.Length; i++) {
+            args[i] = Wtol(parts[i]);
+        }
+        return args;
+    }
+
+    // FUN_1408d1fd0: the value at the index, or the fallback past the end.
+    public static int Arg(int[] args, int index, int fallback = 0) {
+        return index >= 0 && index < args.Length ? args[index] : fallback;
+    }
+
+    // _wtol: leading white space, an optional sign, then digits; a value past the int range stops at its limit.
+    private static int Wtol(string text) {
+        int i = 0;
+        while (i < text.Length && char.IsWhiteSpace(text[i])) {
+            i++;
+        }
+        bool negative = false;
+        if (i < text.Length && text[i] is '+' or '-') {
+            negative = text[i] == '-';
+            i++;
+        }
+        long value = 0;
+        while (i < text.Length && char.IsAsciiDigit(text[i])) {
+            value = Math.Min(value * 10 + (text[i] - '0'), (long) int.MaxValue + 1);
+            i++;
+        }
+        value = negative ? -value : value;
+        return (int) Math.Clamp(value, int.MinValue, int.MaxValue);
     }
 
     public enum LuluPay { None, Box, Meso }

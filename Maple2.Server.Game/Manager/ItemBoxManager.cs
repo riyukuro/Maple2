@@ -91,12 +91,14 @@ public class ItemBoxManager {
             }
             return OpenItemBox(item, 0, 0, 0, boxId, 1, count);
         }
-        int[] itemBoxParams = item.Metadata.Function.Parameters.Split(',').Select(int.Parse).ToArray();
+        // The client's own parse of the parameters: empty parts skipped, a missing value 0 (20301130 is "1,,330001622").
+        int[] itemBoxParams = ItemBoxRules.FunctionArgs(item.Metadata.Function.Parameters);
+        int Arg(int index, int fallback = 0) => ItemBoxRules.Arg(itemBoxParams, index, fallback);
         return item.Metadata.Function?.Type switch {
-            ItemFunction.SelectItemBox => SelectItemBox(item, itemBoxParams[0], itemBoxParams[1], selection, count),
-            ItemFunction.OpenItemBox => OpenItemBox(item, itemBoxParams[0], itemBoxParams[1], itemBoxParams[2], itemBoxParams[3], itemBoxParams.Length == 5 ? itemBoxParams[4] : 1, count),
-            ItemFunction.OpenItemBoxWithKey => OpenItemBoxWithKey(item, itemBoxParams[0], itemBoxParams[1], itemBoxParams[2], itemBoxParams[5], count),
-            ItemFunction.OpenGachaBox => OpenGachaBox(item, itemBoxParams[0], itemBoxParams.Length > 1 ? itemBoxParams[1] : 0, count),
+            ItemFunction.SelectItemBox => SelectItemBox(item, Arg(0), Arg(1), selection, count),
+            ItemFunction.OpenItemBox => OpenItemBox(item, Arg(0), Arg(1), Arg(2), Arg(3), Arg(4, 1), count),
+            ItemFunction.OpenItemBoxWithKey => OpenItemBoxWithKey(item, Arg(0), Arg(1), Arg(2), Arg(5), count),
+            ItemFunction.OpenGachaBox => OpenGachaBox(item, Arg(0), Arg(1), count),
             _ => LogAndReturnError(item.Metadata.Function?.Type.ToString()),
         };
     }

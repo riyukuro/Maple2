@@ -1,4 +1,4 @@
-using Maple2.Model.Validators;
+﻿using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 
 namespace Maple2.Server.Tests.Validators;
@@ -38,5 +38,26 @@ public class ItemBoxRulesTests {
     [TestCase(1, 0, true, 9000, -500, ItemBoxRules.LuluPay.None)]
     public void LuluPayment_KeyThenBoxOrMeso(int keys, int boxes, bool autoPay, long meso, long price, ItemBoxRules.LuluPay expected) {
         Assert.That(ItemBoxRules.LuluPayment(keys, boxes, autoPay, meso, price), Is.EqualTo(expected));
+    }
+    // Item function parameters as the client splits them: empty parts skipped, each read by _wtol.
+    [TestCase("1,,330001622", new[] { 1, 330001622 })] // 20301130's select box
+    [TestCase("1,330001622", new[] { 1, 330001622 })]
+    [TestCase("0,0,0,123,2", new[] { 0, 0, 0, 123, 2 })]
+    [TestCase(" 7, -3,12x,abc", new[] { 7, -3, 12, 0 })]
+    [TestCase("99999999999", new[] { int.MaxValue })]
+    [TestCase(",,", new int[0])]
+    [TestCase("", new int[0])]
+    [TestCase(null, new int[0])]
+    public void FunctionArgs_AsClientTokenize(string? parameters, int[] expected) {
+        Assert.That(ItemBoxRules.FunctionArgs(parameters), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Arg_PastTheEndIsFallback() {
+        int[] args = ItemBoxRules.FunctionArgs("1,,330001622");
+        Assert.That(ItemBoxRules.Arg(args, 0), Is.EqualTo(1));
+        Assert.That(ItemBoxRules.Arg(args, 1), Is.EqualTo(330001622));
+        Assert.That(ItemBoxRules.Arg(args, 2), Is.EqualTo(0));
+        Assert.That(ItemBoxRules.Arg(args, 4, 1), Is.EqualTo(1));
     }
 }
