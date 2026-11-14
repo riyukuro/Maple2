@@ -73,15 +73,18 @@ public class TaxiHandler : FieldPacketHandler {
             return;
         }
 
-        if (!CheckMapCashCall(session, mapId, MapMetadata)) {
-            return;
-        }
-
         if (!session.Player.Value.Unlock.Taxis.Contains(mapId)) {
             return;
         }
 
         if (!MapMetadata.TryGet(mapId, out MapMetadata? map)) {
+            return;
+        }
+
+        // Not the cash call's taxi flags: the client's TakeTaxi (uiworldmapdialog.cpp:1369) asks none of them, they are
+        // the air taxi's (CheckMapCashCall). The ride was refused from a field without TaxiDeparture or to one without
+        // TaxiDestination, with the air taxi's error box.
+        if (!CheckDestination(session, map)) {
             return;
         }
 
@@ -219,6 +222,20 @@ public class TaxiHandler : FieldPacketHandler {
             return false;
         }
 
+        if (!CheckDestination(session, map)) {
+            return false;
+        }
+
+        if (!map.CashCall.TaxiDestination) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_err_cash_taxi_cannot_destination));
+            return false;
+        }
+
+        return true;
+    }
+
+    // What every taxi ride (ground or air) asks of its destination.
+    private static bool CheckDestination(GameSession session, MapMetadata map) {
         // A field without its navmesh file cannot be created (FieldManager.Factory.Create): refuse the ride before the
         // fare is taken, with the move error the failed field would give.
         if (!Navigation.Exists(map.XBlock)) {
@@ -230,11 +247,6 @@ public class TaxiHandler : FieldPacketHandler {
         // (fielddatacli.cpp FUN_140a55d20), and debug mode needs a GM account: s_field_limit_admin.
         if (!FieldEntryRules.AdminFieldAllowed(map.Limit.EnterAdminLevel, GmCheck.IsGm(session.Player.AdminPermissions))) {
             session.Send(NoticePacket.MessageBox(StringCode.s_field_limit_admin));
-            return false;
-        }
-
-        if (!map.CashCall.TaxiDestination) {
-            session.Send(NoticePacket.MessageBox(StringCode.s_err_cash_taxi_cannot_destination));
             return false;
         }
 

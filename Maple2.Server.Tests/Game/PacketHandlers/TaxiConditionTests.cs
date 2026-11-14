@@ -18,7 +18,9 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 
 // RequestTaxi mode 1 (the ground taxi) counts taxiuse once its fare is paid. 70400012:
 // <condition type="taxiuse" value="1" />. The ride leaves as a move to another server (TestGameSession.EnterMovingOut)
-// unless a test refuses it, as in FreeAirTaxiTests. The field ids are made up.
+// unless a test refuses it, as in FreeAirTaxiTests. The air taxi's cash-call flags are not the ground taxi's: the client's
+// TakeTaxi (uiworldmapdialog.cpp:1369) asks none of them, so a ride between fields without them goes too. The field ids
+// are made up.
 public class TaxiConditionTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private const int From = 2000913, To = 2000914;
@@ -45,11 +47,11 @@ public class TaxiConditionTests {
         }
     }
 
-    private static MapMetadata Field(int id, bool notInPlayedClient = false) {
+    private static MapMetadata Field(int id, bool notInPlayedClient = false, bool airTaxi = true) {
         MapMetadata map = TestGameSession.Map(id, notInPlayedClient: notInPlayedClient);
         return map with {
             XBlock = XBlock,
-            CashCall = new MapMetadataCashCall(true, true, false, false, false),
+            CashCall = new MapMetadataCashCall(airTaxi, airTaxi, false, false, false),
             Limit = new MapMetadataLimit(0, 0, 0, 0, [], false, false, false, false, false, false, false),
         };
     }
@@ -70,10 +72,10 @@ public class TaxiConditionTests {
         return storage;
     }
 
-    private static (long Counter, long Paid) Ride(long meso, FreeAirTaxiTests.Outcome outcome = FreeAirTaxiTests.Outcome.Went) {
+    private static (long Counter, long Paid) Ride(long meso, FreeAirTaxiTests.Outcome outcome = FreeAirTaxiTests.Outcome.Went, bool airTaxi = true) {
         var test = new TestGameSession();
-        MapMetadata from = Field(From);
-        test.AddMap(from, Field(To, notInPlayedClient: outcome == FreeAirTaxiTests.Outcome.RefusedHere));
+        MapMetadata from = Field(From, airTaxi: airTaxi);
+        test.AddMap(from, Field(To, notInPlayedClient: outcome == FreeAirTaxiTests.Outcome.RefusedHere, airTaxi: airTaxi));
         test.SetTable(new FieldMetaTable(new Dictionary<int, IReadOnlyList<int>> { [From] = [To] }, new Dictionary<int, IReadOnlyList<int>>()));
         GameSession session = test.Start();
         if (outcome == FreeAirTaxiTests.Outcome.RefusedHere) {
@@ -123,6 +125,15 @@ public class TaxiConditionTests {
         Assert.Multiple(() => {
             Assert.That(paid, Is.Zero);
             Assert.That(counter, Is.Zero);
+        });
+    }
+
+    [Test]
+    public void ARideBetweenFieldsWithoutTheAirTaxiFlags_GoesAndCounts() {
+        (long counter, long paid) = Ride(1_000_000, airTaxi: false);
+        Assert.Multiple(() => {
+            Assert.That(paid, Is.GreaterThan(0));
+            Assert.That(counter, Is.EqualTo(1));
         });
     }
 

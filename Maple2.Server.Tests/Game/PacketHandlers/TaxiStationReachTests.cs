@@ -10,14 +10,16 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 
 // A car taxi ride (RequestTaxi 1) is refused with no answer unless the character is alive and near its field's taxi
 // station: the client sends it only from the world map's TakeTaxi (uiworldmapdialog.cpp:1369), which needs both. The
-// server took a paid ride from anywhere, also when dead. The test field refuses departures, so a ride that gets past
-// the station check is answered with that refusal. The field id is made up.
+// server took a paid ride from anywhere, also when dead. The destination has no navmesh file, so a ride that gets past
+// the station check is answered with the move error. The field ids are made up.
 public class TaxiStationReachTests {
     private TestGameSession test = null!;
 
     private GameSession Start(Vector3 player, bool station = true) {
         test = new TestGameSession();
+        test.AddMap(TestGameSession.Map(2000914));
         GameSession session = test.Start();
+        session.Player.Value.Unlock.Taxis.Add(2000914);
         MapMetadata map = TestGameSession.Map(2000913) with { CashCall = new MapMetadataCashCall(false, false, false, false, false) };
         test.EnterMap(map);
         var entities = (MapEntityMetadata) System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(MapEntityMetadata));
