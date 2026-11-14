@@ -162,7 +162,9 @@ public class ClubManager : IDisposable {
         return string.Empty;
     }
 
-    public ClubError Join(string requestorName, PlayerInfo info) {
+    // beforeNotice (the accepted invite reply, Club 9) goes to the members once the member is stored, before the join
+    // notice: a join refused here (full, already a member, the row not written) tells no one the invite was accepted.
+    public ClubError Join(string requestorName, PlayerInfo info, ClubRequest? beforeNotice = null) {
         if (Club.Members.Count >= Constant.MaxClubMembers) {
             return ClubError.s_club_err_full_member;
         }
@@ -177,6 +179,9 @@ public class ClubManager : IDisposable {
             return ClubError.s_club_err_null_invite_member;
         }
 
+        if (beforeNotice != null) {
+            Broadcast(beforeNotice);
+        }
         // Broadcast before adding this new member.
         Broadcast(new ClubRequest {
             ClubId = Club.Id,

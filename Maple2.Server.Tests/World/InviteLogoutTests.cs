@@ -20,6 +20,8 @@ using Maple2.Server.Game.Session;
 using Maple2.Server.Tests.Game;
 using Maple2.Server.World.Containers;
 using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
+using WorldClubRequest = Maple2.Server.World.Service.ClubRequest;
+using WorldClubResponse = Maple2.Server.World.Service.ClubResponse;
 using Club = Maple2.Model.Game.Club.Club;
 using ClubResponse = Maple2.Server.Channel.Service.ClubResponse;
 using GuildResponse = Maple2.Server.Channel.Service.GuildResponse;
@@ -275,5 +277,76 @@ public class InviteLogoutTests {
         Assert.That(manager.Invite(ids[0], infos[ids[2]]), Is.EqualTo(ClubError.s_club_err_null_user));
         Assert.That(channel.ClubRequests, Is.Empty);
         Assert.That(manager.InviteeLoggedOut(ids[2], "Guest"), Is.False);
+    }
+
+    // The invitee's answer to a club invite (World Club RespondInvite), as the World server takes it.
+    private WorldClubResponse Respond(ClubManager manager, bool accept) {
+        var playerLookup = new PlayerInfoLookup(test.Storage, channels);
+        var cache = (ConcurrentDictionary<long, PlayerInfo>) typeof(PlayerInfoLookup).GetField("cache", Any)!.GetValue(playerLookup)!;
+        foreach ((long id, PlayerInfo info) in infos) {
+            cache[id] = info;
+        }
+        var clubs = new ClubLookup(channels, playerLookup, test.Storage, null!);
+        ((ConcurrentDictionary<long, ClubManager>) typeof(ClubLookup).GetField("clubs", Any)!.GetValue(clubs)!)[manager.Club.Id] = manager;
+        var world = new Maple2.Server.World.Service.WorldService(null!, null!, channels, playerLookup, null!, null!, null!, null!, null!, clubs, null!, null!, null!,
+            null!, null!, null!, null!);
+        try {
+            return world.Club(new WorldClubRequest {
+                RequestorId = ids[2],
+                RespondInvite = new WorldClubRequest.Types.RespondInvite { ClubId = manager.Club.Id, Accept = accept },
+            }, null!).GetAwaiter().GetResult();
+        } finally {
+            playerLookup.Dispose();
+        }
+    }
+
+    // An accept the join then refuses (here the club filled up while the invite was open): the members were told the
+    // invitee accepted (Club 9, accept 1) and no one joined. Now the member is stored first and a refused join sends
+    // nothing to the members; the invitee gets the error.
+    [Test]
+    public void Club_AcceptTheJoinRefuses_NoAcceptIsSent() {
+        ClubManager manager = Club();
+        Assert.That(manager.Invite(ids[0], infos[ids[2]]), Is.EqualTo(ClubError.none));
+        for (int i = manager.Club.Members.Count; i < Constant.MaxClubMembers; i++) {
+            long id = ids[0] + 600 + i;
+            manager.Club.Members[id] = new Maple2.Model.Game.Club.ClubMember { ClubId = manager.Club.Id, Info = Info(id, $"Filler{i}") };
+        }
+        channel.ClubRequests.Clear();
+
+        WorldClubResponse response = Respond(manager, accept: true);
+
+        Assert.That(response.Error, Is.EqualTo((int) ClubError.s_club_err_full_member));
+        Assert.That(channel.ClubRequests, Is.Empty);
+        Assert.That(manager.Club.Members.ContainsKey(ids[2]), Is.False);
+    }
+
+    // An accept that joins: the accepted reply (Club 9) and then the join notice, both after the member is stored.
+    [Test]
+    public void Club_Accept_ReplyThenJoinNotice() {
+        ClubManager manager = Club();
+        Assert.That(manager.Invite(ids[0], infos[ids[2]]), Is.EqualTo(ClubError.none));
+        channel.ClubRequests.Clear();
+
+        WorldClubResponse response = Respond(manager, accept: true);
+
+        Assert.That(response.Error, Is.EqualTo(0));
+        Assert.That(channel.ClubRequests.Select(request => request.ClubCase),
+            Is.EqualTo(new[] { ClubRequest.ClubOneofCase.InviteReply, ClubRequest.ClubOneofCase.AddMember }));
+        Assert.That(channel.ClubRequests[0].InviteReply.Accept, Is.True);
+        Assert.That(channel.ClubRequests[0].InviteReply.RequestorName, Is.EqualTo("Guest"));
+        Assert.That(manager.Club.Members.ContainsKey(ids[2]), Is.True);
+    }
+
+    [Test]
+    public void Club_Decline_ReplyOnly() {
+        ClubManager manager = Club();
+        Assert.That(manager.Invite(ids[0], infos[ids[2]]), Is.EqualTo(ClubError.none));
+        channel.ClubRequests.Clear();
+
+        WorldClubResponse response = Respond(manager, accept: false);
+
+        Assert.That(response.Error, Is.EqualTo(0));
+        Assert.That(channel.ClubRequests.Single().InviteReply.Accept, Is.False);
+        Assert.That(manager.Club.Members.ContainsKey(ids[2]), Is.False);
     }
 }

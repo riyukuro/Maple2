@@ -160,17 +160,18 @@ public partial class WorldService {
             };
         }
 
-        manager.Broadcast(new ChannelClubRequest {
+        var reply = new ChannelClubRequest {
             InviteReply = new ChannelClubRequest.Types.InviteReply {
                 // Mode 9 names the character that replied (clubcli.cpp:1143: "<name> has declined").
                 RequestorName = info.Name,
                 Accept = respond.Accept,
             },
             ClubId = manager.Club.Id,
-        });
+        };
 
         if (respond.Accept) {
-            ClubError error = manager.Join(requestorName, info);
+            // The member is stored first; the members hear of the accept only once the join holds.
+            ClubError error = manager.Join(requestorName, info, reply);
             if (error != ClubError.none) {
                 return new ClubResponse {
                     Error = (int) error,
@@ -182,6 +183,7 @@ public partial class WorldService {
             };
         }
 
+        manager.Broadcast(reply);
         return new ClubResponse();
     }
 
