@@ -345,8 +345,10 @@ public static class ConditionUtil {
                 }
 
                 break;
+            case ConditionType.interact_object:
             case ConditionType.interact_object_rep:
-                // The interact type of the object (2 telescope: the binocular event quest 89050108).
+                // The interact type of the object (2 telescope: the binocular event quest 89050108; 1 mesh: 23100007,
+                // the investigations of the objects 10000001-18999999).
                 if (target.Integers != null && target.Integers.Contains((int) longValue)) {
                     return true;
                 }
@@ -526,7 +528,6 @@ public static class ConditionUtil {
             case ConditionType.meso:
             case ConditionType.taxifind:
             case ConditionType.trophy_point:
-            case ConditionType.interact_object:
             case ConditionType.gemstone_upgrade_success:
             case ConditionType.gemstone_upgrade_fail:
             case ConditionType.gemstone_upgrade_try:

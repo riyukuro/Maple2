@@ -144,8 +144,8 @@ public class QuestConditionWiringTests : TriggerTestBase {
     }
 
     // The player ends the interaction with a mesh object of the id (command 12).
-    private void EndMesh(int objectId, string entityId) {
-        test.AddInteract(InteractRow(objectId, InteractType.Mesh), new InteractMeshObject(entityId, new Ms2InteractMesh(objectId, Vector3.Zero, Vector3.Zero)));
+    private void EndMesh(int objectId, string entityId, InteractType type = InteractType.Mesh) {
+        test.AddInteract(InteractRow(objectId, type), new InteractMeshObject(entityId, new Ms2InteractMesh(objectId, Vector3.Zero, Vector3.Zero)));
         new InteractObjectHandler().Handle(test.Session, TestGameSession.Packet(writer => {
             writer.WriteByte(12);
             writer.WriteInt(1);
@@ -165,6 +165,23 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
         EndMesh(10000004, "ab");
         EndMesh(10000011, "ac");
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(2));
+    }
+
+    // 23100007 "Meticulous Detective": <condition type="interact_object" code="10000001-18999999" target="1">, the
+    // investigation of a mesh object (interact type 1) of the range; a watch tower of the range (2 of the KR objects
+    // 10000001-18999999) does not count.
+    [Test]
+    public void InteractObject_23100007_OnlyMeshObjects() {
+        Start();
+        Quest quest = StartQuest(Condition(ConditionType.interact_object, 2, ["10000001-18999999"], ["1"]));
+
+        EndMesh(10000020, "aa", InteractType.WatchTower);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        EndMesh(10000021, "ab");
+        EndMesh(18000000, "ac");
 
         Assert.That(test.Errors, Is.Empty);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(2));

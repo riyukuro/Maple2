@@ -145,7 +145,7 @@ public class InteractObjectHandler : FieldPacketHandler {
         bool firstOpen = interact.Chest == MapChestRules.Kind.Gold
                          && session.Player.Value.Unlock.InteractedObjects.Add(interact.Object.Id);
         if (MapChestRules.Counts(interact.Chest, firstOpen)) {
-            session.ConditionUpdate(ConditionType.interact_object, codeLong: interact.Object.Id);
+            session.ConditionUpdate(ConditionType.interact_object, codeLong: interact.Object.Id, targetLong: (long) interact.Value.Type);
         }
         session.ConditionUpdate(ConditionType.interact_object_rep, codeLong: interact.Object.Id, targetLong: (long) interact.Value.Type);
         session.Field?.Survival?.Interact(session.Player);
