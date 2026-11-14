@@ -62,11 +62,33 @@ public class PlayedClientScriptsTests {
         CinematicContent[] other = PlayedClientScripts.Apply(played, ScriptType.Npc, 900502, 20, [extra], ref changed);
         CinematicContent[] quest = PlayedClientScripts.Apply(played, ScriptType.Quest, 900501, 20, [extra], ref changed);
 
-        Assert.That(changed, Is.EqualTo(0));
-        Assert.That(contents[0], Is.SameAs(same));
-        Assert.That(contents[1], Is.SameAs(extra)); // the played content has one content only
+        Assert.That(changed, Is.EqualTo(1)); // the state cut short
+        Assert.That(contents, Is.EqualTo(new[] { same })); // the played state has one content only: the client has no second page
         Assert.That(other[0], Is.SameAs(extra));
         Assert.That(quest[0], Is.SameAs(extra));
+    }
+
+    // A quest's start talk with pages past the played client's last (50100830 state 100: 16 pages in the KR data,
+    // 13 in the played client): the state keeps the client's 13, so the 13th is the last and gets the accept button.
+    [Test]
+    public void Apply_KeepsOnlyThePlayedClientsPages() {
+        string pages = string.Concat(Enumerable.Range(0, 13).Select(i => $"<content text=\"p{i}\" />"));
+        Dictionary<PlayedClientScripts.Key, CinematicDistractor[]> played = PlayedClientScripts.Distractors([],
+            [File($"<quest id=\"50100830\"><script id=\"100\">{pages}</script><script id=\"200\"><content text=\"x\" /></script></quest>")], Available);
+        CinematicContent[] data = Enumerable.Range(0, 16).Select(_ => Content()).ToArray();
+
+        int changed = 0;
+        CinematicContent[] start = PlayedClientScripts.Apply(played, ScriptType.Quest, 50100830, 100, data, ref changed);
+        CinematicContent[] progress = PlayedClientScripts.Apply(played, ScriptType.Quest, 50100830, 200, data[..1], ref changed);
+        CinematicContent[] complete = PlayedClientScripts.Apply(played, ScriptType.Quest, 50100830, 300, data[..10], ref changed);
+
+        Assert.Multiple(() => {
+            Assert.That(start, Has.Length.EqualTo(13));
+            Assert.That(start, Is.EqualTo(data[..13]));
+            Assert.That(progress, Has.Length.EqualTo(1));
+            Assert.That(complete, Has.Length.EqualTo(10)); // a state the played client lacks keeps every page
+            Assert.That(changed, Is.EqualTo(1));
+        });
     }
 
     // A choice of an npc <script> whose goto names no kept script of the npc is dropped, so later picks move up; a

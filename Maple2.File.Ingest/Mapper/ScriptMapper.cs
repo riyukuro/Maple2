@@ -42,7 +42,7 @@ public class ScriptMapper : TypeMapper<ScriptMetadata> {
             yield return metadata with { States = states };
         }
         if (played.Count > 0) {
-            Console.WriteLine($"scripts: {changed} contents take the played client's choices ({played.Count} contents in its scripts)");
+            Console.WriteLine($"scripts: {changed} contents take the played client's choices or pages ({played.Count} contents in its scripts)");
         }
     }
 

@@ -110,11 +110,26 @@ public static class PlayedClientScripts {
             .ToArray();
 
     // The state with each content's choices replaced by the played client's for the same script, state and content.
-    // Contents the played client lacks keep theirs. changed counts the contents whose choices differ.
+    // A state the played client has keeps only as many contents as the client's own: the client counts the pages
+    // of its own script, and the server picks a page's button by its place (the last page of a quest's start talk
+    // gets the accept button), so a page past the client's last left its last page with Next and no accept
+    // (quest 50100830: 16 pages in the KR data, 13 in the played client). A state the played client lacks keeps
+    // every content. changed counts the contents whose choices differ and the states cut short.
     public static CinematicContent[] Apply(IReadOnlyDictionary<Key, CinematicDistractor[]> played, ScriptType type, int id, int stateId,
             CinematicContent[] contents, ref int changed) {
-        var result = new CinematicContent[contents.Length];
-        for (int i = 0; i < contents.Length; i++) {
+        int count = contents.Length;
+        if (played.ContainsKey(new Key(type, id, stateId, 0))) {
+            int own = 0;
+            while (played.ContainsKey(new Key(type, id, stateId, own))) {
+                own++;
+            }
+            if (own < count) {
+                count = own;
+                changed++;
+            }
+        }
+        var result = new CinematicContent[count];
+        for (int i = 0; i < count; i++) {
             result[i] = contents[i];
             if (!played.TryGetValue(new Key(type, id, stateId, i), out CinematicDistractor[]? choices) || Same(choices, contents[i].Distractors)) {
                 continue;
