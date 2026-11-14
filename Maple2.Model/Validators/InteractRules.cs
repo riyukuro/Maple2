@@ -63,11 +63,27 @@ public static class InteractRules {
     // KMS2 sends no state update (4) for the end of a telescope or a UI object: it stays usable.
     public static bool KeepsState(InteractType type) => type is InteractType.Telescope or InteractType.Ui;
 
-    // The page an object opens when used: its <webOpen> when the url is a maview page (served by our web server).
-    // Chosen here: a url to another site (a few KR rows with kind 0, the CN rows with kind 2) opens nothing, those
-    // sites are not ours.
+    // The maview pages our web server answers (Maple2.Server.Web: RankController, GameController), by path; the
+    // match ignores case and the query, as the web server's routes do.
+    public static readonly IReadOnlySet<string> ServedPages = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+        "/Rank/Guild", "/Rank/Character", "/Rank/GuildPVP", "/Rank/PVP", "/Rank/DarkStream", "/Rank/Architect", "/Game/Banner",
+    };
+
+    // The page an object opens when used: its <webOpen> when the url is a maview page our web server answers.
+    // Chosen here: any other url opens nothing, as before the server sent WebOpen: a maview page we do not serve (the
+    // boss boards, the news and estate pages) would open an error page, or with the in-game ranking on the ranking
+    // dialog, and a url to another site (a few KR rows with kind 0, the CN rows with kind 2) is not ours.
     public static (byte Kind, string Url)? WebOpen(byte kind, string? url) {
-        return url != null && url.StartsWith("maview:", StringComparison.Ordinal) ? (kind, url) : null;
+        const string prefix = "maview:";
+        if (url == null || !url.StartsWith(prefix, StringComparison.Ordinal)) {
+            return null;
+        }
+        string path = url[prefix.Length..];
+        int query = path.IndexOf('?');
+        if (query >= 0) {
+            path = path[..query];
+        }
+        return ServedPages.Contains(path.TrimEnd('/')) ? (kind, url) : null;
     }
 
     // What KMS2 answers the end of an interaction with, after the object's state update if its state changes:

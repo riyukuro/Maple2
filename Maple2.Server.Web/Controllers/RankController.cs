@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Text;
@@ -94,12 +95,27 @@ public class RankController : ControllerBase {
 
     private static IResult Html(string page) => Results.Content(page, "text/html; charset=utf-8");
 
-    private string Cached(string key, Func<string> build) {
-        return cache.GetOrCreate($"RankPage_{key}", entry => {
-            entry.AbsoluteExpirationRelativeToNow = PageCacheDuration;
-            return build();
-        })!;
+    // The page kept under key, built when missing. The build holds the key's lock, so requests that arrive together
+    // when a page has expired run its query once: the others wait and take the page it built.
+    private string Cached(string key, Func<string> build) => CachedPage(cache, key, build, PageCacheDuration);
+
+    public static string CachedPage(IMemoryCache cache, string key, Func<string> build, TimeSpan duration) {
+        string cacheKey = $"RankPage_{key}";
+        if (cache.TryGetValue(cacheKey, out string? page)) {
+            return page!;
+        }
+        lock (PageLocks.GetOrAdd(cacheKey, _ => new object())) {
+            if (cache.TryGetValue(cacheKey, out page)) {
+                return page!;
+            }
+            page = build();
+            cache.Set(cacheKey, page, duration);
+            return page;
+        }
     }
+
+    // One lock per page key; the keys are the five boards with their season or month, so few.
+    private static readonly ConcurrentDictionary<string, object> PageLocks = new();
 
     public const string NoTrophy = "No one has a trophy yet.";
     public const string NoGuildTrophy = "No guild has a trophy yet.";

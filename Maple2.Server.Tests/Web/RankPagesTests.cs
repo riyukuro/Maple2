@@ -4,6 +4,7 @@ using System.Reflection;
 using Maple2.Database.Model.Ranking;
 using Maple2.Database.Storage;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.Server.Web.Controllers;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -31,6 +32,21 @@ public class RankPagesTests {
             Assert.That(typeof(RankController).GetCustomAttribute<RouteAttribute>()?.Template, Is.EqualTo("/Rank/"));
             Assert.That(get?.Template, Is.EqualTo(template));
         });
+    }
+
+    // Every page an interact object may open (InteractRules.ServedPages) is a route of the web server.
+    [Test]
+    public void EveryPageObjectsOpen_IsARoute() {
+        var routes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Type controller in new[] { typeof(RankController), typeof(GameController) }) {
+            string root = controller.GetCustomAttribute<RouteAttribute>()!.Template;
+            foreach (MethodInfo method in controller.GetMethods()) {
+                if (method.GetCustomAttribute<HttpGetAttribute>()?.Template is string template) {
+                    routes.Add(root + template);
+                }
+            }
+        }
+        Assert.That(InteractRules.ServedPages, Is.SubsetOf(routes).Using((IEqualityComparer<string>) StringComparer.OrdinalIgnoreCase));
     }
 
     [Test]
@@ -129,5 +145,43 @@ public class RankPagesTests {
                 Assert.That(content?.ResponseContent, Does.StartWith("<!DOCTYPE html>").And.EndWith("</body></html>"));
             }
         });
+    }
+
+    // rv398: requests that arrive together when a page has expired build it once; the others take that page.
+    [Test]
+    public void APageAskedByManyAtOnce_IsBuiltOnce() {
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        int builds = 0;
+        using var start = new System.Threading.ManualResetEventSlim(false);
+        var tasks = new System.Threading.Tasks.Task<string>[16];
+        for (int i = 0; i < tasks.Length; i++) {
+            tasks[i] = System.Threading.Tasks.Task.Factory.StartNew(() => {
+                start.Wait();
+                return RankController.CachedPage(cache, "Test_Once", () => {
+                    System.Threading.Interlocked.Increment(ref builds);
+                    System.Threading.Thread.Sleep(200);
+                    return "page";
+                }, TimeSpan.FromMinutes(1));
+            }, System.Threading.Tasks.TaskCreationOptions.LongRunning);
+        }
+        start.Set();
+        System.Threading.Tasks.Task.WaitAll(tasks);
+
+        Assert.Multiple(() => {
+            Assert.That(builds, Is.EqualTo(1));
+            Assert.That(tasks, Has.All.Matches<System.Threading.Tasks.Task<string>>(t => t.Result == "page"));
+        });
+    }
+
+    [Test]
+    public void AnExpiredPage_IsBuiltAgain() {
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        int builds = 0;
+        string Build() => $"page{++builds}";
+
+        Assert.That(RankController.CachedPage(cache, "Test_Expiry", Build, TimeSpan.FromMilliseconds(50)), Is.EqualTo("page1"));
+        Assert.That(RankController.CachedPage(cache, "Test_Expiry", Build, TimeSpan.FromMilliseconds(50)), Is.EqualTo("page1"));
+        System.Threading.Thread.Sleep(120);
+        Assert.That(RankController.CachedPage(cache, "Test_Expiry", Build, TimeSpan.FromMilliseconds(50)), Is.EqualTo("page2"));
     }
 }
