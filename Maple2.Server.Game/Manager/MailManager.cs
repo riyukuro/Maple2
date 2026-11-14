@@ -22,6 +22,8 @@ public sealed class MailManager {
     private bool temporaryArrived;
     private readonly bool loaded;
 
+    // Under lock(inbox): the World's mail notifications (ChannelService.MailNotification, a gRPC thread) fetch into it
+    // while the session's handlers read, delete and collect.
     private readonly SortedList<long, Mail> inbox;
 
     private readonly ILogger logger = Log.ForContext<MailManager>();
@@ -87,14 +89,23 @@ public sealed class MailManager {
         }
     }
 
-    public bool Delete(long mailId) {
-        if (!inbox.TryGetValue(mailId, out Mail? inboxMail)) {
-            return false;
+    // The inbox copy of a mail, or null.
+    private Mail? Find(long mailId) {
+        lock (inbox) {
+            return inbox.GetValueOrDefault(mailId);
         }
-        // The client refuses to delete a mail while an uncollected item on it is locked (s_itemlock_mail_remove).
-        if (MailRules.HasLockedItem(inboxMail)) {
-            logger.Information("Mail {MailId} not deleted: an item on it is locked", mailId);
-            return false;
+    }
+
+    public bool Delete(long mailId) {
+        lock (inbox) {
+            if (!inbox.TryGetValue(mailId, out Mail? inboxMail)) {
+                return false;
+            }
+            // The client refuses to delete a mail while an uncollected item on it is locked (s_itemlock_mail_remove).
+            if (MailRules.HasLockedItem(inboxMail)) {
+                logger.Information("Mail {MailId} not deleted: an item on it is locked", mailId);
+                return false;
+            }
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
@@ -110,7 +121,8 @@ public sealed class MailManager {
     }
 
     public MailError Read(long mailId) {
-        if (!inbox.TryGetValue(mailId, out Mail? inboxMail)) {
+        Mail? inboxMail = Find(mailId);
+        if (inboxMail == null) {
             return MailError.mail_not_found;
         }
 
@@ -125,12 +137,15 @@ public sealed class MailManager {
             return error;
         }
 
-        inboxMail.Update(mail);
+        lock (inbox) {
+            inboxMail.Update(mail);
+        }
         return MailError.none;
     }
 
     public MailError Collect(long mailId) {
-        if (!inbox.TryGetValue(mailId, out Mail? inboxMail)) {
+        Mail? inboxMail = Find(mailId);
+        if (inboxMail == null) {
             return MailError.mail_not_found;
         }
 
@@ -142,11 +157,14 @@ public sealed class MailManager {
 
         lock (session.Item) {
             MailError error = CollectInternal(db, mail);
-            inboxMail.Update(mail);
-            // The list is sent from the inbox copy: what was given must not be listed again.
-            inboxMail.Items.Clear();
-            foreach (Item item in mail.Items) {
-                inboxMail.Items.Add(item);
+            // Lock order: session.Item, then inbox (nothing takes inbox, then session.Item).
+            lock (inbox) {
+                inboxMail.Update(mail);
+                // The list is sent from the inbox copy: what was given must not be listed again.
+                inboxMail.Items.Clear();
+                foreach (Item item in mail.Items) {
+                    inboxMail.Items.Add(item);
+                }
             }
             return error;
         }

@@ -1,4 +1,5 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -24,8 +25,10 @@ public class BuddyManager : IDisposable {
     // ReSharper restore All
     #endregion
 
-    private readonly IDictionary<long, Buddy> buddies;
-    private readonly IDictionary<long, Buddy> blocked;
+    // The packet handlers (the session's receive task), the World's buddy notifications (gRPC threads) and the
+    // buddy status listeners change and read these at once.
+    private readonly ConcurrentDictionary<long, Buddy> buddies;
+    private readonly ConcurrentDictionary<long, Buddy> blocked;
 
     // The "refuse friend requests" game option as the client last reported it (Buddy sub-type 20).
     public bool AutoReject { get; set; }
@@ -38,10 +41,10 @@ public class BuddyManager : IDisposable {
         IEnumerable<IGrouping<bool, BuddyEntry>> groups =
             db.ListBuddies(session.CharacterId).GroupBy(entry => entry.Type == BuddyType.Blocked);
         foreach (IGrouping<bool, BuddyEntry> group in groups) {
-            Dictionary<long, Buddy> result = group
+            var result = new ConcurrentDictionary<long, Buddy>(group
                 .Select(entry => session.PlayerInfo.GetOrFetch(entry.BuddyId, out PlayerInfo? info) ? new Buddy(entry, info) : null)
                 .WhereNotNull()
-                .ToDictionary(entry => entry.Id, entry => entry);
+                .Select(entry => KeyValuePair.Create(entry.Id, entry)));
             if (group.Key) {
                 blocked = result;
             } else {
@@ -50,8 +53,8 @@ public class BuddyManager : IDisposable {
         }
 
         // Set to empty dictionary if uninitialized by db.
-        buddies ??= new Dictionary<long, Buddy>();
-        blocked ??= new Dictionary<long, Buddy>();
+        buddies ??= new ConcurrentDictionary<long, Buddy>();
+        blocked ??= new ConcurrentDictionary<long, Buddy>();
         tokenSource = new CancellationTokenSource();
 
         foreach (Buddy buddy in buddies.Values) {
@@ -328,7 +331,7 @@ public class BuddyManager : IDisposable {
                 session.Send(BuddyPacket.Decline(entryId, s_buddy_err_unknown));
                 return;
             }
-            buddies.Remove(entryId);
+            buddies.TryRemove(entryId, out _);
 
             session.Send(BuddyPacket.Decline(self));
             BuddyResponse response = Notify(new BuddyRequest {
@@ -344,7 +347,7 @@ public class BuddyManager : IDisposable {
 
     public void ReceiveDecline(long entryId) {
         // DB written by sender as single transaction.
-        if (!buddies.Remove(entryId, out Buddy? self)) {
+        if (!buddies.TryRemove(entryId, out Buddy? self)) {
             logger.Debug("Could not find entry:{EntryId} for ReceiveDecline", entryId);
             return;
         }
@@ -397,7 +400,7 @@ public class BuddyManager : IDisposable {
                 // Its own context: a failed update stays queued in the context it ran in.
                 using GameStorage.Request updateDb = session.GameStorage.Context();
                 if (updateDb.UpdateBuddy(row)) {
-                    buddies.Remove(entryId);
+                    buddies.TryRemove(entryId, out _);
                     EndListen(existing);
                     existing.SetType(BuddyType.Blocked);
                     existing.Message = message;
@@ -413,7 +416,7 @@ public class BuddyManager : IDisposable {
                     return;
                 } else {
                     // The entry had no row any more: a new block row is made below, as for a player not on the list.
-                    buddies.Remove(entryId);
+                    buddies.TryRemove(entryId, out _);
                     EndListen(existing);
                     logger.Warning("Block: entry {EntryId} had no row; a new one is made", existing.Id);
                 }
@@ -485,7 +488,7 @@ public class BuddyManager : IDisposable {
             return;
         }
 
-        if (buddies.Remove(buddy.Id)) {
+        if (buddies.TryRemove(buddy.Id, out _)) {
             EndListen(buddy);
 
             session.Send(BuddyPacket.Remove(buddy));
@@ -493,7 +496,7 @@ public class BuddyManager : IDisposable {
     }
 
     public void Unblock(long entryId) {
-        if (!blocked.Remove(entryId, out Buddy? self)) {
+        if (!blocked.TryRemove(entryId, out Buddy? self)) {
             logger.Debug("Could not find entry:{EntryId} to Unblock", entryId);
             session.Send(BuddyPacket.Unblock(entryId, s_buddy_err_miss_id));
             return;
@@ -540,7 +543,7 @@ public class BuddyManager : IDisposable {
                 return;
             }
 
-            if (!buddies.Remove(entryId, out self)) {
+            if (!buddies.TryRemove(entryId, out self)) {
                 return;
             }
             EndListen(self);
@@ -558,7 +561,7 @@ public class BuddyManager : IDisposable {
 
     public void ReceiveDelete(long entryId) {
         // DB written by sender as single transaction.
-        if (!buddies.Remove(entryId, out Buddy? self)) {
+        if (!buddies.TryRemove(entryId, out Buddy? self)) {
             logger.Debug("Could not find entry:{EntryId} for ReceiveDelete", entryId);
             return;
         }
@@ -615,7 +618,7 @@ public class BuddyManager : IDisposable {
 
             // The rows are gone and the client drops its entry on result 0: the list drops it too, else a block by name
             // later took this dead entry (its row update failed unseen) and the unblock then found no row.
-            buddies.Remove(entryId);
+            buddies.TryRemove(entryId, out Buddy? _);
             EndListen(self);
             session.Send(BuddyPacket.Cancel(self));
             BuddyResponse _ = Notify(new BuddyRequest {
@@ -630,7 +633,7 @@ public class BuddyManager : IDisposable {
 
     public void ReceiveCancel(long entryId) {
         // DB written by sender as single transaction.
-        if (!buddies.Remove(entryId, out Buddy? self)) {
+        if (!buddies.TryRemove(entryId, out Buddy? self)) {
             logger.Debug("Could not find entry:{EntryId} for ReceiveCancel", entryId);
             return;
         }
