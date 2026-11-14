@@ -28,6 +28,11 @@ public static class InteractRules {
     // interactionDistance, which the server's object data does not carry.
     public const float OtherReach = 1500f;
 
+    // Liftable 1: the client lifts only an object within its ActionDistance (LiftCubeAction::FUN_140957890,
+    // actionkeyobject.cpp:1320; CLiftableObject::BindEntity, liftableobject.cpp:191). The flat default is 150 and the
+    // KR xblocks set 120 (100 objects) or 150 (6); the server keeps no per-object value, so it allows the largest.
+    public const float LiftReach = 150f;
+
     // NpcTalk 1: the client talks only to an npc FindNearestNpc finds (MyPC::FindTalkableNpc, mypc.cpp:2827): one whose
     // 3D distance is within the TalkableDistance constant (default 400) plus the npc's capsule radius
     // (worldservice_1.cpp:6438). The action key and the mouse pick of an npc both go through it.

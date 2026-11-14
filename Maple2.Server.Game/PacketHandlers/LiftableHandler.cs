@@ -1,4 +1,5 @@
-﻿using Maple2.PacketLib.Tools;
+﻿using Maple2.Model.Validators;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
@@ -30,6 +31,10 @@ public class LiftableHandler : FieldPacketHandler {
             return;
         }
         if (!session.Field.TryGetLiftable(entityId, out FieldLiftable? liftable)) {
+            return;
+        }
+        if (!InteractRules.InReach(session.Player.Position, liftable.Position, InteractRules.LiftReach)) {
+            Logger.Debug("Liftable {EntityId} picked up out of reach", entityId);
             return;
         }
 
