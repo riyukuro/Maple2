@@ -412,7 +412,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         int error = PurchaseErrorUnknown;
-        Item? item = ugcItemId > 0 ? PurchaseUgcItem(session, ugcItemId) : PurchasePremiumItem(session, premiumMarketId, childMarketItemId, out error);
+        Item? item = ugcItemId > 0 ? PurchaseUgcItem(session, ugcItemId, out error) : PurchasePremiumItem(session, premiumMarketId, childMarketItemId, out error);
         if (item == null) {
             Fail(error);
             return;
@@ -447,6 +447,9 @@ public class MeretMarketHandler : FieldPacketHandler {
     private const int PurchaseErrorGiftOwnProduct = 0x91; // s_meratmarket_error_result_gift_own_product
     private const int PurchaseErrorGiftNoUser = 0xA6; // s_meratmarket_error_result_gift_not_exist_user
     private const int PurchaseErrorGiftSameAccount = 0xB3; // s_cashshop_err_same_account
+    private const int PurchaseErrorOwnProduct = 0x90; // s_meratmarket_error_result_buy_own_product
+    internal const int PurchaseErrorNotSale = 0x6A; // s_meratmarket_error_result_buy_not_sale
+    internal const int PurchaseErrorNotSaleExpired = 0xAC; // s_meratmarket_error_not_sale_expired
     // The bill dialog's pay type for merets (its choice 1 is sent as 3). The client offers a gift only on
     // a design (IsUgcProduct sets bGift) and a design's GetCurrency is merets, so no other pay type is a gift.
     private const byte PayTypeMeret = 3;
@@ -455,13 +458,15 @@ public class MeretMarketHandler : FieldPacketHandler {
         error = PurchaseErrorUnknown;
         PremiumMarketItem? entry = session.GetPremiumMarketItem(premiumMarketId, childMarketItemId);
         if (entry == null) {
+            error = PurchaseErrorNotSale;
             return null;
         }
 
-        // TODO: Find meret market error packets
-        if (!OnSale(entry)) {
+        error = SaleError(entry.Metadata.SaleStartTime, entry.Metadata.SaleEndTime, DateTime.Now.ToEpochSeconds());
+        if (error != 0) {
             return null;
         }
+        error = PurchaseErrorUnknown;
 
         if ((entry.Metadata.RequireMinLevel > 0 && entry.Metadata.RequireMinLevel > session.Player.Value.Character.Level) ||
             (entry.Metadata.RequireMaxLevel > 0 && entry.Metadata.RequireMaxLevel < session.Player.Value.Character.Level)) {
@@ -493,7 +498,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
         StringCode payResult = Pay(session, price, entry.Metadata.CurrencyType);
         if (payResult != StringCode.s_empty_string) {
-            session.Send(NoticePacket.MessageBox(payResult));
+            error = PayError(session, payResult);
             return null;
         }
 
@@ -510,18 +515,22 @@ public class MeretMarketHandler : FieldPacketHandler {
     }
 
     // A listing on sale with its design entry, and the item it sells (made, not yet paid for).
-    private (UgcMarketItem Listing, Item Item)? PrepareUgcItem(GameSession session, GameStorage.Request db, long id) {
+    private (UgcMarketItem Listing, Item Item)? PrepareUgcItem(GameSession session, GameStorage.Request db, long id, out int error) {
+        error = PurchaseErrorNotSale;
         UgcMarketItem? ugcItem = db.GetUgcMarketItem(id);
         if (ugcItem == null) {
             return null;
         }
 
+        error = PurchaseErrorUnknown;
         if (!TableMetadata.UgcDesignTable.Entries.TryGetValue(ugcItem.ItemMetadata.Id, out UgcDesignTable.Entry? designMetadata)) {
             return null;
         }
 
         // Only a listing on sale: one taken off sale or past its sale time is not in any list the client shows.
-        if (!UgcMarketRules.CanBuy(ugcItem.Status == UgcMarketListingStatus.Active, ugcItem.ListingEndTime, DateTime.Now.ToEpochSeconds(), ugcItem.Price)) {
+        long now = DateTime.Now.ToEpochSeconds();
+        if (!UgcMarketRules.CanBuy(ugcItem.Status == UgcMarketListingStatus.Active, ugcItem.ListingEndTime, now, ugcItem.Price)) {
+            error = ugcItem.Status != UgcMarketListingStatus.Active || ugcItem.Price < 0 ? PurchaseErrorNotSale : PurchaseErrorNotSaleExpired;
             return null;
         }
 
@@ -535,16 +544,22 @@ public class MeretMarketHandler : FieldPacketHandler {
         return (ugcItem, item);
     }
 
-    private Item? PurchaseUgcItem(GameSession session, long id) {
+    private Item? PurchaseUgcItem(GameSession session, long id, out int error) {
         using GameStorage.Request db = session.GameStorage.Context();
         // The item is made before anything is paid, and a sale that cannot be stored gives the merets back.
-        if (PrepareUgcItem(session, db, id) is not (UgcMarketItem ugcItem, Item item)) {
+        if (PrepareUgcItem(session, db, id, out error) is not (UgcMarketItem ugcItem, Item item)) {
+            return null;
+        }
+        // The client has a text for buying one's own design (0x90), so the seller's account is refused.
+        if (ugcItem.SellerAccountId == session.AccountId) {
+            error = PurchaseErrorOwnProduct;
             return null;
         }
 
+        error = PurchaseErrorUnknown;
         StringCode stringCode = Pay(session, ugcItem.Price, MeretMarketCurrencyType.Meret);
         if (stringCode != StringCode.s_empty_string) {
-            session.Send(NoticePacket.MessageBox(stringCode));
+            error = PayError(session, stringCode);
             return null;
         }
 
@@ -578,8 +593,8 @@ public class MeretMarketHandler : FieldPacketHandler {
             return PurchaseErrorGiftSameAccount;
         }
 
-        if (PrepareUgcItem(session, db, ugcItemId) is not (UgcMarketItem ugcItem, Item item)) {
-            return PurchaseErrorUnknown;
+        if (PrepareUgcItem(session, db, ugcItemId, out int prepareError) is not (UgcMarketItem ugcItem, Item item)) {
+            return prepareError;
         }
         if (ugcItem.SellerAccountId == session.AccountId) {
             return PurchaseErrorGiftOwnProduct;
@@ -1009,10 +1024,28 @@ public class MeretMarketHandler : FieldPacketHandler {
     }
 
     // The premium sale window; 0 leaves that end open.
-    private static bool OnSale(PremiumMarketItem item) {
-        long now = DateTime.Now.ToEpochSeconds();
-        return (item.Metadata.SaleStartTime == 0 || item.Metadata.SaleStartTime <= now) &&
-               (item.Metadata.SaleEndTime == 0 || item.Metadata.SaleEndTime >= now);
+    private static bool OnSale(PremiumMarketItem item) => SaleError(item.Metadata.SaleStartTime, item.Metadata.SaleEndTime, DateTime.Now.ToEpochSeconds()) == 0;
+
+    // 0 inside the sale window; before its start the product is not on sale (0x6A), after its end its sale has
+    // ended (0xAC, s_meratmarket_error_not_sale_expired).
+    internal static int SaleError(long saleStart, long saleEnd, long now) {
+        if (saleStart != 0 && saleStart > now) {
+            return PurchaseErrorNotSale;
+        }
+        if (saleEnd != 0 && saleEnd < now) {
+            return PurchaseErrorNotSaleExpired;
+        }
+        return 0;
+    }
+
+    // A failed payment: too few merets is the client's own error (0x88, its box opens the charge page); any other
+    // currency keeps its notice box and the generic error.
+    private static int PayError(GameSession session, StringCode payResult) {
+        if (payResult == StringCode.s_err_lack_merat) {
+            return PurchaseErrorLackMeret;
+        }
+        session.Send(NoticePacket.MessageBox(payResult));
+        return PurchaseErrorUnknown;
     }
 
     // The random-sale notices. UIMeratMarketDialog::SendRandomSaleRequest (uimeratmarketdialog.cpp:2801) runs on
