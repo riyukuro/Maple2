@@ -228,24 +228,35 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
+        // A random shop's client sends sub-type 7, never 5 (uibeautyshopdialog.cpp:1841-1856), and its fee would be the
+        // style fee (GetFee, :1313); refuse it rather than make the edit free.
+        if (shop.Type == BeautyShopType.Random) {
+            return;
+        }
         // The fee is taken only once the changed item is on the character.
         Item? changed = ReadBeauty(session, packet, cosmetic.Id);
-        if (changed == null || !CanPay(session, useVoucher, shop, shop.Metadata.StyleCostMetadata)) {
+        if (changed == null) {
+            return;
+        }
+        // The client's fee of an edited item (UIBeautyShopDialog::GetFee, uibeautyshopdialog.cpp:1282-1320): in a
+        // shop of type 1 or 3 its recolor fee when its color changed, else none (a crop shows no price, :1960; a
+        // shop of type 4 shows none).
+        EquipColor? startColor = cosmetic.Appearance?.Color;
+        bool recolor = startColor != null && !Equals(changed.Appearance?.Color, startColor);
+        BeautyShopCostMetadata? fee = recolor && shop.Type is BeautyShopType.Default or BeautyShopType.Modify
+            ? shop.Metadata.ColorCostMetadata : null;
+        if (fee != null && !CanPay(session, useVoucher, shop, fee)) {
             return;
         }
 
-        EquipColor? startColor = cosmetic.Appearance?.Color;
         if (!EquipBeauty(session, changed)) {
             return;
         }
-        if (!Pay(session, useVoucher, shop, shop.Metadata.StyleCostMetadata)) {
+        if (fee != null && !Pay(session, useVoucher, shop, fee)) {
             Logger.Error("Beauty fee not taken after the change of item {ItemId} of {CharacterId}", cosmetic.Id, session.CharacterId);
         }
-        if (startColor != null) {
-            Item newCosmetic = session.Item.Equips.Get(cosmetic.Metadata.SlotNames.First())!;
-            if (!Equals(newCosmetic.Appearance?.Color, startColor)) {
-                session.ConditionUpdate(ConditionType.beauty_change_color, codeLong: cosmetic.Id);
-            }
+        if (fee != null) {
+            session.ConditionUpdate(ConditionType.beauty_change_color, codeLong: cosmetic.Id);
         }
     }
 
