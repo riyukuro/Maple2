@@ -12,11 +12,13 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
@@ -268,5 +270,70 @@ public class ItemFunctionUseTests {
 
         Assert.That(session.Item.Inventory.Get(item.Uid), Is.Null);
         Assert.That(Sent().Last(), Is.EqualTo(Hex(PlayerHostPacket.BillboardInstallResult(BillboardInstallResult.Success))));
+    }
+
+    // 20301023 (ItemRePackingScroll 10000001): the client sends the use once its repack window is closed
+    // (itemfunctiondispatch ItemRePackingScroll) and the server opens the window for the scroll, which stays.
+    [Test]
+    public void ItemRePackingScroll_OpensTheWindowAndKeepsTheScroll() {
+        Item scroll = Login(20301023, ItemFunction.ItemRePackingScroll, "10000001");
+
+        Use(scroll);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { Hex(ItemRepackPacket.Open(scroll.Uid)) }));
+        Assert.That(session.Item.Inventory.Get(scroll.Uid)?.Amount, Is.EqualTo(1));
+    }
+
+    // 20300662 (VIPCoupon, period 168 hours): VIPCoupon has no client use function, so the use goes out as is. One
+    // coupon is used up and starts a VIP time of 168 hours with the new-VIP notice.
+    [Test]
+    public void VIPCoupon_StartsTheVipTimeAndIsUsedUp() {
+        Item coupon = Login(20300662, ItemFunction.VIPCoupon, "<v period=\"168\" />", amount: 2);
+        // The test session's ConfigManager is bare; the VIP time reads its session.
+        typeof(Maple2.Server.Game.Manager.ConfigManager).GetField("session", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Config, session);
+        long before = DateTimeOffset.Now.ToUnixTimeSeconds();
+
+        Use(coupon);
+
+        Assert.That(session.Item.Inventory.Get(coupon.Uid)?.Amount, Is.EqualTo(1));
+        long premium = session.Player.Value.Account.PremiumTime;
+        Assert.That(premium - before, Is.InRange(168 * 3600 - 5, 168 * 3600 + 5));
+        Assert.That(session.Player.Value.Character.PremiumTime, Is.EqualTo(premium));
+        string[] sent = Sent();
+        Assert.That(sent, Does.Contain(Hex(NoticePacket.Notice(NoticePacket.Flags.Message | NoticePacket.Flags.Alert, StringCode.s_vip_coupon_new_msg))));
+        Assert.That(sent, Does.Contain(Hex(PremiumCubPacket.Activate(session.Player.ObjectId, premium))));
+    }
+
+    // 20301093 (ItemActiveCodiTab 30): opens the second outfit tab for 30 days and is used up.
+    [Test]
+    public void ItemActiveCodiTab_OpensTheTabForItsDaysAndIsUsedUp() {
+        Item item = Login(20301093, ItemFunction.ItemActiveCodiTab, "30", amount: 2);
+
+        Use(item);
+
+        Character character = session.Player.Value.Character;
+        Assert.That(character.SkinTabEnd - character.SkinTabStart, Is.EqualTo(30L * SkinTabPeriod.SecondsPerDay));
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(Sent(), Does.Contain(Hex(ItemUsePacket.ActiveCodiTab(session.Player.ObjectId, character.SkinTabStart, character.SkinTabEnd,
+            30L * SkinTabPeriod.SecondsPerDay))));
+    }
+
+    // 20300524 is itself a LulluKey. The client's dialog sends the use on the key with "single" or "multi", plus
+    // "autoPay" when its pay box is ticked (UIItemLulluBoxDialog::SendOpenBox). With no LulluBox and no meso for the
+    // price the box does not open, the key stays and the dialog gets the error.
+    [Test]
+    public void OpenItemBoxLullu_WithoutABoxAnswersTheErrorAndKeepsTheKey() {
+        Item key = Login(20300524, ItemFunction.OpenItemBoxLullu,
+            "<v commonBoxId=\"330000961\" unCommonBoxId=\"330000962\" keyItemTag=\"LulluKey\" boxItemTag=\"LulluBox\" " +
+            "boxPrice=\"1000\" meratMarketPopup=\"key\"/>", tag: ItemTag.LulluKey);
+
+        Use(key, "single");
+
+        Assert.That(Sent(), Is.EqualTo(new[] { Hex(ItemBoxPacket.Open(key.Id, 0, ItemBoxError.s_err_cannot_open_multi_itembox_inventory)) }));
+
+        Use(key, "singleautoPay");
+
+        Assert.That(Sent(), Is.EqualTo(new[] { Hex(ItemBoxPacket.Open(key.Id, 0, ItemBoxError.s_err_cannot_open_multi_itembox_inventory)) }));
+        Assert.That(session.Item.Inventory.Get(key.Uid)?.Amount, Is.EqualTo(1));
     }
 }
