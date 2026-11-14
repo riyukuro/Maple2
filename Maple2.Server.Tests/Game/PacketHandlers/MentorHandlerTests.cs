@@ -35,7 +35,7 @@ public class MentorHandlerTests {
 
     private DbContextOptions options = null!;
 
-    private void Login(bool season) {
+    private void Login(bool season, int[]? questIds = null) {
         options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
@@ -45,7 +45,7 @@ public class MentorHandlerTests {
         foreach (TestGameSession each in new[] { test, otherTest }) {
             each.AddMap(TestGameSession.Map(2000023));
             if (season) {
-                each.AddEvent(77, GameEventType.ReturnUser, new ReturnUser(SeasonId: 1, QuestIds: [], RequiredUserValue: 0,
+                each.AddEvent(77, GameEventType.ReturnUser, new ReturnUser(SeasonId: 1, QuestIds: questIds ?? [], RequiredUserValue: 0,
                     DateInactiveSince: DateTimeOffset.MinValue, DaysInactive: 0, RequiredLevel: 0));
             }
             each.Start();
@@ -144,6 +144,20 @@ public class MentorHandlerTests {
         Assert.That(Mentor(test), Is.EqualTo(new[] { Role(MentorRole.Mentee, session), "04" }));
         Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentee));
         Assert.That(test.World.PlayerUpdates.Single(update => update.HasMentorRole).MentorRole, Is.EqualTo((int) MentorRole.Mentee));
+    }
+
+    // The season's quests start with the role already set: a quest requiring mentee (KR 70600057) is accepted.
+    [Test]
+    public void RegisterMentee_StartsTheSeasonQuestsThatRequireTheRole() {
+        const int menteeQuest = 70600057;
+        Login(season: true, questIds: [menteeQuest]);
+        QuestMetadata quest = TestGameSession.QuestData(menteeQuest);
+        test.Register(quest with { Require = quest.Require with { Mentee = true } });
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        Send(session, RegisterMentee);
+
+        Assert.That(session.Quest.TryGetQuest(menteeQuest, out Quest? started), Is.True);
+        Assert.That(started!.State, Is.EqualTo(QuestState.Started));
     }
 
     [Test]

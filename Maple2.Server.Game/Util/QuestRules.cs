@@ -61,9 +61,7 @@ public static class QuestRules {
     };
 
     // require mentor and mentee (questdata.cpp:605-608): the mentoring role (CMentoringManager::FUN_140b71580, the
-    // player's role) must be 5 for mentor and 2 for mentee. The server has no mentoring, so every role is 0 and
-    // neither quest is accepted, as the client refuses it.
-    public const int NoMentoringRole = 0;
+    // player's role, the MentorRole the server sends in Mentor 1 and 3) must be 5 for mentor and 2 for mentee.
     public static bool MeetsMentoring(bool mentor, bool mentee, int role) => (!mentor || role == 5) && (!mentee || role == 2);
 
     // require vip (questdata.cpp:609): premium time must be left (PC::IsVip, its end time after the server time).

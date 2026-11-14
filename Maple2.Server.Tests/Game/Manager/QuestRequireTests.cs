@@ -138,14 +138,17 @@ public class QuestRequireTests {
         Assert.That(System.Text.Json.JsonSerializer.Deserialize<QuestMetadataRequire>(json, options)!.GuildLevel, Is.EqualTo(guildLevel));
     }
 
-    // require mentor and mentee (questdata.cpp:605; KR 70600056, 70600057): no player has a mentoring role here.
-    [Test]
-    public void CanStart_MentorAndMentee() {
+    // require mentor and mentee (questdata.cpp:605; KR 70600056, 70600057): the player's registered mentoring role.
+    [TestCase(MentorRole.None, false, false)]
+    [TestCase(MentorRole.Mentor, true, false)]
+    [TestCase(MentorRole.Mentee, false, true)]
+    [TestCase(MentorRole.MentorCandidate, false, false)]
+    [TestCase(MentorRole.UnregisteredMentee, false, false)]
+    public void CanStart_MentorAndMentee(MentorRole role, bool mentorQuest, bool menteeQuest) {
+        session.Player.Value.Character.MentorRole = role;
         Assert.Multiple(() => {
-            Assert.That(session.Quest.CanStart(Register(Require() with { Mentor = true })), Is.False);
-            Assert.That(session.Quest.CanStart(Register(Require() with { Mentee = true }, Main + 1)), Is.False);
-            Assert.That(QuestRules.MeetsMentoring(true, false, 5), Is.True);
-            Assert.That(QuestRules.MeetsMentoring(false, true, 2), Is.True);
+            Assert.That(session.Quest.CanStart(Register(Require() with { Mentor = true })), Is.EqualTo(mentorQuest));
+            Assert.That(session.Quest.CanStart(Register(Require() with { Mentee = true }, Main + 1)), Is.EqualTo(menteeQuest));
         });
     }
 

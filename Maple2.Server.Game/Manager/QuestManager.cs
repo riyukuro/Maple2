@@ -550,7 +550,7 @@ public sealed class QuestManager {
             return false;
         }
 
-        if (!QuestRules.MeetsMentoring(require.Mentor, require.Mentee, QuestRules.NoMentoringRole)) {
+        if (!QuestRules.MeetsMentoring(require.Mentor, require.Mentee, (int) session.Player.Value.Character.MentorRole)) {
             return false;
         }
 

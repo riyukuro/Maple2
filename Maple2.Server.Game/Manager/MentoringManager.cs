@@ -77,6 +77,8 @@ public class MentoringManager : IDisposable {
             return;
         }
 
+        // The role is set first: the season's quests can require it (require mentee, as 70600057 does).
+        session.Player.Value.Character.MentorRole = role;
         if (role == MentorRole.Mentee) {
             foreach (int questId in returnUser.QuestIds) {
                 if (session.Quest.Start(questId) == QuestError.s_quest_error_inventory_full) {
@@ -85,7 +87,6 @@ public class MentoringManager : IDisposable {
             }
         }
 
-        session.Player.Value.Character.MentorRole = role;
         session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = session.AccountId,
             CharacterId = session.CharacterId,
