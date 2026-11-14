@@ -98,7 +98,7 @@ public class BlackMarketStorageTests {
     private int Buy(long listingId, int quantity, long buyer, long price = Price) {
         using GameStorage.Request db = storage.Context();
         BlackMarketListing? after = db.BuyBlackMarketListing(listingId, quantity, price, new Mail { ReceiverId = buyer },
-            left => new Mail { ReceiverId = seller, Meso = quantity * left.Price }, out Mail? mail, out Mail? sellerMail, out _);
+            left => new Mail { ReceiverId = seller, Meso = quantity * left.Price }, out Mail? mail, out Mail? sellerMail, out _, out _);
         if (after == null) {
             Assert.That(mail, Is.Null);
             Assert.That(sellerMail, Is.Null);
@@ -176,7 +176,7 @@ public class BlackMarketStorageTests {
 
         using (GameStorage.Request db = storage.Context()) {
             BlackMarketListing? after = db.BuyBlackMarketListing(listing.Id, quantity, Price, new Mail { ReceiverId = buyerA },
-                _ => throws ? throw new InvalidOperationException("no mail") : null!, out Mail? mail, out Mail? sellerMail, out bool gone);
+                _ => throws ? throw new InvalidOperationException("no mail") : null!, out Mail? mail, out Mail? sellerMail, out bool gone, out _);
             Assert.That(after, Is.Null);
             Assert.That(mail, Is.Null);
             Assert.That(sellerMail, Is.Null);

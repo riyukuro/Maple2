@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -458,6 +458,30 @@ public class BlackMarketRefusalTests {
             Assert.That(spent, Is.EqualTo(5000 - Price));
             Assert.That(session.Currency.Meso, Is.EqualTo(0));
             Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(1));
+        });
+    }
+
+    // A throw after the buy is stored (while its answer is shaped): the item is mailed, so the price stays taken.
+    // Before, the refund on a throw also ran here, and the buyer had the item and the mesos back.
+    [Test]
+    public void Purchase_AThrowAfterTheBuyIsStoredKeepsThePrice() {
+        test = new TestGameSession();
+        BlackMarketListing listing = List(4);
+        GameSession session = Login(test, 5000);
+        Maple2.Database.Storage.GameStorage.Request.OnBuyStored = id => {
+            if (id == listing.Id) {
+                throw new InvalidOperationException("after the commit");
+            }
+        };
+        try {
+            Assert.Throws<InvalidOperationException>(() => Send(test, session, 5, listing.Id, 1));
+        } finally {
+            Maple2.Database.Storage.GameStorage.Request.OnBuyStored = null;
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(1));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000 - Price));
         });
     }
 

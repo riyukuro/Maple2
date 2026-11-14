@@ -470,19 +470,25 @@ public partial class GameStorage {
         // One buy or take-back at a time in this process; the conditional row change below covers other channels.
         private static readonly object BlackMarketLock = new();
 
+        // Tests only: runs with the listing id once a buy is stored, before its answer is shaped.
+        internal static Action<long>? OnBuyStored;
+
         // Buys quantity of a listing at price and mails it to the buyer, all in one transaction: the listing's
         // count is lowered only while it still holds quantity at that price, so of two buyers racing on the last
         // of a listing one gets it and the other gets null (gone: the listing no longer exists). The whole stack
         // moves to the mail and the listing row is deleted when nothing is left; else the stack is split.
         // sellerMail makes the seller's mail from the listing as it is after the buy; it is stored in the same
         // transaction, so a buy whose seller mail cannot be made or saved changes nothing.
-        // Returns the listing as it is after the buy; mail is the stored mail holding the bought item.
+        // Returns the listing as it is after the buy; mail is the stored mail holding the bought item. stored is set
+        // as soon as the transaction is committed, so a caller still sees it when a later step throws.
         public BlackMarketListing? BuyBlackMarketListing(long listingId, int quantity, long price, Maple2.Model.Game.Mail buyerMail,
                                                          Func<BlackMarketListing, Maple2.Model.Game.Mail>? sellerMail,
-                                                         out Maple2.Model.Game.Mail? mail, out Maple2.Model.Game.Mail? sellerStored, out bool gone) {
+                                                         out Maple2.Model.Game.Mail? mail, out Maple2.Model.Game.Mail? sellerStored, out bool gone,
+                                                         out bool stored) {
             mail = null;
             sellerStored = null;
             gone = false;
+            stored = false;
             if (quantity <= 0) {
                 return null;
             }
@@ -556,6 +562,7 @@ public partial class GameStorage {
                     }
                     Context.SaveChanges();
                     transaction.Commit();
+                    stored = true;
                 } catch (Exception ex) {
                     Context.ChangeTracker.Clear();
                     Logger.LogError(ex, "Failed to buy {Quantity} of black market listing {ListingId}", quantity, listingId);
@@ -567,6 +574,7 @@ public partial class GameStorage {
 
             // The buy is stored. What follows only shapes the answer, outside the catch above: an error here
             // may not be read as a buy that did not happen.
+            OnBuyStored?.Invoke(listingId);
             Maple2.Model.Game.Mail created = mailModel!;
             created.Items.Add(ToItem(soldModel)!);
             mail = created;

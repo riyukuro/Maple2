@@ -254,14 +254,20 @@ public sealed class BlackMarketManager {
         Mail? receivingMail;
         Mail? sellerMail;
         bool gone;
+        bool stored = false;
         try {
             bool sellerIsPremium = session.PlayerInfo.GetOrFetch(listing.CharacterId, out PlayerInfo? seller) && seller.PremiumTime > DateTime.Now.ToEpochSeconds();
             using GameStorage.Request db = session.GameStorage.Context();
             listing = db.BuyBlackMarketListing(listingId, quantity, listing.Price, BuyerMail(listing, quantity),
-                after => SellerMail(after, quantity, sellerIsPremium), out receivingMail, out sellerMail, out gone);
+                after => SellerMail(after, quantity, sellerIsPremium), out receivingMail, out sellerMail, out gone, out stored);
         } catch {
-            // The transaction is undone with the throw, so the mesos go back.
-            session.Currency.ReturnMeso(cost);
+            // A throw before the commit undoes the transaction, so the mesos go back. A throw after it (the answer's
+            // shaping) leaves the buy stored and the item mailed, so the price stays taken.
+            if (!stored) {
+                session.Currency.ReturnMeso(cost);
+            } else {
+                session.Currency.NotifyMeso();
+            }
             throw;
         }
         if (listing == null || receivingMail == null) {
