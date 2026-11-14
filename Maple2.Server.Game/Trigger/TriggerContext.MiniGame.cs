@@ -199,8 +199,10 @@ public partial class TriggerContext {
 
     public void UnsetMiniGameAreaForHack() { }
 
+    // Runs the on-enter actions of the next state of set_state's list id and takes it off the list (randomize: a random
+    // one of those left). Chosen here: a list used up, or never set, runs nothing.
     public void UseState(int id, bool randomize) {
-        if (!Field.States.TryGetValue(id, out List<TriggerState>? states)) {
+        if (!Field.States.TryGetValue(id, out List<TriggerState>? states) || states.Count == 0) {
             return;
         }
 

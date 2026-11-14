@@ -34,12 +34,14 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
             throw new ArgumentException("At least one state name must be provided.");
         }
 
+        // In the order of the names: set_state's randomize shuffles the names, and use_state with randomize="0" takes
+        // them in that order (61000001_me_001 shuffles 51 states and uses 5). A name the script lacks is skipped.
         List<TriggerState> states = [];
-        foreach (Trigger.Helpers.Trigger.State triggerState in trigger.States) {
-            if (!names.Contains(triggerState.Name)) {
-                continue;
+        foreach (string name in names) {
+            Trigger.Helpers.Trigger.State? triggerState = trigger.States.FirstOrDefault(state => state.Name == name);
+            if (triggerState != null) {
+                states.Add(new TriggerState(trigger, triggerState, Context));
             }
-            states.Add(new TriggerState(trigger, triggerState, Context));
         }
 
         return states;
