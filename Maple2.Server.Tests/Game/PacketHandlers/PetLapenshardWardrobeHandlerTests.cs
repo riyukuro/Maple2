@@ -73,6 +73,48 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));
     }
 
+    // A spend on another thread while the fodder leaves: the meso was held before, so the fusion is done and only
+    // what was left could go. Before, the meso was taken after the fodder; that take threw on the short balance and
+    // the fodder was gone with no fusion.
+    [Test]
+    public void LapenshardUpgrade_ASpendWhileTheFodderLeavesCannotSkipTheMeso() {
+        var test = new TestGameSession();
+        ItemMetadata crystalData = TestGameSession.Metadata(40100001, type: 2);
+        crystalData = crystalData with { Property = crystalData.Property with { Tag = ItemTag.RedCrystal } };
+        Item shards = test.Store(TestGameSession.Metadata(ShardId, type: 21), amount: 9);
+        test.Store(crystalData, amount: 50);
+        test.Register(TestGameSession.Metadata(NextShardId, type: 21));
+        test.SetTable(new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry> {
+            [ShardId] = new(1, 1, NextShardId, 4, [new LapenshardUpgradeTable.Ingredient(ItemTag.RedCrystal, 20)], 1000),
+        }));
+        GameSession session = test.Start();
+        var handler = new LapenshardHandler { TableMetadata = test.TableMetadata, ItemMetadata = session.ItemMetadata };
+        session.Currency.Meso = 1500;
+        test.TakeSent();
+        long spent = -1;
+        test.OnSend = packet => {
+            if (spent >= 0 || TestGameSession.Op(packet) != SendOp.ItemInventory) {
+                return;
+            }
+            long left = session.Currency.Meso;
+            spent = session.Currency.TryTakeMeso(left, notify: false) ? left : 0;
+        };
+
+        Assert.DoesNotThrow(() => handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(5);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(ShardId);
+            writer.WriteInt(0);
+            writer.WriteInt(1);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(4);
+        })));
+
+        Assert.That(spent, Is.EqualTo(500));
+        Assert.That(session.Currency.Meso, Is.Zero);
+        Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(1));
+    }
+
     // A fusion counts one try and one success (21100057, 21100059); a refused one counts nothing.
     [TestCase(20, 1L)]
     [TestCase(10, null)]

@@ -182,13 +182,19 @@ public class LapenshardHandler : FieldPacketHandler {
                 return false;
             }
         }
+        // The meso is held before the fodders leave without a packet (their packets go out first, and a spend on
+        // another thread could come in between); the packet goes where the take was.
+        if (!session.Currency.TryTakeMeso(entry.Meso, notify: false)) {
+            return false;
+        }
 
         foreach ((long uid, int amount) in fodders) {
             if (!session.Item.Inventory.Consume(uid, amount)) {
+                session.Currency.ReturnMeso(entry.Meso, notify: false);
                 throw new InvalidOperationException($"Failed to consume fodder: {uid} after validating");
             }
         }
-        session.Currency.ChangeMeso(-entry.Meso);
+        session.Currency.NotifyMeso();
         if (!session.Item.Inventory.Consume(ingredients)) {
             throw new InvalidOperationException("Failed to consume ingredients after validating");
         }
