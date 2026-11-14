@@ -37,20 +37,33 @@ public class ItemCalendarExpiryTests {
         Assert.That(Item.MadeExpiry(life, At(made), Kst), Is.EqualTo(At(expiry)));
     }
 
-    // A made item takes the calendar end in the server's zone, not its count of months from now.
+    // The server's zone (no zone given): made on fixed days, the end is the last day of the next month, 23:59:59 there.
+    [TestCase(2021, 1, 15, 2021, 2, 28)]
+    [TestCase(2021, 12, 31, 2022, 1, 31)]
+    [TestCase(2024, 1, 1, 2024, 2, 29)]
+    public void Months_InTheServersZone(int year, int month, int day, int endYear, int endMonth, int endDay) {
+        var made = new DateTime(year, month, day, 12, 0, 0, DateTimeKind.Unspecified);
+        long now = new DateTimeOffset(made, TimeZoneInfo.Local.GetUtcOffset(made)).ToUnixTimeSeconds();
+
+        long end = Item.MadeExpiry(new ItemMetadataLife(5097600, 0, 2, 2), now);
+
+        DateTime local = TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeSeconds(end).UtcDateTime, TimeZoneInfo.Local);
+        Assert.That(local, Is.EqualTo(new DateTime(endYear, endMonth, endDay, 23, 59, 59)));
+    }
+
+    // A made item takes the calendar end, not its count of months from now. The clock is read on both sides of the
+    // making, so a month boundary passing in between still matches one of the two.
     [Test]
-    public void MadeItem_EndsAtTheEndOfNextMonth() {
-        ItemMetadata metadata = TestGameSession.Metadata(20303212) with { Life = new ItemMetadataLife(5097600, 0, 2, 2) };
+    public void MadeItem_TakesTheCalendarEnd() {
+        var life = new ItemMetadataLife(5097600, 0, 2, 2);
+        ItemMetadata metadata = TestGameSession.Metadata(20303212) with { Life = life };
 
+        long before = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var item = new Item(metadata);
+        long after = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        DateTime end = TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeSeconds(item.ExpiryTime).UtcDateTime, TimeZoneInfo.Local);
-        DateTime now = DateTime.Now;
-        DateTime next = new DateTime(now.Year, now.Month, 1).AddMonths(1);
-        Assert.Multiple(() => {
-            Assert.That((end.Year, end.Month, end.Day), Is.EqualTo((next.Year, next.Month, DateTime.DaysInMonth(next.Year, next.Month))));
-            Assert.That(end.TimeOfDay, Is.EqualTo(new TimeSpan(23, 59, 59)));
-        });
+        Assert.That(item.ExpiryTime, Is.AnyOf(Item.MadeExpiry(life, before), Item.MadeExpiry(life, after)));
+        Assert.That(item.ExpiryTime, Is.Not.EqualTo(before + 5097600).And.Not.EqualTo(after + 5097600));
     }
 
     // A usePeriod item still lasts its minutes from now.
