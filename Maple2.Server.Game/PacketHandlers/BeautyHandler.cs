@@ -104,7 +104,7 @@ public class BeautyHandler : FieldPacketHandler {
 
     private void HandleShop(GameSession session, IByteReader packet) {
         int npcId = packet.ReadInt();
-        var shopType = (BeautyShopType) packet.ReadByte();
+        packet.ReadByte(); // the dialog type the client opened; the server takes it from the npc's own data (ShopType)
 
         if (!NpcMetadata.TryGet(npcId, out NpcMetadata? metadata)) {
             return;
@@ -130,7 +130,7 @@ public class BeautyHandler : FieldPacketHandler {
         }
 
         session.BeautyShop = new BeautyShop(shopMetadata, entries.ToArray()) {
-            Type = shopType,
+            Type = ShopType(session.ServerTableMetadata.ScriptFunctionTable, npcId, shopMetadata),
         };
 
         switch (session.BeautyShop.Type) {
@@ -172,6 +172,48 @@ public class BeautyHandler : FieldPacketHandler {
                     yield return entry;
                 }
             }
+        }
+    }
+
+    // The type of an npc's beauty shop: as the client derives it from the "kind,mode" arg of the npc's BeautyShopDialog
+    // script function (GetDialogIdByKind, GetDialogType, uitalkcinematic.cpp:1981-2018). The byte the client sends
+    // with the open is not trusted: it made shop 504 a type 4 shop (free recolors) or shop 508 a type 1 shop.
+    // Chosen here: an npc with no such function takes its shop row's type (random 2; skin, dye and mirror 3; else 1).
+    public static BeautyShopType ShopType(ScriptFunctionTable functions, int npcId, BeautyShopMetadata shop) {
+        string? arg = functions.Entries.TryGetValue(npcId, out Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>? states)
+            ? states.Values.SelectMany(function => function.Values)
+                .FirstOrDefault(function => function.UiName == "BeautyShopDialog")?.UiArg
+            : null;
+        if (arg != null) {
+            string[] args = arg.Split(',');
+            string kind = args[0].Trim();
+            string mode = args.Length > 1 ? args[1].Trim() : string.Empty;
+            BeautyShopType? type = DialogType(kind, mode);
+            if (type != null) {
+                return type.Value;
+            }
+        }
+        if (shop.IsRandom) {
+            return BeautyShopType.Random;
+        }
+        return shop.Category is BeautyShopCategory.Skin or BeautyShopCategory.Dye or BeautyShopCategory.Mirror
+            ? BeautyShopType.Modify : BeautyShopType.Default;
+
+        static BeautyShopType? DialogType(string kind, string mode) {
+            bool Is(string value, string name) => string.Equals(value, name, StringComparison.OrdinalIgnoreCase);
+            if (Is(kind, "itemColor") || Is(kind, "mirror")) {
+                return BeautyShopType.Modify;
+            }
+            if (!Is(kind, "hair") && !Is(kind, "makeUp") && !Is(kind, "face") && !Is(kind, "skin")) {
+                return null;
+            }
+            if (mode.Length == 0) {
+                return Is(kind, "skin") ? BeautyShopType.Modify : BeautyShopType.Default;
+            }
+            if (Is(mode, "random")) {
+                return BeautyShopType.Random;
+            }
+            return Is(mode, "styleSave") ? BeautyShopType.Save : BeautyShopType.Default;
         }
     }
 
@@ -229,8 +271,9 @@ public class BeautyHandler : FieldPacketHandler {
         }
 
         // A random shop's client sends sub-type 7, never 5 (uibeautyshopdialog.cpp:1841-1856), and its fee would be the
-        // style fee (GetFee, :1313); refuse it rather than make the edit free.
-        if (shop.Type == BeautyShopType.Random) {
+        // style fee (GetFee, :1313); refuse it rather than make the edit free. A style save shop's dialog (type 4)
+        // never sends 5 either: refused, not free.
+        if (shop.Type is BeautyShopType.Random or BeautyShopType.Save) {
             return;
         }
         // The fee is taken only once the changed item is on the character.
@@ -239,12 +282,10 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
         // The client's fee of an edited item (UIBeautyShopDialog::GetFee, uibeautyshopdialog.cpp:1282-1320): in a
-        // shop of type 1 or 3 its recolor fee when its color changed, else none (a crop shows no price, :1960; a
-        // shop of type 4 shows none).
+        // shop of type 1 or 3 its recolor fee when its color changed, else none (a crop shows no price, :1960).
         EquipColor? startColor = cosmetic.Appearance?.Color;
         bool recolor = startColor != null && !Equals(changed.Appearance?.Color, startColor);
-        BeautyShopCostMetadata? fee = recolor && shop.Type is BeautyShopType.Default or BeautyShopType.Modify
-            ? shop.Metadata.ColorCostMetadata : null;
+        BeautyShopCostMetadata? fee = recolor ? shop.Metadata.ColorCostMetadata : null;
         if (fee != null && !CanPay(session, useVoucher, shop, fee)) {
             return;
         }

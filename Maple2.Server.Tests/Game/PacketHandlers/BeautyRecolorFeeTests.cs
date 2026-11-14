@@ -74,23 +74,15 @@ public class BeautyRecolorFeeTests {
         Assert.That((session.Currency.Meso, test.TrophyCounter(Trophy) ?? 0), Is.EqualTo((5000L, 0L)));
     }
 
-    // A random shop's client never sends 5: refused, not free. A shop of type 4 shows no fee: free, and not counted.
-    [Test]
-    public void AnEditInARandomShopIsRefused() {
-        Start(BeautyShopType.Random);
+    // A random or style save shop's client never sends 5: refused, not free (a recolor in a save shop was free).
+    [TestCase(BeautyShopType.Random)]
+    [TestCase(BeautyShopType.Save)]
+    public void AnEditInARandomOrSaveShopIsRefused(BeautyShopType type) {
+        Start(type);
 
         Edit(Red);
 
         Assert.That((session.Item.Equips.Get(EquipSlot.FA)?.Uid, session.Currency.Meso), Is.EqualTo(((long?) worn.Uid, 5000L)));
-    }
-
-    [Test]
-    public void ARecolorInASaveShopIsFreeAndNotCounted() {
-        Start(BeautyShopType.Save);
-
-        Edit(Red);
-
-        Assert.That((Wears(), session.Currency.Meso, test.TrophyCounter(Trophy) ?? 0), Is.EqualTo(((EquipColor?) Red, 5000L, 0L)));
     }
 
     [Test]
