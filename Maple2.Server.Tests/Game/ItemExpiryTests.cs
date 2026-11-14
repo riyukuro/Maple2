@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Validators;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
 
@@ -91,6 +92,44 @@ public class ItemExpiryTests {
             Assert.That(StatsManager.ExpiryChanged(built, StatsManager.ExpiredWorn([gear], now + 1)), Is.True);
             built = StatsManager.ExpiredWorn([gear], now + 1);
             Assert.That(StatsManager.ExpiryChanged(built, StatsManager.ExpiredWorn([gear], now + 2)), Is.False);
+        });
+    }
+
+    // A worn item that runs out stays worn, but its effects (and its gems') leave with its stats, as an unequip
+    // takes them: the client rebuilds the abilities from the items it can use only (equipment.cpp:2950, :3021).
+    // An effect another counted item gives too stays, and an effect not held is not removed.
+    [Test]
+    public void AWornItemRunningOut_LosesItsEffects() {
+        int[] expiredEarring = [90050816, 90050820];
+        int[] wornRing = [90050820];
+        var held = new System.Collections.Generic.HashSet<int> { 90050816, 90050820 };
+
+        Assert.Multiple(() => {
+            Assert.That(BuffManager.ItemEffectsToTake(expiredEarring, wornRing, held.Contains), Is.EqualTo(new[] { 90050816 }));
+            Assert.That(BuffManager.ItemEffectsToTake(expiredEarring, [], held.Contains), Is.EqualTo(new[] { 90050816, 90050820 }));
+            held.Remove(90050816);
+            Assert.That(BuffManager.ItemEffectsToTake(expiredEarring, wornRing, held.Contains), Is.Empty);
+            Assert.That(BuffManager.ItemEffectsToTake([], wornRing, held.Contains), Is.Empty);
+        });
+    }
+
+    // An item in the bag past its time stays there with no notice; it cannot be used (pets and maid furnishings
+    // excepted, CItem 0x140528980) nor worn (s_item_err_puton_expired).
+    [Test]
+    public void ABagItemRunningOut_StaysButCannotBeUsedOrWorn() {
+        var test = new TestGameSession();
+        Item earring = test.Store(TestGameSession.Metadata(11260101, EquipSlot.EA, type: 1));
+        Item potion = test.Store(TestGameSession.Metadata(20000001, type: 2), amount: 3);
+        GameSession session = test.Start();
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        session.Item.Inventory.Get(earring.Uid)!.ExpiryTime = now;
+        session.Item.Inventory.Get(potion.Uid)!.ExpiryTime = now;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Get(earring.Uid), Is.Not.Null);
+            Assert.That(EquipManager.ValidateEquipItem(session, session.Item.Inventory.Get(earring.Uid)!), Is.EqualTo(StringCode.s_item_err_puton_expired));
+            Assert.That(ItemLockRules.ExpiryAllowsUse(session.Item.Inventory.Get(potion.Uid)!.IsExpired(), 2, 0), Is.False);
+            Assert.That(session.Item.Inventory.Get(potion.Uid)?.Amount, Is.EqualTo(3));
         });
     }
 }

@@ -692,6 +692,29 @@ public class BuffManager : IUpdatable {
         }
     }
 
+    // The effect ids of a worn item and of its gems, the ones AddItemBuffs gives.
+    public IEnumerable<int> ItemEffectIds(Item item) {
+        foreach (ItemMetadataAdditionalEffect buff in item.Metadata.AdditionalEffects) {
+            yield return buff.Id;
+        }
+        if (item.Socket == null) {
+            yield break;
+        }
+        foreach (ItemGemstone? gem in item.Socket.Sockets) {
+            if (gem != null && Actor.Field.ItemMetadata.TryGet(gem.ItemId, out ItemMetadata? metadata)) {
+                foreach (ItemMetadataAdditionalEffect buff in metadata.AdditionalEffects) {
+                    yield return buff.Id;
+                }
+            }
+        }
+    }
+
+    // The item effects to take from the wearer: the ones of the worn items that no longer count, held now, that no
+    // counted worn item gives as well.
+    public static int[] ItemEffectsToTake(IEnumerable<int> uncounted, IEnumerable<int> counted, Func<int, bool> held) {
+        return uncounted.Except(counted).Where(held).ToArray();
+    }
+
     public void RemoveItemBuffs(Item item) {
         List<(int id, int casterId)> buffsToRemove = [];
         foreach (ItemMetadataAdditionalEffect buff in item.Metadata.AdditionalEffects) {

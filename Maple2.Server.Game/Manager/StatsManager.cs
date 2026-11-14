@@ -174,6 +174,7 @@ public class StatsManager {
 
         // Before the totals are rebuilt: giving or taking an effect that carries stats refreshes on its own.
         List<SetBonusMetadata> setBonuses = RefreshSetEffects(player);
+        TakeUncountedItemEffects(player);
 
         Character character = player.Value.Character;
         if (LevelStats(character.Job.Code()).TryGetValue(character.Level, out IReadOnlyDictionary<BasicAttribute, long>? metadata)) {
@@ -234,31 +235,47 @@ public class StatsManager {
 
     private static int penaltyDivWarned;
 
+    // An item the client does not count gives it no stats either (SetItemRules.GivesStats).
+    private static Func<Item, int, bool> Gives(FieldPlayer player, long now) {
+        bool vip = player.Session.Config.IsPremiumClubActive();
+        long characterId = player.Value.Character.Id;
+        int characterLevel = player.Value.Character.Level;
+        return (item, layer) => SetItemRules.GivesStats(layer, SetItemRules.Counted(SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null),
+            item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel));
+    }
+
+    // The effects of the worn gear and its gems (AddItemBuffs) leave with the stats: a worn item that runs out (or
+    // otherwise stops counting) keeps its place, but the client rebuilds its abilities from the items it can use only
+    // (equipment.cpp:2950 marks it, :3021 re-adds CanUseItem items), so its effects are taken here as an unequip
+    // takes them. An effect another counted item gives too stays. Before the totals are rebuilt, as the set effects.
+    private static void TakeUncountedItemEffects(FieldPlayer player) {
+        Func<Item, int, bool> gives = Gives(player, DateTime.Now.ToEpochSeconds());
+        ILookup<bool, Item> gear = player.Session.Item.Equips.Gear.Values.ToLookup(item => gives(item, 0));
+        int[] taken = BuffManager.ItemEffectsToTake(gear[false].SelectMany(player.Buffs.ItemEffectIds),
+            gear[true].SelectMany(player.Buffs.ItemEffectIds), id => player.Buffs.HasBuff(id));
+        if (taken.Length > 0) {
+            player.Buffs.Remove(taken.Select(id => (id, player.ObjectId)).ToArray());
+        }
+    }
+
     private void AddEquips(FieldPlayer player) {
         Values.GearScore = 0;
         long now = DateTime.Now.ToEpochSeconds();
         expiredWorn = ExpiredWorn(player, now);
-        bool vip = player.Session.Config.IsPremiumClubActive();
-        long characterId = player.Value.Character.Id;
-        int characterLevel = player.Value.Character.Level;
         bool pvp = player.Field.Metadata.Property.Type == MapType.Pvp;
-        // An item the client does not count gives it no stats either (SetItemRules.GivesStats).
-        bool Gives(Item item, int layer) {
-            return SetItemRules.GivesStats(layer, SetItemRules.Counted(SetItemRules.Expired(item.ExpiryTime, now, item.Pet != null),
-                item.Metadata.Limit.RequireVip, vip, item.Transfer?.Binding?.CharacterId ?? 0, characterId, item.Metadata.Limit.Level, characterLevel));
-        }
+        Func<Item, int, bool> gives = Gives(player, now);
 
         // The outfit tab's items add their own stats as the equip tab's do (equipment.cpp:3009-3020 runs for
         // every layer but the second outfit layer).
         foreach (Item item in player.Session.Item.Equips.Outfit.Values) {
-            if (item.Stats != null && Gives(item, 1)) {
+            if (item.Stats != null && gives(item, 1)) {
                 AddItemStats(item.Stats);
             }
         }
 
         var worn = new List<GearScoreRules.Worn>();
         foreach (Item item in player.Session.Item.Equips.Gear.Values) {
-            if (!Gives(item, 0)) {
+            if (!gives(item, 0)) {
                 continue;
             }
             if (item.Stats != null) {
