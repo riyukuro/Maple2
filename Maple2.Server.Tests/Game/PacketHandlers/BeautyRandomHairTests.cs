@@ -187,4 +187,47 @@ public class BeautyRandomHairTests {
         }));
         Assert.That(session.Item.Inventory.Filter(item => item.Id == coupon), Has.Count.EqualTo(1));
     }
+
+    // Beauty 12's byte is the slot the player keeps (UIBeautyShopDialog::SendBeautyMode12): 0 the hair worn before the
+    // pick, 1 the new hair. It was read as a bool, so any other value kept the new hair and ended the pick.
+    [Test]
+    public void ASlotOtherThanTheTwoStylesIsDropped() {
+        const int coupon = 20300200;
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(coupon));
+        Item worn = test.Store(TestGameSession.Metadata(10200002, EquipSlot.HR), 1, ItemGroup.Outfit, EquipSlot.HR);
+        test.SetTable(new ItemOptionPickTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionPickTable.Option>>()));
+        test.SetTable(new ItemOptionConstantTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>>()));
+        test.SetTable(new ItemOptionStaticTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+        test.SetTable(new ItemOptionRandomTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+        test.Start();
+        test.EnterMap(TestGameSession.Map(2000062));
+        session.Beauty = new BeautyManager(session);
+        session.Beauty.SavePreviousHair(worn);
+        var fee = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 300, string.Empty, 0);
+        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(508, BeautyShopCategory.Hair, 0, fee, fee, true, false, coupon, 0,
+            ItemTag.None, [], []), []) {
+            Type = BeautyShopType.Random,
+        };
+        test.TakeSent();
+        var handler = new BeautyHandler {
+            ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata, NpcMetadata = null!,
+            ServerTableMetadata = test.ServerTableMetadata,
+        };
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteByte(2);
+        }));
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.Beauty.HasPreviousHair, Is.True);
+
+        // Slot 0 still takes the hair worn before and gives the return coupon.
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteByte(0);
+        }));
+        Assert.That(session.Beauty.HasPreviousHair, Is.False);
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == coupon), Has.Count.EqualTo(1));
+    }
 }

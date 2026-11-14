@@ -460,7 +460,13 @@ public class BeautyHandler : FieldPacketHandler {
     }
 
     private void HandleConfirmRandomHair(GameSession session, IByteReader packet) {
-        bool newHairSelected = packet.ReadBool();
+        // The style the player keeps in the client's keep or return box (UIBeautyShopDialog::SendBeautyMode12): 0 the hair
+        // worn before the pick, 1 the new hair. No other value is sent.
+        byte slot = packet.ReadByte();
+        if (slot > 1) {
+            return;
+        }
+        bool newHairSelected = slot == 1;
         int voucherItemId = 0;
         // The answer to a random pick (the client's keep or return box after sub-type 7): with no pick waiting it gave
         // the shop's return coupon each time it was sent.
