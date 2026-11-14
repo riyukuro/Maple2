@@ -323,6 +323,34 @@ public class BagFullRewardTests {
         });
     }
 
+    private long StoredMerets() {
+        using var context = new Ms2Context(test.Options);
+        return context.Account.AsNoTracking().Single(row => row.Id == test.AccountId).Currency.Meret;
+    }
+
+    // The merets are stored with the layout and item rows (one purchase store); left to the next session save, a crash
+    // after the rows were written kept the blueprint unpaid. A refused store writes no item and gives the merets back.
+    [Test]
+    public void CreateBlueprint_StoresTheMeretsWithTheRows() {
+        GameSession session = StartBlueprint();
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added && entry.Entity.GetType().Name == "Item");
+
+        CreateBlueprint(session);
+        test.FailSave = null;
+        Assert.Multiple(() => {
+            Assert.That(LastCubeAnswer(), Is.EqualTo(CubePacket.CreateBlueprintFailed().ToArray()));
+            Assert.That(session.Currency.Meret, Is.EqualTo(1000));
+            Assert.That(session.Item.Inventory.Find(Constant.BlueprintId), Is.Empty);
+        });
+
+        CreateBlueprint(session);
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(700));
+            Assert.That(StoredMerets(), Is.EqualTo(700));
+            Assert.That(session.Item.Inventory.Find(Constant.BlueprintId).Count(), Is.EqualTo(1));
+        });
+    }
+
     // A start item with a full bag comes by mail, once: the mailed pieces count as given on the next request
     // (before, the bag's refusal dropped it).
     [Test]

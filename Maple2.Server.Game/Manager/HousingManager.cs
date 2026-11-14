@@ -219,12 +219,17 @@ public class HousingManager {
             return false;
         }
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        plotInfo = db.BuyPlot(session.PlayerName, session.AccountId, plot, TimeSpan.FromDays(contract.Days));
+        // The cost is stored in the plot's transaction (TrySavePurchase): left to the next session save, a crash
+        // after the plot row was written kept the plot unpaid. A failed buy (owned on another channel, or a failed
+        // save) costs nothing: the cost is given back before the account lock is, and the home's outdoor plot is
+        // left as it was.
+        PlotInfo? bought = null;
+        if (!session.TrySavePurchase(db => (bought = db.BuyPlot(session.PlayerName, session.AccountId, plot, TimeSpan.FromDays(contract.Days))) != null,
+                () => RefundCost(session, contract.ItemId, costAmount))) {
+            bought = null;
+        }
+        plotInfo = bought;
         if (plotInfo == null) {
-            // A failed buy (owned on another channel, or a failed save) costs nothing: the cost is given back, and
-            // the home's outdoor plot is left as it was.
-            RefundCost(session, contract.ItemId, costAmount);
             logger.Warning("Failed to buy plot: {PlotId}, {OwnerId}", plot.Id, plot.OwnerId);
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
             return false;
@@ -335,11 +340,14 @@ public class HousingManager {
             return;
         }
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        PlotInfo? plotInfo = db.ExtendPlot(Home.Outdoor, TimeSpan.FromDays(extension.Days));
+        // Stored with the cost, as a buy (BuyPlot). A failed extension costs nothing: the cost is given back.
+        PlotInfo outdoor = Home.Outdoor;
+        PlotInfo? plotInfo = null;
+        if (!session.TrySavePurchase(db => (plotInfo = db.ExtendPlot(outdoor, TimeSpan.FromDays(extension.Days))) != null,
+                () => RefundCost(session, extension.ItemId, costAmount))) {
+            plotInfo = null;
+        }
         if (plotInfo == null) {
-            // A failed extension costs nothing: the cost is given back.
-            RefundCost(session, extension.ItemId, costAmount);
             logger.Warning("Failed to extend plot: {PlotId}, {OwnerId}", Home.Outdoor.Id, Home.Outdoor.OwnerId);
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
             return;
@@ -605,16 +613,28 @@ public class HousingManager {
         }
 
         ICollection<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, reward.IndividualDropBoxId);
+
+        // The check-in (its time and the exp it adds) is stored before the box is given: the box went first and a
+        // mailed item's row is written at once, so a crash before the next session save left the home not checked in
+        // and the box could be taken again after a relog. A refused store gives nothing and leaves the check-in open.
+        long levelBefore = Home.DecorationLevel;
+        long expBefore = Home.DecorationExp;
+        Home.GainExp(decorationScore, tableMetadata.MasteryUgcHousingTable.Entries);
+        Home.DecorationRewardTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (!session.TrySavePurchase(db => db.SaveHome(Home), () => {
+                Home.DecorationLevel = levelBefore;
+                Home.DecorationExp = expBefore;
+                Home.DecorationRewardTimestamp = 0;
+            })) {
+            logger.Warning("Interior check-in not stored, nothing given AccountId={AccountId}", session.AccountId);
+            session.Send(CubePacket.InteriorCheckInError(UgcMapError.s_ugcmap_take_interior_gift_fail_from_db));
+            return;
+        }
         foreach (Item item in items) {
             if (!session.Item.Inventory.Add(item, true)) {
                 session.Item.MailItem(item);
             }
         }
-
-        long levelBefore = Home.DecorationLevel;
-        long expBefore = Home.DecorationExp;
-        Home.GainExp(decorationScore, tableMetadata.MasteryUgcHousingTable.Entries);
-        Home.DecorationRewardTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         session.Send(CubePacket.DesignRankReward(Home));
 
         // interior_exp_offset (trophy 23500023) adds the decoration exp of the check-in; interior_level (trophies
@@ -640,11 +660,16 @@ public class HousingManager {
             return;
         }
 
+        // The claimed grade is stored before the item is given, as the check-in (InteriorCheckIn).
+        Home.InteriorRewardsClaimed.Add(rewardId);
+        if (!session.TrySavePurchase(db => db.SaveHome(Home), () => Home.InteriorRewardsClaimed.Remove(rewardId))) {
+            logger.Warning("Interior grade {Grade} claim not stored, nothing given AccountId={AccountId}", rewardId, session.AccountId);
+            session.Send(CubePacket.InteriorGradeRewardError(UgcMapError.s_ugcmap_take_interior_gift_fail_from_db));
+            return;
+        }
         if (!session.Item.Inventory.Add(rewardItem, true)) {
             session.Item.MailItem(rewardItem);
         }
-
-        Home.InteriorRewardsClaimed.Add(rewardId);
         session.Send(CubePacket.DesignRankReward(Home));
     }
 

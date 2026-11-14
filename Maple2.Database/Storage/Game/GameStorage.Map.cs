@@ -57,10 +57,12 @@ public partial class GameStorage {
         // Buys an outdoor plot that has no owner and is past its expiry. On a relational DB the claim is one
         // conditional update (owner 0, expired) in a transaction with the deletes of the old cubes and their maids,
         // so a second buyer of the same plot (another channel) updates no row and gets null. Null on any failure,
-        // also on a database error; nothing is written then (the caller refunds the cost).
+        // also on a database error; nothing is written then (the caller refunds the cost). Inside a transaction the
+        // caller began (a purchase stored with its cost) the writes are that transaction's, and its commit stores them.
         public PlotInfo? BuyPlot(string characterName, long ownerId, PlotInfo plot, TimeSpan days) {
             try {
-                using IDbContextTransaction? transaction = Context.Database.IsRelational()
+                bool relational = Context.Database.IsRelational();
+                using IDbContextTransaction? transaction = relational && Context.Database.CurrentTransaction == null
                     ? Context.Database.BeginTransaction(IsolationLevel.ReadCommitted)
                     : null;
                 UgcMap? ugcMap = Context.UgcMap.AsNoTracking().FirstOrDefault(map => map.Id == plot.Id && !map.Indoor);
@@ -85,7 +87,7 @@ public partial class GameStorage {
                 if (result == null) {
                     return null;
                 }
-                if (transaction != null) {
+                if (relational) {
                     int claimed = Context.UgcMap
                         .Where(map => map.Id == id && !map.Indoor && map.OwnerId == 0 && map.ExpiryTime < now)
                         .ExecuteUpdate(update => update
@@ -96,7 +98,7 @@ public partial class GameStorage {
                         return null; // bought (or changed) meanwhile
                     }
                     DeletePlotCubes(id);
-                    if (!CommitPlotWrite(transaction, "buy", id, ownerId, expiry)) {
+                    if (transaction != null && !CommitPlotWrite(transaction, "buy", id, ownerId, expiry)) {
                         return null;
                     }
                 } else {

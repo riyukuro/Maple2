@@ -917,11 +917,11 @@ public class RequestCubeHandler : FieldPacketHandler {
 
         // Nothing is paid or written before the bag is known to take the blueprint: the merets were taken first and
         // a full bag lost them, with the layout row saved for no item.
+        Item? item = session.Field?.ItemDrop.CreateItem(Constant.BlueprintId);
+        if (item is null) {
+            return false;
+        }
         lock (session.Item) {
-            Item? item = session.Field?.ItemDrop.CreateItem(Constant.BlueprintId);
-            if (item is null) {
-                return false;
-            }
             if (!session.Item.Inventory.CanAdd(item)) {
                 session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
                 return false;
@@ -933,25 +933,26 @@ public class RequestCubeHandler : FieldPacketHandler {
                 session.Send(CubePacket.Error(UgcMapError.s_err_ugcmap_not_enough_meso_balance));
                 return false;
             }
+        }
 
-            Home home = session.Player.Value.Home;
-            byte area = home.PlannerArea;
-            byte height = home.PlannerHeight;
-            using GameStorage.Request db = session.GameStorage.Context();
+        Home home = session.Player.Value.Home;
+        byte area = home.PlannerArea;
+        byte height = home.PlannerHeight;
+        var homeLayout = new HomeLayout(0, "Blueprint", area, height, DateTimeOffset.Now, plot.Cubes.Values.ToList()) {
+            Background = home.Background,
+            Lighting = home.Lighting,
+            Camera = home.Camera,
+        };
 
-            var homeLayout = new HomeLayout(0, "Blueprint", area, height, DateTimeOffset.Now, plot.Cubes.Values.ToList()) {
-                Background = home.Background,
-                Lighting = home.Lighting,
-                Camera = home.Camera,
-            };
+        // The layout row, the item row and the merets are stored together (TrySavePurchase): the rows were written
+        // at once and the merets left to the next session save, so a crash between them kept the blueprint unpaid.
+        // A refused store writes neither row and gives the merets back.
+        Item? created = null;
+        bool stored = session.TrySavePurchase(db => {
             HomeLayout? layout = db.SaveHomeLayout(homeLayout);
             if (layout is null) {
-                session.Currency.ReturnMeret(blueprintCost);
-                Logger.Error("Failed to save layout for {AccountId}", session.AccountId);
-                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
                 return false;
             }
-
             item.Blueprint = new ItemBlueprint {
                 BlueprintUid = layout.Uid,
                 Width = home.PlannerArea,
@@ -962,36 +963,34 @@ public class RequestCubeHandler : FieldPacketHandler {
                 CharacterId = session.CharacterId,
                 CharacterName = session.PlayerName,
             };
-
             // The answer carries the bag item's uid and the client looks the item up by it (CUgcManager::FUN_14188ff10,
             // ugcmanager_4.cpp:3939-3942); the add of a new item puts a copy with the new row's uid in the bag, so the
             // answer sent uid 0 and the staged item was not the bag's. The row is made here and that item added.
-            Item? created = db.CreateItem(session.CharacterId, item);
-            if (created is null) {
-                db.RemoveHomeLayout(layout);
-                session.Currency.ReturnMeret(blueprintCost);
-                Logger.Error("Failed to create blueprint item for {CharacterId}", session.CharacterId);
-                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
-                return false;
-            }
-
-            session.Currency.NotifyMeretTaken(blueprintCost);
-            // The room was checked under the same lock, so the add takes it; should it not, the paid item goes by mail,
-            // and the request is answered with a failure so the client's upload dialog does not wait on it (before, no
-            // answer was sent). Chosen here: no extra notice says the blueprint was mailed.
-            if (!session.Item.Inventory.Add(created, notifyNew: true, commit: true)) {
-                if (!session.Item.MailHeldItem(created)) {
-                    Logger.Error("Blueprint {Uid} of {CharacterId} was neither added nor mailed", created.Uid, session.CharacterId);
-                }
-                return false;
-            }
-            // create_blueprint (23500025 "Create a blueprint once").
-            session.ConditionUpdate(ConditionType.create_blueprint);
-
-            session.StagedUgcItem = created;
-            session.Send(CubePacket.CreateBlueprint(created.Uid, created.Blueprint!));
-            return true;
+            created = db.CreateItem(session.CharacterId, item);
+            return created is not null;
+        }, () => session.Currency.ReturnMeret(blueprintCost));
+        if (!stored || created is null) {
+            Logger.Error("Failed to store blueprint layout and item for {CharacterId}", session.CharacterId);
+            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
+            return false;
         }
+
+        session.Currency.NotifyMeretTaken(blueprintCost);
+        // The room was checked before the store; should another add have taken it since, the paid item goes by mail,
+        // and the request is answered with a failure so the client's upload dialog does not wait on it (before, no
+        // answer was sent). Chosen here: no extra notice says the blueprint was mailed.
+        if (!session.Item.Inventory.Add(created, notifyNew: true, commit: true)) {
+            if (!session.Item.MailHeldItem(created)) {
+                Logger.Error("Blueprint {Uid} of {CharacterId} was neither added nor mailed", created.Uid, session.CharacterId);
+            }
+            return false;
+        }
+        // create_blueprint (23500025 "Create a blueprint once").
+        session.ConditionUpdate(ConditionType.create_blueprint);
+
+        session.StagedUgcItem = created;
+        session.Send(CubePacket.CreateBlueprint(created.Uid, created.Blueprint!));
+        return true;
     }
 
     private void HandleSaveBlueprint(GameSession session, IByteReader packet) {

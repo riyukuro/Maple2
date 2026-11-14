@@ -10,6 +10,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
@@ -87,6 +88,43 @@ public class PlotChargeTests {
         Assert.That(session.Player.Value.Home.Outdoor?.OwnerId, Is.EqualTo(session.AccountId));
     }
 
+    // The wallet the database holds for the currency (mesos on the character row, merets on the account row).
+    private long StoredMoney(int currency) {
+        using var context = new Ms2Context(test.Options);
+        return currency == Mesos
+            ? context.Character.AsNoTracking().Single(row => row.Id == test.CharacterId).Currency.Meso
+            : context.Account.AsNoTracking().Single(row => row.Id == test.AccountId).Currency.Meret;
+    }
+
+    // The cost is stored with the plot row (one purchase store): left to the next session save, a crash after the
+    // plot row was written kept the plot unpaid.
+    [TestCase(Mesos)]
+    [TestCase(Merets)]
+    public void BuyPlot_Saved_StoresTheCostWithThePlot(int currency) {
+        (GameSession session, _) = Start(currency, expiry: DateTimeOffset.UtcNow.AddDays(-1));
+
+        Assert.That(session.Housing.BuyPlot(PlotNumber), Is.True);
+        Assert.That(StoredMoney(currency), Is.EqualTo(4000));
+    }
+
+    // A buy whose plot row is not written takes nothing (the in-memory store has no rollback: the stored wallet is
+    // checked on MySQL, PlotPurchaseMySqlTests).
+    [TestCase(Mesos)]
+    [TestCase(Merets)]
+    public void BuyPlot_FailedPlotSave_TakesNothing(int currency) {
+        (GameSession session, Plot plot) = Start(currency, expiry: DateTimeOffset.UtcNow.AddDays(-1));
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.UgcMap>().Any(entry => entry.State == EntityState.Modified);
+
+        Assert.That(session.Housing.BuyPlot(PlotNumber), Is.False);
+        test.FailSave = null;
+        using var context = new Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(Money(session, currency), Is.EqualTo(5000));
+            Assert.That(session.Player.Value.Home.Outdoor, Is.Null);
+            Assert.That(context.UgcMap.AsNoTracking().Single(row => row.Id == plot.Id).OwnerId, Is.Zero);
+        });
+    }
+
     [TestCase(Mesos)]
     [TestCase(Merets)]
     public void BuyPlot_NoRow_RefundsTheCost(int currency) {
@@ -123,6 +161,7 @@ public class PlotChargeTests {
         test.FailSave = null;
         session.Housing.ExtendPlot();
         Assert.That(Money(session, currency), Is.EqualTo(4600));
+        Assert.That(StoredMoney(currency), Is.EqualTo(4600));
         Assert.That(Money(session, currency == Mesos ? Merets : Mesos), Is.EqualTo(5000));
         Assert.That(session.Player.Value.Home.Outdoor!.ExpiryTime, Is.GreaterThan(expiry.AddDays(29).ToUnixTimeSeconds()));
     }
