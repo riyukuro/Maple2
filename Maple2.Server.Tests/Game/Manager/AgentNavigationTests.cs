@@ -209,9 +209,11 @@ public class AgentNavigationTests {
         Assert.That(AgentNavigation.RandomPointNear(query, filter, center, float.NaN, random, out _), Is.False);
     }
 
-    // A floor (x 0..5, z 0..10, height 0) and a raised quad (x 5.5..7.5, height 3): the top of a breakable as the
-    // navmesh has it. With ramp, a ramp poly joins the two (a ledge reached on foot); without, the top is an island.
-    private static DtNavMesh TopOverFloor(bool ramp) {
+    // A floor (x 0..5, z 0..10, height 0) and raised quads (x 5.5..7.5, height 3) beside it. With long, one quad
+    // runs the floor's length (z 0..10: a platform, not a breakable's top); else two 2 by 2 quads at z 4..6 and z
+    // 7..9, the tops of two breakables side by side. With ramp, a ramp poly joins the floor and the long quad (a
+    // ledge reached on foot); else the tops are islands.
+    private static DtNavMesh TopsOverFloor(bool long_, bool ramp = false) {
         const int none = 0xffff;
         int[] polys = ramp
             ? [
@@ -219,14 +221,23 @@ public class AgentNavigationTests {
                 3, 2, 4, 5, none, none, 0, none, 2, none, none, none,
                 5, 4, 6, 7, none, none, 1, none, none, none, none, none,
             ]
-            : [
-                0, 1, 2, 3, none, none, none, none, none, none, none, none,
-                5, 4, 6, 7, none, none, none, none, none, none, none, none,
-            ];
-        int count = ramp ? 3 : 2;
+            : long_
+                ? [
+                    0, 1, 2, 3, none, none, none, none, none, none, none, none,
+                    5, 4, 6, 7, none, none, none, none, none, none, none, none,
+                ]
+                : [
+                    0, 1, 2, 3, none, none, none, none, none, none, none, none,
+                    4, 5, 6, 7, none, none, none, none, none, none, none, none,
+                    8, 9, 10, 11, none, none, none, none, none, none, none, none,
+                ];
+        int[] verts = long_
+            ? [0, 0, 0, 0, 0, 100, 50, 0, 100, 50, 0, 0, 55, 30, 100, 55, 30, 0, 75, 30, 100, 75, 30, 0]
+            : [0, 0, 0, 0, 0, 100, 50, 0, 100, 50, 0, 0, 55, 30, 40, 55, 30, 60, 75, 30, 60, 75, 30, 40, 55, 30, 70, 55, 30, 90, 75, 30, 90, 75, 30, 70];
+        int count = polys.Length / 12;
         var option = new DtNavMeshCreateParams {
-            verts = [0, 0, 0, 0, 0, 100, 50, 0, 100, 50, 0, 0, 55, 30, 100, 55, 30, 0, 75, 30, 100, 75, 30, 0],
-            vertCount = 8,
+            verts = verts,
+            vertCount = verts.Length / 3,
             polys = polys,
             polyAreas = new int[count],
             polyFlags = Enumerable.Repeat(1, count).ToArray(),
@@ -254,31 +265,42 @@ public class AgentNavigationTests {
         return navMesh;
     }
 
-    // An npc on the top of a breakable that broke is on a poly island 3 units up: its floor is the nearest point at
-    // the breakable's base height, beside the breakable. Before, nothing moved it and it stayed in the air.
+    // The breakable under the first 2 by 2 top: its base point at the floor's height, its top 1.5 across and 3 up.
+    private static readonly RcVec3f BrokenBase = new(6.5f, 0, 5);
+
+    // An npc on the top of the breakable that broke is on a poly island 3 units up: its floor is the nearest point
+    // at the breakable's base height, beside the breakable. Before, nothing moved it and it stayed in the air.
     [Test]
-    public void FloorBelowBreakable_PutsAnNpcOnAnIslandTopOnTheFloor() {
-        var query = new DtNavMeshQuery(TopOverFloor(ramp: false));
+    public void FloorBelowBreakable_PutsAnNpcOnTheBrokenTopOnTheFloor() {
+        var query = new DtNavMeshQuery(TopsOverFloor(long_: false));
         var filter = new DtQueryDefaultFilter();
 
-        Assert.That(AgentNavigation.FloorBelowBreakable(query, filter, new RcVec3f(6.5f, 3, 5), 0, 3, out RcVec3f floor), Is.True);
+        Assert.That(AgentNavigation.FloorBelowBreakable(query, filter, new RcVec3f(6.5f, 3, 5), BrokenBase, 1.5f, 3, 2, out RcVec3f floor), Is.True);
         Assert.That(floor.X, Is.EqualTo(5).Within(0.01));
         Assert.That(floor.Y, Is.EqualTo(0).Within(0.01));
         Assert.That(floor.Z, Is.EqualTo(5).Within(0.01));
     }
 
-    // An npc on the floor, one on a top a path leaves (a ledge, not a breakable's top), and one beyond the reach of
-    // any floor stay where they are.
+    // Only the broken breakable's own top is cleared: an npc on the intact breakable beside it, one on a platform
+    // that reaches past the breakable's block (a tower, a stage), one on the floor, one on a top a path leaves (a
+    // ledge), one higher than the top can be and one beyond the reach of any floor stay where they are.
     [Test]
-    public void FloorBelowBreakable_LeavesNpcsThatAreNotStranded() {
+    public void FloorBelowBreakable_LeavesNpcsThatAreNotOnTheBrokenTop() {
         var filter = new DtQueryDefaultFilter();
-        var island = new DtNavMeshQuery(TopOverFloor(ramp: false));
-        Assert.That(AgentNavigation.FloorBelowBreakable(island, filter, new RcVec3f(2, 0, 5), 0, 3, out RcVec3f kept), Is.False);
-        Assert.That(kept.X, Is.EqualTo(2));
-        Assert.That(AgentNavigation.FloorBelowBreakable(island, filter, new RcVec3f(6.5f, 3, 5), 0, 1, out _), Is.False);
-        Assert.That(AgentNavigation.FloorBelowBreakable(island, filter, new RcVec3f(float.NaN, 3, 5), 0, 3, out _), Is.False);
+        var tops = new DtNavMeshQuery(TopsOverFloor(long_: false));
+        Assert.That(AgentNavigation.FloorBelowBreakable(tops, filter, new RcVec3f(6.5f, 3, 8), BrokenBase, 1.5f, 3, 2, out RcVec3f kept), Is.False);
+        Assert.That(kept.Z, Is.EqualTo(8));
+        Assert.That(AgentNavigation.FloorBelowBreakable(tops, filter, new RcVec3f(6.5f, 3, 6.9f), BrokenBase, 3f, 3, 2, out _), Is.False,
+            "the next top within the radius, but its island reaches past it");
+        Assert.That(AgentNavigation.FloorBelowBreakable(tops, filter, new RcVec3f(5.5f, 0, 5), BrokenBase, 1.5f, 3, 2, out _), Is.False);
+        Assert.That(AgentNavigation.FloorBelowBreakable(tops, filter, new RcVec3f(6.5f, 3, 5), BrokenBase, 1.5f, 1, 2, out _), Is.False);
+        Assert.That(AgentNavigation.FloorBelowBreakable(tops, filter, new RcVec3f(6.5f, 3, 5), BrokenBase, 1.5f, 3, 1, out _), Is.False);
+        Assert.That(AgentNavigation.FloorBelowBreakable(tops, filter, new RcVec3f(float.NaN, 3, 5), BrokenBase, 1.5f, 3, 2, out _), Is.False);
 
-        var ledge = new DtNavMeshQuery(TopOverFloor(ramp: true));
-        Assert.That(AgentNavigation.FloorBelowBreakable(ledge, filter, new RcVec3f(6.5f, 3, 5), 0, 3, out _), Is.False);
+        var platform = new DtNavMeshQuery(TopsOverFloor(long_: true));
+        Assert.That(AgentNavigation.FloorBelowBreakable(platform, filter, new RcVec3f(6.5f, 3, 5), BrokenBase, 1.5f, 3, 2, out _), Is.False);
+
+        var ledge = new DtNavMeshQuery(TopsOverFloor(long_: true, ramp: true));
+        Assert.That(AgentNavigation.FloorBelowBreakable(ledge, filter, new RcVec3f(6.5f, 3, 5), BrokenBase, 1.5f, 3, 10, out _), Is.False);
     }
 }

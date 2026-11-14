@@ -68,7 +68,7 @@ public class FieldNpc : Actor<Npc> {
     public short SequenceCounter { get; set; }
     #endregion
 
-    public required Vector3 Origin { get; init; }
+    public required Vector3 Origin { get; set; }
 
     public FieldMobSpawn? Owner { get; init; }
 

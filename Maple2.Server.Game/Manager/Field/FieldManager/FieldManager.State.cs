@@ -427,25 +427,30 @@ public partial class FieldManager {
         return fieldBreakable;
     }
 
-    // How far across (map units) from a breakable's position an npc on its top can stand, and how far the floor
-    // beside it is looked for.
-    public const float BREAKABLE_DROP_REACH = 300f;
+    // The top of a breakable an npc can be left on (map units): within half a block's diagonal across of the
+    // breakable's position (its own block; a neighbouring breakable's top is a block away), at most a block high;
+    // the floor it is put on is within a block and a half across, beside the breakable.
+    public const float BREAKABLE_TOP_RADIUS = 110f;
+    public const float BREAKABLE_TOP_HEIGHT = 150f;
+    public const float BREAKABLE_FLOOR_REACH = 165f;
 
     // Npcs left standing on the top of a breakable that broke or went away are put on the floor beside it and sent
-    // to the clients (AgentNavigation.FloorBelowBreakable): the client keeps a live npc where the server says.
+    // to the clients (AgentNavigation.FloorBelowBreakable): the client keeps a live npc where the server says. The
+    // floor point becomes the npc's origin, which its patrol and return home aim at: the top is out of reach now.
     public void DropNpcsOffBreakable(FieldBreakable breakable) {
         foreach (FieldNpc npc in Mobs.Values.Concat(Npcs.Values)) {
             if (npc.IsDead || npc.Navigation is null) {
                 continue;
             }
             Vector3 offset = npc.Position - breakable.Position;
-            if (offset.X * offset.X + offset.Y * offset.Y > BREAKABLE_DROP_REACH * BREAKABLE_DROP_REACH) {
+            if (offset.X * offset.X + offset.Y * offset.Y > BREAKABLE_TOP_RADIUS * BREAKABLE_TOP_RADIUS) {
                 continue;
             }
-            if (!npc.Navigation.DropOffBreakable(breakable.Position, BREAKABLE_DROP_REACH)) {
+            if (!npc.Navigation.DropOffBreakable(breakable.Position, BREAKABLE_TOP_RADIUS, BREAKABLE_TOP_HEIGHT, BREAKABLE_FLOOR_REACH, out Vector3 floor)) {
                 continue;
             }
 
+            npc.Origin = floor;
             npc.MovementState.DropWalkSegment();
             npc.SendControl = true;
         }

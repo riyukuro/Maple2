@@ -254,23 +254,45 @@ public sealed class AgentNavigation {
     // The floor for an npc left standing on a breakable that broke or went away. The navmesh is built with the
     // breakables in it (their tops are walkable polys, the ground under them is not), and the client does not
     // drop a live npc: it puts the npc where its NpcControl says. An npc on such a top is on a poly island that
-    // no path leaves, so it would stay in the air. The floor is the nearest poly at the breakable's base height
-    // within reach (navmesh units) across; none is given when the point is no higher than a climb above the base,
-    // when no floor is in reach, or when a path from the point reaches that floor (a ramp or a ledge, not a top).
-    public static bool FloorBelowBreakable(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f point, float baseHeight, float reach, out RcVec3f floor) {
+    // no path leaves, so it would stay in the air. Only an npc on this breakable's own top is taken: it stands
+    // within topRadius (navmesh units) across of the breakable's base point, more than a climb and at most a climb
+    // over topHeight above it, and every poly its stand poly reaches lies within topRadius across of the base point
+    // (a neighbouring breakable's top, a platform, a tower or a stage reaches further and is left alone), with no
+    // path from it to the floor (a ramp or a ledge, not a top). The floor is the nearest poly at the base's height
+    // within floorReach across, which keeps it beside the breakable, on the side of a wall the breakable stands on.
+    public static bool FloorBelowBreakable(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f point, RcVec3f basePoint,
+            float topRadius, float topHeight, float floorReach, out RcVec3f floor) {
         floor = point;
-        if (!float.IsFinite(point.X) || !float.IsFinite(point.Y) || !float.IsFinite(point.Z) || point.Y - baseHeight <= BREAKABLE_CLIMB) {
+        if (!float.IsFinite(point.X) || !float.IsFinite(point.Y) || !float.IsFinite(point.Z) || !WithinAcross(point, basePoint, topRadius)
+            || point.Y - basePoint.Y <= BREAKABLE_CLIMB) {
             return false;
         }
 
         DtStatus status = query.FindNearestPoly(point, new RcVec3f(0.5f, 1f, 0.5f), filter, out long standRef, out RcVec3f stand, out _);
-        if (status.Failed() || standRef == 0 || stand.Y - baseHeight <= BREAKABLE_CLIMB) {
+        if (status.Failed() || standRef == 0 || stand.Y - basePoint.Y <= BREAKABLE_CLIMB || stand.Y - basePoint.Y > topHeight + BREAKABLE_CLIMB) {
             return false;
         }
 
-        var baseCenter = new RcVec3f(point.X, baseHeight, point.Z);
-        status = query.FindNearestPoly(baseCenter, new RcVec3f(reach, BREAKABLE_CLIMB, reach), filter, out long floorRef, out RcVec3f floorPoint, out _);
-        if (status.Failed() || floorRef == 0) {
+        var island = new List<long>();
+        var parents = new List<long>();
+        var costs = new List<float>();
+        status = query.FindPolysAroundCircle(standRef, stand, 4 * topRadius, filter, ref island, ref parents, ref costs);
+        if (status.Failed()) {
+            return false;
+        }
+        DtNavMesh navMesh = query.GetAttachedNavMesh();
+        foreach (long polyRef in island) {
+            navMesh.GetTileAndPolyByRefUnsafe(polyRef, out DtMeshTile tile, out DtPoly poly);
+            for (int i = 0; i < poly.vertCount; i++) {
+                int v = poly.verts[i] * 3;
+                if (!WithinAcross(new RcVec3f(tile.data.verts[v], tile.data.verts[v + 1], tile.data.verts[v + 2]), basePoint, topRadius)) {
+                    return false;
+                }
+            }
+        }
+
+        status = query.FindNearestPoly(basePoint, new RcVec3f(floorReach, BREAKABLE_CLIMB, floorReach), filter, out long floorRef, out RcVec3f floorPoint, out _);
+        if (status.Failed() || floorRef == 0 || !WithinAcross(floorPoint, basePoint, floorReach)) {
             return false;
         }
 
@@ -284,12 +306,19 @@ public sealed class AgentNavigation {
         return true;
     }
 
-    // Puts the npc on the floor when it stands on the top of a breakable that broke (FloorBelowBreakable). Its walk
-    // ends there: the rest of a path on the top is no longer walkable.
-    public bool DropOffBreakable(Vector3 breakablePosition, float reach) {
-        RcVec3f basePoint = DotRecastHelper.ToNavMeshSpace(breakablePosition);
-        if (!FloorBelowBreakable(crowd.GetNavMeshQuery(), crowd.GetFilter(0), DotRecastHelper.ToNavMeshSpace(npc.Position), basePoint.Y,
-                reach * DotRecastHelper.MapRotation.GetRightAxis().Length(), out RcVec3f floor)) {
+    private static bool WithinAcross(RcVec3f point, RcVec3f center, float radius) {
+        float x = point.X - center.X;
+        float z = point.Z - center.Z;
+        return x * x + z * z <= radius * radius;
+    }
+
+    // Puts the npc on the floor when it stands on the top of the breakable that broke (FloorBelowBreakable), with
+    // the sizes in map units. Its walk ends there: the rest of a path on the top is no longer walkable.
+    public bool DropOffBreakable(Vector3 breakablePosition, float topRadius, float topHeight, float floorReach, out Vector3 dropped) {
+        float scale = DotRecastHelper.MapRotation.GetRightAxis().Length();
+        dropped = npc.Position;
+        if (!FloorBelowBreakable(crowd.GetNavMeshQuery(), crowd.GetFilter(0), DotRecastHelper.ToNavMeshSpace(npc.Position),
+                DotRecastHelper.ToNavMeshSpace(breakablePosition), topRadius * scale, topHeight * scale, floorReach * scale, out RcVec3f floor)) {
             return false;
         }
 
@@ -298,6 +327,7 @@ public sealed class AgentNavigation {
         currentPathProgress = 0;
         agent.npos = floor;
         npc.Position = DotRecastHelper.FromNavMeshSpace(floor);
+        dropped = npc.Position;
         return true;
     }
 
