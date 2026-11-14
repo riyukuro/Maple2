@@ -73,4 +73,62 @@ public class DungeonRoomClockTests {
 
         Assert.That(stage2.RoomTimer!.Duration, Is.EqualTo(960_000));
     }
+
+    // A stop or restart one field's script makes reaches the other fields of the room: their window closes or opens
+    // again, and a restarted time counts down to the room's close there too.
+    [Test]
+    public void StopAndRestart_ReachEveryField() {
+        (_, DungeonFieldManager stage1, DungeonFieldManager stage2) = Enter();
+        stage1.StartRoomTimer();
+        stage1.RoomTimer!.Update(1_000);
+        stage2.StartRoomTimer();
+        stage2.RoomTimer!.Update(2_000);
+
+        stage1.RoomTimer.Stop();
+        stage2.RoomTimer.Update(3_000);
+        Assert.That((stage2.RoomTimer.Closed, stage2.RoomTimer.Counting), Is.EqualTo((true, false)));
+
+        stage1.RoomTimer.Restart(60_000);
+        stage2.RoomTimer.Update(4_000);
+        Assert.That((stage2.RoomTimer.Closed, stage2.RoomTimer.Counting), Is.EqualTo((false, true)));
+    }
+
+    // A field entered after the room's time was stopped opens no window.
+    [Test]
+    public void AFieldEnteredAfterTheStop_StaysClosed() {
+        (_, DungeonFieldManager stage1, DungeonFieldManager stage2) = Enter();
+        stage1.StartRoomTimer();
+        stage1.RoomTimer!.Update(1_000);
+        stage1.RoomTimer.Stop();
+
+        stage2.StartRoomTimer();
+
+        Assert.That(stage2.RoomTimer!.Closed, Is.True);
+    }
+
+    // The lobby runs no timer, but its waiting players are sent back when the room's time runs out (isExpireTimeOut).
+    [Test]
+    public void TheLobby_ClosesWithTheRoom() {
+        (DungeonFieldManager lobby, DungeonFieldManager stage1, _) = Enter();
+        Assert.That(lobby.LobbyExpires(10_000_000), Is.False, "no field started the time");
+
+        stage1.StartRoomTimer();
+        stage1.RoomTimer!.Update(1_000);
+
+        Assert.Multiple(() => {
+            Assert.That(lobby.LobbyExpires(901_000), Is.False);
+            Assert.That(lobby.LobbyExpires(901_001), Is.True);
+            Assert.That(stage1.LobbyExpires(901_001), Is.False, "only the lobby");
+        });
+    }
+
+    [Test]
+    public void TheLobby_StaysWhenTheTimeWasStopped() {
+        (DungeonFieldManager lobby, DungeonFieldManager stage1, _) = Enter();
+        stage1.StartRoomTimer();
+        stage1.RoomTimer!.Update(1_000);
+        stage1.RoomTimer.Stop();
+
+        Assert.That(lobby.LobbyExpires(10_000_000), Is.False);
+    }
 }

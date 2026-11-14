@@ -624,7 +624,7 @@ public partial class FieldManager : IField {
         UpdateBanners();
         ExpireMicrogames();
 
-        RoomTimer?.Update(FieldTick);
+        UpdateRoomTimer(FieldTick);
         PerformanceStage?.Update();
         RankDuel?.Update(FieldTick);
         PvpZone?.Update(FieldTick);
@@ -632,6 +632,8 @@ public partial class FieldManager : IField {
         HideAndSeek?.Update(FieldTick);
         (Widgets.GetValueOrDefault("RainbowMonster") as RainbowMonsterWidget)?.Update(FieldTick);
     }
+
+    protected virtual void UpdateRoomTimer(long tickCount) => RoomTimer?.Update(tickCount);
 
     public void EnsurePlayerPosition(FieldPlayer player) {
         if (Entities.BoundingBox.Contains(player.Position, 0.001f)) {

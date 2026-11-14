@@ -75,6 +75,34 @@ public class DungeonFieldManager : FieldManager {
         SetRoomTimer(new RoomTimer(this, type, RoomClock(), DungeonMetadata.IsExpireTimeOut));
     }
 
+    // The lobby returned its players at the room's close (LobbyExpiry).
+    private bool lobbyExpiryHandled;
+
+    protected override void UpdateRoomTimer(long tickCount) {
+        base.UpdateRoomTimer(tickCount);
+        if (RoomTimer is null && LobbyExpires(tickCount)) {
+            lobbyExpiryHandled = true;
+            foreach (FieldPlayer player in Players.Values) {
+                int returnMapId = player.Session.ReturnMapId();
+                player.Session.SendFieldEnter(player.Session.PrepareField(returnMapId, returnMapId));
+            }
+            resultLogger.Debug("Dungeon {DungeonId} room time ran out, disposing lobby {MapId}", DungeonId, MapId);
+            Dispose();
+        }
+    }
+
+    /// <summary>
+    /// A lobby outside fieldIDs runs no timer, but it is part of the room: when the room's time runs out with
+    /// isExpireTimeOut, the players waiting there are sent back like those in the room's fields, once.
+    /// </summary>
+    public bool LobbyExpires(long tickCount) {
+        if (lobbyExpiryHandled || Lobby != this || !DungeonMetadata.IsExpireTimeOut) {
+            return false;
+        }
+        RoomTimerClock? clock = roomClock;
+        return clock is { Started: true } && clock.Expired(tickCount);
+    }
+
     /// <summary>
     /// The room gets its result. showResult false (dungeon_clear uiType None) leaves out the result banner; the
     /// clear still counts, so a Colosseum run that ends after some rounds keeps them.

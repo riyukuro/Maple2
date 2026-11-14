@@ -118,4 +118,21 @@ public class TriggerRoomTimerTests {
             Assert.That(clock.Duration, Is.EqualTo(0));
         });
     }
+
+    // The marks other fields of the room read to catch up: a restart, a lap change and the last notice choice.
+    [Test]
+    public void Clock_CountsRestartsAndLapChanges() {
+        var clock = new RoomTimerClock(600000);
+        clock.Start(1000);
+        clock.SetLap(1, 300000);
+        clock.MoveLapToNow(2, 5000);
+        clock.Modify(-1000, showEffect: false);
+        clock.Restart(9000, 60000);
+
+        Assert.Multiple(() => {
+            Assert.That((clock.Generation, clock.LapsVersion, clock.LastModifyEffect), Is.EqualTo((1, 2, false)));
+            Assert.That(clock.LapsSnapshot(), Is.EqualTo(new SortedDictionary<int, int> { [1] = 300000, [2] = 4000 }));
+            Assert.That(clock.LapsSnapshot(), Is.Not.SameAs(clock.Laps));
+        });
+    }
 }
