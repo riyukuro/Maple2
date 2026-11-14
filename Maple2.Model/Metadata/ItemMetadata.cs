@@ -72,6 +72,11 @@ public record ItemMetadataProperty(
     // The property element's rank (CItemData::GetRank, 0: none), the rarity a maid recipe ingredient that is not
     // equipment must have. Null in a row ingested before this field existed.
     public int? Rank { get; init; }
+    // Set at ingest when MS2_PLAYED_CLIENT_XML names the pack of the played client: that client's own nonzero
+    // rank for the id (PlayedClientItems.Ranks), which it takes as the rarity of every copy it is sent
+    // (CItem::FUN_140523c40, commonfiles/item.cpp). It can differ from Rank, the server pack's. Null without a
+    // played client or when the client has no single nonzero rank: the packet rarity is shown then.
+    public int? ClientRank { get; init; }
     // The property element's survival (1 on the 44 items of the survival match). The client never reads it
     // (ItemProperty::Load, commonfiles/itemdatastruct.cpp:1122); the server's survival item rules do (SurvivalItemRules).
     public bool Survival { get; init; }

@@ -109,6 +109,44 @@ public static class PlayedClientItems {
         return types;
     }
 
+    // The <property rank> of each item from its available environments (0 when absent, as CItemData::GetRank reads
+    // it), for items whose available environments agree on a nonzero rank. The client takes that rank as the
+    // rarity of every copy of the item it is sent, whatever rarity the packet names (CItem::FUN_140523c40,
+    // commonfiles/item.cpp: GetRank() == 0 ? packet rarity : GetRank()), so the server holds its copies at it
+    // (Item.ClientRarity).
+    public static Dictionary<int, int> Ranks(IEnumerable<XmlDocument> itemFiles, Func<XmlElement, bool> available) {
+        var ranks = new Dictionary<int, int>();
+        var mixed = new HashSet<int>();
+        foreach (XmlDocument file in itemFiles) {
+            XmlNodeList? items = file.SelectNodes("ms2/item");
+            if (items == null) {
+                continue;
+            }
+            foreach (XmlNode node in items) {
+                if (node is not XmlElement item || !int.TryParse(item.GetAttribute("id"), out int id) || id == 0) {
+                    continue;
+                }
+                foreach (XmlNode child in item.ChildNodes) {
+                    if (child is not XmlElement { Name: "environment" } environment || !available(environment)) {
+                        continue;
+                    }
+                    int.TryParse(environment["property"]?.GetAttribute("rank"), out int rank);
+                    if (ranks.TryGetValue(id, out int other) && other != rank) {
+                        mixed.Add(id);
+                    }
+                    ranks[id] = rank;
+                }
+            }
+        }
+        foreach (int id in mixed) {
+            ranks.Remove(id);
+        }
+        foreach (int id in ranks.Where(entry => entry.Value == 0).Select(entry => entry.Key).ToList()) {
+            ranks.Remove(id);
+        }
+        return ranks;
+    }
+
     // The client puts an item in the bag tab of its own item data's type alone (CItemData FUN_14053e530,
     // ModelExtensions.TabOfType). Where the server pack's type, subtype and piece tag give another tab, the
     // client's type and subtype are taken, so the server keeps the item in the tab the client shows it in (KR:

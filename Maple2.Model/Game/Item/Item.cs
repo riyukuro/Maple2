@@ -52,7 +52,7 @@ public class Item : IByteSerializable, IByteDeserializable {
 
     public Item(ItemMetadata metadata, int rarity = 1, int amount = 1, bool initialize = true) {
         Metadata = metadata;
-        Rarity = rarity;
+        Rarity = ClientRarity(metadata, rarity);
         Amount = amount;
         Inventory = Metadata.Inventory();
         Type = new ItemType(metadata.Id);
@@ -266,6 +266,17 @@ public class Item : IByteSerializable, IByteDeserializable {
         }
         return metadata.Property.Rank is > 0 and < 7 ? metadata.Property.Rank.Value : 1;
     }
+
+    // The rarity the server holds a copy of the item at. The client takes its item data's nonzero rank as the
+    // rarity of every copy it is sent and ignores the packet's (CItem::FUN_140523c40, commonfiles/item.cpp, from the
+    // bag list, CSceneStateGame::OnItemInventory); a copy held at another rarity is shown at the rank but fails every
+    // test that sends or compares the server's rarity (an enchant's id and rank match of its fodder,
+    // UIItemEnchantDialog FUN_1419c9260). So a made, loaded, cloned or mutated item takes the client's rank
+    // (ClientRank, set at ingest from the played client) in place of the rarity it was given, and a stored row
+    // takes it at load, which its next save stores. A pet keeps its own: the client sets a pet's rarity from the
+    // pet update (CPetManager::OnPetItemDataUpdate, petmanager.cpp:956) and an evolution raises it.
+    public static int ClientRarity(ItemMetadata metadata, int rarity) =>
+        metadata.Property.ClientRank is > 0 and < 7 && metadata.Inventory() != InventoryType.Pets ? metadata.Property.ClientRank.Value : rarity;
 
     // The rarity a stored item is loaded with. A stackable item (a gem, a type 19 catalyst, a Chaos Onyx of constant 4)
     // stored at 1 was made before DefaultRarity or by the GM item command before it took the default, at 1; it loads at

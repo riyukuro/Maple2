@@ -73,6 +73,26 @@ public class PlayedClientItemsTests {
         }));
     }
 
+    // The nonzero rank of the available environments; an id whose environments disagree (a missing rank is 0) or
+    // whose rank is 0 has none.
+    [Test]
+    public void Ranks_FromTheAvailableEnvironments() {
+        XmlDocument file = File("""
+            <item id="100"><environment><property rank="6" /></environment></item>
+            <item id="101"><environment locale="KR"><property rank="4" /></environment><environment locale="NA"><property rank="3" /></environment></item>
+            <item id="102"><environment><property rank="2" /></environment><environment locale="NA"><property /></environment></item>
+            <item id="103"><environment><property rank="0" /></environment></item>
+            <item id="104"><environment><basic /></environment></item>
+            <item id="105"><environment><property rank="5" /></environment><environment feature="Off"><property rank="1" /></environment></item>
+            """);
+
+        Assert.That(PlayedClientItems.Ranks([file], Available), Is.EquivalentTo(new Dictionary<int, int> {
+            [100] = 6,
+            [101] = 3,
+            [105] = 5,
+        }));
+    }
+
     private static ItemMetadataProperty Property(int type, int subType, bool fragment = false) =>
         Maple2.Server.Tests.Game.TestGameSession.Metadata(1, type: type).Property with { SubType = subType, IsFragment = fragment };
 
