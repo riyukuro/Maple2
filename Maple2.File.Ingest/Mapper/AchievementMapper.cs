@@ -104,7 +104,9 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
     private static IEnumerable<(int Id, string Name, AchieveData Data)> PlayedTrophies(M2dReader played, List<int> unread) {
         var achieveSerializer = new XmlSerializer(typeof(AchievesData));
         Dictionary<int, string> names = [];
-        // A client pack keeps its names at string/en/ (the data pack at en/); KR Live's English file names 1 of these trophies.
+        // A client pack keeps its names at string/en/ (the data pack at en/). KR Live's file has one of these trophies
+        // (92000139), in a locale="NA" row the KR filter drops, so the added trophies come without a name. The server
+        // reads a trophy's name only for map chest trophies (MapChestRules, interact_object), which none of these is.
         PackFileEntry? nameEntry = played.Files.FirstOrDefault(file => file.Name == "string/en/achievename.xml")
                                    ?? played.Files.FirstOrDefault(file => file.Name == "en/achievename.xml");
         if (nameEntry != null && new XmlSerializer(typeof(StringMapping)).Deserialize(played.GetXmlReader(nameEntry)) is StringMapping mapping) {
