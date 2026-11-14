@@ -36,7 +36,9 @@ public class BeautyHandler : FieldPacketHandler {
     private enum Command : byte {
         Shop = 0,
         CreateBeauty = 3,
-        Unknown4 = 4, // UpdateEar?
+        // The client builds it (an item taken off in a preview, Customize::Equipment::SendRemoved) but never sends it:
+        // its one caller, Customize::CommitUid, is called nowhere.
+        RemoveBeauty = 4,
         UpdateBeauty = 5,
         UpdateSkin = 6,
         RandomHair = 7,
@@ -60,7 +62,7 @@ public class BeautyHandler : FieldPacketHandler {
             case Command.CreateBeauty:
                 HandleCreateBeauty(session, packet);
                 return;
-            case Command.Unknown4:
+            case Command.RemoveBeauty:
                 packet.ReadLong();
                 return;
             case Command.UpdateBeauty:
