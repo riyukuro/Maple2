@@ -60,6 +60,8 @@ public class SessionSaveTransactionTests {
             }, []),
         }));
         test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        // A lapenshard equip reads the shard groups (no group here: the shard is in none).
+        test.SetTable(new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry>()));
         using (GameStorage.Request db = test.Storage.Context()) {
             session.Config = new ConfigManager(db, session);
         }

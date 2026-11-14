@@ -2144,11 +2144,12 @@ public sealed partial class GameSession : Core.Network.Session {
         return false;
     }
 
-    // Unknown: a purchase save whose commit threw and whose mark could not be read again (storeUnknown).
+    // Unknown: a store (a purchase save or a session save) whose commit threw and whose mark could not be read again
+    // (storeUnknown).
     private enum SaveResult { Stored, Failed, ResetRunning, Unknown }
 
-    // Set by a purchase save whose commit threw and whose mark could not be read: its rows may be in the database or
-    // not, while the session's memory is that of a failed store (the caller put back what it took). A later store
+    // Set by a store whose commit threw and whose mark could not be read: its rows may be in the database or not,
+    // while the session's memory is that of a failed store (a purchase's caller put back what it took). A later store
     // would write that memory over a purchase that was kept (a refund of a price the database took), so every store
     // of the session is refused from then on, its last one at Dispose too, and the session is ended: the next login
     // loads what the database holds, the purchase with its price or neither.
@@ -2182,6 +2183,7 @@ public sealed partial class GameSession : Core.Network.Session {
         bool outer = BeginStoreScope();
         EnterStore();
         bool locked = false;
+        bool unknown = false;
         try {
             LockTake take = AcquireLock(AccountId, last ? LastSaveLockTries : 5);
             locked = take == LockTake.Taken;
@@ -2196,6 +2198,11 @@ public sealed partial class GameSession : Core.Network.Session {
             for (int i = 0; i < tries; i++) {
                 if (Save(resetWait)) {
                     return SaveResult.Stored;
+                }
+                // Its commit threw and whether it was kept cannot be read (CommitThrew): no second try.
+                if (storeUnknown) {
+                    unknown = true;
+                    return SaveResult.Unknown;
                 }
             }
             return SaveResult.Failed;
@@ -2212,6 +2219,9 @@ public sealed partial class GameSession : Core.Network.Session {
             // Before the queued steps: they run once the lock is given back, and may store.
             LeaveStore();
             EndStoreScope(outer);
+            if (unknown) {
+                Cut();
+            }
         }
     }
 
@@ -2518,13 +2528,16 @@ public sealed partial class GameSession : Core.Network.Session {
                 return SaveResult.Failed;
             }
             // The mark tells a commit that throws (its answer lost with the connection) kept or not (CommitThrew).
-            long mark = Random.Shared.NextInt64(1, long.MaxValue);
-            bool marked = db.WriteStoreMark(AccountId, mark);
+            long mark = WriteMark(db);
             bool committed;
             try {
                 committed = db.Commit();
             } catch (Exception ex) {
-                return CommitThrew(db, tokens, ex, marked ? mark : 0);
+                return CommitThrew("SavePurchase", db, tokens, ex, mark) switch {
+                    true => SaveResult.Stored,
+                    false => SaveResult.Failed,
+                    null => SaveResult.Unknown,
+                };
             }
             return (tokens.Kept = committed) ? SaveResult.Stored : SaveResult.Failed;
         } catch (ResetRunningException ex) {
@@ -2536,38 +2549,46 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
-    // A purchase save whose commit threw: its writes may be kept or not. Its mark, read again once the transaction is
-    // let go, tells which: kept, it is stored (the caller gives what was paid for, and refunds nothing); not kept, it
-    // is a failed save as any other. A mark that cannot be read (or none, on a store without transactions) leaves it
-    // Unknown (storeUnknown): logged with the stack, and the session is ended. Before, every commit that threw was a
-    // failed one, and a purchase the database kept was refunded in memory, and stored so by the next save.
-    private SaveResult CommitThrew(GameStorage.Request db, RowTokens tokens, Exception ex, long mark) {
-        bool? kept = db.SettleCommit(() => mark == 0 ? null : MarkStored(mark));
+    // A store (a purchase save, a session save) whose commit threw: its writes may be kept or not. Its mark, read
+    // again once the transaction is let go, tells which: kept (true), it is stored (a purchase's caller gives what was
+    // paid for and refunds nothing; a session save is no failed one); not kept (false), it is a failed store as any
+    // other. A mark that cannot be read (or none, on a store without transactions) leaves it unknown (null,
+    // storeUnknown): logged with the stack, and the session is ended. Before, every commit that threw was a failed
+    // one, and a purchase the database kept was refunded in memory, and stored so by the next save.
+    private bool? CommitThrew(string where, GameStorage.Request db, RowTokens tokens, Exception ex, long mark) {
+        bool? kept = db.SettleCommit(() => mark == 0 ? null : MarkStored(where, mark));
         switch (kept) {
             case true:
-                Logger.Error(ex, "SavePurchase: the commit threw, but its mark is stored: the purchase is stored AccountId={AccountId} CharacterId={CharacterId}",
-                    AccountId, CharacterId);
+                Logger.Error(ex, "{Where}: the commit threw, but its mark is stored: the store is kept AccountId={AccountId} CharacterId={CharacterId}",
+                    where, AccountId, CharacterId);
                 tokens.Kept = true;
-                return SaveResult.Stored;
+                return true;
             case false:
-                Logger.Error(ex, "SavePurchase: the commit threw and its mark is not stored, nothing stored AccountId={AccountId} CharacterId={CharacterId}",
-                    AccountId, CharacterId);
-                return SaveResult.Failed;
+                Logger.Error(ex, "{Where}: the commit threw and its mark is not stored, nothing stored AccountId={AccountId} CharacterId={CharacterId}",
+                    where, AccountId, CharacterId);
+                return false;
         }
         storeUnknown = true;
-        Logger.Error(ex, "SavePurchase: the commit threw and whether it was kept cannot be read; nothing more of this session is stored and it is ended, the next login loads what the database holds AccountId={AccountId} CharacterId={CharacterId}{NewLine}{Stack}",
-            AccountId, CharacterId, Environment.NewLine, Environment.StackTrace);
-        return SaveResult.Unknown;
+        Logger.Error(ex, "{Where}: the commit threw and whether it was kept cannot be read; nothing more of this session is stored and it is ended, the next login loads what the database holds AccountId={AccountId} CharacterId={CharacterId}{NewLine}{Stack}",
+            where, AccountId, CharacterId, Environment.NewLine, Environment.StackTrace);
+        return null;
+    }
+
+    // Writes a new mark of the account in the store's open transaction (CommitThrew reads it again); 0 when the
+    // store has none (the in-memory one of the tests).
+    private long WriteMark(GameStorage.Request db) {
+        long mark = Random.Shared.NextInt64(1, long.MaxValue);
+        return db.WriteStoreMark(AccountId, mark) ? mark : 0;
     }
 
     // Whether the account's stored mark is this one, read on a connection of its own; null when the read fails.
-    private bool? MarkStored(long mark) {
+    private bool? MarkStored(string where, long mark) {
         try {
             MarkReadFault?.Invoke();
             using GameStorage.Request read = GameStorage.Context();
             return read.ReadStoreMark(AccountId, MarkLockWaitSeconds) == mark;
         } catch (Exception ex) {
-            Logger.Error(ex, "SavePurchase: the mark of a commit that threw could not be read AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            Logger.Error(ex, "{Where}: the mark of a commit that threw could not be read AccountId={AccountId} CharacterId={CharacterId}", where, AccountId, CharacterId);
             return null;
         }
     }
@@ -2651,7 +2672,16 @@ public sealed partial class GameSession : Core.Network.Session {
             return false;
         }
         lastSaveItemRows = db.ItemRowsWritten;
-        if (!(tokens.Kept = db.Commit())) {
+        // The mark tells a commit that throws (its answer lost with the connection) kept or not (CommitThrew): kept,
+        // the save is stored; not kept, a failed save; unknown, LockedSave ends the session.
+        long mark = WriteMark(db);
+        bool committed;
+        try {
+            committed = db.Commit();
+        } catch (Exception ex) {
+            committed = CommitThrew("Save", db, tokens, ex, mark) == true;
+        }
+        if (!(tokens.Kept = committed)) {
             return false;
         }
         UgcMarket?.RemovalsStored(ugcRemovals);
