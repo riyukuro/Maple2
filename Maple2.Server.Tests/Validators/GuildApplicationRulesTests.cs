@@ -471,11 +471,10 @@ public class GuildApplicationRulesTests {
             daysJoined * 86400L), Is.EqualTo(expected));
     }
 
-    [TestCase(false, false, false, true)]
-    [TestCase(true, false, false, false)]
-    [TestCase(false, true, false, false)]
-    [TestCase(false, false, true, false)]
-    public void GuildFieldEntry_NeedsAMemberFreeToLeave(bool dead, bool inDungeon, bool inHome, bool expected) {
-        Assert.That(GuildRules.CanGoToGuildField(dead, inDungeon, inHome), Is.EqualTo(expected));
+    [TestCase(false, false, true)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, false)]
+    public void GuildFieldEntry_NeedsAMemberFreeToLeave(bool dead, bool inDungeon, bool expected) {
+        Assert.That(GuildRules.CanGoToGuildField(dead, inDungeon), Is.EqualTo(expected));
     }
 }

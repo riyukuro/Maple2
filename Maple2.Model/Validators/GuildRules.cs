@@ -388,11 +388,13 @@ public static class GuildRules {
         return eventMapId > 0 && IsEventActive(openTime, now) && currentMapId != eventMapId;
     }
 
-    // Guild 100 and the guild house entry move the member to another field. A dead member, or one inside
-    // a dungeon or a home, stays where they are: the move would take them out of the death, the dungeon
-    // room or the home without that field's own way out.
-    public static bool CanGoToGuildField(bool dead, bool inDungeon, bool inHome) {
-        return !dead && !inDungeon && !inHome;
+    // The guild house entry moves the member to the house. A dead member, or one inside a dungeon, stays
+    // where they are: the move would take them out of the death or the dungeon room without that field's
+    // own way out. A home is no bar: the client sends the entry from a home on purpose
+    // (`CGuildManager::FUN_1413ba4b0`, guildmanager.cpp:923, lets a field it would refuse through when its
+    // map type is 3, a home). Guild 100 (the event entry) asks nothing of the member or the field.
+    public static bool CanGoToGuildField(bool dead, bool inDungeon) {
+        return !dead && !inDungeon;
     }
 
     // Guild 91 (CGuildManager::FUN_1413b96e0), in the client's order: the row of the skill's level must

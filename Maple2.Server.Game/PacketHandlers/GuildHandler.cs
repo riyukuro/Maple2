@@ -1176,9 +1176,6 @@ public class GuildHandler : PacketHandler<GameSession> {
         if (!GuildRules.CanEnterEvent(row?.MapId ?? 0, openTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), session.Field.MapId)) {
             return;
         }
-        if (!GuildRules.CanGoToGuildField(session.Player.IsDead, session.Field is DungeonFieldManager, session.Field is HomeFieldManager)) {
-            return;
-        }
 
         session.Migrate(row!.MapId, guild.Id);
     }
@@ -1257,7 +1254,7 @@ public class GuildHandler : PacketHandler<GameSession> {
         if (house is null) {
             return;
         }
-        if (!GuildRules.CanGoToGuildField(session.Player.IsDead, session.Field is DungeonFieldManager, session.Field is HomeFieldManager)) {
+        if (!GuildRules.CanGoToGuildField(session.Player.IsDead, session.Field is DungeonFieldManager)) {
             return;
         }
 
