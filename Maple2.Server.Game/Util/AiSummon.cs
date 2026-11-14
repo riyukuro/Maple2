@@ -74,6 +74,18 @@ public static class AiSummon {
         return Math.Clamp(summonerHealth, Math.Min(1, summonTotal), summonTotal);
     }
 
+    // option="linkHP" (8 summon nodes in npc AI files, all with masterHP: the TurkaHoodForce phases and the quest
+    // copy): the summon and its summoner share one health. KR AI_TurkaHoodForce_Phase01.xml comments linkHP as health
+    // shared with the summoner; Phase02 summons its four copies early into a hidden corner of the map so the shared
+    // health holds for their whole life. Each member's change since the last share (a hit, a dot, a heal) adds to the
+    // shared health, which stays within 0 and the summoner's full health (owner total); at 0 every member dies.
+    public static bool LinksHealth(NodeSummonOption[] option) => Array.IndexOf(option, NodeSummonOption.LinkHp) >= 0;
+
+    public static long SharedHealth(long shared, long ownerTotal, IEnumerable<(long Current, long Seen)> members) {
+        long change = members.Sum(member => member.Current - member.Seen);
+        return Math.Clamp(shared + change, 0, Math.Max(ownerTotal, 0));
+    }
+
     public static bool LeavesWithSummoner(NodeSummonMaster master) => master != NodeSummonMaster.None;
 
     // A slave is a summon that leaves with its summoner. The SlaveCount conditions and the RemoveSlaves node read the

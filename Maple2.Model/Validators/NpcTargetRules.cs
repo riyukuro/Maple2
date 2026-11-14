@@ -61,6 +61,20 @@ public static class NpcTargetRules {
     // spawns with (its own patrol) does not hold it.
     public static bool HoldsScriptPath(int ownFriendly, bool onScriptPath) => ownFriendly != 0 && onScriptPath;
 
+    // A target node of type rankAssociate picks the dealer at its rank by the damage dealt to the npc. KR
+    // AI_ZakumBrown.xml (CurseZakumArms, run by the body itself) comments rank="1" as the player who dealt the body
+    // the most damage and rank="2" as the second; AI_Primadonna.xml uses rank 1 six times. The server keeps the
+    // total each caster dealt (no rate over time), so the rank is by that total. dealers: the ones that can still be
+    // targeted. Equal totals go to the lower object id, so the pick is stable. 0: nobody holds that rank.
+    public static int RankedDealer(IEnumerable<(int ObjectId, long Damage)> dealers, int rank) {
+        return dealers.Where(dealer => dealer.Damage > 0)
+            .OrderByDescending(dealer => dealer.Damage)
+            .ThenBy(dealer => dealer.ObjectId)
+            .Skip(Math.Max(rank, 1) - 1)
+            .Select(dealer => dealer.ObjectId)
+            .FirstOrDefault();
+    }
+
     // A walk to or from an actor is over once that actor is no longer the npc's battle target.
     public static bool ChaseEnds(int chasedObjectId, int targetObjectId) => chasedObjectId != targetObjectId;
 }

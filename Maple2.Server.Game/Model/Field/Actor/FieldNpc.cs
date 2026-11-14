@@ -87,6 +87,9 @@ public class FieldNpc : Actor<Npc> {
     // The npc that summoned this one as its slave (a summon node without master="None"); null otherwise.
     public FieldNpc? Master { get; private set; }
 
+    // The npcs this one shares its health with (summon option linkHP); null when it shares with none.
+    public HealthLink? HealthLink { get; private set; }
+
     // Set by an AI ride node: the npc ids of the slave this npc rides (its car); null when not riding.
     public int[]? RideNpcIds { get; set; }
     // The car position last taken and where that put this npc (a navmesh snap may leave it off the car's point):
@@ -176,6 +179,11 @@ public class FieldNpc : Actor<Npc> {
             long? health = AiSummon.InheritedHealth(node.Option, Stats.Values[BasicAttribute.Health].Current, summon.Stats.Values[BasicAttribute.Health].Total);
             if (health is not null) {
                 summon.Stats.Values[BasicAttribute.Health].Current = health.Value;
+            }
+            if (AiSummon.LinksHealth(node.Option)) {
+                HealthLink ??= new HealthLink(this);
+                HealthLink.Add(summon);
+                summon.HealthLink = HealthLink;
             }
 
             bool slave = AiSummon.LeavesWithSummoner(node.Master);
@@ -377,6 +385,7 @@ public class FieldNpc : Actor<Npc> {
             AddSpawnBuffs(tickCount);
         }
 
+        HealthLink?.Share();
         base.Update(tickCount);
 
         if (interactCoolingDown && tickCount >= InteractReadyTick) {

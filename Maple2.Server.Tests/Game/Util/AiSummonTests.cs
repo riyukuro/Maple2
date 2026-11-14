@@ -226,4 +226,26 @@ public class AiSummonTests {
             Assert.That(AiSummon.InheritedHealth([NodeSummonOption.LinkHp], 500, 1000), Is.Null);
         });
     }
+
+    // KR AI_TurkaHoodForce_Phase01.xml (npc 23000120, full health 61888412906) summons its two copies with
+    // option="masterHP,linkHP", commented as health shared with the summoner. A hit on any member (or a heal) moves the
+    // one health all members hold; it stays within 0 and the summoner's full health.
+    [Test]
+    public void LinkHp_TheMembersShareOneHealth() {
+        const long total = 61888412906;
+        Assert.Multiple(() => {
+            Assert.That(AiSummon.LinksHealth([NodeSummonOption.MasterHp, NodeSummonOption.LinkHp]), Is.True);
+            Assert.That(AiSummon.LinksHealth([NodeSummonOption.MasterHp, NodeSummonOption.HitDamage]), Is.False);
+            // The summoner takes 1000 and a copy 500: all three hold 30000000000 - 1500.
+            Assert.That(AiSummon.SharedHealth(30000000000, total, [(29999999000, 30000000000), (29999999500, 30000000000), (30000000000, 30000000000)]),
+                Is.EqualTo(29999998500));
+            // Nothing changed: the shared health stays.
+            Assert.That(AiSummon.SharedHealth(5000, total, [(5000, 5000), (5000, 5000)]), Is.EqualTo(5000));
+            // A copy's lethal hit takes the shared health to 0, so every member dies.
+            Assert.That(AiSummon.SharedHealth(5000, total, [(5000, 5000), (0, 5000)]), Is.EqualTo(0));
+            Assert.That(AiSummon.SharedHealth(5000, total, [(1000, 5000), (2000, 5000)]), Is.EqualTo(0));
+            // A heal past full health stops at the summoner's full health.
+            Assert.That(AiSummon.SharedHealth(total - 10, total, [(total, total - 10), (total - 10, total - 10)]), Is.EqualTo(total));
+        });
+    }
 }

@@ -61,11 +61,11 @@ public class BattleState {
 
     // A target node picks the target when it runs, by its own rule (KR AI_Alex_AnchorLizard.xml: a standby every 10 s
     // whose target node, rand 10 to 1500, is commented as the periodic target switch). With no actor in the node's
-    // window the npc keeps the target it has, until it is out of the npc's sight (ShouldKeepTarget). rankAssociate
-    // (8 nodes) has no rule here, so it changes nothing. A hasAdditional node with noChangeWhenNoTarget takes no
-    // target when the npc has none, as in Update.
+    // window the npc keeps the target it has, until it is out of the npc's sight (ShouldKeepTarget). A rankAssociate
+    // node takes the player at its rank by damage dealt (RankedTarget). A hasAdditional node with
+    // noChangeWhenNoTarget takes no target when the npc has none, as in Update.
     public void Retarget() {
-        if (!CanBattle || actor.IsDead || TargetType == NodeTargetType.RankAssociated || actor is FieldPet { OwnerId: 0, TamingPoint: <= 0 }) {
+        if (!CanBattle || actor.IsDead || actor is FieldPet { OwnerId: 0, TamingPoint: <= 0 }) {
             return;
         }
         if (TargetId == 0 && TargetNode is not null && TargetType == NodeTargetType.HasAdditional && TargetNode.NoChangeWhenNoTarget) {
@@ -306,7 +306,23 @@ public class BattleState {
         return !target.IsScriptMarker && NpcTargetRules.FightsNpc(own.Friendly, own.AttackGroup, other.Friendly, other.DefenseGroup);
     }
 
+    // The player at the rank node's place by the damage it dealt to this npc (NpcTargetRules.RankedDealer), among
+    // the players in the field the npc can target. Null when nobody holds the rank.
+    private FieldPlayer? RankedTarget() {
+        IEnumerable<(int ObjectId, long Damage)> dealers = actor.DamageByDealer.Where(dealer =>
+            actor.Field.Players.TryGetValue(dealer.ObjectId, out FieldPlayer? player) && NpcTargetRules.CanTarget(player.IsDead, player.InvisibleFromNpc));
+        int objectId = NpcTargetRules.RankedDealer(dealers, TargetNode?.Rank ?? 1);
+        return actor.Field.Players.GetValueOrDefault(objectId);
+    }
+
     private void FindNewTarget() {
+        // Chosen here: with nobody at the rank (no player has dealt damage yet), an npc with no target looks for
+        // one in its sight as with no node, and Retarget keeps the one it has.
+        if (TargetType == NodeTargetType.RankAssociated && RankedTarget() is { } ranked) {
+            Target = ranked;
+            return;
+        }
+
         int friendlyType = GetTargetType();
         float sightSquared = actor.Value.Metadata.Distance.Sight;
         float sightHeightUp = actor.Value.Metadata.Distance.SightHeightUp;

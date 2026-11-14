@@ -34,6 +34,9 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
     protected readonly ConcurrentDictionary<int, DamageRecordTarget> DamageDealers = new();
     // The damage taken so far from every caster (trigger condition npc_damage).
     public long DamageTaken => DamageDealers.Values.Sum(record => record.Damage.Sum(entry => entry.Amount));
+    // The damage each caster dealt so far, by its object id (AI target rankAssociate).
+    public IEnumerable<(int ObjectId, long Damage)> DamageByDealer =>
+        DamageDealers.Select(dealer => (dealer.Key, dealer.Value.Damage.Sum(entry => entry.Amount)));
 
     public int ObjectId { get; }
     public virtual Vector3 Position { get => Transform.Position; set => Transform.Position = value; }

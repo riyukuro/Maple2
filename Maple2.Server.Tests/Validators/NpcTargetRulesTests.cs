@@ -51,6 +51,28 @@ public class NpcTargetRulesTests {
         Assert.That(NpcTargetRules.FloorChange(current, change, floor), Is.EqualTo(expected));
     }
 
+    // KR AI_ZakumBrown CurseZakumArms: rank 1 is the player who dealt the body the most damage, rank 2 the second.
+    // Equal totals go to the lower object id; a rank nobody holds (or a dealer with no damage) gives 0.
+    [TestCase(1, 12)]
+    [TestCase(2, 11)]
+    [TestCase(3, 13)]
+    [TestCase(4, 0)]
+    [TestCase(0, 12)]
+    public void RankedDealer_ThePlaceByDamageDealt(int rank, int expected) {
+        (int, long)[] dealers = [(13, 300), (11, 500), (12, 900), (14, 0)];
+        Assert.That(NpcTargetRules.RankedDealer(dealers, rank), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void RankedDealer_EqualTotalsGoToTheLowerId() {
+        (int, long)[] dealers = [(22, 400), (21, 400)];
+        Assert.Multiple(() => {
+            Assert.That(NpcTargetRules.RankedDealer(dealers, 1), Is.EqualTo(21));
+            Assert.That(NpcTargetRules.RankedDealer(dealers, 2), Is.EqualTo(22));
+            Assert.That(NpcTargetRules.RankedDealer([], 1), Is.EqualTo(0));
+        });
+    }
+
     // A Dummy model without a shown bar is a script marker; a Dummy with a bar is an object to guard.
     [TestCase("Dummy", false, true)]
     [TestCase("Dummy", true, false)]
