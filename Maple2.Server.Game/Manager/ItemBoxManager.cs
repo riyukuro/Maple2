@@ -169,18 +169,28 @@ public class ItemBoxManager {
 
             // The key and the box are taken in one step (both are tested before either is taken), so a box that
             // cannot be taken leaves the key and gives nothing.
+            // A box bought for mesos: the price is taken before the key, without a packet, and given back when the
+            // key cannot be taken. A take on another thread while the key leaves (its packet is sent) cannot leave
+            // the key gone with the box unpaid.
             bool boxPaid = pay != ItemBoxRules.LuluPay.Meso;
+            if (!boxPaid && !session.Currency.TryTakeMeso(mesoCost, notify: false)) {
+                error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                break;
+            }
             if (boxPaid && keyIngredient.Tag == boxIngredient.Tag) {
                 if (!session.Item.Inventory.Consume([new IngredientInfo(keyIngredient.Tag, keyIngredient.Amount + boxIngredient.Amount)])) {
                     error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
                     break;
                 }
             } else if (!session.Item.Inventory.Consume(boxPaid ? [keyIngredient, boxIngredient] : [keyIngredient])) {
+                if (!boxPaid) {
+                    session.Currency.ReturnMeso(mesoCost, notify: false);
+                }
                 error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
                 break;
             }
             if (!boxPaid) {
-                session.Currency.ChangeMeso(-mesoCost);
+                session.Currency.NotifyMeso();
             }
 
             foreach (Item newItem in items) {

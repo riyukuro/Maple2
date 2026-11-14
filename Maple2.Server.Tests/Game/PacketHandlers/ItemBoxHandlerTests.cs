@@ -388,4 +388,46 @@ public class ItemBoxHandlerTests {
         Assert.That(Held(session, otherBox), Is.EqualTo(leftOther));
         Assert.That(Held(session, KeyId), Is.EqualTo(5 - count));
     }
+
+    // A Lulu box bought for mesos (no box in the bag, autoPay): a spend on another thread while the key leaves the
+    // bag (a trade takes every meso left at the key's packet). The price was taken before the key, so the box is
+    // paid and opened. Before, the price was taken after the key; that take threw on the empty balance, and the
+    // key was gone with nothing given.
+    [Test]
+    public void OpenItemBoxLullu_ASpendWhileTheKeyLeavesCannotSkipThePrice() {
+        const int price = 300;
+        test = new TestGameSession();
+        string parameters = $"<v commonBoxId=\"{DropBoxId}\" unCommonBoxId=\"{DropBoxId}\" boxItemTag=\"LulluBox\" keyItemTag=\"LulluKey\" boxPrice=\"{price}\" />";
+        ItemMetadata keyMetadata = TestGameSession.Metadata(KeyId, function: new ItemMetadataFunction(ItemFunction.OpenItemBoxLullu, "OpenItemBoxLullu", parameters, false));
+        keyMetadata = keyMetadata with { Property = keyMetadata.Property with { Tag = ItemTag.LulluKey } };
+        test.Register(TestGameSession.Metadata(RewardA), TestGameSession.Metadata(RewardB));
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+            [DropBoxId] = TestGameSession.DropBox([(RewardA, 3)], [(RewardB, 1)]),
+        }));
+        test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
+            new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
+        Item key = test.Store(keyMetadata, amount: 2);
+        GameSession session = test.Start();
+        session.Currency.Meso = price + 50;
+        test.TakeSent();
+        long spent = -1;
+        test.OnSend = packet => {
+            if (spent >= 0 || TestGameSession.Op(packet) != SendOp.ItemInventory) {
+                return;
+            }
+            long left = session.Currency.Meso;
+            spent = session.Currency.TryTakeMeso(left, notify: false) ? left : 0;
+        };
+
+        var handler = new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! };
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteLong(key.Uid);
+            writer.WriteUnicodeString("autoPay");
+        }));
+
+        Assert.That(spent, Is.EqualTo(50));
+        Assert.That(session.Currency.Meso, Is.EqualTo(0));
+        Assert.That(Held(session, KeyId), Is.EqualTo(1));
+        Assert.That(Held(session, RewardA) + Held(session, RewardB), Is.GreaterThan(0));
+    }
 }
