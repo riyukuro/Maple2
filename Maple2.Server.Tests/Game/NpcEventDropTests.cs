@@ -54,6 +54,16 @@ public class NpcEventDropTests {
         });
     }
 
+    // customNpcId is a set in the client, dropId a vector: a repeated npc counts once, a repeated box stays.
+    [Test]
+    public void Reader_RepeatsKeptInDropIdOnly() {
+        NpcEventDrop? drop = EventXmlReader.NpcEventDrop("""<ms2><v customNpcId="5,5,6" dropId="7,7,8" /></ms2>""");
+        Assert.Multiple(() => {
+            Assert.That(drop!.NpcIds, Is.EqualTo(new[] { 5, 6 }));
+            Assert.That(drop.DropIds, Is.EqualTo(new[] { 7, 7, 8 }));
+        });
+    }
+
     [TestCase("")]
     [TestCase(null)]
     [TestCase("<ms2")]

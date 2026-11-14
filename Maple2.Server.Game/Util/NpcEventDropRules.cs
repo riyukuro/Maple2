@@ -7,7 +7,8 @@ namespace Maple2.Server.Game.Util;
 // row's context in its game rule (CGameRule::AddNpcEventDrop) for the server and reads none of it. A killed npc gives
 // each damage dealer the items of the drop boxes of the rows running at the kill that it matches: each condition the
 // row sets (non-zero, non-empty) holds. The npc's level is the one the level bounds compare, its class the npcRank.
-// The server's npcs carry no event tags, so a row with an eventTags condition matches no npc.
+// The client's npc data has event tags (npcdata.cpp:1507), but the server does not ingest them, so a row with an
+// eventTags condition matches no npc.
 public static class NpcEventDropRules {
     public static int[] DropIds(IEnumerable<GameEventMetadata> events, int npcId, short npcLevel, int npcClass, int mapId, DateTime localNow) {
         return events

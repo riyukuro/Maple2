@@ -196,7 +196,7 @@ public static class EventXmlReader {
         if (drop == null) {
             return null;
         }
-        int[] dropIds = Ids(drop.GetAttribute("dropId"));
+        int[] dropIds = Ids(drop.GetAttribute("dropId"), distinct: false);
         if (dropIds.Length == 0) {
             return null;
         }
@@ -218,13 +218,13 @@ public static class EventXmlReader {
             Math.Max(npcRank, 0), Ids(drop.GetAttribute("customNpcId")), isShow, dropIds, eventTag);
     }
 
-    // A comma list of ids; an entry that is not a positive number is skipped.
-    private static int[] Ids(string text) {
-        return text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    // A comma list of ids; an entry that is not a positive number is skipped. customNpcId is a set in the client
+    // (each id once), dropId a vector (a repeated box drops again).
+    private static int[] Ids(string text, bool distinct = true) {
+        IEnumerable<int> ids = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(token => int.TryParse(token, out int id) ? id : 0)
-            .Where(id => id > 0)
-            .Distinct()
-            .ToArray();
+            .Where(id => id > 0);
+        return (distinct ? ids.Distinct() : ids).ToArray();
     }
 
     // The burning levelup's values (GameEventBurningLevelup::vfunc_2, commonfiles/gameevent.cpp:5923). value1's

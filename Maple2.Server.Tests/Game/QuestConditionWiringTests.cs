@@ -93,6 +93,31 @@ public class QuestConditionWiringTests : TriggerTestBase {
         typeof(FieldNpc).GetMethod("HandleDamageDealers", Any)!.Invoke(npc, []);
     }
 
+    // A running NpcEventDrop row the npc matches gives its dealer the row's boxes once at the kill (box 1 listed twice,
+    // dropping twice); an ended row and a row of another npc give nothing.
+    [Test]
+    public void NpcEventDrop_TheKillDropsTheRowsBoxes() {
+        StartField(2000001, Npc(22000002));
+        const int itemA = 30000071, itemB = 50300014;
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+            [700000001] = TestGameSession.DropBox([(itemA, 1)]),
+            [700000002] = TestGameSession.DropBox([(itemB, 1)]),
+        }));
+        GameEventMetadata Row(int id, int npcId, int[] boxes, DateTime end) => new(id, GameEventType.NpcEventDrop, new DateTime(2016, 1, 1), end,
+            TimeSpan.Zero, TimeSpan.Zero, [], new NpcEventDrop(0, 0, 0, 0, [npcId], true, boxes, 0), "", "", "", "");
+        test.SetServerTable(new GameEventTable(new Dictionary<int, GameEventMetadata> {
+            [280001] = Row(280001, 22000002, [700000001, 700000001], new DateTime(2099, 12, 31)),
+            [280002] = Row(280002, 22000002, [700000002], new DateTime(2020, 1, 1)),
+            [280003] = Row(280003, 22000003, [700000002], new DateTime(2099, 12, 31)),
+        }));
+
+        Kill(22000002);
+
+        int[] ground = ((ConcurrentDictionary<int, FieldItem>) typeof(FieldManager).GetField("fieldItems", Any)!.GetValue(Field)!).Values
+            .Select(item => item.Value.Id).ToArray();
+        Assert.That(ground, Is.EqualTo(new[] { itemA, itemA }));
+    }
+
     // 10001420: <condition type="npc" code="22000002" value="1" />, a kill of that npc anywhere; another npc does not count.
     [Test]
     public void Npc_10001420_TheNpcsKill() {
