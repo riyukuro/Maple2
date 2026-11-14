@@ -33,7 +33,7 @@ public class SkillTab : IByteSerializable, IByteDeserializable {
         for (int i = 0; i < count; i++) {
             int skillId = reader.ReadInt();
             int points = reader.ReadInt();
-            Skills.Add(skillId, points);
+            Skills[skillId] = points; // a repeated id (the client sends each once) no longer throws
         }
     }
 }

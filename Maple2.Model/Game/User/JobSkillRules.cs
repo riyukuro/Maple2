@@ -59,6 +59,26 @@ public static class JobSkillRules {
         return result;
     }
 
+    // The tree a skill tab gives (SkillInfo.SetTab): a main skill the tab names is at its base level plus the tab's
+    // points, any other at its base level. Null when a count is below 0 or past the skill's max level: the client's
+    // tab is the tree its simulator checked (SkillBookTree 1 is sent after SkillPointSimulator::Validate, as Job 9 is),
+    // so it never holds such a count.
+    public static List<JobSkillState>? TabTree(IEnumerable<JobSkillState> current, IReadOnlyDictionary<int, int> tabSkills) {
+        var result = new List<JobSkillState>();
+        foreach (JobSkillState skill in current) {
+            if (!tabSkills.TryGetValue(skill.Id, out int points)) {
+                result.Add(skill with { Level = skill.BaseLevel });
+                continue;
+            }
+            long level = (long) skill.BaseLevel + points;
+            if (points < 0 || level > skill.MaxLevel) {
+                return null;
+            }
+            result.Add(skill with { Level = (short) level });
+        }
+        return result;
+    }
+
     // SkillPointSimulator::Validate on the tree: in each rank the points spent are within the rank's points
     // (from the level, plus the extra points of that rank); each learned skill is within its max level and meets
     // what its level's upgrade element asks: the character level, other skills of the tree at a level and

@@ -116,10 +116,39 @@ public class SkillManager {
             return true;
         }
 
-        // AddOrUpdate SkillTab
+        // AddOrUpdate SkillTab: the saved ranks' skills are taken from the packet (main skills of the job only), the
+        // other ranks' stay as stored. A new tab takes the main skills of every rank.
         SkillTab? existingTab = GetSkillTab(tab.Id);
+        SkillRank taken = existingTab == null ? SkillRank.Both : ranks;
+        var skills = new Dictionary<int, int>();
+        if (existingTab != null) {
+            foreach ((int skillId, int points) in existingTab.Skills) {
+                if (SkillInfo.GetMainSkill(skillId, ranks) == null) {
+                    skills[skillId] = points;
+                }
+            }
+        }
+        foreach ((int skillId, int points) in tab.Skills) {
+            if (SkillInfo.GetMainSkill(skillId, taken) != null) {
+                skills[skillId] = points;
+            }
+        }
+
+        // The tab is the tree the client's simulator checked before the send (UISkillBookTreeDialog::RequestTree,
+        // uiskillbookautodistributedialog.cpp:1122: the points GetUsedPoints gives per skill), and a tab switch puts
+        // its points on the skills (SkillInfo.SetTab). So the tree it gives passes the check Job 9 makes
+        // (JobSkillRules.Check: points from the level and every extra source, max levels, required skills, level and
+        // quests), or the save is dropped. Before, any points were stored, and a switch to the tab set every skill
+        // to its max level.
+        List<JobSkillState>? tree = JobSkillRules.TabTree(Tree(), skills);
+        JobSkillError error = tree == null ? JobSkillError.MaxLevel : Check(tree);
+        if (error != JobSkillError.None || (existingTab == null && tab.Name.Length > SkillBookRules.MaxNameLength)) {
+            logger.Information("Skill tab {TabId} save refused ({Error}) for {CharacterId}", tab.Id, error, session.CharacterId);
+            return false;
+        }
+
         if (existingTab == null) {
-            // Need to create a new tab
+            tab.Skills = skills;
             bool result = CreateSkillTab(tab);
             if (result) {
                 session.Send(SkillBookPacket.Save(SkillBook, tab.Id, clientRank));
@@ -127,21 +156,7 @@ public class SkillManager {
             return result;
         }
 
-        // Clear all skills for the rank we are saving as they will be set again.
-        int[] skillIds = existingTab.Skills.Keys.ToArray();
-        foreach (int skillId in skillIds) {
-            if (SkillInfo.GetMainSkill(skillId, ranks) != null) {
-                existingTab.Skills.Remove(skillId);
-            }
-        }
-
-        foreach ((int skillId, int points) in tab.Skills) {
-            SkillInfo.Skill? skill = SkillInfo.GetMainSkill(skillId, ranks);
-            if (skill != null) {
-                existingTab.Skills.Add(skillId, points);
-            }
-        }
-
+        existingTab.Skills = skills;
         session.Send(SkillBookPacket.Save(SkillBook, tab.Id, clientRank));
         return true;
     }

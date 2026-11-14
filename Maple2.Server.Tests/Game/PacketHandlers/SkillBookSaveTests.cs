@@ -154,4 +154,102 @@ public class SkillBookSaveTests {
 
         return test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.Job);
     }
+
+    // A tab save is the tree the client's simulator checked, so it passes the Job 9 check: points from the level
+    // (one a level from 10, up to SkillPointLimitLevel1) plus the extra points (trophies, chapter books), within each
+    // skill's max level (10 here). Before, any points were stored and a tab switch put them on the skills.
+    private static void Points(TestGameSession test, GameSession session, short level, int trophyPoints) {
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { SkillPointLimitLevel1 = 50, SkillPointLimitLevel2 = 70 });
+        session.Player.Value.Character.Level = level;
+        var points = new SkillPoint();
+        points[SkillPointSource.Trophy][(short) SkillRank.Basic] = trophyPoints;
+        typeof(ConfigManager).GetField("skillPoints", Any)!.SetValue(session.Config, points);
+    }
+
+    private static void SaveTab7(GameSession session, int points, bool tabExists = true) {
+        if (tabExists) {
+            session.Config.Skill.SkillBook.SkillTabs.Add(new SkillTab("tab") { Id = 7 });
+        }
+        var tab = new SkillTab("tab") { Id = 7 };
+        tab.Skills[SkillId] = points;
+        new SkillBookHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteLong(7);
+            writer.WriteLong(7);
+            writer.WriteInt(0);
+            writer.WriteInt(1);
+            writer.WriteClass<SkillTab>(tab);
+        }));
+    }
+
+    private static bool Answered(TestGameSession test) => test.TakeSent().Any(packet => TestGameSession.Op(packet) == SendOp.SkillBookTree);
+
+    // Level 15 gives 6 points, a trophy 4 more: the skill at its max level 10 is an honest tree and is stored.
+    [Test]
+    public void Save_AFullTreeFromEverySourceIsStored() {
+        var test = new TestGameSession();
+        GameSession session = Setup(test);
+        Points(test, session, 15, 4);
+
+        SaveTab7(session, 10);
+
+        Assert.That(session.Config.Skill.SkillBook.SkillTabs[0].Skills[SkillId], Is.EqualTo(10));
+        Assert.That(Answered(test), Is.True);
+    }
+
+    // One point more than level 15 and the trophy give: dropped, nothing stored or answered.
+    [Test]
+    public void Save_MorePointsThanTheCharacterHasIsRefused() {
+        var test = new TestGameSession();
+        GameSession session = Setup(test);
+        Points(test, session, 15, 3);
+
+        SaveTab7(session, 10);
+
+        Assert.That(session.Config.Skill.SkillBook.SkillTabs[0].Skills, Is.Empty);
+        Assert.That(Answered(test), Is.False);
+    }
+
+    // Past the skill's max level, or below 0: no client tab holds such a count (checked even with no point limits).
+    [TestCase(11)]
+    [TestCase(-1)]
+    [TestCase(70000)]
+    public void Save_APointCountOutsideTheSkillIsRefused(int points) {
+        var test = new TestGameSession();
+        GameSession session = Setup(test);
+
+        SaveTab7(session, points);
+
+        Assert.That(session.Config.Skill.SkillBook.SkillTabs[0].Skills, Is.Empty);
+        Assert.That(Answered(test), Is.False);
+    }
+
+    // A new tab is checked the same way (before, it was stored as sent, any ids and points).
+    [Test]
+    public void Save_ANewTabIsCheckedToo() {
+        var test = new TestGameSession();
+        GameSession session = Setup(test);
+        Points(test, session, 12, 0);
+
+        SaveTab7(session, 10, tabExists: false);
+
+        Assert.That(session.Config.Skill.SkillBook.SkillTabs, Is.Empty);
+        Assert.That(Answered(test), Is.False);
+    }
+
+    // The client sends each skill once; a repeated id is read as the last one instead of throwing.
+    [Test]
+    public void ReadTab_ARepeatedSkillDoesNotThrow() {
+        var tab = TestGameSession.Packet(writer => {
+            writer.WriteLong(7);
+            writer.WriteUnicodeString("tab");
+            writer.WriteInt(2);
+            writer.WriteInt(SkillId);
+            writer.WriteInt(1);
+            writer.WriteInt(SkillId);
+            writer.WriteInt(2);
+        }).ReadClass<SkillTab>();
+
+        Assert.That(tab.Skills[SkillId], Is.EqualTo(2));
+    }
 }
