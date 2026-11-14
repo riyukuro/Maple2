@@ -1065,4 +1065,34 @@ public class QuestHandlerTests {
 
         Assert.That(Moved(), Is.EqualTo(moves ? MoveError : null));
     }
+
+    // Quest 8 (the self-starting quests of the field, client/ms2/questmanager_2.cpp:2206): KR 70000001 (daily
+    // mission, guideType level) starts; KR 70100000 (daily mission, guideType level_boost) and KR 91000016 (field
+    // quest), both autoStart, are ones the client never lists (questdata.cpp:673), so they do not.
+    [Test]
+    public void StartList_TakesOnlyTheQuestsTheClientLists() {
+        GameSession session = Login();
+        QuestMetadata Auto(int id, QuestType type, int guideType) {
+            QuestMetadata data = TestGameSession.QuestData(id, type);
+            return data with { Basic = data.Basic with { AutoStart = true, GuideType = guideType } };
+        }
+        test.Register(Auto(70000001, QuestType.DailyMission, 1));
+        test.Register(Auto(70100000, QuestType.DailyMission, 2));
+        test.Register(Auto(91000016, QuestType.FieldQuest, 0));
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(8);
+            writer.WriteInt(3);
+            writer.WriteInt(70000001);
+            writer.WriteInt(70100000);
+            writer.WriteInt(91000016);
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That(session.Quest.TryGetQuest(70000001, out _), Is.True);
+            Assert.That(session.Quest.TryGetQuest(70100000, out _), Is.False);
+            Assert.That(session.Quest.TryGetQuest(91000016, out _), Is.False);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
 }

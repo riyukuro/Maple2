@@ -315,10 +315,18 @@ public static class QuestRules {
 
     // The quests the client asks to start by itself (Quest, sub-type 8) when it enters a field: a quest that is
     // not an exploration quest, starts by itself and is not locked, or an exploration quest whose first
-    // progress map is the field the player is in.
-    public static bool ClientStartsItself(QuestType type, bool autoStart, bool locked, int[]? progressMaps, int mapId) {
-        if (type == QuestType.FieldMission) {
-            return progressMaps is { Length: > 0 } && progressMaps[0] == mapId;
+    // progress map is the field the player is in. CQuestManagerCommon::FUN_140746e60 (questdata.cpp:673) drops
+    // a field quest (8) and a wedding mission (10) from the list, and a daily mission (3) whose guideType is
+    // not 1 (level): KR has 10 level_boost daily missions and one field quest that start by themselves.
+    public static bool ClientStartsItself(QuestType type, bool autoStart, bool locked, int[]? progressMaps, int mapId, int guideType = 1) {
+        switch (type) {
+            case QuestType.FieldMission:
+                return progressMaps is { Length: > 0 } && progressMaps[0] == mapId;
+            case QuestType.FieldQuest:
+            case QuestType.WeddingMission:
+                return false;
+            case QuestType.DailyMission when guideType != 1:
+                return false;
         }
 
         return autoStart && !locked;
@@ -420,7 +428,7 @@ public static class QuestRules {
 
     public static bool ClientStartsItself(QuestMetadata metadata, int mapId) {
         QuestMetadataBasic basic = metadata.Basic;
-        return ClientStartsItself(basic.Type, basic.AutoStart, basic.Disabled, basic.ProgressMaps, mapId);
+        return ClientStartsItself(basic.Type, basic.AutoStart, basic.Disabled, basic.ProgressMaps, mapId, basic.GuideType);
     }
 
     // The quest window's "go to" button (CQuestCommon::FUN_1407441f0, commonfiles/pvpinfo.cpp; the client sends Quest

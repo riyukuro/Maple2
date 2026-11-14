@@ -45,6 +45,19 @@ public class QuestRulesTests {
         Assert.That(QuestRules.ClientStartsItself(type, autoStart, locked, null, 2000001), Is.EqualTo(expected));
     }
 
+    // CQuestManagerCommon::FUN_140746e60 (questdata.cpp:673), KR rows, all autoStart: 70000001 (daily mission,
+    // guideType 1 level) is listed; 70100000 (daily mission, guideType 2 level_boost), 91000016 (field quest) and
+    // a wedding mission are not.
+    [TestCase(QuestType.DailyMission, 1, true)]
+    [TestCase(QuestType.DailyMission, 2, false)]
+    [TestCase(QuestType.DailyMission, 0, false)]
+    [TestCase(QuestType.FieldQuest, 0, false)]
+    [TestCase(QuestType.WeddingMission, 0, false)]
+    [TestCase(QuestType.EventMission, 0, true)]
+    public void ClientStartsItself_TypesTheClientDrops(QuestType type, int guideType, bool expected) {
+        Assert.That(QuestRules.ClientStartsItself(type, true, false, null, 2000001, guideType), Is.EqualTo(expected));
+    }
+
     // Quest sub-type 19: the gate of CQuestCommon::FUN_140744670 (questdata.cpp:221) and the alive check.
     [TestCase(QuestState.Started, true, 2000002, 2000001, false, true)]
     [TestCase(QuestState.Completed, true, 2000002, 2000001, false, false)] // not in progress
