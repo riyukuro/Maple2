@@ -85,6 +85,61 @@ public class PlayGiftTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // A new session goes on from the stored index: the first gift is not mailed again and the second follows its
+    // requireMins from the session's first step.
+    [Test]
+    public void Relogin_KeepsTheStoredIndex() {
+        TestGameSession test = Test();
+        GameSession session = test.Start();
+        DateTime start = DateTime.Today.AddHours(12);
+        DateTime now = start;
+        session.GameEvent.Clock = () => now;
+        session.GameEvent.Update(1000);
+        now = start.AddSeconds(59);
+        session.GameEvent.Update(2000);
+        Assert.That(Mails(test), Has.Length.EqualTo(1));
+
+        GameSession again = test.Start();
+        now = start.AddMinutes(10);
+        again.GameEvent.Clock = () => now;
+        again.GameEvent.Update(1000); // one second
+        now = start.AddMinutes(10).AddSeconds(118);
+        again.GameEvent.Update(2000);
+        Assert.That(Mails(test), Has.Length.EqualTo(1));
+        now = start.AddMinutes(10).AddSeconds(119);
+        again.GameEvent.Update(3000);
+        Assert.That(Mails(test), Is.EqualTo(new[] { ("51000003", Box, 1), ("51000005", Ticket, 4) }));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The gifts are per server-local day: a session that runs past midnight starts the list again.
+    [Test]
+    public void Midnight_StartsTheGiftsAgain() {
+        TestGameSession test = Test();
+        GameSession session = test.Start();
+        DateTime start = DateTime.Today.AddHours(23).AddMinutes(58);
+        DateTime now = start;
+        session.GameEvent.Clock = () => now;
+        session.GameEvent.Update(1000);
+        now = start.AddSeconds(59);
+        session.GameEvent.Update(2000);
+        Assert.That(Mails(test), Has.Length.EqualTo(1));
+
+        // Past midnight the index and seconds of the day before have expired: the steps go on each second, and the
+        // first gift is due again a minute of play into the new day.
+        now = DateTime.Today.AddDays(1).AddSeconds(-1);
+        session.GameEvent.Update(3000);
+        now = DateTime.Today.AddDays(1).AddSeconds(1);
+        session.GameEvent.Update(4000);
+        now = DateTime.Today.AddDays(1).AddSeconds(58);
+        session.GameEvent.Update(5000);
+        Assert.That(Mails(test), Has.Length.EqualTo(1));
+        now = DateTime.Today.AddDays(1).AddSeconds(59);
+        session.GameEvent.Update(6000);
+        Assert.That(Mails(test), Is.EqualTo(new[] { ("51000003", Box, 1), ("51000003", Box, 1) }));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // The client has no GameEventPlayGift class: the event list leaves it out.
     [Test]
     public void NotSentToClient() {

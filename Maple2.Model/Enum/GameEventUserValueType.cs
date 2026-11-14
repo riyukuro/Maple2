@@ -96,7 +96,8 @@ public enum GameEventUserValueType {
     UserConditionNotice = 2431,
 
     // Play-time gifts (PlayGift): the gifts mailed today and the play seconds since the last one. Not KMS2 values;
-    // the event has no client class, so the client never gets them.
+    // the client gets them with the other user values (Set, the login's Load) but has no GameEventPlayGift class and
+    // reads them nowhere.
     PlayGiftIndex = 2440,
     PlayGiftSeconds = 2441,
 
