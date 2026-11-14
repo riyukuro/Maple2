@@ -82,8 +82,7 @@ public class KillCommand : GameCommand {
 
         private void Handle(InvocationContext ctx, int distance) {
             if (session.Field is null) return;
-            var rec = new Rectangle(new Vector2(session.Player.Position.X, session.Player.Position.Y), distance, distance, 0);
-            var prism = new Prism(rec, session.Player.Position.Z, distance * 2);
+            Prism prism = NearArea(session.Player.Position, distance);
             if (!session.SkillMetadata.TryGet(10000001, 1, out SkillMetadata? skill)) {
                 ctx.Console.Out.WriteLine("Skill not found.");
                 return;
@@ -138,6 +137,12 @@ public class KillCommand : GameCommand {
 
             player.ConsumeHp((int) player.Stats.Values[BasicAttribute.Health].Current);
         }
+    }
+
+    // The area "kill near" takes: the given distance on every side of the player, below its feet as well as above.
+    public static Prism NearArea(in Vector3 position, int distance) {
+        var rec = new Rectangle(new Vector2(position.X, position.Y), distance * 2, distance * 2, 0);
+        return new Prism(rec, position.Z - distance, distance * 2);
     }
 
     private static void Kill(GameSession session, FieldNpc npc, SkillMetadata skill) {
