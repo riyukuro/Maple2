@@ -758,7 +758,52 @@ public class FieldNpc : Actor<Npc> {
             }
         }
 
-        Remove(delay: TimeSpan.FromSeconds(Value.Metadata.Dead.Time));
+        RemoveCorpse(TimeSpan.FromSeconds(Value.Metadata.Dead.Time));
+    }
+
+    // The corpse stays Dead.Time. An npc with Dead.Revival leaves its revival npcs as it goes, unless a trigger
+    // (DestroyMonster, ChangeMonster) removed it before then.
+    internal void RemoveCorpse(TimeSpan delay) {
+        if (NpcRevivalRules.Count(Value.Metadata.Dead) == 0) {
+            Remove(delay);
+            return;
+        }
+
+        Field.Scheduler.Schedule(() => {
+            if (!Field.Mobs.ContainsKey(ObjectId) && !Field.Npcs.ContainsKey(ObjectId)) {
+                return;
+            }
+            SpawnRevival();
+            Remove(TimeSpan.Zero);
+        }, delay);
+    }
+
+    // Dead.Revival: as the dead npc is removed, its revival npcs stand where it died (NpcRevivalRules).
+    internal void SpawnRevival() {
+        NpcMetadataDead dead = Value.Metadata.Dead;
+        int count = NpcRevivalRules.Count(dead);
+        if (count == 0 || !Field.NpcMetadata.TryGet(dead.Revival, out NpcMetadata? npc)) {
+            return;
+        }
+
+        TimeSpan lifeTime = NpcRevivalRules.LifeTime(dead);
+        for (int i = 0; i < count; i++) {
+            Vector3 position = Position;
+            if (count > 1 && Field.RandomPointNear(Position, NpcRevivalRules.ScatterRadius, out Vector3 point)) {
+                position = point;
+            }
+
+            FieldNpc? revival = Field.SpawnNpc(npc, position, Rotation);
+            if (revival == null) {
+                continue;
+            }
+            Field.Broadcast(FieldPacket.AddNpc(revival));
+            Field.Broadcast(ProxyObjectPacket.AddNpc(revival));
+            revival.Update(Environment.TickCount64);
+            if (lifeTime > TimeSpan.Zero) {
+                Field.RemoveNpc(revival.ObjectId, lifeTime);
+            }
+        }
     }
 
     // Dark Stream: the last monster of a scored spawn point died, so the run gets the spawn's score.
