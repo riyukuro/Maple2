@@ -1,6 +1,7 @@
 ﻿using Maple2.File.IO;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.Map;
+using Maple2.File.Parser.Tools;
 using Maple2.File.Parser.Xml.Table;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
@@ -13,6 +14,10 @@ public class MapMapper : TypeMapper<MapMetadata> {
     // The played client's own field table, spawn tags and names (MS2_PLAYED_CLIENT_XML); null without one.
     private readonly MapParser? playedParser;
     private readonly TableParser? playedSpawnParser;
+    // The environment the played client keeps of each of its field table rows; empty without one.
+    private readonly Dictionary<int, System.Xml.XmlElement> playedEnvironments = [];
+    private static readonly System.Xml.Serialization.XmlSerializer MapDataSerializer =
+        new(typeof(MapData), new System.Xml.Serialization.XmlRootAttribute("environment") { Namespace = "" });
     private int marked, packLists, lists, changedLists, survivalMaps, noEp, packNoEp;
 
     // Maps the played client cannot load (MS2_PLAYED_CLIENT_XML); empty when the option is not set.
@@ -39,6 +44,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
             playedClientRows = PlayedClientMaps.Rows(fieldTable);
             playedDisableSkills = PlayedClientMaps.SkillUseDisable(fieldTable, Helpers.ClientListedRows.Available, SelectEnvironment);
             playedUseEp = PlayedClientMaps.UseEpSkill(fieldTable, Helpers.ClientListedRows.Available, SelectEnvironment);
+            playedEnvironments = PlayedClientMaps.Environments(fieldTable, Helpers.ClientListedRows.Available, SelectEnvironment);
             playedParser = new MapParser(playedReader, language);
         }
         if (playedReader != null && playedReader.Files.Any(file => file.Name == PlayedSpawnTable)) {
@@ -80,15 +86,20 @@ public class MapMapper : TypeMapper<MapMetadata> {
         // The maps only the played client has (e.g. 2000526 to 2000529, 2200001 and 2200002): the data folder's pack (a
         // development pack) lacks them. They are read from the played client's field table (table/fielddata.xml);
         // what only the server's map files hold (useTimeEvent, the drop box, the survival element) keeps the parser's
-        // default. Their xblocks are in the data folder's Exported.m2d.
+        // default. Their xblocks are in the data folder's Exported.m2d. Of a row's environments the one the client
+        // keeps is read (CFeatureManager::SelectFeatureElement), not the parser's last one.
         int playedOnly = 0;
         if (playedParser != null) {
-            foreach ((int id, string name, MapData data) in playedParser.ParseNew()) {
+            Dictionary<int, string> names = playedParser.ParseMapNames();
+            foreach ((int id, System.Xml.XmlElement environment) in playedEnvironments.OrderBy(entry => entry.Key)) {
                 if (!packIds.Add(id)) {
                     continue;
                 }
+                string xml = Sanitizer.SanitizeBool(Sanitizer.RemoveEmpty(environment.OuterXml));
+                using var reader = System.Xml.XmlReader.Create(new StringReader(xml));
+                var data = (MapData) MapDataSerializer.Deserialize(reader)!;
                 playedOnly++;
-                yield return Build(id, name, data, spawns);
+                yield return Build(id, names.GetValueOrDefault(id, string.Empty), data, spawns);
             }
         }
         Console.WriteLine($"maps with a survival element: {survivalMaps}");

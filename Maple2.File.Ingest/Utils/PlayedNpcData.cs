@@ -13,8 +13,9 @@ namespace Maple2.File.Ingest.Utils;
 /// The played file leaves out an attribute that holds the client's default, and the parser's default differs from
 /// the client's for some of them, so each one the server reads is filled with the client's value when it is missing:
 /// CNpcData() (npcdata.cpp:647) has kind 0, level 1, class 1, customExp -1, lookAtMyPCWhenTalking and useTalkMotion 1
-/// and speeds 0; Unk_NpcDead() (npcdata.cpp:410) time, revival, count, lifeTime and extendRoomTime 0;
-/// Unk_NpcNormal() (npcdata.cpp:460) movearea 0. For &lt;distance&gt; the values are the ones the data folder's pack
+/// and speeds 0; Unk_NpcDead() (npcdata.cpp:410) time, revival, count, lifeTime and extendRoomTime 0. LoadXml sets
+/// movearea 200 when &lt;normal&gt; has none (npcdata.cpp:1685, XmlGetAttr is nonzero for a missing attribute) and
+/// Idle_A with movearea 200 when there is no &lt;normal&gt; (npcdata.cpp:1688), as the parser's Normal does. For &lt;distance&gt; the values are the ones the data folder's pack
 /// holds wherever the played file leaves the attribute out (sightHeightUP 200, sightHeightDown 50, the rest 0).
 /// </summary>
 public static class PlayedNpcData {
@@ -38,7 +39,7 @@ public static class PlayedNpcData {
         ("dead", "count", "0"),
         ("dead", "lifeTime", "0"),
         ("dead", "extendRoomTime", "0"),
-        ("normal", "movearea", "0"),
+        ("normal", "movearea", "200"),
         ("distance", "avoid", "0"),
         ("distance", "sight", "0"),
         ("distance", "sightHeightUP", "200"),

@@ -23,7 +23,7 @@ public class PlayedNpcDataTests {
             "<distance avoid=\"400\" sight=\"900\" />" +
             "<skill ids=\"10,11\" levels=\"1,2\" />" +
             "<dead time=\"6\" defaultaction=\"Dead_A\" />" +
-            "<normal action=\"Idle_A,Walk_A\" prob=\"5000,5000\" movearea=\"150\" />" +
+            "<normal action=\"Idle_A,Walk_A\" prob=\"5000,5000\" />" +
             "<aiInfo path=\"AI_X.xml\" />" +
             "<effectdummy><dummy name=\"Eff_Head\" /></effectdummy>" +
             "</environment></npc>"));
@@ -59,13 +59,13 @@ public class PlayedNpcDataTests {
             Assert.That(data.dead.count, Is.EqualTo(0));
             Assert.That(data.dead.revival, Is.EqualTo(0));
             Assert.That(data.normal.action, Is.EqualTo(new[] { "Idle_A", "Walk_A" }));
-            Assert.That(data.normal.movearea, Is.EqualTo(150));
+            Assert.That(data.normal.movearea, Is.EqualTo(200));
             Assert.That(data.aiInfo.path, Is.EqualTo("AI_X.xml"));
         });
     }
 
-    // What the played file leaves out is the client's default (CNpcData(), Unk_NpcDead(), Unk_NpcNormal()), not the
-    // parser's (kind 3, dead time 2 and count 1, movearea 200, customExp 0).
+    // What the played file leaves out is the client's default (CNpcData(), Unk_NpcDead(), LoadXml's movearea 200 and
+    // Idle_A), not the parser's (kind 3, dead time 2 and count 1, customExp 0).
     [Test]
     public void MissingValuesAreTheClientDefaults() {
         NpcData data = PlayedNpcData.Read(Environment("<npc id=\"1\"><environment><model kfm=\"K\" /></environment></npc>"));
@@ -85,7 +85,8 @@ public class PlayedNpcDataTests {
             Assert.That(data.dead.count, Is.EqualTo(0));
             Assert.That(data.dead.lifeTime, Is.EqualTo(0f));
             Assert.That(data.dead.extendRoomTime, Is.EqualTo(0));
-            Assert.That(data.normal.movearea, Is.EqualTo(0));
+            Assert.That(data.normal.movearea, Is.EqualTo(200));
+            Assert.That(data.normal.action, Is.EqualTo(new[] { "Idle_A" }));
             Assert.That(data.distance.sightHeightUP, Is.EqualTo(200f));
             Assert.That(data.model.scale, Is.EqualTo(1f));
             Assert.That(data.model.anispeed, Is.EqualTo(1f));

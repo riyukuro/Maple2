@@ -30,6 +30,20 @@ public class PlayedClientMapsTests {
         Assert.That(lists[900007], Is.EqualTo(new[] { 2 }));
     }
 
+    // A played-only map is read from the environment the client keeps, not the parser's last one; a row with none
+    // available is left out.
+    [Test]
+    public void Environments_TakeTheEnvironmentTheClientSelects() {
+        XmlDocument table = Table("""
+            <fieldData id="900007"><environment feature="Live"><ui useEPSkill="0" /></environment><environment feature="Test"><ui useEPSkill="1" /></environment></fieldData>
+            <fieldData id="900008"><environment feature="Off"><ui useEPSkill="1" /></environment></fieldData>
+            """);
+        Dictionary<int, XmlElement> environments = PlayedClientMaps.Environments(table, environment => environment.GetAttribute("feature") != "Off", Select);
+
+        Assert.That(environments.Keys, Is.EquivalentTo(new[] { 900007 }));
+        Assert.That(environments[900007].GetAttribute("feature"), Is.EqualTo("Live"));
+    }
+
     private static XmlDocument Table(string rows) {
         var document = new XmlDocument();
         document.LoadXml($"<ms2>{rows}</ms2>");

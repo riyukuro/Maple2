@@ -86,6 +86,25 @@ public static class PlayedClientMaps {
         return flags;
     }
 
+    // The environment the client keeps of each row (Selected); a row with none available is left out.
+    public static Dictionary<int, XmlElement> Environments(XmlDocument fieldTable, Func<XmlElement, bool> available, Func<XmlElement, XmlElement, XmlElement> select) {
+        var environments = new Dictionary<int, XmlElement>();
+        XmlNodeList? rows = fieldTable.SelectNodes("ms2/fieldData");
+        if (rows == null) {
+            return environments;
+        }
+        foreach (XmlNode node in rows) {
+            if (node is not XmlElement row || !int.TryParse(row.GetAttribute("id"), out int id)) {
+                continue;
+            }
+            XmlElement? environment = Selected(row, available, select);
+            if (environment != null) {
+                environments[id] = environment;
+            }
+        }
+        return environments;
+    }
+
     // The available environment of a row the client keeps: the fold of select over them in row order; null when none is available.
     private static XmlElement? Selected(XmlElement row, Func<XmlElement, bool> available, Func<XmlElement, XmlElement, XmlElement> select) {
         XmlElement? selected = null;
