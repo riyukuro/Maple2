@@ -213,6 +213,22 @@ public class QuestRewardTierTests {
         });
     }
 
+    // With FameCompletionTicket off the client offers no ticket, so none is taken and the quest stays.
+    [Test]
+    public void CompleteWithTickets_NeedsTheFeature() {
+        var prepared = new TestGameSession();
+        prepared.Store(Ticket(), 15);
+        GameSession session = Login(Job.Knight, prepared: prepared, items: [Ticket(), TestGameSession.Metadata(RewardId)]);
+        Quest quest = TicketQuest();
+        test.SetFeaturesOff(Maple2.Server.Game.Manager.QuestManager.CompletionTicketFeature);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Quest.CompleteWithTickets(quest.Id), Is.False);
+            Assert.That(quest.State, Is.EqualTo(QuestState.Started));
+            Assert.That(Held(session, TicketId), Is.EqualTo(15));
+        });
+    }
+
     // The quest exp rate (SpecialAttribute.QuestExp, in thousandths: KR guild buff 110000113 level 1 is
     // seg_questrewardrate 0.3) adds its share of the exp for a quest of standardLevel 10 (QuestRewardSAIgnoreLevel in
     // KR) and up, by the rule the client's reward line uses for the game rule's rate; below that level, and without the

@@ -1113,8 +1113,14 @@ public sealed class QuestManager {
     // Quest sub-type 33 (UIAllianceQuestDialog::FUN_140bf8c30, unit_140bf60f0_uialliancequestdialog.cpp:654): a quest in
     // progress whose basic property allows it is completed without its conditions for completion tickets (item tag
     // FameCompletionTicket), as many as calcFameCompletionTicketCount gives for its rank. The tickets are taken only
-    // when the quest was completed (a full bag refuses it unless quest items go by mail).
+    // when the quest was completed (a full bag refuses it unless quest items go by mail). The client offers the
+    // tickets only with FameCompletionTicket on (CanUseCompletionTicket, :599).
+    public const string CompletionTicketFeature = "FameCompletionTicket";
+
     public bool CompleteWithTickets(int questId) {
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(CompletionTicketFeature)) {
+            return false;
+        }
         if (!TryGetQuest(questId, out Quest? quest) || quest.State != QuestState.Started || !quest.Metadata.Basic.CompletionTicket) {
             return false;
         }
