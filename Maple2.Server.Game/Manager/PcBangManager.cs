@@ -135,13 +135,53 @@ public sealed class PcBangManager {
             SendStatus();
             return;
         }
-        PcBangRecord claimed;
-        lock (gate) {
-            claimed = PcBangRules.Claim(session.Player.Value.Account.PcBang ?? today, index);
-            session.Player.Value.Account.PcBang = claimed;
+        if (!Store(record => PcBangRules.Claim(record, index))) {
+            logger.Warning("PcBang: row {Index} claim not stored, nothing given CharacterId={CharacterId}", index, session.CharacterId);
+            SendStatus();
+            return;
         }
-        session.Item.Inventory.Add(item, true);
-        session.Send(PcBangPacket.Played(index, claimed.Claimed));
+        Give(item);
+        session.Send(PcBangPacket.Played(index, session.Player.Value.Account.PcBang!.Claimed));
+    }
+
+    // The record changed by change, stored at once (GameStorage.Request.SavePcBang): the claim is in the database
+    // before its item is made, so a crash between them cannot give the item twice. A failed store keeps the record
+    // as it was, and the caller gives nothing. The save takes the account lock outside gate: a session save holds the
+    // account lock and then takes gate (Fold), so holding gate here while waiting for the account lock could deadlock.
+    private bool Store(Func<PcBangRecord, PcBangRecord> change) {
+        Account account = session.Player.Value.Account;
+        PcBangRecord? before;
+        PcBangRecord after;
+        lock (gate) {
+            before = account.PcBang;
+            after = change(PcBangRules.Today(before, DateTime.Now));
+            account.PcBang = after;
+        }
+        if (session.TrySavePurchase(db => db.SavePcBang(session.Player))) {
+            return true;
+        }
+        lock (gate) {
+            // A fold since then carried the claim into its new record: take the bit back out of the record now held.
+            if (ReferenceEquals(account.PcBang, after)) {
+                account.PcBang = before;
+            } else if (account.PcBang is { } held && held.Day == after.Day) {
+                int addedRows = after.Claimed & ~(before?.Day == after.Day ? before.Claimed : 0);
+                IReadOnlyList<int> beforeGifts = before?.Day == after.Day ? before.Gifts : [];
+                List<int> addedGifts = after.Gifts.Skip(beforeGifts.Count).ToList();
+                account.PcBang = held with {
+                    Claimed = held.Claimed & ~addedRows,
+                    Gifts = held.Gifts.Where(gift => !addedGifts.Contains(gift)).ToList(),
+                };
+            }
+        }
+        return false;
+    }
+
+    // The stored claim's item: to the inventory, or by mail when the inventory no longer takes it.
+    private void Give(Item item) {
+        if (!session.Item.Inventory.Add(item, true, commit: true)) {
+            session.Item.MailItem(item);
+        }
     }
 
     // A gift: received once a day at a PC bang, not in a tutorial field.
@@ -166,10 +206,11 @@ public sealed class PcBangManager {
         if (item == null || !session.Item.Inventory.CanAdd(item)) {
             return;
         }
-        lock (gate) {
-            session.Player.Value.Account.PcBang = PcBangRules.ReceiveGift(session.Player.Value.Account.PcBang ?? today, giftId);
+        if (!Store(record => PcBangRules.ReceiveGift(record, giftId))) {
+            logger.Warning("PcBang: gift {GiftId} not stored, nothing given CharacterId={CharacterId}", giftId, session.CharacterId);
+            return;
         }
-        session.Item.Inventory.Add(item, true);
+        Give(item);
         session.Send(PcBangPacket.Reward(giftId));
     }
 }

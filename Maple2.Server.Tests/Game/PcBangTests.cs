@@ -201,6 +201,45 @@ public class PcBangTests {
         Assert.That(Count(20302777), Is.EqualTo(10));
     }
 
+    private PcBangRecord? StoredPcBang() {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.GetAccount(test.AccountId)!.PcBang;
+    }
+
+    // The claim is in the database before its item is given (a crash after it cannot give the row twice), and a
+    // refused store gives nothing and leaves the row to claim.
+    [Test]
+    public void ClaimStoredBeforeItem() {
+        StartSession();
+        Assume.That(DateTime.Now.TimeOfDay, Is.LessThan(new TimeSpan(23, 58, 0)));
+        Account account = test.Session.Player.Value.Account;
+        int day = PcBangRules.Day(DateTime.Now);
+        account.PcBang = new PcBangRecord(day, 31 * 60_000L, 0, []);
+        test.Session.PcBang.SetGrade(1);
+        test.TakeSent();
+
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Account>().Any(entry => entry.State == EntityState.Modified);
+        Send(writer => { writer.WriteByte(1); writer.WriteByte(2); });
+        Send(writer => { writer.WriteByte(2); writer.WriteInt(1); });
+        Assert.That(PcBangSent().Select(packet => packet[2]), Is.EqualTo(new byte[] { 3 }));
+        Assert.That(Count(20302777), Is.Zero);
+        Assert.That(Count(70100009), Is.Zero);
+        Assert.That(account.PcBang!.Claimed, Is.Zero);
+        Assert.That(account.PcBang.Gifts, Is.Empty);
+        test.Errors.Clear();
+
+        test.FailSave = null;
+        Send(writer => { writer.WriteByte(1); writer.WriteByte(2); });
+        Send(writer => { writer.WriteByte(2); writer.WriteInt(1); });
+        Assert.That(Count(20302777), Is.EqualTo(10));
+        Assert.That(Count(70100009), Is.EqualTo(1));
+        PcBangRecord? stored = StoredPcBang();
+        Assert.That(stored, Is.Not.Null);
+        Assert.That(stored!.Day, Is.EqualTo(day));
+        Assert.That(stored.Claimed, Is.EqualTo(4));
+        Assert.That(stored.Gifts, Is.EqualTo(new[] { 1 }));
+    }
+
     [Test]
     public void GiftOncePerDay() {
         StartSession();
