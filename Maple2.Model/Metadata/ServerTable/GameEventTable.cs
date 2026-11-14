@@ -19,8 +19,13 @@ public record GameEventMetadata(
     string Value1,
     string Value2,
     string Value3,
-    string Value4
+    string Value4,
+    // Every window of a partTime that lists several (comma-separated); Start/EndPartTime then hold the first start
+    // and the last end. Null for one window or none.
+    PartTimeWindow[]? PartTimes = null
 );
+
+public record PartTimeWindow(TimeSpan Start, TimeSpan End);
 
 public record StringBoard(
     string Text,

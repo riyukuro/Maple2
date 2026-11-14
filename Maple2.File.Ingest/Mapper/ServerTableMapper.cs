@@ -1476,7 +1476,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     // A gameEvent row of the server's table: its times (written to the minute or to the second, 634 KR rows),
     // part times and days, with the event's data as read.
     public static GameEventMetadata MapGameEvent(int id, GameEvent data, GameEventType eventType, GameEventData eventData) {
-        (TimeSpan partTimeStart, TimeSpan partTimeEnd) = ParsePartTime(data.partTime);
+        PartTimeWindow[] windows = ParsePartTimes(data.partTime);
+        (TimeSpan partTimeStart, TimeSpan partTimeEnd) = windows.Length == 0 ? (TimeSpan.Zero, TimeSpan.Zero)
+            : (windows.Min(window => window.Start), windows.Max(window => window.End));
         return new GameEventMetadata(
             Id: id,
             Type: eventType,
@@ -1489,7 +1491,20 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Value1: data.value1,
             Value2: data.value2,
             Value3: data.value3,
-            Value4: data.value4);
+            Value4: data.value4,
+            PartTimes: windows.Length > 1 ? windows : null);
+    }
+
+    // A partTime of one window "HH:mm:ss-HH:mm:ss" or several joined by commas (18 KR rows, e.g. two sale hours a day).
+    public static PartTimeWindow[] ParsePartTimes(string partTimeString) {
+        var windows = new List<PartTimeWindow>();
+        foreach (string part in partTimeString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+            (TimeSpan start, TimeSpan end) = ParsePartTime(part);
+            if (start != TimeSpan.Zero || end != TimeSpan.Zero) {
+                windows.Add(new PartTimeWindow(start, end));
+            }
+        }
+        return windows.ToArray();
     }
 
     private static DayOfWeek ParseDayOfWeek(Maple2.File.Parser.Enum.DayOfWeek dayofWeek) {

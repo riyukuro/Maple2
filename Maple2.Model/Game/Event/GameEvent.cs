@@ -42,6 +42,11 @@ public class GameEvent : IByteSerializable {
             return false;
         }
 
+        if (Metadata.PartTimes is { Length: > 0 } windows) {
+            TimeSpan time = localNow.TimeOfDay;
+            return windows.Any(window => window.Start <= time && time <= window.End);
+        }
+
         if (Metadata.StartPartTime != TimeSpan.Zero && Metadata.StartPartTime > localNow.TimeOfDay) {
             return false;
         }
