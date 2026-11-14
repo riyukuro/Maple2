@@ -114,6 +114,7 @@ public class TaxiHandler : FieldPacketHandler {
     // (GameSession.PaidFieldChange); a refused change gives it back unshown. It used to be taken for good before the
     // change, so a refused change (FieldEnter's error box) kept it.
     private static void RideForMeso(GameSession session, int mapId, long cost, Action? paid = null, in Vector3 position = default, in Vector3 rotation = default) {
+        long sends = session.Currency.MesoSends;
         if (cost > 0 && !session.Currency.TryTakeMeso(cost, notify: false)) {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_meso));
             return;
@@ -128,7 +129,8 @@ public class TaxiHandler : FieldPacketHandler {
             paid?.Invoke();
         }, position, rotation);
         if (!kept) {
-            session.Currency.ReturnMeso(cost, notify: false);
+            // With the balance if a meso packet (a gain on the field's thread) showed it without the fare meanwhile.
+            session.Currency.ReturnHeldMeso(cost, sends);
         }
         session.SendFieldEnter(prepared);
     }
