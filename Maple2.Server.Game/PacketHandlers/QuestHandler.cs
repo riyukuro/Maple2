@@ -492,18 +492,15 @@ public class QuestHandler : FieldPacketHandler {
         session.Quest.CompleteFieldMission(mission);
     }
 
-    // CQuestManager::SendQuestMode15 (questmanager_2.cpp:1766): one field id, sent from the world map's mission attack
-    // box; the client counts the attack (m_refreshCount) as it sends. The server checks the same and moves the player
-    // to the field.
-    // Chosen here: the player arrives at the field's default spawn (the packet names no portal); a refused attack gets
-    // no answer and is not counted; the attack is counted only once the move is prepared, and a failed move is not.
     // The epic quest restart (EpicRestart). The game menu sends it while the event runs, after its own checks
     // (FUN_14193c000, uigamemenudialog.cpp:1946): not restarted yet (user value 1100 of the event), not on a field of
     // the event's value3. The server checks the same, then marks the restart done (stored at once: once per
-    // character), deletes the epic quests the event's table does not keep, takes back the chapter book's points, and
+    // character), deletes the epic quests the event's table does not keep, takes back the points of the chapters it
+    // opens again (end quest removed), and
     // moves the character to value2's map and portal. Chosen here: the skills are reset (both ranks, as the job
     // reset does) only when the stored tree no longer passes the client's check with the points left; the auto start
-    // quests start again at once.
+    // quests start again at once. With two EpicRestart events running at once the newest start is used; the client
+    // keeps the event its load names last, so the two can differ (no live data has two).
     private void HandleEpicRestart(GameSession session) {
         if (session.Field is null) return;
 
@@ -527,11 +524,15 @@ public class QuestHandler : FieldPacketHandler {
         session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.EpicRestartDone, 1);
         if (!session.GameEvent.Store(gameEvent.Id, GameEventUserValueType.EpicRestartDone)) {
             Logger.Error("Failed to store the epic restart of {CharacterId} in event {EventId}", session.CharacterId, gameEvent.Id);
+            // Nothing was reset: the flag goes back, so a retry is not refused and the logout save does not store it.
+            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.EpicRestartDone, 0);
             return;
         }
 
+        List<ChapterBookTable.Entry> paid = session.Quest.PaidChapters();
         List<int> removed = session.Quest.ResetEpicQuests(restart.Kept);
-        session.Config.ResetChapterPoints();
+        var removedIds = removed.ToHashSet();
+        session.Config.TakeChapterPoints(paid.Where(entry => removedIds.Contains(entry.EndQuestId)));
         Maple2.Server.Game.Manager.SkillManager skills = session.Config.Skill;
         if (skills.Check(skills.Tree()) != JobSkillError.None) {
             skills.ResetSkills();
@@ -547,6 +548,11 @@ public class QuestHandler : FieldPacketHandler {
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
     }
 
+    // CQuestManager::SendQuestMode15 (questmanager_2.cpp:1766): one field id, sent from the world map's mission attack
+    // box; the client counts the attack (m_refreshCount) as it sends. The server checks the same and moves the player
+    // to the field.
+    // Chosen here: the player arrives at the field's default spawn (the packet names no portal); a refused attack gets
+    // no answer and is not counted; the attack is counted only once the move is prepared, and a failed move is not.
     private void HandleSkyFortressMission(GameSession session, IByteReader packet) {
         int mapId = packet.ReadInt();
         if (!session.Quest.CanMissionAttack(mapId)) {

@@ -1501,6 +1501,14 @@ public sealed class QuestManager {
         return removed;
     }
 
+    // The chapter book entries whose points were paid: begin and end quest both completed (CompleteChapter).
+    public List<ChapterBookTable.Entry> PaidChapters() {
+        return session.TableMetadata.ChapterBookTable.Entries.Values
+            .Where(entry => TryGetQuest(entry.BeginQuestId, out Quest? begin) && begin.State == QuestState.Completed
+                            && TryGetQuest(entry.EndQuestId, out Quest? end) && end.State == QuestState.Completed)
+            .ToList();
+    }
+
     public bool Remove(Quest quest) {
         using GameStorage.Request db = session.GameStorage.Context();
         if (quest.Metadata.Basic.Account > 0) {

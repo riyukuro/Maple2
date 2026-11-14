@@ -40,7 +40,12 @@ public class EpicRestartTests {
         test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
         test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
         test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
-        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        // Chapter 1 ends with a dropped quest: done again later, so its points go back. Chapter 2 ends with a kept
+        // quest: it stays done and keeps its points.
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry> {
+            [1] = new(1, Kept, Dropped, [new ChapterBookTable.Entry.SkillPoint(2, 0)], 3, []),
+            [2] = new(2, Dropped, Kept, [new ChapterBookTable.Entry.SkillPoint(1, 1)], 4, []),
+        }));
         GameSession session = test.Start();
         // The event's map is one the played client does not have, so the move stops in PrepareField.
         test.AddMap(TestGameSession.Map(2000062, notInPlayedClient: true) with {
@@ -49,11 +54,12 @@ public class EpicRestartTests {
         ProgressionOrderTests.LoadConfig(test, session);
         typeof(ConfigManager).GetField("skillPoints", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Config, new SkillPoint());
         foreach (int id in new[] { Kept, InRange, Dropped }) {
-            test.StartQuest(TestGameSession.QuestData(id));
+            test.StartQuest(TestGameSession.QuestData(id)).State = QuestState.Completed;
         }
         test.StartQuest(TestGameSession.QuestData(World, QuestType.WorldQuest));
         session.Config.AddSkillPoint(SkillPointSource.Chapter, 2);
-        session.Config.AddStatPoint(AttributePointSource.Quest, 3);
+        session.Config.AddSkillPoint(SkillPointSource.Chapter, 1, 1);
+        session.Config.AddStatPoint(AttributePointSource.Quest, 7);
         test.TakeSent();
         return session;
     }
@@ -77,8 +83,8 @@ public class EpicRestartTests {
         Assert.That(sent.Any(packet => TestGameSession.Op(packet) == SendOp.Quest && packet[2] == 5
             && BitConverter.ToInt32(packet, 3) == Dropped), Is.True);
         Assert.That(sent.Select(TestGameSession.Op), Does.Contain(SendOp.RequestFieldEnter));
-        Assert.That(session.Config.ExtraSkillPoints(), Is.All.EqualTo(0));
-        Assert.That(session.Config.StatPoints(AttributePointSource.Quest), Is.EqualTo(0));
+        Assert.That(session.Config.ExtraSkillPoints(), Is.EqualTo(new[] { 0, 1 }));
+        Assert.That(session.Config.StatPoints(AttributePointSource.Quest), Is.EqualTo(4));
         Assert.That(test.StoredEventValues(EventId)[GameEventUserValueType.EpicRestartDone], Is.EqualTo("1"));
     }
 
@@ -104,7 +110,7 @@ public class EpicRestartTests {
         Request(session);
 
         Assert.That(Quests(session), Is.EqualTo(new[] { Kept, InRange, Dropped, World }));
-        Assert.That(session.Config.StatPoints(AttributePointSource.Quest), Is.EqualTo(3));
+        Assert.That(session.Config.StatPoints(AttributePointSource.Quest), Is.EqualTo(7));
         Assert.That(test.StoredEventValues(EventId), Does.Not.ContainKey(GameEventUserValueType.EpicRestartDone));
         Assert.That(test.TakeSent(), Is.Empty);
     }
