@@ -57,7 +57,8 @@ public class ItemEnchantRefusalTests {
 
         Assert.That(session.ItemEnchant.StageItem(type, gear.Uid), Is.False);
 
-        Assert.That(test.TakeSentOps(), Has.Member(SendOp.ItemEnchant));
+        byte[] refusal = Maple2.Server.Game.Packets.ItemEnchantPacket.Error(Maple2.Model.Error.ItemEnchantError.s_itemenchant_invalid_item).ToArray();
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.ItemEnchant), Is.EqualTo(new[] { refusal }));
         Assert.That(session.Item.Inventory.Get(gear.Uid)!.Enchant?.Enchants ?? 0, Is.EqualTo(0));
     }
 
