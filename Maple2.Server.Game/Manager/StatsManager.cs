@@ -203,7 +203,6 @@ public class StatsManager {
         Values.AddDerivedTotal(character.Job.Code());
         Values.Total();
         StatConversion(player);
-        RefreshLineEffects(player);
 
         // Current was held through the rebuild; it now keeps its share of the new Total, and a dead player stays at 0 HP until revived.
         Values.EndReset(player.IsDead, levelUp);
@@ -220,6 +219,10 @@ public class StatsManager {
             },
             Async = true,
         });
+
+        // Last, once this rebuild is sent: an effect given or taken here that carries a status rebuilds on its own,
+        // after this one rather than inside it (the KR line effects carry none).
+        RefreshLineEffects(player);
     }
 
     private int sentGearScore = -1;
