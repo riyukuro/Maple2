@@ -365,7 +365,8 @@ public class ItemDropManager {
         }
 
         // The count goes out as drops of at most the first item's slotMax (ItemDropTable::DropIndividualGroup), each
-        // its own item at the one rank rolled, and its second id beside each; only the first drop is announced.
+        // its own item at the one rank rolled, and its second id beside each; only the first drop of the first id is
+        // announced (the client never announces the second id).
         bool announce = selectedItem.Announce;
         foreach (int stack in DropStacks(itemAmount, SlotMax(selectedItem.Ids.FirstOrDefault()))) {
             foreach (Item createdItem in CreateIndividualDropStack(selectedItem, character, rarity, stack, announce)) {
@@ -399,7 +400,7 @@ public class ItemDropManager {
                 createdItem.Enchant = ItemEnchantManager.GetEnchant(field.ServerTableMetadata.EnchantOptionTable, createdItem, selectedItem.EnchantLevel);
             }
 
-            createdItem.AnnounceOnOpen = announce;
+            createdItem.AnnounceOnOpen = announce && itemId == selectedItem.Ids.FirstOrDefault();
 
             // The row's socketDataID replaces the item's own socket row (23 of today's 49 rows differ from the item's,
             // e.g. accessories without one get 1003-1005).

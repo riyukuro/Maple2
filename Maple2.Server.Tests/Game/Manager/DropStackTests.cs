@@ -47,6 +47,16 @@ public class DropStackTests {
         Assert.That(items.Where(item => item.Id == Meso).Select(item => item.Amount), Is.EqualTo(new[] { 500 }));
     }
 
+    // The row's second id drops beside the first, but only the first id's first drop is announced.
+    [Test]
+    public void IndividualDrop_AnnouncesOnlyTheFirstId() {
+        Box(new IndividualDropItemTable.Item([Gear, Potion], true, 0, 0, 100, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false,
+            false, false, false, [], false));
+        List<Maple2.Model.Game.Item> items = test.Session.Field!.ItemDrop.GetIndividualDropItems(BoxId).ToList();
+
+        Assert.That(items.Select(item => (item.Id, item.AnnounceOnOpen)), Is.EqualTo(new[] { (Gear, true), (Potion, false) }));
+    }
+
     [Test]
     public void GlobalDrop_SplitsTheCountBySlotMax() {
         var group = new GlobalDropItemBoxTable.Group(1, 0, 0, [new GlobalDropItemBoxTable.Group.DropCount(1, 100)], false, (MapType) 0, (Continent) 0);
