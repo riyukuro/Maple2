@@ -44,8 +44,10 @@ public class TransferEnchantHandler : FieldPacketHandler {
                 return;
             }
 
-            // The client checks the meso before it sends.
-            if (session.Currency.Meso < entry.NeedMeso) {
+            // The client checks the meso before it sends. The mesos are held here without a packet (the input's
+            // consume sends one, and a spend before the old take made it throw with the input gone) and given back on
+            // each refusal below; the packet goes where the take was.
+            if (!session.Currency.TryTakeMeso(entry.NeedMeso, notify: false)) {
                 return;
             }
 
@@ -54,6 +56,7 @@ public class TransferEnchantHandler : FieldPacketHandler {
                 Item? created = session.Field?.ItemDrop.CreateItem(output.ItemId, output.Rarity, output.Amount);
                 if (created == null) {
                     Logger.Warning("TransferEnchant output {ItemId} has no item metadata", output.ItemId);
+                    session.Currency.ReturnMeso(entry.NeedMeso, notify: false);
                     return;
                 }
                 outputs.Add(created);
@@ -63,14 +66,16 @@ public class TransferEnchantHandler : FieldPacketHandler {
             foreach (IGrouping<InventoryType, Item> group in outputs.GroupBy(output => output.Inventory)) {
                 int free = session.Item.Inventory.FreeSlots(group.Key) + (group.Key == item.Inventory ? 1 : 0);
                 if (free < group.Count()) {
+                    session.Currency.ReturnMeso(entry.NeedMeso, notify: false);
                     return;
                 }
             }
 
             if (!session.Item.Inventory.Consume(item.Uid)) {
+                session.Currency.ReturnMeso(entry.NeedMeso, notify: false);
                 return;
             }
-            session.Currency.ChangeMeso(-entry.NeedMeso);
+            session.Currency.NotifyMeso();
 
             // Each output gets its row from the bag's add (the character's), or from the mail when the bag's write
             // fails. Before, each row was made first with no owner and a failed write threw after the input and the

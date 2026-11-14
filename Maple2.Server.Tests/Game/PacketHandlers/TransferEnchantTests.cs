@@ -60,4 +60,42 @@ public class TransferEnchantTests {
             Assert.That(test.TakeSentOps(), Does.Contain(SendOp.TransferEnchant));
         });
     }
+
+    // A spend while the gear leaves the bag (another thread) cannot skip the fee: the fee was held before. Before,
+    // the take after the gear's consume threw with the gear gone and no output given.
+    [Test]
+    public void ASpendWhileTheGearLeaves_CannotSkipTheFee() {
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(GearId, EquipSlot.CP, slotMax: 1), TestGameSession.Metadata(OutputId));
+        GameSession session = test.Start();
+        Item gear = session.Field!.ItemDrop.CreateItem(GearId)!;
+        Assert.That(session.Item.Inventory.Add(gear, commit: true), Is.True);
+        gear = session.Item.Inventory.Find(GearId).Single();
+        test.SetTable(new ItemEnchantTransformTable([
+            new ItemEnchantTransformTable.Entry(gear.Rarity, 0, 0, [(int) gear.Type.Type], [GearId], 100,
+                [new ItemEnchantTransformTable.Output(OutputId, 1, 3)]),
+        ]));
+        session.Currency.Meso = 1000;
+        test.TakeSent();
+        long spent = -1;
+        test.OnSend = packet => {
+            if (spent >= 0 || TestGameSession.Op(packet) != SendOp.ItemInventory) {
+                return;
+            }
+            long left = session.Currency.Meso;
+            spent = session.Currency.TryTakeMeso(left, notify: false) ? left : 0;
+        };
+
+        Assert.DoesNotThrow(() => new TransferEnchantHandler { TableMetadata = test.TableMetadata }
+            .Handle(session, TestGameSession.Packet(writer => writer.WriteLong(gear.Uid))));
+        test.OnSend = null;
+
+        Assert.Multiple(() => {
+            Assert.That(spent, Is.EqualTo(900));
+            Assert.That(session.Currency.Meso, Is.Zero);
+            Assert.That(session.Item.Inventory.Find(GearId), Is.Empty);
+            Assert.That(session.Item.Inventory.Find(OutputId).Sum(item => item.Amount), Is.EqualTo(3));
+            Assert.That(test.TakeSentOps(), Does.Contain(SendOp.TransferEnchant));
+        });
+    }
 }
