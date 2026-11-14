@@ -137,11 +137,13 @@ public class MasteryHandler : FieldPacketHandler {
             // The gain the client's craft dialog shows: the recipe's mastery raised by the type's ability.
             SpecialAttribute? bonus = MasteryRules.CraftBonus(entry.Type);
             int bonusTotal = bonus == null ? 0 : (int) session.Player.Stats.Values[bonus.Value].Total;
-            session.Mastery[entry.Type] += MasteryRules.CraftReward(entry.RewardMastery, bonusTotal);
+            session.Mastery[entry.Type] += MasteryRules.CraftReward(entry.RewardMastery, bonusTotal)
+                * session.Mastery.DoubleFactor(MasteryRules.DoubleMastery(entry.Type));
         }
 
+        int factor = session.Mastery.DoubleFactor(MasteryRules.DoubleReward(entry.Type));
         foreach (ItemComponent rewardItem in entry.RewardItems) {
-            Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+            Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount * factor);
             if (item == null) {
                 continue;
             }

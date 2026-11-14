@@ -505,8 +505,9 @@ public class FishingManager {
         // The fishing special effects held (type 9): more exp and mastery for the catch, some on a prize fish only.
         (float expFactor, float masteryFactor) = SpecialEffectRules.FishingFactors(
             session.Buffs.TakeSpecialEffects(SpecialEffectRules.Fishing, effect => SpecialEffectRules.FishingApplies(effect, prizeFish)));
-        masteryExp = (int) (masteryExp * masteryFactor);
-        // A running MasteryReward event for fishing in this map adds its share (the catch notice shows the total).
+        masteryExp = (int) (masteryExp * masteryFactor) * session.Mastery.DoubleFactor(SpecialAttribute.FishingDoubleMastery);
+        // A running MasteryReward event for fishing in this map adds its share of the whole gain, doubled or not
+        // (the catch notice shows the total).
         masteryExp = EventSaleRules.MasteryWithEvent(masteryExp, session.FindEvent(GameEventType.MasteryReward),
             MasteryType.Fishing, session.Field?.MapId ?? 0);
 

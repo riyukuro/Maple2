@@ -211,7 +211,7 @@ public class MasteryManager {
     private void GatherOnce(MasteryRecipeTable.Entry recipeMetadata, Vector3 position, Vector3 rotation) {
         int reward = GatherReward(recipeMetadata);
         if (reward > 0) {
-            this[recipeMetadata.Type] += reward;
+            this[recipeMetadata.Type] += reward * DoubleFactor(MasteryRules.DoubleMastery(recipeMetadata.Type));
         }
         Gather(recipeMetadata, position, rotation);
     }
@@ -234,8 +234,9 @@ public class MasteryManager {
         // The count the client's recipe list shows: the recipe's count raised by the type's ability.
         SpecialAttribute? bonus = MasteryRules.GatherBonus(recipeMetadata.Type);
         int bonusTotal = bonus == null ? 0 : (int) session.Player.Stats.Values[bonus.Value].Total;
+        int factor = DoubleFactor(MasteryRules.DoubleReward(recipeMetadata.Type));
         foreach (ItemComponent itemReward in recipeMetadata.RewardItems) {
-            int amount = MasteryRules.GatherItemCount(itemReward.Amount, bonusTotal);
+            int amount = MasteryRules.GatherItemCount(itemReward.Amount, bonusTotal) * factor;
             if (amount < 1) {
                 continue;
             }
@@ -248,6 +249,11 @@ public class MasteryManager {
         }
 
         AfterGather(recipeMetadata, 1);
+    }
+
+    // 2 when the player's double ability (MasteryRules.DoubleMastery or DoubleReward) rolls a hit, else 1.
+    public int DoubleFactor(SpecialAttribute? ability) {
+        return ability == null ? 1 : MasteryRules.DoubleFactor(session.Player.Stats.Values[ability.Value].Total, Random.Shared.NextDouble());
     }
 
     public float GatherSuccessRate(MasteryRecipeTable.Entry recipeMetadata) {

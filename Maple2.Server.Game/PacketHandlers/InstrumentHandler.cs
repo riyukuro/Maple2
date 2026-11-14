@@ -185,8 +185,9 @@ public class InstrumentHandler : FieldPacketHandler {
         // The time counts up to the score's own length: a stop that comes late gives no more than the whole score.
         int scoreLength = score?.Music?.Length > 0 ? score.Music.Length : score?.Metadata.Music?.PlayTime ?? 0;
         long totalTickTime = InstrumentRules.PlayedMs(Environment.TickCount64 - session.Instrument.StartTick, scoreLength);
-        // A running MasteryReward event for music in this map adds its share.
-        session.Mastery[MasteryType.Music] += EventSaleRules.MasteryWithEvent(InstrumentRules.Mastery(totalTickTime, masteryValue, masteryValueMax),
+        // A running MasteryReward event for music in this map adds its share of the whole gain, doubled or not.
+        session.Mastery[MasteryType.Music] += EventSaleRules.MasteryWithEvent(
+            InstrumentRules.Mastery(totalTickTime, masteryValue, masteryValueMax) * session.Mastery.DoubleFactor(SpecialAttribute.PlayInstrumentDoubleMastery),
             session.FindEvent(GameEventType.MasteryReward), MasteryType.Music, session.Field.MapId);
 
         short masteryLevel = session.Mastery.GetLevel(MasteryType.Music);

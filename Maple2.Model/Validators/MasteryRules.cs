@@ -166,4 +166,47 @@ public static class MasteryRules {
         float rate = 1.0f + Math.Min(bonusTotal / 1000.0f, 1.0f);
         return (int) (count * (double) rate + 1e-06);
     }
+
+    // The special ability that may double a gain of the type's mastery (s_item_opt_sa_*_double_mastery: 112 fishing,
+    // 113 performing, 139 to 146 mining to cooking; KR rolls them on gear: fishing and performing +1.3% to +50%,
+    // the others +0.6% to +5.3%). The client only names them
+    // in tooltips, so the server chooses: each gain rolls once at the rate and is doubled on a hit.
+    public static SpecialAttribute? DoubleMastery(MasteryType type) {
+        return type switch {
+            MasteryType.Fishing => SpecialAttribute.FishingDoubleMastery,
+            MasteryType.Music => SpecialAttribute.PlayInstrumentDoubleMastery,
+            MasteryType.Mining => SpecialAttribute.MiningDoubleMastery,
+            MasteryType.Breeding => SpecialAttribute.BreedingDoubleMastery,
+            MasteryType.Gathering => SpecialAttribute.GatheringDoubleMastery,
+            MasteryType.Farming => SpecialAttribute.FarmingDoubleMastery,
+            MasteryType.Blacksmithing => SpecialAttribute.SmithingDoubleMastery,
+            MasteryType.Engraving => SpecialAttribute.EngravingDoubleMastery,
+            MasteryType.Alchemist => SpecialAttribute.AlchemistDoubleMastery,
+            MasteryType.Cooking => SpecialAttribute.CookingDoubleMastery,
+            _ => null,
+        };
+    }
+
+    // The special ability that may double a gather's or craft's items (s_item_opt_sa_*_double_reward, 131 to 138 mining
+    // to cooking; KR rolls them on accessories, +0.3% to +3.2%). Tooltips only, so the server chooses: each gather or craft
+    // rolls once at the rate and every item count of the recipe is doubled on a hit.
+    public static SpecialAttribute? DoubleReward(MasteryType type) {
+        return type switch {
+            MasteryType.Mining => SpecialAttribute.MiningDoubleReward,
+            MasteryType.Breeding => SpecialAttribute.BreedingDoubleReward,
+            MasteryType.Gathering => SpecialAttribute.GatheringDoubleReward,
+            MasteryType.Farming => SpecialAttribute.FarmingDoubleReward,
+            MasteryType.Blacksmithing => SpecialAttribute.SmithingDoubleReward,
+            MasteryType.Engraving => SpecialAttribute.EngravingDoubleReward,
+            MasteryType.Alchemist => SpecialAttribute.AlchemistDoubleReward,
+            MasteryType.Cooking => SpecialAttribute.CookingDoubleReward,
+            _ => null,
+        };
+    }
+
+    // The factor (1 or 2) of a double ability's total in thousandths and a roll in [0, 1): 2 when the roll falls under
+    // the rate.
+    public static int DoubleFactor(long total, double roll) {
+        return total > 0 && roll < total / 1000.0 ? 2 : 1;
+    }
 }
