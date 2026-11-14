@@ -15,6 +15,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 using Microsoft.EntityFrameworkCore;
@@ -127,6 +128,7 @@ public class ModelHouseStaleFieldTests {
             field.SetValue(factory, Activator.CreateInstance(field.FieldType));
         }
         Set("dungeons", new ConcurrentDictionary<int, DungeonFieldManager>());
+        Set("ugcOxEvents", new ConcurrentDictionary<long, UgcOxEvent>());
         Set("subDungeonFields", new ConcurrentDictionary<int, DungeonFieldManager>());
         Set("cancel", new CancellationTokenSource());
         var done = new Thread(() => { });

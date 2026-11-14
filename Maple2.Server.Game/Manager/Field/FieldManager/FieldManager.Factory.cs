@@ -8,8 +8,11 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Maple2.Server.World.Service;
 using Serilog;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
@@ -346,14 +349,73 @@ public partial class FieldManager {
             return !field.Disposed && field.UgcOx == ox ? field : null;
         }
 
-        // Takes the event out (once): its portal leaves the host's home.
+        // Takes the event out without a game end (a failed create, a stadium gone empty): its money is settled as
+        // CloseUgcOx does with no winner, so an event that never started gives the fees back and one that ran
+        // leaves the pot to the host (its entrants left, and leaving forfeits the fee).
         public void RemoveUgcOx(UgcOxEvent ox) {
+            CloseUgcOx(ox, [], refundAll: false, stadium: FindUgcOxStadium(ox));
+        }
+
+        /// <summary>
+        /// Ends the event: its money is settled (UgcOxEvent.Settle) and paid under the event's lock, so it moves
+        /// once, and its portal leaves the host's home. A payee in the stadium, or online on this channel when a
+        /// stadium player can look it up, is paid at once with the client's notice; anyone else, and everyone when
+        /// refundAll (the shutdown, when sessions may already be saved), by mail. Every payment is logged.
+        /// </summary>
+        public void CloseUgcOx(UgcOxEvent ox, IReadOnlyCollection<long> winners, bool refundAll, FieldManager? stadium) {
+            lock (ox.Lock) {
+                if (ox.Settle(winners, refundAll) is { } payments) {
+                    logger.Information("OX quiz event of {HostCharacterId} settled: pot {Pot}, {Count} payments (refund all: {RefundAll})",
+                        ox.HostCharacterId, ox.Pot, payments.Count, refundAll);
+                    foreach (UgcOxPayment payment in payments) {
+                        PayUgcOx(ox, payment, refundAll ? null : stadium);
+                    }
+                }
+            }
             if (!ugcOxEvents.TryRemove(new KeyValuePair<long, UgcOxEvent>(ox.HostAccountId, ox))) {
                 return;
             }
             HomeFieldManager? home = FindHome(ox.HostAccountId);
             if (home != null && ox.HomePortalObjectId != 0) {
                 home.RemovePortal(ox.HomePortalObjectId);
+            }
+        }
+
+        private void PayUgcOx(UgcOxEvent ox, UgcOxPayment payment, FieldManager? stadium) {
+            GameSession? payee = null;
+            if (stadium != null) {
+                payee = stadium.Players.Values.FirstOrDefault(player => player.Value.Character.Id == payment.CharacterId)?.Session;
+                if (payee == null && stadium.Players.Values.FirstOrDefault() is { } any
+                    && any.Session.FindSession(payment.CharacterId, out GameSession? other)) {
+                    payee = other;
+                }
+            }
+            if (payee != null) {
+                payee.Currency.ChangeMeso(payment.Amount);
+                payee.Send(NoticePacket.Message(new InterfaceText(UgcOxRules.PaymentText(payment.Kind), $"{payment.Amount}")));
+                logger.Information("OX quiz event of {HostCharacterId}: {Kind} of {Amount} mesos paid to {CharacterId}",
+                    ox.HostCharacterId, payment.Kind, payment.Amount, payment.CharacterId);
+                return;
+            }
+            try {
+                using GameStorage.Request db = GameStorage.Context();
+                Mail? mail = db.CreateMail(UgcOxRules.PaymentMail(payment));
+                if (mail == null) {
+                    logger.Error("OX quiz event of {HostCharacterId}: {Kind} of {Amount} mesos for {CharacterId} could not be mailed",
+                        ox.HostCharacterId, payment.Kind, payment.Amount, payment.CharacterId);
+                    return;
+                }
+                logger.Information("OX quiz event of {HostCharacterId}: {Kind} of {Amount} mesos mailed to {CharacterId} ({MailId})",
+                    ox.HostCharacterId, payment.Kind, payment.Amount, payment.CharacterId, mail.Id);
+                try {
+                    World.MailNotification(new MailNotificationRequest {
+                        CharacterId = payment.CharacterId,
+                        MailId = mail.Id,
+                    });
+                } catch { /* ignored: the mail is there at the next login */ }
+            } catch (Exception ex) {
+                logger.Error(ex, "OX quiz event of {HostCharacterId}: {Kind} of {Amount} mesos for {CharacterId} could not be mailed",
+                    ox.HostCharacterId, payment.Kind, payment.Amount, payment.CharacterId);
             }
         }
 
@@ -511,6 +573,13 @@ public partial class FieldManager {
                     }
                 }
 
+                // An OX quiz event whose stadium was disposed (it stayed empty) is closed and its money settled.
+                foreach (UgcOxEvent ox in ugcOxEvents.Values) {
+                    if (FindUgcOxStadium(ox) == null) {
+                        RemoveUgcOx(ox);
+                    }
+                }
+
                 foreach (HomeFieldManager homeField in homes.Values) {
                     if (!homeField.Players.IsEmpty) {
                         logger.Verbose("Home Field {MapId} Owner: {OwnerId} has players", homeField.MapId, homeField.OwnerId);
@@ -590,6 +659,12 @@ public partial class FieldManager {
         }
 
         public void Dispose() {
+            // The shutdown gives every entrant of an OX quiz event its fee back, by mail (CloseUgcOx). A crash
+            // cannot: the event lives in memory only (FORK.md).
+            foreach (UgcOxEvent ox in ugcOxEvents.Values) {
+                CloseUgcOx(ox, [], refundAll: true, stadium: null);
+            }
+
             foreach (ConcurrentDictionary<int, FieldManager> fields in fields.Values) {
                 foreach (FieldManager field in fields.Values) {
                     field.Dispose();

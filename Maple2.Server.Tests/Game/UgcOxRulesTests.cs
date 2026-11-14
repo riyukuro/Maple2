@@ -51,11 +51,12 @@ public class UgcOxRulesTests {
     [Test]
     public void CreateRefusalOrder() {
         Assert.Multiple(() => {
-            Assert.That(UgcOxRules.CreateRefusal(true, false, true, false), Is.Null);
-            Assert.That(UgcOxRules.CreateRefusal(false, true, false, true), Is.EqualTo("s_ugcox_create_fail_other_home"));
-            Assert.That(UgcOxRules.CreateRefusal(true, true, false, true), Is.EqualTo("s_ugcox_create_fail_design_home"));
-            Assert.That(UgcOxRules.CreateRefusal(true, false, false, true), Is.EqualTo("s_ugcox_create_fail_already"));
-            Assert.That(UgcOxRules.CreateRefusal(true, false, false, false), Is.EqualTo("s_ugcox_create_fail_item_lack"));
+            Assert.That(UgcOxRules.CreateRefusal(true, false, true, false, true), Is.Null);
+            Assert.That(UgcOxRules.CreateRefusal(false, true, false, true, false), Is.EqualTo("s_ugcox_create_fail_other_home"));
+            Assert.That(UgcOxRules.CreateRefusal(true, true, false, true, false), Is.EqualTo("s_ugcox_create_fail_design_home"));
+            Assert.That(UgcOxRules.CreateRefusal(true, false, false, true, false), Is.EqualTo("s_ugcox_create_fail_already"));
+            Assert.That(UgcOxRules.CreateRefusal(true, false, false, false, false), Is.EqualTo("s_ugcox_create_fail_item_lack"));
+            Assert.That(UgcOxRules.CreateRefusal(true, false, true, false, false), Is.EqualTo("s_ugcox_create_fail_fee_lack"));
         });
     }
 

@@ -5,6 +5,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -33,9 +34,8 @@ public partial class HomeActionHandler {
         Resurrect = 18,
     }
 
-    // The stadium's boxes: the fallen wait in 104; a resurrect puts them back on the stage, box 105.
+    // The stadium's boxes: the fallen wait in 104; a resurrect puts them back on the stage (OxQuizUgcWidget.StageBoxId).
     private const int FallenBoxId = 104;
-    private const int StageBoxId = 105;
 
     private void HandleQuiz(GameSession session, IByteReader packet) {
         var command = (QuizCommand) packet.ReadByte();
@@ -111,12 +111,13 @@ public partial class HomeActionHandler {
         session.Send(HomeActionPacket.UgcOxFees(UgcOxRules.Fees));
     }
 
-    private static string? CreateRefusal(GameSession session) {
+    // fee: the settings' fee once the host chose them (c2s 0 and 3); the dialog's opening checks none.
+    private static string? CreateRefusal(GameSession session, long fee = 0) {
         bool inOwnHome = session.Field is HomeFieldManager home && home.OwnerId == session.AccountId;
         bool designing = session.Housing.GetFieldPlot()?.IsPlanner == true;
         bool holdsTicket = session.Item.Inventory.Find(UgcOxRules.TicketItemId).Sum(item => item.Amount) >= 1;
         bool hasEvent = session.FieldFactory.FindUgcOx(session.AccountId) != null;
-        return UgcOxRules.CreateRefusal(inOwnHome, designing, holdsTicket, hasEvent);
+        return UgcOxRules.CreateRefusal(inOwnHome, designing, holdsTicket, hasEvent, session.Currency.Meso >= fee);
     }
 
     // c2s 0: the create dialog's settings; the client asks for the confirm box.
@@ -126,7 +127,7 @@ public partial class HomeActionHandler {
                 session.CharacterId, settings.Fee, settings.Max, settings.Share);
             return;
         }
-        if (CreateRefusal(session) is { } refusal) {
+        if (CreateRefusal(session, settings.Fee) is { } refusal) {
             session.Send(NoticePacket.Message(refusal));
             return;
         }
@@ -140,7 +141,7 @@ public partial class HomeActionHandler {
             return;
         }
         session.UgcOxPending = null;
-        if (CreateRefusal(session) is { } refusal) {
+        if (CreateRefusal(session, settings.Fee) is { } refusal) {
             session.Send(NoticePacket.Message(refusal));
             return;
         }
@@ -150,13 +151,23 @@ public partial class HomeActionHandler {
             Logger.Error("OX quiz stadium of {CharacterId} could not be made", session.CharacterId);
             return;
         }
-        // The event takes one host ticket (s_ugcox_create_fail_item_lack names it as what the event needs).
+        // The host pays the event's fee (s_ugcox_create_complete, sent by the client on s2c 4) and one host ticket
+        // (s_ugcox_create_fail_item_lack names it as what the event needs). The fee is the host's cost: it is
+        // never given back (chosen here, FORK.md).
+        if (!session.Currency.TryTakeMeso(settings.Fee, notify: false)) {
+            session.FieldFactory.RemoveUgcOx(ox);
+            session.Send(NoticePacket.Message("s_ugcox_create_fail_fee_lack"));
+            return;
+        }
         Item? ticket = session.Item.Inventory.Find(UgcOxRules.TicketItemId).FirstOrDefault();
         if (ticket == null || !session.Item.Inventory.Consume(ticket.Uid, 1)) {
+            session.Currency.ReturnMeso(settings.Fee);
             session.FieldFactory.RemoveUgcOx(ox);
             session.Send(NoticePacket.Message("s_ugcox_create_fail_item_lack"));
             return;
         }
+        session.Currency.NotifyMeso();
+        Logger.Information("OX quiz host {CharacterId} paid the hosting fee of {Fee} mesos", session.CharacterId, settings.Fee);
         FieldPortal portal = home.SpawnUgcOxPortal(session.Player);
         ox.HomePortalId = portal.Value.Id;
         ox.HomePortalObjectId = portal.ObjectId;
@@ -203,7 +214,7 @@ public partial class HomeActionHandler {
     // c2s 18: the fallen (box 104) go back onto the stage (box 105), on top of the box.
     private static void ResurrectFallen(FieldManager field) {
         if (!field.TriggerObjects.Boxes.TryGetValue(FallenBoxId, out TriggerBox? fallen)
-            || !field.TriggerObjects.Boxes.TryGetValue(StageBoxId, out TriggerBox? stage)) {
+            || !field.TriggerObjects.Boxes.TryGetValue(OxQuizUgcWidget.StageBoxId, out TriggerBox? stage)) {
             return;
         }
         Vector3 spot = stage.Metadata.Position + new Vector3(0, 0, stage.Metadata.Dimensions.Z / 2);

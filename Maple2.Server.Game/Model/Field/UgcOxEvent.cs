@@ -31,7 +31,20 @@ public enum UgcOxEnter {
     Full,
     // The game started or is over: nobody new comes in.
     Closed,
+    // A new entrant short of the entry fee (s_ugcox_enter_fail_entry_fee_lack).
+    NoFee,
 }
+
+public enum UgcOxPaymentKind {
+    // A winner's part of the pot (s_ugcox_entry_prize_meso_get).
+    Prize,
+    // The host's rest of the pot (s_ugcox_host_commission_meso_get).
+    Commission,
+    // An entry fee given back (s_ugcox_entry_fee_refund_meso_get).
+    Refund,
+}
+
+public readonly record struct UgcOxPayment(long CharacterId, long Amount, UgcOxPaymentKind Kind);
 
 public enum UgcOxFinish {
     Ok,
@@ -79,7 +92,10 @@ public class UgcOxEvent {
     public bool WallRemoved { get; private set; }
     public int PromoteCount { get; private set; }
     private long lastPromoteTick;
-    private readonly HashSet<long> entrants = [];
+    // The entrants (character ids) and the entry fee each paid; the pot is their sum.
+    private readonly Dictionary<long, long> entrants = [];
+    // Set by Settle: the money of the event is settled once.
+    private bool settled;
 
     public UgcOxEvent(long hostAccountId, long hostCharacterId, string hostName, int homeMapId, UgcOxRules.Settings settings) {
         HostAccountId = hostAccountId;
@@ -99,13 +115,29 @@ public class UgcOxEvent {
 
     public IReadOnlyCollection<long> Entrants() {
         lock (Lock) {
-            return entrants.ToArray();
+            return entrants.Keys.ToArray();
         }
     }
 
     public bool IsEntrant(long characterId) {
         lock (Lock) {
-            return entrants.Contains(characterId);
+            return entrants.ContainsKey(characterId);
+        }
+    }
+
+    public long Pot {
+        get {
+            lock (Lock) {
+                return entrants.Values.Sum();
+            }
+        }
+    }
+
+    // The stage packets' two prizes: the pot and the winners' part of it (chosen here, see FORK.md).
+    public (long Pot, long WinnersPart) Prizes() {
+        lock (Lock) {
+            long pot = entrants.Values.Sum();
+            return (pot, pot * Settings.Share / 100);
         }
     }
 
@@ -118,7 +150,9 @@ public class UgcOxEvent {
         }
     }
 
-    public UgcOxEnter Enter(long characterId) {
+    // An entrant's arrival. A new entrant pays the entry fee through payFee (true when it was taken), under the
+    // event's lock: the entry and its fee go in together. The host and a rejoining entrant pay nothing.
+    public UgcOxEnter Enter(long characterId, Func<long, bool> payFee) {
         lock (Lock) {
             if (characterId == HostCharacterId) {
                 return Phase == UgcOxPhase.Ended ? UgcOxEnter.Closed : UgcOxEnter.Host;
@@ -126,13 +160,16 @@ public class UgcOxEvent {
             if (Phase != UgcOxPhase.Welcome || Canceled) {
                 return UgcOxEnter.Closed;
             }
-            if (entrants.Contains(characterId)) {
+            if (entrants.ContainsKey(characterId)) {
                 return UgcOxEnter.Rejoin;
             }
             if (entrants.Count >= Settings.Max) {
                 return UgcOxEnter.Full;
             }
-            entrants.Add(characterId);
+            if (!payFee(Settings.Fee)) {
+                return UgcOxEnter.NoFee;
+            }
+            entrants.Add(characterId, Settings.Fee);
             return UgcOxEnter.New;
         }
     }
@@ -252,14 +289,48 @@ public class UgcOxEvent {
         }
     }
 
-    // The script's EndGame. True once: the caller settles the event (layer 3 pays out there) only on true.
-    public bool End() {
+    /// <summary>
+    /// Ends the event and settles its money, once: null on every later call. A game that ran pays the pot out to
+    /// the winners (the entrants among winners) and the host (UgcOxRules.Payout). An event canceled or never started
+    /// gives every entrant its fee back, as does refundAll (the server's shutdown). The caller pays the result under
+    /// Lock (Factory.CloseUgcOx), so the event's money moves once.
+    /// </summary>
+    public IReadOnlyList<UgcOxPayment>? Settle(IReadOnlyCollection<long> winners, bool refundAll) {
         lock (Lock) {
-            if (Phase == UgcOxPhase.Ended) {
-                return false;
+            if (settled) {
+                return null;
             }
+            settled = true;
+            bool ran = Phase == UgcOxPhase.Running && !Canceled;
             Phase = UgcOxPhase.Ended;
-            return true;
+            var payments = new List<UgcOxPayment>();
+            if (refundAll || !ran) {
+                foreach ((long characterId, long fee) in entrants) {
+                    if (fee > 0) {
+                        payments.Add(new UgcOxPayment(characterId, fee, UgcOxPaymentKind.Refund));
+                    }
+                }
+                return payments;
+            }
+            long[] paid = winners.Where(entrants.ContainsKey).Distinct().ToArray();
+            UgcOxRules.Split split = UgcOxRules.Payout(entrants.Values.Sum(), Settings.Share, paid.Length);
+            if (split.EachWinner > 0) {
+                foreach (long characterId in paid) {
+                    payments.Add(new UgcOxPayment(characterId, split.EachWinner, UgcOxPaymentKind.Prize));
+                }
+            }
+            if (split.Host > 0) {
+                payments.Add(new UgcOxPayment(HostCharacterId, split.Host, UgcOxPaymentKind.Commission));
+            }
+            return payments;
+        }
+    }
+
+    public bool Settled {
+        get {
+            lock (Lock) {
+                return settled;
+            }
         }
     }
 

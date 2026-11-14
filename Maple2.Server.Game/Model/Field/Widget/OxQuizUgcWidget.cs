@@ -1,4 +1,5 @@
-﻿using Maple2.Server.Game.Manager.Field;
+﻿using Maple2.Model.Game;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Serilog;
 
@@ -84,9 +85,13 @@ public class OxQuizUgcWidget : Widget {
         }
     }
 
-    // The client's view of the stadium (s2c 13) for the event's step; the prizes are 0 until fees are taken.
+    // The stadium's stage box: who stands on it at the game's end won.
+    public const int StageBoxId = 105;
+
+    // The client's view of the stadium (s2c 13) for the event's step, with the pot and the winners' part of it.
     public static Maple2.PacketLib.Tools.ByteWriter Stage(UgcOxEvent ox, HomeActionPacket.UgcOxStageStep step) {
-        return HomeActionPacket.UgcOxStage(ox.HostAccountId, step, (byte) ox.Round, 0, 0);
+        (long pot, long winnersPart) = ox.Prizes();
+        return HomeActionPacket.UgcOxStage(ox.HostAccountId, step, (byte) ox.Round, pot, winnersPart);
     }
 
     private void HostUiChange(UgcOxEvent ox, string stepName) {
@@ -113,14 +118,23 @@ public class OxQuizUgcWidget : Widget {
     }
 
     private void EndGame(UgcOxEvent ox) {
-        // The script runs EndGame on each of its ends; the event ends once.
-        if (!ox.End()) {
+        // The script runs EndGame on each of its ends; the event ends and pays out once (Factory.CloseUgcOx).
+        if (ox.Settled) {
             return;
         }
         Logger.Information("OX quiz event of {HostCharacterId} ended at round {Round} (canceled: {Canceled}, entrants: {Count})",
             ox.HostCharacterId, ox.Round, ox.Canceled, ox.EntrantCount);
         Field.Broadcast(Stage(ox, HomeActionPacket.UgcOxStageStep.Close));
-        Field.FieldFactory.RemoveUgcOx(ox);
+        Field.FieldFactory.CloseUgcOx(ox, Winners(), refundAll: false, stadium: Field);
+    }
+
+    // The entrants on the stage box; the host is not one (Settle counts entrants only).
+    private List<long> Winners() {
+        if (!Field.TriggerObjects.Boxes.TryGetValue(StageBoxId, out TriggerBox? stage)) {
+            return [];
+        }
+        return Field.Players.Values.Where(player => stage.Contains(player.Position))
+            .Select(player => player.Value.Character.Id).ToList();
     }
 
     private static int Duration(string arg) {

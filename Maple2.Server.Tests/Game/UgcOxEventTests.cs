@@ -1,4 +1,8 @@
-﻿using Maple2.PacketLib.Tools;
+﻿using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -11,14 +15,17 @@ public class UgcOxEventTests {
     private const long HostAccount = 100;
     private const long Host = 1;
 
+    // A fee taker that always takes the fee.
+    private static bool Paid(long fee) => true;
+
     private static UgcOxEvent Make(int max = 10) {
         return new UgcOxEvent(HostAccount, Host, "Host", 62000001, new UgcOxRules.Settings(1000, max, 50));
     }
 
     private static UgcOxEvent Running(int rounds = 0) {
         UgcOxEvent ox = Make();
-        ox.Enter(2);
-        ox.Enter(3);
+        ox.Enter(2, Paid);
+        ox.Enter(3, Paid);
         Assert.That(ox.Start(), Is.True);
         for (int i = 0; i < rounds; i++) {
             ox.NextRound();
@@ -30,11 +37,11 @@ public class UgcOxEventTests {
     public void EnterUntilFull() {
         UgcOxEvent ox = Make(max: 2);
         Assert.Multiple(() => {
-            Assert.That(ox.Enter(Host), Is.EqualTo(UgcOxEnter.Host));
-            Assert.That(ox.Enter(2), Is.EqualTo(UgcOxEnter.New));
-            Assert.That(ox.Enter(2), Is.EqualTo(UgcOxEnter.Rejoin));
-            Assert.That(ox.Enter(3), Is.EqualTo(UgcOxEnter.New));
-            Assert.That(ox.Enter(4), Is.EqualTo(UgcOxEnter.Full));
+            Assert.That(ox.Enter(Host, Paid), Is.EqualTo(UgcOxEnter.Host));
+            Assert.That(ox.Enter(2, Paid), Is.EqualTo(UgcOxEnter.New));
+            Assert.That(ox.Enter(2, Paid), Is.EqualTo(UgcOxEnter.Rejoin));
+            Assert.That(ox.Enter(3, Paid), Is.EqualTo(UgcOxEnter.New));
+            Assert.That(ox.Enter(4, Paid), Is.EqualTo(UgcOxEnter.Full));
             Assert.That(ox.EntrantCount, Is.EqualTo(2));
             Assert.That(ox.IsEntrant(Host), Is.False);
         });
@@ -44,18 +51,18 @@ public class UgcOxEventTests {
     public void NoEntryAfterStart() {
         UgcOxEvent ox = Running();
         Assert.Multiple(() => {
-            Assert.That(ox.Enter(4), Is.EqualTo(UgcOxEnter.Closed));
-            Assert.That(ox.Enter(2), Is.EqualTo(UgcOxEnter.Closed));
-            Assert.That(ox.Enter(Host), Is.EqualTo(UgcOxEnter.Host));
+            Assert.That(ox.Enter(4, Paid), Is.EqualTo(UgcOxEnter.Closed));
+            Assert.That(ox.Enter(2, Paid), Is.EqualTo(UgcOxEnter.Closed));
+            Assert.That(ox.Enter(Host, Paid), Is.EqualTo(UgcOxEnter.Host));
         });
-        ox.End();
-        Assert.That(ox.Enter(Host), Is.EqualTo(UgcOxEnter.Closed));
+        ox.Settle([], refundAll: false);
+        Assert.That(ox.Enter(Host, Paid), Is.EqualTo(UgcOxEnter.Closed));
     }
 
     [Test]
     public void StartWithTooFewCancels() {
         UgcOxEvent ox = Make();
-        ox.Enter(2);
+        ox.Enter(2, Paid);
         Assert.Multiple(() => {
             Assert.That(ox.Start(), Is.False);
             Assert.That(ox.Canceled, Is.True);
@@ -123,9 +130,144 @@ public class UgcOxEventTests {
     [Test]
     public void EndsOnce() {
         UgcOxEvent ox = Running();
-        Assert.That(ox.End(), Is.True);
-        Assert.That(ox.End(), Is.False);
+        Assert.That(ox.Settle([2], refundAll: false), Is.Not.Null);
+        Assert.That(ox.Settle([2], refundAll: false), Is.Null);
+        Assert.That(ox.Settled, Is.True);
         Assert.That(ox.Open, Is.False);
+    }
+
+    [Test]
+    public void EntryWithoutTheFeeIsRefused() {
+        UgcOxEvent ox = Make();
+        long asked = 0;
+        Assert.Multiple(() => {
+            Assert.That(ox.Enter(2, fee => { asked = fee; return false; }), Is.EqualTo(UgcOxEnter.NoFee));
+            Assert.That(asked, Is.EqualTo(1000));
+            Assert.That(ox.IsEntrant(2), Is.False);
+            Assert.That(ox.Pot, Is.Zero);
+        });
+    }
+
+    [Test]
+    public void OnlyANewEntrantPays() {
+        UgcOxEvent ox = Make();
+        int taken = 0;
+        bool Take(long fee) {
+            taken++;
+            return true;
+        }
+        ox.Enter(Host, Take);
+        ox.Enter(2, Take);
+        ox.Enter(2, Take);
+        ox.Enter(3, Take);
+        Assert.Multiple(() => {
+            Assert.That(taken, Is.EqualTo(2));
+            Assert.That(ox.Pot, Is.EqualTo(2000));
+            Assert.That(ox.Prizes(), Is.EqualTo((2000L, 1000L)));
+        });
+    }
+
+    [Test]
+    public void PayoutSplitsThePot() {
+        // 3 entrants at 1000, share 50: 1500 for 2 winners is 750 each, the host keeps 1500.
+        UgcOxEvent ox = Make();
+        ox.Enter(2, Paid);
+        ox.Enter(3, Paid);
+        ox.Enter(4, Paid);
+        ox.Start();
+        IReadOnlyList<UgcOxPayment>? payments = ox.Settle([2, 4, Host, 99], refundAll: false);
+        Assert.That(payments, Is.EqualTo(new[] {
+            new UgcOxPayment(2, 750, UgcOxPaymentKind.Prize),
+            new UgcOxPayment(4, 750, UgcOxPaymentKind.Prize),
+            new UgcOxPayment(Host, 1500, UgcOxPaymentKind.Commission),
+        }));
+    }
+
+    [Test]
+    public void PayoutWithOddPotRoundsDownForTheWinners() {
+        // Each winner's part is rounded down; the rest, the rounding included, is the host's.
+        Assert.Multiple(() => {
+            Assert.That(UgcOxRules.Payout(3000, 100, 2), Is.EqualTo(new UgcOxRules.Split(1500, 0)));
+            Assert.That(UgcOxRules.Payout(1000, 100, 3), Is.EqualTo(new UgcOxRules.Split(333, 1)));
+            Assert.That(UgcOxRules.Payout(7000, 30, 4), Is.EqualTo(new UgcOxRules.Split(525, 4900)));
+            Assert.That(UgcOxRules.Payout(9000, 10, 7), Is.EqualTo(new UgcOxRules.Split(128, 8104)));
+            Assert.That(UgcOxRules.Payout(1000, 50, 0), Is.EqualTo(new UgcOxRules.Split(0, 1000)));
+            Assert.That(UgcOxRules.Payout(0, 50, 2), Is.EqualTo(new UgcOxRules.Split(0, 0)));
+        });
+        // Whatever the split, nothing is made or lost.
+        for (long pot = 0; pot <= 40 * 9000; pot += 1000) {
+            foreach (int share in UgcOxRules.Shares) {
+                for (int winners = 0; winners <= 40; winners++) {
+                    UgcOxRules.Split split = UgcOxRules.Payout(pot, share, winners);
+                    Assert.That(split.EachWinner * winners + split.Host, Is.EqualTo(pot));
+                    Assert.That(split.Host, Is.GreaterThanOrEqualTo(pot * (100 - share) / 100));
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void PayoutWithNoWinnerGoesToTheHost() {
+        UgcOxEvent ox = Running();
+        Assert.That(ox.Settle([], refundAll: false), Is.EqualTo(new[] {
+            new UgcOxPayment(Host, 2000, UgcOxPaymentKind.Commission),
+        }));
+    }
+
+    [Test]
+    public void CancelRefundsEveryEntrant() {
+        UgcOxEvent ox = Make();
+        ox.Enter(2, Paid);
+        ox.Start();
+        Assert.That(ox.Canceled, Is.True);
+        Assert.That(ox.Settle([2], refundAll: false), Is.EqualTo(new[] {
+            new UgcOxPayment(2, 1000, UgcOxPaymentKind.Refund),
+        }));
+
+        // The host's leave at the welcome, with an entrant who left the stadium since: both get the fee back.
+        UgcOxEvent left = Make();
+        left.Enter(2, Paid);
+        left.Enter(3, Paid);
+        left.Cancel();
+        Assert.That(left.Settle([], refundAll: false), Is.EqualTo(new[] {
+            new UgcOxPayment(2, 1000, UgcOxPaymentKind.Refund),
+            new UgcOxPayment(3, 1000, UgcOxPaymentKind.Refund),
+        }));
+    }
+
+    [Test]
+    public void HostLeavingMidGameRefunds() {
+        UgcOxEvent ox = Running(rounds: 3);
+        Assert.That(ox.Cancel(), Is.True);
+        Assert.That(ox.Settle([2], refundAll: false)!.Select(payment => payment.Kind), Is.All.EqualTo(UgcOxPaymentKind.Refund));
+    }
+
+    [Test]
+    public void ShutdownRefundsAGameThatRan() {
+        UgcOxEvent ox = Running(rounds: 3);
+        Assert.That(ox.Settle([2], refundAll: true), Is.EqualTo(new[] {
+            new UgcOxPayment(2, 1000, UgcOxPaymentKind.Refund),
+            new UgcOxPayment(3, 1000, UgcOxPaymentKind.Refund),
+        }));
+    }
+
+    [Test]
+    public void SettlesOnce() {
+        UgcOxEvent ox = Running();
+        IReadOnlyList<UgcOxPayment>? first = null;
+        int settled = 0;
+        Parallel.For(0, 16, _ => {
+            if (ox.Settle([2], refundAll: false) is { } payments) {
+                Interlocked.Increment(ref settled);
+                first = payments;
+            }
+        });
+        Assert.Multiple(() => {
+            Assert.That(settled, Is.EqualTo(1));
+            Assert.That(first!.Sum(payment => payment.Amount), Is.EqualTo(2000));
+            Assert.That(ox.Settle([], refundAll: true), Is.Null);
+            Assert.That(ox.Enter(4, Paid), Is.EqualTo(UgcOxEnter.Closed));
+        });
     }
 
     [Test]

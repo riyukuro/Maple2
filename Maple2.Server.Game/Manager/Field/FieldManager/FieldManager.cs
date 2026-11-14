@@ -1113,14 +1113,23 @@ public partial class FieldManager : IField {
         if (this is not HomeFieldManager home || FieldFactory.FindUgcOx(home.OwnerId) is not { } ox) {
             return false;
         }
-        UgcOxEnter enter = ox.Enter(session.CharacterId);
+        // A new entrant pays the entry fee here, as its entry goes in (the client's move box warned it is not
+        // refundable; only a cancel before the start gives it back).
+        UgcOxEnter enter = ox.Enter(session.CharacterId, fee => session.Currency.TryTakeMeso(fee));
         switch (enter) {
+            case UgcOxEnter.NoFee:
+                session.Send(NoticePacket.Message("s_ugcox_enter_fail_entry_fee_lack"));
+                return false;
             case UgcOxEnter.Full:
                 session.Send(NoticePacket.Message(StringCode.s_ugcox_enter_fail_full));
                 return false;
             case UgcOxEnter.Closed:
                 // The game started: the client has no text for a closed entry, so the use is refused without one.
                 return false;
+        }
+        if (enter == UgcOxEnter.New) {
+            logger.Information("OX quiz of {HostCharacterId}: {CharacterId} paid the entry fee of {Fee} mesos",
+                ox.HostCharacterId, session.CharacterId, ox.Settings.Fee);
         }
         logger.Information("OX quiz of {HostCharacterId}: {CharacterId} enters ({Enter})", ox.HostCharacterId, session.CharacterId, enter);
         session.Send(session.PrepareFieldByPortal(UgcOxRules.StadiumMapId, UgcOxRules.SpectatorPortalId, ox.StadiumRoomId)

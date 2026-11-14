@@ -1,4 +1,7 @@
+using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Model;
 
 namespace Maple2.Server.Game.Util;
 
@@ -59,7 +62,8 @@ public static class UgcOxRules {
     }
 
     // Why the host cannot create an event, as the client's s_ugcox_create_fail_* keys name it; null when it can.
-    public static string? CreateRefusal(bool inOwnHome, bool designing, bool holdsTicket, bool hasEvent) {
+    // The host pays the event's fee to host it (s_ugcox_create_complete: "You paid a fee of {eventFee} mesos").
+    public static string? CreateRefusal(bool inOwnHome, bool designing, bool holdsTicket, bool hasEvent, bool hasFee) {
         if (!inOwnHome) {
             return "s_ugcox_create_fail_other_home";
         }
@@ -72,7 +76,55 @@ public static class UgcOxRules {
         if (!holdsTicket) {
             return "s_ugcox_create_fail_item_lack";
         }
+        if (!hasFee) {
+            return "s_ugcox_create_fail_fee_lack";
+        }
         return null;
+    }
+
+    /// <summary>
+    /// The pot's split at the game's end: the winners share pot x share% equally, each part rounded down
+    /// (s_ugcox_entry_prize_meso_get); the host gets the rest, the rounding included
+    /// (s_ugcox_host_commission_meso_get). With no winner the host gets the whole pot (chosen here).
+    /// </summary>
+    public readonly record struct Split(long EachWinner, long Host);
+
+    public static Split Payout(long pot, int share, int winners) {
+        if (pot <= 0) {
+            return new Split(0, 0);
+        }
+        if (winners <= 0) {
+            return new Split(0, pot);
+        }
+        long each = pot * Math.Clamp(share, 0, 100) / 100 / winners;
+        return new Split(each, pot - each * winners);
+    }
+
+    // The client's notice for a payment, with the amount as its {0}.
+    public static StringCode PaymentText(UgcOxPaymentKind kind) {
+        return kind switch {
+            UgcOxPaymentKind.Prize => StringCode.s_ugcox_entry_prize_meso_get,
+            UgcOxPaymentKind.Commission => StringCode.s_ugcox_host_commission_meso_get,
+            _ => StringCode.s_ugcox_entry_fee_refund_meso_get,
+        };
+    }
+
+    // The mail of a payee not online on the channel at the payment (chosen here: the client's systemmailcontent
+    // table has no OX quiz row, so the mail carries its own text; the mesos are the mail's).
+    public static Mail PaymentMail(UgcOxPayment payment) {
+        string content = payment.Kind switch {
+            UgcOxPaymentKind.Prize => "Your prize for winning the OX Quiz.",
+            UgcOxPaymentKind.Commission => "Your mesos for hosting the OX Quiz.",
+            _ => "The OX Quiz you entered did not take place. Your entry fee is returned.",
+        };
+        return new Mail {
+            Type = MailType.System,
+            ReceiverId = payment.CharacterId,
+            SenderName = "OX Quiz",
+            Title = "OX Quiz",
+            Content = content,
+            Meso = payment.Amount,
+        };
     }
 
     // The question as the server keeps it: trimmed, at most MaxQuestionLength; null when empty.
