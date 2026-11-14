@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Maple2.Database.Storage;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game;
@@ -73,6 +74,33 @@ public class GroupChatItemLinkTests {
         Assert.That(test.World.GroupChats, Is.Empty);
         Assert.That(test.TakeSent().Select(Convert.ToHexString),
             Is.EqualTo(new[] { Convert.ToHexString(ChatPacket.Alert(Maple2.Model.Enum.StringCode.s_admin_block_chat).ToArray()) }));
+    }
+
+    // A group line with a sticker the sender may not use goes nowhere, with the print failure notice; one it may use
+    // goes out (UserChatHandler.RefuseUnusableSticker).
+    [TestCase(false)]
+    [TestCase(true)]
+    public void StickerLine_NeedsAHeldGroup(bool held) {
+        var test = new TestGameSession();
+        test.SetTable(new ChatStickerTable(new System.Collections.Generic.Dictionary<int, ChatStickerMetadata> { [1010] = new(1010, 3) }));
+        GameSession session = test.Start();
+        session.GroupChats ??= new ConcurrentDictionary<int, GroupChatManager>();
+        session.GroupChats[ChatId] = (GroupChatManager) RuntimeHelpers.GetUninitializedObject(typeof(GroupChatManager));
+        if (held) {
+            session.Player.Value.Unlock.StickerSets[3] = Maple2.Server.Game.Util.ChatStickerRules.Permanent;
+        }
+        test.TakeSent();
+        var handler = new GroupChatHandler { World = test.World };
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(10);
+            writer.WriteUnicodeString("<img src='img://emoticon:1010' vspace='-6'/>");
+            writer.WriteInt(ChatId);
+        }));
+
+        Assert.That(test.World.GroupChats, Has.Count.EqualTo(held ? 1 : 0));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), held ? Is.Empty
+            : Is.EqualTo(new[] { Convert.ToHexString(ChatStickerPacket.Error(Maple2.Model.Error.ChatStickerError.s_msg_chat_emoticon_print_failed).ToArray()) }));
     }
 
     // The 0xb block: chat id, sender name, count, then per item its uid, id and rarity and the item block.

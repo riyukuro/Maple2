@@ -1,6 +1,17 @@
-﻿namespace Maple2.Server.Game.Util;
+﻿using System.Text.RegularExpressions;
+
+namespace Maple2.Server.Game.Util;
 
 public static class ChatStickerRules {
+    // A sticker in a chat line: UIMessenger::TypeEmoticon posts it as <img src='img://emoticon:id' ...> (the input
+    // box sends typed text as html, so a "<" the player types is no tag).
+    private static readonly Regex LineSticker = new(@"<[^>]*img://emoticon:(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // The sticker ids in a chat line; an id past int is -1, which no table holds.
+    public static List<int> InLine(string message) {
+        return LineSticker.Matches(message).Select(match => int.TryParse(match.Groups[1].Value, out int id) ? id : -1).ToList();
+    }
+
     // A group with no time limit.
     public const long Permanent = long.MaxValue;
 

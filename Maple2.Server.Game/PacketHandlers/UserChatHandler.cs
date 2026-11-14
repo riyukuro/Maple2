@@ -3,6 +3,7 @@ using System.Xml;
 using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -12,6 +13,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -50,6 +52,9 @@ public class UserChatHandler : FieldPacketHandler {
         }
 
         if (ChatRestriction.Rejects(Constants, type, message)) {
+            return;
+        }
+        if (RefuseUnusableSticker(session, message)) {
             return;
         }
         if (ChatRestriction.Covers(type)) {
@@ -116,6 +121,20 @@ public class UserChatHandler : FieldPacketHandler {
         }
         session.Send(ChatPacket.Alert(refusal.Value));
         return true;
+    }
+
+    // The client posts only a sticker it may use (IsEmoticonUsable, ChatSticker 3 answered first): a line with another
+    // one (not held, or its group's time run out) goes nowhere, with the client's print failure notice.
+    internal static bool RefuseUnusableSticker(GameSession session, string message) {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        foreach (int stickerId in ChatStickerRules.InLine(message)) {
+            int? groupId = session.TableMetadata.ChatStickerTable.Entries.TryGetValue(stickerId, out ChatStickerMetadata? metadata) ? metadata.GroupId : null;
+            if (!ChatStickerRules.Usable(session.Player.Value.Unlock.StickerSets, groupId, now)) {
+                session.Send(ChatStickerPacket.Error(ChatStickerError.s_msg_chat_emoticon_print_failed));
+                return true;
+            }
+        }
+        return false;
     }
 
     // The channel int of a player's own line (normal, party, guild, whisper): KMS2 sends the sender's channel from a
@@ -257,26 +276,9 @@ public class UserChatHandler : FieldPacketHandler {
         } catch (RpcException) { }
     }
 
+    // The line costs a free world chat coupon when one is held, else the merets (less a SaleChat discount). The cost
+    // goes with the hand-off to the World in one step: a line the World does not take (unreachable) keeps both.
     private void HandleWorld(GameSession session, string message, ICollection<long> itemUids) {
-        var voucher = session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.FreeWorldChatCoupon).FirstOrDefault();
-        if (voucher != null) {
-            if (!session.Item.Inventory.Consume(voucher.Uid, 1)) {
-                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_invalid_item));
-                return;
-            }
-            session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_worldchat_use_coupon));
-        } else {
-            int meretCost = Constants.MeratConsumeWorldChat;
-            if (session.FindEvent(GameEventType.SaleChat).FirstOrDefault()?.Metadata.Data is SaleChat gameEvent) {
-                meretCost -= (int) (meretCost * Convert.ToSingle(gameEvent.WorldChatDiscount) / 10000);
-            }
-
-            if (!session.Currency.TryTakeMeret(meretCost)) {
-                session.Send(ChatPacket.Alert(StringCode.s_err_lack_merat));
-                return;
-            }
-        }
-
         var request = new ChatRequest {
             AccountId = session.AccountId,
             CharacterId = session.CharacterId,
@@ -288,9 +290,46 @@ public class UserChatHandler : FieldPacketHandler {
             World = new ChatRequest.Types.World(),
         };
 
+        lock (session.Item) {
+            Item? voucher = session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.FreeWorldChatCoupon).FirstOrDefault();
+            if (voucher != null) {
+                if (!SendToWorld(session, request)) {
+                    return;
+                }
+                if (!session.Item.Inventory.Consume(voucher.Uid, 1)) {
+                    Logger.Error("World chat coupon {Uid} of {CharacterId} was not taken", voucher.Uid, session.CharacterId);
+                    return;
+                }
+                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_worldchat_use_coupon));
+                return;
+            }
+        }
+
+        int meretCost = Constants.MeratConsumeWorldChat;
+        if (session.FindEvent(GameEventType.SaleChat).FirstOrDefault()?.Metadata.Data is SaleChat gameEvent) {
+            meretCost -= (int) (meretCost * Convert.ToSingle(gameEvent.WorldChatDiscount) / 10000);
+        }
+
+        if (!session.Currency.TryTakeMeret(meretCost, notify: false)) {
+            session.Send(ChatPacket.Alert(StringCode.s_err_lack_merat));
+            return;
+        }
+        if (!SendToWorld(session, request)) {
+            session.Currency.ReturnMeret(meretCost);
+            return;
+        }
+        session.Currency.NotifyMeretTaken(meretCost);
+    }
+
+    // Hands a paid line to the World; false when it is unreachable, and the line went nowhere.
+    private bool SendToWorld(GameSession session, ChatRequest request) {
         try {
             World.Chat(request);
-        } catch (RpcException) { }
+            return true;
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Chat {Type} of {CharacterId} was not sent", request.ChatCase, session.CharacterId);
+            return false;
+        }
     }
 
     private void HandleChannel(GameSession session, string message, ICollection<long> itemUids) {
@@ -365,13 +404,21 @@ public class UserChatHandler : FieldPacketHandler {
             Super = new ChatRequest.Types.Super { ItemId = session.SuperChatId },
         };
 
-        if (session.Item.Inventory.Consume(superChatItem.Uid, 1)) {
-            try {
-                Deselect(session);
-                World.Chat(request);
-            } catch (RpcException) { }
-        }
+        SendWithMegaphone(session, superChatItem, request);
+    }
 
+    // A megaphone line takes its item in one step with the hand-off to the World: a line the World does not take
+    // keeps the item and its selection.
+    private void SendWithMegaphone(GameSession session, Item megaphone, ChatRequest request) {
+        lock (session.Item) {
+            if (session.Item.Inventory.Get(megaphone.Uid) == null || !SendToWorld(session, request)) {
+                return;
+            }
+            if (!session.Item.Inventory.Consume(megaphone.Uid, 1)) {
+                Logger.Error("Megaphone {Uid} of {CharacterId} was not taken", megaphone.Uid, session.CharacterId);
+            }
+        }
+        Deselect(session);
     }
 
     private void HandleClub(GameSession session, string message, long clubId, ICollection<long> itemUids) {
@@ -434,12 +481,7 @@ public class UserChatHandler : FieldPacketHandler {
             },
         };
 
-        if (session.Item.Inventory.Consume(item.Uid, 1)) {
-            try {
-                Deselect(session);
-                World.Chat(request);
-            } catch (RpcException) { }
-        }
+        SendWithMegaphone(session, item, request);
     }
 
     internal static ICollection<long> LinkedItemUids(GameSession session, string message) {

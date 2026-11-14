@@ -4,7 +4,9 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Grpc.Core;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game;
@@ -12,6 +14,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Serilog;
 using GuildManager = Maple2.Server.Game.Manager.GuildManager;
@@ -81,6 +84,92 @@ public class UserChatHandlerTests {
         Say(session, ChatType.World, "hello");
 
         Assert.That(test.World.Chats, Is.Empty);
+    }
+
+    private static RpcException Down() => new(new Status(StatusCode.Unavailable, "down"));
+
+    // A world line the World does not take costs nothing: the merets are taken only for a line that went out.
+    [Test]
+    public void WorldChat_WithTheWorldDownKeepsTheMerets() {
+        GameSession session = Login(meret: 100000);
+        Assume.That(test.ServerTableMetadata.ConstantsTable.MeratConsumeWorldChat, Is.GreaterThan(0));
+        test.World.ChatDelivery = _ => throw Down();
+
+        Say(session, ChatType.World, "hello");
+
+        Assert.That(session.Currency.Meret, Is.EqualTo(100000));
+    }
+
+    // The free world chat coupon is taken only for a line that went out too.
+    [Test]
+    public void WorldChat_WithTheWorldDownKeepsTheCoupon() {
+        test = new TestGameSession();
+        test.AddMap(TestGameSession.Map(2000023));
+        ItemMetadata coupon = TestGameSession.Metadata(20300001);
+        test.Store(coupon with { Property = coupon.Property with { Tag = ItemTag.FreeWorldChatCoupon } });
+        handler = new UserChatHandler { World = test.World, GameStorage = test.Storage, ServerTableMetadata = test.ServerTableMetadata };
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000023));
+        test.TakeSent();
+        test.World.ChatDelivery = _ => throw Down();
+
+        Say(session, ChatType.World, "hello");
+
+        Assert.That(session.Item.Inventory.Find(20300001), Is.Not.Empty);
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.Notice), Is.Empty);
+
+        test.World.ChatDelivery = null;
+        Say(session, ChatType.World, "hello");
+
+        Assert.That(session.Item.Inventory.Find(20300001), Is.Empty);
+    }
+
+    // A sticker in a chat line must be one the player may use (the client's IsEmoticonUsable): in the table, its
+    // group held and not run out. Any other line goes nowhere, with the print failure notice.
+    private const int StickerId = 1010;
+    private const int StickerGroup = 3;
+    private const string StickerLine = "hi <img src='img://emoticon:1010' vspace='-6'/>";
+
+    private GameSession LoginWithStickers(long? groupExpiry) {
+        GameSession session = Login(meret: 100000);
+        test.SetTable(new ChatStickerTable(new Dictionary<int, ChatStickerMetadata> { [StickerId] = new(StickerId, StickerGroup) }));
+        if (groupExpiry != null) {
+            session.Player.Value.Unlock.StickerSets[StickerGroup] = groupExpiry.Value;
+        }
+        return session;
+    }
+
+    [Test]
+    public void StickerLine_WithAHeldGroupGoesOut() {
+        GameSession session = LoginWithStickers(ChatStickerRules.Permanent);
+
+        Say(session, ChatType.World, StickerLine);
+
+        Assert.That(test.World.Chats, Has.Count.EqualTo(1));
+    }
+
+    [TestCase(false, StickerLine)]
+    [TestCase(true, StickerLine)]
+    [TestCase(true, "hi <IMG SRC='img://emoticon:1011'/>")]
+    public void StickerLine_NotUsableIsRefused(bool expired, string line) {
+        GameSession session = LoginWithStickers(expired ? DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 60 : null);
+
+        Say(session, ChatType.World, line);
+
+        Assert.That(test.World.Chats, Is.Empty);
+        Assert.That(session.Currency.Meret, Is.EqualTo(100000));
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.ChatStamp),
+            Is.EqualTo(new[] { Hex(ChatStickerPacket.Error(ChatStickerError.s_msg_chat_emoticon_print_failed)) }));
+    }
+
+    // Typed text that only names a sticker is no tag (the input box escapes a typed "<").
+    [Test]
+    public void TextNamingASticker_GoesOut() {
+        GameSession session = LoginWithStickers(null);
+
+        Say(session, ChatType.World, "img://emoticon:1010 &lt;img src='img://emoticon:1010'");
+
+        Assert.That(test.World.Chats, Has.Count.EqualTo(1));
     }
 
     // Normal chat goes to the field. The int after the GM flag is the channel in a field that is no instance and 0
@@ -374,6 +463,21 @@ public class UserChatHandlerTests {
         Assert.That(request.Wedding.Bride, Is.EqualTo(senderReserved ? OtherName : session.PlayerName));
         Assert.That(session.Item.Inventory.Find(MegaphoneId), Is.Empty);
         Assert.That(session.SuperChatId, Is.EqualTo(0));
+    }
+
+    // A megaphone line the World does not take keeps the item and its selection.
+    [TestCase(ItemFunction.SuperWorldChat, ChatType.Super)]
+    [TestCase(ItemFunction.WeddingChat, ChatType.Wedding)]
+    public void MegaphoneLine_WithTheWorldDownKeepsTheItem(ItemFunction function, ChatType type) {
+        GameSession session = LoginWithMegaphone(function);
+        Reserve(session, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 600);
+        test.World.ChatDelivery = _ => throw Down();
+
+        Say(session, type, "come");
+
+        Assert.That(test.World.Chats, Has.Count.EqualTo(1));
+        Assert.That(session.Item.Inventory.Find(MegaphoneId), Is.Not.Empty);
+        Assert.That(session.SuperChatId, Is.EqualTo(MegaphoneId));
     }
 
     // Without a reservation the line goes nowhere, the item stays and the sender gets the client's text.

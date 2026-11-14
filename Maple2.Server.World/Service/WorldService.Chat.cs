@@ -116,16 +116,24 @@ public partial class WorldService {
     }
 
     private Task<ChatResponse> WorldChat(ChatRequest request) {
-        foreach ((int channel, ChannelClient client) in channelClients) {
-            client.Chat(request);
-        }
+        BroadcastChat(request);
         return Task.FromResult(new ChatResponse());
     }
 
-    private Task<ChatResponse> SuperChat(ChatRequest request) {
+    // A line for every channel: one channel that is down misses it, the rest still get it, and the line counts as
+    // sent (its cost is not given back).
+    private void BroadcastChat(ChatRequest request) {
         foreach ((int channel, ChannelClient client) in channelClients) {
-            client.Chat(request);
+            try {
+                client.Chat(request);
+            } catch (RpcException ex) {
+                logger.Error(ex, "Chat {Type} not delivered to channel {Channel}", request.ChatCase, channel);
+            }
         }
+    }
+
+    private Task<ChatResponse> SuperChat(ChatRequest request) {
+        BroadcastChat(request);
         return Task.FromResult(new ChatResponse());
     }
 
@@ -152,9 +160,7 @@ public partial class WorldService {
     }
 
     private Task<ChatResponse> SystemNotice(ChatRequest request) {
-        foreach ((int channel, ChannelClient client) in channelClients) {
-            client.Chat(request);
-        }
+        BroadcastChat(request);
         return Task.FromResult(new ChatResponse());
     }
 }

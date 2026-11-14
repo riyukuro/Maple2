@@ -181,7 +181,7 @@ public class GroupChatHandler : FieldPacketHandler {
             return;
         }
         // CGroupChatManager::SendGroupChatMode10 checks the chat restriction before it sends.
-        if (UserChatHandler.RefuseBlockedChat(session)) {
+        if (UserChatHandler.RefuseBlockedChat(session) || UserChatHandler.RefuseUnusableSticker(session, message)) {
             return;
         }
 
