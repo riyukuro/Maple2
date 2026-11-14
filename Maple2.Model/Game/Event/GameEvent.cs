@@ -526,6 +526,22 @@ public class GameEvent : IByteSerializable {
                     writer.WriteInt(boxId);
                 }
                 break;
+            case QuestAdditionalReward questReward:
+                // GameEventQuestAdditionalReward::vfunc_4 (gameevent.cpp:3170): the id, the quest type and the repeat type
+                // as shorts, then QuestAdditionalRewardContext::Read (gameeventcontext.cpp:984): the eight rates and the
+                // item rates.
+                writer.WriteInt(Id);
+                writer.WriteShort((short) questReward.QuestType);
+                writer.WriteShort((short) questReward.Repeat);
+                for (int i = 0; i < QuestRewardEventRules.Kinds.Length; i++) {
+                    writer.WriteInt(QuestRewardEventRules.Rate(questReward, i));
+                }
+                writer.WriteInt(questReward.Items.Length);
+                foreach (QuestAdditionalReward.ItemRate item in questReward.Items) {
+                    writer.WriteInt(item.ItemId);
+                    writer.WriteInt(item.Rate);
+                }
+                break;
             case CollectItemGroup collect:
                 // CollectItemGroupContext::Read (gameeventcontext.cpp:2180): the id again, the name, begin and
                 // end, the condition items and the result.

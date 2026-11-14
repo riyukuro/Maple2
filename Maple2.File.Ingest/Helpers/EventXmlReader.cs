@@ -271,6 +271,58 @@ public static class EventXmlReader {
         return new RewardItem(itemId, Math.Max(grade, (short) 0), count);
     }
 
+    // GameEventQuestAdditionalReward::vfunc_2 (commonfiles/gameevent.cpp:3143): value1 and value2 are read with _wtoi,
+    // value3 by QuestAdditionalRewardContext::Load (gameeventcontext.cpp:938): a number other than 0 is the rate of all
+    // eight kinds; else the root element's eight attributes and its <item id rate/> rows, a later row of an item
+    // replacing an earlier one. A row that raises nothing is not stored.
+    public static QuestAdditionalReward? QuestAdditionalReward(string? value1, string? value2, string? value3) {
+        int[] rates = new int[QuestRewardEventRules.Kinds.Length];
+        var items = new Dictionary<int, int>();
+        int all = LeadingInt(value3);
+        if (all != 0) {
+            Array.Fill(rates, all);
+        } else if (AnyRoot(value3) is { } root) {
+            for (int i = 0; i < rates.Length; i++) {
+                rates[i] = UnsignedAttribute(root, QuestRewardEventRules.Kinds[i]);
+            }
+            foreach (XmlElement item in root.ChildNodes.OfType<XmlElement>().Where(element => element.Name == "item")) {
+                items[UnsignedAttribute(item, "id")] = UnsignedAttribute(item, "rate");
+            }
+        }
+
+        QuestAdditionalReward.ItemRate[] itemRates = items.Where(entry => entry.Key > 0 && entry.Value > 0)
+            .Select(entry => new QuestAdditionalReward.ItemRate(entry.Key, entry.Value)).ToArray();
+        if (rates.All(rate => rate <= 0) && itemRates.Length == 0) {
+            return null;
+        }
+        return new QuestAdditionalReward(LeadingInt(value1), LeadingInt(value2), rates, itemRates);
+    }
+
+    // _wtoi: leading blanks, an optional sign and the digits that follow; 0 without digits.
+    internal static int LeadingInt(string? text) {
+        if (text == null) {
+            return 0;
+        }
+        int i = 0;
+        while (i < text.Length && char.IsWhiteSpace(text[i])) {
+            i++;
+        }
+        int start = i;
+        if (i < text.Length && (text[i] == '-' || text[i] == '+')) {
+            i++;
+        }
+        while (i < text.Length && char.IsAsciiDigit(text[i])) {
+            i++;
+        }
+        return long.TryParse(text.AsSpan(start, i - start), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long value)
+            ? (int) Math.Clamp(value, int.MinValue, int.MaxValue) : 0;
+    }
+
+    // An unsigned attribute; missing, not a number or negative is 0.
+    private static int UnsignedAttribute(XmlElement element, string name) {
+        return int.TryParse(element.GetAttribute(name), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? Math.Max(value, 0) : 0;
+    }
+
     private static float Rate(string text) {
         return float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out float rate) && float.IsFinite(rate) && rate > 0f ? rate : 0f;
     }

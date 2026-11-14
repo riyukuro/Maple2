@@ -512,6 +512,21 @@ public record DungeonBonusReward(
     int ItemRolls,
     int[] DropBoxIds) : GameEventData;
 
+// The quest reward rates (GameEventQuestAdditionalReward, commonfiles/gameevent.cpp:3143): value1 the quest type, value2
+// the repeat type (the quest's basic repeatable), value3 either one rate for every kind or
+// <reward exp meso guild_fund guild_exp guild_coin lu karma menteeCoin><item id rate/>...</reward>
+// (QuestAdditionalRewardContext::Load, gameeventcontext.cpp:938). Rates are in ten-thousandths of the reward added
+// (10000 doubles it); Rates holds the eight kinds in that order, Items the rate of each reward item named. The client
+// keys the event by (QuestType, Repeat) and its reward line shows the exp and meso raised (CQuest::ShowRewards); the
+// server pays every kind raised (QuestRewardEventRules).
+public record QuestAdditionalReward(
+    int QuestType,
+    int Repeat,
+    int[] Rates,
+    QuestAdditionalReward.ItemRate[] Items) : GameEventData {
+    public record ItemRate(int ItemId, int Rate);
+}
+
 // The item collection (GameEventCollectItemGroup, commonfiles/gameevent.cpp:6474): value1 is
 // <ms2><info name/><result itemID count grade/><condition itemID count grade/>...</ms2>. A player who has every
 // condition item claims the result once (EventSaleRules.CollectMissing). Name is the key of the tab's title.
@@ -740,6 +755,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(SaleBeautyShop), "SaleBeautyShop")]
 [JsonDerivedType(typeof(SAHotTime), "SAHotTime")]
 [JsonDerivedType(typeof(DungeonBonusReward), "DungeonBonusReward")]
+[JsonDerivedType(typeof(QuestAdditionalReward), "QuestAdditionalReward")]
 [JsonDerivedType(typeof(CollectItemGroup), "CollectItemGroup")]
 [JsonDerivedType(typeof(ArcadeOpen), "ArcadeOpen")]
 [JsonDerivedType(typeof(BurningLevelup), "BurningLevelup")]

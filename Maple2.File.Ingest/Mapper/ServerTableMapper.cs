@@ -1945,6 +1945,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             case GameEventType.BurningLevelup:
                 return EventXmlReader.BurningLevelup(value1, value2, value3, value4,
                     itemId => EventXmlReader.JumpingTargetLevel(ItemMapper.ItemMetadataById.GetValueOrDefault(itemId)));
+            case GameEventType.QuestAdditionalReward:
+                return EventXmlReader.QuestAdditionalReward(value1, value2, value3);
             case GameEventType.CollectItemGroup:
                 return EventXmlReader.CollectItemGroup(value1);
             case GameEventType.ArcadeOpen:
