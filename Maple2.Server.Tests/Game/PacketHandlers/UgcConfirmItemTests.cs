@@ -137,6 +137,32 @@ public class UgcConfirmItemTests {
         });
     }
 
+    // The confirmation stores the fee with the design's row: the row was written at once and the fee taken in memory
+    // only, so a crash before the next save kept the design and gave the fee back.
+    [Test]
+    public void Confirm_StoresTheFee() {
+        test = new TestGameSession();
+        test.SetTable(new UgcDesignTable(new Dictionary<int, UgcDesignTable.Entry> {
+            [Design] = new(1, MeretMarketCurrencyType.Meso, 390, 0, 0),
+        }));
+        test.Register(TestGameSession.Metadata(Design, EquipSlot.CL));
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(Town));
+        session.Currency.Meso = 5000;
+        UgcHandler handler = Handler(session);
+        handler.Handle(session, Packet(session, 1, 0));
+        StoredItem staged = session.StagedUgcItem!;
+
+        handler.Handle(session, Packet(session, 3, staged.Template!.Id));
+
+        using var context = new Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(context.Item.Count(row => row.ItemId == Design), Is.EqualTo(1));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000 - 390));
+            Assert.That(context.Character.AsNoTracking().Single(row => row.Id == session.CharacterId).Currency.Meso, Is.EqualTo(5000 - 390));
+        });
+    }
+
     private UgcHandler Handler(GameSession session) => new() {
         WebStorage = new WebStorage(new DbContextOptionsBuilder().UseInMemoryDatabase(System.Guid.NewGuid().ToString()).Options,
             NullLogger<WebStorage>.Instance),

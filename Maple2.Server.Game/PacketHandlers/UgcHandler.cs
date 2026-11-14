@@ -104,6 +104,17 @@ public class UgcHandler : FieldPacketHandler {
         return UgcError.Refused;
     }
 
+    // Stores the fee of an upload whose design was just written (the item or cube row, the banner slots): the fee was
+    // taken in memory only at the upload (the wallet, or the design voucher in the bag), and the design's rows are
+    // written at once, so a crash before the next session save kept the design and gave the fee back. The currency is
+    // stored now (SavePurchase), with the bag when a voucher paid. A failed store is logged; the next save stores it.
+    private void StoreFee(GameSession session, UgcPendingFee fee) {
+        bool stored = fee.VoucherItemId != 0 ? session.SavePurchase(save => session.Item.Inventory.Save(save)) : session.SavePurchase();
+        if (!stored) {
+            Logger.Error("UGC fee of {UgcUid} for {CharacterId} not stored now, left to the next save", fee.UgcUid, session.CharacterId);
+        }
+    }
+
     // Gives a fee back and drops what the upload staged: the item, and the banner designs of the
     // upload that have no picture, on the banner they were staged on, which may be on a field the
     // character has left (their slots stay reserved for the character).
@@ -585,6 +596,9 @@ public class UgcHandler : FieldPacketHandler {
                     db.UpdateBannerSlot(slot);
                 }
             }
+            if (paidFee != null) {
+                StoreFee(session, paidFee);
+            }
             // A slot already live shows the picture now, to everyone on the banner's field; else the field kept the
             // default image until the hour ended (the live slot is sent only when it changes).
             if (banner is FieldUgcBanner live && staged.Any(slot => slot.Active)) {
@@ -645,6 +659,7 @@ public class UgcHandler : FieldPacketHandler {
                 }
             }
 
+            StoreFee(session, paidFee!);
             session.Send(UgcPacket.UpdateItem(session.Player.ObjectId, uid, item, ugcMetadata.CreatePrice, info.Type));
             // A design made from a template counts with its kind (70400058 "Craft 1 template in the workshop":
             // codes 1 item, 2 furniture, 7 mount, the three kinds made here).
