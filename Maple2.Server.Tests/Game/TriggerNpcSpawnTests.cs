@@ -412,6 +412,20 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That(Vector3.Distance(npc.Position, new Vector3(-600, 0, 0)), Is.LessThan(200));
     }
 
+    // A patrol leg run with Run_A by an npc that has a walk speed but no run speed, on a patrol without a speed,
+    // goes at the walk speed. Chosen here: 645 KR npcs have no runSpeed; 52000068_qd tria_seige_movie sends the
+    // guard 11001667 (walk 120, no run) along MS2PatrolData_soldier (ApproachAnimation Run_A, no speed, about
+    // 1,490 units), and it stood where it spawned.
+    [Test]
+    public void MoveNpc_RunLegWithoutRunSpeedTakesTheWalkSpeed() {
+        NpcMetadata guard = Npc(FriendId, 1) with { Action = new NpcMetadataAction(0, 120, 0, [], 0, "") };
+        var route = new MS2PatrolData("f3ba88bf", "MS2PatrolData_soldier", false, 0, false,
+            [new MS2WayPoint("4ba11dc0", true, new Vector3(-450, 0, 0), Vector3.Zero, "Run_A", "", 0, false)]);
+
+        FieldNpc npc = WalkPatrol(guard, ["Idle_A", "Walk_A", "Run_A"], route);
+        Assert.That(Vector3.Distance(npc.Position, new Vector3(-450, 0, 0)), Is.LessThan(30));
+    }
+
     private sealed class LogSink : ILogEventSink {
         public readonly List<LogEvent> Events = [];
         public void Emit(LogEvent logEvent) => Events.Add(logEvent);

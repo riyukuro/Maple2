@@ -45,11 +45,16 @@ public static class PatrolRules {
     // (npcdata.cpp:654, 1526; both 0 is a stationary npc, CNpcData::IsStationary, npcdata.cpp:798), and 0 x the
     // multiplier left such an npc standing in Walk: 02000026_in's Anos (11003313) on MS2PatrolData_Anos_00 (speed 2),
     // 02000389's 24002926 on MS2PatrolData_2004 (speed 10). The result is the speed MovementState multiplies by 1;
-    // 0 keeps the npc's own speed and the multiplier above (also for such an npc on a patrol without a speed).
+    // 0 keeps the npc's own speed and the multiplier above. On a patrol without a speed such an npc takes its other
+    // speed (Chosen here: 645 KR npcs have a walk speed and no run speed; 52000068_qd's guard 11001667, walk 120, runs
+    // MS2PatrolData_soldier with Run_A and no speed, and stood where it spawned).
     public static float SpeedlessBase(int patrolSpeed, string sequence, float walkSpeed, float runSpeed, bool air) {
-        float own = sequence.StartsWith("Walk_") ? walkSpeed : runSpeed;
-        if (own > 0 || patrolSpeed <= 0) {
+        bool walking = sequence.StartsWith("Walk_");
+        if ((walking ? walkSpeed : runSpeed) > 0) {
             return 0;
+        }
+        if (patrolSpeed <= 0) {
+            return Math.Max(walking ? runSpeed : walkSpeed, 0);
         }
         return air ? AirSpeed(patrolSpeed) : GroundSpeed(patrolSpeed);
     }
