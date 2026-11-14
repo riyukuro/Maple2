@@ -860,8 +860,9 @@ public class FieldNpc : Actor<Npc> {
     private void DropGlobalLoot(FieldPlayer receiver) {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
         var globalDrops = new List<Item>();
+        float dropRate = KillDropRate(receiver);
         foreach (int globalDropId in dropInfo.GlobalDropBoxIds) {
-            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalDropId, Value.Metadata.Basic.Level, receiver.Session));
+            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalDropId, Value.Metadata.Basic.Level, receiver.Session, dropRate));
         }
 
         foreach (Item item in globalDrops) {
@@ -907,6 +908,12 @@ public class FieldNpc : Actor<Npc> {
             float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
             Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id, dropKind: ItemDropKind.NpcDeath);
         }
+    }
+
+    // The npc kill drop rate (SpecialAttribute.DropRate, KR gear options npckilldropitemincrate) as the drop rate of the
+    // kill's global boxes (ItemDropContext m_dropRate, 1 when none; the client never sets it).
+    internal static float KillDropRate(FieldPlayer player) {
+        return (float) Math.Max(0d, 1d + player.Stats.Values[SpecialAttribute.DropRate].Multiplier());
     }
 
     // The meso rate (SpecialAttribute.Meso: the party buff, gear options) raises the mesos a kill drops for the player.

@@ -22,7 +22,9 @@ public class ItemDropManager {
     // session is the player the drop is rolled for: a quest-only entry (constraintsQuest) is for a player whose quest
     // still needs the item here (QuestManager.NeedsItem), and never drops when no player is given. With a player, an
     // item recommended only for other jobs is left out.
-    public ICollection<Item> GetGlobalDropItems(int globalDropBoxId, int level = 0, GameSession? session = null) {
+    // dropRate scales the chance of each drop count but none (DropCountWeights); a kill passes the player's npc kill
+    // drop rate (SpecialAttribute.DropRate).
+    public ICollection<Item> GetGlobalDropItems(int globalDropBoxId, int level = 0, GameSession? session = null, float dropRate = 1f) {
         if (!field.ServerTableMetadata.GlobalDropItemBoxTable.DropGroups.TryGetValue(globalDropBoxId, out Dictionary<int, IList<GlobalDropItemBoxTable.Group>>? dropGroup)) {
             return new List<Item>();
         }
@@ -52,12 +54,12 @@ public class ItemDropManager {
 
                 // Implement OwnerDrop???
 
-                var itemsAmount = new WeightedSet<GlobalDropItemBoxTable.Group.DropCount>();
-                foreach (GlobalDropItemBoxTable.Group.DropCount dropCount in group.DropCounts) {
-                    itemsAmount.Add(dropCount, dropCount.Probability);
+                var itemsAmount = new WeightedSet<int>();
+                foreach ((int dropAmount, int weight) in DropCountWeights(group.DropCounts, dropRate)) {
+                    itemsAmount.Add(dropAmount, weight);
                 }
 
-                int amount = itemsAmount.Count > 0 ? itemsAmount.Get().Amount : 0;
+                int amount = itemsAmount.Count > 0 ? itemsAmount.Get() : 0;
                 if (amount == 0) {
                     continue;
                 }
@@ -107,6 +109,35 @@ public class ItemDropManager {
         }
 
         return results;
+    }
+
+    // The drop count weights of a global box at a drop rate (ItemDropGlobalBox::GetDropCount, ItemDropPicker::Rescale):
+    // at a rate other than 1 each count's weight but count 0's is scaled by it and truncated, and count 0 gets what
+    // the others gave up (none once they gained more than it had, so the total grows). Weights of 0 are left out.
+    internal static List<(int Amount, int Weight)> DropCountWeights(IEnumerable<GlobalDropItemBoxTable.Group.DropCount> dropCounts, float rate) {
+        List<(int Amount, int Weight)> rows = dropCounts.Where(row => row.Probability > 0)
+            .Select(row => (row.Amount, row.Probability)).ToList();
+        if ((int) (rate * 100f) == 100) {
+            return rows;
+        }
+
+        var scaled = new List<(int Amount, int Weight)>();
+        long remainder = 0;
+        foreach ((int amount, int weight) in rows) {
+            if (amount == 0) {
+                remainder += weight;
+                continue;
+            }
+            int weightScaled = (int) (weight * rate);
+            if (weightScaled > 0) {
+                scaled.Add((amount, weightScaled));
+            }
+            remainder -= weightScaled - weight;
+        }
+        if (remainder > 0) {
+            scaled.Add((0, (int) remainder));
+        }
+        return scaled;
     }
 
     // level gates which drop groups are eligible. For mob drops this is the player's character level
