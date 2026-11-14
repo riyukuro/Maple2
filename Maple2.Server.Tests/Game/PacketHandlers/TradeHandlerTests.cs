@@ -373,6 +373,27 @@ public class TradeHandlerTests {
         Assert.That(giver.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(3));
     }
 
+    // The save before a move (a channel change, a move to another server, a quit to the character list) ends an open
+    // trade as cancelled before it stores the wallet: the mesos offered come back first. Cancelled only at LeaveField,
+    // after the save, they came back in memory only and the save at Dispose is skipped. A finish the other player
+    // sends after the save moves nothing.
+    [Test]
+    public void MigrationSave_CancelsTheTradeFirst() {
+        Offer();
+        giverTest.TakeSent();
+        takerTest.TakeSent();
+        Assert.That(taker.Currency.Meso, Is.EqualTo(4000));
+        // The test session skips the save before a move; this test makes the one the move runs.
+        typeof(GameSession).GetField("preMigrationSaved", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(taker, false);
+
+        taker.MigrationSave();
+
+        Assert.That(taker.Currency.Meso, Is.EqualTo(5000));
+        Assert.That((giver.Trade, taker.Trade), Is.EqualTo(((TradeManager?) null, (TradeManager?) null)));
+        Assert.That(Modes(giverTest.TakeSent()), Is.EqualTo(new[] { "Trade 9", "ItemInventory 0", "Trade 6" }));
+        Assert.That(giver.Item.Inventory.Find(20000001).Sum(got => got.Amount), Is.EqualTo(3));
+    }
+
     // A finish refused for a full bag: the full side gets the bag's notice, the other side trade error 8, then the
     // trade ends as cancelled. The dialog's confirm click greyed its Cancel button and nothing enables it again
     // (uitradedialogex.gfx), so the trade end is the answer that leaves no window waiting: each offer goes back to

@@ -1799,6 +1799,13 @@ public sealed partial class GameSession : Core.Network.Session {
         if (preMigrationSaved) return;
         preMigrationSaved = true;
 
+        // An open trade ends first, as cancelled: the mesos offered (taken from the wallet when set) come back to it
+        // before the wallet is stored. Cancelled later, at LeaveField, they came back in memory only and the save at
+        // Dispose is skipped once this one ran, so a channel change, a move to another server or a quit to the
+        // character list lost them. Ended here, the partner cannot finish the trade after the save either (its mesos
+        // would reach this wallet unstored). The client sends these moves with a trade open (no trade check).
+        Trade?.Dispose();
+
         try {
             AcquireLock(AccountId, 5);
             if (!Save(ResetWait)) {
