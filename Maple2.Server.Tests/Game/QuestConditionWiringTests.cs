@@ -12,6 +12,7 @@ using Maple2.File.Ingest;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Metadata.FieldEntity;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Config;
@@ -356,6 +357,128 @@ public class QuestConditionWiringTests : TriggerTestBase {
             Assert.That(test.Session.Field, Is.SameAs(target));
             Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
         });
+    }
+    #endregion
+    #region fish (FishingManager.Catch, a catch)
+    // 40001960: <condition type="fish" value="3" />, each fish caught counts one; a lost cast does not.
+    [Test]
+    public void Fish_40001960_EachCatch() {
+        Start();
+        test.EnterMap(LimitedMap(2000001));
+        SetSkills();
+        var fish = new FishTable.Fish(10000001, LiquidType.water, 80, 6, 1, 3, 1, 54, 15000, 10000, 8000,
+            new FishTable.Range<int>(20, 30), new FishTable.Range<int>(40, 50), [], 0, false);
+        test.SetServerTable(new FishTable(new Dictionary<int, FishTable.Fish> { [fish.Id] = fish },
+            new Dictionary<int, FishTable.Spot> { [2000001] = new(2000001, 0, 1189, [LiquidType.water], 0, 0, 0, 0, 1, 1) },
+            new Dictionary<int, IReadOnlyDictionary<short, FishTable.Lure>>(), new Dictionary<int, FishTable.FishBox>(),
+            new Dictionary<int, FishTable.FishBox>()));
+        test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>>()));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
+        test.Session.Fishing = new FishingManager(test.Session, test.TableMetadata, test.ServerTableMetadata);
+        var tile = new FishingTile((FieldFluidEntity) RuntimeHelpers.GetUninitializedObject(typeof(FieldFluidEntity)), 0);
+        Quest quest = StartQuest(Condition(ConditionType.fish, 3, [], []));
+
+        test.Session.Fishing.Cast(tile, fish, fishBites: false, fishBiteTick: 0, fightGame: false);
+        test.Session.Fishing.Catch(true);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        test.Session.Fishing.Cast(tile, fish, fishBites: true, fishBiteTick: 0, fightGame: false);
+        test.Session.Fishing.Catch(true);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
+    #region controller (FunctionCubeHandler, furniture taken into use)
+    // 10002669: <condition type="controller" code="50400096" value="1" />, the placed furniture's item id is the code:
+    // taking it into use counts, leaving it does not, another furniture item does not.
+    [Test]
+    public void Controller_10002669_TakingTheFurnitureIntoUse() {
+        Start();
+        test.EnterMap(LimitedMap(2000001));
+        FieldFunctionInteract Place(int itemId, int x) {
+            var position = new Vector3B(x, 0, 0);
+            var cube = new PlotCube(TestGameSession.Metadata(itemId)) {
+                Position = position,
+                Type = PlotCube.CubeType.Construction,
+                Interact = new InteractCube(position, new FunctionCubeMetadata(itemId, 0, ConfigurableCubeType.None,
+                    InteractCubeState.Available, InteractCubeControlType.None, [], 0, null)),
+            };
+            return Field.AddFieldFunctionInteract(cube)!;
+        }
+        FieldFunctionInteract other = Place(50400097, 1);
+        FieldFunctionInteract furniture = Place(50400096, 2);
+        typeof(Maple2.Server.Game.Session.GameSession).GetField("<SeatRelease>k__BackingField", Any)!
+            .SetValue(test.Session, new SeatReleaseEcho()); // the uninitialized session skips its initializers
+        Quest quest = StartQuest(Condition(ConditionType.controller, 1, ["50400096"], []));
+        var handler = new FunctionCubeHandler {
+            FunctionCubeMetadataStorage = test.Session.FunctionCubeMetadata, ServerTableMetadataStorage = test.ServerTableMetadata,
+        };
+        void Use(FieldFunctionInteract interact) => handler.Handle(test.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(5);
+            writer.WriteInt(1);
+            writer.WriteUnicodeString(interact.InteractCube.Id);
+            writer.WriteByte(0);
+        }));
+
+        Use(other);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Use(furniture);
+        Use(furniture); // leaving it
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
+    #region level (ExperienceManager.LevelUp)
+    // 70000002: <condition type="level" value="1" target="15" />, a level-up to the target or above counts; one below does not.
+    [Test]
+    public void Level_70000002_ALevelUpToTheTarget() {
+        Start();
+        test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        test.SetTable(new PrestigeLevelAbilityTable(new Dictionary<int, PrestigeLevelAbilityMetadata>()));
+        test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
+            [1] = Enumerable.Range(1, 99).ToDictionary(l => l, l => l * 10L),
+        }, Enumerable.Range(1, 99).ToDictionary(l => l, _ => 100L)));
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { characterMaxLevel = 99 });
+        PacketHandlers.ProgressionOrderTests.LoadConfig(test, test.Session);
+        test.Session.Player.Value.Character.Level = 13;
+        Quest quest = StartQuest(Condition(ConditionType.level, 1, [], ["15"]));
+
+        test.Session.Player.Value.Character.Exp = 100;
+        test.Session.Exp.LevelUp();
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        test.Session.Player.Value.Character.Exp = 100;
+        test.Session.Exp.LevelUp();
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(test.Session.Player.Value.Character.Level, Is.EqualTo(15));
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
+    #region emotion (EmoteHandler, an emote's use)
+    // 10002691: <condition type="emotion" code="hello" value="10" target="02000001" />, the emote's motion in the
+    // target map counts; another motion or another map does not.
+    [Test]
+    public void Emotion_10002691_TheMotionInTheMap() {
+        Start();
+        test.EnterMap(LimitedMap(2000001));
+        test.Session.Player.Value.Character.MapId = 2000001; // the field entry sets it; the test field does not
+        test.Session.Player.Value.Unlock.LearnEmote(90200001, 0);
+        Quest quest = StartQuest(Condition(ConditionType.emotion, 10, ["hello"], ["02000001"]));
+        void Use(string aniKey) => new EmoteHandler().Handle(test.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(2);
+            writer.WriteInt(90200001);
+            writer.WriteUnicodeString(aniKey);
+        }));
+
+        Use("bow");
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Use("hello");
+        test.Session.Player.Value.Character.MapId = 2000062;
+        Use("hello");
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
     #endregion
 }
