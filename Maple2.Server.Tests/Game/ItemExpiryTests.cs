@@ -77,6 +77,37 @@ public class ItemExpiryTests {
         });
     }
 
+    // The bag takes a count from the client of 1 up to the stack (StorageRules.IsCount, as for storage). A zero
+    // or a negative count is refused and the stack stays; the inventory's Remove took a negative one as the
+    // whole stack.
+    [TestCase(-1)]
+    [TestCase(0)]
+    [TestCase(4)]
+    public void APetBag_RefusesABadCount(int amount) {
+        const int petId = 60000001;
+        var test = new TestGameSession();
+        ItemMetadata petData = TestGameSession.Metadata(petId, type: 11, slotMax: 1);
+        Item pet = test.Store(petData with { Property = petData.Property with { PetId = petId } });
+        Item potion = test.Store(TestGameSession.Metadata(20000001, type: 2), amount: 3);
+        GameSession session = test.Start();
+        Item summoned = session.Item.Inventory.Get(pet.Uid)!;
+        const System.Reflection.BindingFlags any = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public;
+        var fieldPet = (FieldPet) System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(FieldPet));
+        typeof(FieldPet).GetField(nameof(FieldPet.Pet), any)!.SetValue(fieldPet, summoned);
+        var manager = (PetManager) System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(PetManager));
+        typeof(PetManager).GetField("session", any)!.SetValue(manager, session);
+        typeof(PetManager).GetField("pet", any)!.SetValue(manager, fieldPet);
+        var bag = new Maple2.Server.Game.Manager.Items.ItemCollection(2);
+        typeof(PetManager).GetField("items", any)!.SetValue(manager, bag);
+        session.Pet = manager;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Pet.Add(potion.Uid, -1, amount), Is.EqualTo(StringCode.s_item_err_invalid_count));
+            Assert.That(session.Item.Inventory.Get(potion.Uid)?.Amount, Is.EqualTo(3));
+            Assert.That(bag.Count, Is.Zero);
+        });
+    }
+
     // The field's one-second check: a worn item running out changes the count the totals were built with, so the
     // tick rebuilds them once; the next tick finds the rebuilt count and does nothing.
     [Test]

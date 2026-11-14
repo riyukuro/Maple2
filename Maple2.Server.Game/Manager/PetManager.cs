@@ -137,7 +137,9 @@ public sealed class PetManager : IDisposable {
     public StringCode Add(long uid, short slot, int amount) {
         lock (session.Item) {
             Item? deposit = session.Item.Inventory.Get(uid);
-            if (deposit == null || deposit.Amount < amount) {
+            // The count is the client's: the inventory's Remove takes a negative one as the whole stack, and the
+            // bag-full path below would then move more than fits.
+            if (deposit == null || !StorageRules.IsCount(amount, deposit.Amount)) {
                 return StringCode.s_item_err_invalid_count;
             }
 
