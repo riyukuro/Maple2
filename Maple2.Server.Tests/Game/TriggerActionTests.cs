@@ -1231,6 +1231,26 @@ public class TriggerNpcTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="check_npc_additional_effect" spawn_id="6" additional_effect_id="70000107" level="1" />"""), Is.False);
         Assert.That(Condition("""<condition name="check_npc_additional_effect" spawn_id="6" additional_effect_id="70000107" level="1" negate="1" />"""), Is.True);
     }
+
+    // npc_remove_additional_effect (19): the monsters of the spawn point lose the effect (each tells the field); the
+    // others keep theirs.
+    [Test]
+    public void NpcRemoveAdditionalEffect_BySpawnPoint() {
+        typeof(FieldManager).GetField("<Npcs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
+        typeof(FieldManager).GetField("<Pets>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldPet>());
+        FieldNpc[] held = [Mob(9001, 5), Mob(9002, 5), Mob(9003, 6)];
+        foreach (FieldNpc mob in held) {
+            typeof(Actor<Npc>).GetField("<Buffs>k__BackingField", Any)!.SetValue(mob, new BuffManager(mob));
+            Buff buff = DisabledBuffTests.Held(DisabledBuffTests.Effect(70000107), true);
+            typeof(Buff).GetField("<Caster>k__BackingField", Any)!.SetValue(buff, mob);
+            typeof(Buff).GetField("<Owner>k__BackingField", Any)!.SetValue(buff, mob);
+            ((ConcurrentDictionary<int, List<Buff>>) typeof(BuffManager).GetField("buffs", Any)!.GetValue(mob.Buffs)!)[70000107] = [buff];
+        }
+
+        Action("""<action name="npc_remove_additional_effect" spawn_id="5" additional_effect_id="70000107" />""");
+        Assert.That(held.Select(mob => mob.Buffs.HasBuff(70000107)), Is.EqualTo(new[] { false, false, true }));
+        Assert.That(Sent(SendOp.Buff), Has.Count.EqualTo(2));
+    }
 }
 
 public class TriggerItemTests : TriggerTestBase {
@@ -1858,6 +1878,93 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="dungeon_timeout" />"""), Is.True);
         Field.RoomTimer.End();
         Assert.That(Condition("""<condition name="dungeon_timeout" />"""), Is.False);
+    }
+
+    // guide_event (15): Trigger Ui (9) Guide (1) with the event id.
+    [Test]
+    public void GuideEvent_Packet() {
+        Start();
+
+        Action("""<action name="guide_event" event_id="560" />""");
+        ByteReader reader = Sent(SendOp.Trigger).Single();
+        Assert.That((reader.ReadByte(), reader.ReadByte(), reader.ReadInt(), reader.Available), Is.EqualTo(((byte) 9, (byte) 1, 560, 0)));
+    }
+
+    // set_cinematic_intro (15): Cinematic Intro (12) with the text; a row without text sends an empty one.
+    [Test]
+    public void SetCinematicIntro_Packet() {
+        Start();
+
+        Action("""<action name="set_cinematic_intro" text="$02100004_BF__MAIN__0$" />""");
+        ByteReader reader = Sent(SendOp.Cinematic).Single();
+        Assert.That((reader.ReadByte(), reader.ReadUnicodeString()), Is.EqualTo(((byte) 12, "$02100004_BF__MAIN__0$")));
+        Action("""<action name="set_cinematic_intro" />""");
+        reader = Sent(SendOp.Cinematic).Single();
+        Assert.That((reader.ReadByte(), reader.ReadUnicodeString()), Is.EqualTo(((byte) 12, "")));
+    }
+
+    // enable_local_camera (18 KR uses, is_enable 0 and 1): the LocalCamera (10) property is added with the flag.
+    [Test]
+    public void EnableLocalCamera_AddsTheProperty() {
+        StartWithProperties();
+
+        Action("""<action name="enable_local_camera" is_enable="1" />""");
+        ByteReader reader = Sent(SendOp.FieldProperty).Single();
+        Assert.That((reader.ReadByte(), reader.ReadByte(), reader.ReadBool()), Is.EqualTo(((byte) 1, (byte) 10, true)));
+        Action("""<action name="enable_local_camera" is_enable="0" />""");
+        reader = Sent(SendOp.FieldProperty).Single();
+        Assert.That((reader.ReadByte(), reader.ReadByte(), reader.ReadBool()), Is.EqualTo(((byte) 1, (byte) 10, false)));
+    }
+
+    // set_visible_ui (17): Trigger command 20 as CTriggerService::FUN_141862d30 (triggerservice.cpp:709) reads it: the
+    // state byte, then the names in one narrow string that the client splits on ",".
+    [Test]
+    public void SetVisibleUi_Packet() {
+        Start();
+
+        Action("""<action name="set_visible_ui" visible="0" ui_names="MessengerBrowser,GroupMessengerBrowser" />""");
+        ByteReader reader = Sent(SendOp.Trigger).Single();
+        Assert.That((reader.ReadByte(), reader.ReadBool(), reader.ReadString()),
+            Is.EqualTo(((byte) 20, false, "MessengerBrowser,GroupMessengerBrowser")));
+        Assert.That(reader.Available, Is.Zero);
+    }
+
+    // score_board_remove (16): the open board closes (ShadowExpedition command 2) and the score is cleared; with no
+    // board open only the score is cleared and nothing is sent.
+    [Test]
+    public void ScoreBoardRemove_ClosesTheBoard() {
+        Start();
+        // The test field skips the FieldManager ctor: its board lock is made here.
+        typeof(FieldManager).GetField("scoreBoardLock", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Field, new object());
+        Action("""<action name="score_board_create" type="ScoreBoardTopCenter" title="" max_score="0" />""");
+        Action("""<action name="score_board_set_score" score="5" />""");
+        test.TakeSent();
+
+        Action("""<action name="score_board_remove" />""");
+        Assert.That((Field.ScoreBoardOpen, Field.ScoreBoardScore), Is.EqualTo(((ScoreBoard.Board?) null, (int?) null)));
+        Assert.That(Sent(SendOp.ShadowExpedition).Select(reader => reader.ReadByte()), Is.EqualTo(new[] { (byte) 2 }));
+
+        Field.ScoreBoardScore = 7;
+        Action("""<action name="score_board_remove" />""");
+        Assert.That(Field.ScoreBoardScore, Is.Null);
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // user_value_to_number_mesh (18): the script's user value shows on the digit meshes, start the ones and start + 10
+    // the tens; the other meshes of each digit are hidden. An unset value shows 0.
+    [Test]
+    public void UserValueToNumberMesh_ShowsTheDigits() {
+        Start(Enumerable.Range(1000, 20).Select(id => new Ms2TriggerMesh(1.5f, id, true, false)).ToArray());
+        typeof(FieldManager).GetField(nameof(FieldManager.UserValues))!.SetValue(Field, new TriggerUserValues());
+        Field.UserValues.Set(1, "Score", 42);
+
+        Action("""<action name="user_value_to_number_mesh" key="Score" start_mesh_id="1000" digit_count="2" />""");
+        Assert.That(Field.TriggerObjects.Meshes.Values.Where(mesh => mesh.Visible).Select(mesh => mesh.Id).Order(),
+            Is.EqualTo(new[] { 1002, 1014 }));
+
+        Action("""<action name="user_value_to_number_mesh" key="Unset" start_mesh_id="1000" digit_count="2" />""");
+        Assert.That(Field.TriggerObjects.Meshes.Values.Where(mesh => mesh.Visible).Select(mesh => mesh.Id).Order(),
+            Is.EqualTo(new[] { 1000, 1010 }));
     }
 }
 

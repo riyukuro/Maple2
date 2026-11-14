@@ -235,4 +235,23 @@ public class TriggerHallGameTests : TriggerTestBase {
         Assert.That(test.TakeSent(), Is.Empty);
         Assert.That(test.Session.MiniGameRecord!.ClearedRounds, Is.EqualTo(0));
     }
+    // move_to_portal (19): the players in the box with the user tag (or any tag when none is named) go to the
+    // portal; another box, another tag or a portal the field lacks moves nobody.
+    [Test]
+    public void MoveToPortal_TheTaggedPlayersInTheBox() {
+        StartHall();
+        test.Session.Player.TagId = 2;
+        Portal(3, new Vector3(1000, 0, 0));
+        test.TakeSent();
+
+        Action("""<action name="move_to_portal" user_tag_id="2" portal_id="3" box_id="2" />""");
+        Action("""<action name="move_to_portal" user_tag_id="1" portal_id="3" box_id="1" />""");
+        Action("""<action name="move_to_portal" user_tag_id="2" portal_id="4" box_id="1" />""");
+        Assert.That(Moves(), Is.Empty);
+
+        Action("""<action name="move_to_portal" user_tag_id="2" portal_id="3" box_id="1" />""");
+        Assert.That(Moves(), Is.EqualTo(new[] { (test.Session.Player.ObjectId, new Vector3(1000, 0, 25)) }));
+        Action("""<action name="move_to_portal" portal_id="3" box_id="1" />""");
+        Assert.That(Moves(), Is.EqualTo(new[] { (test.Session.Player.ObjectId, new Vector3(1000, 0, 25)) }));
+    }
 }
