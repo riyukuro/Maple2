@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Xml;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
@@ -13,6 +14,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger;
+using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game;
@@ -141,5 +143,27 @@ public class MiniGameExtraRewardTests {
         Assert.That(session.Currency.Meso - before, Is.EqualTo(2 * Meso));
         Assert.That(Character.MassiveExtraRewardCount, Is.EqualTo(0));
         Assert.That(Notices(), Is.Empty);
+    }
+
+    // mini_game_give_reward (15 KR uses) as the scripts write it: the winners are the players in winner_box_id
+    // (box 301 here, as in 9 of the uses' games), paid the content's reward; a player outside the box is not.
+    [Test]
+    public void ScriptLine_PaysThePlayersInTheWinnerBox() {
+        Start();
+        StartRecord();
+        TriggerContext context = Context();
+        ((Dictionary<int, TriggerBox>) session.Field!.TriggerObjects.Boxes)[301] = new TriggerBox(new Ms2TriggerBox(Vector3.Zero, new Vector3(300, 300, 300), 301, true));
+        var document = new XmlDocument();
+        document.LoadXml("""<action name="mini_game_give_reward" winner_box_id="301" content_type="miniGame" />""");
+        IAction action = TriggerFunctionMapping.ActionMap["mini_game_give_reward"](document.DocumentElement!.Attributes);
+        long before = session.Currency.Meso;
+
+        session.Player.Position = Vector3.Zero;
+        action.Execute(context);
+        Assert.That(session.Currency.Meso - before, Is.EqualTo(Meso));
+
+        session.Player.Position = new Vector3(5000, 0, 0);
+        action.Execute(context);
+        Assert.That(session.Currency.Meso - before, Is.EqualTo(Meso));
     }
 }

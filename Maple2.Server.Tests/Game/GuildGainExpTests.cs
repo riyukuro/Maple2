@@ -1,16 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Xml;
 using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger;
+using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.World.Service;
 using Serilog;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
@@ -41,7 +46,7 @@ public class GuildGainExpTests {
         (typeof(T).GetField(field, Flags) ?? throw new MissingFieldException(typeof(T).Name, field)).SetValue(target, value);
     }
 
-    private static TableMetadataStorage Tables() {
+    private static GuildTable Table() {
         GuildTable.Property Row(short level, int accumExp, int loseExp, int loseFund) =>
             ((GuildTable.Property) RuntimeHelpers.GetUninitializedObject(typeof(GuildTable.Property))) with {
                 Level = level,
@@ -50,7 +55,7 @@ public class GuildGainExpTests {
                 LoseMiniGameFund = loseFund,
                 WinMiniGameExp = loseExp * 2,
             };
-        var table = new GuildTable(
+        return new GuildTable(
             new Dictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>>(),
             new Dictionary<int, IReadOnlyDictionary<int, GuildTable.House>>(),
             new Dictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>>(),
@@ -58,6 +63,10 @@ public class GuildGainExpTests {
                 [1] = Row(1, 10000, 2000, 400000),
                 [2] = Row(2, 30000, 2500, 500000),
             });
+    }
+
+    private static TableMetadataStorage Tables() {
+        GuildTable table = Table();
         var tables = Bare<TableMetadataStorage>();
         Set<TableMetadataStorage>(tables, "guildTable", new Lazy<GuildTable>(() => table));
         return tables;
@@ -123,5 +132,39 @@ public class GuildGainExpTests {
         TriggerContext.GiveGuildExp([Member(world, tables, 4000000001L, guild)], 2, fieldType);
 
         Assert.That(world.Requests, Is.Empty);
+    }
+
+    // The scripts' one form (13 KR uses, the massive event maps): <give_guild_exp type="2" box_id="0" />, box 0
+    // being every player of the field, run on a massiveEvent instance field.
+    [Test]
+    public void ScriptLine_TheFieldsGuildGains() {
+        var test = new TestGameSession();
+        test.SetTable(Table());
+        GameSession session = test.Start();
+        FieldManager field = session.Field!;
+        test.SetServerTable(new InstanceFieldTable(new Dictionary<int, InstanceFieldMetadata> {
+            [field.MapId] = new(field.MapId, InstanceType.massiveEvent, 0, false, 0, true, 0, 0, 0, 0),
+        }));
+        var world = new GuildWorld();
+        Set<GameSession>(session, "<World>k__BackingField", world);
+        var manager = Bare<GuildManager>();
+        Set<GuildManager>(manager, "session", session);
+        Set<GuildManager>(manager, "logger", new LoggerConfiguration().CreateLogger());
+        Set<GuildManager>(manager, "<Guild>k__BackingField", new Guild(39990001, "a", 1, session.CharacterId, "a") { Experience = 5000 });
+        session.Guild = manager;
+
+        var trigger = Bare<FieldTrigger>();
+        Set<FieldEntity<TriggerModel>>(trigger, "<Field>k__BackingField", field);
+        Set<FieldEntity<TriggerModel>>(trigger, "<Value>k__BackingField", new TriggerModel(1, "main", Vector3.Zero, Vector3.Zero));
+        var context = Bare<TriggerContext>();
+        Set<TriggerContext>(context, "owner", trigger);
+        Set<TriggerContext>(context, "logger", new LoggerConfiguration().CreateLogger());
+        Set<TriggerContext>(context, "lastDebugKey", "");
+        var document = new XmlDocument();
+        document.LoadXml("""<action name="give_guild_exp" type="2" box_id="0" />""");
+        TriggerFunctionMapping.ActionMap["give_guild_exp"](document.DocumentElement!.Attributes).Execute(context);
+
+        Assert.That(world.Requests.Select(request => (request.RequestorId, request.AddExpFund.GuildId, request.AddExpFund.Exp, request.AddExpFund.Fund)),
+            Is.EqualTo(new[] { (session.CharacterId, 39990001L, 2000, 400000) }));
     }
 }
