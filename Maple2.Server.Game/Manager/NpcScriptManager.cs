@@ -388,6 +388,12 @@ public sealed class NpcScriptManager {
             return;
         }
 
+        // The price first: a talker who cannot pay gets none of the function (no window, warp, trigger value, presents
+        // or exp). The client runs no function step itself (functionID is only stored, scriptcontent.cpp).
+        if (!PayScriptFunction(scriptFunction)) {
+            return;
+        }
+
         // NpcTalk packets have to be sent first before any movement, items, etc
         if (scriptFunction.PortalId > 0) {
             session.Send(NpcTalkPacket.MovePlayer(scriptFunction.PortalId));
@@ -414,23 +420,10 @@ public sealed class NpcScriptManager {
             session.Send(PortalPacket.MoveByPortal(session.Player, dstPortal));
         }
 
-        if (scriptFunction.CollectItems.Count > 0) {
-            if (!session.Item.Inventory.ConsumeItemComponents(scriptFunction.CollectItems.ToList())) {
-                logger.Error("Failed to consume items for script function {FunctionId} on npc {NpcId}", scriptFunction.FunctionId, Npc?.Value.Id);
-            }
-        }
-
         if (!string.IsNullOrEmpty(scriptFunction.SetTriggerValueKey)) {
             if (int.TryParse(scriptFunction.SetTriggerValue, out int value)) {
                 session.Field.UserValues.Set(scriptFunction.SetTriggerValueTriggerId, scriptFunction.SetTriggerValueKey, value);
             }
-        }
-
-        // Checked and taken in one step. A talker who cannot pay gets no presents (ChangeMeso threw here before,
-        // which also stopped the function before the presents).
-        if (scriptFunction.CollectMeso > 0 && !session.Currency.TryTakeMeso(scriptFunction.CollectMeso)) {
-            logger.Error("Not enough mesos for script function {FunctionId} on npc {NpcId}", scriptFunction.FunctionId, Npc?.Value.Id);
-            return;
         }
 
         IList<Item> items = new List<Item>();
@@ -456,13 +449,46 @@ public sealed class NpcScriptManager {
         }
 
         if (scriptFunction.PresentExp > 0) {
-            session.Player.Value.Character.Exp += scriptFunction.PresentExp;
+            session.Exp.AddStaticExp(scriptFunction.PresentExp);
             session.Send(NpcTalkPacket.RewardExp(scriptFunction.PresentExp));
         }
 
         if (scriptFunction.MoveMapId > 0) {
             session.SendFieldEnter(session.PrepareField(scriptFunction.MoveMapId, portalId: scriptFunction.MovePortalId > 0 ? scriptFunction.MovePortalId : -1));
         }
+    }
+
+    // Takes a script function's price: collectMeso plus the collected meso items (90000001-90000003, whose amount is
+    // mesos: npc 11000600 asks 10000 of 90000001, which is never a bag item), then the other collected items. The
+    // mesos are held while the items are taken and given back when the items are short, so either all is taken or
+    // nothing.
+    private bool PayScriptFunction(ScriptFunctionMetadata scriptFunction) {
+        long meso = scriptFunction.CollectMeso;
+        var items = new List<ItemComponent>();
+        foreach (ItemComponent item in scriptFunction.CollectItems) {
+            if (item.ItemId is >= 90000001 and <= 90000003) {
+                meso += item.Amount;
+            } else {
+                items.Add(item);
+            }
+        }
+
+        long sendsBefore = session.Currency.MesoSends;
+        if (meso > 0 && !session.Currency.TryTakeMeso(meso, notify: false)) {
+            logger.Information("Not enough mesos for script function {FunctionId} on npc {NpcId}", scriptFunction.FunctionId, Npc?.Value.Id);
+            return false;
+        }
+        if (items.Count > 0 && !session.Item.Inventory.ConsumeItemComponents(items)) {
+            if (meso > 0) {
+                session.Currency.ReturnHeldMeso(meso, sendsBefore);
+            }
+            logger.Information("Missing items for script function {FunctionId} on npc {NpcId}", scriptFunction.FunctionId, Npc?.Value.Id);
+            return false;
+        }
+        if (meso > 0) {
+            session.Currency.NotifyMeso();
+        }
+        return true;
     }
 
     // The maid functions of a maid npc's script (maidMoodUp, maidAffinityUp, maidPay), for its owner only: the talk
