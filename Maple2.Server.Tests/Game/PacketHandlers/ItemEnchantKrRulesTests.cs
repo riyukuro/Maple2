@@ -268,8 +268,9 @@ public class ItemEnchantKrRulesTests {
         });
     }
 
-    // A copy locked after it was added is not used up: the try is refused as for a copy no longer held (that path
-    // sends lack_ingredient twice, ConsumeMaterial's and Enchant's), and every copy and the item's grade stay.
+    // A copy locked after it was added is not used up: the try is refused as for a copy no longer held, with
+    // lack_ingredient once (ConsumeMaterial's; the client shows a notice per packet, OnItemEnchant mode 12,
+    // scenestategame.cpp:6187-6199), and every copy and the item's grade stay.
     [Test]
     public void FromEleven_ACopyLockedAfterItWasAddedIsNotUsed() {
         GameSession session = Login(4, new ItemEnchant(enchants: 11), copies: 2);
@@ -288,7 +289,7 @@ public class ItemEnchantKrRulesTests {
             Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(onyx));
             Assert.That(session.Item.Inventory.Get(gear.Uid)!.Enchant!.Enchants, Is.EqualTo(11));
             string lack = System.Convert.ToHexString(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient).ToArray());
-            Assert.That(test.TakeSent().Select(System.Convert.ToHexString), Is.EqualTo(new[] { lack, lack }));
+            Assert.That(test.TakeSent().Select(System.Convert.ToHexString), Is.EqualTo(new[] { lack }));
         });
     }
 }

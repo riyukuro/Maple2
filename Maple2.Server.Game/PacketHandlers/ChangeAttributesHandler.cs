@@ -176,7 +176,9 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
                 return false;
             }
-            // The lock item (one) before the materials, so a refusal after the fee loses no material.
+            // The lock item (one) before the materials, so a lock refusal after the fee loses no material. A refusal at
+            // the materials gives the fee back but not the lock item; both run under lock(session.Item) after the
+            // checks above, so that refusal is not reached in play.
             if (lockItem != null && !session.Item.Inventory.Consume(lockItem.Uid, 1)) {
                 session.Currency.ReturnMeso(meso);
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
@@ -343,13 +345,13 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             null).FirstOrDefault();
     }
 
-    // How many options the lock item keeps: one for gear, the candy's count for a pet (ItemRemakeRules.LocksAllowed).
     // What the lock item's Consume(uid, 1) needs: the same item in the bag, not expired, at least one.
     private static bool LockItemTakeable(GameSession session, Item lockItem) {
         Item? held = session.Item.Inventory.Get(lockItem.Uid);
         return held != null && !held.IsExpired() && held.Amount >= 1;
     }
 
+    // How many options the lock item keeps: one for gear, the candy's count for a pet (ItemRemakeRules.LocksAllowed).
     internal static int LockLimit(Item changeItem, Item lockItem) {
         if (!changeItem.Type.IsPet) {
             return 1;
