@@ -651,14 +651,16 @@ public sealed class SkillHitBudget {
     // forgets the hits only when the motion loops (loops) and, when the loop's length is known (intervalMs:
     // SkillHitRules.HeldInterval, 0 when not), not before that length after the cast or the last sync it took, with
     // the iterations' allowance and the session's lag budget (lag) for one that arrives early. False, and the hits
-    // kept, for any other: a sync that only comes early does not move the next one's time.
-    public bool Sync(long tick, bool loops, long intervalMs = 0, LagBudget? lag = null) {
+    // kept, for any other: a sync that only comes early does not move the next one's time. earlyDrawn: the time the
+    // sync is early by (SyncEarlyBy) was already drawn from the lag budget with the repeat's other checks
+    // (ConfigManager.SyncTimingRefusal), so it is not drawn again.
+    public bool Sync(long tick, bool loops, long intervalMs = 0, LagBudget? lag = null, bool earlyDrawn = false) {
         if (!loops) {
             return false;
         }
         long due = syncTick + intervalMs;
-        long earlyBy = intervalMs > 0 ? SkillHitRules.IterationEarlyBy(tick, due) : 0;
-        if (earlyBy > 0 && (lag == null || !lag.TryDraw(earlyBy, tick))) {
+        long earlyBy = SyncEarlyBy(tick, intervalMs);
+        if (earlyBy > 0 && !earlyDrawn && (lag == null || !lag.TryDraw(earlyBy, tick))) {
             return false;
         }
         // An honest loop restarts up to 50 ms past its loopstart (stateskill.cpp:1647) and a sync may come up to the
@@ -670,4 +672,9 @@ public sealed class SkillHitBudget {
         pointGroupHits.Clear();
         return true;
     }
+
+    // The time a sync at this tick comes before the loop's length (intervalMs, 0 when not known) after the cast or
+    // the last sync taken, past the iterations' allowance (Sync).
+    public long SyncEarlyBy(long tick, long intervalMs) =>
+        intervalMs > 0 ? SkillHitRules.IterationEarlyBy(tick, syncTick + intervalMs) : 0;
 }

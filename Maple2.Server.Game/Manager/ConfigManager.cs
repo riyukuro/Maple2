@@ -384,27 +384,30 @@ public class ConfigManager {
     // else it holds the loop until one is. A skill that continues while held (its cooldown is the loop's time left
     // then, FUN_1417f16f0) or a charging skill (basic/combo chargingSkill) repeats with no such wait: not checked.
     // The cooldown is the cast's (the repeat restarts none), checked for a job skill as at a cast
-    // (CastTimingRefusal), with the same draw on the session's lag budget for one that only arrives early.
-    public string? SyncTimingRefusal(SkillMetadata skill, bool jobSkill, int syncTick, long tick) {
-        if (!SkillCastRules.SyncWaitsForCooldown(skill.Property.ContinueSkill, skill.State.ChargingSkill)) {
-            return null;
-        }
+    // (CastTimingRefusal). intervalEarlyMs: the time the sync comes before the motion's loop ends (SkillHitBudget.
+    // SyncEarlyBy). A sync that only arrives early draws once from the session's lag budget, for the longest of the
+    // three, as a cast does; the caller then takes it with no second draw (SkillHitBudget.Sync earlyDrawn). A fast
+    // client clock refuses only a cooldown or recharge shortfall, as before (the loop's own time never asked it).
+    public string? SyncTimingRefusal(SkillMetadata skill, bool jobSkill, int syncTick, long tick, long intervalEarlyMs) {
+        bool waits = SkillCastRules.SyncWaitsForCooldown(skill.Property.ContinueSkill, skill.State.ChargingSkill);
         lock (skillCooldowns) {
-            long cooldownMs = jobSkill && skill.State.RechargeMaxCount <= 0
+            long cooldownMs = waits && jobSkill && skill.State.RechargeMaxCount <= 0
                 ? SkillCastRules.CooldownShortfall(lastCasts.Values, skill.Id, skill.State.CooldownGroupId, syncTick, tick, AttackSpeed) : 0;
-            long rechargeMs = RechargeShortfall(skill, syncTick, tick);
-            string? reason = SkillCastRules.TimingRefusal(Math.Max(cooldownMs, rechargeMs), CastClock.IsFast(tick), Lag, tick);
-            return reason == null ? null : $"{(rechargeMs >= cooldownMs ? "recharge" : "cooldown")}: {reason}";
+            long rechargeMs = waits ? RechargeShortfall(skill, syncTick, tick) : 0;
+            long timingMs = Math.Max(cooldownMs, rechargeMs);
+            string? reason = SkillCastRules.TimingRefusal(Math.Max(timingMs, intervalEarlyMs), timingMs > 0 && CastClock.IsFast(tick), Lag, tick);
+            return reason == null ? null
+                : $"{(intervalEarlyMs > timingMs ? "interval" : rechargeMs >= cooldownMs ? "recharge" : "cooldown")}: {reason}";
         }
     }
 
-    // A held repeat of a recharge skill takes one of its uses, as a cast does (CSkillSlot::OnRechargeSkillUsed: the
-    // uses out go up by one and the gap starts again); no other cooldown starts again. Not for a skill that uses an
-    // item or counts its uses on its origin skill (RechargeShortfall), nor for one that continues while held or a
-    // charging skill (they never reach it: the client takes the use only on the repeat path checked above).
+    // A held repeat of a recharge skill takes one of its uses, as a cast does (CSkillSystem::OnRechargeSkillUsed: the
+    // uses out go up by one and the gap starts again); no other cooldown starts again. A skill that continues while
+    // held or a charging skill takes one too: the client sends its repeat with no wait and takes the use at every
+    // loop end (stateskill.cpp:917-927, the else branch), so it is counted, never refused (SyncTimingRefusal). Not for
+    // a skill that uses an item or counts its uses on its origin skill (RechargeShortfall).
     public void TakeSyncRechargeUse(SkillMetadata skill, int syncTick, long tick) {
-        if (skill.State.RechargeMaxCount <= 0 || skill.State.RechargeShared || skill.Data.Consume.UseItem
-            || !SkillCastRules.SyncWaitsForCooldown(skill.Property.ContinueSkill, skill.State.ChargingSkill)) {
+        if (skill.State.RechargeMaxCount <= 0 || skill.State.RechargeShared || skill.Data.Consume.UseItem) {
             return;
         }
         SaveSkillCooldown(skill, tick);

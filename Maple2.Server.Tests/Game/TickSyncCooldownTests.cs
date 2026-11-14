@@ -137,6 +137,39 @@ public class TickSyncCooldownTests : TriggerTestBase {
         });
     }
 
+    // A skill that continues while held repeats with no wait and takes a recharge use at each loop end (the client's
+    // else branch: OnRechargeSkillUsed at every repeat). Three uses: the cast and two repeats take them all; the next
+    // repeat is still taken, the uses only counted. Before, its repeats took none.
+    [Test]
+    public void AContinueSkillsRepeat_TakesAUseButIsNeverHeld() {
+        SetUp(cooldownSeconds: 8, rechargeMaxCount: 3, continueSkill: true);
+        SkillRecord record = Cast();
+        Assert.That(Hit(record, 1), Is.True, "the first hit pays");
+        Assert.Multiple(() => {
+            Assert.That(SyncForgets(record, 1000, 2), Is.True, "the first repeat");
+            Assert.That(SyncForgets(record, 2000, 3), Is.True, "the second repeat");
+            Assert.That(test.Session.Config.GetSkillCooldown(Skill)?.Charges, Is.EqualTo(3), "the cast and both repeats took a use");
+            Assert.That(SyncForgets(record, 3000, 4), Is.True, "with no use left the repeat is not held");
+        });
+    }
+
+    // A repeat early on both the cooldown and the loop draws once from the lag budget, for the longer, as a cast does;
+    // before, it drew for each.
+    [Test]
+    public void ARepeatEarlyOnCooldownAndLoop_DrawsTheLagBudgetOnce() {
+        SetUp(cooldownSeconds: 1.2f);
+        SkillRecord record = Cast();
+        Assert.That(Hit(record, 1), Is.True, "the first hit pays");
+        long syncTick = 1_000_000 + 200;
+        long loopEarly = record.Hits.SyncEarlyBy(syncTick, test.Session.Config.HeldInterval(record.Motion.MotionProperty, record.CastUid));
+        long before = test.Session.Config.Lag.Level(syncTick);
+        Assert.That(SyncForgets(record, 200, 2), Is.True, "the repeat only arrives early");
+        long drawn = before - test.Session.Config.Lag.Level(syncTick);
+        // The 1.2 s cooldown is 500 ms short 200 ms after the cast (past the cast slack), the 1 s loop 180 ms.
+        Assert.That(loopEarly, Is.EqualTo(180), "the repeat comes before the loop ends");
+        Assert.That(drawn, Is.EqualTo(500), "one draw for the longer (two drew 680)");
+    }
+
     // The ingest reads chargingSkill from the played client's <basic><combo> (made-up rows).
     [Test]
     public void TheIngestReadsChargingSkillFromThePlayedClient() {

@@ -571,15 +571,16 @@ public class SkillHandler : FieldPacketHandler {
             intervalMs = 0;
         }
         long tick = session.Field?.FieldTick ?? 0;
-        // The repeat also waits for the skill's cooldown or a recharge use (ConfigManager.SyncTimingRefusal); one sent
-        // before keeps the hits too, and an accepted one of a recharge skill takes a use.
+        // The repeat also waits for the skill's cooldown or a recharge use (ConfigManager.SyncTimingRefusal, which
+        // draws once on the lag budget for that and the loop's time together); one sent before keeps the hits too,
+        // and an accepted one of a recharge skill takes a use.
         bool loops = SkillCastRules.SyncLoops(intervalMs, record.Metadata.Property.ContinueSkill, loopUnknown);
         string? early = loops ? session.Config.SyncTimingRefusal(record.Metadata,
             !record.Metadata.Data.Consume.UseItem && SkillCastRules.IsJobSkill(record.SkillId, session.Config.Skill.SkillInfo.InAnyTree(record.SkillId)),
-            record.ServerTick, tick) : null;
+            record.ServerTick, tick, record.Hits.SyncEarlyBy(tick, intervalMs)) : null;
         if (early != null) {
             Logger.Debug("Tick sync keeps the point group hits, the repeat comes before the client sends it ({Reason}): {Record}", early, record);
-        } else if (!record.Hits.Sync(tick, loops, intervalMs, session.Config.Lag)) {
+        } else if (!record.Hits.Sync(tick, loops, intervalMs, earlyDrawn: true)) {
             Logger.Debug("Tick sync keeps the point group hits (early or no loop): interval {Interval} ms: {Record}", intervalMs, record);
         } else {
             session.Config.TakeSyncRechargeUse(record.Metadata, record.ServerTick, tick);
