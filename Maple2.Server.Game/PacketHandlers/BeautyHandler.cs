@@ -497,6 +497,9 @@ public class BeautyHandler : FieldPacketHandler {
 
             item.Appearance = appearance;
             session.Field?.Broadcast(ItemUpdatePacket.Update(session.Player, item));
+            // A paid dye counts for beauty_change_color (conditionutil.cpp:615), as the KR trophy
+            // 23100191 (items 11050001-15999999) needs.
+            session.ConditionUpdate(ConditionType.beauty_change_color, codeLong: item.Id);
         }
     }
 
