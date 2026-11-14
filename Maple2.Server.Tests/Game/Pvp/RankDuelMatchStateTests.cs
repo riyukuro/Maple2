@@ -48,6 +48,26 @@ public class RankDuelMatchStateTests {
         Assert.That(state.Hostile(A, 303), Is.False);
     }
 
+    // With a load wait the first round's intro comes that long after the second duelist came, also past the join
+    // deadline (both are there: no walkover); one who leaves during the wait loses by walkover.
+    [Test]
+    public void LoadWait_RoundAfterTheSecondCame() {
+        var state = new RankDuelMatchState(A, B, 0, 10_000);
+        Assert.That(state.Enter(A, 100), Is.Empty);
+        Assert.That(state.Enter(B, 35_000), Is.Empty);
+        Assert.That(state.Update(44_999), Is.Empty);
+        Assert.That(state.Phase, Is.EqualTo(RankDuelPhase.Waiting));
+        Assert.That(state.Hostile(A, B), Is.False);
+        Assert.That(state.Update(45_000), Is.EqualTo(new List<RankDuelEvent> { Round }));
+        Assert.That(state.Update(45_000 + RankDuelMatchState.CountdownMs), Is.EqualTo(new List<RankDuelEvent> { Fight }));
+
+        var left = new RankDuelMatchState(A, B, 0, 10_000);
+        left.Enter(A, 100);
+        left.Enter(B, 200);
+        Assert.That(left.Leave(A, 5_000), Is.EqualTo(new List<RankDuelEvent> { Won(B, A) }));
+        Assert.That(left.WinBy, Is.EqualTo(RankDuelWinBy.Walkover));
+    }
+
     [Test]
     public void SomeoneElse_IsNotADuelist() {
         var state = new RankDuelMatchState(A, B, 0);

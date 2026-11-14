@@ -90,7 +90,8 @@ public class RankDuelFieldTests {
     private static void Fight(Duel duel) {
         duel.Field.RankDuel!.Enter(duel.PlayerA);
         duel.Field.RankDuel.Enter(duel.PlayerB);
-        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.CountdownMs);
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.LoadMs);
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.LoadMs + RankDuelMatchState.CountdownMs);
     }
 
     // The loser dies in round 1 of the best of 3; round 2's intro and fight follow, and what was sent is dropped.
@@ -133,6 +134,8 @@ public class RankDuelFieldTests {
         return targets.ToList();
     }
 
+    // The live duel: the round intro (B6 00 1B C4 09 00 00 01 00 00 00) went out 27 ms after the second duelist's field
+    // enter answer, before its field showed. Round 1's intro now waits LoadMs (10 s) after the second came.
     [Test]
     public void BothIn_RoundThenFight_ToBothDuelists() {
         Duel duel = Start();
@@ -142,10 +145,16 @@ public class RankDuelFieldTests {
         duel.Field.RankDuel!.Enter(duel.PlayerA);
         Assert.That(Pvp(duel.A), Is.Empty);
         duel.Field.RankDuel.Enter(duel.PlayerB);
+        Assert.That(Pvp(duel.A), Is.Empty);
+        Assert.That(Pvp(duel.B), Is.Empty);
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + 9_999);
+        Assert.That(Pvp(duel.A), Is.Empty);
+        Assert.That(duel.Field.RankDuel.Phase, Is.EqualTo(RankDuelPhase.Waiting));
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + 10_000);
         Assert.That(Pvp(duel.A), Is.EqualTo(new[] { "B600" + "1B" + "C4090000" + "01000000" }));
         Assert.That(Pvp(duel.B), Is.EqualTo(new[] { "B600" + "1B" + "C4090000" + "01000000" }));
 
-        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.CountdownMs);
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + 10_000 + RankDuelMatchState.CountdownMs);
         // The fight intro, then each duelist's PvP point (A 101, B 102: the client's enemies; 1 and 2 are its own teams), seen by the whole field.
         string points = "B600" + "64" + Int(duel.PlayerA.ObjectId) + "65000000" + "00" + "00" + "|" + "B600" + "64" + Int(duel.PlayerB.ObjectId) + "66000000" + "00" + "00";
         Assert.That(string.Join("|", Pvp(duel.A)), Is.EqualTo("B600" + "1A" + "DC050000" + "|" + points));
@@ -159,9 +168,10 @@ public class RankDuelFieldTests {
         Duel duel = Start();
         duel.Field.RankDuel!.Enter(duel.PlayerA);
         duel.Field.RankDuel.Enter(duel.PlayerB);
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.LoadMs);
         Assert.That(Hostile(duel, duel.PlayerA), Is.Empty);
 
-        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.CountdownMs);
+        duel.Field.RankDuel.Update(duel.Field.FieldTick + RankDuelMatchState.LoadMs + RankDuelMatchState.CountdownMs);
         Assert.That(Hostile(duel, duel.PlayerA), Is.EqualTo(new IActor[] { duel.PlayerB }));
         Assert.That(Hostile(duel, duel.PlayerB), Is.EqualTo(new IActor[] { duel.PlayerA }));
         Assert.That(Hostile(duel, duel.Bystander.Session.Player), Is.Empty);

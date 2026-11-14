@@ -46,7 +46,7 @@ public sealed class RankDuelField {
         this.field = field;
         this.onEnd = onEnd;
         MatchId = matchId;
-        state = new RankDuelMatchState(first, second, tick);
+        state = new RankDuelMatchState(first, second, tick, RankDuelMatchState.LoadMs);
     }
 
     public bool IsDuelist(long characterId) => state.IsDuelist(characterId);

@@ -63,9 +63,13 @@ public readonly record struct RankDuelEvent(RankDuelEventType Type, RankDuelEnd 
 // whose fight runs FightMs with both standing counts for nobody; after the last round the one with more round wins
 // wins, with the same number it is a draw; the next round's intro comes RoundBreakMs after a round ends; the intro
 // lasts CountdownMs before the fight; a duelist who leaves before the result loses; a duelist who has not come by
-// JoinMs loses to one who has, and with nobody there the match is void; the duelists stay ResultMs after the result.
+// JoinMs loses to one who has, and with nobody there the match is void; the duelists stay ResultMs after the result;
+// the first round's intro waits LoadMs after the second duelist came (the field gives it, see RankDuelField).
 public sealed class RankDuelMatchState {
     public const long JoinMs = 40_000;
+    // The client sends nothing once its field UI is up: its Field enter answer (ResponseFieldEnter) comes before the
+    // field shows, and an intro sent then may come before the intro movie is there. Chosen here: 10 s.
+    public const long LoadMs = 10_000;
     public const long CountdownMs = 3_000;
     public const long FightMs = 180_000;
     public const long ResultMs = 10_000;
@@ -93,12 +97,16 @@ public sealed class RankDuelMatchState {
     // The duelists whose health a hit of the opponent took during the fight.
     private readonly HashSet<long> hurt = [];
     private readonly long joinDeadline;
+    private readonly long loadMs;
     private long phaseTick;
+    // When both duelists are present: the tick the first round's intro comes (loadMs after the second came).
+    private long startTick = long.MaxValue;
 
-    public RankDuelMatchState(long first, long second, long createdTick) {
+    public RankDuelMatchState(long first, long second, long createdTick, long loadMs = 0) {
         First = first;
         Second = second;
         joinDeadline = createdTick + JoinMs;
+        this.loadMs = loadMs;
     }
 
     public bool IsDuelist(long characterId) => characterId == First || characterId == Second;
@@ -136,7 +144,10 @@ public sealed class RankDuelMatchState {
         }
         present.Add(characterId);
         if (Phase == RankDuelPhase.Waiting && present.Count == 2) {
-            StartRound(events, tick);
+            startTick = tick + loadMs;
+            if (tick >= startTick) {
+                StartRound(events, tick);
+            }
         }
         return events;
     }
@@ -178,6 +189,11 @@ public sealed class RankDuelMatchState {
     public List<RankDuelEvent> Update(long tick) {
         var events = new List<RankDuelEvent>();
         switch (Phase) {
+            case RankDuelPhase.Waiting when present.Count == 2:
+                if (tick >= startTick) {
+                    StartRound(events, tick);
+                }
+                break;
             case RankDuelPhase.Waiting when tick >= joinDeadline:
                 if (present.Count == 0) {
                     Phase = RankDuelPhase.Ended;
