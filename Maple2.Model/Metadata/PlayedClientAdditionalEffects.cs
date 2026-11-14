@@ -20,7 +20,8 @@ public static class PlayedClientAdditionalEffects {
 
     // GroupId: the first level's groupIDs. Levels: every level the client has, with its invoke effect or null.
     // SkillUseDisable: every level's <Motion skillUseDisable> mask, 0 where the level has none (the client's
-    // m_motion.m_nSkillUseDisable, summed over the enabled buffs by AdditionalCliList::FUN_140972a00).
+    // m_motion.m_nSkillUseDisable, summed over the enabled buffs by AdditionalCliList::FUN_140972a00). Hide: every
+    // level's <Motion hide> as a flag, false where the level has none (m_motion.m_nHide, additionalactionadditional.cpp:1100).
     // RemoveRecharge: each level's <RemoveRechargingCount skillID count>. SpecialAbilities: each level's
     // <SpecialAbility><v type value/></SpecialAbility> rows, one value per type, the last nonzero one, as the client
     // keeps them (AdditionalData's level load, additionalactionadditional.cpp:1227; turned into server stats by the
@@ -28,6 +29,7 @@ public static class PlayedClientAdditionalEffects {
     // each level's <level> row, which the ingest maps for an effect the data pack does not have.
     public sealed record Entry(int GroupId, Dictionary<short, AdditionalEffectMetadataInvokeEffect?> Levels) {
         public Dictionary<short, int> SkillUseDisable { get; init; } = [];
+        public Dictionary<short, bool> Hide { get; init; } = [];
         public Dictionary<short, AdditionalEffectMetadataUpdate.RemoveRechargeUses> RemoveRecharge { get; init; } = [];
         public Dictionary<short, Dictionary<string, int>> SpecialAbilities { get; init; } = [];
         public XmlElement? Effect { get; init; }
@@ -52,6 +54,7 @@ public static class PlayedClientAdditionalEffects {
                 // A later row of the same id replaces the earlier one, as the client's load does.
                 var levels = new Dictionary<short, AdditionalEffectMetadataInvokeEffect?>();
                 var useDisable = new Dictionary<short, int>();
+                var hide = new Dictionary<short, bool>();
                 var removeRecharge = new Dictionary<short, AdditionalEffectMetadataUpdate.RemoveRechargeUses>();
                 var specialAbilities = new Dictionary<short, Dictionary<string, int>>();
                 var rows = new Dictionary<short, XmlElement>();
@@ -67,6 +70,7 @@ public static class PlayedClientAdditionalEffects {
                     }
                     levels[levelId] = Invoke(Child(level, "InvokeEffect"));
                     useDisable[levelId] = Number(Child(level, "Motion"), "skillUseDisable");
+                    hide[levelId] = Number(Child(level, "Motion"), "hide") != 0;
                     if (Child(level, "RemoveRechargingCount") is { } remove) {
                         removeRecharge[levelId] = new AdditionalEffectMetadataUpdate.RemoveRechargeUses(Number(remove, "skillID"), Number(remove, "count"));
                     }
@@ -75,6 +79,7 @@ public static class PlayedClientAdditionalEffects {
                 }
                 entries[id] = new Entry(groupId, levels) {
                     SkillUseDisable = useDisable,
+                    Hide = hide,
                     RemoveRecharge = removeRecharge,
                     SpecialAbilities = specialAbilities,
                     Effect = effect,

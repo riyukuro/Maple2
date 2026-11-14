@@ -150,4 +150,71 @@ public class ForceApplyTargetTests {
             Assert.That(Pool(scene, scene.Mob, ApplyTargetType.Friendly), Is.EqualTo(new[] { other.ObjectId }));
         });
     }
+
+    // Motion hide (the assassin's Dark Sight 10800051): the client's FilterTarget leaves out the holder of an enabled
+    // hide buff unless the range's applyTarget, with the caster's forceApplyTarget, has bit 4.
+    private const int DarkSight = 10800051;
+
+    private static void GiveHide(IActor holder, bool enabled = true) {
+        Buff buff = DisabledBuffTests.Held(DisabledBuffTests.Effect(DarkSight, property: DisabledBuffTests.Property with { Hide = true }), enabled);
+        typeof(Buff).GetField("<Caster>k__BackingField", Any)!.SetValue(buff, holder);
+        typeof(Buff).GetField("<Owner>k__BackingField", Any)!.SetValue(buff, holder);
+        Held(holder)[DarkSight] = [buff];
+    }
+
+    [Test]
+    public void Hidden_OnlyWhileAnEnabledHideBuffIsHeld() {
+        AdditionalEffectMetadata hide = DisabledBuffTests.Effect(DarkSight, property: DisabledBuffTests.Property with { Hide = true });
+        Assert.Multiple(() => {
+            Assert.That(BuffManager.Hidden([DisabledBuffTests.Held(Effect(1, 0), true), DisabledBuffTests.Held(hide, true)]), Is.True);
+            Assert.That(BuffManager.Hidden([DisabledBuffTests.Held(hide, false)]), Is.False);
+            Assert.That(BuffManager.Hidden([DisabledBuffTests.Held(Effect(1, 0), true)]), Is.False);
+        });
+    }
+
+    // A hidden player is no target of the other player's friendly skill nor of a mob's hostile one; a hidden mob is
+    // no target of a player's hostile skill. A range with bit 4 (RegionBuff 5) still takes the hidden player.
+    [Test]
+    public void Hidden_LeftOutWithoutBit4() {
+        Scene scene = Start();
+        GiveHide(scene.B);
+        GiveHide(scene.Mob);
+        Assert.Multiple(() => {
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.Friendly), Is.Empty);
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.Hostile), Is.Empty);
+            Assert.That(Pool(scene, scene.Mob, ApplyTargetType.Hostile), Is.EqualTo(new[] { scene.A.ObjectId }));
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.RegionBuff), Is.EqualTo(new[] { scene.B.ObjectId }));
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.RegionBuff2), Is.EqualTo(new[] { scene.B.ObjectId }));
+        });
+    }
+
+    // The hide ends with the buff: disabled or gone, the holder is a target again; a caster's forceApplyTarget with
+    // bit 4 takes hidden holders as the range's own bit does.
+    [Test]
+    public void Hidden_EndsWithTheBuffAndForceBit4TakesIt() {
+        Scene scene = Start();
+        GiveHide(scene.Mob, enabled: false);
+        Assert.That(Pool(scene, scene.A, ApplyTargetType.Hostile), Is.EqualTo(new[] { scene.Mob.ObjectId }));
+        GiveHide(scene.Mob);
+        Assert.That(Pool(scene, scene.A, ApplyTargetType.Hostile), Is.Empty);
+        Give(scene.A, 4, 4);
+        Assert.That(Pool(scene, scene.A, ApplyTargetType.Hostile), Is.EqualTo(new[] { scene.Mob.ObjectId }));
+        Held(scene.A).TryRemove(4, out _);
+        Held(scene.Mob).TryRemove(DarkSight, out _);
+        Assert.That(Pool(scene, scene.A, ApplyTargetType.Hostile), Is.EqualTo(new[] { scene.Mob.ObjectId }));
+    }
+
+    // includeCaster: a hidden caster is not put first by a friendly range without bit 4 (FilterTarget on the caster).
+    [Test]
+    public void Hidden_CasterNotIncludedWithoutBit4() {
+        Scene scene = Start();
+        MethodInfo takes = typeof(FieldManager).GetMethod("TakesCaster", BindingFlags.Static | BindingFlags.NonPublic)!;
+        SkillMetadataRange Range(ApplyTargetType type) => new(default, 0, 0, 0, 0, 0, default, default, IncludeCasterType.Priority, type, default);
+        Assert.That(takes.Invoke(null, [scene.A, Range(ApplyTargetType.Friendly)]), Is.True);
+        GiveHide(scene.A);
+        Assert.Multiple(() => {
+            Assert.That(takes.Invoke(null, [scene.A, Range(ApplyTargetType.Friendly)]), Is.False);
+            Assert.That(takes.Invoke(null, [scene.A, Range(ApplyTargetType.RegionBuff2)]), Is.True);
+        });
+    }
 }

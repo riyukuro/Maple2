@@ -57,7 +57,8 @@ public record AdditionalEffectMetadataProperty(
     int ForceApplyTarget = 0, // BasicProperty forceApplyTarget: target bits the holder's skills also take (1 hostile, 2 friendly)
     AttackPossibleMetadata? AttackPossible = null, // BasicProperty attackPossible*: the only hits the holder takes
     bool PvpOnOff = false, // BasicProperty pvpOnOff: on a pk field no other player is hostile to the holder, nor the holder to them
-    SpecialEffectMetadata? SpecialEffect = null); // SpecialEffectProperty of the types the server applies (SpecialEffectRules)
+    SpecialEffectMetadata? SpecialEffect = null, // SpecialEffectProperty of the types the server applies (SpecialEffectRules)
+    bool Hide = false); // the client's Motion hide: the holder is no target of a range without applyTarget bit 4 (BuffManager.Hidden)
 
 // BasicProperty attackPossibleSkillIDs, attackPossibleDotEffectIDs and attackPossibleEffectID (additionalactionadditional.cpp:1080):
 // the skills and the damage over time effects that still hit the holder, and an effect whose holders hit it with anything.

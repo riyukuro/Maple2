@@ -32,7 +32,7 @@ public class InvokeEffectTests {
             <level level="2"><Basic groupIDs="9" /></level>
           </additional>
           <additional id="49018002">
-            <level level="1"><Basic /><Motion skillUseDisable="6" /></level>
+            <level level="1"><Basic /><Motion skillUseDisable="6" hide="1" /></level>
             <level level="2"><Basic /></level>
           </additional>
           <additional id="11000102">
@@ -59,6 +59,15 @@ public class InvokeEffectTests {
         Assert.That(played[49018002].SkillUseDisable[1], Is.EqualTo(6));
         Assert.That(played[49018002].SkillUseDisable[2], Is.EqualTo(0));
         Assert.That(played[10300281].SkillUseDisable.ContainsKey(1), Is.False, "a level that is off is not read");
+    }
+
+    // The client's <Motion hide> as a flag (m_motion.m_nHide), false for a level without one.
+    [Test]
+    public void ReadsTheClientHidePerLevel() {
+        Dictionary<int, PlayedClientAdditionalEffects.Entry> played = Read();
+        Assert.That(played[49018002].Hide[1], Is.True);
+        Assert.That(played[49018002].Hide[2], Is.False);
+        Assert.That(played[10300281].Hide.ContainsKey(1), Is.False, "a level that is off is not read");
     }
 
     [Test]

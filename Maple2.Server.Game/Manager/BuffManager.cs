@@ -436,6 +436,13 @@ public class BuffManager : IUpdatable {
 
     public int ForceApplyTarget() => ForceApplyTarget(EnumerateBuffs());
 
+    // Whether an enabled buff held hides its holder (Motion hide; AdditionalCliList::IsHidden, set by FUN_140972a00
+    // from the enabled, unsuspended effects): the holder is no target of a range without applyTarget bit 4.
+    public static bool Hidden(IEnumerable<Buff> held) => held.Any(buff => buff.Counted && buff.Metadata.Property.Hide);
+
+    // Asked for every actor of every target search, so it walks the held lists without copying them.
+    public bool Hidden() => buffs.Values.Any(Hidden);
+
     // The share the enabled buffs held cut from the cooldowns of a cooldown group (SkillCastRules.GroupReduceRate).
     public float CooldownGroupRate(int groupId) {
         return Util.SkillCastRules.GroupReduceRate(EnumerateBuffs().Where(buff => buff.Enabled).Select(buff => buff.Metadata.Property.CooldownGroupRates), groupId);

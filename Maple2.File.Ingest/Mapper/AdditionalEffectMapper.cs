@@ -16,6 +16,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
     private readonly AdditionalEffectParser? playedParser;
     private readonly CooldownGroupRates groupRates;
     private readonly SpecialEffects specialEffects;
+    private readonly MotionHide hides;
     private readonly FinalStatusRows finals;
     private readonly ClientSpecialAbility specialAbility;
     // The same table for the played levels' own <SpecialAbility> (PlayedAdditionalRows.SpecialAbility), apart so its
@@ -37,6 +38,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         specialEffects = new SpecialEffects(xmlReader);
         Console.WriteLine($"Additional effect levels with a server special effect: {specialEffects.Count}");
         finals = new FinalStatusRows(xmlReader);
+        hides = new MotionHide(xmlReader);
+        Console.WriteLine($"Additional effect levels that hide their holder: {hides.Count}");
         specialAbility = new ClientSpecialAbility(playedReader, xmlReader);
         if (playedReader != null) {
             playedParser = new AdditionalEffectParser(playedReader);
@@ -63,6 +66,12 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
     // 71000068 and 71000074: 2 where the client has none), and the server refused casts the client sends.
     private int SkillUseDisableMask(int id, short level, int pack) {
         return played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? entry) && entry.SkillUseDisable.TryGetValue(level, out int mask) ? mask : pack;
+    }
+
+    // Whether the level hides its holder: the played client's level's <Motion hide> (false where its level has
+    // none); the data pack's <MotionProperty hide> for a level the client does not have.
+    private bool Hide(int id, short level) {
+        return played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? entry) && entry.Hide.TryGetValue(level, out bool hide) ? hide : hides.Get(id, level);
     }
 
     protected override IEnumerable<AdditionalEffectMetadata> Map() {
@@ -390,7 +399,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 ForceApplyTarget: data.BasicProperty.forceApplyTarget,
                 AttackPossible: AttackPossible(data.BasicProperty),
                 PvpOnOff: data.BasicProperty.pvpOnOff,
-                SpecialEffect: specialEffects.Get(id, data.BasicProperty.level)),
+                SpecialEffect: specialEffects.Get(id, data.BasicProperty.level),
+                Hide: Hide(id, data.BasicProperty.level)),
             Consume: new AdditionalEffectMetadataConsume(
                 HpRate: data.ConsumeProperty.hpRate,
                 SpRate: data.ConsumeProperty.spRate),

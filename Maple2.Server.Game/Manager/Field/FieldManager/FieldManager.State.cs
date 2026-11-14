@@ -1210,8 +1210,22 @@ public partial class FieldManager {
         return prisms.Filter(TargetSource(caster, targetType), limit, ignore);
     }
 
-    // The actors of the kinds a caster's range takes (ApplyTargetType), wherever they stand.
+    // The actors of the kinds a caster's range takes (ApplyTargetType), wherever they stand. The client's target
+    // filter (FilterTarget, basecollision.cpp:784) leaves out the holders of an enabled hide buff (Motion hide, the
+    // assassin's Dark Sight 10800051) unless the range's applyTarget, with the caster's forceApplyTarget ORed in, has
+    // bit 4 (RegionBuff 5, RegionBuff2 6 and 7 have it); every search here goes through it.
     private IEnumerable<IActor> TargetSource(IActor caster, ApplyTargetType targetType) {
+        IEnumerable<IActor> source = TargetKinds(caster, targetType);
+        return TakesHidden(caster, targetType) ? source : source.Where(actor => !IsHidden(actor));
+    }
+
+    private static int ForceApplyTarget(IActor caster) => caster is FieldPlayer { Buffs: not null } player ? player.Buffs.ForceApplyTarget() : 0;
+
+    public static bool TakesHidden(IActor caster, ApplyTargetType targetType) => (((int) targetType | ForceApplyTarget(caster)) & 4) != 0;
+
+    public static bool IsHidden(IActor actor) => actor.Buffs is { } held && held.Hidden();
+
+    private IEnumerable<IActor> TargetKinds(IActor caster, ApplyTargetType targetType) {
         // A rank duel's onlookers take no part: their skills reach no one, and no one's reach them.
         if (caster is FieldPlayer onlooker && IsOnlooker(onlooker)) {
             return [];
@@ -1229,7 +1243,7 @@ public partial class FieldManager {
         // A player's buffs may widen what the skill takes (forceApplyTarget, as the client's target filter
         // FilterTarget ORs it into the query): bit 2 adds the friendly players to a hostile skill (a boss's charm
         // makes the holder hit its allies), bit 1 adds the mobs to a friendly one.
-        int force = caster is FieldPlayer { Buffs: not null } forcePlayer ? forcePlayer.Buffs.ForceApplyTarget() : 0;
+        int force = ForceApplyTarget(caster);
         switch (targetType) {
             case ApplyTargetType.Friendly:
                 if (caster is FieldNpc) {
@@ -1309,10 +1323,13 @@ public partial class FieldManager {
     // range's applyTarget with the caster's forceApplyTarget ORed in): the friendly bit takes him, but the hostile bit
     // alone takes him only when his own team is 2 (PCBase::vfunc_122 compares teams; an npc's team is its friendly
     // value), so a monster's hostile splash with includeCaster (60036032, Lazy Stumpy's) does not hit the monster.
+    // The same filter leaves out a hidden caster unless the flags have bit 4 (TargetSource).
     // Chosen here: a range of no kind or of the hungry mobs keeps the caster as before.
     private static bool TakesCaster(IActor caster, SkillMetadataRange range) {
-        int force = caster is FieldPlayer { Buffs: not null } player ? player.Buffs.ForceApplyTarget() : 0;
-        int flags = (int) range.ApplyTarget | force;
+        int flags = (int) range.ApplyTarget | ForceApplyTarget(caster);
+        if ((flags & 4) == 0 && IsHidden(caster)) {
+            return false;
+        }
         if ((flags & (int) ApplyTargetType.Friendly) != 0 || (flags & (int) ApplyTargetType.Hostile) == 0) {
             return true;
         }
