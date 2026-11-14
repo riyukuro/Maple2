@@ -78,4 +78,30 @@ public class PlayerSkillSourcesTests {
         Assert.That(SkillCastRules.SourceRefuses(false, false), Is.False);
         Assert.That(SkillCastRules.SourceRefuses(true, true), Is.False);
     }
+
+    // The played client's job.xml (KR) writes a tree row as <skills><v skillID subSkillIDs>, the row the client reads
+    // (JobSkillData::Load). These 6 sub skills are only in the played client and no other path reaches them (main
+    // type 6): the tree gives them (before: the pack's <skill main sub> only, all 6 refused).
+    [Test]
+    public void PlayedTreeSubSkillsStayCastable() {
+        XmlDocument job = Document("""
+            <ms2><job jobGroupID="20"><skills>
+              <v skillID="10200231" jobLevel="2" subSkillIDs="10200233,10200234,10200230" uiPosition="2,0" maxLevel="5" quickSlotPriority="19" requireLevel="60" />
+              <v skillID="10400241" jobLevel="2" isLearn="1" subSkillIDs="10400242,10400243,10400244" uiPosition="3,0" maxLevel="1" />
+              <v skillID="10700031" jobLevel="1" subSkillIDs="10700032,10700033" uiPosition="1,3" maxLevel="10" quickSlotPriority="9" requireLevel="28,30,32,34,36,38,40,42,44,46,48,50" requireSkillIDs="10700141" requireSkillLevels="2" />
+              <v skillID="10700221" jobLevel="2" subSkillIDs="10700222,10700223" uiPosition="0,0" maxLevel="5" quickSlotPriority="1" requireLevel="60" />
+              <v skillID="10800221" jobLevel="2" subSkillIDs="10800164,10800229" uiPosition="2,4" maxLevel="5" requireLevel="68" requireSkillIDs="10800251" requireSkillLevels="3" />
+              <v skillID="11000191" jobLevel="2" subSkillIDs="11000192,11000193" uiPosition="0,1" maxLevel="5" requireLevel="62" requireSkillIDs="11000171" requireSkillLevels="3" />
+            </skills></job></ms2>
+            """);
+        int[] subs = [10200230, 10400244, 10700033, 10700223, 10800164, 11000193];
+        var mainTypes = new Dictionary<int, int> { [10200230] = 6, [10400244] = 6, [10700033] = 6, [10700223] = 6, [10800164] = 6, [11000193] = 6 };
+        HashSet<int> castable = PlayerSkillSources.Castable(mainTypes, new Dictionary<int, HashSet<int>>(), PlayerSkillSources.TreeSkills(job));
+        Assert.Multiple(() => {
+            foreach (int id in subs) {
+                Assert.That(castable, Does.Contain(id));
+            }
+            Assert.That(castable, Does.Contain(10400241));
+        });
+    }
 }

@@ -22,15 +22,21 @@ public static class PlayerSkillSources {
     // The constants.xml keys whose value is a skill the client casts by id.
     public static readonly string[] SkillConstants = ["HoldAttackSkillID", "SummonPetSkillID", "returnHomeSkill", "returnHomeSkillMerat", "OneShotSkillID"];
 
-    /// <summary>The main and sub skills of every job of a job.xml (&lt;skill main=".." sub=".."/&gt;).</summary>
+    /// <summary>
+    /// The main and sub skills of every job of a job.xml: the data pack's &lt;skill main=".." sub=".."/&gt; and the
+    /// played client's &lt;skills&gt;&lt;v skillID=".." subSkillIDs=".."/&gt;, the row JobSkillData::Load reads
+    /// (commonfiles/jobtable.cpp:99).
+    /// </summary>
     public static IEnumerable<int> TreeSkills(XmlDocument job) {
-        XmlNodeList? nodes = job.SelectNodes("//skill");
-        if (nodes == null) {
-            yield break;
-        }
-        foreach (XmlElement skill in nodes.OfType<XmlElement>()) {
-            foreach (int id in Ids(skill.GetAttribute("main")).Concat(Ids(skill.GetAttribute("sub")))) {
-                yield return id;
+        foreach ((string path, string main, string sub) in new[] { ("//skill", "main", "sub"), ("//skills/v", "skillID", "subSkillIDs") }) {
+            XmlNodeList? nodes = job.SelectNodes(path);
+            if (nodes == null) {
+                continue;
+            }
+            foreach (XmlElement skill in nodes.OfType<XmlElement>()) {
+                foreach (int id in Ids(skill.GetAttribute(main)).Concat(Ids(skill.GetAttribute(sub)))) {
+                    yield return id;
+                }
             }
         }
     }
