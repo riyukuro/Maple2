@@ -11,6 +11,7 @@ using Maple2.Database.Storage;
 using Maple2.File.Ingest;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
 using Maple2.Server.Core.Constants;
@@ -772,6 +773,24 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
     }
     #endregion
+    #region couple_dance_event (MicrogameHandler.FinishDance, a dance that records a daily reward)
+    // KR 80000530: three dances, no code. The event has two daily rewards, so the third dance of the day records
+    // nothing and does not count.
+    [Test]
+    public void CoupleDance_80000530_EachRecordedDance() {
+        Start();
+        var dance = new CoupleDance([[], []], 3, [], [], 5, 63000062, []);
+        GameEvent gameEvent = test.AddEvent(900001, GameEventType.CoupleDance, dance);
+        Quest quest = StartQuest(Condition(ConditionType.couple_dance_event, 3, [], []));
+        MethodInfo finish = typeof(MicrogameHandler).GetMethod("FinishDance", BindingFlags.Static | BindingFlags.NonPublic)!;
+        for (int i = 0; i < 3; i++) {
+            finish.Invoke(null, [test.Session, gameEvent, dance, i == 0]);
+        }
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(2));
+    }
+    #endregion
+
     #region breakable_object (BreakableHandler, a breakable broken)
     // 10002689: <condition type="breakable_object" value="10" />, each breakable the player's attack breaks counts;
     // a repeat of the packet for the box already broken does not.
