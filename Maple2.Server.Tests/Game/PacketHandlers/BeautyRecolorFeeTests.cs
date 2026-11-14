@@ -13,16 +13,16 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // uibeautyshopdialog.cpp:1282-1320): the shop's recolor fee when the item's color changed, else nothing. It took the
 // style fee: the KR hair and makeup shops 504 and 505 have a style fee of 0 and recolor fees of 170 and 20 merets.
 public class BeautyRecolorFeeTests {
-    private const int Makeup = 10300901;
+    private const int Face = 10300901;
     private const int Trophy = 23100902;
 
     private TestGameSession test = null!;
     private GameSession session => test.Session;
     private Item worn = null!;
 
-    private void Start(BeautyShopType type, BeautyShopCategory category = BeautyShopCategory.Makeup) {
+    private void Start(BeautyShopType type, BeautyShopCategory category = BeautyShopCategory.Face) {
         test = new TestGameSession();
-        worn = test.Store(TestGameSession.Metadata(Makeup, EquipSlot.FA), 1, ItemGroup.Outfit, EquipSlot.FA);
+        worn = test.Store(TestGameSession.Metadata(Face, EquipSlot.FA), 1, ItemGroup.Outfit, EquipSlot.FA);
         test.AddAchievement(TestGameSession.Trophy(Trophy, ConditionType.beauty_change_color, [1, 2]));
         test.Start();
         test.EnterMap(TestGameSession.Map(2000062));
@@ -91,6 +91,18 @@ public class BeautyRecolorFeeTests {
     [TestCase(BeautyShopCategory.Mirror)]
     public void AnEditInASkinDyeOrMirrorShopIsRefused(BeautyShopCategory category) {
         Start(BeautyShopType.Modify, category);
+
+        Edit(Red);
+
+        Assert.That((session.Item.Equips.Get(EquipSlot.FA)?.Uid, session.Currency.Meso), Is.EqualTo(((long?) worn.Uid, 5000L)));
+    }
+
+    // A face edit in a hair or makeup shop is refused: that shop's page has no face, and its recolor fee (the KR makeup
+    // shop 505: 20 merets) is not the face shop's.
+    [TestCase(BeautyShopCategory.Hair)]
+    [TestCase(BeautyShopCategory.Makeup)]
+    public void AnEditOfAnotherShopsItemIsRefused(BeautyShopCategory category) {
+        Start(BeautyShopType.Default, category);
 
         Edit(Red);
 

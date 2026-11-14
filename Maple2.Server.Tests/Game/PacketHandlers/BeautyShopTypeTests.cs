@@ -26,8 +26,8 @@ public class BeautyShopTypeTests {
     private static BeautyShopMetadata Shop(int id, BeautyShopCategory category, bool random = false) =>
         new(id, category, 0, Free, Free, random, false, 0, 0, ItemTag.None, [], []);
 
-    private static ScriptFunctionMetadata Function(int npcId, string uiArg) => new(npcId, 1, ScriptType.Npc, 1, true, 99,
-        "BeautyShopDialog", uiArg, "", 0, 0, "", "", [], [], 0, "", "", "", 0, 0, 0, 0, false);
+    private static ScriptFunctionMetadata Function(int npcId, string uiArg, string uiName) => new(npcId, 1, ScriptType.Npc, 1, true, 99,
+        uiName, uiArg, "", 0, 0, "", "", [], [], 0, "", "", "", 0, 0, 0, 0, false);
 
     private static NpcMetadata Npc(int id, int shopId) {
         var basic = new NpcMetadataBasic(1, 0, 0, 0, shopId, 0, 0, 1, 1, false, 0, 0, 0, 0, [], [], 0);
@@ -46,13 +46,13 @@ public class BeautyShopTypeTests {
     }
 
     // Beauty 0 from npc 1000 of shop 600: the npc id, then the type byte.
-    private BeautyShopType? Open(BeautyShopMetadata shop, string? uiArg, BeautyShopType sent) {
+    private BeautyShopType? Open(BeautyShopMetadata shop, string? uiArg, BeautyShopType sent, string uiName = "BeautyShopDialog") {
         const int npcId = 1000;
         test = new TestGameSession();
         test.SetServerTable(new BeautyShopTable(new Dictionary<int, BeautyShopMetadata> { [shop.Id] = shop }));
         var functions = new Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>>();
         if (uiArg != null) {
-            functions[npcId] = new() { [1] = new() { [1] = Function(npcId, uiArg) } };
+            functions[npcId] = new() { [1] = new() { [1] = Function(npcId, uiArg, uiName) } };
         }
         test.SetServerTable(new ScriptFunctionTable(functions));
         GameSession session = test.Start();
@@ -81,6 +81,15 @@ public class BeautyShopTypeTests {
     public void TheTypeIsTheNpcsNotTheSentByte(int id, BeautyShopCategory category, bool random, string uiArg,
                                                BeautyShopType sent, BeautyShopType type) {
         Assert.That(Open(Shop(id, category, random), uiArg, sent), Is.EqualTo(type));
+    }
+
+    // The dialog name is compared as the client does, case-insensitively; a BeautyStyleDialog function opens the
+    // style save dialog, type 4, whatever its arg (OpenBeautyStyleDialog, uitalkcinematic.cpp:1341).
+    [TestCase("beautyshopdialog", "hair,random", BeautyShopType.Random)]
+    [TestCase("BeautyStyleDialog", "hair", BeautyShopType.Save)]
+    [TestCase("ItemEnchantDialog", "hair,random", BeautyShopType.Default)]
+    public void TheDialogNameAsTheClientReadsIt(string uiName, string uiArg, BeautyShopType type) {
+        Assert.That(Open(Shop(600, BeautyShopCategory.Hair), uiArg, BeautyShopType.Modify, uiName), Is.EqualTo(type));
     }
 
     // Chosen here: an npc with no beauty dialog function takes its shop row's type.

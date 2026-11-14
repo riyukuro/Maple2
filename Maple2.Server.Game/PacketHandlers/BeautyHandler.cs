@@ -178,26 +178,28 @@ public class BeautyHandler : FieldPacketHandler {
     // The type of an npc's beauty shop: as the client derives it from the "kind,mode" arg of the npc's BeautyShopDialog
     // script function (GetDialogIdByKind, GetDialogType, uitalkcinematic.cpp:1981-2018). The byte the client sends
     // with the open is not trusted: it made shop 504 a type 4 shop (free recolors) or shop 508 a type 1 shop.
+    // A BeautyStyleDialog function opens the style save dialog, type 4 (OpenBeautyStyleDialog, :1341). The names are
+    // compared case-insensitively, as the client does (:1186).
     // Chosen here: an npc with no such function takes its shop row's type (random 2; skin, dye and mirror 3; else 1).
     public static BeautyShopType ShopType(ScriptFunctionTable functions, int npcId, BeautyShopMetadata shop) {
-        string? arg = functions.Entries.TryGetValue(npcId, out Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>? states)
+        ScriptFunctionMetadata? dialog = functions.Entries.TryGetValue(npcId, out Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>? states)
             ? states.Values.SelectMany(function => function.Values)
-                .FirstOrDefault(function => function.UiName == "BeautyShopDialog")?.UiArg
+                .FirstOrDefault(function => string.Equals(function.UiName, "BeautyShopDialog", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(function.UiName, "BeautyStyleDialog", StringComparison.OrdinalIgnoreCase))
             : null;
-        if (arg != null) {
-            string[] args = arg.Split(',');
-            string kind = args[0].Trim();
-            string mode = args.Length > 1 ? args[1].Trim() : string.Empty;
+        if (dialog != null && string.Equals(dialog.UiName, "BeautyStyleDialog", StringComparison.OrdinalIgnoreCase)) {
+            return BeautyShopType.Save;
+        }
+        if (dialog?.UiArg != null) {
+            string[] args = dialog.UiArg.Split(',');
+            string kind = args[0];
+            string mode = args.Length > 1 ? args[1] : string.Empty;
             BeautyShopType? type = DialogType(kind, mode);
             if (type != null) {
                 return type.Value;
             }
         }
-        if (shop.IsRandom) {
-            return BeautyShopType.Random;
-        }
-        return shop.Category is BeautyShopCategory.Skin or BeautyShopCategory.Dye or BeautyShopCategory.Mirror
-            ? BeautyShopType.Modify : BeautyShopType.Default;
+        return RowType(shop);
 
         static BeautyShopType? DialogType(string kind, string mode) {
             bool Is(string value, string name) => string.Equals(value, name, StringComparison.OrdinalIgnoreCase);
@@ -216,6 +218,26 @@ public class BeautyHandler : FieldPacketHandler {
             return Is(mode, "styleSave") ? BeautyShopType.Save : BeautyShopType.Default;
         }
     }
+
+    // The type of a shop opened with no npc (a beauty coupon) or an npc with no dialog function: its row's (random 2;
+    // skin, dye and mirror 3; else 1). The client takes the type the server sends (uibeautyshopdialog.cpp:1516).
+    public static BeautyShopType RowType(BeautyShopMetadata shop) {
+        if (shop.IsRandom) {
+            return BeautyShopType.Random;
+        }
+        return shop.Category is BeautyShopCategory.Skin or BeautyShopCategory.Dye or BeautyShopCategory.Mirror
+            ? BeautyShopType.Modify : BeautyShopType.Default;
+    }
+
+    // Whether an edit (sub-type 5) of this item is one the open shop's page shows: hair in a hair shop, a face in a face
+    // shop, face decoration in a makeup shop (KR 504, 500 and 505 list items 102, 103 and 104). Another shop's
+    // recolor fee is not this item's.
+    private static bool Edits(BeautyShopCategory category, ItemType type) => category switch {
+        BeautyShopCategory.Hair => type.IsHair,
+        BeautyShopCategory.Face => type.IsFace,
+        BeautyShopCategory.Makeup => type.IsDecal,
+        _ => false,
+    };
 
     private void HandleCreateBeauty(GameSession session, IByteReader packet) {
         (_, bool useVoucher, int itemId, _) = BeautyRules.ReadCreate(packet);
@@ -276,9 +298,9 @@ public class BeautyHandler : FieldPacketHandler {
         if (shop.Type is BeautyShopType.Random or BeautyShopType.Save) {
             return;
         }
-        // Chosen here: only a hair, face or makeup shop takes an edit; a skin, dye or mirror shop's dialog has no
-        // hair, face or makeup page to send it from, and its recolor fee is not for these items.
-        if (shop.Metadata.Category is not (BeautyShopCategory.Hair or BeautyShopCategory.Face or BeautyShopCategory.Makeup)) {
+        // Chosen here: only a hair, face or makeup shop takes an edit, of its own kind of item; a skin, dye or mirror
+        // shop's dialog has no hair, face or makeup page to send it from, and its recolor fee is not for these items.
+        if (!Edits(shop.Metadata.Category, cosmetic.Type)) {
             return;
         }
         // The fee is taken only once the changed item is on the character.
@@ -311,7 +333,8 @@ public class BeautyHandler : FieldPacketHandler {
         var skinColor = packet.Read<SkinColor>();
         bool useVoucher = packet.ReadBool();
 
-        if (session.BeautyShop == null) {
+        // The skin page is the skin shop's (kind skin, KR 501); another shop's recolor fee is not a skin color's.
+        if (session.BeautyShop?.Metadata.Category != BeautyShopCategory.Skin) {
             return;
         }
 
@@ -451,7 +474,7 @@ public class BeautyHandler : FieldPacketHandler {
 
     private static void HandleSaveHair(GameSession session, IByteReader packet) {
         long uid = packet.ReadLong();
-        if (session.BeautyShop == null) {
+        if (!InStyleSave(session)) {
             return;
         }
 
@@ -462,7 +485,7 @@ public class BeautyHandler : FieldPacketHandler {
     // extension's price (uibeautyshopstyledialog.cpp:986, 1196; uibeautyshopdialog.cpp:1754).
     private static void HandleAddSlots(GameSession session, IByteReader packet) {
         long uid = packet.ReadLong();
-        if (session.BeautyShop == null || !session.Beauty.CanAddHair(uid)) {
+        if (!InStyleSave(session) || !session.Beauty.CanAddHair(uid)) {
             return;
         }
 
@@ -475,7 +498,7 @@ public class BeautyHandler : FieldPacketHandler {
     private void HandleDeleteHair(GameSession session, IByteReader packet) {
         (long uid, _) = BeautyRules.ReadDelete(packet);
 
-        if (session.BeautyShop == null) {
+        if (!InStyleSave(session)) {
             return;
         }
 
@@ -484,7 +507,7 @@ public class BeautyHandler : FieldPacketHandler {
 
     // The extend button of the saved style list, after the price box (uibeautyshopstyledialog.cpp:1007, 1136).
     private static void HandleAskAddSlots(GameSession session, IByteReader packet) {
-        if (session.BeautyShop == null) {
+        if (!InStyleSave(session)) {
             return;
         }
         session.Beauty.ExtendSlots();
@@ -494,7 +517,7 @@ public class BeautyHandler : FieldPacketHandler {
         long uid = packet.ReadLong();
         byte index = packet.ReadByte();
 
-        if (session.BeautyShop == null) {
+        if (!InStyleSave(session)) {
             return;
         }
 
@@ -512,9 +535,14 @@ public class BeautyHandler : FieldPacketHandler {
         }
     }
 
+    // The saved style list (sub-types 16-19, 21) is the style save dialog's (0x4f03, type 4,
+    // uibeautyshopstyledialog.cpp:444-1742), opened only for a style save npc; its saved styles are loaded only there.
+    private static bool InStyleSave(GameSession session) => session.BeautyShop?.Type == BeautyShopType.Save;
+
     private void HandleGearDye(GameSession session, IByteReader packet) {
         byte count = packet.ReadByte();
-        if (session.BeautyShop == null) {
+        // The dye window is the item color shop's (kind itemColor, KR 506); another shop's recolor fee is not a dye's.
+        if (session.BeautyShop?.Metadata.Category != BeautyShopCategory.Dye) {
             return;
         }
         for (byte i = 0; i < count; i++) {
@@ -585,7 +613,9 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        var shop = new BeautyShop(shopMetadata, shopMetadata.Items);
+        var shop = new BeautyShop(shopMetadata, shopMetadata.Items) {
+            Type = RowType(shopMetadata),
+        };
 
         session.BeautyShop = shop;
         session.Send(BeautyPacket.BeautyShop(shop, session.Beauty.SlotCount, session.Beauty.SavedCount));

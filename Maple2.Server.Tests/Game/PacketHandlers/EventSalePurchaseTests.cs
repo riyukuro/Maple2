@@ -146,11 +146,11 @@ public class EventSalePurchaseTests {
     #region SaleBeautyShop
     private const int Shop = 500;
 
-    // In beauty shop 500, whose style fee is 1000 of the currency.
+    // In beauty shop 500 (a skin shop here: a skin change is taken only there), whose fees are 1000 of the currency.
     private GameSession StartInShop(ShopCurrencyType currency) {
         GameSession session = test.Start();
         var fee = new BeautyShopCostMetadata(currency, 1000, string.Empty, 0);
-        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(Shop, default, 0, fee, fee, false, false, 0, 0, ItemTag.None, [], []), []);
+        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(Shop, BeautyShopCategory.Skin, 0, fee, fee, false, false, 0, 0, ItemTag.None, [], []), []);
         session.Currency.Meso = 5000;
         session.Currency.Meret = 5000;
         test.TakeSent();

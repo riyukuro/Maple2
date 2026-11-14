@@ -25,7 +25,7 @@ public class BeautyGearDyeTests {
         test.Start();
         test.EnterMap(TestGameSession.Map(2000062));
         var fee = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 1000, string.Empty, 0);
-        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(506, default, 0, fee, fee, false, false, 0, 0, ItemTag.None, [], []), []) {
+        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(506, BeautyShopCategory.Dye, 0, fee, fee, false, false, 0, 0, ItemTag.None, [], []), []) {
             Type = BeautyShopType.Modify,
         };
         test.TakeSent();
@@ -67,6 +67,23 @@ public class BeautyGearDyeTests {
         Dye(worn.Uid, Top);
 
         Assert.That((session.Currency.Meso, test.TrophyCounter(Trophy) ?? 0), Is.EqualTo((500, 0L)));
+    }
+
+    // The dye window is the item color shop's: another shop's recolor fee (the KR makeup shop 505: 20 merets, the
+    // item color shop 506: 150) does not pay a dye.
+    [TestCase(BeautyShopCategory.Makeup)]
+    [TestCase(BeautyShopCategory.Hair)]
+    [TestCase(BeautyShopCategory.Skin)]
+    public void ADyeOutsideTheItemColorShopIsRefused(BeautyShopCategory category) {
+        var fee = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 1000, string.Empty, 0);
+        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(505, category, 0, fee, fee, false, false, 0, 0, ItemTag.None, [], []), []) {
+            Type = category == BeautyShopCategory.Skin ? BeautyShopType.Modify : BeautyShopType.Default,
+        };
+        session.Currency.Meso = 5000;
+
+        Dye(worn.Uid, Top);
+
+        Assert.That((session.Currency.Meso, test.TrophyCounter(Trophy) ?? 0), Is.EqualTo((5000, 0L)));
     }
 
     [Test]
