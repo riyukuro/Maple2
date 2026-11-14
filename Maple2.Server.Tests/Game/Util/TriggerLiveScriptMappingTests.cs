@@ -63,9 +63,13 @@ public class TriggerLiveScriptMappingTests {
         TriggerNodes.State state = trigger.States.Single();
         Assert.That(state.Conditions.Select(condition => (condition.Name, condition.NextState)),
             Is.EqualTo(new[] { ("random_condition", "a"), ("random_condition", "b"), ("random_condition", "c"), ("random_condition", "d") }));
-        Assert.That(TriggerFunctionMapping.RandomShare(4), Is.EqualTo(25f));
-        Assert.That(TriggerFunctionMapping.RandomShare(8), Is.EqualTo(12.5f));
-        Assert.That(TriggerFunctionMapping.RandomShare(0), Is.EqualTo(100f));
+        Assert.That(TriggerFunctionMapping.RandomShare(0, 4), Is.EqualTo(25f));
+        Assert.That(TriggerFunctionMapping.RandomShare(3, 4), Is.EqualTo(100f));
+        Assert.That(TriggerFunctionMapping.RandomShare(1, 8), Is.EqualTo(12.5f));
+        Assert.That(TriggerFunctionMapping.RandomShare(-1, 0), Is.EqualTo(100f));
+        // Three outcomes: 100f / 3 twice leaves a roll of 99.99 to the third, not to a re-roll.
+        float roll = 99.99f - 2 * TriggerFunctionMapping.RandomShare(0, 3);
+        Assert.That(roll - TriggerFunctionMapping.RandomShare(2, 3), Is.LessThan(0f));
     }
 
     // 61000035's SpawnItemGroup: group_count names group0..groupN-1.

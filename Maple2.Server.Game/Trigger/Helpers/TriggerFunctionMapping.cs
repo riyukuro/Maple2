@@ -353,12 +353,16 @@ public static class TriggerFunctionMapping {
     // ("random one of 1~8"), so each is a random_condition with 100 / their count as its weight. arg1 numbers
     // the outcome only.
     public static ICondition ParseRandom(XmlAttributeCollection? attrs) {
-        XmlNode? parent = attrs is { Count: > 0 } ? attrs[0].OwnerElement?.ParentNode : null;
-        int siblings = parent?.SelectNodes("condition[@name='random']")?.Count ?? 0;
-        return new Trigger.RandomCondition(RandomShare(siblings), string.Empty);
+        XmlElement? self = attrs is { Count: > 0 } ? attrs[0].OwnerElement : null;
+        XmlNodeList? siblings = self?.ParentNode?.SelectNodes("condition[@name='random']");
+        int count = siblings?.Count ?? 0;
+        int index = siblings?.Cast<XmlNode>().ToList().IndexOf(self!) ?? -1;
+        return new Trigger.RandomCondition(RandomShare(index, count), string.Empty);
     }
 
-    public static float RandomShare(int siblings) => siblings > 0 ? 100f / siblings : 100f;
+    // 100 / count each, but the last one takes what is left of the roll (weight 100 always passes once the shares
+    // before it are spent): 100f / 3 three times sums below 100, and a roll in that gap would pick none.
+    public static float RandomShare(int index, int siblings) => siblings > 0 && index >= 0 && index < siblings - 1 ? 100f / siblings : 100f;
 
     // SpawnItemGroup (61000035's item rush): group_count lists group0..groupN-1, each a few item spawn points
     // close together; random_pick_count points of each group drop their items, which last life_time seconds.

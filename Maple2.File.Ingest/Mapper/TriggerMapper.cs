@@ -267,7 +267,11 @@ public class TriggerMapper : TypeMapper<TriggerMetadata> {
                 nodeParams.Add(attribute);
             }
 
-            if (!TriggerDefinitionOverride.ActionOverride.TryGetValue(actionName, out TriggerDefinitionOverride? overrideValue)) continue;
+            // Without an override entry (the live-only names) the parameters are still snake-cased, as the server reads them.
+            if (!TriggerDefinitionOverride.ActionOverride.TryGetValue(actionName, out TriggerDefinitionOverride? overrideValue)) {
+                RenameParams(xml, node, nodeParams, null);
+                continue;
+            }
 
             if (overrideValue.FunctionSplitter is not null) {
                 string? splitterValue = nodeParams.FirstOrDefault(x => x.Name == overrideValue.FunctionSplitter)?.Value;
@@ -281,21 +285,7 @@ public class TriggerMapper : TypeMapper<TriggerMetadata> {
                 node.Attributes["name"]!.Value = overrideValue.Name;
             }
 
-            foreach (XmlAttribute xmlAttribute in nodeParams) {
-                overrideValue.Names.TryGetValue(TriggerTranslate.ToSnakeCase(xmlAttribute.Name), out string? newName);
-                if (newName is null) {
-                    if (xmlAttribute.Name != TriggerTranslate.ToSnakeCase(xmlAttribute.Name)) {
-                        newName = TriggerTranslate.ToSnakeCase(xmlAttribute.Name);
-                    } else {
-                        continue;
-                    }
-                }
-
-                node.Attributes.Remove(xmlAttribute);
-                XmlAttribute newAttribute = xml.CreateAttribute(newName);
-                newAttribute.Value = xmlAttribute.Value;
-                node.Attributes.Append(newAttribute);
-            }
+            RenameParams(xml, node, nodeParams, overrideValue.Names);
 
             // The skip target is a state name: fix it like the state and transition names, or it is never found.
             if (node.Attributes["name"]?.Value is "set_skip" or "set_scene_skip" && node.Attributes["state"] is { } skipState) {
@@ -325,28 +315,35 @@ public class TriggerMapper : TypeMapper<TriggerMetadata> {
             conditionName = conditionName.TrimStart('!');
             node.Attributes["name"]!.Value = Translate(conditionName, TriggerTranslate.TranslateCondition);
 
-            if (!TriggerDefinitionOverride.ConditionOverride.TryGetValue(node.Attributes["name"]!.Value, out TriggerDefinitionOverride? overrideValue)) continue;
+            if (!TriggerDefinitionOverride.ConditionOverride.TryGetValue(node.Attributes["name"]!.Value, out TriggerDefinitionOverride? overrideValue)) {
+                RenameParams(xml, node, nodeParams, null);
+                continue;
+            }
             if (overrideValue.Name != node.Attributes["name"]!.Value) {
                 node.Attributes["name"]!.Value = overrideValue.Name;
             }
-            foreach (XmlAttribute xmlAttribute in nodeParams) {
-                overrideValue.Names.TryGetValue(TriggerTranslate.ToSnakeCase(xmlAttribute.Name), out string? newName);
-                if (newName is null) {
-                    if (xmlAttribute.Name != TriggerTranslate.ToSnakeCase(xmlAttribute.Name)) {
-                        newName = TriggerTranslate.ToSnakeCase(xmlAttribute.Name);
-                    } else {
-                        continue;
-                    }
-                }
-
-                node.Attributes.Remove(xmlAttribute);
-                XmlAttribute newAttribute = xml.CreateAttribute(newName);
-                newAttribute.Value = xmlAttribute.Value;
-                node.Attributes.Append(newAttribute);
-            }
+            RenameParams(xml, node, nodeParams, overrideValue.Names);
         }
 
         return xml.OuterXml;
+    }
+
+    // Renames each parameter to its override name, else to its snake_case form; names already in snake_case stay.
+    private static void RenameParams(XmlDocument xml, XmlNode node, List<XmlAttribute> nodeParams, Dictionary<string, string>? names) {
+        foreach (XmlAttribute xmlAttribute in nodeParams) {
+            string snake = TriggerTranslate.ToSnakeCase(xmlAttribute.Name);
+            string? newName = null;
+            names?.TryGetValue(snake, out newName);
+            if (newName is null) {
+                if (xmlAttribute.Name == snake) continue;
+                newName = snake;
+            }
+
+            node.Attributes!.Remove(xmlAttribute);
+            XmlAttribute newAttribute = xml.CreateAttribute(newName);
+            newAttribute.Value = xmlAttribute.Value;
+            node.Attributes.Append(newAttribute);
+        }
     }
 
     // The variant of a split action: the one its splitter value names; with no splitter value, the first
