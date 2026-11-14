@@ -312,6 +312,8 @@ public sealed class RankDuelField {
     // not leave the arena), and both start at full health. Chosen here: with two or more player spawns the first
     // duelist goes to the first and the second to the second; otherwise they stay where they are.
     private void StartNextRound() {
+        // A hit of the round before is no kill credit in this one (the break is shorter than the credit window).
+        killCredit.Clear();
         List<FieldPlayerSpawnPoint> spawns = field.GetPlayerSpawns();
         int index = 0;
         foreach (long characterId in new[] { state.First, state.Second }) {

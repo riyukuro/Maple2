@@ -233,6 +233,23 @@ public class RankDuelFieldTests {
         Assert.That(Pvp(duel.B)[0], Is.EqualTo("B600" + "1D" + "B80B0000"));
     }
 
+    // A hit from an earlier round is no kill credit: A hits B in round 1 and then dies; B falls in round 2 with no new
+    // hit, within the 10 s window of the old hit. A gets no pvp_kill (90000001 counts it); B gets pvp_die for the fall.
+    [Test]
+    public void KillCredit_DoesNotCarryIntoTheNextRound() {
+        Duel duel = Start();
+        duel.A.AddAchievement(TestGameSession.Trophy(90000001, ConditionType.pvp_kill, [10]));
+        duel.B.AddAchievement(TestGameSession.Trophy(90000002, ConditionType.pvp_die, [10]));
+        Fight(duel);
+
+        duel.Field.RankDuel!.Damage(duel.PlayerA, duel.PlayerB);
+        WinRound(duel, duel.PlayerA);
+        duel.Field.RankDuel.Death(duel.PlayerB);
+
+        Assert.That(duel.A.TrophyCounter(90000001), Is.Null);
+        Assert.That(duel.B.TrophyCounter(90000002), Is.EqualTo(1));
+    }
+
     // A duelist who left before the result loses the rating but gets no tokens; the one in the field gets its own.
     [Test]
     public void Leaver_LosesRatingWithoutTokens() {
