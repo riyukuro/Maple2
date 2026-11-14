@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Caching;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
@@ -148,5 +149,91 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
         Assert.That(npc.AiExtraData["SpecialPattern"], Is.EqualTo(3), "the branch ran");
         Assert.That(npc.BattleState.KeepBattle, Is.True);
+    }
+
+    private void Run(int updates = 1) {
+        for (int i = 0; i < updates; i++) {
+            SetTick(Field.FieldTick + 100);
+            npc.AiState.Update(Field.FieldTick);
+        }
+    }
+
+    private void SetHealthPercent(long percent) {
+        Stat health = npc.Stats.Values[BasicAttribute.Health];
+        health.Add(health.Total * percent / 100 - health.Current);
+    }
+
+    // KR AI_SkyFortress_Mason.xml: <node name="SetValue" key="BattleEnd" value="1" isModify="1" /> adds 1 at each run
+    // (the comment: each standby adds 1 until the value reaches 30); <node name="SetValue" key="MoveGo" value="0" />
+    // sets. A modify of a key not set yet sets it.
+    [Test]
+    public void SetValue_IsModifyAdds_ElseSets() {
+        Spawn([SetValue("BattleEnd", 1, isModify: true)]);
+        Run();
+        Assert.That(npc.AiExtraData["BattleEnd"], Is.EqualTo(1));
+        npc.AiExtraData["BattleEnd"] = 28;
+        Run();
+        Assert.That(npc.AiExtraData["BattleEnd"], Is.EqualTo(29));
+
+        Spawn([SetValue("MoveGo", 0)]);
+        npc.AiExtraData["MoveGo"] = 1;
+        Run();
+        Assert.That(npc.AiExtraData["MoveGo"], Is.EqualTo(0));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // KR AI_SkyFortress_Mason.xml: a conditions node whose first condition is extraData BattleEnd greaterEqual 30 and
+    // whose last is true. The first condition that passes runs, and only it.
+    [Test]
+    public void Conditions_TheFirstThatPassesRuns() {
+        Entry[] Battle() => [new ConditionsNode("conditions", [], [
+            new ExtraDataCondition("extraData", [SetValue("Ran", 1)], "BattleEnd", 30, AiConditionOp.GreaterEqual, false),
+            new TrueCondition("true", [SetValue("Ran", 2)]),
+        ], 0, 0, false)];
+
+        Spawn(Battle());
+        npc.AiExtraData["BattleEnd"] = 30;
+        Run();
+        Assert.That(npc.AiExtraData["Ran"], Is.EqualTo(1));
+
+        Spawn(Battle());
+        npc.AiExtraData["BattleEnd"] = 29;
+        Run();
+        Assert.That(npc.AiExtraData["Ran"], Is.EqualTo(2));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // KR AI_Alex_AnchorLizard.xml: <condition name="hpOver" value="40"> then <condition name="true"> (its comment: 40%
+    // and below). At 40% health hpOver 40 still passes; at 39% the true branch runs.
+    [Test]
+    public void HpOver_PassesAtTheValueAndAbove() {
+        Entry[] Battle() => [new ConditionsNode("conditions", [], [
+            new HpOverCondition("hpOver", [SetValue("Ran", 1)], 40),
+            new TrueCondition("true", [SetValue("Ran", 2)]),
+        ], 0, 0, false)];
+
+        Spawn(Battle());
+        SetHealthPercent(40);
+        Run();
+        Assert.That(npc.AiExtraData["Ran"], Is.EqualTo(1));
+
+        Spawn(Battle());
+        SetHealthPercent(39);
+        Run();
+        Assert.That(npc.AiExtraData["Ran"], Is.EqualTo(2));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // KR AI_SkyFortress_Mason.xml: <reserved><condition name="hpLess" value="100"><node name="SetValue" key="BattleEnd"
+    // value="0" /></condition></reserved>. The reserved branch runs once when it passes (at full health, as hpLess 100
+    // passes at 100%), before the battle tree; the battle's modify then counts from 0.
+    [Test]
+    public void Reserved_HpLess_RunsOnceBeforeTheBattle() {
+        Spawn([SetValue("BattleEnd", 1, isModify: true)], [new HpLessCondition("hpLess", [SetValue("BattleEnd", 0)], 100)]);
+        npc.AiExtraData["BattleEnd"] = 25;
+        Run(3);
+
+        Assert.That(npc.AiExtraData["BattleEnd"], Is.EqualTo(2), "reset to 0 once, then 1 added twice");
+        Assert.That(test.Errors, Is.Empty);
     }
 }
