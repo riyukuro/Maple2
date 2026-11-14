@@ -167,6 +167,7 @@ public class GuildManager : IDisposable {
 
         session.Player.Value.Character.GuildId = Guild.Id;
         session.Player.Value.Character.GuildName = Guild.Name;
+        SendGuildUpdate();
         if (addTag) {
             session.Field?.Broadcast(GuildPacket.AddTag(session.PlayerName, Guild.Name));
         }
@@ -210,7 +211,20 @@ public class GuildManager : IDisposable {
         // A guild recall can no longer be answered out of the guild.
         session.CloseRecall(RecallScrollType.Guild);
         session.Player.Value.Character.GuildName = string.Empty;
+        SendGuildUpdate();
         session.Field?.Broadcast(GuildPacket.RemoveTag(session.PlayerName));
+    }
+
+    // The World's copy of the player carries the guild to the party and other players' views; without this a
+    // member who left or whose guild was disbanded kept the old guild there until the next login.
+    private void SendGuildUpdate() {
+        session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
+            AccountId = session.AccountId,
+            CharacterId = session.CharacterId,
+            Async = true,
+            GuildId = session.Player.Value.Character.GuildId,
+            GuildName = session.Player.Value.Character.GuildName,
+        });
     }
 
     public bool AddMember(string requestorName, GuildMember member) {

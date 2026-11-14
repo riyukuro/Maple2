@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -142,6 +143,31 @@ public class ChangeGuildNameTests {
         Assert.That(session.Player.Value.Character.GuildName, Is.EqualTo("NewName"));
         Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.UpdateName("NewName")) }));
         Assert.That(test.World.PlayerUpdates.Last().GuildName, Is.EqualTo("NewName"));
+    }
+
+    // A member who leaves, is expelled or whose guild is disbanded: the World's player info loses the guild too.
+    // It carries the guild tag to the party frame and other players' views; before, it kept the old guild until
+    // the next login.
+    [Test]
+    public void RemoveGuild_ClearsTheWorldsGuild() {
+        test.SetTable(new GuildTable(
+            new Dictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, GuildTable.House>>(),
+            new Dictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>>(),
+            new Dictionary<short, GuildTable.Property>()));
+        // The harness builds the session without its constructor.
+        typeof(GameSession).GetField(nameof(GameSession.Recalls))!.SetValue(session, new Maple2.Server.Game.Model.PendingRecall?[3]);
+        Join();
+        test.World.PlayerUpdates.Clear();
+
+        session.Guild.RemoveGuild();
+
+        Assert.That(session.Player.Value.Character.GuildId, Is.EqualTo(0));
+        PlayerUpdateRequest update = test.World.PlayerUpdates.Last(request => request.HasGuildId);
+        Assert.That(update.CharacterId, Is.EqualTo(session.CharacterId));
+        Assert.That(update.GuildId, Is.EqualTo(0));
+        Assert.That(update.HasGuildName, Is.True);
+        Assert.That(update.GuildName, Is.Empty);
     }
 
     // Guild 34 (CGuildManager::OnPacketGuildRenamed): the command, then the name.
