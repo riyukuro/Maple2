@@ -9,7 +9,26 @@ public record TimeEventTable(
     IReadOnlyDictionary<int, FieldWarMetadata>? FieldWar = null,
     // The field interact objects (timeEventData type 4) of the rows the feature and locale keep. Null in a table
     // ingested before them.
-    IReadOnlyDictionary<int, FieldInteractEventMetadata>? FieldInteractEvent = null) : ServerTable;
+    IReadOnlyDictionary<int, FieldInteractEventMetadata>? FieldInteractEvent = null,
+    // The field trigger events (timeEventData type 6) of the rows the feature and locale keep. Null in a table
+    // ingested before them.
+    IReadOnlyDictionary<int, FieldTriggerEventMetadata>? FieldTriggerEvent = null) : ServerTable;
+
+// A timeEventData type 6 row (the parser's KritiasChestPuzzle): every CycleTime (late by up to RandomTime) the
+// fields of MapIds give their trigger TriggerId the user value Key = Value, and the run's LifeTime in seconds as
+// its user value TimeEventLifeTime (the scripts wait on it, then close the event).
+public record FieldTriggerEventMetadata(
+    int Id,
+    int Probability,
+    DateTime StartTime,
+    DateTime EndTime,
+    TimeSpan CycleTime,
+    TimeSpan RandomTime,
+    TimeSpan LifeTime,
+    int[] MapIds,
+    int TriggerId,
+    string Key,
+    int Value);
 
 // A timeEventData type 4 row: interact objects a field puts on some of its region spawn points, a new set every
 // CycleTime (late by up to RandomTime), each for LifeTime. The points are SpawnPointIds and the points of the map's

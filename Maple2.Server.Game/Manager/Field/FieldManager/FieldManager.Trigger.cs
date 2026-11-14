@@ -189,4 +189,54 @@ public partial class FieldManager {
     public bool ReplaceTrigger(FieldTrigger oldFieldTrigger, FieldTrigger newFieldTrigger) {
         return fieldTriggers.TryUpdate(oldFieldTrigger.Value.Name, newFieldTrigger, oldFieldTrigger);
     }
+
+    // The timeEventData type 6 rows of the map (FORK.md "Field trigger events"): at each run start the row's
+    // trigger gets its key = value and TimeEventLifeTime. The field reads them at its first update (a run alive then
+    // is given for what is left of it) and they stop with the field. Dungeon and home fields take none.
+    private sealed class TriggerEventState {
+        public required FieldTriggerEventMetadata Row { get; init; }
+        public DateTime? NextRun;
+    }
+
+    private List<TriggerEventState>? triggerEvents;
+
+    private List<TriggerEventState> TriggerEventStates() {
+        if (triggerEvents != null) {
+            return triggerEvents;
+        }
+        triggerEvents = [];
+        if (this is DungeonFieldManager or HomeFieldManager) {
+            return triggerEvents;
+        }
+        IEnumerable<FieldTriggerEventMetadata> rows = ServerTableMetadata.TimeEventTable.FieldTriggerEvent?.Values ?? [];
+        foreach (FieldTriggerEventMetadata row in rows.Where(row => row.MapIds.Contains(MapId)).OrderBy(row => row.Id)) {
+            triggerEvents.Add(new TriggerEventState { Row = row });
+        }
+        return triggerEvents;
+    }
+
+    internal void UpdateTriggerEvents(DateTime now) {
+        foreach (TriggerEventState state in TriggerEventStates()) {
+            if (state.NextRun == null) {
+                if (FieldTriggerEventRules.CurrentRun(state.Row, now) is { } current) {
+                    RunTriggerEvent(state.Row, now, current + state.Row.LifeTime);
+                }
+                state.NextRun = FieldTriggerEventRules.NextRun(state.Row, now, Random.Shared.NextDouble()) ?? DateTime.MaxValue;
+                continue;
+            }
+            if (now < state.NextRun) {
+                continue;
+            }
+            RunTriggerEvent(state.Row, now, now + state.Row.LifeTime);
+            state.NextRun = FieldTriggerEventRules.NextRun(state.Row, now, Random.Shared.NextDouble()) ?? DateTime.MaxValue;
+        }
+    }
+
+    private void RunTriggerEvent(FieldTriggerEventMetadata row, DateTime now, DateTime ends) {
+        int seconds = FieldTriggerEventRules.SecondsLeft(now, ends);
+        if (seconds <= 0 || !FieldInteractEventRules.Runs(row.Probability, Random.Shared.Next(100))) {
+            return;
+        }
+        FieldTriggerEventRules.Apply(row, UserValues, seconds);
+    }
 }

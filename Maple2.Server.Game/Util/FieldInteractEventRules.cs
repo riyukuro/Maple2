@@ -1,4 +1,4 @@
-using Maple2.Model.Metadata;
+﻿using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Util;
 
@@ -42,31 +42,38 @@ public static class FieldInteractEventRules {
 
     // The first run start after now on the row's grid (startTime, every cycleTime, before endTime); null when no
     // run is left. A row with no cycle runs once, at startTime.
-    public static DateTime? NextRun(FieldInteractEventMetadata row, DateTime now) {
+    public static DateTime? NextRun(FieldInteractEventMetadata row, DateTime now) =>
+        NextRun(row.StartTime, row.EndTime, row.CycleTime, now);
+
+    // The same for any timeEventData row's grid (the type 6 field trigger events run on it too).
+    public static DateTime? NextRun(DateTime startTime, DateTime endTime, TimeSpan cycleTime, DateTime now) {
         DateTime next;
-        if (now < row.StartTime) {
-            next = row.StartTime;
-        } else if (row.CycleTime <= TimeSpan.Zero) {
+        if (now < startTime) {
+            next = startTime;
+        } else if (cycleTime <= TimeSpan.Zero) {
             return null;
         } else {
-            long k = (now - row.StartTime).Ticks / row.CycleTime.Ticks + 1;
-            next = row.StartTime + TimeSpan.FromTicks(row.CycleTime.Ticks * k);
+            long k = (now - startTime).Ticks / cycleTime.Ticks + 1;
+            next = startTime + TimeSpan.FromTicks(cycleTime.Ticks * k);
         }
-        return next < row.EndTime ? next : null;
+        return next < endTime ? next : null;
     }
 
     // The run start on the grid at or before now whose objects still live (now before start + lifeTime); null when
     // none does.
-    public static DateTime? CurrentRun(FieldInteractEventMetadata row, DateTime now) {
-        if (now < row.StartTime || now >= row.EndTime + row.LifeTime) {
+    public static DateTime? CurrentRun(FieldInteractEventMetadata row, DateTime now) =>
+        CurrentRun(row.StartTime, row.EndTime, row.CycleTime, row.LifeTime, now);
+
+    public static DateTime? CurrentRun(DateTime startTime, DateTime endTime, TimeSpan cycleTime, TimeSpan lifeTime, DateTime now) {
+        if (now < startTime || now >= endTime + lifeTime) {
             return null;
         }
-        DateTime start = row.StartTime;
-        if (row.CycleTime > TimeSpan.Zero) {
-            long k = (now - row.StartTime).Ticks / row.CycleTime.Ticks;
-            start = row.StartTime + TimeSpan.FromTicks(row.CycleTime.Ticks * k);
+        DateTime start = startTime;
+        if (cycleTime > TimeSpan.Zero) {
+            long k = (now - startTime).Ticks / cycleTime.Ticks;
+            start = startTime + TimeSpan.FromTicks(cycleTime.Ticks * k);
         }
-        return start < row.EndTime && now < start + row.LifeTime ? start : null;
+        return start < endTime && now < start + lifeTime ? start : null;
     }
 
     // Whether the hour of the day is in the row's eventDuration (StartHour:StartMin to EndHour:EndMin, the end minute
