@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Maple2.Model.Enum;
 using Maple2.Model.Game.Event;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Login.PacketHandlers;
@@ -68,6 +70,41 @@ public class NoticeDialogTests {
 
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { "B200" + "00" + "01000000" + LoginNoticeEvent }));
         Assert.That(test.World.Admins, Is.Empty);
+    }
+
+    // Only the events the login screens read go out at the login: the character select loads a lobby map, so a
+    // Snowman or DTReward event would open its widget over the character list (their OnStart opens it once the world
+    // is loaded). The game server sends them at field entry.
+    [Test]
+    public void TheLoginSendsOnlyTheLobbyEvents() {
+        var test = new TestLoginSession();
+        test.AddEvent(9001, GameEventType.DTReward, new DTReward([]));
+        test.AddEvent(9002, GameEventType.LobbyMap, new LobbyMap(2000062));
+        test.AddEvent(9003, GameEventType.Snowman, new LobbyMap(0));
+        LoginSession session = test.Start();
+        test.TakeSent();
+
+        session.SendEvents();
+
+        // One event, the LobbyMap: its name first.
+        string sent = Convert.ToHexString(test.TakeSent().Single());
+        Assert.Multiple(() => {
+            Assert.That(sent, Does.StartWith("B200" + "00" + "01000000" + "0800" + Unicode("LobbyMap")));
+            Assert.That(sent, Does.Not.Contain(Unicode("DTReward")));
+            Assert.That(sent, Does.Not.Contain(Unicode("Snowman")));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    private static string Unicode(string text) => Convert.ToHexString(System.Text.Encoding.Unicode.GetBytes(text));
+
+    [Test]
+    public void SentAtLoginTypes() {
+        GameEventType[] sent = Enum.GetValues<GameEventType>()
+            .Where(type => LoginSession.SentAtLogin(new GameEvent(new GameEventMetadata(1, type, DateTime.MinValue,
+                DateTime.MaxValue, TimeSpan.Zero, TimeSpan.Zero, [], new LobbyMap(0), "", "", "", ""))))
+            .ToArray();
+        Assert.That(sent, Is.EquivalentTo(new[] { GameEventType.LoginNotice, GameEventType.LobbyMap, GameEventType.BurningLevelup }));
     }
 
     // ServerEnter sends the list with the login notice.

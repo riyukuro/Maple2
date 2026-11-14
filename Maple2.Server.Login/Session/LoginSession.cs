@@ -129,15 +129,24 @@ public class LoginSession : Core.Network.Session {
         }
     }
 
-    // The login's game events: the table's active ones, and a LoginNotice while the GM notice config has the login
-    // notice on and the table has none (NoticeRules).
+    // The login's game events: the table's active ones the login screens read, and a LoginNotice while the GM notice
+    // config has the login notice on and the table has none (NoticeRules).
     public void SendEvents() {
-        List<GameEvent> events = Server.GetEvents().ToList();
+        List<GameEvent> events = Server.GetEvents().Where(SentAtLogin).ToList();
         if (!events.Any(gameEvent => gameEvent.Metadata.Data is LoginNotice) && LoginNoticeOn()) {
             events.Add(NoticeRules.LoginNoticeEvent(DateTime.Now));
         }
         Send(GameEventPacket.Load(events.ToArray()));
     }
+
+    // The character select loads a lobby map, so the client counts the world as loaded there
+    // (WorldService::FUN_141bcfbd0 @0x141bcfbd0): an event whose OnStart opens its widget once the world is loaded
+    // (GameEventSnowmanCli @0x140ce5470, GameEventDTRewardCli @0x140ce2de0) would open it over the character list. The
+    // login screens read only the lobby map (CSceneStateMulti::GetLobbyMap @0x14174ff70), the login notice and the
+    // burning levelup rows (UICharacterListDialog::IsBurningLevelupEventRunning @0x1418ed650, AttachBurningLevelupIcons
+    // @0x1418ef700); the others start when the game server sends them at field entry.
+    public static bool SentAtLogin(GameEvent gameEvent) =>
+        gameEvent.Metadata.Type is GameEventType.LobbyMap or GameEventType.LoginNotice or GameEventType.BurningLevelup;
 
     private bool LoginNoticeOn() {
         try {
