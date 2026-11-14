@@ -446,13 +446,15 @@ public class EquipManager {
         }
     }
 
-    // The client's put-on checks (FUN_14140dea0, invenslot.cpp:2082-2127), in its order: an expired item (a pet or a
-    // maid furnishing excepted, CItem::FUN_140528980), a PC bang item away from a PC bang, a premium-club item without
-    // premium club, a wedding item unless married (also with a divorce filed, WeddingManager::IsInProgress), the
-    // level, the job (ItemLimit::IsJobAllowed: a beginner counts as a knight, a list naming job 0 or the beginner
-    // allows all), a binding to another character, the gender (CItemData::IsGenderAllowed: 2 is either). The
-    // premium-club and wedding refusals are by-key strings with no code to send, so a packet the client would not send
-    // gets s_item_err_puton for them.
+    // The client's checks before it sends an equip (Unk_Inventory::RequestEquipItem, inventory.cpp:1242, through
+    // GetItemUseError and GetItemRequirementError, :1578-1601), in its order: an expired item (a maid furnishing
+    // excepted), a PC bang item away from a PC bang, the gender (CItemData::IsGenderAllowed: 2 is either, notice
+    // s_err_gender), the job (ItemLimit::IsJobAllowed: a beginner counts as a knight, a list naming job 0 or the
+    // beginner allows all), the level, a premium-club item without premium club, a wedding item unless married (also
+    // with a divorce filed, WeddingManager::IsInProgress). The premium-club and wedding refusals are by-key strings with
+    // no code to send, so a packet the client would not send gets s_item_err_puton for them. A binding to another
+    // character is the server's own check, last. The client's badge equip (EquipGem, gemslot_2.cpp:441) runs none of
+    // these; the server runs them on badges too (KR: the 566 badges have no gender, premium-club or wedding limit).
     public static StringCode ValidateEquipItem(GameSession session, Item item) {
         Character character = session.Player.Value.Character;
         ItemMetadataLimit limit = item.Metadata.Limit;
@@ -462,23 +464,23 @@ public class EquipManager {
         if (limit.RequirePcBang && session.PcBang.Grade <= 0) {
             return StringCode.s_item_err_puton_pcbang;
         }
+        if (limit.Gender != Gender.All && limit.Gender != character.Gender) {
+            return StringCode.s_err_gender;
+        }
+        if (!ItemUseHandler.JobAllowed(limit.JobLimits, character.Job.Code())) {
+            return StringCode.s_item_err_puton_job;
+        }
+        if (limit.Level > character.Level) {
+            return StringCode.s_item_err_puton_low_level;
+        }
         if (limit.RequireVip && session.Player.Value.Account.PremiumTime <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
             return StringCode.s_item_err_puton;
         }
         if (limit.RequireWedding && !MarriageManager.InProgress(session.Marriage.Marriage.Status)) {
             return StringCode.s_item_err_puton;
         }
-        if (limit.Level > character.Level) {
-            return StringCode.s_item_err_puton_low_level;
-        }
-        if (!ItemUseHandler.JobAllowed(limit.JobLimits, character.Job.Code())) {
-            return StringCode.s_item_err_puton_job;
-        }
         if (item.Transfer?.Binding != null && item.Transfer.Binding.CharacterId != session.CharacterId) {
             return StringCode.s_item_err_puton_invalid_binding;
-        }
-        if (limit.Gender != Gender.All && limit.Gender != character.Gender) {
-            return StringCode.s_err_gender;
         }
 
         return StringCode.s_empty_string;

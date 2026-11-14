@@ -220,7 +220,7 @@ public class ItemEquipHandlerTests {
             : session.Item.Equips.Outfit.ContainsKey(EquipSlot.CP) ? "Outfit" : "none";
     }
 
-    // The client's put-on checks (FUN_14140dea0, invenslot.cpp:2082-2127) refuse an item of the other gender, a
+    // The client's equip checks (RequestEquipItem, inventory.cpp:1242) refuse an item of the other gender, a
     // premium-club item without premium club, a wedding item unless married, an item of another job and an expired one
     // (a pet or a maid furnishing excepted); the server refuses such a packet too, the item stays in the bag and nothing
     // is worn. Before, the gender, premium-club and wedding items were worn, and a beginner's or an all-jobs list item
@@ -292,8 +292,8 @@ public class ItemEquipHandlerTests {
         return EquipManager.ValidateEquipItem(test.Session, held).ToString();
     }
 
-    // The client's order: an item that fails several checks gets the first one's answer (expired before the PC bang
-    // before the premium club before the level before the job before the gender).
+    // The client's order (GetItemUseError, then GetItemRequirementError, inventory.cpp:1578-1601): an item that fails
+    // several checks gets the first one's answer (expired, PC bang, gender, job, level, premium club).
     [Test]
     public void PutOn_TheFirstFailedCheckAnswers() {
         ItemMetadata metadata = TestGameSession.Metadata(11300001, EquipSlot.CP, slotMax: 1);
@@ -304,10 +304,10 @@ public class ItemEquipHandlerTests {
         var answers = new List<StringCode>();
         Func<ItemMetadataLimit, ItemMetadataLimit>[] steps = [
             limit => limit with { RequirePcBang = false },
-            limit => limit with { RequireVip = false },
-            limit => limit with { Level = 0 },
-            limit => limit with { JobLimits = [] },
             limit => limit with { Gender = Gender.All },
+            limit => limit with { JobLimits = [] },
+            limit => limit with { Level = 0 },
+            limit => limit with { RequireVip = false },
         ];
         held.ExpiryTime = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds();
         answers.Add(EquipManager.ValidateEquipItem(test.Session, held));
@@ -319,8 +319,8 @@ public class ItemEquipHandlerTests {
         }
         answers.Add(EquipManager.ValidateEquipItem(test.Session, current));
         Assert.That(answers, Is.EqualTo(new[] {
-            StringCode.s_item_err_puton_expired, StringCode.s_item_err_puton_pcbang, StringCode.s_item_err_puton,
-            StringCode.s_item_err_puton_low_level, StringCode.s_item_err_puton_job, StringCode.s_err_gender,
+            StringCode.s_item_err_puton_expired, StringCode.s_item_err_puton_pcbang, StringCode.s_err_gender,
+            StringCode.s_item_err_puton_job, StringCode.s_item_err_puton_low_level, StringCode.s_item_err_puton,
             StringCode.s_empty_string,
         }));
     }
