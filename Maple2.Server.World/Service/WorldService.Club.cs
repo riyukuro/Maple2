@@ -188,17 +188,7 @@ public partial class WorldService {
     }
 
     private ClubResponse LeaveClub(long requesterId, ClubRequest.Types.Leave leave) {
-        if (!clubLookup.TryGet(leave.ClubId, out ClubManager? manager)) {
-            return new ClubResponse {
-                Error = (int) ClubError.s_club_err_null_club,
-            };
-        }
-
-        if (manager.Club.Members.Count <= 2) {
-            clubLookup.Disband(manager.Club.Id);
-            return new ClubResponse();
-        }
-        ClubError error = manager.Leave(requesterId);
+        ClubError error = clubLookup.Leave(leave.ClubId, requesterId);
         if (error != ClubError.none) {
             return new ClubResponse {
                 Error = (int) error,

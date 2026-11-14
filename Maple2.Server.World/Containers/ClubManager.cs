@@ -23,6 +23,13 @@ public class ClubManager : IDisposable {
     private readonly List<long> acceptedInvites = []; // for tracking invites accepted to create club.
     private readonly ConcurrentDictionary<long, (string, DateTime)> pendingInvites;
 
+    // The members, leader and name change under this lock: two members leaving a club of three at once would each see
+    // three members and each only leave, keeping a club of one, and a join could pass the member cap the same way.
+    private readonly object clubLock = new();
+    // A rename tests the name against every club, so renames run one at a time: two clubs cannot take one name.
+    private static readonly object RenameLock = new();
+    private bool disbanded;
+
 
     public ClubManager(Club club) {
         Club = club;
@@ -30,6 +37,13 @@ public class ClubManager : IDisposable {
     }
 
     public ClubError NewClubInvite(long characterId, Model.Enum.ClubResponse reply) {
+        lock (clubLock) {
+            return NewClubInviteLocked(characterId, reply);
+        }
+    }
+
+    // acceptedInvites is a plain list: two accepts at once would each add and could both miss the last count.
+    private ClubError NewClubInviteLocked(long characterId, Model.Enum.ClubResponse reply) {
         if (Club.State == ClubState.Established) {
             return ClubError.s_club_err_unknown;
         }
@@ -165,6 +179,15 @@ public class ClubManager : IDisposable {
     // beforeNotice (the accepted invite reply, Club 9) goes to the members once the member is stored, before the join
     // notice: a join refused here (full, already a member, the row not written) tells no one the invite was accepted.
     public ClubError Join(string requestorName, PlayerInfo info, ClubRequest? beforeNotice = null) {
+        lock (clubLock) {
+            return JoinLocked(requestorName, info, beforeNotice);
+        }
+    }
+
+    private ClubError JoinLocked(string requestorName, PlayerInfo info, ClubRequest? beforeNotice) {
+        if (disbanded) {
+            return ClubError.s_club_err_null_club;
+        }
         if (Club.Members.Count >= Constant.MaxClubMembers) {
             return ClubError.s_club_err_full_member;
         }
@@ -195,7 +218,31 @@ public class ClubManager : IDisposable {
         return ClubError.none;
     }
 
+    // Club 6 (leave, clubcli.cpp) and a deleted character: a club of two, and a staged club for a deletion, is
+    // disbanded (disband: ClubLookup.Disband), a bigger one loses the member. Only a member leaves: a stale
+    // request from no member changes nothing.
+    public ClubError LeaveOrDisband(long characterId, bool deleted, Func<ClubError> disband) {
+        lock (clubLock) {
+            if (disbanded) {
+                return ClubError.s_club_err_null_club;
+            }
+            if (!Club.Members.ContainsKey(characterId)) {
+                return ClubError.s_club_err_null_member;
+            }
+            if (Club.Members.Count <= 2 || (deleted && Club.State == ClubState.Staged)) {
+                return disband();
+            }
+            return LeaveLocked(characterId, deleted);
+        }
+    }
+
     public ClubError Leave(long characterId, bool deleted = false) {
+        lock (clubLock) {
+            return LeaveLocked(characterId, deleted);
+        }
+    }
+
+    private ClubError LeaveLocked(long characterId, bool deleted) {
         if (!Club.Members.TryGetValue(characterId, out ClubMember? member)) {
             return ClubError.s_club_err_null_member;
         }
@@ -251,6 +298,13 @@ public class ClubManager : IDisposable {
     }
 
     public ClubError ChangeLeader(long requesterId, string name) {
+        lock (clubLock) {
+            return ChangeLeaderLocked(requesterId, name);
+        }
+    }
+
+    // The new leader is stored before anyone is told; a failed write keeps the old leader.
+    private ClubError ChangeLeaderLocked(long requesterId, string name) {
         ClubError error = ClubLeaderRule.Pick(Club.LeaderId, requesterId,
             Club.Members.Values.Select(member => (member.CharacterId, member.Name)), name, out long newLeaderId);
         if (error != ClubError.none) {
@@ -260,10 +314,18 @@ public class ClubManager : IDisposable {
             return ClubError.s_club_err_null_member;
         }
 
+        ClubMember oldLeader = Club.Leader;
+        long oldLeaderId = Club.LeaderId;
         Club.Leader = newLeader;
         Club.LeaderId = newLeader.CharacterId;
+        bool saved;
         using (GameStorage.Request db = GameStorage.Context()) {
-            db.SaveClub(Club);
+            saved = db.SaveClub(Club);
+        }
+        if (!saved) {
+            Club.Leader = oldLeader;
+            Club.LeaderId = oldLeaderId;
+            return ClubError.s_club_err_unknown;
         }
         Broadcast(new ClubRequest {
             UpdateLeader = new ClubRequest.Types.UpdateLeader {
@@ -291,6 +353,15 @@ public class ClubManager : IDisposable {
     }
 
     public ClubError Rename(string newName) {
+        lock (RenameLock) {
+            lock (clubLock) {
+                return RenameLocked(newName);
+            }
+        }
+    }
+
+    // The name and its cooldown are stored before the members are told; a failed write keeps the old name.
+    private ClubError RenameLocked(string newName) {
         if (string.Equals(Club.Name, newName, StringComparison.CurrentCultureIgnoreCase)) {
             return ClubError.s_club_err_same_club_name;
         }
@@ -308,8 +379,15 @@ public class ClubManager : IDisposable {
             return ClubError.s_club_err_name_exist;
         }
 
+        string oldName = Club.Name;
+        long oldCooldown = Club.NameChangeCooldown;
         Club.Name = newName;
         Club.NameChangeCooldown = DateTime.Now.AddHours(1).ToEpochSeconds();
+        if (!db.SaveClub(Club)) {
+            Club.Name = oldName;
+            Club.NameChangeCooldown = oldCooldown;
+            return ClubError.s_club_err_unknown;
+        }
         Broadcast(new ClubRequest {
             Rename = new ClubRequest.Types.Rename {
                 Name = newName,
@@ -323,6 +401,9 @@ public class ClubManager : IDisposable {
 
     // The club rows are already deleted (ClubLookup.Disband), so nothing is saved.
     public void Disband() {
+        lock (clubLock) {
+            disbanded = true;
+        }
         Broadcast(new ClubRequest {
             ClubId = Club.Id,
             Disband = new ClubRequest.Types.Disband(),

@@ -106,6 +106,14 @@ public class ClubLookup : IDisposable {
         return ClubError.none;
     }
 
+    // Club 6: the member leaves, or the club of two is disbanded (ClubManager.LeaveOrDisband).
+    public ClubError Leave(long clubId, long characterId) {
+        if (!TryGet(clubId, out ClubManager? manager)) {
+            return ClubError.s_club_err_null_club;
+        }
+        return manager.LeaveOrDisband(characterId, deleted: false, () => Disband(clubId));
+    }
+
     // The database first: a failed delete leaves the club in memory and on every channel as it was.
     public ClubError Disband(long clubId) {
         if (!TryGet(clubId, out ClubManager? manager)) {
@@ -143,9 +151,7 @@ public class ClubLookup : IDisposable {
                     continue;
                 }
 
-                error = manager.Club.State == ClubState.Staged || manager.Club.Members.Count <= 2
-                    ? Disband(clubId)
-                    : manager.Leave(characterId, deleted: true);
+                error = manager.LeaveOrDisband(characterId, deleted: true, () => Disband(clubId));
             } catch (Exception ex) {
                 logger.Warning(ex, "Delete of character {CharacterId}: club {ClubId} failed", characterId, clubId);
                 error = ClubError.s_club_err_unknown;
