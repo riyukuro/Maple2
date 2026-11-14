@@ -31,8 +31,9 @@ public partial class GameStorage {
                 return null;
             }
 
-            // The stored row is read back inside the transaction, so a row that cannot be read (a partner's
-            // character missing) is taken back out, not committed: the caller answers err_system and nothing
+            // The stored row is read back inside the transaction, so a row that cannot be read (a partner without
+            // the player info it needs, such as no account or home row; a missing character is already refused by
+            // the foreign key on MySQL) is taken back out, not committed: the caller answers err_system and nothing
             // stays stored. Before, it was committed first and then answered null.
             Marriage? stored = GetMarriage(partner1Id, marriage.Id);
             if (stored == null) {

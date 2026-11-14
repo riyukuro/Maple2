@@ -181,7 +181,8 @@ public class WeddingProposalTests {
         Assert.That(Rings(proposer), Is.EqualTo(0));
     }
 
-    // A marriage row that cannot be read back (a partner's character is missing) is not kept: the create answers
+    // A marriage row that cannot be read back (a partner without player info; here a character id with no row,
+    // which the in-memory database takes as it has no foreign keys) is not kept: the create answers
     // null and stores nothing. Before, the row was committed and then answered null, so it stayed with no ring taken
     // and was the one found for the proposer from then on.
     [Test]
