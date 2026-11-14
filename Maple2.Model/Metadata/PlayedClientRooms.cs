@@ -104,11 +104,11 @@ public static class PlayedClientRooms {
         return boxes;
     }
 
-    // A comma list of box ids (XmlTokenList), box 0 left out.
     // The room's reward boxes as the client lists them: rewardLimitedDropBoxIds, then rewardLimitedDropBoxIds2
     // (dungeonroom.cpp:391-395).
     public static int[] LimitedDropBoxIds(int[] ids, int[]? ids2) => ids.Concat(ids2 ?? []).ToArray();
 
+    // A comma list of box ids (XmlTokenList), box 0 left out.
     private static int[] BoxIds(string value) {
         return value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(text => int.TryParse(text, out int box) ? box : 0)
