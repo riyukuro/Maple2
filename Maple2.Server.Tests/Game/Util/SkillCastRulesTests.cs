@@ -1234,7 +1234,7 @@ public class SkillCastRulesTests {
             Assert.That(property.Element, Is.EqualTo((Element) 3));
             Assert.That(property.AttackType, Is.EqualTo((AttackType) 1));
             Assert.That((property.SkillGroup, property.MaxLevel, property.MainType, property.UnrideOnUse), Is.EqualTo((7, (short) 2, 4, true)));
-            // No releaseObjectWeapon: the client's default is true (SkillData ctor, skilloverlapcompare.cpp:670).
+            // No releaseObjectWeapon: the client's default is true (SkillData ctor, commonfiles/skilloverlapcompare.cpp:670).
             Assert.That(property.ReleaseObjectWeapon, Is.True);
             Assert.That((state.InBattle, state.SuperArmor, state.CooldownGroupId, state.RechargeMaxCount, state.RechargeShared, state.ClearCooldownOnPvpZone),
                 Is.EqualTo((true, (SuperArmor) 3, 12, 2, true, true)));
