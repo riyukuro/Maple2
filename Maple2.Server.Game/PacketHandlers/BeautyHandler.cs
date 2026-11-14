@@ -335,7 +335,9 @@ public class BeautyHandler : FieldPacketHandler {
         bool useVoucher = packet.ReadBool();
         packet.ReadLong(); // the long the shop-open packet carried after its two flag bytes (UIBeautyShopDialog m_2a0), sent back unchanged
 
-        if (session.BeautyShop == null || session.BeautyShop.Id != shopId) {
+        // The client sends 7 only from a random shop's dialog (type 2, uibeautyshopdialog.cpp:1841): a style shop's
+        // style fee (0 in the KR hair shop 504) paid for a random pick of its rows.
+        if (session.BeautyShop == null || session.BeautyShop.Id != shopId || session.BeautyShop.Type != BeautyShopType.Random) {
             return;
         }
         BeautyShop shop = session.BeautyShop;
