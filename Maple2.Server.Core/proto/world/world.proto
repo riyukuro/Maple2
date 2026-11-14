@@ -847,6 +847,20 @@ message TimeEventRequest {
     int32 channel = 3;
   }
 
+  // A world champion field's damage to the step's npc since its last report (none for a read): the World server
+  // adds it to the season's step and answers the step that is out and the damage dealt to it by all channels.
+  message WorldChampion {
+    message Hit {
+      int64 account_id = 1;
+      int64 character_id = 2;
+      int64 damage = 3;
+    }
+    int32 season = 1;
+    int32 step = 2;
+    int64 max_health = 3;
+    repeated Hit damages = 4;
+  }
+
   oneof TimeEvent {
     JoinGlobalPortal join_global_portal = 1;
     GetGlobalPortal get_global_portal = 2;
@@ -854,6 +868,7 @@ message TimeEventRequest {
     WorldBossKilled world_boss_killed = 4;
     JoinFieldWar join_field_war = 5;
     GetFieldWar get_field_war = 6;
+    WorldChampion world_champion = 7;
   }
 }
 
@@ -869,6 +884,7 @@ message TimeEventResponse {
   oneof Info {
     GlobalPortalInfo global_portal_info = 1;
     FieldWarInfo field_war_info = 4;
+    WorldChampionInfo world_champion_info = 5;
   }
   int32 error = 2;
   repeated ActiveWorldBoss active_world_bosses = 3;
@@ -881,6 +897,14 @@ message GlobalPortalInfo {
   int32 room_id = 4;
   int32 map_id = 5;
   int32 portal_id = 6;
+}
+
+// The world champion season that is on (0: none), the step whose npc is out (past the step count: cleared) and the
+// damage all channels dealt to it.
+message WorldChampionInfo {
+  int32 season = 1;
+  int32 step = 2;
+  int64 step_damage = 3;
 }
 
 message FieldWarInfo {

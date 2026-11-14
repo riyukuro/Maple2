@@ -2337,6 +2337,46 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("wedding-hall", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.WorldChampionDamage", b =>
+                {
+                    b.Property<int>("Season")
+                        .HasColumnType("int");
+
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("AccountId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Damage")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("Rewarded")
+                        .HasColumnType("tinyint(1)");
+
+                    b.HasKey("Season", "CharacterId");
+
+                    b.HasIndex("CharacterId");
+
+                    b.ToTable("world-champion-damage", (string)null);
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.WorldChampionSeason", b =>
+                {
+                    b.Property<int>("Season")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Step")
+                        .HasColumnType("int");
+
+                    b.Property<long>("StepDamage")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Season");
+
+                    b.ToTable("world-champion-season", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.AccountEventValue", b =>
                 {
                     b.HasOne("Maple2.Database.Model.Account", null)
@@ -2750,6 +2790,15 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.Marriage", null)
                         .WithOne()
                         .HasForeignKey("Maple2.Database.Model.WeddingHall", "MarriageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.WorldChampionDamage", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Character", null)
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

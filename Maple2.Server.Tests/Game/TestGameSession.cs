@@ -143,6 +143,8 @@ public sealed class TestGameSession {
         SetServerTable(new TermTagTable(new Dictionary<int, TermTagTable.Entry>()));
         // Every feature is on until a test turns one off (SetFeaturesOff).
         SetServerTable(new FeatureTable(new AllFeatures([])));
+        // A field init asks whether a world champion season is fought on its map: none until a test sets them.
+        SetServerTable(new WorldChampionTable(new Dictionary<int, WorldChampionTable.Season>()));
 
         // The rows a login finds. The account row is added directly: CreateAccount hashes a password, which is slow.
         string name = Guid.NewGuid().ToString("N")[..12];
@@ -764,6 +766,8 @@ public sealed class TestGameSession {
         public GlobalPortalInfo? OpenPortal;
         public int TimeEventError;
         public FieldWarInfo? OpenFieldWar;
+        // The world champion state the World answers (none: the call answers no info).
+        public WorldChampionInfo? WorldChampion;
 
         public override TimeEventResponse TimeEvent(TimeEventRequest request, CallOptions options) {
             var response = new TimeEventResponse { Error = TimeEventError };
@@ -772,6 +776,9 @@ public sealed class TestGameSession {
             }
             if (request.GetFieldWar != null && OpenFieldWar != null) {
                 response.FieldWarInfo = OpenFieldWar;
+            }
+            if (request.WorldChampion != null && WorldChampion != null) {
+                response.WorldChampionInfo = WorldChampion;
             }
             return response;
         }

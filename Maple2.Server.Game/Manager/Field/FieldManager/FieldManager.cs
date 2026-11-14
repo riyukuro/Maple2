@@ -507,6 +507,8 @@ public partial class FieldManager : IField {
             slot.Active = true;
         }
 
+        InitWorldChampion();
+
         Scheduler.Start();
         thread.Start();
         DebugRenderer = DebugGraphicsContext.FieldAdded(this);

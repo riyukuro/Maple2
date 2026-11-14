@@ -196,6 +196,8 @@ public static class ConditionUtil {
             // splash_plant: the water pot of the tree watering event (92000091 20301391, 92000149 30001431).
             case ConditionType.splash_plant:
             case ConditionType.spawner:
+            // worldchampion_damage: the world champion season the damage was dealt in (KR code 1 to 12).
+            case ConditionType.worldchampion_damage:
                 if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
                     return true;
                 }

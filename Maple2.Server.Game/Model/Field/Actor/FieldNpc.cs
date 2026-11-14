@@ -254,7 +254,11 @@ public class FieldNpc : Actor<Npc> {
     // A marker a script waits on, which no monster fights (NpcTargetRules.IsScriptMarker).
     public bool IsScriptMarker => NpcTargetRules.IsScriptMarker(Value.Metadata.Model.Name,
         Value.Metadata.Basic.HasPropertyTag("big_hp_bar") || Value.Metadata.Basic.HasPropertyTag("always_display_hp_bar"));
-    public bool NoDie => this is not FieldPet && Value.Metadata.Basic.HasPropertyTag("no_die");
+    // KeepAlive: an npc whose health another server keeps (the world champion, WorldChampionSync) is not killed here.
+    public bool NoDie => this is not FieldPet && (KeepAlive || Value.Metadata.Basic.HasPropertyTag("no_die"));
+    public bool KeepAlive { get; set; }
+    // Called with the player and the damage of each hit a player deals.
+    public Action<FieldPlayer, long>? PlayerDamageCallback { get; set; }
     private long lastCorpseBroadcastTick;
     private byte lastControlFlags;
     // The flags byte of this npc's NpcControl entries.
@@ -619,6 +623,7 @@ public class FieldNpc : Actor<Npc> {
         lastAttackerObjectId = caster.ObjectId;
         if (caster is FieldPlayer hitPlayer) {
             DropHitLoot(hitPlayer);
+            PlayerDamageCallback?.Invoke(hitPlayer, amount);
             if (Field is DungeonFieldManager dungeonField) {
                 dungeonField.CountMissions(hitPlayer, mission => mission.AddDamage(Value.Metadata.Id, amount));
                 if (Value.IsBoss) {

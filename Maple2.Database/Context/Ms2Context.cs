@@ -57,6 +57,8 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<RankDuelRecord> RankDuelRecord { get; set; } = null!;
     internal DbSet<RankDuelJobRecord> RankDuelJobRecord { get; set; } = null!;
     internal DbSet<RankDuelSeasonRecord> RankDuelSeasonRecord { get; set; } = null!;
+    internal DbSet<WorldChampionSeason> WorldChampionSeason { get; set; } = null!;
+    internal DbSet<WorldChampionDamage> WorldChampionDamage { get; set; } = null!;
     internal DbSet<CharacterPlayerConfig> CharacterPlayerConfig { get; set; } = null!;
     internal DbSet<BossClear> BossClear { get; set; } = null!;
     internal DbSet<BossClearMember> BossClearMember { get; set; } = null!;
@@ -129,6 +131,8 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
         modelBuilder.Entity<RankDuelRecord>(Maple2.Database.Model.RankDuelRecord.Configure);
         modelBuilder.Entity<RankDuelJobRecord>(Maple2.Database.Model.RankDuelJobRecord.Configure);
         modelBuilder.Entity<RankDuelSeasonRecord>(Maple2.Database.Model.RankDuelSeasonRecord.Configure);
+        modelBuilder.Entity<WorldChampionSeason>(Maple2.Database.Model.WorldChampionSeason.Configure);
+        modelBuilder.Entity<WorldChampionDamage>(Maple2.Database.Model.WorldChampionDamage.Configure);
         modelBuilder.Entity<CharacterPlayerConfig>(Maple2.Database.Model.CharacterPlayerConfig.Configure);
         modelBuilder.Entity<BossClear>(Maple2.Database.Model.BossClear.Configure);
         modelBuilder.Entity<BossClearMember>(Maple2.Database.Model.BossClearMember.Configure);

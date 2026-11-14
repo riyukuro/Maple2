@@ -602,24 +602,28 @@ public sealed partial class GameSession : Core.Network.Session {
         Pet?.Load();
         Send(PetPacket.LoadCollection(Player.Value.Unlock.Pets));
         Send(LegionBattlePacket.Load(ServerTableMetadata.TimeEventTable.WorldBoss));
+        var bossGroups = new List<ICollection<MapWorldBoss>>();
         try {
             TimeEventResponse bossResponse = World.TimeEvent(new TimeEventRequest {
                 GetActiveWorldBosses = new TimeEventRequest.Types.GetActiveWorldBosses(),
             });
-            if (bossResponse.ActiveWorldBosses.Count > 0) {
-                var bossGroups = new List<ICollection<MapWorldBoss>>();
-                foreach (TimeEventResponse.Types.ActiveWorldBoss active in bossResponse.ActiveWorldBosses) {
-                    if (!ServerTableMetadata.TimeEventTable.WorldBoss.TryGetValue(active.MetadataId, out WorldBossMetadata? bossMetadata)) {
-                        continue;
-                    }
-                    int bossNpcId = bossMetadata.NpcIds.Length > 0 ? bossMetadata.NpcIds[0] : 0;
-                    int bossMapId = bossMetadata.TargetMapIds.Length > 0 ? bossMetadata.TargetMapIds[0] : 0;
-                    bossGroups.Add(active.AliveChannels.Select(ch => new MapWorldBoss(bossNpcId, bossMapId, (short) ch, active.SpawnTimestamp)).ToList());
+            foreach (TimeEventResponse.Types.ActiveWorldBoss active in bossResponse.ActiveWorldBosses) {
+                if (!ServerTableMetadata.TimeEventTable.WorldBoss.TryGetValue(active.MetadataId, out WorldBossMetadata? bossMetadata)) {
+                    continue;
                 }
-                Send(WorldMapPacket.Load(bossGroups, []));
+                int bossNpcId = bossMetadata.NpcIds.Length > 0 ? bossMetadata.NpcIds[0] : 0;
+                int bossMapId = bossMetadata.TargetMapIds.Length > 0 ? bossMetadata.TargetMapIds[0] : 0;
+                bossGroups.Add(active.AliveChannels.Select(ch => new MapWorldBoss(bossNpcId, bossMapId, (short) ch, active.SpawnTimestamp)).ToList());
             }
         } catch (RpcException ex) {
             Logger.Warning(ex, "Failed to fetch active field bosses");
+        }
+        // The world champion's icon of the season on (its World call logs its own failure).
+        if (WorldChampionHandler.MapIcon(this) is { } champion) {
+            bossGroups.Add([champion]);
+        }
+        if (bossGroups.Count > 0) {
+            Send(WorldMapPacket.Load(bossGroups, []));
         }
         Config.LoadCharacterAbilities();
         Config.LoadKeyTable();
@@ -631,6 +635,7 @@ public sealed partial class GameSession : Core.Network.Session {
         server.LoadEvents(this);
         Send(BannerListPacket.Load(server.GetSystemBanners()));
         Dungeon.Load();
+        WorldChampionHandler.MailRewards(this);
         Send(InGameRankPacket.Load());
         // The pet auto flag, on as the client starts with it; it is not stored here.
         Send(PetPacket.AutoChanged(true));
@@ -1109,6 +1114,33 @@ public sealed partial class GameSession : Core.Network.Session {
         return record;
     }
 
+    // The items of a reward content row at a level, made (not given); none without a field to make them in.
+    public List<Item> RewardContentItems(int id, int level = 0) {
+        if (!TableMetadata.RewardContentTable.BaseEntries.TryGetValue(id, out RewardContentTable.Base? baseMetadata)) {
+            return [];
+        }
+        return RewardContentItems(baseMetadata, level > 0 ? level : Player.Value.Character.Level);
+    }
+
+    private List<Item> RewardContentItems(RewardContentTable.Base baseMetadata, int tableLevel) {
+        List<Item> items = [];
+        if (baseMetadata.ItemTableId > 0 && TableMetadata.RewardContentTable.ItemEntries.TryGetValue(baseMetadata.ItemTableId, out RewardContentTable.Item? itemMetadata)) {
+            foreach (RewardContentTable.Item.Data data in itemMetadata.ItemData) {
+                if ((data.MinLevel > 0 && tableLevel < data.MinLevel) ||
+                    (data.MaxLevel > 0 && tableLevel > data.MaxLevel)) {
+                    continue;
+                }
+                foreach (RewardItem rewardItem in data.RewardItems) {
+                    Item? item = Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+                    if (item != null) {
+                        items.Add(item);
+                    }
+                }
+            }
+        }
+        return items;
+    }
+
     /// <summary>
     /// The amounts and items of a reward content row, and the action that gives them (meso, exp, items, the order
     /// KMS2 sends a dungeon's weekly reward in), for a caller that reports the reward before it is given.
@@ -1155,21 +1187,7 @@ public sealed partial class GameSession : Core.Network.Session {
             prestigeExp = prestigeExpTable.Value;
         }
 
-        List<Item> items = [];
-        if (baseMetadata.ItemTableId > 0 && TableMetadata.RewardContentTable.ItemEntries.TryGetValue(baseMetadata.ItemTableId, out RewardContentTable.Item? itemMetadata)) {
-            foreach (RewardContentTable.Item.Data data in itemMetadata.ItemData) {
-                if ((data.MinLevel > 0 && tableLevel < data.MinLevel) ||
-                    (data.MaxLevel > 0 && tableLevel > data.MaxLevel)) {
-                    continue;
-                }
-                foreach (RewardItem rewardItem in data.RewardItems) {
-                    Item? item = Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
-                    if (item != null) {
-                        items.Add(item);
-                    }
-                }
-            }
-        }
+        List<Item> items = RewardContentItems(baseMetadata, tableLevel);
         return (new RewardRecord(items, exp, prestigeExp, meso), Give);
 
         void Give() {

@@ -37,6 +37,7 @@ public class ServerTableMetadataStorage {
     private readonly Lazy<HideAndSeekTable> hideAndSeekTable;
     private readonly Lazy<TermTagTable> termTagTable;
     private readonly Lazy<FeatureTable> featureTable;
+    private readonly Lazy<WorldChampionTable> worldChampionTable;
 
     public InstanceFieldTable InstanceFieldTable => instanceFieldTable.Value;
     public ScriptConditionTable ScriptConditionTable => scriptConditionTable.Value;
@@ -69,6 +70,7 @@ public class ServerTableMetadataStorage {
     public HideAndSeekTable HideAndSeekTable => hideAndSeekTable.Value;
     public TermTagTable TermTagTable => termTagTable.Value;
     public FeatureTable FeatureTable => featureTable.Value;
+    public WorldChampionTable WorldChampionTable => worldChampionTable.Value;
 
     public ServerTableMetadataStorage(MetadataContext context) {
         instanceFieldTable = Retrieve<InstanceFieldTable>(context, ServerTableNames.INSTANCE_FIELD);
@@ -102,6 +104,7 @@ public class ServerTableMetadataStorage {
         hideAndSeekTable = Retrieve<HideAndSeekTable>(context, ServerTableNames.HIDE_AND_SEEK);
         termTagTable = Retrieve<TermTagTable>(context, ServerTableNames.TERM_TAG);
         featureTable = Retrieve<FeatureTable>(context, ServerTableNames.FEATURE);
+        worldChampionTable = Retrieve<WorldChampionTable>(context, ServerTableNames.WORLD_CHAMPION);
     }
 
     public IEnumerable<GameEvent> GetGameEvents() {

@@ -1,4 +1,5 @@
 ﻿using Grpc.Core;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.World.Containers;
@@ -24,9 +25,19 @@ public partial class WorldService {
                 return Task.FromResult(new TimeEventResponse {
                     FieldWarInfo = fieldWarLookup.Get(request.GetFieldWar.CharacterId),
                 });
+            case TimeEventRequest.TimeEventOneofCase.WorldChampion:
+                return Task.FromResult(WorldChampion(request.WorldChampion));
             default:
                 return Task.FromResult(new TimeEventResponse());
         }
+    }
+
+    private TimeEventResponse WorldChampion(TimeEventRequest.Types.WorldChampion report) {
+        (int season, int step, long stepDamage) = worldChampionLookup.Report(report.Season, report.Step, report.MaxHealth,
+            report.Damages.Select(damage => new WorldChampionDamage(damage.AccountId, damage.CharacterId, damage.Damage)));
+        return new TimeEventResponse {
+            WorldChampionInfo = new WorldChampionInfo { Season = season, Step = step, StepDamage = stepDamage },
+        };
     }
 
     private TimeEventResponse OnWorldBossKilled(TimeEventRequest.Types.WorldBossKilled kill) {

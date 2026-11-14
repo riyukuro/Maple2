@@ -60,6 +60,9 @@ public class WorldMapHandler : FieldPacketHandler {
             int mapId = metadata.TargetMapIds.Length > 0 ? metadata.TargetMapIds[0] : 0;
             bossGroups.Add(active.AliveChannels.Select(ch => new MapWorldBoss(npcId, mapId, (short) ch, active.SpawnTimestamp)).ToList());
         }
+        if (WorldChampionHandler.MapIcon(session) is { } champion) {
+            bossGroups.Add([champion]);
+        }
 
         session.Send(WorldMapPacket.Load(bossGroups, []));
     }

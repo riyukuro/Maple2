@@ -55,4 +55,5 @@ public class ServerTableMetadata {
 [JsonDerivedType(typeof(HideAndSeekTable), typeDiscriminator: "hideAndSeek")]
 [JsonDerivedType(typeof(TermTagTable), typeDiscriminator: "termTag")]
 [JsonDerivedType(typeof(FeatureTable), typeDiscriminator: "feature")]
+[JsonDerivedType(typeof(WorldChampionTable), typeDiscriminator: "worldChampion")]
 public abstract record ServerTable;

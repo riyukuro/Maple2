@@ -289,7 +289,7 @@ public class InviteLogoutTests {
         var clubs = new ClubLookup(channels, playerLookup, test.Storage, null!);
         ((ConcurrentDictionary<long, ClubManager>) typeof(ClubLookup).GetField("clubs", Any)!.GetValue(clubs)!)[manager.Club.Id] = manager;
         var world = new Maple2.Server.World.Service.WorldService(null!, null!, channels, playerLookup, null!, null!, null!, null!, null!, clubs, null!, null!, null!,
-            null!, null!, null!, null!);
+            null!, null!, null!, null!, null!);
         try {
             return world.Club(new WorldClubRequest {
                 RequestorId = ids[2],

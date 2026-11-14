@@ -54,9 +54,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     private readonly bool replayAttendGift;
     // Resource/Exported.m2d: the maps' xblock files (the Hide and Seek props).
     private readonly M2dReader? exportedReader;
+    // MS2_SERVER_OVERLAY (ServerOverlay): files read instead of the pack's, for the tables that take one.
+    private readonly ServerOverlay overlay;
 
-    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null, bool originalDropTable = false, bool replayAttendGift = false, M2dReader? exportedReader = null) {
+    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null, bool originalDropTable = false, bool replayAttendGift = false, M2dReader? exportedReader = null, ServerOverlay? overlay = null) {
         this.xmlReader = xmlReader;
+        this.overlay = overlay ?? ServerOverlay.None;
         this.exportedReader = exportedReader;
         this.replayAttendGift = replayAttendGift;
         dropFile = ServerDropTable.FileName(originalDropTable);
@@ -189,6 +192,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         yield return new ServerTableMetadata {
             Name = ServerTableNames.FEATURE,
             Table = MapFeatures(FeatureLocaleFilter.Features),
+        };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.WORLD_CHAMPION,
+            Table = ParseWorldChampion(),
         };
     }
 
@@ -1171,7 +1178,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         var results = new Dictionary<int, GameEventMetadata>();
         DateTime now = DateTime.UtcNow;
         var ended = new List<GameEventMetadata>();
-        foreach ((int id, GameEvent data) in parser.ParseGameEvent()) {
+        foreach ((int id, GameEvent data) in overlay.GameEvents(parser.ParseGameEvent())) {
             if (!Enum.TryParse(data.eventType, out GameEventType eventType)) {
                 Console.WriteLine($"Unknown GameEventType: {data.eventType}");
             }
@@ -3093,6 +3100,65 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")));
         Console.WriteLine($"npcStatFactorByPlayerCount: {table.Entries.Values.Sum(classes => classes.Values.Sum(counts => counts.Count))} rows after the feature filter");
         return table;
+    }
+
+    // The locale's file, else the NA one (the parser reads the server tables of every locale from NA). KR and NA
+    // ship the same 12 seasons, CN 7.
+    private WorldChampionTable ParseWorldChampion() {
+        string[] paths = [$"table/Server/{FeatureLocaleFilter.Locale}/WorldChampionBase.xml", "table/Server/NA/WorldChampionBase.xml"];
+        foreach (string path in paths) {
+            XmlDocument? document = null;
+            string? text = overlay.Read(path);
+            if (text != null) {
+                document = new XmlDocument();
+                document.LoadXml(text);
+                Console.WriteLine($"WorldChampionBase: {path} from {ServerOverlay.Option}");
+            } else {
+                Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+                    file.Name.Equals(path, StringComparison.OrdinalIgnoreCase));
+                if (entry != null) {
+                    document = xmlReader.GetXmlDocument(entry);
+                }
+            }
+            if (document == null) {
+                continue;
+            }
+            WorldChampionTable table = MapWorldChampion(document, row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")));
+            Console.WriteLine($"WorldChampionBase: {table.Entries.Count} seasons from {path}");
+            return table;
+        }
+        return new WorldChampionTable(new Dictionary<int, WorldChampionTable.Season>());
+    }
+
+    // A season without a readable begin or end, or that ends before it begins, or without steps, is left out (with a
+    // line); the steps are in StepID order.
+    public static WorldChampionTable MapWorldChampion(XmlDocument document, Func<XmlElement, bool> available) {
+        var seasons = new Dictionary<int, WorldChampionTable.Season>();
+        foreach (XmlElement row in document.SelectNodes("//WorldChampion")?.OfType<XmlElement>() ?? []) {
+            if (!available(row)) {
+                continue;
+            }
+            int id = IntAttribute(row, "seasonID");
+            DateTime begin = AttendGiftReplay.ParseTime(row.GetAttribute("activeBegin"));
+            DateTime end = AttendGiftReplay.ParseTime(row.GetAttribute("activeEnd"));
+            var steps = row.SelectNodes("Step")?.OfType<XmlElement>()
+                .Select(step => new WorldChampionTable.Step(IntAttribute(step, "StepID"), IntAttribute(step, "npcID"), IntAttribute(step, "rewardID")))
+                .Where(step => step.Id > 0 && step.NpcId > 0)
+                .OrderBy(step => step.Id)
+                .ToList() ?? [];
+            if (id <= 0 || begin == DateTime.MinValue || end == DateTime.MinValue || end < begin || steps.Count == 0) {
+                Console.WriteLine($"WorldChampionBase: season {row.GetAttribute("seasonID")} left out (begin \"{row.GetAttribute("activeBegin")}\", end \"{row.GetAttribute("activeEnd")}\", {steps.Count} steps)");
+                continue;
+            }
+            long.TryParse(row.GetAttribute("rewardDamage"), NumberStyles.Integer, CultureInfo.InvariantCulture, out long rewardDamage);
+            seasons[id] = new WorldChampionTable.Season(id, IntAttribute(row, "fieldID"), IntAttribute(row, "spawnPointID"), begin, end,
+                rewardDamage, IntAttribute(row, "systemMailID"), steps);
+        }
+        return new WorldChampionTable(seasons);
+
+        static int IntAttribute(XmlElement element, string name) {
+            return int.TryParse(element.GetAttribute(name), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : 0;
+        }
     }
 
     private ArcadeRewardTable ParseArcadeReward() {

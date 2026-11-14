@@ -22,6 +22,7 @@ public partial class WorldService : World.WorldBase {
     private readonly PvpLookup pvpLookup;
     private readonly GuildVsGameLookup guildVsGameLookup;
     private readonly GuildPvpLookup guildPvpLookup;
+    private readonly WorldChampionLookup worldChampionLookup;
     private readonly ILogger logger = Log.Logger.ForContext<WorldService>();
 
     public WorldService(
@@ -30,8 +31,9 @@ public partial class WorldService : World.WorldBase {
         PartySearchLookup partySearchLookup, GroupChatLookup groupChatLookup, BlackMarketLookup blackMarketLookup,
         ClubLookup clubLookup, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerConfigLookUp playerConfigLookUp,
         PvpLookup pvpLookup, FieldWarLookup fieldWarLookup, GuildVsGameLookup guildVsGameLookup,
-        GuildPvpLookup guildPvpLookup
+        GuildPvpLookup guildPvpLookup, WorldChampionLookup worldChampionLookup
         ) {
+        this.worldChampionLookup = worldChampionLookup;
         this.tokenCache = tokenCache;
         this.worldServer = worldServer;
         this.channelClients = channelClients;

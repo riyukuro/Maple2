@@ -63,7 +63,11 @@ public static class WorldMapPacket {
         foreach (ICollection<MapWorldBoss> group in bossGroups) {
             pWriter.WriteInt(group.Count);
             foreach (MapWorldBoss boss in group) {
-                pWriter.Write<MapWorldBoss>(boss);
+                pWriter.WriteInt(boss.NpcId);
+                pWriter.WriteInt(boss.MapId);
+                pWriter.WriteShort(boss.Channel);
+                pWriter.WriteLong(boss.SpawnTime);
+                pWriter.WriteByte(boss.Type);
             }
         }
     }
