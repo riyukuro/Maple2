@@ -243,10 +243,18 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, fieldCube.InteractCube.Metadata.Id);
                 return;
             }
+            // The claimed stage is stored before the gift drops. Before, the drop came first and the save's result was
+            // not read: a failed save left the stage unclaimed in the database, which the next use reads again, so the
+            // gift dropped once more. A failed save now drops nothing and leaves the stage unclaimed.
             nurturing.ClaimedGiftForStage++;
+            if (!db.UpdateNurturing(session.AccountId, fieldCube.InteractCube)) {
+                nurturing.ClaimedGiftForStage--;
+                Logger.Error("Nurturing stage gift of account {AccountId}, cube {CubeId}: the claimed stage was not stored, no gift dropped",
+                    session.AccountId, fieldCube.InteractCube.Metadata.Id);
+                return;
+            }
             // drop the item
             session.Field.DropItem(fieldCube.Position, fieldCube.Rotation, rewardStageItem, owner: session.Player, characterId: session.CharacterId);
-            db.UpdateNurturing(session.AccountId, fieldCube.InteractCube);
 
             session.Field.Broadcast(FunctionCubePacket.UpdateFunctionCube(fieldCube.InteractCube));
             // Nothing was fed: mode 12, the pet acts and no fed notice is shown. The client does not show when

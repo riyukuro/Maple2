@@ -31,14 +31,15 @@ public partial class GameStorage {
             return new Maple2.Model.Game.Nurturing(nurturing.Exp, nurturing.ClaimedGiftForStage, nurturing.PlayedBy, nurturing.CreationTime, nurturing.LastFeedTime, metadata);
         }
 
-        public void UpdateNurturing(long accountId, InteractCube cube) {
+        // False when the row or the cube's nurturing is missing, or the save fails.
+        public bool UpdateNurturing(long accountId, InteractCube cube) {
             Nurturing? result = Context.Nurturing.Find(accountId, cube.Metadata.Id);
             if (result is null) {
-                return;
+                return false;
             }
             Maple2.Model.Game.Nurturing? interactNurturing = cube.Nurturing;
             if (interactNurturing is null) {
-                return;
+                return false;
             }
             result.Exp = interactNurturing.Exp;
             result.ClaimedGiftForStage = interactNurturing.ClaimedGiftForStage;
@@ -46,7 +47,7 @@ public partial class GameStorage {
             result.LastFeedTime = interactNurturing.LastFeedTime.DateTime;
 
             Context.Nurturing.Update(result);
-            Context.TrySaveChanges();
+            return Context.TrySaveChanges();
         }
 
         // Saves the pet and adds the row of the daily record for it, in one save: `accountId` fed its own pet

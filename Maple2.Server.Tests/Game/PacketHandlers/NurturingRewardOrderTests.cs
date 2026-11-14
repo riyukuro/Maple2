@@ -1,15 +1,19 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Reflection;
 using Maple2.Database.Storage;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -127,6 +131,28 @@ public class NurturingRewardOrderTests {
         Assert.Multiple(() => {
             Assert.That(nest.InteractCube.Nurturing!.ClaimedGiftForStage, Is.EqualTo(claimed));
             Assert.That(Stored(test.AccountId).ClaimedGiftForStage, Is.EqualTo(claimed));
+        });
+    }
+
+    // The claimed stage cannot be stored: no gift is dropped and the stage stays unclaimed, in memory and stored. The
+    // gift was dropped with the stage counted in memory only, so a crash or a reload took the gift again.
+    [Test]
+    public void StageGift_ClaimNotStored_NoGift() {
+        (GameSession session, FieldFunctionInteract nest) = Start(false, false, mailGift: 0, stageExp: 100, StageGift);
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Modified
+                                                                               && entry.Entity.GetType().Name == "Nurturing");
+        try {
+            Use(session, nest);
+        } finally {
+            test.FailSave = null;
+        }
+
+        var ground = (ConcurrentDictionary<int, FieldItem>) typeof(FieldManager)
+            .GetField("fieldItems", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Field)!;
+        Assert.Multiple(() => {
+            Assert.That(nest.InteractCube.Nurturing!.ClaimedGiftForStage, Is.EqualTo((short) 1));
+            Assert.That(Stored(test.AccountId).ClaimedGiftForStage, Is.EqualTo((short) 1));
+            Assert.That(ground.Values.Select(item => item.Value.Id), Has.No.Member(StageGift));
         });
     }
 
