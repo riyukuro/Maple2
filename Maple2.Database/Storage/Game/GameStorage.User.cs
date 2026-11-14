@@ -569,6 +569,36 @@ public partial class GameStorage {
             return true;
         }
 
+        /// <summary>
+        /// Writes only the account's payback month (the merat spent on the payback product this month and the
+        /// adventure level it started at), together with a purchase or a payback mail. Callers hold the account lock.
+        /// </summary>
+        public bool SavePayback(Player player) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            Model.Account? account = Context.Account.Find(player.Account.Id);
+            if (account == null) {
+                return false;
+            }
+
+            PaybackRecord? payback = player.Account.Payback;
+            account.Payback = payback == null ? null : new Model.PaybackMonth {
+                Month = payback.Month,
+                Spent = payback.Spent,
+                StartLevel = payback.StartLevel,
+            };
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            (DateTime CharacterLastModified, DateTime AccountLastModified, DateTime UnlockLastModified)? updated = GetLastModifiedTimestamps(player.Character.Id);
+            if (updated != null) {
+                player.Account.LastModified = updated.Value.AccountLastModified;
+                player.Character.LastModified = updated.Value.CharacterLastModified;
+            }
+            return true;
+        }
+
         private static AccountCurrency ToAccountCurrency(Currency currency) {
             return new AccountCurrency {
                 Meret = currency.Meret,

@@ -72,6 +72,7 @@ public class TableMetadataStorage {
     private readonly Lazy<QuestMaskNpcTable> questMaskNpcTable;
     private readonly Lazy<InventoryTabNameTable> inventoryTabNameTable;
     private readonly Lazy<UserConditionEventTable> userConditionEventTable;
+    private readonly Lazy<PaybackTable> paybackTable;
 
     private readonly Lazy<EnchantScrollTable> enchantScrollTable;
     private readonly Lazy<ItemRemakeScrollTable> itemRemakeScrollTable;
@@ -162,6 +163,7 @@ public class TableMetadataStorage {
     public QuestMaskNpcTable QuestMaskNpcTable => questMaskNpcTable.Value;
     public InventoryTabNameTable InventoryTabNameTable => inventoryTabNameTable.Value;
     public UserConditionEventTable UserConditionEventTable => userConditionEventTable.Value;
+    public PaybackTable PaybackTable => paybackTable.Value;
 
     public EnchantScrollTable EnchantScrollTable => enchantScrollTable.Value;
     public ItemRemakeScrollTable ItemRemakeScrollTable => itemRemakeScrollTable.Value;
@@ -274,6 +276,8 @@ public class TableMetadataStorage {
         inventoryTabNameTable = Retrieve(context, TableNames.STRING_COMMON, InventoryTabNameTable.Empty);
         // A metadata db ingested before this table has no row: no user condition rows.
         userConditionEventTable = Retrieve(context, TableNames.USER_CONDITION_EVENT, UserConditionEventTable.Empty);
+        // A metadata db ingested before this table has no row: no payback levels.
+        paybackTable = Retrieve(context, TableNames.PAYBACK, PaybackTable.Empty);
 
     }
 

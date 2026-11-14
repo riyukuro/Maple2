@@ -300,6 +300,7 @@ public enum SendOp : ushort {
     WeddingBillboard = 0x012A,
     HideAndSeek = 0x012B,
     MessengerBrowserStamp = 0x012C,
+    Payback = 0x012D,
     LimitBreak = 0x012E,
     AdventureProtect = 0x0131, // byte state, 7: cleared (CSceneStateGame::FUN_14173f7c0)
     CheckDeleteAccount = 0x0132, // i32 result, i64 character id (UICharacterListDialog::FUN_1418f2620)

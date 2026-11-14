@@ -385,7 +385,7 @@ public static class MeretMarketPacket {
     }
 
     #region Helper
-    private static void WriteMarketItem(this IByteWriter pWriter, MarketItem item) {
+    internal static void WriteMarketItem(this IByteWriter pWriter, MarketItem item) {
         pWriter.WriteBool(item is UgcMarketItem);
         switch (item) {
             case PremiumMarketItem premium:

@@ -26,6 +26,8 @@ internal class Account {
     public IList<int> PremiumRewardsClaimed { get; set; } = []; // TODO: clear list on daily reset
     // Null when the account bought no limited VIP goods.
     public IList<VipGoodsPurchase>? VipGoodsPurchases { get; set; }
+    // Null when no payback month is counted.
+    public PaybackMonth? Payback { get; set; }
     public required AccountCurrency Currency { get; set; }
     public required MarketLimits MarketLimits { get; set; }
 
@@ -77,6 +79,11 @@ internal class Account {
                 Count = purchase.Count,
                 LastPurchase = purchase.LastPurchase,
             }).ToList(),
+            Payback = other.Payback == null ? null : new PaybackMonth {
+                Month = other.Payback.Month,
+                Spent = other.Payback.Spent,
+                StartLevel = other.Payback.StartLevel,
+            },
             Currency = new AccountCurrency(),
             MarketLimits = new MarketLimits {
                 MesoListed = other.MesoMarketListed,
@@ -121,6 +128,7 @@ internal class Account {
                 Count = purchase.Count,
                 LastPurchase = purchase.LastPurchase,
             }).ToList() ?? [],
+            Payback = other.Payback == null ? null : new Maple2.Model.Game.PaybackRecord(other.Payback.Month, other.Payback.Spent, other.Payback.StartLevel),
             MesoMarketListed = other.MarketLimits.MesoListed,
             MesoMarketPurchased = other.MarketLimits.MesoPurchased,
             SurvivalLevel = other.SurvivalLevel,
@@ -145,6 +153,7 @@ internal class Account {
         builder.Property(account => account.MarketLimits).HasJsonConversion().IsRequired();
         builder.Property(account => account.PremiumRewardsClaimed).HasJsonConversion();
         builder.Property(account => account.VipGoodsPurchases).HasJsonConversion();
+        builder.Property(account => account.Payback).HasJsonConversion();
         builder.Property(account => account.PrestigeMissions).HasJsonConversion();
         builder.Property(account => account.PrestigeRewardsClaimed).HasJsonConversion();
 
@@ -170,6 +179,12 @@ internal class VipGoodsPurchase {
     public int GoodsId { get; set; }
     public int Count { get; set; }
     public long LastPurchase { get; set; }
+}
+
+internal class PaybackMonth {
+    public int Month { get; set; }
+    public long Spent { get; set; }
+    public int StartLevel { get; set; }
 }
 
 internal class PrestigeMission {

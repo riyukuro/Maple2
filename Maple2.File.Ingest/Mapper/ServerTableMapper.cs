@@ -1726,6 +1726,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return ReadDailyLoginReward(value1, value2, value3);
             case GameEventType.LoginNotice:
                 return new LoginNotice();
+            case GameEventType.FinishPayback:
+                return new FinishPayback();
             case GameEventType.ItemBox:
                 return ReadItemBox(value1);
             case GameEventType.Snowman:
@@ -3525,6 +3527,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 if (input == "0") {
                     input = "false";
                 }
+            }
+            // A date stored as yyyyMMdd (PaybackEndDate): DateTime.TryParse does not read that form.
+            if (type == typeof(DateTime) && input.Length == 8 && input.All(char.IsAsciiDigit)) {
+                input = $"{input[..4]}-{input[4..6]}-{input[6..]}";
             }
             if (type == typeof(TimeSpan)) {
                 // Special case - dashes (-) are used instead of colons (:)

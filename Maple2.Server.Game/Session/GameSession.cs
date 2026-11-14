@@ -987,6 +987,8 @@ public sealed partial class GameSession : Core.Network.Session {
 
         Send(PremiumCubPacket.Activate(Player.ObjectId, Player.Value.Account.PremiumTime));
         Send(PremiumCubPacket.LoadItems(Player.Value.Account.PremiumRewardsClaimed));
+        // Merat payback: an earlier month is paid, and the dialog gets this month's status and products.
+        PaybackService.EnterField(this);
         // The quest "map" condition: one count per field entry, whatever the way in (a portal, a warp, a login). Chosen
         // here: the client does not show when the server counts it.
         ConditionUpdate(ConditionType.map, codeLong: Player.Value.Character.MapId);
@@ -1393,6 +1395,8 @@ public sealed partial class GameSession : Core.Network.Session {
             Player.Value.Account.MesoMarketPurchased = 0;
             Send(MesoMarketPacket.Quota(Player.Value.Account.MesoMarketListed, Player.Value.Account.MesoMarketPurchased));
         });
+        // Merat payback: the month that ended is paid on the session's field.
+        ResetStep(nameof(MonthlyReset), "payback", () => PaybackService.MonthlyReset(this));
     }
 
     public void MigrateToPlanner(PlotMode plotMode) {

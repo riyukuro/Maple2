@@ -107,4 +107,5 @@ public class TableMetadata {
 [JsonDerivedType(typeof(QuestMaskNpcTable), typeDiscriminator: "questmasknpc")]
 [JsonDerivedType(typeof(InventoryTabNameTable), typeDiscriminator: "inventorytabname")]
 [JsonDerivedType(typeof(UserConditionEventTable), typeDiscriminator: "userconditionevent")]
+[JsonDerivedType(typeof(PaybackTable), typeDiscriminator: "payback")]
 public abstract record Table;

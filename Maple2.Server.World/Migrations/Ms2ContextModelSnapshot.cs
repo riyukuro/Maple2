@@ -64,6 +64,9 @@ namespace Maple2.Server.World.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
 
+                    b.Property<string>("Payback")
+                        .HasColumnType("json");
+
                     b.Property<string>("Permissions")
                         .IsRequired()
                         .HasColumnType("longtext");

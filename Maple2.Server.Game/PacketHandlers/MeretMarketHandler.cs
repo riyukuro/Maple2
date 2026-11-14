@@ -14,6 +14,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -438,6 +439,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         int error = PurchaseErrorUnknown;
+        PaybackRecord? paybackBefore = session.Player.Value.Account.Payback;
         Item? item = ugcItemId > 0 ? PurchaseUgcItem(session, ugcItemId, out error) : PurchasePremiumItem(session, premiumMarketId, childMarketItemId, out error);
         if (item == null) {
             Fail(error);
@@ -447,8 +449,12 @@ public class MeretMarketHandler : FieldPacketHandler {
         if (!session.Item.Inventory.Add(item, true, commit: true)) {
             session.Item.MailItem(item);
         }
-        // Store the paid merets now, not only at the next session save.
-        session.SavePurchase();
+        // Store the paid merets now, not only at the next session save (with the payback month a payback buy counted in).
+        bool paybackCounted = !Equals(paybackBefore, session.Player.Value.Account.Payback);
+        session.SavePurchase(paybackCounted ? db => db.SavePayback(session.Player) : null);
+        if (paybackCounted && PaybackService.Shown(session, DateTime.Now)) {
+            PaybackService.SendStatus(session, DateTime.Now);
+        }
         // limited_bundle_buy's code is the product bought (the KR package trophies 92000104-92000151 name products
         // 3000147-3000194); a design is not a product, so only a premium buy counts.
         if (ugcItemId <= 0) {
@@ -532,10 +538,19 @@ public class MeretMarketHandler : FieldPacketHandler {
         if (price < 0) {
             return null;
         }
+        DateTime now = DateTime.Now;
+        bool payback = PaybackService.IsPaybackBuy(session, premiumMarketId, childMarketItemId, entry.Metadata.CurrencyType, now);
+        if (payback && PaybackService.BuyRefused(session, now)) {
+            error = PurchaseErrorNotSale;
+            return null;
+        }
         StringCode payResult = Pay(session, price, entry.Metadata.CurrencyType);
         if (payResult != StringCode.s_empty_string) {
             error = PayError(session, payResult);
             return null;
+        }
+        if (payback) {
+            PaybackService.Spend(session, price, now);
         }
 
         if (entry.Metadata.DurationInDays > 0) {

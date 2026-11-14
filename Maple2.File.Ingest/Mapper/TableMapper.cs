@@ -123,6 +123,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.QUEST_MASK_NPC, Table = ParseQuestMaskNpcTable() };
         yield return new TableMetadata { Name = TableNames.STRING_COMMON, Table = ParseInventoryTabNames() };
         yield return new TableMetadata { Name = TableNames.USER_CONDITION_EVENT, Table = ParseUserConditionEventTable() };
+        yield return new TableMetadata { Name = TableNames.PAYBACK, Table = ParsePayback() };
 
         // Marriage/Wedding
         yield return new TableMetadata { Name = TableNames.WEDDING, Table = ParseWeddingTable() };
@@ -340,6 +341,41 @@ public class TableMapper : TypeMapper<TableMetadata> {
     // feature or locale filter refuses (IsElementAvailable) and a row without a reward scroll, and keys the
     // rest by id (CEnchantScrollTable::LoadRecipes, CEnchantScrollRecipe::Read). The played client's file wins
     // when it has one: the KMS2 data pack carries the file without rows.
+    // The parser has no reader for this table either; the played client's file wins as for the recipes above.
+    private PaybackTable ParsePayback() {
+        foreach (M2dReader? reader in new[] { playedReader, xmlReader }) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name == $"table/{TableNames.PAYBACK}");
+            if (reader == null || entry == null) {
+                continue;
+            }
+            PaybackTable table = ReadPayback(reader.GetXmlDocument(entry));
+            Console.WriteLine($"{TableNames.PAYBACK}: {table.Levels.Count} rows");
+            return table;
+        }
+        return PaybackTable.Empty;
+    }
+
+    // PaybackTable::Load: rows the feature and locale filter keep (IsElementAvailable), adventure_level and
+    // payback_percent read as uint, a level 0 row skipped, the rest sorted by level.
+    public static PaybackTable ReadPayback(XmlDocument document, Func<XmlElement, bool>? available = null) {
+        available ??= node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
+        var levels = new List<PaybackTable.Level>();
+        foreach (XmlElement node in (document.SelectNodes("/ms2/payback")?.OfType<XmlElement>() ?? [])) {
+            if (!available(node)) {
+                continue;
+            }
+            int level = ParseUint(node.GetAttribute("adventure_level"));
+            if (level == 0) {
+                continue;
+            }
+            levels.Add(new PaybackTable.Level(level, ParseUint(node.GetAttribute("payback_percent"))));
+        }
+        return new PaybackTable(levels.OrderBy(level => level.AdventureLevel).ToList());
+
+        static int ParseUint(string value) => uint.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out uint result)
+            ? (int) Math.Min(result, int.MaxValue) : 0;
+    }
+
     private EnchantScrollRecipeTable ParseEnchantScrollRecipe() {
         foreach (M2dReader? reader in new[] { playedReader, xmlReader }) {
             Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name == "table/enchantscrollrecipe.xml");

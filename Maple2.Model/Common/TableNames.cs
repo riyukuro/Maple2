@@ -105,6 +105,7 @@ public static class TableNames {
 
     // Game events
     public const string USER_CONDITION_EVENT = "userconditionevent.xml";
+    public const string PAYBACK = "paybacktable.xml";
 
     // Strings (string/<language>/)
     public const string STRING_COMMON = "stringcommon.xml";

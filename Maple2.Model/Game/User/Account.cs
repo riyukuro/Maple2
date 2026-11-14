@@ -25,6 +25,8 @@ public class Account {
     public IList<int> PremiumRewardsClaimed { get; set; }
     // The VIP goods shop's purchase counts (VipGoodsRules).
     public IList<VipGoodsPurchase> VipGoodsPurchases { get; set; }
+    // The merat payback's month (PaybackRules); null when none is counted.
+    public PaybackRecord? Payback { get; set; }
     public int MesoMarketListed { get; set; }
     public int MesoMarketPurchased { get; set; }
 
