@@ -176,7 +176,7 @@ public partial class TriggerContext {
 
         FieldNpc? fieldNpc = SpawnPointNpcs(Field.Npcs.Values, Field.Mobs.Values, npc => npc.SpawnPointId, spawnId).FirstOrDefault();
         if (fieldNpc == null) {
-            ErrorLog("[AddBalloonTalk] No NPC with spawnId:{SpawnId} found in field", spawnId);
+            DebugLog("[AddBalloonTalk] No NPC with spawnId:{SpawnId} found in field", spawnId);
             return;
         }
 

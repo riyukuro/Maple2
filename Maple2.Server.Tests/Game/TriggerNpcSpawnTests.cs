@@ -318,6 +318,24 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
             Is.EqualTo(new[] { "29000404" }));
     }
 
+    // add_balloon_talk on an event spawn point no create_monster has filled (KR data: 52000187 tutorial spawn 102,
+    // 63000041 spawn 102 and 666, 84000006 spawn 201 and 102, 02020006 spawn 15401 and 15501 are event spawn points
+    // no trigger of the map spawns) has no npc to talk: nothing is sent and the miss logs at debug level only.
+    // Before, each was an error line. Chosen here: debug, as the balloon has no object id to go to.
+    [Test]
+    public void AddBalloonTalk_NoNpcAtTheSpawnIsQuiet() {
+        StartSpawns();
+        var log = new LogSink();
+        typeof(TriggerContext).GetField("logger", Any)!.SetValue(context,
+            new LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(log).CreateLogger());
+        test.TakeSent();
+
+        Action("""<action name="add_balloon_talk" spawn_id="102" msg="$52000187_QD__TUTORIAL__0$" duration="3000" delay_tick="0" />""");
+
+        Assert.That(Sent(SendOp.Cinematic), Is.Empty);
+        Assert.That(log.Events.Where(e => e.Level >= LogEventLevel.Warning), Is.Empty);
+    }
+
     private sealed class LogSink : ILogEventSink {
         public readonly List<LogEvent> Events = [];
         public void Emit(LogEvent logEvent) => Events.Add(logEvent);
