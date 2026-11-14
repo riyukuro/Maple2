@@ -416,6 +416,7 @@ public static class ConditionUtil {
             case ConditionType.enchant_result:
             case ConditionType.install_billboard:
             case ConditionType.dungeon_rank:
+            case ConditionType.exp: // the level the exp is gained at (22400002: from level 50 on, target 50)
                 if (target.Integers != null && target.Integers.Any(value => longValue >= value)) {
                     return true;
                 }
@@ -575,7 +576,6 @@ public static class ConditionUtil {
             case ConditionType.uninstall_item:
             case ConditionType.buy_house:
             case ConditionType.extend_house:
-            case ConditionType.exp:
             case ConditionType.item_merge_success:
             case ConditionType.wedding_propose:
             case ConditionType.wedding_propose_decline:

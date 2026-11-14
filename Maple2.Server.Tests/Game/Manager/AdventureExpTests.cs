@@ -15,8 +15,9 @@ namespace Maple2.Server.Tests.Game.Manager;
 public class AdventureExpTests {
     private TestGameSession test = null!;
 
-    private GameSession Start() {
+    private GameSession Start(params AchievementMetadata[] trophies) {
         test = new TestGameSession();
+        test.AddAchievement(trophies);
         test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> {
             [ExpType.miniGame] = new(1, 1f),
             [ExpType.userMiniGame] = new(1, 1f),
@@ -144,5 +145,28 @@ public class AdventureExpTests {
         session.Exp.AddQuestExp(5000, ExpMessageCode.quest, ExpType.questEtc);
 
         Assert.That(test.TakeSent().Exists(packet => TestGameSession.Op(packet) == SendOp.Prestige), Is.False);
+    }
+
+    // 22400002 "Every End Is a New Beginning": <condition type="exp" target="50">, the exp gained from level 50 on;
+    // the exp of a level 49 character does not count. A kill's exp and a static gain both report the level.
+    [Test]
+    public void Exp_22400002_FromLevel50On() {
+        const int trophy = 22400002;
+        var target = new ConditionMetadata.Parameters(Integers: [50]);
+        GameSession session = Start(new AchievementMetadata(trophy, $"{trophy}", false, AchievementCategory.Life, [],
+            new Dictionary<int, AchievementMetadataGrade> {
+                [1] = new(1, new ConditionMetadata(ConditionType.exp, 500_000_000, null, target), null),
+            }, false));
+        session.Player.Value.Character.Level = 49;
+        session.Exp.AddStaticExp(100);
+        session.Exp.AddMobExp(50, 1, npcObjectId: 7001);
+        Assert.That(test.TrophyCounter(trophy) ?? 0, Is.EqualTo(0));
+
+        session.Player.Value.Character.Level = 50;
+        session.Exp.AddStaticExp(100);
+        session.Exp.AddMobExp(50, 1, npcObjectId: 7001);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(test.TrophyCounter(trophy), Is.EqualTo(200));
     }
 }

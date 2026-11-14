@@ -131,11 +131,13 @@ public sealed class ExperienceManager {
             return 0;
         }
         expGained = SpendRest(expGained, kill);
+        int level = Level;
         LevelUp();
         // KMS2 sends the exp first, then the prestige exp it brings.
         session.Send(ExperienceUpPacket.Add(expGained, Exp, RestExp, message, npcObjectId));
         AddPrestigeExp(prestigeType ?? message.Type(), prestigeRate);
-        session.ConditionUpdate(ConditionType.exp, counter: expGained);
+        // The target is the level the exp is gained at, at least (22400002: exp gained from level 50 on, target 50).
+        session.ConditionUpdate(ConditionType.exp, counter: expGained, targetLong: level);
         return expGained;
     }
 
@@ -209,7 +211,7 @@ public sealed class ExperienceManager {
         }
         Exp += amount;
         session.Send(ExperienceUpPacket.Add(amount, Exp, RestExp, ExpMessageCode.s_msg_take_exp));
-        session.ConditionUpdate(ConditionType.exp, counter: amount);
+        session.ConditionUpdate(ConditionType.exp, counter: amount, targetLong: Level);
         LevelUp();
     }
 
