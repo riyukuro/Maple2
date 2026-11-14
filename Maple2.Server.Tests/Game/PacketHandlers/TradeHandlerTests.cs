@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -12,6 +13,7 @@ using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -170,6 +172,38 @@ public class TradeHandlerTests {
 
         Assert.That(giver.Currency.Meso, Is.EqualTo(925));
         Assert.That(taker.Currency.Meso, Is.EqualTo(4000));
+    }
+
+    private long StoredMeso(GameSession session) {
+        using var context = new Ms2Context(giverTest.Options);
+        return context.Character.AsNoTracking().Single(row => row.Id == session.CharacterId).Currency.Meso;
+    }
+
+    // Both wallets are stored when the trade ends, as the item rows are. Before, the mesos moved in memory only: a
+    // crash before the two sessions' next saves kept the item with the taker and gave the taker its mesos back.
+    [Test]
+    public void Complete_StoresBothWallets() {
+        Offer();
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        Send(taker, 13);
+
+        Assert.Multiple(() => {
+            Assert.That((StoredMeso(giver), StoredMeso(taker)), Is.EqualTo((1000L, 4000L)));
+            Assert.That(giverTest.Errors.Concat(takerTest.Errors), Is.Empty);
+        });
+    }
+
+    // A cancelled trade gives the offered mesos back in memory; no store had taken them, so none is made.
+    [Test]
+    public void Cancel_StoresNoWallet() {
+        long before = StoredMeso(taker);
+        Offer();
+
+        Send(taker, 7);
+
+        Assert.That((taker.Currency.Meso, StoredMeso(taker)), Is.EqualTo((5000L, before)));
     }
 
     // The handed item's row is the taker's once the trade ends. Before, it stayed the giver's until the taker's next

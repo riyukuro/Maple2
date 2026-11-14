@@ -454,8 +454,22 @@ public class TradeManager : IDisposable {
         }
 
         // On success the sessions were swapped: each offer's giver is the other trader's session.
+        bool mesosMoved = success && (sender.Mesos != 0 || receiver.Mesos != 0);
         HandOver(sender, success ? receiver.Session : sender.Session, success);
         HandOver(receiver, success ? sender.Session : receiver.Session, success);
+        // The items' rows move at once (HandOver), but the mesos were in memory only: an offer is taken from the
+        // giver's wallet in memory (SetMesos) and paid to the receiver in memory, both stored only by each session's
+        // next save. A crash before those saves kept the bought item with its buyer and gave the buyer the mesos back,
+        // while the seller had neither. Both wallets are stored now (SavePurchase: the currency alone, tried again on
+        // the field queue while a reset is being stored), so only the moment between the two stores is left. A
+        // cancelled trade gives back mesos no store had taken, so it stores nothing.
+        if (mesosMoved) {
+            foreach (GameSession wallet in new[] { sender.Session, receiver.Session }) {
+                if (!wallet.SavePurchase()) {
+                    logger.Error("Trade mesos of {CharacterId} not stored now, left to the next save", wallet.CharacterId);
+                }
+            }
+        }
 
         sender.Session.Send(TradePacket.EndTrade(success));
         receiver.Session.Send(TradePacket.EndTrade(success));
