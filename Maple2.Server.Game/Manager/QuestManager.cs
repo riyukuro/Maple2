@@ -777,6 +777,32 @@ public sealed class QuestManager {
     // The term tag of this name on this channel (the TermTag table's row, or the GM's start or end of it).
     private TermTagTable.Entry? Term(string tag) => session.TermTags.Find(session.ServerTableMetadata.TermTagTable, tag);
 
+    // Whether the Maple guide window can offer the move of this learning row (Quest 16, QuestRules.GuideOffered).
+    // The chapter's quests are those the played client has, in id order as its chapter list (QuestDataTable
+    // m_chapter, questdata.cpp:2415). exceptChapterClear is not ingested, so those quests count toward a complete
+    // chapter here: the server finds a chapter complete later than the client, never sooner.
+    public bool GuideOffered(int rowId) {
+        IReadOnlyDictionary<int, LearningQuestTable.Entry> rows = session.TableMetadata.LearningQuestTable.Entries;
+        if (!rows.TryGetValue(rowId, out LearningQuestTable.Entry? row) ||
+            !session.QuestMetadata.TryGet(row.QuestId, out QuestMetadata? required)) {
+            return false;
+        }
+
+        int chapter = required.Basic.ChapterId;
+        List<QuestMetadata> chapterQuests = session.QuestMetadata.GetQuestsByChapter(chapter)
+            .Where(metadata => PlayedClientQuests.Known(metadata.Basic))
+            .OrderBy(metadata => metadata.Id)
+            .ToList();
+        bool chapterComplete = chapterQuests.All(metadata => TryGetQuest(metadata.Id, out Quest? held) && held.State == QuestState.Completed);
+        int firstRow = rows.Where(entry => session.QuestMetadata.TryGet(entry.Value.QuestId, out QuestMetadata? metadata) && metadata.Basic.ChapterId == chapter)
+            .Min(entry => entry.Key);
+
+        bool reqQuestHeld = TryGetQuest(row.QuestId, out Quest? quest) && quest.State is QuestState.Started or QuestState.Completed;
+        return QuestRules.GuideOffered(true, reqQuestHeld, !reqQuestHeld && CanStart(required), chapterComplete, rowId == firstRow,
+            chapterQuests.Any(metadata => TryGetQuest(metadata.Id, out _)),
+            chapterQuests.Count > 0 && CanStart(chapterQuests[0]));
+    }
+
     public bool CanComplete(Quest quest) {
         return quest.State != QuestState.Completed && quest.Conditions
             .All(condition => condition.Value.Counter >= condition.Value.Metadata.Value);

@@ -234,9 +234,15 @@ public class TrophyWiringTests {
         Assert.That(Sent(), Is.EqualTo(new[] { SendOp.Achieve, SendOp.GameToGame }));
     }
 
+    // Row 1 goes home; its guide quest is held, so the guide window offers it (QuestRules.GuideOffered).
     private QuestHandler GuideHandler() {
+        const int guideQuest = 90000300;
+        test.Session.QuestMetadata.GetQuests();
+        QuestMetadata quest = TestGameSession.QuestData(guideQuest);
+        test.Register(quest);
+        test.StartQuest(quest);
         test.SetTable(new LearningQuestTable(new Dictionary<int, LearningQuestTable.Entry> {
-            [1] = new(0, 0, 0, 0, Constant.DefaultHomeMapId, 0),
+            [1] = new(0, 0, guideQuest, 0, Constant.DefaultHomeMapId, 0),
         }));
         return new QuestHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata };
     }

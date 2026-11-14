@@ -533,4 +533,18 @@ public static class QuestRules {
         List<int> maps = fields.Where(entry => entry.Value.InstanceId == instanceId).Select(entry => entry.Key).Order().ToList();
         return instanceId == 0 || maps.Count == 0 || maps.Contains(mapId) ? 0 : maps[0];
     }
+
+    // Quest 16, the "go" button of the Maple guide window (UILearningQuestDialog::vfunc_28 onOk,
+    // uilearningquestdialog.cpp:163) sends the learning row it shows. The window shows a row on two paths:
+    // - its own pick (LoadLearningQuest, :330; CQuestManager::FUN_1416d0260, questmanager_2.cpp:1610): the row's
+    //   reqQuest has data; a reqQuest in progress or rewarded while its chapter is not all complete, else one the
+    //   player may start. The reqField and reqLevel are checked only for a new row's popup, so the move skips them.
+    // - its quest tree (BuildQuestTree, :470): a chapter not all complete (AreGroupQuestsComplete, :1249) that holds
+    //   one of the player's quests or whose first quest the player may start (HasQuestInGroup, FUN_1416ce260); a
+    //   chapter sends its first row, the lowest row id whose reqQuest is of that chapter.
+    // No level is checked on either path. The server allows the union, never less.
+    public static bool GuideOffered(bool reqQuestKnown, bool reqQuestHeld, bool reqQuestStartable, bool chapterComplete,
+            bool firstRowOfChapter, bool holdsChapterQuest, bool firstChapterQuestStartable) =>
+        reqQuestKnown && ((reqQuestHeld ? !chapterComplete : reqQuestStartable)
+            || (firstRowOfChapter && !chapterComplete && (holdsChapterQuest || firstChapterQuestStartable)));
 }

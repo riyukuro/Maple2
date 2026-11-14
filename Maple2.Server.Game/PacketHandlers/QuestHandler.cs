@@ -433,8 +433,10 @@ public class QuestHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Player.Value.Character.Level < metadata.RequiredLevel ||
-            (session.Quest.TryGetQuest(metadata.QuestId, out Quest? quest) && quest.State == QuestState.Completed)) {
+        // Only a row the guide window can offer (QuestRules.GuideOffered). The window checks no level for the move, and
+        // offers a rewarded guide quest's row while its chapter is not all complete.
+        if (!session.Quest.GuideOffered(id)) {
+            Logger.Information("Refused the guide move of row {Id} from {CharacterId}", id, session.CharacterId);
             return;
         }
 
