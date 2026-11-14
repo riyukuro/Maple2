@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -7,6 +8,7 @@ using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
@@ -243,6 +245,50 @@ public class ItemEnchantKrRulesTests {
             Assert.That(session.Item.Inventory.Get(copyUids[1]), Is.Null);
             Assert.That(session.Item.Inventory.Get(copyUids[2]), Is.Not.Null);
             Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // The client lists as copies only items that are not locked or unlocking and not the staged item itself
+    // (UIItemEnchantDialog::FUN_1419c9260, CItem::FUN_140528e20: lock state 1, or state 0 with the unlock time
+    // ahead). The server refused none of them, so a locked item, or the staged item itself, was used up.
+    [Test]
+    public void FromEleven_ALockedCopyOrTheStagedItemIsRefused() {
+        GameSession session = Login(4, new ItemEnchant(enchants: 11), copies: 3);
+        session.Item.Inventory.Get(copyUids[0])!.IsLocked = true;
+        session.Item.Inventory.Get(copyUids[1])!.UnlockTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        test.TakeSent();
+
+        Assert.Multiple(() => {
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[0], true), Is.False, "locked");
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[1], true), Is.False, "unlocking");
+            Assert.That(session.ItemEnchant.UpdateFodder(gear.Uid, true), Is.False, "the staged item");
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[2], true), Is.True);
+            Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.ItemEnchant }));
+        });
+    }
+
+    // A copy locked after it was added is not used up: the try is refused as for a copy no longer held (that path
+    // sends lack_ingredient twice, ConsumeMaterial's and Enchant's), and every copy and the item's grade stay.
+    [Test]
+    public void FromEleven_ACopyLockedAfterItWasAddedIsNotUsed() {
+        GameSession session = Login(4, new ItemEnchant(enchants: 11), copies: 2);
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        Assert.That(session.ItemEnchant.UpdateFodder(copyUids[0], true), Is.True);
+        Assert.That(session.ItemEnchant.UpdateFodder(copyUids[1], true), Is.True);
+        session.Item.Inventory.Get(copyUids[1])!.IsLocked = true;
+        int onyx = Held(session, ItemTag.Onix);
+        test.TakeSent();
+
+        session.ItemEnchant.Enchant(gear.Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Get(copyUids[0]), Is.Not.Null);
+            Assert.That(session.Item.Inventory.Get(copyUids[1]), Is.Not.Null);
+            Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(onyx));
+            Assert.That(session.Item.Inventory.Get(gear.Uid)!.Enchant!.Enchants, Is.EqualTo(11));
+            string lack = System.Convert.ToHexString(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient).ToArray());
+            Assert.That(test.TakeSent().Select(System.Convert.ToHexString), Is.EqualTo(new[] { lack, lack }));
         });
     }
 }

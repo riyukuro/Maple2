@@ -211,7 +211,7 @@ public class ItemEnchantManager {
                 NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_lack_ingredient);
                 return false;
             }
-            if (!IsValidFodder(upgradeItem, item)) {
+            if (!IsUsableFodder(upgradeItem, item)) {
                 logger.Debug("Can't add fodder, invalid item: {Id}", item.Id);
                 return false;
             }
@@ -474,9 +474,10 @@ public class ItemEnchantManager {
             if (upgradeItem.Enchant.Charges < useCharges) {
                 return false;
             }
+            // Each copy is looked at again: it can be gone, locked or changed since it was added.
             foreach ((long fodderUid, _) in fodders) {
                 Item? item = session.Item.Inventory.Get(fodderUid);
-                if (item == null) {
+                if (item == null || !IsUsableFodder(upgradeItem, item)) {
                     session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
                     return false;
                 }
@@ -582,6 +583,16 @@ public class ItemEnchantManager {
 
         // For Dagger/ThrowingStar, Toad's Toolkit is valued as 2 fodder.
         return IsValidToolkit(item, fodder) ? 2 : 1;
+    }
+
+    // A copy the client lists (UIItemEnchantDialog::FUN_1419c9260): not the staged item itself, not locked or
+    // unlocking (CItem::FUN_140528e20: lock state 1, or state 0 with the unlock time ahead), and of the item's id and
+    // rarity or a toolkit of its rarity.
+    private static bool IsUsableFodder(Item item, Item fodder) {
+        if (fodder.Uid == item.Uid || fodder.IsLocked || fodder.UnlockTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+            return false;
+        }
+        return IsValidFodder(item, fodder);
     }
 
     private static bool IsValidFodder(Item item, Item fodder) {
