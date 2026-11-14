@@ -130,7 +130,7 @@ public class SkillHandler : FieldPacketHandler {
         record.CastPosition = record.Position;
         record.Hits.Open(startTick);
         SkillCooldown? blocking = null;
-        if (!CastAllowed(session, record, startTick, serverTick, out blocking) || !session.Player.SkillCastConsume(record)) {
+        if (!SkillCastCheck.Allowed(session, record, startTick, serverTick, out blocking) || !session.Player.SkillCastConsume(record)) {
             // Nothing was paid. The client ends the cast and takes the cooldown from this answer
             // (CSceneStateGame::OnSkillUseFailed, mode 5).
             session.Send(SkillUseFailedPacket.Fail(record.CastUid, record.SkillId, record.Metadata.Data.Condition.CooldownTime,
@@ -151,121 +151,6 @@ public class SkillHandler : FieldPacketHandler {
         session.Config.SaveSkillCooldown(record.Metadata, startTick);
         session.Config.SaveCastTime(record.Metadata, record.Motion.MotionProperty, serverTick, startTick);
         session.Config.SaveCastMotion(record.Motion.MotionProperty, record.SkillId, serverTick, startTick);
-    }
-
-    // Checked before any cost is paid. A dead player casts only a skill that allows it, and no one casts a skill
-    // that a buff held disables or that names other fields, or a skill that takes the caster off the ride while on it. A skill of a job's tree
-    // must be in the caster's own tree at that level or above; a skill of no tree must be one some client path gives a player. An item skill must also pass its own condition and
-    // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast and must find
-    // its hand weapons held and its spirit threshold met.
-    // No cast comes before the motion of the last cast lets the next one in. The two timing checks
-    // (ConfigManager.CastTimingRefusal) refuse only when CastCheckSetting says so, else they log.
-    // The home row that stops a first-motion cast of the main type for this player, or null. The client asks it on
-    // the base skill (CreateSkillRecord); the server has the cast id, whose main type is the same for every KR combo.
-    internal static HomePermission? HomeRowStops(GameSession session, int mainType, bool laterMotion) {
-        if (laterMotion || HomePermissionRules.SkillRow(mainType) is not { } row
-            || !HomePermissionRules.SkillRowApplies(row, AdminLevel.Of(session.Player.Value.Account.AdminPermissions))) {
-            return null;
-        }
-        return HomeRowCheck.Blocks(session, row) ? row : null;
-    }
-
-    private bool CastAllowed(GameSession session, SkillRecord record, long tick, int castTick, out SkillCooldown? blocking) {
-        blocking = null;
-        BeginCondition condition = record.Metadata.Data.Condition;
-        if (SkillCastRules.RefusedDead(session.Player.IsDead, condition.AllowDead)) {
-            return false;
-        }
-        SkillRecord? held = session.Player.ActiveSkills.Get(record.CastUid);
-        bool laterMotion = SkillCastRules.LaterMotion(record.MotionPoint, record.SkillId, held?.SkillId, held?.MotionPoint ?? 0);
-        if (SkillCastRules.TypeDisabled(session.Player.Buffs.SkillUseDisableMask(), SkillCastRules.FieldTypeMask(session.Field.Metadata.Limit.DisableSkills),
-                record.Metadata.Property.MainType, laterMotion)) {
-            Logger.Debug("Cast refused, skill {SkillId} of main type {MainType} is disabled by a buff held or the field", record.SkillId, record.Metadata.Property.MainType);
-            return false;
-        }
-        // A home's row for the skill's main type (potion, glide, climb or a learned skill) stops it there for the
-        // player it covers (HomeRowCheck): checked on the first motion only, as the client checks it before the cast.
-        if (HomeRowStops(session, record.Metadata.Property.MainType, laterMotion) is { } row) {
-            Logger.Debug("Cast refused, skill {SkillId}: the home's {Row} row stops it", record.SkillId, row);
-            return false;
-        }
-        // The same holds for a buff that disables the skill itself (answer 0x1f): checked on the first motion only.
-        if (!laterMotion && session.Player.Buffs.SkillUseDisabled(record.SkillId)) {
-            Logger.Debug("Cast refused, a buff held disables skill {SkillId}", record.SkillId);
-            return false;
-        }
-        if (SkillCastRules.MapRefuses(condition.Maps, session.Field.MapId)) {
-            Logger.Debug("Cast refused, skill {SkillId} is not for field {MapId}", record.SkillId, session.Field.MapId);
-            return false;
-        }
-        if (SkillCastRules.EpFieldRefuses(session.Field.Metadata.Limit.Dash, record.Metadata.Data.Consume.Stat.GetValueOrDefault(BasicAttribute.Stamina))) {
-            Logger.Debug("Cast refused, skill {SkillId} costs EP and field {MapId} allows no EP skill", record.SkillId, session.Field.MapId);
-            return false;
-        }
-        if (SkillCastRules.RideRefuses(record.Metadata.Property.UnrideOnUse, record.Metadata.Property.MainType,
-                session.Ride.Ride is { Action: RideOnActionDefault } ride && ride.OwnerId == session.Player.ObjectId)) {
-            Logger.Debug("Cast refused, skill {SkillId} is not cast from a ride", record.SkillId);
-            return false;
-        }
-        SkillInfo skillInfo = session.Config.Skill.SkillInfo;
-        bool inAnyTree = skillInfo.InAnyTree(record.SkillId);
-        if (SkillCastRules.TreeRefuses(inAnyTree, skillInfo.TreeLevel(record.SkillId), record.Level)) {
-            Logger.Debug("Cast refused, skill {SkillId} level {Level} is not in the tree of {Job} at that level", record.SkillId, record.Level, skillInfo.Job);
-            return false;
-        }
-        if (SkillCastRules.SourceRefuses(inAnyTree, record.Metadata.Property.NoPlayerSource)) {
-            Logger.Debug("Cast refused, no client path gives skill {SkillId} to a player", record.SkillId);
-            return false;
-        }
-        bool useItem = record.Metadata.Data.Consume.UseItem;
-        string? early = session.Config.CastTimingRefusal(record.Metadata, !useItem && SkillCastRules.IsJobSkill(record.SkillId, inAnyTree), castTick, tick, out bool clockTurnedFast);
-        if (clockTurnedFast) {
-            Logger.Information("Fast clock: the cast ticks of {Player} ({CharacterId}) run ahead of the server's time or jump back", session.PlayerName, session.CharacterId);
-        }
-        if (early != null) {
-            if (CastCheckSetting.Enforce) {
-                Logger.Debug("Cast refused, skill {SkillId}, {Reason}", record.SkillId, early);
-                return false;
-            }
-            if (session.Config.CastLog.Count(tick) is > 0 and int unlogged) {
-                Logger.Information("Cast not refused (log only), skill {SkillId} of {Player}, {Reason} ({Count} since the last line)", record.SkillId, session.PlayerName, early, unlogged);
-            }
-        }
-        if (!useItem) {
-            return HandsAndSpiritAllow(session, record);
-        }
-        if (!condition.Check(session.Player, session.Player, session.Player)) {
-            return false;
-        }
-        blocking = session.Config.BlockingCooldown(record.Metadata, tick);
-        return blocking == null;
-    }
-
-    // A job skill's weapon condition and spirit threshold (an item skill's own condition checks both).
-    private bool HandsAndSpiritAllow(GameSession session, SkillRecord record) {
-        BeginCondition condition = record.Metadata.Data.Condition;
-        if (condition.Weapon is { Length: > 0 } weapons) {
-            Item? right = session.Item.Equips.Get(EquipSlot.RH);
-            Item? left = session.Item.Equips.Get(EquipSlot.LH);
-            (int heldRight, int heldLeft) = SkillCastRules.HandTypes(right?.Type.Type ?? 0, right?.Uid ?? 0, right == null || PcItemUse.CanUseItem(session, right),
-                left?.Type.Type ?? 0, left?.Uid ?? 0, left == null || PcItemUse.CanUseItem(session, left));
-            WeaponActionTable.Action? held = session.TableMetadata.WeaponActionTable.Held(heldRight, heldLeft);
-            if (SkillCastRules.WeaponRefuses(weapons.Select(weapon => ((int) weapon.LeftHand.Type, (int) weapon.RightHand.Type)).ToArray(), held)) {
-                Logger.Debug("Cast refused, skill {SkillId} needs another weapon than {Left}/{Right} (action {Action})", record.SkillId,
-                    held?.LeftHand ?? heldLeft, held?.RightHand ?? heldRight, held == null ? "none" : "held");
-                return false;
-            }
-        }
-        if (condition.Stat.TryGetValue(BasicAttribute.Spirit, out long threshold)) {
-            FieldPlayer player = session.Player;
-            (int invokeValue, float invokeRate) = player.Buffs.GetInvokeValues(InvokeEffectType.ReduceSpiritCost, record.SkillId, record.Metadata.Property.SkillGroup);
-            int reduced = SkillCastRules.SpiritCost(threshold, invokeValue, invokeRate, player.Buffs.ConsumeSpRate);
-            if (SkillCastRules.SpiritThresholdRefuses(reduced, player.Stats.Values[BasicAttribute.Spirit].Current)) {
-                Logger.Debug("Cast refused, skill {SkillId} needs {Spirit} spirit", record.SkillId, reduced);
-                return false;
-            }
-        }
-        return true;
     }
 
     private void HandlePoint(GameSession session, IByteReader packet) {

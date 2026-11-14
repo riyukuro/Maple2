@@ -205,7 +205,7 @@ public class QuestConditionWiringTests : TriggerTestBase {
 
     #region skills (SkillHandler, a cast's use)
     // A skill the field knows at level 1, with nothing to pay and no condition, as a cast of it goes through.
-    private static SkillMetadata CastSkill(int id) {
+    internal static SkillMetadata CastSkill(int id) {
         var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty)) with { MaxLevel = 1 };
         var condition = (BeginCondition) RuntimeHelpers.GetUninitializedObject(typeof(BeginCondition)) with {
             JobCode = [], DungeonGroupType = [], Stat = new Dictionary<BasicAttribute, long>(), Maps = [], MapTypes = [], Continents = [], ActiveSkill = [],
@@ -221,7 +221,11 @@ public class QuestConditionWiringTests : TriggerTestBase {
         return new SkillMetadata(id, 1, null, property, state, data);
     }
 
-    private void SetSkills(params SkillMetadata[] skills) {
+    private void SetSkills(params SkillMetadata[] skills) => SetSkills(test, skills);
+
+    // The field's skill data and what a cast reads (also used by StateSkillCastTests).
+    internal static void SetSkills(TestGameSession test, params SkillMetadata[] skills) {
+        FieldManager Field = test.Session.Field!;
         var storage = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
         object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", Any)!.GetValue(storage)!;
         foreach (SkillMetadata skill in skills) {

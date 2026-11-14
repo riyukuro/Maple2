@@ -45,6 +45,27 @@ public static class SkillCastRules {
 
     public static long NextStateTick(long tick) => tick + StateSkillTickMs;
 
+    // The state the client gives a skill from its main type (SkillData FUN_1407e9bd0, skilloverlapcompare.cpp:964).
+    public static ActorState StateOf(int mainType) => mainType switch {
+        7 => ActorState.Glide,
+        10 => ActorState.Summon,
+        11 => ActorState.SwimDash,
+        12 => ActorState.Hold,
+        13 => ActorState.Climb,
+        _ => ActorState.None,
+    };
+
+    // StateSkill::UseStateSkill (stateskill.cpp:1999) sends a state skill (0x21) only for a skill whose state is
+    // not none, with that state; a summon (state 0x26) mounts or summons on the client and sends nothing, and a
+    // glide goes out only with the glider item it found. The state comes from the main type; data ingested without
+    // the played client has no main type, so the data pack's own state stands in (the two agree on every skill
+    // the client has).
+    public static bool StateRefuses(ActorState sent, int mainType, ActorState dataState, long itemUid) {
+        ActorState expected = mainType != 0 ? StateOf(mainType) : dataState;
+        if (expected is ActorState.None or ActorState.Summon || sent != expected) return true;
+        return expected == ActorState.Glide && itemUid == 0;
+    }
+
     public static bool OnCooldown(long tick, long endTick) => tick < endTick - CooldownSlackMs;
 
     // clearCooldownFromPVPZone, loaded with a skill's stateAttr (skilloverlapcompare.cpp:867) and an effect's

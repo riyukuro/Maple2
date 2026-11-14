@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -40,9 +41,19 @@ public class StateSkillHandler : FieldPacketHandler {
             return;
         }
 
-        var cast = new SkillRecord(metadata, skillCastUid, session.Player);
-        if (!session.Player.SkillCastConsume(cast)) {
+        // The client sends a state only for the skill's own state (SkillCastRules.StateRefuses).
+        if (SkillCastRules.StateRefuses(state, metadata.Property.MainType, metadata.Property.State, itemUid)) {
+            Logger.Debug("State skill refused, skill {SkillId} sent with state {State}", skillId, state);
             Refuse(session, skillCastUid, skillId, state, metadata);
+            return;
+        }
+
+        // The client's checks of a state skill are those of any skill (MyPC::vfunc_102, CSkillSystem), so the
+        // same cast checks run here, without the timing ones: no state-skill cast time is kept.
+        var cast = new SkillRecord(metadata, skillCastUid, session.Player) { ItemUid = itemUid };
+        if (!SkillCastCheck.Allowed(session, cast, session.Field.FieldTick, null, out SkillCooldown? blocking)
+            || !session.Player.SkillCastConsume(cast)) {
+            Refuse(session, skillCastUid, skillId, state, metadata, blocking);
             return;
         }
 
@@ -51,8 +62,8 @@ public class StateSkillHandler : FieldPacketHandler {
         session.Field.Broadcast(SkillPacket.StateSkill(session.Player, skillId, skillCastUid));
     }
 
-    private static void Refuse(GameSession session, long castUid, int skillId, ActorState state, SkillMetadata? metadata) {
+    private static void Refuse(GameSession session, long castUid, int skillId, ActorState state, SkillMetadata? metadata, SkillCooldown? blocking = null) {
         session.Send(SkillUseFailedPacket.StateFail(castUid, skillId, (int) state, metadata?.Data.Condition.CooldownTime ?? 0f,
-            session.Config.GetSkillCooldown(skillId), session.Field?.FieldTick ?? 0));
+            blocking ?? session.Config.GetSkillCooldown(skillId), session.Field?.FieldTick ?? 0));
     }
 }

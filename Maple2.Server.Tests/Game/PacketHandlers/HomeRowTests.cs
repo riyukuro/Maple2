@@ -169,18 +169,18 @@ public class HomeRowTests {
     public void Cast_StopsAtTheRow_OnTheFirstMotionOnly() {
         InAHome(owner: false, HomePermission.Skill, HomePermissionSetting.Self);
         Assert.Multiple(() => {
-            Assert.That(SkillHandler.HomeRowStops(session, 0, laterMotion: false), Is.EqualTo(HomePermission.Skill));
-            Assert.That(SkillHandler.HomeRowStops(session, 0, laterMotion: true), Is.Null);
+            Assert.That(SkillCastCheck.HomeRowStops(session, 0, laterMotion: false), Is.EqualTo(HomePermission.Skill));
+            Assert.That(SkillCastCheck.HomeRowStops(session, 0, laterMotion: true), Is.Null);
             // A free main type (FUN_1407e9f30 leaves it out) is not stopped.
-            Assert.That(SkillHandler.HomeRowStops(session, 1, laterMotion: false), Is.Null);
+            Assert.That(SkillCastCheck.HomeRowStops(session, 1, laterMotion: false), Is.Null);
         });
         InAHome(owner: true, HomePermission.Skill, HomePermissionSetting.Self);
-        Assert.That(SkillHandler.HomeRowStops(session, 0, laterMotion: false), Is.Null);
+        Assert.That(SkillCastCheck.HomeRowStops(session, 0, laterMotion: false), Is.Null);
 
         InAHome(owner: false, HomePermission.AirMount, HomePermissionSetting.Self);
-        Assert.That(SkillHandler.HomeRowStops(session, 7, laterMotion: false), Is.EqualTo(HomePermission.AirMount));
+        Assert.That(SkillCastCheck.HomeRowStops(session, 7, laterMotion: false), Is.EqualTo(HomePermission.AirMount));
         session.Player.Value.Account.AdminPermissions = AdminPermissions.GameMaster;
-        Assert.That(SkillHandler.HomeRowStops(session, 7, laterMotion: false), Is.Null);
+        Assert.That(SkillCastCheck.HomeRowStops(session, 7, laterMotion: false), Is.Null);
     }
 
     // The skill rows by the skill's main type (SkillData::FUN_1407e9bd0): 5 potion, 7 glide, 13 climb; the types
