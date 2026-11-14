@@ -93,7 +93,7 @@ public class JobHandler : FieldPacketHandler {
         }
 
         session.Player.Value.Character.Job = job;
-        session.Config.Skill.SkillInfo.SetJob(job);
+        session.Config.Skill.ChangeJob(job);
 
         session.Player.Buffs.Clear();
         session.Player.Buffs.Initialize();

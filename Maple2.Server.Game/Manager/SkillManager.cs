@@ -88,6 +88,14 @@ public class SkillManager {
     #region SkillBook
     public SkillTab? GetActiveTab() => GetSkillTab(SkillBook.ActiveSkillTabId);
 
+    // A job change rebuilds the tree at its base levels; the active tab's points are put back on it, as at login. An
+    // awakening (Knight to Knight II) keeps the tabs, so without this every rank 1 skill fell to its base level until
+    // the next login, and the Job 2 tree sent to the field showed them so.
+    public void ChangeJob(Job job) {
+        SkillInfo.SetJob(job);
+        SkillInfo.SetTab(GetActiveTab());
+    }
+
     public SkillTab? GetSkillTab(long id) {
         return SkillBook.SkillTabs.FirstOrDefault(skillTab => skillTab.Id == id);
     }

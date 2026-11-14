@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -10,11 +11,13 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -438,6 +441,52 @@ public class QuestHandlerTests {
             Assert.That(ops.IndexOf(SendOp.Job), Is.GreaterThan(ops.IndexOf(SendOp.Quest)));
             Assert.That(sent.First(packet => TestGameSession.Op(packet) == SendOp.Job)[6], Is.EqualTo(2));
             Assert.That(session.Player.Flag.HasFlag(PlayerObjectFlag.Job), Is.True);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // The awakening (Knight to Knight II) keeps the skill tabs: the active tab's points stay on the rank 1 skills, and
+    // the awakened tree's skills join at their base level. The tree was rebuilt at its base levels (every rank 1 skill
+    // at 0) until the next login. Made-up skill ids.
+    [Test]
+    public void Complete_OfTheAwakeningQuestKeepsTheTabsPoints() {
+        const int rank1Skill = 10100021, awakeningSkill = 10100231;
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        GameSession session = Login();
+        ProgressionOrderTests.LoadConfig(test, session);
+        test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
+            [JobCode.Knight] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
+                [SkillRank.Basic] = [new JobTable.Skill(rank1Skill, [], 10, 1)],
+                [SkillRank.Awakening] = [new JobTable.Skill(awakeningSkill, [], 10, 2)],
+            }, []),
+        }));
+        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", any)!.GetValue(skills)!;
+        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty)) with { MaxLevel = 10 };
+        foreach (int id in new[] { rank1Skill, awakeningSkill }) {
+            cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(id, (short) 1), new SkillMetadata(id, 1, null, property, null!, null!)]);
+        }
+        typeof(GameSession).GetField("<SkillMetadata>k__BackingField", any)!.SetValue(session, skills);
+        session.Player.Value.Character.Job = Job.Knight;
+        var tab = new SkillTab("tab") { Id = 1 };
+        tab.Skills[rank1Skill] = 3;
+        var book = new SkillBook { ActiveSkillTabId = 1, SkillTabs = [tab] };
+        typeof(ConfigManager).GetField(nameof(ConfigManager.Skill), any)!.SetValue(session.Config, new SkillManager(session, book));
+        Assert.That(session.Config.Skill.SkillInfo.GetMainSkill(rank1Skill, SkillRank.Basic)!.Level, Is.EqualTo(3));
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata> {
+            [Job.Knight] = new(Job.Knight, Job.KnightII, 0, QuestId),
+        }));
+        Started();
+        test.TakeSent();
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Character.Job, Is.EqualTo(Job.KnightII));
+            Assert.That(session.Config.Skill.SkillInfo.Job, Is.EqualTo(Job.KnightII));
+            Assert.That(session.Config.Skill.SkillInfo.GetMainSkill(rank1Skill, SkillRank.Basic)!.Level, Is.EqualTo(3));
+            Assert.That(session.Config.Skill.SkillInfo.GetMainSkill(awakeningSkill, SkillRank.Awakening)!.Level, Is.EqualTo(0));
+            Assert.That(tab.Skills[rank1Skill], Is.EqualTo(3));
             Assert.That(test.Errors, Is.Empty);
         });
     }

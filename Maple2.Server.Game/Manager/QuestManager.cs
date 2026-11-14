@@ -1665,7 +1665,11 @@ public sealed class QuestManager {
         }
 
         session.Player.Value.Character.Job = changeJobMetadata.ChangeJob;
-        session.Config.Skill.SkillInfo.SetJob(changeJobMetadata.ChangeJob);
+        session.Config.Skill.ChangeJob(changeJobMetadata.ChangeJob);
+        if (session.Field != null) {
+            // The tree's passives: the awakened tree's base skills join the kept ones.
+            session.Config.Skill.UpdatePassiveBuffs();
+        }
         session.Stats.Refresh();
         session.Field?.Broadcast(JobPacket.Advance(session.Player, session.Config.Skill.SkillInfo));
         // As the job script's confirm does: the job trophies count the new job and the other players' copy of the
