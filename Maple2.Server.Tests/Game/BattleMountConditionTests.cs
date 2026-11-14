@@ -65,4 +65,18 @@ public class BattleMountConditionTests {
             Assert.That(Holds(condition, Player(RideOnType.Battle)), Is.True, "on a battle mount");
         });
     }
+
+    // A held buff is suspended while its holder rides a battle mount unless its condition allows it
+    // (AdditionalCli::Update): the holder decides, not the caster, and a plain mount suspends nothing.
+    [Test]
+    public void HeldBuff_SuspendedWhileTheHolderRidesABattleMount() {
+        BeginCondition plain = Condition(allow: false, only: false);
+        BeginCondition allowed = Condition(allow: true, only: false);
+        Assert.Multiple(() => {
+            Assert.That(Buff.SuspendedOnBattleMount(Player(RideOnType.Battle), plain), Is.True, "holder on a battle mount");
+            Assert.That(Buff.SuspendedOnBattleMount(Player(RideOnType.Battle), allowed), Is.False, "allowBattleRidingState");
+            Assert.That(Buff.SuspendedOnBattleMount(Player(RideOnType.Default), plain), Is.False, "holder on a plain mount");
+            Assert.That(Buff.SuspendedOnBattleMount(Player(null), plain), Is.False, "holder on foot");
+        });
+    }
 }

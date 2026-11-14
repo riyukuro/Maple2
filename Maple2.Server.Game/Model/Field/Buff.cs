@@ -249,7 +249,7 @@ public class Buff : IUpdatable, IByteSerializable {
     // notifyField is false only in the constructor, before the buff is held: then neither the field nor the
     // holder's sums and stats are told.
     public bool UpdateEnabled(bool notifyField = true) {
-        bool enabled = Metadata.Condition.Check(Caster, Owner, Owner);
+        bool enabled = Metadata.Condition.Check(Caster, Owner, Owner) && !SuspendedOnBattleMount(Owner, Metadata.Condition);
         if (Enabled != enabled) {
             Enabled = enabled;
             if (notifyField) {
@@ -259,6 +259,14 @@ public class Buff : IUpdatable, IByteSerializable {
         }
 
         return enabled;
+    }
+
+    // The client suspends a held buff while its holder rides a battle mount unless the level's begin condition has
+    // allowBattleRidingState (AdditionalCli::Update @0x14096c520), and its sums skip it as a disabled one
+    // (AdditionalCliList::FUN_140972a00). It tests the holder; the begin condition's own test is the caster's.
+    internal static bool SuspendedOnBattleMount(IActor owner, BeginCondition condition) {
+        return !condition.AllowOnBattleMount && owner is FieldPlayer player &&
+               player.Session.Ride?.Ride?.Metadata.Basic.Type == RideOnType.Battle;
     }
 
     // A buff that comes back on does not pay the procs it missed while it was off (chosen here): its next proc is the
