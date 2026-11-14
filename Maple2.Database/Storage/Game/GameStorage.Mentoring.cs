@@ -52,7 +52,8 @@ public partial class GameStorage {
             var model = new Model.Mentoring {
                 MentorId = mentorId,
                 MenteeId = menteeId,
-                CreationTime = DateTime.UtcNow,
+                // In the server's local time, as every datetime column is read back (ToEpochSeconds).
+                CreationTime = DateTime.Now,
             };
             Context.Mentoring.Add(model);
             if (!Context.TrySaveChanges()) {
