@@ -9,6 +9,7 @@ using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -111,6 +112,10 @@ public class InstrumentHandler : FieldPacketHandler {
         }
 
         int note = packet.ReadInt();
+        // The client checks the row before every note (CInstrumentManager::NoteOn): one set mid-play stops the notes.
+        if (MusicBlocked(session)) {
+            return;
+        }
         session.Field.Broadcast(InstrumentPacket.Improvise(session.Instrument, note), session);
     }
 
@@ -207,7 +212,7 @@ public class InstrumentHandler : FieldPacketHandler {
 
         long itemUid = packet.ReadLong();
         long scoreUid = packet.ReadLong();
-        if (!TryGetScore(session, scoreUid, out Item? score)) {
+        if (!TryGetScore(session, scoreUid, out Item? score) || MusicBlocked(session)) {
             return;
         }
 
@@ -336,7 +341,7 @@ public class InstrumentHandler : FieldPacketHandler {
     private bool TryUseInstrument(GameSession session, long itemUid, long startTick, bool ensemble, [NotNullWhen(true)] out FieldInstrument? fieldInstrument) {
         Item? instrument = session.Item.Inventory.Get(itemUid, InventoryType.FishingMusic);
         if (instrument == null || instrument.Metadata.Function?.Type != ItemFunction.OpenInstrument || session.Field is null ||
-            !InstrumentRules.IsPlayable(instrument.ExpiryTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+            !InstrumentRules.IsPlayable(instrument.ExpiryTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds()) || MusicBlocked(session)) {
             fieldInstrument = null;
             return false;
         }
@@ -356,6 +361,14 @@ public class InstrumentHandler : FieldPacketHandler {
         fieldInstrument.StartTick = startTick;
         fieldInstrument.Ensemble = ensemble;
         return true;
+    }
+
+    // A home whose music row stops the player (HomePermissionRules.Blocks): the client sends no play there
+    // (CInstrumentManager, the FUN_141bdb660(3) check before 0, 3 and 5), so the server refuses one too.
+    internal static bool MusicBlocked(GameSession session) {
+        return session.Field is HomeFieldManager home && HomePermissionRules.Blocks(home.Home.Permissions, HomePermission.Music,
+            home.OwnerId, session.AccountId,
+            () => session.Party?.Party?.Members.Values.Any(member => member.AccountId == home.OwnerId) == true);
     }
 
     private bool TryGetScore(GameSession session, long scoreUid, [NotNullWhen(true)] out Item? score) {

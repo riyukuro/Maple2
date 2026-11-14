@@ -41,4 +41,19 @@ public static class HomePermissionRules {
         permissions[permission] = setting;
         return setting;
     }
+
+    // Whether the home's row stops a player (CubeMapInformationService::FUN_1410c3cd0): a disabled row stops no
+    // one; an enabled one stops everyone at setting 0, everyone but the owner at 1, and everyone but the owner and
+    // a party member of the owner at 2. The client checks it before it sends the act; the server checks it again.
+    public static bool Blocks(IDictionary<HomePermission, HomePermissionSetting> permissions, HomePermission permission,
+                              long homeOwnerId, long accountId, Func<bool> ownerInParty) {
+        if (!permissions.TryGetValue(permission, out HomePermissionSetting setting)) {
+            return false;
+        }
+        return setting switch {
+            HomePermissionSetting.Self => homeOwnerId != accountId,
+            HomePermissionSetting.Party => homeOwnerId != accountId && !ownerInParty(),
+            _ => true,
+        };
+    }
 }

@@ -51,4 +51,21 @@ public class HomePermissionRulesTests {
         byte[] set = CubePacket.SetPermission(HomePermission.AirMount, HomePermissionSetting.Self).ToArray();
         Assert.That(set[2..], Is.EqualTo(new byte[] { 0x2b, 6, 1 }));
     }
+    // CubeMapInformationService::FUN_1410c3cd0: no row stops no one; 0 stops everyone; 1 everyone but the owner;
+    // 2 everyone but the owner and a party member of the owner.
+    [Test]
+    public void Blocks() {
+        var permissions = new Dictionary<HomePermission, HomePermissionSetting>();
+        Assert.That(HomePermissionRules.Blocks(permissions, HomePermission.Music, 1, 2, () => false), Is.False);
+        permissions[HomePermission.Music] = HomePermissionSetting.None;
+        Assert.That(HomePermissionRules.Blocks(permissions, HomePermission.Music, 1, 1, () => true), Is.True);
+        permissions[HomePermission.Music] = HomePermissionSetting.Self;
+        Assert.That(HomePermissionRules.Blocks(permissions, HomePermission.Music, 1, 1, () => false), Is.False);
+        Assert.That(HomePermissionRules.Blocks(permissions, HomePermission.Music, 1, 2, () => true), Is.True);
+        permissions[HomePermission.Music] = HomePermissionSetting.Party;
+        Assert.That(HomePermissionRules.Blocks(permissions, HomePermission.Music, 1, 1, () => false), Is.False);
+        Assert.That(HomePermissionRules.Blocks(permissions, HomePermission.Music, 1, 2, () => true), Is.False);
+        Assert.That(HomePermissionRules.Blocks(permissions, HomePermission.Music, 1, 2, () => false), Is.True);
+        Assert.That(HomePermissionRules.Blocks(permissions, HomePermission.Skill, 1, 2, () => false), Is.False);
+    }
 }

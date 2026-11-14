@@ -702,6 +702,10 @@ public class RequestCubeHandler : FieldPacketHandler {
         if (session.Field is null || !InOwnHome(session)) return;
 
         if (HomePermissionRules.Enable(session.Player.Value.Home.Permissions, permission, enabled) && session.Housing.SaveHome()) {
+            // The field keeps the home it loaded; its rows are the ones the server checks (InstrumentHandler).
+            if (session.Field is HomeFieldManager home && home.Home != session.Player.Value.Home) {
+                HomePermissionRules.Enable(home.Home.Permissions, permission, enabled);
+            }
             session.Field.Broadcast(CubePacket.EnablePermission(permission, enabled));
         }
     }
@@ -712,6 +716,9 @@ public class RequestCubeHandler : FieldPacketHandler {
         if (session.Field is null || !InOwnHome(session)) return;
 
         if (HomePermissionRules.Set(session.Player.Value.Home.Permissions, permission, setting) is { } applied && session.Housing.SaveHome()) {
+            if (session.Field is HomeFieldManager home && home.Home != session.Player.Value.Home) {
+                HomePermissionRules.Set(home.Home.Permissions, permission, setting);
+            }
             session.Field.Broadcast(CubePacket.SetPermission(permission, applied));
         }
     }

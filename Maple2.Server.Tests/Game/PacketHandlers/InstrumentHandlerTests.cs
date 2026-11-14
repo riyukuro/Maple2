@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Maple2.File.Ingest;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 
@@ -83,5 +85,48 @@ public class InstrumentHandlerTests {
 
         Assert.That(session.Instrument?.Score, Is.SameAs(score));
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(counted));
+    }
+    // A home's music row (HomePermission 3): the client sends no play where it stops the player
+    // (CubeMapInformationService::FUN_1410c3cd0, checked before modes 0, 3 and 5); the server refuses one too.
+    // Setting 1 (Self) stops a visitor, not the owner; setting 0 stops the owner as well; no row stops no one.
+    [TestCase(false, null, true)]
+    [TestCase(false, HomePermissionSetting.Self, false)]
+    [TestCase(true, HomePermissionSetting.Self, true)]
+    [TestCase(true, HomePermissionSetting.None, false)]
+    [TestCase(false, HomePermissionSetting.Party, false)]
+    public void StartImprovise_InAHome_FollowsTheMusicRow(bool owner, HomePermissionSetting? setting, bool plays) {
+        GameSession session = Start(DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600, out Item instrument);
+        session.Housing.InitNewHome("home", null);
+        test.EnterHome();
+        var home = new Home { AccountId = owner ? session.AccountId : session.AccountId + 1 };
+        if (setting != null) {
+            home.Permissions[HomePermission.Music] = setting.Value;
+        }
+        typeof(HomeFieldManager).GetField("<Home>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Field, home);
+
+        StartImprovise(session, instrument.Uid);
+
+        Assert.That(session.Instrument != null, Is.EqualTo(plays));
+    }
+    // RequestCube 42 (row, on) in the owner's home: the field keeps the home it loaded from the database, so the
+    // row must reach that copy too, or the check above reads the old rows. An enabled row starts at setting 0,
+    // which stops the owner as well.
+    [Test]
+    public void EnablePermission_ReachesTheFieldsHome() {
+        GameSession session = Start(DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600, out Item instrument);
+        session.Housing.InitNewHome("home", null);
+        test.EnterHome();
+        var loaded = new Home { AccountId = session.AccountId };
+        typeof(HomeFieldManager).GetField("<Home>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Field, loaded);
+
+        new RequestCubeHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(42);
+            writer.WriteByte((byte) HomePermission.Music);
+            writer.WriteBool(true);
+        }));
+        StartImprovise(session, instrument.Uid);
+
+        Assert.That(loaded.Permissions.ContainsKey(HomePermission.Music), Is.True);
+        Assert.That(session.Instrument, Is.Null);
     }
 }
