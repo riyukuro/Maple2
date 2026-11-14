@@ -26,6 +26,9 @@ public class SkillInfo : IByteSerializable {
     private readonly HashSet<int> treeSkills;
     // The own tree's skills: a main skill to itself, a sub skill to its main skill.
     private Dictionary<int, int> mainOf = new();
+    // The job table's sub skills that have no skill file, warned of once per process, not at each login: the KR job.xml
+    // rows JobChange_01/02 list 10700082 under Haste (10700081), and only an additional effect has that id.
+    internal static readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> MissingSubSkills = new();
 
     public SkillInfo(JobTable jobTable, SkillMetadataStorage skillMetadata, Job job, SkillTab? skillTab) {
         this.jobTable = jobTable;
@@ -83,7 +86,9 @@ public class SkillInfo : IByteSerializable {
                 var subSkills = new List<Skill>(skillData.Sub.Length);
                 foreach (int subSkillId in skillData.Sub) {
                     if (!skillMetadata.TryGet(subSkillId, 1, out SkillMetadata? subMetadata)) {
-                        Log.Warning("Skipping invalid subSkillId:{SkillId}", subSkillId);
+                        if (MissingSubSkills.TryAdd(subSkillId, 0)) {
+                            Log.Warning("Skipping invalid subSkillId:{SkillId}", subSkillId);
+                        }
                         continue;
                     }
 
