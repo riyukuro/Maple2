@@ -137,6 +137,16 @@ public static class EventSaleRules {
         return Math.Max(saleRate, feeRate);
     }
 
+    // The discount of an enchant's materials: the SaleEnchant rate plus the character's ReduceEnchantMaterialFee (65)
+    // total turned into a rate out of 10000 (total / 1000 * 10000). The enchant window adds the two the same way for
+    // its sale text (uiitemenchantdialog.cpp:992 and :1000, CEquipment::GetAbilityRate, equipment.cpp:731), but it
+    // tests the inventory against the counts of the staged item's reply as they are (:1885), so the server lowers
+    // them (EnchantIngredientCount).
+    public static int EnchantDiscount(int saleRate, long feeTotal) {
+        int feeRate = feeTotal <= 0 ? 0 : (int) Math.Min((float) feeTotal / 1000f * 10000f, int.MaxValue / 2);
+        return (int) Math.Min((long) Math.Max(saleRate, 0) + feeRate, int.MaxValue / 2);
+    }
+
     // The count of one ingredient of a change of attributes under a discount, as the dialog shows it
     // (GetDiscountedIngredientCount, itemremakescrolldata.cpp:397): no discount, the count; else the discount is
     // held to 10000 x IngredientFeeReduceLimit and the count is (count * (1 - discount / 10000) + 0.000001) in

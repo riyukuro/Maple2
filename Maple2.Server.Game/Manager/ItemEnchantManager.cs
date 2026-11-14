@@ -146,8 +146,15 @@ public class ItemEnchantManager {
         upgradeItem.Enchant ??= new ItemEnchant();
         int enchants = Math.Clamp(upgradeItem.Enchant.Enchants, 0, 14);
 
+        // SaleEnchant and ReduceEnchantMaterialFee lower each count, held to IngredientFeeReduceLimit; the reply
+        // and the charge use the same counts (EventSaleRules.EnchantDiscount). The 10% exp payback of a failed Peachy
+        // try stays on the full cost (PayBackExp): KR's limit of 0.5 keeps it under what was paid.
+        int discount = EventSaleRules.EnchantDiscount(EventSaleRules.HighestRate(session.FindEvent(GameEventType.SaleEnchant)),
+            session.Player.Stats.Values[SpecialAttribute.ReduceEnchantMaterialFee].Total);
+        float reduceLimit = Constants.IngredientFeeReduceLimit;
         foreach (IngredientInfo ingredient in GetRequiredCatalysts()) {
-            catalysts.Add(ingredient);
+            catalysts.Add(discount <= 0 ? ingredient
+                : new IngredientInfo(ingredient.Tag, EventSaleRules.RemakeIngredientCount(ingredient.Amount, discount, reduceLimit)));
         }
         foreach ((BasicAttribute attribute, BasicOption option) in GetEnchant(session, upgradeItem).BasicOptions) {
             attributeDeltas[attribute] = option;

@@ -1982,6 +1982,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             case GameEventType.SaleLapenshardUpgradeRGB:
             case GameEventType.GuildSkillSale:
             case GameEventType.GuildPersonalSkillSale:
+            case GameEventType.SaleEnchant:
                 return EventSaleReader.Rate(value1);
             case GameEventType.BlackMarketFeeDiscount:
                 return EventSaleReader.FeeRate(value1);

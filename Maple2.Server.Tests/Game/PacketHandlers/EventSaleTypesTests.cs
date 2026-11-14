@@ -320,9 +320,10 @@ public class EventSaleTypesTests {
         Assert.That(EventSaleRules.BeautyShopPrice(price, rate), Is.EqualTo(expected));
     }
 
-    // PetComposeSale and SaleGemStoneUpgrade: the name, the id and the rate (GameEventSale::vfunc_4).
+    // PetComposeSale, SaleGemStoneUpgrade and SaleEnchant: the name, the id and the rate (GameEventSale::vfunc_4).
     [TestCase(GameEventType.PetComposeSale, "PetComposeSale")]
     [TestCase(GameEventType.SaleGemStoneUpgrade, "SaleGemStoneUpgrade")]
+    [TestCase(GameEventType.SaleEnchant, "SaleEnchant")] // GameEventSaleEnchant reads one int (gameevent.cpp:1152)
     public void EventRate_WritesTheRate(GameEventType type, string name) {
         Assert.That(Written(type, new EventRate(3000)), Is.EqualTo(Name(name) + "591B0000" + "B80B0000"));
     }
