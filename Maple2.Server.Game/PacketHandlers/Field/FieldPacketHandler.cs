@@ -44,7 +44,9 @@ public abstract class FieldPacketHandler : PacketHandler<GameSession> {
     // guild fund donation) would else run during or after the move's save, and what it changed is not saved. The wait
     // ends early once the move's save is made (the session's later packets are then dropped, PacketRouter) or the
     // session closes: a Disconnect of the handler joins the receive thread. It also ends when the field it was queued
-    // on is disposed (a room whose time ran out) or the session is no longer in it: that field never runs it.
+    // on is disposed (a room whose time ran out) or the session is no longer in it before the packet started: that
+    // field never runs it. Once it started, the wait lasts until it is done: a portal, ReturnField or EnterInitField
+    // sets the new field in the middle of the handler, while the player is still being moved over.
     protected bool QueueAndWait(GameSession session, IByteReader reader) {
         var awaited = new AwaitedPacket(this);
         FieldManager? field = session.Field;
@@ -53,7 +55,11 @@ public abstract class FieldPacketHandler : PacketHandler<GameSession> {
         }
         long end = Environment.TickCount64 + (long) MoveWait.TotalMilliseconds;
         while (!awaited.Done.Wait(20)) {
-            if (session.State is SessionState.Disconnected || session.DropsPackets || field.Disposed || session.Field != field) {
+            if (session.State is SessionState.Disconnected || session.DropsPackets) {
+                break;
+            }
+            // The field is read before Started: a field the packet itself changed is seen with Started set.
+            if ((field.Disposed || session.Field != field) && !awaited.Started) {
                 break;
             }
             if (Environment.TickCount64 > end) {
@@ -68,6 +74,9 @@ public abstract class FieldPacketHandler : PacketHandler<GameSession> {
     private sealed class AwaitedPacket : FieldPacketHandler {
         private readonly FieldPacketHandler inner;
         public readonly ManualResetEventSlim Done = new();
+        // Set once the field thread began the packet (QueueAndWait then waits for Done whatever the field is).
+        private volatile bool started;
+        public bool Started => started;
 
         public AwaitedPacket(FieldPacketHandler inner) {
             this.inner = inner;
@@ -76,6 +85,7 @@ public abstract class FieldPacketHandler : PacketHandler<GameSession> {
         public override RecvOp OpCode => inner.OpCode;
 
         public override void Handle(GameSession session, IByteReader packet) {
+            started = true;
             try {
                 inner.Handle(session, packet);
             } finally {

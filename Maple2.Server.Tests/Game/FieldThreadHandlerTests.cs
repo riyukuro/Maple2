@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -81,6 +82,64 @@ public class FieldThreadHandlerTests {
             Assert.That(queued.Wait(TimeSpan.FromSeconds(10)), Is.True, name);
             Assert.That(queued.Result, Is.True, name);
         }
+    }
+
+    // A queued handler that sets the session's new field (a portal, ReturnField) and then is held until let go.
+    private sealed class MovingHandler : FieldPacketHandler {
+        public override RecvOp OpCode => RecvOp.RequestMoveField;
+        public readonly ManualResetEventSlim Moved = new();
+        public readonly ManualResetEventSlim Release = new();
+        public Action<GameSession>? Move;
+        public override bool TryHandleDeferred(GameSession session, IByteReader reader) => QueueAndWait(session, reader);
+        public override void Handle(GameSession session, IByteReader packet) {
+            Move?.Invoke(session);
+            Moved.Set();
+            Release.Wait(TimeSpan.FromSeconds(10));
+        }
+    }
+
+    // The new field is set in the middle of the move (PrepareFieldInternal): the receive thread still waits until the
+    // packet is done, so the next packet does not run on the new field while the player is being moved over.
+    [Test]
+    public void FieldSetByTheQueuedPacket_TheReceiveThreadWaitsUntilItIsDone() {
+        var test = new TestGameSession();
+        GameSession session = Live(test);
+        FieldManager field = session.Field!;
+        ProcessPackets(field);
+        var handler = new MovingHandler { Move = _ => test.EnterMap(TestGameSession.Map(2000023)) };
+
+        Task<bool> queued = Task.Run(() => handler.TryHandleDeferred(session, Unknown()));
+        SpinWait.SpinUntil(() => QueuedCount(field) > 0 || queued.IsCompleted, TimeSpan.FromSeconds(10));
+        Task run = Task.Run(() => ProcessPackets(field));
+        Assert.That(handler.Moved.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(session.Field, Is.Not.SameAs(field));
+            Assert.That(queued.Wait(300), Is.False, "the wait goes on while the packet runs");
+        });
+
+        handler.Release.Set();
+        Assert.That(run.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(queued.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(queued.Result, Is.True);
+    }
+
+    // A session that left the field before its packet ran: that field never runs it, and the wait ends.
+    [Test]
+    public void FieldLeftBeforeThePacketRan_TheWaitEnds() {
+        var test = new TestGameSession();
+        GameSession session = Live(test);
+        FieldManager field = session.Field!;
+        ProcessPackets(field);
+        var handler = new MovingHandler();
+        handler.Release.Set();
+
+        Task<bool> queued = Task.Run(() => handler.TryHandleDeferred(session, Unknown()));
+        SpinWait.SpinUntil(() => QueuedCount(field) > 0 || queued.IsCompleted, TimeSpan.FromSeconds(10));
+        Assert.That(queued.Wait(200), Is.False);
+        test.EnterMap(TestGameSession.Map(2000023));
+
+        Assert.That(queued.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(handler.Moved.IsSet, Is.False);
     }
 
     // Without a field (between fields) the packet is handled on the receive thread, as before.
