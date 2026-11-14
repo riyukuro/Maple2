@@ -82,8 +82,38 @@ public class BurningLevelupTests {
             TimeSpan.Zero, TimeSpan.Zero, [], data, "", "", "", ""));
     }
 
+    // A re-ingest moved the replayed event's end (E1 -> E2) during the run: the pick stored at E1 follows the event to
+    // E2, so after E1 the login still reads it (no second popup, no second pick); other events' and types' values drop.
+    [Test]
+    public void LoginValues_FollowTheMovedEventEnd() {
+        GameEvent running = Running(380006, Data());
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var picked = new GameEventUserValue(GameEventUserValueType.BurningLevelupCharacter, now - 60, 380006);
+        picked.SetValue("1001");
+        var reached = new GameEventUserValue(GameEventUserValueType.BurningLevelupReached, now - 60, 380006);
+        reached.SetValue("1");
+        var otherEvent = new GameEventUserValue(GameEventUserValueType.BurningLevelupCharacter, now + 60, 380007);
+        otherEvent.SetValue("1002");
+        var otherType = new GameEventUserValue(GameEventUserValueType.ItemBoxReceivedDay, now + 60, 380006);
+        otherType.SetValue("1");
+
+        List<GameEventUserValue> values = BurningLevelupRules.LoginValues([picked, reached, otherEvent, otherType], [running], now);
+
+        Assert.That(values.Select(value => (value.Type, value.Value, value.ExpirationTime)), Is.EqualTo(new[] {
+            (GameEventUserValueType.BurningLevelupCharacter, "1001", running.EndTime),
+            (GameEventUserValueType.BurningLevelupReached, "1", running.EndTime),
+        }));
+        Assert.That(BurningLevelupRules.CheckPick([running], true, 20, 0,
+            eventId => values.FirstOrDefault(value => value.EventId == eventId && value.Type == GameEventUserValueType.BurningLevelupCharacter)?.Long() ?? 0,
+            (eventId, type) => values.Any(value => value.EventId == eventId && value.Type == type && BurningLevelupRules.IsSet(value.Value))).Result,
+            Is.EqualTo(BurningLevelupRules.Pick.NoEvent));
+        // Without the move (the stored E1 behind now) nothing would be read and the pick offered again.
+        Assert.That(BurningLevelupRules.LoginValues([picked], [], now), Is.Empty);
+    }
+
     [Test]
     public void CheckPick_TakesTheLowestEventTheAccountHasNotPickedFor() {
+
         GameEvent[] running = [Running(380011, Data()), Running(380010, Data()), Running(380012, Data([(int) JobCode.Knight]))];
         var picks = new Dictionary<int, long>();
         var flags = new HashSet<(int, GameEventUserValueType)>();

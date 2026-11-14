@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 
@@ -41,7 +42,25 @@ public static class BurningLevelupRules {
     // HasTarget: no target list takes every job; else the job code must be listed.
     public static bool HasTarget(BurningLevelup data, int jobCode) => data.Targets.Length == 0 || data.Targets.Contains(jobCode);
 
+    // The values the character list reads: the account's 2000-2004 values of the running events, each moved to its
+    // event's current end first (EventValueRules.FollowEventEnd), then those not run out at `now`.
+    public static List<GameEventUserValue> LoginValues(IEnumerable<GameEventUserValue> stored, IReadOnlyCollection<GameEvent> running, long now) {
+        var values = new List<GameEventUserValue>();
+        foreach (GameEventUserValue value in stored) {
+            GameEvent? gameEvent = running.FirstOrDefault(found => found.Id == value.EventId && found.Metadata.Data is BurningLevelup);
+            if (gameEvent == null || !ValueTypes.Contains(value.Type)) {
+                continue;
+            }
+            GameEventUserValue moved = EventValueRules.FollowEventEnd(value, gameEvent);
+            if (moved.ExpirationTime >= now) {
+                values.Add(moved);
+            }
+        }
+        return values;
+    }
+
     public enum Pick {
+
         Ok,
         NoEvent, // no running event takes the character (none runs, the account picked for each, or its job is no target)
         NotOwned, // the character is not of the account, or is deleted

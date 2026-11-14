@@ -178,17 +178,12 @@ public class LoginSession : Core.Network.Session {
         return Server.GetEvents().Where(gameEvent => gameEvent.Metadata.Data is BurningLevelup).ToList();
     }
 
-    // The account's unexpired 2000-2004 values of the running burning levelup events.
+    // The account's 2000-2004 values of the running burning levelup events, unexpired once moved to the event's
+    // current end (EventValueRules.FollowEventEnd, as the game server loads them): a re-ingest that moved a replayed
+    // event's end keeps the pick of that run.
     private List<GameEventUserValue> BurningLevelupValues(GameStorage.Request db) {
-        List<GameEvent> events = BurningLevelupEvents();
-        if (events.Count == 0) {
-            return [];
-        }
-        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        return db.GetAccountEventValues(AccountId)
-            .Where(value => BurningLevelupRules.ValueTypes.Contains(value.Type) && value.ExpirationTime >= now
-                            && events.Any(gameEvent => gameEvent.Id == value.EventId))
-            .ToList();
+        return BurningLevelupRules.LoginValues(db.GetAccountEventValues(AccountId), BurningLevelupEvents(),
+            DateTimeOffset.UtcNow.ToUnixTimeSeconds());
     }
 
     // EventReward 16 (Login EventRewardHandler): the character picked in the popup after a create. The event is
