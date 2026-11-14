@@ -220,11 +220,6 @@ public class NpcTalkHandler : FieldPacketHandler {
             return;
         }
         int pick = packet.ReadInt();
-        // The client sends 0 or an index into its list (UITalkManager::SendNpcTalkMode2); a negative pick passed
-        // the checks below and threw in the quest lookup.
-        if (pick < 0) {
-            return;
-        }
 
         /* The ordering is
         / Quests
@@ -232,6 +227,15 @@ public class NpcTalkHandler : FieldPacketHandler {
         / Talk */
         int addedOptions = 0;
         if (session.NpcScript.TalkType.HasFlag(NpcTalkType.Select)) {
+            // The client sends 0 or an index into its list (UITalkManager::SendNpcTalkMode2); a negative pick
+            // passed the checks below and threw in the quest lookup. It ends the talk, as an unknown pick does on
+            // a plain talk, so a resend cannot run the script's function again.
+            if (pick < 0) {
+                session.Send(NpcTalkPacket.Close());
+                session.NpcScript.Npc?.StopTalk();
+                session.NpcScript = null;
+                return;
+            }
             if (session.NpcScript.TalkType.HasFlag(NpcTalkType.Quest)) {
                 addedOptions += session.NpcScript.Quests.Count;
                 // Picked quest

@@ -15,13 +15,13 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 
 // NpcTalk 2 carries the pick the client took from its list (UITalkManager::SendNpcTalkMode2, 0 or a list index).
 // A negative pick is not one the client sends; on a select talk it passed the quest check and threw in the list
-// lookup, so it is dropped and the talk stays as it was.
+// lookup. It now ends the talk (one close), so a resend finds no talk and cannot run the script's function again.
 public class NpcTalkPickTests {
     private const int NpcId = 11000001;
 
     [TestCase(-1)]
     [TestCase(int.MinValue)]
-    public void ANegativePick_IsDropped(int pick) {
+    public void ANegativePick_EndsTheTalk(int pick) {
         var test = new TestGameSession();
         test.SetServerTable(new ScriptConditionTable(new Dictionary<int, Dictionary<int, ScriptConditionMetadata>>()));
         GameSession session = test.Start();
@@ -44,8 +44,8 @@ public class NpcTalkPickTests {
             writer.WriteInt(pick);
         })));
         Assert.Multiple(() => {
-            Assert.That(session.NpcScript, Is.SameAs(script));
-            Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.NpcTalk), Is.Empty);
+            Assert.That(session.NpcScript, Is.Null);
+            Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.NpcTalk).Count(), Is.EqualTo(1));
         });
     }
 }
