@@ -161,10 +161,17 @@ public partial class ChannelService {
                 return new ClubResponse { Error = (int) ClubError.s_club_err_blocked };
             }
 
-            if (session.Clubs.Count >= Constant.ClubMaxCount) {
+            // The client counts its open invites with its clubs and drops an invite past the limit, or a second one
+            // of a club it lists, with no box (ClubInviteList). A repeat is not sent again: the open box answers it.
+            long now = Environment.TickCount64;
+            if (session.ClubInvites.Contains(clubId, now)) {
+                continue;
+            }
+            if (session.Clubs.Count + session.ClubInvites.Count(now) >= Constant.ClubMaxCount) {
                 return new ClubResponse { Error = (int) ClubError.s_club_err_full_club_member };
             }
 
+            session.ClubInvites.Add(clubId, now);
             session.Send(ClubPacket.Invite(new ClubInvite {
                 ClubId = clubId,
                 Name = invite.ClubName,

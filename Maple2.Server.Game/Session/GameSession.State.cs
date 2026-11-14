@@ -74,6 +74,9 @@ public partial class GameSession {
     // whisper with chat kind 6 naming the sender, and only such a sender is sent the reject notice.
     public readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> WhisperedBy = new();
 
+    // The club invites this player's client lists (Club 7 sent, no Club 8 yet).
+    public readonly ClubInviteList ClubInvites = new();
+
     // The chat spam restriction (FastChat and SameChat constants) of this player's lines.
     public readonly ChatRestriction ChatRestriction = new();
 

@@ -470,6 +470,7 @@ public sealed class TestGameSession {
         session.ItemMerge = new ItemMergeManager(session);
         typeof(GameSession).GetField(nameof(GameSession.DismantleStaging), Any)!.SetValue(session, new (long Uid, int Amount)[100]);
         typeof(GameSession).GetField(nameof(GameSession.ChatRestriction), Any)!.SetValue(session, new ChatRestriction());
+        typeof(GameSession).GetField(nameof(GameSession.ClubInvites), Any)!.SetValue(session, new ClubInviteList());
         session.ItemEnchant = new ItemEnchantManager(session);
         // Stats without an actor: Refresh does nothing. The values start empty.
         session.Stats = Uninitialized<StatsManager>();

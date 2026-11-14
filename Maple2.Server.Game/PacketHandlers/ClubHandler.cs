@@ -209,6 +209,7 @@ public class ClubHandler : FieldPacketHandler {
             },
         });
 
+        session.ClubInvites.Remove(clubId);
         // Mode 8 is the only packet the client drops a listed invite on (clubcli.cpp:1125), on decline
         // as on accept. Without it the invite stays listed and the next invite to the same club stops
         // the client (clubcli.cpp:914). The World has used up the invite on an error too.
