@@ -18,6 +18,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Tests.Game.PacketHandlers;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -460,6 +461,66 @@ public class BurningLevelupTests {
         session.GameEvent.BurningLevelupFieldEnter();
         Assert.That(Held(session, JumpingItem), Is.EqualTo(1));
         Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // The notice (2003) is stored before the item is given: a failed store gives nothing and sends nothing, and the
+    // next entry gives the item once. Before, the item was given first, so each failed store gave another one.
+    [Test]
+    public void FieldEnter_TheNoticeStoreFails_GivesNothingAndTheNextEntryGivesOnce() {
+        GameSession session = Login(data: JumpingData());
+        test.EnterMap(TestGameSession.Map(TutorialEnd));
+        test.TakeSent();
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "AccountEventValue");
+
+        session.GameEvent.BurningLevelupFieldEnter();
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, JumpingItem), Is.EqualTo(0));
+            Assert.That(BurningLevelupRules.IsSet(Value(session, GameEventUserValueType.BurningLevelupJumpingNotify)), Is.False);
+            Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingNotify), Is.Null);
+            Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.EventReward).And.Not.Contain(SendOp.GameEventUserValue));
+        });
+
+        session.GameEvent.BurningLevelupFieldEnter();
+        session.GameEvent.BurningLevelupFieldEnter();
+
+        Assert.That(Held(session, JumpingItem), Is.EqualTo(1));
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingNotify), Is.EqualTo("1"));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The item is written at once (bag row, or a mail when the bag refuses it): a write that fails puts the stored
+    // notice back, so the item is not lost and the next entry gives it once.
+    [Test]
+    public void FieldEnter_TheItemWriteFails_PutsTheNoticeBack() {
+        GameSession session = Login(data: JumpingData());
+        test.EnterMap(TestGameSession.Map(TutorialEnd));
+        test.TakeSent();
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added && entry.Entity.GetType().Name == "Item");
+
+        session.GameEvent.BurningLevelupFieldEnter();
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, JumpingItem), Is.EqualTo(0));
+            Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingNotify), Is.Not.Null);
+            Assert.That(BurningLevelupRules.IsSet(StoredValue(GameEventUserValueType.BurningLevelupJumpingNotify)), Is.False);
+            Assert.That(BurningLevelupRules.IsSet(Value(session, GameEventUserValueType.BurningLevelupJumpingNotify)), Is.False);
+            Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.EventReward).And.Not.Contain(SendOp.GameEventUserValue));
+        });
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.GetAllMail(test.CharacterId), Is.Empty);
+        }
+
+        session.GameEvent.BurningLevelupFieldEnter();
+
+        Assert.That(Held(session, JumpingItem), Is.EqualTo(1));
+        Assert.That(StoredValue(GameEventUserValueType.BurningLevelupJumpingNotify), Is.EqualTo("1"));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.GetItemGroups(test.CharacterId, ItemGroup.Default)[ItemGroup.Default].Count(item => item.Id == JumpingItem), Is.EqualTo(1));
+        }
+        Assert.That(test.Errors, Is.Empty);
     }
 
     [TestCase("field")]
