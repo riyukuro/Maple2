@@ -565,8 +565,25 @@ public class AiStateTests : TriggerTestBase {
 
     private long CurrentLimitTick => (long) typeof(AiState).GetField("currentLimitTick", Any)!.GetValue(npc.AiState)!;
 
-    private static SkillNode SkillAt(int idx, params Entry[] entries) =>
-        new("skill", entries, idx, 0, 0, false, Vector3.Zero, 1, 0, 0, 0, 0, false);
+    private static SkillNode SkillAt(int idx, params Entry[] entries) => SkillAt(idx, 0, entries);
+
+    private static SkillNode SkillAt(int idx, int prob, params Entry[] entries) =>
+        new("skill", entries, idx, 0, prob, false, Vector3.Zero, 1, 0, 0, 0, 0, false);
+
+    // The index the top of the AI stack runs next.
+    private int TopIndex {
+        get {
+            var stack = (System.Collections.IList) typeof(AiState).GetField("aiStack", Any)!.GetValue(npc.AiState)!;
+            object top = stack[stack.Count - 1]!;
+            return (int) top.GetType().GetField("Index")!.GetValue(top)!;
+        }
+    }
+
+    private void CooldownSkill(Entry[] battle, int cooldown) {
+        Spawn(battle, skill: new NpcMetadataSkill([new NpcMetadataSkill.Entry(1, 1)], cooldown));
+        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
+        npc.Skills[0] = new SkillMetadata(1, 1, null, property, null!, null!);
+    }
 
     // A default AI tree's skill node (AI_DefaultNew: <node name="skill" idx="1"><node name="standby" limit="1000" .../>)
     // on an npc with <skill coolDown="3000">: a cast 1000 ms ago leaves 2000 ms, which the npc stands out facing its
@@ -574,9 +591,7 @@ public class AiStateTests : TriggerTestBase {
     [TestCase(3000, 2000)]
     [TestCase(0, 0)]
     public void SkillCooldown_WaitsBetweenCasts(int cooldown, int wait) {
-        Spawn([SkillAt(1, Standby(1000))], skill: new NpcMetadataSkill([new NpcMetadataSkill.Entry(1, 1)], cooldown));
-        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
-        npc.Skills[0] = new SkillMetadata(1, 1, null, property, null!, null!);
+        CooldownSkill([SkillAt(1, Standby(1000))], cooldown);
         long start = Field.FieldTick;
         LastSkillCastTick = start - 1000;
 
@@ -594,5 +609,54 @@ public class AiStateTests : TriggerTestBase {
         SetTick(start + wait);
         npc.AiState.Update(start + wait);
         Assert.That(LastSkillCastTick, Is.EqualTo(start + wait));
+    }
+
+    // A skill node with prob="50" (KR AI_Mason_FR_Lv1 has prob 40 skills) reached within the coolDown: its prob is
+    // rolled once, before the wait; the node that waited casts when the wait ends, without a second roll.
+    [Test]
+    public void SkillCooldown_ProbRolledOnceAcrossTheWait() {
+        int waits = 0;
+        for (int trial = 0; trial < 40; trial++) {
+            CooldownSkill([SkillAt(1, 50, Standby(1000))], 3000);
+            long start = Field.FieldTick;
+            LastSkillCastTick = start - 1000;
+            npc.AiState.Update(start);
+            if (CurrentTask is not MovementState.NpcStandbyTask || CurrentLimitTick != start + 2000) {
+                Assert.That(LastSkillCastTick, Is.EqualTo(start - 1000), "no cast within the coolDown");
+                continue;
+            }
+
+            waits++;
+            SetTick(start + 2000);
+            npc.AiState.Update(start + 2000);
+            Assert.That(LastSkillCastTick, Is.EqualTo(start + 2000), $"wait {waits} ends in the cast");
+        }
+        Assert.That(waits, Is.InRange(5, 35), "prob 50 passes about half the time");
+    }
+
+    // AI_Default's battle: a select of skill or runaway, then the next node. A skill picked within the coolDown waits
+    // with the stack back on the select, so the select picks again after the wait; the node after the select runs
+    // only after that pick.
+    [Test]
+    public void SkillCooldown_UnderASelect_RewindsToTheSelect() {
+        CooldownSkill([
+            new SelectNode("select", [SkillAt(1), SetValue("Runaway", 1, isModify: true)], [1, 0], false),
+            SetValue("After", 1, isModify: true),
+        ], 3000);
+        long start = Field.FieldTick;
+        LastSkillCastTick = start - 1000;
+
+        npc.AiState.Update(start);
+        Assert.That((CurrentLimitTick, TopIndex, npc.AiExtraData.ContainsKey("After")), Is.EqualTo((start + 2000, 0, false)));
+
+        SetTick(start + 1999);
+        npc.AiState.Update(start + 1999);
+        Assert.That((LastSkillCastTick, npc.AiExtraData.ContainsKey("After")), Is.EqualTo(((long?) (start - 1000), false)));
+
+        SetTick(start + 2000);
+        npc.AiState.Update(start + 2000);
+        Assert.That(LastSkillCastTick, Is.EqualTo(start + 2000));
+        Assert.That(npc.AiExtraData.ContainsKey("Runaway"), Is.False);
+        Assert.That(test.Errors, Is.Empty);
     }
 }

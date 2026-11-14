@@ -33,6 +33,9 @@ public class AiState {
     private long? lastSkillCastTick;
     // The stack index the running step took its entry from, so a skill node that waits out the coolDown runs again.
     private int steppingIndex;
+    // The skill node that last waited out the coolDown after its prob passed: the next node processed, when it is this
+    // one, does not roll its prob again (one roll per decision, so prob="50" still casts half the time).
+    private SkillNode? cooldownWaited;
     private List<Node> reservedNodes = new List<Node>();
 
     private enum DecisionTreeType {
@@ -414,7 +417,9 @@ public class AiState {
         if (entry is Node node) {
             actor.AppendDebugMessage($"> Node: {entry.Name}\n");
 
-            if (!AiNodeProb.Runs(AiNodeProb.Of(entry), Random.Shared)) {
+            bool rolled = cooldownWaited != null && ReferenceEquals(entry, cooldownWaited);
+            cooldownWaited = null;
+            if (!rolled && !AiNodeProb.Runs(AiNodeProb.Of(entry), Random.Shared)) {
                 return;
             }
 
@@ -423,6 +428,7 @@ public class AiState {
             }
 
             if (entry is SkillNode skillNode && WaitsOutSkillCooldown(skillNode)) {
+                cooldownWaited = skillNode;
                 return;
             }
 
