@@ -258,20 +258,24 @@ public class Buff : IUpdatable, IByteSerializable {
     public bool UpdateEnabled(bool notifyField = true) {
         bool enabled = Metadata.Condition.Check(Caster, Owner, Owner);
         bool suspended = SuspendedOnBattleMount(Owner, Metadata.Condition);
-        bool changed = Enabled != enabled || Suspended != suspended;
-        if (Enabled != enabled) {
-            Enabled = enabled;
-            if (notifyField) {
-                Field.Broadcast(BuffPacket.Update(this));
-            }
-        }
-        // The client works out the suspend itself (AdditionalCli::Update), so no packet tells it.
+        (bool packet, bool rebuild) = EnabledChanges(Enabled, enabled, Suspended, suspended);
+        Enabled = enabled;
         Suspended = suspended;
-        if (notifyField && changed) {
+        if (notifyField && packet) {
+            Field.Broadcast(BuffPacket.Update(this));
+        }
+        if (notifyField && rebuild) {
             Owner.Buffs.EnabledChanged(this);
         }
 
         return enabled;
+    }
+
+    // What a new enabled and suspended state sends: the buff's update packet when Enabled moved (the client works out
+    // the suspend itself, AdditionalCli::Update, so no packet tells it), and the holder's sums and stats are taken
+    // again when either moved.
+    internal static (bool Packet, bool Rebuild) EnabledChanges(bool wasEnabled, bool enabled, bool wasSuspended, bool suspended) {
+        return (wasEnabled != enabled, wasEnabled != enabled || wasSuspended != suspended);
     }
 
     // The client suspends a held buff while its holder rides a battle mount unless the level's begin condition has

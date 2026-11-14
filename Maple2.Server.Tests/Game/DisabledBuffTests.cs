@@ -223,4 +223,15 @@ public class DisabledBuffTests {
         on.Total();
         Assert.That(on[SpecialAttribute.OffensivePhysicalDamage].Total, Is.EqualTo(20));
     }
+
+    // Mounting or leaving a battle mount moves only Suspended: no update packet goes out (the client suspends the
+    // buff itself), but the holder's sums and stat totals are taken again, as for an enabled change.
+    [Test]
+    public void ASuspendOnlyChangeRebuildsTheSumsWithoutAPacket() {
+        Assert.That(Buff.EnabledChanges(true, true, false, true), Is.EqualTo((false, true)));
+        Assert.That(Buff.EnabledChanges(true, true, true, false), Is.EqualTo((false, true)));
+        Assert.That(Buff.EnabledChanges(true, false, false, false), Is.EqualTo((true, true)));
+        Assert.That(Buff.EnabledChanges(false, true, true, true), Is.EqualTo((true, true)));
+        Assert.That(Buff.EnabledChanges(true, true, true, true), Is.EqualTo((false, false)));
+    }
 }
