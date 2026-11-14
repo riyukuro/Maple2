@@ -1342,7 +1342,9 @@ public partial class FieldManager {
         // Caster is always excluded from the pool; re-added explicitly per IncludeCaster semantics
         ICollection<IActor> poolIgnore = ignore != null ? [.. ignore, caster] : [caster];
 
-        switch (TakesCaster(caster, range) ? range.IncludeCaster : IncludeCasterType.Exclude) {
+        bool takesCaster = TakesCaster(caster, range) && (!ServerTableMetadata.FeatureTable.IsOn(SplashIncludeCasterFeature)
+            || prisms.Any(prism => prism.Intersects(caster.Shape)));
+        switch (takesCaster ? range.IncludeCaster : IncludeCasterType.Exclude) {
             case IncludeCasterType.Priority: {
                     // Caster guaranteed as first target; pool fills remaining slots
                     IActor[] pool = SelectTargets(caster, prisms, range, targetCount - 1, poolIgnore, sort).ToArray();
@@ -1357,6 +1359,11 @@ public partial class FieldManager {
                 return SelectTargets(caster, prisms, range, targetCount, poolIgnore, sort);
         }
     }
+
+    // The client's search (CBaseCollision::Detect, basecollision.cpp:240-300) reads this feature for its caster: off
+    // (KR), the caster it finds is put first before the shape is tested, wherever he stands; on, only once the shape
+    // hits him.
+    public const string SplashIncludeCasterFeature = "SplashIncludeCaster";
 
     // Whether a range's includeCaster may add its caster. The client's search (CBaseCollision::Detect) puts the caster
     // first only when he passes the same target filter as the others (FilterTarget, basecollision.cpp:784, on the

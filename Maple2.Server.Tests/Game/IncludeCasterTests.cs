@@ -29,6 +29,7 @@ public class IncludeCasterTests {
         public required FieldManager Field;
         public required FieldPlayer A;
         public required FieldNpc Mob;
+        public required TestGameSession Test;
     }
 
     // The player A at (30, 0, 0) and a mob of the given friendly at the origin.
@@ -39,7 +40,7 @@ public class IncludeCasterTests {
         typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldNpc>());
         typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(a.Session.Player, field);
         a.Session.Player.Position = new Vector3(30, 0, 0);
-        return new Scene { Field = field, A = a.Session.Player, Mob = Mob(field, 10, friendly) };
+        return new Scene { Field = field, A = a.Session.Player, Mob = Mob(field, 10, friendly), Test = a };
     }
 
     // A living mob at the origin with only what the target search reads.
@@ -117,6 +118,24 @@ public class IncludeCasterTests {
         typeof(Buff).GetField("<Owner>k__BackingField", Any)!.SetValue(charm, scene.A);
         buffs[Charm] = [charm];
         Assert.That(Targets(scene, scene.A, Splash()).First(), Is.EqualTo(scene.A.ObjectId));
+    }
+
+    // SplashIncludeCaster (basecollision.cpp:240-300): off, as in KR, the caster the search finds is put first wherever
+    // he stands; on, only when the shape hits him. A player's friendly splash, cast away from him.
+    [Test]
+    public void SplashIncludeCaster_OnTakesTheCasterOnlyInsideTheShape() {
+        Scene scene = Start();
+        Prism[] away = [new Prism(new Circle(new Vector2(1_000, 0), 10), -100, 300)];
+        SkillMetadataRange friendly = Splash(apply: ApplyTargetType.Friendly);
+        int[] Hits(Prism[] prisms) => scene.Field.GetTargets(scene.A, prisms, friendly, 10).Select(target => target.ObjectId).ToArray();
+
+        scene.Test.SetFeaturesOff(FieldManager.SplashIncludeCasterFeature);
+        Assert.That(Hits(away), Is.EqualTo(new[] { scene.A.ObjectId }), "off: first, outside the shape");
+        scene.Test.SetFeaturesOff();
+        Assert.Multiple(() => {
+            Assert.That(Hits(away), Is.Empty, "on: outside the shape");
+            Assert.That(Hits(Around), Is.EqualTo(new[] { scene.A.ObjectId }), "on: inside the shape");
+        });
     }
 
     // A player's snare (93000002: cylinder 150, includeCaster 1, applyTarget 8) searches wild pets only: the client's
