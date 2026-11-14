@@ -1,5 +1,7 @@
-﻿using Maple2.Model.Game;
+﻿using Grpc.Core;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -53,9 +55,23 @@ public class WorldMapHandler : FieldPacketHandler {
         session.Send(WorldMapPacket.Load(bossGroups, []));
     }
 
+    // The crowd view: the asked world's three busiest fields, ranked 1 to 3 (WorldMapPopulationRules). The world's
+    // counts are of its online players; without an answer from the world nothing is ranked.
     private static void HandlePopulation(GameSession session, IByteReader packet) {
         // 102 = Victoria, 103 = Karkar, 105 = Kritias
         int mapCode = packet.ReadInt();
-        session.Send(WorldMapPacket.Population(new List<MapPopulation>()));
+
+        var populations = new List<MapPopulation>();
+        try {
+            MapPopulationResponse response = session.World.MapPopulation(new MapPopulationRequest());
+            HashSet<int> tiles = session.TableMetadata.WorldMapTable.Entries.Select(entry => entry.Code).ToHashSet();
+            bool OnWorld(int mapId) => tiles.Contains(mapId) && session.MapMetadata.TryGet(mapId, out MapMetadata? map)
+                                       && (int) map.Property.Continent == mapCode;
+            IEnumerable<(int, short, int)> counts = response.Entries.Select(entry => (entry.MapId, (short) entry.Channel, entry.Count));
+            foreach ((int mapId, int rank, short channel) in WorldMapPopulationRules.Rank(counts, OnWorld)) {
+                populations.Add(new MapPopulation { MapId = mapId, Population = rank, Channel = channel });
+            }
+        } catch (RpcException) { }
+        session.Send(WorldMapPacket.Population(populations));
     }
 }

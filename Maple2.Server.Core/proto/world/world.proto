@@ -70,6 +70,8 @@ service World {
   rpc UpdateFieldPlot(maple2.FieldPlotRequest) returns (maple2.FieldPlotResponse);
   // Rank duel queue (Pvp 14/15/16) and the end of a match.
   rpc Pvp(PvpRequest) returns (PvpResponse);
+  // The online players per field and channel, for the world map's crowd view (RequestWorldmap 1).
+  rpc MapPopulation(MapPopulationRequest) returns (MapPopulationResponse);
 }
 
 enum Server {
@@ -1034,4 +1036,15 @@ message PvpResponse {
   // QueueState: 0 none, 1 queued, 2 in a match; with the arena (100 the survival match).
   int32 queue_state = 7;
   int32 arena = 8;
+}
+
+message MapPopulationRequest { }
+
+message MapPopulationResponse {
+  message Entry {
+    int32 map_id = 1;
+    int32 channel = 2;
+    int32 count = 3;
+  }
+  repeated Entry entries = 1;
 }

@@ -634,6 +634,13 @@ public sealed class TestGameSession {
         public readonly List<PvpRequest> PvpRequests = [];
         public readonly Dictionary<PvpRequest.PvpOneofCase, PvpResponse> PvpResponses = [];
 
+        // The world's online counts per field and channel (MapPopulation); none when null.
+        public MapPopulationResponse? Population;
+
+        public override MapPopulationResponse MapPopulation(MapPopulationRequest request, CallOptions options) {
+            return Population ?? throw new RpcException(new Status(StatusCode.Unavailable, "no world"));
+        }
+
         public override PvpResponse Pvp(PvpRequest request, CallOptions options) {
             PvpRequests.Add(request);
             return PvpResponses.TryGetValue(request.PvpCase, out PvpResponse? response) ? response : new PvpResponse();

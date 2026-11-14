@@ -27,7 +27,7 @@ public static class WorldMapPacket {
         pWriter.WriteByte(3); // Const
         pWriter.WriteInt(populations.Count);
         foreach (MapPopulation population in populations) {
-            pWriter.Write<MapPopulation>(population);
+            pWriter.WritePopulation(population);
         }
 
         return pWriter;
@@ -39,10 +39,18 @@ public static class WorldMapPacket {
         pWriter.WriteByte(3); // Const
         pWriter.WriteInt(populations.Count);
         foreach (MapPopulation population in populations) {
-            pWriter.Write<MapPopulation>(population);
+            pWriter.WritePopulation(population);
         }
 
         return pWriter;
+    }
+
+    // WorldMapManager::LoadAddtionalInfos: the field, its ranking (only 1 to 3 is drawn, as the 1st/2nd/3rd badge)
+    // and the channel the badge's tooltip names.
+    private static void WritePopulation(this IByteWriter pWriter, MapPopulation population) {
+        pWriter.WriteInt(population.MapId);
+        pWriter.WriteInt(population.Population);
+        pWriter.WriteShort(population.Channel);
     }
 
     private static void WriteWorldBosses(this IByteWriter pWriter, IList<ICollection<MapWorldBoss>>? bossGroups) {
