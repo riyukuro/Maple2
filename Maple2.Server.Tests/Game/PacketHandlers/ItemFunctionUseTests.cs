@@ -176,6 +176,7 @@ public class ItemFunctionUseTests {
         Use(box, partner.Session.PlayerName);
 
         Assert.That(session.Item.Inventory.Get(box.Uid), Is.Null);
+        Assert.That(test.Row(box.Uid)?.OwnerId, Is.EqualTo(0), "the box is stored taken with the partner's mail");
         Item badge = session.Item.Inventory.Filter(item => item.Id == 70800001).Single();
         Assert.That((badge.Rarity, badge.CoupleInfo?.CharacterId), Is.EqualTo((4, partner.CharacterId)));
         Assert.That(test.World.MailNotifications.Select(mail => mail.CharacterId), Is.EqualTo(new[] { partner.CharacterId }));

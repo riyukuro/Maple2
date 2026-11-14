@@ -135,6 +135,7 @@ public class TreasureMapHandlerTests {
         Assert.That(Convert.ToHexString(sent[0]), Is.EqualTo(Hex(ItemInventoryPacket.UpdateAmount(map.Uid, 1))));
         Assert.That(Convert.ToHexString(sent[^1]), Is.EqualTo(Hex(ItemScriptPacket.TreasureMapResult(reward, 1))));
         Assert.That(Held(session, MapItemId), Is.EqualTo(1));
+        Assert.That(test.Row(map.Uid)?.Amount, Is.EqualTo(1), "the map is stored taken before its roll is given");
         Assert.That(Held(session, reward), Is.EqualTo(1));
         Assert.That(Held(session, reward == PaidReward ? FreeReward : PaidReward), Is.EqualTo(0));
         Assert.That(test.Errors, Is.Empty);

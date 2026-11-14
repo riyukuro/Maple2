@@ -142,6 +142,8 @@ public class ItemBoxHandlerTests {
         Assert.That(Held(session, RewardA), Is.EqualTo(3));
         Assert.That(Held(session, RewardB), Is.EqualTo(1));
         Assert.That(test.Errors, Is.Empty);
+        // The box is stored taken before its items are given, so a crash after the open cannot open it again.
+        Assert.That(test.Row(box.Uid)?.Amount, Is.EqualTo(1), "the box row is stored lowered at the open");
     }
 
     // The item box meso rate (SpecialAttribute.ItemBoxRewardMeso, +100% here) raises the mesos a box gives; its
@@ -170,6 +172,7 @@ public class ItemBoxHandlerTests {
         Assert.That(sent.Select(TestGameSession.Op).Distinct(), Is.EqualTo(new[] { SendOp.ItemInventory }));
         Assert.That(session.Item.Inventory.Get(box.Uid), Is.Null);
         Assert.That(Held(session, RewardA), Is.EqualTo(3));
+        Assert.That(test.Row(box.Uid)?.OwnerId, Is.EqualTo(0), "the last box's row is stored discarded at the open");
     }
 
     // A box that needs more of itself than the bag holds stays, with no answer.
@@ -209,6 +212,7 @@ public class ItemBoxHandlerTests {
         Assert.That(Held(session, BoxId), Is.EqualTo(2));
         Assert.That(Held(session, RewardA), Is.EqualTo(9));
         Assert.That(Held(session, RewardB), Is.EqualTo(3));
+        Assert.That(test.Row(box.Uid)?.Amount, Is.EqualTo(2), "each opened box is stored taken");
     }
 
     // RequestItemBox runs the item use checks (ItemUseHandler.UseAllowed): a box that expired while the dialog ran is
@@ -348,6 +352,7 @@ public class ItemBoxHandlerTests {
         Assert.That(sent.Select(TestGameSession.Op).Distinct(), Is.EqualTo(new[] { SendOp.ItemInventory }));
         Assert.That(Held(session, RewardA), Is.EqualTo(0));
         Assert.That(Held(session, RewardB), Is.EqualTo(1));
+        Assert.That(test.Row(box.Uid)?.Amount, Is.EqualTo(1), "the box row is stored lowered at the open");
     }
 
     // KR select box 20301130 carries "1,,330001622": the client skips the empty part (select count 1, its box).

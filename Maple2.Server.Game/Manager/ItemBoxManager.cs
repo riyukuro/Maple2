@@ -125,6 +125,15 @@ public class ItemBoxManager {
         return newItem.AnnounceOnOpen && target is { Uid: > 0 };
     }
 
+    // A box, key or capsule is taken and its row stored at once (InventoryManager.ConsumeNow), before the items it gives
+    // get theirs: taken in memory only, a crash after the items' rows were written kept the box for the next login,
+    // which opened it again. A crash between the take and the items now loses the items at worst.
+    private bool Take(ICollection<IngredientInfo> ingredients) =>
+        session.Item.Inventory.ConsumeNow(session.Item.Inventory.PlanConsume(ingredients));
+
+    private bool Take(IReadOnlyList<ItemComponent> components) =>
+        session.Item.Inventory.ConsumeNow(session.Item.Inventory.PlanItemComponents(components));
+
     private ItemBoxError LogAndReturnError(string? type) {
         logger.Error("Invalid box type: {Type}", type);
         return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
@@ -184,12 +193,9 @@ public class ItemBoxManager {
                 error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
                 break;
             }
-            if (boxPaid && keyIngredient.Tag == boxIngredient.Tag) {
-                if (!session.Item.Inventory.Consume([new IngredientInfo(keyIngredient.Tag, keyIngredient.Amount + boxIngredient.Amount)])) {
-                    error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
-                    break;
-                }
-            } else if (!session.Item.Inventory.Consume(boxPaid ? [keyIngredient, boxIngredient] : [keyIngredient])) {
+            // A key and a box of the same tag add up to two of it. The price is stored with the take (the purchase save
+            // stores the currency).
+            if (!Take(boxPaid ? [keyIngredient, boxIngredient] : [keyIngredient])) {
                 if (!boxPaid) {
                     session.Currency.ReturnMeso(mesoCost, notify: false);
                 }
@@ -252,7 +258,7 @@ public class ItemBoxManager {
                 break;
             }
 
-            if (!session.Item.Inventory.Consume([keyItemTag])) {
+            if (!Take([keyItemTag])) {
                 error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
                 break;
             }
@@ -297,7 +303,7 @@ public class ItemBoxManager {
         var ingredient = new IngredientInfo(tag, 1);
         var results = new List<(Item Item, bool Special)>();
         for (int i = 0; i < count; i++) {
-            if (!session.Item.Inventory.Consume([ingredient])) {
+            if (!Take([ingredient])) {
                 break;
             }
 
@@ -353,7 +359,7 @@ public class ItemBoxManager {
             if (itemList.Count == 0) {
                 return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
             }
-            if (!session.Item.Inventory.ConsumeItemComponents([ingredient])) {
+            if (!Take([ingredient])) {
                 return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
             }
             foreach (Item newItem in itemList) {
@@ -396,7 +402,7 @@ public class ItemBoxManager {
         var error = ItemBoxError.ok;
         var ingredient = new ItemComponent(item.Id, item.Rarity, itemRequiredAmount, ItemTag.None);
         for (int startCount = 0; startCount < count; startCount++) {
-            if (!session.Item.Inventory.ConsumeItemComponents([ingredient])) {
+            if (!Take([ingredient])) {
                 return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
             }
 
@@ -457,7 +463,7 @@ public class ItemBoxManager {
             new ItemComponent(keyItemId, -1, keyAmountRequired, ItemTag.None),
         };
         for (int startCount = 0; startCount < count; startCount++) {
-            if (!session.Item.Inventory.ConsumeItemComponents(ingredients)) {
+            if (!Take(ingredients)) {
                 return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
             }
 
@@ -517,7 +523,7 @@ public class ItemBoxManager {
         var ingredient = new ItemComponent(item.Id, item.Rarity, 1, ItemTag.None);
         ItemBoxError error = ItemBoxError.ok;
         for (int startCount = 0; startCount < count; startCount++) {
-            if (!session.Item.Inventory.ConsumeItemComponents([ingredient])) {
+            if (!Take([ingredient])) {
                 error = ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
                 break;
             }

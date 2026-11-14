@@ -80,4 +80,43 @@ public class InventoryConsumeTests {
         Assert.That(session.Item.Inventory.Consume([new IngredientInfo(KeyTag, 1), new IngredientInfo(KeyTag, 2)]), Is.True);
         Assert.That(Held(session, KeyId) + Held(session, BoxId), Is.EqualTo(0));
     }
+
+    // ConsumeNow (a roulette spin's ticket, a box, a map, a pouch) stores the take before the caller gives anything:
+    // the row is lowered, or discarded (owner 0) for the last one, with no session save. Before, the take stayed in
+    // memory until the next save while the prize was stored at once, so a crash in between let the claim run again.
+    [Test]
+    public void ConsumeNow_StoresTheTakeAtOnce() {
+        var test = new TestGameSession();
+        Maple2.Model.Game.Item ticket = test.Store(TestGameSession.Metadata(KeyId), 2);
+        Maple2.Model.Game.Item last = test.Store(TestGameSession.Metadata(BoxId), 1);
+        GameSession session = test.Start();
+
+        bool taken = session.Item.Inventory.ConsumeNow(session.Item.Inventory.PlanItemComponents([
+            new ItemComponent(KeyId, -1, 1, ItemTag.None), new ItemComponent(BoxId, -1, 1, ItemTag.None),
+        ]));
+
+        Assert.Multiple(() => {
+            Assert.That(taken, Is.True);
+            Assert.That(Held(session, KeyId), Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Get(last.Uid), Is.Null);
+            Assert.That(test.Row(ticket.Uid)?.Amount, Is.EqualTo(1), "the lowered stack is stored");
+            Assert.That(test.Row(last.Uid)?.OwnerId, Is.EqualTo(0), "the last one is stored discarded");
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // Two rows paid from one stack reserve their sum: a stack of 2 cannot pay two rows of 2 (each row alone fit, and
+    // the second take then failed with the first one done).
+    [Test]
+    public void PlanItemComponents_TwoRowsOfOneStackNeedTheirSum() {
+        var test = new TestGameSession();
+        test.Store(TestGameSession.Metadata(KeyId), 2);
+        GameSession session = test.Start();
+        var row = new ItemComponent(KeyId, -1, 2, ItemTag.None);
+
+        Assert.That(session.Item.Inventory.PlanItemComponents([row, row]), Is.Null);
+        Assert.That(session.Item.Inventory.PlanItemComponents([row with { Amount = 1 }, row with { Amount = 1 }]),
+            Is.EqualTo(new[] { (session.Item.Inventory.Find(KeyId).Single().Uid, 2) }));
+        Assert.That(Held(session, KeyId), Is.EqualTo(2), "a plan takes nothing");
+    }
 }

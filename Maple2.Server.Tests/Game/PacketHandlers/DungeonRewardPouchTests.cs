@@ -67,6 +67,7 @@ public class DungeonRewardPouchTests {
         Use(session);
 
         Assert.That(session.Item.Inventory.Get(pouch.Uid)!.Amount, Is.EqualTo(1));
+        Assert.That(test.Row(pouch.Uid)?.Amount, Is.EqualTo(1), "the pouch is stored taken before its prizes are given");
         Assert.That(Prizes(session), Is.EqualTo(5));
         DungeonRecord record = session.Dungeon.Records[Union];
         Assert.That(record.UnionClears, Is.EqualTo(1));

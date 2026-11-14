@@ -114,7 +114,9 @@ public class BonusGameHandler : FieldPacketHandler {
                 break;
             }
 
-            if (!session.Item.Inventory.ConsumeItemComponents([game.ConsumeItem])) {
+            // Each spin's ticket is stored as taken before its item is given (a crash in between can lose the item,
+            // never give it twice); the ticket was taken in memory only, and the item stored at once.
+            if (!session.Item.Inventory.ConsumeNow(session.Item.Inventory.PlanItemComponents([game.ConsumeItem]))) {
                 // TODO: Close the bonus game if items count is 0
                 break;
             }

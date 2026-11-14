@@ -166,7 +166,9 @@ public partial class GameStorage {
         // row is locked for the test and the write; the in-memory store (the tests) has no row lock to take.
         public bool CollectMail(Mail mail, (long Meso, long Meret, long GameMeret) read) {
             try {
-                using IDbContextTransaction transaction = Context.Database.BeginTransaction();
+                // Inside a request's transaction (a purchase save storing the collected currency with it) the test and
+                // the write are part of that transaction, which commits or rolls back both.
+                using IDbContextTransaction? transaction = Context.Database.CurrentTransaction == null ? Context.Database.BeginTransaction() : null;
                 if (Context.Database.IsRelational()) {
                     Context.Database.ExecuteSqlRaw("SELECT `Id` FROM `mail` WHERE `ReceiverId` = {0} AND `Id` = {1} FOR UPDATE",
                         mail.ReceiverId, mail.Id);
@@ -182,7 +184,7 @@ public partial class GameStorage {
                     return false; // the transaction is rolled back when it is disposed
                 }
 
-                transaction.Commit();
+                transaction?.Commit();
                 return true;
             } catch (Exception ex) {
                 Logger.LogError(ex, "Failed to collect mail {MailId}", mail.Id);

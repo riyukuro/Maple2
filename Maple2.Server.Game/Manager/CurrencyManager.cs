@@ -166,7 +166,7 @@ public class CurrencyManager {
     }
 
     // TryTakeMeret, NotifyMeretTaken and ReturnMeret for the red merets. Their packet is MeretUse, not Meret.
-    public bool TryTakeGameMeret(long amount, bool notify = true) {
+    public bool TryTakeGameMeret(long amount, bool notify = true, bool reportSpent = true) {
         if (amount < 0) {
             return false;
         }
@@ -181,7 +181,9 @@ public class CurrencyManager {
             }
             change = SetGameMeretLocked(Currency.GameMeret - amount);
         }
-        ReportMeretSpent(change);
+        if (reportSpent) {
+            ReportMeretSpent(change);
+        }
         return true;
     }
 

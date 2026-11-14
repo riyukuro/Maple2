@@ -514,23 +514,32 @@ public class ItemUseHandler : FieldPacketHandler {
         receiverMail.SetContent(StringCode.s_couple_effect_mail_content_receiver);
         receiverMail.SetSenderName(StringCode.s_couple_effect_mail_sender);
 
-        // The partner's mail and badge are written before the box is taken, in one transaction: a failed write keeps
-        // neither (the rollback also drops the failed save's pending rows, which the request's next save would write
-        // again). A box that can no longer be taken then deletes the mail. The box was taken first, and a failed
-        // write after it lost the box.
-        db.BeginTransaction();
-        Mail? sentMail = db.CreateMail(receiverMail);
-        if (sentMail == null || db.CreateItem(sentMail.Id, receiverItem) == null || !db.Commit()) {
-            db.Rollback();
+        // The partner's mail and badge and the taken box are stored in one transaction, together or not at all; the
+        // box leaves the bag in memory after the commit. The mail used to be committed first and the box taken in
+        // memory only, so a crash before the next session save kept the box with the partner's badge already sent,
+        // and the box could be opened again.
+        Mail? sentMail = null;
+        bool taken = true;
+        if (!session.TrySavePurchase(purchase => {
+                sentMail = purchase.CreateMail(receiverMail);
+                if (sentMail == null || purchase.CreateItem(sentMail.Id, receiverItem) == null
+                    || !session.Item.Inventory.SaveConsumed(purchase, item.Uid, 1)) {
+                    return false;
+                }
+                purchase.AfterCommit(() => taken = session.Item.Inventory.ConsumeStored(item.Uid, 1));
+                return true;
+            }) || sentMail == null) {
+            // The rollback drops the mail and the badge; a store without transactions (the in-memory test store)
+            // keeps what it wrote, so the mail is deleted as well (on a rolled-back store this finds nothing).
+            if (sentMail != null) {
+                db.DeleteMail(sentMail.Id, receiverInfo.CharacterId);
+            }
             session.Send(NoticePacket.MessageBox(StringCode.s_couple_effect_error_openbox_unknown));
             Logger.Error("Failed to send buddy badge {ItemId} to character id: {CharacterId}", buddyBadgeBoxParams[0], receiverInfo.CharacterId);
             return;
         }
-
-        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
-            db.DeleteMail(sentMail.Id, receiverInfo.CharacterId);
-            Logger.Error("Failed to use buddy badge box: {ItemUid}", item.Uid);
-            return;
+        if (!taken) {
+            Logger.Error("Buddy badge box {ItemUid} was stored as used but not taken from the bag of {CharacterId}", item.Uid, session.CharacterId);
         }
 
         try {
@@ -1299,7 +1308,9 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
         DungeonRoomMetadata? room = session.Dungeon.RewardPouchRoom(item.Metadata.Function.Parameters);
-        if (room is null || !session.Item.Inventory.Consume(item.Uid, 1)) {
+        // The pouch is stored as used before its rewards are given (a crash in between can lose the rewards, never
+        // give them twice); it was taken in memory only, and the rewards stored at once.
+        if (room is null || !session.Item.Inventory.ConsumeNow([(item.Uid, 1)])) {
             return;
         }
 
@@ -1481,7 +1492,9 @@ public class ItemUseHandler : FieldPacketHandler {
 
         ICollection<Item> rewards = session.Field!.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId);
         // The room is checked for the whole roll before the map is taken, so an Add below takes all of it.
-        if (rewards.Count == 0 || !session.Item.Inventory.TakesAll(rewards) || !session.Item.Inventory.Consume(item.Uid, 1)) {
+        // The map and the cost are stored as taken before the rewards are given (a crash in between can lose the
+        // rewards, never give them twice); the map was taken in memory only, and the rewards stored at once.
+        if (rewards.Count == 0 || !session.Item.Inventory.TakesAll(rewards) || !session.Item.Inventory.ConsumeNow([(item.Uid, 1)])) {
             session.Currency.ReturnMeso(cost, notify: false);
             session.Send(ItemScriptPacket.TreasureMapFailed());
             return;

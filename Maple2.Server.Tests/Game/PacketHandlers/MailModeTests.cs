@@ -152,6 +152,30 @@ public class MailModeTests {
         });
     }
 
+    // A collect stores the mesos and merets it gives with the mail's collect mark, in one transaction, before the
+    // session saves. Before, the mark was stored at once and the currency only at the next save, so a crash in
+    // between lost what the mail held.
+    [Test]
+    public void Collect_StoresTheCurrencyWithTheMark() {
+        Begin();
+        Mail mail = StoreMail(meso: 300, meret: 7);
+        GameSession session = Login();
+        long meretsBefore = session.Currency.Meret;
+
+        MailError error = session.Mail.Collect(mail.Id);
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        long storedMeso = context.Character.AsNoTracking().Single(row => row.Id == test.CharacterId).Currency.Meso;
+        long storedMeret = context.Account.AsNoTracking().Single(row => row.Id == test.AccountId).Currency.Meret;
+        Assert.Multiple(() => {
+            Assert.That(error, Is.EqualTo(MailError.none));
+            Assert.That(Stored(mail.Id)!.MesoCollectTime, Is.GreaterThan(0));
+            Assert.That(storedMeso, Is.EqualTo(1300), "the mesos are stored with the mark");
+            Assert.That(storedMeret, Is.EqualTo(meretsBefore + 7), "the merets are stored with the mark");
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // Two collects of one mail that both read it before either wrote it (two game servers holding the player; login
     // keeps a character in one session, this is the insurance): the write of the collect is conditional, so the one
     // that writes second gives nothing. Before, it gave the mesos and merets again.
@@ -164,9 +188,8 @@ public class MailModeTests {
         Mail stale = Stored(mail.Id)!;
 
         MailError first = session.Mail.Collect(mail.Id);
-        using GameStorage.Request db = test.Storage.Context();
-        var collect = typeof(MailManager).GetMethod("CollectInternal", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        var second = (MailError) collect.Invoke(session.Mail, [db, stale])!;
+        var collect = typeof(MailManager).GetMethod("CollectCurrency", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var second = (MailError) collect.Invoke(session.Mail, [stale, DateTimeOffset.UtcNow.ToUnixTimeSeconds()])!;
 
         Assert.Multiple(() => {
             Assert.That(first, Is.EqualTo(MailError.none));

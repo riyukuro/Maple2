@@ -585,7 +585,14 @@ public class InventoryManager {
 
     public bool Consume(ICollection<IngredientInfo> ingredients) {
         lock (session.Item) {
-            // Entries naming the same tag add up (each stack is counted once, not once per entry).
+            return Apply(PlanConsume(ingredients));
+        }
+    }
+
+    // The stacks Consume(ingredients) takes and how many of each, or null when the bag does not hold them all.
+    // Entries naming the same tag add up (each stack is counted once, not once per entry).
+    public IReadOnlyList<(long Uid, int Amount)>? PlanConsume(ICollection<IngredientInfo> ingredients) {
+        lock (session.Item) {
             Dictionary<ItemTag, int> needed = new();
             foreach (IngredientInfo info in ingredients) {
                 if (info.Amount <= 0) {
@@ -594,38 +601,70 @@ public class InventoryManager {
                 needed[info.Tag] = needed.GetValueOrDefault(info.Tag) + info.Amount;
             }
 
-            // Build this index so we don't need to find materials twice.
-            Dictionary<ItemTag, IList<Item>> ingredientsByTag = needed.Keys.ToDictionary(
-                tag => tag,
-                tag => Filter(item => item.Metadata.Property.Tag == tag && item.IsSpendable())
-            );
-
-            // Validate
-            foreach ((ItemTag tag, int amount) in needed) {
-                if (ingredientsByTag[tag].Sum(item => (long) item.Amount) < amount) {
-                    return false;
-                }
-            }
-
-            // Consume
+            var plan = new List<(long Uid, int Amount)>();
             foreach ((ItemTag tag, int amount) in needed) {
                 int remaining = amount;
-                foreach (Item ingredient in ingredientsByTag[tag]) {
+                foreach (Item ingredient in Filter(item => item.Metadata.Property.Tag == tag && item.IsSpendable())) {
                     int consume = Math.Min(remaining, ingredient.Amount);
-                    if (!ConsumeInternal(ingredient.Uid, consume)) {
-                        Log.Error("Failed to consume ingredient {ItemUid}", ingredient.Uid);
-                        return false;
-                    }
-
+                    plan.Add((ingredient.Uid, consume));
                     remaining -= consume;
                     if (remaining <= 0) {
                         break;
                     }
                 }
+                if (remaining > 0) {
+                    return null;
+                }
             }
-
-            return true;
+            return plan;
         }
+    }
+
+    // Takes a plan's amounts from the bag in memory (the next save stores them).
+    private bool Apply(IReadOnlyList<(long Uid, int Amount)>? plan) {
+        if (plan == null) {
+            return false;
+        }
+        foreach ((long uid, int amount) in plan) {
+            if (!ConsumeInternal(uid, amount)) {
+                Log.Error("Failed to consume item uid: {ItemUid}", uid);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Takes a plan's amounts from the bag and stores their rows at once, in one purchase save (with the currency) or
+    // not at all, for a use whose gift gets its rows at once (an item box's items, a ticket's reward): left to the
+    // session save, a crash after the gift was stored kept the box, key or ticket, which then gave it again. Memory
+    // follows once the save is committed. False when the plan is null or the save is refused; nothing is taken then.
+    public bool ConsumeNow(IReadOnlyList<(long Uid, int Amount)>? plan) {
+        if (plan == null || plan.Count == 0) {
+            return false;
+        }
+        bool taken = true;
+        if (!session.TrySavePurchase(db => {
+                foreach ((long uid, int amount) in plan) {
+                    if (!SaveConsumed(db, uid, amount)) {
+                        return false;
+                    }
+                }
+                // Under the account lock, so no session save between the commit and memory writes the old amount.
+                db.AfterCommit(() => {
+                    foreach ((long uid, int amount) in plan) {
+                        taken &= ConsumeStored(uid, amount);
+                    }
+                });
+                return true;
+            })) {
+            return false;
+        }
+        // Not taken: an item left the bag between its save and the commit (the bag lock is not held across the
+        // transaction); its row is stored as spent while the item where it went keeps its amount in memory.
+        if (!taken) {
+            logger.Error("ConsumeNow: a stored take was not taken from the bag of {CharacterId}", session.CharacterId);
+        }
+        return true;
     }
 
     // The materials of a mastery craft as the client counts them before it sends the craft (CMasteryManager,
@@ -684,88 +723,69 @@ public class InventoryManager {
     // taken (no uid, the amount taken from that stack), so a caller can give the price back.
     public bool ConsumeItemComponents(IReadOnlyList<ItemComponent> components, int quantityMultiplier = 1, long keepUid = 0, List<Item>? taken = null) {
         lock (session.Item) {
-
-            // Check for components
-            Dictionary<int, IList<Item>> materialsById = components.ToDictionary(
-                ingredient => ingredient.ItemId,
-                ingredient => Filter(item => item.IsSpendable() && item.Uid != keepUid && item.Id == ingredient.ItemId && (ingredient.Rarity < 0 || item.Rarity == Item.ClientRarity(item.Metadata, ingredient.Rarity)))
-            );
-            var materialsByTag = new Dictionary<ItemTag, IList<Item>>();
-            foreach (ItemComponent ingredient in components) {
-                if (materialsByTag.TryGetValue(ingredient.Tag, out IList<Item>? value)) {
-                    foreach (Item item in session.Item.Inventory.Find(ingredient.ItemId, ingredient.Rarity).Where(item => item.IsSpendable() && item.Uid != keepUid)) {
-                        value.Add(item);
-                    }
-                } else {
-                    materialsByTag.Add(ingredient.Tag, session.Item.Inventory.Find(ingredient.ItemId, ingredient.Rarity).Where(item => item.IsSpendable() && item.Uid != keepUid).ToList());
-                }
+            IReadOnlyList<(long Uid, int Amount)>? plan = PlanItemComponents(components, quantityMultiplier, keepUid);
+            if (plan == null) {
+                return false;
             }
-
-            foreach (ItemComponent ingredient in components) {
-                int remaining = ingredient.Amount * quantityMultiplier;
-                if (ingredient.Tag != ItemTag.None) {
-                    foreach (Item material in materialsByTag[ingredient.Tag]) {
-                        remaining -= material.Amount;
-                        if (remaining <= 0) {
-                            break;
-                        }
-                    }
-                } else {
-                    foreach (Item material in materialsById[ingredient.ItemId]) {
-                        remaining -= material.Amount;
-                        if (remaining <= 0) {
-                            break;
-                        }
-                    }
-                }
-
-                if (remaining > 0) {
+            foreach ((long uid, int amount) in plan) {
+                Item? part = taken == null ? null : tabs.Values.FirstOrDefault(collection => collection.Contains(uid))?.Get(uid)?.Clone(newRow: true);
+                if (!ConsumeInternal(uid, amount)) {
+                    Log.Error("Failed to consume item uid: {ItemUid}", uid);
                     return false;
                 }
-            }
-
-            foreach (ItemComponent ingredient in components) {
-                int remainingIngredients = ingredient.Amount * quantityMultiplier;
-                if (ingredient.Tag != ItemTag.None) {
-                    foreach (Item material in materialsByTag[ingredient.Tag]) {
-                        int consume = Math.Min(remainingIngredients, material.Amount);
-                        Item? part = taken == null ? null : material.Clone(newRow: true);
-                        if (!session.Item.Inventory.Consume(material.Uid, consume)) {
-                            Log.Error("Failed to consume item uid: {ItemUid}, item id: {ItemId}", material.Uid, material.Id);
-                            return false;
-                        }
-
-                        if (part != null) {
-                            part.Amount = consume;
-                            taken!.Add(part);
-                        }
-                        remainingIngredients -= consume;
-                        if (remainingIngredients <= 0) {
-                            break;
-                        }
-                    }
-                } else {
-                    foreach (Item material in materialsById[ingredient.ItemId]) {
-                        int consume = Math.Min(remainingIngredients, material.Amount);
-                        Item? part = taken == null ? null : material.Clone(newRow: true);
-                        if (!session.Item.Inventory.Consume(material.Uid, consume)) {
-                            Log.Error("Failed to consume item uid: {ItemUid}, item id: {ItemId}", material.Uid, material.Id);
-                            return false;
-                        }
-
-                        if (part != null) {
-                            part.Amount = consume;
-                            taken!.Add(part);
-                        }
-                        remainingIngredients -= consume;
-                        if (remainingIngredients <= 0) {
-                            break;
-                        }
-                    }
+                if (part != null) {
+                    part.Amount = amount;
+                    taken!.Add(part);
                 }
             }
+            return true;
         }
-        return true;
+    }
+
+    // The stacks ConsumeItemComponents takes and how many of each, or null when the bag does not hold them all. A row
+    // with a tag takes from the items of every row with that tag, one without from its id (at the row's rarity, any
+    // when below 0). Each row reserves what it takes, so two rows matching one stack cannot both be paid by it (they
+    // were checked one by one and then taken in turn, so the second take failed with the first one done).
+    public IReadOnlyList<(long Uid, int Amount)>? PlanItemComponents(IReadOnlyList<ItemComponent> components, int quantityMultiplier = 1, long keepUid = 0) {
+        lock (session.Item) {
+            var materialsByTag = new Dictionary<ItemTag, List<Item>>();
+            foreach (ItemComponent ingredient in components) {
+                IEnumerable<Item> found = Find(ingredient.ItemId, ingredient.Rarity).Where(item => item.IsSpendable() && item.Uid != keepUid);
+                if (materialsByTag.TryGetValue(ingredient.Tag, out List<Item>? value)) {
+                    value.AddRange(found);
+                } else {
+                    materialsByTag.Add(ingredient.Tag, found.ToList());
+                }
+            }
+
+            var reserved = new Dictionary<long, int>();
+            var plan = new List<(long Uid, int Amount)>();
+            foreach (ItemComponent ingredient in components) {
+                IEnumerable<Item> materials = ingredient.Tag != ItemTag.None
+                    ? materialsByTag[ingredient.Tag]
+                    : Filter(item => item.IsSpendable() && item.Uid != keepUid && item.Id == ingredient.ItemId && (ingredient.Rarity < 0 || item.Rarity == Item.ClientRarity(item.Metadata, ingredient.Rarity)));
+                int remaining = ingredient.Amount * quantityMultiplier;
+                foreach (Item material in materials) {
+                    if (remaining <= 0) {
+                        break;
+                    }
+                    int taken = reserved.GetValueOrDefault(material.Uid);
+                    int consume = Math.Min(remaining, material.Amount - taken);
+                    if (consume <= 0) {
+                        continue;
+                    }
+                    reserved[material.Uid] = taken + consume;
+                    remaining -= consume;
+                }
+                if (remaining > 0) {
+                    return null;
+                }
+            }
+            foreach ((long uid, int amount) in reserved) {
+                plan.Add((uid, amount));
+            }
+            return plan;
+        }
     }
 
     public void Sort(InventoryType type, bool removeExpired = false, bool mergeStacks = false) {
