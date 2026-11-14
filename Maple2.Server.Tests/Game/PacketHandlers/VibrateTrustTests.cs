@@ -68,8 +68,12 @@ public class VibrateTrustTests {
         return new Scene { Test = test, Record = record };
     }
 
-    private static void AttackPoint(Scene scene) {
-        Assert.That(scene.Record.Hits.TakePoint(0, 0, held: false, count: 1, scene.Test.Session.Field!.FieldTick), Is.True);
+    // The attack point's packet, declaring tags attacks (one tag per attack; 0 when nothing was picked).
+    private static void AttackPoint(Scene scene, int tags = 1) {
+        Assert.That(scene.Record.Hits.TakePoint(0, 0, held: false, count: tags, scene.Test.Session.Field!.FieldTick), Is.True);
+        for (int i = 0; i < tags; i++) {
+            scene.Record.Hits.Declare(1000 + i, 0, 0);
+        }
     }
 
     // The Vibrate packets the handler relayed for this packet.
@@ -90,7 +94,7 @@ public class VibrateTrustTests {
     }
 
     [Test]
-    public void OnePacketPerObjectForEachIteration() {
+    public void OnePacketPerObjectForOneTag() {
         Scene scene = Start();
         Assert.That(Vibrate(scene, "tree"), Is.EqualTo(0), "before the attack point's packet");
         AttackPoint(scene);
@@ -98,6 +102,26 @@ public class VibrateTrustTests {
             Assert.That(Vibrate(scene, "tree"), Is.EqualTo(1));
             Assert.That(Vibrate(scene, "tree"), Is.EqualTo(0), "the tag already sent for the tree");
         });
+    }
+
+    // Each tag of the attack point sends once for the tree: two tags, two packets.
+    [Test]
+    public void OnePacketPerObjectForEachTag() {
+        Scene scene = Start();
+        AttackPoint(scene, tags: 2);
+        Assert.Multiple(() => {
+            Assert.That(Vibrate(scene, "tree"), Is.EqualTo(1));
+            Assert.That(Vibrate(scene, "tree"), Is.EqualTo(1));
+            Assert.That(Vibrate(scene, "tree"), Is.EqualTo(0));
+        });
+    }
+
+    // An attack point packet with no tag places nothing that could meet the tree.
+    [Test]
+    public void NoTagNoPacket() {
+        Scene scene = Start();
+        AttackPoint(scene, tags: 0);
+        Assert.That(Vibrate(scene, "tree"), Is.EqualTo(0));
     }
 
     [Test]

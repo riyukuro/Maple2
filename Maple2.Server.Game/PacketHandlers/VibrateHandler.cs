@@ -40,7 +40,7 @@ public class VibrateHandler : FieldPacketHandler {
         FieldVibrateEntity? vibrate = session.Field?.AccelerationStructure?.GetVibrateEntity(entityId);
         VibrateRules.Refusal refusal = VibrateRules.Check(vibrate != null, session.Field?.Vibrate.IsHidden(entityId) ?? false,
             skillId == record.SkillId && level == record.Level,
-            () => record.Vibrates.Take(attackPoint, entityId, record.Hits.PointIterations(attackPoint)));
+            () => record.Vibrates.Take(attackPoint, entityId, record.Hits.PointAttacks(attackPoint)));
         if (refusal != VibrateRules.Refusal.None) {
             Logger.Debug("Vibrate {EntityId} refused ({Refusal}): skill {SkillId} level {Level} point {AttackPoint}: {Record}",
                 entityId, refusal, skillId, level, attackPoint, record);

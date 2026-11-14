@@ -13,7 +13,7 @@ public static class VibrateRules {
         NoObject, // no vibrate object of the field has the id
         Hidden, // the object's group is hidden
         OtherSkill, // the skill id or level is not the cast's
-        Spent, // the object already had one packet for each counted iteration of the attack point
+        Spent, // the object already had one packet for each tag the attack point declared
     }
 
     // take: counts the packet against the cast's budget; called only when nothing else refuses it.
@@ -31,16 +31,18 @@ public static class VibrateRules {
     }
 
     /// <summary>
-    /// The Vibrate packets one cast has taken. Each counted iteration of an attack point (SkillHitBudget) fires a tag,
-    /// and a tag sends once per object: so an object takes at most as many packets as its attack point has counted
-    /// iterations, and none before the attack point's first packet.
+    /// The Vibrate packets one cast has taken. Each firing of an attack point makes its tags and sends the attack
+    /// point packet that declares them, before any of the tags is placed (StateSkill, stateskill.cpp:1348-1370; a tag
+    /// joins the tag ranges only when its magic spawns, CMagic::FUN_141462490). A tag sends once per object: so an
+    /// object takes at most as many packets as the attack point's taken packets declared attacks (SkillHitBudget),
+    /// and none when they declared none.
     /// </summary>
     public sealed class Budget {
         private readonly Dictionary<(byte, string), int> taken = new();
 
-        public bool Take(byte attackPoint, string entityId, int iterations) {
+        public bool Take(byte attackPoint, string entityId, int attacks) {
             int used = taken.GetValueOrDefault((attackPoint, entityId));
-            if (used >= iterations) {
+            if (used >= attacks) {
                 return false;
             }
             taken[(attackPoint, entityId)] = used + 1;
