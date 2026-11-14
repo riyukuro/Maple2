@@ -505,7 +505,7 @@ public partial class GameStorage {
         // One buy or take-back at a time in this process; the conditional row change below covers other channels.
         private static readonly object BlackMarketLock = new();
 
-        // Tests only: runs with the listing id once a buy is stored, before its answer is shaped.
+        // Tests only: runs with the listing id once a buy's rows are written, before its answer is shaped.
         internal static Action<long>? OnBuyStored;
 
         // Buys quantity of a listing at price and mails it to the buyer, all in one transaction: the listing's
@@ -514,18 +514,18 @@ public partial class GameStorage {
         // moves to the mail and the listing row is deleted when nothing is left; else the stack is split.
         // sellerMail makes the seller's mail from the listing as it is after the buy; it is stored in the same
         // transaction, so a buy whose seller mail cannot be made or saved changes nothing.
-        // Returns the listing as it is after the buy; mail is the stored mail holding the bought item. stored is set
-        // as soon as the transaction is committed, so a caller still sees it when a later step throws. Inside a
-        // transaction the request already holds (a purchase save that stores the buyer's wallet with the buy), the buy
-        // is part of it and commits or rolls back with the wallet; stored then says only that its rows were written.
+        // Returns the listing as it is after the buy; mail is the stored mail holding the bought item. failed is set
+        // when the buy threw or a write failed (logged here), so a caller can tell that from a refusal (the listing no
+        // longer holds the count at that price). Inside a transaction the request already holds (a purchase save that
+        // stores the buyer's wallet with the buy), the buy is part of it and commits or rolls back with the wallet.
         public BlackMarketListing? BuyBlackMarketListing(long listingId, int quantity, long price, Maple2.Model.Game.Mail buyerMail,
                                                          Func<BlackMarketListing, Maple2.Model.Game.Mail>? sellerMail,
                                                          out Maple2.Model.Game.Mail? mail, out Maple2.Model.Game.Mail? sellerStored, out bool gone,
-                                                         out bool stored) {
+                                                         out bool failed) {
             mail = null;
             sellerStored = null;
             gone = false;
-            stored = false;
+            failed = false;
             if (quantity <= 0) {
                 return null;
             }
@@ -563,6 +563,8 @@ public partial class GameStorage {
                     Item? listed = itemModel == null ? null : ToItem(itemModel);
                     if (itemModel == null || listed == null) {
                         Context.ChangeTracker.Clear();
+                        Logger.LogError("Black market listing {ListingId} has no item row {ItemUid}", listingId, model.ItemUid);
+                        failed = true;
                         return null; // the transaction is rolled back when it is disposed
                     }
 
@@ -602,18 +604,26 @@ public partial class GameStorage {
                     }
                     Context.SaveChanges();
                     transaction?.Commit();
-                    stored = true;
                 } catch (Exception ex) {
                     Context.ChangeTracker.Clear();
                     Logger.LogError(ex, "Failed to buy {Quantity} of black market listing {ListingId}", quantity, listingId);
+                    failed = true;
                     return null;
                 } finally {
-                    ForgetRows([written]);
+                    long row = written;
+                    ForgetRows([row]);
+                    // In a held transaction the rows are kept only at its commit: a save between this write and the
+                    // commit may keep the values the commit then overwrites, so they are forgotten again at its end
+                    // (as WriteForgetting does).
+                    if (IsTransaction && row != 0) {
+                        AfterEnd(() => ForgetRows([row]), () => ForgetRows([row]));
+                    }
                 }
             }
 
-            // The buy is stored. What follows only shapes the answer, outside the catch above: an error here
-            // may not be read as a buy that did not happen.
+            // The buy's rows are written (and committed, unless a transaction the request holds commits them). What
+            // follows only shapes the answer, outside the catch above; in a held transaction a throw here rolls the
+            // buy back with it.
             OnBuyStored?.Invoke(listingId);
             Maple2.Model.Game.Mail created = mailModel!;
             created.Items.Add(ToItem(soldModel)!);

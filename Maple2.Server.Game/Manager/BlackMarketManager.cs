@@ -274,10 +274,9 @@ public sealed class BlackMarketManager {
         BlackMarketListing look = listing;
         bool refused = false; // the listing no longer holds the count at this price: no failure
         bool stored = session.TrySavePurchase(save => {
-            int failed = save.FailedSaves;
             bought = save.BuyBlackMarketListing(listingId, quantity, look.Price, BuyerMail(look, quantity),
-                after => SellerMail(after, quantity, sellerIsPremium, feeRate), out receivingMail, out sellerMail, out gone, out _);
-            refused = bought == null && save.FailedSaves == failed;
+                after => SellerMail(after, quantity, sellerIsPremium, feeRate), out receivingMail, out sellerMail, out gone, out bool failed);
+            refused = bought == null && !failed;
             return bought != null && receivingMail != null;
         }, () => refused, out _);
         if (!stored || bought == null || receivingMail == null) {

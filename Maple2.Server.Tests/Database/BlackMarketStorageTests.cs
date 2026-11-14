@@ -198,11 +198,13 @@ public class BlackMarketStorageTests {
 
         using (GameStorage.Request db = storage.Context()) {
             BlackMarketListing? after = db.BuyBlackMarketListing(listing.Id, quantity, Price, new Mail { ReceiverId = buyerA },
-                _ => throws ? throw new InvalidOperationException("no mail") : null!, out Mail? mail, out Mail? sellerMail, out bool gone, out _);
+                _ => throws ? throw new InvalidOperationException("no mail") : null!, out Mail? mail, out Mail? sellerMail, out bool gone, out bool failed);
             Assert.That(after, Is.Null);
             Assert.That(mail, Is.Null);
             Assert.That(sellerMail, Is.Null);
             Assert.That(gone, Is.False);
+            // A failure, not a refusal: the purchase save logs it as an error.
+            Assert.That(failed, Is.True);
         }
 
         Assert.That(Listed(listing.Id), Is.EqualTo(4));
@@ -215,6 +217,19 @@ public class BlackMarketStorageTests {
         }
         Assert.That(Buy(listing.Id, quantity, buyerA), Is.EqualTo(quantity));
         Assert.That(SellerMails(), Is.EqualTo((quantity * Price, 0)));
+    }
+
+    // A listing that no longer holds the count, or is gone, is a refusal: failed stays false.
+    [TestCase(5)]
+    [TestCase(0)]
+    public void Buy_RefusedIsNoFailure(int quantity) {
+        BlackMarketListing listing = List(4);
+        long id = quantity == 0 ? listing.Id + 1000 : listing.Id;
+
+        using GameStorage.Request db = storage.Context();
+        BlackMarketListing? after = db.BuyBlackMarketListing(id, Math.Max(quantity, 1), Price, new Mail { ReceiverId = buyerA },
+            left => new Mail { ReceiverId = seller }, out _, out _, out bool gone, out bool failed);
+        Assert.That((after, gone, failed), Is.EqualTo(((BlackMarketListing?) null, quantity == 0, false)));
     }
 
     // The mail of a take-back cannot be made: the listing stays as it was, the item stays the listing's, and
