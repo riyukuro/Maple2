@@ -12,9 +12,9 @@ namespace Maple2.Server.Tests.Game;
 public class PremiumMarketTests {
     private const int ItemId = 20300036;
 
-    private static MeretMarketItemMetadata Row(int id, int parentId = 0, int itemId = 0, int quantity = 1) =>
+    private static MeretMarketItemMetadata Row(int id, int parentId = 0, int itemId = 0, int quantity = 1, bool noRestock = false) =>
         new(id, parentId, 1, string.Empty, (MeretMarketBannerTag) 0, itemId, 1, quantity, 0, 0, (MeretMarketItemSaleTag) 0,
-            (MeretMarketCurrencyType) 0, 100, 100, 0, 0, (JobFilterFlag) 0, false, 0, 0, 0, 0, false, true, false, string.Empty, 0, 0);
+            (MeretMarketCurrencyType) 0, 100, 100, 0, 0, (JobFilterFlag) 0, noRestock, 0, 0, 0, 0, false, true, false, string.Empty, 0, 0);
 
     private static Dictionary<int, PremiumMarketItem> Market(params MeretMarketItemMetadata[] rows) =>
         GameServer.PremiumMarket(new MeretMarketTable(rows.ToDictionary(row => row.Id)),
@@ -61,5 +61,21 @@ public class PremiumMarketTests {
         Dictionary<int, PremiumMarketItem> market = Market(Row(143051, 143050), Row(143060, itemId: ItemId + 1), Row(143061, 143060));
 
         Assert.That(market, Is.Empty);
+    }
+
+    // The bytes after the sale times are the client's buy limit: the scope byte (0 = no limit), the count and the
+    // reset type. noRestock is not one of them; written into the scope byte, a noRestock row showed a limit of 0 buys.
+    [Test]
+    public void NoRestock_IsNotABuyLimit() {
+        PremiumMarketItem restock = Market(Row(143050, itemId: ItemId))[143050];
+        PremiumMarketItem noRestock = Market(Row(143050, itemId: ItemId, noRestock: true))[143050];
+
+        Assert.That(Bytes(noRestock), Is.EqualTo(Bytes(restock)));
+    }
+
+    private static string Bytes(PremiumMarketItem item) {
+        var writer = new Maple2.PacketLib.Tools.ByteWriter();
+        item.WriteTo(writer);
+        return System.Convert.ToHexString(writer.ToArray());
     }
 }

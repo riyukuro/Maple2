@@ -40,9 +40,11 @@ public class PremiumMarketItem : MarketItem {
         writer.WriteLong(Metadata.SaleEndTime);
         writer.WriteInt(); // Another flag
         writer.WriteInt();
-        writer.WriteBool(Metadata.RestockUnavailable);
-        writer.WriteInt();
-        writer.WriteByte();
+        // The client's buy limit: the scope (0 = no limit; else the s_meratmarket_limited_buylimit line shows it),
+        // the count and the reset type. noRestock is not one of these, so the scope stays 0.
+        writer.WriteByte(); // buy-limit scope
+        writer.WriteInt(); // buy-limit count
+        writer.WriteByte(); // buy-limit reset type
         writer.WriteShort(Metadata.RequireMinLevel);
         writer.WriteShort(Metadata.RequireMaxLevel);
         writer.Write<JobFilterFlag>(Metadata.JobRequirement);
