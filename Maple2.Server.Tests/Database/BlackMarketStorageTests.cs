@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Tests.Game;
@@ -75,10 +76,14 @@ public class BlackMarketStorageTests {
         context.SaveChanges();
     }
 
-    private BlackMarketListing List(int amount) {
+    private BlackMarketListing List(int amount, ItemTransfer? transfer = null) {
         Item item;
         using (GameStorage.Request db = storage.Context()) {
-            item = db.CreateItem(0, new Item(TestGameSession.Metadata(ItemId), amount: amount)) ?? throw new InvalidOperationException("item row not created");
+            var made = new Item(TestGameSession.Metadata(ItemId), amount: amount);
+            if (transfer != null) {
+                made.Transfer = transfer;
+            }
+            item = db.CreateItem(0, made) ?? throw new InvalidOperationException("item row not created");
         }
         using (GameStorage.Request db = storage.Context()) {
             BlackMarketListing listing = db.CreateBlackMarketingListing(new BlackMarketListing(item) {
@@ -163,6 +168,23 @@ public class BlackMarketStorageTests {
         Assert.That((Mailed(buyerA), Mailed(buyerB)), Is.EqualTo((3, 1)));
         // The seller's mail of each sale was stored with it.
         Assert.That(SellerMails(), Is.EqualTo((4 * Price, 0)));
+    }
+
+    // A bought item has been traded once: one of a trade-limited item's trades is used up, as a trade spends one
+    // (TradeManager); the client's buy prompt shows the count left after it (uiblackmarketpage.cpp:1076). This
+    // holds for a whole listing and for part of one; the part left listed keeps its count.
+    [TestCase(4)]
+    [TestCase(3)]
+    public void Buy_UsesUpOneTrade(int quantity) {
+        BlackMarketListing listing = List(4, new ItemTransfer(TransferFlag.LimitTrade | TransferFlag.Split, 2));
+
+        Assert.That(Buy(listing.Id, quantity, buyerA), Is.EqualTo(quantity));
+        using GameStorage.Request db = storage.Context();
+        Item bought = db.GetAllMail(buyerA).SelectMany(mail => mail.Items).Single(item => item.Id == ItemId);
+        Assert.That(bought.Transfer!.RemainTrades, Is.EqualTo(1));
+        if (quantity < 4) {
+            Assert.That(db.GetBlackMarketListing(listing.Id)!.Item.Transfer!.RemainTrades, Is.EqualTo(2));
+        }
     }
 
     // The seller's mail cannot be made (the maker throws, or the mail cannot be stored): the buy does not happen.

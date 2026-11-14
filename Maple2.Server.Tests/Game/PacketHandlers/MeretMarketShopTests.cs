@@ -165,6 +165,20 @@ public class MeretMarketShopTests {
         Assert.That(session.Currency.Meret, Is.EqualTo(1350));
     }
 
+    // The profit is stored with the sale's removal, not left to the next session save: a crash after the collect
+    // kept neither the sale nor the merets before.
+    [Test]
+    public void CollectProfit_StoresTheMeretsWithTheSalesRemoval() {
+        long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());
+        long sale = CreateSale(listing, 350, DateTime.Now.AddDays(-Constant.UGCShopProfitDelayDays - 1));
+        Start();
+
+        IdRequest(20, sale);
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(context.Account.Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(1350));
+    }
+
     [Test]
     public void CollectProfit_NotBeforeTheDelay() {
         long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());

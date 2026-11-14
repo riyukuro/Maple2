@@ -51,6 +51,18 @@ public static class TradeRules {
         return amount > 0;
     }
 
+    // The transfer an item changes hands with: one trade of a limited-trade item is used up, as in a player trade
+    // (TradeManager) and as the black market's buy prompt says (s_msg_blackmarket_ask_buy_limit_tradecount: count,
+    // count - 1 left, uiblackmarketpage.cpp:1076). A copy, so a row's change is seen.
+    public static ItemTransfer? Traded(ItemTransfer? transfer) {
+        if (transfer == null || !transfer.Flag.HasFlag(TransferFlag.LimitTrade)) {
+            return transfer;
+        }
+        ItemTransfer traded = transfer.Clone();
+        traded.RemainTrades = Math.Max(0, traded.RemainTrades - 1);
+        return traded;
+    }
+
     public static bool IsTradeable(TransferFlag flag, int remainTrades, bool bound) {
         if (bound) {
             return false;

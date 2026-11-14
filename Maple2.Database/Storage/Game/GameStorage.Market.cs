@@ -2,6 +2,7 @@
 using Maple2.Database.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
@@ -552,13 +553,16 @@ public partial class GameStorage {
 
                     written = itemModel.Id;
                     ForgetRows([written]);
+                    // The bought item has used up one of its trades (TradeRules.Traded).
                     if (model.Quantity == 0) {
                         itemModel.OwnerId = mailModel.Id;
+                        itemModel.Transfer = TradeRules.Traded(listed.Transfer);
                         soldModel = itemModel;
                         Context.BlackMarketListing.Remove(model);
                     } else {
                         Item sold = listed.Clone();
                         sold.Amount = quantity;
+                        sold.Transfer = TradeRules.Traded(sold.Transfer);
                         soldModel = sold;
                         soldModel.OwnerId = mailModel.Id;
                         soldModel.Id = 0;

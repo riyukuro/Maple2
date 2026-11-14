@@ -144,15 +144,20 @@ public sealed class UgcMarketManager {
             sale.SoldTime.FromEpochSeconds().AddDays(Constant.UGCShopProfitDelayDays) > DateTime.Now) {
             return;
         }
-        using GameStorage.Request db = session.GameStorage.Context();
-        if (!db.DeleteSoldUgcMarketItem(id)) {
+        // The merets paid and the sale's row taken away are stored together (TrySavePurchase). Before, the row was
+        // deleted first and the merets were only in the session until its next save, so a crash or a failed save in
+        // between lost the profit for good.
+        session.Currency.ChangeMeret(sale.Profit);
+        if (!session.TrySavePurchase(db => db.DeleteSoldUgcMarketItem(id))) {
+            session.Currency.TryTakeMeret(sale.Profit);
             logger.Error("Unable to collect profit and delete SoldUgcMarketItem {Id}.", id);
             return;
         }
         sales.Remove(id);
-        LoadSalesCounts(db);
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            LoadSalesCounts(db);
+        }
 
-        session.Currency.ChangeMeret(sale.Profit);
         session.Send(MeretMarketPacket.CollectProfit(sale.Id, sale.Profit));
         session.Send(MeretMarketPacket.UpdateProfit(SalesTotal(items.Values)));
     }
