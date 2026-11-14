@@ -297,7 +297,7 @@ public class GuildManager : IDisposable {
 
     public GuildError CheckIn(long requestorId) {
         // The table's attend row (KR: 10).
-        int contribution = TableMetadata.GuildTable.ContributionOf(GuildContributionKind.Attend);
+        int contribution = ContributionOf(GuildContributionKind.Attend);
 
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
             return GuildError.s_guild_err_null_member;
@@ -1107,7 +1107,17 @@ public class GuildManager : IDisposable {
 
     // A member's contribution of one kind (table/guildcontribution.xml), times times: nothing when the kind has no row.
     public GuildError AddContribution(long requestorId, string kind, int times = 1) {
-        return AddContribution(requestorId, TableMetadata.GuildTable.ContributionOf(kind) * times);
+        return AddContribution(requestorId, ContributionOf(kind) * times);
+    }
+
+    // Kept at 0 without the table (the client has no default; a made-up amount would hide stale data), but said
+    // once: data ingested before table/guildcontribution.xml was read pays no contribution until a re-ingest.
+    private static int warnedNoContributionTable;
+    private int ContributionOf(string kind) {
+        if (TableMetadata.GuildTable.Contributions is not { Count: > 0 } && Interlocked.Exchange(ref warnedNoContributionTable, 1) == 0) {
+            Serilog.Log.Warning("Guild contribution table (table/guildcontribution.xml) is empty: no contribution is paid; re-ingest the data");
+        }
+        return TableMetadata.GuildTable.ContributionOf(kind);
     }
 
     // A member's contribution earned outside the guild dialog (the guild vs game's result): the member's weekly and

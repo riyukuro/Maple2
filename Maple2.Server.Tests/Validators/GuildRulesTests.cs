@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -172,5 +173,22 @@ public class GuildRulesTests {
     [TestCase(QuestType.FieldQuest, 3, null)]
     public void QuestContributionKind_ByRepeat(QuestType type, int repeat, string? kind) {
         Assert.That(GuildRules.QuestContributionKind(type, repeat), Is.EqualTo(kind));
+    }
+
+    // The client matches the contribution type without case (CompareNoCase, commonenum.cpp:688); a row typed
+    // "WinPvp" pays winPvp. No table pays nothing.
+    [Test]
+    public void ContributionOf_MatchesTheTypeWithoutCase() {
+        var table = new GuildTable(
+            new Dictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, GuildTable.House>>(),
+            new Dictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>>(),
+            new Dictionary<short, GuildTable.Property>(),
+            Contributions: new Dictionary<string, int> { ["WinPvp"] = 10, ["attend"] = 7 });
+
+        Assert.That(table.ContributionOf(GuildContributionKind.WinPvp), Is.EqualTo(10));
+        Assert.That(table.ContributionOf(GuildContributionKind.Attend), Is.EqualTo(7));
+        Assert.That(table.ContributionOf(GuildContributionKind.Raid), Is.EqualTo(0));
+        Assert.That((table with { Contributions = null }).ContributionOf(GuildContributionKind.Attend), Is.EqualTo(0));
     }
 }

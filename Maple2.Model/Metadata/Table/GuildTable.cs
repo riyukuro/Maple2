@@ -83,9 +83,21 @@ public record GuildTable(
         int LoseMiniGameCoin);
 
     // A member's contribution of one kind (CGuildXmlData::GetContribution, guilddef_2.cpp:661): the kind's row, 0
-    // without one (as data ingested before the table was read).
+    // without one (as data ingested before the table was read). The type is matched without case, as the client's
+    // CompareNoCase (commonenum.cpp:688); the stored dictionary keeps no comparer.
     public int ContributionOf(string kind) {
-        return Contributions?.GetValueOrDefault(kind) ?? 0;
+        if (Contributions == null) {
+            return 0;
+        }
+        if (Contributions.TryGetValue(kind, out int value)) {
+            return value;
+        }
+        foreach ((string type, int amount) in Contributions) {
+            if (string.Equals(type, kind, StringComparison.OrdinalIgnoreCase)) {
+                return amount;
+            }
+        }
+        return 0;
     }
 }
 
