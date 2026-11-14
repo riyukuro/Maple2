@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -84,6 +85,12 @@ public class NpcTalkHandler : FieldPacketHandler {
         }
         // The client hides an npc whose quest mask fails (QuestMaskRules.Visible) and sends no talk to it.
         if (!session.Quest.MaskShows(session.Field.MapId, npc.Value.Id)) {
+            return;
+        }
+        // Nor does it talk to an npc out of its talk reach (InteractRules.TalkReach).
+        float radius = npc.Value.Metadata.Property?.Capsule?.Radius ?? 0f;
+        if (!InteractRules.InReach(session.Player.Position, npc.Position, InteractRules.TalkReach(Constants.TalkableDistance, radius))) {
+            Logger.Debug("Talk to npc {ObjectId} out of reach", objectId);
             return;
         }
 

@@ -28,6 +28,13 @@ public static class InteractRules {
     // interactionDistance, which the server's object data does not carry.
     public const float OtherReach = 1500f;
 
+    // NpcTalk 1: the client talks only to an npc FindNearestNpc finds (MyPC::FindTalkableNpc, mypc.cpp:2827): one whose
+    // 3D distance is within the TalkableDistance constant (default 400) plus the npc's capsule radius
+    // (worldservice_1.cpp:6438). The action key and the mouse pick of an npc both go through it.
+    public const int DefaultTalkableDistance = 400;
+    public static float TalkReach(int talkableDistance, float capsuleRadius) =>
+        (talkableDistance > 0 ? talkableDistance : DefaultTalkableDistance) + Math.Max(0f, capsuleRadius);
+
     // The client lists a gathered object or a farming cube only within the MasteryObjectInteractionDistance
     // constant of the character. A reach of 0 or less (constant not loaded) tests nothing.
     public static bool InReach(Vector3 player, Vector3 target, float reach) {
