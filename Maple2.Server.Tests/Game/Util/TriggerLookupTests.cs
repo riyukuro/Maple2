@@ -66,6 +66,19 @@ public class TriggerLookupTests {
         });
     }
 
+    // 52000138's room waves spawn on the corridor; its corridor spawn points and other maps keep their points.
+    [Test]
+    public void SpawnNpc_SealedRoomsOnlyOn52000138() {
+        Assert.Multiple(() => {
+            Assert.That(TriggerContext.InSealedRoom(52000138, 102), Is.True);
+            Assert.That(TriggerContext.InSealedRoom(52000138, 120), Is.True);
+            Assert.That(TriggerContext.InSealedRoom(52000138, 101), Is.False);
+            Assert.That(TriggerContext.InSealedRoom(52000138, 110), Is.False);
+            Assert.That(TriggerContext.InSealedRoom(52000137, 120), Is.False);
+            Assert.That(TriggerContext.SealedRoomReach, Is.GreaterThan(823));
+        });
+    }
+
     // 'monster_in_combat' (02000066 spawn_ids="5001"): a monster of a listed spawn point that is in battle.
     [Test]
     public void MonsterInCombat_LooksAtTheListedSpawnPoints() {

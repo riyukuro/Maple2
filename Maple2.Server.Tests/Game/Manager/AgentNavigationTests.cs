@@ -374,4 +374,65 @@ public class AgentNavigationTests {
         var ledge = new DtNavMeshQuery(TopsOverFloor(long_: true, ramp: true));
         Assert.That(AgentNavigation.FloorBelowBreakable(ledge, filter, new RcVec3f(6.5f, 3, 5), BrokenBase, 1.5f, 3, 10, out _), Is.False);
     }
+
+    // A corridor of two linked quads (x 0-3 and 3-6) and a room past a wall (x 7-10) with no link to them, 10 deep.
+    private static DtNavMesh CorridorAndSealedRoom() {
+        const int none = 0xffff;
+        int[] polys = [
+            0, 1, 2, 3, none, none, none, none, 1, none, none, none,
+            3, 2, 4, 5, none, none, 0, none, none, none, none, none,
+            6, 7, 8, 9, none, none, none, none, none, none, none, none,
+        ];
+        int[] verts = [0, 0, 0, 0, 0, 100, 30, 0, 100, 30, 0, 0, 60, 0, 100, 60, 0, 0, 70, 0, 0, 70, 0, 100, 100, 0, 100, 100, 0, 0];
+        var option = new DtNavMeshCreateParams {
+            verts = verts,
+            vertCount = verts.Length / 3,
+            polys = polys,
+            polyAreas = new int[3],
+            polyFlags = [1, 1, 1],
+            polyCount = 3,
+            nvp = 6,
+            walkableHeight = 2,
+            walkableRadius = 0.5f,
+            walkableClimb = 0.5f,
+            bmin = new RcVec3f(0, 0, 0),
+            bmax = new RcVec3f(10, 1, 10),
+            cs = 0.1f,
+            ch = 0.1f,
+            buildBvTree = true,
+            offMeshConVerts = [],
+            offMeshConRad = [],
+            offMeshConDir = [],
+            offMeshConAreas = [],
+            offMeshConFlags = [],
+            offMeshConUserID = [],
+        };
+        DtMeshData? data = DtNavMeshBuilder.CreateNavMeshData(option);
+        Assert.That(data, Is.Not.Null);
+        var navMesh = new DtNavMesh();
+        Assert.That(navMesh.Init(data, 6, 0).Succeeded(), Is.True);
+        return navMesh;
+    }
+
+    // 52000138's side rooms: a point in a room the origin's island does not reach goes to the nearest floor of the
+    // island (the corridor's end at the wall); a point on the island stays; nothing of the island in the box is false.
+    [Test]
+    public void NearestLinkedPoint_LeavesASealedRoomForTheOriginsIsland() {
+        DtNavMesh navMesh = CorridorAndSealedRoom();
+        var query = new DtNavMeshQuery(navMesh);
+        var filter = new DtQueryDefaultFilter();
+        query.FindNearestPoly(new RcVec3f(1, 0, 5), AgentNavigation.NearestPolyExtents, filter, out long originRef, out _, out _);
+        Assert.That(originRef, Is.Not.Zero);
+        Assert.That(AgentNavigation.LinkedPolys(navMesh, originRef), Has.Count.EqualTo(2));
+
+        Assert.That(AgentNavigation.NearestLinkedPoint(query, filter, originRef, new RcVec3f(8.5f, 0, 5), new RcVec3f(3, 1, 3), out RcVec3f moved), Is.True);
+        Assert.That(moved.X, Is.EqualTo(6).Within(0.01));
+        Assert.That(moved.Z, Is.EqualTo(5).Within(0.01));
+
+        Assert.That(AgentNavigation.NearestLinkedPoint(query, filter, originRef, new RcVec3f(4.5f, 0, 2), new RcVec3f(3, 1, 3), out RcVec3f kept), Is.True);
+        Assert.That(kept.X, Is.EqualTo(4.5).Within(0.01));
+        Assert.That(kept.Z, Is.EqualTo(2).Within(0.01));
+
+        Assert.That(AgentNavigation.NearestLinkedPoint(query, filter, originRef, new RcVec3f(9.5f, 0, 5), new RcVec3f(1, 1, 1), out _), Is.False);
+    }
 }

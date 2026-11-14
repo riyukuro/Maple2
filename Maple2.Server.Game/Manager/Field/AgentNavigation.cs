@@ -530,6 +530,48 @@ public sealed class AgentNavigation {
         return field.FindNearestPoly(npc.Position, out polyRef, out position);
     }
 
+    // The polys a walker on startRef can get to over poly links: startRef's navmesh island.
+    public static HashSet<long> LinkedPolys(DtNavMesh navMesh, long startRef) {
+        HashSet<long> seen = [startRef];
+        Stack<long> open = new([startRef]);
+        while (open.Count > 0) {
+            if (navMesh.GetTileAndPolyByRef(open.Pop(), out DtMeshTile tile, out DtPoly poly).Failed()) {
+                continue;
+            }
+            for (int i = poly.firstLink; i != DtDetour.DT_NULL_LINK; i = tile.links[i].next) {
+                long next = tile.links[i].refs;
+                if (next != 0 && seen.Add(next)) {
+                    open.Push(next);
+                }
+            }
+        }
+        return seen;
+    }
+
+    // The point nearest to the given one, within the box of half extents around it, on a poly linked to originRef
+    // (all in navmesh space). False when no such poly is in the box.
+    public static bool NearestLinkedPoint(DtNavMeshQuery query, IDtQueryFilter filter, long originRef, RcVec3f point, RcVec3f extents, out RcVec3f position) {
+        position = point;
+        if (originRef == 0) {
+            return false;
+        }
+        var linked = new LinkedFilter(LinkedPolys(query.GetAttachedNavMesh(), originRef), filter);
+        DtStatus status = query.FindNearestPoly(point, extents, linked, out long nearestRef, out RcVec3f nearest, out _);
+        if (status.Failed() || nearestRef == 0) {
+            return false;
+        }
+        position = nearest;
+        return true;
+    }
+
+    private sealed class LinkedFilter(HashSet<long> polys, IDtQueryFilter inner) : IDtQueryFilter {
+        public bool PassFilter(long polyRef, DtMeshTile tile, DtPoly poly) => polys.Contains(polyRef) && inner.PassFilter(polyRef, tile, poly);
+
+        public float GetCost(RcVec3f pa, RcVec3f pb, long prevRef, DtMeshTile prevTile, DtPoly prevPoly, long curRef, DtMeshTile curTile, DtPoly curPoly,
+                long nextRef, DtMeshTile nextTile, DtPoly nextPoly) =>
+            inner.GetCost(pa, pb, prevRef, prevTile, prevPoly, curRef, curTile, curPoly, nextRef, nextTile, nextPoly);
+    }
+
     // True when the best path from startRef ends on a poly other than endRef (a partial path).
     public static bool PathCutOff(DtNavMeshQuery query, IDtQueryFilter filter, long startRef, long endRef, RcVec3f start, RcVec3f end) {
         List<long> polys = [];

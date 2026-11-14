@@ -652,6 +652,20 @@ public partial class FieldManager : IField {
         return FindNearestPoly(position, out long nearestRef, out _) && nearestRef != 0;
     }
 
+    // The floor nearest to the point, within reach (game units across and 100 up or down), that a player at the map's
+    // first player spawn can walk to; the point itself when there is none or the map has no player spawn.
+    public Vector3 NearestPlayerFloor(Vector3 point, float reach) {
+        SpawnPointPC? playerSpawn = Entities.PlayerSpawns.FirstOrDefault();
+        if (Navigation == null || playerSpawn == null || !FindNearestPoly(playerSpawn.Position, out long originRef, out _) || originRef == 0) {
+            return point;
+        }
+        var extents = new RcVec3f(reach / 100f, 1f, reach / 100f);
+        return AgentNavigation.NearestLinkedPoint(Navigation.Crowd.GetNavMeshQuery(), Navigation.Crowd.GetFilter(0), originRef,
+            DotRecastHelper.ToNavMeshSpace(point), extents, out RcVec3f floor)
+            ? DotRecastHelper.FromNavMeshSpace(floor)
+            : point;
+    }
+
     public bool FindNearestPoly(Vector3 point, out long nearestRef, out RcVec3f position) {
         if (point.X is float.NaN or float.PositiveInfinity or float.NegativeInfinity || point.Y is float.NaN or float.PositiveInfinity or float.NegativeInfinity || point.Z is float.NaN or float.PositiveInfinity or float.NegativeInfinity) {
             nearestRef = 0;

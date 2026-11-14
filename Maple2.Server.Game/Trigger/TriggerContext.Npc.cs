@@ -352,6 +352,18 @@ public partial class TriggerContext {
         return Field.EnumerateNpcs().Where(mob => boxes.Any(box => box.Contains(mob.Position) || box.Intersects(mob.Shape)));
     }
 
+    // Spawn points in rooms the map seals off. 52000138 (Dark Wind HQ Passage) has side rooms behind static doors
+    // (sf_fi_cubric_door_A01_, no trigger id: always closed and part of the navmesh); its script spawns a wave in a
+    // room and then opens door actors 4001-4006 for it to come out, but the map has no such actors. The monsters
+    // stood in the rooms behind the walls, out of reach, and the escape waits on their deaths. They spawn on the
+    // corridor floor nearest their point instead: SealedRoomReach covers the farthest one (about 820 away).
+    private static readonly HashSet<(int MapId, int SpawnPointId)> SealedRoomSpawns = [
+        .. new[] { 102, 103, 104, 105, 106, 107, 108, 109, 114, 115, 116, 117, 118, 119, 120, 121 }.Select(id => (52000138, id)),
+    ];
+    public const float SealedRoomReach = 1000;
+
+    public static bool InSealedRoom(int mapId, int spawnPointId) => SealedRoomSpawns.Contains((mapId, spawnPointId));
+
     // The event spawn point of that id, else the map's plain npc spawn point of that id: scripts also spawn
     // on plain spawn points, which the event table does not hold.
     public static SpawnPointNPC? FindSpawnPoint(IReadOnlyDictionary<int, EventSpawnPointNPC> eventSpawns, IEnumerable<SpawnPointNPC> npcSpawns, int spawnId) {
@@ -406,7 +418,8 @@ public partial class TriggerContext {
             if (!string.IsNullOrEmpty(eventSpawn?.SpawnAnimation) && useSpawnAnimation) {
                 spawnAnimationString = eventSpawn.SpawnAnimation;
             }
-            FieldNpc? fieldNpc = Field.SpawnNpc(npc, spawn.Position, spawn.Rotation, spawnPointNpc: spawn, spawnAnimation: spawnAnimationString);
+            Vector3 position = InSealedRoom(Field.MapId, spawnId) ? Field.NearestPlayerFloor(spawn.Position, SealedRoomReach) : spawn.Position;
+            FieldNpc? fieldNpc = Field.SpawnNpc(npc, position, spawn.Rotation, spawnPointNpc: spawn, spawnAnimation: spawnAnimationString);
             if (fieldNpc == null) {
                 logger.Error("[SpawnNpc] Failed to spawn npcId:{NpcId}", npcId);
                 continue;
