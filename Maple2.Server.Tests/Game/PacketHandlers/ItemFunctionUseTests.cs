@@ -185,6 +185,139 @@ public class ItemFunctionUseTests {
             Is.EqualTo(new[] { (70800001, 4, (long?) test.CharacterId) }));
     }
 
+    // A save fails while Fail is set (and, with FailItemsOnly, only a save that adds an item row; with Once, only the
+    // first such save); BeforeItem runs once before the next save that adds an item row.
+    private sealed class FailingSaves : SaveChangesInterceptor {
+        public bool Fail;
+        public bool FailItemsOnly;
+        public bool Once;
+        public Action? BeforeItem;
+
+        public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
+            bool addsItem = eventData.Context!.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any(entry => entry.State == EntityState.Added);
+            if (addsItem && BeforeItem != null) {
+                Action action = BeforeItem;
+                BeforeItem = null;
+                action();
+            }
+            if (!Fail || FailItemsOnly && !addsItem) {
+                return result;
+            }
+            Fail = !Once;
+            throw new DbUpdateException("The test made this save fail");
+        }
+    }
+
+    // In memory unless MS2_TEST_GAME_DB holds the connection string of a scratch MySQL game database; only there a
+    // rolled-back transaction takes back its writes.
+    private static readonly string? CoupleDb = Environment.GetEnvironmentVariable("MS2_TEST_GAME_DB");
+
+    // A box of badge 70800001 x4 in the bag, and a partner online on the same database.
+    private DbContextOptions coupleOptions = null!;
+
+    private (Item Box, TestGameSession Partner) LoginCouple(FailingSaves saves) {
+        DbContextOptions options;
+        if (CoupleDb != null) {
+            options = new DbContextOptionsBuilder().UseMySql(CoupleDb, ServerVersion.AutoDetect(CoupleDb)).AddInterceptors(saves).Options;
+            using var context = new Maple2.Database.Context.Ms2Context(options);
+            context.Database.EnsureCreated();
+        } else {
+            options = new DbContextOptionsBuilder()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                .AddInterceptors(saves)
+                .Options;
+        }
+        coupleOptions = options;
+        var partner = new TestGameSession(options);
+        partner.Start();
+        test = new TestGameSession(options);
+        test.Register(TestGameSession.Metadata(70800001));
+        Item box = test.Store(TestGameSession.Metadata(20700001,
+            function: new ItemMetadataFunction(ItemFunction.OpenCoupleEffectBox, "OpenCoupleEffectBox", "70800001,4", false)));
+        test.Start();
+        test.EnterMap(TestGameSession.Map(2000062));
+        test.World.AddPlayer(partner.AccountId, partner.CharacterId, partner.Session.PlayerName);
+        test.TakeSent();
+        return (box, partner);
+    }
+
+    // The badge rows the partner was given: rows of 70800001 owned by one of the partner's mails.
+    private int PartnerBadgeRows(TestGameSession partner) {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.GetAllMail(partner.CharacterId).Sum(mail => mail.Items.Count(item => item.Id == 70800001));
+    }
+
+    // Stored badge rows that some owner holds (a row the purge does not take).
+    private int OwnedBadgeRows() {
+        using var context = new Maple2.Database.Context.Ms2Context(coupleOptions);
+        return context.Item.Count(row => row.ItemId == 70800001 && row.OwnerId != 0);
+    }
+
+    private void AssertNothingSent(Item box, TestGameSession partner) {
+        Assert.That(session.Item.Inventory.Get(box.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == 70800001), Is.Empty);
+        Assert.That(test.World.MailNotifications, Is.Empty);
+        Assert.That(PartnerBadgeRows(partner), Is.EqualTo(0));
+        Assert.That(OwnedBadgeRows(), Is.EqualTo(0));
+    }
+
+    // A partner's mail that cannot be written keeps the box, and neither partner gets a badge (the box was taken
+    // first, and the failed write then threw with the box gone).
+    [Test]
+    public void OpenCoupleEffectBox_FailedMailKeepsTheBox() {
+        var saves = new FailingSaves();
+        (Item box, TestGameSession partner) = LoginCouple(saves);
+
+        saves.Fail = true;
+        Use(box, partner.Session.PlayerName);
+        saves.Fail = false;
+
+        Assert.That(Sent(), Is.EqualTo(new[] { Hex(NoticePacket.MessageBox(StringCode.s_couple_effect_error_openbox_unknown)) }));
+        AssertNothingSent(box, partner);
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetAllMail(partner.CharacterId), Is.Empty);
+    }
+
+    // A badge that cannot be written keeps the box, and the mail written before it is rolled back with it. Its failed
+    // save is not written again by the request's next save: once the failure passed (Once), that wrote the badge row
+    // with the deleted mail as owner, which the purge does not take.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void OpenCoupleEffectBox_FailedBadgeKeepsTheBox(bool once) {
+        var saves = new FailingSaves { FailItemsOnly = true, Once = once };
+        (Item box, TestGameSession partner) = LoginCouple(saves);
+
+        saves.Fail = true;
+        Use(box, partner.Session.PlayerName);
+        saves.Fail = false;
+
+        Assert.That(Sent(), Is.EqualTo(new[] { Hex(NoticePacket.MessageBox(StringCode.s_couple_effect_error_openbox_unknown)) }));
+        AssertNothingSent(box, partner);
+        if (CoupleDb != null) {
+            using GameStorage.Request db = test.Storage.Context();
+            Assert.That(db.GetAllMail(partner.CharacterId), Is.Empty);
+        }
+    }
+
+    // A box taken by another use between the badge's write and its own use: the mail is deleted, so the partner gets
+    // no badge, and the player gets none either.
+    [Test]
+    public void OpenCoupleEffectBox_BoxGoneDeletesTheMail() {
+        var saves = new FailingSaves();
+        (Item box, TestGameSession partner) = LoginCouple(saves);
+        saves.BeforeItem = () => Assert.That(session.Item.Inventory.Consume(box.Uid, 1), Is.True);
+
+        Use(box, partner.Session.PlayerName);
+
+        Assert.That(session.Item.Inventory.Get(box.Uid), Is.Null);
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == 70800001), Is.Empty);
+        Assert.That(test.World.MailNotifications, Is.Empty);
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetAllMail(partner.CharacterId), Is.Empty);
+        Assert.That(PartnerBadgeRows(partner), Is.EqualTo(0));
+    }
+
     // 21100001 adds sticker set 1 for good; a second coupon of a set held for good is kept.
     [Test]
     public void ChatEmoticonAdd_AddsTheSetOnce() {

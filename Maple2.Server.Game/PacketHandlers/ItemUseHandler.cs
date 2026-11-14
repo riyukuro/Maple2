@@ -479,10 +479,13 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
-            Logger.Error("Failed to use buddy badge box: {ItemUid}", item.Uid);
+        Item? receiverItem = session.Field?.ItemDrop.CreateItem(buddyBadgeBoxParams[0], buddyBadgeBoxParams[1]);
+        if (receiverItem == null) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_couple_effect_error_openbox_unknown));
+            Logger.Error("Failed to create buddy badge box item: {Parameters}", buddyBadgeBoxParams[0]);
             return;
         }
+        receiverItem.CoupleInfo = new ItemCoupleInfo(session.Player.Value.Character.Id, session.PlayerName);
 
         var receiverMail = new Mail() {
             ReceiverId = receiverInfo.CharacterId,
@@ -496,28 +499,29 @@ public class ItemUseHandler : FieldPacketHandler {
         receiverMail.SetContent(StringCode.s_couple_effect_mail_content_receiver);
         receiverMail.SetSenderName(StringCode.s_couple_effect_mail_sender);
 
-        receiverMail = db.CreateMail(receiverMail);
-        if (receiverMail == null) {
-            session.Send(NoticePacket.MessageBox((StringCode.s_couple_effect_error_openbox_unknown)));
-            throw new InvalidOperationException($"Failed to create buddy badge mail for receiver character id: {receiverInfo.CharacterId}");
+        // The partner's mail and badge are written before the box is taken, in one transaction: a failed write keeps
+        // neither (the rollback also drops the failed save's pending rows, which the request's next save would write
+        // again). A box that can no longer be taken then deletes the mail. The box was taken first, and a failed
+        // write after it lost the box.
+        db.BeginTransaction();
+        Mail? sentMail = db.CreateMail(receiverMail);
+        if (sentMail == null || db.CreateItem(sentMail.Id, receiverItem) == null || !db.Commit()) {
+            db.Rollback();
+            session.Send(NoticePacket.MessageBox(StringCode.s_couple_effect_error_openbox_unknown));
+            Logger.Error("Failed to send buddy badge {ItemId} to character id: {CharacterId}", buddyBadgeBoxParams[0], receiverInfo.CharacterId);
+            return;
         }
 
-        Item? receiverItem = session.Field?.ItemDrop.CreateItem(buddyBadgeBoxParams[0], buddyBadgeBoxParams[1]);
-        if (receiverItem == null) {
-            throw new InvalidOperationException($"Failed to create buddy badge item: {buddyBadgeBoxParams[0]}");
+        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+            db.DeleteMail(sentMail.Id, receiverInfo.CharacterId);
+            Logger.Error("Failed to use buddy badge box: {ItemUid}", item.Uid);
+            return;
         }
-        receiverItem.CoupleInfo = new ItemCoupleInfo(session.Player.Value.Character.Id, session.PlayerName);
-        receiverItem = db.CreateItem(receiverMail.Id, receiverItem);
-        if (receiverItem == null) {
-            throw new InvalidOperationException($"Failed to create buddy badge: {buddyBadgeBoxParams[0]}");
-        }
-
-        receiverMail.Items.Add(receiverItem);
 
         try {
             session.World.MailNotification(new MailNotificationRequest {
                 CharacterId = receiverInfo.CharacterId,
-                MailId = receiverMail.Id,
+                MailId = sentMail.Id,
             });
         } catch { /* ignored */
         }
