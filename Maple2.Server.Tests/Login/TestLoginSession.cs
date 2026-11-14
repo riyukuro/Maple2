@@ -51,8 +51,13 @@ public sealed class TestLoginSession {
     public long AddCharacter(string name, long accountId = 0) {
         using GameStorage.Request db = Storage.Context();
         Character character = db.CreateCharacter(new Character {
-            AccountId = accountId == 0 ? AccountId : accountId, Name = name, Gender = Gender.Male, Job = Job.Newbie,
-            Mastery = new Mastery(), MapId = 2000023, ReturnMaps = new Maple2.Tools.LimitedStack<int>(3, 2000023),
+            AccountId = accountId == 0 ? AccountId : accountId,
+            Name = name,
+            Gender = Gender.Male,
+            Job = Job.Newbie,
+            Mastery = new Mastery(),
+            MapId = 2000023,
+            ReturnMaps = new Maple2.Tools.LimitedStack<int>(3, 2000023),
         }) ?? throw new InvalidOperationException("character row not created");
         return character.Id;
     }
@@ -196,9 +201,14 @@ public sealed class TestLoginSession {
         // The club requests; ClubError is what the world answers (0: done).
         public readonly List<ClubRequest> Clubs = [];
         public int ClubError;
+        // Thrown by Club after the request is recorded: a failure no answer was written for.
+        public Exception? ClubThrows;
 
         public override Maple2.Server.World.Service.ClubResponse Club(ClubRequest request, CallOptions options) {
             Clubs.Add(request);
+            if (ClubThrows != null) {
+                throw ClubThrows;
+            }
             return new Maple2.Server.World.Service.ClubResponse { Error = ClubError };
         }
     }

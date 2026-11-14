@@ -14,6 +14,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Network;
 using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Login.Session;
@@ -58,27 +59,57 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         if (session.LeftCharacterListRefuses($"CharacterManagement {command}")) {
             return;
         }
-        switch (command) {
-            case Command.Select:
-                HandleSelect(session, packet);
-                break;
-            case Command.Create:
-                HandleCreate(session, packet);
-                break;
-            case Command.Delete:
-                HandleDelete(session, packet);
-                break;
-            case Command.CancelDelete:
-                HandleCancelDelete(session, packet);
-                break;
-            case Command.ConfirmDelete:
-                HandleDelete(session, packet, final: true);
-                break;
-            case Command.Rename:
-                HandleRename(session, packet);
-                break;
-            default:
-                throw new ArgumentException($"Invalid CHARACTER_MANAGEMENT type {command}");
+        if (command == Command.Select) {
+            HandleSelect(session, packet);
+            return;
+        }
+        if (command is not (Command.Create or Command.Delete or Command.CancelDelete or Command.ConfirmDelete or Command.Rename)) {
+            throw new ArgumentException($"Invalid CHARACTER_MANAGEMENT type {command}");
+        }
+
+        long characterId = command == Command.Create ? 0 : packet.ReadLong();
+        string name = command == Command.Rename ? packet.ReadUnicodeString() : string.Empty;
+        try {
+            switch (command) {
+                case Command.Create:
+                    HandleCreate(session, packet);
+                    break;
+                case Command.Delete:
+                    HandleDelete(session, characterId);
+                    break;
+                case Command.CancelDelete:
+                    HandleCancelDelete(session, characterId);
+                    break;
+                case Command.ConfirmDelete:
+                    HandleDelete(session, characterId, final: true);
+                    break;
+                case Command.Rename:
+                    HandleRename(session, characterId, name);
+                    break;
+            }
+        } catch (Exception ex) when (ex is not PacketOverreadException) {
+            // A failure the checks do not answer (the database, say) gets the request's own system error. The client
+            // takes no list input until its answer comes (UICharacterListDialog), and the session's read loop would
+            // otherwise end the connection on the exception, with no box to say why. A packet the client could not
+            // have written is still dropped by the router.
+            Logger.Error(ex, "CharacterManagement {Command} failed for character {CharacterId}", command, characterId);
+            session.Send(command switch {
+                Command.Create => CharacterListPacket.CreateError(s_char_err_system),
+                Command.CancelDelete => CharacterListPacket.CancelDelete(characterId, s_char_err_destroy),
+                Command.Rename => CharacterListPacket.NameRefused(NameChangeRules.Refusal.Invalid, characterId, name),
+                _ => DeleteRefused(characterId, StoredDeleteTime(session, characterId), s_char_err_destroy),
+            });
+        }
+    }
+
+    // The delete time a refused delete is answered with (DeleteRefused); 0 when it cannot be read either.
+    private long StoredDeleteTime(LoginSession session, long characterId) {
+        try {
+            using GameStorage.Request db = GameStorage.Context();
+            return db.GetCharacter(characterId, session.AccountId)?.DeleteTime ?? 0;
+        } catch (Exception ex) {
+            Logger.Error(ex, "Delete time of character {CharacterId} not read", characterId);
+            return 0;
         }
     }
 
@@ -172,10 +203,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
     // CharacterList 7 arrives (UICharacterListDialog::vfunc_79) or the list is sent again: a name that is accepted
     // shows in the character list, which is sent again; a refused name is answered with CharacterList 7 and its
     // code, for which the client shows its own name change text, and the character stays due.
-    private void HandleRename(LoginSession session, IByteReader packet) {
-        long characterId = packet.ReadLong();
-        string name = packet.ReadUnicodeString();
-
+    private void HandleRename(LoginSession session, long characterId, string name) {
         using GameStorage.Request db = GameStorage.Context();
         Character? character = db.GetCharacter(characterId, session.AccountId);
         if (character == null || !LoginSession.IsRenameDue(character.Name)) {
@@ -210,7 +238,12 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             Logger.Warning("Rename of character {CharacterId}: the world was not told ({Status})", characterId, ex.StatusCode);
         }
 
-        session.ListCharacters();
+        // The rename is stored: a failure from here on is logged, not answered with a refusal of the stored name.
+        try {
+            session.ListCharacters();
+        } catch (Exception ex) {
+            Logger.Error(ex, "Rename of character {CharacterId}: the list was not sent", characterId);
+        }
     }
 
     private void HandleCreate(LoginSession session, IByteReader packet) {
@@ -333,9 +366,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
     // final: the final delete (CharacterManagement 4), which the client sends only from the final delete button of
     // a character in wait (UICharacterListDialog onClickFinalDelete). Without a wait it is refused with error 8 in
     // the delete answer, which lets the list take input again; it used to start a wait or delete outright.
-    private void HandleDelete(LoginSession session, IByteReader packet, bool final = false) {
-        long characterId = packet.ReadLong();
-
+    private void HandleDelete(LoginSession session, long characterId, bool final = false) {
         using GameStorage.Request db = GameStorage.Context();
         Character? character = db.GetCharacter(characterId, session.AccountId);
         if (character == null || !ValidateDeleteRequest(session, characterId, db, character)) {
@@ -372,9 +403,7 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
     // The restore of a character whose delete is pending. It only ends the wait: the blocks of a delete (a guild,
     // unread mail, listings, a marriage) are for the delete itself. Every answer is CharacterList 6, whose error the
     // client shows with its delete texts, leaving the character's timer as it was (UICharacterListDialog mode 6).
-    private void HandleCancelDelete(LoginSession session, IByteReader packet) {
-        long characterId = packet.ReadLong();
-
+    private void HandleCancelDelete(LoginSession session, long characterId) {
         using GameStorage.Request db = GameStorage.Context();
         Character? character = db.GetCharacter(characterId, session.AccountId);
         if (character == null) {
@@ -499,6 +528,12 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         }
 
         session.Send(CharacterListPacket.DeleteEntry(characterId));
-        session.ReleaseBurningLevelup(db, characterId);
+        // The delete is answered: a failure from here on is logged, not answered again (a second DeleteEntry with an
+        // error would show the delete error box for a character that is gone).
+        try {
+            session.ReleaseBurningLevelup(db, characterId);
+        } catch (Exception ex) {
+            Logger.Error(ex, "Delete of character {CharacterId}: its burning levelup pick was not freed", characterId);
+        }
     }
 }

@@ -323,11 +323,16 @@ public class LoginSession : Core.Network.Session {
             return;
         }
 
-        Send(CharacterListPacket.SetMax(account.MaxCharacters, Constant.ServerMaxCharacters));
-        Send(CharacterListPacket.AppendEntry(account, character,
-            new Dictionary<ItemGroup, List<Item>> {
-                { ItemGroup.Outfit, outfits },
-            }));
+        // The character is stored: a failure from here on is logged, not answered with the create error.
+        try {
+            Send(CharacterListPacket.SetMax(account.MaxCharacters, Constant.ServerMaxCharacters));
+            Send(CharacterListPacket.AppendEntry(account, character,
+                new Dictionary<ItemGroup, List<Item>> {
+                    { ItemGroup.Outfit, outfits },
+                }));
+        } catch (Exception ex) {
+            Logger.Error(ex, "Created character {CharacterId}: its entry was not sent", character.Id);
+        }
     }
 
     // Read on a new context: the failed save leaves its own context with the refused row tracked.
