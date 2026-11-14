@@ -113,6 +113,28 @@ public class ClubModeHandlerTests {
         Assert.That(session.Clubs.ContainsKey(901), Is.False);
     }
 
+    // An accept over the club limit (the client sends it with no count test): the World gets a decline, so the
+    // invite is used up there, and the caller gets mode 8 (drops the listed invite) before the limit error.
+    [Test]
+    public void InviteReply_AcceptOverTheLimit_DeclinedDroppedThenFull() {
+        for (long id = ClubId + 10; session.Clubs.Count < Constant.ClubMaxCount; id++) {
+            session.Clubs[id] = session.Clubs[ClubId];
+        }
+        var invite = new Maple2.Model.Game.Club.ClubInvite { ClubId = 901, Name = "other club", LeaderName = "leader", Invitee = session.PlayerName };
+        Send(8, writer => {
+            writer.WriteLong(invite.ClubId);
+            writer.WriteUnicodeString(invite.Name);
+            writer.WriteUnicodeString(invite.LeaderName);
+            writer.WriteUnicodeString(invite.Invitee);
+            writer.WriteBool(true);
+        });
+
+        Assert.That(test.World.Clubs.Single().RespondInvite.ClubId, Is.EqualTo(901));
+        Assert.That(test.World.Clubs.Single().RespondInvite.Accept, Is.False);
+        Assert.That(ClubAnswers(), Is.EqualTo(new[] { Hex(ClubPacket.AcceptInvite(invite)), Hex(ClubPacket.Error(ClubError.s_club_err_full_club_member)) }));
+        Assert.That(session.Clubs.ContainsKey(901), Is.False);
+    }
+
     [Test]
     public void Leave_WorldDown_Unknown() {
         Send(10, writer => writer.WriteLong(ClubId));

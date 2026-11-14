@@ -196,16 +196,16 @@ public class ClubHandler : FieldPacketHandler {
             return;
         }
 
-        if (ClubRules.ReplyBlockedByLimit(accept, session.Clubs.Count, Constant.ClubMaxCount)) {
-            session.Send(ClubPacket.Error(ClubError.s_club_err_full_club_member));
-            return;
-        }
+        // The client sends an accept with no club-count test (clubcli.cpp:1383-1392). Over the limit the accept goes to
+        // the World as a decline, so the invite is used up there too, and the caller still gets mode 8 below, the only
+        // packet that drops the listed invite (clubcli.cpp:1125), before the error.
+        bool blockedByLimit = ClubRules.ReplyBlockedByLimit(accept, session.Clubs.Count, Constant.ClubMaxCount);
 
         ClubResponse? response = TryClub(session, new ClubRequest {
             RequestorId = session.CharacterId,
             RespondInvite = new ClubRequest.Types.RespondInvite {
                 ClubId = clubId,
-                Accept = accept,
+                Accept = accept && !blockedByLimit,
             },
         });
 
@@ -219,6 +219,11 @@ public class ClubHandler : FieldPacketHandler {
             LeaderName = inviterName,
             Invitee = invitee,
         }));
+
+        if (blockedByLimit) {
+            session.Send(ClubPacket.Error(ClubError.s_club_err_full_club_member));
+            return;
+        }
 
         // With the World not reached the invite is dropped all the same (mode 8 above): kept listed, the next invite
         // to the club would stop the client.
