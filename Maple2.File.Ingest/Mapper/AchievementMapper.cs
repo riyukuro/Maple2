@@ -1,5 +1,9 @@
 ﻿using System.Xml;
+using System.Xml.Serialization;
 using Maple2.File.IO;
+using Maple2.File.IO.Crypto.Common;
+using Maple2.File.Parser.Tools;
+using Maple2.File.Parser.Xml.String;
 using M2dXmlGenerator;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Enum;
@@ -30,10 +34,16 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
             : PlayedClientAchievements.LockStates(
                 playedReader.Files.Where(file => PlayedClientAchievements.IsAchieveFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
                 RowAvailable);
-        if (playedStates.Count > 0) {
-            Console.WriteLine($"achievements: {playedStates.Count(state => state.Value)} locked of {playedStates.Count} in the played client's achieve data");
-        }
-        foreach ((int id, string name, AchieveData data) in parser.Parse()) {
+        // The data pack's trophies, then the played client's trophies that the pack does not have, from the played
+        // client's own achieve files: the client lists every trophy of its achieve data in the trophy window. KR Live:
+        // 21 such trophies (21300103-112 among them), 26 with DungeonOS04 on (its 21300113-117).
+        M2dReader? played = playedReader;
+        int playedOnly = 0;
+        var unread = new List<int>();
+        IEnumerable<(int Id, string Name, AchieveData Data)> trophies = QuestMapper.PackThenPlayed(parser.Parse(),
+            played == null || playedStates.Count == 0 ? null : () => PlayedTrophies(played, unread),
+            trophy => trophy.Id, playedStates.Keys.ToHashSet(), () => playedOnly++);
+        foreach ((int id, string name, AchieveData data) in trophies) {
             var grades = new Dictionary<int, AchievementMetadataGrade>();
             foreach (Grade grade in data.grade) {
                 grades.Add(grade.value, new AchievementMetadataGrade(
@@ -74,6 +84,38 @@ public class AchievementMapper : TypeMapper<AchievementMetadata> {
                 Grades: grades,
                 Locked: PlayedClientAchievements.Locked(id, data.locking, playedStates),
                 Type: type);
+        }
+        if (playedStates.Count > 0) {
+            Console.WriteLine($"achievements: {playedStates.Count(state => state.Value)} locked of {playedStates.Count} in the played client's achieve data, {playedOnly} of them only in that client's pack"
+                              + (unread.Count == 0 ? "" : $"; played files the parser cannot read: {string.Join(",", unread)}"));
+        }
+    }
+
+    // The played pack's trophies, read the way AchieveParser.Parse reads a pack (parser 2.3.7), one file at a time: a
+    // file the parser cannot read (KR Live: achieve/22200019.xml, condition item_collect_script_function) is skipped and
+    // its id put in unread, where the parser's own Parse would stop at it.
+    private static IEnumerable<(int Id, string Name, AchieveData Data)> PlayedTrophies(M2dReader played, List<int> unread) {
+        var achieveSerializer = new XmlSerializer(typeof(AchievesData));
+        Dictionary<int, string> names = [];
+        // A client pack keeps its names at string/en/ (the data pack at en/); KR Live's English file names 1 of these trophies.
+        PackFileEntry? nameEntry = played.Files.FirstOrDefault(file => file.Name == "string/en/achievename.xml")
+                                   ?? played.Files.FirstOrDefault(file => file.Name == "en/achievename.xml");
+        if (nameEntry != null && new XmlSerializer(typeof(StringMapping)).Deserialize(played.GetXmlReader(nameEntry)) is StringMapping mapping) {
+            names = mapping.key.ToDictionary(key => int.Parse(key.id), key => key.name);
+        }
+        foreach (PackFileEntry entry in played.Files.Where(file => file.Name.StartsWith("achieve/"))) {
+            int id = int.Parse(Path.GetFileNameWithoutExtension(entry.Name));
+            AchieveData? data;
+            try {
+                using var reader = XmlReader.Create(new StringReader(Sanitizer.RemoveEmpty(played.GetString(entry))));
+                data = (achieveSerializer.Deserialize(reader) as AchievesData)?.achieves;
+            } catch (InvalidOperationException) {
+                unread.Add(id);
+                continue;
+            }
+            if (data != null) {
+                yield return (id, names.GetValueOrDefault(id, ""), data);
+            }
         }
     }
 }
