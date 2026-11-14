@@ -273,8 +273,8 @@ public class GuildHandler : PacketHandler<GameSession> {
             // The founder is the guild's first member: "Join a guild" (70300010) counts for it too.
             session.ConditionUpdate(ConditionType.guild_join);
         } catch (RpcException ex) {
-            // After the guild is founded the price stays paid: a failure past that point (the founder's load)
-            // is only logged.
+            // After the guild is founded the price stays paid: a failure past that point (only ConditionUpdate can
+            // throw there; Load makes no call) is only logged.
             if (paid) {
                 Logger.Error(ex, "Failed after creating guild: {Name}", guildName);
                 return;

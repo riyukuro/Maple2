@@ -24,6 +24,8 @@ public class CurrencyManager {
     // another. The lock is a leaf: only the balance and its packet are under it; condition and quest updates (which may
     // take the bag lock) run after it is let go.
     private readonly object walletLock = new();
+    // Meso packets sent so far (under walletLock): a held take's refusal tells by it whether a packet showed the take.
+    private long mesoSends;
     private readonly ILogger logger = Log.Logger.ForContext<CurrencyManager>();
 
     public CurrencyManager(GameSession session) {
@@ -244,7 +246,7 @@ public class CurrencyManager {
 
             lock (walletLock) {
                 Currency.Meso = Math.Min(value, Constant.MaxMeso);
-                session.Send(CurrencyPacket.UpdateMeso(Currency));
+                SendMeso();
             }
             // meso_donation quests count the meso held (QuestManager.UpdateMeso).
             session.Quest?.UpdateMeso();
@@ -260,7 +262,7 @@ public class CurrencyManager {
                 throw new ArgumentException("Not enough Mesos");
             }
             Currency.Meso = Math.Min(value, Constant.MaxMeso);
-            session.Send(CurrencyPacket.UpdateMeso(Currency));
+            SendMeso();
         }
         session.Quest?.UpdateMeso();
     }
@@ -277,7 +279,7 @@ public class CurrencyManager {
             }
             Currency.Meso -= amount;
             if (notify) {
-                session.Send(CurrencyPacket.UpdateMeso(Currency));
+                SendMeso();
             }
         }
         if (notify) {
@@ -291,17 +293,25 @@ public class CurrencyManager {
     // MaxMeso as every gain does, and a part over it (a gain reached the cap meanwhile) is logged.
     // With notify false nothing is sent: a refusal that answers as before the take, when no packet showed the take.
     public void ReturnMeso(long amount, bool notify = true) {
+        GiveBack(amount, notify, sendsBefore: null);
+    }
+
+    // notify, or with sendsBefore set: whether a meso packet went out since then, read under the same lock as the add.
+    private void GiveBack(long amount, bool notify, long? sendsBefore) {
         if (amount <= 0) {
             return;
         }
         long over;
         lock (walletLock) {
+            if (sendsBefore != null) {
+                notify = mesoSends != sendsBefore;
+            }
             // Room left counted first: MaxMeso is long.MaxValue, so the sum itself could overflow.
             long room = Constant.MaxMeso - Currency.Meso;
             over = Math.Max(0, amount - room);
             Currency.Meso += amount - over;
             if (notify) {
-                session.Send(CurrencyPacket.UpdateMeso(Currency));
+                SendMeso();
             }
         }
         if (notify) {
@@ -310,6 +320,22 @@ public class CurrencyManager {
         if (over > 0) {
             logger.Warning("Meso give-back of {Amount} for {CharacterId} over the cap by {Over}", amount, session.CharacterId, over);
         }
+    }
+
+    // The meso packets sent so far: read before a TryTakeMeso(notify: false) and passed to ReturnHeldMeso.
+    public long MesoSends {
+        get {
+            lock (walletLock) {
+                return mesoSends;
+            }
+        }
+    }
+
+    // Gives back a held take (TryTakeMeso with notify false) on a refusal: silent when no meso packet went out since
+    // sendsBefore (the client still shows the balance before the take), else with the balance, since a packet sent
+    // meanwhile (a gain on the field's thread) showed it without the price.
+    public void ReturnHeldMeso(long amount, long sendsBefore) {
+        GiveBack(amount, notify: false, sendsBefore);
     }
 
     // Takes amount, or all that is held when that is less, in one step, and returns what was taken. Nothing is sent
@@ -328,7 +354,7 @@ public class CurrencyManager {
     // Sends the balance (after TryTakeMeso with notify false).
     public void NotifyMeso() {
         lock (walletLock) {
-            session.Send(CurrencyPacket.UpdateMeso(Currency));
+            SendMeso();
         }
         session.Quest?.UpdateMeso();
     }
@@ -340,9 +366,15 @@ public class CurrencyManager {
         }
         lock (walletLock) {
             Currency.Meso = Math.Min(Currency.Meso + amount, Constant.MaxMeso);
-            session.Send(CurrencyPacket.UpdateMeso(Currency, (int) code));
+            SendMeso((int) code);
         }
         session.Quest?.UpdateMeso();
+    }
+
+    // Sends the balance; the caller holds walletLock.
+    private void SendMeso(int code = 0) {
+        mesoSends++;
+        session.Send(CurrencyPacket.UpdateMeso(Currency, code));
     }
 
     public long CanAddMeso(long amount) {

@@ -242,6 +242,8 @@ public sealed class BlackMarketManager {
         // after it, a spend meanwhile (a shop on the field's thread) left the buyer short once the item was mailed: the
         // take threw and the item was free.
         long cost = listing.Price * quantity;
+        // A meso packet sent meanwhile shows the held total, so the give-back then sends one too.
+        long mesoSends = session.Currency.MesoSends;
         if (!session.Currency.TryTakeMeso(cost, notify: false)) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_err_lack_meso, 5, listingId));
             return;
@@ -265,14 +267,14 @@ public sealed class BlackMarketManager {
             // A throw before the commit undoes the transaction, so the mesos go back. A throw after it (the answer's
             // shaping) leaves the buy stored and the item mailed, so the price stays taken.
             if (!stored) {
-                session.Currency.ReturnMeso(cost, notify: false);
+                session.Currency.ReturnHeldMeso(cost, mesoSends);
             } else {
                 session.Currency.NotifyMeso();
             }
             throw;
         }
         if (listing == null || receivingMail == null) {
-            session.Currency.ReturnMeso(cost, notify: false);
+            session.Currency.ReturnHeldMeso(cost, mesoSends);
             session.Send(BlackMarketPacket.Error(gone ? BlackMarketError.s_err_lack_itemcount : BlackMarketError.s_blackmarket_error_purchase_count, 5, listingId));
             return;
         }

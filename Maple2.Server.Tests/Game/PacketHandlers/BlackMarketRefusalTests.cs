@@ -485,6 +485,59 @@ public class BlackMarketRefusalTests {
         });
     }
 
+    // The transaction refuses the buy (here the row is sold out at the seller's look-up). Without a meso packet
+    // meanwhile the price goes back silently: the client still shows the balance before the take. With one
+    // meanwhile (here 1 meso added) the client shows the held balance, so the give-back sends the right one.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Purchase_RefusedByTheTransaction_ShowsTheBalanceBack(bool mesoPacketMeanwhile) {
+        test = new TestGameSession();
+        BlackMarketListing listing = List(4);
+        GameSession session = Login(test, 5000);
+        test.World.OnPlayerInfo = _ => {
+            using (var context = new Ms2Context(test.Options)) {
+                context.BlackMarketListing.Find(listing.Id)!.Quantity = 0;
+                context.SaveChanges();
+            }
+            if (mesoPacketMeanwhile) {
+                session.Currency.AddMeso(1, 0);
+            }
+        };
+
+        Send(test, session, 5, listing.Id, 1);
+
+        long meso = mesoPacketMeanwhile ? 5001 : 5000;
+        List<byte[]> sent = test.TakeSent();
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(meso));
+            Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(0));
+            Assert.That(sent.Select(TestGameSession.Op), Is.EqualTo(mesoPacketMeanwhile
+                ? new[] { SendOp.Meso, SendOp.Meso, SendOp.BlackMarket }
+                : new[] { SendOp.BlackMarket }));
+            if (mesoPacketMeanwhile) {
+                Assert.That(Convert.ToHexString(sent[1]), Is.EqualTo(Convert.ToHexString(CurrencyPacket.UpdateMeso(session.Player.Value.Currency).ToArray())));
+            }
+        });
+    }
+
+    // A throw before the commit (here at the seller's look-up): the price goes back without a packet, as none was
+    // sent for the take.
+    [Test]
+    public void Purchase_AThrowBeforeTheCommitGivesThePriceBackSilently() {
+        test = new TestGameSession();
+        BlackMarketListing listing = List(4);
+        GameSession session = Login(test, 5000);
+        test.World.OnPlayerInfo = _ => throw new InvalidOperationException("before the commit");
+
+        Assert.Throws<InvalidOperationException>(() => Send(test, session, 5, listing.Id, 1));
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(MailedAmount(session.CharacterId), Is.EqualTo(0));
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
     // A buyer and the seller's take-back at once: the buyer gets its 3 and the seller the 1 left, or the seller
     // gets all 4 back and the buyer pays nothing. The items add up to 4 either way.
     [Test]
