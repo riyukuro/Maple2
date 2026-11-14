@@ -123,6 +123,12 @@ public sealed class UgcMarketManager {
         LoadSalesCounts(db);
         sales.Clear();
         sales = db.GetMySoldUgcListings(session.AccountId);
+        lock (removalLock) {
+            // Save above deleted them; a delete that was not written still keeps them out of the list.
+            foreach (long id in unstoredRemovals) {
+                sales.Remove(id);
+            }
+        }
         session.Send(MeretMarketPacket.LoadSales(sales.Values));
     }
 
@@ -168,30 +174,53 @@ public sealed class UgcMarketManager {
     }
 
     // A collect whose save failed while its merets were spent already: the profit stays paid, so the sale goes, and
-    // the client is told as for a collect (CollectProfit, UpdateProfit). Its removal is stored with the wallet
-    // (TrySavePurchase), as the collect's own save would have; a save that fails again is tried every 2 s while the
-    // session stays on the field, so that the sale does not come back at the next login.
+    // the client is told as for a collect (CollectProfit, UpdateProfit). The spend's own save stored the wallet with
+    // the profit in it, so the sale's row must go too, or it loads again at the next login and pays twice. Its id is
+    // kept until a delete is stored: tried at once with the wallet (TrySavePurchase), then every 2 s while the
+    // player plays on the field (PlaysOn); the session's saves (timed, field and channel moves, logout) delete it as
+    // well, in the same transaction as the wallet (Save).
     private static readonly TimeSpan SpentRemovalRetryDelay = TimeSpan.FromSeconds(2);
+    // The sales removed here whose delete may not be stored yet. Guarded by removalLock: the retry runs on the
+    // field's thread, the session's save on others.
+    private readonly HashSet<long> unstoredRemovals = [];
+    private readonly object removalLock = new();
 
     private void ProfitSpentBeforeSave(SoldUgcMarketItem sale) {
         sales.Remove(sale.Id);
+        lock (removalLock) {
+            unstoredRemovals.Add(sale.Id);
+        }
         logger.Error("Profit of SoldUgcMarketItem {Id} spent before its failed save; the sale is removed.", sale.Id);
-        StoreSpentRemoval(sale.Id, session.Field);
         session.Send(MeretMarketPacket.CollectProfit(sale.Id, sale.Profit));
         session.Send(MeretMarketPacket.UpdateProfit(SalesTotal(items.Values)));
+        StoreRemovals(session.Field);
     }
 
-    private void StoreSpentRemoval(long id, FieldManager? field) {
-        if (session.TrySavePurchase(db => db.DeleteSoldUgcMarketItem(id))) {
+    // Stores the kept removals; true when a failed try was queued again on the field. A player no longer on the
+    // field (logged out, moved, or saved for a channel move) is not tried again here: the save of that step stores
+    // the removals (Save).
+    internal bool StoreRemovals(FieldManager? field) {
+        long[] ids;
+        lock (removalLock) {
+            ids = unstoredRemovals.ToArray();
+        }
+        if (ids.Length == 0) {
+            return false;
+        }
+        if (session.TrySavePurchase(db => db.DeleteSoldUgcMarketItems(session.AccountId, ids))) {
+            lock (removalLock) {
+                unstoredRemovals.ExceptWith(ids);
+            }
             using GameStorage.Request db = session.GameStorage.Context();
             LoadSalesCounts(db);
-            return;
+            return false;
         }
-        if (field == null || session.Field != field) {
-            logger.Error("Removal of SoldUgcMarketItem {Id} not stored; the session left the field.", id);
-            return;
+        if (field == null || !session.PlaysOn(field)) {
+            logger.Error("Removal of SoldUgcMarketItems {Ids} not stored; left to the session's save.", ids);
+            return false;
         }
-        field.Scheduler.Schedule(() => StoreSpentRemoval(id, field), SpentRemovalRetryDelay);
+        field.Scheduler.Schedule(() => StoreRemovals(field), SpentRemovalRetryDelay);
+        return true;
     }
 
     public void RemoveListing(long id) {
@@ -329,8 +358,18 @@ public sealed class UgcMarketManager {
         return items.TryGetValue(id, out item);
     }
 
+    // The sales removed but not yet deleted are deleted here too: the session's save stores the wallet that holds
+    // their profit, so both go in its one transaction. A delete that is not written fails the whole save. The ids
+    // stay kept until a removal's own save clears them; deleting a row already gone is no failure.
     public void Save(GameStorage.Request db) {
         db.SaveUgcMarketItems(items.Values);
         db.SaveSoldUgcMarketItems(sales.Values);
+        long[] ids;
+        lock (removalLock) {
+            ids = unstoredRemovals.ToArray();
+        }
+        if (ids.Length > 0) {
+            db.DeleteSoldUgcMarketItems(session.AccountId, ids);
+        }
     }
 }

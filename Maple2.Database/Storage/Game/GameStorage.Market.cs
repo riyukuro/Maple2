@@ -303,6 +303,22 @@ public partial class GameStorage {
             return SaveChanges();
         }
 
+        // The account's sales of the ids that are still stored are deleted; an id already gone is no failure (a
+        // removal stored by another save meanwhile). False only when the delete was not written.
+        public bool DeleteSoldUgcMarketItems(long accountId, ICollection<long> ids) {
+            Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
+
+            List<Model.SoldUgcMarketItem> stored = Context.SoldUgcMarketItem
+                .Where(item => item.AccountId == accountId && ids.Contains(item.Id))
+                .ToList();
+            if (stored.Count == 0) {
+                return true;
+            }
+
+            Context.SoldUgcMarketItem.RemoveRange(stored);
+            return SaveChanges();
+        }
+
         public ICollection<UgcMarketItem> GetUgcMarketItems(params int[] tabIds) {
             if (tabIds.Length == 0) {
                 return Context.UgcMarketItem

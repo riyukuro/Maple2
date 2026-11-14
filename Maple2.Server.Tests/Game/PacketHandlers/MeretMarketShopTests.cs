@@ -68,6 +68,28 @@ public class MeretMarketShopTests {
         test.TakeSent();
     }
 
+    // A session playing on its field (PlaysOn): the test entry leaves the mark of a save before a move, as a move
+    // refused after its save does (MigrationRefused clears it).
+    private void PlayOn() {
+        session.State = SessionState.Connected;
+        session.MigrationRefused();
+        Assume.That(session.PlaysOn(session.Field!), Is.True);
+    }
+
+    // The managers a whole session save writes that Start does not build (as ItemSaveTests.StartSaving).
+    private void ReadyToSave() {
+        test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
+            [JobCode.Newbie] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
+                [SkillRank.Basic] = [], [SkillRank.Awakening] = [],
+            }, []),
+        }));
+        test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            session.Config = new ConfigManager(db, session);
+        }
+        session.Survival = new SurvivalManager(session);
+    }
+
     private MeretMarketHandler Handler() => new() {
         TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata,
         BanWordStorage = new BanWordStorage(new Maple2.Database.Context.MetadataContext(
@@ -206,7 +228,8 @@ public class MeretMarketShopTests {
 
     // A collect whose save fails while the merets are spent before they can be taken back (the spend runs inside the
     // failing save here): the sale goes, the client is told as for a collect, and the removal is stored with the
-    // wallet. With failsTwice the removal's own save fails too; it comes back on the field's queue and stores then.
+    // wallet. With failsTwice the removal's own save fails too; another try is queued on the field and stores then
+    // (run here as the queue would run it).
     [TestCase(false)]
     [TestCase(true)]
     public void CollectProfit_SpentBeforeTheFailedSave_RemovesTheSale(bool failsTwice) {
@@ -215,7 +238,7 @@ public class MeretMarketShopTests {
         Start();
         int saves = 0;
         test.FailSave = context => {
-            if (!context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "SoldUgcMarketItem")) {
+            if (!SaleDeleted(context)) {
                 return false;
             }
             saves++;
@@ -224,6 +247,7 @@ public class MeretMarketShopTests {
             }
             return saves == 1 || (failsTwice && saves == 2);
         };
+        PlayOn();
         int queued = session.Field!.Scheduler.Count;
 
         List<byte[]> sent = IdRequest(20, sale);
@@ -231,21 +255,91 @@ public class MeretMarketShopTests {
         Assert.That(session.Currency.Meret, Is.EqualTo(100));
         Assert.That(IdRequest(20, sale), Is.Empty, "not collected again");
         Assert.That(SaleStored(sale), Is.EqualTo(failsTwice));
+        Assert.That(session.Field!.Scheduler.Count, Is.EqualTo(failsTwice ? queued + 1 : queued));
 
         if (failsTwice) {
-            var timed = (System.Collections.IList) typeof(Maple2.Tools.Scheduler.EventQueue)
-                .GetField("timedEvents", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-                .GetValue(session.Field!.Scheduler)!;
-            Assert.That(session.Field!.Scheduler.Count, Is.EqualTo(queued + 1));
-            object retry = timed.Cast<object>().Last();
-            var task = (Action) retry.GetType().GetField("task", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(retry)!;
-            timed.Remove(retry);
-            task();
+            Assert.That(session.UgcMarket.StoreRemovals(session.Field), Is.False, "stored, not queued again");
             Assert.That(SaleStored(sale), Is.False);
         }
         using var context = new Maple2.Database.Context.Ms2Context(test.Options);
         Assert.That(context.Account.Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(100));
     }
+
+    // The removal's saves keep failing and the player leaves: the retry stops (no further try queued for a session
+    // that no longer plays on the field), and the logout save stores the removal with the wallet. After the relog the
+    // sale is not loaded and cannot be collected a second time.
+    [Test]
+    public void CollectProfit_SpentRemovalStoredByTheLogoutSave_NotCollectedAfterRelog() {
+        long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());
+        long sale = CreateSale(listing, 350, DateTime.Now.AddDays(-Constant.UGCShopProfitDelayDays - 1));
+        Start();
+        ReadyToSave();
+        bool failing = true;
+        bool spent = false;
+        test.FailSave = context => {
+            if (!failing || !SaleDeleted(context)) {
+                return false;
+            }
+            if (!spent) {
+                spent = true;
+                session.Currency.Meret = 100;
+            }
+            return true;
+        };
+        PlayOn();
+        int queued = session.Field!.Scheduler.Count;
+
+        IdRequest(20, sale);
+        Assert.That(session.Field!.Scheduler.Count, Is.EqualTo(queued + 1), "a try queued while on the field");
+
+        session.State = SessionState.Disconnected;
+        Assert.That(session.UgcMarket.StoreRemovals(session.Field), Is.False, "not queued again once logged out");
+        Assert.That(session.Field!.Scheduler.Count, Is.EqualTo(queued + 1));
+        Assert.That(SaleStored(sale), Is.True);
+
+        failing = false;
+        Assert.That(session.SessionSave(), Is.True);
+        Assert.That(SaleStored(sale), Is.False, "the logout save deletes the removed sale");
+
+        session.State = SessionState.Connected;
+        session.UgcMarket = new UgcMarketManager(session);
+        Assert.That(IdRequest(20, sale), Is.Empty);
+        Assert.That(session.Currency.Meret, Is.EqualTo(100));
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(context.Account.Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(100));
+    }
+
+    // The session's save stores a kept removal even when no try is left (a move ended the retry): it is in the save's
+    // one transaction with the wallet, and a delete of a row gone already is no failure.
+    [Test]
+    public void Save_DeletesTheKeptRemovalsOnly() {
+        long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());
+        long collected = CreateSale(listing, 350, DateTime.Now.AddDays(-Constant.UGCShopProfitDelayDays - 1));
+        long other = CreateSale(listing, 200, DateTime.Now.AddDays(-Constant.UGCShopProfitDelayDays - 1));
+        Start();
+        ReadyToSave();
+        bool failing = true;
+        test.FailSave = context => {
+            if (!failing || !SaleDeleted(context)) {
+                return false;
+            }
+            session.Currency.Meret = 100;
+            return true;
+        };
+        session.State = SessionState.ChangeMap;
+
+        IdRequest(20, collected);
+        Assert.That(SaleStored(collected), Is.True);
+
+        failing = false;
+        Assert.That(session.SessionSave(), Is.True);
+        Assert.That(SaleStored(collected), Is.False);
+        Assert.That(SaleStored(other), Is.True, "a sale still held is kept");
+        Assert.That(session.SessionSave(), Is.True, "the row is gone already");
+    }
+
+    private static bool SaleDeleted(Microsoft.EntityFrameworkCore.DbContext context) =>
+        context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "SoldUgcMarketItem" && entry.State == EntityState.Deleted);
 
     [Test]
     public void CollectProfit_NotBeforeTheDelay() {
