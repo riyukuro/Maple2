@@ -83,8 +83,9 @@ public class BuffManager : IUpdatable {
         }
     }
 
-    // Whether the buff is on the owner afterwards (added, or the one it has refreshed or kept): false for an effect
-    // not in the data, one on cooldown, one the owner is immune to, or one that could not be added.
+    // Whether the buff was added or the held one changed (its time or its stacks): false for an effect not in the data,
+    // one on cooldown, one the owner is immune to, one that could not be added, or a held one left as it was (a
+    // persisting end, no stack to add). The item uses (AddAdditionalEffect, SurvivalScan) keep the item on false.
     public bool AddBuff(IActor caster, IActor owner, int id, short level, long startTick, int stacks = 0, int durationMs = -1, bool notifyField = true, EventConditionType type = EventConditionType.Activate) {
         if (!owner.Field.SkillMetadata.TryGetEffect(id, level, out AdditionalEffectMetadata? additionalEffect)) {
             logger.Error("Invalid buff: {SkillId},{Level}", id, level);
@@ -162,7 +163,7 @@ public class BuffManager : IUpdatable {
                     GiveBackRecharge(existing);
                     TriggerEvent(Actor, Actor, Actor, EventConditionType.OnEffectApplied, skillId: existing.Id);
                 }
-                return true;
+                return timeChanged | stacked;
             }
         }
 

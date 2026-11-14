@@ -442,6 +442,23 @@ public class ItemFunctionUseTests {
         Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
     }
 
+    // A second use while the effect is on, its end kept (PersistEndTick): with a stack to add it stacks and the item is
+    // used up; at its one stack nothing changes, so the item is kept (it was used up).
+    [TestCase(2, 0)]
+    [TestCase(1, 1)]
+    public void AddAdditionalEffect_SecondUse_IsUsedUpOnlyWhenTheEffectChanges(int maxCount, int left) {
+        Item item = Login(20300012, ItemFunction.AddAdditionalEffect, "70000029,1", amount: 2);
+        EffectField(BuffAttributeTests.Effect(70000029, DisabledBuffTests.Property with {
+            DurationTick = 600000, MaxCount = maxCount, ResetCondition = BuffResetCondition.PersistEndTick,
+        }));
+
+        Use(item);
+        Use(item);
+
+        Assert.That(session.Player.Buffs.EnumerateBuffs(70000029), Has.Count.EqualTo(1));
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount ?? 0, Is.EqualTo(left));
+    }
+
     // The same item when the field's data has no effect 70000029: nothing starts and the item is kept.
     [Test]
     public void AddAdditionalEffect_AnEffectNotInTheData_KeepsTheItem() {
