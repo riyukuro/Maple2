@@ -2238,6 +2238,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventSaleReader.StarShop(value1);
             case GameEventType.PetMastery:
                 return EventSaleReader.PetMastery(value1, value2);
+            case GameEventType.EnchantRate:
+                return EventSaleReader.EnchantRate(value1, value2);
             case GameEventType.RankDuelReward:
                 return EventSaleReader.RankDuelReward(value1);
             case GameEventType.BlackMarketFeeDiscount:

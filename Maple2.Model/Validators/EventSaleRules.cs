@@ -23,6 +23,28 @@ public static class EventSaleRules {
         return rate;
     }
 
+    // The running EnchantRate events' highest raise for a try that reaches the level (CGameRule::FUN_14047e370,
+    // commonfiles/gamerule.cpp:2544), 0 when none runs.
+    public static int EnchantRateRaise(IEnumerable<GameEvent> events, int level) {
+        int rate = 0;
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is EnchantRate enchantRate && enchantRate.EnchantLevel == level && enchantRate.Rate > rate) {
+                rate = enchantRate.Rate;
+            }
+        }
+        return rate;
+    }
+
+    // The Ophelia success rate an EnchantRate raise gives, as the client's dialog shows it: the base raised by the
+    // percent, up to 100 (UIItemEnchantDialog::FormatEnchantRateText, uiitemenchantdialog.cpp:1913; the float 0.01).
+    public static float EnchantSuccessWithEvent(int success, int raise) {
+        if (raise <= 0) {
+            return success;
+        }
+        float chance = (float) (success * (1.0 + 0.01f * (double) raise));
+        return Math.Min(chance, 100f);
+    }
+
     // The running RankDuelReward events' highest rate (server-only; chosen like the client's rate events), 0 when none.
     public static int RankDuelRewardRate(IEnumerable<GameEvent> events) {
         int rate = 0;

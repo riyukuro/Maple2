@@ -178,6 +178,15 @@ public class ItemEnchantManager {
         item.Metadata.Property.Type, item.Metadata.Property.SubType, item.Metadata.Limit.Level, item.Metadata.Limit.EnableEnchant,
         enchants, item.LimitBreak?.Level ?? 0, item.ExpiryTime);
 
+    // The staged Ophelia try's rate, the client dialog's total (m_23c): a running EnchantRate event for the level the
+    // try reaches raises the base rate the way the dialog shows it, and the fodder and charge rates add on top. The
+    // packets keep the base rate; the client raises it itself.
+    internal float OpheliaRate() {
+        int raise = upgradeItem == null ? 0
+            : EventSaleRules.EnchantRateRaise(session.FindEvent(GameEventType.EnchantRate), (upgradeItem.Enchant?.Enchants ?? 0) + 1);
+        return EventSaleRules.EnchantSuccessWithEvent(rates.Success, raise) + rates.Fodder + rates.Charge;
+    }
+
     // The copies the next grade asks for: none below the KR open level and rarity (FodderOpen).
     private int RequiredFodder(int enchants) {
         return FodderOpen(enchants) ? RequireFodder[enchants] : 0;
@@ -389,7 +398,7 @@ public class ItemEnchantManager {
                 }
 
                 float roll = Random.Shared.NextSingle() * MaxRate;
-                int totalRate = rates.Total;
+                float totalRate = OpheliaRate();
                 enchantResult = force || roll < totalRate ? EnchantResult.Success : EnchantResult.Fail;
                 logger.Debug("Enchant result: {Roll} / {Total} = {Result}", roll, totalRate, enchantResult.ToString());
 

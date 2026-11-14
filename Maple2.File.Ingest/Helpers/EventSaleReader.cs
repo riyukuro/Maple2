@@ -104,6 +104,16 @@ public static class EventSaleReader {
         return capture > 0 || other > 0 ? new PetMastery(capture, other) : null;
     }
 
+    // value1 the enchant level, value2 the raise in percent (GameEventEnchantRate::vfunc_2, commonfiles/gameevent.cpp:2988).
+    // No level or no positive raise gives no event: a try reaches level 1 or more, and the client reads the raise
+    // unsigned, so a negative one would show a 100% rate.
+    public static EnchantRate? EnchantRate(string? value1, string? value2) {
+        if (!int.TryParse(value1?.Trim(), out int level) || level <= 0) {
+            return null;
+        }
+        return int.TryParse(value2?.Trim(), out int rate) && rate > 0 ? new EnchantRate(level, rate) : null;
+    }
+
     // value1: the bonus (GameEventFindDungeonHelperBonus, commonfiles/gameevent.cpp:4560).
     public static FindDungeonHelperBonus? HelperBonus(string? value1) {
         return int.TryParse(value1?.Trim(), out int bonus) && bonus > 0 ? new FindDungeonHelperBonus(bonus) : null;

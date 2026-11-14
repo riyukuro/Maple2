@@ -485,6 +485,14 @@ public record PetMastery(
     int CaptureRate,
     int OtherRate) : GameEventData;
 
+// The enchant rate event (GameEventEnchantRate, commonfiles/gameevent.cpp:2988): value1 the enchant level it raises (the
+// level a try reaches), value2 the raise in percent. The client keeps the events by level and reads the highest raise
+// (CGameRule::FUN_14047e370, gamerule.cpp:2544); its Ophelia dialog shows the success rate raised by that percent, up
+// to 100 (UIItemEnchantDialog::FormatEnchantRateText, uiitemenchantdialog.cpp:1913).
+public record EnchantRate(
+    int EnchantLevel,
+    int Rate) : GameEventData;
+
 // The black market fee event (GameEventBlackMarketFeeDiscount, commonfiles/gameevent.cpp:1283): value1 is the fee
 // rate in 1/10000 that replaces the normal one while the event runs (GetBlackMarketCostRate,
 // commonfiles/blackmarketitemoption.cpp:233). The client asserts on a rate outside 0..10000; 0 is a free sale.
@@ -868,6 +876,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(SaleAutoFishing), "SaleAutoFishing")]
 [JsonDerivedType(typeof(EventRate), "EventRate")]
 [JsonDerivedType(typeof(PetMastery), "PetMastery")]
+[JsonDerivedType(typeof(EnchantRate), "EnchantRate")]
 [JsonDerivedType(typeof(MeratMarketOpenTab), "MeratMarketOpenTab")]
 [JsonDerivedType(typeof(StarShop), "StarShop")]
 [JsonDerivedType(typeof(TransferItemBound), "TransferItemBound")]

@@ -116,4 +116,5 @@ public enum GameEventType {
     SaleSkillUpgrade,
     DungeonBuff,
     QuestTag,
+    EnchantRate,
 }

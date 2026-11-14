@@ -478,6 +478,12 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(petMastery.CaptureRate);
                 writer.WriteInt(petMastery.OtherRate);
                 break;
+            case EnchantRate enchantRate:
+                // GameEventEnchantRate::vfunc_4: the enchant level, then the raise.
+                writer.WriteInt(Id);
+                writer.WriteInt(enchantRate.EnchantLevel);
+                writer.WriteInt(enchantRate.Rate);
+                break;
             case BlackMarketFeeDiscount feeDiscount:
                 // GameEventBlackMarketFeeDiscount::vfunc_4: the rate, then the start and end time the fee notice shows.
                 writer.WriteInt(Id);
