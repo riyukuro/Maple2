@@ -143,7 +143,7 @@ public class MentoringManager : IDisposable {
             return;
         }
         if (session.Currency[CurrencyType.MenteeToken] >= session.ServerTableMetadata.ConstantsTable.MenteeTokenMax
-            || MenteeCoinsToday(season) >= MentoringAttend.MenteeDailyCoinMax) {
+            || MenteeCoinsToday(season, now) >= MentoringAttend.MenteeDailyCoinMax) {
             session.Send(MentorPacket.Error(MentorError.FullEarnCoin));
             return;
         }
@@ -161,29 +161,34 @@ public class MentoringManager : IDisposable {
         session.Send(MentorPacket.AttendDate(newLevel, newNext));
     }
 
-    // The mentee coins of the mentoring rewards (the attend coin and a quest's menteeCoin). While a season runs
-    // they count against the table's daily cap (maxMenteeDailyRewardCoin), which the mentee page shows with the
-    // coins today of Mentor 11: only the part under the cap is given, and the count is stored before the coin (a
-    // lost session must not give it twice). Without a season the coin is given as before. Returns the coin given.
+    // The mentee coins of the mentoring rewards (the attend coin and a quest's menteeCoin). A mentee's coins in a
+    // running season count against the table's daily cap (maxMenteeDailyRewardCoin), which the mentee page shows
+    // with the coins today of Mentor 11: only the part under the cap is given. Anyone else (no season, a mentor, a
+    // player without a role; the page shows them 0) gets the coin as before. The count holds only what the token
+    // cap (MenteeTokenMax) lets in. It is stored at once; a store the database refuses is logged and the coin is
+    // still given, as the claim it pays for is already used up (the attend day stored, the quest completed).
+    // Returns the coin given.
     public long AddMenteeCoin(long coin) {
         if (coin <= 0) {
             return 0;
         }
         GameEvent? season = SeasonEvent;
-        if (season?.Metadata.Data is not ReturnUser) {
+        if (season?.Metadata.Data is not ReturnUser || Role != MentorRole.Mentee) {
             session.Currency.Change(CurrencyType.MenteeToken, coin);
             return coin;
         }
 
-        long today = MenteeCoinsToday(season);
-        long given = MentoringAttend.DailyPart(coin, today);
+        // One time for the day's value and its end, so a coin given across midnight counts to one day.
+        DateTime now = DateTime.Now;
+        long today = MenteeCoinsToday(season, now);
+        long room = session.ServerTableMetadata.ConstantsTable.MenteeTokenMax - session.Currency[CurrencyType.MenteeToken];
+        long given = Math.Min(MentoringAttend.DailyPart(coin, today), room);
         if (given <= 0) {
             return 0;
         }
         session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringMenteeCoinToday, today + given);
         if (!session.GameEvent.Store(season.Id, GameEventUserValueType.MentoringMenteeCoinToday)) {
             logger.Warning("Mentee coins today of {CharacterId} not stored", session.CharacterId);
-            return 0;
         }
         session.Currency.Change(CurrencyType.MenteeToken, given);
         SendDailyCoins();
@@ -199,12 +204,13 @@ public class MentoringManager : IDisposable {
             session.Send(MentorPacket.DailyPoints(0, midnight));
             return;
         }
-        session.Send(MentorPacket.DailyPoints((int) MenteeCoinsToday(season), midnight));
+        session.Send(MentorPacket.DailyPoints((int) MenteeCoinsToday(season, DateTime.Now), midnight));
     }
 
-    private long MenteeCoinsToday(GameEvent season) {
-        long midnight = DateTime.Now.Date.AddDays(1).ToEpochSeconds();
-        return session.GameEvent.Get(GameEventUserValueType.MentoringMenteeCoinToday, season.Id, Math.Min(midnight, season.EndTime)).Long();
+    // The day's value ends at the midnight after `now` and is tested against `now`.
+    private long MenteeCoinsToday(GameEvent season, DateTime now) {
+        long midnight = now.Date.AddDays(1).ToEpochSeconds();
+        return session.GameEvent.Get(GameEventUserValueType.MentoringMenteeCoinToday, season.Id, Math.Min(midnight, season.EndTime), now.ToEpochSeconds()).Long();
     }
 
     private (int Level, long Next) Attend(GameEvent season) {

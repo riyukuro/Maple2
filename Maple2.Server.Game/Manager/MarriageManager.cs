@@ -855,8 +855,12 @@ public sealed class MarriageManager {
         if (marriage == null) {
             return WeddingError.s_wedding_result_err_system;
         }
-        if (!target.Session.Item.Inventory.Consume(ring.Uid, 1)) {
-            db.DeleteMarriage(marriage.Id);
+        // The ring is looked up again: the stack found before the save may have moved or merged since.
+        ring = target.Session.Item.Inventory.Find(Constant.ProposalItemId).FirstOrDefault();
+        if (ring == null || !target.Session.Item.Inventory.Consume(ring.Uid, 1)) {
+            if (!db.DeleteMarriage(marriage.Id)) {
+                logger.Error("Failed to delete marriage {MarriageId} after the proposal ring was not taken", marriage.Id);
+            }
             return WeddingError.s_wedding_result_err_not_find_propose_item;
         }
         Marriage = marriage;

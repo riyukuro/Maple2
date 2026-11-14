@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -156,14 +156,58 @@ public class WeddingProposalTests {
         Assert.That(db.GetMarriage(proposer.CharacterId), Is.Null);
     }
 
-    // Fails every save that adds a marriage row while set.
+    // The ring's stack changes while the marriage row is stored (a move or merge gives it a new uid): the accept
+    // takes the ring the proposer holds then. Before, it used the uid found before the save and was refused.
+    [Test]
+    public void Accept_TakesTheRingHeldAfterTheSave() {
+        SendPropose();
+        proposer.TakeSent();
+        target.TakeSent();
+        fault.OnSave = () => {
+            Item ring = proposer.Session.Item.Inventory.Find(Constant.ProposalItemId).Single();
+            Assume.That(proposer.Session.Item.Inventory.Consume(ring.Uid, 1), Is.True);
+            Item moved;
+            using (GameStorage.Request db = proposer.Storage.Context()) {
+                moved = db.CreateItem(proposer.CharacterId, new Item(ring.Metadata)) ?? throw new InvalidOperationException("item row not created");
+            }
+            Assume.That(moved.Uid, Is.Not.EqualTo(ring.Uid));
+            Assume.That(proposer.Session.Item.Inventory.Add(moved), Is.True);
+        };
+
+        SendAccept();
+        fault.OnSave = null;
+        Assert.That(proposer.Session.Marriage.Marriage.Status, Is.EqualTo(MaritalStatus.Engaged));
+        Assert.That(target.Session.Marriage.Marriage.Status, Is.EqualTo(MaritalStatus.Engaged));
+        Assert.That(Rings(proposer), Is.EqualTo(0));
+    }
+
+    // A marriage row that cannot be read back (a partner's character is missing) is not kept: the create answers
+    // null and stores nothing. Before, the row was committed and then answered null, so it stayed with no ring taken
+    // and was the one found for the proposer from then on.
+    [Test]
+    public void CreateMarriage_ThatCannotBeRead_StoresNothing() {
+        using GameStorage.Request db = proposer.Storage.Context();
+        Assert.That(db.CreateMarriage(proposer.CharacterId, 987654321), Is.Null);
+        Assert.That(db.CreateMarriage(proposer.CharacterId, target.CharacterId), Is.Not.Null);
+        Marriage? found = db.GetMarriage(proposer.CharacterId);
+        Assert.That(found, Is.Not.Null);
+        Assert.That(new[] { found!.Partner1.CharacterId, found.Partner2.CharacterId }, Is.EquivalentTo(new[] { proposer.CharacterId, target.CharacterId }));
+    }
+
+    // Fails every save that adds a marriage row while set; OnSave runs at such a save.
     private sealed class MarriageFault : SaveChangesInterceptor {
         public bool Fail;
+        public Action? OnSave;
 
         public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
-            if (Fail && eventData.Context != null && eventData.Context.ChangeTracker.Entries<StoredMarriage>()
+            if (eventData.Context != null && eventData.Context.ChangeTracker.Entries<StoredMarriage>()
                     .Any(entry => entry.State == EntityState.Added)) {
-                throw new DbUpdateException("The test made this save fail");
+                if (Fail) {
+                    throw new DbUpdateException("The test made this save fail");
+                }
+                Action? onSave = OnSave;
+                OnSave = null;
+                onSave?.Invoke();
             }
             return result;
         }

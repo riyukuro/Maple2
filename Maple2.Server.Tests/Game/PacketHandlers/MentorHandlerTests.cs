@@ -623,4 +623,29 @@ public class MentorHandlerTests {
         Assert.That(session.Mentoring.AddMenteeCoin(2000), Is.EqualTo(2000));
         Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(2000));
     }
+
+    // Only a mentee's coins count against the daily cap: a mentor in a season (whose page shows 0) gets a quest's
+    // mentee coin whole. Before, it was cut off at the mentee's cap.
+    [Test]
+    public void MenteeCoins_AMentorIsNotCapped() {
+        Login(season: true);
+        Send(session, RegisterMentor);
+        Assert.That(session.Mentoring.AddMenteeCoin(2000), Is.EqualTo(2000));
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(2000));
+    }
+
+    // Near the token cap only the part the cap lets in is given and counted for the day. Before, the day counted
+    // the whole coin while the wallet took only that part.
+    [Test]
+    public void MenteeCoins_CountOnlyWhatTheTokenCapLetsIn() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        int max = session.ServerTableMetadata.ConstantsTable.MenteeTokenMax;
+        session.Currency.Change(CurrencyType.MenteeToken, max - 50);
+        Mentor(test);
+
+        Assert.That(session.Mentoring.AddMenteeCoin(100), Is.EqualTo(50));
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(max));
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Coins(50) }));
+    }
 }
