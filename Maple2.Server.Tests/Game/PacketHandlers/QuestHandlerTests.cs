@@ -990,6 +990,27 @@ public class QuestHandlerTests {
         });
     }
 
+    // Quest 13 for KR 10002813: gotoDungeon state 1, no room, gotoInstanceID 1100001, whose one map in
+    // instancefield.xml is 2010055. With a condition open the player moves there; with every condition met (kind 1
+    // wants one open) nothing happens.
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void GoToDungeon_InstanceOnlyRowMovesToTheInstanceMap(bool met, bool moves) {
+        GameSession session = Login();
+        test.SetServerTable(new InstanceFieldTable(new Dictionary<int, InstanceFieldMetadata> {
+            [2010055] = new(2010055, InstanceType.none, 1100001, false, 0, true, 0, 0, 0, 0),
+        }));
+        Quest quest = test.StartQuest(Data() with { GoToDungeon = new QuestMetadataGoToDungeon((QuestState) 1, 0, 1100001) });
+        quest.Conditions[0].Counter = met ? 1 : 0;
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(13);
+            writer.WriteInt(QuestId);
+        }));
+
+        Assert.That(test.World.Moves.Select(move => move.MapId), Is.EqualTo(moves ? new[] { 2010055 } : Array.Empty<int>()));
+    }
+
     // A started quest of the KR row's type with this complete reward, its one condition met.
     private Quest StartedWith(QuestType type, Func<QuestMetadataReward, QuestMetadataReward> reward, AllianceType alliance = AllianceType.AnyFaction,
                               int rank = 5) {

@@ -454,4 +454,34 @@ public static class QuestRules {
         }
         return mapId != goTo.MapId && npcFields?.Contains(mapId) != true;
     }
+
+    // Quest 13 is sent only when CQuestCommon::FUN_1407443e0 (pvpinfo.cpp:262) is true: the row names a dungeon room
+    // or an instance; a room is known and the current field is none of its fields; and the quest is in the row's
+    // state kind: 1 = started with a condition open, 2 = started with every condition met (CQuest::IsComplete),
+    // 3 = started. roomFields is null when the row's room is not in the room table.
+    public static bool CanGoToDungeon(QuestMetadataGoToDungeon goTo, QuestState state, bool conditionsMet, IReadOnlyList<int>? roomFields, int mapId) {
+        if (goTo.MapId == 0 && goTo.InstanceId == 0) {
+            return false;
+        }
+        if (goTo.MapId != 0 && (roomFields == null || roomFields.Contains(mapId))) {
+            return false;
+        }
+        if (state != QuestState.Started) {
+            return false;
+        }
+        return (int) goTo.State switch {
+            1 => !conditionsMet,
+            2 => conditionsMet,
+            3 => true,
+            _ => false,
+        };
+    }
+
+    // The map a row with an instance and no room moves to: the lowest map of that instance in instancefield.xml
+    // (chosen here; the client names only the instance, and 1100002, 1100003 and 1100005 have several maps). 0 when
+    // the instance has no map or the player is in one of its maps already.
+    public static int GoToInstanceMap(int instanceId, IReadOnlyDictionary<int, InstanceFieldMetadata> fields, int mapId) {
+        List<int> maps = fields.Where(entry => entry.Value.InstanceId == instanceId).Select(entry => entry.Key).Order().ToList();
+        return instanceId == 0 || maps.Count == 0 || maps.Contains(mapId) ? 0 : maps[0];
+    }
 }

@@ -418,11 +418,26 @@ public class QuestHandler : FieldPacketHandler {
     private static void HandleGoToDungeon(GameSession session, IByteReader packet) {
         int questId = packet.ReadInt();
 
-        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || quest.State != QuestState.Started) {
+        if (!session.Quest.TryGetQuest(questId, out Quest? quest)) {
+            return;
+        }
+        QuestMetadataGoToDungeon goTo = quest.Metadata.GoToDungeon;
+        bool conditionsMet = quest.Conditions.Values.All(condition => condition.Counter >= condition.Metadata.Value);
+        session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(goTo.MapId, out DungeonRoomMetadata? room);
+        int mapId = session.Player.Value.Character.MapId;
+        if (!QuestRules.CanGoToDungeon(goTo, quest.State, conditionsMet, room?.FieldIds, mapId)) {
             return;
         }
 
-        session.Dungeon.CreateDungeonRoom(quest.Metadata.GoToDungeon.MapId, false);
+        if (goTo.MapId != 0) {
+            session.Dungeon.CreateDungeonRoom(goTo.MapId, false);
+            return;
+        }
+        // A row with an instance and no room (KR 10002813: gotoInstanceID 1100001, the map 2010055).
+        int target = QuestRules.GoToInstanceMap(goTo.InstanceId, session.ServerTableMetadata.InstanceFieldTable.Entries, mapId);
+        if (target != 0) {
+            session.Migrate(target);
+        }
     }
 
     private void HandleMapleGuide(GameSession session, IByteReader packet) {

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Util;
@@ -168,6 +170,40 @@ public class QuestRulesTests {
     public void GoToNpc_ClientButtonRule(bool enabled, int gotoField, QuestState state, bool met, int mapId, bool expected) {
         var goTo = new Maple2.Model.Metadata.QuestMetadataGoToNpc(enabled, gotoField, 1);
         Assert.That(QuestRules.CanGoToNpc(goTo, state, met, [200, 201], mapId), Is.EqualTo(expected));
+    }
+
+    // Quest 13's client rule (CQuestCommon::FUN_1407443e0). Made-up room 500 with the fields 600 and 601, instance 700.
+    [TestCase(1, 500, 0, QuestState.Started, false, 300, true)] // kind 1: a condition open
+    [TestCase(1, 500, 0, QuestState.Started, true, 300, false)]
+    [TestCase(2, 500, 0, QuestState.Started, true, 300, true)] // kind 2: every condition met
+    [TestCase(2, 500, 0, QuestState.Started, false, 300, false)]
+    [TestCase(3, 500, 0, QuestState.Started, true, 300, true)] // kind 3: started
+    [TestCase(3, 500, 0, QuestState.Started, false, 300, true)]
+    [TestCase(3, 500, 0, QuestState.Completed, true, 300, false)] // already rewarded
+    [TestCase(0, 500, 0, QuestState.Started, false, 300, false)] // no kind
+    [TestCase(3, 500, 0, QuestState.Started, true, 601, false)] // in a field of the room
+    [TestCase(3, 501, 0, QuestState.Started, true, 300, false)] // a room not in the table
+    [TestCase(3, 0, 0, QuestState.Started, true, 300, false)] // neither a room nor an instance
+    [TestCase(1, 0, 700, QuestState.Started, false, 300, true)] // an instance, no room
+    [TestCase(1, 0, 700, QuestState.Started, true, 300, false)]
+    public void GoToDungeon_ClientButtonRule(int kind, int room, int instance, QuestState state, bool met, int mapId, bool expected) {
+        var goTo = new Maple2.Model.Metadata.QuestMetadataGoToDungeon((QuestState) kind, room, instance);
+        IReadOnlyList<int>? roomFields = room == 500 ? [600, 601] : null;
+        Assert.That(QuestRules.CanGoToDungeon(goTo, state, met, roomFields, mapId), Is.EqualTo(expected));
+    }
+
+    // KR instancefield.xml: instance 1100003 has the maps 2000388, 2000389 and 2000390; the lowest is taken, none
+    // when the player is in one of them or the instance has no map.
+    [Test]
+    public void GoToInstanceMap_LowestMapOfTheInstance() {
+        Dictionary<int, Maple2.Model.Metadata.InstanceFieldMetadata> fields = new[] { 2000390, 2000388, 2000389 }.ToDictionary(id => id,
+            id => new Maple2.Model.Metadata.InstanceFieldMetadata(id, InstanceType.none, 1100003, false, 0, true, 0, 0, 0, 0));
+        Assert.Multiple(() => {
+            Assert.That(QuestRules.GoToInstanceMap(1100003, fields, 2000402), Is.EqualTo(2000388));
+            Assert.That(QuestRules.GoToInstanceMap(1100003, fields, 2000389), Is.EqualTo(0));
+            Assert.That(QuestRules.GoToInstanceMap(1100004, fields, 2000402), Is.EqualTo(0));
+            Assert.That(QuestRules.GoToInstanceMap(0, fields, 2000402), Is.EqualTo(0));
+        });
     }
 
     // The talk a quest's script opens with at an npc: the accept talk for a quest not held or one that can be
