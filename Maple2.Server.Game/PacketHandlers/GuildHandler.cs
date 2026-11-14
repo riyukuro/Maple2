@@ -577,21 +577,28 @@ public class GuildHandler : PacketHandler<GameSession> {
                 session.Send(GuildPacket.Error(error));
                 return;
             }
-
-            session.Send(GuildPacket.CheckedIn());
-            session.ConditionUpdate(ConditionType.guild_attendance);
-            session.Exp.AddExp(ExpType.guildUserExp, session.Guild.Properties.CheckInPlayerExpRate);
-            int coin = session.Guild.Properties.CheckInCoin;
-            if (coin > 0) {
-                // The check-in is taken by the World by now: a full bag sends the coin by mail (before, it was dropped).
-                Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, coin);
-                if (guildCoin == null || !session.Item.AddOrMail(guildCoin, true)) {
-                    Logger.Error("Guild check-in coin of {CharacterId} not given", session.CharacterId);
-                }
-            }
         } catch (RpcException ex) {
-            Logger.Error(ex, "Failed to check in to guild");
-            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+            // The World may have taken the check-in and lost only the answer: it tells the members (UpdateMember with
+            // the check-in time) before it answers, so a member that shows today's check-in now is paid, as the player
+            // cannot check in again today. Otherwise the World did not take it.
+            if (GuildRules.CanCheckIn(self.JoinTime, self.CheckinTime, dayStart)) {
+                Logger.Error(ex, "Failed to check in to guild");
+                session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+                return;
+            }
+            Logger.Warning(ex, "Guild check-in of {CharacterId}: the World took it, its answer was lost", session.CharacterId);
+        }
+
+        session.Send(GuildPacket.CheckedIn());
+        session.ConditionUpdate(ConditionType.guild_attendance);
+        session.Exp.AddExp(ExpType.guildUserExp, session.Guild.Properties.CheckInPlayerExpRate);
+        int coin = session.Guild.Properties.CheckInCoin;
+        if (coin > 0) {
+            // The check-in is taken by the World by now: a full bag sends the coin by mail (before, it was dropped).
+            Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, coin);
+            if (guildCoin == null || !session.Item.AddOrMail(guildCoin, true)) {
+                Logger.Error("Guild check-in coin of {CharacterId} not given", session.CharacterId);
+            }
         }
     }
 

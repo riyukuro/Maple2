@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
@@ -78,5 +79,15 @@ public class ClubBuffWorldTests {
         manager.Disband();
         Assert.That(manager.SetBuff(ids[0], 110002001, 1), Is.EqualTo(ClubError.s_club_err_null_club));
         Assert.That(manager.Club.BuffId, Is.EqualTo(0));
+    }
+
+    // A save that throws (here a member without a player) undoes the buff as a refused one does, so the next save
+    // of the row does not write a buff the leader was told failed.
+    [Test]
+    public void SaveThrows_BuffUndone() {
+        manager.Club.Members[-1] = new Maple2.Model.Game.Club.ClubMember { Info = null! };
+        Assert.Throws<NullReferenceException>(() => manager.SetBuff(ids[0], 110002001, 1));
+        Assert.That((manager.Club.BuffId, manager.Club.BuffLevel), Is.EqualTo((0, 0)));
+        manager.Club.Members.TryRemove(-1, out _);
     }
 }

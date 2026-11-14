@@ -48,6 +48,7 @@ public class GuildModeHandlerTests {
             new Dictionary<int, IReadOnlyDictionary<int, GuildTable.House>>(),
             new Dictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>>(),
             new Dictionary<short, GuildTable.Property> { [1] = property with { Level = 1, Capacity = 10, DonateMax = 3 } }));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
         test.Start();
         session = test.Session;
         var words = new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -151,6 +152,34 @@ public class GuildModeHandlerTests {
 
         Assert.That(test.World.GuildRequests.Single().CheckIn.GuildId, Is.EqualTo(7));
         Assert.That(GuildAnswers(), Is.EqualTo(Unknown));
+    }
+
+    // The World took the check-in and told the members (UpdateMember with today's time) but its answer was lost:
+    // the player is paid and told, as the World refuses a second check-in today.
+    [Test]
+    public void CheckIn_AnswerLost_AfterWorldTookIt_CheckedIn() {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        test.World.GuildWorld = _ => {
+            session.Guild.UpdateMemberContribution(self.CharacterId, now, 10);
+            throw new RpcException(new Status(StatusCode.Unavailable, "answer lost"));
+        };
+        Send(15, _ => { });
+
+        Assert.That(self.CheckinTime, Is.EqualTo(now));
+        string[] answers = GuildAnswers();
+        Assert.That(answers, Does.Contain(Hex(GuildPacket.CheckedIn())));
+        Assert.That(answers, Does.Not.Contain(Unknown[0]));
+    }
+
+    // The member update of a check-in is kept on the game's copy: a second check-in the same day is not sent on.
+    [Test]
+    public void CheckIn_AfterMemberUpdate_NotSentAgain() {
+        session.Guild.UpdateMemberContribution(self.CharacterId, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), 10);
+        test.TakeSent();
+        Send(15, _ => { });
+
+        Assert.That(test.World.GuildRequests, Is.Empty);
+        Assert.That(GuildAnswers(), Is.Empty);
     }
 
     // Guild 63 (a new master), from the master.

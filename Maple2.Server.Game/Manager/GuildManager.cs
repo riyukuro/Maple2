@@ -368,6 +368,8 @@ public class GuildManager : IDisposable {
         session.Send(GuildPacket.GuildContribution(member, contribution));
         // Only a check-in sends its time; a contribution without one (the guild vs game's) leaves it.
         if (checkInTime > 0) {
+            // Kept on this copy too: the check-in guard and the member list read it (before, it stayed at the login value).
+            member.CheckinTime = checkInTime;
             session.Send(GuildPacket.CheckInTime(member.Name, checkInTime));
         }
         return true;

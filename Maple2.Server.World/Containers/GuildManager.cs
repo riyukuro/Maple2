@@ -1223,7 +1223,7 @@ public class GuildManager : IDisposable {
         Broadcast(new GuildRequest {
             UpdateNotice = new GuildRequest.Types.UpdateNotice {
                 RequestorName = requestor.Name,
-                Message = Guild.Notice,
+                Message = message, // the notice this request stored, not one another officer set since
             },
         });
 

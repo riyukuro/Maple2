@@ -352,13 +352,18 @@ public class ClubManager : IDisposable {
             int oldLevel = Club.BuffLevel;
             Club.BuffId = buffId;
             Club.BuffLevel = buffLevel;
-            bool saved;
-            using (GameStorage.Request db = GameStorage.Context()) {
+            // A save that throws undoes the buff too, so the next save of the row does not write it.
+            bool saved = false;
+            try {
+                using GameStorage.Request db = GameStorage.Context();
                 saved = db.SaveClub(Club);
+            } finally {
+                if (!saved) {
+                    Club.BuffId = oldId;
+                    Club.BuffLevel = oldLevel;
+                }
             }
             if (!saved) {
-                Club.BuffId = oldId;
-                Club.BuffLevel = oldLevel;
                 return ClubError.s_club_err_unknown;
             }
         }
