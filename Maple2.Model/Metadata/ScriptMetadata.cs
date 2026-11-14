@@ -12,7 +12,10 @@ public record ScriptState(
     ScriptStateType Type,
     bool Pick,
     JobCode? JobCondition,
-    CinematicContent[] Contents);
+    CinematicContent[] Contents,
+    // gotoConditionTalkID of an npc <script>: the scripts its last page may go on to. Null or empty for other states
+    // and in data ingested before it was read.
+    int[]? GotoConditionTalkIds = null);
 
 public record CinematicContent(
     string Text,

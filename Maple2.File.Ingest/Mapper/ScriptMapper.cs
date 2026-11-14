@@ -66,13 +66,13 @@ public class ScriptMapper : TypeMapper<ScriptMetadata> {
                     Contents: ParseCinematicContents(select.content)));
             }
             foreach (ConditionTalkScript select in script.script) {
-                int[] conditions = select.gotoConditionTalkID; // TODO:
                 states.Add(select.id, new ScriptState(
                     Id: select.id,
                     Type: ScriptStateType.Script,
                     Pick: select.randomPick,
                     JobCondition: null,
-                    Contents: ParseCinematicContents(select.content)));
+                    Contents: ParseCinematicContents(select.content),
+                    GotoConditionTalkIds: select.gotoConditionTalkID ?? []));
             }
             if (states.Count == 0) {
                 continue;

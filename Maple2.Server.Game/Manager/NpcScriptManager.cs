@@ -278,10 +278,33 @@ public sealed class NpcScriptManager {
         }
 
         if (Index >= State.Contents.Length - 1) {
-            return null;
+            return content.Distractors.Length == 0 ? GotoConditionState() : null;
         }
 
         return State;
+    }
+
+    // A <script> with gotoConditionTalkID has no last page in the client (CTalkScript::GetTalkButtonSet,
+    // talkscript.cpp:877: isLast needs an empty id list), so its final page shows Next and the client sends
+    // Command.Continue with pick 0. The talk then goes to the first listed script whose npcScriptCondition row passes;
+    // the lists are written in priority order (maid 11000512 script 11: 40 mood talk, 50 affinity talk, 60 neither,
+    // and 40 and 50 can both pass). No passing script closes the talk; the script's own id is skipped.
+    private ScriptState? GotoConditionState() {
+        if (State?.GotoConditionTalkIds is not { Length: > 0 } ids) {
+            return null;
+        }
+
+        foreach (int scriptId in ids) {
+            // A script listing itself would restart on its last page; no KR script does, so it is skipped.
+            if (scriptId == State.Id || !metadata!.States.TryGetValue(scriptId, out ScriptState? script)) {
+                continue;
+            }
+            if (scriptConditions == null || !scriptConditions.TryGetValue(script.Id, out ScriptConditionMetadata? condition)
+                || condition.ConditionCheck(session, Npc?.MaidUid ?? 0)) {
+                return script;
+            }
+        }
+        return null;
     }
 
     private void PerformJobScript() {
@@ -326,7 +349,7 @@ public sealed class NpcScriptManager {
             return NpcTalkButton.SelectableDistractor;
         }
 
-        if (Index < State.Contents.Length - 1) {
+        if (Index < State.Contents.Length - 1 || State.GotoConditionTalkIds is { Length: > 0 }) {
             return NpcTalkButton.Next;
         }
 
