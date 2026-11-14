@@ -59,10 +59,11 @@ public sealed class BeautyManager : IDisposable {
         }
     }
 
-    // The equipped hair that is not saved yet.
+    // The equipped hair. A saved style is a copy with its own uid, so the worn hair can be saved again; the client
+    // sends the worn hair's uid each time and has no text for a style saved twice (uibeautyshopstyledialog.cpp:1407).
     public bool CanAddHair(long uid) {
         Item? hair = session.Item.GetOutfit(uid);
-        return hair != null && hair.Type.IsHair && !items.Contains(uid);
+        return hair != null && hair.Type.IsHair;
     }
 
     // Beauty modes 17 and 19: one extension of the saved style slots, BeautyStyleExpandSlotCount1time slots
@@ -95,10 +96,6 @@ public sealed class BeautyManager : IDisposable {
     public void AddHair(long uid) {
         Item? hair = session.Item.GetOutfit(uid);
         if (hair == null || !hair.Type.IsHair) {
-            return;
-        }
-
-        if (items.Contains(uid)) {
             return;
         }
 
