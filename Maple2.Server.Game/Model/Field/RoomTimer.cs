@@ -12,6 +12,8 @@ namespace Maple2.Server.Game.Model;
 public class RoomTimerClock {
     public int StartTick { get; private set; }
     public int Duration { get; private set; }
+    /// <summary>The time runs (Start or Restart was called).</summary>
+    public bool Started { get; private set; }
     /// <summary>
     /// The time function was ended (dungeon_set_end_time): dungeon_timeout no longer passes. The room still
     /// closes at its time with isExpireTimeOut; the scripts note set_end_time needs that flag blank.
@@ -27,7 +29,10 @@ public class RoomTimerClock {
         Duration = duration;
     }
 
-    public void Start(int tick) => StartTick = tick;
+    public void Start(int tick) {
+        StartTick = tick;
+        Started = true;
+    }
 
     /// <summary>Adds (or removes) time; returns the change actually made.</summary>
     public int Modify(int delta) {
@@ -39,6 +44,7 @@ public class RoomTimerClock {
     public void Restart(int tick, int duration) {
         StartTick = tick;
         Duration = Math.Max(0, duration);
+        Started = true;
         Ended = false;
         Stopped = false;
     }
@@ -80,11 +86,19 @@ public class RoomTimer : IUpdatable {
 
     private readonly ILogger logger = Log.Logger.ForContext<RoomTimer>();
 
-    public RoomTimer(FieldManager field, RoomTimerType type, int duration, bool expiresRoom = true) {
+    public RoomTimer(FieldManager field, RoomTimerType type, int duration, bool expiresRoom = true)
+        : this(field, type, new RoomTimerClock(duration), expiresRoom) { }
+
+    /// <summary>
+    /// A timer on a clock the field may share: every field of a dungeon room runs on the room's one clock, so a
+    /// field entered later shows the time left and closes at the same time.
+    /// </summary>
+    public RoomTimer(FieldManager field, RoomTimerType type, RoomTimerClock clock, bool expiresRoom) {
         this.field = field;
         Type = type;
-        Clock = new RoomTimerClock(duration);
+        Clock = clock;
         ExpiresRoom = expiresRoom;
+        started = clock.Started;
     }
 
     public void Modify(int tick, bool showEffect = true) {
@@ -158,7 +172,10 @@ public class RoomTimer : IUpdatable {
 
     public void Update(long tickCount) {
         if (!started) {
-            Clock.Start((int) tickCount);
+            // A shared clock another field of the room started keeps its time.
+            if (!Clock.Started) {
+                Clock.Start((int) tickCount);
+            }
             field.Broadcast(RoomTimerPacket.Start(this));
             started = true;
         }

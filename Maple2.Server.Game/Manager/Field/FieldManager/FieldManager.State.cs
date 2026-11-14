@@ -1563,6 +1563,10 @@ public partial class FieldManager {
         RoomTimer = new RoomTimer(this, type, duration, expiresRoom);
     }
 
+    protected void SetRoomTimer(RoomTimer timer) {
+        RoomTimer = timer;
+    }
+
     public void AddHongBao(FieldPlayer owner, int sourceItemId, int itemId, int totalUser, int durationSec, int itemCount) {
         var hongBao = new HongBao(this, owner, sourceItemId, NextLocalId(), itemId, totalUser, FieldTick, durationSec, itemCount);
         if (!hongBaos.TryAdd(hongBao.ObjectId, hongBao)) {

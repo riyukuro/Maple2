@@ -47,13 +47,32 @@ public class DungeonFieldManager : FieldManager {
         };
     }
 
+    // The room's one clock, kept by the lobby for every field of the room (RoomClock).
+    private RoomTimerClock? roomClock;
+
+    /// <summary>
+    /// The clock of the room this field belongs to: the room's durationTick counts once for the whole run, so a
+    /// stage entered later gets the time left, not a new limit.
+    /// </summary>
+    public RoomTimerClock RoomClock() {
+        DungeonFieldManager keeper = Lobby ?? this;
+        // The room's fields run on their own threads: the first to ask makes the clock.
+        Interlocked.CompareExchange(ref keeper.roomClock, new RoomTimerClock(DungeonMetadata.DurationTick), null);
+        return keeper.roomClock!;
+    }
+
     // isExpireTimeOut: the room is closed when its time runs out. Without it the time running out
     // is only the dungeon_timeout condition, and the room's script decides what follows.
+    // A lobby that is not one of the room's fields (fieldIDs) is the waiting map before the run: it has no timer,
+    // the time starts in the first field the party enters.
     public void StartRoomTimer() {
         if (RoomTimerTypeOf(DungeonMetadata.TimerType, DungeonMetadata.DurationTick) is not RoomTimerType type) {
             return;
         }
-        SetRoomTimer(type, DungeonMetadata.DurationTick, DungeonMetadata.IsExpireTimeOut);
+        if (!DungeonMetadata.FieldIds.Contains(MapId)) {
+            return;
+        }
+        SetRoomTimer(new RoomTimer(this, type, RoomClock(), DungeonMetadata.IsExpireTimeOut));
     }
 
     /// <summary>
