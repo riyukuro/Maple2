@@ -264,4 +264,16 @@ public class InviteLogoutTests {
 
         Assert.That(response.Error, Is.EqualTo((int) GuildError.s_guild_err_null_user));
     }
+
+    // A club invite to an offline player (channel -1): s_club_err_null_user (11), the client's "player not found"
+    // text (0x372, clubcli.cpp:1430-1500), not s_club_err_unknown (1).
+    [Test]
+    public void Club_OfflineInvitee_NullUser() {
+        ClubManager manager = Club();
+        infos[ids[2]].Channel = -1;
+
+        Assert.That(manager.Invite(ids[0], infos[ids[2]]), Is.EqualTo(ClubError.s_club_err_null_user));
+        Assert.That(channel.ClubRequests, Is.Empty);
+        Assert.That(manager.InviteeLoggedOut(ids[2], "Guest"), Is.False);
+    }
 }

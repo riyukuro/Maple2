@@ -97,6 +97,11 @@ public class ClubManager : IDisposable {
             return ClubError.s_club_err_full_club_member;
         }
 
+        // An offline player (channel -1): the client's "player not found" text (11, s_club_err_null_user, shown as 0x372,
+        // clubcli.cpp:1430-1500), not 1 (s_club_err_unknown).
+        if (!info.Online) {
+            return ClubError.s_club_err_null_user;
+        }
         if (!ChannelClients.TryGetClient(info.Channel, out ChannelClient? client)) {
             return ClubError.s_club_err_unknown;
         }
