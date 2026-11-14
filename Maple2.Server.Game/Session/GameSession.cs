@@ -2116,7 +2116,12 @@ public sealed partial class GameSession : Core.Network.Session {
     // save: a reset must not end sessions. A save with a wait that still finds it running (a reset stuck for a
     // minute) is a failed one for its caller.
     private SaveResult LockedSave(int tries, TimeSpan resetWait) {
+        if (NestedStore("SessionSave")) {
+            return SaveResult.Failed;
+        }
         bool outer = BeginStoreScope();
+        GameSession? outerStoring = storing;
+        storing = this;
         try {
             AcquireLock(AccountId, 5);
             for (int i = 0; i < tries; i++) {
@@ -2133,8 +2138,30 @@ public sealed partial class GameSession : Core.Network.Session {
             return SaveResult.Failed;
         } finally {
             ReleaseLock(AccountId);
+            // Before the queued steps: they run once the lock is given back, and may store.
+            storing = outerStoring;
             EndStoreScope(outer);
         }
+    }
+
+    // The session whose store (LockedSave, PurchaseSave) runs on this thread. The World's account lock is not
+    // re-entrant: a store started inside another store of the same session (from the rows' callback: a quest
+    // completed by a currency change, a reset step of a clear) waited on the lock its own thread holds, and its
+    // ReleaseLock then freed the outer store's lock while that one still wrote. Such a store is refused (a failed
+    // save for its caller) and logged with its stack; the outer store goes on.
+    [ThreadStatic] private static GameSession? storing;
+    // Told of each refused nested store (where, stack): the tests fail any test that nests one.
+    internal static Action<string, string>? OnNestedStore;
+
+    private bool NestedStore(string where) {
+        if (storing != this) {
+            return false;
+        }
+        string stack = Environment.StackTrace;
+        Logger.Error("{Where}: started inside another store of the same session, refused AccountId={AccountId} CharacterId={CharacterId}{NewLine}{Stack}",
+            where, AccountId, CharacterId, Environment.NewLine, stack);
+        OnNestedStore?.Invoke(where, stack);
+        return true;
     }
 
     // The timed save, from the session's queue: it runs on the player's field thread, where the packets that change
@@ -2335,7 +2362,13 @@ public sealed partial class GameSession : Core.Network.Session {
         bool outer = BeginStoreScope();
         SaveResult result = SaveResult.Failed;
         bool locked = false;
+        GameSession? outerStoring = storing;
+        bool nested = NestedStore("SavePurchase");
         try {
+            if (nested) {
+                return result;
+            }
+            storing = this;
             // AcquireLock answers only an unreachable World itself; any other World error refuses the store.
             try {
                 AcquireLock(AccountId);
@@ -2356,6 +2389,8 @@ public sealed partial class GameSession : Core.Network.Session {
             if (locked) {
                 ReleaseLock(AccountId);
             }
+            // Before the queued steps: they run once the lock is given back, and may store.
+            storing = outerStoring;
             EndStoreScope(outer);
         }
     }
