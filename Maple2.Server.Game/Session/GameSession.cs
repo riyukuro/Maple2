@@ -1454,14 +1454,13 @@ public sealed partial class GameSession : Core.Network.Session {
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Home planner", response.IpAddress, response.Port);
                 Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
-                CutAfterSend();
                 return;
             }
             Send(MigrationPacket.GameToGame(endpoint, response.Token, Constant.DefaultHomeMapId));
             moved = true;
         } catch (RpcException ex) {
-            Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
-            Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
+            Logger.Warning("Move to map {MapId} refused by the World server: {Status}", Constant.DefaultHomeMapId, ex.StatusCode);
+            Send(MigrationPacket.GameToGameError(MoveRefusedError(ex.StatusCode)));
         } finally {
             if (!moved) {
                 // Not moved: the session's last save (at Dispose) stores it again, when this move made the save.
@@ -1469,10 +1468,20 @@ public sealed partial class GameSession : Core.Network.Session {
                 if (saved) {
                     MigrationRefused();
                 }
+            } else {
+                Disconnect();
             }
-            Disconnect();
         }
     }
+
+    // A move the World server refuses or answers without an address: the client shows its move error box
+    // (CNetworkService::OnGameToGame, kind 2) and plays on in this field, so the session stays, as on a refused channel
+    // change (ChannelHandler).
+    internal static MigrationError MoveRefusedError(StatusCode status) => status switch {
+        StatusCode.Unavailable => MigrationError.s_move_err_no_server,
+        StatusCode.ResourceExhausted => MigrationError.s_move_err_member_limit,
+        _ => MigrationError.s_move_err_default,
+    };
 
     // beforeMove runs right before the migrate packet, only when the move is made (not when the map is refused or
     // the World server gives no address).
@@ -1519,7 +1528,6 @@ public sealed partial class GameSession : Core.Network.Session {
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Field migration", response.IpAddress, response.Port);
                 Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
-                CutAfterSend();
                 return;
             }
             if (beforeMove != null) {
@@ -1535,8 +1543,8 @@ public sealed partial class GameSession : Core.Network.Session {
             Send(MigrationPacket.GameToGame(endpoint, response.Token, mapId));
             moved = true;
         } catch (RpcException ex) {
-            Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
-            Send(NoticePacket.Disconnect(new InterfaceText(ex.Message)));
+            Logger.Warning("Move to map {MapId} refused by the World server: {Status}", mapId, ex.StatusCode);
+            Send(MigrationPacket.GameToGameError(MoveRefusedError(ex.StatusCode)));
         } finally {
             if (!moved) {
                 // Not moved: the character stays where it is, and the session's last save (at Dispose) stores that.
@@ -1546,8 +1554,9 @@ public sealed partial class GameSession : Core.Network.Session {
                 if (saved) {
                     MigrationRefused();
                 }
+            } else {
+                Disconnect();
             }
-            Disconnect();
         }
     }
 

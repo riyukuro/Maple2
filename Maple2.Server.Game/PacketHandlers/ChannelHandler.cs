@@ -82,11 +82,7 @@ public class ChannelHandler : PacketHandler<GameSession> {
         } catch (RpcException ex) {
             Logger.Warning("Channel change to {Channel} refused by the World server: {Status}", channel, ex.StatusCode);
             session.MigrationRefused();
-            Refuse(session, ex.StatusCode switch {
-                StatusCode.Unavailable => MigrationError.s_move_err_no_server,
-                StatusCode.ResourceExhausted => MigrationError.s_move_err_member_limit,
-                _ => MigrationError.s_move_err_default,
-            }, Channels());
+            Refuse(session, GameSession.MoveRefusedError(ex.StatusCode), Channels());
         }
     }
 
