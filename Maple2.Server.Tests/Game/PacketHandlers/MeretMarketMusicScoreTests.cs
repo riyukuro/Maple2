@@ -29,11 +29,25 @@ public class MeretMarketMusicScoreTests {
     private GameSession session => test.Session;
     private long scoreUid;
 
-    private static ItemMetadata ScoreMetadata() => TestGameSession.Metadata(Score, slotMax: 1) with {
-        Music = new ItemMetadataMusic(PlayCount, 1, 1, true, 1000, string.Empty, 0),
-    };
+    private const int Gem = 40000001;
 
-    private void Start(bool feature = true) {
+    private static ItemMetadata ScoreMetadata(bool registrable = true) {
+        ItemMetadata metadata = TestGameSession.Metadata(Score, slotMax: 1);
+        return metadata with {
+            Music = new ItemMetadataMusic(PlayCount, 1, 1, true, 1000, string.Empty, 0),
+            Limit = metadata.Limit with { EnableMeretMarket = registrable },
+        };
+    }
+
+    // A gem whose item data does not allow the market.
+    internal static ItemMetadata UnregistrableGem(TestGameSession test) {
+        ItemMetadata gem = TestGameSession.Metadata(Gem);
+        gem = gem with { Limit = gem.Limit with { EnableMeretMarket = false } };
+        test.Register(gem);
+        return gem;
+    }
+
+    private void Start(bool feature = true, bool registrable = true) {
         DbContextOptions options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
@@ -48,7 +62,7 @@ public class MeretMarketMusicScoreTests {
                 [1] = new([""], false, false, []),
             },
         }));
-        scoreUid = test.Store(ScoreMetadata()).Uid;
+        scoreUid = test.Store(ScoreMetadata(registrable)).Uid;
         test.Start();
         test.EnterMap(TestGameSession.Map(Town));
         Item score = session.Item.Inventory.Get(scoreUid)!;
@@ -144,7 +158,7 @@ public class MeretMarketMusicScoreTests {
                 OwnScore.Rarity = 3;
                 break;
             case "blank":
-                OwnScore.Music = null;
+                OwnScore.Music = new ItemCustomMusicScore();
                 break;
         }
 
@@ -153,6 +167,19 @@ public class MeretMarketMusicScoreTests {
             Assert.That(session.UgcMarket.ListingCount, Is.EqualTo(0));
             Assert.That(session.Currency.Meret, Is.EqualTo(5000));
         });
+    }
+
+    // FUN_140633d50: the item data's enableRegisterMeratMarket, and each socketed gem's.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ScoreTheMarketDoesNotTakeIsRefused(bool gem) {
+        Start(registrable: gem);
+        if (gem) {
+            OwnScore.Socket = new ItemSocket(1, [new ItemGemstone(UnregistrableGem(test).Id, stats: new ItemStats())]);
+        }
+
+        AssertRefused(List(scoreUid), MeretMarketError.DisableUgcItem);
+        Assert.That(session.UgcMarket.ListingCount, Is.EqualTo(0));
     }
 
     // A score listed by another account: the buyer pays the price and gets a locked copy with the score's notes.

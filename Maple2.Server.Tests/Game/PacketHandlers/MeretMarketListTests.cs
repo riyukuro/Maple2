@@ -33,7 +33,7 @@ public class MeretMarketListTests {
     // A session with a design item of its own in the bag, |listings| listings already on sale (made before Start
     // so the market manager loads them), and the design's price range 100-10000.
     private void Start(int listings = 0, bool survival = false, bool categories = true, long designAccount = -1,
-                       long listedDesign = 0, long endTime = 0) {
+                       long listedDesign = 0, long endTime = 0, bool registrable = true) {
         test = new TestGameSession();
         test.SetTable(new UgcDesignTable(new Dictionary<int, UgcDesignTable.Entry> {
             [Design] = new(1, MeretMarketCurrencyType.Meret, 390, 100, 10000),
@@ -47,6 +47,9 @@ public class MeretMarketListTests {
         ItemMetadata metadata = TestGameSession.Metadata(Design, EquipSlot.CP, slotMax: 1);
         if (survival) {
             metadata = metadata with { Property = metadata.Property with { Survival = true } };
+        }
+        if (!registrable) {
+            metadata = metadata with { Limit = metadata.Limit with { EnableMeretMarket = false } };
         }
         itemUid = test.Store(metadata).Uid;
         for (int i = 0; i < listings; i++) {
@@ -133,6 +136,20 @@ public class MeretMarketListTests {
     public void MatchItemIsRefusedAsDisabled() {
         Start(survival: true);
         AssertRefused(Send(13, itemUid, 500), 13, 0x9A, itemUid);
+    }
+
+    // FUN_140633d50 (the dialog checks it for designs too): the item data's enableRegisterMeratMarket, and each
+    // socketed gem's.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void DesignTheMarketDoesNotTakeIsRefusedAsDisabled(bool gem) {
+        Start(registrable: gem);
+        if (gem) {
+            session.Item.Inventory.Get(itemUid)!.Socket =
+                new ItemSocket(1, [new ItemGemstone(MeretMarketMusicScoreTests.UnregistrableGem(test).Id, stats: new ItemStats())]);
+        }
+        AssertRefused(Send(13, itemUid, 500), 13, 0x9A, itemUid);
+        Assert.That(session.UgcMarket.ListingCount, Is.EqualTo(0));
     }
 
     [Test]

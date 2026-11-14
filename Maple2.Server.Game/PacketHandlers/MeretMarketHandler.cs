@@ -187,6 +187,13 @@ public class MeretMarketHandler : FieldPacketHandler {
             Refuse(MeretMarketError.DisableUgcItem);
             return;
         }
+        // The item and every gem in its sockets may go to the market (FUN_140633d50, which the dialog checks for designs
+        // and scores alike).
+        if (item != null && !MarketRegistrable(session, item)) {
+            Refuse(MeretMarketError.DisableUgcItem);
+            return;
+        }
+
         // A composed score is listed by its item uid (UGCMarketMusicScore), a design by its look.
         bool score = item?.Music != null && item.Type.IsMusicScore;
         if (score) {
@@ -296,6 +303,25 @@ public class MeretMarketHandler : FieldPacketHandler {
     }
 
     private const int ScoreRarity = 2;
+
+    // FUN_140633d50 (itemsocketsystemutil.cpp:2407): the item's transfer allows the market (CItemTransfer::
+    // CanRegisterMeratMarket: the item data's enableRegisterMeratMarket; its enchant part is always false) and so does
+    // every gem in an open socket (CItemSocket::CheckGemsMeratMarketRegistrable, itemsocket.cpp:835: each gem's own
+    // enableRegisterMeratMarket; a gem with no data passes).
+    internal static bool MarketRegistrable(GameSession session, Item item) {
+        if (!item.Metadata.Limit.EnableMeretMarket) {
+            return false;
+        }
+        foreach (ItemGemstone? gem in item.Socket?.Sockets ?? []) {
+            if (gem == null || gem.ItemId == 0 || !session.ItemMetadata.TryGet(gem.ItemId, out ItemMetadata? gemMetadata)) {
+                continue;
+            }
+            if (!gemMetadata.Limit.EnableMeretMarket) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     internal const string MusicScoreFeature = "UGCMarketMusicScore";
 
