@@ -227,9 +227,16 @@ public sealed class UgcMarketManager {
         return null;
     }
 
+    public const int MaxDesigners = 16;
+
     public void AddDesigner(long characterId) {
         if (favoriteDesigners.ContainsKey(characterId)) {
             LoadDesignerItems(characterId);
+            return;
+        }
+        // The client keeps 16 bookmarks and drops a 17th unread (CMeratMarketMan::AddBookMark, 0x140d56a40), but
+        // sends the add without counting (OnClickBookMark), so the cap is the server's: a 17th is not stored.
+        if (favoriteDesigners.Count >= MaxDesigners) {
             return;
         }
 
