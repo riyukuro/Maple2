@@ -146,6 +146,30 @@ public class MailTwoSessionTests {
         Assert.That(Hex(Mail(recipientTest)).Last(), Is.EqualTo(Hex(MailPacket.Notify(1, true, 0))));
     }
 
+    // A player's mail carries a receiver, a title and a text only (UIMailSendDialog::OnSend), and the send dialog
+    // shows no fee (CUserMail::GetSendFee has no reader): the sender pays nothing and the mail holds no mesos,
+    // merets or items.
+    [Test]
+    public void Mail_CostsNothingAndCarriesNothing() {
+        sender.Currency.Meso = 1000;
+        long merets = sender.Currency.Meret;
+        senderTest.TakeSent();
+
+        SendMail(recipient.PlayerName);
+        long mailId = Deliver();
+
+        using Maple2.Database.Storage.GameStorage.Request db = recipientTest.Storage.Context();
+        Maple2.Model.Game.Mail stored = db.GetMail(mailId, recipient.CharacterId)!;
+        Assert.Multiple(() => {
+            Assert.That(sender.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(sender.Currency.Meret, Is.EqualTo(merets));
+            Assert.That(stored.Type, Is.EqualTo(Maple2.Model.Enum.MailType.Player));
+            Assert.That(stored.SenderId, Is.EqualTo(sender.CharacterId));
+            Assert.That((stored.Meso, stored.Meret, stored.GameMeret), Is.EqualTo((0L, 0L, 0L)));
+            Assert.That(stored.Items, Is.Empty);
+        });
+    }
+
     [Test]
     public void Mail_ToTheOwnNameIsRefused() {
         SendMail(sender.PlayerName);
