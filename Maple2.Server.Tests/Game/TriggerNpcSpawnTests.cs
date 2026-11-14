@@ -218,6 +218,39 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That((Field.DarkStream.Ended, test.Session.Currency.Meso - meso), Is.EqualTo((true, 100L)));
     }
 
+    // init_npc_rotation (10 KR uses; 02020019_bf spawn_ids="102,103"): the npcs of each listed spawn point turn back
+    // to the spawn point's rotation; an npc of another spawn point keeps its own.
+    [Test]
+    public void InitNpcRotation_TurnsBackToTheSpawnPoint() {
+        StartSpawns(Spawn(102, new Vector3(300, 0, 0), new SpawnPointNPCListEntry(MobId, 1)),
+            Spawn(103, new Vector3(-300, 0, 0), new SpawnPointNPCListEntry(FriendId, 1)),
+            Spawn(104, new Vector3(0, 300, 0), new SpawnPointNPCListEntry(MobId, 1)));
+        Action("""<action name="spawn_monster" spawn_ids="102,103,104" />""");
+        foreach (FieldNpc npc in Field.EnumerateNpcs()) {
+            npc.Rotation = new Vector3(0, 0, 10);
+        }
+
+        Action("""<action name="init_npc_rotation" spawn_ids="102,103" />""");
+        Assert.That(Field.EnumerateNpcs().OrderBy(npc => npc.SpawnPointId).Select(npc => (npc.SpawnPointId, MathF.Round(npc.Rotation.Z))),
+            Is.EqualTo(new[] { (102, 90f), (103, 90f), (104, 10f) }));
+    }
+
+    // move_npc_to_pos (9, 02020111_bf movement_01): the npcs of the spawn point are put at pos facing rot; the
+    // script also writes pos with spaces after the commas.
+    [Test]
+    public void MoveNpcToPos_PutsTheSpawnPointsNpcs() {
+        StartSpawns(Spawn(101, new Vector3(300, 0, 0), new SpawnPointNPCListEntry(MobId, 1)),
+            Spawn(102, new Vector3(-300, 0, 0), new SpawnPointNPCListEntry(MobId, 1)));
+        Action("""<action name="spawn_monster" spawn_ids="101,102" />""");
+
+        Action("""<action name="move_npc_to_pos" pos="-3743,294,1651" rot="0,0,45" spawn_id="101" />""");
+        Assert.That(Field.EnumerateNpcs().OrderBy(npc => npc.SpawnPointId).Select(npc => (npc.Position, MathF.Round(npc.Rotation.Z))),
+            Is.EqualTo(new[] { (new Vector3(-3743, 294, 1651), 45f), (new Vector3(-300, 0, 0), 90f) }));
+
+        Action("""<action name="move_npc_to_pos" pos="-13, 288, 1951" rot="0,0,45" spawn_id="101" />""");
+        Assert.That(Field.EnumerateNpcs().Single(npc => npc.SpawnPointId == 101).Position, Is.EqualTo(new Vector3(-13, 288, 1951)));
+    }
+
     // arcade_spring_farm_spawn_monster (11, 51000001): the spawn points spawn and each is worth the score once.
     [Test]
     public void SpringFarmSpawnMonster_ScoreOfEachPoint() {
