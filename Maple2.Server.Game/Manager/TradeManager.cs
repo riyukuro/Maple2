@@ -334,13 +334,17 @@ public class TradeManager : IDisposable {
                 return;
             }
 
+            // A raise of the offer is checked and taken in one step (the trader's own takes run on other threads);
+            // a lowered offer gives the difference back.
             long diff = amount - self.Mesos;
-            if (self.Session.Currency.Meso < diff) {
-                caller.Send(TradePacket.Error(s_trade_error_meso));
-                return;
+            if (diff >= 0) {
+                if (!self.Session.Currency.TryTakeMeso(diff)) {
+                    caller.Send(TradePacket.Error(s_trade_error_meso));
+                    return;
+                }
+            } else {
+                self.Session.Currency.ChangeMeso(-diff);
             }
-
-            self.Session.Currency.ChangeMeso(-diff);
             self.Mesos = amount;
 
             OnTradeModified();
