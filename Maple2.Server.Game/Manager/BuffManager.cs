@@ -440,8 +440,16 @@ public class BuffManager : IUpdatable {
     // from the enabled, unsuspended effects): the holder is no target of a range without applyTarget bit 4.
     public static bool Hidden(IEnumerable<Buff> held) => held.Any(buff => buff.Counted && buff.Metadata.Property.Hide);
 
-    // Asked for every actor of every target search, so it walks the held lists without copying them.
-    public bool Hidden() => buffs.Values.Any(Hidden);
+    // Asked for every actor of every target search, so it walks the held lists without copying them: the
+    // dictionary's enumerator takes no lock and makes no copy, where its Values property locks and copies.
+    public bool Hidden() {
+        foreach (KeyValuePair<int, List<Buff>> pair in buffs) {
+            if (Hidden(pair.Value)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     // The share the enabled buffs held cut from the cooldowns of a cooldown group (SkillCastRules.GroupReduceRate).
     public float CooldownGroupRate(int groupId) {
