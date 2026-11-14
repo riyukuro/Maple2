@@ -184,6 +184,8 @@ public class MasteryHandler : FieldPacketHandler {
 
         session.Currency.NotifyMeso();
         if (!taken) {
+            // The client still waits for an answer: the craft is refused as with a material missing.
+            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_lack_item));
             return;
         }
 

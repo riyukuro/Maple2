@@ -257,7 +257,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
 
         // All staged items are taken or none: a bag row that no longer holds its staged amount (changed on another
         // thread since the check) refuses the whole transaction. Refused, nothing is taken or given, the staged items
-        // stay and result 5 resets the dialog's pending break.
+        // stay and result 4 (no notice; 5 would say nothing is staged) resets the dialog's pending break.
         var taken = new List<(long Uid, int Amount, List<(int Id, int Min, int Max)> Reward)>();
         if (!session.TrySavePurchase(db => {
                 foreach ((long uid, int amount, _) in staged) {
@@ -280,7 +280,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 });
                 return true;
             })) {
-            session.Send(ItemDismantlePacket.Error(5));
+            session.Send(ItemDismantlePacket.Error(4));
             return;
         }
 

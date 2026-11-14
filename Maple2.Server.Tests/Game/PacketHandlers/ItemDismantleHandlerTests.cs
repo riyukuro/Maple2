@@ -222,7 +222,7 @@ public class ItemDismantleHandlerTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
-    // A save that fails takes and gives nothing: the item stays staged and in the bag, its row unchanged, and result 5.
+    // A save that fails takes and gives nothing: the item stays staged and in the bag, its row unchanged, and result 4 (no notice: the items are still staged).
     [Test]
     public void Confirm_FailedSave_KeepsTheItemAndGivesNothing() {
         GameSession session = Login(rarity: 3);
@@ -234,7 +234,7 @@ public class ItemDismantleHandlerTests {
         handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
         test.FailSave = null;
 
-        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Error(5)) }));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Error(4)) }));
         Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Not.Null);
         Assert.That(test.Row(gear.Uid)!.OwnerId, Is.EqualTo(owner));
         Assert.That(session.Item.Inventory.Find(Onyx), Is.Empty);

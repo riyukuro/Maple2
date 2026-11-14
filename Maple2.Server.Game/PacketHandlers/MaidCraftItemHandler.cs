@@ -250,8 +250,8 @@ public class MaidCraftItemHandler : FieldPacketHandler {
     // Mode 7 (CManufactureManager::SendRequest7): the craft is received now, ready or not, for the merets the dialog
     // shows (UIManufactureDialog::OnRecieveByMerat). The client tests only the meret balance (vfunc_40; red merets
     // count only with feature 0x102, which FUN_14036d710 tests
-    // only while feature 0x43 is on, and 0x43 is off here). The cost is worked out here from the stored craft. Once the craft is
-    // cleared the merets are taken, then the product is added; an add that fails or puts in only part of it is taken
+    // only while feature 0x43 is on, and 0x43 is off here). The cost is worked out here from the stored craft. The merets are
+    // taken and the craft cleared in one stored step, then the product is added; an add that fails or puts in only part of it is taken
     // out again, the merets are given back and the craft is stored again. Every product kind follows this order (a
     // currency, medal or furnishing product is never added in part).
     private void HandleMeretReceive(GameSession session, IByteReader packet) {
@@ -296,36 +296,37 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 if (!session.Item.Inventory.HasRoomFor(product)) {
                     return; // no client code for a full bag: the craft stays until there is room
                 }
-                // As in mode 6, the stored craft is cleared first, so of two receives of one craft only one gives it.
-                (recipeId, start, duration) = (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration);
-                if (!field.SetMaidCraft(found, 0, 0, 0)) {
-                    SendRecord(session, found);
-                    if (!MaidRules.IsCrafting(found)) {
-                        session.Send(MaidCraftItemPacket.MeretReceiveResult(MaidRules.CraftNoRecord));
-                    }
-                    return;
-                }
                 // The merets are taken before the add, under the same lock, so a balance spent meanwhile is found
                 // before anything is given (TryTakeMeret checks and takes in one step). Its packet and use_merat go
                 // out once the take is stored.
+                (recipeId, start, duration) = (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration);
                 if (cost > 0 && !session.Currency.TryTakeMeret(cost, notify: false)) {
-                    if (!field.SetMaidCraft(found, recipeId, start, duration)) {
-                        Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: the craft not restored after a failed meret receive",
-                            recipeId, maidUid);
-                    }
                     session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
                     return;
                 }
             }
-            // The merets taken are stored before the product is given (TrySavePurchase stores the currency). Before,
-            // they were taken in memory only, left to the next session save, while the product was a new row at once:
-            // a crash in between kept the product and the merets. Outside the bag lock, since a session save takes the
-            // account lock and then the bag lock. Not stored: the merets come back and the craft is stored again.
-            if (cost > 0 && !session.TrySavePurchase(_ => true)) {
-                session.Currency.ReturnMeret(cost);
-                if (!field.SetMaidCraft(found, recipeId, start, duration)) {
-                    Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: the craft not restored after a failed meret save",
-                        recipeId, maidUid);
+            // The craft is cleared and the merets taken in one transaction (TrySavePurchase stores the currency), before
+            // the product is given. The clear is tested against the craft this field holds, as in mode 6: of two receives
+            // of one craft (the home open in two channels) only one clears it. Before, the clear was a commit of its own
+            // and the merets were stored after it: a failure in between left the craft cleared with nothing given. Outside
+            // the bag lock, since a session save takes the account lock and then the bag lock. Not stored: the merets
+            // come back and the client gets the craft as stored.
+            bool craftRefused = false;
+            if (!session.TrySavePurchase(db => {
+                    if (!db.SetMaidCraft(found.Uid, recipeId, start, 0, 0, 0)) {
+                        craftRefused = true;
+                        return false;
+                    }
+                    db.AfterCommit(() => (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration) = (0, 0L, 0));
+                    return true;
+                }, () => craftRefused, out _)) {
+                if (cost > 0) {
+                    session.Currency.ReturnMeret(cost);
+                }
+                field.ReloadMaidCraft(found);
+                SendRecord(session, found);
+                if (!MaidRules.IsCrafting(found)) {
+                    session.Send(MaidCraftItemPacket.MeretReceiveResult(MaidRules.CraftNoRecord));
                 }
                 return;
             }

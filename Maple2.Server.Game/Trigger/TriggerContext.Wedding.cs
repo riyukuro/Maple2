@@ -136,32 +136,39 @@ public partial class TriggerContext {
         DateTime now = DateTime.Now;
         var mails = new List<(long CharacterId, long MailId)>();
         using (GameStorage.Request db = Field.GameStorage.Context()) {
-            db.BeginTransaction();
-            bool stored = db.SetMarried(ceremony.MarriageId, now);
-            if (!stored) {
-                logger.Error("Wedding vow complete: marriage {MarriageId} could not be stored as married", ceremony.MarriageId);
-            }
-            foreach (long characterId in ceremony.Couple) {
-                if (!stored || !Field.TryGetPlayerById(characterId, out _)) {
-                    continue;
+            // Any exception before or at the commit ends here too, so the ceremony is never left completed with
+            // nothing stored (the vow could not be made again).
+            bool stored = false;
+            try {
+                db.BeginTransaction();
+                stored = db.SetMarried(ceremony.MarriageId, now);
+                if (!stored) {
+                    logger.Error("Wedding vow complete: marriage {MarriageId} could not be stored as married", ceremony.MarriageId);
                 }
-                Mail? mail = StoreCompleteGifts(db, ceremony, characterId);
-                if (mail == null) {
-                    stored = false;
-                    break;
+                foreach (long characterId in ceremony.Couple) {
+                    if (!stored || !Field.TryGetPlayerById(characterId, out _)) {
+                        continue;
+                    }
+                    Mail? mail = StoreCompleteGifts(db, ceremony, characterId);
+                    if (mail == null) {
+                        stored = false;
+                        break;
+                    }
+                    mails.Add((characterId, mail.Id));
                 }
-                mails.Add((characterId, mail.Id));
-            }
-            if (stored) {
-                try {
+                if (stored) {
                     stored = db.Commit();
-                } catch (Exception ex) {
-                    logger.Error(ex, "Wedding vow complete: marriage {MarriageId} and its gift mails not committed", ceremony.MarriageId);
-                    stored = false;
                 }
+            } catch (Exception ex) {
+                logger.Error(ex, "Wedding vow complete: marriage {MarriageId} and its gift mails not stored", ceremony.MarriageId);
+                stored = false;
             }
             if (!stored) {
-                db.Rollback();
+                try {
+                    db.Rollback();
+                } catch (Exception ex) {
+                    logger.Error(ex, "Wedding vow complete: marriage {MarriageId} rollback failed", ceremony.MarriageId);
+                }
                 ceremony.Uncomplete();
                 return;
             }

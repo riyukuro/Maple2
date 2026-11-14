@@ -1,10 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -72,6 +75,30 @@ public class MasteryCraftClaimTests {
             Assert.That(Held(session, Material), Is.EqualTo(5));
             Assert.That(session.Currency.Meso, Is.EqualTo(1000));
             Assert.That(Held(session, Product), Is.EqualTo(0));
+        });
+    }
+
+    // The material's stack leaves the bag between its stored take and the commit: the craft gives nothing, and the
+    // client is answered (lack of materials) instead of left waiting.
+    [Test]
+    public void AStackGoneAtTheCommitGivesNothingAndAnswers() {
+        (GameSession session, Item stack) = Start();
+        bool moved = false;
+        test.FailSave = context => {
+            if (!moved && context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any(entry => entry.State == EntityState.Modified)) {
+                moved = session.Item.Inventory.Remove(stack.Uid, out _, notify: false);
+            }
+            return false;
+        };
+
+        Craft(session);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(moved, Is.True);
+            Assert.That(Held(session, Product), Is.EqualTo(0));
+            Assert.That(test.TakeSent().Select(System.Convert.ToHexString),
+                Does.Contain(System.Convert.ToHexString(MasteryPacket.Error(MasteryError.s_mastery_error_lack_item).ToArray())));
         });
     }
 }

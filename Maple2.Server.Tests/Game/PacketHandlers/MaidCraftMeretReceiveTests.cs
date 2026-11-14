@@ -333,13 +333,13 @@ public class MaidCraftMeretReceiveTests {
         });
     }
 
-    // The merets taken are stored before the product is given; a currency save that fails gives the merets back,
-    // stores the craft again and gives nothing.
+    // The merets taken and the craft cleared are stored in one transaction before the product is given; a save that
+    // fails gives the merets back, keeps the craft, gives nothing and sends the craft as stored.
     [Test]
     public void AFailedMeretSaveReturnsTheMeretsAndKeepsTheCraft() {
         Login();
         long start = DateTime.UtcNow.ToEpochSeconds();
-        Place(RecipeId, start, 3700);
+        Maid maid = Place(RecipeId, start, 3700);
         session.Currency.Meret = 100;
         test.TakeSent();
         FailCurrencySave();
@@ -351,7 +351,34 @@ public class MaidCraftMeretReceiveTests {
             Assert.That(session.Currency.Meret, Is.EqualTo(100));
             Assert.That(Held(Product), Is.EqualTo(0));
             Assert.That(Stored(), Is.EqualTo((RecipeId, start, 3700)));
-            Assert.That(Crafts(sent), Is.Empty);
+            Assert.That((maid.CraftRecipeId, maid.CraftStartTime, maid.CraftDuration), Is.EqualTo((RecipeId, start, 3700)));
+            Assert.That(Crafts(sent), Is.EqualTo(new[] { Convert.ToHexString(MaidCraftItemPacket.Add(maid).ToArray()) }));
+        });
+    }
+
+    // A craft another channel received first refuses the transaction: the merets come back, nothing is given and the
+    // client gets the craft's removal and no record.
+    [Test]
+    public void ACraftReceivedElsewhereTakesNoMerets() {
+        Login();
+        long start = DateTime.UtcNow.ToEpochSeconds();
+        Place(RecipeId, start, 3700);
+        session.Currency.Meret = 100;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SetMaidCraft(MaidUid, RecipeId, start, 0, 0, 0), Is.True);
+        }
+        test.TakeSent();
+
+        List<byte[]> sent = Send();
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(100));
+            Assert.That(Held(Product), Is.EqualTo(0));
+            Assert.That(Stored(), Is.EqualTo((0, 0L, 0)));
+            Assert.That(Crafts(sent), Is.EqualTo(new[] {
+                Convert.ToHexString(MaidCraftItemPacket.Remove(MaidUid).ToArray()),
+                Convert.ToHexString(MaidCraftItemPacket.MeretReceiveResult(MaidRules.CraftNoRecord).ToArray()),
+            }));
         });
     }
 
