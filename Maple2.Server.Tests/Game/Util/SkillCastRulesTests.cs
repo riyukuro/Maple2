@@ -1236,4 +1236,25 @@ public class SkillCastRulesTests {
             Assert.That(taken[2], Is.SameAs(pack[2]), "not a splash row");
         });
     }
+
+    // A level with another motion count than the data pack's takes the client's motions (50000036 level 1: the data
+    // pack has two motions, Attack_01_A and Attack_01_B, the client one, Attack_01_A with a move distance of 120).
+    [Test]
+    public void PlayedClientMotions_TakeTheClientsListOnAnotherCount() {
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <level value="1">
+              <motion sequenceName="Attack_01_A" movedistance="120" faceTarget="0"><attack point="p0" targetCount="1" attacktype="1"><range rangeType="box" distance="180" height="130" width="60" applyTarget="1" castTarget="1" /><damage rate="1" /></attack></motion>
+            </level>
+            """);
+        System.Xml.XmlElement level = document.DocumentElement!;
+        SkillMetadataMotion[] motions = PlayedClientSkills.ClientMotions(level, 2)!;
+        Assert.Multiple(() => {
+            Assert.That(motions.Select(motion => motion.MotionProperty.SequenceName), Is.EqualTo(new[] { "Attack_01_A" }));
+            Assert.That(motions[0].MotionProperty.MoveDistance, Is.EqualTo(120));
+            Assert.That(motions[0].Attacks.Select(attack => attack.Point), Is.EqualTo(new[] { "p0" }));
+            Assert.That(motions[0].Attacks[0].Range.Distance, Is.EqualTo(180));
+            Assert.That(PlayedClientSkills.ClientMotions(level, 1), Is.Null, "the same motion count pairs by place");
+        });
+    }
 }

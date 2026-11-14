@@ -57,7 +57,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     private int clientMotionsTaken;
     private int motionPointMismatches;
     // The data pack attacks put in the played client's order (MotionAttacks).
-    private int clientAttacksMoved, clientAttacksBuilt, packAttacksDropped, clientSplashesAdded, clientSplashValues;
+    private int clientAttacksMoved, clientAttacksBuilt, packAttacksDropped, clientSplashesAdded, clientSplashValues, clientMotionListsTaken;
     // The played client's attack pushes (PlayedClientSkills.ReadAttackPushes); empty without a played client.
     private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), (PlayedClientSkills.AttackPush Push, string Point)> clientPushes = [];
     private int clientPushesTaken;
@@ -240,7 +240,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         SpValue: level.recoveryProperty.spValue,
                         SpRate: level.recoveryProperty.spRate),
                     Skills: level.conditionSkill.Select(skill => skill.Convert()).ToArray(),
-                    Motions: level.motion.Select((motion, motionIndex) => Motion(id, level.value, motionIndex, level.motion.Count, motion)).ToArray(),
+                    Motions: Motions(id, level),
                     Upgrade: level.upgrade == null ? null : new SkillMetadataUpgrade(
                         Level: level.upgrade.level,
                         SkillIds: level.upgrade.skillIDs,
@@ -371,7 +371,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             Console.WriteLine($"Skill attacks given the played client's arrow over the data pack's: {clientArrowsTaken} ({arrowPointMismatches} with another point at that place, the data pack's kept)");
         }
         if (playedSkills.Count > 0) {
-            Console.WriteLine($"Skill attacks put in the played client's order: {clientAttacksMoved} data pack attacks at another place, {clientAttacksBuilt} built from the client's row, {packAttacksDropped} data pack attacks the client lacks left out; {clientSplashesAdded} splash rows of the client's attacks added, {clientSplashValues} given the client's values");
+            Console.WriteLine($"Skill attacks put in the played client's order: {clientAttacksMoved} data pack attacks at another place, {clientAttacksBuilt} built from the client's row, {packAttacksDropped} data pack attacks the client lacks left out; {clientSplashesAdded} splash rows of the client's attacks added, {clientSplashValues} given the client's values; {clientMotionListsTaken} levels given the client's motions (another motion count)");
         }
         if (clientMotions.Count > 0) {
             Console.WriteLine($"Skill motions given the played client's sequence name, sequence speed, move distance and splash life tick over the data pack's: {clientMotionsTaken} ({motionPointMismatches} with other attack points, or another motion count in the level and another sequence, at that place, the data pack's kept)");
@@ -440,6 +440,18 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         }
         return taken;
     }
+    // The level's motions: the played client's own where its level has another motion count
+    // (PlayedClientSkills.ClientMotions), else the data pack's, each with the client's values (Motion).
+    private SkillMetadataMotion[] Motions(int id, SkillLevelData level) {
+        if (playedSkills.TryGetValue(id, out var playedSkill)
+            && playedSkill.Levels.FirstOrDefault(entry => entry.Value == level.value).Level is { } clientLevel
+            && PlayedClientSkills.ClientMotions(clientLevel, level.motion.Count) is { } client) {
+            clientMotionListsTaken++;
+            return client;
+        }
+        return level.motion.Select((motion, motionIndex) => Motion(id, level.value, motionIndex, level.motion.Count, motion)).ToArray();
+    }
+
     // A data pack motion, its attacks in the played client's order where the client pairs them (MotionAttacks), and the
     // client's timing where its motion at that place has the same attack points (WithClientMotion).
     private SkillMetadataMotion Motion(int id, short level, int motionIndex, int motions, SkillMotionData motion) {

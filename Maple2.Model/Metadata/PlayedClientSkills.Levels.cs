@@ -188,6 +188,14 @@ public static partial class PlayedClientSkills {
         return all.Length == motions && motion < all.Length ? Children(all[motion], "attack").ToArray() : null;
     }
 
+    // The client's own motions of the level (SkillMotionData::Load), where it has another motion count than the data
+    // pack's level and at least one motion: the client plays its own list (StateSkill moves to the next motion at a
+    // motion's end), so the data pack's motions do not pair by place and the cast takes the client's.
+    public static SkillMetadataMotion[]? ClientMotions(XmlElement level, int motions) {
+        XmlElement[] all = Children(level, "motion").ToArray();
+        return all.Length != motions && all.Length > 0 ? all.Select(BuildMotion).ToArray() : null;
+    }
+
     // For each of the client's attacks of a motion, in its order, the place of the data pack's attack of that motion
     // it pairs with, or -1. They pair by point, in order: each client attack takes the first data pack attack with
     // its point after the last one taken. The client fires its own list (StateSkill takes the attack by its place in
