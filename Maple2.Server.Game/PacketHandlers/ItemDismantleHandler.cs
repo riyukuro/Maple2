@@ -25,8 +25,9 @@ public class ItemDismantleHandler : FieldPacketHandler {
     }
 
     // The dialog type the client's UIItemBreakDonationDialog opens with (its ctor sets m_1c0 = 2): the Green Hoods
-    // donation box (interact 10001313).
+    // donation box (interact 10001313, whose Ui page is this dialog).
     private const byte DONATION_TYPE = 2;
+    public const string DonationDialog = "ItemBreakDonationDialog";
 
     private const int ONYX_ID = 40100023;
     private const int CHAOS_ONYX_ID = 40100024;
@@ -66,7 +67,16 @@ public class ItemDismantleHandler : FieldPacketHandler {
     }
 
     private void HandleInterface(GameSession session, IByteReader packet) {
-        session.DismantleType = packet.ReadByte();
+        byte type = packet.ReadByte();
+        // The donation dialog opens only from the donation box (InteractObjectHandler sets DonationBoxUsed); a type 2
+        // open without it is taken as a close.
+        if (type == DONATION_TYPE && !session.DonationBoxUsed) {
+            type = 0;
+        }
+        if (type == DONATION_TYPE) {
+            session.DonationBoxUsed = false;
+        }
+        session.DismantleType = type;
         session.DismantleOpened = session.DismantleType != 0;
         Array.Clear(session.DismantleStaging);
     }

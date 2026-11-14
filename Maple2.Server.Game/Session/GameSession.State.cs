@@ -15,6 +15,9 @@ public partial class GameSession {
     private const int DISMANTLE_MAX_STAGED_ITEMS = 100;
     public bool DismantleOpened = false;
     public byte DismantleType;
+    // The donation box (the Ui object whose page is ItemBreakDonationDialog) was used in this field: the client opens
+    // the donation dialog only from that object, so the server takes one dialog open (type 2) per use.
+    public bool DonationBoxUsed;
     public readonly (long Uid, int Amount)[] DismantleStaging = new (long, int)[DISMANTLE_MAX_STAGED_ITEMS];
 
     public Item? StagedUgcItem = null;

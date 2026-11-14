@@ -677,6 +677,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Array.Clear(ItemLockStaging);
         Array.Clear(DismantleStaging);
         DismantleOpened = false;
+        DonationBoxUsed = false;
         Trade?.Dispose();
         Storage?.Dispose();
         // A summoned pet leaves the field with its owner and is summoned again in the next one (EnterField).

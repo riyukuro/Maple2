@@ -170,6 +170,9 @@ public class InteractObjectHandler : FieldPacketHandler {
                 // names the BonusGame row of the deck, e.g. 31000002 value 6. Any other Ui object closes the last game.
                 session.CardReverseGame = CardReverseGame.Of(interact.Value.Ui, session.ServerTableMetadata.BonusGameTable, session.Field,
                     itemId => CardReverseGame.Readable(session.ItemMetadata, itemId));
+                if (interact.Value.Ui?.Swf == ItemDismantleHandler.DonationDialog) {
+                    session.DonationBoxUsed = true;
+                }
                 break;
             case InteractType.Telescope:
                 SendAnswer(session, interact);

@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -21,7 +24,9 @@ public class ItemDismantleHandlerTests {
     private ItemDismantleHandler handler = null!;
     private Item gear = null!;
 
-    private GameSession Login(int rarity, EquipSlot slot = EquipSlot.CL, byte dialog = 1, int itemType = 1, params AchievementMetadata[] trophies) {
+    // box: the donation box was used first (the client opens the type 2 dialog only from it).
+    private GameSession Login(int rarity, EquipSlot slot = EquipSlot.CL, byte dialog = 1, int itemType = 1, bool box = true,
+        params AchievementMetadata[] trophies) {
         test = new TestGameSession();
         ItemMetadata metadata = TestGameSession.Metadata(11400001, slot, type: itemType);
         metadata = metadata with { Property = metadata.Property with { SellPrices = [100, 200, 7139, 9000, 0, 0] } };
@@ -29,16 +34,43 @@ public class ItemDismantleHandlerTests {
         test.Register(TestGameSession.Metadata(Onyx, type: 4, slotMax: 9999), TestGameSession.Metadata(ChaosOnyx, type: 4, slotMax: 9999));
         test.SetTable(new ItemBreakTable(new Dictionary<int, IReadOnlyList<ItemBreakTable.Ingredient>>()));
         test.SetTable(new GachaInfoTable(new Dictionary<int, GachaInfoTable.Entry>()));
+        test.SetServerTable(new BonusGameTable(new Dictionary<int, BonusGameTable.Game>(), new Dictionary<int, BonusGameTable.Drop>()));
         test.AddAchievement(trophies);
         GameSession session = test.Start();
         handler = new ItemDismantleHandler { ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata };
         session.Item.Inventory.Get(gear.Uid)!.Rarity = rarity;
+        if (dialog == 2 && box) {
+            UseUiObject(session, Ui(DonationBox, ItemDismantleHandler.DonationDialog), "box");
+        }
+        Open(session, dialog);
+        test.TakeSent();
+        return session;
+    }
+
+    private void Open(GameSession session, byte dialog) {
         handler.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(0);
             writer.WriteByte(dialog);
         }));
+    }
+
+    private const int DonationBox = 10001313;
+
+    private static InteractObjectMetadata Ui(int id, string swf) {
+        return new InteractObjectMetadata(id, InteractType.Ui, Collection: 0, ReactCount: 0, TargetPortalId: 0, GuildPosterId: 0, WeaponItemId: 0,
+            new InteractObjectMetadataItem(0, 0, 0, 0, 0), new InteractObjectMetadataTime(0, 0, 0),
+            new InteractObjectMetadataDrop(0, [], [], 0, 0), new InteractObjectMetadataEffect([], [], 0, 0), [],
+            new InteractObjectMetadataUi(swf, string.Empty));
+    }
+
+    private void UseUiObject(GameSession session, InteractObjectMetadata row, string entityId) {
+        test.AddInteract(row, new InteractUiObject(entityId, new Ms2SimpleUiObject(row.Id, Vector3.Zero, Vector3.Zero)));
+        new InteractObjectHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteInt(1);
+            writer.WriteString(entityId);
+        }));
         test.TakeSent();
-        return session;
     }
 
     private void Stage(GameSession session) {
@@ -218,8 +250,8 @@ public class ItemDismantleHandlerTests {
     private const int ArmingTheTroops = 93000071; // donation_type, code "1,0,0"
     private const int Dismantler = 74000011; // item_break
 
-    private GameSession Donation(int itemType = 1) {
-        return Login(rarity: 4, dialog: 2, itemType: itemType, trophies: [
+    private GameSession Donation(int itemType = 1, bool box = true) {
+        return Login(rarity: 4, dialog: 2, itemType: itemType, box: box, trophies: [
             TestGameSession.Trophy(Philanthropist, ConditionType.donation_item, [100]),
             TestGameSession.Trophy(ArmingTheTroops, ConditionType.donation_type, [100], codes: [1, 0, 0]),
             TestGameSession.Trophy(Dismantler, ConditionType.item_break, [100]),
@@ -256,6 +288,32 @@ public class ItemDismantleHandlerTests {
         Assert.That(test.TrophyCounter(ArmingTheTroops), Is.EqualTo(1));
         Assert.That(test.TrophyCounter(Dismantler), Is.Null);
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The client opens the donation dialog only from the donation box (its Ui page): without a used box, or a second
+    // time for one use, or with only another Ui object used, the open is taken as a close, so nothing is staged or donated.
+    [TestCase(false, null)]
+    [TestCase(true, "box again")]
+    [TestCase(false, "RouletteDialog")]
+    public void Donation_OpensOnlyFromTheDonationBox(bool box, string? before) {
+        GameSession session = Donation(box: box);
+        if (before == "box again") {
+            Open(session, 0);
+            Open(session, 2);
+        } else if (before != null) {
+            UseUiObject(session, Ui(31000001, before), "other");
+            Open(session, 2);
+        }
+        test.TakeSent();
+
+        Stage(session);
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(session.DismantleOpened, Is.False);
+        Assert.That(test.TakeSent(), Is.Empty);
+        Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Not.Null);
+        Assert.That(test.TrophyCounter(Philanthropist), Is.Null);
+        Assert.That(test.TrophyCounter(ArmingTheTroops), Is.Null);
     }
 
     // An item of another type without a skin type (TryAddItem's 0x8f7, s_itembreak_invalid_donation_item):
