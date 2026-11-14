@@ -67,6 +67,8 @@ public sealed class RankDuelMatchState {
     public RankDuelWinBy WinBy { get; private set; }
 
     private readonly HashSet<long> present = [];
+    // The duelists whose health a hit of the opponent took during the fight.
+    private readonly HashSet<long> hurt = [];
     private readonly long joinDeadline;
     private long phaseTick;
 
@@ -86,6 +88,18 @@ public sealed class RankDuelMatchState {
     public bool Hostile(long caster, long target) {
         return Phase == RankDuelPhase.Fighting && caster != target && IsDuelist(caster) && IsDuelist(target);
     }
+
+    // A hit of the opponent took health from the duelist during the fight.
+    public void Hurt(long characterId) {
+        if (Phase == RankDuelPhase.Fighting && IsDuelist(characterId)) {
+            hurt.Add(characterId);
+        }
+    }
+
+    // A perfect win, for the perfect intro (Pvp 31, UIEventIntroduce::OnPerfect, pvprankduelcomponent.cpp): chosen
+    // here (the client and the data do not say when it is shown), a win by the loser's death where no hit of the
+    // loser took health from the winner during the fight. A loser that left, or never fought, gives no perfect.
+    public bool Perfect => Phase is RankDuelPhase.Ended or RankDuelPhase.Closed && WinBy == RankDuelWinBy.Death && !hurt.Contains(Winner);
 
     public List<RankDuelEvent> Enter(long characterId, long tick) {
         var events = new List<RankDuelEvent>();

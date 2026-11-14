@@ -29,6 +29,7 @@ public class RankDuelPacketTests {
         Assert.That(Hex(PvpPacket.RankDuelWin()), Is.EqualTo("B600" + "1C" + "B80B0000"));
         Assert.That(Hex(PvpPacket.RankDuelLose()), Is.EqualTo("B600" + "1D" + "B80B0000"));
         Assert.That(Hex(PvpPacket.RankDuelDraw()), Is.EqualTo("B600" + "1E" + "B80B0000"));
+        Assert.That(Hex(PvpPacket.RankDuelPerfect()), Is.EqualTo("B600" + "1F" + "B80B0000"));
     }
 
     // The winner, then per side: name, character, score, rating, rating change, reward.

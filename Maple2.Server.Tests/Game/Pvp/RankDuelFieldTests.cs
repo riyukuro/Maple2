@@ -150,6 +150,8 @@ public class RankDuelFieldTests {
         int jobA = (int) duel.PlayerA.Value.Character.Job.Code();
         int jobB = (int) duel.PlayerB.Value.Character.Job.Code();
 
+        // B took health from A first, so the win is no perfect one.
+        duel.Field.RankDuel!.Damage(duel.PlayerB, duel.PlayerA);
         duel.Field.RankDuel!.Death(duel.PlayerB);
 
         using (GameStorage.Request db = duel.A.Storage.Context()) {
@@ -182,6 +184,22 @@ public class RankDuelFieldTests {
 
         System.Threading.SpinWait.SpinUntil(() => duel.Ended.Count > 0, 2000);
         Assert.That(duel.Ended, Is.EqualTo(new[] { 7 }));
+    }
+
+    // A win where the loser's hits took no health from the winner: the winner gets the perfect intro (Pvp 31) in
+    // place of the win intro, the loser its lose intro; a hit of the winner on the loser does not matter.
+    [Test]
+    public void Death_UntouchedWinner_PerfectIntro() {
+        Duel duel = Start();
+        Fight(duel);
+        duel.A.TakeSent();
+        duel.B.TakeSent();
+
+        duel.Field.RankDuel!.Damage(duel.PlayerA, duel.PlayerB);
+        duel.Field.RankDuel!.Death(duel.PlayerB);
+
+        Assert.That(Pvp(duel.A)[0], Is.EqualTo("B600" + "1F" + "B80B0000"));
+        Assert.That(Pvp(duel.B)[0], Is.EqualTo("B600" + "1D" + "B80B0000"));
     }
 
     // A duelist who left before the result loses the rating but gets no tokens; the one in the field gets its own.

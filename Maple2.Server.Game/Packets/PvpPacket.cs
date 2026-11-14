@@ -29,6 +29,7 @@ public static class PvpPacket {
         RankDuelWin = 28,
         RankDuelLose = 29,
         RankDuelDraw = 30,
+        RankDuelPerfect = 31,
         Point = 100,
         WinLose = 101,
         ClearRanking = 102,
@@ -143,6 +144,7 @@ public static class PvpPacket {
     public static ByteWriter RankDuelWin(int durationMs = ResultIntroMs) => Intro(Command.RankDuelWin, durationMs);
     public static ByteWriter RankDuelLose(int durationMs = ResultIntroMs) => Intro(Command.RankDuelLose, durationMs);
     public static ByteWriter RankDuelDraw(int durationMs = ResultIntroMs) => Intro(Command.RankDuelDraw, durationMs);
+    public static ByteWriter RankDuelPerfect(int durationMs = ResultIntroMs) => Intro(Command.RankDuelPerfect, durationMs);
 
     private static ByteWriter Intro(Command command, int durationMs) {
         var pWriter = Packet.Of(SendOp.Pvp);

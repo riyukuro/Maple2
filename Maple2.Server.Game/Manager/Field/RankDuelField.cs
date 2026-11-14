@@ -170,11 +170,12 @@ public sealed class RankDuelField {
 
     private readonly KillCredit killCredit = new();
 
-    // A hit between the duelists, for the kill credit.
+    // A hit between the duelists that took health, for the kill credit and the perfect win.
     public void Damage(FieldPlayer attacker, FieldPlayer victim) {
         lock (mutex) {
             if (state.Hostile(attacker.Value.Character.Id, victim.Value.Character.Id)) {
                 killCredit.Hit(attacker.Value.Character.Id, victim.Value.Character.Id, field.FieldTick);
+                state.Hurt(victim.Value.Character.Id);
             }
         }
     }
@@ -242,7 +243,8 @@ public sealed class RankDuelField {
         switch (@event.End) {
             case RankDuelEnd.Win:
                 logger.Information("Rank duel match {MatchId}: {Winner} won over {Loser}", MatchId, @event.Winner, @event.Loser);
-                Send(@event.Winner, PvpPacket.RankDuelWin());
+                // A perfect win shows the perfect intro in place of the win intro.
+                Send(@event.Winner, state.Perfect ? PvpPacket.RankDuelPerfect() : PvpPacket.RankDuelWin());
                 Send(@event.Loser, PvpPacket.RankDuelLose());
                 Dictionary<long, RankDuelChange> changes = ApplyResult(@event.Winner, @event.Loser);
                 var left = Side(state.First, @event.Winner, changes);

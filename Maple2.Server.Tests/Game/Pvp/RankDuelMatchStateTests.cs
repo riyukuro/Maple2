@@ -57,6 +57,44 @@ public class RankDuelMatchStateTests {
         Assert.That(state.Phase, Is.EqualTo(RankDuelPhase.Closed));
     }
 
+    // Perfect: a death win where no hit of the loser took health from the winner during the fight.
+    [Test]
+    public void Perfect_OnlyAnUntouchedWinnerByDeath() {
+        RankDuelMatchState state = Fighting(out long tick);
+        state.Hurt(B);
+        Assert.That(state.Perfect, Is.False);
+        state.Death(B, tick + 50);
+        Assert.That(state.Perfect, Is.True);
+        state.Update(tick + 50 + RankDuelMatchState.ResultMs);
+        Assert.That(state.Perfect, Is.True);
+
+        RankDuelMatchState hurt = Fighting(out tick);
+        hurt.Hurt(A);
+        hurt.Death(B, tick + 50);
+        Assert.That(hurt.Perfect, Is.False);
+        // A hit after the end changes nothing.
+        RankDuelMatchState late = Fighting(out tick);
+        late.Death(B, tick + 50);
+        late.Hurt(A);
+        Assert.That(late.Perfect, Is.True);
+        // A loser that left the fight gives no perfect.
+        RankDuelMatchState left = Fighting(out tick);
+        left.Leave(B, tick + 50);
+        Assert.That(left.Perfect, Is.False);
+    }
+
+    [Test]
+    public void Perfect_HitsBeforeTheFightDoNotCount() {
+        var state = new RankDuelMatchState(A, B, 0);
+        state.Enter(A, 100);
+        state.Hurt(A);
+        state.Enter(B, 200);
+        state.Hurt(A);
+        state.Update(200 + RankDuelMatchState.CountdownMs);
+        state.Death(B, 200 + RankDuelMatchState.CountdownMs + 50);
+        Assert.That(state.Perfect, Is.True);
+    }
+
     [Test]
     public void DeathBeforeTheFight_DoesNotCount() {
         var state = new RankDuelMatchState(A, B, 0);

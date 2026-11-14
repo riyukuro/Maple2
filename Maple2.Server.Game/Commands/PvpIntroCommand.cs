@@ -14,7 +14,7 @@ public class PvpIntroCommand : GameCommand {
     public PvpIntroCommand(GameSession session) : base(AdminPermissions.GameMaster, "pvpintro", "Show a rank duel intro to yourself") {
         this.session = session;
 
-        var kind = new Argument<string>("kind", "round, fight, win, lose or draw");
+        var kind = new Argument<string>("kind", "round, fight, win, lose, draw or perfect");
         var durationMs = new Option<int>(["--ms", "-m"], () => 5000, "Time on screen (ms)");
         var round = new Option<int>(["--round", "-r"], () => 1, "The round number (round)");
         AddArgument(kind);
@@ -30,10 +30,11 @@ public class PvpIntroCommand : GameCommand {
             "win" => PvpPacket.RankDuelWin(durationMs),
             "lose" => PvpPacket.RankDuelLose(durationMs),
             "draw" => PvpPacket.RankDuelDraw(durationMs),
+            "perfect" => PvpPacket.RankDuelPerfect(durationMs),
             _ => null,
         };
         if (packet == null) {
-            context.Console.WriteLine("Kind: round, fight, win, lose or draw.");
+            context.Console.WriteLine("Kind: round, fight, win, lose, draw or perfect.");
             return;
         }
         session.Send(packet);
