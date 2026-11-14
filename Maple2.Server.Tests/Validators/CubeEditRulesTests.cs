@@ -68,6 +68,17 @@ public class CubeEditRulesTests {
         }
     }
 
+    // HousingLevelhurdle on (a level given): a cube of an interior level above the housing level is locked; off (null)
+    // the interior level is not read. A meret cube is never locked.
+    [TestCase(5, 4L, FurnishingCurrencyType.Meso, UgcMapError.s_ugcmap_cube_lock)]
+    [TestCase(5, 5L, FurnishingCurrencyType.Meso, UgcMapError.s_ugcmap_ok)]
+    [TestCase(5, null, FurnishingCurrencyType.Meso, UgcMapError.s_ugcmap_ok)]
+    [TestCase(5, 4L, FurnishingCurrencyType.Meret, UgcMapError.s_ugcmap_ok)]
+    public void CubeLock_LevelHurdle(int interiorLevel, long? hurdleLevel, FurnishingCurrencyType currency, UgcMapError expected) {
+        var housing = new ItemMetadataHousing(0, 0, interiorLevel, HousingCategory.None, false);
+        Assert.That(CubeEditRules.CubeLock(housing, currency, (_, _) => true, hurdleLevel), Is.EqualTo(expected));
+    }
+
     [Test]
     public void CubeLock_NoHousingData_IsOpen() {
         Assert.That(CubeEditRules.CubeLock(null, FurnishingCurrencyType.Meso, (_, _) => false), Is.EqualTo(UgcMapError.s_ugcmap_ok));

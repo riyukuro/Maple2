@@ -40,11 +40,21 @@ public static class CubeEditRules {
     // priceCount is the shop_UGCAll/shop_Maid ugcHousingMoneyType (ItemHousing::LoadXml, itemdatastruct.cpp:1465,
     // CPriceTable::LoadHousing), the FurnishingShopTable money type here, 1 for an item without a row. A trophyLevel
     // of 0 (IsGradeCleared(id, 0): any grade cleared) is the server's grade 0 too; no KR housing row has one (all 334
-    // trophy rows give level 1 to 9). The interior level checks behind feature HousingLevelhurdle (0xdb) are left out: feature.xml gives it
-    // level 100 for KR and NA, above the Live level, so the client never runs them. cleared is the trophy owner's.
-    public static UgcMapError CubeLock(ItemMetadataHousing? housing, FurnishingCurrencyType? currency, Func<int, int, bool> cleared) {
+    // trophy rows give level 1 to 9). cleared is the trophy owner's.
+    // While feature HousingLevelhurdle (id 219, 0xdb; off in the KR and NA feature.xml) is on, the client also locks a
+    // cube whose housing interiorLevel is above the housing level: its own in its home or on a plot (ResponseCube 0x27),
+    // the home owner's (0x37) for a build helper. hurdleLevel is that level while the feature is on, else null. The
+    // client's second check, the cube category's interior require level (UGCCubeCategoryTable), is left out: that
+    // table is not ingested.
+    public const string LevelHurdleFeature = "HousingLevelhurdle";
+
+    public static UgcMapError CubeLock(ItemMetadataHousing? housing, FurnishingCurrencyType? currency, Func<int, int, bool> cleared,
+                                       long? hurdleLevel = null) {
         if (housing == null || currency == FurnishingCurrencyType.Meret) {
             return UgcMapError.s_ugcmap_ok;
+        }
+        if (hurdleLevel != null && housing.InteriorLevel > hurdleLevel) {
+            return UgcMapError.s_ugcmap_cube_lock;
         }
         if (housing.TrophyId > 0 && !cleared(housing.TrophyId, housing.TrophyLevel)) {
             return UgcMapError.s_ugcmap_cube_lock;
