@@ -2,6 +2,7 @@
 using System.Text;
 using System.Text.Json;
 using Force.Crc32;
+using Maple2.Database.Extensions;
 
 namespace Maple2.File.Ingest.Mapper;
 
@@ -25,7 +26,8 @@ public abstract class TypeMapper<T> where T : class {
             throw new InvalidOperationException($"{typeof(T)} has already been mapped.");
         }
 
-        uint crc32C = 0;
+        // Seeded with the stored JSON's version, so a table stored in an older JSON is written again (StoredJson).
+        uint crc32C = Crc32CAlgorithm.Append(0, BitConverter.GetBytes(StoredJson.Format));
         stopwatch.Start();
         foreach (T result in Map()) {
             crc32C = Crc32CAlgorithm.Append(crc32C, Encoding.UTF8.GetBytes(JsonSerializer.Serialize(result)));
