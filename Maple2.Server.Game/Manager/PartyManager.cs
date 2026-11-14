@@ -390,8 +390,14 @@ public class PartyManager : IDisposable {
         session.Send(PartyPacket.PartySearch(kind, registered));
     }
 
+    // The party members of the player's guild (the player among them), for a condition's guildPartyCount. A player
+    // in no guild has none: guildless members (guild id 0) are not one guild.
     public int GuildMemberCount() {
-        return Party?.Members.Values.Count(member => member.Info.GuildId == session.Player.Value.Character.GuildId) ?? 0;
+        long guildId = session.Player.Value.Character.GuildId;
+        if (guildId == 0) {
+            return 0;
+        }
+        return Party?.Members.Values.Count(member => member.Info.GuildId == guildId) ?? 0;
     }
 
     public void SetPartySearch(PartySearch? partySearch) {
