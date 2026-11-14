@@ -263,7 +263,7 @@ public class Buff : IUpdatable, IByteSerializable {
             Field.Broadcast(BuffPacket.Update(this));
         }
         if (notifyField && rebuild) {
-            Owner.Buffs.EnabledChanged(this);
+            Owner.Buffs.EnabledChanged(this, packet);
         }
 
         return enabled;

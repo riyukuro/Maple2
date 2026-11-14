@@ -701,4 +701,20 @@ public class BuffAttributeTests {
             Assert.That(Buffs.GroupHeldSettled(10, later), Is.False, "none held");
         });
     }
+
+    // Only a move of Enabled is a gain or a loss for that slack: a battle mount suspend alone (Buff.EnabledChanges
+    // rebuilds the sums without a packet) stamps neither tick.
+    [Test]
+    public void CastEffectTests_ASuspendOnlyMoveKeepsTheSlackTicks() {
+        Start(MapType.None, Effect(10000051, Plain with { Group = 10 }));
+        long now = Field.FieldTick;
+        long later = now + SkillCastRules.BuffStateSlackMs + 1;
+        Add(10000051, tick: now);
+        Buff held = Buffs.EnumerateBuffs(10000051).Single();
+        Field.GetType().GetProperty(nameof(Field.FieldTick))!.SetValue(Field, later);
+        Buffs.EnabledChanged(held, enabledMoved: false);
+        Assert.That(Buffs.GroupHeldSettled(10, later), Is.True, "the suspend did not restart the group's slack");
+        Buffs.EnabledChanged(held, enabledMoved: true);
+        Assert.That(Buffs.GroupHeldSettled(10, later), Is.False, "a move of Enabled does");
+    }
 }

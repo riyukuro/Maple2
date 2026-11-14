@@ -260,6 +260,17 @@ public class BuffManager : IUpdatable {
 
     public List<Buff> EnumerateBuffs() => buffs.Values.SelectMany(list => list).ToList();
     public List<Buff> EnumerateBuffs(int buffId) => this.buffs.TryGetValue(buffId, out List<Buff>? buffs) ? buffs.ToList() : [];
+    // A copy of the held buffs taken off the field thread (a cast check runs on the packet handler's): the field thread
+    // may add or remove one while the lists are copied, and the copy is then taken again.
+    private List<Buff> CopyFromHandler(Func<List<Buff>> copy) {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return copy();
+            } catch (Exception ex) when (attempt < 4 && ex is InvalidOperationException or ArgumentException) {
+                // A held list moved while it was copied.
+            }
+        }
+    }
 
     public bool HasBuff(int effectId, short effectLevel = 1, int stacks = 0) {
         List<Buff> buffs = EnumerateBuffs(effectId);
@@ -304,13 +315,14 @@ public class BuffManager : IUpdatable {
         return BuffSums.Of(held.Where(buff => buff.Enabled).Select(buff => (buff.Metadata, buff.Stacks, buff.Suspended)));
     }
 
-    // A held buff's begin condition began or stopped holding (Buff.UpdateEnabled): the sums and the stat totals
-    // follow it, as they do a stack change.
-    public void EnabledChanged(Buff buff) {
+    // A held buff's begin condition began or stopped holding, or its battle mount suspend moved (Buff.UpdateEnabled):
+    // the sums and the stat totals follow it, as they do a stack change. Only a move of Enabled itself (enabledMoved)
+    // is a gain or a loss for the cast checks' slack.
+    public void EnabledChanged(Buff buff, bool enabledMoved = true) {
         InvalidateSums();
-        if (buff.Enabled) {
+        if (enabledMoved && buff.Enabled) {
             NoteGained(buff);
-        } else {
+        } else if (enabledMoved) {
             lostTicks[buff.Id] = Actor.Field.FieldTick;
         }
         if (HasStatus(buff.Metadata)) {
@@ -383,7 +395,7 @@ public class BuffManager : IUpdatable {
     }
     // An enabled buff of this id is held (the attackPossibleEffectID test: a buff whose begin condition is off does not count).
     public bool HoldsEnabled(int effectId) {
-        foreach (Buff buff in EnumerateBuffs(effectId)) {
+        foreach (Buff buff in CopyFromHandler(() => EnumerateBuffs(effectId))) {
             if (buff.Enabled) {
                 return true;
             }
@@ -401,7 +413,7 @@ public class BuffManager : IUpdatable {
         if (SkillCastRules.ChangedWithinSlack(groupGainTicks.TryGetValue(group, out long gained) ? gained : null, tick)) {
             return false;
         }
-        return EnumerateBuffs().Any(buff => buff.Enabled && buff.Metadata.Property.Group == group);
+        return CopyFromHandler(EnumerateBuffs).Any(buff => buff.Enabled && buff.Metadata.Property.Group == group);
     }
     private void NoteGained(Buff buff) {
         if (buff.Metadata.Property.Group > 0) {
@@ -437,7 +449,7 @@ public class BuffManager : IUpdatable {
 
     // An enabled buff held lists the skill among the ones its holder cannot cast.
     public bool SkillUseDisabled(int skillId) {
-        return Util.SkillCastRules.DisabledByBuff(EnumerateBuffs().Where(buff => buff.Counted).Select(buff => buff.Metadata.Property.SkillUseDisableIds), skillId);
+        return Util.SkillCastRules.DisabledByBuff(CopyFromHandler(EnumerateBuffs).Where(buff => buff.Counted).Select(buff => buff.Metadata.Property.SkillUseDisableIds), skillId);
     }
 
     // The skillUseDisable main-type masks of the enabled buffs held, OR'd (AdditionalCliList::FUN_140972a00).
@@ -451,7 +463,7 @@ public class BuffManager : IUpdatable {
         return mask;
     }
 
-    public int SkillUseDisableMask() => SkillUseDisableMask(EnumerateBuffs());
+    public int SkillUseDisableMask() => SkillUseDisableMask(CopyFromHandler(EnumerateBuffs));
 
     // The forceApplyTarget bits of the enabled buffs held, OR'd (AdditionalCliList::FUN_140972a00): the target kinds the
     // holder's skills take on top of their own (1 hostile, 2 friendly). A charm (40500014, 5 s) gives 2.
