@@ -170,6 +170,34 @@ public class LimitBreakMarketLockHandlerTests {
         Assert.That(session.Item.Inventory.Get(cap.Uid)!.IsLocked, Is.True);
     }
 
+    // A PC bang item never takes a lock (CItem::CanBeItemLocked asks IsPCBangItem): it is not staged, so a commit
+    // leaves it unlocked.
+    [Test]
+    public void ItemLock_PcBangItemIsNotStaged() {
+        test = new TestGameSession();
+        ItemMetadata metadata = TestGameSession.Metadata(11300001, EquipSlot.CP, type: 1, slotMax: 1);
+        Item cap = test.Store(metadata with { Limit = metadata.Limit with { RequirePcBang = true } });
+        GameSession session = test.Start();
+        test.TakeSent();
+        typeof(GameSession).GetField(nameof(GameSession.ItemLockStaging))!.SetValue(session, new long[18]);
+        var handler = new ItemLockHandler { ServerTableMetadata = test.ServerTableMetadata };
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteBool(false);
+            writer.WriteLong(cap.Uid);
+        }));
+        Assert.That(test.TakeSent(), Is.Empty);
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteBool(false);
+        }));
+        Assert.Multiple(() => {
+            Assert.That(session.ItemLockStaging, Is.All.EqualTo(0L));
+            Assert.That(session.Item.Inventory.Get(cap.Uid)!.IsLocked, Is.False);
+        });
+    }
+
     // Two upgrade requests on one preview: the second takes nothing and the level stays.
     [Test]
     public void LimitBreak_TwiceOnOnePreviewPaysOnce() {

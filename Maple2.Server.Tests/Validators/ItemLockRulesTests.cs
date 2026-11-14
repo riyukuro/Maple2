@@ -42,10 +42,11 @@ public class ItemLockRulesTests {
         Assert.That(ItemLockRules.IsLockableType(type), Is.EqualTo(expected));
     }
 
-    [TestCase(false, false, true)]
-    [TestCase(true, false, false)]
-    [TestCase(false, true, false)]
-    public void LimitAllowsLock(bool vip, bool wedding, bool expected) {
-        Assert.That(ItemLockRules.LimitAllowsLock(vip, wedding), Is.EqualTo(expected));
+    [TestCase(false, false, false, true)]
+    [TestCase(true, false, false, false)]
+    [TestCase(false, true, false, false)]
+    [TestCase(false, false, true, false)]
+    public void LimitAllowsLock(bool vip, bool wedding, bool pcBang, bool expected) {
+        Assert.That(ItemLockRules.LimitAllowsLock(vip, wedding, pcBang), Is.EqualTo(expected));
     }
 }

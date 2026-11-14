@@ -9,9 +9,10 @@ public static class ItemLockRules {
         return type is 1 or 5 or 9 or 11 or 12 or 13 or 21;
     }
 
-    // CItem::CanBeItemLocked: VIP items and wedding-limit items never take a lock.
-    public static bool LimitAllowsLock(bool requireVip, bool requireWedding) {
-        return !requireVip && !requireWedding;
+    // CItem::CanBeItemLocked: PC bang items (CItemData::IsPCBangItem), VIP items and wedding-limit items never take
+    // a lock.
+    public static bool LimitAllowsLock(bool requireVip, bool requireWedding, bool requirePcBang = false) {
+        return !requireVip && !requireWedding && !requirePcBang;
     }
 
     // CItemLockManager::CanUseItem: a locked item, and one whose unlock wait is not over, is not sold, traded,
