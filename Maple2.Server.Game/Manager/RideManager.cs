@@ -124,7 +124,7 @@ public sealed class RideManager {
         if (ride.Action is RideOnActionBattle battle) {
             session.Buffs.Remove(battle.SkillId, session.Player.ObjectId);
         }
-        if (ride.Metadata.Stats.Count > 0 || session.Stats.RefreshDeferred) {
+        if (RideShare.RebuildsAtEnd(ride.Metadata.Stats.Count, session.Stats.RefreshDeferred)) {
             session.Stats.Refresh();
         }
         session.Config.LoadKeyTable();

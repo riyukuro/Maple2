@@ -71,4 +71,8 @@ public static class RideShare {
     // RideConsumeEp (empty body) is the owner's dash: KMS2 takes the ride's runXConsumeEp from stamina each time
     // (a 15 ride: 120, 105, 90, 75). A passenger pays nothing.
     public static int DashStamina(bool owner, long runXStamina) => owner && runXStamina > 0 ? (int) runXStamina : 0;
+
+    // A ride's end rebuilds the stats when the ride put stats on the player, or when a rebuild was left for the end
+    // (StatsManager.Refresh skips it on a battle or object ride, e.g. at a field entry that changes a field's lines).
+    public static bool RebuildsAtEnd(int rideStats, bool refreshDeferred) => rideStats > 0 || refreshDeferred;
 }

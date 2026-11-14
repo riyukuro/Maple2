@@ -908,6 +908,22 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(NoticeDialogPacket.Show());
     }
 
+    // The Chaos Raid lines count only in their room and the massive event speed lines only in their game's field:
+    // entering or leaving one rebuilds the stats with the new field. A rebuild sends the stats itself, so the entry
+    // sends them once either way (a rebuild left for a battle ride's end sends them here).
+    internal void SendEntryStats(DungeonGroupType? leftGroup, int leftMapId) {
+        if (Field == null) return;
+        if (DungeonAbilityRules.RebuildsOnEntry(leftGroup, StatsManager.DungeonGroupOf(Field))
+            || MassiveAbilityRules.RebuildsOnEntry(leftMapId, Field.MapId)) {
+            Stats.Refresh();
+            if (!Stats.RefreshDeferred) {
+                return;
+            }
+        }
+        Send(StatsPacket.Init(Player));
+        Field.Broadcast(StatsPacket.Update(Player), Player.Session);
+    }
+
     public bool EnterField() {
         if (Field == null) return false;
 
@@ -940,19 +956,8 @@ public sealed partial class GameSession : Core.Network.Session {
             Async = true,
         });
 
-        // The Chaos Raid lines count only in their room and the massive event speed lines only in their game's field:
-        // entering or leaving one rebuilds the stats with the new field. A rebuild sends the stats itself.
-        bool rebuilt = false;
-        if (DungeonAbilityRules.RebuildsOnEntry(leftDungeonGroup, StatsManager.DungeonGroupOf(Field))
-            || MassiveAbilityRules.RebuildsOnEntry(leftField.MapId, Field.MapId)) {
-            Stats.Refresh();
-            rebuilt = !Stats.RefreshDeferred;
-        }
+        SendEntryStats(leftDungeonGroup, leftField.MapId);
         leftDungeonGroup = null;
-        if (!rebuilt) {
-            Send(StatsPacket.Init(Player));
-            Field.Broadcast(StatsPacket.Update(Player), Player.Session);
-        }
 
         // The first visit of a map pays exp. It comes after the player is added to the field: the client
         // has no local player before its own FieldAddUser, so it shows no exp text for an earlier ExpUp, and

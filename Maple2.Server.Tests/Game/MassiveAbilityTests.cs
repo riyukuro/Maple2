@@ -2,10 +2,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using NUnit.Framework;
 
 namespace Maple2.Server.Tests.Game;
@@ -15,8 +19,10 @@ namespace Maple2.Server.Tests.Game;
 public class MassiveAbilityTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-    private static GameSession Start(int mapId) {
-        var test = new TestGameSession();
+    private TestGameSession test = null!;
+
+    private GameSession Start(int mapId, long miniGamePrestige = 0) {
+        test = new TestGameSession();
         test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> {
             [ExpType.miniGame] = new(1, 1f),
             [ExpType.userMiniGame] = new(1, 1f),
@@ -25,7 +31,9 @@ public class MassiveAbilityTests {
         test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
             [1] = Enumerable.Range(1, 99).ToDictionary(level => level, level => level * 1000L),
         }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000_000L)));
-        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        test.SetServerTable(new PrestigeExpTable(miniGamePrestige > 0
+            ? new Dictionary<ExpType, long> { [ExpType.miniGame] = miniGamePrestige }
+            : new Dictionary<ExpType, long>()));
         GameSession session = test.Start();
         test.EnterMap(TestGameSession.Map(mapId));
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<Field>k__BackingField", Any)!.SetValue(session.Player, session.Field);
@@ -106,6 +114,59 @@ public class MassiveAbilityTests {
         long lined = session.Exp.AddExp(type);
 
         Assert.That((double) lined / plain, Is.EqualTo(ratio).Within(0.001));
+    }
+
+    // The OX line raises the round's exp but not its prestige exp: two players, one with the line, gain the same.
+    [Test]
+    public void ExpLineLeavesPrestigeExp() {
+        GameSession plain = Start(61000003, miniGamePrestige: 1000);
+        plain.Exp.AddExp(ExpType.miniGame);
+        long plainPrestige = plain.Exp.PrestigeCurrentExp;
+        Assert.That(plainPrestige, Is.GreaterThan(0));
+
+        GameSession lined = Start(61000003, miniGamePrestige: 1000);
+        lined.Player.Stats.Values[SpecialAttribute.MassiveOxExp].AddTotal(150);
+        lined.Exp.AddExp(ExpType.miniGame);
+
+        Assert.That(lined.Exp.PrestigeCurrentExp, Is.EqualTo(plainPrestige));
+    }
+
+    // A field entry that keeps the speed line sends the player's stats itself, once (a rebuild sends them in Refresh).
+    [TestCase(61000003, 61000011)]
+    [TestCase(2000023, 2000023)]
+    public void EntryWithoutRebuildSendsTheStatsOnce(int left, int entered) {
+        GameSession session = Start(entered);
+        test.TakeSent();
+
+        session.SendEntryStats(null, left);
+
+        Assert.That(test.TakeSentOps().Count(op => op == SendOp.Stat), Is.EqualTo(1));
+    }
+
+    // On a battle ride the entry's rebuild is left for the ride's end (Refresh returns before the rebuild), so the
+    // entry sends the stats itself, once.
+    [Test]
+    public void BattleRideDefersTheEntryRebuild() {
+        GameSession session = Start(61000003);
+        typeof(StatsManager).GetProperty(nameof(StatsManager.Actor))!.SetValue(session.Stats, session.Player);
+        session.Ride = new RideManager(session);
+        var metadata = new RideMetadata(99910380, "", new RideMetadataBasic(RideOnType.Battle, 0, 0, 0, false, 0, 0),
+            new RideMetadataSpeed(1, 1, 1, 1), new Dictionary<BasicAttribute, long>());
+        session.Ride.Ride = new Ride(session.Player.ObjectId, metadata, new RideOnActionBattle(metadata.Id, 1, 0, 1));
+        test.TakeSent();
+
+        session.SendEntryStats(null, 2000023);
+
+        Assert.That(session.Player.Stats.RefreshDeferred, Is.True);
+        Assert.That(test.TakeSentOps().Count(op => op == SendOp.Stat), Is.EqualTo(1));
+    }
+
+    // The ride's end rebuilds a deferred refresh even for a ride without stats of its own.
+    [TestCase(0, true, true)]
+    [TestCase(0, false, false)]
+    [TestCase(3, false, true)]
+    public void RideEndRebuilds(int rideStats, bool deferred, bool rebuilds) {
+        Assert.That(RideShare.RebuildsAtEnd(rideStats, deferred), Is.EqualTo(rebuilds));
     }
 
     [TestCase(0, 0f)]
