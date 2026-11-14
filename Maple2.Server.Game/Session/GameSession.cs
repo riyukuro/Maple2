@@ -1557,12 +1557,12 @@ public sealed partial class GameSession : Core.Network.Session {
         bool moved = false, saved = false;
         try {
             // Saved before the World is asked for the move (see Migrate).
-            State = SessionState.ChangeMap;
             saved = !preMigrationSaved;
             if (!MigrationSave()) {
                 Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
                 return;
             }
+            State = SessionState.ChangeMap;
 
             var request = new MigrateOutRequest {
                 AccountId = AccountId,
@@ -1590,8 +1590,11 @@ public sealed partial class GameSession : Core.Network.Session {
             Send(MigrationPacket.GameToGameError(MoveRefusedError(ex.StatusCode)));
         } finally {
             if (!moved) {
-                // Not moved: the session's last save (at Dispose) stores it again, when this move made the save.
-                State = state;
+                // Not moved: the session's last save (at Dispose) stores it again, when this move made the save. A
+                // session the failed save ended stays closed.
+                if (State is not SessionState.Disconnected) {
+                    State = state;
+                }
                 if (saved) {
                     MigrationRefused();
                 }
@@ -1611,7 +1614,8 @@ public sealed partial class GameSession : Core.Network.Session {
     };
 
     // beforeMove runs right before the migrate packet, only when the move is made (not when the map is refused or
-    // the World server gives no address). position is the spot on the map to arrive at (the return field's saved
+    // the World server gives no address); a second save of what it changed that does not store puts the return
+    // position back (Undo). position is the spot on the map to arrive at (the return field's saved
     // spot); default is the map's spawn.
     public void Migrate(int mapId, long ownerId = 0, Action? beforeMove = null, Vector3 position = default) {
         // Not to a map the played client does not have (see PrepareFieldInternal).
@@ -1623,8 +1627,21 @@ public sealed partial class GameSession : Core.Network.Session {
         bool isInstanced = ServerTableMetadata.InstanceFieldTable.Entries.ContainsKey(mapId);
 
         Character character = Player.Value.Character;
-        (int mapBefore, short returnBefore, SessionState state) = (character.MapId, character.ReturnChannel, State);
+        (int mapBefore, short returnBefore, Vector3 returnPositionBefore, SessionState state) =
+            (character.MapId, character.ReturnChannel, character.ReturnPosition, State);
         bool moved = false, saved = false;
+        // Not moved: the character stays where it is, and the session's last save (at Dispose) stores that. Run also
+        // by a save that does not store, before it ends the session (MigrationSave). The return position is the one
+        // beforeMove sets; its other change (home_goto, HomeHandler) is kept: the client was sent the trophy update
+        // already, and a condition count reaches quests and events too.
+        void Undo() {
+            character.MapId = mapBefore;
+            character.ReturnChannel = returnBefore;
+            character.ReturnPosition = returnPositionBefore;
+            if (State is not SessionState.Disconnected) {
+                State = state;
+            }
+        }
         try {
             if (isInstanced) {
                 character.ReturnChannel = character.Channel;
@@ -1637,12 +1654,12 @@ public sealed partial class GameSession : Core.Network.Session {
             // (MigrateOut): a save after it that waited longer (on a reset being stored, up to 60 s) outlived the token
             // and the move failed. Saved after the move was sent, the client could enter the other server while the
             // save still waited, and that entry's claim of the account refused the save.
-            State = SessionState.ChangeMap;
             saved = !preMigrationSaved;
-            if (!MigrationSave()) {
+            if (!MigrationSave(Undo)) {
                 Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
                 return;
             }
+            State = SessionState.ChangeMap;
 
             var request = new MigrateOutRequest {
                 AccountId = AccountId,
@@ -1672,7 +1689,7 @@ public sealed partial class GameSession : Core.Network.Session {
                     // What it changed (a trophy count, the return position) is stored with the move: a second save,
                     // short, since a reset the first save waited on is stored by now.
                     MigrationRefused();
-                    if (!MigrationSave()) {
+                    if (!MigrationSave(Undo)) {
                         Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
                         return;
                     }
@@ -1686,10 +1703,7 @@ public sealed partial class GameSession : Core.Network.Session {
             Send(MigrationPacket.GameToGameError(MoveRefusedError(ex.StatusCode)));
         } finally {
             if (!moved) {
-                // Not moved: the character stays where it is, and the session's last save (at Dispose) stores that.
-                character.MapId = mapBefore;
-                character.ReturnChannel = returnBefore;
-                State = state;
+                Undo();
                 if (saved) {
                     MigrationRefused();
                 }
@@ -1945,17 +1959,23 @@ public sealed partial class GameSession : Core.Network.Session {
     // ones used up were not: the rewards came back, and the meso spent since the last save was lost or kept. The
     // save is tried twice, as SessionSave (a passing error such as a deadlock), and a session whose second try fails
     // too is ended as there (Cut: what it holds since its last save is in its memory only), its Dispose trying one
-    // last save. A reset that holds the save past ResetWait refuses the move only: a reset must not end sessions.
+    // last save. `undo` puts back what the move changed ahead of the save (the target map, the session's ChangeMap
+    // state); it runs before the cut, so that Dispose stores the character where it is and tells the World the player
+    // is offline (a session it finds in ChangeMap is one that left for another server). The client gets the reset
+    // only: an error the caller sends after a false is not sent on a closed session. A reset that holds the save past ResetWait refuses the move only: a reset must not end sessions.
     // It waits for a reset being stored (up to ResetWait), on the field thread when a move handler calls it: the
     // move must be stored before the client is sent on, and coming back later would let the other channel load the
     // state from before it. The wait is the reset's own run, about 1 to 5 s for a daily reset over 50k characters,
     // once a day and only for the moves in those seconds; the save holds no row while it waits (the reset times are
     // its first read), so the reset never waits on it. 60 s bounds a reset that hangs (its statements time out at
     // 30 s each); before the share-lock read, the same save waited on the reset's rows in the database, up to 50 s.
-    public bool MigrationSave() {
-        switch (SaveBeforeLeaving()) {
-            case SaveResult.Stored:
-                return true;
+    public bool MigrationSave(Action? undo = null) {
+        SaveResult result = SaveBeforeLeaving();
+        if (result == SaveResult.Stored) {
+            return true;
+        }
+        undo?.Invoke();
+        switch (result) {
             case SaveResult.ResetRunning:
                 Logger.Warning("MigrationSave: a reset is still being stored after {Wait}, the move is refused AccountId={AccountId} CharacterId={CharacterId}",
                     ResetWait, AccountId, CharacterId);

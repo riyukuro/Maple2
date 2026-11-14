@@ -139,7 +139,8 @@ public class HomeHandler : FieldPacketHandler {
         }
 
         // home_goto (trophy 23500019): KMS2 sends its update, up by 1, just before the migrate packet to the own home.
-        // A refused move counts nothing.
+        // A move the map or the World refuses counts nothing; one whose save after the count does not store keeps it
+        // (GameSession.Migrate).
         session.Migrate(home.Indoor.MapId, home.Indoor.OwnerId, () => session.ConditionUpdate(ConditionType.home_goto));
     }
 

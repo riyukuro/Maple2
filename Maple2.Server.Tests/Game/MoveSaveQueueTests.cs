@@ -227,7 +227,7 @@ public class MoveSaveQueueTests {
 
         Task donation = Task.Run(Send);
         Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
-        Task save = Task.Run(session.MigrationSave);
+        Task save = Task.Run(() => session.MigrationSave());
         Assert.Multiple(() => {
             Assert.That(save.Wait(300), Is.False);
             Assert.That(session.MigrationSaved, Is.False);
