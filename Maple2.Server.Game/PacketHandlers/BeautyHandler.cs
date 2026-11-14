@@ -456,7 +456,9 @@ public class BeautyHandler : FieldPacketHandler {
     private void HandleConfirmRandomHair(GameSession session, IByteReader packet) {
         bool newHairSelected = packet.ReadBool();
         int voucherItemId = 0;
-        if (session.BeautyShop == null) {
+        // The answer to a random pick (the client's keep or return box after sub-type 7): with no pick waiting it gave
+        // the shop's return coupon each time it was sent.
+        if (session.BeautyShop == null || !session.Beauty.HasPreviousHair) {
             return;
         }
         if (!newHairSelected) {

@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 
@@ -61,5 +63,39 @@ public class BeautyRandomHairTests {
         Pick();
 
         Assert.That(session.Currency.Meso, Is.EqualTo(4700L));
+    }
+
+    // Beauty 12 "keep the old hair" with no random pick waiting gives nothing; it gave the shop's return coupon each
+    // time it was sent.
+    [Test]
+    public void AKeepAnswerWithNoPickGivesNoCoupon() {
+        const int coupon = 20300200;
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(coupon));
+        test.SetTable(new ItemOptionPickTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionPickTable.Option>>()));
+        test.SetTable(new ItemOptionConstantTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>>()));
+        test.SetTable(new ItemOptionStaticTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+        test.SetTable(new ItemOptionRandomTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>()));
+        test.Start();
+        test.EnterMap(TestGameSession.Map(2000062));
+        session.Beauty = new BeautyManager(session);
+        var fee = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 300, string.Empty, 0);
+        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(508, BeautyShopCategory.Hair, 0, fee, fee, true, false, coupon, 0,
+            ItemTag.None, [], []), []) {
+            Type = BeautyShopType.Random,
+        };
+        Assert.That(session.Field!.ItemDrop.CreateItem(coupon), Is.Not.Null);
+
+        for (int i = 0; i < 3; i++) {
+            new BeautyHandler {
+                ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata, NpcMetadata = null!,
+                ServerTableMetadata = test.ServerTableMetadata,
+            }.Handle(session, TestGameSession.Packet(writer => {
+                writer.WriteByte(12);
+                writer.WriteBool(false);
+            }));
+        }
+
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == coupon), Is.Empty);
     }
 }

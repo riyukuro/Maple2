@@ -148,6 +148,9 @@ public sealed class BeautyManager : IDisposable {
 
     public void ClearPreviousHair() => previousHair = null;
 
+    // A random pick (sub-type 7) is waiting for its keep or return answer (sub-type 12).
+    public bool HasPreviousHair => previousHair != null;
+
     public bool HasSavedCosmetic(long uid) => items.Get(uid) != null;
 
     public bool EquipSavedCosmetic(long uid) {
