@@ -917,8 +917,13 @@ public class ItemUseHandler : FieldPacketHandler {
             !xmlParameters.ContainsKey("durationSec") || !int.TryParse(xmlParameters["durationSec"], out int durationSec)) {
             return;
         }
+        // Chosen here: an envelope with no items or no users to share them (no KR envelope has one) is kept; it gave
+        // the opener a share of 0. No field keeps it too.
+        if (totalCount < 1 || totalUser < 1 || session.Field == null) {
+            return;
+        }
         session.Item.Inventory.Consume(item.Uid, 1);
-        session.Field?.AddHongBao(session.Player, item.Id, itemId, totalUser, durationSec, totalCount);
+        session.Field.AddHongBao(session.Player, item.Id, itemId, totalUser, durationSec, totalCount);
     }
 
     private void HandleAddAdditionalEffect(GameSession session, Item item) {

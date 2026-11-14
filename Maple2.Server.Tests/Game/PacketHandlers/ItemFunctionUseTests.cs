@@ -413,6 +413,22 @@ public class ItemFunctionUseTests {
         Assert.That(test.TakeSentOps(), Does.Contain(SendOp.PlayerHost));
     }
 
+    // The same envelope with no items or no users is kept and gives nothing; it gave the opener a share of 0.
+    [TestCase(0, 6)]
+    [TestCase(50, 0)]
+    public void HongBao_NoItemsOrNoUsers_KeepsTheEnvelope(int totalCount, int totalUser) {
+        Item envelope = Login(20300964, ItemFunction.HongBao,
+            $"<v itemId=\"90000020\" totalCount=\"{totalCount}\" totalUser=\"{totalUser}\" durationSec=\"300\" />", amount: 2,
+            setup: () => test.Register(TestGameSession.Metadata(90000020)));
+        FillField("hongBaos");
+        test.TakeSentOps();
+
+        Use(envelope);
+
+        Assert.That(session.Item.Inventory.Get(envelope.Uid)?.Amount, Is.EqualTo(2));
+        Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.PlayerHost));
+    }
+
     // 20300012 (AddAdditionalEffect 70000029,1; the effect lasts 600 s): the client sends the use as is. The effect
     // starts on the user and one item is used up.
     [Test]
