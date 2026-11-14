@@ -24,6 +24,7 @@ public class BattleState {
         set {
             targetNode = value;
             changedTargetType = false;
+            keptPastNode = null;
         }
     }
     public bool KeepBattle = false;
@@ -35,6 +36,8 @@ public class BattleState {
     private long nextTargetSearchTick = 0;
     private bool changedTargetType = false;
     private TargetNode? targetNode = null;
+    // The target a target node kept because no actor was in its window; the node's window does not let go of it.
+    private IActor? keptPastNode = null;
 
     public BattleState(FieldNpc actor) {
         this.actor = actor;
@@ -48,14 +51,20 @@ public class BattleState {
 
     // A target node picks the target when it runs, by its own rule (KR AI_Alex_AnchorLizard.xml: a standby every 10 s
     // whose target node, rand 10 to 1500, is commented as the periodic target switch). With no actor in the node's
-    // window the npc keeps the target it has. rankAssociate (8 nodes) has no rule here, so it changes nothing.
+    // window the npc keeps the target it has, until it is out of the npc's sight (ShouldKeepTarget). rankAssociate
+    // (8 nodes) has no rule here, so it changes nothing. A hasAdditional node with noChangeWhenNoTarget takes no
+    // target when the npc has none, as in Update.
     public void Retarget() {
         if (!CanBattle || actor.IsDead || TargetType == NodeTargetType.RankAssociated || actor is FieldPet { OwnerId: 0, TamingPoint: <= 0 }) {
+            return;
+        }
+        if (TargetId == 0 && TargetNode is not null && TargetType == NodeTargetType.HasAdditional && TargetNode.NoChangeWhenNoTarget) {
             return;
         }
 
         IActor? previous = Target;
         FindNewTarget();
+        keptPastNode = Target is null ? previous : null;
         Target ??= previous;
         if (Target != previous) {
             actor.AppendDebugMessage($"New target '{GetTargetName()}' (target node)\n");
@@ -254,6 +263,12 @@ public class BattleState {
 
         if (target is null) {
             return false;
+        }
+
+        if (target == keptPastNode) {
+            Vector3 offset = target.Position - actor.Position;
+            return IsInRange(offset.LengthSquared(), offset.Z, actor.Value.Metadata.Distance.LastSightRadius * actor.Value.Metadata.Distance.LastSightRadius,
+                actor.Value.Metadata.Distance.SightHeightUp, -actor.Value.Metadata.Distance.SightHeightDown);
         }
 
         return ShouldTargetActor(target, actor.Value.Metadata.Distance.LastSightRadius * actor.Value.Metadata.Distance.LastSightRadius, actor.Value.Metadata.Distance.SightHeightUp, actor.Value.Metadata.Distance.SightHeightDown);

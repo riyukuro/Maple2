@@ -303,6 +303,40 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // The target a node kept with no actor in its window (rand 10 to 300, target 400 away) stays through the npc's own
+    // updates, which check it against the npc's sight (3000), not the node's window; out of sight it is let go of.
+    [Test]
+    public void Target_KeptPastTheWindow_StaysUntilOutOfSight() {
+        Spawn([Target(NodeTargetType.Rand, 10, 300)], position: Vector3.Zero);
+        FieldPlayer kept = AddPlayer(2, 400);
+        npc.BattleState.ForceTarget(kept);
+        Run();
+        for (int i = 0; i < 10; i++) {
+            SetTick(Field.FieldTick + 100);
+            npc.BattleState.Update(Field.FieldTick);
+        }
+        Assert.That(npc.BattleState.Target, Is.SameAs(kept));
+
+        kept.Position = new Vector3(3500, 0, 0);
+        npc.BattleState.Update(Field.FieldTick + 100);
+        Assert.That(npc.BattleState.Target, Is.Null);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A hasAdditional node with noChangeWhenNoTarget takes no target when the npc has none, as the npc's own update
+    // does not search under it. The npc is held in battle (isKeepBattle) with no target, so its battle tree runs the
+    // node; the test player is a hostile npc's target type and stands in sight.
+    [Test]
+    public void Target_HasAdditionalNoChangeWhenNoTarget_TakesNoneWithoutATarget() {
+        Spawn([new TargetNode("target", [], NodeTargetType.HasAdditional, 0, 0, 0, 0, 0, 0, Vector3.Zero, NodeAiTarget.Hostile, true, 0, 0, false)],
+            position: Vector3.Zero);
+        typeof(BattleState).GetProperty(nameof(BattleState.Target))!.SetValue(npc.BattleState, null);
+        npc.BattleState.KeepBattle = true;
+        Run();
+        Assert.That(npc.BattleState.Target, Is.Null);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // KR AI_Alex_AnchorLizard.xml: <condition name="hpOver" value="40"> then <condition name="true"> (its comment: 40%
     // and below). At 40% health hpOver 40 still passes; at 39% the true branch runs.
     [Test]
