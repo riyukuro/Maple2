@@ -111,7 +111,7 @@ public class ClubLookup : IDisposable {
         if (!TryGet(clubId, out ClubManager? manager)) {
             return ClubError.s_club_err_null_club;
         }
-        return manager.LeaveOrDisband(characterId, deleted: false, () => Disband(clubId));
+        return manager.LeaveOrDisband(characterId, deleted: false, () => Disband(manager));
     }
 
     // The database first: a failed delete leaves the club in memory and on every channel as it was.
@@ -119,14 +119,20 @@ public class ClubLookup : IDisposable {
         if (!TryGet(clubId, out ClubManager? manager)) {
             return ClubError.s_club_err_null_club;
         }
+        return Disband(manager);
+    }
 
+    // The manager the caller holds (and may have locked): a leave disbands that one, not another copy fetched again
+    // after its entry was dropped, so the one that refuses later joins and leaves is the one disbanded.
+    private ClubError Disband(ClubManager manager) {
+        long clubId = manager.Club.Id;
         using (GameStorage.Request db = gameStorage.Context()) {
             if (!db.DeleteClub(clubId)) {
                 return ClubError.s_club_err_unknown;
             }
         }
 
-        clubs.TryRemove(clubId, out _);
+        clubs.TryRemove(new KeyValuePair<long, ClubManager>(clubId, manager));
         manager.Disband();
         return ClubError.none;
     }
@@ -151,7 +157,7 @@ public class ClubLookup : IDisposable {
                     continue;
                 }
 
-                error = manager.LeaveOrDisband(characterId, deleted: true, () => Disband(clubId));
+                error = manager.LeaveOrDisband(characterId, deleted: true, () => Disband(manager));
             } catch (Exception ex) {
                 logger.Warning(ex, "Delete of character {CharacterId}: club {ClubId} failed", characterId, clubId);
                 error = ClubError.s_club_err_unknown;

@@ -206,4 +206,25 @@ public class ClubLeaveOrderTests {
         Assert.That(manager.Club.Leader.CharacterId, Is.EqualTo(ids[0]));
         Assert.That(channel.Requests, Is.Empty);
     }
+
+    // Two members leave a club of three at once: under the club's lock the second sees two members and disbands it,
+    // so no club of one is kept. Run a number of times, each on a fresh club.
+    [Test]
+    public void TwoLeavesAtOnce_FromAClubOfThree_DisbandTheClub() {
+        for (int round = 0; round < 20; round++) {
+            long clubId = StoreClub($"Club{round}", false, ids[0], ids[1], ids[2]);
+            Assume.That(lookup.TryGet(clubId, out _), Is.True);
+            using var start = new System.Threading.Barrier(2);
+            var errors = new int[2];
+            System.Threading.Tasks.Task[] tasks = [
+                System.Threading.Tasks.Task.Run(() => { start.SignalAndWait(); errors[0] = Leave(ids[1], clubId); }),
+                System.Threading.Tasks.Task.Run(() => { start.SignalAndWait(); errors[1] = Leave(ids[2], clubId); }),
+            ];
+            System.Threading.Tasks.Task.WaitAll(tasks);
+
+            Assert.That(errors, Is.EqualTo(new[] { 0, 0 }), $"round {round}");
+            Assert.That(Stored(clubId), Is.Null, $"round {round}");
+            Assert.That(lookup.TryGet(clubId, out _), Is.False, $"round {round}");
+        }
+    }
 }

@@ -137,4 +137,30 @@ public class GuildRankOrderTests {
         Assert.That(master.Rank, Is.EqualTo(0));
         Assert.That(guild.LeaderCharacterId, Is.EqualTo(master.CharacterId));
     }
+
+    // A failed write keeps the rank in memory as it was (the member row is gone, so the save finds nothing).
+    [Test]
+    public void SetRank_FailedSave_KeepsTheRank() {
+        using (var context = new Ms2Context(test.Options)) {
+            context.GuildMember.Remove(context.GuildMember.Single(row => row.GuildId == guild.Id && row.CharacterId == junior.CharacterId));
+            context.SaveChanges();
+        }
+
+        Assert.That(manager.UpdateMember(officer.CharacterId, junior.CharacterId, 4, null), Is.EqualTo(GuildError.s_guild_err_unknown));
+        Assert.That(junior.Rank, Is.EqualTo(3));
+    }
+
+    // A failed write keeps the old master, both ranks and the leader fields (the guild row is gone).
+    [Test]
+    public void NewMaster_FailedSave_KeepsTheMaster() {
+        using (var context = new Ms2Context(test.Options)) {
+            context.Guild.Remove(context.Guild.Single(row => row.Id == guild.Id));
+            context.SaveChanges();
+        }
+
+        Assert.That(manager.UpdateLeader(master.CharacterId, officer.CharacterId), Is.EqualTo(GuildError.s_guild_err_unknown));
+        Assert.That(guild.LeaderCharacterId, Is.EqualTo(master.CharacterId));
+        Assert.That(master.Rank, Is.EqualTo(0));
+        Assert.That(officer.Rank, Is.EqualTo(2));
+    }
 }
