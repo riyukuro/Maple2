@@ -24,6 +24,8 @@ public class GuildManager : IDisposable {
     private readonly ConcurrentDictionary<long, (string, DateTime)> pendingInvites;
     // The lock of the guild's own values. One join at a time, by invite or by request (the capacity check
     // and the insert are one step), and every change of the fund or the experience.
+    // Lock order: a member's lock first, then this one (Donate takes both). No path takes a member's lock while it
+    // holds this one, or two such paths deadlock; GuildLookup.NameLock goes before this one (Rename).
     private readonly object guildLock = new();
 
     // Time of the last guild mail of each sender, for the server's limit. Old entries go on each insert.
@@ -43,9 +45,11 @@ public class GuildManager : IDisposable {
 
     // The weekly reset of the members held here; the database row is reset after it, so a later save of the
     // guild keeps the 0.
+    // The contribution is reset outside the guild lock: each member under its own lock only (see guildLock's
+    // order), as a donation holds the member's lock while it waits for the guild lock.
     public void WeeklyReset() {
+        GuildRules.ResetWeeklyContribution(Guild.Members.Values);
         lock (guildLock) {
-            GuildRules.ResetWeeklyContribution(Guild.Members.Values);
             GuildRules.ResetRaids(Guild.Members.Values);
         }
     }
@@ -980,6 +984,7 @@ public class GuildManager : IDisposable {
         }
         int guildExp;
         int guildFund;
+        // The member's lock, then the guild's (guildLock's order).
         lock (member) {
             long dayStart = GuildRules.DayStart();
             int today = GuildRules.DonationsToday(member.DailyDonationCount, member.DonationTime, dayStart);

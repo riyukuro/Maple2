@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -108,6 +110,38 @@ public class GuildRaidTests {
         manager.WeeklyReset();
 
         Assert.That(master.Raids, Is.Empty);
+    }
+
+    // A donation holds the member's lock while it waits for the guild lock. The weekly reset took the guild lock
+    // and then each member's, so a donation at the reset deadlocked both.
+    [Test]
+    public void WeeklyReset_DoesNotDeadlockAgainstAMemberLockThenTheGuildLock() {
+        // Its own manager and member: on a deadlock only these stay blocked, and the teardown's Dispose (the guild
+        // lock of the shared manager) still runs.
+        GuildMember donorMember = Member(test.CharacterId + 600, "Donor");
+        donorMember.WeeklyContribution = 40;
+        guild.Members[donorMember.CharacterId] = donorMember;
+        var own = new GuildManager(guild) {
+            GameStorage = test.Storage,
+            ChannelClients = new ChannelClientLookup(),
+            TableMetadata = test.TableMetadata,
+            ItemMetadata = test.ItemMetadata,
+            ServerTableMetadata = test.ServerTableMetadata,
+        };
+        Task<Task> donor = Task.Factory.StartNew(() => {
+            lock (donorMember) {
+                Task reset = Task.Run(() => own.WeeklyReset());
+                Thread.Sleep(300); // the reset now waits for the member's lock
+                own.PvpSnapshot(); // the guild lock, as Donate takes it under the member's
+                return reset;
+            }
+        });
+
+        bool ended = donor.Wait(TimeSpan.FromSeconds(5));
+        guild.Members.TryRemove(donorMember.CharacterId, out _); // no row: the teardown's save leaves it out
+        Assert.That(ended, Is.True, "deadlock");
+        Assert.That(donor.Result.Wait(TimeSpan.FromSeconds(5)), Is.True, "the reset never ended");
+        Assert.That(donorMember.WeeklyContribution, Is.EqualTo(0));
     }
 
     [Test]
