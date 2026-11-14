@@ -105,6 +105,11 @@ public sealed class PcBangManager {
         SendStatus();
     }
 
+    // A PC bang item (<PCBang PCBang="1"/>) away from a PC bang: the client refuses it for a ride (MyPC's ride start,
+    // mypc.cpp:4656 via CanUseItem), a pet summon (MyPC::FUN_14152b2d0, mypc.cpp:3252) and a fishing rod
+    // (CFishingManager::CanUseBait, fishingmanager.cpp:1040).
+    public bool Refuses(Item item) => item.Metadata.Limit.RequirePcBang && Grade <= 0;
+
     // Only entering or leaving a PC bang (grade 0 to above or back) changes what a PC bang item counts for.
     internal static bool RecountsWorn(int old, int grade, IEnumerable<Item> worn) =>
         (old > 0) != (grade > 0) && worn.Any(item => item.Metadata.Limit.RequirePcBang);

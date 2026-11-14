@@ -108,6 +108,10 @@ public class FishingManager {
         if (rodItem == null || rodItem.Metadata.Function?.Type != ItemFunction.FishingRod) {
             return FishingError.s_fishing_error_invalid_item;
         }
+        // A PC bang rod only at a PC bang (CanUseBait; the client sends nothing then).
+        if (session.PcBang.Refuses(rodItem)) {
+            return FishingError.s_fishing_error_invalid_item;
+        }
         if (!int.TryParse(rodItem.Metadata.Function?.Parameters, out int rodCode) || !tableMetadata.FishingRodTable.Entries.TryGetValue(rodCode, out FishingRodTable.Entry? rodMetadata)) {
             return FishingError.s_fishing_error_invalid_item;
         }

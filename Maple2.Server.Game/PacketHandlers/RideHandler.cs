@@ -88,6 +88,10 @@ public class RideHandler : FieldPacketHandler {
             session.Send(NoticePacket.MessageBox(StringCode.s_item_invalid_function_item));
             return;
         }
+        if (session.PcBang.Refuses(item)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_item_err_puton_pcbang));
+            return;
+        }
 
         session.Ride.Mount(item, flag);
     }
@@ -142,6 +146,10 @@ public class RideHandler : FieldPacketHandler {
         }
         if (item.IsExpired() || item.Metadata.Property.Ride != rideId) {
             session.Send(NoticePacket.MessageBox(StringCode.s_item_invalid_function_item));
+            return;
+        }
+        if (session.PcBang.Refuses(item)) {
+            session.Send(NoticePacket.MessageBox(StringCode.s_item_err_puton_pcbang));
             return;
         }
 

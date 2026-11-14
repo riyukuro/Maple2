@@ -147,7 +147,7 @@ public class PetHandler : FieldPacketHandler {
 
         lock (session.Item) {
             Item? next = session.Item.Inventory.Get(petUid, InventoryType.Pets);
-            return next != null
+            return next != null && !session.PcBang.Refuses(next)
                 && PetRules.CanSummon(session.Field.Metadata.Limit.Pet, next.Metadata.Limit.Level, session.Player.Value.Character.Level);
         }
     }
@@ -463,7 +463,7 @@ public class PetHandler : FieldPacketHandler {
 
         lock (session.Item) {
             Item? pet = session.Item.Inventory.Get(petUid, InventoryType.Pets);
-            if (pet == null) {
+            if (pet == null || session.PcBang.Refuses(pet)) {
                 return;
             }
             if (!PetRules.CanSummon(session.Field.Metadata.Limit.Pet, pet.Metadata.Limit.Level, session.Player.Value.Character.Level)) {
