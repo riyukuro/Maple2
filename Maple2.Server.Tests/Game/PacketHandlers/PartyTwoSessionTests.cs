@@ -217,6 +217,28 @@ public class PartyTwoSessionTests {
         }));
     }
 
+    // A vote kick in a party of two: with PartyVoteKick on it is refused for too few members; off, the client has no
+    // vote kick and the request is dropped without an answer.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void VoteKick_FollowsTheFeature(bool featureOn) {
+        Invite(guest.PlayerName);
+        Reply(PartyInviteResponse.Accept);
+        Party(inviterTest);
+        if (!featureOn) {
+            inviterTest.SetFeaturesOff(PartyHandler.VoteKickFeature);
+        }
+
+        inviterHandler.Handle(inviter, TestGameSession.Packet(writer => {
+            writer.WriteByte(45);
+            writer.WriteLong(guest.CharacterId);
+        }));
+
+        Assert.That(Party(inviterTest).Select(Convert.ToHexString), Is.EqualTo(featureOn
+            ? new[] { Hex(PartyPacket.Error(PartyError.s_party_err_vote_need_more_people)) }
+            : Array.Empty<string>()));
+    }
+
     // A member who dies is named to the party once, in Party 18 after the stats: byte 0 on a first death, 1 under a
     // metal tombstone. Staying dead, more hp updates and the revive send no second one.
     [TestCase(DeathState.FirstDeath, "00")]

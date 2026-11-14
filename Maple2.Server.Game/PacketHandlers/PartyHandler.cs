@@ -448,8 +448,15 @@ public class PartyHandler : FieldPacketHandler {
             : (session.Player.Value.Character.Level, 0);
     }
 
+    // The party list offers the vote kick (popup menu 0xcc) only while PartyVoteKick (id 224, 0xe0) is on
+    // (UIPopUpMenu, uipartydialog.cpp:2940 and 2951); off, the request is dropped.
+    public const string VoteKickFeature = "PartyVoteKick";
+
     private void HandleVoteKick(GameSession session, IByteReader packet) {
         long targetCharacterId = packet.ReadLong();
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(VoteKickFeature)) {
+            return;
+        }
         if (session.Party.Party == null) {
             session.Send(PartyPacket.Error(PartyError.s_party_err_not_found));
             return;
