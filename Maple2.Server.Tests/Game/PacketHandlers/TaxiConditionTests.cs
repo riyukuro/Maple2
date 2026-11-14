@@ -17,8 +17,8 @@ using Maple2.Server.Game.Util;
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
 // RequestTaxi mode 1 (the ground taxi) counts taxiuse once its fare is paid. 70400012:
-// <condition type="taxiuse" value="1" />. The ride reaches PrepareField, which stops at the test field (one the
-// played client lacks), as in FreeAirTaxiTests. The field ids are made up.
+// <condition type="taxiuse" value="1" />. The ride leaves as a move to another server (TestGameSession.EnterMovingOut)
+// unless a test refuses it, as in FreeAirTaxiTests. The field ids are made up.
 public class TaxiConditionTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private const int From = 2000913, To = 2000914;
@@ -70,13 +70,20 @@ public class TaxiConditionTests {
         return storage;
     }
 
-    private static (long Counter, long Paid) Ride(long meso) {
+    private static (long Counter, long Paid) Ride(long meso, FreeAirTaxiTests.Outcome outcome = FreeAirTaxiTests.Outcome.Went) {
         var test = new TestGameSession();
         MapMetadata from = Field(From);
-        test.AddMap(from, Field(To, notInPlayedClient: true));
+        test.AddMap(from, Field(To, notInPlayedClient: outcome == FreeAirTaxiTests.Outcome.RefusedHere));
         test.SetTable(new FieldMetaTable(new Dictionary<int, IReadOnlyList<int>> { [From] = [To] }, new Dictionary<int, IReadOnlyList<int>>()));
         GameSession session = test.Start();
-        test.EnterMap(from);
+        if (outcome == FreeAirTaxiTests.Outcome.RefusedHere) {
+            test.EnterMap(from);
+        } else {
+            test.EnterMovingOut(from);
+            if (outcome == FreeAirTaxiTests.Outcome.WorldRefused) {
+                test.World.MoveAddress = "";
+            }
+        }
         // The client rides only from its field's station: the player stands on it.
         typeof(FieldManager).GetField("<Entities>k__BackingField", Any)!.SetValue(session.Field, Station());
         session.Player.Position = Vector3.Zero;
@@ -104,6 +111,18 @@ public class TaxiConditionTests {
         Assert.Multiple(() => {
             Assert.That(paid, Is.GreaterThan(0));
             Assert.That(counter, Is.EqualTo(1));
+        });
+    }
+
+    // A ride whose field change is refused (here, or by the World) gives the fare back and counts nothing. Before, the
+    // fare was taken and the ride counted ahead of the field change.
+    [TestCase(FreeAirTaxiTests.Outcome.WorldRefused)]
+    [TestCase(FreeAirTaxiTests.Outcome.RefusedHere)]
+    public void ARefusedRide_KeepsTheFareAndDoesNotCount(FreeAirTaxiTests.Outcome outcome) {
+        (long counter, long paid) = Ride(1_000_000, outcome);
+        Assert.Multiple(() => {
+            Assert.That(paid, Is.Zero);
+            Assert.That(counter, Is.Zero);
         });
     }
 

@@ -203,10 +203,12 @@ public class ItemFunctionUseTests {
     }
 
     // 20300031 (tag air_taxi) takes one ticket to a field the character has been to, and none to one it has not
-    // (only the advanced ticket goes there). The ride stops at PrepareField: the target is not in the played client.
+    // (only the advanced ticket goes there). The ride leaves as a move to another server (EnterMovingOut). The ticket
+    // is used only for a ride that went, and is stored with the move's save; a ride refused here (a target the played
+    // client lacks) or by the World keeps it. Before, it was used ahead of the field change, whatever its end.
     [Test]
     public void CallAirTaxi_TakesOneTicketToAVisitedField() {
-        const int to = 2000914;
+        const int to = 2000914, lacking = 2000915;
         // A name of its own: the navmesh file sits in the shared build output, where another test run may delete it.
         string xBlock = $"item_air_taxi_test_{Guid.NewGuid():N}";
         string mesh = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Navmeshes", $"{xBlock}.navmesh");
@@ -223,7 +225,10 @@ public class ItemFunctionUseTests {
             };
             MapMetadata from = Field(2000913);
             Item ticket = Login(20300031, ItemFunction.CallAirTaxi, "", amount: 2, tag: ItemTag.air_taxi, field: from,
-                setup: () => test.AddMap(from, Field(to, notInPlayedClient: true)));
+                setup: () => test.AddMap(from, Field(to), Field(lacking, notInPlayedClient: true)));
+            test.EnterMovingOut(from);
+            // The move's save runs (Start counts as saved), so what the ride used is stored with it.
+            typeof(GameSession).GetField("preMigrationSaved", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, false);
             // CheckMapCashCall looks the target up in the field's map storage.
             typeof(FieldManager).GetField("<MapMetadata>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .SetValue(session.Field, test.MapMetadata);
@@ -233,9 +238,22 @@ public class ItemFunctionUseTests {
             Assert.That(session.Item.Inventory.Get(ticket.Uid)?.Amount, Is.EqualTo(2));
 
             session.Player.Value.Unlock.Maps.Add(to);
+            session.Player.Value.Unlock.Maps.Add(lacking);
+            Use(ticket, $"{lacking}");
+            test.World.MoveAddress = "";
             Use(ticket, $"{to}");
 
-            Assert.That(session.Item.Inventory.Get(ticket.Uid)?.Amount, Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Get(ticket.Uid)?.Amount, Is.EqualTo(2), "refused here, then by the World");
+            Assert.That(test.World.Moves, Has.Count.EqualTo(1));
+
+            test.World.MoveAddress = "127.0.0.1";
+            Use(ticket, $"{to}");
+
+            Assert.Multiple(() => {
+                Assert.That(test.World.Moves, Has.Count.EqualTo(2));
+                Assert.That(session.Item.Inventory.Get(ticket.Uid)?.Amount, Is.EqualTo(1));
+                Assert.That(test.Row(ticket.Uid)?.Amount, Is.EqualTo(1), "stored with the move");
+            });
         } finally {
             if (made) {
                 System.IO.File.Delete(mesh);

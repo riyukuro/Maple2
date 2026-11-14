@@ -668,6 +668,19 @@ public sealed class TestGameSession {
         return record;
     }
 
+    // The session stands in a field of this map from which every field change is a move to another server: the lobby
+    // of a dungeon with no rooms (GameSession.PrepareFieldInternal migrates out of it), so a change that goes needs no
+    // field factory here. World.MoveAddress decides whether the move goes.
+    public void EnterMovingOut(MapMetadata map) {
+        EnterDungeon(new DungeonRoomMetadata(23000001, 0, DungeonPlayType.none, DungeonGroupType.normal, DungeonCooldownType.none, 0, 0,
+            LobbyFieldId: map.Id, FieldIds: [], Reward: null!, Limit: null!, 0, 0, 3, false, 0, 0, false, [], [], false, default, false));
+        var lobby = (DungeonFieldManager) Session.Field!;
+        typeof(FieldManager).GetField(nameof(FieldManager.Metadata), Any)!.SetValue(lobby, map);
+        typeof(FieldManager).GetField("<FieldInstance>k__BackingField", Any)!.SetValue(lobby,
+            new InstanceFieldMetadata(map.Id, InstanceType.DungeonLobby, 0, false, 0, false, 0, 0, 0, 0));
+        typeof(DungeonFieldManager).GetField(nameof(DungeonFieldManager.RoomFields), Any)!.SetValue(lobby, new ConcurrentDictionary<int, DungeonFieldManager>());
+    }
+
     // A room field of the dungeon whose lobby the session stands in (EnterDungeon), as the factory adds it.
     public DungeonFieldManager AddRoomField(int mapId) {
         var lobby = (DungeonFieldManager) Session.Field!;

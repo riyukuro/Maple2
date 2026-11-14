@@ -15,9 +15,13 @@ using Maple2.Server.Game.Session;
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
 // RequestTaxi mode 3 (the meso air taxi) takes no fare while a FreeAirTaxi event runs, and the full fare once it has
-// ended; until now only TaxiRules.MesoFare was tested, not the handler's use of the server's events. The ride reaches
-// PrepareField, which stops at the test field (one the played client lacks). The field ids are made up.
+// ended; until now only TaxiRules.MesoFare was tested, not the handler's use of the server's events. The ride leaves
+// as a move to another server (TestGameSession.EnterMovingOut) unless a test refuses it. The field ids are made up.
 public class FreeAirTaxiTests {
+    // How the ride's field change ends: it goes (a move to another server), the World refuses that move, or this
+    // server refuses the change (the target is a field the played client lacks).
+    public enum Outcome { Went, WorldRefused, RefusedHere }
+
     private const int From = 2000911, To = 2000912;
     // A name of its own per run: the navmesh file sits in the shared build output, where another test run may delete it.
     private static readonly string XBlock = $"free_air_taxi_test_{Guid.NewGuid():N}";
@@ -54,9 +58,13 @@ public class FreeAirTaxiTests {
 
     private static (long Paid, long Fare) Ride(DateTime? eventEnd) => Ride(eventEnd, 3, true).Paid;
 
-    // Mode 3 pays in meso; mode 4 (the meret air taxi) pays in meret. Returns what each wallet lost.
     private static ((long Paid, long Fare) Paid, long MeretPaid) Ride(DateTime? eventEnd, byte mode, bool meretTaxiOn,
-                                                                    bool premium = false, bool vipTaxiOn = true, bool visited = true) {
+                                                                    bool premium = false, bool vipTaxiOn = true, bool visited = true) =>
+        Ride(eventEnd, mode, meretTaxiOn, Outcome.Went, premium, vipTaxiOn, visited).Paid;
+
+    // Mode 3 pays in meso; mode 4 (the meret air taxi) pays in meret. Returns what each wallet lost, and the session.
+    private static (((long Paid, long Fare) Paid, long MeretPaid) Paid, TestGameSession Test) Ride(DateTime? eventEnd, byte mode,
+            bool meretTaxiOn, Outcome outcome, bool premium = false, bool vipTaxiOn = true, bool visited = true) {
         var test = new TestGameSession();
         var off = new List<string>();
         if (!meretTaxiOn) {
@@ -72,9 +80,16 @@ public class FreeAirTaxiTests {
             test.AddEvent(1, GameEventType.FreeAirTaxi, new FreeAirTaxi(), DateTime.Now.AddDays(-3), eventEnd);
         }
         MapMetadata from = Field(From);
-        test.AddMap(from, Field(To, notInPlayedClient: true));
+        test.AddMap(from, Field(To, notInPlayedClient: outcome == Outcome.RefusedHere));
         GameSession session = test.Start();
-        test.EnterMap(from);
+        if (outcome == Outcome.RefusedHere) {
+            test.EnterMap(from);
+        } else {
+            test.EnterMovingOut(from);
+            if (outcome == Outcome.WorldRefused) {
+                test.World.MoveAddress = "";
+            }
+        }
         // The premium club check (ConfigManager.IsPremiumClubActive) reads only the player; no premium time.
         var config = (ConfigManager) RuntimeHelpers.GetUninitializedObject(typeof(ConfigManager));
         typeof(ConfigManager).GetField("session", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(config, session);
@@ -95,7 +110,27 @@ public class FreeAirTaxiTests {
             writer.WriteInt(To);
         }));
         long fare = TaxiRules.AirFare(GameLua.CalcAirTaxiCharge(session.Player.Value.Character.Level), 0f);
-        return ((Meso - session.Currency.Meso, fare), Meso - session.Currency.Meret);
+        return (((Meso - session.Currency.Meso, fare), Meso - session.Currency.Meret), test);
+    }
+
+    // The fare (meso, mode 3) or the merets (mode 4) are kept only for a ride that went: a ride refused here or by the
+    // World gives them back. Before, both were taken ahead of the field change and kept whatever its end.
+    [TestCase((byte) 3, Outcome.Went, ExpectedResult = true)]
+    [TestCase((byte) 3, Outcome.WorldRefused, ExpectedResult = false)]
+    [TestCase((byte) 3, Outcome.RefusedHere, ExpectedResult = false)]
+    [TestCase((byte) 4, Outcome.Went, ExpectedResult = true)]
+    [TestCase((byte) 4, Outcome.WorldRefused, ExpectedResult = false)]
+    [TestCase((byte) 4, Outcome.RefusedHere, ExpectedResult = false)]
+    public bool TheFare_IsKeptOnlyForARideThatWent(byte mode, Outcome outcome) {
+        (((long paid, long fare), long meretPaid), TestGameSession test) = Ride(null, mode, true, outcome);
+        Assert.That(fare, Is.GreaterThan(0));
+        long taken = mode == 3 ? paid : meretPaid;
+        Assert.That(mode == 3 ? meretPaid : paid, Is.Zero, "the other wallet");
+        Assert.That(test.World.Moves, Has.Count.EqualTo(outcome == Outcome.RefusedHere ? 0 : 1), "the moves asked for");
+        if (outcome != Outcome.Went) {
+            Assert.That(taken, Is.Zero);
+        }
+        return taken > 0;
     }
 
     // The client sends mode 4 only with MeratAirTaxi on (cashcallmanager.cpp:123): with it off no meret is taken.

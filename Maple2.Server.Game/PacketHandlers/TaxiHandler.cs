@@ -99,16 +99,35 @@ public class TaxiHandler : FieldPacketHandler {
 
         int cost = Lua.CalcTaxiCharge(mapCount, (ushort) session.Player.Value.Character.Level);
 
-        if (!session.Currency.TryTakeMeso(cost)) {
+        Vector3 position = entities.Taxi.Position.Offset(-VectorExtensions.BLOCK_SIZE, entities.Taxi.Rotation);
+        Vector3 rotation = entities.Taxi.Rotation;
+        RideForMeso(session, mapId, cost, () => {
+            session.ConditionUpdate(ConditionType.taxiuse);
+            session.ConditionUpdate(ConditionType.taxifee, counter: cost);
+        }, position, rotation);
+    }
+
+    // A ride paid in meso. The fare is held (taken unshown) for the field change and kept only when the change went
+    // (GameSession.PaidFieldChange); a refused change gives it back unshown. It used to be taken for good before the
+    // change, so a refused change (FieldEnter's error box) kept it.
+    private static void RideForMeso(GameSession session, int mapId, long cost, Action? paid = null, in Vector3 position = default, in Vector3 rotation = default) {
+        if (cost > 0 && !session.Currency.TryTakeMeso(cost, notify: false)) {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_meso));
             return;
         }
 
-        session.ConditionUpdate(ConditionType.taxiuse);
-        session.ConditionUpdate(ConditionType.taxifee, counter: cost);
-        Vector3 position = entities.Taxi.Position.Offset(-VectorExtensions.BLOCK_SIZE, entities.Taxi.Rotation);
-        Vector3 rotation = entities.Taxi.Rotation;
-        session.SendFieldEnter(session.PrepareField(mapId, position: position, rotation: rotation));
+        bool kept = false;
+        bool prepared = session.PaidFieldChange(mapId, () => {
+            kept = true;
+            if (cost > 0) {
+                session.Currency.NotifyMeso();
+            }
+            paid?.Invoke();
+        }, position, rotation);
+        if (!kept) {
+            session.Currency.ReturnMeso(cost, notify: false);
+        }
+        session.SendFieldEnter(prepared);
     }
 
     // The client never sends mode 2 (its RequestTaxi senders use modes 0, 1, 3, 4 and 5); it took no payment, so it
@@ -139,14 +158,7 @@ public class TaxiHandler : FieldPacketHandler {
             TaxiRules.AirFare(Lua.CalcAirTaxiCharge((ushort) session.Player.Value.Character.Level), AirTaxiReduceRate(session)),
             premium, session.FindEvent(GameEventType.FreeAirTaxi).Count > 0);
 
-        if (cost > 0) {
-            if (!session.Currency.TryTakeMeso(cost)) {
-                session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_meso));
-                return;
-            }
-        }
-
-        session.SendFieldEnter(session.PrepareField(mapId));
+        RideForMeso(session, mapId, cost);
     }
 
     public const string VipAirTaxiFeature = "VIPAirTaxi";
@@ -165,12 +177,21 @@ public class TaxiHandler : FieldPacketHandler {
         }
 
         long price = TaxiRules.AirFare(Constants.MeratAirTaxiPrice, AirTaxiReduceRate(session));
-        if (!session.Currency.TryTakeMeret(price)) {
+        if (!session.Currency.TryTakeMeret(price, notify: false)) {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_merat));
             return;
         }
 
-        session.SendFieldEnter(session.PrepareField(mapId));
+        // As RideForMeso: the merets are shown taken (and counted as spent) only for a change that went.
+        bool kept = false;
+        bool prepared = session.PaidFieldChange(mapId, () => {
+            kept = true;
+            session.Currency.NotifyMeretTaken(price);
+        });
+        if (!kept) {
+            session.Currency.ReturnMeret(price);
+        }
+        session.SendFieldEnter(prepared);
     }
 
     private void HandleDiscoverTaxi(GameSession session) {

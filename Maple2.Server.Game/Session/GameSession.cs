@@ -724,7 +724,18 @@ public sealed partial class GameSession : Core.Network.Session {
     private DungeonGroupType? leftDungeonGroup;
 
     public bool PrepareField(int mapId, int portalId = -1, long ownerId = 0, int roomId = 0, in Vector3 position = default, in Vector3 rotation = default) {
-        return PrepareFieldInternal(mapId, out _, portalId, ownerId, roomId, position, rotation);
+        return PrepareFieldInternal(mapId, out _, portalId, ownerId, roomId, position, rotation, null);
+    }
+
+    // A field change bought with a fare or tickets (the taxis): pay runs once the change went, after the move here
+    // (PrepareField true) or, for a move to another server, before that move's save (Migrate's beforeMove), so the
+    // payment is stored with it. A refused change never runs it. Returns PrepareField's answer, for SendFieldEnter.
+    public bool PaidFieldChange(int mapId, Action pay, in Vector3 position = default, in Vector3 rotation = default) {
+        bool prepared = PrepareFieldInternal(mapId, out _, -1, 0, 0, position, rotation, pay);
+        if (prepared) {
+            pay();
+        }
+        return prepared;
     }
 
     // Set when the field being entered was reached by a portal: EnterField then sends InvincibleEffect. Chosen from
@@ -740,7 +751,7 @@ public sealed partial class GameSession : Core.Network.Session {
     public UgcOxRules.Settings? UgcOxPending;
 
     public bool PrepareFieldByPortal(int mapId, int portalId = -1, int roomId = 0) {
-        bool prepared = PrepareFieldInternal(mapId, out _, portalId, 0, roomId, default, default);
+        bool prepared = PrepareFieldInternal(mapId, out _, portalId, 0, roomId, default, default, null);
         PortalArrival = prepared;
         return prepared;
     }
@@ -756,7 +767,7 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     public bool PrepareField(int mapId, [NotNullWhen(true)] out FieldManager? newField, int portalId = -1, long ownerId = 0, int roomId = 0, in Vector3 position = default, in Vector3 rotation = default) {
-        return PrepareFieldInternal(mapId, out newField, portalId, ownerId, roomId, position, rotation);
+        return PrepareFieldInternal(mapId, out newField, portalId, ownerId, roomId, position, rotation, null);
     }
 
     // Set by a field change that became a move to another server (a dungeon left for a map outside it): the move
@@ -773,7 +784,8 @@ public sealed partial class GameSession : Core.Network.Session {
         }
     }
 
-    private bool PrepareFieldInternal(int mapId, out FieldManager? newField, int portalId, long ownerId, int roomId, in Vector3 position, in Vector3 rotation) {
+    private bool PrepareFieldInternal(int mapId, out FieldManager? newField, int portalId, long ownerId, int roomId, in Vector3 position, in Vector3 rotation,
+                                      Action? beforeMove) {
         PortalArrival = false;
         fieldChangeMigrated = false;
         // If entering home without instanceKey set, default to own home.
@@ -805,7 +817,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 newField = dungeonField.Lobby;
                 Dungeon.LeaveStage();
             } else {
-                Migrate(mapId);
+                Migrate(mapId, beforeMove: beforeMove);
                 fieldChangeMigrated = true;
                 newField = null;
                 return false;

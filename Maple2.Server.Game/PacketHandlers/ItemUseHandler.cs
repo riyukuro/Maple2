@@ -1533,14 +1533,23 @@ public class ItemUseHandler : FieldPacketHandler {
         if (tickets <= 0) {
             return; // the client refuses this itself (s_err_cash_taxi_need_advanced_ticket, a client-only string)
         }
-        bool consumed = tickets == 1
-            ? session.Item.Inventory.Consume(item.Uid, 1)
-            : session.Item.Inventory.Consume([new IngredientInfo(ItemTag.air_taxi_advanced, tickets)]);
-        if (!consumed) {
+        // The tickets are counted before the field change and used after it, only when it went: they used to be used
+        // first, so a refused change (FieldEnter's error box) used them up.
+        bool held = tickets == 1
+            ? item.IsSpendable() && item.Amount >= 1
+            : session.Item.Inventory.SpendableCount(ItemTag.air_taxi_advanced) >= tickets;
+        if (!held) {
             session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_itemcount));
             return;
         }
 
-        session.SendFieldEnter(session.PrepareField(mapId));
+        session.SendFieldEnter(session.PaidFieldChange(mapId, () => {
+            bool consumed = tickets == 1
+                ? session.Item.Inventory.Consume(item.Uid, 1)
+                : session.Item.Inventory.Consume([new IngredientInfo(ItemTag.air_taxi_advanced, tickets)]);
+            if (!consumed) {
+                Logger.Error("Air taxi to {MapId}: {Tickets} ticket(s) counted for {CharacterId} could not be used", mapId, tickets, session.CharacterId);
+            }
+        }));
     }
 }
