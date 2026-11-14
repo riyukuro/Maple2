@@ -51,7 +51,8 @@ public partial class GameStorage {
             var club = new Model.Club {
                 Name = name,
                 LeaderId = leaderId,
-                CreationTime = DateTime.UtcNow,
+                // In the server's local time, as every datetime column is read back (ToEpochSeconds).
+                CreationTime = DateTime.Now,
                 State = ClubState.Staged,
             };
             Context.Club.Add(club);
