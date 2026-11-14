@@ -616,6 +616,80 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
     #endregion
+    #region run, swim, glide, climb, swimtime, laddertime, ropetime (FieldPlayer.OnStateSync)
+    // The player on the given map, with the syncs kept where they are sent (as for riding).
+    private FieldPlayer StateSyncField(int mapId) {
+        Start();
+        typeof(FieldManager).GetField("<MapId>k__BackingField", Any)!.SetValue(Field, mapId);
+        FieldPlayer player = test.Session.Player;
+        player.Value.Character.MapId = mapId;
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(player, Field);
+        typeof(FieldPlayer).GetField("stateSyncDistanceTracking", Any)!.SetValue(player, new Dictionary<ActorState, float>());
+        typeof(MapEntityMetadata).GetField("<BoundingBox>k__BackingField", Any)!.SetValue(Field.Entities,
+            new Maple2.Tools.Collision.Prism(new Maple2.Tools.Collision.Circle(Vector2.Zero, 100000), -100000, 200000));
+        return player;
+    }
+
+    // 40001860 run 500, 40001730 swim 500, 40001670 glide 200, 40001650 climb 100: each meter (150 units) moved in
+    // the state counts (both swim states for swim); the same distance in another state does not.
+    [TestCase(ConditionType.run, ActorState.Walk, 500)]
+    [TestCase(ConditionType.swim, ActorState.Swim, 500)]
+    [TestCase(ConditionType.swim, ActorState.SwimDash, 500)]
+    [TestCase(ConditionType.glide, ActorState.Glide, 200)]
+    [TestCase(ConditionType.climb, ActorState.Climb, 100)]
+    public void Distance_EachMeterInItsState(ConditionType type, ActorState state, long value) {
+        FieldPlayer player = StateSyncField(2000001);
+        Quest quest = StartQuest(Condition(type, value, [], []));
+        Vector3 start = player.Position;
+        void Sync(ActorState syncState, float x) => player.OnStateSync(new StateSync { State = syncState, Position = start + new Vector3(x, 0, 0) });
+
+        Sync(ActorState.Ride, 0);
+        Sync(ActorState.Ride, 100);
+        Sync(ActorState.Ride, 200);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Sync(state, 200);
+        Sync(state, 300);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Sync(state, 400);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
+    // 60110210: <condition type="run" code="82000012,82000001,82000003" value="1000" />, a meter run on one of the
+    // maps counts; on another map it does not.
+    [TestCase(82000001, 1)]
+    [TestCase(82000002, 0)]
+    public void Run_60110210_OnTheMapsOfTheCode(int mapId, int expected) {
+        FieldPlayer player = StateSyncField(mapId);
+        Quest quest = StartQuest(Condition(ConditionType.run, 1000, ["82000012", "82000001", "82000003"], []));
+        Vector3 start = player.Position;
+        player.OnStateSync(new StateSync { State = ActorState.Walk, Position = start });
+        player.OnStateSync(new StateSync { State = ActorState.Walk, Position = start + new Vector3(150, 0, 0) });
+
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
+    }
+
+    // One second in the state: 40001710 swimtime 120, 40001690 laddertime 300 (and ropetime, 12 rows like it).
+    [TestCase(ConditionType.swimtime, ActorState.Swim)]
+    [TestCase(ConditionType.swimtime, ActorState.SwimDash)]
+    [TestCase(ConditionType.laddertime, ActorState.Ladder)]
+    [TestCase(ConditionType.ropetime, ActorState.Rope)]
+    public void Time_EachSecondInItsState(ConditionType type, ActorState state) {
+        FieldPlayer player = StateSyncField(2000001);
+        Quest quest = StartQuest(Condition(type, 120, [], []));
+        typeof(FieldPlayer).GetProperty("StateSyncTimeTracking", Any)!.SetValue(player, 999L);
+        player.OnStateSync(new StateSync { State = ActorState.Walk, Position = player.Position });
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        // Already in the state: a change of state starts the second again.
+        typeof(FieldPlayer).GetField("state", Any)!.SetValue(player, state);
+        typeof(FieldPlayer).GetProperty("StateSyncTimeTracking", Any)!.SetValue(player, 1000L);
+        player.OnStateSync(new StateSync { State = state, Position = player.Position });
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+    #endregion
     #region item_move (FieldManager.PlaceCube, a liftable put down)
     // 10001060: <condition type="item_move" code="30000030" value="3" target="400" />, the liftable item of the code
     // put down on a target box of the target counts; one put down off the box, or another item, does not.
