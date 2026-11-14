@@ -64,8 +64,18 @@ public class ItemUseHandler : FieldPacketHandler {
         if (limit.RequireVip && session.Player.Value.Account.PremiumTime < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
             return false;
         }
+        // A wedding item only while married, also with a divorce filed (WeddingManager::IsInProgress); the client
+        // answers its error 7 and sends nothing.
+        if (limit.RequireWedding && !MarriageManager.InProgress(session.Marriage.Marriage.Status)) {
+            return false;
+        }
         return item.Metadata.Function?.OnlyShadowWorld != true || session.Field?.Metadata.Property.Continent == Continent.ShadowWorld;
     }
+
+    // Unk_Inventory::RequestUseItem (@0x140a61db0), the client's only sender of the item use: a dead player sends none
+    // (it shows its own text), only an item box of these three functions is opened while dead.
+    public static bool DeadMayUse(ItemFunction? function) =>
+        function is ItemFunction.OpenItemBox or ItemFunction.OpenItemBoxLullu or ItemFunction.OpenItemBoxLulluSimple;
 
     // ItemLimit::IsJobAllowed (@0x140545c80): no job is allowed nothing, a beginner counts as a
     // knight, and a limit list that is empty or names job 0 or the beginner allows every job.
@@ -89,6 +99,9 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
+        if (session.Player.IsDead && !DeadMayUse(item.Metadata.Function?.Type)) {
+            return;
+        }
         if (!UseAllowed(session, item)) {
             return;
         }

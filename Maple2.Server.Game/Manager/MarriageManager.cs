@@ -424,10 +424,13 @@ public sealed class MarriageManager {
         RemoveMarriage(false);
     }
 
-    // WeddingManager::IsInProgress: the wedding recall works while married, also during a divorce.
-    public static bool CanRecall(MaritalStatus status) {
+    // WeddingManager::IsInProgress (weddingmanager.cpp:1174): married, also during a divorce.
+    public static bool InProgress(MaritalStatus status) {
         return status is MaritalStatus.Married or MaritalStatus.DivorceFiledByGroom or MaritalStatus.DivorceFiledByBride;
     }
+
+    // The wedding recall works while the wedding is in progress.
+    public static bool CanRecall(MaritalStatus status) => InProgress(status);
 
     // How long the partner's recall notice stays open. The server pack has no keep-time row for it.
     private const long RecallKeepSeconds = 300;

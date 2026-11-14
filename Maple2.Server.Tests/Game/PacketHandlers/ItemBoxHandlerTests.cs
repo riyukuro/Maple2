@@ -252,6 +252,38 @@ public class ItemBoxHandlerTests {
         Assert.That(Held(session, BoxId), Is.EqualTo(opens ? 1 : 2));
     }
 
+    // A dead player's client sends no item use but an OpenItemBox, OpenItemBoxLullu or OpenItemBoxLulluSimple one
+    // (Unk_Inventory::RequestUseItem); a box with a key is not one of them.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void DeadPlayer_OpensOnlyThePlainBox(bool withKey) {
+        GameSession session = withKey
+            ? Login(ItemFunction.OpenItemBoxWithKey, $"{KeyId},1,0,0,0,{DropBoxId}", amount: 2, keys: 2)
+            : Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 2);
+        typeof(Maple2.Server.Game.Model.FieldPlayer).GetField("isDead",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.SetValue(session.Player, true);
+
+        Use(session);
+
+        Assert.That(Held(session, BoxId), Is.EqualTo(withKey ? 2 : 1));
+    }
+
+    [TestCase(MaritalStatus.Single, false)]
+    [TestCase(MaritalStatus.Engaged, false)]
+    [TestCase(MaritalStatus.Divorced, false)]
+    [TestCase(MaritalStatus.Married, true)]
+    [TestCase(MaritalStatus.DivorceFiledByGroom, true)]
+    [TestCase(MaritalStatus.DivorceFiledByBride, true)]
+    public void WeddingBox_OpensOnlyWhileMarried(MaritalStatus status, bool opens) {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,0,0,{DropBoxId}", amount: 2,
+            limit: old => old with { RequireWedding = true });
+        session.Marriage.Marriage.Status = status;
+
+        Use(session);
+
+        Assert.That(Held(session, BoxId), Is.EqualTo(opens ? 1 : 2));
+    }
+
     [TestCase(0)]
     [TestCase(21)]
     public void OpenItemBox_MultiOpen_RefusesACountTheClientCannotSend(int count) {
