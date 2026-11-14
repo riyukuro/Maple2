@@ -3,6 +3,7 @@ using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Tools.Collision;
@@ -253,7 +254,7 @@ public static class SkillUtils {
         }
 
         foreach ((int id, short level, bool owned, int count, CompareType compare) in condition.Buff) {
-            List<Buff> buffs = target.Buffs.EnumerateBuffs(id);
+            List<Buff> buffs = BuffManager.CopyFromHandler(() => target.Buffs.EnumerateBuffs(id));
             bool validBuff = false;
             foreach (Buff buff in buffs) {
                 if (buff.Level < level) {
@@ -310,7 +311,7 @@ public static class SkillUtils {
         // hasNotBuffOwner (HasNotBuffOwned): only a buff ownedBy cast fails the test, as hasBuffOwner counts only one.
         // Only an enabled copy fails it, as the client's buff tests count only enabled records (HasEnabledWithId /
         // HasEnabledWithIdAndCaster, basecollision.cpp:333-336) and as RangeTargetSelect.Excludes does.
-        if (condition.HasNotBuffIds.Length > 0 && condition.HasNotBuffIds.Any(id => target.Buffs.EnumerateBuffs(id)
+        if (condition.HasNotBuffIds.Length > 0 && condition.HasNotBuffIds.Any(id => BuffManager.CopyFromHandler(() => target.Buffs.EnumerateBuffs(id))
                 .Any(buff => buff.Enabled && (!condition.HasNotBuffOwned || buff.Caster.ObjectId == ownedBy.ObjectId)))) {
             return false;
         }

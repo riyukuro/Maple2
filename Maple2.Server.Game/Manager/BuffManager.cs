@@ -261,7 +261,8 @@ public class BuffManager : IUpdatable {
 
     public List<Buff> EnumerateBuffs() => buffs.Values.SelectMany(list => list).ToList();
     public List<Buff> EnumerateBuffs(int buffId) => this.buffs.TryGetValue(buffId, out List<Buff>? buffs) ? buffs.ToList() : [];
-    // A copy of the held buffs taken off the field thread (a cast check runs on the packet handler's): the field thread
+    // A copy of the held buffs taken off the field thread (a cast check runs on the packet handler's; the spirit rate, the
+    // sums and a begin condition's buff tests are read from both threads): the field thread
     // may add or remove one while the lists are copied, and the copy is then taken again. A copy that raced a removal
     // without throwing can hold an empty slot (a null at the list's end): it is dropped.
     internal static List<Buff> CopyFromHandler(Func<List<Buff>> copy) {
@@ -441,7 +442,7 @@ public class BuffManager : IUpdatable {
             return current;
         }
         int version = Volatile.Read(ref sumsVersion);
-        current = SumsOf(EnumerateBuffs());
+        current = SumsOf(CopyFromHandler(EnumerateBuffs));
         if (version == Volatile.Read(ref sumsVersion)) {
             Volatile.Write(ref sums, current);
         }
@@ -449,7 +450,7 @@ public class BuffManager : IUpdatable {
     }
 
     // The consume spirit rates of the enabled buffs held, each times its stack count: -1 makes casts free.
-    public float ConsumeSpRate => EnumerateBuffs().Where(buff => buff.Counted).Sum(buff => buff.Metadata.Consume.SpRate * buff.Stacks);
+    public float ConsumeSpRate => CopyFromHandler(EnumerateBuffs).Where(buff => buff.Counted).Sum(buff => buff.Metadata.Consume.SpRate * buff.Stacks);
 
     // An enabled buff held lists the skill among the ones its holder cannot cast.
     public bool SkillUseDisabled(int skillId) {
