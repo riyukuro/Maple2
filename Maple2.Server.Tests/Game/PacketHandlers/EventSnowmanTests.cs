@@ -268,9 +268,11 @@ public class EventSnowmanTests {
             Assert.That((entry.Goal, entry.DailyMax, entry.AccumMax), Is.EqualTo((300, 1, 7)));
             Assert.That(entry.Rewards, Is.EqualTo(new[] { new RewardItem(DailyItem, 1, 2) }));
             Assert.That(entry.AccumRewards, Is.EqualTo(new[] { new RewardItem(AccumItem, 3, 1) }));
-            // No option: no thema.
+            // No option, or an empty thema: the snowman one, as the client has texts for named themas only.
             Assert.That(ServerTableMapper.ReadSnowman("<ms2><snowman><condition/><rewardItems/><accumRewardItems/></snowman></ms2>", "")?.Theme,
-                Is.EqualTo(""));
+                Is.EqualTo("snowman"));
+            Assert.That(ServerTableMapper.ReadSnowman("<ms2><option thema=\"\"/><snowman><condition/><rewardItems/><accumRewardItems/></snowman></ms2>", "")?.Theme,
+                Is.EqualTo("snowman"));
             Assert.That(ServerTableMapper.ReadSnowman("<ms2><snowman><condition/><rewardItems/></snowman></ms2>", ""), Is.Null);
             Assert.That(ServerTableMapper.ReadSnowman("<ms2/>", ""), Is.Null);
             Assert.That(ServerTableMapper.ReadSnowman("", ""), Is.Null);

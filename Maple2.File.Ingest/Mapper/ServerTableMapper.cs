@@ -2313,17 +2313,23 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             BannerPath: root.GetAttribute("bannerPath"));
     }
 
-    // GameEventSnowman::vfunc_2 (gameevent.cpp) loads value1: the root's <option thema=""/> (none: no thema) and each
+    // GameEventSnowman::vfunc_2 (gameevent.cpp) loads value1: the root's <option thema=""/> and each
     // <snowman>'s <condition snowflakeCount dailyMaxCount accumMaxCount/> and the <v itemID grade count/> of its
     // <rewardItems> and <accumRewardItems>. A snowman without one of those nodes fails ReadSnowmanData and the
     // event is not loaded; so is one without a snowman, as the dialog then has nothing to show. value2 is kept as
     // it is: the event sends it with the snowmen (vfunc_3), and the dialog reads its layout from it.
+    // The dialog's texts are keyed by the thema ($s_snowman_<thema>_dialog_title and the like); this client's
+    // strings have them for snowman, dumpling and weddingcake only. The 2017-2019 KR rows have no option, and in this
+    // client their dialog would show the raw keys, so a row without a thema is read as the snowman one.
     public static Snowman? ReadSnowman(string value1, string value2) {
         XmlElement? root = LoadElement(value1, "ms2");
         if (root == null) {
             return null;
         }
         string theme = (root.SelectSingleNode("option") as XmlElement)?.GetAttribute("thema") ?? string.Empty;
+        if (string.IsNullOrEmpty(theme)) {
+            theme = "snowman";
+        }
         var snowmen = new List<Snowman.Entry>();
         foreach (XmlElement node in root.SelectNodes("snowman")?.OfType<XmlElement>() ?? []) {
             if (node.SelectSingleNode("condition") is not XmlElement condition
