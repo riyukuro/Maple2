@@ -35,6 +35,19 @@ public class TrophyWiringTests {
 
     private static long Goal => 1000;
 
+    // The config a logged-in session holds (an item grade's claim stores it with the claimed grade).
+    private void LoadConfig(GameSession session) {
+        test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
+            [JobCode.Newbie] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
+                [SkillRank.Basic] = [], [SkillRank.Awakening] = [],
+            }, []),
+        }));
+        test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        session.Config = new Maple2.Server.Game.Manager.ConfigManager(db, session);
+        test.TakeSent();
+    }
+
     private List<SendOp> Sent() {
         List<SendOp> ops = test.TakeSentOps();
         Assert.That(test.Errors, Is.Empty);
@@ -859,6 +872,7 @@ public class TrophyWiringTests {
         var grades = new Dictionary<int, AchievementMetadataGrade>(trophy.Grades);
         grades[1] = grades[1] with { Reward = new AchievementMetadataReward(AchievementRewardType.item, RewardItem, 3, 1) };
         GameSession session = Start(trophy with { Grades = grades });
+        LoadConfig(session);
         session.Currency.Meret = 100;
         session.Currency.Meret -= 10;
         test.TakeSent();
@@ -884,6 +898,31 @@ public class TrophyWiringTests {
         Assert.That(StoredGrade(), Is.EqualTo(2));
         session.Achievement.ClaimReward(Trophy);
         Assert.That(Held(), Is.EqualTo(3));
+    }
+
+    // A stat point grade given at its completion (kept in memory) and then an item grade claimed: the claim's stored
+    // row is past the stat point grade, so the point is stored with it, as a crash then would lose it for good.
+    [Test]
+    public void Claim_AnItemGradeStoresTheStatPointsOfTheGradesBefore() {
+        const int RewardItem = 20000001;
+        test.Register(TestGameSession.Metadata(RewardItem));
+        AchievementMetadata trophy = TestGameSession.Trophy(Trophy, ConditionType.use_merat, [10, Goal]);
+        var grades = new Dictionary<int, AchievementMetadataGrade>(trophy.Grades);
+        grades[1] = grades[1] with { Reward = new AchievementMetadataReward(AchievementRewardType.statpoint, 0, 2, 1) };
+        grades[2] = grades[2] with { Reward = new AchievementMetadataReward(AchievementRewardType.item, RewardItem, 1, 1) };
+        GameSession session = Start(trophy with { Grades = grades });
+        LoadConfig(session);
+        session.Currency.Meret = 2 * Goal;
+        session.Currency.Meret -= Goal;
+        Assert.That(session.Config.StatPoints(AttributePointSource.Trophy), Is.EqualTo(2));
+
+        session.Achievement.ClaimReward(Trophy);
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(RewardItem).Sum(item => item.Amount), Is.EqualTo(1));
+            Assert.That(db.GetAchievements(test.CharacterId)[Trophy].RewardGrade, Is.EqualTo(3));
+            Assert.That(db.LoadCharacterConfig(test.CharacterId).Item10?[AttributePointSource.Trophy], Is.EqualTo(2));
+        });
     }
     #endregion
 

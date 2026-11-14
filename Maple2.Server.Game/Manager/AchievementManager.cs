@@ -310,10 +310,16 @@ public sealed class AchievementManager {
                     return;
                 }
                 // The claimed grade is stored before the item's row is made, so a crash between them cannot give the
-                // item again after a relog; a refused store gives nothing and leaves the grade to claim.
+                // item again after a relog; a refused store gives nothing and leaves the grade to claim. The row's
+                // grade is also past the grades whose reward was given without a claim (stat and skill points in the
+                // config, an emote in the unlock row, kept only in memory until the session save), so those are
+                // stored with it: stored alone, a crash lost them for good.
                 achievement.RewardGrade++;
                 long ownerId = achievement.Metadata.AccountWide ? session.AccountId : session.CharacterId;
-                if (!session.TrySavePurchase(db => db.SaveAchievements(ownerId, [achievement]))) {
+                if (!session.TrySavePurchase(db => {
+                        session.Config.Save(db);
+                        return db.SavePlayer(session.Player) && db.SaveAchievements(ownerId, [achievement]);
+                    })) {
                     achievement.RewardGrade--;
                     logger.Warning("Trophy {AchievementId} grade {Grade} claim not stored, nothing given CharacterId={CharacterId}",
                         achievement.Id, achievement.RewardGrade, session.CharacterId);
