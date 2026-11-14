@@ -37,9 +37,33 @@ public class DeleteAccountTests {
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
+    // Nothing blocks: the KR client would walk its terms boxes into the identity step, which does nothing outside
+    // CN (FUN_1418f2480), and the delete is never sent. The check answers the identity-check failure instead.
     [Test]
-    public void Check_NothingBlocks_AnswersZero() {
-        Assert.That(Check(), Is.EqualTo("3201" + "00000000" + "0000000000000000"));
+    public void Check_NothingBlocks_AnswersTheIdentityCheckFailure() {
+        Assert.That(Check(), Is.EqualTo("3201" + "20000000" + "0000000000000000"));
+    }
+
+    // The guild is not a character column (GuildMember holds it): a member's account is blocked.
+    [Test]
+    public void Check_GuildMember_NamesTheCharacter() {
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.CreateGuild("Blocking", test.CharacterId), Is.Not.Null);
+        }
+
+        Assert.That(Check(), Is.EqualTo(Hex(DeleteAccountPacket.Check(DeleteAccountRules.Guild, test.CharacterId))));
+    }
+
+    // The marriage is its own table; an engaged character blocks too (any status but single).
+    [Test]
+    public void Check_Married_NamesTheCharacter() {
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Account account = db.CreateAccount(new Account { Username = "partner" }, "pw");
+            long partner = test.AddCharacter("Partner", accountId: account.Id);
+            Assert.That(db.CreateMarriage(test.CharacterId, partner), Is.Not.Null);
+        }
+
+        Assert.That(Check(), Is.EqualTo(Hex(DeleteAccountPacket.Check(DeleteAccountRules.Wedding, test.CharacterId))));
     }
 
     [Test]
@@ -69,7 +93,7 @@ public class DeleteAccountTests {
             Assert.That(db.CreateMail(new Mail { ReceiverId = other }), Is.Not.Null);
         }
 
-        Assert.That(Check(), Is.EqualTo(Hex(DeleteAccountPacket.Check(DeleteAccountRules.Ok))));
+        Assert.That(Check(), Is.EqualTo(Hex(DeleteAccountPacket.Check(DeleteAccountRules.CertQueryFail))));
     }
 
     [Test]

@@ -386,8 +386,10 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             return false;
         }
 
-        if (character.GuildId != 0) {
-            if (db.GetGuild(character.GuildId)?.LeaderCharacterId == characterId) {
+        // The guild is not a character column: the member row holds it.
+        long guildId = db.GetGuildId(characterId);
+        if (guildId != 0) {
+            if (db.GetGuild(guildId)?.LeaderCharacterId == characterId) {
                 session.Send(CharacterListPacket.DeleteEntry(characterId, s_char_err_guild_master));
                 return false;
             }
