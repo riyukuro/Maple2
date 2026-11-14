@@ -50,6 +50,20 @@ public static class DungeonScoreRules {
         return DungeonMissionRank.F;
     }
 
+    // The ranks of a room's season rank reward (DungeonRankRewardBase, the room's seasonRankRewardID) a clear gives.
+    // The client marks rank i given while i <= the reward's count and the server time is before its expiry
+    // (GetRankRewardCount, dungeonrecordcli.cpp:608), and the reward items are "awarded for reaching Weekly Rank C"
+    // (20300932): so the count holds the ranks given in the season week, and a clear gives each rank above the live
+    // count up to its own rank, no higher than the reward's highest rank (DungeonRankRewardBase::GetMaxRank). Inferred
+    // (not found in the client, which never gives them): the ranks below the clear's one are given too, at the clear.
+    public static IEnumerable<int> RankRewardRanks(int count, long expiry, long now, DungeonMissionRank rank, int maxRank) {
+        int given = now < expiry ? count : 0;
+        int top = Math.Min((int) rank, maxRank);
+        for (int next = given + 1; next <= top; next++) {
+            yield return next;
+        }
+    }
+
     // DungeonRoomData::IsSeasonRankRoom: a chaos raid whose limitPlayerLevel is at least DungeonSeasonRankMinLevel.
     public static bool IsSeasonRankRoom(DungeonGroupType groupType, int limitPlayerLevel, int seasonRankMinLevel) {
         return groupType == DungeonGroupType.chaosRaid && limitPlayerLevel >= seasonRankMinLevel;

@@ -15,7 +15,8 @@ public static class DungeonRoomPacket {
         Modify = 7,
         DungeonResult = 10, // OnClosingPhoto (dungeonrecordcli.cpp:299); 11 only opens a dialog (:306)
         Error = 18,
-        RankRewards = 19, // the whole map; 20 adds one reward
+        RankRewards = 19, // the whole map
+        RankReward = 20, // one reward (OnAddReward, dungeonrecordcli.cpp:451)
     }
 
     public static ByteWriter Load(IDictionary<int, DungeonRecord> records) {
@@ -79,6 +80,15 @@ public static class DungeonRoomPacket {
             pWriter.WriteInt(id);
             pWriter.WriteClass<DungeonRankReward>(reward);
         }
+
+        return pWriter;
+    }
+
+    // OnAddReward reads the reward alone (id, count, expiry) and keys it by its id.
+    public static ByteWriter RankReward(DungeonRankReward reward) {
+        var pWriter = Packet.Of(SendOp.RoomDungeon);
+        pWriter.Write<Command>(Command.RankReward);
+        pWriter.WriteClass<DungeonRankReward>(reward);
 
         return pWriter;
     }

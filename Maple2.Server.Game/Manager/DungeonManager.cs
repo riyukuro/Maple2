@@ -166,24 +166,29 @@ public class DungeonManager {
         }
     }
 
-    private bool MailSeasonReward(FieldManager field, DungeonSeasonTable.Entry season, DungeonSeasonTable.Reward reward) {
-        Item? item = field.ItemDrop.CreateItem(reward.ItemId, reward.Grade, reward.Count);
+    private bool MailSeasonReward(FieldManager field, DungeonSeasonTable.Entry season, DungeonSeasonTable.Reward reward) =>
+        MailReward(field, reward.ItemId, reward.Grade, reward.Count, season.SystemMailId);
+
+    // A system mail (systemMailId, an id of string/systemmailcontent) with one reward item. False when the item cannot
+    // be made or the mail cannot be stored, so the caller can try again later.
+    private bool MailReward(FieldManager field, int itemId, int grade, int count, int systemMailId) {
+        Item? item = field.ItemDrop.CreateItem(itemId, grade, count);
         if (item == null) {
-            logger.Warning("Dungeon season {SeasonId} reward item {ItemId} could not be made", season.SeasonId, reward.ItemId);
+            logger.Warning("Dungeon reward item {ItemId} (system mail {SystemMailId}) could not be made", itemId, systemMailId);
             return false;
         }
         using GameStorage.Request db = session.GameStorage.Context();
         Mail? mail = db.CreateMail(new Mail {
             Type = MailType.System,
             ReceiverId = session.CharacterId,
-            Content = season.SystemMailId.ToString(), // an id of string/systemmailcontent
+            Content = systemMailId.ToString(),
         });
         if (mail == null) {
             return false;
         }
         Item? added = db.CreateItem(mail.Id, item);
         if (added == null) {
-            logger.Error("Dungeon season {SeasonId} reward item {ItemId} could not be added to mail {MailId}", season.SeasonId, reward.ItemId, mail.Id);
+            logger.Error("Dungeon reward item {ItemId} could not be added to mail {MailId}", itemId, mail.Id);
             return true; // the mail exists; a retry would send a second one
         }
         mail.Items.Add(added);
@@ -757,23 +762,59 @@ public class DungeonManager {
         DungeonScoreRules.ApplyLifetime(record, score);
         // The clear's rank counts for dungeon_rank: the room is the code and the rank (0 F to 5 S+) must reach the
         // target (22210001 "Earn S+ Rank" 5, 22210045 "Earn A rank" 3, 93000173 "Spar with" the captain 0).
-        session.ConditionUpdate(ConditionType.dungeon_rank, targetLong: (long) DungeonScoreRules.Rank(rankTable.Scores, score),
-            codeLong: Metadata.Id);
+        DungeonMissionRank rank = DungeonScoreRules.Rank(rankTable.Scores, score);
+        session.ConditionUpdate(ConditionType.dungeon_rank, targetLong: (long) rank, codeLong: Metadata.Id);
 
-        if (DungeonScoreRules.IsSeasonRankRoom(Metadata.GroupType, Metadata.Limit.MinLevel, session.ServerTableMetadata.ConstantsTable.DungeonSeasonRankMinLevel)) {
-            DateTime clearTime = clearTimeStamp.FromEpochSeconds();
-            DungeonSeasonTable.Entry? season = session.TableMetadata.DungeonSeasonTable.Current(clearTime);
-            if (season != null) {
+        bool seasonRankRoom = DungeonScoreRules.IsSeasonRankRoom(Metadata.GroupType, Metadata.Limit.MinLevel,
+            session.ServerTableMetadata.ConstantsTable.DungeonSeasonRankMinLevel);
+        DateTime clearTime = clearTimeStamp.FromEpochSeconds();
+        DungeonSeasonTable.Entry? season = seasonRankRoom || Metadata.Reward.SeasonRankRewardId != 0
+            ? session.TableMetadata.DungeonSeasonTable.Current(clearTime) : null;
+        if (season != null) {
+            DateTime expiry = DungeonScoreRules.SeasonExpiry(clearTime, season.DayOfWeeks, season.StartTime.TimeOfDay, season.EndTime);
+            if (seasonRankRoom) {
                 // An ended week still in the record is mailed before this clear's score replaces it, under the one
                 // lock, so a weekly reset between the two cannot mail this score as the ended week's.
-                DateTime expiry = DungeonScoreRules.SeasonExpiry(clearTime, season.DayOfWeeks, season.StartTime.TimeOfDay, season.EndTime);
                 lock (seasonMailLock) {
                     MailSeasonRewardsLocked();
                     DungeonScoreRules.ApplySeason(record, score, clearTimeStamp, expiry.ToEpochSeconds());
                 }
             }
+            GiveRankRewards(rank, clearTimeStamp, expiry.ToEpochSeconds());
         }
         session.Send(DungeonRoomPacket.Update(record));
+    }
+
+    // The room's season rank reward (seasonRankRewardID, any room with one; DungeonScoreRules.RankRewardRanks): each
+    // rank the clear reaches above the ones given in this season week is mailed with its item and system mail
+    // (table/dungeonrankreward.xml), and the reward's count and the week's end go to the client (RoomDungeon 20), whose
+    // room panel then marks those ranks given. A rank whose item cannot be made stops there, so it is tried again at
+    // the next clear. The count is kept with the player (Unlock), saved with the player's other rows.
+    private void GiveRankRewards(DungeonMissionRank rank, long now, long expiry) {
+        FieldManager? field = session.Field;
+        if (Metadata == null || field == null || Metadata.Reward.SeasonRankRewardId == 0
+            || !session.TableMetadata.DungeonRankRewardTable.Entries.TryGetValue(Metadata.Reward.SeasonRankRewardId, out DungeonRankRewardTable.Entry? entry)
+            || entry.Items.Length == 0) {
+            return;
+        }
+        RankRewards.TryGetValue(entry.Id, out DungeonRankReward? reward);
+        int maxRank = entry.Items.Max(item => item.Rank);
+        int given = -1;
+        foreach (int next in DungeonScoreRules.RankRewardRanks(reward?.RankClaimed ?? 0, reward?.ExpiryTimestamp ?? 0, now, rank, maxRank)) {
+            DungeonRankRewardTable.Entry.Item? item = entry.Items.FirstOrDefault(item => item.Rank == next);
+            if (item != null && item.ItemId != 0 && !MailReward(field, item.ItemId, -1, 1, item.SystemMailId)) {
+                break;
+            }
+            given = next;
+        }
+        if (given < 0) {
+            return;
+        }
+        reward ??= new DungeonRankReward(entry.Id);
+        reward.RankClaimed = given;
+        reward.ExpiryTimestamp = expiry;
+        RankRewards[entry.Id] = reward;
+        session.Send(DungeonRoomPacket.RankReward(reward));
     }
 
     // grants: what gives the rewards the record names, run after the result is sent.

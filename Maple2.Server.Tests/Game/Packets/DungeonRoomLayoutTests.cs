@@ -173,7 +173,7 @@ public class DungeonRoomLayoutTests {
         rewards.WriteInt(0x53);
         rewards.WriteInt(2);
         rewards.WriteLong(0x54);
-        var reward = new DungeonRankReward(0x53) { RankClaimed = 2, UpdatedTimestamp = 0x54 };
+        var reward = new DungeonRankReward(0x53) { RankClaimed = 2, ExpiryTimestamp = 0x54 };
         Assert.That(Body(DungeonRoomPacket.RankRewards(new Dictionary<int, DungeonRankReward> { [0x53] = reward })),
             Is.EqualTo(rewards.ToArray()));
     }

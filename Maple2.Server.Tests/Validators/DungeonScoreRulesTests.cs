@@ -25,6 +25,18 @@ public class DungeonScoreRulesTests {
         Assert.That(DungeonScoreRules.Rank(scores, (short) score), Is.EqualTo(expected));
     }
 
+    // count, expiry (relative to now), the clear's rank, the reward's highest rank -> the ranks given.
+    [TestCase(0, 0, DungeonMissionRank.B, 5, new[] { 1, 2 })]
+    [TestCase(2, 60, DungeonMissionRank.A, 5, new[] { 3 })] // the week's count holds C and B
+    [TestCase(3, 60, DungeonMissionRank.B, 5, new int[0])]
+    [TestCase(3, 0, DungeonMissionRank.B, 5, new[] { 1, 2 })] // the week ended: the count is 0 again
+    [TestCase(0, 0, DungeonMissionRank.SPlus, 4, new[] { 1, 2, 3, 4 })]
+    [TestCase(0, 0, DungeonMissionRank.F, 5, new int[0])]
+    public void RankRewardRanks(int count, int expiryFromNow, DungeonMissionRank rank, int maxRank, int[] expected) {
+        const long now = 1_000_000;
+        Assert.That(DungeonScoreRules.RankRewardRanks(count, now + expiryFromNow, now, rank, maxRank), Is.EqualTo(expected));
+    }
+
     [TestCase(0, DungeonGroupType.normal, 1)]
     [TestCase(0, DungeonGroupType.raid, 2)]
     [TestCase(0, DungeonGroupType.chaosRaid, 3)]
