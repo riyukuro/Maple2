@@ -67,10 +67,18 @@ public class GroupChatHandler : FieldPacketHandler {
             return;
         }
 
-        GroupChatResponse response = World.GroupChat(new GroupChatRequest {
-            Create = new GroupChatRequest.Types.Create(),
-            RequesterId = session.CharacterId,
-        });
+        // An unreachable World would end the session (Session.StartInternal): log it and answer as a failed add.
+        GroupChatResponse response;
+        try {
+            response = World.GroupChat(new GroupChatRequest {
+                Create = new GroupChatRequest.Types.Create(),
+                RequesterId = session.CharacterId,
+            });
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Failed to create a group chat for {CharacterId}", session.CharacterId);
+            session.Send(GroupChatPacket.Error(GroupChatError.s_err_groupchat_add_member_target, session.PlayerName, targetPlayerName));
+            return;
+        }
 
         var error = (GroupChatError) response.Error;
         if (error != GroupChatError.none) {

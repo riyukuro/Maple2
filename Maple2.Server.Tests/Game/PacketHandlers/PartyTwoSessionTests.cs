@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -38,11 +39,13 @@ public class PartyTwoSessionTests {
     private PartyHandler guestHandler = null!;
     private ChannelService channel = null!;
     private PartyInfo party = null!;
+    private bool worldDown;
     private GameSession inviter => inviterTest.Session;
     private GameSession guest => guestTest.Session;
 
     [SetUp]
     public void Login() {
+        worldDown = false;
         DbContextOptions options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
@@ -80,6 +83,9 @@ public class PartyTwoSessionTests {
 
     // What the world does with the three requests of an invite.
     private PartyResponse World(PartyRequest request) {
+        if (worldDown) {
+            throw new RpcException(new Status(StatusCode.Unavailable, "down"));
+        }
         switch (request.PartyCase) {
             case PartyRequest.PartyOneofCase.Create:
                 party = new PartyInfo {
@@ -399,6 +405,71 @@ public class PartyTwoSessionTests {
         Assert.That(Party(guestTest), Is.Empty);
         Assert.That(Party(inviterTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
             Hex(PartyPacket.Error(PartyError.s_party_err_cannot_invite, guest.PlayerName)),
+        }));
+    }
+
+    // World down: each party command answers s_party_err_not_found and the session stays (the exception would have
+    // ended it). The party the session holds is left as it was.
+    [Test]
+    public void WorldDown_InviteThatCreates_AnswersNotFound() {
+        worldDown = true;
+
+        Assert.DoesNotThrow(() => Invite(guest.PlayerName));
+
+        Assert.That(inviter.Party.Party, Is.Null);
+        Assert.That(Party(inviterTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.Error(PartyError.s_party_err_not_found)),
+        }));
+    }
+
+    [Test]
+    public void WorldDown_InviteAnswer_AnswersNotFound() {
+        Invite(guest.PlayerName);
+        Party(guestTest);
+        worldDown = true;
+
+        Assert.DoesNotThrow(() => Reply(PartyInviteResponse.Accept));
+
+        Assert.That(guest.Party.Party, Is.Null);
+        Assert.That(Party(guestTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.Error(PartyError.s_party_err_not_found)),
+        }));
+    }
+
+    [TestCase("leave")]
+    [TestCase("kick")]
+    [TestCase("leader")]
+    [TestCase("ready")]
+    public void WorldDown_PartyCommand_AnswersNotFound(string command) {
+        Invite(guest.PlayerName);
+        Reply(PartyInviteResponse.Accept);
+        Party(inviterTest);
+        worldDown = true;
+
+        Assert.DoesNotThrow(() => inviterHandler.Handle(inviter, TestGameSession.Packet(writer => {
+            switch (command) {
+                case "leave":
+                    writer.WriteByte(3);
+                    break;
+                case "kick":
+                    writer.WriteByte(4);
+                    writer.WriteLong(guest.CharacterId);
+                    break;
+                case "leader":
+                    writer.WriteByte(17);
+                    writer.WriteUnicodeString(guest.PlayerName);
+                    break;
+                case "ready":
+                    writer.WriteByte(46);
+                    break;
+            }
+        })));
+
+        Assert.That(inviter.Party.Party, Is.Not.Null);
+        Assert.That(inviter.Party.Party!.LeaderCharacterId, Is.EqualTo(inviter.CharacterId));
+        Assert.That(inviter.Party.Party.Members.Keys, Is.EquivalentTo(new[] { inviter.CharacterId, guest.CharacterId }));
+        Assert.That(Party(inviterTest).Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.Error(PartyError.s_party_err_not_found)),
         }));
     }
 }

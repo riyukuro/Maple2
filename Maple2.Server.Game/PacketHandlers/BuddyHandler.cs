@@ -1,6 +1,9 @@
-﻿using Maple2.PacketLib.Tools;
+﻿using Maple2.Database.Storage;
+using Maple2.Model.Error;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -19,6 +22,16 @@ public class BuddyHandler : FieldPacketHandler {
         Cancel = 17,
         AutoReject = 20,
     }
+
+    #region Autofac Autowired
+    // ReSharper disable MemberCanBePrivate.Global
+    public required BanWordStorage BanWordStorage { private get; init; }
+    // ReSharper restore All
+    #endregion
+
+    // The client checks the memo of a request, a block and a block edit against the ban words before it sends
+    // (CheckBuddyMemo, communityBanMemoFail); one that arrives anyway is refused.
+    private bool MemoBanned(string message) => message.Length > 0 && BanWordStorage.ContainsBannedWord(message);
 
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
@@ -56,9 +69,13 @@ public class BuddyHandler : FieldPacketHandler {
         }
     }
 
-    private static void Invite(GameSession session, IByteReader packet) {
+    private void Invite(GameSession session, IByteReader packet) {
         string name = packet.ReadUnicodeString();
         string message = packet.ReadUnicodeString();
+        if (MemoBanned(message)) {
+            session.Send(BuddyPacket.Invite(error: BuddyError.s_buddy_err_unknown));
+            return;
+        }
 
         session.Buddy.SendInvite(name, message);
     }
@@ -75,10 +92,14 @@ public class BuddyHandler : FieldPacketHandler {
         session.Buddy.SendDecline(entryId);
     }
 
-    private static void Block(GameSession session, IByteReader packet) {
+    private void Block(GameSession session, IByteReader packet) {
         long entryId = packet.ReadLong();
         string name = packet.ReadUnicodeString();
         string message = packet.ReadUnicodeString();
+        if (MemoBanned(message)) {
+            session.Send(BuddyPacket.Block(error: BuddyError.s_buddy_err_unknown));
+            return;
+        }
 
         session.Buddy.SendBlock(entryId, name, message);
     }
@@ -95,10 +116,14 @@ public class BuddyHandler : FieldPacketHandler {
         session.Buddy.SendDelete(entryId);
     }
 
-    private static void UpdateBlock(GameSession session, IByteReader packet) {
+    private void UpdateBlock(GameSession session, IByteReader packet) {
         long entryId = packet.ReadLong();
         string name = packet.ReadUnicodeString();
         string message = packet.ReadUnicodeString();
+        if (MemoBanned(message)) {
+            session.Send(BuddyPacket.UpdateBlock(error: BuddyError.s_buddy_err_unknown));
+            return;
+        }
 
         session.Buddy.UpdateBlock(entryId, name, message);
     }

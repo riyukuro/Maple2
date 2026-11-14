@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
@@ -24,12 +26,14 @@ public class BuddyNoticeTwoSessionTests {
 
     private TestGameSession playerTest = null!;
     private TestGameSession otherTest = null!;
-    private readonly BuddyHandler buddyHandler = new();
+    private readonly BuddyHandler buddyHandler = new() { BanWordStorage = TestGameSession.BanWords() };
     private GameSession player => playerTest.Session;
     private GameSession other => otherTest.Session;
     // Whether the world finds each player online (on game server 1) or offline.
     private bool playerOnline = true;
     private bool otherOnline = true;
+    // An unreachable world: each call throws.
+    private bool worldDown;
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 
@@ -37,6 +41,7 @@ public class BuddyNoticeTwoSessionTests {
     public void Login() {
         playerOnline = true;
         otherOnline = true;
+        worldDown = false;
         DbContextOptions options = new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
@@ -59,6 +64,9 @@ public class BuddyNoticeTwoSessionTests {
 
     // As the world and the receiver's game server (ChannelService.Buddy): an offline receiver gets nothing.
     private BuddyResponse Route(BuddyRequest request) {
+        if (worldDown) {
+            throw new RpcException(new Status(StatusCode.Unavailable, "down"));
+        }
         GameSession receiver = request.ReceiverId == player.CharacterId ? player : other;
         if (!(receiver == player ? playerOnline : otherOnline)) {
             return new BuddyResponse();
@@ -181,5 +189,117 @@ public class BuddyNoticeTwoSessionTests {
         Assert.That(Relogin(), Does.Contain(Hex(BuddyPacket.Notices(new List<BuddyNotice> {
             new("A", BuddyNoticeType.Removed, 5), new("B", BuddyNoticeType.Approved, 6),
         }))));
+    }
+
+    // World down after the change is stored: the session stays, the actor gets its answer, and the other player is
+    // told at the next login, as when offline.
+    [TestCase(Accept, BuddyNoticeType.Approved)]
+    [TestCase(Decline, BuddyNoticeType.Declined)]
+    [TestCase(Delete, BuddyNoticeType.Removed)]
+    public void WorldDown_TheChangeIsNoticedAtTheNextLogin(byte command, BuddyNoticeType type) {
+        if (command == Delete) {
+            BecomeFriends();
+        } else {
+            Invite(player, other.PlayerName);
+        }
+        long entryId = EntryId(player.CharacterId, other.CharacterId);
+        long otherEntryId = EntryId(other.CharacterId, player.CharacterId);
+        otherTest.TakeSent();
+        worldDown = true;
+
+        Assert.DoesNotThrow(() => Answer(other, command, otherEntryId));
+
+        Assert.That(otherTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Buddy), Is.Not.Empty);
+        Assert.That(Relogin(), Does.Contain(Hex(BuddyPacket.Notices(new[] { new BuddyNotice(other.PlayerName, type, entryId) }))));
+    }
+
+    // A request, a block and a cancel with the world down are stored and answered; the session stays.
+    [Test]
+    public void WorldDown_RequestIsStoredAndAnswered() {
+        worldDown = true;
+
+        Assert.DoesNotThrow(() => Invite(player, other.PlayerName));
+
+        Assert.That(playerTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Buddy).Select(Convert.ToHexString),
+            Does.Contain(Hex(BuddyPacket.Invite(other.PlayerName, "hi"))));
+        EntryId(player.CharacterId, other.CharacterId);
+        EntryId(other.CharacterId, player.CharacterId);
+    }
+
+    [Test]
+    public void WorldDown_CancelIsStored() {
+        Invite(player, other.PlayerName);
+        long entryId = EntryId(player.CharacterId, other.CharacterId);
+        worldDown = true;
+
+        Assert.DoesNotThrow(() => Answer(player, 17, entryId));
+
+        using GameStorage.Request db = playerTest.Storage.Context();
+        Assert.That(db.ListBuddies(player.CharacterId), Is.Empty);
+        Assert.That(db.ListBuddies(other.CharacterId), Is.Empty);
+    }
+
+    [Test]
+    public void WorldDown_BlockIsStored() {
+        BecomeFriends();
+        worldDown = true;
+
+        Assert.DoesNotThrow(() => buddyHandler.Handle(player, TestGameSession.Packet(writer => {
+            writer.WriteByte(5);
+            writer.WriteLong(0);
+            writer.WriteUnicodeString(other.PlayerName);
+            writer.WriteUnicodeString("");
+        })));
+
+        using GameStorage.Request db = playerTest.Storage.Context();
+        Assert.That(db.ListBuddies(player.CharacterId).Single().Type, Is.EqualTo(BuddyType.Blocked));
+        Assert.That(db.ListBuddies(other.CharacterId), Is.Empty);
+    }
+
+    // A memo with a banned word (KR string/kr/banword.xml row 1) in a request, a block or a block edit: the client
+    // checks it before sending (CheckBuddyMemo); one that arrives anyway is refused with the unknown error and
+    // nothing is stored.
+    [TestCase(2)]
+    [TestCase(5)]
+    [TestCase(10)]
+    public void BannedMemo_IsRefused(byte command) {
+        const string banned = "\uAC1C\uC0C8\uB07C";
+        var handler = new BuddyHandler { BanWordStorage = TestGameSession.BanWords(banned) };
+        long blockId = 0;
+        if (command == 10) {
+            handler.Handle(player, TestGameSession.Packet(writer => {
+                writer.WriteByte(5);
+                writer.WriteLong(0);
+                writer.WriteUnicodeString(other.PlayerName);
+                writer.WriteUnicodeString("old");
+            }));
+            blockId = EntryId(player.CharacterId, other.CharacterId);
+            playerTest.TakeSent();
+        }
+
+        handler.Handle(player, TestGameSession.Packet(writer => {
+            writer.WriteByte(command);
+            if (command != 2) {
+                writer.WriteLong(blockId);
+            }
+            writer.WriteUnicodeString(other.PlayerName);
+            writer.WriteUnicodeString("a " + banned);
+        }));
+
+        string expected = command switch {
+            2 => Hex(BuddyPacket.Invite(error: BuddyError.s_buddy_err_unknown)),
+            5 => Hex(BuddyPacket.Block(error: BuddyError.s_buddy_err_unknown)),
+            _ => Hex(BuddyPacket.UpdateBlock(error: BuddyError.s_buddy_err_unknown)),
+        };
+        Assert.That(playerTest.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Buddy).Select(Convert.ToHexString),
+            Is.EqualTo(new[] { expected }));
+        using GameStorage.Request db = playerTest.Storage.Context();
+        BuddyEntry[] entries = db.ListBuddies(player.CharacterId).ToArray();
+        if (command == 10) {
+            Assert.That(entries.Single().Message, Is.EqualTo("old"));
+        } else {
+            Assert.That(entries, Is.Empty);
+        }
+        Assert.That(db.ListBuddies(other.CharacterId), Is.Empty);
     }
 }

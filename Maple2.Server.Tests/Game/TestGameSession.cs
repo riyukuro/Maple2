@@ -274,6 +274,16 @@ public sealed class TestGameSession {
         }
     }
 
+    // A ban word list holding the given words, as the metadata db would.
+    public static BanWordStorage BanWords(params string[] banned) {
+        var words = new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        for (int i = 0; i < banned.Length; i++) {
+            words.BanWordMetadata.Add(new BanWordMetadata(i + 1, banned[i], false));
+        }
+        words.SaveChanges();
+        return new BanWordStorage(words);
+    }
+
     public static MapMetadata Map(int id, bool homeReturnable = true, bool notInPlayedClient = false) {
         var property = new MapMetadataProperty(Continent.VictoriaIsland, MapRegion.None, 0, MapType.None, false, 0, 0, 0, 0, AutoReviveType.None, 0,
             false, false, false, false, homeReturnable, false, false, false, false, false, 0f, NotInPlayedClient: notInPlayedClient);
@@ -893,7 +903,19 @@ public sealed class TestGameSession {
 
         public override GroupChatResponse GroupChat(GroupChatRequest request, CallOptions options) {
             GroupChats.Add(request);
-            return new GroupChatResponse();
+            return GroupChatWorld?.Invoke(request) ?? new GroupChatResponse();
+        }
+
+        // The world's answer to a group chat request (it may throw what an unreachable world would); empty without it.
+        public Func<GroupChatRequest, GroupChatResponse>? GroupChatWorld;
+
+        // The party search requests handed to the world, and its answer (empty without PartySearchWorld).
+        public readonly List<PartySearchRequest> PartySearches = [];
+        public Func<PartySearchRequest, PartySearchResponse>? PartySearchWorld;
+
+        public override PartySearchResponse PartySearch(PartySearchRequest request, CallOptions options) {
+            PartySearches.Add(request);
+            return PartySearchWorld?.Invoke(request) ?? new PartySearchResponse();
         }
 
         // The club requests handed to the world; ClubError is what the world answers (0: done).

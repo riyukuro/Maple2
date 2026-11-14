@@ -2,6 +2,8 @@
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Grpc.Core;
+using Maple2.Model.Error;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
@@ -71,5 +73,27 @@ public class GroupChatDeclineTests {
 
         byte[] sent = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.GroupChat);
         Assert.That(Convert.ToHexString(sent), Is.EqualTo("8B00" + "07" + "05000000" + reason.ToString("X2") + "0500" + Convert.ToHexString(System.Text.Encoding.Unicode.GetBytes("other"))));
+    }
+
+    // World down on a new chat: the session stays (the exception would have ended it), no chat is made and the
+    // player gets the failed-add notice (GroupChat 8).
+    [Test]
+    public void Create_WorldDown_AnswersFailedAdd() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        session.GroupChats ??= new ConcurrentDictionary<int, GroupChatManager>();
+        test.World.GroupChatWorld = _ => throw new RpcException(new Status(StatusCode.Unavailable, "down"));
+        var handler = new GroupChatHandler { World = test.World };
+        test.TakeSent();
+
+        Assert.DoesNotThrow(() => handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteUnicodeString("");
+        })));
+
+        Assert.That(session.GroupChats, Is.Empty);
+        byte[] sent = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.GroupChat);
+        Assert.That(Convert.ToHexString(sent), Is.EqualTo(Convert.ToHexString(
+            GroupChatPacket.Error(GroupChatError.s_err_groupchat_add_member_target, session.PlayerName, "").ToArray())));
     }
 }

@@ -32,7 +32,7 @@ public class BuddyNameLimitTests {
     private readonly BuddyDeleteFault fault = new();
     private TestGameSession playerTest = null!;
     private TestGameSession otherTest = null!;
-    private readonly BuddyHandler buddyHandler = new();
+    private readonly BuddyHandler buddyHandler = new() { BanWordStorage = TestGameSession.BanWords() };
     private readonly MailHandler mailHandler = new();
     private GameSession player => playerTest.Session;
     private GameSession other => otherTest.Session;

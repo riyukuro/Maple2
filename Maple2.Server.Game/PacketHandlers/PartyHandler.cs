@@ -104,10 +104,13 @@ public class PartyHandler : FieldPacketHandler {
 
         if (session.Party.Party == null) {
             // Create new party
-            PartyResponse response = World.Party(new PartyRequest {
+            PartyResponse? response = TryParty(session, new PartyRequest {
                 RequestorId = session.CharacterId,
                 Create = new PartyRequest.Types.Create { },
             });
+            if (response == null) {
+                return;
+            }
 
             var error = (PartyError) response.Error;
             if (error != PartyError.none) {
@@ -157,13 +160,16 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        PartyResponse partyResponse = World.Party(new PartyRequest {
+        PartyResponse? partyResponse = TryParty(session, new PartyRequest {
             RequestorId = session.CharacterId,
             RespondInvite = new PartyRequest.Types.RespondInvite {
                 PartyId = partyId,
                 Reply = (int) response,
             },
         });
+        if (partyResponse == null) {
+            return;
+        }
         var error = (PartyError) partyResponse.Error;
         if (error != PartyError.none) {
             session.Send(PartyPacket.Error(error));
@@ -181,12 +187,15 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        PartyResponse response = World.Party(new PartyRequest {
+        PartyResponse? response = TryParty(session, new PartyRequest {
             RequestorId = session.CharacterId,
             Leave = new PartyRequest.Types.Leave {
                 PartyId = session.Party.Id,
             },
         });
+        if (response == null) {
+            return;
+        }
         SendError(session, response);
     }
 
@@ -197,13 +206,16 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        PartyResponse response = World.Party(new PartyRequest {
+        PartyResponse? response = TryParty(session, new PartyRequest {
             RequestorId = session.CharacterId,
             Kick = new PartyRequest.Types.Kick {
                 PartyId = session.Party.Id,
                 ReceiverId = targetCharacterId,
             },
         });
+        if (response == null) {
+            return;
+        }
 
         SendError(session, response);
     }
@@ -222,14 +234,29 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        PartyResponse response = World.Party(new PartyRequest {
+        PartyResponse? response = TryParty(session, new PartyRequest {
             RequestorId = session.CharacterId,
             UpdateLeader = new PartyRequest.Types.UpdateLeader {
                 PartyId = session.Party.Id,
                 CharacterId = targetCharacterId,
             },
         });
+        if (response == null) {
+            return;
+        }
         SendError(session, response);
+    }
+
+    // A World server that cannot be reached: the exception would end the session (Session.StartInternal), so it is
+    // logged and the player gets the party-not-found notice, as the invite already did.
+    private PartyResponse? TryParty(GameSession session, PartyRequest request) {
+        try {
+            return World.Party(request);
+        } catch (RpcException ex) {
+            Logger.Error(ex, "Party {Case} failed for {CharacterId}", request.PartyCase, session.CharacterId);
+            session.Send(PartyPacket.Error(PartyError.s_party_err_not_found));
+            return null;
+        }
     }
 
     // World refuses a party command with an error code (not leader, not found, ...); KMS2 shows it to the player.
@@ -250,13 +277,16 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        PartyResponse? response = World.Party(new PartyRequest {
+        PartyResponse? response = TryParty(session, new PartyRequest {
             RequestorId = session.CharacterId,
             JoinByPartySearch = new PartyRequest.Types.JoinByPartySearch {
                 PartyId = partyId,
                 PartySearchId = partySearchId,
             },
         });
+        if (response == null) {
+            return;
+        }
 
         // 0x20 (a listing with approval): "You requested to join {0}'s party." with the leader's name.
         if (response.Error != (int) PartyError.none) {
@@ -280,13 +310,16 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        PartyResponse? response = World.Party(new PartyRequest {
+        PartyResponse? response = TryParty(session, new PartyRequest {
             RequestorId = session.CharacterId,
             JoinDungeonRecruit = new PartyRequest.Types.JoinDungeonRecruit {
                 PartyId = partyId,
                 RoomId = roomId,
             },
         });
+        if (response == null) {
+            return;
+        }
 
         if (response.Error != (int) PartyError.none) {
             session.Send(PartyPacket.Error((PartyError) response.Error));
@@ -392,18 +425,16 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        try {
-            PartyResponse response = World.Party(new PartyRequest {
-                RequestorId = session.CharacterId,
-                CancelDungeonMatch = new PartyRequest.Types.CancelDungeonMatch {
-                    PartyId = session.Party.Id,
-                    Kind = kind,
-                },
-            });
-            if (response.Error != (int) PartyError.none) {
-                session.Send(PartyPacket.Error((PartyError) response.Error));
-            }
-        } catch (RpcException) { }
+        PartyResponse? response = TryParty(session, new PartyRequest {
+            RequestorId = session.CharacterId,
+            CancelDungeonMatch = new PartyRequest.Types.CancelDungeonMatch {
+                PartyId = session.Party.Id,
+                Kind = kind,
+            },
+        });
+        if (response != null && response.Error != (int) PartyError.none) {
+            session.Send(PartyPacket.Error((PartyError) response.Error));
+        }
     }
 
     private void RequestDungeonMatch(GameSession session, byte kind, List<DungeonRoomMetadata> rooms) {
@@ -419,13 +450,11 @@ public class PartyHandler : FieldPacketHandler {
             ChangeMaxUsers = room.Limit.ChangeMaxUsers,
         }));
 
-        PartyResponse response;
-        try {
-            response = World.Party(new PartyRequest {
-                RequestorId = session.CharacterId,
-                DungeonMatch = match,
-            });
-        } catch (RpcException) {
+        PartyResponse? response = TryParty(session, new PartyRequest {
+            RequestorId = session.CharacterId,
+            DungeonMatch = match,
+        });
+        if (response == null) {
             return;
         }
         // World tells every member, a joiner or mover too, once it has loaded the party (LoadParty, DungeonMatch,
@@ -482,13 +511,16 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        PartyResponse response = World.Party(new PartyRequest {
+        PartyResponse? response = TryParty(session, new PartyRequest {
             RequestorId = session.CharacterId,
             VoteKick = new PartyRequest.Types.VoteKick {
                 PartyId = session.Party.Id,
                 TargetUserId = targetCharacterId,
             },
         });
+        if (response == null) {
+            return;
+        }
         var error = (PartyError) response.Error;
         if (error != PartyError.none) {
             session.Send(PartyPacket.Error(error));
@@ -516,12 +548,15 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        PartyResponse response = World.Party(new PartyRequest {
+        PartyResponse? response = TryParty(session, new PartyRequest {
             RequestorId = session.CharacterId,
             ReadyCheck = new PartyRequest.Types.ReadyCheck {
                 PartyId = session.Party.Id,
             },
         });
+        if (response == null) {
+            return;
+        }
 
         var error = (PartyError) response.Error;
         if (error != PartyError.none) {
@@ -538,7 +573,7 @@ public class PartyHandler : FieldPacketHandler {
             return;
         }
 
-        PartyResponse response = World.Party(new PartyRequest {
+        PartyResponse? response = TryParty(session, new PartyRequest {
             RequestorId = session.CharacterId,
             VoteReply = new PartyRequest.Types.VoteReply {
                 PartyId = session.Party.Id,
@@ -546,6 +581,9 @@ public class PartyHandler : FieldPacketHandler {
                 VoteId = voteId,
             },
         });
+        if (response == null) {
+            return;
+        }
 
         var error = (PartyError) response.Error;
         if (error != PartyError.none) {

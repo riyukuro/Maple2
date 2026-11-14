@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using Grpc.Core;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
@@ -112,6 +113,18 @@ public class BuddyManager : IDisposable {
         }
     }
 
+    // Tells the other player's game server through World, after the change is stored. An unreachable World would end
+    // the session (RpcException is no SystemException, Session.StartInternal), so it is logged and the change counts
+    // as not delivered: an empty answer, so KeepNotice keeps it for the other player's next login.
+    private BuddyResponse Notify(BuddyRequest request) {
+        try {
+            return session.World.Buddy(request);
+        } catch (RpcException ex) {
+            logger.Warning(ex, "Buddy {Case}: World could not be reached for {ReceiverId}", request.BuddyCase, request.ReceiverId);
+            return new BuddyResponse();
+        }
+    }
+
     public void SendInvite(string name, string message) {
         if (name.Length > Constant.CharacterNameLengthMax || message.Length > Constant.BuddyMessageLengthMax) {
             session.Send(BuddyPacket.Invite(error: s_buddy_err_unknown));
@@ -177,7 +190,7 @@ public class BuddyManager : IDisposable {
             session.Send(BuddyPacket.Invite(name, message));
             session.Send(BuddyPacket.Append(self));
 
-            BuddyResponse _ = session.World.Buddy(new BuddyRequest {
+            BuddyResponse _ = Notify(new BuddyRequest {
                 ReceiverId = receiverId,
                 Invite = new BuddyRequest.Types.Invite { SenderId = session.CharacterId },
             });
@@ -255,7 +268,7 @@ public class BuddyManager : IDisposable {
         // Both entries are friends in storage now, so the client is told so even if the other side cannot be reached
         // (it sees the friend at its next list load).
         try {
-            BuddyResponse response = session.World.Buddy(new BuddyRequest {
+            BuddyResponse response = Notify(new BuddyRequest {
                 ReceiverId = receiverId,
                 Accept = new BuddyRequest.Types.Accept { EntryId = other.Id },
             });
@@ -318,7 +331,7 @@ public class BuddyManager : IDisposable {
             buddies.Remove(entryId);
 
             session.Send(BuddyPacket.Decline(self));
-            BuddyResponse response = session.World.Buddy(new BuddyRequest {
+            BuddyResponse response = Notify(new BuddyRequest {
                 ReceiverId = receiverId,
                 Decline = new BuddyRequest.Types.Decline { EntryId = other.Id },
             });
@@ -420,7 +433,7 @@ public class BuddyManager : IDisposable {
             }
 
             if (other.Type != BuddyType.Blocked && db.RemoveBuddy(other)) {
-                BuddyResponse _ = session.World.Buddy(new BuddyRequest {
+                BuddyResponse _ = Notify(new BuddyRequest {
                     ReceiverId = receiverId,
                     Block = new BuddyRequest.Types.Block { SenderId = session.CharacterId },
                 });
@@ -497,7 +510,7 @@ public class BuddyManager : IDisposable {
             }
             EndListen(self);
             session.Send(BuddyPacket.Remove(self));
-            BuddyResponse response = session.World.Buddy(new BuddyRequest {
+            BuddyResponse response = Notify(new BuddyRequest {
                 ReceiverId = receiverId,
                 Delete = new BuddyRequest.Types.Delete { EntryId = other.Id },
             });
@@ -566,7 +579,7 @@ public class BuddyManager : IDisposable {
             }
 
             session.Send(BuddyPacket.Cancel(self));
-            BuddyResponse _ = session.World.Buddy(new BuddyRequest {
+            BuddyResponse _ = Notify(new BuddyRequest {
                 ReceiverId = receiverId,
                 Cancel = new BuddyRequest.Types.Cancel { EntryId = other.Id },
             });

@@ -1,4 +1,6 @@
-﻿using Maple2.Model.Enum;
+﻿using Grpc.Core;
+using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game.Party;
 using Maple2.Model.Validators;
@@ -24,6 +26,7 @@ public class PartySearchHandler : FieldPacketHandler {
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
     public required WorldClient World { private get; init; }
+    public required BanWordStorage BanWordStorage { private get; init; }
     // ReSharper restore All
     #endregion
 
@@ -49,13 +52,24 @@ public class PartySearchHandler : FieldPacketHandler {
             session.Send(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_invalid_type));
             return;
         }
+        // A banned title: 108 with request type 0 (the title); checked before a party is made for it.
+        if (BanWordStorage.ContainsBannedWord(listingName)) {
+            session.Send(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_banword_title, 0));
+            return;
+        }
 
         if (session.Party.Party == null) {
             // Create new party
-            PartyResponse partyResponse = World.Party(new PartyRequest {
-                RequestorId = session.CharacterId,
-                Create = new PartyRequest.Types.Create { },
-            });
+            PartyResponse partyResponse;
+            try {
+                partyResponse = World.Party(new PartyRequest {
+                    RequestorId = session.CharacterId,
+                    Create = new PartyRequest.Types.Create { },
+                });
+            } catch (RpcException ex) {
+                WorldDown(session, ex, "create party");
+                return;
+            }
 
             var error = (PartyError) partyResponse.Error;
             if (error != PartyError.none) {
@@ -86,7 +100,7 @@ public class PartySearchHandler : FieldPacketHandler {
             return;
         }
 
-        PartySearchResponse response = session.World.PartySearch(new PartySearchRequest {
+        PartySearchResponse? response = TryPartySearch(session, new PartySearchRequest {
             Create = new PartySearchRequest.Types.Create {
                 Name = listingName,
                 NoApproval = noApproval,
@@ -95,6 +109,9 @@ public class PartySearchHandler : FieldPacketHandler {
             },
             PartyId = session.Party.Party.Id,
         });
+        if (response == null) {
+            return;
+        }
 
         if (response.Error != (int) PartySearchError.none) {
             session.Send(PartySearchPacket.Error((PartySearchError) response.Error, response.ErrorCategory));
@@ -118,11 +135,14 @@ public class PartySearchHandler : FieldPacketHandler {
         }
 
         long partySearchId = session.Party.Party.Search.Id;
-        PartySearchResponse response = World.PartySearch(new PartySearchRequest {
+        PartySearchResponse? response = TryPartySearch(session, new PartySearchRequest {
             Remove = new PartySearchRequest.Types.Remove(),
             PartyId = session.Party.Party.Id,
             Id = session.Party.Party.Search.Id,
         });
+        if (response == null) {
+            return;
+        }
 
         if (response.Error != (int) PartySearchError.none) {
             session.Send(PartySearchPacket.Error((PartySearchError) response.Error, response.ErrorCategory));
@@ -132,12 +152,17 @@ public class PartySearchHandler : FieldPacketHandler {
         session.Send(PartySearchPacket.Remove(partySearchId));
 
         if (session.Party.Party.Members.Count <= 1) {
-            PartyResponse partyResponse = World.Party(new PartyRequest {
-                RequestorId = session.CharacterId,
-                Leave = new PartyRequest.Types.Leave {
-                    PartyId = session.Party.Id,
-                },
-            });
+            // The listing is gone already; a party left behind by an unreachable world is only logged.
+            try {
+                World.Party(new PartyRequest {
+                    RequestorId = session.CharacterId,
+                    Leave = new PartyRequest.Types.Leave {
+                        PartyId = session.Party.Id,
+                    },
+                });
+            } catch (RpcException ex) {
+                Logger.Error(ex, "Party search: leaving the listing's party failed for {CharacterId}", session.CharacterId);
+            }
         }
     }
 
@@ -153,15 +178,22 @@ public class PartySearchHandler : FieldPacketHandler {
             session.Send(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_invalid_type));
             return;
         }
+        // A banned search word: 108 with request type 2 (the search word).
+        if (searchString.Length > 0 && BanWordStorage.ContainsBannedWord(searchString)) {
+            session.Send(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_banword_findword, 2));
+            return;
+        }
 
-        PartySearchResponse response = session.World.PartySearch(new PartySearchRequest {
+        PartySearchResponse? response = TryPartySearch(session, new PartySearchRequest {
             Fetch = new PartySearchRequest.Types.Fetch {
                 Page = pageNumber,
                 SearchString = searchString,
                 SortBy = sort,
             },
+        });
+        if (response == null) {
+            return;
         }
-        );
 
         if (response.Error != (int) PartySearchError.none) {
             session.Send(PartySearchPacket.Error((PartySearchError) response.Error, response.ErrorCategory));
@@ -182,5 +214,21 @@ public class PartySearchHandler : FieldPacketHandler {
         }).ToList();
 
         session.Send(PartySearchPacket.Load(entries));
+    }
+
+    // A World server that cannot be reached would end the session (Session.StartInternal); the player gets the
+    // client's database error (2) instead.
+    private PartySearchResponse? TryPartySearch(GameSession session, PartySearchRequest request) {
+        try {
+            return World.PartySearch(request);
+        } catch (RpcException ex) {
+            WorldDown(session, ex, request.PartySearchCase.ToString());
+            return null;
+        }
+    }
+
+    private void WorldDown(GameSession session, RpcException ex, string what) {
+        Logger.Error(ex, "Party search {What} failed for {CharacterId}", what, session.CharacterId);
+        session.Send(PartySearchPacket.Error(PartySearchError.s_partysearch_err_server_db));
     }
 }
