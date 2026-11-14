@@ -445,7 +445,8 @@ public class FieldPlayer : Actor<Player> {
                 }
 
                 if (UpdateStateSyncTimeTracking()) {
-                    Session.ConditionUpdate(ConditionType.swimtime, targetLong: Value.Character.MapId);
+                    // The rows name the map as the code (10003442: code 02000554) or as the target (50001583).
+                    Session.ConditionUpdate(ConditionType.swimtime, targetLong: Value.Character.MapId, codeLong: Value.Character.MapId);
                 }
                 break;
             case ActorState.Walk:

@@ -689,6 +689,23 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
+
+    // swimtime names its map either way: 10003442 code="02000554" value="20", 80000591 code="63000088", and
+    // 50001583 target="52000133". A second swum on that map counts, on another map it does not.
+    [TestCase("02000554", "", 2000554, 1)]
+    [TestCase("02000554", "", 2000555, 0)]
+    [TestCase("63000088", "", 63000088, 1)]
+    [TestCase("", "52000133", 52000133, 1)]
+    [TestCase("", "52000133", 52000134, 0)]
+    public void Swimtime_TheMapOfTheCodeOrTarget(string code, string target, int mapId, int expected) {
+        FieldPlayer player = StateSyncField(mapId);
+        Quest quest = StartQuest(Condition(ConditionType.swimtime, 20, code == "" ? [] : [code], target == "" ? [] : [target]));
+        typeof(FieldPlayer).GetField("state", Any)!.SetValue(player, ActorState.Swim);
+        typeof(FieldPlayer).GetProperty("StateSyncTimeTracking", Any)!.SetValue(player, 1000L);
+        player.OnStateSync(new StateSync { State = ActorState.Swim, Position = player.Position });
+
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
+    }
     #endregion
     #region item_move (FieldManager.PlaceCube, a liftable put down)
     // 10001060: <condition type="item_move" code="30000030" value="3" target="400" />, the liftable item of the code
