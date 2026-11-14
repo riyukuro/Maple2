@@ -797,8 +797,10 @@ public partial class FieldManager : IField {
             return false;
         }
 
+        // The client never uses a disabled portal (the action key and the mouse pick skip it, actionkeyobject.cpp:887,
+        // mouseinteract.cpp:406) and waits for no answer to a portal use, so the use is refused without one.
         if (!fieldPortal.Enabled) {
-            session.Send(NoticePacket.MessageBox(new InterfaceText($"Cannot use disabled portal: {portalId}")));
+            logger.Debug("Refused use of disabled portal {PortalId} by {CharacterId}", portalId, session.CharacterId);
             return false;
         }
 
