@@ -1733,9 +1733,15 @@ public sealed partial class GameSession : Core.Network.Session {
     // without one (a logout's last save at shutdown), and nothing is released.
     private enum LockTake { Taken, Held, WorldDown }
 
+    // The wait between two tries of AcquireLock (tests set 0).
+    internal int LockBackoffMs = 500;
+    // The tries of the last save (Dispose's, LastSave): about 32 s at 500 ms, past the World's 30 s lock expiry, so a
+    // lock left by a holder that went away expires and is taken.
+    internal const int LastSaveLockTries = 64;
+
     private LockTake AcquireLock(long accountId, int maxRetries = 3) {
         int retryCount = 0;
-        const int backoffMs = 500;
+        int backoffMs = LockBackoffMs;
 
         while (retryCount < maxRetries) {
             LockResponse? response;
@@ -2008,14 +2014,15 @@ public sealed partial class GameSession : Core.Network.Session {
 
     // Dispose's last save: as a move's, with no session left to end.
     private void LastSave() {
-        if (SaveBeforeLeaving() != SaveResult.Stored) {
+        if (SaveBeforeLeaving(last: true) != SaveResult.Stored) {
             Logger.Error("LastSave: not stored, the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
         }
     }
 
     // Stored also when an earlier save of this move (or of the session's close) stored it. A save that did not store
-    // clears the flag again: the session's packets are handled again and its next save is made.
-    private SaveResult SaveBeforeLeaving() {
+    // clears the flag again: the session's packets are handled again and its next save is made. last: Dispose's save,
+    // the session's state is lost when it is not stored (LockedSave).
+    private SaveResult SaveBeforeLeaving(bool last = false) {
         if (preMigrationSaved) return SaveResult.Stored;
         // A handler the receive thread runs (a guild fund donation, a limit break) ends before the flag is set, and
         // the ones read after it are dropped: none changes the wallet or the inventory while the save reads them, or
@@ -2042,7 +2049,7 @@ public sealed partial class GameSession : Core.Network.Session {
         // would reach this wallet unstored). The client sends these moves with a trade open (no trade check).
         Trade?.Dispose();
 
-        SaveResult result = LockedSave(tries: 2, ResetWait);
+        SaveResult result = LockedSave(tries: 2, ResetWait, last);
         if (result != SaveResult.Stored) {
             preMigrationSaved = false;
         }
@@ -2151,8 +2158,13 @@ public sealed partial class GameSession : Core.Network.Session {
 
     // ResetRunning: a reset was being stored for longer than resetWait, and nothing was written. That is no failed
     // save: a reset must not end sessions. A save with a wait that still finds it running (a reset stuck for a
-    // minute) is a failed one for its caller.
-    private SaveResult LockedSave(int tries, TimeSpan resetWait) {
+    // minute) is a failed one for its caller. last: the session's last save (every failed save ends the session, and
+    // its Dispose makes this one), whose drop loses the player's state: it waits for the lock past the World's 30 s
+    // expiry (LastSaveLockTries), and a lock still held after that does not drop it: the save goes on without the lock,
+    // logged, as all saves did before the lock refused them (a session that entered after this one has claimed the
+    // account, ClaimSession, and such a save writes nothing). A World that is down lets every save go on without the
+    // lock; a World error other than that throws and refuses the save.
+    private SaveResult LockedSave(int tries, TimeSpan resetWait, bool last = false) {
         if (StoreRefused("SessionSave") || NestedStore("SessionSave")) {
             return SaveResult.Failed;
         }
@@ -2160,11 +2172,15 @@ public sealed partial class GameSession : Core.Network.Session {
         EnterStore();
         bool locked = false;
         try {
-            LockTake take = AcquireLock(AccountId, 5);
+            LockTake take = AcquireLock(AccountId, last ? LastSaveLockTries : 5);
             locked = take == LockTake.Taken;
             if (take == LockTake.Held) {
-                Logger.Error("SessionSave: the account lock is held elsewhere, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
-                return SaveResult.Failed;
+                if (!last) {
+                    Logger.Error("SessionSave: the account lock is held elsewhere, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+                    return SaveResult.Failed;
+                }
+                Logger.Error("LastSave: the account lock is still held elsewhere after {Tries} tries, saving without it AccountId={AccountId} CharacterId={CharacterId}",
+                    LastSaveLockTries, AccountId, CharacterId);
             }
             for (int i = 0; i < tries; i++) {
                 if (Save(resetWait)) {

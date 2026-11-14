@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -129,6 +130,58 @@ public class NestedStoreTests {
             Assert.That(Ended(), Is.True, "a session save refused ends the session");
             Assert.That(test.World.Released, Is.EqualTo(released), "ReleaseLock is not called");
             Assert.That(test.Errors, Has.Some.Contains("held elsewhere"));
+            Assert.That(nested, Is.Empty);
+        });
+    }
+
+    // The last save (Dispose's) is not dropped by a lock held elsewhere: it tries past the World's 30 s expiry, then
+    // saves without the lock, logged, and does not release a lock it never took.
+    [Test]
+    public void TheLastSave_WithTheLockHeldElsewhere_SavesWithoutItAfterItsTries() {
+        test.World.LockError = "held";
+        session.LockBackoffMs = 0;
+        int acquired = test.World.Acquired, released = test.World.Released;
+
+        typeof(GameSession).GetMethod("LastSave", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, null);
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.Acquired - acquired, Is.EqualTo(GameSession.LastSaveLockTries));
+            Assert.That(test.World.Released, Is.EqualTo(released), "ReleaseLock is not called");
+            Assert.That(typeof(GameSession).GetField("preMigrationSaved", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session), Is.True,
+                "the save is stored");
+            Assert.That(test.Errors, Has.Some.Contains("saving without it"));
+            Assert.That(test.Errors, Has.None.Contains("not stored"));
+            Assert.That(nested, Is.Empty);
+        });
+    }
+
+    // A purchase commit that throws after landing, with no mark to read (none is written in memory: mark 0), ends
+    // unknown: the session is ended and no later store of it is made.
+    [Test]
+    public void APurchaseCommitThatThrows_WithNoMark_EndsUnknown_AndRefusesLaterStores() {
+        DatabaseRequest<Ms2Context>.CommitFault = after => {
+            if (after) throw new InvalidOperationException("commit answer lost");
+        };
+        bool purchase;
+        try {
+            purchase = session.TrySavePurchase(_ => true);
+        } finally {
+            DatabaseRequest<Ms2Context>.CommitFault = null;
+        }
+        int acquired = test.World.Acquired;
+        bool rowsRan = false;
+
+        bool later = session.TrySavePurchase(_ => rowsRan = true);
+        bool save = session.SessionSave();
+
+        Assert.Multiple(() => {
+            Assert.That(purchase, Is.False);
+            Assert.That(Ended(), Is.True, "the session is cut");
+            Assert.That(later, Is.False);
+            Assert.That(rowsRan, Is.False, "nothing more is stored");
+            Assert.That(save, Is.False);
+            Assert.That(test.World.Acquired, Is.EqualTo(acquired), "a refused store takes no lock");
+            Assert.That(test.Errors, Has.Some.Contains("ended unknown"));
             Assert.That(nested, Is.Empty);
         });
     }
