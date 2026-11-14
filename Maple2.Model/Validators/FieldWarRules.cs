@@ -3,7 +3,7 @@
 namespace Maple2.Model.Validators;
 
 // The field war (KR features Fieldwar01/02): a time event of type 7 opens one war of its group for LifeTime. The
-// client shows the announce (FieldWar mode 0: the war id and a uid) as a side popup by Neirin, and its button sends
+// client shows the announce (FieldWar mode 0: the war id and its close time, AnnounceId) as a side popup by Neirin, and its button sends
 // SidePopup 1 with no id. The war's map (02020061-02020065, instancefield type FieldWar, at most 10 players) runs
 // its trigger: main waits at its user count state for the user value FieldGameStart, 1 starts the war, 2 sends the
 // players out ("room closed") and ends it.
@@ -17,6 +17,13 @@ public static class FieldWarRules {
     public const string StartKey = "FieldGameStart";
     public const int Start = 1;
     public const int Close = 2;
+
+    // The long of the announce: the client puts it in the side popup's "expire" member (scenestategame.cpp:9120,
+    // uisidepopuptalk_1.cpp:327), as the wedding popup puts its end time there in unix seconds (weddingmanager.cpp:950).
+    // KMS2 sends the war's close time: its run's start plus the event's lifeTime, in unix seconds. The server also
+    // names the open war by it (the SidePopup enter has no id), so a run closing no later than the last one gets
+    // the last one's plus 1 (no KR run does: the two events are an hour apart).
+    public static long AnnounceId(DateTimeOffset closeTime, long lastId) => Math.Max(closeTime.ToUnixTimeSeconds(), lastId + 1);
 
     // The war of the group a run opens: each row by its pickWeight. The roll is in [0, TotalWeight).
     public static FieldWarMetadata? Pick(IEnumerable<FieldWarMetadata> wars, int groupId, int roll) {

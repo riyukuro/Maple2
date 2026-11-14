@@ -394,7 +394,7 @@ public class WorldServer : ILoginGate {
         int total = FieldWarRules.TotalWeight(wars, data.GroupId);
         if (total > 0 && TimeEventRules.Runs(data.Probability, Random.Shared.Next(100))
             && FieldWarRules.Pick(wars, data.GroupId, Random.Shared.Next(total)) is { } war) {
-            long uid = fieldWarLookup.Open(war);
+            long uid = fieldWarLookup.Open(war, new DateTimeOffset(startTime + data.LifeTime));
             logger.Information("Field war {FieldWarId} (map {MapId}) open for {LifeTime}", war.Id, war.MapId, data.LifeTime);
             scheduler.Schedule(() => fieldWarLookup.Close(uid), data.LifeTime);
         }

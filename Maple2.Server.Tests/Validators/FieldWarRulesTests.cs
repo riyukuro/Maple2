@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 
@@ -65,4 +66,14 @@ public class FieldWarRulesTests {
     [TestCase(5, 1000L, 2000L, 50, 0, ExpectedResult = false)]   // no maxCount
     public bool NeedsNewRoom(int roomId, long opened, long now, int joined, int maxCount) =>
         FieldWarRules.NeedsNewRoom(roomId, opened, now, 60, joined, maxCount);
+
+    // The announce's long is the war's close time in unix seconds (the popup's "expire"); a close no later than the
+    // last war's gets the last one's plus 1, so the open war stays named by it.
+    [Test]
+    public void AnnounceId_IsTheCloseTimeInSeconds() {
+        var close = new DateTimeOffset(2026, 1, 1, 0, 55, 0, TimeSpan.Zero);
+        Assert.That(FieldWarRules.AnnounceId(close, 0), Is.EqualTo(close.ToUnixTimeSeconds()));
+        Assert.That(FieldWarRules.AnnounceId(close.AddHours(1), close.ToUnixTimeSeconds()), Is.EqualTo(close.AddHours(1).ToUnixTimeSeconds()));
+        Assert.That(FieldWarRules.AnnounceId(close, close.ToUnixTimeSeconds()), Is.EqualTo(close.ToUnixTimeSeconds() + 1));
+    }
 }

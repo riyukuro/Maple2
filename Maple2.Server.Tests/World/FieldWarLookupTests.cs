@@ -17,6 +17,8 @@ namespace Maple2.Server.Tests.World;
 public class FieldWarLookupTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private const int MapId = 2020061;
+    // A made-up close time.
+    private static readonly DateTimeOffset CloseTime = new(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
 
     // A channel that makes room 100, 101, ... for each GetField.
     private sealed class FakeChannel : ChannelClient {
@@ -60,7 +62,7 @@ public class FieldWarLookupTests {
     [Test]
     public void Join_OncePerCharacter() {
         (FieldWarLookup lookup, FakeChannel channel) = Lookup();
-        long uid = lookup.Open(new FieldWarMetadata(1, 1, 100, MapId, 0, 0));
+        long uid = lookup.Open(new FieldWarMetadata(1, 1, 100, MapId, 0, 0), CloseTime);
 
         Assert.That(lookup.Get(10)?.EventId, Is.EqualTo(uid));
         Assert.That(lookup.Join(uid, 10)?.RoomId, Is.EqualTo(100));
@@ -74,7 +76,7 @@ public class FieldWarLookupTests {
     [Test]
     public void Get_SkipsACharacterThatJoined() {
         (FieldWarLookup lookup, _) = Lookup();
-        long uid = lookup.Open(new FieldWarMetadata(1, 1, 100, MapId, 0, 0));
+        long uid = lookup.Open(new FieldWarMetadata(1, 1, 100, MapId, 0, 0), CloseTime);
         lookup.Join(uid, 10);
 
         Assert.That(lookup.Get(10), Is.Null);
@@ -85,13 +87,24 @@ public class FieldWarLookupTests {
     [Test]
     public void NextWar_TakesTheCharacterAgain() {
         (FieldWarLookup lookup, _) = Lookup();
-        long first = lookup.Open(new FieldWarMetadata(1, 1, 100, MapId, 0, 0));
+        long first = lookup.Open(new FieldWarMetadata(1, 1, 100, MapId, 0, 0), CloseTime);
         lookup.Join(first, 10);
         lookup.Close(first);
-        long second = lookup.Open(new FieldWarMetadata(1, 1, 100, MapId, 0, 0));
+        long second = lookup.Open(new FieldWarMetadata(1, 1, 100, MapId, 0, 0), CloseTime);
 
         Assert.That(lookup.Join(first, 10), Is.Null);
         Assert.That(lookup.Get(10)?.EventId, Is.EqualTo(second));
         Assert.That(lookup.Join(second, 10)?.RoomId, Is.EqualTo(101));
+    }
+
+    // The announce id is the war's close time in unix seconds; a second war closing in the same second takes the next id.
+    [Test]
+    public void Open_IdIsTheCloseTimeInSeconds() {
+        (FieldWarLookup lookup, _) = Lookup();
+        long first = lookup.Open(new FieldWarMetadata(1, 1, 100, MapId, 0, 0), CloseTime);
+        long second = lookup.Open(new FieldWarMetadata(1, 1, 100, MapId, 0, 0), CloseTime);
+
+        Assert.That(first, Is.EqualTo(CloseTime.ToUnixTimeSeconds()));
+        Assert.That(second, Is.EqualTo(first + 1));
     }
 }

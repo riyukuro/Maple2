@@ -21,8 +21,8 @@ public class FieldWarLookup {
     private readonly object mutex = new();
 
     private OpenWar? open;
-    // The uid the client gets in the announce (and shows nowhere): unique for the World server's run.
-    private long nextUid = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    // The uid of the last war opened: the close time the client gets in the announce (FieldWarRules.AnnounceId).
+    private long lastUid;
 
     private sealed class OpenWar(long uid, FieldWarMetadata metadata, int channel) {
         public readonly long Uid = uid;
@@ -51,11 +51,11 @@ public class FieldWarLookup {
         }
     }
 
-    // Opens the war and announces it on every channel. Returns its uid.
-    public long Open(FieldWarMetadata war) {
+    // Opens the war, closing at closeTime, and announces it on every channel. Returns its uid.
+    public long Open(FieldWarMetadata war, DateTimeOffset closeTime) {
         long uid;
         lock (mutex) {
-            uid = ++nextUid;
+            uid = lastUid = FieldWarRules.AnnounceId(closeTime, lastUid);
             open = new OpenWar(uid, war, channelClients.FirstChannel());
         }
         foreach ((int channelId, ChannelClient client) in channelClients) {
