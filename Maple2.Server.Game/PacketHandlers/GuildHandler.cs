@@ -213,7 +213,7 @@ public class GuildHandler : PacketHandler<GameSession> {
             return; // Already in a guild.
         }
 
-        if (!GuildRules.IsGuildName(guildName, Constants.GuildNameLengthMin, Constants.GuildNameLengthMax)
+        if (!GuildRules.IsGuildName(guildName, Constants.GuildNameLengthMin, Constants.GuildNameLengthMax, Target.LOCALE)
             || BanWordStorage.ContainsBannedWord(guildName)) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
             return;

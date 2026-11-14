@@ -1157,7 +1157,7 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
-        if (!GuildRules.IsGuildName(name, constants.GuildNameLengthMin, constants.GuildNameLengthMax) || BanWordStorage.ContainsBannedWord(name)) {
+        if (!GuildRules.IsGuildName(name, constants.GuildNameLengthMin, constants.GuildNameLengthMax, Target.LOCALE) || BanWordStorage.ContainsBannedWord(name)) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
             return;
         }

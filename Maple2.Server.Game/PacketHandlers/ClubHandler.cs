@@ -100,7 +100,7 @@ public class ClubHandler : FieldPacketHandler {
             return;
         }
 
-        if (!NameValidator.ValidName(clubName)) {
+        if (!NameValidator.ValidClubName(clubName)) {
             session.Send(ClubPacket.Error(ClubError.s_club_err_name_value));
             return;
         }
@@ -348,7 +348,7 @@ public class ClubHandler : FieldPacketHandler {
             return;
         }
 
-        if (!NameValidator.ValidName(newName)) {
+        if (!NameValidator.ValidClubName(newName)) {
             session.Send(ClubPacket.Error(ClubError.s_club_err_name_value));
             return;
         }

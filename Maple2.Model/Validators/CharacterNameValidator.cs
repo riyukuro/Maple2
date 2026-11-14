@@ -44,32 +44,70 @@ public static partial class NameValidator {
         int width = 0;
         foreach (char ch in name) {
             width++;
-            if (ch is >= '0' and <= '9' or >= 'a' and <= 'z' or >= 'A' and <= 'Z') {
-                continue;
+            if (!IsNameLetter(ch, locale, out bool wide)) {
+                return -1;
             }
-            bool hangul = ch is >= '\uAC00' and < '\uD7A4';
-            switch (locale) {
-                case "NA":
-                    if ("\u00C4\u00E4\u00D6\u00F6\u00DC\u00FC\u00DF".IndexOf(ch) >= 0
-                        || "\u00AA\u00BA\u00C0\u00C1\u00C2\u00C3\u00C7\u00C9\u00CA\u00CD\u00D3\u00D4\u00D5\u00DA\u00E0\u00E1\u00E2\u00E3\u00E7\u00E9\u00EA\u00ED\u00F3\u00F4\u00F5\u00FA".IndexOf(ch) >= 0) {
-                        continue;
-                    }
-                    return -1;
-                case "CN":
-                    if (ch is >= '\u4E00' and < '\u9FAF') {
-                        width++;
-                        continue;
-                    }
-                    return -1;
-                default:
-                    if (hangul) {
-                        width++;
-                        continue;
-                    }
-                    return -1;
+            if (wide) {
+                width++;
             }
         }
         return width;
+    }
+
+    // A letter ScanLimit (commonstringtable.cpp) takes in a name of the region: an ASCII letter or digit, and by
+    // region KR (and any region the client has no case for) a Hangul syllable U+AC00..U+D7A3, NA the umlauts and
+    // the Portuguese letters, CN a CJK ideograph U+4E00..U+9FAE. wide: the region counts it twice where the name's
+    // limit counts wide letters twice (a character name does, a guild name does not).
+    public static bool IsNameLetter(char ch, string locale, out bool wide) {
+        wide = false;
+        if (ch is >= '0' and <= '9' or >= 'a' and <= 'z' or >= 'A' and <= 'Z') {
+            return true;
+        }
+        switch (locale) {
+            case "NA":
+                return "\u00C4\u00E4\u00D6\u00F6\u00DC\u00FC\u00DF".IndexOf(ch) >= 0
+                    || "\u00AA\u00BA\u00C0\u00C1\u00C2\u00C3\u00C7\u00C9\u00CA\u00CD\u00D3\u00D4\u00D5\u00DA\u00E0\u00E1\u00E2\u00E3\u00E7\u00E9\u00EA\u00ED\u00F3\u00F4\u00F5\u00FA".IndexOf(ch) >= 0;
+            case "CN":
+                wide = ch is >= '\u4E00' and < '\u9FAF';
+                return wide;
+            default:
+                wide = ch is >= '\uAC00' and < '\uD7A4';
+                return wide;
+        }
+    }
+
+    /// <summary>
+    /// The client's guild-name rule for a region (CBanTextChecker::CheckGuildName, which runs ScanLimit,
+    /// commonstringtable.cpp): no space at either end, min to max characters, each counted once, of the region's
+    /// name letters (IsNameLetter), a space that does not follow a space, and ' - _ .
+    /// </summary>
+    public static bool ValidGuildName(string name, string locale, int min, int max) {
+        int least = Math.Max(min, 1);
+        if (name.Trim().Length < least || name.Trim().Length != name.Length || name.Length > max) {
+            return false;
+        }
+        for (int i = 0; i < name.Length; i++) {
+            char ch = name[i];
+            if (ch == ' ' && (i == 0 || name[i - 1] != ' ')) {
+                continue;
+            }
+            if (ch is '\'' or '-' or '_' or '.') {
+                continue;
+            }
+            if (!IsNameLetter(ch, locale, out _)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// A club name (CClubClientManager create, clubcli.cpp:897, and rename, SendClubMode14): the client asks for
+    /// no space and runs the ban word lists (CheckClubName: CheckTypes, no letter rule), so any letter of any
+    /// region is taken. Chosen here, against hand-made packets: no control character.
+    /// </summary>
+    public static bool ValidClubName(string name) {
+        return !string.IsNullOrWhiteSpace(name) && !name.Contains(' ') && !name.Any(char.IsControl);
     }
 
     // The count ScanLimit makes before it looks at what the characters are: one per character and one more for a

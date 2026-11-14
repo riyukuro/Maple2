@@ -25,10 +25,11 @@ public static class GuildRules {
         return (property.LoseMiniGameExp, property.LoseMiniGameFund);
     }
 
-    // A guild name a new guild or a rename takes (the ban words are checked apart): not blank, min to max letters
-    // (the constants GuildNameLengthMin and GuildNameLengthMax) and the letters a name may have.
-    public static bool IsGuildName(string name, int min, int max) {
-        return !string.IsNullOrWhiteSpace(name) && name.Length >= min && name.Length <= max && NameValidator.ValidName(name);
+    // A guild name a new guild or a rename takes (the ban words are checked apart): the client's rule for the
+    // region (NameValidator.ValidGuildName), min to max characters (the constants GuildNameLengthMin and
+    // GuildNameLengthMax).
+    public static bool IsGuildName(string name, int min, int max, string locale) {
+        return NameValidator.ValidGuildName(name, locale, min, max);
     }
 
     // Rank 0 is the master's rank.
