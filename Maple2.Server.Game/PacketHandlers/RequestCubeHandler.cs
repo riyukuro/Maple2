@@ -714,7 +714,7 @@ public class RequestCubeHandler : FieldPacketHandler {
         layout = db.SaveHomeLayout(new HomeLayout(slot, name, area, height, DateTimeOffset.Now, plot.Cubes.Values.ToList()));
         if (layout is null) {
             Logger.Error("Failed to save layout for {AccountId}", session.AccountId);
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
+            session.Send(CubePacket.SaveLayoutError(UgcMapError.s_ugcmap_db));
             return;
         }
         home.Layouts.Add(layout);
@@ -981,7 +981,7 @@ public class RequestCubeHandler : FieldPacketHandler {
         layout = db.SaveHomeLayout(homeLayout);
         if (layout is null) {
             Logger.Error("Failed to save layout for {AccountId}", session.AccountId);
-            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
+            session.Send(CubePacket.SaveLayoutError(UgcMapError.s_ugcmap_db, blueprint: true));
             return;
         }
         home.Blueprints.Add(layout);

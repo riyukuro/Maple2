@@ -542,6 +542,16 @@ public static class CubePacket {
         return pWriter;
     }
 
+    // A save that failed: the save's own command with its error byte, which the client shows with ShowBuildNotice and
+    // reads nothing more (scenestategame.cpp:10655 for 0x2e, :10677 for 0x40, the blueprint save).
+    public static ByteWriter SaveLayoutError(UgcMapError error, bool blueprint = false) {
+        var pWriter = Packet.Of(SendOp.ResponseCube);
+        pWriter.WriteByte((byte) (blueprint ? Command.SaveBlueprint : Command.SaveLayout));
+        pWriter.WriteByte((byte) error);
+
+        return pWriter;
+    }
+
     public static ByteWriter SetBackground(HomeBackground background) {
         var pWriter = Packet.Of(SendOp.ResponseCube);
         pWriter.Write<Command>(Command.SetBackground);

@@ -10,6 +10,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -107,6 +108,30 @@ public class LayoutBillTests {
         }));
         byte[] error = CubePacket.Error(UgcMapError.s_ugcmap_db).ToArray();
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(error) }));
+    }
+
+    // A layout (46) or blueprint (64) save the database refuses is answered with the save's own command and the
+    // error byte, 0x2e or 0x40 s_ugcmap_db, as the client reads it; it was 0x02 (the plot purchase answer).
+    [TestCase(46, false)]
+    [TestCase(64, true)]
+    public void FailedSave_IsAnsweredWithTheSaveCommand(int command, bool blueprint) {
+        GameSession session = StartInHome();
+        test.TakeSent();
+        test.FailSave = context => context.ChangeTracker.Entries()
+            .Any(entry => entry.State == EntityState.Added && entry.Entity is Maple2.Database.Model.HomeLayout);
+        new RequestCubeHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte((byte) command);
+            writer.WriteInt(2);
+            writer.WriteUnicodeString("layout");
+        }));
+        test.FailSave = null;
+        byte[] error = CubePacket.SaveLayoutError(UgcMapError.s_ugcmap_db, blueprint).ToArray();
+        Assert.Multiple(() => {
+            Assert.That(error[2], Is.EqualTo(command));
+            Assert.That(error[3], Is.EqualTo(13));
+            Assert.That(error, Has.Length.EqualTo(4));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(error) }));
+        });
     }
 
     // The blueprint bill (ResponseCube 0x43 from a blueprint item) comes from the same RequestLayout.
