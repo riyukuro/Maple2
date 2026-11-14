@@ -2560,20 +2560,32 @@ public class TableMapper : TypeMapper<TableMetadata> {
 
     private DungeonMissionTable ParseDungeonMissionTable() {
         var results = new Dictionary<int, DungeonMissionMetadata>();
+        // value1 as the client reads it, whole numbers; the parser's floats are kept only where the row has none.
+        Dictionary<int, long[]> exact = DungeonMissionValues.Value1(xmlReader.GetXmlDocument(xmlReader.GetEntry(PlayedClientMissions.MissionTable)));
+        int moved = 0;
         foreach ((int id, DungeonMission mission) in parser.ParseDungeonMission()) {
             if (!Enum.TryParse(mission.type, out DungeonMissionType type)) {
                 Console.WriteLine($"Unknown Mission type: {mission.type}");
                 continue;
             }
+            long[] value1 = Array.ConvertAll(mission.value1, element => (long) element);
+            // The same row as the parser's: as many values, each the parser's float of it.
+            if (exact.TryGetValue(id, out long[]? whole) && whole.Length == mission.value1.Length
+                && whole.Select((value, i) => (float) value == mission.value1[i]).All(same => same)) {
+                moved += value1.SequenceEqual(whole) ? 0 : 1;
+                value1 = whole;
+            }
             results.Add(id, new DungeonMissionMetadata(
                 Id: id,
                 Type: type,
-                Value1: Array.ConvertAll(mission.value1, element => (long) element),
+                Value1: value1,
                 Value2: mission.value2,
                 MaxScore: (short) mission.maxScore,
                 ApplyCount: (short) mission.applyCount,
                 IsPenaltyType: mission.isPenaltyType));
         }
+
+        Console.WriteLine($"dungeon missions: {moved} value1 lists read exact where a float moved them");
 
         // A played client of another version builds only the missions of its own table; an id it cannot
         // build stops its dungeon at room entry (PlayedClientMissions), so such ids are not kept.
