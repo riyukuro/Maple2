@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
+using Maple2.File.Ingest.Mapper;
+using Maple2.File.Parser.Xml.AdditionalEffect;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
@@ -118,6 +120,20 @@ public class DotDamageRowTests {
         Assert.That(new DotDamageRecord(caster, target, Dot()).Sends, Is.False);
         Assert.That(new DotDamageRecord(caster, target, Dot(AttackType.Physical, isConstDamage: true)).Sends, Is.False);
         Assert.That(new DotDamageRecord(caster, target, Dot(spValue: 10)).Sends, Is.True);
+    }
+
+    // The ingest keeps that typed empty row: 10400221 level 1 (KR: Type 1, no rate, value or share) was ingested
+    // without its dot damage, so the Normal 0 tick never came. An untyped or a constant empty row is still dropped.
+    [Test]
+    public void Ingest_KeepsATypedDotWithoutDamage() {
+        AdditionalEffectMetadataDot.DotDamage? typed = AdditionalEffectMapper.Convert(new DotDamageProperty { type = 1 });
+        Assert.That(typed, Is.Not.Null);
+        Assert.That(typed!.Type, Is.EqualTo(AttackType.Physical));
+        Assert.That(new DotDamageRecord(Player(5000, 5000), Player(10000, 10000), typed).Sends, Is.True);
+
+        Assert.That(AdditionalEffectMapper.Convert(new DotDamageProperty()), Is.Null);
+        Assert.That(AdditionalEffectMapper.Convert(new DotDamageProperty { type = 1, isConstDotDamageValue = true }), Is.Null);
+        Assert.That(AdditionalEffectMapper.Convert(new DotDamageProperty { spValue = 10 }), Is.Not.Null);
     }
 
     // A hit of the field's own actor is not rolled for evasion, but the target's block and evasion compulsions hold:

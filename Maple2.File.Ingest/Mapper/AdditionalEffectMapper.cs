@@ -622,8 +622,10 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             DisableCrit: recovery.disableCriticalRecovery);
     }
 
-    private static AdditionalEffectMetadataDot.DotDamage? Convert(DotDamageProperty dotDamage) {
-        if (dotDamage is { value: <= 0, rate: <= 0, damageByTargetMaxHP: <= 0, spValue: 0, epValue: 0 }) {
+    // A typed, non-const row with no amount still ticks (the Normal 0 tick), so only an untyped or const empty row is dropped.
+    public static AdditionalEffectMetadataDot.DotDamage? Convert(DotDamageProperty dotDamage) {
+        if (dotDamage is { value: <= 0, rate: <= 0, damageByTargetMaxHP: <= 0, spValue: 0, epValue: 0 }
+            && (dotDamage.type == 0 || dotDamage.isConstDotDamageValue)) {
             return null;
         }
 
