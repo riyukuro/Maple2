@@ -54,6 +54,34 @@ public class ItemEquipHandlerTests {
         Assert.That(session.Item.Equips.Get(cap.Uid), Is.Null);
     }
 
+    // A worn item taken off with a full bag stays worn and gets the bag's notice; an unknown uid is dropped. Before,
+    // the item left its slot before the bag was checked (lost from both), and either request cut the session.
+    [Test]
+    public void Unequip_WithAFullBagKeepsTheItemWorn() {
+        test = new TestGameSession();
+        Item cap = test.Store(TestGameSession.Metadata(11300001, EquipSlot.CP, type: 1, slotMax: 1));
+        GameSession session = test.Start();
+        Equip(session, cap, EquipSlot.CP);
+        while (session.Item.Inventory.FreeSlots(InventoryType.Gear) > 0) {
+            Assert.That(session.Item.Inventory.Add(test.Store(TestGameSession.Metadata(11300100, EquipSlot.CP, type: 1, slotMax: 1))), Is.True);
+        }
+        test.TakeSent();
+
+        Unequip(session, cap);
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteLong(cap.Uid + 1000);
+        }));
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Equips.Get(cap.Uid), Is.Not.Null);
+            Assert.That(session.Item.Inventory.Get(cap.Uid), Is.Null);
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Convert.ToHexString(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory).ToArray()),
+            }));
+        });
+    }
+
     // An item that takes the place of a worn one: the new item leaves the bag, the old one enters it, then
     // ItemPutOff (old) and ItemPutOn (new).
     [Test]

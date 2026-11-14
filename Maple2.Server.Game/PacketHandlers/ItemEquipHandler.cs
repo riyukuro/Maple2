@@ -1,7 +1,10 @@
 ﻿using Maple2.Model.Enum;
+using Maple2.Model.Error;
+using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -46,10 +49,16 @@ public class ItemEquipHandler : FieldPacketHandler {
     private void HandleUnequip(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
 
-        // Disconnect if this fails to avoid bad state.
+        // The client sends only a worn item's uid (Unk_Inventory::RequestUnequipItem finds it on the player first),
+        // so any other is dropped (a badge comes off by its own packet). It checks the bag first (FUN_140a655b0,
+        // notice 67): a full bag gets the bag's own notice, as an equip that needs room, and the item stays worn.
+        // Both used to cut the session.
+        Item? worn = session.Item.Equips.Get(itemUid);
+        if (worn == null || session.Item.Equips.Badge.Values.Contains(worn)) {
+            return;
+        }
         if (!session.Item.Equips.Unequip(itemUid)) {
-            Logger.Fatal("Failed to unequip item: {Uid}", itemUid);
-            session.Cut();
+            session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
         }
     }
 

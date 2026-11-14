@@ -370,12 +370,17 @@ public class EquipManager {
     private bool UnequipInternal(EquipSlot slot, byte kind, short inventorySlot = -1, bool takenOff = false) {
         bool isSkin = kind != EquipKind.Gear;
         ConcurrentDictionary<EquipSlot, Item> equips = Tab(kind);
-        if (!equips.TryRemove(slot, out Item? unequipItem)) {
+        if (!equips.ContainsKey(slot)) {
             return true; // Nothing to unequip
         }
 
+        // The bag is checked before the item leaves its equip slot: a full bag kept it out of both, so the
+        // item was lost.
         if (session.Item.Inventory.FreeSlots(isSkin ? InventoryType.Outfit : InventoryType.Gear) == 0) {
             return false;
+        }
+        if (!equips.TryRemove(slot, out Item? unequipItem)) {
+            return true;
         }
 
         unequipItem.Group = ItemGroup.Default;
