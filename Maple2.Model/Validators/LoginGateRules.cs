@@ -8,6 +8,8 @@
 // refused as a full server: the login kicks the old session (AlreadyLogin) and takes the same place.
 // Full = the online characters on the listed channels reach the channels' capacity, the count the server list's
 // traffic bar shows (CHANNEL_CAPACITY per channel). With no channel up the login is not refused here.
+// The count is a soft cap: it is read at the login check, so logins checked at the same moment can all pass and go
+// a few over. The channels themselves still take them.
 public static class LoginGateRules {
     public enum Refusal {
         None,

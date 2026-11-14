@@ -79,9 +79,13 @@ public partial class GlobalService : Global.GlobalBase {
                 });
             }
 
+            // A new account is never a GM and never online: a refusal comes before it is made, so none is kept.
+            if (Refused(0, false) is { } refusedNew) {
+                return Task.FromResult(refusedNew);
+            }
             Account? created = CreateAccount(username, password, machineId, out account);
             if (created != null) {
-                return Task.FromResult(Refused(created) ?? new LoginResponse { AccountId = created.Id });
+                return Task.FromResult(new LoginResponse { AccountId = created.Id });
             }
             // Another login made the account first: it is checked below as an existing one.
         }
@@ -119,30 +123,31 @@ public partial class GlobalService : Global.GlobalBase {
             });
         }
 
-        if (Refused(account) is { } refused) {
+        if (Refused(account.Id, AdminLevel.IsGm(account.AdminPermissions)) is { } refused) {
             return Task.FromResult(refused);
         }
 
         return Task.FromResult(new LoginResponse { AccountId = account.Id });
     }
 
-    private LoginResponse? Refused(Account account) {
+    // accountId 0: an account not made yet.
+    private LoginResponse? Refused(long accountId, bool gm) {
         if (gate == null) {
             return null;
         }
         string? maintenance = gate.Maintenance;
         (int online, int channels) = gate.Load();
-        LoginGateRules.Refusal refusal = LoginGateRules.Check(AdminLevel.IsGm(account.AdminPermissions), maintenance != null,
-            gate.AccountOnline(account.Id), online, channels, Target.ChannelCapacity);
+        LoginGateRules.Refusal refusal = LoginGateRules.Check(gm, maintenance != null,
+            accountId != 0 && gate.AccountOnline(accountId), online, channels, Target.ChannelCapacity);
         return refusal switch {
             LoginGateRules.Refusal.Maintenance => new LoginResponse {
                 Code = LoginResponse.Types.Code.Maintenance,
                 Message = maintenance,
-                AccountId = account.Id,
+                AccountId = accountId,
             },
             LoginGateRules.Refusal.Full => new LoginResponse {
                 Code = LoginResponse.Types.Code.FullServer,
-                AccountId = account.Id,
+                AccountId = accountId,
             },
             _ => null,
         };

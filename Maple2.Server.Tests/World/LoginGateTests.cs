@@ -128,6 +128,24 @@ public class LoginGateTests {
         Assert.That(Login("player").Code, Is.EqualTo(LoginResponse.Types.Code.Ok));
     }
 
+    // A refused login of a new name makes no account (AutoRegister): the refusal comes first, a new account is no GM.
+    [Test]
+    public void ARefusedNewName_MakesNoAccount() {
+        gate.Maintenance = "Back at 10:00";
+        Assert.That(Login("newcomer").Code, Is.EqualTo(LoginResponse.Types.Code.Maintenance));
+        gate.Maintenance = null;
+        gate.Online = Target.ChannelCapacity;
+        Assert.That(Login("newcomer").Code, Is.EqualTo(LoginResponse.Types.Code.FullServer));
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.GetAccount("newcomer"), Is.Null);
+        }
+
+        gate.Online = 0;
+        LoginResponse made = Login("newcomer");
+        Assert.That(made.Code, Is.EqualTo(LoginResponse.Types.Code.Ok));
+        Assert.That(made.AccountId, Is.Not.Zero);
+    }
+
     // A wrong password is answered as before: maintenance tells nothing to someone who cannot log in.
     [Test]
     public void AWrongPassword_IsCheckedFirst() {
