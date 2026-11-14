@@ -145,18 +145,36 @@ public sealed class MarriageManager {
 
     // A Blessing Charm (function WeddingExpItem): the weddingExpItem reward row's exp in this player's line of the
     // marriage's exp log. False, and the charm is kept, for a player whose marriage does not count it or whose last
-    // use is younger than the row's limit (MarriageExpRules.Cooldown).
-    public bool UseWeddingExpItem() {
+    // use is younger than the row's limit (MarriageExpRules.Cooldown). The exp and the charm's bag row (charmUid, as
+    // the take leaves it) are stored in one transaction, the bag at the commit. Before, the exp was stored at once and
+    // the charm taken in memory only, left to the next session save: a crash in between kept the charm for another
+    // use once the cooldown was over. Not under the bag lock: a session save takes the account lock, then the bag's.
+    public bool UseWeddingExpItem(long charmUid) {
         if (Marriage.Id == 0 || !MarriageExpRules.CountsWeddingExp(Marriage.Status)
             || !session.TableMetadata.WeddingTable.Rewards.TryGetValue(MarriageExpType.weddingExpItem, out WeddingReward? reward)
             || reward.Amount <= 0) {
             return false;
         }
 
-        using (GameStorage.Request db = session.GameStorage.Context()) {
-            if (!db.AddWeddingExpItem(Marriage.Id, session.CharacterId, reward.Amount, MarriageExpRules.Cooldown(reward.Limit), DateTime.Now)) {
-                return false;
-            }
+        long marriageId = Marriage.Id;
+        bool refused = false;
+        if (!session.TrySavePurchase(db => {
+                // The exp first, so a use the cooldown refuses has written nothing.
+                if (!db.AddWeddingExpItem(marriageId, session.CharacterId, reward.Amount, MarriageExpRules.Cooldown(reward.Limit), DateTime.Now)) {
+                    refused = true;
+                    return false;
+                }
+                if (!session.Item.Inventory.SaveConsumed(db, charmUid, 1)) {
+                    return false;
+                }
+                db.AfterCommit(() => {
+                    if (!session.Item.Inventory.ConsumeStored(charmUid, 1)) {
+                        logger.Error("Blessing charm {ItemUid} of {CharacterId}: stored as used but not taken from the bag", charmUid, session.CharacterId);
+                    }
+                });
+                return true;
+            }, () => refused, out _)) {
+            return false;
         }
         Reload();
         ReloadPartner(Partner.CharacterId);
@@ -1084,11 +1102,17 @@ public sealed class MarriageManager {
         // save gave it back while the hall stayed reserved). The bag lets it go at the commit, still under the payer's
         // account lock, so no save of the payer comes between the stored row and the bag.
         bool couponTaken = false;
+        // The reservation gifts' mail is stored with the hall too. Before, it was created after the hall's commit: a
+        // crash in between kept the paid hall and lost the gifts.
+        Mail? giftMail = null;
         bool saved = partner.Session.TrySavePurchase(db => {
             if (couponUid != 0 && !partner.Session.Item.Inventory.SaveConsumed(db, couponUid, 1)) {
                 return false;
             }
             if ((hall = storeHall(db)) == null) {
+                return false;
+            }
+            if (gifts && (giftMail = StoreReservationGifts(db, partner, hallData)) == null) {
                 return false;
             }
             if (couponUid != 0) {
@@ -1111,8 +1135,14 @@ public sealed class MarriageManager {
             }
         }
 
-        if (gifts) {
-            MailReservationGifts(partner, hallData);
+        if (giftMail != null) {
+            try {
+                session.World.MailNotification(new MailNotificationRequest {
+                    CharacterId = partner.Value.Character.Id,
+                    MailId = giftMail.Id,
+                });
+            } catch { /* ignored */
+            }
         }
 
         stored = hall;
@@ -1120,19 +1150,18 @@ public sealed class MarriageManager {
         return true;
     }
 
-    private void MailReservationGifts(FieldPlayer partner, WeddingPackage.HallData metadata) {
-        var mail = new Mail {
+    // The reservation gifts' mail and its items, on db (in the hall's transaction); null when a write failed. The mail
+    // is created empty and the items added one by one, since a mail created with items opens a transaction of its own.
+    private Mail? StoreReservationGifts(GameStorage.Request db, FieldPlayer partner, WeddingPackage.HallData metadata) {
+        Mail? mail = db.CreateMail(new Mail {
             ReceiverId = partner.Value.Character.Id,
             SenderId = partner.Value.Character.Id,
             Content = 40000008.ToString(), // Specific ID in string/systemmailcontent[locale].xml
             Type = MailType.System,
-        };
-
-        using GameStorage.Request db = session.GameStorage.Context();
-        mail = db.CreateMail(mail);
+        });
         if (mail == null) {
             logger.Error("Failed to create mail for wedding hall reservation for {CharacterId}", partner.Value.Character.Id);
-            return;
+            return null;
         }
 
         // The reservation gifts are the hall's weddingItem rows, the ones the client's reservation page lists
@@ -1146,19 +1175,12 @@ public sealed class MarriageManager {
             item = db.CreateItem(mail.Id, item);
             if (item == null) {
                 logger.Error("Failed to create item for wedding hall reservation for {CharacterId}", partner.Value.Character.Id);
-                continue;
+                return null;
             }
 
             mail.Items.Add(item);
         }
-
-        try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = partner.Value.Character.Id,
-                MailId = mail.Id,
-            });
-        } catch { /* ignored */
-        }
+        return mail;
     }
 
     // The cancel of a reserved hall (Wedding 0x10, only from the partner who reserved it). The partner in the field is

@@ -131,10 +131,37 @@ public partial class TriggerContext {
             return;
         }
 
+        // The marriage and the couple's gift mails are stored in one transaction. Before, the mails were created after
+        // the marriage was stored: a crash in between kept the marriage and lost the gifts, which no vow gives again.
         DateTime now = DateTime.Now;
+        var mails = new List<(long CharacterId, long MailId)>();
         using (GameStorage.Request db = Field.GameStorage.Context()) {
-            if (!db.SetMarried(ceremony.MarriageId, now)) {
+            db.BeginTransaction();
+            bool stored = db.SetMarried(ceremony.MarriageId, now);
+            if (!stored) {
                 logger.Error("Wedding vow complete: marriage {MarriageId} could not be stored as married", ceremony.MarriageId);
+            }
+            foreach (long characterId in ceremony.Couple) {
+                if (!stored || !Field.TryGetPlayerById(characterId, out _)) {
+                    continue;
+                }
+                Mail? mail = StoreCompleteGifts(db, ceremony, characterId);
+                if (mail == null) {
+                    stored = false;
+                    break;
+                }
+                mails.Add((characterId, mail.Id));
+            }
+            if (stored) {
+                try {
+                    stored = db.Commit();
+                } catch (Exception ex) {
+                    logger.Error(ex, "Wedding vow complete: marriage {MarriageId} and its gift mails not committed", ceremony.MarriageId);
+                    stored = false;
+                }
+            }
+            if (!stored) {
+                db.Rollback();
                 ceremony.Uncomplete();
                 return;
             }
@@ -147,8 +174,16 @@ public partial class TriggerContext {
             }
         }
 
-        foreach (long characterId in ceremony.Couple) {
-            MailCompleteGifts(ceremony, characterId);
+        foreach ((long characterId, long mailId) in mails) {
+            if (!Field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
+                continue;
+            }
+            try {
+                player.Session.World.MailNotification(new MailNotificationRequest {
+                    CharacterId = characterId,
+                    MailId = mailId,
+                });
+            } catch { /* ignored */ }
         }
         // "Complete {0} weddings" (23100428) counts the couple, "Attend {0} weddings as a guest" (23100446) every
         // other player in the room at the vow.
@@ -164,12 +199,9 @@ public partial class TriggerContext {
     // System mail 40000010 ("Wedding is complete", the gifts of the hall attached), one to each of the couple.
     private const int MailWeddingComplete = 40000010;
 
-    private void MailCompleteGifts(WeddingCeremony ceremony, long characterId) {
-        if (!Field.TryGetPlayerById(characterId, out FieldPlayer? player)) {
-            return;
-        }
-
-        using GameStorage.Request db = Field.GameStorage.Context();
+    // The mail and its items on db, in the vow's transaction; null when a write failed. The mail is created empty and
+    // the items added one by one, since a mail created with items opens a transaction of its own.
+    private Mail? StoreCompleteGifts(GameStorage.Request db, WeddingCeremony ceremony, long characterId) {
         Mail? mail = db.CreateMail(new Mail {
             ReceiverId = characterId,
             SenderId = characterId,
@@ -178,25 +210,23 @@ public partial class TriggerContext {
         });
         if (mail == null) {
             logger.Error("Wedding vow complete: gift mail for {CharacterId} could not be stored", characterId);
-            return;
+            return null;
         }
 
         foreach (WeddingPackage.HallData.Item gift in ceremony.Gifts) {
             Item? item = Field.ItemDrop.CreateItem(gift.ItemId, gift.Rarity, gift.Amount);
-            item = item == null ? null : db.CreateItem(mail.Id, item);
+            if (item == null) {
+                logger.Error("Wedding vow complete: gift {ItemId} for {CharacterId} has no item data", gift.ItemId, characterId);
+                continue;
+            }
+            item = db.CreateItem(mail.Id, item);
             if (item == null) {
                 logger.Error("Wedding vow complete: gift {ItemId} for {CharacterId} could not be stored", gift.ItemId, characterId);
-                continue;
+                return null;
             }
             mail.Items.Add(item);
         }
-
-        try {
-            player.Session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = characterId,
-                MailId = mail.Id,
-            });
-        } catch { /* ignored */ }
+        return mail;
     }
 
     #region Conditions

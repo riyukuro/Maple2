@@ -39,6 +39,7 @@ public class WeddingReservationPayTests(bool mysql) {
     [SetUp]
     public void SetUp() {
         fault.Fail = false;
+        fault.FailMail = false;
         if (mysql) {
             if (Connection == null) {
                 Assert.Ignore("the MySQL fixture needs a real database: set MS2_TEST_GAME_DB");
@@ -120,9 +121,14 @@ public class WeddingReservationPayTests(bool mysql) {
     // that adds a hall row, as a database that refuses it would.
     private sealed class HallFault : SaveChangesInterceptor {
         public bool Fail;
+        public bool FailMail;
 
         public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
             if (Fail && eventData.Context != null && eventData.Context.ChangeTracker.Entries<Maple2.Database.Model.WeddingHall>()
+                    .Any(entry => entry.State == EntityState.Added)) {
+                throw new DbUpdateException("The test made this save fail");
+            }
+            if (FailMail && eventData.Context != null && eventData.Context.ChangeTracker.Entries<Maple2.Database.Model.Mail>()
                     .Any(entry => entry.State == EntityState.Added)) {
                 throw new DbUpdateException("The test made this save fail");
             }
@@ -174,6 +180,38 @@ public class WeddingReservationPayTests(bool mysql) {
             Assert.That(payer.Session.Marriage.WeddingHall.Id, Is.Not.EqualTo(0));
             Assert.That(Coupons(), Is.EqualTo(1));
         });
+    }
+
+    // A meret reservation's gift mail (40000008) is stored with the hall, in the same save.
+    [Test]
+    public void Confirm_StoresTheGiftMailWithTheHall() {
+        Assume.That(payer.Session.Marriage.ReserveHall(Reservation()), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+
+        Assert.That(confirmer.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_propose_ok));
+        Assert.That(StoredGiftMails(), Is.EqualTo(1));
+    }
+
+    // A gift mail that cannot be stored fails the reservation: no merets taken, no mail (and, stored, no hall).
+    [Test]
+    public void Confirm_AFailedGiftMailStoresNoHallAndTakesNoMerets() {
+        Assume.That(payer.Session.Marriage.ReserveHall(Reservation()), Is.EqualTo(WeddingError.s_wedding_result_send_wedding_hall_reservation));
+        fault.FailMail = true;
+
+        Assert.That(confirmer.Session.Marriage.ConfirmReservation(), Is.EqualTo(WeddingError.s_wedding_result_err_system));
+        fault.FailMail = false;
+        Assert.Multiple(() => {
+            Assert.That(payer.Session.Currency.Meret, Is.EqualTo(1000));
+            if (mysql) {
+                Assert.That(StoredMeret(), Is.EqualTo(1000));
+                Assert.That(StoredHalls(), Is.EqualTo(0));
+            }
+            Assert.That(StoredGiftMails(), Is.EqualTo(0));
+        });
+    }
+
+    private int StoredGiftMails() {
+        using var context = new Ms2Context(options);
+        return context.Mail.Count(mail => mail.ReceiverId == payer.CharacterId && mail.Content == "40000008");
     }
 
     // The hall of a ceremony whose time has passed, stored for this marriage and held by both partners.

@@ -197,11 +197,18 @@ public class ItemDismantleHandler : FieldPacketHandler {
             item.Metadata.Property.Type, item.Metadata.Property.SkinType);
     }
 
+    // The staged items are taken in one transaction before any reward is given (TrySavePurchase: their bag rows as
+    // the take leaves them, SaveConsumed; memory at the commit, under the account lock), so a crash between the two
+    // loses the rewards at worst. Before, the items were taken in memory only, left to the next session save, while
+    // each reward was a new row at once: a crash in between kept the rewards and the items, which could be broken
+    // again. The rewards are added under the bag lock after the commit; the transaction runs outside it, since a
+    // session save takes the account lock and then the bag lock.
     private void HandleConfirm(GameSession session) {
         if (!session.DismantleOpened) {
             return;
         }
 
+        var staged = new List<(long Uid, int Amount, List<(int Id, int Min, int Max)> Reward)>();
         lock (session.Item) {
             // The item can have changed since it was staged (locked, split, its pet summoned, a gem put in): drop
             // those slots.
@@ -237,33 +244,56 @@ public class ItemDismantleHandler : FieldPacketHandler {
                 return;
             }
 
-            var rewards = new Dictionary<int, (int Min, int Max)>();
-            var broken = new List<int>();
-            for (short slot = 0; slot < session.DismantleStaging.Length; slot++) {
-                (long uid, int amount) = session.DismantleStaging[slot];
+            foreach ((long uid, int amount) in session.DismantleStaging) {
                 Item? item = session.Item.Inventory.Get(uid);
-                if (item == null) {
+                if (uid == 0 || item == null) {
                     continue;
                 }
+                // The reward is read before the take: a partial take lowers item.Amount, and GetReward gives
+                // nothing once the stack holds less than the staged amount.
+                staged.Add((uid, amount, GetReward(item, amount).ToList()));
+            }
+        }
 
-                // The reward is read before the consume: a partial consume lowers item.Amount, and GetReward
-                // gives nothing once the stack holds less than the staged amount.
-                List<(int Id, int Min, int Max)> reward = GetReward(item, amount).ToList();
-
-                // If failed to consume, remove slot.
-                if (!session.Item.Inventory.Consume(uid, amount)) {
-                    session.DismantleStaging[slot] = default;
-                    continue;
+        // All staged items are taken or none: a bag row that no longer holds its staged amount (changed on another
+        // thread since the check) refuses the whole transaction. Refused, nothing is taken or given, the staged items
+        // stay and result 5 resets the dialog's pending break.
+        var taken = new List<(long Uid, int Amount, List<(int Id, int Min, int Max)> Reward)>();
+        if (!session.TrySavePurchase(db => {
+                foreach ((long uid, int amount, _) in staged) {
+                    if (!session.Item.Inventory.SaveConsumed(db, uid, amount)) {
+                        return false;
+                    }
                 }
-                broken.Add(amount);
+                db.AfterCommit(() => {
+                    foreach ((long Uid, int Amount, List<(int Id, int Min, int Max)> Reward) entry in staged) {
+                        if (session.Item.Inventory.ConsumeStored(entry.Uid, entry.Amount)) {
+                            taken.Add(entry);
+                        } else {
+                            // The row is stored as broken, but the item left the bag between its save and the commit (the
+                            // bag lock is not held across the transaction): where it went keeps its amount in memory, so
+                            // that place's next save writes it back. Its reward is not given; logged so it is seen.
+                            Logger.Error("Dismantle {ItemUid} x{Amount}: stored as broken but not taken from the bag of {CharacterId}",
+                                entry.Uid, entry.Amount, session.CharacterId);
+                        }
+                    }
+                });
+                return true;
+            })) {
+            session.Send(ItemDismantlePacket.Error(5));
+            return;
+        }
 
+        lock (session.Item) {
+            Array.Clear(session.DismantleStaging);
+
+            var rewards = new Dictionary<int, (int Min, int Max)>();
+            foreach ((_, _, List<(int Id, int Min, int Max)> reward) in taken) {
                 foreach ((int id, int min, int max) in reward) {
                     (int Min, int Max) prev = rewards.GetValueOrDefault(id, (0, 0));
                     rewards[id] = (prev.Min + min, prev.Max + max);
                 }
             }
-
-            Array.Clear(session.DismantleStaging);
 
             var result = new Dictionary<int, int>();
             foreach ((int id, (int min, int max)) in rewards) {
@@ -290,7 +320,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
             session.Send(ItemDismantlePacket.Result(session.DismantleType, result));
             // Each item broken counts for item_break (74000011 "Dismantle 1 item", 10002700 dismantles 10).
             // KMS2 order: the items taken, the rewards, the result, then the trophy updates.
-            foreach (int amount in broken) {
+            foreach ((_, int amount, _) in taken) {
                 session.ConditionUpdate(ConditionType.item_break, counter: amount);
             }
         }

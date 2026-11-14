@@ -145,13 +145,47 @@ public class MasteryHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.Item.Inventory.ConsumeCraftIngredients(entry.RequiredItems)) {
+        // The fee and the materials are stored in one transaction before the product is given (TrySavePurchase stores
+        // the currency with the materials' rows as the take leaves them; memory at the commit). Before, both were taken
+        // in memory only, left to the next session save, while the product was a new row at once: a crash in between
+        // kept the product, the fee and the materials, so the craft could be made again.
+        Dictionary<long, int>? materials = session.Item.Inventory.PickCraftIngredients(entry.RequiredItems);
+        if (materials == null) {
+            session.Currency.ReturnMeso(entry.RequiredMeso, notify: false);
+            session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_lack_item));
+            return;
+        }
+        bool taken = false;
+        if (!session.TrySavePurchase(db => {
+                foreach ((long uid, int amount) in materials) {
+                    if (!session.Item.Inventory.SaveConsumed(db, uid, amount)) {
+                        return false;
+                    }
+                }
+                db.AfterCommit(() => {
+                    taken = true;
+                    foreach ((long uid, int amount) in materials) {
+                        if (!session.Item.Inventory.ConsumeStored(uid, amount)) {
+                            // Stored as taken, but the stack left the bag between its save and the commit: where it
+                            // went keeps it, so the craft gives nothing (logged so it is seen).
+                            taken = false;
+                            Logger.Error("Mastery craft {RecipeId}: material {ItemUid} x{Amount} stored as taken but not taken from the bag of {CharacterId}",
+                                recipeId, uid, amount, session.CharacterId);
+                        }
+                    }
+                });
+                return true;
+            })) {
+            // Nothing stored: the fee comes back, the materials stay.
             session.Currency.ReturnMeso(entry.RequiredMeso, notify: false);
             session.Send(MasteryPacket.Error(MasteryError.s_mastery_error_lack_item));
             return;
         }
 
         session.Currency.NotifyMeso();
+        if (!taken) {
+            return;
+        }
 
         if (!entry.NoRewardExp) {
             // The gain the client's craft dialog shows: the recipe's mastery raised by the type's ability.

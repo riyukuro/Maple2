@@ -191,6 +191,56 @@ public class ItemDismantleHandlerTests {
         Assert.That(session.Item.Inventory.Find(Onyx).Sum(item => item.Amount), Is.EqualTo(6));
     }
 
+    // The broken items are stored at once, before the rewards are given: the item's row goes to owner 0 and a part of
+    // a stack is stored at what is left. Before, the take was in memory only until the next session save, while each
+    // reward was a new row at once, so a crash in between kept the rewards and the items.
+    [Test]
+    public void Confirm_StoresTheBrokenItemsAtOnce() {
+        const int Stack = 30000001;
+        GameSession session = Login(rarity: 3);
+        Item stack = test.Store(TestGameSession.Metadata(Stack, type: 4, slotMax: 99), amount: 5);
+        Assert.That(session.Item.Inventory.Add(stack, commit: true), Is.True);
+        test.SetTable(new ItemBreakTable(new Dictionary<int, IReadOnlyList<ItemBreakTable.Ingredient>> {
+            [Stack] = [new ItemBreakTable.Ingredient(Onyx, 2)],
+        }));
+        Stage(session);
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteInt(-1);
+            writer.WriteLong(stack.Uid);
+            writer.WriteInt(3);
+        }));
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        Assert.That(test.Row(gear.Uid)!.OwnerId, Is.EqualTo(0));
+        Assert.That(test.Row(stack.Uid)!.Amount, Is.EqualTo(2));
+        Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Null);
+        Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(2));
+        Assert.That(session.Item.Inventory.Find(Onyx).Sum(item => item.Amount), Is.EqualTo(142 + 6));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A save that fails takes and gives nothing: the item stays staged and in the bag, its row unchanged, and result 5.
+    [Test]
+    public void Confirm_FailedSave_KeepsTheItemAndGivesNothing() {
+        GameSession session = Login(rarity: 3);
+        long owner = test.Row(gear.Uid)!.OwnerId;
+        Stage(session);
+        test.TakeSent();
+        test.FailSave = _ => true;
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+        test.FailSave = null;
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemDismantlePacket.Error(5)) }));
+        Assert.That(session.Item.Inventory.Get(gear.Uid), Is.Not.Null);
+        Assert.That(test.Row(gear.Uid)!.OwnerId, Is.EqualTo(owner));
+        Assert.That(session.Item.Inventory.Find(Onyx), Is.Empty);
+        Assert.That(session.DismantleStaging.Any(staged => staged.Uid == gear.Uid), Is.True);
+    }
+
     // A staged item cannot be staged again after an earlier slot was emptied: the duplicate check stopped at the
     // first empty slot, so the second stage took slot 0 and the preview counted the item twice.
     [Test]

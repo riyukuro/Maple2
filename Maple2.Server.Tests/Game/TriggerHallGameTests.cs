@@ -176,6 +176,35 @@ public class TriggerHallGameTests : TriggerTestBase {
         }
         Assert.That((test.Session.Marriage.Marriage.Status, test.Session.Player.Value.Character.MarriageInfo.Status),
             Is.EqualTo((MaritalStatus.Married, MaritalStatus.Married)));
+        // The couple's gift mail is stored with the marriage (here the one player, once for each of the couple).
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            Assert.That(context.Mail.Count(mail => mail.ReceiverId == CharacterId), Is.EqualTo(2));
+        }
+    }
+
+    // A gift mail that cannot be stored fails the vow's transaction: the ceremony is not complete (a later vow may try
+    // again) and the couple's marriage is not turned married. The in-memory store keeps no rollback, so the stored row
+    // is not checked here.
+    [Test]
+    public void WeddingVowComplete_AFailedGiftMailMarriesNobody() {
+        StartHall();
+        long marriageId;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Account account = db.CreateAccount(new Account { Username = "partner" }, "pw");
+            var partner = new Character { AccountId = account.Id, Name = "partner", Mastery = new Mastery() };
+            partner.ReturnMaps.Push(2000062);
+            long partnerId = db.CreateCharacter(partner)!.Id;
+            marriageId = db.CreateMarriage(CharacterId, partnerId)!.Id;
+            test.Session.Marriage.Marriage = db.GetMarriage(CharacterId)!;
+        }
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Mail>().Any();
+
+        Field.Wedding = new WeddingCeremony(marriageId, CharacterId, CharacterId, CharacterId);
+        Action("""<action name="wedding_vow_complete" />""");
+        test.FailSave = null;
+
+        Assert.That(Field.Wedding.Complete, Is.False);
+        Assert.That(test.Session.Marriage.Marriage.Status, Is.Not.EqualTo(MaritalStatus.Married));
     }
 
     // wedding_entry_in_field (60): GroomBride with is_in_field 1 holds while both of the couple are in the room, 0

@@ -992,12 +992,16 @@ public class ItemFunctionUseTests {
 
         Use(charm);
 
+        // The charm's row is stored with the exp, not left to the next session save.
+        Assert.That(test.Errors, Is.Empty);
         Assert.That(session.Marriage.Marriage.Exp, Is.EqualTo(350));
         Assert.That(session.Item.Inventory.Get(charm.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(test.Row(charm.Uid)!.Amount, Is.EqualTo(1));
 
         Use(charm);
 
         Assert.That(session.Marriage.Marriage.Exp, Is.EqualTo(350));
         Assert.That(session.Item.Inventory.Get(charm.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(test.Row(charm.Uid)!.Amount, Is.EqualTo(1));
     }
 }

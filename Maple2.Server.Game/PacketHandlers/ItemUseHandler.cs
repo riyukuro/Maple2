@@ -951,15 +951,12 @@ public class ItemUseHandler : FieldPacketHandler {
 
     // A Blessing Charm (function WeddingExpItem, no parameter): the client has no rule of its own for it and sends the
     // plain use. The marriage's exp log gets the reward table's weddingExpItem exp (350 in KR) in this partner's line,
-    // once in 30 days; the charm is taken only then (under the item lock, so the charm the exp was given for is the one
-    // taken).
+    // once in 30 days; the charm is taken only then, stored with the exp (UseWeddingExpItem).
     private static void HandleWeddingExpItem(GameSession session, Item item) {
-        lock (session.Item) {
-            if (session.Item.Inventory.Get(item.Uid) == null || !session.Marriage.UseWeddingExpItem()) {
-                return;
-            }
-            session.Item.Inventory.Consume(item.Uid, 1);
+        if (session.Item.Inventory.Get(item.Uid) == null) {
+            return;
         }
+        session.Marriage.UseWeddingExpItem(item.Uid);
     }
 
     // A festival item (FestivalEvent, unit_140d1ae30 FUN_140d1f030): the client sends the plain use only in a field

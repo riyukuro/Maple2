@@ -4,8 +4,10 @@ using System.Linq;
 using System.Reflection;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
@@ -27,18 +29,16 @@ public class MaidCraftMeretReceiveTests {
     private const int Filler = 20000102;
     private const int Meso = 90000001;
     private const int MaidCube = 50400001;
+    private const int Material = 20000103;
     private long MaidUid;
+    private Item materialRow = null!;
     private Plot plot = null!;
 
     private TestGameSession test = null!;
     private GameSession session => test.Session;
 
-    private void Login(bool fullBag = false, int slotMax = 100, int product = Product) {
-        DbContextOptions options = new DbContextOptionsBuilder()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
-        test = new TestGameSession(options);
+    private void Login(bool fullBag = false, int slotMax = 100, int product = Product, int materials = 0) {
+        test = new TestGameSession();
         test.Register(TestGameSession.Metadata(Product, slotMax: slotMax));
         test.Register(TestGameSession.Metadata(MaidCube));
         test.Register(TestGameSession.Metadata(Meso));
@@ -46,10 +46,15 @@ public class MaidCraftMeretReceiveTests {
             test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { bagSlotTabMiscCount = [1, 0] });
             test.Store(TestGameSession.Metadata(Filler));
         }
+        if (materials > 0) {
+            materialRow = test.Store(TestGameSession.Metadata(Material, type: 4, slotMax: 99), amount: materials);
+        }
         test.Start();
         plot = test.EnterHome();
         test.SetTable(new MaidTable(new Dictionary<int, MaidTable.Entry>(), new Dictionary<int, int>(), new Dictionary<int, MaidTable.Recipe> {
-            [RecipeId] = new MaidTable.Recipe(RecipeId, [], 0, [300, 200, 100], 50, 5, product, 2, 1),
+            [RecipeId] = new MaidTable.Recipe(RecipeId, [new MaidTable.Ingredient(Material, ItemTag.None, 3)], 0, [300, 200, 100], 50, 5, product, 2, 1),
+        }, new Dictionary<int, IReadOnlyList<MaidTable.RecipeLevel>> {
+            [3] = [new MaidTable.RecipeLevel(RecipeId, 1)],
         }));
         test.TakeSent();
     }
@@ -87,6 +92,22 @@ public class MaidCraftMeretReceiveTests {
             }));
         test.RunFieldQueue();
         return test.TakeSent();
+    }
+
+    private List<byte[]> Start() {
+        new MaidCraftItemHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+            .Handle(session, TestGameSession.Packet(writer => {
+                writer.WriteByte(4);
+                writer.WriteInt(RecipeId);
+                writer.WriteLong(MaidUid);
+            }));
+        test.RunFieldQueue();
+        return test.TakeSent();
+    }
+
+    // A save of the account's row (the session's currency save) fails; other saves (the maid's craft) go through.
+    private void FailCurrencySave() {
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Account>().Any(entry => entry.State == EntityState.Modified);
     }
 
     private static List<string> Crafts(List<byte[]> sent) {
@@ -256,6 +277,95 @@ public class MaidCraftMeretReceiveTests {
             Assert.That(Stored(), Is.EqualTo((RecipeId, start, 3700)));
             Assert.That(Crafts(sent), Is.Empty);
         });
+    }
+
+    // The craft is stored with the ingredients' rows as the take leaves them, in one transaction: the stack is lowered
+    // in storage at once, not at the next session save.
+    [Test]
+    public void AStartedCraftStoresItsIngredientsAtOnce() {
+        Login(materials: 5);
+        Place(0, 0, 0);
+
+        List<byte[]> sent = Start();
+
+        Assert.Multiple(() => {
+            Assert.That(test.Errors, Is.Empty);
+            Assert.That(Crafts(sent), Does.Contain(Convert.ToHexString(MaidCraftItemPacket.CraftResult(MaidRules.CraftStarted).ToArray())));
+            Assert.That(Stored()!.Value.RecipeId, Is.EqualTo(RecipeId));
+            Assert.That(test.Row(materialRow.Uid)!.Amount, Is.EqualTo(2));
+            Assert.That(Held(Material), Is.EqualTo(2));
+        });
+    }
+
+    // A craft another channel stored first refuses the transaction: no ingredient is taken, in storage or the bag.
+    [Test]
+    public void ACraftStoredElsewhereTakesNoIngredient() {
+        Login(materials: 5);
+        Place(0, 0, 0);
+        long start = DateTime.UtcNow.ToEpochSeconds();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.SetMaidCraft(MaidUid, 0, 0, RecipeId, start, 300), Is.True);
+        }
+
+        Start();
+
+        Assert.Multiple(() => {
+            Assert.That(Stored(), Is.EqualTo((RecipeId, start, 300)));
+            Assert.That(test.Row(materialRow.Uid)!.Amount, Is.EqualTo(5));
+            Assert.That(Held(Material), Is.EqualTo(5));
+        });
+    }
+
+    [Test]
+    public void AFailedStartSaveTakesNothing() {
+        Login(materials: 5);
+        Place(0, 0, 0);
+        test.FailSave = _ => true;
+
+        List<byte[]> sent = Start();
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Crafts(sent), Does.Contain(Convert.ToHexString(MaidCraftItemPacket.CraftResult(MaidRules.CraftNotEnough).ToArray())));
+            Assert.That(Stored(), Is.EqualTo((0, 0L, 0)));
+            Assert.That(test.Row(materialRow.Uid)!.Amount, Is.EqualTo(5));
+            Assert.That(Held(Material), Is.EqualTo(5));
+        });
+    }
+
+    // The merets taken are stored before the product is given; a currency save that fails gives the merets back,
+    // stores the craft again and gives nothing.
+    [Test]
+    public void AFailedMeretSaveReturnsTheMeretsAndKeepsTheCraft() {
+        Login();
+        long start = DateTime.UtcNow.ToEpochSeconds();
+        Place(RecipeId, start, 3700);
+        session.Currency.Meret = 100;
+        test.TakeSent();
+        FailCurrencySave();
+
+        List<byte[]> sent = Send();
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(100));
+            Assert.That(Held(Product), Is.EqualTo(0));
+            Assert.That(Stored(), Is.EqualTo((RecipeId, start, 3700)));
+            Assert.That(Crafts(sent), Is.Empty);
+        });
+    }
+
+    [Test]
+    public void TheMeretsTakenAreStoredBeforeTheProduct() {
+        Login();
+        Place(RecipeId, DateTime.UtcNow.ToEpochSeconds(), 3700);
+        session.Currency.Meret = 100;
+        test.TakeSent();
+
+        Send();
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(context.Account.AsNoTracking().Single(account => account.Id == session.AccountId).Currency.Meret, Is.EqualTo(100 - 27));
     }
 
     // What an add put in comes out again: the stack it filled goes back to its amount, the new row goes.

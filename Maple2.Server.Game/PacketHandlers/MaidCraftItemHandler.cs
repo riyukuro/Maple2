@@ -109,25 +109,53 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                 return;
             }
             float reduceRate = (float) session.Player.Stats.Values[SpecialAttribute.ReduceMaidRecipe].Multiplier();
-            // The inventory lock is held from the count to the take, so the counted items are the ones taken; the
-            // craft is stored before anything is taken, so a craft another channel started first takes nothing.
+            List<(long Uid, int Amount)>? taken;
             lock (session.Item) {
                 IList<Item> owned = session.Item.Inventory.Filter(item => recipe.Ingredients.Any(ingredient => MaidRules.Fills(ingredient, item)));
-                List<(long Uid, int Amount)>? taken = debug ? [] : MaidRules.TakeIngredients(owned, recipe, reduceRate);
+                taken = debug ? [] : MaidRules.TakeIngredients(owned, recipe, reduceRate);
                 if (taken == null) {
                     session.Send(MaidCraftItemPacket.CraftResult(MaidRules.CraftNotEnough));
                     return;
                 }
-                if (!field.SetMaidCraft(found, recipe.Id, now, MaidRules.LeadTime(recipe, found.Mood))) {
-                    SendRecord(session, found);
-                    return;
-                }
-                foreach ((long uid, int amount) in taken) {
-                    if (session.Item.Inventory.Consume(uid, amount)) {
-                        continue;
+            }
+            // The craft and the ingredients' rows (as the take leaves them, SaveConsumed) are stored in one transaction,
+            // memory at the commit. Before, the craft was stored at once and the ingredients taken in memory only,
+            // left to the next session save: a crash in between kept the craft and the ingredients. The craft is
+            // stored against the one this field holds, so a craft another channel started first refuses the whole
+            // transaction and takes nothing; so does an ingredient that left the bag since the count. The transaction
+            // runs outside the bag lock, since a session save takes the account lock and then the bag lock.
+            int duration = MaidRules.LeadTime(recipe, found.Mood);
+            (int expectedRecipe, long expectedStart) = (found.CraftRecipeId, found.CraftStartTime);
+            bool craftRefused = false;
+            if (!session.TrySavePurchase(db => {
+                    // The craft first, so a refused craft has written nothing.
+                    if (!db.SetMaidCraft(found.Uid, expectedRecipe, expectedStart, recipe.Id, now, duration)) {
+                        craftRefused = true;
+                        return false;
                     }
-                    Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: could not take {Amount} of item {ItemUid}", recipe.Id, maidUid, amount, uid);
+                    foreach ((long uid, int amount) in taken) {
+                        if (!session.Item.Inventory.SaveConsumed(db, uid, amount)) {
+                            return false;
+                        }
+                    }
+                    db.AfterCommit(() => {
+                        (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration) = (recipe.Id, now, duration);
+                        foreach ((long uid, int amount) in taken) {
+                            if (!session.Item.Inventory.ConsumeStored(uid, amount)) {
+                                Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: {Amount} of item {ItemUid} stored as taken but not taken from the bag",
+                                    recipe.Id, maidUid, amount, uid);
+                            }
+                        }
+                    });
+                    return true;
+                }, () => craftRefused, out _)) {
+                if (craftRefused) {
+                    field.ReloadMaidCraft(found);
+                    SendRecord(session, found);
+                } else {
+                    session.Send(MaidCraftItemPacket.CraftResult(MaidRules.CraftNotEnough));
                 }
+                return;
             }
             session.Send(MaidCraftItemPacket.Add(found));
             session.Send(MaidCraftItemPacket.CraftResult(MaidRules.CraftStarted));
@@ -257,6 +285,9 @@ public class MaidCraftItemHandler : FieldPacketHandler {
             long now = DateTime.UtcNow.ToEpochSeconds();
             long cost = Math.Max(0L, Lua.CalcManufactureCompleteByMerat(MaidRules.CraftReadyTime(found) - now));
             float expRate = (float) session.Player.Stats.Values[SpecialAttribute.MaidExp].Multiplier();
+            int recipeId;
+            long start;
+            int duration;
             lock (session.Item) {
                 if (!HasMerets(session, cost)) {
                     session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
@@ -266,7 +297,7 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                     return; // no client code for a full bag: the craft stays until there is room
                 }
                 // As in mode 6, the stored craft is cleared first, so of two receives of one craft only one gives it.
-                (int recipeId, long start, int duration) = (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration);
+                (recipeId, start, duration) = (found.CraftRecipeId, found.CraftStartTime, found.CraftDuration);
                 if (!field.SetMaidCraft(found, 0, 0, 0)) {
                     SendRecord(session, found);
                     if (!MaidRules.IsCrafting(found)) {
@@ -275,8 +306,9 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                     return;
                 }
                 // The merets are taken before the add, under the same lock, so a balance spent meanwhile is found
-                // before anything is given (TryTakeMeret checks and takes in one step).
-                if (cost > 0 && !session.Currency.TryTakeMeret(cost)) {
+                // before anything is given (TryTakeMeret checks and takes in one step). Its packet and use_merat go
+                // out once the take is stored.
+                if (cost > 0 && !session.Currency.TryTakeMeret(cost, notify: false)) {
                     if (!field.SetMaidCraft(found, recipeId, start, duration)) {
                         Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: the craft not restored after a failed meret receive",
                             recipeId, maidUid);
@@ -284,6 +316,23 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                     session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
                     return;
                 }
+            }
+            // The merets taken are stored before the product is given (TrySavePurchase stores the currency). Before,
+            // they were taken in memory only, left to the next session save, while the product was a new row at once:
+            // a crash in between kept the product and the merets. Outside the bag lock, since a session save takes the
+            // account lock and then the bag lock. Not stored: the merets come back and the craft is stored again.
+            if (cost > 0 && !session.TrySavePurchase(_ => true)) {
+                session.Currency.ReturnMeret(cost);
+                if (!field.SetMaidCraft(found, recipeId, start, duration)) {
+                    Logger.Error("Maid craft {RecipeId} of maid {MaidUid}: the craft not restored after a failed meret save",
+                        recipeId, maidUid);
+                }
+                return;
+            }
+            if (cost > 0) {
+                session.Currency.NotifyMeretTaken(cost);
+            }
+            lock (session.Item) {
                 int amount = product.Amount, rarity = product.Rarity;
                 Dictionary<long, int> held = session.Item.Inventory
                     .Filter(item => item.Id == product.Id && item.Rarity == product.Rarity)

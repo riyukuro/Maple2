@@ -634,6 +634,25 @@ public class InventoryManager {
     // items are not taken. Each row reserves what it takes, so two rows matching one stack cannot both be paid by it.
     public bool ConsumeCraftIngredients(IReadOnlyList<ItemComponent> ingredients) {
         lock (session.Item) {
+            Dictionary<long, int>? reserved = PickCraftIngredients(ingredients);
+            if (reserved == null) {
+                return false;
+            }
+
+            foreach ((long uid, int amount) in reserved) {
+                if (!ConsumeInternal(uid, amount)) {
+                    Log.Error("Failed to consume craft material uid: {ItemUid}", uid);
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    // The stacks ConsumeCraftIngredients takes the ingredients from (uid, amount), nothing taken; null when the bag
+    // does not hold them all. For a craft that stores the take (SaveConsumed) before it gives its product.
+    public Dictionary<long, int>? PickCraftIngredients(IReadOnlyList<ItemComponent> ingredients) {
+        lock (session.Item) {
             var reserved = new Dictionary<long, int>();
             foreach (ItemComponent ingredient in ingredients) {
                 IEnumerable<Item> items = ingredient.Tag != ItemTag.None ? Find(ingredient.Tag) : Find(ingredient.ItemId);
@@ -654,17 +673,10 @@ public class InventoryManager {
                     remaining -= consume;
                 }
                 if (remaining > 0) {
-                    return false;
+                    return null;
                 }
             }
-
-            foreach ((long uid, int amount) in reserved) {
-                if (!ConsumeInternal(uid, amount)) {
-                    Log.Error("Failed to consume craft material uid: {ItemUid}", uid);
-                    return false;
-                }
-            }
-            return true;
+            return reserved;
         }
     }
 
