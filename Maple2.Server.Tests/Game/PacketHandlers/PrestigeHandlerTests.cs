@@ -145,7 +145,8 @@ public class PrestigeHandlerTests {
     }
 
     // A claim is one-time, as in the client: it keeps the claim set until a Prestige 0 replaces it and adds to it at a
-    // Prestige 4 (scenestategame.cpp:8870, :8876), and has no reset. The weekly reset keeps the claims.
+    // Prestige 4 (scenestategame.cpp:8870, :8876), and has no reset. The weekly reset keeps the claims (it starts only
+    // the missions again, PrestigeWeeklyMissionTests).
     [Test]
     public void LevelReward_TheWeeklyResetKeepsTheClaim() {
         GameSession session = Login();
@@ -155,7 +156,9 @@ public class PrestigeHandlerTests {
         session.WeeklyReset();
 
         Assert.That(session.Exp.PrestigeRewardsClaimed, Does.Contain(3));
-        Assert.That(test.TakeSent().Select(TestGameSession.Op), Has.None.EqualTo(SendOp.Prestige));
+        // Only the weekly missions' list (Prestige 7) is sent again; no Prestige 0 replaces the claim set.
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Prestige).Select(packet => packet[2]),
+            Is.EqualTo(new byte[] { 7 }));
         Claim(session, 3, 3);
         Assert.That(Held(session), Is.EqualTo(2));
     }

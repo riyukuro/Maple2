@@ -116,6 +116,9 @@ public partial class GameStorage {
 
         public void WeeklyReset(DateTime? storedBefore = null) {
             RunReset("WeeklyReset", storedBefore, () => {
+                // The weekly prestige missions (PrestigeRules.ResetMissions): the column's default, an empty list, is made again from the
+                // mission table, with nothing counted or claimed, when the account is next loaded (ExperienceManager).
+                Context.Database.ExecuteSqlRaw("UPDATE `account` SET `PrestigeMissions` = DEFAULT");
                 // The guild raid records go with the weekly contribution (GuildRules.ResetRaids; Chosen here).
                 Context.Database.ExecuteSqlRaw("UPDATE `guild-member` SET `WeeklyContribution` = 0, `Raids` = NULL");
                 // The rank duel's weekly valor tokens (the dialog's gauge against weeklyRewardMax).

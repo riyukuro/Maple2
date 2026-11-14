@@ -1370,6 +1370,11 @@ public sealed partial class GameSession : Core.Network.Session {
     public void WeeklyReset() {
         const string reset = nameof(WeeklyReset);
         // The prestige level rewards stay claimed: the client has no reset of its claim set (scenestategame.cpp:8870, :8876).
+        // The prestige missions are weekly and start again (PrestigeRules.ResetMissions).
+        ResetStep(reset, "prestige missions", () => {
+            PrestigeRules.ResetMissions(Player.Value.Account.PrestigeMissions);
+            Send(PrestigePacket.LoadMissions(Player.Value.Account));
+        });
         // Dungeon enter limits
         ResetStep(reset, "dungeon limits", () => Dungeon.UpdateDungeonEnterLimit());
         // Dungeon weekly clears

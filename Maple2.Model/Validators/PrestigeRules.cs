@@ -1,4 +1,5 @@
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 
 namespace Maple2.Model.Validators;
 
@@ -7,6 +8,16 @@ public static class PrestigeRules {
     // and whose gained levels reached the mission's count.
     public static bool CanClaimMission(bool awarded, long gainedLevels, int requiredCount) {
         return !awarded && gainedLevels >= requiredCount;
+    }
+
+    // The missions are weekly: the client's text has them start again each week at the weekly reset
+    // ($s_adventure_level_weekly_mission_desc, feature AdventureLevelMission). The levels counted and the claims go back
+    // to none; the client takes the new list from a Prestige 7.
+    public static void ResetMissions(IEnumerable<PrestigeMission> missions) {
+        foreach (PrestigeMission mission in missions) {
+            mission.GainedLevels = 0;
+            mission.Awarded = false;
+        }
     }
 
     // The step of a prestige ability at a prestige level, as the client counts it
