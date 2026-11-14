@@ -32,7 +32,9 @@ public static class PlayedAdditionalRows {
     // (AdditionalEffectMapper.Compare) found equal to the pack's on the effects both have wherever the client's own
     // two rows (additional/ and additionaleffect/) agree, and those the server does not read (UI, SpecialEffect,
     // MesoGuard) or reads from the played rows elsewhere. Out: <Skill>, as the pack's nonTargetActive (39 of 867
-    // shared levels) is no attribute of the client's row; <SpecialAbility>, not mapped. <Status> is out too, as on a
+    // shared levels) is no attribute of the client's row, so a level both have keeps the pack's (KeptFromPack); an
+    // effect only the client has takes it (Unread), as the server reads nonTargetActive only for an npc attack's
+    // splash, never an effect's (Buff.ApplySplash). <SpecialAbility>, not mapped. <Status> is out too, as on a
     // level both have the pack's status stays (KeptFromPack), but an effect only the client has takes it (Unread): its
     // stat rows (231 KR levels) are the pack's on every level both have, its compulsion event the one TakeOver takes.
     public static readonly IReadOnlySet<string> Gated = new HashSet<string> {
@@ -41,12 +43,12 @@ public static class PlayedAdditionalRows {
         "UI", "SpecialEffect", "MesoGuard", "InvokeEffect", "RemoveRechargingCount",
     };
 
-    // Why the ingest does not take an effect over: each child not in Gated (but <Status>, which ToPack maps) and
+    // Why the ingest does not take an effect over: each child not in Gated (but <Status> and <Skill>, which ToPack maps) and
     // each attribute with no pack name.
     public static IReadOnlyCollection<string> Unread(PlayedClientAdditionalEffects.Entry entry) {
         var unread = new SortedSet<string>(StringComparer.Ordinal);
         foreach ((short level, XmlElement row) in entry.Rows) {
-            foreach (XmlElement child in row.ChildNodes.OfType<XmlElement>().Where(child => !Gated.Contains(child.Name) && child.Name != "Status")) {
+            foreach (XmlElement child in row.ChildNodes.OfType<XmlElement>().Where(child => !Gated.Contains(child.Name) && child.Name != "Status" && child.Name != "Skill")) {
                 unread.Add(child.Name);
             }
             ToPack(entry.Effect!, row, level, unread);
@@ -141,6 +143,12 @@ public static class PlayedAdditionalRows {
     public static readonly IReadOnlySet<string> StatusRead = new HashSet<string>(StringComparer.Ordinal) {
         "itemRecoveryHPRate", "healRecoveryHPRate", "resWapR", "resBapR", "resCadR", "resAtpR", "resEvpR", "resPenR", "deathResistanceHP",
         "compulsionEventTypes", "compulsionEventRate", "compulsionEventSkillCodes",
+    };
+
+    // The attributes of the client's <Skill> (AdditionalActionSkill::Load, additionalactionadditional.cpp:670-683);
+    // the pack's splashSkill has them under the same names.
+    public static readonly IReadOnlySet<string> SkillRead = new HashSet<string>(StringComparer.Ordinal) {
+        "skillID", "level", "linkSkillID", "delay", "removeDelay", "interval", "immediateActive", "fireCount", "useDirection", "chainDistance",
     };
 
     // The compulsion event's attributes of a <Status>: the client's replaces the pack's (Compulsion, TakeOver).
@@ -534,7 +542,16 @@ public static class PlayedAdditionalRows {
                     break;
                 case "Skill": {
                         XmlElement splash = document.CreateElement("splashSkill");
-                        CopyAttributes(child, splash);
+                        foreach (XmlAttribute attribute in child.Attributes) {
+                            if (SkillRead.Contains(attribute.Name)) {
+                                splash.SetAttribute(attribute.Name, attribute.Value);
+                            } else {
+                                unread.Add("Skill." + attribute.Name);
+                            }
+                        }
+                        foreach (XmlElement sub in child.ChildNodes.OfType<XmlElement>()) {
+                            unread.Add("Skill/" + sub.Name);
+                        }
                         splash.SetAttribute("splash", "1");
                         // AdditionalActionSkill::Load (additionalactionadditional.cpp:681) reads chainDistance and no chain
                         // flag; the pack has chain="1" with each chainDistance.

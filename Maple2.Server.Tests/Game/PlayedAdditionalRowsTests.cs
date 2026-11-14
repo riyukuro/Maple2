@@ -148,4 +148,32 @@ public class PlayedAdditionalRowsTests {
         Dictionary<int, PlayedClientAdditionalEffects.Entry> entries = PlayedClientAdditionalEffects.Read([document], _ => true);
         Assert.That(PlayedAdditionalRows.Unread(entries[10800059]), Is.EquivalentTo(new[] { "Status/stat" }));
     }
+
+    // KR 40600080, an effect only the client has: 120 s, every 500 ms, splash skill 50003520 at once. <Skill> goes to
+    // <splashSkill splash="1"> under the client's names, so the effect is not left out (before: "Skill" unread).
+    [Test]
+    public void WritesTheSkillOfAnEffectOnlyTheClientHas() {
+        const string effect = """<additional id="40600080"><level level="1"><Basic durationTick="120000" intervalTick="500" clearEffectFromPVPZone="1" /><Skill level="1" skillID="50003520" immediateActive="1" /></level></additional>""";
+        var document = new XmlDocument();
+        document.LoadXml("<ms2>" + effect + "</ms2>");
+        Dictionary<int, PlayedClientAdditionalEffects.Entry> entries = PlayedClientAdditionalEffects.Read([document], _ => true);
+        (XmlElement row, List<string> unread) = Pack(effect);
+        Assert.Multiple(() => {
+            Assert.That(PlayedAdditionalRows.Unread(entries[40600080]), Is.Empty);
+            Assert.That(unread, Is.Empty);
+            Assert.That(row["splashSkill"]!.GetAttribute("skillID"), Is.EqualTo("50003520"));
+            Assert.That(row["splashSkill"]!.GetAttribute("immediateActive"), Is.EqualTo("1"));
+            Assert.That(row["splashSkill"]!.GetAttribute("splash"), Is.EqualTo("1"));
+        });
+    }
+
+    // An attribute of <Skill> the client does not read (AdditionalActionSkill::Load) is listed, not written.
+    [Test]
+    public void ListsASkillAttributeItDoesNotRead() {
+        (XmlElement row, List<string> unread) = Pack("""<additional id="40600080"><level level="1"><Basic durationTick="120000" /><Skill level="1" skillID="50003520" nonTargetActive="1" /></level></additional>""");
+        Assert.Multiple(() => {
+            Assert.That(unread, Is.EquivalentTo(new[] { "Skill.nonTargetActive" }));
+            Assert.That(row["splashSkill"]!.HasAttribute("nonTargetActive"), Is.False);
+        });
+    }
 }
