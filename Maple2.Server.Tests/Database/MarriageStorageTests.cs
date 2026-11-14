@@ -109,6 +109,30 @@ public class MarriageStorageTests {
         Assert.That(db.SaveCoupleMessage(marriageId + 1, first, "x"), Is.False);
     }
 
+    // The wedding profile picture: each partner's own column, only for a married couple, and each viewer's own is
+    // the second partner of its copy (the one the client shows, UIWeddingDialog::GetProfilePath).
+    [Test]
+    public void WeddingProfile_EachPartnersOwnOnceMarried() {
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SaveWeddingProfile(marriageId, first, "a"), Is.False);
+            Assert.That(db.IsMarried(first), Is.False);
+        }
+        Marry();
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.IsMarried(first), Is.True);
+            Assert.That(db.IsMarried(second), Is.True);
+            Assert.That(db.IsMarried(second + 100), Is.False);
+            Assert.That(db.SaveWeddingProfile(marriageId, first, "a"), Is.True);
+            Assert.That(db.SaveWeddingProfile(marriageId, second, "b"), Is.True);
+            Assert.That(db.SaveWeddingProfile(marriageId, second + 100, "c"), Is.False);
+            Assert.That(db.SaveWeddingProfile(marriageId + 1, first, "c"), Is.False);
+        }
+        Marriage ofFirst = Load(first);
+        Assert.That((ofFirst.Partner1.Profile, ofFirst.Partner2.Profile), Is.EqualTo(("b", "a")));
+        Marriage ofSecond = Load(second);
+        Assert.That((ofSecond.Partner1.Profile, ofSecond.Partner2.Profile), Is.EqualTo(("a", "b")));
+    }
+
     private void Marry() {
         using GameStorage.Request db = storage.Context();
         Assert.That(db.SetMarried(marriageId, DateTime.Now), Is.True);

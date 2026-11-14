@@ -1571,6 +1571,10 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<string>("Partner1Profile")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
                     b.Property<long>("Partner2Id")
                         .HasColumnType("bigint");
 
@@ -1578,7 +1582,7 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<string>("Profile")
+                    b.Property<string>("Partner2Profile")
                         .IsRequired()
                         .HasColumnType("longtext");
 

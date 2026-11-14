@@ -17,7 +17,6 @@ public class Marriage : IByteSerializable {
     public required MarriagePartner Partner1 { get; set; }
     public required MarriagePartner Partner2 { get; set; }
     public long Exp { get; set; }
-    public string Profile { get; set; } = string.Empty;
     public long CreationTime { get; set; }
     // The time the vow was completed in the wedding hall; 0 until then.
     public long MarriageTime { get; set; }
@@ -43,8 +42,11 @@ public class Marriage : IByteSerializable {
         writer.WriteLong(Exp);
         writer.WriteUnicodeString(Partner1.Message);
         writer.WriteUnicodeString(Partner2.Message);
-        writer.WriteUnicodeString();
-        writer.WriteUnicodeString(Profile);
+        // Client: the two wedding profile picture paths (SetMessageA), the groom's (+0x118) and the bride's (+0x120).
+        // UIWeddingDialog::GetProfilePath (uiweddingdialog.cpp:384) shows the viewer's own: the bride's when the
+        // viewer is not the groom. The server sends the viewer as Partner2 (GameStorage.GetMarriage).
+        writer.WriteUnicodeString(Partner1.Profile);
+        writer.WriteUnicodeString(Partner2.Profile);
         writer.WriteInt(ExpHistory.Count);
         foreach (MarriageExp exp in ExpHistory) {
             writer.Write<MarriageExpType>(exp.Type);
@@ -71,6 +73,8 @@ public class MarriagePartner : IByteSerializable, IDisposable {
     public long CharacterId => Info?.CharacterId ?? 0;
     public string Name => Info?.Name ?? string.Empty;
     public string Message { get; set; } = string.Empty;
+    // The wedding profile picture the partner uploaded (Ugc 12): data/profiles/wedding/<character id>/<file>.png.
+    public string Profile { get; set; } = string.Empty;
     public bool IsOnline => Info?.Online ?? false;
     public CancellationTokenSource? TokenSource;
     public void WriteTo(IByteWriter writer) {

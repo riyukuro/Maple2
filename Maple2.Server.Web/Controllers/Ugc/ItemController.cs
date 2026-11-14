@@ -10,12 +10,6 @@ public class ItemController : ControllerBase {
 
     [HttpGet("{itemId}/{uid}.m2u")]
     public IResult GetItem(long itemId, string uid) {
-        string fullPath = $"{Paths.WEB_DATA_DIR}/items/{itemId}/{uid}.m2u";
-        if (!System.IO.File.Exists(fullPath)) {
-            return Results.NotFound();
-        }
-
-        FileStream item = System.IO.File.OpenRead(fullPath);
-        return Results.File(item, contentType: "application/octet-stream");
+        return WebFiles.Serve(WebFiles.StoredPath(Paths.WEB_DATA_DIR, uid, ".m2u", "items", itemId.ToString()), "application/octet-stream");
     }
 }

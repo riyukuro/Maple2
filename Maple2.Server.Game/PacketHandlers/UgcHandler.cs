@@ -38,7 +38,7 @@ public class UgcHandler : FieldPacketHandler {
         Upload = 1,
         Confirmation = 3,
         ProfilePicture = 11,
-        Unknown12 = 12,
+        WeddingProfile = 12,
         LoadBanners = 18,
         ReserveBanner = 19,
     }
@@ -66,10 +66,10 @@ public class UgcHandler : FieldPacketHandler {
             case Command.ReserveBanner:
                 HandleReserveBanner(session, packet);
                 return;
-            case Command.Unknown12:
-                // Not handled: CUgcManager::SendUGCMode12 (ugcmanager_4.cpp:1527), the path of an uploaded wedding
-                // profile picture. The upload itself (kind 10) is not accepted, so this never arrives in play.
-                Logger.Debug("Ugc {Command} from {CharacterId}: {Path}", command, session.CharacterId, packet.ReadUnicodeString());
+            case Command.WeddingProfile:
+                // CUgcManager::SendUGCMode12 (ugcmanager_4.cpp:1527): the path the web server answered for the
+                // wedding profile picture upload (kind 10), sent with no reply awaited.
+                session.Marriage.SetWeddingProfile(packet.ReadUnicodeString());
                 return;
         }
     }

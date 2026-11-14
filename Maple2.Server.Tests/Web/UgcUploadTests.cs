@@ -223,17 +223,55 @@ public class UgcUploadTests {
     [Test]
     public void ProfilePicture_OnePerGap() {
         long character = 20000000000 + Random.Shared.Next(1, 1_000_000);
-        Assert.That(ProfileUploads.Take(character, Now), Is.True);
-        Assert.That(ProfileUploads.Take(character, Now + ProfileUploads.Gap - TimeSpan.FromSeconds(1)), Is.False);
-        Assert.That(ProfileUploads.Take(character + 1, Now), Is.True);
-        Assert.That(ProfileUploads.Take(character, Now + ProfileUploads.Gap), Is.True);
+        Assert.That(ProfileUploads.Take(UgcType.ProfileAvatar, character, Now), Is.True);
+        Assert.That(ProfileUploads.Take(UgcType.ProfileAvatar, character, Now + ProfileUploads.Gap - TimeSpan.FromSeconds(1)), Is.False);
+        Assert.That(ProfileUploads.Take(UgcType.ProfileAvatar, character + 1, Now), Is.True);
+        Assert.That(ProfileUploads.Take(UgcType.ProfileAvatar, character, Now + ProfileUploads.Gap), Is.True);
         Assert.That(ProfileUploads.Gap, Is.EqualTo(TimeSpan.FromSeconds(2)));
 
         DateTime later = Now + ProfileUploads.Gap;
-        ProfileUploads.GiveBack(character, later);
-        Assert.That(ProfileUploads.Take(character, later + TimeSpan.FromMilliseconds(500)), Is.True);
-        ProfileUploads.GiveBack(character, later);
-        Assert.That(ProfileUploads.Take(character, later + TimeSpan.FromSeconds(1)), Is.False);
+        ProfileUploads.GiveBack(UgcType.ProfileAvatar, character, later);
+        Assert.That(ProfileUploads.Take(UgcType.ProfileAvatar, character, later + TimeSpan.FromMilliseconds(500)), Is.True);
+        ProfileUploads.GiveBack(UgcType.ProfileAvatar, character, later);
+        Assert.That(ProfileUploads.Take(UgcType.ProfileAvatar, character, later + TimeSpan.FromSeconds(1)), Is.False);
+    }
+
+    // The wedding profile picture takes its own turns: a profile picture just before does not hold it back.
+    [Test]
+    public void WeddingProfile_OwnTurns() {
+        long character = 20000000000 + Random.Shared.Next(1_000_001, 2_000_000);
+        Assert.That(ProfileUploads.Take(UgcType.ProfileAvatar, character, Now), Is.True);
+        Assert.That(ProfileUploads.Take(UgcType.WeddingProfile, character, Now), Is.True);
+        Assert.That(ProfileUploads.Take(UgcType.WeddingProfile, character, Now + TimeSpan.FromSeconds(1)), Is.False);
+    }
+
+    // Kind 10 has no resource, like the profile picture: real ids and the file size only here (the controller then
+    // needs the character in game and married). Its file goes to its own folder under its own key.
+    [Test]
+    public void WeddingProfile_RefusalAndTarget() {
+        Assert.That(WebController.UploadRefusal(UgcType.WeddingProfile, 1, Owner, null, 10, Now), Is.Null);
+        Assert.That(WebController.UploadRefusal(UgcType.WeddingProfile, 0, Owner, null, 10, Now), Is.Not.Null);
+        Assert.That(WebController.UploadRefusal(UgcType.WeddingProfile, 1, 0, null, 10, Now), Is.Not.Null);
+        Assert.That(WebController.UploadRefusal(UgcType.WeddingProfile, 1, Owner, null, WebController.MaxUploadFileSize + 1, Now), Is.Not.Null);
+        Assert.That(WebController.UploadRefusal(UgcType.WeddingProfile, 1, Owner, null, 0, Now), Is.Not.Null);
+
+        WebController.UploadTarget target = WebController.Target(UgcType.WeddingProfile, Owner, null, "n")!;
+        Assert.That(target, Is.EqualTo(new WebController.UploadTarget(Path.Combine("weddingprofiles", Owner.ToString()), "n.png",
+            $"data/profiles/wedding/{Owner}/n.png", false)));
+        Assert.That(Maple2.Model.Validators.UgcRules.WeddingProfilePathValid(target.Key, Owner), Is.True);
+        Assert.That(ProfileController.PicturePath("D", "weddingprofiles", Owner, "n.png"), Is.EqualTo(Path.Combine("D", target.Folder, target.File)));
+
+        string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try {
+            byte[] bytes = [1, 2, 3];
+            string folder = Path.Combine(root, target.Folder);
+            Directory.CreateDirectory(folder);
+            System.IO.File.WriteAllBytes(Path.Combine(folder, "g.png"), bytes);
+            Assert.That(WebController.StoredKey(root, UgcType.WeddingProfile, Owner, null, bytes), Is.EqualTo($"data/profiles/wedding/{Owner}/g.png"));
+            Assert.That(WebController.StoredKey(root, UgcType.ProfileAvatar, Owner, null, bytes), Is.Null);
+        } finally {
+            Directory.Delete(root, true);
+        }
     }
 
     // In game: the account online and the character in a channel (the session's entry stamps both, LoadPlayer); a

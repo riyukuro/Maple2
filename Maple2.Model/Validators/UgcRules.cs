@@ -256,7 +256,17 @@ public static class UgcRules {
     // answered, data/profiles/avatar/<character id>/<file>.png. Any other text is not made the picture
     // (it is shown to every player that sees the character).
     public static bool ProfilePathValid(string? path, long characterId) {
-        string prefix = $"data/profiles/avatar/{characterId}/";
+        return StoredPicturePathValid(path, "data/profiles/avatar/", characterId);
+    }
+
+    // Mode 12 names the wedding profile picture the web server stored for the character (upload kind 10, sent by
+    // CUgcManager after the web answer, ugcmanager_4.cpp:1421): data/profiles/wedding/<character id>/<file>.png.
+    public static bool WeddingProfilePathValid(string? path, long characterId) {
+        return StoredPicturePathValid(path, "data/profiles/wedding/", characterId);
+    }
+
+    private static bool StoredPicturePathValid(string? path, string root, long characterId) {
+        string prefix = $"{root}{characterId}/";
         const string suffix = ".png";
         if (path == null || characterId <= 0 || path.Length <= prefix.Length + suffix.Length || path.Length > 128 ||
             !path.StartsWith(prefix, StringComparison.Ordinal) || !path.EndsWith(suffix, StringComparison.Ordinal)) {

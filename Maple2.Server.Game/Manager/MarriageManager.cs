@@ -6,6 +6,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
@@ -122,6 +123,37 @@ public sealed class MarriageManager {
         if (partnerId != 0 && session.FindSession(partnerId, out GameSession? partnerSession)) {
             Marriage other = partnerSession.Marriage.Marriage;
             if (CoupleMessageRule.Apply(other, session.CharacterId, message)) {
+                partnerSession.Send(WeddingPacket.UpdateMarriage(other));
+            }
+        }
+    }
+
+    // Ugc 12: the wedding profile picture the web server stored for this player (upload kind 10). Only a married
+    // couple can upload it (the client's own test, CUgcViewerWeddingProfile::vfunc_3, and the web server's), and only
+    // a path of this character's folder is stored. The player gets the marriage and Wedding 35 (the dialog shows the
+    // picture); a partner on this channel gets the marriage.
+    public void SetWeddingProfile(string path) {
+        if (Marriage.Status != MaritalStatus.Married || !UgcRules.WeddingProfilePathValid(path, session.CharacterId)) {
+            return;
+        }
+
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            if (!db.SaveWeddingProfile(Marriage.Id, session.CharacterId, path)) {
+                return;
+            }
+            CoupleMessageRule.ApplyProfile(Marriage, session.CharacterId, path);
+            Marriage? fresh = db.GetMarriage(session.CharacterId);
+            if (fresh != null) {
+                CoupleMessageRule.Merge(Marriage, fresh);
+            }
+        }
+        session.Send(WeddingPacket.UpdateMarriage(Marriage));
+        session.Send(WeddingPacket.OwnProfile());
+
+        long partnerId = Partner.CharacterId;
+        if (partnerId != 0 && session.FindSession(partnerId, out GameSession? partnerSession)) {
+            Marriage other = partnerSession.Marriage.Marriage;
+            if (CoupleMessageRule.ApplyProfile(other, session.CharacterId, path)) {
                 partnerSession.Send(WeddingPacket.UpdateMarriage(other));
             }
         }

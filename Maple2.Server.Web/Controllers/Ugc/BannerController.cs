@@ -10,12 +10,6 @@ public class BannerController : ControllerBase {
 
     [HttpGet("{bannerId}/{fileHash}.m2u")]
     public IResult GetBanner(long bannerId, string fileHash) {
-        string fullPath = Path.Combine(Paths.WEB_DATA_DIR, "banner", bannerId.ToString(), $"{fileHash}.m2u");
-        if (!System.IO.File.Exists(fullPath)) {
-            return Results.NotFound();
-        }
-
-        FileStream banner = System.IO.File.OpenRead(fullPath);
-        return Results.File(banner, contentType: "application/octet-stream");
+        return WebFiles.Serve(WebFiles.StoredPath(Paths.WEB_DATA_DIR, fileHash, ".m2u", "banner", bannerId.ToString()), "application/octet-stream");
     }
 }

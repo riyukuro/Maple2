@@ -20,7 +20,8 @@ public partial class GameStorage {
                 Partner1Id = partner1Id,
                 Partner2Id = partner2Id,
                 Status = MaritalStatus.Engaged,
-                Profile = string.Empty,
+                Partner1Profile = string.Empty,
+                Partner2Profile = string.Empty,
                 Partner1Message = string.Empty,
                 Partner2Message = string.Empty,
                 CreationTime = DateTime.Now,
@@ -63,6 +64,33 @@ public partial class GameStorage {
 
             Context.Marriage.Update(model); // requests do not track what they load
             return Context.TrySaveChanges();
+        }
+
+        // Writes only the wedding profile picture of one partner of a married couple (the client uploads it only in
+        // state 2, CUgcViewerWeddingProfile::vfunc_3 ugcviewerequip.cpp:799).
+        public bool SaveWeddingProfile(long marriageId, long characterId, string path) {
+            Model.Marriage? model = Context.Marriage.Find(marriageId);
+            if (model == null || model.Status != MaritalStatus.Married) {
+                return false;
+            }
+
+            if (model.Partner1Id == characterId) {
+                model.Partner1Profile = path;
+            } else if (model.Partner2Id == characterId) {
+                model.Partner2Profile = path;
+            } else {
+                return false;
+            }
+
+            Context.Marriage.Update(model); // requests do not track what they load
+            return Context.TrySaveChanges();
+        }
+
+        // Whether the character is a partner of a married couple: the web server takes a wedding profile picture
+        // upload only then.
+        public bool IsMarried(long characterId) {
+            return characterId > 0 && Context.Marriage.Any(marriage => (marriage.Partner1Id == characterId || marriage.Partner2Id == characterId)
+                && marriage.Status == MaritalStatus.Married);
         }
 
         // A wedding mission's intimacy (quest weddingExp) added to the marriage's exp log by one partner, under the
@@ -248,10 +276,12 @@ public partial class GameStorage {
                 Partner1 = new MarriagePartner {
                     Info = partner1.CharacterId == characterId ? partner2 : partner1,
                     Message = partner1.CharacterId == characterId ? marriage.Partner2Message : marriage.Partner1Message,
+                    Profile = partner1.CharacterId == characterId ? marriage.Partner2Profile : marriage.Partner1Profile,
                 },
                 Partner2 = new MarriagePartner {
                     Info = partner1.CharacterId == characterId ? partner1 : partner2,
                     Message = partner1.CharacterId == characterId ? marriage.Partner1Message : marriage.Partner2Message,
+                    Profile = partner1.CharacterId == characterId ? marriage.Partner1Profile : marriage.Partner2Profile,
                 },
                 // The stored state names the filer of a divorce by the stored order; the first stored partner
                 // is given the two the other way round.

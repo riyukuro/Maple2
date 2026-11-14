@@ -36,13 +36,14 @@ public class MarriagePartnerLayoutTests {
             Status = MaritalStatus.Married,
             MarriageTime = 50,
             Exp = 7,
-            Profile = "p",
             Partner1 = Partner(1, 2, "a", 1),
             Partner2 = Partner(4, 3, "b", -1),
             ExpHistory = [new MarriageExp { Type = MarriageExpType.coupleMessage, Amount = 5, Time = 6 }],
         };
         marriage.Partner1.Message = "m1";
         marriage.Partner2.Message = "m2";
+        marriage.Partner1.Profile = "p1";
+        marriage.Partner2.Profile = "p2";
 
         ByteWriter packet = WeddingPacket.UpdateMarriage(marriage);
         var reader = new ByteReader(packet.Buffer, 0);
@@ -63,8 +64,9 @@ public class MarriagePartnerLayoutTests {
         Assert.That(reader.ReadLong(), Is.EqualTo(7));
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("m1"));
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("m2"));
-        Assert.That(reader.ReadUnicodeString(), Is.Empty);
-        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("p"));
+        // The two wedding profile pictures, groom's then bride's (SetMessageA): each partner's own.
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("p1"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("p2"));
         Assert.That(reader.ReadInt(), Is.EqualTo(1));
         Assert.That(reader.ReadShort(), Is.EqualTo(2));
         Assert.That(reader.ReadLong(), Is.EqualTo(5));

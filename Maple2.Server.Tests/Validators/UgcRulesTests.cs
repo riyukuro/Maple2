@@ -352,6 +352,19 @@ public class UgcRulesTests {
         Assert.That(UgcRules.ProfilePathValid("data/profiles/avatar/77/" + new string('a', 200) + ".png", 77), Is.False);
     }
 
+    // Ugc 12: the wedding profile picture the web server stored for the character, under its own root.
+    [Test]
+    public void WeddingProfilePath_OnlyTheCharactersStoredPicture() {
+        const string file = "0f8fad5b-d9cb-469f-a165-70867728950e";
+        Assert.That(UgcRules.WeddingProfilePathValid($"data/profiles/wedding/77/{file}.png", 77), Is.True);
+        Assert.That(UgcRules.WeddingProfilePathValid($"data/profiles/wedding/78/{file}.png", 77), Is.False);
+        Assert.That(UgcRules.WeddingProfilePathValid($"data/profiles/avatar/77/{file}.png", 77), Is.False);
+        Assert.That(UgcRules.ProfilePathValid($"data/profiles/wedding/77/{file}.png", 77), Is.False);
+        Assert.That(UgcRules.WeddingProfilePathValid($"data/profiles/wedding/77/../78/{file}.png", 77), Is.False);
+        Assert.That(UgcRules.WeddingProfilePathValid($"data/profiles/wedding/77/{file}.jpg", 77), Is.False);
+        Assert.That(UgcRules.WeddingProfilePathValid(null, 77), Is.False);
+    }
+
     // The live slot is the current hour's by date and hour: a slot of the same day and hour of another month is not,
     // and the earlier hour's slot stops being live when the next hour starts, also with no slot in that hour.
     [Test]

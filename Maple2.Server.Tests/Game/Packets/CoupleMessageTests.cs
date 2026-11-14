@@ -52,8 +52,8 @@ public class CoupleMessageTests {
         Assert.That(tail, Is.EqualTo(new byte[] {
             1, 0, (byte) 'x', 0, // first partner's message
             2, 0, (byte) 'y', 0, (byte) 'z', 0, // second partner's message
-            0, 0, // empty string
-            0, 0, // profile
+            0, 0, // first partner's wedding profile picture
+            0, 0, // second partner's wedding profile picture
             0, 0, 0, 0, // exp history count
         }));
     }

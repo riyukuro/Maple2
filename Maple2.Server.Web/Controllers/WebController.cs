@@ -165,12 +165,14 @@ public class WebController : ControllerBase {
         }
 
         DateTime now = DateTime.UtcNow;
-        string? refusal = UploadRefusal(type, accountId, characterId, resource, fileBytes.Length, now);
-        if (refusal == null && type == UgcType.ProfileAvatar) {
+        string? refusal = UploadRefusal(type, accountId, characterId, resource, fileBytes.Length, now) ?? FileTypeRefusal(type, fileBytes);
+        if (refusal == null && IsProfile(type)) {
             using GameStorage.Request db = gameStorage.Context();
             if (!db.InGame(accountId, characterId)) {
                 refusal = "Character not in game.";
-            } else if (!ProfileUploads.Take(characterId, now)) {
+            } else if (type == UgcType.WeddingProfile && !db.IsMarried(characterId)) {
+                refusal = "Character not married.";
+            } else if (!ProfileUploads.Take(type, characterId, now)) {
                 refusal = ProfileTooSoon;
             }
         } else if (refusal == null) {
@@ -208,13 +210,15 @@ public class WebController : ControllerBase {
     // resource, and of any size.
     // A profile picture's ids must both be real (the client asks the game server nothing before it, CUgcManager
     // FUN_141882020 ugcmanager_4.cpp:1175-1205, and sends Ugc 11 with the answered path after): the controller then
-    // needs that character of that account in game, and one picture per character in ProfileUploads.Gap. Every other
-    // kind needs the upload the game server opened for the resource (UgcRules.UploadWindow), each file once.
+    // needs that character of that account in game, and one picture per character in ProfileUploads.Gap. The wedding
+    // profile picture (kind 10, CUgcManager::OpenWeddingProfileUpload ugcmanager_4.cpp:767, then Ugc 12 with the
+    // path) is the same, and also needs the character married (the client uploads it only in state 2,
+    // CUgcViewerWeddingProfile::vfunc_3 ugcviewerequip.cpp:799). Every other kind needs the upload the game server opened for the resource (UgcRules.UploadWindow), each file once.
     public static string? UploadRefusal(UgcType type, long accountId, long characterId, UgcResource? resource, int fileSize, DateTime now) {
         if (fileSize is < 1 or > MaxUploadFileSize) {
             return "Invalid file size.";
         }
-        if (type == UgcType.ProfileAvatar) {
+        if (IsProfile(type)) {
             return accountId <= 0 || characterId <= 0 ? "Invalid character." : null;
         }
         if (resource == null) {
@@ -237,6 +241,33 @@ public class WebController : ControllerBase {
         return (resource.UploadedParts & UgcRules.UploadPart(type)) != 0 ? UploadTaken : null;
     }
 
+    // The kinds with no resource: a picture of the character, one stored file each, its turns in ProfileUploads.
+    public static bool IsProfile(UgcType type) => type is UgcType.ProfileAvatar or UgcType.WeddingProfile;
+
+    // The client re-encodes every upload before it posts it (CUgcUploadCtrl::PrepareUploadByKind,
+    // ugcviewerequip.cpp:1501): a design or banner is a zlib stream of the texture (CUgcCompress::Compress,
+    // ugcmanager_1.cpp:141, deflate with no header of its own) saved as .m2u; every other kind is a PNG written by
+    // D3DX (the 107x107 thumbnail of a profile, wedding or guild picture, ConvertThumbnail; the blueprint picture,
+    // ConvertBanner; the 48x48 icons, ConvertIcon). A file that is not of its kind's format is refused before the
+    // upload is taken. Kinds with no upload are left to the target lookup.
+    public static string? FileTypeRefusal(UgcType type, ReadOnlySpan<byte> file) {
+        bool matches = type switch {
+            UgcType.Item or UgcType.Furniture or UgcType.Mount or UgcType.Banner => IsZlib(file),
+            UgcType.ProfileAvatar or UgcType.WeddingProfile or UgcType.GuildEmblem or UgcType.GuildBanner
+                or UgcType.LayoutBlueprint or UgcType.ItemIcon or UgcType.BlueprintIcon => file.StartsWith(PngSignature),
+            _ => true,
+        };
+        return matches ? null : "Invalid file type.";
+    }
+
+    private static ReadOnlySpan<byte> PngSignature => [0x89, (byte) 'P', (byte) 'N', (byte) 'G', 0x0D, 0x0A, 0x1A, 0x0A];
+
+    // A zlib stream header (RFC 1950): deflate (CM 8) with a window of at most 32 KiB, no preset dictionary, and the
+    // check bits that make the first two bytes a multiple of 31.
+    private static bool IsZlib(ReadOnlySpan<byte> file) {
+        return file.Length >= 2 && (file[0] & 0x0F) == 8 && file[0] >> 4 <= 7 && (file[1] & 0x20) == 0 && (file[0] << 8 | file[1]) % 31 == 0;
+    }
+
     public const string UploadTaken = "Upload already taken.";
     public const string ProfileTooSoon = "Profile picture too soon.";
 
@@ -249,7 +280,7 @@ public class WebController : ControllerBase {
         }
         string folder = Path.Combine(root, target.Folder);
         string file = Path.Combine(folder, target.File);
-        if (type == UgcType.ProfileAvatar) {
+        if (IsProfile(type)) {
             string[] files = Directory.Exists(folder) ? Directory.GetFiles(folder) : [];
             if (files.Length != 1) {
                 return null;
@@ -276,6 +307,10 @@ public class WebController : ControllerBase {
             return new UploadTarget(Path.Combine("profiles", characterId.ToString()), $"{fileName}.png",
                 $"data/profiles/avatar/{characterId}/{fileName}.png", false);
         }
+        if (type == UgcType.WeddingProfile) {
+            return new UploadTarget(Path.Combine("weddingprofiles", characterId.ToString()), $"{fileName}.png",
+                $"data/profiles/wedding/{characterId}/{fileName}.png", false);
+        }
         if (resource == null) {
             return null;
         }
@@ -294,12 +329,12 @@ public class WebController : ControllerBase {
     }
 
     // Writes the file and answers its key ("0,<key>", CSoapClient::UploadUgcFile reads code and text). A profile picture
-    // replaces the character's old one (its folder is emptied first). A file that cannot be written gives its part (or
+    // (or wedding profile picture) replaces the character's old one (its folder is emptied first). A file that cannot be written gives its part (or
     // the profile picture's turn) back, so the client's next try (up to 3, UploadPendingUgc) can still take it.
     private IResult Store(UgcType type, UploadTarget target, long characterId, UgcResource? resource, DateTime now, byte[] fileBytes) {
         string folder = Path.Combine(Paths.WEB_DATA_DIR, target.Folder);
         try {
-            if (type == UgcType.ProfileAvatar && Path.Exists(folder)) {
+            if (IsProfile(type) && Path.Exists(folder)) {
                 Directory.Delete(folder, true);
             }
             Directory.CreateDirectory(folder);
@@ -307,7 +342,7 @@ public class WebController : ControllerBase {
         } catch (Exception ex) {
             Log.Error(ex, "Failed storing upload: {Path}", folder);
             if (resource == null) {
-                ProfileUploads.GiveBack(characterId, now);
+                ProfileUploads.GiveBack(type, characterId, now);
             } else {
                 using WebStorage.Request db = webStorage.Context();
                 db.GiveBackUpload(resource.Id, UgcRules.UploadPart(type));

@@ -10,12 +10,6 @@ public class SystemController : ControllerBase {
 
     [HttpGet("banner/{name}.png")]
     public IResult GetBanner(string name) {
-        string fullPath = $"{Paths.WEB_DATA_DIR}/system/banner/{name}.png";
-        if (!System.IO.File.Exists(fullPath)) {
-            return Results.NotFound();
-        }
-
-        FileStream bannerImage = System.IO.File.OpenRead(fullPath);
-        return Results.File(bannerImage, contentType: "image/png");
+        return WebFiles.Serve(WebFiles.OperatorPath(Paths.WEB_DATA_DIR, name, ".png", "system", "banner"), "image/png");
     }
 }

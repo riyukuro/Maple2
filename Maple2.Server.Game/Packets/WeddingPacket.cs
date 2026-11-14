@@ -30,6 +30,7 @@ public static class WeddingPacket {
         SendInvite = 29,
         MutualAgree = 30,
         MutualCancel = 31,
+        OwnProfile = 35,
         Emotion = 39,
     }
 
@@ -37,6 +38,16 @@ public static class WeddingPacket {
         var pWriter = Packet.Of(SendOp.Wedding);
         pWriter.Write<Command>(Command.UpdateMarriage);
         pWriter.WriteClass<Marriage>(marriage);
+
+        return pWriter;
+    }
+
+    // Client: WeddingManager::OnMode23 (weddingmanager.cpp:324), no body: the open wedding dialog shows the viewer's own
+    // profile picture again (UIWeddingDialog::SetOwnProfile), fetching the stored file when it is not on disk yet.
+    // The dialog is looked up without a null test; it exists while the wedding UI is loaded, which the upload needs.
+    public static ByteWriter OwnProfile() {
+        var pWriter = Packet.Of(SendOp.Wedding);
+        pWriter.Write<Command>(Command.OwnProfile);
 
         return pWriter;
     }

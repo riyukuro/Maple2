@@ -11,7 +11,7 @@ public enum UgcType : byte {
     Mount = 7,
     GuildBanner = 8,
     LayoutBlueprint = 9,
-    Unknown10 = 10,
+    WeddingProfile = 10,
     ItemIcon = 201,
     Unknown11 = 202,
     BlueprintIcon = 209,

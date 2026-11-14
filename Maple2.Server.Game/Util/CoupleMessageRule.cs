@@ -28,7 +28,25 @@ public static class CoupleMessageRule {
         return false;
     }
 
-    // Takes both messages from a freshly loaded copy, matched by character id (the two copies may list the partners in either order).
+    // Stores the wedding profile picture path on the partner entry of the given character. False when the character
+    // is not in the marriage.
+    public static bool ApplyProfile(Marriage marriage, long characterId, string path) {
+        if (marriage.Id == 0 || characterId == 0) {
+            return false;
+        }
+
+        if (marriage.Partner1.CharacterId == characterId) {
+            marriage.Partner1.Profile = path;
+            return true;
+        }
+        if (marriage.Partner2.CharacterId == characterId) {
+            marriage.Partner2.Profile = path;
+            return true;
+        }
+        return false;
+    }
+
+    // Takes both messages and both profile pictures from a freshly loaded copy, matched by character id (the two copies may list the partners in either order).
     public static void Merge(Marriage marriage, Marriage fresh) {
         foreach (MarriagePartner partner in new[] { marriage.Partner1, marriage.Partner2 }) {
             if (partner.CharacterId == 0) {
@@ -36,8 +54,10 @@ public static class CoupleMessageRule {
             }
             if (partner.CharacterId == fresh.Partner1.CharacterId) {
                 partner.Message = fresh.Partner1.Message;
+                partner.Profile = fresh.Partner1.Profile;
             } else if (partner.CharacterId == fresh.Partner2.CharacterId) {
                 partner.Message = fresh.Partner2.Message;
+                partner.Profile = fresh.Partner2.Profile;
             }
         }
     }

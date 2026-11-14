@@ -10,12 +10,6 @@ public class ItemIconController : ControllerBase {
 
     [HttpGet("{itemId}/{uid}.png")]
     public IResult GetItem(long itemId, string uid) {
-        string fullPath = $"{Paths.WEB_DATA_DIR}/itemicon/{itemId}/{uid}.png";
-        if (!System.IO.File.Exists(fullPath)) {
-            return Results.NotFound();
-        }
-
-        FileStream itemIcon = System.IO.File.OpenRead(fullPath);
-        return Results.File(itemIcon, contentType: "image/png");
+        return WebFiles.Serve(WebFiles.StoredPath(Paths.WEB_DATA_DIR, uid, ".png", "itemicon", itemId.ToString()), "image/png");
     }
 }

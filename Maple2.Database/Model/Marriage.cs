@@ -12,7 +12,8 @@ internal class Marriage {
     public long Partner2Id { get; set; }
     public MaritalStatus Status { get; set; }
     public IList<MarriageExp> ExpHistory { get; set; } = new List<MarriageExp>();
-    public required string Profile { get; set; }
+    public required string Partner1Profile { get; set; }
+    public required string Partner2Profile { get; set; }
     public required string Partner1Message { get; set; }
     public required string Partner2Message { get; set; }
     public DateTime CreationTime { get; set; }
@@ -28,7 +29,8 @@ internal class Marriage {
             Partner1Id = other.Partner1.CharacterId,
             Partner2Id = other.Partner2.CharacterId,
             Status = other.Status,
-            Profile = other.Profile,
+            Partner1Profile = other.Partner1.Profile,
+            Partner2Profile = other.Partner2.Profile,
             Partner1Message = other.Partner1.Message,
             Partner2Message = other.Partner2.Message,
             CreationTime = other.CreationTime.FromEpochSeconds(),

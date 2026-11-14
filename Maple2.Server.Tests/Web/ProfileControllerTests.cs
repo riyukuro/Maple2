@@ -30,6 +30,6 @@ public class ProfileControllerTests {
                 .Select(get => ((type.GetCustomAttribute<RouteAttribute>()?.Template ?? "").Trim('/') + "/" + get.Template).ToLowerInvariant()))
             .Where(route => route.Contains("profiles"))
             .ToList();
-        Assert.That(routes, Is.EqualTo(new[] { "data/profiles/avatar/{characterid:long}/{file}" }));
+        Assert.That(routes, Is.EquivalentTo(new[] { "data/profiles/avatar/{characterid:long}/{file}", "data/profiles/wedding/{characterid:long}/{file}" }));
     }
 }
