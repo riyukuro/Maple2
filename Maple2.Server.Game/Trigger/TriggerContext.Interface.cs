@@ -21,6 +21,7 @@ public partial class TriggerContext {
             "SurvivalContents" => new SurvivalContentsWidget(Field),
             "TypingGame" => new TypingGameWidget(Field),
             "Round" => new RoundWidget(Field),
+            "RainbowMonster" => new RainbowMonsterWidget(Field),
             _ => new Widget(Field),
         };
         Field.Widgets[type] = widget;

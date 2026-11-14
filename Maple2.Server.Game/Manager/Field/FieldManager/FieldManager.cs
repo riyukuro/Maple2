@@ -23,6 +23,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.DebugGraphics;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Model.Field;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -627,6 +628,7 @@ public partial class FieldManager : IField {
         PvpZone?.Update(FieldTick);
         Survival?.Update(FieldTick);
         HideAndSeek?.Update(FieldTick);
+        (Widgets.GetValueOrDefault("RainbowMonster") as RainbowMonsterWidget)?.Update(FieldTick);
     }
 
     public void EnsurePlayerPosition(FieldPlayer player) {

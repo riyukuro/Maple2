@@ -12,6 +12,7 @@ using Maple2.Server.Game.Model.ActorStateComponent;
 using Maple2.Server.Game.Model.Enum;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Model.State;
+using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -674,6 +675,11 @@ public class FieldNpc : Actor<Npc> {
         Field.StringIdDeaths.Died(Value.Metadata.Basic.StringId);
         Field.AddScoreBoardScore(TriggerScore);
         Field.ShadowGaugeKilled(ObjectId);
+        // RainbowMonster (02100002): a group's slime or a bad slime the furnace npc kills moves the score.
+        if (Field.Widgets.GetValueOrDefault("RainbowMonster") is RainbowMonsterWidget rainbow
+            && (Field.Npcs.GetValueOrDefault(lastAttackerObjectId) ?? Field.Mobs.GetValueOrDefault(lastAttackerObjectId)) is { } killerNpc) {
+            rainbow.NpcDied(Value.Id, killerNpc.Value.Id);
+        }
         if (GetLastAttacker() is FieldPlayer lastHitter) {
             // The killing blow counts for npc_lasthit, with the NPC id as the code (field boss achievements).
             lastHitter.Session.ConditionUpdate(ConditionType.npc_lasthit, codeLong: Value.Id, targetLong: Field.MapId);
