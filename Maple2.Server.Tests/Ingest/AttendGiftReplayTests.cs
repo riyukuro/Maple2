@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Maple2.File.Ingest.Helpers;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -29,6 +31,34 @@ public class AttendGiftReplayTests {
         GameEventMetadata ended = Event(801, GameEventType.AttendGift, local.AddDays(-3).ToString("yyyy-MM-dd HH:mm:ss"),
             local.AddMinutes(-1).ToString("yyyy-MM-dd HH:mm:ss"));
         Assert.That(AttendGiftReplay.Candidates([running, ended], AttendGiftReplay.IngestNow()).Select(e => e.Id), Is.EqualTo(new[] { 801 }));
+    }
+
+    // The call site: the game event table's end check and the replay read the clock through IngestNow, and no other
+    // mapper or helper of the ingest reads a clock of its own (a DateTime.UtcNow there would end the events against
+    // UTC again). The test above only covers IngestNow itself.
+    [Test]
+    public void TheIngestReadsTheClockOnlyThroughIngestNow() {
+        DirectoryInfo? directory = new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        while (directory != null && !Directory.Exists(Path.Combine(directory.FullName, "Maple2.File.Ingest"))) {
+            directory = directory.Parent;
+        }
+        string ingest = Path.Combine(directory?.FullName ?? throw new InvalidOperationException("repository root not found"), "Maple2.File.Ingest");
+        var clock = new Regex(@"\b(?:DateTime|DateTimeOffset)\.(?:Now|UtcNow|Today)\b|TimeProvider\.System");
+        List<string> reads = [];
+        foreach (string folder in new[] { "Mapper", "Helpers" }) {
+            foreach (string file in Directory.EnumerateFiles(Path.Combine(ingest, folder), "*.cs", SearchOption.AllDirectories)) {
+                string[] lines = System.IO.File.ReadAllLines(file);
+                for (int i = 0; i < lines.Length; i++) {
+                    if (clock.IsMatch(lines[i])) {
+                        reads.Add($"{Path.GetFileName(file)}: {lines[i].Trim()}");
+                    }
+                }
+            }
+        }
+        string mapper = System.IO.File.ReadAllText(Path.Combine(ingest, "Mapper", "ServerTableMapper.cs"));
+
+        Assert.That(reads, Is.EqualTo(new[] { "AttendGiftReplay.cs: public static DateTime IngestNow() => DateTime.Now;" }));
+        Assert.That(Regex.Matches(mapper, @"DateTime now = AttendGiftReplay\.IngestNow\(\);").Count, Is.GreaterThanOrEqualTo(1));
     }
 
     [TestCase(null, false)]
