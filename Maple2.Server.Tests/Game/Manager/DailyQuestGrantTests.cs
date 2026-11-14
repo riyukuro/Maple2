@@ -699,6 +699,42 @@ public class DailyQuestGrantTests {
         Assert.That(test.StoredCharacter().WeddingMissionGrantTime, Is.EqualTo(Epoch(DateTime.Today)));
     }
 
+    // The quest flow with a feature table as the KR ingest writes it: an explicit list of the enabled names (a few of
+    // KR's here), without DailyMission and RideShareAuthority. A married level 50 player gets the day's field quest and
+    // wedding missions at login and again at the next day's reset; the mission point ladder and the daily missions
+    // are granted at neither.
+    [Test]
+    public void KrFeatureSet_QuestFlow() {
+        test.SetServerTable(new FeatureTable(new Dictionary<string, int> {
+            ["Fishing"] = 9, ["Mastery"] = 21, ["Wedding"] = 54, ["GemMeta"] = 48,
+        }));
+        Assume.That(test.Session.ServerTableMetadata.FeatureTable.IsOn("DailyMission"), Is.False);
+        RegisterFieldQuests();
+        RegisterLadders();
+        RegisterDailyMissions();
+        RegisterWeddingMissions();
+        Marry();
+
+        test.Session.Quest.Load();
+
+        Assert.That(Held(FieldQuests), Is.EqualTo(new[] { FieldPick() }));
+        Assert.That(Held(WeddingMissions), Is.EqualTo(WeddingPicks()));
+        Assert.That(Held(Ladders), Is.Empty);
+        Assert.That(Held(DailyMissions), Is.Empty);
+
+        Character.FieldQuestGrantTime = Epoch(DateTime.Today.AddDays(-1));
+        Character.WeddingMissionGrantTime = Epoch(DateTime.Today.AddDays(-1));
+        test.Session.Quest.ResetDailyQuests(DateTime.Today);
+
+        Assert.That(Held(FieldQuests), Is.EqualTo(new[] { FieldPick() }));
+        Assert.That(Held(WeddingMissions), Is.EqualTo(WeddingPicks()));
+        Assert.That(Held(Ladders), Is.Empty);
+        Assert.That(Held(DailyMissions), Is.Empty);
+        Assert.That(Character.MissionPointGrantTime, Is.Zero);
+        Assert.That(Character.DailyMissionGrantTime, Is.Zero);
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     [TestCase(0L, true)]
     [TestCase(-1L, true)]
     [TestCase(1L, false)]
