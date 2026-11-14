@@ -424,6 +424,24 @@ public class ConfigManager {
         return SkillHitRules.HeldInterval(end.Value - start.Value, SkillCastRules.MotionSpeed(motion.SequenceSpeed, heldAttackSpeed, motion.MoveType));
     }
 
+    // Whether the motion's loop is not known from the player's rig, so a tick sync is taken (SkillCastRules.SyncLoops):
+    // the rig lacks the sequence, or has a prefixed one of it that loops. The client plays the name its actor
+    // resolves (CAnimationManager::ResolveAnimationName, animationmanager.cpp:209-230): a prefix of the actor (a
+    // transform or a variant) put before the name when the model has that sequence, which the server cannot tell.
+    public bool LoopUnknown(SkillMetadataMotionProperty motion) {
+        IReadOnlyDictionary<string, AnimationSequenceMetadata>? sequences = session.Player.Animation.RigMetadata?.Sequences;
+        if (sequences == null || !sequences.ContainsKey(motion.SequenceName)) {
+            return true;
+        }
+        foreach ((string name, AnimationSequenceMetadata sequence) in sequences) {
+            if (name.Length > motion.SequenceName.Length && name.EndsWith(motion.SequenceName, StringComparison.OrdinalIgnoreCase)
+                && SkillCastRules.KeyTime(sequence.Keys, "loopstart") != null && SkillCastRules.KeyTime(sequence.Keys, "loopend") != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public SkillCooldown? GetSkillCooldown(int skillId) {
         lock (skillCooldowns) {
             return skillCooldowns.TryGetValue(skillId, out SkillCooldown? cooldown) ? cooldown : null;

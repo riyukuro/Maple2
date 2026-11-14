@@ -394,9 +394,11 @@ public static class SkillCastRules {
     public static bool SyncPays(bool continueSkill) => continueSkill;
 
     // Whether the client can send a tick sync for the cast's motion (StateSkill, stateskill.cpp:867-927: at a loop
-    // end only): its sequence loops (heldIntervalMs above 0, ConfigManager.HeldInterval), or the skill continues
-    // while held (kept when the loop is not known: never stricter than the client).
-    public static bool SyncLoops(long heldIntervalMs, bool continueSkill) => heldIntervalMs > 0 || continueSkill;
+    // end only): its sequence loops (heldIntervalMs above 0, ConfigManager.HeldInterval), the skill continues while
+    // held, or the motion's loop is not known (loopUnknown, ConfigManager.LoopUnknown: a motion with a loop count
+    // sends one at each loop end with no continue). Refused only for a sequence known to have no loop.
+    public static bool SyncLoops(long heldIntervalMs, bool continueSkill, bool loopUnknown = false) =>
+        heldIntervalMs > 0 || continueSkill || loopUnknown;
 
     // The spirit a cast costs, as the client works it out before it sends the cast (CSkillSystem, 0x14176b960):
     // the skill's cost less the flat value of the cost invokes, less the cost times (the invokes' rate minus the

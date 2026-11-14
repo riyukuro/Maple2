@@ -622,6 +622,11 @@ public sealed class SkillHitBudget {
         if (earlyBy > 0 && (lag == null || !lag.TryDraw(earlyBy, tick))) {
             return false;
         }
+        // An honest loop restarts up to 50 ms past its loopstart (stateskill.cpp:1647) and a sync may come up to the
+        // iterations' allowance early; the schedule follows the sync taken, so it may move up by the allowance at
+        // each sync and loops shorter than about the allowance are not held. Accepted: an honest client with a short
+        // loop never falls behind, and a sync outside a looping motion (the hits reset between target packets) is
+        // still refused.
         syncTick = intervalMs > 0 ? Math.Min(tick, due - earlyBy) : tick;
         pointGroupHits.Clear();
         return true;
