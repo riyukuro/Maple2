@@ -220,13 +220,11 @@ public class PetHandler : FieldPacketHandler {
                 taken.Add((fodder!, kind, amount));
             }
 
-            if (session.Currency.Meso < cost) {
+            // KMS2 order: the meso, then the fodders. Checked and taken in one step.
+            if (!session.Currency.TryTakeMeso(cost)) {
                 session.Send(PetPacket.Error(PetError.s_err_lack_meso));
                 return;
             }
-
-            // KMS2 order: the meso, then the fodders.
-            session.Currency.ChangeMeso(-cost);
             foreach ((Item fodder, PetFusionRules.FodderKind kind, int amount) in taken) {
                 if (!session.Item.Inventory.Consume(fodder.Uid, kind == PetFusionRules.FodderKind.Pet ? -1 : amount)) {
                     throw new InvalidOperationException($"Failed to consume fusion fodder: {fodder.Uid} after validating");
@@ -370,13 +368,11 @@ public class PetHandler : FieldPacketHandler {
             }
 
             long cost = PetEvolveRules.Cost(fodders.Select(fodder => fodder.Rarity));
-            if (session.Currency.Meso < cost) {
+            // KMS2 order: the meso, then the fodders. Checked and taken in one step.
+            if (!session.Currency.TryTakeMeso(cost)) {
                 session.Send(PetPacket.Error(PetError.s_err_lack_meso));
                 return;
             }
-
-            // KMS2 order: the meso, then the fodders.
-            session.Currency.ChangeMeso(-cost);
             foreach (Item fodder in fodders) {
                 if (!session.Item.Inventory.Consume(fodder.Uid)) {
                     throw new InvalidOperationException($"Failed to consume evolution fodder: {fodder.Uid} after validating");
