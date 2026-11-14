@@ -265,6 +265,30 @@ public class UgcOxEventTests {
         });
     }
 
+    // A failed move after the start that leaves one entrant cancels the game: the script goes to its cancel state
+    // (IsCanceled is read while a round runs), its EndGame refunds the one left, and nobody waits alone.
+    [Test]
+    public void AFailedMoveAfterTheStart_LeavingOneEntrant_CancelsAndRefunds() {
+        UgcOxEvent ox = Running(rounds: 1);
+        Assert.Multiple(() => {
+            Assert.That(ox.Unenter(2), Is.EqualTo(1000));
+            Assert.That(ox.Canceled, Is.True);
+            Assert.That(ox.Settle([3], refundAll: false), Is.EqualTo(new[] {
+                new UgcOxPayment(3, 1000, UgcOxPaymentKind.Refund),
+            }));
+        });
+    }
+
+    // Before the start a failed move cancels nothing: the welcome waits for more entrants.
+    [Test]
+    public void AFailedMoveAtTheWelcome_DoesNotCancel() {
+        UgcOxEvent ox = Make();
+        ox.Enter(2, Paid);
+        ox.Enter(3, Paid);
+        Assert.That(ox.Unenter(2), Is.EqualTo(1000));
+        Assert.That(ox.Canceled, Is.False);
+    }
+
     [Test]
     public void HostLeavingMidGameRefunds() {
         UgcOxEvent ox = Running(rounds: 3);

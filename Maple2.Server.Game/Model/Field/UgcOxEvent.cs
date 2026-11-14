@@ -176,10 +176,15 @@ public class UgcOxEvent {
 
     // A new entrant whose move into the stadium failed: its entry is taken out and its fee (returned, 0 when there
     // is none to give back) goes back to it, so a fee is kept only for an entrant who got in. Nothing once settled.
+    // A failed move that raced the host's start can leave a running game below MinEntrants: it is canceled then, as
+    // a start with too few entrants is, so the script runs its cancel and EndGame refunds the one left.
     public long Unenter(long characterId) {
         lock (Lock) {
             if (settled || !entrants.Remove(characterId, out long fee)) {
                 return 0;
+            }
+            if (Phase == UgcOxPhase.Running && !Canceled && entrants.Count < UgcOxRules.MinEntrants) {
+                Canceled = true;
             }
             return fee;
         }

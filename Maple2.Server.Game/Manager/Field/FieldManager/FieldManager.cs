@@ -1138,7 +1138,7 @@ public partial class FieldManager : IField {
         }
         // The move failed: a new entrant did not get in, so its entry and its fee go back (UgcOxEvent.Unenter).
         if (enter == UgcOxEnter.New && ox.Unenter(session.CharacterId) is var fee and > 0) {
-            session.Currency.ChangeMeso(fee);
+            session.Currency.ReturnMeso(fee);
             logger.Information("OX quiz of {HostCharacterId}: {CharacterId} could not move in; the entry fee of {Fee} mesos was given back",
                 ox.HostCharacterId, session.CharacterId, fee);
         }
