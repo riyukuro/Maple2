@@ -637,6 +637,12 @@ public class DungeonManager {
     }
 
     public void SetDungeon(int dungeonId, int roomId, bool set) {
+        // The party's room (a party load at login or a party update) leaves alone the room the player stands in:
+        // a solo room entered while in a party of one, then a relog, cleared Metadata and the lobby portal failed.
+        // Chosen here: the room the player is inside wins until the player leaves it.
+        if (Lobby != null && session.Field is DungeonFieldManager field && (field.Lobby ?? field) == Lobby && !(set && roomId == Lobby.RoomId)) {
+            return;
+        }
         if (set) {
             if (!session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(dungeonId, out DungeonRoomMetadata? metadata)) {
                 logger.Error("Dungeon metadata not found for dungeonId {dungeonId}", dungeonId);

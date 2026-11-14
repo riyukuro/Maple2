@@ -638,6 +638,23 @@ public sealed class TestGameSession {
         return record;
     }
 
+    // A room field of the dungeon whose lobby the session stands in (EnterDungeon), as the factory adds it.
+    public DungeonFieldManager AddRoomField(int mapId) {
+        var lobby = (DungeonFieldManager) Session.Field!;
+        var field = NewField<DungeonFieldManager>(Map(mapId));
+        typeof(FieldManager).GetField("<Players>k__BackingField", Any)!.SetValue(field, new ConcurrentDictionary<int, FieldPlayer>());
+        typeof(DungeonFieldManager).GetField(nameof(DungeonFieldManager.DungeonMetadata), Any)!.SetValue(field, lobby.DungeonMetadata);
+        typeof(DungeonFieldManager).GetField("<DungeonRoomRecord>k__BackingField", Any)!.SetValue(field, lobby.DungeonRoomRecord);
+        typeof(DungeonFieldManager).GetField("<Lobby>k__BackingField", Any)!.SetValue(field, lobby);
+        foreach (DungeonFieldManager f in new[] { lobby, field }) {
+            if (f.RoomFields == null) {
+                typeof(DungeonFieldManager).GetField(nameof(DungeonFieldManager.RoomFields), Any)!.SetValue(f, new ConcurrentDictionary<int, DungeonFieldManager>());
+            }
+        }
+        lobby.RoomFields[mapId] = field;
+        return field;
+    }
+
     // A quest the character has in progress, with its row stored as a started quest's is (Complete stores the row).
     public Quest StartQuest(QuestMetadata metadata) {
         var quest = new Quest(metadata) { State = QuestState.Started };
