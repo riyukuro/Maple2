@@ -19,8 +19,9 @@ public class GemstoneSocketStateTests {
 
     private GameSession Start(TransferType transferType = TransferType.Tradable) {
         test = new TestGameSession();
+        // An outfit gem (equipPart 4) for the outfit earring.
         test.SetTable(new GemstoneUpgradeTable(new Dictionary<int, GemstoneUpgradeTable.Entry> {
-            [40200001] = new(1, 40200002, [], 3),
+            [40200001] = new(1, 40200002, [], 4),
         }));
         ItemMetadata gearData = TestGameSession.Metadata(11200001, type: 1);
         gear = test.Store(gearData with { Property = gearData.Property with { SkinType = 1 } });

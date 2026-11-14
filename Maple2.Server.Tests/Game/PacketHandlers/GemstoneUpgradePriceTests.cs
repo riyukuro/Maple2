@@ -25,13 +25,13 @@ public class GemstoneUpgradePriceTests {
     private Item bagGem = null!;
     private Item? chips;
 
-    private GameSession Start(GemstoneUpgradeTable.Ingredient[] ingredients, int chipCount = 0, long mesos = 0, int bagGems = 3, int saleRate = 0) {
+    private GameSession Start(GemstoneUpgradeTable.Ingredient[] ingredients, int chipCount = 0, long mesos = 0, int bagGems = 3, int saleRate = 0, int equipPart = 3) {
         test = new TestGameSession();
         if (saleRate > 0) {
             test.AddEvent(7200, GameEventType.SaleGemStoneUpgrade, new EventRate(saleRate));
         }
         test.SetTable(new GemstoneUpgradeTable(new Dictionary<int, GemstoneUpgradeTable.Entry> {
-            [40200001] = new(1, 40200002, ingredients, 3),
+            [40200001] = new(1, 40200002, ingredients, equipPart),
         }));
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { GemStoneProbList = SureRates, SkinGemStoneProbList = SureRates });
         gear = test.Store(TestGameSession.Metadata(11200001, type: 1));
@@ -201,6 +201,20 @@ public class GemstoneUpgradePriceTests {
         Assert.Multiple(() => {
             Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(40200002));
             Assert.That(Amount(session, dust), Is.EqualTo(left));
+        });
+    }
+
+    // An outfit gem (equipPart 4, mask 8) takes no sale (FUN_140627a20). Before, the raw part 4 was tested for bit 8,
+    // so it took the event's rate: 5 of 10 here.
+    [Test]
+    public void SaleEvent_SkipsAnOutfitGem() {
+        GameSession session = Start([new GemstoneUpgradeTable.Ingredient(ItemTag.DustBlue, 10)], saleRate: 5000, equipPart: 4);
+
+        UpgradeSocketed(session);
+
+        Assert.Multiple(() => {
+            Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(40200002));
+            Assert.That(Amount(session, dust), Is.EqualTo(90));
         });
     }
 }

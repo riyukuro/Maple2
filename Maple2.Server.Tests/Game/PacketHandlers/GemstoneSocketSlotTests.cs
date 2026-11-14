@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
@@ -17,9 +19,16 @@ public class GemstoneSocketSlotTests {
     private Item gear = null!;
     private Item gem = null!;
 
-    private GameSession Start() {
+    // The earring 11200001 (subtype 12, an accessory) with an accessory gem (equipPart 3) by default.
+    private GameSession Start(int gemPart = 3, int skinType = 0, bool gemRow = true) {
         test = new TestGameSession();
-        gear = test.Store(TestGameSession.Metadata(11200001, type: 1));
+        var rows = new Dictionary<int, GemstoneUpgradeTable.Entry>();
+        if (gemRow) {
+            rows[40200001] = new(1, 40200002, [], gemPart);
+        }
+        test.SetTable(new GemstoneUpgradeTable(rows));
+        ItemMetadata gearData = TestGameSession.Metadata(11200001, type: 1);
+        gear = test.Store(gearData with { Property = gearData.Property with { SkinType = skinType } });
         gem = test.Store(TestGameSession.Metadata(40200001, type: 13), amount: 1);
         GameSession session = test.Start();
         test.TakeSent();
@@ -74,6 +83,28 @@ public class GemstoneSocketSlotTests {
         Assert.That(gear.Socket!.Sockets[0], Is.Not.Null);
         Assert.That(gear.Socket!.Sockets[0]!.ItemId, Is.EqualTo(40200001));
         Assert.That(gear.Socket!.Sockets[0]!.Stats, Is.Not.Null);
+    }
+
+    // The client offers a socket only the gems whose equipPart fits the item (HasGemStoneMask): an accessory gem
+    // (part 3) for an accessory, an outfit gem (part 4) for an outfit, and no gem without a gemstone upgrade row.
+    // Before, any gem was socketed.
+    [TestCase(3, 0, true, ExpectedResult = true)]
+    [TestCase(4, 1, true, ExpectedResult = true)]
+    [TestCase(3, 1, true, ExpectedResult = false)]
+    [TestCase(4, 0, true, ExpectedResult = false)]
+    [TestCase(0, 0, true, ExpectedResult = true)]
+    [TestCase(3, 0, false, ExpectedResult = false)]
+    public bool PutOn_OnlyAGemThatFitsTheItem(int gemPart, int skinType, bool gemRow) {
+        GameSession session = Start(gemPart, skinType, gemRow);
+
+        Equip(session, 0);
+
+        bool socketed = gear.Socket!.Sockets[0] != null;
+        Assert.That(session.Item.Inventory.Get(gem.Uid, InventoryType.Gemstone), socketed ? Is.Null : Is.Not.Null);
+        if (!socketed) {
+            Assert.That(Sent(), Is.EqualTo(new[] { Convert.ToHexString(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_gemstone).ToArray()) }));
+        }
+        return socketed;
     }
 
     [Test]

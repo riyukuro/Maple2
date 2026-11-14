@@ -301,10 +301,11 @@ public class ItemSocketHandler : FieldPacketHandler {
     }
 
     // The upgrade's sale (FUN_140627a20): the higher of the SaleGemStoneUpgrade game rule and the ReduceGemstoneUpgradeFee
-    // attribute (SA 172), none for a row whose equipPart mask has bit 8; each count is then lowered as an unlock's is
+    // attribute (SA 172), none for a row whose equipPart mask has bit 8 (an outfit gem, part 4; the raw part was tested,
+    // which is never 8, so outfit gems took a sale the client does not show); each count is then lowered as an unlock's is
     // (FUN_140627b80).
     private static IEnumerable<SocketCost> GemstoneUpgradeCosts(GameSession session, GemstoneUpgradeTable.Entry entry) {
-        int rate = (entry.EquipPart & 8) != 0 ? 0
+        int rate = (ItemSocketRules.GemMask(entry.EquipPart) & 8) != 0 ? 0
             : EventSaleRules.RemakeDiscount(EventSaleRules.HighestRate(session.FindEvent(GameEventType.SaleGemStoneUpgrade)),
                 session.Player.Stats.Values[SpecialAttribute.ReduceGemstoneUpgradeFee].Total);
         float limit = session.ServerTableMetadata.ConstantsTable.IngredientFeeReduceLimit;
@@ -335,6 +336,13 @@ public class ItemSocketHandler : FieldPacketHandler {
             }
             Item? gem = session.Item.Inventory.Get(gemUid, InventoryType.Gemstone);
             if (gem == null) {
+                session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_gemstone));
+                return;
+            }
+            // Only a gem the client offers for this item: one with a gemstone upgrade row whose equipPart fits the item's
+            // kind (an accessory gem into an earring, necklace or ring, an outfit gem into an outfit). Any gem was taken.
+            if (!TableMetadata.GemstoneUpgradeTable.Entries.TryGetValue(gem.Id, out GemstoneUpgradeTable.Entry? gemRow)
+                || !ItemSocketRules.GemFits(gemRow.EquipPart, ItemSocketRules.GemItemKind(item.Metadata.Property.SkinType, GearScoreRules.SubType(item.Id)))) {
                 session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_gemstone));
                 return;
             }

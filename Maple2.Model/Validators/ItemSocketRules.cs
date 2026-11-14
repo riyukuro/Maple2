@@ -48,6 +48,31 @@ public static class ItemSocketRules {
     // itemgemstoneupgrade.xml equipPart of an outfit gem (KR: the 4022xxxx gems; the others are 3).
     public const int SkinGemEquipPart = 4;
 
+    // The item kinds a gem row fits, as the client reads equipPart (CItemGemStoneData, itemgemstonedata.cpp:185-213):
+    // part n is bit 1 << (n - 1), and a row with no part (or one below 1) fits 7. KR: part 3 (mask 4, accessories) and
+    // part 4 (mask 8, outfits).
+    public static int GemMask(int equipPart) => equipPart < 1 ? 7 : 1 << (equipPart - 1);
+
+    // The item's kind for a gem (FUN_140222ce0, unit_1402226b0_featureenumhelpers.cpp:200): an outfit (a skin type) 8, a
+    // weapon 1 (CItemData::FUN_14053d2f0: equip subtypes 30-34, 40, 41, 50-56 and 80-83), armor 2 (13-17, 22), an
+    // accessory 4 (12, 18-21), else 15. Type 8 and 23 items, also weapons there, have no sockets.
+    public static int GemItemKind(int skinType, int subType) {
+        if (skinType != 0) {
+            return 8;
+        }
+        return subType switch {
+            >= 30 and <= 34 or 40 or 41 or >= 50 and <= 56 or >= 80 and <= 83 => 1,
+            >= 13 and <= 17 or 22 => 2,
+            12 or >= 18 and <= 21 => 4,
+            _ => 0xF,
+        };
+    }
+
+    // The client offers for a socket only the gems whose row fits the item's kind (HasGemStoneMask,
+    // itemsocketsystemutil.cpp:272; ItemSocketSystemPageGemStoneManage::FUN_140f70c70, which also skips a gem with no
+    // gemstone upgrade row).
+    public static bool GemFits(int equipPart, int itemKind) => (GemMask(equipPart) & itemKind) != 0;
+
     // The success rate in percent of upgrading a gem of this level, from the server constants GemStoneProbList
     // (SkinGemStoneProbList for an outfit gem), indexed by the level the upgrade gives (KR: 25 for level 2 down to 8
     // for level 10; indices 0 and 1 are 0, no upgrade gives them). The client reads neither list; it shows the rate the
