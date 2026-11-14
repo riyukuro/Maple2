@@ -368,8 +368,8 @@ public partial class TriggerContext {
             return;
         }
         var eventSpawn = spawn as EventSpawnPointNPC;
-        // A plain spawn point has no npc count: it spawns its whole list.
-        int npcCount = eventSpawn?.NpcCount ?? spawn.NpcList.Sum(entry => entry.Count);
+        // A plain spawn point's NpcCount caps its list total the way its own regen does (SpawnPointRules).
+        int npcCount = eventSpawn?.NpcCount ?? SpawnPointRules.PlainCap(spawn);
 
         DebugLog("[SpawnNpc] spawnId:{SpawnId}, SpawnRadius:{SpawnRadius}, NpcCount:{NpcCount}, Position:{Position}",
             spawnId, spawn.SpawnRadius, npcCount, spawn.Position);

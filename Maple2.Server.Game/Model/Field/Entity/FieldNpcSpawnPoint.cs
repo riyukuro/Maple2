@@ -43,27 +43,23 @@ public class FieldSpawnPointNpc : FieldEntity<SpawnPointNPC> {
     }
 
     public void TriggerSpawn(bool forceFullSpawn = false) {
-        FieldNpc[] npcs = forceFullSpawn ? [] :
-            Field.GetActorsBySpawnId(SpawnId).OfType<FieldNpc>().ToArray();
+        int[] aliveIds = forceFullSpawn ? [] :
+            Field.GetActorsBySpawnId(SpawnId).OfType<FieldNpc>().Select(npc => npc.Value.Id).ToArray();
 
-        foreach (SpawnPointNPCListEntry spawn in Value.NpcList) {
-            if (!Field.NpcMetadata.TryGet(spawn.NpcId, out NpcMetadata? npcMetadata)) {
-                // Log.Logger.Warning("Npc {NpcId} failed to load for map {MapId}", spawn.NpcId, Field.MapId);
+        // The point's NpcCount caps the npcs up at once; each list entry's count caps its npc (SpawnPointRules).
+        foreach (int npcId in SpawnPointRules.PickNpcs(Value, aliveIds, id => Field.NpcMetadata.TryGet(id, out _), Random.Shared)) {
+            if (!Field.NpcMetadata.TryGet(npcId, out NpcMetadata? npcMetadata)) {
                 continue;
             }
 
-            int spawnCountNeeded = forceFullSpawn ? spawn.Count : spawn.Count - npcs.Count(x => x.Value.Id == spawn.NpcId);
-
-            for (int i = 0; i < spawnCountNeeded; i++) {
-                FieldNpc? npc = Field.SpawnNpc(npcMetadata, Value);
-                if (npc == null) {
-                    continue;
-                }
-                npc.SpawnPointId = SpawnId;
-
-                Field.Broadcast(FieldPacket.AddNpc(npc));
-                Field.Broadcast(ProxyObjectPacket.AddNpc(npc));
+            FieldNpc? npc = Field.SpawnNpc(npcMetadata, Value);
+            if (npc == null) {
+                continue;
             }
+            npc.SpawnPointId = SpawnId;
+
+            Field.Broadcast(FieldPacket.AddNpc(npc));
+            Field.Broadcast(ProxyObjectPacket.AddNpc(npc));
         }
     }
 }

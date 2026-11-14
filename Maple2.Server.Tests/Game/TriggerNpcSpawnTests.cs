@@ -113,6 +113,18 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That(Field.Mobs, Has.Count.EqualTo(2));
     }
 
+    // spawn_monster on a plain point keeps to the point's NpcCount: two of its three listed npcs (02020051's points list
+    // ten npcs with NpcCount 5).
+    [Test]
+    public void SpawnMonster_PlainPointKeepsToItsNpcCount() {
+        StartSpawns(new SpawnPointNPC("", 5, new Vector3(300, 0, 0), new Vector3(0, 0, 90), true, false, 0,
+            [new SpawnPointNPCListEntry(MobId, 2), new SpawnPointNPCListEntry(FriendId, 1)], 0, null, 2));
+
+        Action("""<action name="spawn_monster" spawn_ids="5" />""");
+        Assert.That(Field.Mobs.Count + Field.Npcs.Count, Is.EqualTo(2));
+        Assert.That(Sent(SendOp.FieldAddNpc), Has.Count.EqualTo(2));
+    }
+
     // spawn_monster plays the event spawn point's spawn animation unless auto_target is 0: a missing auto_target
     // (457 KR rows) reads as the trigger definition's default True.
     [Test]
