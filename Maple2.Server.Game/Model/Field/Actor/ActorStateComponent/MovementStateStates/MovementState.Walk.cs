@@ -35,7 +35,7 @@ public partial class MovementState {
         Speed *= baseSpeed;
     }
 
-    private void StartWalking(string sequence, NpcTask task) {
+    private void StartWalking(string sequence, NpcTask task, float baseOverride = 0) {
         sequence = sequence == "" ? "Run_A" : sequence;
         walkSegmentSet = false;
         walkSpeed = Speed;
@@ -44,7 +44,7 @@ public partial class MovementState {
 
         bool isWalking = sequence.StartsWith("Walk_");
 
-        baseSpeed = isWalking ? actor.Value.Metadata.Action.WalkSpeed : actor.Value.Metadata.Action.RunSpeed;
+        baseSpeed = baseOverride > 0 ? baseOverride : isWalking ? actor.Value.Metadata.Action.WalkSpeed : actor.Value.Metadata.Action.RunSpeed;
 
         if (actor.Animation.PlayingSequence?.Name == sequence || actor.Animation.TryPlaySequence(sequence, aniSpeed * Speed, AnimationType.Misc)) {
             stateSequence = actor.Animation.PlayingSequence;

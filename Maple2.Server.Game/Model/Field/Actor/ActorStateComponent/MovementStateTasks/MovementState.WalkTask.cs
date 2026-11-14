@@ -63,6 +63,8 @@ public partial class MovementState {
         public Vector3 Position { get; init; }
         public string Sequence { get; init; } = "";
         public float Speed { get; init; }
+        // The speed Speed multiplies; 0 takes the npc's walk or run speed for the sequence.
+        public float BaseSpeed { get; init; }
         public bool LookAt { get; init; }
         public override bool CancelOnInterrupt => Priority == NpcTaskPriority.IdleAction;
 
@@ -71,7 +73,7 @@ public partial class MovementState {
         }
 
         protected override void TaskResumed() {
-            movement.MoveTo(this, Position, Sequence, Speed, LookAt);
+            movement.MoveTo(this, Position, Sequence, Speed, LookAt, BaseSpeed);
         }
 
         protected override void TaskPaused() {
@@ -89,6 +91,8 @@ public partial class MovementState {
         public Vector3 Position { get; init; }
         public string Sequence { get; init; } = "";
         public float Speed { get; init; }
+        // The speed Speed multiplies; 0 takes the npc's walk or run speed for the sequence.
+        public float BaseSpeed { get; init; }
         public bool LookAt { get; init; }
         public override bool CancelOnInterrupt => Priority == NpcTaskPriority.IdleAction;
 
@@ -97,7 +101,7 @@ public partial class MovementState {
         }
 
         protected override void TaskResumed() {
-            movement.FlyTo(this, Position, Sequence, Speed, LookAt);
+            movement.FlyTo(this, Position, Sequence, Speed, LookAt, BaseSpeed);
         }
 
         protected override void TaskPaused() {
@@ -111,7 +115,7 @@ public partial class MovementState {
         }
     }
 
-    private void MoveTo(NpcTask task, Vector3 position, string sequence, float speed, bool lookAt) {
+    private void MoveTo(NpcTask task, Vector3 position, string sequence, float speed, bool lookAt, float baseOverride = 0) {
         if (!CanTransitionToState(ActorState.Walk)) {
             task.Cancel();
 
@@ -140,10 +144,10 @@ public partial class MovementState {
         walkTask = task;
 
         UpdateMoveSpeed(speed);
-        StartWalking(sequence, task);
+        StartWalking(sequence, task, baseOverride);
     }
 
-    private void FlyTo(NpcTask task, Vector3 position, string sequence, float speed, bool lookAt) {
+    private void FlyTo(NpcTask task, Vector3 position, string sequence, float speed, bool lookAt, float baseOverride = 0) {
         if (!CanTransitionToState(ActorState.Walk)) {
             task.Cancel();
             return;
@@ -164,7 +168,7 @@ public partial class MovementState {
         isFlying = true;
 
         UpdateMoveSpeed(speed);
-        StartWalking(sequence, task);
+        StartWalking(sequence, task, baseOverride);
     }
 
     public class NpcMoveTargetDistanceTask : NpcTask {

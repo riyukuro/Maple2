@@ -337,6 +337,46 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That(log.Events.Where(e => e.Level >= LogEventLevel.Warning), Is.Empty);
     }
 
+    // An npc of spawn 101 at the origin with the made-up npc's model playing these sequences (each 1 s with its end key), sent along the patrol
+    // by move_npc and updated for ten seconds of field ticks.
+    private FieldNpc WalkPatrol(NpcMetadata npc, string[] sequences, MS2PatrolData patrol) {
+        StartSpawns(Spawn(101, Vector3.Zero, new SpawnPointNPCListEntry(npc.Id, 1)));
+        NpcMetadataStorage table = NpcTable(npc);
+        var animations = new LRUCache<string, AnimationMetadata>(10, 1);
+        animations.AddReplace("test_model", new AnimationMetadata("test_model",
+            sequences.Select((name, i) => new AnimationSequenceMetadata(name, (short) i, 1f, [new AnimationKey("end", 1f)])).ToDictionary(sequence => sequence.Name)));
+        typeof(NpcMetadataStorage).GetField("AniCache", Any)!.SetValue(table, animations);
+        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, table);
+        typeof(MapEntityMetadata).GetField("<Patrols>k__BackingField", Any)!.SetValue(Field.Entities, new List<MS2PatrolData> { patrol });
+
+        Action("""<action name="spawn_monster" spawn_ids="101" auto_target="0" />""");
+        Action($"""<action name="move_npc" spawn_id="101" patrol_name="{patrol.Name}" />""");
+        FieldNpc walker = Field.EnumerateNpcs().Single();
+        long tick = Field.FieldTick;
+        for (int step = 0; step < 100; step++) {
+            tick += 100;
+            typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(Field, tick);
+            Field.Scheduler.InvokeAll();
+            walker.Update(tick);
+        }
+        return walker;
+    }
+
+    // An npc whose model gives no walk or run speed (npcdata reads them from the model's walkSpeed/runSpeed and
+    // keeps 0 without them, npcdata.cpp:654, 1526; 0 and 0 is a stationary npc, npcdata.cpp:798) still walks a
+    // patrol that has a speed, at that speed: 02000026_in main sends Anos (11003313, model 02010044_Anos with
+    // Walk_A, no speeds) along MS2PatrolData_Anos_00 (speed 2, one waypoint 450 units off). Before, its speed was
+    // 2 x 0 and it stood in Walk where it spawned.
+    [Test]
+    public void MoveNpc_PatrolSpeedMovesAnNpcWithoutSpeeds() {
+        NpcMetadata anos = Npc(FriendId, 1) with { Action = new NpcMetadataAction(0, 0, 0, [], 0, "") };
+        var patrol = new MS2PatrolData("56fd6997", "MS2PatrolData_Anos_00", false, 2, false,
+            [new MS2WayPoint("48f49404", true, new Vector3(-450, 0, 0), Vector3.Zero, "", "", 0, false)]);
+
+        FieldNpc npc = WalkPatrol(anos, ["Idle_A", "Walk_A", "Run_A"], patrol);
+        Assert.That(Vector3.Distance(npc.Position, new Vector3(-450, 0, 0)), Is.LessThan(30));
+    }
+
     private sealed class LogSink : ILogEventSink {
         public readonly List<LogEvent> Events = [];
         public void Emit(LogEvent logEvent) => Events.Add(logEvent);

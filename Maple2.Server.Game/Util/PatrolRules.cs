@@ -35,7 +35,22 @@ public static class PatrolRules {
         if (baseSpeed <= 0) {
             return 1;
         }
-        float speed = patrolSpeed >= GroundUnitsThreshold ? patrolSpeed : AirSpeed(patrolSpeed);
-        return speed / baseSpeed;
+        return GroundSpeed(patrolSpeed) / baseSpeed;
+    }
+
+    public static float GroundSpeed(int patrolSpeed) => patrolSpeed >= GroundUnitsThreshold ? patrolSpeed : AirSpeed(patrolSpeed);
+
+    // An npc whose model gives no speed for the sequence still moves a patrol that has a speed, at that speed. The
+    // client reads an npc's walk and run speed from its model's walkSpeed and runSpeed and keeps 0 without them
+    // (npcdata.cpp:654, 1526; both 0 is a stationary npc, CNpcData::IsStationary, npcdata.cpp:798), and 0 x the
+    // multiplier left such an npc standing in Walk: 02000026_in's Anos (11003313) on MS2PatrolData_Anos_00 (speed 2),
+    // 02000389's 24002926 on MS2PatrolData_2004 (speed 10). The result is the speed MovementState multiplies by 1;
+    // 0 keeps the npc's own speed and the multiplier above (also for such an npc on a patrol without a speed).
+    public static float SpeedlessBase(int patrolSpeed, string sequence, float walkSpeed, float runSpeed, bool air) {
+        float own = sequence.StartsWith("Walk_") ? walkSpeed : runSpeed;
+        if (own > 0 || patrolSpeed <= 0) {
+            return 0;
+        }
+        return air ? AirSpeed(patrolSpeed) : GroundSpeed(patrolSpeed);
     }
 }

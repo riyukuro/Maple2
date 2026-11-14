@@ -60,7 +60,7 @@ public partial class MovementState {
         };
     }
 
-    public NpcTask TryMoveTo(Vector3 position, bool isBattle, string sequence = "", float speed = 0, bool lookAt = false) {
+    public NpcTask TryMoveTo(Vector3 position, bool isBattle, string sequence = "", float speed = 0, bool lookAt = false, float baseSpeed = 0) {
         walkTask?.Cancel();
 
         NpcTaskPriority priority = isBattle ? NpcTaskPriority.BattleWalk : NpcTaskPriority.IdleAction;
@@ -69,11 +69,12 @@ public partial class MovementState {
             Position = position,
             Sequence = sequence,
             Speed = speed,
+            BaseSpeed = baseSpeed,
             LookAt = lookAt,
         };
     }
 
-    public NpcTask TryFlyTo(Vector3 position, bool isBattle, string sequence = "", float speed = 0, bool lookAt = false) {
+    public NpcTask TryFlyTo(Vector3 position, bool isBattle, string sequence = "", float speed = 0, bool lookAt = false, float baseSpeed = 0) {
         walkTask?.Cancel();
 
         NpcTaskPriority priority = isBattle ? NpcTaskPriority.BattleWalk : NpcTaskPriority.IdleAction;
@@ -82,6 +83,7 @@ public partial class MovementState {
             Position = position,
             Sequence = sequence,
             Speed = speed,
+            BaseSpeed = baseSpeed,
             LookAt = lookAt,
         };
     }

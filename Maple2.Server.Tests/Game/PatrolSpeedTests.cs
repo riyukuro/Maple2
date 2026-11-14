@@ -38,6 +38,17 @@ public class PatrolSpeedTests {
         Assert.That(PatrolRules.GroundMultiplier(7, "Run_A", 0, 0), Is.EqualTo(1f));
     }
 
+    // An npc without the sequence's speed (Anos 11003313: no walkSpeed or runSpeed) moves at the patrol's own speed;
+    // one with it, or a patrol without a speed, keeps the multiplier.
+    [Test]
+    public void SpeedlessNpcTakesThePatrolSpeed() {
+        Assert.That(PatrolRules.SpeedlessBase(2, "Walk_A", 0, 0, air: false), Is.EqualTo(200f));
+        Assert.That(PatrolRules.SpeedlessBase(220, "Run_A", 0, 0, air: false), Is.EqualTo(220f));
+        Assert.That(PatrolRules.SpeedlessBase(10, "Run_A", 120, 0, air: true), Is.EqualTo(1000f));
+        Assert.That(PatrolRules.SpeedlessBase(2, "Walk_A", 120, 0, air: false), Is.EqualTo(0f));
+        Assert.That(PatrolRules.SpeedlessBase(0, "Walk_A", 0, 0, air: false), Is.EqualTo(0f));
+    }
+
     // 52000167_qd's patrols 403-406 carry 220-280: already u/s.
     [Test]
     public void LargeGroundSpeedIsUnitsPerSecond() {
