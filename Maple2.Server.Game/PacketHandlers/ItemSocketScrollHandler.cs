@@ -75,6 +75,9 @@ public class ItemSocketScrollHandler : FieldPacketHandler {
             // A fail has taken the scroll and opens nothing (chosen here: the trade deduction is not applied either).
             if (!Succeeds(metadata, Random.Shared.Next(10000))) {
                 session.Send(ItemSocketScrollPacket.Unlock(item, false));
+                // The scroll's is the only unlock that can fail (the socket page's has no rate): 23200034 "Fail at
+                // socket expansion {0} time(s)" counts it, where 23200032-33 name the gear and skin page's unlocks.
+                session.ConditionUpdate(ConditionType.socket_unlock_fail);
                 return;
             }
 

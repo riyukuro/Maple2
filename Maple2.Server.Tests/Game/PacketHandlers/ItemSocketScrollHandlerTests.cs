@@ -24,8 +24,12 @@ public class ItemSocketScrollHandlerTests {
     private BagItem gear = null!;
     private BagItem scroll = null!;
 
-    private GameSession Start(int skinType = 0, int rarity = 4, int level = 50, int gearId = 11200001, int successRate = 10000) {
+    private GameSession Start(int skinType = 0, int rarity = 4, int level = 50, int gearId = 11200001, int successRate = 10000,
+        AchievementMetadata? trophy = null) {
         test = new TestGameSession();
+        if (trophy != null) {
+            test.AddAchievement(trophy);
+        }
         test.SetTable(new ItemSocketScrollTable(new Dictionary<int, ItemSocketScrollMetadata> {
             [ScrollId] = new(MinLevel: 50, MaxLevel: 50, ItemTypes: [12], Rarities: [4], SocketCount: 1, TradableCountDeduction: 0,
                 SuccessRate: successRate),
@@ -118,6 +122,33 @@ public class ItemSocketScrollHandlerTests {
 
     // A failed roll takes the scroll, opens nothing and answers mode 2 with result 0, the uid and the byte, which is
     // all the client reads for a fail (FUN_14062a230). Before, every unlock opened.
+    // KR 23200034 (socket_unlock_fail, grades 1, 10, 50): a failed scroll unlock counts; before, nothing sent it.
+    [Test]
+    public void FailedRoll_CountsSocketUnlockFail() {
+        const int trophy = 23200034;
+        var metadata = new AchievementMetadata(trophy, $"{trophy}", false, AchievementCategory.Life, [],
+            new Dictionary<int, AchievementMetadataGrade> {
+                [1] = new(1, new ConditionMetadata(ConditionType.socket_unlock_fail, 1, null, null), null),
+                [2] = new(2, new ConditionMetadata(ConditionType.socket_unlock_fail, 10, null, null), null),
+            }, false);
+        GameSession session = Start(successRate: 0, trophy: metadata);
+        Use(session);
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(test.TrophyCounter(trophy), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void OpenedRoll_DoesNotCountSocketUnlockFail() {
+        const int trophy = 23200034;
+        var metadata = new AchievementMetadata(trophy, $"{trophy}", false, AchievementCategory.Life, [],
+            new Dictionary<int, AchievementMetadataGrade> {
+                [1] = new(1, new ConditionMetadata(ConditionType.socket_unlock_fail, 1, null, null), null),
+            }, false);
+        GameSession session = Start(trophy: metadata);
+        Use(session);
+        Assert.That(test.TrophyCounter(trophy) ?? 0, Is.Zero);
+    }
+
     [Test]
     public void FailedRoll_TakesTheScrollAndAnswersFail() {
         GameSession session = Start(successRate: 0);
