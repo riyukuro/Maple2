@@ -54,8 +54,13 @@ public class RevivalHandler : FieldPacketHandler {
     /// </summary>
     private void HandleSafeRevive(GameSession session) {
         if (session.Field is null) return;
-        if (session.Field.Metadata.Property.NoRevivalHere) {
-            Logger.Debug("Safe revive refused for {CharacterId}: map {MapId} has NoRevivalHere", session.CharacterId, session.Field.MapId);
+        // A map's doNotRevivalHere closes only the revives in place (modes 1 and 2): the client's safe button
+        // (UIRevivalDialog::FUN_141abb600) sends mode 0 on every map, the survival lobby included, so refusing it left
+        // the player dead until the map closed. A fallen participant of a running survival game stays down and watches.
+        long characterId = session.CharacterId;
+        if (RevivalRules.SafeReviveRefused(session.Field.Survival?.InRunningGame(characterId) == true,
+                session.Field.Survival?.Playing(characterId) == true)) {
+            Logger.Debug("Safe revive refused for {CharacterId}: fallen in a running survival game", characterId);
             return;
         }
         // With the room's default revival limit used up the client turns this button into "leave the dungeon"

@@ -34,6 +34,11 @@ public static class RevivalRules {
     // Client UIRevivalDialog::FUN_141abc7f0: with feature 93 on, a dungeon room whose limitMesoRevival is set offers
     // no meso button (FUN_141abcb90 shows the meret button or none), and so no voucher either: the voucher is that
     // button's checkbox. Off for the feature, the room's flag is not read.
+    // The safe revive (Revival mode 0) on a map with doNotRevivalHere is not refused: the client blocks only the
+    // revives in place there (UIRevivalDialog::FUN_141abdab0, message 0x282). Refused for a participant of a running
+    // survival game who has fallen: the fall ended its game.
+    public static bool SafeReviveRefused(bool inRunningSurvival, bool playingSurvival) => inRunningSurvival && !playingSurvival;
+
     public static bool DungeonDisablesMeso(bool roomLimit, bool featureOn) => roomLimit && featureOn;
 
     // The revive in place for merets or a coupon (Revival mode 1). Every test comes before anything is taken.

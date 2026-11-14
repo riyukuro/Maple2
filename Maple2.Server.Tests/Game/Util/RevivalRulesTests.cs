@@ -20,6 +20,15 @@ public class RevivalRulesTests {
         Assert.That(RevivalRules.LeftForTheReturnField(prepared, migrated), Is.EqualTo(left));
     }
 
+    // The safe revive on a doNotRevivalHere map (the survival lobby during the pre-game countdown) is not refused;
+    // a fallen participant of a running survival game is.
+    [TestCase(false, false, false)] // not in a survival game: any map, doNotRevivalHere or not
+    [TestCase(true, true, false)]   // a participant still playing
+    [TestCase(true, false, true)]   // fallen in the running game
+    public void SafeRevive(bool inRunning, bool playing, bool refused) {
+        Assert.That(RevivalRules.SafeReviveRefused(inRunning, playing), Is.EqualTo(refused));
+    }
+
     [TestCase(true, 0, true)]
     [TestCase(false, 0, true)]
     [TestCase(false, 1, false)]
