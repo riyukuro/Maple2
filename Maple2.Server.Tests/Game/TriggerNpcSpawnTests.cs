@@ -10,6 +10,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
@@ -181,5 +182,50 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         FieldNpc dummy = Field.Npcs.Values.Single();
         Assert.That((dummy.Position, dummy.Patrol), Is.EqualTo((new Vector3(100, 200, 0), patrol)));
         Assert.That(Sent(SendOp.FollowNpc).Select(reader => reader.ReadInt()), Is.EqualTo(new[] { dummy.ObjectId }));
+    }
+
+    // The Dark Stream run as 02000350_bf drives it: start_game (the rounds), start_round (round, penalty),
+    // dark_stream_spawn_monster (98 KR uses: spawns the points, each worth the score once its monsters are dead),
+    // clear_round (55): a round before the last only counts, the last one ends the run with the table's reward
+    // and the result (DarkStream mode 2: score, best, exp, meso, habi, item count).
+    [Test]
+    public void DarkStream_RunOfTwoRounds() {
+        StartSpawns(Spawn(101001, new Vector3(300, 0, 0), new SpawnPointNPCListEntry(MobId, 2)));
+        test.SetTable(new DarkStreamTable(new Dictionary<int, DarkStreamTable.Entry> {
+            [1] = new(1, 0, 50, 0, []),
+            [2] = new(2, 0, 100, 0, []),
+        }));
+        long meso = test.Session.Currency.Meso;
+
+        Action("""<action name="dark_stream_start_game" type="StartGame" round="2" />""");
+        Assert.That(Sent(SendOp.DarkStream).Single().ReadByte(), Is.EqualTo(0));
+        Action("""<action name="dark_stream_start_round" type="StartRound" round="1" ui_duration="3000" damage_penalty="5" />""");
+        Assert.That((Field.DarkStream!.Round, Field.DarkStream.DamagePenalty), Is.EqualTo((1, 5)));
+
+        Action("""<action name="dark_stream_spawn_monster" type="SpawnMonster" score="6000" spawn_ids="101001" />""");
+        Assert.That(Field.Mobs.Values.Select(npc => npc.SpawnPointId), Is.EqualTo(new[] { 101001, 101001 }));
+        Assert.That((Field.DarkStream.SpawnCleared(101001), Field.DarkStream.Score), Is.EqualTo((true, 6000)));
+
+        Action("""<action name="dark_stream_clear_round" type="ClearRound" round="1" />""");
+        Assert.That((Field.DarkStream.RoundsCleared, Field.DarkStream.Ended), Is.EqualTo((1, false)));
+        Assert.That(Sent(SendOp.DarkStream), Is.Empty);
+
+        Action("""<action name="dark_stream_clear_round" type="ClearRound" round="2" />""");
+        ByteReader result = Sent(SendOp.DarkStream).Single();
+        Assert.That((result.ReadByte(), result.ReadInt(), result.ReadInt(), result.ReadInt(), result.ReadInt(), result.ReadInt(), result.ReadByte()),
+            Is.EqualTo(((byte) 2, 6000, 0, 0, 100, 0, (byte) 0)));
+        Assert.That((Field.DarkStream.Ended, test.Session.Currency.Meso - meso), Is.EqualTo((true, 100L)));
+    }
+
+    // arcade_spring_farm_spawn_monster (11, 51000001): the spawn points spawn and each is worth the score once.
+    [Test]
+    public void SpringFarmSpawnMonster_ScoreOfEachPoint() {
+        StartSpawns(Spawn(1001, new Vector3(300, 0, 0), new SpawnPointNPCListEntry(MobId, 1)),
+            Spawn(1002, new Vector3(-300, 0, 0), new SpawnPointNPCListEntry(MobId, 1)));
+
+        Action("""<action name="arcade_spring_farm_start_game" type="StartGame" life_count="3" />""");
+        Action("""<action name="arcade_spring_farm_spawn_monster" type="SpawnMonster" score="5000" spawn_ids="1001,1002" />""");
+        Assert.That(Field.Mobs.Values.Select(npc => npc.SpawnPointId).Order(), Is.EqualTo(new[] { 1001, 1002 }));
+        Assert.That((Field.SpringFarm!.SpawnCleared(1001), Field.SpringFarm.SpawnCleared(1002), Field.SpringFarm.Score), Is.EqualTo((true, true, 10000)));
     }
 }
