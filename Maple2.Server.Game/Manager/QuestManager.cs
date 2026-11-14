@@ -205,7 +205,33 @@ public sealed class QuestManager {
             }
             Add(quest);
             session.Send(QuestPacket.Start(quest));
+            OfferDispatch(quest, QuestDispatchType.DirectAccept);
         }
+    }
+
+    // The dispatch box of a quest (Quest sub-type 20): the client raises it once for a quest whose dispatch is
+    // directAccept when the quest's start packet arrives (CStoryQuest::DecodeStart, stringtable.cpp:197, kind 3) and
+    // for one whose dispatch is directComplete when its completion arrives (CStoryQuest::Complete, :241, kind 4), and
+    // its yes button sends the quest id and that kind (CQuestManager::SendQuestMode20, questmanager_2.cpp:1795). The
+    // server keeps the offers it sent until they are answered; a quest of another dispatch type gets no box.
+    private readonly Dictionary<int, QuestDispatchType> dispatchOffers = new();
+
+    private void OfferDispatch(Quest quest, QuestDispatchType when) {
+        if (quest.Metadata.Dispatch is { } dispatch && dispatch.Type == when && dispatch.MapId != 0) {
+            dispatchOffers[quest.Id] = when;
+        } else {
+            dispatchOffers.Remove(quest.Id);
+        }
+    }
+
+    // The dispatch the box of this quest and kind offered, taken; null when none was offered.
+    public QuestDispatch? TakeDispatch(int questId, int kind) {
+        if (!dispatchOffers.TryGetValue(questId, out QuestDispatchType when) || !QuestRules.IsDispatchKind(when, kind) ||
+            !TryGetQuest(questId, out Quest? quest) || quest.Metadata.Dispatch is not { } dispatch) {
+            return null;
+        }
+        dispatchOffers.Remove(questId);
+        return dispatch;
     }
 
     /// <summary>
@@ -326,6 +352,7 @@ public sealed class QuestManager {
         // Items, meso and worn items held before the quest count from its start, as the client shows them.
         CountHeld(quest, AnyHeld);
         session.Send(QuestPacket.Start(quest));
+        OfferDispatch(quest, QuestDispatchType.DirectAccept);
         if (quest.Metadata.SummonPortal != null) {
             SummonPortal(quest);
         }
@@ -843,6 +870,7 @@ public sealed class QuestManager {
             return false;
         }
         session.Send(QuestPacket.Complete(quest));
+        OfferDispatch(quest, QuestDispatchType.DirectComplete);
         session.AdventureProtect.Update();
 
         // The meso the reward line shows: a guild quest's relativeMeso row at the player's level with the guild bonus,

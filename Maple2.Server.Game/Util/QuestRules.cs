@@ -410,6 +410,14 @@ public static class QuestRules {
         return reach <= 0 || distance <= reach + slack;
     }
 
+    // The kind the dispatch box sends (CQuestManager::SendQuestMode20): 3 for a directAccept box, 4 for a
+    // directComplete one (CStoryQuest m_7c, stringtable.cpp:197 and :241).
+    public static bool IsDispatchKind(QuestDispatchType type, int kind) => type switch {
+        QuestDispatchType.DirectAccept => kind == 3,
+        QuestDispatchType.DirectComplete => kind == 4,
+        _ => false,
+    };
+
     public static bool ClientStartsItself(QuestMetadata metadata, int mapId) {
         QuestMetadataBasic basic = metadata.Basic;
         return ClientStartsItself(basic.Type, basic.AutoStart, basic.Disabled, basic.ProgressMaps, mapId);

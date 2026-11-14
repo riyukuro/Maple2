@@ -450,19 +450,18 @@ public class QuestHandler : FieldPacketHandler {
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
     }
 
+    // CQuestManager::SendQuestMode20 (questmanager_2.cpp:1795): the quest id and the box's kind, 3 after the
+    // start of a directAccept quest and 4 after the completion of a directComplete one. Only a box the server
+    // offered moves the player (QuestManager.TakeDispatch), once: a directComplete quest is completed by then.
     private void HandleDispatch(GameSession session, IByteReader packet) {
         int questId = packet.ReadInt();
-        short unknown = packet.ReadShort(); // 3?
+        short kind = packet.ReadShort();
 
-        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || quest.State == QuestState.Completed) {
+        if (session.Quest.TakeDispatch(questId, kind) is not { } dispatch) {
             return;
         }
 
-        if (quest.Metadata.Dispatch == null) {
-            return;
-        }
-
-        session.Send(session.PrepareField(quest.Metadata.Dispatch.MapId, portalId: quest.Metadata.Dispatch.PortalId == 0 ? -1 : quest.Metadata.Dispatch.PortalId)
+        session.Send(session.PrepareField(dispatch.MapId, portalId: dispatch.PortalId == 0 ? -1 : dispatch.PortalId)
             ? FieldEnterPacket.Request(session.Player)
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
     }

@@ -1003,4 +1003,66 @@ public class QuestHandlerTests {
             Assert.That(test.Errors, Is.Empty);
         });
     }
+
+    private void Dispatch(GameSession session, short kind) {
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(20);
+            writer.WriteInt(QuestId);
+            writer.WriteShort(kind);
+        }));
+    }
+
+    private QuestMetadata Dispatching(QuestDispatchType type, int mapId, int portalId) {
+        // The test's field is one the played client does not have, so the move stops in PrepareField.
+        test.AddMap(TestGameSession.Map(mapId, notInPlayedClient: true) with {
+            Limit = new MapMetadataLimit(0, 0, 0, 0, [], false, false, false, false, false, false, false),
+        });
+        return Data() with { Dispatch = new QuestDispatch(type, mapId, portalId, 0) };
+    }
+
+    // The move's last packet (after the not-in-the-played-client line), or null when nothing was sent.
+    private string? Moved() => test.TakeSent().Select(Convert.ToHexString).LastOrDefault();
+
+    private static readonly string MoveError = Convert.ToHexString(FieldEnterPacket.Error(MigrationError.s_move_err_default).ToArray());
+
+    // KR 10003240 (dispatch type directComplete, field 52100202, portal 6001): the client's box after the
+    // completion sends Quest 20 with kind 4 and moves the player once (to the move error, see Dispatching). A second send, or a kind 3, does nothing.
+    [Test]
+    public void Dispatch_AfterADirectCompleteMovesOnce() {
+        GameSession session = Login();
+        QuestMetadata data = Dispatching(QuestDispatchType.DirectComplete, 52100202, 6001);
+        test.Register(data);
+        Quest quest = test.StartQuest(data);
+        quest.Conditions[0].Counter = 1;
+        Complete(session);
+        Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
+        test.TakeSent();
+
+        Dispatch(session, 3);
+        Assert.That(Moved(), Is.Null);
+        Dispatch(session, 4);
+        Assert.That(Moved(), Is.EqualTo(MoveError));
+        Dispatch(session, 4);
+        Assert.That(Moved(), Is.Null);
+    }
+
+    // KR 10003230 (directAccept, field 52100300, portal 2): the box after the start sends kind 3. Before the
+    // start, with kind 4, or for a monologue dispatch (the client shows no box) nothing moves.
+    [TestCase(QuestDispatchType.DirectAccept, (short) 3, true)]
+    [TestCase(QuestDispatchType.DirectAccept, (short) 4, false)]
+    [TestCase(QuestDispatchType.MonologueAccept, (short) 3, false)]
+    [TestCase(QuestDispatchType.MonologueAccept, (short) 0, false)]
+    public void Dispatch_AfterADirectAcceptStart(QuestDispatchType type, short kind, bool moves) {
+        GameSession session = Login();
+        test.Register(Dispatching(type, 52100300, 2));
+        Dispatch(session, 3);
+        Assert.That(test.TakeSent(), Is.Empty);
+        Accept(session);
+        Assert.That(session.Quest.TryGetQuest(QuestId, out Quest? quest) && quest.State == QuestState.Started, Is.True);
+        test.TakeSent();
+
+        Dispatch(session, kind);
+
+        Assert.That(Moved(), Is.EqualTo(moves ? MoveError : null));
+    }
 }
