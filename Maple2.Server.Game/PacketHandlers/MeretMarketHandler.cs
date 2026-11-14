@@ -859,10 +859,9 @@ public class MeretMarketHandler : FieldPacketHandler {
     private static StringCode Pay(GameSession session, long price, MeretMarketCurrencyType currencyType) {
         switch (currencyType) {
             case MeretMarketCurrencyType.Meso:
-                if (session.Currency.CanAddMeso(-price) != -price) {
+                if (!session.Currency.TryTakeMeso(price)) {
                     return StringCode.s_err_lack_meso;
                 }
-                session.Currency.ChangeMeso(-price);
                 return StringCode.s_empty_string;
             case MeretMarketCurrencyType.Meret:
                 if (!session.Currency.TryTakeMeret(price)) {
