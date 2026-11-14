@@ -14,24 +14,48 @@ public class FieldBreakable : FieldEntity<BreakableActor> {
     private volatile bool dropPending;
 
     public BreakableState State { get; private set; }
-    public long BaseTick { get; private set; }
 
-    private bool visible;
+    // The packet's flag and freeze point (CBreakableObject m_nSyncA / m_nSyncC, breakableobject.cpp:351). A moving
+    // breakable runs its move cycle on the server tick; one stopped holds the place the cycle had at FreezeTick
+    // (breakableobject.cpp:391). The client starts moving (m_nSyncA = 1, breakableobject.cpp:137).
+    public bool Moving { get; private set; } = true;
+    public int FreezeTick { get; private set; }
+    // The entity's moveTimeOffset in ms: the client adds it to the server tick of the cycle (breakableobject.cpp:382).
+    private readonly int moveTimeOffset;
 
-    public bool Visible {
-        get => visible;
-        set {
-            if (!visible && value) {
-                BaseTick = Environment.TickCount64;
-            }
-            visible = value;
-        }
+    public FieldBreakable(FieldManager field, int objectId, string entityId, BreakableActor breakable, int moveTimeOffset = 0) : base(field, objectId, breakable) {
+        EntityId = entityId;
+        this.moveTimeOffset = moveTimeOffset;
+        State = breakable.Visible ? BreakableState.Show : BreakableState.Hide;
     }
 
-    public FieldBreakable(FieldManager field, int objectId, string entityId, BreakableActor breakable) : base(field, objectId, breakable) {
-        EntityId = entityId;
-        visible = breakable.Visible;
-        State = breakable.Visible ? BreakableState.Show : BreakableState.Hide;
+    // set_breakable: starts or stops the move cycle. A stop freezes the cycle where it is now on the client's clock
+    // (the server tick it got from TimeSync plus the offset).
+    public bool SetMoving(bool moving) {
+        if (Moving == moving) {
+            return false;
+        }
+
+        Moving = moving;
+        FreezeTick = moving ? 0 : Environment.TickCount + moveTimeOffset;
+        Field.Broadcast(BreakablePacket.Update(this));
+        return true;
+    }
+
+    // set_visible_breakable_object: shows (2) or hides (4) it for good; unlike a break, a hide here does not come back
+    // by the reset timer. The caller sends the batch.
+    public bool SetVisible(bool visible) {
+        BreakableState state = visible ? BreakableState.Show : BreakableState.Hide;
+        nextTick = 0;
+        if (State == state) {
+            return false;
+        }
+
+        State = state;
+        if (state is BreakableState.Hide) {
+            dropPending = true;
+        }
+        return true;
     }
 
     public bool UpdateState(BreakableState state) {
@@ -64,10 +88,6 @@ public class FieldBreakable : FieldEntity<BreakableActor> {
         }
 
         if (nextTick == 0 || tickCount < nextTick) {
-            return;
-        }
-
-        if (!Visible) {
             return;
         }
 

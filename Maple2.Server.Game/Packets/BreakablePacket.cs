@@ -3,7 +3,6 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
-using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.Packets;
 
@@ -15,21 +14,11 @@ public static class BreakablePacket {
 
     public static ByteWriter Update(ICollection<FieldBreakable> breakables) {
         var pWriter = Packet.Of(SendOp.Breakable);
-        pWriter.Write<Command>(Command.BatchUpdate);
+        pWriter.WriteByte((byte) Command.BatchUpdate);
 
-        long currentTick = Environment.TickCount64;
         pWriter.WriteInt(breakables.Count);
         foreach (FieldBreakable breakable in breakables) {
-            pWriter.WriteString(breakable.EntityId);
-            pWriter.Write<BreakableState>(breakable.State);
-            pWriter.WriteBool(breakable.Visible);
-            if (breakable.BaseTick > 0) {
-                pWriter.WriteInt((currentTick - breakable.BaseTick).Truncate32());
-                pWriter.WriteInt(breakable.BaseTick.Truncate32());
-            } else {
-                pWriter.WriteInt();
-                pWriter.WriteInt();
-            }
+            WriteBreakable(pWriter, breakable);
         }
 
         return pWriter;
@@ -37,18 +26,20 @@ public static class BreakablePacket {
 
     public static ByteWriter Update(FieldBreakable breakable) {
         var pWriter = Packet.Of(SendOp.Breakable);
-        pWriter.Write<Command>(Command.Update);
-        pWriter.WriteString(breakable.EntityId);
-        pWriter.Write<BreakableState>(breakable.State);
-        pWriter.WriteBool(breakable.Visible);
-        if (breakable.BaseTick > 0) {
-            pWriter.WriteInt((Environment.TickCount64 - breakable.BaseTick).Truncate32());
-            pWriter.WriteInt(breakable.BaseTick.Truncate32());
-        } else {
-            pWriter.WriteInt();
-            pWriter.WriteInt();
-        }
+        pWriter.WriteByte((byte) Command.Update);
+        WriteBreakable(pWriter, breakable);
 
         return pWriter;
+    }
+
+    // name, state, the move flag, a time added to the move cycle and the cycle point a stopped one holds
+    // (CSceneStateGame::OnBreakable, scenestategame.cpp:3667; CBreakableObject::Update, breakableobject.cpp:382-392).
+    // The added time is 0: the cycle runs on the server tick the client already has.
+    private static void WriteBreakable(ByteWriter pWriter, FieldBreakable breakable) {
+        pWriter.WriteString(breakable.EntityId);
+        pWriter.WriteByte((byte) breakable.State);
+        pWriter.WriteBool(breakable.Moving);
+        pWriter.WriteInt(0);
+        pWriter.WriteInt(breakable.FreezeTick);
     }
 }

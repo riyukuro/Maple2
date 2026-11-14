@@ -439,16 +439,16 @@ public partial class FieldManager {
         }
         foreach ((Guid guid, Breakable breakable) in Entities.Breakables) {
             AddBreakable(guid.ToString("N"), new BreakableActor(breakable.Visible, breakable.Id, breakable.HideTime, breakable.ResetTime,
-                breakable.GlobalDropBoxId, breakable.Position, breakable.Rotation));
+                breakable.GlobalDropBoxId, breakable.Position, breakable.Rotation), (int) MathF.Round(breakable.MoveTimeOffset * 1000));
         }
     }
 
-    public FieldBreakable? AddBreakable(string entityId, BreakableActor breakable) {
+    public FieldBreakable? AddBreakable(string entityId, BreakableActor breakable, int moveTimeOffset = 0) {
         if (fieldBreakables.ContainsKey(entityId)) {
             return null;
         }
 
-        var fieldBreakable = new FieldBreakable(this, NextLocalId(), entityId, breakable) {
+        var fieldBreakable = new FieldBreakable(this, NextLocalId(), entityId, breakable, moveTimeOffset) {
             Position = breakable.Position,
             Rotation = breakable.Rotation,
         };

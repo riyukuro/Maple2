@@ -8,6 +8,7 @@ public record Breakable(
     int HideTime,
     int ResetTime,
     int GlobalDropBoxId,
+    float MoveTimeOffset,
     Vector3 Position,
     Vector3 Rotation)
 : MapBlock;

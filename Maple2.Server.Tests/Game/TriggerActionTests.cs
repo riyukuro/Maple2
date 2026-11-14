@@ -814,27 +814,29 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Assert.That((reader.ReadByte(), reader.ReadInt(), reader.ReadBool(), reader.ReadBool(), reader.ReadBool()), Is.EqualTo(((byte) 2, 3, true, true, false)));
     }
 
-    // set_breakable (2606): the breakables named by trigger id show or hide, sent in one batch.
+    // set_breakable (2606): the breakables named by trigger id stop or start their move cycle (the packet's flag,
+    // m_nSyncA, breakableobject.cpp:391); the state stays what it was.
     [Test]
-    public void SetBreakable_ShowsByTriggerId() {
+    public void SetBreakable_StopsByTriggerId() {
         StartWithBoxes();
         FieldBreakable breakable = Field.AddBreakable("bb", new BreakableActor(false, 7001, 1000, 1000, 0, Vector3.Zero, Vector3.Zero))!;
         test.TakeSent();
 
-        Action("""<action name="set_breakable" trigger_ids="7001" enable="1" />""");
-
-        Assert.That(breakable.State, Is.EqualTo(BreakableState.Show));
-        // One Update (1) with the new state; the client replays a state's animation on every packet it gets.
-        ByteReader shown = Sent(SendOp.Breakable).Single();
-        Assert.That((shown.ReadByte(), shown.ReadString(), shown.ReadByte()), Is.EqualTo(((byte) 1, "bb", (byte) BreakableState.Show)));
-
-        // Already shown: nothing is sent.
+        // Already moving (the client starts with the flag on): nothing is sent.
         Action("""<action name="set_breakable" trigger_ids="7001" enable="1" />""");
         Assert.That(Sent(SendOp.Breakable), Is.Empty);
 
         Action("""<action name="set_breakable" trigger_ids="7001" enable="0" />""");
-        Assert.That(breakable.State, Is.EqualTo(BreakableState.Hide));
-        Assert.That(Sent(SendOp.Breakable).Single().ReadByte(), Is.EqualTo(1));
+        Assert.That((breakable.State, breakable.Moving), Is.EqualTo((BreakableState.Hide, false)));
+        ByteReader stopped = Sent(SendOp.Breakable).Single();
+        Assert.That((stopped.ReadByte(), stopped.ReadString(), stopped.ReadByte(), stopped.ReadBool(), stopped.ReadInt()),
+            Is.EqualTo(((byte) 1, "bb", (byte) BreakableState.Hide, false, 0)));
+        Assert.That(stopped.ReadInt(), Is.EqualTo(Environment.TickCount).Within(5000));
+
+        Action("""<action name="set_breakable" trigger_ids="7001" enable="1" />""");
+        ByteReader moving = Sent(SendOp.Breakable).Single();
+        Assert.That((moving.ReadByte(), moving.ReadString(), moving.ReadByte(), moving.ReadBool(), moving.ReadInt(), moving.ReadInt()),
+            Is.EqualTo(((byte) 1, "bb", (byte) BreakableState.Hide, true, 0, 0)));
     }
 
     // set_visible_breakable_object (1164): the named breakables take the flag, sent in one batch (0) of each with
@@ -847,10 +849,16 @@ public class TriggerFieldStateTests : TriggerTestBase {
 
         Action("""<action name="set_visible_breakable_object" trigger_ids="7001" visible="1" />""");
 
-        Assert.That(breakable.Visible, Is.True);
+        Assert.That(breakable.State, Is.EqualTo(BreakableState.Show));
         ByteReader batch = Sent(SendOp.Breakable).Single();
         Assert.That((batch.ReadByte(), batch.ReadInt(), batch.ReadString(), batch.ReadByte(), batch.ReadBool()),
-            Is.EqualTo(((byte) 0, 1, "bb", (byte) breakable.State, true)));
+            Is.EqualTo(((byte) 0, 1, "bb", (byte) BreakableState.Show, true)));
+
+        // A trigger hide stays hidden: the reset timer belongs to the break, not to the trigger.
+        Action("""<action name="set_visible_breakable_object" trigger_ids="7001" visible="0" />""");
+        typeof(FieldBreakable).GetField("dropPending", Any)!.SetValue(breakable, false); // no npcs in this field
+        breakable.Update(Environment.TickCount64 + 60000);
+        Assert.That(breakable.State, Is.EqualTo(BreakableState.Hide));
     }
 
     // The map's breakables as Init places them; the actor ones are none here.
@@ -863,40 +871,47 @@ public class TriggerFieldStateTests : TriggerTestBase {
     }
 
     // 02000011_bf: MS2BreakableNIF_7000 is a moving platform (moveDirection -1,0,0, moveDistance 600) that the trigger
-    // hides and shows (set_breakable 7000 enable 0 / 1). The client makes a breakable object of every MS2BreakableNIF
-    // and changes its state only from the Breakable packet (worldservice_1.cpp:6758, scenestategame.cpp:3667).
+    // stops while the lever waits and runs for 6 s when pulled (set_breakable 7000 enable 0 / 1). The client makes a
+    // breakable object of every MS2BreakableNIF and takes its state and move flag only from the Breakable packet
+    // (worldservice_1.cpp:6758, scenestategame.cpp:3667). It stays shown and solid while stopped.
     [Test]
     public void SetBreakable_NifPlatformOfTheMap() {
         StartWithBoxes();
         AddMapBreakables(Guid.Parse("09abc4dd488b4e4896799dd0c17967d4"),
-            new Breakable(true, 7000, 3000, 40000, 0, new Vector3(1800, -5400, 2250), Vector3.Zero));
+            new Breakable(true, 7000, 3000, 40000, 0, 0, new Vector3(1800, -5400, 2250), Vector3.Zero));
         test.TakeSent();
 
         Action("""<action name="set_breakable" trigger_ids="7000" enable="0" />""");
-        ByteReader hidden = Sent(SendOp.Breakable).Single();
-        Assert.That((hidden.ReadByte(), hidden.ReadString(), hidden.ReadByte()),
-            Is.EqualTo(((byte) 1, "09abc4dd488b4e4896799dd0c17967d4", (byte) BreakableState.Hide)));
+        ByteReader stopped = Sent(SendOp.Breakable).Single();
+        Assert.That((stopped.ReadByte(), stopped.ReadString(), stopped.ReadByte(), stopped.ReadBool()),
+            Is.EqualTo(((byte) 1, "09abc4dd488b4e4896799dd0c17967d4", (byte) BreakableState.Show, false)));
+
+        // Stopped, it is not hidden, so no reset timer brings anything back later.
+        Assert.That(Field.TryGetBreakable(7000, out FieldBreakable? platform), Is.True);
+        platform!.Update(Environment.TickCount64 + 60000);
+        Assert.That(platform.State, Is.EqualTo(BreakableState.Show));
+        Assert.That(Sent(SendOp.Breakable), Is.Empty);
 
         Action("""<action name="set_breakable" trigger_ids="7000" enable="1" />""");
-        ByteReader shown = Sent(SendOp.Breakable).Single();
-        Assert.That((shown.ReadByte(), shown.ReadString(), shown.ReadByte()),
-            Is.EqualTo(((byte) 1, "09abc4dd488b4e4896799dd0c17967d4", (byte) BreakableState.Show)));
+        ByteReader moving = Sent(SendOp.Breakable).Single();
+        Assert.That((moving.ReadByte(), moving.ReadString(), moving.ReadByte(), moving.ReadBool()),
+            Is.EqualTo(((byte) 1, "09abc4dd488b4e4896799dd0c17967d4", (byte) BreakableState.Show, true)));
     }
 
     // 02000295_bf: the trigger hides the 30 MS2BreakableNIF 3100-3129 at once; MS2BreakableNIF_3101 (a lift: moveDirection
-    // 0,0,1, moveDistance 150) is in the batch with the flag off.
+    // 0,0,1, moveDistance 150) is in the batch with the hide state (4).
     [Test]
     public void SetVisibleBreakableObject_NifOfTheMap() {
         StartWithBoxes();
         AddMapBreakables(Guid.Parse("39b7731dafd64848ad9440dcf00d71b2"),
-            new Breakable(true, 3101, 3000, 40000, 0, new Vector3(-5925, 390, 2210), Vector3.Zero));
+            new Breakable(true, 3101, 3000, 40000, 0, 0, new Vector3(-5925, 390, 2210), Vector3.Zero));
         test.TakeSent();
 
         Action("""<action name="set_visible_breakable_object" trigger_ids="3100,3101,3102,3103,3104,3105,3106,3107,3108,3109,3110,3111,3112,3113,3114,3115,3116,3117,3118,3119,3120,3121,3122,3123,3124,3125,3126,3127,3128,3129" visible="0" />""");
 
         ByteReader batch = Sent(SendOp.Breakable).Single();
         Assert.That((batch.ReadByte(), batch.ReadInt(), batch.ReadString(), batch.ReadByte(), batch.ReadBool()),
-            Is.EqualTo(((byte) 0, 1, "39b7731dafd64848ad9440dcf00d71b2", (byte) BreakableState.Show, false)));
+            Is.EqualTo(((byte) 0, 1, "39b7731dafd64848ad9440dcf00d71b2", (byte) BreakableState.Hide, true)));
     }
 
     // set_skill (36171): an enabled trigger skill is placed as a region skill of the field; disabled, it is taken

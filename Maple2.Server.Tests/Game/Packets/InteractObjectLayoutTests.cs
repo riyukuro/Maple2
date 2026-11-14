@@ -77,7 +77,7 @@ public class InteractObjectLayoutTests {
     }
 
     // Breakable: byte mode, mode 0 an int count (mode 1 one entry); each entry is a narrow entity id, byte state, byte
-    // visible, int, int.
+    // move flag (on until set_breakable stops it), int, int.
     [Test]
     public void Breakable() {
         var test = new TestGameSession();
@@ -90,7 +90,7 @@ public class InteractObjectLayoutTests {
         single.WriteByte(1);
         single.WriteString("entity");
         single.WriteByte((byte) BreakableState.Hide);
-        single.WriteBool(false);
+        single.WriteBool(true);
         single.WriteInt(0);
         single.WriteInt(0);
         Assert.That(Body(BreakablePacket.Update(breakable)), Is.EqualTo(single.ToArray()));
@@ -100,7 +100,7 @@ public class InteractObjectLayoutTests {
         batch.WriteInt(1);
         batch.WriteString("entity");
         batch.WriteByte((byte) BreakableState.Hide);
-        batch.WriteBool(false);
+        batch.WriteBool(true);
         batch.WriteInt(0);
         batch.WriteInt(0);
         Assert.That(Body(BreakablePacket.Update([breakable])), Is.EqualTo(batch.ToArray()));

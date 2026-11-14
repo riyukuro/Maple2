@@ -180,15 +180,17 @@ public partial class TriggerContext {
 
     public void SetBreakable(int[] triggerIds, bool enabled) {
         DebugLog("[SetBreakable] triggerIds:{Ids}, enabled:{Enabled}", string.Join(", ", triggerIds), enabled);
-        // A changed state sends its own Update. The client replays a state's effect and animation on every packet
-        // (CBreakableObject::SetState, breakableobject.cpp), so no second batch is sent, and nothing for a breakable
-        // already in the state.
+        // Starts or stops the move cycle of the moving platforms (the packet's flag, m_nSyncA). It is no show or hide:
+        // the hide state (4) fades the object out and drops its collision (CBreakableObject::SetState,
+        // breakableobject.cpp:330), while the flag only holds the cycle (breakableobject.cpp:391); 02000011_bf
+        // stops its platform 7000 while the lever waits and runs it for 6 s when pulled. A changed one sends its own
+        // Update; nothing for one already so (the client replays the state's effect on every packet).
         foreach (int triggerId in triggerIds) {
             if (!Field.TryGetBreakable(triggerId, out FieldBreakable? breakable)) {
                 continue;
             }
 
-            breakable.UpdateState(enabled ? BreakableState.Show : BreakableState.Hide);
+            breakable.SetMoving(enabled);
         }
     }
 
@@ -406,7 +408,8 @@ public partial class TriggerContext {
                 continue;
             }
 
-            breakable.Visible = visible;
+            // Shows (2) or hides (4) it; every named one is in the batch.
+            breakable.SetVisible(visible);
             updated.Add(breakable);
         }
 

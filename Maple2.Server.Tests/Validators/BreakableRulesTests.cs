@@ -1,4 +1,4 @@
-using Maple2.Model.Enum;
+﻿using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -35,25 +35,25 @@ public class BreakableRulesTests {
         Assert.That(BreakableRules.CanBreak(state), Is.EqualTo(expected));
     }
 
-    // A breakable built invisible has the Hide state; the trigger's SetVisibleBreakableObject sets only Visible.
+    // A breakable built invisible has the Hide state; SetVisibleBreakableObject(ids, true) shows it, and it breaks.
     [Test]
     public void BoxShownByATriggerBreaks() {
         var actor = new BreakableActor(Visible: false, Id: 5, HideTime: 0, ResetTime: 0, GlobalDropBoxId: 0, Position: default, Rotation: default);
         var breakable = new FieldBreakable(null!, 1, "abc", actor);
         Assert.That(breakable.State, Is.EqualTo(BreakableState.Hide));
 
-        breakable.Visible = true; // what SetVisibleBreakableObject(ids, true) does
+        Assert.That(breakable.SetVisible(true), Is.True);
 
-        Assert.That(breakable.State, Is.EqualTo(BreakableState.Hide));
+        Assert.That(breakable.State, Is.EqualTo(BreakableState.Show));
         Assert.That(BreakableRules.CanBreak(breakable.State), Is.True);
     }
 
-    // The mirror case: SetBreakable(ids, true) alone gives Show with Visible still false.
+    // The mirror case: one built shown and hidden by the trigger still takes a hit.
     [Test]
     public void BoxBuiltShownBreaks() {
         var actor = new BreakableActor(Visible: true, Id: 5, HideTime: 0, ResetTime: 0, GlobalDropBoxId: 0, Position: default, Rotation: default);
         var breakable = new FieldBreakable(null!, 1, "abc", actor);
-        breakable.Visible = false;
+        breakable.SetVisible(false);
         Assert.That(BreakableRules.CanBreak(breakable.State), Is.True);
     }
 }
