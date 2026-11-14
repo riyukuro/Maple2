@@ -85,18 +85,27 @@ public class DailyLoginMailTests {
     // A day's mail that is not stored leaves the day unmarked (one transaction, EventClaim.Mail); the next step
     // mails it once. Before, the mark was stored first and the mail lost.
     [Test]
-    public void DailyLoginReward_NotStored_MailedOnTheNextStep() {
+    public void DailyLoginReward_NotStored_MailedAfterTheWait() {
         TestGameSession test = Test();
         GameSession session = test.Start();
+        DateTime start = DateTime.Today.AddHours(12);
+        DateTime now = start;
+        session.GameEvent.Clock = () => now;
 
-        test.FailSave = NewMail;
+        int attempts = 0;
+        test.FailSave = context => NewMail(context) && ++attempts > 0;
         session.GameEvent.Update(1000);
-        test.FailSave = null;
         Assert.That(Mails(test), Is.Empty);
         Assert.That(StoredAccountValues(test), Is.Empty);
-
+        // The steps within the wait try no store.
+        now = start.AddSeconds(GameEventManager.ClaimRetryFirst - 1);
         session.GameEvent.Update(2000);
+        Assert.That(attempts, Is.EqualTo(1));
+        test.FailSave = null;
+
+        now = start.AddSeconds(GameEventManager.ClaimRetryFirst);
         session.GameEvent.Update(3000);
+        session.GameEvent.Update(4000);
         Assert.That(Mails(test), Has.Length.EqualTo(1));
         Assert.That(StoredAccountValues(test).GetValueOrDefault(GameEventUserValueType.DailyLoginRewardGiven), Is.EqualTo("1"));
     }
@@ -207,7 +216,7 @@ public class DailyLoginMailTests {
     // A row whose mail is not stored keeps its index (one transaction, EventClaim.Mail): it stays due and the next
     // step mails it once. Before, the index was stored first and the row's mail lost.
     [Test]
-    public void DtReward_NotStored_MailedOnTheNextStep() {
+    public void DtReward_NotStored_MailedAfterTheWait() {
         var test = new TestGameSession();
         test.Register(TestGameSession.Metadata(Ticket));
         test.AddEvent(EventId, GameEventType.DTReward, new DTReward([
@@ -219,16 +228,33 @@ public class DailyLoginMailTests {
         DateTime now = start;
         session.GameEvent.Clock = () => now;
 
-        test.FailSave = NewMail;
+        int attempts = 0;
+        test.FailSave = context => NewMail(context) && ++attempts > 0;
         session.GameEvent.Update(1000);
-        test.FailSave = null;
         Assert.That(Mails(test), Is.Empty);
         Assert.That(test.StoredEventValues(EventId).ContainsKey(GameEventUserValueType.DTRewardRewardIndex), Is.False);
 
-        now = start.AddSeconds(1);
-        session.GameEvent.Update(2000);
-        now = start.AddSeconds(2);
-        session.GameEvent.Update(3000);
+        // Within the wait no store is tried and the row's seconds stay at its end (1), not counting past it.
+        int wait = GameEventManager.ClaimRetryFirst;
+        for (int second = 1; second < wait; second++) {
+            now = start.AddSeconds(second);
+            session.GameEvent.Update(1000 + second * 1000);
+        }
+        Assert.That(attempts, Is.EqualTo(1));
+        Assert.That(session.GameEvent.Peek(GameEventUserValueType.DTRewardCurrentTime, EventId), Is.EqualTo("1"));
+
+        // A second failure doubles the wait.
+        now = start.AddSeconds(wait);
+        session.GameEvent.Update(100_000);
+        Assert.That(attempts, Is.EqualTo(2));
+        now = start.AddSeconds(wait + 2 * wait - 1);
+        session.GameEvent.Update(200_000);
+        Assert.That(attempts, Is.EqualTo(2));
+        Assert.That(Mails(test), Is.Empty);
+        test.FailSave = null;
+
+        now = start.AddSeconds(wait + 2 * wait);
+        session.GameEvent.Update(300_000);
         Assert.That(Mails(test), Is.EqualTo(new[] { (MailText.ToString(), new[] { Ticket }, 3) }));
         Assert.That(test.StoredEventValues(EventId).GetValueOrDefault(GameEventUserValueType.DTRewardRewardIndex), Is.EqualTo("1"));
     }

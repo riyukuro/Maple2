@@ -14,6 +14,7 @@ using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
+using Serilog.Events;
 
 namespace Maple2.Server.Game.Manager;
 
@@ -164,6 +165,29 @@ public sealed class GameEventManager {
     // values carry (a few carry a later day's last second).
     public static long DtRewardExpiry(DateTime now) => now.Date.AddDays(1).AddSeconds(-1).ToEpochSeconds();
 
+    // A claim of the one second step (DTReward, PlayGift, DailyLoginReward, UserCondition) whose store failed is not
+    // tried again on the next step but after a wait: ClaimRetryFirst seconds, doubled after each failure in a row up
+    // to ClaimRetryMax, so a store that keeps failing (the database down) costs one transaction per wait, not one a
+    // second per due event. A stored claim clears its wait; a new session starts with none. Only the first failure
+    // in a row is logged as an error, the ones after it at debug.
+    public const int ClaimRetryFirst = 30;
+    public const int ClaimRetryMax = 600;
+    private readonly Dictionary<(int EventId, GameEventType Type), (long NextTry, int Wait)> claimRetries = new();
+
+    private bool ClaimWaiting(int eventId, GameEventType type, long now) {
+        return claimRetries.TryGetValue((eventId, type), out (long NextTry, int Wait) retry) && now < retry.NextTry;
+    }
+
+    // The failure's log level: Error for the first failure in a row, Debug after it.
+    private LogEventLevel ClaimFailed(int eventId, GameEventType type, long now) {
+        bool first = !claimRetries.TryGetValue((eventId, type), out (long NextTry, int Wait) retry);
+        int wait = first ? ClaimRetryFirst : Math.Min(retry.Wait * 2, ClaimRetryMax);
+        claimRetries[(eventId, type)] = (now + wait, wait);
+        return first ? LogEventLevel.Error : LogEventLevel.Debug;
+    }
+
+    private void ClaimStored(int eventId, GameEventType type) => claimRetries.Remove((eventId, type));
+
     // The second of the last play-time step of this session.
     private long dtRewardStep;
 
@@ -213,6 +237,11 @@ public sealed class GameEventManager {
                 Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, current);
                 continue;
             }
+            // A row whose mail was not stored waits (ClaimWaiting) with its seconds held at the row's end, as set on
+            // the failure, and not sent again: the dialog shows the row as full, not counting past its end.
+            if (ClaimWaiting(gameEvent.Id, GameEventType.DTReward, nowSeconds)) {
+                continue;
+            }
 
             // Give reward
             Item? item = session.Field?.ItemDrop.CreateItem(entry.Item.ItemId, entry.Item.Rarity, entry.Item.Amount);
@@ -223,7 +252,7 @@ public sealed class GameEventManager {
 
             // The mail with its item, the next row's index and the restarted seconds are stored in one transaction
             // (EventClaim.Mail): a stop can neither give this row's mail again nor lose it. When it is not stored the
-            // row stays due and is tried again on the next step.
+            // row stays due and is tried again after a wait (ClaimFailed).
             var mail = new Mail {
                 Type = MailType.System,
                 ReceiverId = session.CharacterId,
@@ -234,9 +263,12 @@ public sealed class GameEventManager {
                     EventClaim.Of(gameEvent.Id, GameEventUserValueType.DTRewardRewardIndex, rewardIndexValue.Int() + 1),
                     EventClaim.Of(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, entry.StartDuration),
                 ])) {
-                logger.Error("DTReward mail not stored. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
-                Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, current);
+                logger.Write(ClaimFailed(gameEvent.Id, GameEventType.DTReward, nowSeconds),
+                    "DTReward mail not stored. Event ID: {EventId}, Reward Index: {RewardIndex}", gameEvent.Id, rewardIndexValue.Int());
+                Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, Math.Min(current, (long) entry.EndDuration));
+                continue;
             }
+            ClaimStored(gameEvent.Id, GameEventType.DTReward);
         }
     }
 
@@ -259,7 +291,7 @@ public sealed class GameEventManager {
     // as a system mail with the gift's systemMailID and item; the seconds start again from 0. Chosen here: the gifts
     // and seconds are per character and per server-local day, as the play-time reward's (DtRewardExpiry), and the
     // first step of a session counts one second. The mail, the next index and the restarted seconds are stored in
-    // one transaction (EventClaim.Mail); a gift not stored stays due and is tried again on the next step.
+    // one transaction (EventClaim.Mail); a gift not stored stays due and is tried again after a wait (ClaimFailed).
     private void UpdatePlayGift() {
         if (session.Field is null) return;
 
@@ -293,6 +325,10 @@ public sealed class GameEventManager {
                 continue;
             }
 
+            if (ClaimWaiting(gameEvent.Id, GameEventType.PlayGift, nowSeconds)) {
+                Set(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds, seconds);
+                continue;
+            }
             PlayGift.Gift gift = playGift.Gifts[index];
             Item? item = session.Field?.ItemDrop.CreateItem(gift.Item.ItemId, gift.Item.Rarity, gift.Item.Amount);
             if (item == null) {
@@ -310,9 +346,12 @@ public sealed class GameEventManager {
                     EventClaim.Of(gameEvent.Id, GameEventUserValueType.PlayGiftIndex, index + 1),
                     EventClaim.Of(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds, 0L),
                 ])) {
-                logger.Error("PlayGift mail not stored. Event ID: {EventId}, Gift: {GiftId}", gameEvent.Id, gift.GiftId);
+                logger.Write(ClaimFailed(gameEvent.Id, GameEventType.PlayGift, nowSeconds),
+                    "PlayGift mail not stored. Event ID: {EventId}, Gift: {GiftId}", gameEvent.Id, gift.GiftId);
                 Set(gameEvent.Id, GameEventUserValueType.PlayGiftSeconds, seconds);
+                continue;
             }
+            ClaimStored(gameEvent.Id, GameEventType.PlayGift);
         }
     }
 
@@ -321,7 +360,7 @@ public sealed class GameEventManager {
     // (the client has no part in this event, so nothing tells), so that a new character of the same account does
     // not get the day's mail again; on the first second step in a field of the day (the server's local day, as the
     // play-time reward's), so a player online at midnight gets the next day's mail too. The mail and the day's mark
-    // are stored in one transaction (EventClaim.Mail); a mail not stored is tried again on the next step.
+    // are stored in one transaction (EventClaim.Mail); a mail not stored is tried again after a wait (ClaimFailed).
     private void UpdateDailyLoginReward() {
         if (session.Field is null) return;
 
@@ -338,7 +377,8 @@ public sealed class GameEventManager {
             if (gameEvent.Metadata.Data is not DailyLoginReward reward || reward.Items.Length == 0 || level < reward.MinLevel) {
                 continue;
             }
-            if (Get(GameEventUserValueType.DailyLoginRewardGiven, gameEvent.Id, expiry, nowSeconds).Int() != 0) {
+            if (Get(GameEventUserValueType.DailyLoginRewardGiven, gameEvent.Id, expiry, nowSeconds).Int() != 0
+                || ClaimWaiting(gameEvent.Id, GameEventType.DailyLoginReward, nowSeconds)) {
                 continue;
             }
             var items = new List<Item>();
@@ -356,8 +396,11 @@ public sealed class GameEventManager {
                 Content = reward.MailId > 0 ? reward.MailId.ToString() : string.Empty,
             }, items)];
             if (!EventClaim.Mail(session, gifts, [EventClaim.Of(gameEvent.Id, GameEventUserValueType.DailyLoginRewardGiven, 1)])) {
-                logger.Error("Daily login mail of event {EventId} not stored for {CharacterId}", gameEvent.Id, session.CharacterId);
+                logger.Write(ClaimFailed(gameEvent.Id, GameEventType.DailyLoginReward, nowSeconds),
+                    "Daily login mail of event {EventId} not stored for {CharacterId}", gameEvent.Id, session.CharacterId);
+                continue;
             }
+            ClaimStored(gameEvent.Id, GameEventType.DailyLoginReward);
         }
     }
 
@@ -373,7 +416,7 @@ public sealed class GameEventManager {
     // (context) and the attachments for every job and the character's (as the notice dialog shows them), and its
     // notice: UserConditionEvent 1 with the last such row, whose preview row the client keeps as the one noticed.
     // The mails, the given rows and the notice are stored in one transaction (EventClaim.Mail): a stop can neither
-    // send a mail twice nor lose it; rows not stored are tried again on the next step. Chosen here: per character (each character's levels are its own), on the second step after a
+    // send a mail twice nor lose it; rows not stored are tried again after a wait (ClaimFailed). Chosen here: per character (each character's levels are its own), on the second step after a
     // level, exp or job change, at login and when the running events change, so rows already met when an event
     // starts are given too; one notice per step (the client shows one dialog).
     private void UpdateUserCondition() {
@@ -404,6 +447,10 @@ public sealed class GameEventManager {
             if (gameEvent.Metadata.Data is not UserCondition { Group: > 0 } userCondition) {
                 continue;
             }
+            if (ClaimWaiting(gameEvent.Id, GameEventType.UserCondition, now)) {
+                userConditionDue = true; // looked at again once the wait is over
+                continue;
+            }
             HashSet<int> done = UserConditionRules.Ids(Get(GameEventUserValueType.UserConditionDone, gameEvent.Id, gameEvent.EndTime, now).Value);
             List<UserConditionEventMetadata> due = UserConditionRules.Due(table.Values, userCondition.Group, done, character.Level, expRate, jobCode);
             if (due.Count == 0) {
@@ -425,10 +472,12 @@ public sealed class GameEventManager {
                 }
             }
             if (!EventClaim.Mail(session, gifts, marks)) {
-                logger.Error("User condition rows of event {EventId} not stored for {CharacterId}", gameEvent.Id, session.CharacterId);
+                logger.Write(ClaimFailed(gameEvent.Id, GameEventType.UserCondition, now),
+                    "User condition rows of event {EventId} not stored for {CharacterId}", gameEvent.Id, session.CharacterId);
                 userConditionDue = true;
                 continue;
             }
+            ClaimStored(gameEvent.Id, GameEventType.UserCondition);
             if (notice != null) {
                 session.Send(UserConditionEventPacket.Notice(notice.Id));
             }

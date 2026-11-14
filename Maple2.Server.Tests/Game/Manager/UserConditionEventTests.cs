@@ -10,6 +10,7 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -126,9 +127,12 @@ public class UserConditionEventTests {
     // Rows whose mails are not stored are not marked given either (one transaction, EventClaim.Mail) and send no
     // notice; the next step gives them once. Before, the rows were stored first and their mails lost.
     [Test]
-    public void UserCondition_NotStored_GivenOnTheNextStep() {
+    public void UserCondition_NotStored_GivenAfterTheWait() {
         TestGameSession test = Test();
         GameSession session = test.Start();
+        DateTime start = DateTime.Today.AddHours(12);
+        DateTime now = start;
+        session.GameEvent.Clock = () => now;
         test.EnterMap(TestGameSession.Map(2000001));
         Character character = session.Player.Value.Character;
         character.Level = 1;
@@ -136,15 +140,20 @@ public class UserConditionEventTests {
         character.Job = Job.Newbie;
         test.TakeSent();
 
-        test.FailSave = NewMail;
+        int attempts = 0;
+        test.FailSave = context => NewMail(context) && ++attempts > 0;
         session.GameEvent.Update(1000);
-        test.FailSave = null;
         Assert.That(Mails(test), Is.Empty);
         Assert.That(Notices(test), Is.Empty);
         Assert.That(test.StoredEventValues(EventId).ContainsKey(GameEventUserValueType.UserConditionDone), Is.False);
-
+        now = start.AddSeconds(GameEventManager.ClaimRetryFirst - 1);
         session.GameEvent.Update(2000);
+        Assert.That(attempts, Is.EqualTo(1));
+        test.FailSave = null;
+
+        now = start.AddSeconds(GameEventManager.ClaimRetryFirst);
         session.GameEvent.Update(3000);
+        session.GameEvent.Update(4000);
         Assert.That(Mails(test), Is.EqualTo(new[] { ("50000101", new[] { (Common, 1) }) }));
         Assert.That(Notices(test), Is.EqualTo(new[] { Hex(UserConditionEventPacket.Notice(1)) }));
         Assert.That(test.StoredEventValues(EventId).GetValueOrDefault(GameEventUserValueType.UserConditionDone), Is.EqualTo("1"));

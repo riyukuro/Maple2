@@ -92,7 +92,7 @@ public class PlayGiftTests {
     // A gift whose mail is not stored is not marked either (one transaction, EventClaim.Mail): it stays due and the
     // next step mails it once. Before, the index was stored first and the gift lost.
     [Test]
-    public void Gift_NotStored_MailedOnTheNextStep() {
+    public void Gift_NotStored_MailedAfterTheWait() {
         TestGameSession test = Test();
         GameSession session = test.Start();
         DateTime start = DateTime.Today.AddHours(12);
@@ -101,15 +101,17 @@ public class PlayGiftTests {
 
         session.GameEvent.Update(1000);
         now = start.AddSeconds(59);
-        test.FailSave = NewMail;
+        int attempts = 0;
+        test.FailSave = context => NewMail(context) && ++attempts > 0;
         session.GameEvent.Update(2000);
-        test.FailSave = null;
         Assert.That(Mails(test), Is.Empty);
         Assert.That(test.StoredEventValues(EventId).ContainsKey(GameEventUserValueType.PlayGiftIndex), Is.False);
-
-        now = start.AddSeconds(60);
+        now = start.AddSeconds(59 + GameEventManager.ClaimRetryFirst - 1);
         session.GameEvent.Update(3000);
-        now = start.AddSeconds(61);
+        Assert.That(attempts, Is.EqualTo(1));
+        test.FailSave = null;
+
+        now = start.AddSeconds(59 + GameEventManager.ClaimRetryFirst);
         session.GameEvent.Update(4000);
         Assert.That(Mails(test), Is.EqualTo(new[] { ("51000003", Box, 1) }));
         Assert.That(test.StoredEventValues(EventId).GetValueOrDefault(GameEventUserValueType.PlayGiftIndex), Is.EqualTo("1"));
