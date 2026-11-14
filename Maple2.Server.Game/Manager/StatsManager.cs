@@ -690,7 +690,7 @@ public class StatsManager {
 
     private static long RatioUpgrade(Item item, BasicAttribute attribute, BasicOption option) {
         if (item.Stats != null && item.Stats[ItemStats.Type.Constant].Basic.TryGetValue(attribute, out BasicOption constant)) {
-            return (long) (constant.Value * (option.Value / 1000.0));
+            return SetItemRules.RatioUpgrade(constant.Value, option.Value);
         }
         return 0;
     }

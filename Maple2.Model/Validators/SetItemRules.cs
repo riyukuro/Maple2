@@ -53,6 +53,15 @@ public static class SetItemRules {
         return counted && layer is 0 or 1;
     }
 
+    // What an enchant or limit break rate (thousandths) adds to a ratio stat (defense, weapon attack) of an item
+    // whose constant option holds the stat: CItemStatus::ScaleValue (itemsocketsystemutil.cpp:2288) of the
+    // constant value and the rate as BaseOption::GetRate gives it, a float (value / 1000.0f), times in double plus
+    // 0.000001 and cut. In double the rate came 1 higher at some pairs: 3000 at 15 was 45, the client shows 44.
+    public static long RatioUpgrade(long constant, int rate) {
+        float scale = rate / 1000.0f;
+        return (long) (constant * (double) scale + 0.000001);
+    }
+
     // What an item's enchant and limit break add to one basic stat in a PvP field (map type 9), given what
     // they add elsewhere. Only the ratio stats (defense, weapon attack) keep them, and defense keeps 0.159 of
     // their sum, cut to an int (CItemStatus::GetTotalStatValue, itemsocketsystemutil.cpp:1877, used by

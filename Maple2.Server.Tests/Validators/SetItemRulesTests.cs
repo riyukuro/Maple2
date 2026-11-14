@@ -69,6 +69,17 @@ public class SetItemRulesTests {
         Assert.That(SetItemRules.Counted(false, false, false, 0, 77, levelLimit: 50, level: 50), Is.True);
     }
 
+    // CItemStatus::ScaleValue with the float rate: 3000 at 15 (0.015f) is 44.99999899 + 0.000001, cut to 44, and
+    // 2250 at 20 likewise; in double both came to 45. A rate that is exact in float keeps the plain product.
+    [TestCase(3000, 15, 44)]
+    [TestCase(2250, 20, 44)]
+    [TestCase(1000, 15, 15)]
+    [TestCase(1234, 500, 617)]
+    [TestCase(800, 0, 0)]
+    public void RatioUpgrade_FloatRateAsTheClient(long constant, int rate, long added) {
+        Assert.That(SetItemRules.RatioUpgrade(constant, rate), Is.EqualTo(added));
+    }
+
     [Test]
     public void PvpUpgrade_RatioStatsOnlyAndDefenseCut() {
         Assert.That(SetItemRules.PvpUpgrade(ratio: false, defense: false, enchant: 40, limitBreak: 10), Is.EqualTo(0));
