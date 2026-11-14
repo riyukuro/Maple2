@@ -7,6 +7,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
@@ -61,6 +62,20 @@ public class QuestExpiryTests {
         return ids;
     }
 
+    // The client sends a quest once; a client clock up to ExpirySlack seconds ahead still has it dropped, more is not.
+    [Test]
+    public void Expired_AllowsTheSlackOnly() {
+        Hold(Daily, Ago(TimeSpan.FromMinutes(1440) - TimeSpan.FromSeconds(QuestManager.ExpirySlack - 10)));
+        test.Session.Quest.Expired([Daily]);
+        Assert.That(ExpiredSent(), Is.EqualTo(new[] { Daily }));
+        Assert.That(test.Session.Quest.TryGetQuest(Daily, out _), Is.False);
+
+        Quest early = Hold(Daily, Ago(TimeSpan.FromMinutes(1440) - TimeSpan.FromSeconds(QuestManager.ExpirySlack + 30)));
+        test.Session.Quest.Expired([Daily]);
+        Assert.That(ExpiredSent(), Is.Empty);
+        Assert.That(test.Session.Quest.TryGetQuest(Daily, out Quest? held) && ReferenceEquals(held, early), Is.True);
+    }
+
     [Test]
     public void Expired_DropsOnlyQuestsOverByTheServerClock() {
         Hold(Daily, Ago(TimeSpan.FromHours(25)));
@@ -77,10 +92,13 @@ public class QuestExpiryTests {
 
     [Test]
     public void Expired_KeepsAQuestNotOverYet() {
-        // An hour into the daily's 24 hours, and the weekly started now: its next Friday is at least a day away. The
-        // weekly cannot be abandoned, and an early expiry was the way around that.
+        // An hour into the daily's 24 hours, and the weekly started now: it ends at the start of the next Friday,
+        // which on a Thursday can be close (skipped within the slack and a minute of it). The weekly cannot be
+        // abandoned, and an early expiry was the way around that.
         Quest daily = Hold(Daily, Ago(TimeSpan.FromHours(1)));
         Quest weekly = Hold(Weekly, Ago(TimeSpan.Zero));
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        Assume.That(QuestRules.EndTime(weekly.Metadata.Basic, weekly.StartTime, now, null) - now, Is.GreaterThan(QuestManager.ExpirySlack + 60));
 
         test.Session.Quest.Expired([Daily, Weekly]);
 

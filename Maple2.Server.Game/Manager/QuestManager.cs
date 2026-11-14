@@ -759,7 +759,8 @@ public sealed class QuestManager {
 
     // QuestRules.IsExpired with the quest's term: the channel's term tag of its event tag (CQuestCommon::GetEndTime,
     // questdata.cpp:274). A stamp quest is started without one (CanStart), so its tag sets no end.
-    public bool IsExpired(Quest quest) {
+    // slack: seconds the server's clock may be behind the client's (see Expired).
+    public bool IsExpired(Quest quest, long slack = 0) {
         QuestMetadataBasic basic = quest.Metadata.Basic;
         if (!string.IsNullOrEmpty(basic.EventTag) && StampQuests().Contains(quest.Id)) {
             basic = basic with { EventTag = string.Empty };
@@ -770,7 +771,7 @@ public sealed class QuestManager {
                 term = (entry.Start, entry.End);
             }
         }
-        return QuestRules.IsExpired(basic, quest.StartTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), term);
+        return QuestRules.IsExpired(basic, quest.StartTime, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + slack, term);
     }
 
     // The term tag of this name on this channel (the TermTag table's row, or the GM's start or end of it).
@@ -1431,16 +1432,21 @@ public sealed class QuestManager {
         return results;
     }
 
+    // Quest 7: seconds an expiry may come early (the client's clock ahead of the server's).
+    public const long ExpirySlack = 60;
+
     /// <summary>
     /// Quest 7: drops the named quests that can expire (QuestRules.CanExpire) and whose end time has come (IsExpired),
     /// and tells the client which. The client sends a quest only once its own end time has come (CQuestManager::
     /// FUN_1416d3010, questmanager_2.cpp:2157), so one that is not over yet stays: it used to be dropped on the word
-    /// of the client, a quest that cannot be abandoned (disableGiveup) too.
+    /// of the client, a quest that cannot be abandoned (disableGiveup) too. The client sends each quest once (it keeps
+    /// the value it sent and sends again only on a change), so with its clock a little ahead of the server's a refused
+    /// quest would stay started until the next login: ExpirySlack seconds are allowed for that.
     /// </summary>
     public void Expired(IList<int> questIds) {
         var expired = new List<int>();
         foreach (int questId in questIds) {
-            if (TryGetQuest(questId, out Quest? quest) && QuestRules.CanExpire(quest.Metadata.Basic, quest.State) && IsExpired(quest)
+            if (TryGetQuest(questId, out Quest? quest) && QuestRules.CanExpire(quest.Metadata.Basic, quest.State) && IsExpired(quest, ExpirySlack)
                 && Drop(quest)) {
                 expired.Add(questId);
             }
