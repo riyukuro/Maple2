@@ -377,6 +377,25 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That(Vector3.Distance(npc.Position, new Vector3(-450, 0, 0)), Is.LessThan(30));
     }
 
+    // A patrol npc whose model has no Walk_A walks with the next sequence it has (Run_A, then Idle_A); on an air
+    // waypoint with no ApproachAnimation one without Fly_A flies with Walk_A or Run_A. Chosen here: the client
+    // plays the sequence NpcControl names, so any sequence moves it; before, the npc stayed with a "No walk sequence
+    // found" warning. KR rows: 52000116_qd idle sends Nelf (11003163, model 11000492_Nelf: Idle_A, Talk_A, no
+    // Walk_A or Run_A) along MS2PatrolData_3001 (speed 2, 75 units); 52020036_qd's WavePatrolData air waypoints
+    // (ApproachAnimation "") carry 29000371 (Walk_A, Run_A, no Fly_A; walk 200, run 400).
+    [Test]
+    public void MoveNpc_PatrolWithoutWalkOrFlySequence() {
+        var nelfRoute = new MS2PatrolData("ccd3fdca", "MS2PatrolData_3001", false, 2, false,
+            [new MS2WayPoint("34d8bb4f", true, new Vector3(-75, 0, 0), Vector3.Zero, "", "", 0, false)]);
+        NpcMetadata nelf = Npc(FriendId, 1) with { Action = new NpcMetadataAction(0, 120, 320, [], 0, "") };
+        Assert.That(Vector3.Distance(WalkPatrol(nelf, ["Idle_A", "Talk_A"], nelfRoute).Position, new Vector3(-75, 0, 0)), Is.LessThan(30));
+
+        var waveRoute = new MS2PatrolData("002cc854", "WavePatrolDataEast", true, 2, false,
+            [new MS2WayPoint("w1", true, new Vector3(600, 0, 0), Vector3.Zero, "", "", 0, true)]);
+        NpcMetadata bat = Npc(MobId, 0) with { Action = new NpcMetadataAction(0, 200, 400, [], 0, "") };
+        Assert.That(Vector3.Distance(WalkPatrol(bat, ["Idle_A", "Walk_A", "Run_A"], waveRoute).Position, new Vector3(600, 0, 0)), Is.LessThan(30));
+    }
+
     private sealed class LogSink : ILogEventSink {
         public readonly List<LogEvent> Events = [];
         public void Emit(LogEvent logEvent) => Events.Add(logEvent);

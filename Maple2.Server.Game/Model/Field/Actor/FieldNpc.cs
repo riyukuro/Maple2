@@ -537,6 +537,18 @@ public class FieldNpc : Actor<Npc> {
 
     // One leg of the patrol: flown in a straight line (an air waypoint, or ground the navmesh does not reach) or walked
     // along the navmesh, at the patrol's speed (PatrolRules).
+    // The sequence an npc moves a patrol leg with: the waypoint's ApproachAnimation, else Fly_A (air waypoints only),
+    // Walk_A, Run_A, Idle_A, the first the model has. Chosen here: the client plays whatever sequence NpcControl
+    // names while the npc moves, so a model without Walk_A (52000116_qd's Nelf 11003163: Idle_A, Talk_A) or without
+    // Fly_A on an air waypoint (52020036_qd's WavePatrolData bat 29000371: Walk_A, Run_A) still follows its route.
+    private string? PatrolSequence(string approach, bool air) {
+        if (Value.Animations.ContainsKey(approach)) {
+            return approach;
+        }
+        string[] fallback = air ? ["Fly_A", "Walk_A", "Run_A", "Idle_A"] : ["Walk_A", "Run_A", "Idle_A"];
+        return fallback.FirstOrDefault(Value.Animations.ContainsKey);
+    }
+
     private NpcTask PatrolLeg(Vector3 position, string sequence, bool fly, bool air) {
         int patrolSpeed = Patrol!.PatrolSpeed;
         NpcMetadataAction action = Value.Metadata.Action;
@@ -565,20 +577,16 @@ public class FieldNpc : Actor<Npc> {
         NpcTask? approachTask = null;
 
         if (currentWaypoint.AirWayPoint) {
-            if (Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? patrolSequence)) {
-                approachTask = PatrolLeg(currentWaypoint.Position, patrolSequence.Name, fly: true, air: true);
-            } else if (FlySequence is not null) {
-                approachTask = PatrolLeg(currentWaypoint.Position, FlySequence.Name, fly: true, air: true);
+            if (PatrolSequence(currentWaypoint.ApproachAnimation, air: true) is { } sequence) {
+                approachTask = PatrolLeg(currentWaypoint.Position, sequence, fly: true, air: true);
             } else {
                 Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
             }
         } else {
             bool cutOff = Navigation!.GoalCutOff(currentWaypoint.Position);
             if (!cutOff && Navigation.PathTo(currentWaypoint.Position)) {
-                if (Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? patrolSequence)) {
-                    approachTask = PatrolLeg(currentWaypoint.Position, patrolSequence.Name, fly: false, air: false);
-                } else if (WalkSequence is not null) {
-                    approachTask = PatrolLeg(currentWaypoint.Position, WalkSequence.Name, fly: false, air: false);
+                if (PatrolSequence(currentWaypoint.ApproachAnimation, air: false) is { } sequence) {
+                    approachTask = PatrolLeg(currentWaypoint.Position, sequence, fly: false, air: false);
                 } else {
                     Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
                 }
@@ -586,10 +594,8 @@ public class FieldNpc : Actor<Npc> {
                 // The waypoint stands on ground the navmesh does not cover (e.g. a train track that is not path geometry),
                 // or on a part of the mesh no path reaches (a ledge one block up): go there in a straight line at the
                 // patrol's speed instead of skipping it or stopping at the edge, so boxes waiting for the npc see it.
-                if (Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? patrolSequence)) {
-                    approachTask = PatrolLeg(currentWaypoint.Position, patrolSequence.Name, fly: true, air: false);
-                } else if (WalkSequence is not null) {
-                    approachTask = PatrolLeg(currentWaypoint.Position, WalkSequence.Name, fly: true, air: false);
+                if (PatrolSequence(currentWaypoint.ApproachAnimation, air: false) is { } sequence) {
+                    approachTask = PatrolLeg(currentWaypoint.Position, sequence, fly: true, air: false);
                 } else {
                     Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
                 }
