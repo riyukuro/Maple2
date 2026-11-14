@@ -197,6 +197,18 @@ public class BeautyStyleSaveTests {
         Assert.That(session.Beauty.SavedCount, Is.EqualTo(1));
     }
 
+    // Only the sale of the shop the hair was bought in refuses its save: another shop's sale does not.
+    [Test]
+    public void Save_AHairBoughtInASale_IsListedWhileOnlyAnotherShopsSaleRuns() {
+        Start(BeautyShopType.Save);
+        Item bought = BuyHairInASale();
+        test.AddEvent(7001, GameEventType.SaleBeautyShop, new SaleBeautyShop(511, 3000, false));
+
+        Save(bought.Uid);
+
+        Assert.That(session.Beauty.SavedCount, Is.EqualTo(1));
+    }
+
     // A PC room row lowers no fee: the hair was bought at its full fee.
     [Test]
     public void Save_AHairBoughtAtTheFullFee_IsListedDuringASale() {

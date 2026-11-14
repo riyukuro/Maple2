@@ -296,7 +296,7 @@ public class BeautyHandler : FieldPacketHandler {
         }
         if (WearPaid(session, created, fee) is { } stored) {
             if (discounted && stored.Appearance is HairAppearance) {
-                session.Beauty.MarkDiscounted(stored.Uid);
+                session.Beauty.MarkDiscounted(stored.Uid, session.BeautyShop.Id);
             }
             session.ConditionUpdate(ConditionType.beauty_add, codeLong: itemId);
         }
@@ -550,12 +550,13 @@ public class BeautyHandler : FieldPacketHandler {
         session.Beauty.AddHair(uid);
     }
 
-    // A hair bought at a sale price while a SaleBeautyShop event still runs: the style dialog answers error 25 with "discounted
-    // hair cannot be stored during the event" (uibeautyshopstyledialog.cpp:1347) and has no check of its own. Before
-    // any extension fee.
+    // A hair bought at a sale price while the sale that lowered it still runs: the style dialog answers error 25 with
+    // "discounted hair cannot be stored during the event" (uibeautyshopstyledialog.cpp:1347) and has no check of its own.
+    // Only an unflagged sale of the shop the hair was bought in counts (EventSaleRules.BeautyShopRate: a PC room row
+    // lowers nothing, so it marks no hair either). Before any extension fee.
     private static bool RefusedDiscountedSave(GameSession session, long uid) {
-        if (!session.Beauty.IsDiscounted(uid)
-            || !session.FindEvent(GameEventType.SaleBeautyShop).Any(gameEvent => gameEvent.Metadata.Data is SaleBeautyShop { Flag: false })) {
+        if (session.Beauty.DiscountedShop(uid) is not { } shopId
+            || EventSaleRules.BeautyShopRate(session.FindEvent(GameEventType.SaleBeautyShop), shopId) <= 0) {
             return false;
         }
         session.Send(BeautyPacket.Error(BeautyError.s_beauty_msg_error_style_save_cant_not_beauty_day));

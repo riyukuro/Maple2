@@ -160,19 +160,19 @@ public sealed class BeautyManager : IDisposable {
 
     public bool HasSavedCosmetic(long uid) => items.Get(uid) != null;
 
-    // The hairs bought this session at a SaleBeautyShop price: a save of one is refused while a sale runs (BeautyHandler,
-    // error 25). Not stored: a hair bought before a relog saves.
-    private readonly HashSet<long> discountedHairs = [];
+    // The hairs bought this session at a SaleBeautyShop price, with the shop whose sale lowered it: a save of one is
+    // refused while that shop's sale still runs (BeautyHandler, error 25). Not stored: a hair bought before a relog saves.
+    private readonly Dictionary<long, int> discountedHairs = [];
 
-    public void MarkDiscounted(long uid) {
+    public void MarkDiscounted(long uid, int shopId) {
         lock (discountedHairs) {
-            discountedHairs.Add(uid);
+            discountedHairs[uid] = shopId;
         }
     }
 
-    public bool IsDiscounted(long uid) {
+    public int? DiscountedShop(long uid) {
         lock (discountedHairs) {
-            return discountedHairs.Contains(uid);
+            return discountedHairs.TryGetValue(uid, out int shopId) ? shopId : null;
         }
     }
 

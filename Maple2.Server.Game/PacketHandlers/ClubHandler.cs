@@ -116,10 +116,11 @@ public class ClubHandler : FieldPacketHandler {
 
         // Clubs can only be created by party leaders. The client refuses a create out of a party or by a member
         // with s_club_err_create_no_party (CClubClientManager::FUN_140b15c10, clubcli.cpp:905-914; string 0x36c of its
-        // club table); no club error code shows that text (OnClubError, clubcli.cpp:1430), so it is the notice.
+        // club table, shown as a plain message, no alert); no club error code shows that text (OnClubError,
+        // clubcli.cpp:1430), so it is a Message notice.
         Party? party = session.Party?.Party;
         if (party is null || party.LeaderCharacterId != session.Player.Value.Character.Id) {
-            session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_club_err_create_no_party));
+            session.Send(NoticePacket.Notice(NoticePacket.Flags.Message, StringCode.s_club_err_create_no_party));
             return;
         }
 

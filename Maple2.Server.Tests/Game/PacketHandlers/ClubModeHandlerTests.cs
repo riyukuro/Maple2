@@ -93,8 +93,8 @@ public class ClubModeHandlerTests {
 
         Send(1, writer => writer.WriteUnicodeString("newclub"));
 
-        string notice = Hex(Maple2.Server.Core.Packets.NoticePacket.Notice(Maple2.Server.Core.Packets.NoticePacket.Flags.Alert
-            | Maple2.Server.Core.Packets.NoticePacket.Flags.Message, Maple2.Model.Enum.StringCode.s_club_err_create_no_party));
+        string notice = Hex(Maple2.Server.Core.Packets.NoticePacket.Notice(Maple2.Server.Core.Packets.NoticePacket.Flags.Message,
+            Maple2.Model.Enum.StringCode.s_club_err_create_no_party));
         string[] sent = test.TakeSent().Select(Convert.ToHexString).ToArray();
         Assert.That(sent, Does.Contain(notice));
         Assert.That(sent.Where(packet => packet.StartsWith(Hex(ClubPacket.Error(ClubError.s_club_err_unknown))[..4])), Is.Empty);

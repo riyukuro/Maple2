@@ -58,7 +58,8 @@ public class MailHandler : FieldPacketHandler {
     }
 
     // A read, collect or delete that changed the unread count sends it (MailManager.SendCounts): the client's badge
-    // has no other source.
+    // has no other source. With the mail list open the client answers any count notice by asking for the list again
+    // a second later (UIMailListDialog::RequestRefresh, uimaillistdialog.cpp:414,462); Load sends no count, so it stops.
     private static void Counted(GameSession session, Action handle) {
         int unread = session.Mail.UnreadCount;
         handle();
