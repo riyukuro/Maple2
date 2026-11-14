@@ -127,4 +127,24 @@ public class PlayedClientQuestsTests {
             Assert.That(PlayedClientQuests.Known(basic with { NotInPlayedClient = true }), Is.False);
         });
     }
+
+    // The ingest adds the quests of the played client's table the data pack lacks, from the played client's own quest
+    // files (KR Live 70000025, the level 70 guide quest the client lists at every field entry); a pack quest stays the
+    // pack's, and an id outside the table is not added.
+    [Test]
+    public void Ingest_AddsThePlayedQuestsThePackLacks() {
+        var pack = new[] { (10003408, "pack"), (100, "pack") };
+        var played = new[] { (10003408, "played"), (70000025, "played"), (5, "played") };
+        int playedOnly = 0;
+
+        var quests = Maple2.File.Ingest.Mapper.QuestMapper.PackThenPlayed(pack, () => played, quest => quest.Item1,
+            new System.Collections.Generic.HashSet<int> { 10003408, 100, 70000025 }, () => playedOnly++).ToList();
+
+        Assert.Multiple(() => {
+            Assert.That(quests, Is.EqualTo(new[] { (10003408, "pack"), (100, "pack"), (70000025, "played") }));
+            Assert.That(playedOnly, Is.EqualTo(1));
+            Assert.That(Maple2.File.Ingest.Mapper.QuestMapper.PackThenPlayed(pack, () => played, quest => quest.Item1, null),
+                Is.EqualTo(pack));
+        });
+    }
 }

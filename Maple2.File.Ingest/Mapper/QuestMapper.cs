@@ -14,10 +14,41 @@ namespace Maple2.File.Ingest.Mapper;
 public class QuestMapper : TypeMapper<QuestMetadata> {
     private readonly QuestParser parser;
     private readonly M2dReader? playedReader;
+    private readonly string language;
 
     public QuestMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         parser = new QuestParser(xmlReader, language);
         this.playedReader = playedReader;
+        this.language = language;
+    }
+
+    // The data pack's quests, then the quests of the played client's table that the pack does not have, from the
+    // played client's own quest files. KR Live: 89 of the client's quests are not in the pack, 70000025 (the
+    // level 70 guide quest of ExtendLevel80, autoStart) among them; the client lists it at every field entry
+    // (Quest 8) and the server never had it.
+    private IEnumerable<(int Id, string Name, QuestData Data)> Quests(HashSet<int>? known, Action playedOnly) {
+        M2dReader? played = playedReader;
+        return PackThenPlayed(parser.Parse(), played == null ? null : () => new QuestParser(played, language).Parse(),
+            quest => quest.Id, known, playedOnly);
+    }
+
+    // The pack's entries, then the played entries whose id is in known and not in the pack (each id once).
+    public static IEnumerable<T> PackThenPlayed<T>(IEnumerable<T> pack, Func<IEnumerable<T>>? played, Func<T, int> id,
+            ISet<int>? known, Action? playedOnly = null) {
+        var packIds = new HashSet<int>();
+        foreach (T entry in pack) {
+            packIds.Add(id(entry));
+            yield return entry;
+        }
+        if (known == null || played == null) {
+            yield break;
+        }
+        foreach (T entry in played()) {
+            if (known.Contains(id(entry)) && packIds.Add(id(entry))) {
+                playedOnly?.Invoke();
+                yield return entry;
+            }
+        }
     }
 
     protected override IEnumerable<QuestMetadata> Map() {
@@ -42,8 +73,8 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
                 playedNpcs = null;
             }
         }
-        int notInPlayed = 0, inPlayed = 0, npcChanged = 0;
-        foreach ((int id, string name, QuestData data) in parser.Parse()) {
+        int notInPlayed = 0, inPlayed = 0, npcChanged = 0, playedOnly = 0;
+        foreach ((int id, string name, QuestData data) in Quests(known, () => playedOnly++)) {
             bool notInPlayedClient = known != null && !known.Contains(id);
             if (known != null) {
                 if (notInPlayedClient) notInPlayed++;
@@ -170,7 +201,7 @@ public class QuestMapper : TypeMapper<QuestMetadata> {
             );
         }
         if (known != null) {
-            Console.WriteLine($"quests: {notInPlayed} not in the played client's quest table (the server neither starts, offers nor sends them), {inPlayed} in it, {npcChanged} with the start or complete npc of that table");
+            Console.WriteLine($"quests: {notInPlayed} not in the played client's quest table (the server neither starts, offers nor sends them), {inPlayed} in it, {npcChanged} with the start or complete npc of that table, {playedOnly} from the played client's own quest files");
         }
     }
 
