@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -5,8 +6,11 @@ using System.Numerics;
 using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using System.Runtime.CompilerServices;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
@@ -104,5 +108,97 @@ public class MasteryDoubleTests {
 
         var ground = ((ConcurrentDictionary<int, FieldItem>) typeof(FieldManager).GetField("fieldItems", Any)!.GetValue(session.Field)!).Values;
         Assert.That(ground.Where(item => item.Value.Id == RewardItemId).Sum(item => item.Value.Amount), Is.EqualTo(count));
+    }
+
+    // A whole gather (GatherCommon) with 2 production efficiency makes 3 gathers; each rolls its own double mastery and
+    // double reward, so at 100% every gather's 10 mastery and 3 items are doubled, and at 0% none is.
+    [TestCase(1000L, 60, 18)]
+    [TestCase(0L, 30, 9)]
+    public void GatherWithExtraGathers(long rate, int mastery, int count) {
+        MasteryRecipeTable.Entry recipe = Recipe(50000002, MasteryType.Gathering);
+        GameSession session = Start(recipe);
+        test.SetTable(new MasteryDifferentialFactorTable(new Dictionary<int, MasteryDifferentialFactorTable.Entry> { [0] = new(0, 10000) }));
+        SetRate(session, SpecialAttribute.GatheringEfficiency, 2000);
+        SetRate(session, SpecialAttribute.GatheringDoubleMastery, rate);
+        SetRate(session, SpecialAttribute.GatheringDoubleReward, rate);
+
+        object?[] args = [recipe.Id, Vector3.Zero, Vector3.Zero, null];
+        int gathers = (int) typeof(MasteryManager).GetMethod("GatherCommon", Any)!.Invoke(session.Mastery, args)!;
+
+        Assert.That(gathers, Is.EqualTo(3));
+        Assert.That(session.Mastery[MasteryType.Gathering], Is.EqualTo(mastery));
+        var ground = ((ConcurrentDictionary<int, FieldItem>) typeof(FieldManager).GetField("fieldItems", Any)!.GetValue(session.Field)!).Values;
+        Assert.That(ground.Where(item => item.Value.Id == RewardItemId).Sum(item => item.Value.Amount), Is.EqualTo(count));
+    }
+
+    // A first catch gives twice the fish's mastery (FishingManager.AddFish); fishing double mastery (112) at 100% doubles
+    // that again. A running MasteryReward event for the map then adds its share of the doubled gain (5000 = half).
+    [TestCase(1000L, 0, 4)]
+    [TestCase(0L, 0, 2)]
+    [TestCase(1000L, 5000, 6)]
+    [TestCase(0L, 5000, 3)]
+    public void FishingCatch(long rate, int eventRate, int factor) {
+        test = new TestGameSession();
+        test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>>()));
+        if (eventRate > 0) {
+            test.AddEvent(1, GameEventType.MasteryReward, new MasteryRewardEvent(1, string.Empty, new Dictionary<int, int> { [2000001] = eventRate }));
+        }
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        session.Fishing = new FishingManager(session, test.TableMetadata, test.ServerTableMetadata);
+        var fish = new FishTable.Fish(10000001, LiquidType.water, 80, 6, 1, 3, 1, 54, 15000, 10000, 8000,
+            new FishTable.Range<int>(20, 30), new FishTable.Range<int>(40, 50), [], 0, false);
+        session.Fishing.Cast((FishingTile) RuntimeHelpers.GetUninitializedObject(typeof(FishingTile)), fish, fishBites: true, fishBiteTick: 0, fightGame: false);
+        SetRate(session, SpecialAttribute.FishingDoubleMastery, rate);
+        int before = session.Mastery[MasteryType.Fishing];
+
+        typeof(FishingManager).GetMethod("AddFish", Any)!.Invoke(session.Fishing, [25, false]);
+
+        Assert.That(session.Mastery[MasteryType.Fishing] - before, Is.EqualTo(fish.MasteryExp * factor));
+    }
+
+    // A score's stop (PlayInstrument 4) gives its mastery, 1 for a score without music rows; performing double mastery
+    // (113) at 100% doubles it. A running MasteryReward event for the map adds its share after the double, rounded
+    // down: half of 2 is 1, half of 1 is 0 (were the event first, the double of 1 + 0 would give 2, not 3).
+    [TestCase(1000L, 0, 2)]
+    [TestCase(0L, 0, 1)]
+    [TestCase(1000L, 5000, 3)]
+    [TestCase(0L, 5000, 1)]
+    public void InstrumentScore(long rate, int eventRate, int mastery) {
+        const int instrumentItemId = 34000003, scoreItemId = 35000033;
+        test = new TestGameSession();
+        Item instrument = test.Store(TestGameSession.Metadata(instrumentItemId, type: 6,
+            function: new ItemMetadataFunction(ItemFunction.OpenInstrument, "OpenInstrument", "1", false)));
+        Item score = test.Store(TestGameSession.Metadata(scoreItemId, type: 6));
+        test.SetTable(new InstrumentTable(new Dictionary<int, InstrumentMetadata> { [1] = new(1, 0, 1, 1, 1, 0) }));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> { [ExpType.musicMastery1] = new(1, 1f) }));
+        test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
+            [1] = Enumerable.Range(1, 99).ToDictionary(level => level, _ => 100L),
+        }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
+        test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>>()));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        if (eventRate > 0) {
+            test.AddEvent(1, GameEventType.MasteryReward, new MasteryRewardEvent(2, string.Empty, new Dictionary<int, int> { [2000001] = eventRate }));
+        }
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        Item held = session.Item.Inventory.Get(instrument.Uid, InventoryType.FishingMusic)!;
+        held.ExpiryTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+        Item heldScore = session.Item.Inventory.Get(score.Uid, InventoryType.FishingMusic)!;
+        heldScore.RemainUses = 5;
+        SetRate(session, SpecialAttribute.PlayInstrumentDoubleMastery, rate);
+        var handler = new InstrumentHandler { TableMetadata = test.TableMetadata, BanWordStorage = null! };
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteLong(held.Uid);
+            writer.WriteLong(heldScore.Uid);
+        }));
+        Assume.That(session.Instrument, Is.Not.Null, "started");
+        session.Instrument!.StartTick -= 10_500;
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(4)));
+
+        Assert.That(session.Instrument, Is.Null);
+        Assert.That(session.Mastery[MasteryType.Music], Is.EqualTo(mastery));
     }
 }
