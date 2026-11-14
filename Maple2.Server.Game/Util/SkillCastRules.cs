@@ -164,7 +164,7 @@ public static class SkillCastRules {
     // motion's own speed alone for move type 3) and applies no cooldown reduction to it; a shown cooldown runs in
     // full. The flag is not ingested. Chosen here: a cooldown under 1 s stands in for it (in the KR data the skills
     // with a cooldown under 1 s have the flag 0 but for four with 0.4 s, which are only taken sooner by this), and
-    // the cast is taken from ShortCooldownShare of that time on; an attack speed under 100 counts as 100.
+    // the cast is taken from ShortCooldownShare of that time on, at the motion speed of MotionSpeed.
     public static long RequiredGap(long cooldownMs, long attackSpeed = 100, float sequenceSpeed = 1f, int moveType = 0) {
         if (cooldownMs <= 0) {
             return 0;
@@ -217,8 +217,8 @@ public static class SkillCastRules {
     // "inputcombo" key on (from "selfinputcombo" for the same skill again, when the motion has one); a motion
     // without it is counted to its "combo" key, else to its "end" key. The key times are in seconds at speed 1.
     // The client plays the motion at a speed its Lua (calc_pc_asiR) makes of the motion's own speed and the attack
-    // speed stat. The Lua body is not known: speed = motion speed x attack speed / 100 is fitted here over KMS2
-    // casts at attack speed 100 to 121. A motion of move type 3 is played at its own speed whatever the attack speed
+    // speed stat (PCBase stat 0xd): speed = motion speed x clip(attack speed / 100, 0.1, 1.5), as the KR pack's
+    // calc_pc_asiR has it. A motion of move type 3 is played at its own speed whatever the attack speed
     // (StateSkill::GetMotionSpeedScale).
     // A motion with a loop (a held skill) leaves the loop when the hold ends, so a key after "loopend" can come up
     // to one loop sooner: such a key is counted without the loop's length.
@@ -284,12 +284,12 @@ public static class SkillCastRules {
 
     public static bool CancelledRefuses(long cancelTick, long tick) => cancelTick != 0 && tick - cancelTick > CancelledAttackWindowMs;
 
-    // The fitted speed of a motion. An attack speed under 100 is counted as 100 (chosen here: no KMS2 cast has one).
+    // The speed of a motion (calc_pc_asiR): the attack speed scales it between 0.1 and 1.5 times.
     public const int UnscaledMoveType = 3;
 
     public static float MotionSpeed(float sequenceSpeed, long attackSpeed, int moveType = 0) {
         float speed = sequenceSpeed > 0 ? sequenceSpeed : 1f;
-        return moveType == UnscaledMoveType ? speed : speed * MathF.Max(1f, attackSpeed / 100f);
+        return moveType == UnscaledMoveType ? speed : speed * Math.Clamp(attackSpeed / 100f, 0.1f, 1.5f);
     }
 
     public static long MotionRequiredGap(float keySeconds, float speed) {

@@ -146,7 +146,8 @@ public class SkillCastRulesTests {
         // The attack speed cuts a short cooldown: 450 ms at 100 needs 337 ms, at 140 it needs 241 ms.
         Assert.That(SkillCastRules.RequiredGap(450), Is.EqualTo(337));
         Assert.That(SkillCastRules.RequiredGap(450, 140), Is.EqualTo(241));
-        Assert.That(SkillCastRules.RequiredGap(450, 50), Is.EqualTo(337), "under 100 counts as 100");
+        Assert.That(SkillCastRules.RequiredGap(450, 50), Is.EqualTo(675), "50 plays the motion at half speed");
+        Assert.That(SkillCastRules.RequiredGap(450, 200), Is.EqualTo(225), "200 is capped at 1.5");
         Assert.That(SkillCastRules.RequiredGap(8000, 140), Is.EqualTo(7500), "1 s or more is not cut");
         // 10500001 (0.45 s, motion speed 1): the client's cooldown is 450 ms at 100 and 412 ms at 109.
         Assert.That(SkillCastRules.RequiredGap(450, 100), Is.EqualTo(337));
@@ -465,11 +466,15 @@ public class SkillCastRulesTests {
     }
 
     [Test]
-    public void MotionSpeedIsFittedToTheAttackSpeed() {
+    public void MotionSpeedIsScaledByTheAttackSpeed() {
         Assert.That(SkillCastRules.MotionSpeed(1f, 100), Is.EqualTo(1f));
         Assert.That(SkillCastRules.MotionSpeed(1.5f, 120), Is.EqualTo(1.8f).Within(0.0001f));
         Assert.That(SkillCastRules.MotionSpeed(0f, 100), Is.EqualTo(1f), "no speed in the data");
-        Assert.That(SkillCastRules.MotionSpeed(1f, 80), Is.EqualTo(1f), "not slowed");
+        // calc_pc_asiR clips the attack speed scale to 0.1-1.5.
+        Assert.That(SkillCastRules.MotionSpeed(1f, 200), Is.EqualTo(1.5f), "200 is capped at 1.5");
+        Assert.That(SkillCastRules.MotionSpeed(1f, 50), Is.EqualTo(0.5f), "50 slows to half");
+        Assert.That(SkillCastRules.MotionSpeed(1f, 80), Is.EqualTo(0.8f).Within(0.0001f));
+        Assert.That(SkillCastRules.MotionSpeed(1f, 5), Is.EqualTo(0.1f).Within(0.0001f), "floor 0.1");
         Assert.That(SkillCastRules.MotionSpeed(1.5f, 120, 3), Is.EqualTo(1.5f), "move type 3 keeps its own speed");
         Assert.That(SkillCastRules.MotionSpeed(1.5f, 120, 2), Is.EqualTo(1.8f).Within(0.0001f));
         Assert.That(SkillCastRules.MotionRequiredGap(0.6f, 1.2f), Is.EqualTo(400));
