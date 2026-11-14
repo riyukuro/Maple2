@@ -81,7 +81,8 @@ public class MasteryManager {
 
             session.Send(MasteryPacket.UpdateMastery(type, session.Mastery[type]));
             int currentLevel = GetLevel(type);
-            int deltaLevel = currentLevel - startLevel + (startValue == 0 ? 1 : 0);
+            // The first mastery gained earns grade 1; a set that leaves the mastery at 0 earns nothing.
+            int deltaLevel = currentLevel - startLevel + (startValue == 0 && this[type] > 0 ? 1 : 0);
             int deltaExp = value - startValue;
             Log.Logger.Debug("[Mastery] {type} changed from {startValue} to {value} (Level {startLevel} -> {currentLevel}), ΔLevel: {deltaLevel}, ΔExp: {deltaExp}", type, startValue, value, startLevel, currentLevel, deltaLevel, deltaExp);
 

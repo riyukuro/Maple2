@@ -138,8 +138,7 @@ public class MasteryConditionTests {
     // The mastery grade trophies of mining (code 3), as the KR rows have them: 23100241 "Master Miner (1)"
     // mastery_grade value 13 (each grade gained), 23100330 "Master Miner (2)" set_mastery_grade values 14 and 15 (the
     // grade reached), and 23100331 the same of breeding (code 5). Grades here are 100 mastery apart (grade 1 at 0).
-    [Test]
-    public void MasteryGrade_23100241_23100330_TheGradesOfMining() {
+    private GameSession StartMining() {
         test = new TestGameSession();
         test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>> {
             [MasteryType.Mining] = Enumerable.Range(1, 15).ToDictionary(grade => grade, grade => new MasteryRewardTable.Entry((grade - 1) * 100, 0, 1, 1)),
@@ -149,6 +148,12 @@ public class MasteryConditionTests {
             TestGameSession.Trophy(23100331, ConditionType.set_mastery_grade, [14, 15], codes: [5]));
         GameSession session = test.Start();
         test.TakeSent();
+        return session;
+    }
+
+    [Test]
+    public void MasteryGrade_23100241_23100330_TheGradesOfMining() {
+        GameSession session = StartMining();
 
         session.Mastery[MasteryType.Mining] = 1250; // grade 13 at once
         Assert.That((test.TrophyCounter(23100241), test.TrophyCounter(23100330)), Is.EqualTo(((long?) 13, (long?) 13)));
@@ -157,5 +162,30 @@ public class MasteryConditionTests {
         Assert.That((test.TrophyCounter(23100241), test.TrophyCounter(23100330), test.TrophyCounter(23100331)),
             Is.EqualTo(((long?) 15, (long?) 15, (long?) null)));
         Assert.That(session.Achievement.TryGetAchievement(23100330, out Achievement? trophy) && trophy.Completed, Is.True);
+    }
+
+    // A set that leaves the mastery at 0 (a craft without mastery) earns no grade; the first mastery gained earns
+    // grade 1.
+    [Test]
+    public void MasteryGrade_23100241_NothingGainedNoGrade() {
+        GameSession session = StartMining();
+        session.Mastery[MasteryType.Mining] = 0;
+        session.Mastery[MasteryType.Mining] = 0;
+        Assert.That(test.TrophyCounter(23100241), Is.Null);
+        session.Mastery[MasteryType.Mining] = 50;
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(test.TrophyCounter(23100241), Is.EqualTo(1));
+    }
+
+    // A quest of set_mastery_grade (no KR quest has one) keeps the grade reached, as the trophies do: grade 2 and
+    // then grade 3 is 3, not 5.
+    [Test]
+    public void SetMasteryGrade_Quest_KeepsTheGradeReached() {
+        GameSession session = StartMining();
+        Quest quest = StartQuest(0, ConditionType.set_mastery_grade, 15, ["3"]);
+        session.Mastery[MasteryType.Mining] = 100;
+        session.Mastery[MasteryType.Mining] = 200;
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(3));
     }
 }

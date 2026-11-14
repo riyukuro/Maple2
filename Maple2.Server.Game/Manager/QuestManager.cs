@@ -376,9 +376,13 @@ public sealed class QuestManager {
                 }
 
                 int previousCounter = condition.Counter;
-                long counted = type is ConditionType.interior_point
-                    ? InteriorPointRules.Counter(condition.Counter, counter)
-                    : condition.Counter + counter;
+                // set_mastery_grade reports the grade reached, so it keeps the highest as the trophies do (no KR
+                // quest has it; the trophies 23100330-23100337 do).
+                long counted = type switch {
+                    ConditionType.interior_point => InteriorPointRules.Counter(condition.Counter, counter),
+                    ConditionType.set_mastery_grade => Math.Max(condition.Counter, counter),
+                    _ => condition.Counter + counter,
+                };
                 condition.Counter = (int) Math.Min(condition.Metadata.Value, counted);
 
                 // Only send update every 5 increments for throttleStates
