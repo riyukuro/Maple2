@@ -300,6 +300,8 @@ public class GameEvent : IByteSerializable {
                 foreach (int mapId in fieldEffect.MapIds) {
                     writer.WriteInt(mapId);
                 }
+                // FieldEffectContext::Read reads the effect after the map ids.
+                writer.WriteUnicodeString(fieldEffect.Effect);
                 break;
             case Reactor reactor:
                 // GameEvent::vfunc_4 reads the id, then ReactorContext::Read the same id, the count, the end
