@@ -448,6 +448,13 @@ public class AiState {
             distance = AiSkillReach.Radius(skill.Data);
         }
 
+        // A trace only closes in: a target already within the distance (and the mover's 10 of slack) is left where it
+        // is; walking away from a near target is runaway's (KR AI_Balrog_Chaos: trace up to distance 430).
+        float reach = distance + 10;
+        if ((actor.Position - actor.BattleState.Target!.Position).LengthSquared() <= reach * reach) {
+            return;
+        }
+
         float speed = 1;
 
         if (node.Speed != 0) {

@@ -134,6 +134,20 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(((MovementState.NpcMoveTargetDistanceTask) CurrentTask!).Distance, Is.EqualTo(430));
     }
 
+    // KR BossDungeon/Balrog/AI_Balrog_Chaos.xml: a till 430 trace (trace up to distance 430) with the player 200 away.
+    // The npc does not walk away from it: it takes no walk at all.
+    [Test]
+    public void Trace_TargetWithinTill_DoesNotBackAway() {
+        Spawn([Trace(410, till: 430)], position: new Vector3(200, 0, 0));
+        Vector3 start = npc.Position;
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(CurrentTask, Is.Not.InstanceOf<MovementState.NpcMoveTargetDistanceTask>());
+        Assert.That(npc.MovementState.State, Is.Not.EqualTo(ActorState.Walk));
+        Assert.That(npc.Position, Is.EqualTo(start));
+    }
+
     // KR AI_Witch2CerberosTrainer_PaterA.xml: <node name="teleport" pos="-2700, -1800, 2750" isKeepBattle="true"> (its
     // children then target a far player, 300 to 1300 away). The node holds the battle; one without the flag does not.
     [Test]
