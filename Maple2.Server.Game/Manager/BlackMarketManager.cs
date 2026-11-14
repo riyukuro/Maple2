@@ -340,8 +340,8 @@ public sealed class BlackMarketManager {
     // The seller's mail for quantity sold of listing, which holds the count left after the sale. feeRate is a running
     // BlackMarketFeeDiscount rate in 1/10000 (-1: none); it replaces the normal fee rate as the client's
     // GetBlackMarketCostRate does (commonfiles/blackmarketitemoption.cpp:233), and the rate at the sale counts.
-    // A premium club seller pays the fee less 20% (s_vip_dialog_benefit_desc); the vip mail's line is that
-    // discounted fee (s_blackmarket_mail_to_vipseller_content, "[{7} Discounted Sales Fee] {8} mesos").
+    // A premium club seller pays the fee less 20% (s_vip_dialog_benefit_desc). The vip mail shows the whole fee
+    // taken ({4}) and the discount given back ({8}, "+ {8}" in the KR systemmailcontent), so {4} - {8} is the fee paid.
     internal static Mail SellerMail(BlackMarketListing listing, int quantity, bool sellerIsPremium, int feeRate) {
         float costRate = BlackMarketCostRate(feeRate);
         long tax = (long) (costRate * (quantity * listing.Price));
@@ -368,7 +368,7 @@ public sealed class BlackMarketManager {
 
         if (sellerIsPremium) {
             contentArgs.Add(("str", $"{Constant.BlackMarketPremiumClubDiscount * 100}" + "%"));
-            contentArgs.Add(("money", $"{fee}"));
+            contentArgs.Add(("money", $"{tax - fee}"));
         }
 
         var mail = new Mail {

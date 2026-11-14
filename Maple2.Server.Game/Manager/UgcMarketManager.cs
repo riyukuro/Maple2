@@ -149,7 +149,15 @@ public sealed class UgcMarketManager {
         // between lost the profit for good.
         session.Currency.ChangeMeret(sale.Profit);
         if (!session.TrySavePurchase(db => db.DeleteSoldUgcMarketItem(id))) {
-            session.Currency.TryTakeMeret(sale.Profit);
+            // The profit was not stored: it goes back out of the wallet, which is no meret spent (use_merat).
+            if (!session.Currency.TryTakeMeret(sale.Profit, reportSpent: false)) {
+                // Spent already: the profit stays paid, so the sale may not be collected again.
+                sales.Remove(id);
+                using GameStorage.Request db = session.GameStorage.Context();
+                bool deleted = db.DeleteSoldUgcMarketItem(id);
+                logger.Error("Profit of SoldUgcMarketItem {Id} spent before its failed save; row deleted: {Deleted}.", id, deleted);
+                return;
+            }
             logger.Error("Unable to collect profit and delete SoldUgcMarketItem {Id}.", id);
             return;
         }

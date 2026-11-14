@@ -184,6 +184,26 @@ public class MeretMarketShopTests {
         Assert.That(context.Account.Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(1350));
     }
 
+    // A collect whose save fails pays nothing: the merets go back out (no meret spent) and the sale stays to collect.
+    [Test]
+    public void CollectProfit_FailedSaveKeepsTheSale() {
+        long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());
+        long sale = CreateSale(listing, 350, DateTime.Now.AddDays(-Constant.UGCShopProfitDelayDays - 1));
+        test.AddAchievement(TestGameSession.Trophy(23200041, ConditionType.use_merat, [1_000_000]));
+        Start();
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "SoldUgcMarketItem");
+
+        IdRequest(20, sale);
+        Assert.That(session.Currency.Meret, Is.EqualTo(1000));
+        Assert.That(SaleStored(sale), Is.True);
+        Assert.That(test.TrophyCounter(23200041), Is.Null);
+
+        test.FailSave = null;
+        IdRequest(20, sale);
+        Assert.That(session.Currency.Meret, Is.EqualTo(1350));
+        Assert.That(SaleStored(sale), Is.False);
+    }
+
     [Test]
     public void CollectProfit_NotBeforeTheDelay() {
         long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());
