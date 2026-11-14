@@ -165,6 +165,11 @@ public sealed class ExperienceManager {
             return 0;
         }
 
+        // Fishing, arcade and performing exp are raised by their special attributes (CommonExpRules.RateAttribute).
+        if (CommonExpRules.RateAttribute(expType) is { } attribute) {
+            modifier = CommonExpRules.WithRate(modifier, session.Player.Stats.Values[attribute].Multiplier());
+        }
+
         // A mini game round's prestige exp is its row times the round's exp rate, like its exp.
         decimal prestigeRate = PrestigeRules.ScalesWithExpRate(expType) ? (decimal) modifier : 1m;
         return AddExp(CommonExpRules.Amount(expValue, modifier, entry.Factor, additionalExp), message ?? expType.Message(), kill: false,

@@ -63,6 +63,24 @@ public static class CommonExpRules {
         return fieldLevel > characterLevel ? characterLevel : fieldLevel;
     }
 
+    // The special attribute that raises a type's exp, as a fraction (0.01 = +1%): fishing (s_item_opt_sa_improve_acquire_
+    // fishing_exp), arcade clears (_arcade_exp) and performing (_playinstrument_exp). The client only names them in item
+    // tooltips. KR sets them together on 10000061 (+1% at level 1 to +2.4%).
+    public static SpecialAttribute? RateAttribute(ExpType expType) {
+        return expType switch {
+            ExpType.fishing => SpecialAttribute.FishingExp,
+            ExpType.arcade => SpecialAttribute.ArcadeExp,
+            ExpType.musicMastery1 or ExpType.musicMastery2 or ExpType.musicMastery3 or ExpType.musicMastery4 =>
+                SpecialAttribute.PlayInstrumentExp,
+            _ => null,
+        };
+    }
+
+    // The caller's rate raised by the attribute's rate; a rate below -100% gives nothing, as a kill's (KillRate).
+    public static float WithRate(float modifier, double rate) {
+        return (float) (modifier * Math.Max(0d, 1d + rate));
+    }
+
     // The exp of one award: the curve's value for the level, times the caller's rate, times the type's factor.
     public static long Amount(long expValue, float modifier, float factor, long additionalExp) {
         return (long) ((expValue * modifier) * factor) + additionalExp;
