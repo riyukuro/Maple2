@@ -402,6 +402,16 @@ public class PetHandler : FieldPacketHandler {
         return PetEvolveRules.IsTarget(metadata.Type, pet.Pet!.Level, session.ServerTableMetadata.ConstantsTable.PetMaxLevel);
     }
 
+    // A pet binds to the character that first summons it; KMS2 sends BindItem after the field pet and before the
+    // summon answer. The client asks first for any pet with a binding rule and no binding (MyPC summon,
+    // s_msg_transfer_bind_pet_summon; CItemTransfer::HasBindingRule is the rule's bind bit), so a bind-on-loot pet
+    // that is not bound yet binds too, not only the bind-pet ones.
+    internal static void BindOnSummon(GameSession session, Item pet) {
+        if (pet.Transfer?.Bind(session.Player.Value.Character) == true) {
+            session.Send(ItemBindPacket.Bind(pet));
+        }
+    }
+
     internal static void SummonPet(GameSession session, long petUid) {
         if (session.Field == null || session.Pet != null) {
             return;
@@ -422,12 +432,7 @@ public class PetHandler : FieldPacketHandler {
             }
 
             session.Field.Broadcast(FieldPacket.AddPet(fieldPet));
-            // A pet binds to the character that first summons it; KMS2 sends BindItem after the field pet and
-            // before the summon answer.
-            if (pet.Metadata.Limit.TransferType == TransferType.BindPet
-                && pet.Transfer?.Bind(session.Player.Value.Character) == true) {
-                session.Send(ItemBindPacket.Bind(pet));
-            }
+            BindOnSummon(session, pet);
             session.Field.Broadcast(ProxyObjectPacket.AddPet(fieldPet));
             session.Pet = new PetManager(session, fieldPet);
             session.Pet.Load(summoned: true);
