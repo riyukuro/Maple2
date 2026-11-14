@@ -105,12 +105,20 @@ public class RideHandler : FieldPacketHandler {
     }
 
     private void HandleStop(GameSession session, IByteReader packet) {
-        if (session.Field == null || session.Ride.Ride == null) {
+        if (session.Field == null) {
             return;
         }
 
         // The client sends a typed ride-off action and continues it after the dismount.
         RideOffAction action = RideOffAction.Read(packet);
+        Logger.Information("RequestRide Stop: type={Type} forced={Forced} riding={Riding}", action.Type, action.Forced, session.Ride.Ride != null);
+        if (session.Ride.Ride == null) {
+            // The client still rides while the server has no ride for it, and it sends no new Start while it rides,
+            // so dropping the request would leave it on the mount for good. It gets off only on a Stop for its own
+            // object id (OnResponseRide mode 1), so the requester gets one back (chosen here).
+            session.Send(RidePacket.Stop(session.Player.ObjectId, action));
+            return;
+        }
         session.Ride.Dismount(action);
     }
 
