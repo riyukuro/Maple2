@@ -93,6 +93,29 @@ public class IndividualDropPickTests {
         Assert.That(seen[20000002], Is.GreaterThan(400));
     }
 
+    // KR spawn box 23000080 group 2: smart drop rate 30, rows with both weights (11300596: weight 18, proper 187,
+    // improper 18). The client takes the job weights for a roll only at the rate (GetRandomRange(100, 0) < 30), the
+    // plain weight the rest; a group at 100 always takes the job weights.
+    [Test]
+    public void SmartDropRateUnder100_RollsThePlainWeightsTheRest() {
+        IndividualDropItemTable.Item plainOnly = new([20000001, 0], false, 0, 0, 100, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], false);
+        IndividualDropItemTable.Item jobOnly = new([20000002, 0], false, 100, 0, 0, new IndividualDropItemTable.Range<int>(1, 1), [], 0, 0, false, false, false, false, [], false);
+        int Plains(int rate) {
+            IndividualDropItemTable.Entry group = Group(2, rate, Always, [plainOnly, jobOnly]);
+            int plain = 0;
+            for (int i = 0; i < 2000; i++) {
+                List<IndividualDropItemTable.Item> picked = ItemDropManager.PickGroupEntries(group, group.Items, _ => true,
+                    _ => true, item => item.ProperJobWeight).ToList();
+                Assert.That(picked, Has.Count.EqualTo(1));
+                plain += picked[0].Ids[0] == 20000001 ? 1 : 0;
+            }
+            return plain;
+        }
+
+        Assert.That(Plains(30), Is.InRange(1250, 1550));
+        Assert.That(Plains(100), Is.EqualTo(0));
+    }
+
     [Test]
     public void SmartDropWithoutAJobEntry_GivesNothing() {
         Assert.That(ItemDropManager.PickGroupEntries(Box[0], Box[0].Items, _ => true, _ => false, item => item.ImproperJobWeight), Is.Empty);

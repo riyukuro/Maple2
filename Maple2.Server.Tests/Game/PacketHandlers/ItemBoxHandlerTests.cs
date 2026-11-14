@@ -362,8 +362,9 @@ public class ItemBoxHandlerTests {
         });
     }
 
-    // RewardA x3 at SlotMax 1 goes in as three pieces; with the second piece's write failing, one is in the bag and
-    // the rest is mailed, and the gacha script still shows the 3 the capsule gave (it showed the mailed 2).
+    // RewardA x3 at SlotMax 1 drops as three items of one (ItemDropTable::DropIndividualGroup splits a count by
+    // slotMax); with the second one's write failing it is mailed, two are in the bag, and the gacha script still
+    // shows all three beside RewardB.
     [Test]
     public void OpenGachaBox_Use_FailedWriteMidwayShowsWhatTheCapsuleGave() {
         GameSession session = Login(ItemFunction.OpenGachaBox, $"{GachaInfoId}", amount: 2, rewardSlotMax: 1);
@@ -377,10 +378,10 @@ public class ItemBoxHandlerTests {
         byte[] script = test.TakeSent().Last();
         Assert.Multiple(() => {
             Assert.That(TestGameSession.Op(script), Is.EqualTo(SendOp.ItemScript));
-            Assert.That(BitConverter.ToInt32(script, 3), Is.EqualTo(2));
+            Assert.That(BitConverter.ToInt32(script, 3), Is.EqualTo(4));
             Assert.That(BitConverter.ToInt32(script, 7), Is.EqualTo(RewardA));
-            Assert.That(BitConverter.ToInt32(script, 11), Is.EqualTo(3));
-            Assert.That(Held(session, RewardA), Is.EqualTo(1));
+            Assert.That(BitConverter.ToInt32(script, 11), Is.EqualTo(1));
+            Assert.That(Held(session, RewardA), Is.EqualTo(2));
             Assert.That(Mails(), Is.EqualTo(1));
         });
     }

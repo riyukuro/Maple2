@@ -20,13 +20,15 @@ public class ItemDropManager {
     // level is the NPC's level. It gates both group-level and item-level min/max level checks within
     // globalDropItemBox/globalDropItemSet (e.g. meso amounts in group 103 scale with NPC level).
     // session is the player the drop is rolled for: a quest-only entry (constraintsQuest) is for a player whose quest
-    // still needs the item here (QuestManager.NeedsItem), and never drops when no player is given.
+    // still needs the item here (QuestManager.NeedsItem), and never drops when no player is given. With a player, an
+    // item recommended only for other jobs is left out.
     public ICollection<Item> GetGlobalDropItems(int globalDropBoxId, int level = 0, GameSession? session = null) {
         if (!field.ServerTableMetadata.GlobalDropItemBoxTable.DropGroups.TryGetValue(globalDropBoxId, out Dictionary<int, IList<GlobalDropItemBoxTable.Group>>? dropGroup)) {
             return new List<Item>();
         }
 
         ICollection<Item> results = new List<Item>();
+        JobCode job = session?.Player.Value.Character.Job.Code() ?? JobCode.None;
 
         foreach ((int groupId, IList<GlobalDropItemBoxTable.Group> list) in dropGroup) {
             foreach (GlobalDropItemBoxTable.Group group in list) {
@@ -75,6 +77,12 @@ public class ItemDropManager {
                     if (itemEntry.QuestConstraint && (session == null || !session.Quest.NeedsItem(itemEntry.Id, field.Metadata.Id))) {
                         continue;
                     }
+                    // ItemDropTable::DropGlobal: with a player's job, an item recommended for other jobs is not a
+                    // candidate (KMS2: every job-recommended gear drop from box 1 was for the looter's job).
+                    if (job != JobCode.None && (!field.ItemMetadata.TryGet(itemEntry.Id, out ItemMetadata? itemData)
+                                                || !IsRecommendedInSelectBox(itemData.Limit.JobRecommends, job))) {
+                        continue;
+                    }
                     weightedItems.Add(itemEntry, itemEntry.Weight);
                 }
 
@@ -86,12 +94,14 @@ public class ItemDropManager {
                     GlobalDropItemBoxTable.Item selectedItem = weightedItems.Get();
 
                     int itemAmount = Random.Shared.Next(selectedItem.DropCount.Min, Math.Max(selectedItem.DropCount.Min, selectedItem.DropCount.Max) + 1);
-                    Item? createdItem = CreateItem(selectedItem.Id, selectedItem.Rarity, itemAmount);
-                    if (createdItem == null) {
-                        continue;
-                    }
+                    foreach (int stack in DropStacks(itemAmount, SlotMax(selectedItem.Id))) {
+                        Item? createdItem = CreateItem(selectedItem.Id, selectedItem.Rarity, stack);
+                        if (createdItem == null) {
+                            break;
+                        }
 
-                    results.Add(createdItem);
+                        results.Add(createdItem);
+                    }
                 }
             }
         }
@@ -293,7 +303,7 @@ public class ItemDropManager {
     }
 
     // The entries one rolled group of an individual drop box gives: its drop count rolled, then that many entries
-    // picked by weight (by the player's job when the group has a smart drop rate). A smart drop group whose entries
+    // picked by weight (by the player's job when the group's smart drop rate is rolled). A smart drop group whose entries
     // have no weight at all (neither the plain nor the job weights) gives one of the available entries for the
     // player's job, each as likely, once. A smart group with job weights only is rolled by them like any other.
     internal static IEnumerable<IndividualDropItemTable.Item> PickGroupEntries(IndividualDropItemTable.Entry group,
@@ -316,7 +326,11 @@ public class ItemDropManager {
 
         // A smart group whose rows carry the plain weight only (no row has a job weight, as in box 330002235's
         // group 1) is rolled by that weight; the job weights are what carries the job preference.
-        bool jobWeights = group.SmartDropRate > 0 && itemEntries.Any(x => x.ProperJobWeight != 0 || x.ImproperJobWeight != 0);
+        // The job weights hold for a roll only with a smart drop (ItemDropTable::DropIndividualGroup,
+        // itemdroptable.cpp:1560: bSmartDrop = GetRandomRange(100, 0) < smartDropRate), so a group under a rate of 100
+        // (KR has 284 with both weights, e.g. 23000080's group 2 at 30) rolls its plain weights the rest of the time.
+        bool jobWeights = group.SmartDropRate > 0 && itemEntries.Any(x => x.ProperJobWeight != 0 || x.ImproperJobWeight != 0)
+                          && (group.SmartDropRate >= 100 || random.Next(100) < group.SmartDropRate);
         var weightedItems = new WeightedSet<IndividualDropItemTable.Item>(random);
         foreach (IndividualDropItemTable.Item itemEntry in itemEntries.OrderBy(_ => random.Next()).ToList()) {
             if (!available(itemEntry)) {
@@ -350,6 +364,19 @@ public class ItemDropManager {
             rarity = RollRarity(selectedItem);
         }
 
+        // The count goes out as drops of at most the first item's slotMax (ItemDropTable::DropIndividualGroup), each
+        // its own item at the one rank rolled, and its second id beside each; only the first drop is announced.
+        bool announce = selectedItem.Announce;
+        foreach (int stack in DropStacks(itemAmount, SlotMax(selectedItem.Ids.FirstOrDefault()))) {
+            foreach (Item createdItem in CreateIndividualDropStack(selectedItem, character, rarity, stack, announce)) {
+                yield return createdItem;
+            }
+            announce = false;
+        }
+    }
+
+    private IEnumerable<Item> CreateIndividualDropStack(IndividualDropItemTable.Item selectedItem, Character? character, int rarity,
+            int itemAmount, bool announce) {
         foreach (int itemId in selectedItem.Ids) {
             Item? createdItem = CreateItem(itemId, rarity, itemAmount);
             if (createdItem == null) {
@@ -372,7 +399,7 @@ public class ItemDropManager {
                 createdItem.Enchant = ItemEnchantManager.GetEnchant(field.ServerTableMetadata.EnchantOptionTable, createdItem, selectedItem.EnchantLevel);
             }
 
-            createdItem.AnnounceOnOpen = selectedItem.Announce;
+            createdItem.AnnounceOnOpen = announce;
 
             // The row's socketDataID replaces the item's own socket row (23 of today's 49 rows differ from the item's,
             // e.g. accessories without one get 1003-1005).
@@ -392,6 +419,19 @@ public class ItemDropManager {
             }
 
             yield return createdItem;
+        }
+    }
+
+    private int SlotMax(int itemId) => field.ItemMetadata.TryGet(itemId, out ItemMetadata? metadata) ? metadata.Property.SlotMax : 0;
+
+    // A dropped count split as the client's drop table does (ItemDropTable::DropGlobal, DropIndividualGroup): drops of
+    // at most slotMax, the whole count at once for an item without one (meso). KR has 1096 individual drop rows that
+    // give more than their item's slotMax, such as two of the gear 13100039 (slotMax 1) in box 20002001.
+    internal static IEnumerable<int> DropStacks(int amount, int slotMax) {
+        while (amount > 0) {
+            int stack = slotMax > 0 ? Math.Min(amount, slotMax) : amount;
+            amount -= stack;
+            yield return stack;
         }
     }
 
