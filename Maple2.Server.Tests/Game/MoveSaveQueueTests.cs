@@ -1,10 +1,14 @@
 ﻿using System;
 using System.Collections;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using Grpc.Core;
 using Maple2.Model.Enum;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Network;
+using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -25,6 +29,13 @@ public class MoveSaveQueueTests {
         public override void Handle(GameSession session, IByteReader packet) => Handled++;
     }
 
+    // A handler that runs on the receive thread (as the guild fund donation does).
+    private sealed class InlineRecorder : PacketHandler<GameSession> {
+        public override RecvOp OpCode => RecvOp.Guild;
+        public int Handled;
+        public override void Handle(GameSession session, IByteReader packet) => Handled++;
+    }
+
     // The test session starts as saved and closed (TestGameSession.Start); these play on as a live session does.
     private static GameSession Unsaved(TestGameSession test) {
         GameSession session = test.Start();
@@ -35,6 +46,21 @@ public class MoveSaveQueueTests {
 
     private static void Queue(GameSession session, FieldPacketHandler handler, Action<ByteWriter> write) {
         Assert.That(handler.TryHandleDeferred(session, TestGameSession.Packet(write)), Is.True);
+    }
+
+    // The channel change and the quit are queued and their receive thread waits until the field thread handled
+    // them: queued here from another thread, which returns once the field thread ran it.
+    private static Task<bool> QueueAwaited(GameSession session, FieldManager field, FieldPacketHandler handler, Action<ByteWriter> write) {
+        int before = QueuedCount(field);
+        Task<bool> queued = Task.Run(() => handler.TryHandleDeferred(session, TestGameSession.Packet(write)));
+        SpinWait.SpinUntil(() => QueuedCount(field) > before || queued.IsCompleted, TimeSpan.FromSeconds(10));
+        Assert.That(QueuedCount(field), Is.EqualTo(before + 1));
+        return queued;
+    }
+
+    private static void Ends(Task<bool> queued) {
+        Assert.That(queued.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(queued.Result, Is.True);
     }
 
     // The field thread's run of the queued packets (FieldManager.Update runs it first).
@@ -49,20 +75,40 @@ public class MoveSaveQueueTests {
     private static int QueuedCount(FieldManager field) =>
         ((ICollection) typeof(FieldManager).GetField("queuedPackets", Any)!.GetValue(field)!).Count;
 
+    // The change is queued on the field thread, and its receive thread reads on only once the field thread ran it.
     [Test]
-    public void ChannelAndQuit_RunOnTheFieldThread() {
+    public void ChannelChange_RunsOnTheFieldThread_AndTheReceiveThreadWaits() {
         var test = new TestGameSession();
         GameSession session = Unsaved(test);
         FieldManager field = session.Field!;
         ProcessPackets(field);
 
-        Queue(session, new ChannelHandler { World = test.World }, writer => writer.WriteShort(1));
-        Queue(session, new QuitHandler { World = test.World }, writer => writer.WriteBool(false));
+        Task<bool> queued = QueueAwaited(session, field, new ChannelHandler { World = test.World }, writer => writer.WriteShort(1));
         Assert.Multiple(() => {
-            Assert.That(QueuedCount(field), Is.EqualTo(2));
+            Assert.That(queued.Wait(200), Is.False);
             Assert.That(test.World.Moves, Is.Empty);
-            Assert.That(session.State, Is.EqualTo(SessionState.Connected));
         });
+        ProcessPackets(field);
+        Ends(queued);
+        Assert.That(test.World.Moves, Has.Count.EqualTo(1));
+    }
+
+    // The quit the same way.
+    [Test]
+    public void Quit_RunsOnTheFieldThread_AndTheReceiveThreadWaits() {
+        var test = new TestGameSession();
+        GameSession session = Unsaved(test);
+        FieldManager field = session.Field!;
+        ProcessPackets(field);
+
+        Task<bool> queued = QueueAwaited(session, field, new QuitHandler { World = test.World }, writer => writer.WriteBool(false));
+        Assert.Multiple(() => {
+            Assert.That(queued.Wait(200), Is.False);
+            Assert.That(session.MigrationSaved, Is.False);
+        });
+        ProcessPackets(field);
+        Ends(queued);
+        Assert.That(session.MigrationSaved, Is.True);
     }
 
     // A claim sent right after the channel change is not handled: the change's save is made.
@@ -76,9 +122,10 @@ public class MoveSaveQueueTests {
         var after = new Recorder();
 
         Queue(session, before, _ => { });
-        Queue(session, new ChannelHandler { World = test.World }, writer => writer.WriteShort(1));
+        Task<bool> change = QueueAwaited(session, field, new ChannelHandler { World = test.World }, writer => writer.WriteShort(1));
         Queue(session, after, _ => { });
         ProcessPackets(field);
+        Ends(change);
 
         Assert.Multiple(() => {
             Assert.That(before.Handled, Is.EqualTo(1));
@@ -97,14 +144,39 @@ public class MoveSaveQueueTests {
         ProcessPackets(field);
         var after = new Recorder();
 
-        Queue(session, new QuitHandler { World = test.World }, writer => writer.WriteBool(false));
+        Task<bool> quit = QueueAwaited(session, field, new QuitHandler { World = test.World }, writer => writer.WriteBool(false));
         Queue(session, after, _ => { });
         ProcessPackets(field);
+        Ends(quit);
 
         Assert.Multiple(() => {
             Assert.That(session.MigrationSaved, Is.True);
             Assert.That(after.Handled, Is.EqualTo(0));
         });
+    }
+
+    // A handler that runs on the receive thread is not run after the move's save either (a guild fund donation would
+    // take mesos the save does not hold); after a refused move it runs again.
+    [Test]
+    public void AfterTheMoveSave_ReceiveThreadPacketsAreDropped() {
+        var test = new TestGameSession();
+        GameSession session = Unsaved(test);
+        FieldManager field = session.Field!;
+        ProcessPackets(field);
+        var inline = new InlineRecorder();
+        var router = new PacketRouter<GameSession>(new PacketHandler<GameSession>[] { inline });
+        void Send() => router.OnPacket(session, TestGameSession.Packet(writer => writer.WriteShort((short) RecvOp.Guild)));
+
+        Send();
+        Task<bool> change = QueueAwaited(session, field, new ChannelHandler { World = test.World }, writer => writer.WriteShort(1));
+        ProcessPackets(field);
+        Ends(change);
+        Send();
+        Assert.That(inline.Handled, Is.EqualTo(1));
+
+        typeof(GameSession).GetMethod("MigrationRefused", Any)!.Invoke(session, null);
+        Send();
+        Assert.That(inline.Handled, Is.EqualTo(2));
     }
 
     // A refused change: the player plays on here, and the next packets are handled (the session saves again later).
@@ -117,9 +189,10 @@ public class MoveSaveQueueTests {
         test.World.MoveError = new RpcException(new Status(StatusCode.Unavailable, "refused"));
         var after = new Recorder();
 
-        Queue(session, new ChannelHandler { World = test.World }, writer => writer.WriteShort(1));
+        Task<bool> change = QueueAwaited(session, field, new ChannelHandler { World = test.World }, writer => writer.WriteShort(1));
         Queue(session, after, _ => { });
         ProcessPackets(field);
+        Ends(change);
 
         Assert.Multiple(() => {
             Assert.That(test.World.Moves, Has.Count.EqualTo(1));

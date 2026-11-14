@@ -23,6 +23,13 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class ChannelHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.Channel;
 
+    // Queued on the field thread, and the receive thread waits for it (FieldPacketHandler.QueueAndWait).
+    public override bool TryHandleDeferred(GameSession session, IByteReader reader) => QueueAndWait(session, reader);
+
+    // The World calls of a move made on the field thread: a World that does not answer would else hold every
+    // player's packets in the field (chosen here).
+    internal static readonly TimeSpan MoveCallDeadline = TimeSpan.FromSeconds(10);
+
     // Milliseconds after a refused change during which another one is refused with no save.
     internal const long RefusalWait = 2000;
 
@@ -51,7 +58,7 @@ public class ChannelHandler : FieldPacketHandler {
         // first one (a login pick may be a gap), while the client asks only for a channel of its list.
         ChannelsResponse listed;
         try {
-            listed = World.Channels(new ChannelsRequest());
+            listed = World.Channels(new ChannelsRequest(), deadline: DateTime.UtcNow.Add(MoveCallDeadline));
         } catch (RpcException ex) {
             Logger.Warning("Channel change to {Channel}: no channel list from the World server: {Status}", channel, ex.StatusCode);
             Refuse(session, MigrationError.s_move_err_no_server, null);
@@ -73,7 +80,7 @@ public class ChannelHandler : FieldPacketHandler {
                 PetUid = session.SummonedPetUid,
             };
 
-            MigrateOutResponse response = World.MigrateOut(request);
+            MigrateOutResponse response = World.MigrateOut(request, deadline: DateTime.UtcNow.Add(MoveCallDeadline));
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Channel change", response.IpAddress, response.Port);
                 session.MigrationRefused();
@@ -103,7 +110,7 @@ public class ChannelHandler : FieldPacketHandler {
 
     private ChannelsResponse? Channels() {
         try {
-            return World.Channels(new ChannelsRequest());
+            return World.Channels(new ChannelsRequest(), deadline: DateTime.UtcNow.Add(MoveCallDeadline));
         } catch (RpcException ex) {
             Logger.Warning("Channel list after a refused change not sent: {Status}", ex.StatusCode);
             return null;

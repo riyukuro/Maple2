@@ -188,6 +188,10 @@ public abstract class Session : IDisposable {
     // The time (Environment.TickCount64) the last packet of the client arrived at; the session's start before one.
     public long LastReceivedMs => Interlocked.Read(ref lastReceivedMs);
 
+    // True when no further packet of the client is handled (PacketRouter): a game session that made the save of its
+    // move to another server.
+    public virtual bool DropsPackets => false;
+
     public void MarkReceived(long now) {
         Interlocked.Exchange(ref lastReceivedMs, now);
         Interlocked.Exchange(ref unansweredAsks, 0);

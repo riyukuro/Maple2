@@ -22,6 +22,8 @@ public class PacketRouter<T> where T : Session {
         var op = reader.Read<RecvOp>();
         PacketHandler<T>? handler = handlers.GetValueOrDefault(op);
         if (sender is not T session) return;
+        // A session that handles no more packets (a game session after its move's save, GameSession.DropsPackets).
+        if (session.DropsPackets) return;
 
         // Let another system schedule when to call Handle
         if (handler?.TryHandleDeferred(session, reader) ?? false) {

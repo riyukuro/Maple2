@@ -58,6 +58,8 @@ public sealed partial class GameSession : Core.Network.Session {
     // The session made the save of a move to another server or to the character select, and has not been refused it:
     // a packet handled after it would change state no save stores (FieldManager.ProcessPackets drops it).
     internal bool MigrationSaved => preMigrationSaved;
+    // Every packet after that save is dropped, also those of handlers that run on the receive thread.
+    public override bool DropsPackets => preMigrationSaved;
     // The account's and character's item rows, held from an entry that took the account lock (see EnterServer).
     private IDisposable? heldRows;
     // The account's session generation this entry claimed (GameStorage.ClaimSession): a save writes only while the

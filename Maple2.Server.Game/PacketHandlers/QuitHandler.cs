@@ -16,6 +16,9 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class QuitHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestQuit;
 
+    // Queued on the field thread, and the receive thread waits for it (FieldPacketHandler.QueueAndWait).
+    public override bool TryHandleDeferred(GameSession session, IByteReader reader) => QueueAndWait(session, reader);
+
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
     public required WorldClient World { private get; init; }
@@ -45,7 +48,7 @@ public class QuitHandler : FieldPacketHandler {
                 Server = Server.World.Service.Server.Login,
             };
 
-            MigrateOutResponse response = World.MigrateOut(request);
+            MigrateOutResponse response = World.MigrateOut(request, deadline: DateTime.UtcNow.Add(ChannelHandler.MoveCallDeadline));
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Quit to login", response.IpAddress, response.Port);
                 session.Send(MigrationPacket.GameToLoginError(s_move_err_default));
