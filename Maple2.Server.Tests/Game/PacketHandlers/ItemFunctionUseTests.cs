@@ -336,4 +336,35 @@ public class ItemFunctionUseTests {
         Assert.That(Sent(), Is.EqualTo(new[] { Hex(ItemBoxPacket.Open(key.Id, 0, ItemBoxError.s_err_cannot_open_multi_itembox_inventory)) }));
         Assert.That(session.Item.Inventory.Get(key.Uid)?.Amount, Is.EqualTo(1));
     }
+
+    // 30001093 (CreateReactor 10000000) places KR reactor 10000000 (event 900051) at the player and is used up; the
+    // client checks the event's fields and count first (CanCreateReactor) and sends a plain use. The event's field
+    // and count here are the test's.
+    [Test]
+    public void CreateReactor_PlacesTheReactorAndIsUsedUp() {
+        var reactor = new ReactorTable.Entry(10000000, 155, 1500, 900051, [
+            new ReactorTable.State(100, ReactorStateType.Connect, 0, 60, [new ReactorTable.ConditionItem(30001095, 1, 1, 0)]),
+            new ReactorTable.State(101, ReactorStateType.Sleep, 15, 30, []),
+            new ReactorTable.State(102, ReactorStateType.Reward, 240, 240, []),
+            new ReactorTable.State(103, ReactorStateType.Reward, 1, 1, []),
+        ], [new ReactorTable.Reward(30001097, 1, 1)]);
+        Item item = Login(30001093, ItemFunction.CreateReactor, "10000000", amount: 2, setup: () => {
+            test.AddEvent(900051, GameEventType.reactor, new Reactor([2000062], 3));
+            test.SetTable(new ReactorTable(new Dictionary<int, ReactorTable.Entry> { [10000000] = reactor }));
+        });
+        // The test field is bare: what a placement reads, empty, on one flat poly around the player.
+        typeof(FieldManager).GetField("<Navigation>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session.Field, TriggerHallGameTests.FlatNavigation());
+        foreach (string name in new[] { "reactorAddLock", "fieldReactors", "fieldInteracts", "fieldFunctionInteracts", "fieldAdBalloons", "fieldChests", "fieldPortals" }) {
+            FieldInfo field = typeof(FieldManager).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
+            if (field.GetValue(session.Field) == null) {
+                field.SetValue(session.Field, Activator.CreateInstance(field.FieldType));
+            }
+        }
+
+        Use(item);
+
+        Assert.That(session.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(Sent().Last(), Is.EqualTo(Hex(ReactorPacket.StartReact(10000000))));
+    }
 }
