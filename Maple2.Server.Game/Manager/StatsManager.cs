@@ -25,6 +25,9 @@ public class StatsManager {
     private JobCode levelStatsJob;
     // The effect ids last given by set bonuses (RefreshSetEffects).
     private readonly HashSet<int> setEffectIds = [];
+    // The levels of the effects last given by the additional effect item lines (RefreshLineEffects).
+    private readonly Dictionary<int, short> lineEffects = [];
+    private bool givingLineEffects;
 
     public Stats Values { get; init; }
 
@@ -200,6 +203,7 @@ public class StatsManager {
         Values.AddDerivedTotal(character.Job.Code());
         Values.Total();
         StatConversion(player);
+        RefreshLineEffects(player);
 
         // Current was held through the rebuild; it now keeps its share of the new Total, and a dead player stays at 0 HP until revived.
         Values.EndReset(player.IsDead, levelUp);
@@ -382,6 +386,36 @@ public class StatsManager {
             }
         }
         return bonuses;
+    }
+
+    // The effects of the additional effect item lines (AdditionalEffectLineRules), at the level of the line's total:
+    // the missing ones are given, a changed level replaces the old one, and a line no longer held takes its effect.
+    // They carry no stats, so giving them needs no rebuild; like the set effects they have no duration.
+    internal void RefreshLineEffects(FieldPlayer player) {
+        // A give or take that rebuilds the stats (an effect with a status; the KR ones have none) does not come back here.
+        if (givingLineEffects) {
+            return;
+        }
+        givingLineEffects = true;
+        try {
+            foreach ((SpecialAttribute line, int id) in AdditionalEffectLineRules.Lines) {
+                short level = AdditionalEffectLineRules.Level(Values[line].Total,
+                    at => player.Field.SkillMetadata.TryGetEffect(id, at, out _));
+                lineEffects.TryGetValue(id, out short given);
+                if (level == given && (level == 0 || player.Buffs.HasBuff(id, level))) {
+                    continue;
+                }
+                if (given > 0) {
+                    player.Buffs.Remove(id, player.ObjectId);
+                    lineEffects.Remove(id);
+                }
+                if (level > 0 && player.Buffs.AddBuff(player, player, id, level, player.Field.FieldTick)) {
+                    lineEffects[id] = level;
+                }
+            }
+        } finally {
+            givingLineEffects = false;
+        }
     }
 
     // Set-bonus stats, taken the way a buff's are (AddBuffs).
