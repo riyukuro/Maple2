@@ -1,6 +1,8 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Event;
+using Maple2.Model.Validators;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
@@ -456,6 +458,14 @@ public static class SkillCastRules {
 
     public static int DamagedCount(DamageRecord record, IActor[] targets) {
         return targets.Count(target => DealtDamage(record, target));
+    }
+
+    // A running ShutdownSkillItem event stops the skill of an item it lists (answer 0x2f7). The client checks the
+    // record's item in its inventory before the cast (MyPC::FUN_141525580, client/ms2/mypc.cpp:2507), so the first
+    // motion only; itemId is the inventory item's id, null when the cast has no item there (the pet's bag is not
+    // looked at). events is asked only for such a cast.
+    public static bool ItemShutdownRefuses(bool laterMotion, int? itemId, Func<IEnumerable<GameEvent>> events) {
+        return !laterMotion && itemId is { } id && EventSaleRules.SkillItemShutdown(events(), id);
     }
 
     // A skill that names fields is cast only in one of them: the client does not send it elsewhere (cast check

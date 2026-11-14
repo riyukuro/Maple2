@@ -118,4 +118,5 @@ public enum GameEventType {
     QuestTag,
     EnchantRate,
     NpcShopResetPriceSale,
+    ShutdownSkillItem,
 }

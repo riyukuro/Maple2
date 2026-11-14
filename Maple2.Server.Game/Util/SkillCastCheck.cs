@@ -108,6 +108,12 @@ public static class SkillCastCheck {
             Logger.Debug("Cast refused, no client path gives skill {SkillId} to a player", record.SkillId);
             return false;
         }
+        // A running ShutdownSkillItem event stops the skill of an item it lists (SkillCastRules.ItemShutdownRefuses).
+        int? inventoryItemId = laterMotion || record.ItemUid <= 0 ? null : session.Item.Inventory.Get(record.ItemUid)?.Id;
+        if (SkillCastRules.ItemShutdownRefuses(laterMotion, inventoryItemId, () => session.FindEvent(GameEventType.ShutdownSkillItem))) {
+            Logger.Debug("Cast refused, skill {SkillId}: item {ItemId} is shut down by a running event", record.SkillId, inventoryItemId);
+            return false;
+        }
         bool useItem = record.Metadata.Data.Consume.UseItem;
         if (castTick is { } sentTick && !TimingAllows(session, record, useItem, inAnyTree, sentTick, tick)) {
             return false;

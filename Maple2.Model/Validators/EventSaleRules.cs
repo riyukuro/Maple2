@@ -23,6 +23,17 @@ public static class EventSaleRules {
         return rate;
     }
 
+    // Whether a running ShutdownSkillItem event lists the item (the client's shutdown map, filled at each event's
+    // start, MyPC::FUN_141525580, client/ms2/mypc.cpp:2507). Chosen here: any running event that lists it stops it.
+    public static bool SkillItemShutdown(IEnumerable<GameEvent> events, int itemId) {
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is ShutdownSkillItem shutdown && Array.BinarySearch(shutdown.ItemIds, itemId) >= 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // The running EnchantRate events' highest raise for a try that reaches the level (CGameRule::FUN_14047e370,
     // commonfiles/gamerule.cpp:2544), 0 when none runs.
     public static int EnchantRateRaise(IEnumerable<GameEvent> events, int level) {

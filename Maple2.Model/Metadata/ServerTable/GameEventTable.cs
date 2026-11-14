@@ -493,6 +493,13 @@ public record EnchantRate(
     int EnchantLevel,
     int Rate) : GameEventData;
 
+// The skill item shutdown (GameEventShutdownSkillItem, commonfiles/gameevent.cpp:4426): value1 is a root whose <v itemId/>
+// children name the items, read as unsigned ids, 0 skipped, into a set. While the event runs the client refuses to
+// cast the skill of an item of its inventory with one of these ids (MyPC::FUN_141525580, client/ms2/mypc.cpp:2507,
+// message 0x2f7); the server refuses the same casts (SkillCastCheck). ItemIds is ascending, as the client's set.
+public record ShutdownSkillItem(
+    int[] ItemIds) : GameEventData;
+
 // The black market fee event (GameEventBlackMarketFeeDiscount, commonfiles/gameevent.cpp:1283): value1 is the fee
 // rate in 1/10000 that replaces the normal one while the event runs (GetBlackMarketCostRate,
 // commonfiles/blackmarketitemoption.cpp:233). The client asserts on a rate outside 0..10000; 0 is a free sale.
@@ -889,6 +896,7 @@ public record UserCondition(
 [JsonDerivedType(typeof(EventRate), "EventRate")]
 [JsonDerivedType(typeof(PetMastery), "PetMastery")]
 [JsonDerivedType(typeof(EnchantRate), "EnchantRate")]
+[JsonDerivedType(typeof(ShutdownSkillItem), "ShutdownSkillItem")]
 [JsonDerivedType(typeof(MeratMarketOpenTab), "MeratMarketOpenTab")]
 [JsonDerivedType(typeof(StarShop), "StarShop")]
 [JsonDerivedType(typeof(TransferItemBound), "TransferItemBound")]

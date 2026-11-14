@@ -2201,6 +2201,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventXmlReader.NpcEventDrop(value1);
             case GameEventType.CustomTriggerString:
                 return EventXmlReader.CustomTriggerString(value1);
+            case GameEventType.ShutdownSkillItem:
+                return EventXmlReader.ShutdownSkillItem(value1);
             case GameEventType.NpcShopShowItem:
                 return EventSaleReader.ShopShowItem(value1, value2);
             case GameEventType.CharacterFirstConnect:

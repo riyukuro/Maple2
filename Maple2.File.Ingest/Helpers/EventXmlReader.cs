@@ -258,6 +258,20 @@ public static class EventXmlReader {
         return strings.Count == 0 ? null : new CustomTriggerString(new Dictionary<string, string>(strings));
     }
 
+    // value1 <ms2><v itemId/>...</ms2>: the root's <v> children (GameEventShutdownSkillItem::vfunc_2,
+    // commonfiles/gameevent.cpp:4440), each itemId read as unsigned and 0 skipped, into a set. An id above
+    // int.MaxValue names no item and is skipped too. A row with no item is not stored.
+    public static ShutdownSkillItem? ShutdownSkillItem(string? value1) {
+        var ids = new SortedSet<int>();
+        foreach (XmlElement element in Children(AnyRoot(value1), "v")) {
+            if (uint.TryParse(element.GetAttribute("itemId").Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out uint id)
+                && id is > 0 and <= int.MaxValue) {
+                ids.Add((int) id);
+            }
+        }
+        return ids.Count == 0 ? null : new ShutdownSkillItem(ids.ToArray());
+    }
+
     // The burning levelup's values (GameEventBurningLevelup::vfunc_2, commonfiles/gameevent.cpp:5923). value1's
     // root must have a first element, whose attributes are read whatever its name; a row without it is not stored
     // (the client reads nothing else of it). value2's root must have a first element too, and its <v> items are

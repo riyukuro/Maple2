@@ -479,6 +479,14 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt(petMastery.CaptureRate);
                 writer.WriteInt(petMastery.OtherRate);
                 break;
+            case ShutdownSkillItem shutdownSkillItem:
+                // GameEventShutdownSkillItem::vfunc_4: the id, then the count and each item id, in the set's order.
+                writer.WriteInt(Id);
+                writer.WriteInt(shutdownSkillItem.ItemIds.Length);
+                foreach (int itemId in shutdownSkillItem.ItemIds) {
+                    writer.WriteInt(itemId);
+                }
+                break;
             case EnchantRate enchantRate:
                 // GameEventEnchantRate::vfunc_4: the enchant level, then the raise.
                 writer.WriteInt(Id);
