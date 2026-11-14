@@ -32,9 +32,10 @@ public partial class ChannelService {
         return Task.FromResult(new ChannelsUpdateResponse());
     }
 
-    // The longest a kick waits for the session's end: the send queue's drain (2 s), the account lock's tries (2.5 s)
-    // and the last save, which may wait for a reset being stored (GameSession.ResetWait, 60 s).
-    internal static TimeSpan CloseWait { get; set; } = TimeSpan.FromSeconds(75); // tests shorten it
+    // The longest a kick waits for the session's end: the send queue's drain (2 s), the last save's tries for the
+    // account lock (GameSession.LastSaveLockTries, about 32 s, past the World's 30 s lock expiry) and the last save,
+    // which may wait for a reset being stored (GameSession.ResetWait, 60 s): about 97 s at worst, with some margin.
+    internal static TimeSpan CloseWait { get; set; } = TimeSpan.FromSeconds(105); // tests shorten it
 
     public override Task<DisconnectResponse> Disconnect(DisconnectRequest request, ServerCallContext context) {
         if (request is { CharacterId: <= 0 }) {
