@@ -343,7 +343,9 @@ public class UserChatHandler : FieldPacketHandler {
     }
 
     private void HandleChannel(GameSession session, string message, ICollection<long> itemUids) {
-        var voucher = session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.FreeChannelChatCoupon).FirstOrDefault();
+        // As the world line: an expired coupon is no coupon (Find skips it). Filter kept it, and Consume refused it,
+        // so a held expired coupon (KR 20300080 and 20302776 expire) refused every channel line, merets or not.
+        Item? voucher = ChannelChatCoupon(session);
         if (voucher != null) {
             if (!session.Item.Inventory.Consume(voucher.Uid, 1)) {
                 session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_invalid_item));
@@ -371,6 +373,10 @@ public class UserChatHandler : FieldPacketHandler {
             }
         }
         session.ChannelBroadcast(ChatPacket.Message(session.AccountId, session.CharacterId, session.PlayerName, ChatType.Channel, message, gm: AdminLevel.IsGm(session.Player.AdminPermissions), channel: GameServer.GetChannel()));
+    }
+
+    internal static Item? ChannelChatCoupon(GameSession session) {
+        return session.Item.Inventory.Find(ItemTag.FreeChannelChatCoupon).FirstOrDefault();
     }
 
     // The megaphone item the player selected (SuperChat Select), if it is still in the inventory with the function
