@@ -141,7 +141,7 @@ public sealed class WorldChampionSync {
         }
         (int season, int step, long stepDamage) = answer.Value;
         // A season of another map: none here.
-        WorldChampionTable.Season? row = season != 0 && table().Entries.TryGetValue(season, out WorldChampionTable.Season? found)
+        WorldChampionTable.Season? row = season != 0 && WorldChampionRules.Find(table(), season) is { } found
             && found.MapId == mapId ? found : null;
         WorldChampionTable.Step? stepRow = row == null ? null : WorldChampionRules.StepOf(row, step);
         if (row == null || stepRow == null) {

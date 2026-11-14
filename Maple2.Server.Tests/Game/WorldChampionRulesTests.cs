@@ -47,7 +47,65 @@ public class WorldChampionRulesTests {
             Assert.That(WorldChampionRules.Next(table, Friday.AddDays(-1))?.Id, Is.EqualTo(1));
             Assert.That(WorldChampionRules.Next(table, Friday)?.Id, Is.EqualTo(2));
             Assert.That(WorldChampionRules.Next(table, Friday.AddDays(4))?.Id, Is.EqualTo(2));
-            Assert.That(WorldChampionRules.Next(table, Friday.AddDays(14)), Is.Null);
+            // After the last begin: the last season's week rolled forward (WorldChampion_RollsTheLastWeek).
+            Assert.That(WorldChampionRules.Next(table, Friday.AddDays(14))?.Id, Is.EqualTo(4));
+            Assert.That(WorldChampionRules.Next(table, Friday.AddDays(14))?.Begin, Is.EqualTo(Friday.AddDays(21)));
+        });
+    }
+
+    // KR's last seasons: Saturday and Sunday 19:00-22:00 over two weeks (ids 5-8). Only the last week (7 and 8)
+    // repeats, every week after it, ids from 9 on; Find gives the same season by its id.
+    private static WorldChampionTable WeekendTable() {
+        DateTime saturday = new(2020, 7, 11, 19, 0, 0);
+        WorldChampionTable.Season Evening(int id, DateTime begin) => Season(id, begin) with { End = begin.AddHours(3) };
+        return Table(Evening(5, saturday), Evening(6, saturday.AddDays(1)), Evening(7, saturday.AddDays(7)), Evening(8, saturday.AddDays(8)));
+    }
+
+    [Test]
+    public void WorldChampion_RollsTheLastWeek() {
+        WorldChampionTable table = WeekendTable();
+        DateTime saturday = new(2020, 7, 25, 19, 0, 0);
+        Assert.Multiple(() => {
+            Assert.That(WorldChampionRules.Current(table, saturday.AddHours(1))?.Id, Is.EqualTo(9));
+            Assert.That(WorldChampionRules.Current(table, saturday.AddDays(1).AddHours(1))?.Id, Is.EqualTo(10));
+            Assert.That(WorldChampionRules.Current(table, saturday.AddDays(7).AddHours(1))?.Id, Is.EqualTo(11));
+            Assert.That(WorldChampionRules.Current(table, saturday.AddHours(4)), Is.Null);
+            Assert.That(WorldChampionRules.Current(table, saturday.AddDays(-1)), Is.Null);
+            Assert.That(WorldChampionRules.Next(table, saturday.AddHours(4))?.Id, Is.EqualTo(10));
+            Assert.That(WorldChampionRules.Next(table, saturday.AddDays(1).AddHours(4))?.Begin, Is.EqualTo(saturday.AddDays(7)));
+            WorldChampionTable.Season? rolled = WorldChampionRules.Current(table, saturday.AddHours(1));
+            Assert.That(WorldChampionRules.Find(table, 9), Is.EqualTo(rolled));
+            Assert.That(rolled!.Steps, Is.EqualTo(table.Entries[7].Steps));
+            Assert.That(rolled.End, Is.EqualTo(saturday.AddHours(3)));
+            Assert.That(WorldChampionRules.Find(table, 7), Is.SameAs(table.Entries[7]));
+            Assert.That(WorldChampionRules.Find(table, 4), Is.Null);
+            Assert.That(WorldChampionRules.Find(table, 0), Is.Null);
+            Assert.That(WorldChampionRules.Find(Table(), 9), Is.Null);
+        });
+    }
+
+    // Years on: the season on is the week's, found again by its id, still Saturday 19:00.
+    [Test]
+    public void WorldChampion_RollsYearsOn() {
+        WorldChampionTable table = WeekendTable();
+        DateTime saturday = new(2026, 11, 14, 19, 0, 0);
+        WorldChampionTable.Season? season = WorldChampionRules.Current(table, saturday.AddHours(2));
+        Assert.Multiple(() => {
+            Assert.That(season?.Begin, Is.EqualTo(saturday));
+            Assert.That(WorldChampionRules.Find(table, season!.Id), Is.EqualTo(season));
+            Assert.That(WorldChampionRules.Current(table, saturday.AddDays(1).AddHours(2))?.Id, Is.EqualTo(season.Id + 1));
+        });
+    }
+
+    // A rolled season's rewards are due as a table season's.
+    [Test]
+    public void RewardDue_RolledSeason() {
+        WorldChampionTable table = WeekendTable();
+        DateTime end = new(2020, 7, 25, 22, 0, 0);
+        Assert.Multiple(() => {
+            Assert.That(WorldChampionRules.RewardDue(table, end.AddMinutes(2), 7).Select(s => s.Id), Is.EqualTo(new[] { 8, 9 }));
+            Assert.That(WorldChampionRules.RewardDue(table, end.AddDays(2), 7).Select(s => s.Id), Is.EqualTo(new[] { 9, 10 }));
+            Assert.That(WorldChampionRules.RewardDue(table, end.AddDays(7).AddMinutes(2), 7).Select(s => s.Id), Is.EqualTo(new[] { 10, 11 }));
         });
     }
 

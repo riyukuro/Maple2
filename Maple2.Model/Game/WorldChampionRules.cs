@@ -17,18 +17,75 @@ public static class WorldChampionRules {
 
     // The season on at the time (begin and end included); of two at once the lower id.
     public static WorldChampionTable.Season? Current(WorldChampionTable table, DateTime now) {
-        return table.Entries.Values
+        return table.Entries.Values.Concat(Rolled(table, now, now))
             .Where(season => season.Begin <= now && now <= season.End)
             .MinBy(season => season.Id);
     }
 
-    // The next season to begin after the time.
+    // The next season to begin after the time. The rolled seasons repeat each week, so one begins within the week.
     public static WorldChampionTable.Season? Next(WorldChampionTable table, DateTime now) {
-        return table.Entries.Values
+        return table.Entries.Values.Concat(Rolled(table, now, now.AddDays(7)))
             .Where(season => season.Begin > now)
             .OrderBy(season => season.Begin)
             .ThenBy(season => season.Id)
             .FirstOrDefault();
+    }
+
+    // A season by its id: a row of the table or a rolled one.
+    public static WorldChampionTable.Season? Find(WorldChampionTable table, int id) {
+        if (table.Entries.TryGetValue(id, out WorldChampionTable.Season? season)) {
+            return season;
+        }
+        (int lastId, List<WorldChampionTable.Season> pattern) = Pattern(table);
+        if (pattern.Count == 0 || id <= lastId) {
+            return null;
+        }
+        int index = id - lastId - 1;
+        return RollWeek(pattern[index % pattern.Count], index / pattern.Count + 1, id);
+    }
+
+    // The schedule after the table, the server's (the client has none: every KR and NA season ended in 2020, and the
+    // season window shows the id only as the season's number, s_world_champion_season_info,
+    // uiworldchampionrewarddialog.cpp:295): the seasons that begin in the week up to the last season's begin (KR: 11
+    // and 12, Saturday and Sunday 19:00-22:00) repeat every week after it, with their map, steps, rewards and mail;
+    // the ids go on from the table's highest id in begin order (KR: 13 the Saturday after season 12). The feature
+    // is switched off with WorldChampionMushroom.
+    private static (int LastId, List<WorldChampionTable.Season> Pattern) Pattern(WorldChampionTable table) {
+        if (table.Entries.Count == 0) {
+            return (0, []);
+        }
+        DateTime last = table.Entries.Values.Max(season => season.Begin);
+        List<WorldChampionTable.Season> pattern = table.Entries.Values
+            .Where(season => season.Begin > last.AddDays(-7))
+            .OrderBy(season => season.Begin)
+            .ThenBy(season => season.Id)
+            .ToList();
+        return (table.Entries.Keys.Max(), pattern);
+    }
+
+    private static WorldChampionTable.Season RollWeek(WorldChampionTable.Season season, int weeks, int id) {
+        return season with { Id = id, Begin = season.Begin.AddDays(7 * weeks), End = season.End.AddDays(7 * weeks) };
+    }
+
+    // The rolled seasons that are on at some time from from to to.
+    private static IEnumerable<WorldChampionTable.Season> Rolled(WorldChampionTable table, DateTime from, DateTime to) {
+        (int lastId, List<WorldChampionTable.Season> pattern) = Pattern(table);
+        if (pattern.Count == 0) {
+            yield break;
+        }
+        DateTime earliestEnd = pattern.Min(season => season.End);
+        int week = Math.Max(1, (int) Math.Floor((from - earliestEnd).TotalDays / 7));
+        for (; ; week++) {
+            if (pattern[0].Begin.AddDays(7 * week) > to) {
+                yield break;
+            }
+            for (int i = 0; i < pattern.Count; i++) {
+                WorldChampionTable.Season season = RollWeek(pattern[i], week, lastId + (week - 1) * pattern.Count + i + 1);
+                if (season.Begin <= to && season.End >= from) {
+                    yield return season;
+                }
+            }
+        }
     }
 
     // The World server saves a season's last damage within seconds of its end (WorldChampionLookup.SaveInterval); the
@@ -39,7 +96,7 @@ public static class WorldChampionRules {
     // the end.
     public static IEnumerable<WorldChampionTable.Season> RewardDue(WorldChampionTable table, DateTime now, int rewardDays) {
         int days = rewardDays > 0 ? rewardDays : DefaultRewardDays;
-        return table.Entries.Values
+        return table.Entries.Values.Concat(Rolled(table, now.AddDays(-days), now))
             .Where(season => season.End + RewardDelay < now && now <= season.End.AddDays(days))
             .OrderBy(season => season.Id);
     }

@@ -64,17 +64,32 @@ public class WorldChampionHandlerTests {
         Assert.That(Send(WorldChampionHandler.OpenMode), Is.EqualTo(new[] { WorldChampionPacket.NextSeason(next.Begin).ToArray() }));
     }
 
+    // No season in the table: the notice.
     [Test]
     public void Open_NoSeason() {
-        Start(2000062, Season(3, DateTime.Now.AddDays(-9)));
+        Start(2000062);
         test.World.WorldChampion = new WorldChampionInfo();
         Assert.That(Send(WorldChampionHandler.OpenMode), Is.EqualTo(new[] { WorldChampionPacket.NoSeason().ToArray() }));
+    }
+
+    // Every season of the table has ended: the last one's week repeats, the next id on (WorldChampionRules.Find).
+    [Test]
+    public void Open_RolledSeason() {
+        Start(2000062, Season(3, DateTime.Now.AddDays(-9)));
+        test.World.WorldChampion = new WorldChampionInfo { Season = 4, Step = 2 };
+        WorldChampionTable.Season rolled = Season(3, DateTime.Now.AddDays(-9)) with { Id = 4 };
+        rolled = rolled with { Begin = rolled.Begin.AddDays(7), End = rolled.End.AddDays(7) };
+        byte[] sent = Send(WorldChampionHandler.OpenMode).Single();
+        Assert.That(sent[3..7], Is.EqualTo(BitConverter.GetBytes(4)));
+        Assert.That(sent[7..15], Is.EqualTo(BitConverter.GetBytes(new DateTimeOffset(rolled.Begin).ToUnixTimeSeconds())));
+        Assert.That(sent[15..23], Is.EqualTo(BitConverter.GetBytes(new DateTimeOffset(rolled.End).ToUnixTimeSeconds())));
+        Assert.That(sent[24], Is.EqualTo(2));
     }
 
     // No season on: the notice; on the season's field already: nothing.
     [Test]
     public void Move_NoSeasonOrThere() {
-        Start(2000062, Season(3, DateTime.Now.AddDays(-9)));
+        Start(2000062);
         Assert.That(Send(WorldChampionHandler.MoveMode), Is.EqualTo(new[] { WorldChampionPacket.NoSeason().ToArray() }));
         Start(2000423, Season(3, DateTime.Now.AddHours(-1)));
         Assert.That(Send(WorldChampionHandler.MoveMode), Is.Empty);
@@ -124,7 +139,7 @@ public class WorldChampionHandlerTests {
         Start(2000062, Season(3, DateTime.Now.AddHours(-1)));
         test.World.WorldChampion = new WorldChampionInfo { Season = 3, Step = 3 };
         Assert.That(WorldChampionHandler.MapIcon(test.Session), Is.Null);
-        Start(2000062, Season(3, DateTime.Now.AddDays(-9)));
+        Start(2000062);
         Assert.That(WorldChampionHandler.MapIcon(test.Session), Is.Null);
         Start(2000062, false, Season(3, DateTime.Now.AddHours(-1)));
         Assert.That(WorldChampionHandler.MapIcon(test.Session), Is.Null);

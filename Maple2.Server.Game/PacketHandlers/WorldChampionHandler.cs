@@ -47,7 +47,7 @@ public class WorldChampionHandler : FieldPacketHandler {
         }
         WorldChampionTable table = session.ServerTableMetadata.WorldChampionTable;
         (int Season, int Step) on = State(session) ?? (WorldChampionRules.Current(table, DateTime.Now)?.Id ?? 0, 1);
-        if (on.Season != 0 && table.Entries.TryGetValue(on.Season, out WorldChampionTable.Season? season)) {
+        if (on.Season != 0 && WorldChampionRules.Find(table, on.Season) is { } season) {
             session.Send(WorldChampionPacket.Season(season, on.Step));
             return;
         }
