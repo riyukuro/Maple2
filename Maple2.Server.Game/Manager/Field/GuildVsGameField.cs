@@ -90,8 +90,6 @@ public sealed class GuildVsGameState {
 // The guild vs game of its field (a World match, CreateFieldGame GuildVsGame, or the first arrival in the map): it tags the players
 // with their guild's team, scores the rounds and gives the result and rewards the script asks for.
 public sealed class GuildVsGameField {
-    public const string ContributionWin = "winMiniGame";
-    public const string ContributionLose = "loseMiniGame";
     // OnPacketVsGameReward's kinds (guildmanager.cpp:2707).
     public const byte RewardExp = 1;
     public const byte RewardFund = 2;
@@ -219,12 +217,12 @@ public sealed class GuildVsGameField {
         if (!State.TakeReward(team, "contribution")) {
             return;
         }
-        int value = field.TableMetadata.GuildTable.Contributions?.GetValueOrDefault(isWin ? ContributionWin : ContributionLose) ?? 0;
-        if (value <= 0) {
+        string kind = isWin ? GuildContributionKind.WinMiniGame : GuildContributionKind.LoseMiniGame;
+        if (field.TableMetadata.GuildTable.ContributionOf(kind) <= 0) {
             return;
         }
         foreach (FieldPlayer player in TeamPlayers(team)) {
-            player.Session.Guild.AddContribution(value);
+            player.Session.Guild.AddContribution(kind);
         }
     }
 

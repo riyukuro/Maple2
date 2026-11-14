@@ -889,6 +889,11 @@ public sealed class QuestManager {
         } else {
             session.Guild.AddExpFund(reward.GuildExp, reward.GuildFund);
         }
+        // A guild daily or weekly quest is worth its contribution row to the member.
+        string? contributionKind = GuildRules.QuestContributionKind(quest.Metadata.Basic.Type, quest.Metadata.Basic.Repeat);
+        if (contributionKind != null) {
+            session.Guild.AddContribution(contributionKind);
+        }
 
         int missionPoints = MissionPointRules.PointsCounted(reward.MissionPoint);
         if (missionPoints > 0) {

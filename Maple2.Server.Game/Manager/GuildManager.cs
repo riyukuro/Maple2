@@ -318,10 +318,11 @@ public class GuildManager : IDisposable {
         });
     }
 
-    // Contribution this player earned outside the guild dialog (the guild vs game's result) goes to World, which keeps
-    // the member's value and tells the guild; off the caller's thread, as a raid clear. Null when nothing is added.
-    public Task? AddContribution(int contribution) {
-        if (Guild == null || contribution <= 0) {
+    // Contribution of one kind (GuildContributionKind) this player earned outside the guild dialog (the guild vs game,
+    // a guild quest) goes to World, which reads the kind's row, keeps the member's value and tells the guild; off the
+    // caller's thread, as a raid clear. Null when nothing is added (no guild, or the kind has no row).
+    public Task? AddContribution(string kind) {
+        if (Guild == null || session.TableMetadata.GuildTable.ContributionOf(kind) <= 0) {
             return null;
         }
 
@@ -329,14 +330,14 @@ public class GuildManager : IDisposable {
             RequestorId = session.CharacterId,
             AddContribution = new GuildRequest.Types.AddContribution {
                 GuildId = Guild.Id,
-                Contribution = contribution,
+                Kind = kind,
             },
         };
         return Task.Run(() => {
             try {
                 session.World.Guild(request);
             } catch (Exception ex) {
-                logger.Warning(ex, "Guild contribution failed: {Contribution}", contribution);
+                logger.Warning(ex, "Guild contribution failed: {Kind}", kind);
             }
         });
     }

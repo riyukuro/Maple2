@@ -392,10 +392,12 @@ message GuildRequest {
     int64 guild_id = 1;
     int32 dungeon_room_id = 2;
   }
-  // Contribution a member earned outside the guild dialog (the guild vs game's result).
+  // Contribution a member earned outside the guild dialog: its kind of table/guildcontribution.xml (winMiniGame,
+  // dailyQuest, ...), whose row World reads.
   message AddContribution {
     int64 guild_id = 1;
-    int32 contribution = 2;
+    reserved 2; // the amount, before World read the table
+    string kind = 3;
   }
   // Guild 115: the guild takes a guild vs game ticket.
   message VsGameRegister {

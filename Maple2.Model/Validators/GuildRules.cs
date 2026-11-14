@@ -522,6 +522,20 @@ public static class GuildRules {
         return (long) ((float) value * (1.0f + bonus));
     }
 
+    // The contribution kind of a completed quest (table/guildcontribution.xml): a guild quest done again on another day
+    // (basic repeatable 2) is a daily quest, one done again from the week's reset day (3) a weekly quest; any other
+    // quest gives none.
+    public static string? QuestContributionKind(QuestType type, int repeat) {
+        if (type != QuestType.GuildQuest) {
+            return null;
+        }
+        return repeat switch {
+            2 => GuildContributionKind.DailyQuest,
+            3 => GuildContributionKind.WeeklyQuest,
+            _ => null,
+        };
+    }
+
     // The weekly reset: each member's weekly contribution goes back to 0 (the total stays), under the member's
     // lock as a check-in or a donation adds to it. Returns the members that had any.
     public static int ResetWeeklyContribution(IEnumerable<GuildMember> members) {

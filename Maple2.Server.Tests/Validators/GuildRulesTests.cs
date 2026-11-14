@@ -1,5 +1,6 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Tools.Extensions;
@@ -160,5 +161,16 @@ public class GuildRulesTests {
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("""<ms2><v str="A&amp;B" /></ms2>"""));
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("""<ms2><v str="A&amp;B" /></ms2>"""));
         Assert.That(reader.ReadByte(), Is.EqualTo(0), "no items");
+    }
+
+    // A guild quest's contribution kind by its basic repeatable: 2 daily, 3 weekly, any other none; other quest types none.
+    [TestCase(QuestType.GuildQuest, 2, GuildContributionKind.DailyQuest)]
+    [TestCase(QuestType.GuildQuest, 3, GuildContributionKind.WeeklyQuest)]
+    [TestCase(QuestType.GuildQuest, 0, null)]
+    [TestCase(QuestType.GuildQuest, 1, null)]
+    [TestCase(QuestType.EpicQuest, 2, null)]
+    [TestCase(QuestType.FieldQuest, 3, null)]
+    public void QuestContributionKind_ByRepeat(QuestType type, int repeat, string? kind) {
+        Assert.That(GuildRules.QuestContributionKind(type, repeat), Is.EqualTo(kind));
     }
 }

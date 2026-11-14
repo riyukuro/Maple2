@@ -502,7 +502,7 @@ public partial class WorldService {
             return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
         }
 
-        GuildError error = manager.AddContribution(requestorId, add.Contribution);
+        GuildError error = manager.AddContribution(requestorId, add.Kind);
         if (error != GuildError.none) {
             return new GuildResponse { Error = (int) error };
         }
