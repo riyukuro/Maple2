@@ -1234,6 +1234,8 @@ public class SkillCastRulesTests {
             Assert.That(property.Element, Is.EqualTo((Element) 3));
             Assert.That(property.AttackType, Is.EqualTo((AttackType) 1));
             Assert.That((property.SkillGroup, property.MaxLevel, property.MainType, property.UnrideOnUse), Is.EqualTo((7, (short) 2, 4, true)));
+            // No releaseObjectWeapon: the client's default is true (SkillData ctor, skilloverlapcompare.cpp:670).
+            Assert.That(property.ReleaseObjectWeapon, Is.True);
             Assert.That((state.InBattle, state.SuperArmor, state.CooldownGroupId, state.RechargeMaxCount, state.RechargeShared, state.ClearCooldownOnPvpZone),
                 Is.EqualTo((true, (SuperArmor) 3, 12, 2, true, true)));
 
@@ -1460,6 +1462,28 @@ public class SkillCastRulesTests {
             Assert.That(SkillCastRules.RecoveryFullRefusal([null, Rec()], full, full, full), Is.Null, "no recovery");
             Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(sp: 70), Rec(hp: 200)], full, notFull, notFull), Is.EqualTo(8), "every effect is tested");
             Assert.That(SkillCastRules.RecoveryFullRefusal([Rec(hp: 200)], (120, 100), notFull, notFull), Is.EqualTo(8), "over the total");
+        });
+    }
+
+    // FUN_14176a8c0's answer 0x20: a job level 2 skill (main or sub) on a GuildPvp instance field; 0x21: a main type 4
+    // skill without a held weapon of that skill.
+    [Test]
+    public void GuildPvpAwakeningAndHeldWeapon_AreTheClientsAnswers() {
+        JobTable.Skill[] awakening = [new JobTable.Skill(10300001, [10300002], 10, 0)];
+        bool Awakening(int skillId = 10300001, bool later = false, bool guildPvp = true, JobTable.Skill[]? skills = null) =>
+            SkillCastRules.GuildPvpAwakeningRefuses(skillId, later, guildPvp, () => skills ?? awakening);
+        Assert.Multiple(() => {
+            Assert.That(Awakening(), Is.True);
+            Assert.That(Awakening(skillId: 10300002), Is.True);
+            Assert.That(Awakening(skillId: 10300003), Is.False);
+            Assert.That(Awakening(guildPvp: false), Is.False);
+            Assert.That(Awakening(later: true), Is.False);
+            Assert.That(Awakening(skills: []), Is.False);
+            Assert.That(SkillCastRules.HeldWeaponRefuses(90000001, false, 4, null), Is.True);
+            Assert.That(SkillCastRules.HeldWeaponRefuses(90000001, false, 4, 90000002), Is.True);
+            Assert.That(SkillCastRules.HeldWeaponRefuses(90000001, false, 4, 90000001), Is.False);
+            Assert.That(SkillCastRules.HeldWeaponRefuses(90000001, true, 4, null), Is.False);
+            Assert.That(SkillCastRules.HeldWeaponRefuses(90000001, false, 0, 90000002), Is.False);
         });
     }
 }

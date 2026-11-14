@@ -84,14 +84,6 @@ public class SkillHandler : FieldPacketHandler {
         int skillId = packet.ReadInt();
         short level = packet.ReadShort();
 
-        if (session.HeldLiftup != null) {
-            if (session.HeldLiftup.SkillId == skillId && session.HeldLiftup.Level == level) {
-                session.HeldLiftup = null;
-            } else {
-                // Cannot use other skills while holding LiftupWeapon.
-                return;
-            }
-        }
         byte motionPoint = packet.ReadByte();
         var position = packet.Read<Vector3>();
         var direction = packet.Read<Vector3>();
@@ -138,6 +130,11 @@ public class SkillHandler : FieldPacketHandler {
             return;
         }
 
+        // A held object weapon is let go when a skill that releases it starts, once the cast is taken (StateSkill::vfunc_4, stateskill.cpp:481;
+        // releaseObjectWeapon is true unless the skill's data says 0), whichever skill it is.
+        if (session.HeldLiftup != null && record.Metadata.Property.ReleaseObjectWeapon) {
+            session.HeldLiftup = null;
+        }
         session.Player.InBattle = record.Metadata.State.InBattle;
         session.Player.ActiveSkills.Add(record, startTick, SkillHitRules.CastKeepMs(record.Metadata, session.Field.TableMetadata.MagicPathTable.Entries));
         session.Field.Broadcast(SkillPacket.Use(record));

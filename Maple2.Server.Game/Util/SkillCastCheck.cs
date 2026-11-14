@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -99,6 +100,16 @@ public static class SkillCastCheck {
                 ContentShutdownConfig.Contents.Contains(SkillCastRules.LapenshardSkillContent),
                 session.Config.WornLapenshards().Select(itemId => session.ItemMetadata.TryGet(itemId, out ItemMetadata? item) ? item.Skill : null))) {
             Logger.Debug("Cast refused, skill {SkillId}: a worn shard gives it and field {MapId} is a PvP field", record.SkillId, session.Field.MapId);
+            return false;
+        }
+        if (SkillCastRules.GuildPvpAwakeningRefuses(record.SkillId, laterMotion, session.Field.FieldInstance?.Type == InstanceType.GuildPvp,
+                () => session.TableMetadata.JobTable.Entries.TryGetValue(session.Player.Value.Character.Job.Code(), out JobTable.Entry? job)
+                    ? job.Skills.GetValueOrDefault(SkillRank.Awakening) : null)) {
+            Logger.Debug("Cast refused, skill {SkillId} is an awakening skill and field {MapId} is a guild PvP field", record.SkillId, session.Field.MapId);
+            return false;
+        }
+        if (SkillCastRules.HeldWeaponRefuses(record.SkillId, laterMotion, record.Metadata.Property.MainType, session.HeldLiftup?.SkillId)) {
+            Logger.Debug("Cast refused, skill {SkillId} is an object weapon's skill and no weapon of it is held", record.SkillId);
             return false;
         }
         if (SkillCastRules.EpFieldRefuses(session.Field.Metadata.Limit.Dash, record.Metadata.Data.Consume.Stat.GetValueOrDefault(BasicAttribute.Stamina))) {

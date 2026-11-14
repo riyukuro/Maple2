@@ -634,6 +634,27 @@ public static class SkillCastRules {
         return wornShardSkills.Any(skill => skill != null && skill.Id == skillId);
     }
 
+    // FUN_14176a8c0's answer 0x20 (skillslot.cpp:3321-3326): a skill of the player's job at job level 2 (awakening;
+    // JobSystem::FindSkill finds main and sub skills, a sub skill carrying its parent's level) is not cast on a field
+    // whose instance type is GuildPvp (the RequestFieldEnter type the client keeps, DAT_143ab287c == 7). The server's
+    // job table lists the awakening skills (main and sub) of the job as the client's job level 2 set for a second job
+    // change, a subset of it for a first, so it never refuses what the client allows.
+    public static bool GuildPvpAwakeningRefuses(int skillId, bool laterMotion, bool guildPvpField, Func<IEnumerable<JobTable.Skill>?> awakening) {
+        if (laterMotion || !guildPvpField) {
+            return false;
+        }
+        return awakening()?.Any(skill => skill.Main == skillId || skill.Sub.Contains(skillId)) ?? false;
+    }
+
+    // FUN_14176a8c0's answer 0x21 (skillslot.cpp:3327-3336): a skill of main type 4 (an object weapon's skill) is cast
+    // only while a weapon is held whose item skill is this skill (CItemData::FUN_14053dc90). Only the id is compared:
+    // the client does not compare the level, and it refuses no other skill while one is held.
+    public const int ObjectWeaponMainType = 4;
+
+    public static bool HeldWeaponRefuses(int skillId, bool laterMotion, int mainType, int? heldWeaponSkillId) {
+        return !laterMotion && mainType == ObjectWeaponMainType && heldWeaponSkillId != skillId;
+    }
+
     // The client's buffs follow the server's by packet, so for a moment after a change the two disagree: a buff the
     // server just lost (removed, expired or turned off) the client may still hold, and one the server just gained the
     // client may not hold yet. Chosen here: a buff state that changed this long ago or less counts both ways.

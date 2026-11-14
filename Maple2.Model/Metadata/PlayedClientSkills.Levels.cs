@@ -30,7 +30,7 @@ public static partial class PlayedClientSkills {
             ImmediateActive: Number(kinds, "immediateActive") != 0,
             UnrideOnHit: false,
             UnrideOnUse: Number(kinds, "unrideOnUse") != 0,
-            ReleaseObjectWeapon: Number(kinds, "releaseObjectWeapon") != 0,
+            ReleaseObjectWeapon: Number(kinds, "releaseObjectWeapon", 1) != 0,
             SkillGroup: Number(kinds, "groupIDs"),
             MaxLevel: maxLevel,
             Emotion: "",
