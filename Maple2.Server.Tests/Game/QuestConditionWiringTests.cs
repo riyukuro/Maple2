@@ -414,6 +414,38 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
+
+    // The rod picked at Prepare left the bag before the catch: the client stops fishing then (Fishing 1 from
+    // CFishingManager::Update), so a catch still sent ends the cast with no fish. With the rod in the bag it counts.
+    [TestCase(true, 1)]
+    [TestCase(false, 0)]
+    public void Fish_40001960_NeedsTheRodInTheBag(bool rodInBag, int counter) {
+        Start();
+        test.EnterMap(LimitedMap(2000001));
+        SetSkills();
+        var fish = new FishTable.Fish(10000001, LiquidType.water, 80, 6, 1, 3, 1, 54, 15000, 10000, 8000,
+            new FishTable.Range<int>(20, 30), new FishTable.Range<int>(40, 50), [], 0, false);
+        test.SetServerTable(new FishTable(new Dictionary<int, FishTable.Fish> { [fish.Id] = fish },
+            new Dictionary<int, FishTable.Spot> { [2000001] = new(2000001, 0, 1189, [LiquidType.water], 0, 0, 0, 0, 1, 1) },
+            new Dictionary<int, IReadOnlyDictionary<short, FishTable.Lure>>(), new Dictionary<int, FishTable.FishBox>(),
+            new Dictionary<int, FishTable.FishBox>()));
+        test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>>()));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
+        Item rod = test.Store(TestGameSession.Metadata(32000001));
+        if (rodInBag) {
+            Assert.That(test.Session.Item.Inventory.Add(rod), Is.True);
+        }
+        test.Session.Fishing = new FishingManager(test.Session, test.TableMetadata, test.ServerTableMetadata);
+        typeof(FishingManager).GetField("rod", Any)!.SetValue(test.Session.Fishing, rod);
+        var tile = new FishingTile((FieldFluidEntity) RuntimeHelpers.GetUninitializedObject(typeof(FieldFluidEntity)), 0);
+        Quest quest = StartQuest(Condition(ConditionType.fish, 3, [], []));
+
+        test.Session.Fishing.Cast(tile, fish, fishBites: true, fishBiteTick: 0, fightGame: false);
+        test.Session.Fishing.Catch(true);
+
+        Assert.That(test.Session.Fishing.Casting, Is.False);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(counter));
+    }
     #endregion
     #region controller (FunctionCubeHandler, furniture taken into use)
     // 10002669: <condition type="controller" code="50400096" value="1" />, the placed furniture's item id is the code:

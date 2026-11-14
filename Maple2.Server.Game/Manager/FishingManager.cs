@@ -74,6 +74,9 @@ public class FishingManager {
         EndCast();
     }
 
+    // The rod picked at Prepare has left the bag since (sold, dropped or put in storage: the client stops).
+    private bool RodGone() => rod != null && session.Item.Inventory.Get(rod.Uid) == null;
+
     // Whether a cast is open: started (mode 9) and not yet ended by a catch, a lost reel game or a leave.
     internal bool Casting => selectedTile != null || selectedFish != null;
 
@@ -102,6 +105,11 @@ public class FishingManager {
             return FishingError.s_fishing_error_ugcmap;
         }
         if (session.GuideObject != null || session.Field?.AccelerationStructure == null) {
+            return FishingError.s_fishing_error_system_error;
+        }
+        // The client asks only from a state that can fish (CFishingManager, the state check before Fishing 0): never
+        // while dead.
+        if (session.Player.IsDead) {
             return FishingError.s_fishing_error_system_error;
         }
 
@@ -373,7 +381,11 @@ public class FishingManager {
             return FishingError.s_fishing_error_system_error;
         }
 
-        if (rod?.Metadata.Function?.Type != ItemFunction.FishingRod) {
+        if (session.Player.IsDead) {
+            return FishingError.s_fishing_error_system_error;
+        }
+
+        if (rod?.Metadata.Function?.Type != ItemFunction.FishingRod || RodGone()) {
             return FishingError.s_fishing_error_invalid_item;
         }
 
@@ -422,6 +434,13 @@ public class FishingManager {
     public FishingError Catch(bool success) {
         if (selectedTile == null || selectedFish == null || session.Field is null) {
             return FishingError.s_fishing_error_system_error;
+        }
+
+        // No catch for a player who died or whose rod left the bag during the cast: the client ends the fishing
+        // (Fishing 1) as soon as its rod is gone (CFishingManager::Update), so the cast just ends.
+        if (session.Player.IsDead || RodGone()) {
+            EndCast();
+            return FishingError.none;
         }
 
         if (!serverTableMetadata.FishTable.Spots.TryGetValue(session.Field.MapId, out FishTable.Spot? spotMetadata)) { // Should not happen.
