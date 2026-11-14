@@ -11,7 +11,7 @@ namespace Maple2.Model.Validators;
 /// </summary>
 public static class SpecialEffectRules {
     public const int NpcRankDamage = 2; // damage taken from the npcs of the ranks, less by reduceRate
-    public const int WorldBossReward = 3; // no values: not applied
+    public const int WorldBossReward = 3; // a world boss kill drops its boxes once more
     public const int Enchant = 5; // enchantLevel, improveRate: no base reward to raise, not applied
     public const int CraftCopy = 6; // no values: not applied
     public const int QuestReward = 7; // the exp, meso and rue of a quest of the repeat type
@@ -19,7 +19,7 @@ public static class SpecialEffectRules {
     public const int Fishing = 9; // fishing exp and mastery
     public const int Music = 10; // music score exp
     public const int ValorToken = 11; // the valor tokens of a won ranked duel
-    public const int Rest = 12; // no values: not applied
+    public const int Rest = 12; // rest exp in the major cities (RestCities)
     public const int ChestDropBox = 13; // a chest of the exp type gives an individual drop box more
 
     public static bool Rolls(SpecialEffectMetadata effect, Random random) {
@@ -95,6 +95,17 @@ public static class SpecialEffectRules {
     public static bool ItemBoxApplies(SpecialEffectMetadata effect, int itemId) {
         return effect.ItemIds?.Contains(itemId) == true;
     }
+
+    // Type 12 (110001026): "Visiting major cities will now grant rest experience during your stay", the tooltip's
+    // cities: Tria, Ellinia, Perion, Lith Harbor, Henesys, Kerning City, Taliskar and Ludari City. Their quest copies
+    // (52xxxxxx) are left out. Rest exp grows there as at home (RestExpRules.Tick).
+    public static readonly int[] RestCities = [2000001, 2000023, 2000051, 2000062, 2000076, 2000100, 2000270, 2010002];
+
+    public static bool RestCity(int mapId) => RestCities.Contains(mapId);
+
+    // Type 3: a world boss kill's extra drops for a holder, one more of the kill's drops per effect taken
+    // (110000007 "Doubles world boss item drops", always; 110001014 "a chance to earn an extra reward", 5 %).
+    public static int WorldBossExtraDrops(IEnumerable<SpecialEffectMetadata> taken) => taken.Count(effect => effect.Type == WorldBossReward);
 
     // Type 2: the factor of the damage a holder takes from an npc of a rank (its Basic class).
     public static float NpcRankDamageFactor(IEnumerable<SpecialEffectMetadata> held, int npcRank, Random random) {

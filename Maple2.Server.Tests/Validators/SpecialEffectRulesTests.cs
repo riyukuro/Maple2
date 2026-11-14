@@ -21,6 +21,9 @@ public class SpecialEffectRulesTests {
     internal static readonly SpecialEffectMetadata WoodChest = new(13, 0.006f, "s_additionalEffect_Special_110001020", ExpType: ExpType.normalChest, IndividualDropBoxId: 382000002);
     internal static readonly SpecialEffectMetadata PrestigeBox = new(8, 0.1f, "s_additionalEffect_Special_110001024", ItemIds: [30001133]);
     internal static readonly SpecialEffectMetadata EliteRank = new(2, 1, "", NpcRanks: [3, 7], ReduceRate: 0.06f); // 110001013
+    internal static readonly SpecialEffectMetadata WorldBossDouble = new(3, 1, ""); // 110000007
+    internal static readonly SpecialEffectMetadata WorldBossChance = new(3, 0.05f, "s_additionalEffect_Special_110001014");
+    internal static readonly SpecialEffectMetadata CityRest = new(12, 1, ""); // 110001026
 
     // Its NextDouble is the value given.
     internal sealed class FixedRandom(double value) : Random {
@@ -106,11 +109,37 @@ public class SpecialEffectRulesTests {
         Assert.That(SpecialEffectRules.NpcRankDamageFactor([], 3, Loses), Is.EqualTo(1f));
     }
 
+    // 110000007 always one more of a world boss's drops, 110001014 one more at 5 %; both held and won, two more.
+    [Test]
+    public void WorldBoss_OneMorePerEffectTaken() {
+        Assert.That(SpecialEffectRules.WorldBossExtraDrops(SpecialEffectRules.Taken([WorldBossDouble], 3, Loses)), Is.EqualTo(1));
+        Assert.That(SpecialEffectRules.WorldBossExtraDrops(SpecialEffectRules.Taken([WorldBossChance], 3, Loses)), Is.EqualTo(0));
+        Assert.That(SpecialEffectRules.WorldBossExtraDrops(SpecialEffectRules.Taken([WorldBossChance], 3, new FixedRandom(0.049))), Is.EqualTo(1));
+        Assert.That(SpecialEffectRules.WorldBossExtraDrops(SpecialEffectRules.Taken([WorldBossDouble, WorldBossChance, Valor], 3, Wins)), Is.EqualTo(2));
+    }
+
+    // 110001026's eight cities (Tria 02000001 ... Ludari 02010002); not their quest copies or another field.
+    [TestCase(2000001, true)]
+    [TestCase(2000023, true)]
+    [TestCase(2000051, true)]
+    [TestCase(2000062, true)]
+    [TestCase(2000076, true)]
+    [TestCase(2000100, true)]
+    [TestCase(2000270, true)]
+    [TestCase(2010002, true)]
+    [TestCase(52000001, false)]
+    [TestCase(2000002, false)]
+    [TestCase(62000000, false)]
+    public void Rest_TheTooltipsCities(int mapId, bool city) {
+        Assert.That(SpecialEffectRules.RestCity(mapId), Is.EqualTo(city));
+    }
+
     [Test]
     public void TypesNotApplied_AreNotTaken() {
-        SpecialEffectMetadata[] held = [new(3, 1, ""), new(6, 0.5f, ""), new(12, 1, ""), new(5, 0.1f, "", EnchantLevel: 10, ImproveRate: 1)];
-        int[] used = [SpecialEffectRules.NpcRankDamage, SpecialEffectRules.QuestReward, SpecialEffectRules.ItemBoxAgain, SpecialEffectRules.Fishing,
-            SpecialEffectRules.Music, SpecialEffectRules.ValorToken, SpecialEffectRules.ChestDropBox];
+        SpecialEffectMetadata[] held = [new(6, 0.5f, ""), new(5, 0.1f, "", EnchantLevel: 10, ImproveRate: 1)];
+        int[] used = [SpecialEffectRules.NpcRankDamage, SpecialEffectRules.WorldBossReward, SpecialEffectRules.QuestReward,
+            SpecialEffectRules.ItemBoxAgain, SpecialEffectRules.Fishing, SpecialEffectRules.Music, SpecialEffectRules.ValorToken,
+            SpecialEffectRules.Rest, SpecialEffectRules.ChestDropBox];
         Assert.That(used.SelectMany(type => SpecialEffectRules.Taken(held, type, Wins)), Is.Empty);
     }
 }

@@ -86,8 +86,15 @@ public class FieldPlayer : Actor<Player> {
     // The party buffs follow the party members in the field; checked once a second.
     private const int PartyBuffIntervalMs = 1000;
     private long partyBuffTick;
-    // At home rest exp grows every RestExpRules.TickMs, the first time one tick after entering.
+    // At home rest exp grows every RestExpRules.TickMs, the first time one tick after entering; in a major city too
+    // while a type 12 special effect is held (RestsIn).
     private long restExpTick;
+
+    // Whether rest exp grows in a map: at home, or in a major city with a type 12 effect (SpecialEffectRules.RestCities).
+    internal static bool RestsIn(int mapId, BuffManager buffs) {
+        return mapId == Constant.DefaultHomeMapId
+               || SpecialEffectRules.RestCity(mapId) && buffs.TakeSpecialEffects(SpecialEffectRules.Rest).Count > 0;
+    }
 
     // The emotion skill of the last state sync (0: none), the tick its time was last counted at and the time not
     // counted yet (see TrophyTimeRules).
@@ -254,12 +261,14 @@ public class FieldPlayer : Actor<Player> {
             Session.UgcMarket.ExpireDue(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         }
 
-        if (Field.MapId == Constant.DefaultHomeMapId) {
+        if (Field.MapId == Constant.DefaultHomeMapId || SpecialEffectRules.RestCity(Field.MapId)) {
             if (restExpTick == 0) {
                 restExpTick = tickCount + RestExpRules.TickMs;
             } else if (tickCount >= restExpTick) {
                 restExpTick = tickCount + RestExpRules.TickMs;
-                Session.Exp.TickRestExp();
+                if (RestsIn(Field.MapId, Buffs)) {
+                    Session.Exp.TickRestExp();
+                }
             }
         }
 

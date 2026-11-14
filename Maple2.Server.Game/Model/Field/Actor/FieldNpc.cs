@@ -948,6 +948,12 @@ public class FieldNpc : Actor<Npc> {
         }
     }
 
+    // A world boss kill's extra drops for a dealer (SpecialEffectRules.WorldBossExtraDrops): its type 3 effects roll,
+    // and send their activateMsg, on a world boss kill only.
+    internal static int WorldBossExtraDrops(FieldPlayer player, bool worldBoss) {
+        return worldBoss ? SpecialEffectRules.WorldBossExtraDrops(player.Buffs.TakeSpecialEffects(SpecialEffectRules.WorldBossReward)) : 0;
+    }
+
     // The npc kill drop rate (SpecialAttribute.DropRate, KR gear options npckilldropitemincrate) as the drop rate of the
     // kill's global boxes (ItemDropContext m_dropRate, 1 when none; the client never sets it).
     internal static float KillDropRate(FieldPlayer player) {
@@ -1007,6 +1013,10 @@ public class FieldNpc : Actor<Npc> {
 
             DropGlobalLoot(player);
             DropIndividualLoot(player);
+            for (int extra = WorldBossExtraDrops(player, WorldBossDeathCallback != null); extra > 0; extra--) {
+                DropGlobalLoot(player);
+                DropIndividualLoot(player);
+            }
             // The kill counts for the streak before its exp, which the streak's bonus raises.
             player.Session.Exp.OnKill(Value.Metadata.Basic.Level, Environment.TickCount64);
             // KMS2: a dealer who is dead when the npc dies still gets its drop box, but no kill exp.

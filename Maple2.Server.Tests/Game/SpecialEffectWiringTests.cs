@@ -109,6 +109,41 @@ public class SpecialEffectWiringTests {
         Assert.That(DamageCalculator.NpcRankDamageFactor(player, player), Is.EqualTo(1f));
     }
 
+    // 110000007 / 110001014: a world boss kill's drops once more per effect won, 110001014 with its message; another
+    // npc's kill takes none (and sends nothing).
+    [Test]
+    public void WorldBoss_ExtraDrops() {
+        test = new TestGameSession();
+        GameSession session = test.Start();
+        FieldPlayer player = session.Player;
+        Assert.That(FieldNpc.WorldBossExtraDrops(player, true), Is.EqualTo(0), "not held");
+        Hold(player, SpecialEffectRulesTests.WorldBossChance, 0.999);
+        Assert.That(FieldNpc.WorldBossExtraDrops(player, true), Is.EqualTo(0), "lost roll");
+        Hold(player, SpecialEffectRulesTests.WorldBossChance, 0);
+        test.TakeSent();
+        Assert.That(FieldNpc.WorldBossExtraDrops(player, false), Is.EqualTo(0), "not a world boss");
+        Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.Notice));
+        Assert.That(FieldNpc.WorldBossExtraDrops(player, true), Is.EqualTo(2));
+        Assert.That(test.TakeSentOps(), Does.Contain(SendOp.Notice), "activateMsg");
+        Hold(player, SpecialEffectRulesTests.WorldBossDouble, 0.999);
+        Assert.That(FieldNpc.WorldBossExtraDrops(player, true), Is.EqualTo(1), "110000007 always, the two chances lost");
+    }
+
+    // 110001026: rest exp grows in a tooltip city while held; at home always; elsewhere never.
+    [TestCase(2000001, false, false)]
+    [TestCase(2000001, true, true)]
+    [TestCase(2010002, true, true)]
+    [TestCase(2000002, true, false)]
+    [TestCase(Constant.DefaultHomeMapId, false, true)]
+    public void Rest_InTheCities(int mapId, bool held, bool rests) {
+        test = new TestGameSession();
+        FieldPlayer player = test.Start().Player;
+        if (held) {
+            Hold(player, SpecialEffectRulesTests.CityRest, 0.999);
+        }
+        Assert.That(FieldPlayer.RestsIn(mapId, player.Buffs), Is.EqualTo(rests));
+    }
+
     // A buff whose begin condition fails holds no special effect.
     [Test]
     public void DisabledBuff_HoldsNone() {
