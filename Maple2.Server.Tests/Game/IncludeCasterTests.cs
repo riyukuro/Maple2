@@ -130,4 +130,21 @@ public class IncludeCasterTests {
             Assert.That(Targets(scene, scene.A, Splash(IncludeCasterType.Last, ApplyTargetType.HungryMobs)), Is.Empty);
         });
     }
+
+    // The client's filter ORs the caster's forceApplyTarget in before the hungry mob bit is read: a charmed player
+    // (forceApplyTarget 2) passes it on the friendly bit, so his snare takes him as any friendly range would.
+    [Test]
+    public void HungryMobRange_CharmedPlayerTakesHimself() {
+        Scene scene = Start();
+        MethodInfo takes = typeof(FieldManager).GetMethod("TakesCaster", BindingFlags.Static | BindingFlags.NonPublic)!;
+        Assert.That(takes.Invoke(null, [scene.A, Splash(apply: ApplyTargetType.HungryMobs)]), Is.False);
+
+        var buffs = (ConcurrentDictionary<int, List<Buff>>) typeof(BuffManager).GetField("buffs", Any)!.GetValue(scene.A.Buffs)!;
+        Buff charm = DisabledBuffTests.Held(DisabledBuffTests.Effect(Charm,
+            property: DisabledBuffTests.Property with { ForceApplyTarget = 2 }), true);
+        typeof(Buff).GetField("<Caster>k__BackingField", Any)!.SetValue(charm, scene.A);
+        typeof(Buff).GetField("<Owner>k__BackingField", Any)!.SetValue(charm, scene.A);
+        buffs[Charm] = [charm];
+        Assert.That(takes.Invoke(null, [scene.A, Splash(apply: ApplyTargetType.HungryMobs)]), Is.True);
+    }
 }

@@ -1364,19 +1364,22 @@ public partial class FieldManager {
     // alone takes him only when his own team is 2 (PCBase::vfunc_122 compares teams; an npc's team is its friendly
     // value), so a monster's hostile splash with includeCaster (60036032, Lazy Stumpy's) does not hit the monster.
     // The same filter leaves out a hidden caster unless the flags have bit 4 (TargetSource).
-    // Chosen here: a range of no kind or of the hungry mobs keeps the caster as before.
+    // The hungry mob bit (8) takes a wild pet, and nothing else unless a friendly or hostile bit does: a player's
+    // snare (93000002, includeCaster 1) does not take its player, as the client's query never returns him.
+    // Chosen here: a range of no kind keeps the caster as before.
     private static bool TakesCaster(IActor caster, SkillMetadataRange range) {
-        // The client adds the caster only when its target query returns it (basecollision.cpp:240-300): the hungry
-        // mob query returns wild pets alone, so a player's snare (93000002, includeCaster 1) never takes its player.
-        if (range.ApplyTarget == ApplyTargetType.HungryMobs) {
-            return caster is FieldPet { OwnerId: 0 };
-        }
         int flags = (int) range.ApplyTarget | ForceApplyTarget(caster);
         if ((flags & 4) == 0 && IsHidden(caster)) {
             return false;
         }
-        if ((flags & (int) ApplyTargetType.Friendly) != 0 || (flags & (int) ApplyTargetType.Hostile) == 0) {
+        if ((flags & (int) ApplyTargetType.HungryMobs) != 0 && caster is FieldPet { OwnerId: 0 }) {
             return true;
+        }
+        if ((flags & (int) ApplyTargetType.Friendly) != 0) {
+            return true;
+        }
+        if ((flags & (int) ApplyTargetType.Hostile) == 0) {
+            return (flags & (int) ApplyTargetType.HungryMobs) == 0;
         }
         return caster is FieldNpc { Value.Metadata.Basic.Friendly: 2 };
     }
