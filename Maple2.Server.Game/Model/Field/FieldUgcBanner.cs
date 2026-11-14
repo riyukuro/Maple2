@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Metadata;
 using Maple2.Model.Game.Ugc;
+using Maple2.Model.Validators;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 
@@ -17,14 +18,15 @@ public class FieldUgcBanner : UgcBanner, IUpdatable {
         lock (Slots) {
             DeleteOldBannerSlots(dateTimeOffset);
 
-            BannerSlot? slot = Slots.FirstOrDefault(x => x.ActivateTime.Day == dateTimeOffset.Day && x.ActivateTime.Hour == dateTimeOffset.Hour);
-
-            if (slot is null || slot.Expired || slot.Active) {
+            if (!UgcRules.SetLiveBannerSlot(Slots, dateTimeOffset)) {
                 return;
             }
-
-            slot.Active = true;
         }
+        field.Broadcast(UgcPacket.ActivateBanner(this));
+    }
+
+    // Sends the live slot to the field again (a design confirmed during its live hour).
+    public void Show() {
         field.Broadcast(UgcPacket.ActivateBanner(this));
     }
 

@@ -2,6 +2,7 @@
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Ugc;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Tools.Extensions;
@@ -163,9 +164,9 @@ public static class UgcPacket {
         pWriter.WriteInt(banners.Count);
         foreach (UgcBanner ugcBanner in banners) {
             pWriter.WriteLong(ugcBanner.Id);
-            BannerSlot? activeSlot = ugcBanner.SlotsSnapshot().FirstOrDefault(x => x.Active);
-            pWriter.WriteBool(activeSlot?.Template is not null);
-            if (activeSlot?.Template is null) {
+            BannerSlot? activeSlot = UgcRules.LiveDesign(ugcBanner.SlotsSnapshot());
+            pWriter.WriteBool(activeSlot is not null);
+            if (activeSlot is null) {
                 continue;
             }
 
@@ -184,9 +185,9 @@ public static class UgcPacket {
         var pWriter = Packet.Of(SendOp.Ugc);
         pWriter.Write<Command>(Command.EnableBanner);
         pWriter.WriteLong(ugcBanner.Id);
-        BannerSlot? activeSlot = ugcBanner.SlotsSnapshot().FirstOrDefault(x => x.Active);
-        pWriter.WriteBool(activeSlot?.Template is not null);
-        if (activeSlot?.Template is null) {
+        BannerSlot? activeSlot = UgcRules.LiveDesign(ugcBanner.SlotsSnapshot());
+        pWriter.WriteBool(activeSlot is not null);
+        if (activeSlot is null) {
             return pWriter;
         }
 

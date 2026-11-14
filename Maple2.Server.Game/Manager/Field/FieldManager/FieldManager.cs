@@ -491,15 +491,9 @@ public partial class FieldManager : IField {
             FieldUgcBanner ugcBanner = new(this, entry.Id, MapId, db.FindBannerSlotsByBannerId(entry.Id));
             Banners[entry.Id] = ugcBanner;
 
-            DateTimeOffset dateTimeOffset = DateTimeOffset.UtcNow;
-
-            BannerSlot? slot = ugcBanner.Slots.FirstOrDefault(x => x.ActivateTime.Day == dateTimeOffset.Day && x.ActivateTime.Hour == dateTimeOffset.Hour);
-
-            if (slot is null || slot.Expired || slot.Active) {
-                continue;
+            lock (ugcBanner.Slots) {
+                UgcRules.SetLiveBannerSlot(ugcBanner.Slots, DateTimeOffset.UtcNow);
             }
-
-            slot.Active = true;
         }
 
         InitWorldChampion();

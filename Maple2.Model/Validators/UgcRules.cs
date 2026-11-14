@@ -19,6 +19,33 @@ public static class UgcRules {
         return year is >= 1 and <= 9999 && month is >= 1 and <= 12 && day >= 1 && day <= DateTime.DaysInMonth(year, month);
     }
 
+    // The banner's live slot is the one of the current hour (date and hour, UTC); every other slot is not active.
+    // Before, a slot went live when its day of the month and hour matched (a slot of the 5th of next month went
+    // live on the 5th of this one), and a live slot stayed live until it was deleted 4 hours after its start, so
+    // the first of them in the list (LoadBanners, ActivateBanner) showed over the later hours bought after it.
+    // Returns whether a flag changed; the caller then sends the banner's live slot (none restores the default
+    // image, CUgcManager::FUN_141887dc0). Call under lock (slots).
+    public static bool SetLiveBannerSlot(List<BannerSlot> slots, DateTimeOffset now) {
+        DateTimeOffset utc = now.ToUniversalTime();
+        int date = utc.Year * 10000 + utc.Month * 100 + utc.Day;
+        bool changed = false;
+        foreach (BannerSlot slot in slots) {
+            bool live = !slot.Expired && slot.Date == date && slot.Hour == utc.Hour;
+            if (slot.Active != live) {
+                slot.Active = live;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    // The live slot when it has a design whose picture arrived (its url set by the confirmation); a design
+    // still waiting for its picture is not sent, as the client would download an empty url.
+    public static BannerSlot? LiveDesign(IEnumerable<BannerSlot> slots) {
+        BannerSlot? live = slots.FirstOrDefault(slot => slot.Active);
+        return live?.Template is { Url: { Length: > 0 } } ? live : null;
+    }
+
     // The slot's hour has not ended yet (slot times are UTC, as the banner's own clock).
     public static bool BannerTimeOpen(int date, int hour, DateTimeOffset now) {
         if (!BannerTimeValid(date, hour)) {

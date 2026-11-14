@@ -585,6 +585,11 @@ public class UgcHandler : FieldPacketHandler {
                     db.UpdateBannerSlot(slot);
                 }
             }
+            // A slot already live shows the picture now, to everyone on the banner's field; else the field kept the
+            // default image until the hour ended (the live slot is sent only when it changes).
+            if (banner is FieldUgcBanner live && staged.Any(slot => slot.Active)) {
+                live.Show();
+            }
             // banner (23100186 "Reserve an image registration on the billboard"): +1 per confirmed upload.
             session.ConditionUpdate(ConditionType.banner);
 

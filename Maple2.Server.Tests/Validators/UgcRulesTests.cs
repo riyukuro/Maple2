@@ -351,4 +351,32 @@ public class UgcRulesTests {
         Assert.That(UgcRules.ProfilePathValid($"data/profiles/avatar/0/{file}.png", 0), Is.False);
         Assert.That(UgcRules.ProfilePathValid("data/profiles/avatar/77/" + new string('a', 200) + ".png", 77), Is.False);
     }
+
+    // The live slot is the current hour's by date and hour: a slot of the same day and hour of another month is not,
+    // and the earlier hour's slot stops being live when the next hour starts, also with no slot in that hour.
+    [Test]
+    public void LiveBannerSlot_IsTheCurrentHoursOnly() {
+        var earlier = new BannerSlot(1, 20261105, 10);
+        var current = new BannerSlot(1, 20261105, 11);
+        var nextMonth = new BannerSlot(1, 20261205, 11);
+        var slots = new List<BannerSlot> { earlier, current, nextMonth };
+
+        Assert.That(UgcRules.SetLiveBannerSlot(slots, new DateTimeOffset(2026, 11, 5, 10, 30, 0, TimeSpan.Zero)), Is.True);
+        Assert.That(slots.Where(slot => slot.Active), Is.EqualTo(new[] { earlier }));
+        Assert.That(UgcRules.SetLiveBannerSlot(slots, new DateTimeOffset(2026, 11, 5, 10, 59, 0, TimeSpan.Zero)), Is.False);
+
+        Assert.That(UgcRules.SetLiveBannerSlot(slots, new DateTimeOffset(2026, 11, 5, 11, 0, 0, TimeSpan.Zero)), Is.True);
+        Assert.That(slots.Where(slot => slot.Active), Is.EqualTo(new[] { current }));
+        Assert.That(slots.FirstOrDefault(slot => slot.Active), Is.SameAs(current));
+
+        // Another zone's clock is the same instant.
+        Assert.That(UgcRules.SetLiveBannerSlot(slots, new DateTimeOffset(2026, 11, 5, 20, 10, 0, TimeSpan.FromHours(9))), Is.False);
+
+        Assert.That(UgcRules.SetLiveBannerSlot(slots, new DateTimeOffset(2026, 11, 5, 12, 0, 0, TimeSpan.Zero)), Is.True);
+        Assert.That(slots.Where(slot => slot.Active), Is.Empty);
+
+        current.Expired = true;
+        Assert.That(UgcRules.SetLiveBannerSlot(slots, new DateTimeOffset(2026, 11, 5, 11, 0, 0, TimeSpan.Zero)), Is.False);
+        Assert.That(slots.Where(slot => slot.Active), Is.Empty);
+    }
 }
