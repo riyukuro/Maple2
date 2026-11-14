@@ -62,17 +62,22 @@ public class MentoringManager : IDisposable {
         }
         GameEvent? gameEvent = session.FindEvent(GameEventType.ReturnUser).FirstOrDefault();
         if (gameEvent?.Metadata.Data is not ReturnUser returnUser) {
-            // No season runs; the client's menu does not open the dialog then.
-            if (role == MentorRole.Mentee) {
-                session.Send(MentorPacket.Error(MentorError.IsNotReturnUser));
-            }
+            // No season runs; the client's menu does not open the dialog then, so only a dialog left open from
+            // the season gets here. The register box waits for Mentor 4 or 8, so each refusal sends a notice:
+            // a mentee "not a returning user" (1), a mentor "invalid target" (3), as the client's error list
+            // (CMentoringManager::OnError, 1 to 9) has no season text; its own season notice is local
+            // (uigamemenudialog.cpp:2059).
+            session.Send(MentorPacket.Error(role == MentorRole.Mentee ? MentorError.IsNotReturnUser : MentorError.InvalidTarget));
             return;
         }
         if (Role is MentorRole.Mentee or MentorRole.Mentor) {
-            // A second press of the own page's button is dropped. The other page's button gets the client's
+            // A second press of the own page's button gets the register notice again (Mentor 4 or 8), which closes
+            // the box that waits for it; nothing is stored again. The other page's button gets the client's
             // "invalid target" notice (chosen here: the client has no notice of its own for it).
             if (Role != role) {
                 session.Send(MentorPacket.Error(MentorError.InvalidTarget));
+            } else {
+                session.Send(role == MentorRole.Mentee ? MentorPacket.AssignReturningUser() : MentorPacket.AssignMentor());
             }
             return;
         }
@@ -226,8 +231,11 @@ public class MentoringManager : IDisposable {
 
     // UIInviteMentoringDialog::InviteMentor (uiinvitementoringdialog.cpp:408): a mentor invites a mentee by name. The
     // mentor gets Mentor 5 with the mentee's name; the mentee, when online, Mentor 14 with the request.
+    // The client removes a candidate row as soon as it sends (uiinvitementoringdialog.cpp:431), so every refusal
+    // answers with a notice; a sender who is no mentor, or one without a season, gets "invalid target" (3).
     public void Invite(string name) {
         if (Role != MentorRole.Mentor) {
+            session.Send(MentorPacket.Error(MentorError.InvalidTarget));
             return;
         }
 
@@ -248,6 +256,7 @@ public class MentoringManager : IDisposable {
             return;
         }
         if (Season == null) {
+            session.Send(MentorPacket.Error(MentorError.InvalidTarget));
             return;
         }
 

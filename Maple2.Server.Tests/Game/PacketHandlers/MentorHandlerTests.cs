@@ -170,22 +170,22 @@ public class MentorHandlerTests {
     }
 
     [Test]
-    public void RegisterMentor_WithoutASeasonIsDropped() {
+    public void RegisterMentor_WithoutASeasonIsRefused() {
         Login(season: false);
         Send(session, RegisterMentor);
 
-        Assert.That(Mentor(test), Is.Empty);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.InvalidTarget) }));
         Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.None));
     }
 
     [Test]
-    public void Register_TwiceIsDropped() {
+    public void Register_TwiceAnswersTheNoticeAgain() {
         Login(season: true);
         Send(session, RegisterMentee);
         Mentor(test);
         Send(session, RegisterMentee);
 
-        Assert.That(Mentor(test), Is.Empty);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { "04" }));
         Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentee));
         Assert.That(test.World.PlayerUpdates.Count(update => update.HasMentorRole), Is.EqualTo(1));
     }
@@ -300,14 +300,14 @@ public class MentorHandlerTests {
         WorldKnowsOther();
         InviteOther();
 
-        Assert.That(Mentor(test), Is.Empty);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.InvalidTarget) }));
         Assert.That(Mentor(otherTest), Is.Empty);
         Assert.That(Rows(), Is.Empty);
         Assert.That(test.World.MentoringRequests, Is.Empty);
     }
 
     [Test]
-    public void Invite_FromAPlayerWhoIsNoMentorIsDropped() {
+    public void Invite_FromAPlayerWhoIsNoMentorIsRefused() {
         Login(season: true);
         WorldKnowsOther();
         Send(session, Invite, writer => {
@@ -315,7 +315,19 @@ public class MentorHandlerTests {
             writer.WriteUnicodeString(other.PlayerName);
         });
 
-        Assert.That(Mentor(test), Is.Empty);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.InvalidTarget) }));
+        Assert.That(Rows(), Is.Empty);
+    }
+
+    [Test]
+    public void RegisterMentor_TwiceAnswersTheNoticeAgain() {
+        Login(season: true);
+        Send(session, RegisterMentor);
+        Mentor(test);
+        Send(session, RegisterMentor);
+
+        Assert.That(Mentor(test), Is.EqualTo(new[] { "08" }));
+        Assert.That(test.World.PlayerUpdates.Count(update => update.HasMentorRole), Is.EqualTo(1));
     }
 
     [TestCase(Accept)]
