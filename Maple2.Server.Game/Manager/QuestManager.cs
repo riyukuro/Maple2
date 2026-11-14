@@ -569,6 +569,10 @@ public sealed class QuestManager {
             return false;
         }
 
+        if (!QuestRules.GuildJoinWaitOver(metadata.Basic, GuildJoinTime(), DateTimeOffset.UtcNow.ToUnixTimeSeconds())) {
+            return false;
+        }
+
         if (!MeetsDungeonRequires(require)) {
             return false;
         }
@@ -604,6 +608,11 @@ public sealed class QuestManager {
         }
         return true;
     }
+
+    // The player's guild join time (CGuildMember fc8, the JoinTime GuildMember writes), 0 out of a guild as the
+    // client's vfunc_o10_12 reads it (questmanager_2.cpp:476).
+    private long GuildJoinTime() =>
+        session.Guild?.Guild is { } guild && guild.Members.TryGetValue(session.CharacterId, out GuildMember? member) ? member.JoinTime : 0;
 
     private int DungeonClears(int dungeonId) =>
         session.Dungeon.Records.TryGetValue(dungeonId, out DungeonRecord? record) ? record.TotalClears : 0;
@@ -727,11 +736,12 @@ public sealed class QuestManager {
     }
 
     /// <summary>
-    /// A completed quest whose repeat lets it be started again now (QuestRules.CanStartAgain). Not a guild quest: the
-    /// client adds a wait of a day or a week from a time the server does not keep (questdata.cpp:399).
+    /// A completed quest whose repeat lets it be started again now (QuestRules.CanStartAgain). A guild quest too: the
+    /// client repeats it by the same rule (vfunc_o10_21, questdata.cpp:376-395) and adds only the wait after joining
+    /// the guild (CanStart, QuestRules.GuildJoinWaitOver). Before, a completed guild daily or weekly never started again.
     /// </summary>
     public static bool CanStartAgain(Quest quest) {
-        return quest.State == QuestState.Completed && quest.Metadata.Basic.Type != QuestType.GuildQuest
+        return quest.State == QuestState.Completed
                && QuestRules.CanStartAgain(quest.Metadata.Basic.Repeat, quest.Metadata.Basic.ResetWeekday, quest.StartTime, DateTime.Now);
     }
 

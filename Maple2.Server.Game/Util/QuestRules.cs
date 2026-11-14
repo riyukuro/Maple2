@@ -78,6 +78,15 @@ public static class QuestRules {
     public static bool OnWeekday(int[]? weekdays, DateTime now) =>
         weekdays == null || weekdays.Contains((int) now.DayOfWeek + 1);
 
+    // Quest type 6 (guild; vfunc_o10_21, questdata.cpp:398-413): a daily guild quest (repeat 2) is accepted a day
+    // after the player joined the guild, a weekly one (repeat 3) seven days after; the join time is 0 out of a guild.
+    public static bool GuildJoinWaitOver(QuestMetadataBasic basic, long joinTime, long now) =>
+        basic.Type != QuestType.GuildQuest || basic.Repeat switch {
+            2 => now >= joinTime + 86400,
+            3 => now >= joinTime + 7 * 86400,
+            _ => true,
+        };
+
     // A completed quest that may be started again, the client's own rule (CQuestManagerCommon::vfunc_o10_21,
     // commonfiles/questdata.cpp:376): repeat 0 never; 2 (daily) not on the calendar day the quest was last
     // started; 3 (weekly) not before the start of the reset weekday after the last start (NextWeekdayStart,

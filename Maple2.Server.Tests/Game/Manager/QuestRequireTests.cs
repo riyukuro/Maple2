@@ -226,4 +226,41 @@ public class QuestRequireTests {
             Assert.That(session.Quest.TryGetQuest(GuildQuest, out Quest? held) && session.Quest.CanComplete(held), Is.True);
         });
     }
+
+    // Guild quests (type 6; KR 73000001 daily, 73000050 weekly; vfunc_o10_21, questdata.cpp:376-413): a completed
+    // one starts again by its repeat rule as any quest. Before, a completed guild quest never started again.
+    [TestCase(2, false)]
+    [TestCase(3, true)]
+    public void GuildQuest_CompletedStartsAgainByItsRepeat(int repeat, bool weekly) {
+        QuestMetadata metadata = TestGameSession.QuestData(weekly ? 73000050 : GuildQuest, QuestType.GuildQuest);
+        metadata = metadata with { Basic = metadata.Basic with { Repeat = repeat } };
+        var quest = new Quest(metadata) {
+            State = QuestState.Completed,
+            StartTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 8 * 86400,
+        };
+        Assert.That(QuestManager.CanStartAgain(quest), Is.True);
+    }
+
+    // The wait after joining the guild (questdata.cpp:398-413): a day for a daily guild quest, seven days for a weekly
+    // one, from the member's join time; other quest types and repeats wait nothing.
+    [TestCase(QuestType.GuildQuest, 2, 3600, false)]
+    [TestCase(QuestType.GuildQuest, 2, 86400, true)]
+    [TestCase(QuestType.GuildQuest, 3, 2 * 86400, false)]
+    [TestCase(QuestType.GuildQuest, 3, 7 * 86400, true)]
+    [TestCase(QuestType.GuildQuest, 0, 60, true)]
+    [TestCase(QuestType.WorldQuest, 2, 60, true)]
+    public void GuildQuest_WaitAfterJoining(QuestType type, int repeat, int joinedAgo, bool canStart) {
+        SetGuild(1);
+        var info = new PlayerInfo(new CharacterInfo(session.AccountId, session.CharacterId, "a", "", "", Gender.Male, Job.Newbie, 20), "",
+            new AchievementInfo(), []) {
+            Channel = -1,
+        };
+        session.Guild.Guild!.Members[session.CharacterId] = new GuildMember {
+            GuildId = session.Guild.Guild.Id, Info = info, JoinTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - joinedAgo,
+        };
+        QuestMetadata metadata = TestGameSession.QuestData(GuildQuest, type);
+        metadata = metadata with { Basic = metadata.Basic with { Repeat = repeat }, Require = Require() with { GuildNpcLevel = 1 } };
+        test.Register(metadata);
+        Assert.That(session.Quest.CanStart(metadata), Is.EqualTo(canStart));
+    }
 }
