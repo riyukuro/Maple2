@@ -119,4 +119,8 @@ public enum GameEventType {
     EnchantRate,
     NpcShopResetPriceSale,
     ShutdownSkillItem,
+    ShutdownMapleSurvivalSquad,
+    ShutdownMapleSurvivalPass,
+    ShutdownSurvivalObserver,
+    MapleSurvivalPassBundle,
 }

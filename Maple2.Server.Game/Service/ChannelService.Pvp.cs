@@ -1,5 +1,6 @@
 ﻿using Grpc.Core;
 using Maple2.Server.Channel.Service;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -28,7 +29,7 @@ public partial class ChannelService {
                 if (request.Matched) {
                     session.Send(PartyPacket.SurvivalPartySearch(false, false));
                 }
-                session.Send(request.Matched ? MapleSurvivalPacket.Matched(request.CharacterId, false) : MapleSurvivalPacket.Idle());
+                session.Send(request.Matched ? MapleSurvivalPacket.Matched(MapleSurvivalProgress.RankingCharacter(session), false) : MapleSurvivalPacket.Idle());
             } else if (request.Arena != 0) {
                 session.Send(request.Matched ? PvpPacket.ArenaMatchFound(request.Arena) : PvpPacket.ArenaUnregistered());
             } else {

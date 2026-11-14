@@ -7,6 +7,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Trigger.Helpers;
@@ -21,6 +22,7 @@ public class MapleSurvivalTests {
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
     private static string Long(long value) => Convert.ToHexString(BitConverter.GetBytes(value));
     private static string Float(float value) => Convert.ToHexString(BitConverter.GetBytes(value));
+    private static string Int(int value) => Convert.ToHexString(BitConverter.GetBytes(value));
 
     // Survival 0x119 (op bytes 1901), SurvivalEvent 0x116 (1601).
     [Test]
@@ -35,6 +37,7 @@ public class MapleSurvivalTests {
         Assert.That(Hex(MapleSurvivalPacket.OwnKills(3)), Is.EqualTo("1901" + "1A" + "03000000"));
         Assert.That(Hex(MapleSurvivalPacket.Survivors(19, 20)), Is.EqualTo("1901" + "1B" + "13000000" + "14000000" + "00"));
         Assert.That(Hex(MapleSurvivalPacket.InStorm()), Is.EqualTo("1901" + "1D"));
+        Assert.That(Hex(MapleSurvivalPacket.FallFeed("A", 3)), Is.EqualTo("1901" + "19" + "01" + "03000000" + "0100" + "4100"));
         Assert.That(Hex(MapleSurvivalPacket.LevelProgress(100, 2, 2)), Is.EqualTo("1901" + "15" + Long(100) + "02000000" + "02000000"));
         Assert.That(Hex(MapleSurvivalPacket.SkinAdded(1, 0x1e, long.MaxValue)), Is.EqualTo("1901" + "1F" + "01" + "1E000000" + Long(long.MaxValue)));
         Assert.That(Hex(MapleSurvivalPacket.SkinLearned(2, 0x1e)), Is.EqualTo("1901" + "21" + "02" + "1E000000"));
@@ -42,6 +45,12 @@ public class MapleSurvivalTests {
         string result = Hex(MapleSurvivalPacket.Result([1, 0, 2, 20]));
         Assert.That(result, Is.EqualTo("1901" + "11" + "01000000" + "00000000" + "02000000" + "14000000" + string.Concat(Enumerable.Repeat("00000000", 12))
             + string.Concat(Enumerable.Repeat("00000000", 4)) + "00"));
+        // The items the level rewards gave: 5 at most (the window's slots), each id, rarity, amount, 4 false bools.
+        var given = Enumerable.Range(1, 6).Select(i => new MapleSurvivalProgress.ResultItem(20000000 + i, 3, i)).ToList();
+        string withItems = Hex(MapleSurvivalPacket.Result([], given));
+        string tail = withItems[(4 + 2 + 16 * 8 + 4 * 8)..];
+        Assert.That(tail[..2], Is.EqualTo("05"));
+        Assert.That(tail[2..], Is.EqualTo(string.Concat(given.Take(5).Select(item => Int(item.Id) + "0300" + Int(item.Amount) + "00000000"))));
     }
 
     [Test]
@@ -116,6 +125,21 @@ public class MapleSurvivalTests {
         Assert.That((game.Get(3)!.Rank, game.Get(1)!.Rank, game.Get(2)!.Rank, game.Winner), Is.EqualTo((2, 1, 1, 1L)));
         Assert.That(new SurvivalGameState([1, 2], id => units[id]).Ended, Is.True);
 
+        // The squad finish 0x14: none for a solo player or while a squad member plays; the squad's ids when its last
+        // member falls with the game running on; none once the game ended (the end's 0x14 goes to all).
+        var squads = new Dictionary<long, long> { [1] = 1, [2] = 1, [3] = 3, [4] = 4, [5] = 5, [6] = 5 };
+        var finish = new SurvivalGameState([1, 2, 3, 4, 5, 6], id => squads[id]);
+        finish.Fall(4, 0, out _);
+        Assert.That(finish.SquadFinish(4), Is.Empty);
+        finish.Fall(2, 0, out _);
+        Assert.That(finish.SquadFinish(2), Is.Empty);
+        finish.Fall(1, 0, out _);
+        Assert.That(finish.SquadFinish(1), Is.EquivalentTo(new long[] { 1, 2 }));
+        finish.Fall(5, 0, out _);
+        finish.Fall(6, 0, out _);
+        Assert.That(finish.Ended, Is.True);
+        Assert.That(finish.SquadFinish(6), Is.Empty);
+
         var queue = new ArenaQueue();
         queue.Register(9, MapleSurvivalRules.Arena, 4, 0, 4, out _);
         queue.RegisterSquad([5, 6, 8], MapleSurvivalRules.Arena, 4, 1, 4, out List<ArenaMatch> made);
@@ -153,8 +177,9 @@ public class MapleSurvivalTests {
         Assert.That(SurvivalStorm.Outside(3, 4.1f, 5), Is.True);
     }
 
-    // A storm step through the widget: the zone once (the circle before the step, the step's circle as the preview),
-    // then ready (4), the countdown (6), start (5) and the new radius (1) as a float; the next step no zone again.
+    // A storm step through the widget: the step's zone (the circle before the step, the step's circle as the preview),
+    // then ready (4), the countdown (6), start (5) and the new radius (1) as a float; the next step removes the zone
+    // before and adds its own, keyed by the step.
     [Test]
     public void Storm_StepPackets() {
         var test = new TestGameSession();
@@ -174,8 +199,13 @@ public class MapleSurvivalTests {
         }));
         widget.Action("EnterStep", 0, "2");
         sent = test.TakeSent().Select(Convert.ToHexString).ToList();
-        Assert.That(sent.Select(packet => packet[..6]), Is.EqualTo(new[] { "160104", "160106", "160105", "160101" }));
-        Assert.That(sent[^1], Is.EqualTo("1601" + "01" + "0100" + Float(2325f) + zero));
+        Assert.That(sent.Select(packet => packet[..6]), Is.EqualTo(new[] { "160102", "160100", "160104", "160106", "160105", "160101" }));
+        Assert.That(sent[0], Is.EqualTo("1601" + "02" + "0100"));
+        Assert.That(sent[1], Is.EqualTo("1601" + "00" + "0200" + "660A" + "0200" + zero + "1509" + zero));
+        Assert.That(sent[^1], Is.EqualTo("1601" + "01" + "0200" + Float(2325f) + zero));
+        // The same step again sends no zone.
+        widget.Action("EnterStep", 0, "2");
+        Assert.That(test.TakeSent().Select(Convert.ToHexString).Count(packet => packet[..6] is "160100" or "160102"), Is.Zero);
     }
 
     // The game's end stops the storm: the zones are cleared (SurvivalEvent 3) and no later step sends anything (the
@@ -446,7 +476,7 @@ public class MapleSurvivalTests {
 
     // The played pack's switches, off (SurvivalRules): SurvivalContents01 refuses every request (the queue and the
     // accept state 0, the squad Party 0x37 false, the pass the record) and nothing reaches the World;
-    // SurvivalContents03 refuses the pass at its price; SurvivalObserver answers no watch.
+    // SurvivalContents03 off (the level-reward mode) refuses the pass at its price; SurvivalObserver answers no watch.
     [Test]
     public void FeaturesOff_Refuse() {
         var test = new TestGameSession();
@@ -486,5 +516,26 @@ public class MapleSurvivalTests {
         GameSession session = test.Start();
         Assert.That(Send(test, session, "00"), Is.EqualTo(new[] { "1901" + "01" }));
         Assert.That(test.World.PvpRequests, Is.Empty);
+    }
+
+    // The restored client's switches: ShutdownSurvivalObserver answers no watch, ShutdownMapleSurvivalPass refuses the
+    // pass (the record, nothing taken); neither closes the solo queue.
+    [Test]
+    public void Switches_RefuseTheirPart() {
+        var test = new TestGameSession();
+        test.AddEvent(930004, Maple2.Model.Enum.GameEventType.ShutdownSurvivalObserver, new ShutdownSurvivalObserver());
+        test.AddEvent(930002, Maple2.Model.Enum.GameEventType.ShutdownMapleSurvivalPass, new ShutdownMapleSurvivalPass());
+        GameSession session = test.Start();
+        test.SetTable(Table());
+        session.Currency.Meret = 1000;
+        Assert.That(Send(test, session, "22" + "01" + Long(800)), Is.EqualTo(new[] { Hex(SurvivalPacket.UpdateStats(session.Player.Value.Account)) }));
+        Assert.That((session.Player.Value.Account.ActiveGoldPass, session.Currency.Meret), Is.EqualTo((false, 1000L)));
+        Assert.That(Send(test, session, "00"), Is.EqualTo(new[] { "1901" + "00" }));
+        test.TakeSent();
+        new SpectateMushtopiaHandler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(0);
+            writer.WriteLong(session.CharacterId);
+        }));
+        Assert.That(test.TakeSent(), Is.Empty);
     }
 }

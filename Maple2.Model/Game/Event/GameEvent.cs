@@ -19,11 +19,18 @@ public class GameEvent : IByteSerializable {
     }
 
     // The client builds each event by class name (GameEventManagerCli::Create looks up "GameEvent{name}Cli", then
-    // "GameEvent{name}") and drops the rest of the list when the name is unknown. These types have no client class.
+    // "GameEvent{name}") and drops the rest of the list when the name is unknown. These types have no client class;
+    // the Maple Survival switches and the pass bundle have one only in the restored client (maplesurvival.cpp
+    // registers them), so they go out only when the server serves it.
     public bool SentToClient => Metadata.Data is not (NewUser or ReturnUserCandidate or ActiveUser
-        or MapleSurvivalOpenPeriod or ShutdownMapleSurvival or MiniGameBonusReward or SpawnNpcEvent or NpcShopShowItem
+        or MapleSurvivalOpenPeriod or MiniGameBonusReward or SpawnNpcEvent or NpcShopShowItem
         or CharacterFirstConnectMail or SendMailEvent or DailyLoginReward or RankDuelRewardRate or PlayGift
-        or ReverseRaidDungeonOpen);
+        or ReverseRaidDungeonOpen)
+        && (RestoredSurvivalClient || Metadata.Data is not (ShutdownMapleSurvival or ShutdownMapleSurvivalSquad
+            or ShutdownMapleSurvivalPass or ShutdownSurvivalObserver or MapleSurvivalPassBundle));
+
+    // The server serves the restored client's Maple Survival (MS2_SURVIVAL_CLIENT=1).
+    public static bool RestoredSurvivalClient => Environment.GetEnvironmentVariable("MS2_SURVIVAL_CLIENT") == "1";
 
     public bool IsActive() => IsActive(DateTime.Now);
 
@@ -196,9 +203,20 @@ public class GameEvent : IByteSerializable {
             case LoginNotice:
             case FinishPayback:
             case NpcEventDrop:
-                // GameEventLoginNotice, GameEventFinishPayback and GameEventNpcEventDrop have no reader of their own:
-                // GameEvent::vfunc_4 reads the id.
+            case ShutdownMapleSurvival:
+            case ShutdownMapleSurvivalSquad:
+            case ShutdownMapleSurvivalPass:
+            case ShutdownSurvivalObserver:
+                // GameEventLoginNotice, GameEventFinishPayback, GameEventNpcEventDrop and the restored client's Maple
+                // Survival switches have no reader of their own: GameEvent::vfunc_4 reads the id.
                 writer.WriteInt(Id);
+                break;
+            case MapleSurvivalPassBundle passBundle:
+                // The restored client's GameEventMapleSurvivalPassBundle::vfunc_4 (maplesurvival.cpp): id, both prices, the item.
+                writer.WriteInt(Id);
+                writer.WriteLong(passBundle.DefaultPrice);
+                writer.WriteLong(passBundle.BundlePrice);
+                writer.WriteInt(passBundle.ItemId);
                 break;
             case ItemBox itemBox:
                 // GameEvent::vfunc_4 reads the id, then ItemBoxEventContext::Read (gameeventcontext.cpp) the box; its

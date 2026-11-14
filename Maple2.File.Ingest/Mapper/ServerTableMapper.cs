@@ -2143,6 +2143,20 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventXmlReader.MasteryReward(value1, value2);
             case GameEventType.ShutdownMapleSurvival:
                 return new ShutdownMapleSurvival();
+            case GameEventType.ShutdownMapleSurvivalSquad:
+                return new ShutdownMapleSurvivalSquad();
+            case GameEventType.ShutdownMapleSurvivalPass:
+                return new ShutdownMapleSurvivalPass();
+            case GameEventType.ShutdownSurvivalObserver:
+                return new ShutdownSurvivalObserver();
+            case GameEventType.MapleSurvivalPassBundle:
+                // Both prices are needed (the buy-bundle window sends one of them); a bonus item the client reads as
+                // 0 (_wtoi) is none.
+                if (!long.TryParse(value1, out long defaultPrice) || defaultPrice <= 0 || !long.TryParse(value2, out long bundlePrice) || bundlePrice <= 0) {
+                    Console.WriteLine($"MapleSurvivalPassBundle without both prices skipped: {value1} {value2}");
+                    return null;
+                }
+                return new MapleSurvivalPassBundle(defaultPrice, bundlePrice, int.TryParse(value3, out int bonusItemId) ? bonusItemId : 0);
             case GameEventType.EpicRestart:
                 return ReadEpicRestart(value1, value2, value3);
             case GameEventType.LevelUpPackage:

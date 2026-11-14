@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -29,8 +30,12 @@ public class SurvivalLevelExpTests {
             new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>());
     }
 
-    private GameSession Start(string parameters = "<v SurvivalExp=\"2500\" />", int level = 1, long exp = 0) {
+    // The level-reward mode (SurvivalContents03 off, as on KR Live) unless passMode.
+    private GameSession Start(string parameters = "<v SurvivalExp=\"2500\" />", int level = 1, long exp = 0, bool passMode = false) {
         test = new TestGameSession();
+        if (!passMode) {
+            test.SetFeaturesOff(Maple2.Model.Game.Pvp.SurvivalRules.PassFeature);
+        }
         test.SetTable(Table());
         test.Register(TestGameSession.Metadata(RewardId));
         tonic = test.Store(TestGameSession.Metadata(ItemId,
@@ -69,6 +74,57 @@ public class SurvivalLevelExpTests {
         Assert.That(Amount(session, RewardId), Is.EqualTo(1));
         // The record (Survival 0x17) with the exp gained.
         Assert.That(test.TakeSent(), Has.Some.EqualTo(SurvivalPacket.UpdateStats(account, 2500).ToArray()));
+    }
+
+    // A game's level-up gives the level reward and the result (0x11) lists it in its reward slots: the winner of 1 with
+    // 5 kills gains 2500 (SurvivalRules.GameExp), level 2. In the pass mode none is given or listed.
+    [Test]
+    public void GameResult_ListsTheLevelReward() {
+        GameSession session = Start();
+        session.Survival = new Maple2.Server.Game.Manager.SurvivalManager(session);
+        Maple2.Server.Game.Manager.MapleSurvivalProgress.Result(session, 1, 1, 5, 60, out var items);
+        Assert.That(session.Player.Value.Account.SurvivalLevel, Is.EqualTo(2));
+        Assert.That(items, Is.EqualTo(new[] { new Maple2.Server.Game.Manager.MapleSurvivalProgress.ResultItem(RewardId, 1, 1) }));
+        Assert.That(Amount(session, RewardId), Is.EqualTo(1));
+        // The lobby sent again ends with its level and exp (0x15), after the record (0x17).
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent[^1], Is.EqualTo(MapleSurvivalPacket.LevelProgress(100, 2, 2).ToArray()));
+
+        session = Start(passMode: true);
+        session.Survival = new Maple2.Server.Game.Manager.SurvivalManager(session);
+        Maple2.Server.Game.Manager.MapleSurvivalProgress.Result(session, 1, 1, 5, 60, out items);
+        Assert.That((session.Player.Value.Account.SurvivalLevel, items.Count, Amount(session, RewardId)), Is.EqualTo((2, 0, 0)));
+    }
+
+    // In the pass mode (SurvivalContents03 on) the level reached gives no level reward: its pass rewards are claimed.
+    [Test]
+    public void Use_PassMode_GivesNoLevelReward() {
+        GameSession session = Start(passMode: true);
+        Use(session);
+        Account account = session.Player.Value.Account;
+        Assert.That((account.SurvivalLevel, account.SurvivalExp), Is.EqualTo((2, 100L)));
+        Assert.That(Amount(session, RewardId), Is.EqualTo(0));
+    }
+
+    // An account of another period starts the open one again; the restored client is told first (0x18, no body),
+    // the KR client is not.
+    [Test]
+    public void NewPeriod_RestoredClient_GetsTheNewSeason() {
+        string? before = Environment.GetEnvironmentVariable("MS2_SURVIVAL_CLIENT");
+        try {
+            foreach (bool restored in new[] { true, false }) {
+                Environment.SetEnvironmentVariable("MS2_SURVIVAL_CLIENT", restored ? "1" : null);
+                GameSession session = Start(level: 3);
+                session.Player.Value.Account.SurvivalSeason = 99;
+                Use(session);
+                Assert.That(session.Player.Value.Account.SurvivalLevel, Is.EqualTo(2));
+                List<byte[]> sent = test.TakeSent();
+                Assert.That(sent.Any(packet => packet.SequenceEqual(MapleSurvivalPacket.NewSeason().ToArray())), Is.EqualTo(restored));
+            }
+            Assert.That(Convert.ToHexString(MapleSurvivalPacket.NewSeason().ToArray()), Is.EqualTo("1901" + "18"));
+        } finally {
+            Environment.SetEnvironmentVariable("MS2_SURVIVAL_CLIENT", before);
+        }
     }
 
     // The restored client's lobby gets the new level and exp (Survival 0x15); the record (0x17) refreshes only the pass

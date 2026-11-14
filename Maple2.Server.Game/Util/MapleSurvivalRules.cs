@@ -26,7 +26,7 @@ public static class MapleSurvivalRules {
     // The server serves the restored client (MS2_SURVIVAL_CLIENT=1): its lobby, season and queue state go out after each
     // game server entry. Off by default: the KR client has no reader for them, and it never sends op 0xC2, so nothing
     // else of the survival match reaches it.
-    public static bool RestoredClient => Environment.GetEnvironmentVariable("MS2_SURVIVAL_CLIENT") == "1";
+    public static bool RestoredClient => Maple2.Model.Game.Event.GameEvent.RestoredSurvivalClient;
 
     public static IndividualArenaTable.Entry Entry => new(Arena, MapId, PlayerCount, 0, 0, 0, 0, 0, 0);
 

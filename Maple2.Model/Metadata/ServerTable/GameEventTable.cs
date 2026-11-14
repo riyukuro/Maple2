@@ -435,6 +435,18 @@ public record MasteryRewardEvent(
 /// </summary>
 public record ShutdownMapleSurvival : GameEventData;
 
+// The restored client's Maple Survival switches (GameEventShutdownMapleSurvivalSquad / Pass, GameEventShutdownSurvivalObserver,
+// GMS vftables 0x170d520..0x170d578): no value; while one runs the squad queue, the pass buy and claim, or the watch
+// are closed. No KR, NA or CN row has them; an operator adds them by overlay.
+public record ShutdownMapleSurvivalSquad : GameEventData;
+public record ShutdownMapleSurvivalPass : GameEventData;
+public record ShutdownSurvivalObserver : GameEventData;
+
+// The restored client's pass bundle (GameEventMapleSurvivalPassBundle, GMS vftable 0x170d8bc): value1 the pass price
+// without the bundle, value2 the bundle price, value3 the bonus item (the buy-bundle window shows it as one item of
+// rarity 1). No KR, NA or CN row has it.
+public record MapleSurvivalPassBundle(long DefaultPrice, long BundlePrice, int ItemId) : GameEventData;
+
 /// <summary>
 /// Creates a popup for a On Time event. Clicking Participate triggers the user to send /AddOntimeEvent
 /// </summary>
@@ -889,6 +901,10 @@ public record UserCondition(
 [JsonDerivedType(typeof(GuildChampionship), "GuildChampionship")]
 [JsonDerivedType(typeof(FreeAirTaxi), "FreeAirTaxi")]
 [JsonDerivedType(typeof(ShutdownMapleSurvival), "ShutdownMapleSurvival")]
+[JsonDerivedType(typeof(ShutdownMapleSurvivalSquad), "ShutdownMapleSurvivalSquad")]
+[JsonDerivedType(typeof(ShutdownMapleSurvivalPass), "ShutdownMapleSurvivalPass")]
+[JsonDerivedType(typeof(ShutdownSurvivalObserver), "ShutdownSurvivalObserver")]
+[JsonDerivedType(typeof(MapleSurvivalPassBundle), "MapleSurvivalPassBundle")]
 [JsonDerivedType(typeof(Ontime), "Ontime")]
 [JsonDerivedType(typeof(DailyLoginReward), "DailyLoginReward")]
 [JsonDerivedType(typeof(SaleAutoPlayInstrument), "SaleAutoPlayInstrument")]

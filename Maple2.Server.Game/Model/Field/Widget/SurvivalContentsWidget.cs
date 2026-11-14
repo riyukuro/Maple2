@@ -12,12 +12,12 @@ namespace Maple2.Server.Game.Model.Widget;
 // condition TimeOver. The storm (SurvivalStorm) is a safe circle at the field's center that shrinks with each step; the
 // steps go to the clients as SurvivalEvent 4 (ready), 5 (start) and 0 (the zone).
 public class SurvivalContentsWidget : Widget {
-    private const short ZoneId = 1;
     // Chosen here: the smallest safe zone.
     private const float MinRadius = 300f;
 
     public SurvivalStorm? Storm { get; private set; }
-    private bool zoneSent;
+    // The client's zone (SurvivalEvent 0), keyed by the step (0: none).
+    private short zoneId;
     // The game ended (Stop): no step runs or goes out until the next StormData.
     public bool Stopped { get; private set; }
     public Vector3 Center { get; private set; }
@@ -53,6 +53,7 @@ public class SurvivalContentsWidget : Widget {
             return;
         }
         Stopped = true;
+        zoneId = 0;
         Field.Broadcast(MapleSurvivalPacket.ClearZones());
     }
 
@@ -64,15 +65,17 @@ public class SurvivalContentsWidget : Widget {
         Center = new Vector3((min.X + max.X) / 2, (min.Y + max.Y) / 2, 0);
         float radius = Math.Max(max.X - min.X, max.Y - min.Y) / 2;
         Storm = new SurvivalStorm(Math.Max(radius, MinRadius), MinRadius);
-        zoneSent = false;
+        zoneId = 0;
         Stopped = false;
         Field.Broadcast(MapleSurvivalPacket.ClearZones());
     }
 
     // Each step: the "ready" message (4) and the storm bar's countdown to the step's end (6), the start message (5),
-    // then the zone's new radius (1: the float is the radius, GMS 0x74b8d0). The zone itself (0) goes once, at the
-    // first step (after the game start, whose 0x13 clears the client's zones): the circle before the step and the
-    // step's safe circle as its preview (the minimap's next zone).
+    // then the zone's new radius (1: the float is the radius, GMS 0x74b8d0). Each step is its own zone, keyed by the
+    // step: the step before's zone goes (2), the step's zone comes (0) with the circle before the step and the step's
+    // safe circle as its preview (the minimap's next zone). The client picks the zone's effect by its id (the A01 storm
+    // up to id 2, A02 above, survivalstormfx.cpp NifPath) and puts the closing storm (B01) on at the start (5) only
+    // once zone 7 exists (StormFx_OnShrinkStart), so the ids follow the steps 1 to 8.
     private void EnterStep(int step) {
         if (Stopped) {
             return;
@@ -80,14 +83,18 @@ public class SurvivalContentsWidget : Widget {
         Storm ??= new SurvivalStorm(MinRadius * 10, MinRadius);
         float before = Storm.SafeRadius;
         Storm.Enter(step, Field.FieldTick);
-        if (!zoneSent) {
-            zoneSent = true;
-            Field.Broadcast(MapleSurvivalPacket.AddZone(ZoneId, Short(before), (short) Storm.Step, Center, Short(Storm.SafeRadius), Center));
+        short id = (short) Math.Max(1, Storm.Step);
+        if (zoneId != id) {
+            if (zoneId != 0) {
+                Field.Broadcast(MapleSurvivalPacket.RemoveZone(zoneId));
+            }
+            zoneId = id;
+            Field.Broadcast(MapleSurvivalPacket.AddZone(id, Short(before), (short) Storm.Step, Center, Short(Storm.SafeRadius), Center));
         }
         Field.Broadcast(MapleSurvivalPacket.ReduceReady((short) (SurvivalStorm.ReadyMs / 1000)));
         Field.Broadcast(MapleSurvivalPacket.Countdown((short) (SurvivalStorm.StepMs / 1000)));
         Field.Broadcast(MapleSurvivalPacket.ReduceStart());
-        Field.Broadcast(MapleSurvivalPacket.UpdateZone(ZoneId, Storm.SafeRadius, Center));
+        Field.Broadcast(MapleSurvivalPacket.UpdateZone(id, Storm.SafeRadius, Center));
     }
 
     private static short Short(float value) => (short) Math.Clamp(value, 0, short.MaxValue);

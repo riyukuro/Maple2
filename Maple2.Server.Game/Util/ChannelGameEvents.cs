@@ -4,7 +4,7 @@ namespace Maple2.Server.Game.Util;
 
 // The game events a channel holds and the receivers (sessions) that loaded them. The World starts and ends an event
 // at its start and end time; an event the client gets whose day of the week or time of day limits it (an edge event:
-// table/Server/*/GameEvent.xml dayOfWeek or partTime, so far only GuildVsGameOpen 550001, Saturdays 10:55:10-12:00)
+// table/Server/*/GameEvent.xml dayOfWeek or partTime, GuildVsGameOpen 550001, Saturdays 10:55:10-12:00, and for the restored client the ShutdownMapleSurvival hours)
 // also starts and stops at those edges, which Tick finds. The client opens and closes what such an event runs only
 // on its Add and Remove (GameEventManagerCli::Add calls OnStart, Remove vfunc_6).
 // Chosen here: the edges are sent as GameEvent Add and Remove, found by a timer once a second.

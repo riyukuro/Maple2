@@ -2255,14 +2255,15 @@ public class TableMapper : TypeMapper<TableMetadata> {
     }
 
     // The NA Maple Survival tables (table/na in the server's Xml), read as the restored client reads its copies.
-    // With the played pack's SurvivalContents01 off none is read, with SurvivalContents03 off not the pass tables
-    // (SurvivalRules.Feature, PassFeature).
+    // With the played pack's SurvivalContents01 off none is read. SurvivalContents03 picks the reward mode as the GMS
+    // table load does (0x628e40, feature 0xaf): on, the pass tables and not survivallevelreward; off, the level rewards
+    // and not the pass tables (SurvivalRules.Feature, PassFeature).
     private MapleSurvivalTable ParseMapleSurvivalTable() {
         bool on = FeatureLocaleFilter.FeatureEnabled(Maple2.Model.Game.Pvp.SurvivalRules.Feature);
         bool passOn = on && FeatureLocaleFilter.FeatureEnabled(Maple2.Model.Game.Pvp.SurvivalRules.PassFeature);
-        Console.WriteLine($"maple survival: tables {(on ? "on" : "off")}, pass {(passOn ? "on" : "off")}");
+        Console.WriteLine($"maple survival: tables {(on ? "on" : "off")}, rewards {(passOn ? "pass" : "level")}");
         IEnumerable<XmlElement> Rows(string file, string node) {
-            if (!on || (!passOn && file.StartsWith("survivalpassreward"))) {
+            if (!on || (!passOn && file.StartsWith("survivalpassreward")) || (passOn && file == "survivallevelreward.xml")) {
                 return [];
             }
             Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(f => f.Name == $"table/na/{file}");
@@ -2270,7 +2271,10 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 Console.WriteLine($"maple survival: table/na/{file} not found");
                 return [];
             }
-            return xmlReader.GetXmlDocument(entry).SelectNodes($"ms2/{node}")!.OfType<XmlElement>().ToList();
+            // Each row as the client's IsElementAvailable keeps it: its feature on and its locale the played one.
+            return xmlReader.GetXmlDocument(entry).SelectNodes($"ms2/{node}")!.OfType<XmlElement>()
+                .Where(row => FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(row.GetAttribute("locale")))
+                .ToList();
         }
         static int Int(XmlElement row, string name) => int.TryParse(row.GetAttribute(name), out int value) ? value : 0;
         static int[] Ints(XmlElement row, string name) => row.GetAttribute(name).Split(',', StringSplitOptions.RemoveEmptyEntries)

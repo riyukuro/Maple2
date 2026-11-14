@@ -110,6 +110,10 @@ public class MapleSurvivalHandler : FieldPacketHandler {
     // A ShutdownMapleSurvival game event runs (its window closes the queue; the client has no line for it).
     public static bool Shutdown(GameSession session) => session.FindEvent(GameEventType.ShutdownMapleSurvival).Count > 0;
 
+    // The restored client's switches: ShutdownMapleSurvivalSquad closes the squad queue, ShutdownMapleSurvivalPass the
+    // pass buy and claim, ShutdownSurvivalObserver the watch (the result window hides its watch button then).
+    public static bool Shutdown(GameSession session, GameEventType type) => session.FindEvent(type).Count > 0;
+
     // State 1 first, then the World queues the character; a refusal takes it back to state 0.
     private static void Queue(GameSession session) {
         if (!PvpHandler.CanLeave(session) || session.Field?.Arena != null || Shutdown(session)) {
@@ -174,7 +178,7 @@ public class MapleSurvivalHandler : FieldPacketHandler {
 
     private static void QueueSquad(GameSession session) {
         Maple2.Model.Game.Party.Party? party = session.Party.Party;
-        if (SquadRefusal(party, session.CharacterId, PvpHandler.CanLeave(session) && !Shutdown(session), session.Field?.Arena != null,
+        if (SquadRefusal(party, session.CharacterId, PvpHandler.CanLeave(session) && !Shutdown(session) && !Shutdown(session, GameEventType.ShutdownMapleSurvivalSquad), session.Field?.Arena != null,
                 SurvivalRules.SquadOn(session.ServerTableMetadata.FeatureTable)) is { } refusal) {
             RefuseSquad(session, refusal);
             return;
@@ -211,7 +215,7 @@ public class MapleSurvivalHandler : FieldPacketHandler {
         if (response is { Arena: MapleSurvivalRules.Arena, QueueState: 1 }) {
             session.Send(MapleSurvivalPacket.Matching());
         } else if (response is { Arena: MapleSurvivalRules.Arena, QueueState: 2 } && session.Field?.Arena == null) {
-            session.Send(MapleSurvivalPacket.Matched(session.CharacterId, false));
+            session.Send(MapleSurvivalPacket.Matched(MapleSurvivalProgress.RankingCharacter(session), false));
         } else {
             session.Send(MapleSurvivalPacket.Idle());
         }

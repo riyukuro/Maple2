@@ -2,6 +2,7 @@ using System.Numerics;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager;
 
 namespace Maple2.Server.Game.Packets;
 
@@ -38,8 +39,11 @@ public static class MapleSurvivalPacket {
     }
 
     // 0x11: the game result: 16 ints (SurvivalRules.ResultValues), 4 floats (a buff when above 0; none here), then
-    // the items (none here).
-    public static ByteWriter Result(IReadOnlyList<int> values) {
+    // the items: u8 count, each i32 id, i16 rarity, i32 amount and 4 bools (maplesurvival.cpp:457; the window shows
+    // the first 5 in its reward slots and reads no bool, so 5 at most go and the bools are false).
+    public const int ResultItemSlots = 5;
+
+    public static ByteWriter Result(IReadOnlyList<int> values, IReadOnlyList<MapleSurvivalProgress.ResultItem>? items = null) {
         ByteWriter pWriter = Survival(0x11);
         for (int i = 0; i < 16; i++) {
             pWriter.WriteInt(i < values.Count ? values[i] : 0);
@@ -47,7 +51,17 @@ public static class MapleSurvivalPacket {
         for (int i = 0; i < 4; i++) {
             pWriter.WriteFloat(0);
         }
-        pWriter.WriteByte(0);
+        int count = Math.Min(items?.Count ?? 0, ResultItemSlots);
+        pWriter.WriteByte((byte) count);
+        for (int i = 0; i < count; i++) {
+            MapleSurvivalProgress.ResultItem item = items![i];
+            pWriter.WriteInt(item.Id);
+            pWriter.WriteShort(item.Rarity);
+            pWriter.WriteInt(item.Amount);
+            for (int j = 0; j < 4; j++) {
+                pWriter.WriteBool(false);
+            }
+        }
         return pWriter;
     }
 
@@ -88,6 +102,10 @@ public static class MapleSurvivalPacket {
         pWriter.WriteInt(rewardLevel);
         return pWriter;
     }
+
+    // 0x18: a new season (the restored reader, maplesurvival.cpp:539, has no body: it prints
+    // s_maple_survival_ui_refresh_season_record and refreshes the pass and lobby windows).
+    public static ByteWriter NewSeason() => Survival(0x18);
 
     // 0x1f: a skin added to a slot (0 tail, 1 riding, 2 gliding): the skin and its end (the reader,
     // maplesurvival.cpp:616, appends it to the slot's list and refreshes the skin window).
@@ -158,6 +176,16 @@ public static class MapleSurvivalPacket {
         pWriter.WriteUnicodeString(victim);
         pWriter.WriteByte(weapon);
         pWriter.WriteInt(value);
+        return pWriter;
+    }
+
+    // 0x19 type 1: a fall with no killer (an int, the victim; maplesurvival.cpp:550 reads no killer and no weapon, and
+    // the kill log shows the line with an empty attacker). The int is the participants left, as type 0's.
+    public static ByteWriter FallFeed(string victim, int value) {
+        ByteWriter pWriter = Survival(0x19);
+        pWriter.WriteByte(1);
+        pWriter.WriteInt(value);
+        pWriter.WriteUnicodeString(victim);
         return pWriter;
     }
 

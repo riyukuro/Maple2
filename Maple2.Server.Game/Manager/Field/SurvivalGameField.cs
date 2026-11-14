@@ -171,12 +171,19 @@ public sealed class SurvivalGameField {
                 }
             });
         }
+        if (killer == 0) {
+            // A fall with no killer (the storm, a fall, a monster, a departure): the kill log's line with no attacker.
+            field.Broadcast(MapleSurvivalPacket.FallFeed(names.GetValueOrDefault(characterId, string.Empty), state.Alive));
+        }
         field.Broadcast(MapleSurvivalPacket.Survivors(state.Alive, state.Entries.Count));
         if (killer != 0 && state.Get(killer) is { } killerEntry && field.TryGetPlayerById(killer, out FieldPlayer? killerPlayer)) {
             killerPlayer.Session.Send(MapleSurvivalPacket.OwnKills(killerEntry.Kills));
         }
-        if (field.TryGetPlayerById(characterId, out FieldPlayer? fallen)) {
-            fallen.Session.Send(MapleSurvivalPacket.GameFinish(false, [characterId]));
+        List<long> squadFinish = state.SquadFinish(characterId);
+        foreach (long member in squadFinish) {
+            if (field.TryGetPlayerById(member, out FieldPlayer? memberPlayer)) {
+                memberPlayer.Session.Send(MapleSurvivalPacket.GameFinish(false, squadFinish));
+            }
         }
         // The squad's last member fell: every member gets the squad's rank (a solo player at once).
         SendResults(state.UnitOf(characterId).Where(member => member.Rank != 0 && !state.Ended));
@@ -270,7 +277,7 @@ public sealed class SurvivalGameField {
     }
 
     // The game result (0x11, the restored result window): the rating, kills, rank, survival level and exp and the
-    // seconds played (MapleSurvivalProgress.Result, SurvivalRules.ResultValues); no items.
+    // seconds played (MapleSurvivalProgress.Result, SurvivalRules.ResultValues), and the items the game's level-ups gave.
     // The participants are counted in squads (a solo player is one), as the ranks are.
     // The work a fall or the end leaves for after the lock: the results' saves and the World's end call.
     private readonly List<Action> after = [];
@@ -303,8 +310,8 @@ public sealed class SurvivalGameField {
             List<SurvivalConditions.Raise> raises = SurvivalConditions.Result(entry, rank, startTick, field.MapId);
             // The save and the lobby resend run after the field's lock (RunAfter): a slow save would stall the hits.
             after.Add(() => {
-                int[] values = MapleSurvivalProgress.Result(player.Session, rank, squads, kills, seconds, squad);
-                player.Session.Send(MapleSurvivalPacket.Result(values));
+                int[] values = MapleSurvivalProgress.Result(player.Session, rank, squads, kills, seconds, out List<MapleSurvivalProgress.ResultItem> items, squad);
+                player.Session.Send(MapleSurvivalPacket.Result(values, items));
                 foreach (SurvivalConditions.Raise raise in raises) {
                     player.Session.ConditionUpdate(raise.Type, counter: raise.Counter, targetLong: raise.Target, codeLong: raise.Code);
                 }

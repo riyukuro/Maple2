@@ -67,6 +67,19 @@ public sealed class SurvivalGameState {
     }
 
     public Entry? Get(long characterId) => entries.GetValueOrDefault(characterId);
+
+    // The squad finish (0x14 with no end) a fall sends: the members of a squad of two or more whose last member just
+    // fell, while the game runs on; else empty. The restored client keeps the list until the next game start and
+    // refuses the result window's watch while it holds anything (UISurvivalGameResultDialog OnWatch), and an observer in
+    // the list leaves its window; so a solo player, who watches its killer, gets none, nor does a squad member while
+    // one of its squad still plays.
+    public List<long> SquadFinish(long characterId) {
+        List<Entry> unit = UnitOf(characterId).ToList();
+        if (Ended || unit.Count < 2 || unit.Any(member => member.Alive)) {
+            return [];
+        }
+        return unit.Select(member => member.CharacterId).ToList();
+    }
     public bool IsAlive(long characterId) => entries.TryGetValue(characterId, out Entry? entry) && entry.Alive && !Ended;
 
     // Living participants of different squads fight each other while the game runs.
