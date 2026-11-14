@@ -94,12 +94,15 @@ public class CurrencyManager {
         return true;
     }
 
-    // The packet and use_merat of a TryTakeMeret(amount, notify: false).
-    public void NotifyMeretTaken(long amount) {
+    // The packet and use_merat of a TryTakeMeret(amount, notify: false). report false: the packet only; the caller
+    // reports the spend (ReportMeretSpent) once what it paid for is given.
+    public void NotifyMeretTaken(long amount, bool report = true) {
         lock (walletLock) {
             session.Send(CurrencyPacket.UpdateMeret(Currency, -amount));
         }
-        ReportMeretSpent(-amount);
+        if (report) {
+            ReportMeretSpent(-amount);
+        }
     }
 
     // Gives back a TryTakeMeret(amount, notify: false) and sends the balance (a Meret packet sent meanwhile showed it
@@ -208,11 +211,13 @@ public class CurrencyManager {
         }
     }
 
-    public void NotifyGameMeretTaken(long amount) {
+    public void NotifyGameMeretTaken(long amount, bool report = true) {
         lock (walletLock) {
             session.Send(CurrencyPacket.UpdateGameMeret(Currency, -amount));
         }
-        ReportMeretSpent(-amount);
+        if (report) {
+            ReportMeretSpent(-amount);
+        }
     }
 
     public void ReturnGameMeret(long amount) {

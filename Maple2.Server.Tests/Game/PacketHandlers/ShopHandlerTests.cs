@@ -1452,6 +1452,74 @@ public class ShopHandlerTests {
             Hex(ShopPacket.Error(ShopError.s_err_lack_shopitem, BuyCommand)),
         }));
     }
+    // A pack above SlotMax goes into the bag in pieces (here 3 packs of 10 with SlotMax 10: 3 pieces), and a failed
+    // piece write leaves the pieces given before it in the bag. The rest goes by mail; when that mail is refused too,
+    // only the rest's share of the price comes back and only its packs are uncounted. Before this fix, the whole
+    // price came back and the whole count was taken off, so the pieces given were free.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Buy_OfAPackWhoseLastPieceIsNotWritten_PaysBackOnlyTheRest(bool mailFails) {
+        beforeStart = () => test.Register(TestGameSession.Metadata(ProductItemId, slotMax: 10));
+        GameSession session = Login();
+        int productRows = 0;
+        test.FailSave = context => {
+            if (mailFails && context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added && entry.Entity is Maple2.Database.Model.Mail)) {
+                return true;
+            }
+            if (context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added && entry.Entity is Maple2.Database.Model.Item { ItemId: ProductItemId })) {
+                return ++productRows == 3;
+            }
+            return false;
+        };
+
+        Buy(session, PackProductId, 3);
+        test.FailSave = null;
+
+        using GameStorage.Request db = test.Storage.Context();
+        List<Mail> mails = db.GetAllMail(test.CharacterId).ToList();
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(ProductItemId).Sum(item => item.Amount), Is.EqualTo(20));
+            if (mailFails) {
+                Assert.That(mails, Is.Empty);
+                Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 120 + 40));
+                Assert.That(StoredMeso(), Is.EqualTo(10000 - 120 + 40));
+                Assert.That(Purchased(session, PackProductId), Is.EqualTo(2));
+                Assert.That(StoredStock(PackProductId), Is.EqualTo(2));
+                Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Contain(NoNotice));
+            } else {
+                // One mail with the rest: 30 stored in all, 20 of them in the bag.
+                Assert.That(mails, Has.Count.EqualTo(1));
+                Assert.That(ItemRows(ProductItemId).Sum(row => row.Amount), Is.EqualTo(30));
+                Assert.That(session.Currency.Meso, Is.EqualTo(10000 - 120));
+                Assert.That(Purchased(session, PackProductId), Is.EqualTo(3));
+                Assert.That(StoredStock(PackProductId), Is.EqualTo(3));
+            }
+        });
+    }
+
+    // Merets given back are not counted as spent (use_merat): a meret buy whose item is neither added nor mailed
+    // counts nothing; a delivered one counts its price.
+    [TestCase(true, 0)]
+    [TestCase(false, 40)]
+    public void Buy_WithMeretsGivenBack_CountsNoMeretSpent(bool fails, long counted) {
+        GameSession session = Login(trophies: TestGameSession.Trophy(23200200, ConditionType.use_merat, [100000]));
+        session.Currency.GameMeret = 100;
+        session.SavePurchase();
+        test.TakeSent();
+        if (fails) {
+            test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added
+                && (entry.Entity is Maple2.Database.Model.Mail || entry.Entity is Maple2.Database.Model.Item { ItemId: ProductItemId }));
+        }
+
+        Buy(session, GameMeretProductId, 1);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.GameMeret, Is.EqualTo(fails ? 100 : 60));
+            Assert.That(test.TrophyCounter(23200200) ?? 0, Is.EqualTo(counted));
+        });
+    }
+
     // On MySQL the buy's wallet and stock row are one transaction (the in-memory store cannot show it): a stock row
     // whose insert fails (here a row already stored under the product's key) leaves the stored wallet as it was, and
     // the buy gives nothing. Runs only when MS2_TEST_GAME_DB holds the connection string of a scratch MySQL game

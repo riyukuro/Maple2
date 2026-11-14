@@ -614,9 +614,11 @@ public sealed class ShopManager {
 
         // The price is taken in memory first (held: its balance packet waits), then the wallet, the payment items' rows
         // and the bought stock are stored in one transaction; the item is given only once that is kept. A store that
-        // fails gives the price back and gives nothing, so a crash at any point never leaves a free item; a crash after
-        // the commit and before the item's write loses the item (the accepted cost). Before, the item was added and the
-        // stock counted first and the wallet stored after, so a crash in between kept the item with the price unpaid.
+        // fails gives the price back and gives nothing, so a crash at any point never leaves a free item. Accepted
+        // losses, crash only: after the commit and before the item's write, the item; between the hold and the
+        // transaction, the price, when a timed session save ran in that gap and stored the lowered wallet (the buy
+        // back's held mesos too). Before, the item was added and the stock counted first and the wallet stored after,
+        // so a crash in between kept the item with the price unpaid.
         if (HoldPayment(shopItem.Metadata.Cost, price, BuyCommand) is not { } held) {
             return;
         }
@@ -630,15 +632,21 @@ public sealed class ShopManager {
         SettlePayment(held);
 
         // The room was checked above, so only a failed item write leaves it out of the bag: then it goes by mail. When
-        // the mail is refused too, the price is given back and the bought stock uncounted, stored on their own.
+        // the mail is refused too, the part not given is paid back and uncounted, stored on their own. An add above
+        // SlotMax gives pieces, and the pieces given before the failed write stay given (the item keeps the rest), so
+        // only that rest's share of the price comes back (rounded down) and only its whole packs are uncounted.
+        int bought = item.Amount;
         if (!session.Item.AddOrMail(item, true, commit: true)) {
-            logger.Error("Shop {ShopId} item {ItemId} x{Amount} bought by {CharacterId} for {Price} {Currency} was neither added nor mailed; the price is given back",
-                activeShop.Id, item.Id, item.Amount, session.CharacterId, price, shopItem.Metadata.Cost.Type);
-            RefundPayment(held);
+            int left = Math.Clamp(item.Amount, 0, bought);
+            int refund = bought > 0 ? (int) ((long) price * left / bought) : price;
+            logger.Error("Shop {ShopId} item {ItemId} x{Bought} bought by {CharacterId} for {Price} {Currency}: x{Left} neither added nor mailed; {Refund} is given back",
+                activeShop.Id, item.Id, bought, session.CharacterId, price, shopItem.Metadata.Cost.Type, left, refund);
+            RefundPayment(held, refund);
             if (shopItem.StockCount > 0) {
-                CountStock(shopItem, -quantity);
+                CountStock(shopItem, -(left / shopItem.SellUnit));
             }
             SaveStockRow(shopItem);
+            ReportPaid(held, shopItem, price - refund);
             session.Send(ShopPacket.Error(ShopError.s_err_no_notice, BuyCommand));
             return;
         }
@@ -647,7 +655,7 @@ public sealed class ShopManager {
             session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.SellUnit));
         }
         session.Send(ShopPacket.Buy(shopItem, shopItem.SellUnit * quantity, price, false));
-        CountBuyCondition(shopItem, price);
+        ReportPaid(held, shopItem, price);
     }
 
     // A product paid from the guild fund: the World takes the fund and stores the product in the guild storage in one
@@ -994,6 +1002,9 @@ public sealed class ShopManager {
             }
         }
         SettlePayment(held);
+        if (held.Type is ShopCurrencyType.Meret or ShopCurrencyType.EventMeret or ShopCurrencyType.GameMeret) {
+            session.Currency.ReportMeretSpent(-price);
+        }
         return true;
     }
 
@@ -1018,7 +1029,8 @@ public sealed class ShopManager {
         return true;
     }
 
-    // Sends a held take once its purchase is stored.
+    // Sends a held take once its purchase is stored. A meret take's use_merat waits for ReportPaid: a payment given
+    // back is not counted as spent.
     private void SettlePayment(HeldPayment held) {
         switch (held.Type) {
             case ShopCurrencyType.Meso:
@@ -1028,12 +1040,21 @@ public sealed class ShopManager {
             case ShopCurrencyType.EventMeret:
             case ShopCurrencyType.GameMeret:
                 if (held.Red) {
-                    session.Currency.NotifyGameMeretTaken(held.Price);
+                    session.Currency.NotifyGameMeretTaken(held.Price, report: false);
                 } else {
-                    session.Currency.NotifyMeretTaken(held.Price);
+                    session.Currency.NotifyMeretTaken(held.Price, report: false);
                 }
                 break;
         }
+    }
+
+    // Counts what a settled payment paid for (the price less any part given back): the merets spent (use_merat)
+    // and the shop's buy condition of the currency.
+    private void ReportPaid(HeldPayment held, ShopItem shopItem, int paid) {
+        if (held.Type is ShopCurrencyType.Meret or ShopCurrencyType.EventMeret or ShopCurrencyType.GameMeret) {
+            session.Currency.ReportMeretSpent(-paid);
+        }
+        CountBuyCondition(shopItem, paid);
     }
 
     // Gives back a held take whose purchase was not stored (the payment items were not taken).
@@ -1059,24 +1080,41 @@ public sealed class ShopManager {
         }
     }
 
-    // Gives back a stored and sent payment (the bought item could be neither added nor mailed). Payment items come
-    // back as new copies of the rarities taken, to the bag or else by mail; one that cannot be given is logged.
-    private void RefundPayment(HeldPayment held) {
+    // Gives back amount of a stored and sent payment (the bought item, or part of it, could be neither added nor
+    // mailed). Payment items come back as new copies of the rarities taken (the last stacks taken first), to the bag
+    // or else by mail; one that cannot be given is logged.
+    private void RefundPayment(HeldPayment held, int amount) {
+        amount = Math.Clamp(amount, 0, held.Price);
         switch (held.Type) {
             case ShopCurrencyType.Meso:
-                session.Currency.ReturnMeso(held.Price);
+                session.Currency.ReturnMeso(amount);
                 break;
             case ShopCurrencyType.Item:
-                foreach ((_, int amount, int rarity) in held.Stacks ?? []) {
-                    Item? copy = session.Item.CreateItem(held.ItemId, rarity, amount);
+                int left = amount;
+                foreach ((_, int taken, int rarity) in Enumerable.Reverse(held.Stacks ?? [])) {
+                    if (left <= 0) {
+                        break;
+                    }
+                    int back = Math.Min(left, taken);
+                    left -= back;
+                    Item? copy = session.Item.CreateItem(held.ItemId, rarity, back);
                     if (copy == null || !session.Item.AddOrMail(copy, true, commit: true)) {
                         logger.Error("Payment item {ItemId} x{Amount} (rarity {Rarity}) could not be given back to {CharacterId}",
-                            held.ItemId, amount, rarity, session.CharacterId);
+                            held.ItemId, back, rarity, session.CharacterId);
                     }
                 }
                 break;
+            case ShopCurrencyType.Meret:
+            case ShopCurrencyType.EventMeret:
+            case ShopCurrencyType.GameMeret:
+                if (held.Red) {
+                    session.Currency.ReturnGameMeret(amount);
+                } else {
+                    session.Currency.ReturnMeret(amount);
+                }
+                break;
             default:
-                ReleasePayment(held);
+                session.Currency.Return(held.Currency, amount);
                 break;
         }
     }
