@@ -29,6 +29,7 @@ public class QuitHandler : FieldPacketHandler {
         bool quitGame = packet.ReadBool();
 
         // Reset map to return map
+        int mapBefore = session.Player.Value.Character.MapId;
         if (session.Player.Value.Character.ReturnMaps.Peek() is not 0) {
             session.Player.Value.Character.MapId = session.Player.Value.Character.ReturnMaps.Peek();
         }
@@ -41,8 +42,8 @@ public class QuitHandler : FieldPacketHandler {
 
         // A save that did not store sends no client to the character list, which would load the state from before it
         // (GameSession.MigrationSave): the client is told as for a refused quit and the session is ended, its Dispose
-        // trying one last save.
-        if (!session.MigrationSave()) {
+        // trying one last save, which stores the map the character is on (the return map set above is put back).
+        if (!session.MigrationSave(() => session.Player.Value.Character.MapId = mapBefore)) {
             session.Send(MigrationPacket.GameToLoginError(s_move_err_default));
             session.CutAfterSend();
             return;

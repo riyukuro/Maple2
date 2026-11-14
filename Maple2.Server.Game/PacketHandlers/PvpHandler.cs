@@ -283,12 +283,14 @@ public class PvpHandler : FieldPacketHandler {
         // map: an instanced field (a dungeon hall, a channelScale map) leaves Character.MapId at the open field it was
         // entered from, so a join from a hall kept the hall's spot as the town's return position.
         Maple2.Model.Game.Character character = session.Player.Value.Character;
+        System.Numerics.Vector3 returnBefore = character.ReturnPosition;
         if (Maple2.Model.Game.Dungeon.DungeonHallRules.KeepsReturnPosition(session.Field?.MapId ?? 0, character.ReturnMaps.Peek())) {
             character.ReturnPosition = session.Player.Position;
         }
 
-        // A save that did not store refuses the move (GameSession.MigrationSave).
-        if (!session.MigrationSave()) {
+        // A save that did not store refuses the move (GameSession.MigrationSave); the return spot set for it is put
+        // back before the session's last save.
+        if (!session.MigrationSave(() => character.ReturnPosition = returnBefore)) {
             session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));
             session.Send(failed);
             return;

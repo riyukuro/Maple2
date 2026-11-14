@@ -127,7 +127,8 @@ public class MigrationSaveRefusalTests {
     }
 
     // The second save (what beforeMove changed, after the World gave the move) does not store: the return position
-    // beforeMove set is put back before the session's last save, and the map too.
+    // beforeMove set is put back before the session's last save, and the map too. Asserted on the character row each
+    // save writes, so on the last one (Dispose's), not on the character after the move's finally put it back.
     [Test]
     public void Migrate_SecondSaveFails_BeforeMoveUndone() {
         var test = new TestGameSession();
@@ -137,14 +138,25 @@ public class MigrationSaveRefusalTests {
         var returnBefore = new System.Numerics.Vector3(1, 2, 3);
         character.ReturnPosition = returnBefore;
         bool afterMove = false;
-        test.FailSave = _ => afterMove;
+        var written = new List<(int MapId, System.Numerics.Vector3 Return)>();
+        test.FailSave = context => {
+            foreach (var row in context.ChangeTracker.Entries<Maple2.Database.Model.Character>()
+                         .Where(row => row.Entity.Id == session.CharacterId)) {
+                written.Add((row.Entity.MapId, new System.Numerics.Vector3(row.Entity.Profile.ReturnX, row.Entity.Profile.ReturnY, row.Entity.Profile.ReturnZ)));
+            }
+            return afterMove;
+        };
 
         session.Migrate(Target, beforeMove: () => {
             character.ReturnPosition = default;
             afterMove = true;
         });
 
+        Assert.That(written, Has.Count.GreaterThanOrEqualTo(4), "the first save, the second one's two tries, the last save");
         Assert.Multiple(() => {
+            Assert.That(written[0].MapId, Is.EqualTo(Target), "the first save stores the move");
+            Assert.That(written[^1].MapId, Is.EqualTo(mapBefore), "the last save stores the map the player is on");
+            Assert.That(written[^1].Return, Is.EqualTo(returnBefore), "the last save stores the return position before the move");
             Assert.That(character.ReturnPosition, Is.EqualTo(returnBefore));
             Assert.That(character.MapId, Is.EqualTo(mapBefore));
         });
@@ -186,6 +198,9 @@ public class MigrationSaveRefusalTests {
     public void QuitToCharacterList_FailedSave_NoMove() {
         var test = new TestGameSession();
         GameSession session = Live(test);
+        Maple2.Model.Game.Character character = session.Player.Value.Character;
+        int mapBefore = character.MapId;
+        character.ReturnMaps.Push(Target);
         FailSaves(test);
 
         new QuitHandler { World = test.World }.Handle(session, TestGameSession.Packet(writer => writer.WriteBool(false)));
@@ -193,6 +208,7 @@ public class MigrationSaveRefusalTests {
         Assert.Multiple(() => {
             Assert.That(test.World.Moves, Is.Empty);
             Assert.That(Ended(session), Is.True);
+            Assert.That(character.MapId, Is.EqualTo(mapBefore), "the return map the quit set is put back");
         });
     }
 }
