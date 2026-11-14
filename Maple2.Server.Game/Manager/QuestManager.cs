@@ -832,10 +832,15 @@ public sealed class QuestManager {
         }
 
         QuestMetadataReward reward = quest.Metadata.CompleteReward;
+        // The quest reward event running for the quest's type and repeat type (GameEventQuestAdditionalReward).
+        QuestAdditionalReward? rewardEvent = QuestRewardEventRules.Pick(
+            session.FindEvent(GameEventType.QuestAdditionalReward).Select(gameEvent => gameEvent.Metadata),
+            quest.Metadata.Basic.Type, quest.Metadata.Basic.Repeat);
 
         List<Item> rewards = [];
         foreach (QuestMetadataReward.Item entry in reward.EssentialItem) {
-            Item? item = session.Field?.ItemDrop.CreateItem(entry.Id, entry.Rarity, entry.Amount);
+            Item? item = session.Field?.ItemDrop.CreateItem(entry.Id, entry.Rarity,
+                (int) Math.Min(int.MaxValue, QuestRewardEventRules.Raise(entry.Amount, QuestRewardEventRules.ItemRate(rewardEvent, entry.Id))));
             if (item is null) {
                 continue;
             }
@@ -850,6 +855,7 @@ public sealed class QuestManager {
 
         // completeReward guildCoin: the guild coin item, as the check-in gives it.
         int guildCoinCount = guildFactor == null ? reward.GuildCoin : (int) GuildRules.QuestRewardBonus(reward.GuildCoin, guildFactor.GuildCoin);
+        guildCoinCount = (int) Math.Min(int.MaxValue, QuestRewardEventRules.Raise(guildCoinCount, rewardEvent, QuestRewardEventRules.GuildCoin));
         if (guildCoinCount > 0) {
             Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, guildCoinCount);
             if (guildCoin != null) {
@@ -905,6 +911,11 @@ public sealed class QuestManager {
                 effect => SpecialEffectRules.QuestApplies(effect, basic.Repeat, exp, meso, reward.Rue)),
             exp, meso, reward.Rue);
 
+        // The quest reward event's share of the same exp and meso adds as well (the client's reward line raises the
+        // exp and the meso it shows by the event rate, questmanager_1.cpp:342 and 354).
+        long eventExp = QuestRewardEventRules.Raise(exp, rewardEvent, QuestRewardEventRules.Exp) - exp;
+        meso = QuestRewardEventRules.Raise(meso, rewardEvent, QuestRewardEventRules.Meso);
+
         // The quest exp rate (special attribute) takes its share of the same exp as the type 7 extra: the two add, neither
         // is raised by the other.
         exp = QuestExpRules.StatBonus(exp, session.Player.Stats.Values[SpecialAttribute.QuestExp].Multiplier(), basic.StandardLevel,
@@ -913,22 +924,25 @@ public sealed class QuestManager {
         if (meso + extraMeso > 0) {
             session.Currency.ChangeMeso(meso + extraMeso);
         }
-        if (exp + extraExp > 0) {
-            session.Exp.AddQuestExp(exp + extraExp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message(), QuestExpRules.PrestigeType(basic.Type));
+        if (exp + extraExp + eventExp > 0) {
+            session.Exp.AddQuestExp(exp + extraExp + eventExp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message(), QuestExpRules.PrestigeType(basic.Type));
         }
 
-        if (reward.Treva > 0) {
-            session.Currency.Change(CurrencyType.Treva, reward.Treva);
+        long treva = QuestRewardEventRules.Raise(reward.Treva, rewardEvent, QuestRewardEventRules.Treva);
+        if (treva > 0) {
+            session.Currency.Change(CurrencyType.Treva, treva);
         }
 
-        if (reward.Rue + extraRue > 0) {
-            session.Currency.Change(CurrencyType.Rue, reward.Rue + extraRue);
+        long rue = QuestRewardEventRules.Raise(reward.Rue, rewardEvent, QuestRewardEventRules.Rue);
+        if (rue + extraRue > 0) {
+            session.Currency.Change(CurrencyType.Rue, rue + extraRue);
         }
 
         // menteeCoin: the mentee token the mentoring page shows on the reward line (FUN_140762be0,
         // commonfiles/questmasktable.cpp:1000, no bonus); the currency caps it and counts get_mentee_token.
-        if (reward.MenteeCoin > 0) {
-            session.Currency.Change(CurrencyType.MenteeToken, reward.MenteeCoin);
+        long menteeCoin = QuestRewardEventRules.Raise(reward.MenteeCoin, rewardEvent, QuestRewardEventRules.MenteeCoin);
+        if (menteeCoin > 0) {
+            session.Currency.Change(CurrencyType.MenteeToken, menteeCoin);
         }
 
         // weddingExp: the wedding mission's intimacy, once for each partner who completes it.
@@ -945,12 +959,10 @@ public sealed class QuestManager {
             }
         }
 
-        if (guildFactor != null) {
-            session.Guild.AddExpFund(GuildRules.QuestRewardBonus(reward.GuildExp, guildFactor.GuildExp),
-                GuildRules.QuestRewardBonus(reward.GuildFund, guildFactor.GuildFund));
-        } else {
-            session.Guild.AddExpFund(reward.GuildExp, reward.GuildFund);
-        }
+        long guildExp = guildFactor != null ? GuildRules.QuestRewardBonus(reward.GuildExp, guildFactor.GuildExp) : reward.GuildExp;
+        long guildFund = guildFactor != null ? GuildRules.QuestRewardBonus(reward.GuildFund, guildFactor.GuildFund) : reward.GuildFund;
+        session.Guild.AddExpFund(QuestRewardEventRules.Raise(guildExp, rewardEvent, QuestRewardEventRules.GuildExp),
+            QuestRewardEventRules.Raise(guildFund, rewardEvent, QuestRewardEventRules.GuildFund));
         // A guild daily or weekly quest is worth its contribution row to the member.
         string? contributionKind = GuildRules.QuestContributionKind(quest.Metadata.Basic.Type, quest.Metadata.Basic.Repeat);
         if (contributionKind != null) {

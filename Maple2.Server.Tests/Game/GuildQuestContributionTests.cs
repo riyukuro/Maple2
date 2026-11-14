@@ -9,6 +9,7 @@ using Grpc.Core;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
@@ -47,7 +48,7 @@ public class GuildQuestContributionTests {
         (typeof(T).GetField(field, Flags) ?? throw new MissingFieldException(typeof(T).Name, field)).SetValue(target, value);
     }
 
-    private GameSession Start(bool inGuild = true) {
+    private GameSession Start(bool inGuild = true, Action<TestGameSession>? before = null) {
         test = new TestGameSession();
         test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
         test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
@@ -62,6 +63,7 @@ public class GuildQuestContributionTests {
                 [GuildContributionKind.DailyQuest] = 5,
                 [GuildContributionKind.WeeklyQuest] = 20,
             }));
+        before?.Invoke(test);
 
         GameSession session = test.Start();
         world = new GuildWorld();
@@ -133,6 +135,31 @@ public class GuildQuestContributionTests {
         Assert.That(world.Requests.TryDequeue(out GuildRequest? second), Is.True);
         Assert.That(second!.AddContribution?.Kind, Is.EqualTo(GuildContributionKind.DailyQuest));
         Assert.That(world.Requests, Is.Empty);
+    }
+
+    // The quest reward event of guild daily quests (KR row guild_fund 10000, guild_exp 10000 for (6, 2)) doubles the
+    // guild's exp and fund the completion sends; the event of guild weekly quests (6, 3) does not.
+    [TestCase(2, 240, 40000)]
+    [TestCase(3, 120, 20000)]
+    public void GuildQuest_RewardEventRaisesTheGuildExpAndFund(int eventRepeat, int exp, int fund) {
+        int[] rates = new int[8];
+        rates[QuestRewardEventRules.GuildFund] = 10000;
+        rates[QuestRewardEventRules.GuildExp] = 10000;
+        GameSession session = Start(before: prepared => prepared.AddEvent(90200001, GameEventType.QuestAdditionalReward,
+            new QuestAdditionalReward((int) QuestType.GuildQuest, eventRepeat, rates, [])));
+        QuestMetadata data = TestGameSession.QuestData(73000001, QuestType.GuildQuest);
+        Quest quest = test.StartQuest(data with {
+            Basic = data.Basic with { Repeat = 2 },
+            CompleteReward = data.CompleteReward with { GuildExp = 120, GuildFund = 20000 },
+            Conditions = [new ConditionMetadata(ConditionType.jump, 1, null, null)],
+        });
+        quest.Conditions[0].Counter = 1;
+
+        Assert.That(session.Quest.Complete(quest), Is.True);
+
+        Assert.That(world.Received.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(world.Requests.TryDequeue(out GuildRequest? first), Is.True);
+        Assert.That((first!.AddExpFund?.Exp, first.AddExpFund?.Fund), Is.EqualTo(((int?) exp, (int?) fund)));
     }
 
     // A guild quest done once, another quest type of a daily repeat, or a player without a guild: nothing is sent.

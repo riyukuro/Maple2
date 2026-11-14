@@ -1,11 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.File.Ingest.Helpers;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Session;
+using Maple2.Server.Tests.Validators;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
@@ -105,5 +109,85 @@ public class QuestRewardEventTests {
     [TestCase(0, 10000, 0)]
     public void Raise_ByTheRate(long amount, int rate, long expected) {
         Assert.That(QuestRewardEventRules.Raise(amount, rate), Is.EqualTo(expected));
+    }
+
+    private const int ItemId = 20000031;
+    private const int OtherItemId = 20000032;
+    private TestGameSession test = null!;
+
+    private GameSession Login(QuestAdditionalReward? data, DateTime? start = null, DateTime? end = null) {
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(ItemId), TestGameSession.Metadata(OtherItemId), TestGameSession.Metadata(Constant.GuildCoinId));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        if (data != null) {
+            test.AddEvent(90200003, GameEventType.QuestAdditionalReward, data, start, end);
+        }
+        GameSession session = test.Start();
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { LuTokenMax = 30000, KarmaTokenMax = 30000 });
+        test.TakeSent();
+        return session;
+    }
+
+    private record Paid(long Exp, long Meso, long Rue, long Treva, long MenteeCoin, int Items, int OtherItems, int GuildCoins);
+
+    private Paid Complete(GameSession session, int repeat = 2) {
+        QuestMetadata data = TestGameSession.QuestData(90000031, QuestType.WorldQuest);
+        Quest quest = test.StartQuest(data with {
+            Basic = data.Basic with { Repeat = repeat, StandardLevel = 60 },
+            CompleteReward = data.CompleteReward with {
+                Exp = 1000, Meso = 1000, Rue = 10, Treva = 20, MenteeCoin = 30, GuildCoin = 4,
+                EssentialItem = [new QuestMetadataReward.Item(ItemId, 1, 3), new QuestMetadataReward.Item(OtherItemId, 1, 3)],
+            },
+        });
+        long exp = session.Player.Value.Character.Exp, meso = session.Currency.Meso, rue = session.Currency[CurrencyType.Rue],
+            treva = session.Currency[CurrencyType.Treva], mentee = session.Currency[CurrencyType.MenteeToken];
+        Assert.That(session.Quest.Complete(quest), Is.True);
+        Assert.That(test.Errors, Is.Empty);
+        return new Paid(session.Player.Value.Character.Exp - exp, session.Currency.Meso - meso, session.Currency[CurrencyType.Rue] - rue,
+            session.Currency[CurrencyType.Treva] - treva, session.Currency[CurrencyType.MenteeToken] - mentee,
+            session.Item.Inventory.Find(ItemId).Sum(item => item.Amount), session.Item.Inventory.Find(OtherItemId).Sum(item => item.Amount),
+            session.Item.Inventory.Find(Constant.GuildCoinId).Sum(item => item.Amount));
+    }
+
+    // A world quest (1, 2) while an event of its key runs: each kind raised by its rate, the item it names and the guild
+    // coin too.
+    [Test]
+    public void Complete_RaisesEachKind() {
+        Paid plain = Complete(Login(null));
+        var data = new QuestAdditionalReward(1, 2, Rates((QuestRewardEventRules.Exp, 5000), (QuestRewardEventRules.Meso, 10000),
+            (QuestRewardEventRules.Rue, 10000), (QuestRewardEventRules.Treva, 5000), (QuestRewardEventRules.MenteeCoin, 10000),
+            (QuestRewardEventRules.GuildCoin, 5000)),
+            [new QuestAdditionalReward.ItemRate(ItemId, 10000)]);
+        Paid raised = Complete(Login(data));
+        Assert.That(plain.Meso, Is.GreaterThan(0));
+        Assert.That(raised, Is.EqualTo(new Paid(plain.Exp * 3 / 2, plain.Meso * 2, plain.Rue * 2, plain.Treva * 3 / 2, plain.MenteeCoin * 2,
+            plain.Items * 2, plain.OtherItems, plain.GuildCoins * 3 / 2)));
+        Assert.That(plain, Is.EqualTo(new Paid(1000, plain.Meso, 10, 20, 30, 3, 3, 4)));
+    }
+
+    // Another quest type or repeat type, or an event that ended: nothing raised.
+    [Test]
+    public void Complete_OtherKeyOrEndedPaysThePlainReward() {
+        Paid plain = Complete(Login(null));
+        int[] all = Enumerable.Repeat(10000, 8).ToArray();
+        Assert.That(Complete(Login(new QuestAdditionalReward(1, 3, all, []))), Is.EqualTo(plain), "repeat type");
+        Assert.That(Complete(Login(new QuestAdditionalReward(6, 2, all, []))), Is.EqualTo(plain), "quest type");
+        Assert.That(Complete(Login(new QuestAdditionalReward(1, 2, all, []), DateTime.Now.AddDays(-5), DateTime.Now.AddDays(-1))),
+            Is.EqualTo(plain), "ended");
+        Assert.That(Complete(Login(new QuestAdditionalReward(1, 2, all, []))).Exp, Is.EqualTo(2000), "running");
+    }
+
+    // The event's share, the quest exp rate's and a type 7 effect's (110001021, 4 times more for a daily quest) each come
+    // from the same exp and add: 1000 + 500 + 300 + 4000.
+    [Test]
+    public void Complete_EventAddsToTheOtherExpBonuses() {
+        GameSession session = Login(new QuestAdditionalReward(1, 2, Rates((QuestRewardEventRules.Exp, 5000)), []));
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { QuestRewardSAIgnoreLevel = 10 });
+        session.Player.Stats.Values[SpecialAttribute.QuestExp].AddTotal(300);
+        SpecialEffectWiringTests.Hold(session.Player, SpecialEffectRulesTests.QuestExp);
+        Assert.That(Complete(session).Exp, Is.EqualTo(5800L));
     }
 }
