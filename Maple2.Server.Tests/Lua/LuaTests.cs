@@ -527,7 +527,8 @@ public class LuaTests {
     [TestCase(999, 0, 0, 0, 0, 0, 0, 49L)]
     [TestCase(16777219, 0, 0, 0, 0, 0, 0, 838860L)] // floats gave 838861
     [TestCase(1024846460, 0, 0, 0, 0, 0, 0, 51242323L)] // floats gave 51242324
-    public void TestCalcSendMailFee_ClientScript(int meso, int normal, int rare, int elite, int excellent, int legendary, int epic, long expected) {
+    [TestCase(3000000000L, 0, 0, 0, 0, 0, 0, 150000000L)] // the client's meso is 64-bit
+    public void TestCalcSendMailFee_ClientScript(long meso, int normal, int rare, int elite, int excellent, int legendary, int epic, long expected) {
         Assert.That(Server.Game.LuaFunctions.Lua.CalcSendMailFee(meso, normal, rare, elite, excellent, legendary, epic), Is.EqualTo(expected));
     }
 

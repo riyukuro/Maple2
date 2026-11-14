@@ -773,7 +773,7 @@ public static class Lua {
     // calcSendMailFee: each rarity's item count times its rate, rounded up, plus 5% of the meso (5 up to 100 meso, 0 for
     // none). The script works in doubles and the client truncates the sum to a 64-bit integer (CLua::CalcSendMailFee);
     // with floats the meso part was 1 over from 16777219 meso (838860, floats gave 838861).
-    public static long CalcSendMailFee(int meso, int normalItemCount, int rateItemCount, int eliteItemCount, int excellentItemCount, int legendaryItemCount, int epicItemCount) {
+    public static long CalcSendMailFee(long meso, int normalItemCount, int rateItemCount, int eliteItemCount, int excellentItemCount, int legendaryItemCount, int epicItemCount) {
         double itemFee = MailItemFee(normalItemCount * 0.055) + MailItemFee(rateItemCount * 0.07) + MailItemFee(eliteItemCount * 0.09)
             + MailItemFee(excellentItemCount * 0.115) + MailItemFee(legendaryItemCount * 0.145) + MailItemFee(epicItemCount * 0.18);
 
