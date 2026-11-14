@@ -36,8 +36,18 @@ public class FunctionCubeMapper : TypeMapper<FunctionCubeMetadata> {
                     ? new FunctionCubeMetadata.FittingDollData((Gender) (int) doll.fittingdollGender, doll.fittingdollType)
                     : null,
                 TriggerTool = functionCube.ControlType == "FunctionUI" && functionCube.UseUiFunction.ToString() == "TriggerTool",
+                FirstEffect = ParseFirstEffect(functionCube.firstAdditionalEffect),
             };
         }
+    }
+
+    // Every object parses with a firstAdditionalEffect node; only an id other than 0 is a buff (29 KR switches).
+    public static FunctionCubeMetadata.FirstEffectData? ParseFirstEffect(FirstAdditionalEffect? effect) {
+        if (effect is null || effect.firstAdditionalEffectID <= 0) {
+            return null;
+        }
+        return new FunctionCubeMetadata.FirstEffectData(effect.firstAdditionalEffectID, effect.firstAdditionalEffectLevel,
+            effect.firstAdditionalTarget, effect.firstAdditionalRange);
     }
 
     // Client: ObjectData (commonfiles/objectdata.cpp:321-378) reads the nurturing node of any object; the cube is a

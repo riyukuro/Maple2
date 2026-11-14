@@ -39,4 +39,11 @@ public record FunctionCubeMetadata(
     public bool TriggerTool { get; init; }
 
     public record FittingDollData(Gender Gender, int Type);
+
+    // The buff a cube gives when it goes to its first state (firstAdditionalEffect, client ObjectData
+    // m_cube.m_firstEffect, commonfiles/objectdata.cpp:286-295). The client has no other reader of target and range,
+    // so those are the server's. Null when the id is 0.
+    public FirstEffectData? FirstEffect { get; init; }
+
+    public record FirstEffectData(int Id, short Level, int Target, float Range);
 }

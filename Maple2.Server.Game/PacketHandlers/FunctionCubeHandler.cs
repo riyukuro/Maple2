@@ -164,9 +164,28 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 if (isInDefaultState) {
                     // Taking furniture into use counts for controller, with the furniture's item id as the code.
                     session.ConditionUpdate(ConditionType.controller, codeLong: fieldInteract.ItemId);
+                    GiveFirstEffect(session, fieldInteract);
                 }
                 break;
         }
+    }
+
+    // A cube with a firstAdditionalEffect (the KR switch furnishings, 5070xxxx-5077xxxx) gives its buff when it goes
+    // to its first state. Every one has target 0, the user, and range 150, so the user gets it within that range
+    // of the cube. No other target is in the data, so none is given. The client keeps target and range without
+    // reading them, so both are the server's reading. 18 of the 29 name an effect KR has no data for; those switch
+    // on with no buff, and no error each time.
+    private static void GiveFirstEffect(GameSession session, FieldFunctionInteract fieldInteract) {
+        if (fieldInteract.Value.FirstEffect is not { } effect || effect.Target != 0 || session.Field is null) {
+            return;
+        }
+        if (effect.Range > 0 && !InteractRules.InReach(session.Player.Position, fieldInteract.Position, effect.Range)) {
+            return;
+        }
+        if (!session.Field.SkillMetadata.TryGetEffect(effect.Id, effect.Level, out _)) {
+            return;
+        }
+        session.Player.Buffs.AddBuff(session.Player, session.Player, effect.Id, effect.Level, session.Field.FieldTick);
     }
 
     private void HandleNurturing(GameSession session, FieldFunctionInteract fieldCube) {
