@@ -84,6 +84,12 @@ public static class DamageCalculator {
         return (long) (target.Stats.Values[BasicAttribute.Health].Total * rate * (1 - cut));
     }
 
+    // Whether a hit of the attack does damage (SkillDamage::HasDamage, 0x1407e0f40): a value, a constDamageByTargetHP,
+    // a rate or a damageByTargetMaxHP above 0. The client shows no damage number for a hit without it.
+    internal static bool HasDamage(SkillMetadataDamage damage) {
+        return damage.Value > 0 || damage.ConstDamageByTargetHp > 0 || damage.Rate > 0 || damage.DamageByTargetMaxHp > 0;
+    }
+
     // A hit of constDamageByTargetHP (or the spirit a hit of constDamageByTargetSP takes): what takes the current value
     // down to the attack's value, nothing when it is already there or below, and nothing for a value of 0 or less (not
     // given). KR: 1 on the Zakum rage attack 50100116 (health and spirit) and the Pink Bean curses 99999737 and

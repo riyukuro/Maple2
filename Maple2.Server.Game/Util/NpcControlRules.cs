@@ -61,9 +61,9 @@ public static class NpcControlRules {
     }
 
     // Where a hit came from: the damage record's origin (the caster, or the region for a skill placed on the
-    // ground), the attacker's own position, the facing a type 5 push follows (PushFiveDirection) and the record's
-    // facing a type 6 push reads (HitFacing).
-    public readonly record struct HitSource(Vector3 Origin, Vector3 Attacker, Vector3 Forward, Vector3 Facing = default);
+    // ground), the attacker's own position (none when the client finds no attacker object), the facing a type 5 push
+    // follows (PushFiveDirection) and the record's facing a type 6 push reads (HitFacing).
+    public readonly record struct HitSource(Vector3 Origin, Vector3? Attacker, Vector3 Forward, Vector3 Facing = default);
 
     // The record's facing (CDamageRecord m_ptHit). A cast's hit takes the cast's direction from the packet, which
     // carries it as whole numbers (ReadVector3Short); a region's hit never sets it, so it stays zero.
@@ -78,13 +78,15 @@ public static class NpcControlRules {
     // Where a hit on an npc came from, read from what its damage packet sends. A region names its own id as the
     // owner, a cast its caster's. The record's position and direction are the target's entry (DamageRecordTarget.For:
     // a region's fire point and the direction from there, a cast's caster position and push direction); the cast's
-    // position and direction are the packet's impact and direction. A caster at the map origin (a trigger's) is no
-    // attacker to measure from, so the record's position stands in.
+    // position and direction are the packet's impact and direction. A caster at the map origin (a trigger's field
+    // actor) is an owner id the client finds no object for: no attacker, so a type 2 pull is not held at 150 and a type
+    // 5 push with no direction of its own has no facing to fall back to (it does not move).
     public static HitSource Source(int ownerId, int casterId, Vector3 castPosition, Vector3 castDirection, Vector3 recordPosition,
                                    Vector3 recordDirection, Vector3 casterPosition, Vector3 casterFront, int attackMethodType) {
         bool region = ownerId != casterId;
-        Vector3 attacker = casterPosition.LengthSquared() < 0.001f ? recordPosition : casterPosition;
-        Vector3 forward = region ? PushFiveDirection(true, attackMethodType, recordDirection, casterFront) : recordDirection;
+        Vector3? attacker = casterPosition.LengthSquared() < 0.001f ? null : casterPosition;
+        Vector3 front = attacker == null ? Vector3.Zero : casterFront;
+        Vector3 forward = region ? PushFiveDirection(true, attackMethodType, recordDirection, front) : recordDirection;
         return new HitSource(HitOrigin(region, castPosition, recordPosition), attacker, forward, HitFacing(region, castDirection));
     }
 
@@ -111,7 +113,8 @@ public static class NpcControlRules {
 
     // How far a push moves the npc, level with the ground (the server keeps it on the navmesh). Client
     // (PCBase::vfunc_107), by push type: 1 pushes pushdistance away from the origin; 2 pulls toward the origin by
-    // pushdistance but no closer than 150 to the attacker (so one standing nearer is put back out to 150); 4 pulls
+    // pushdistance but no closer than 150 to the attacker (so one standing nearer is put back out to 150; with no
+    // attacker object the full pushdistance); 4 pulls
     // all the way to the origin; 5 pushes pushdistance along the attacker's facing; 6 pushes pushdistance along
     // -forward of the record's facing, which the client reads as angles (FUN_140a01250: forward is -Y turned by -z
     // degrees, (sin z, -cos z) with efd's row-major Z rotation), so (-sin z, cos z). 3, -1 and any other type leave
@@ -125,7 +128,9 @@ public static class NpcControlRules {
                 break;
             case 2:
                 direction = new Vector2(source.Origin.X - target.X, source.Origin.Y - target.Y);
-                length = Math.Min(Vector3.Distance(source.Attacker, target) - 150, distance);
+                if (source.Attacker is { } attacker) {
+                    length = Math.Min(Vector3.Distance(attacker, target) - 150, distance);
+                }
                 break;
             case 4:
                 direction = new Vector2(source.Origin.X - target.X, source.Origin.Y - target.Y);

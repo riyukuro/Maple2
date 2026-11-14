@@ -750,7 +750,9 @@ public class FieldNpc : Actor<Npc> {
         }
         base.ApplyDamage(caster, damage, attack);
         if (!IsDead && damage.Targets.TryGetValue(ObjectId, out DamageRecordTarget? hit) && hit.Damage.Any(entry => entry.Amount != 0)) {
-            // applied by the field thread in Update
+            // Only a hit that took health moves the npc (PCBase::vfunc_107, 0x141674020, returns on a total damage of 0):
+            // not a miss, a block, an attack without damage or a constDamageByTargetHP target already there. Applied by
+            // the field thread in Update.
             MovementState.QueueHit(HitSourceOf(caster, damage, hit, attack), attack);
         }
     }

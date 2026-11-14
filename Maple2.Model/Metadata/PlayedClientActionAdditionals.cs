@@ -67,8 +67,8 @@ public static class PlayedClientActionAdditionals {
     // place of the same motion (to its on-damage effects for a dependOnDamageCount use), or, when the attack there has
     // another point, to the motion's first attack with the use's point. A use is added only for an effect id and level
     // none of the level's rows give, anywhere in the level (an effect the data pack gives on one attack is not added
-    // to another), and only for one the data pack has (the client data names effects that are in no effect file, e.g.
-    // 10200102..10200108 for 10200101). Unmatched counts the attack uses whose motion has no attack with their point.
+    // to another), and only for one the effect table holds (the client data also names effects that are in no effect
+    // file). Unmatched counts the attack uses whose motion has no attack with their point.
     public static SkillMetadataLevel Merge(SkillMetadataLevel level, LevelUses uses, Func<int, short, bool> effectExists, out int added, out int unmatched) {
         HashSet<(int, short)> given = level.Skills
             .Concat(level.Motions.SelectMany(motion => motion.Attacks).SelectMany(attack => attack.Skills.Concat(attack.SkillsOnDamage)))

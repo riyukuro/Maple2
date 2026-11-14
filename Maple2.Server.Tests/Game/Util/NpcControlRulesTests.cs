@@ -102,6 +102,20 @@ public class NpcControlRulesTests {
         Assert.That(NpcControlRules.PushFiveDirection(true, 0, Vector3.Zero, front), Is.EqualTo(front));
     }
 
+    // A region whose caster sits at the map origin (a trigger's field actor): the client finds no attacker object, so
+    // a type 5 push with no direction of its own has no facing to fall back to and the npc does not move.
+    [Test]
+    public void ARegionWithNoAttackerHasNoFacingToFallBackTo() {
+        var front = new Vector3(1, 0, 0);
+        NpcControlRules.HitSource none = NpcControlRules.Source(900, 0, Vector3.Zero, Vector3.Zero, new Vector3(100, 0, 0),
+            Vector3.Zero, Vector3.Zero, front, 0);
+        Assert.That((none.Attacker, none.Forward), Is.EqualTo(((Vector3?) null, Vector3.Zero)));
+        Assert.That(NpcControlRules.PushOffset(5, none, new Vector3(100, 0, 0), 100), Is.EqualTo(default(Vector3)));
+        NpcControlRules.HitSource caster = NpcControlRules.Source(900, 1, Vector3.Zero, Vector3.Zero, new Vector3(100, 0, 0),
+            Vector3.Zero, new Vector3(50, 0, 0), front, 0);
+        Assert.That((caster.Attacker, caster.Forward), Is.EqualTo(((Vector3?) new Vector3(50, 0, 0), front)));
+    }
+
     // Type 6 pushes along -forward of the record's facing read as angles: (-sin z, cos z); a region's facing is zero.
     [Test]
     public void PushTypeSixFollowsMinusTheFacing() {

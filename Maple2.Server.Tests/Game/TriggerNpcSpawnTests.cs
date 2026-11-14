@@ -51,7 +51,7 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         typeof(MapEntityMetadata).GetField("<Patrols>k__BackingField", Any)!.SetValue(Field.Entities, new List<MS2PatrolData>());
     }
 
-    private static NpcMetadata Npc(int id, int friendly) {
+    internal static NpcMetadata Npc(int id, int friendly) {
         var basic = new NpcMetadataBasic(friendly, 0, 0, 0, 0, 0, 0, 1, 1, false, 0, 0, 0, 0, [], [], 0);
         var stat = new NpcMetadataStat(new Dictionary<BasicAttribute, long> { [BasicAttribute.Health] = 100 }, [], [], [], []);
         return new NpcMetadata(id, "npc", "", new NpcMetadataModel("test_model", 1, 1), stat, basic,
@@ -62,7 +62,7 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
     }
 
     // The npc table without a database: the npcs and the model's (empty) animation are in its caches.
-    private static NpcMetadataStorage NpcTable(params NpcMetadata[] npcs) {
+    internal static NpcMetadataStorage NpcTable(params NpcMetadata[] npcs) {
         var storage = (NpcMetadataStorage) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadataStorage));
         var cache = new LRUCache<int, NpcMetadata>(100, 5);
         foreach (NpcMetadata npc in npcs) {

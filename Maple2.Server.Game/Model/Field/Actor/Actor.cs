@@ -119,6 +119,10 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             } else if (Buffs.Invincible || refused) {
                 // KMS2 sends each hit on a holder of an invincible buff as type 4 or 8 (by the buff) with amount 0.
                 targetRecord.AddDamage(Buffs.Invincible ? Buffs.InvincibleHitType : DamageType.Invincible, 0);
+            } else if (!DamageCalculator.HasDamage(attack.Damage)) {
+                // An attack with no value, rate, constDamageByTargetHP or damageByTargetMaxHP (SkillDamage::HasDamage)
+                // takes nothing: a hit of 0, still a hit for the hit events (KR: 645 pack attacks, 10800202 lv1-12).
+                targetRecord.AddDamage(DamageType.Normal, 0);
             } else if (attack.Damage.ConstDamageByTargetHp > 0) {
                 // The hit takes the health down to the value, counting the hits before it; it never kills, and a
                 // target already there takes a hit of 0 (still a hit for the hit events).
