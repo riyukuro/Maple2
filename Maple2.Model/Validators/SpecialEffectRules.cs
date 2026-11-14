@@ -96,15 +96,17 @@ public static class SpecialEffectRules {
         return effect.ItemIds?.Contains(itemId) == true;
     }
 
-    // Type 12 (110001026): "Visiting major cities will now grant rest experience during your stay", the tooltip's
-    // cities: Tria, Ellinia, Perion, Lith Harbor, Henesys, Kerning City, Taliskar and Ludari City. Their quest copies
-    // (52xxxxxx) are left out. Rest exp grows there as at home (RestExpRules.Tick).
-    public static readonly int[] RestCities = [2000001, 2000023, 2000051, 2000062, 2000076, 2000100, 2000270, 2010002];
+    // Type 12 (110001026): rest exp while staying in a major city (its tooltip), the KR tooltip's
+    // nine cities: Tria, Ellinia, Perion, Lith Harbor, Henesys, Kerning City, Taliskar, Ludari City and Babeni
+    // (02020041; the en tooltip lists eight, without it). Their quest copies (52xxxxxx) are left out. Rest exp grows
+    // there as at home (RestExpRules.Tick).
+    public static readonly int[] RestCities = [2000001, 2000023, 2000051, 2000062, 2000076, 2000100, 2000270, 2010002, 2020041];
 
     public static bool RestCity(int mapId) => RestCities.Contains(mapId);
 
     // Type 3: a world boss kill's extra drops for a holder, one more of the kill's drops per effect taken
-    // (110000007 "Doubles world boss item drops", always; 110001014 "a chance to earn an extra reward", 5 %).
+    // (110000007: by its KR tooltip a field boss hunt's items several times over, always; 110001014: by its tooltip a chance
+    // of an extra reward, 5 %).
     public static int WorldBossExtraDrops(IEnumerable<SpecialEffectMetadata> taken) => taken.Count(effect => effect.Type == WorldBossReward);
 
     // Type 2: the factor of the damage a holder takes from an npc of a rank (its Basic class).

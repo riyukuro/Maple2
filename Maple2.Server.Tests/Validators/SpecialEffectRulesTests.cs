@@ -118,7 +118,7 @@ public class SpecialEffectRulesTests {
         Assert.That(SpecialEffectRules.WorldBossExtraDrops(SpecialEffectRules.Taken([WorldBossDouble, WorldBossChance, Valor], 3, Wins)), Is.EqualTo(2));
     }
 
-    // 110001026's eight cities (Tria 02000001 ... Ludari 02010002); not their quest copies or another field.
+    // 110001026's nine KR cities (Tria 02000001 ... Ludari 02010002, Babeni 02020041); not their quest copies or another field.
     [TestCase(2000001, true)]
     [TestCase(2000023, true)]
     [TestCase(2000051, true)]
@@ -127,6 +127,7 @@ public class SpecialEffectRulesTests {
     [TestCase(2000100, true)]
     [TestCase(2000270, true)]
     [TestCase(2010002, true)]
+    [TestCase(2020041, true)]
     [TestCase(52000001, false)]
     [TestCase(2000002, false)]
     [TestCase(62000000, false)]

@@ -133,6 +133,7 @@ public class SpecialEffectWiringTests {
     [TestCase(2000001, false, false)]
     [TestCase(2000001, true, true)]
     [TestCase(2010002, true, true)]
+    [TestCase(2020041, true, true)]
     [TestCase(2000002, true, false)]
     [TestCase(Constant.DefaultHomeMapId, false, true)]
     public void Rest_InTheCities(int mapId, bool held, bool rests) {
