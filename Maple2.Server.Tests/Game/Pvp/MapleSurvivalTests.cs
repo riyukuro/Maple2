@@ -366,6 +366,31 @@ public class MapleSurvivalTests {
         Assert.That((account.SurvivalSilverLevelRewardClaimed, account.SurvivalGoldLevelRewardClaimed), Is.EqualTo((0, 0)));
     }
 
+    // The KR client's entry (SurvivalManager.Load, no lobby) enters the open period before it sends the stats, so an
+    // account with the ended period's pass and claims is shown the new period's level 1 without them.
+    [Test]
+    public void Load_EntersTheNewPeriod() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        session.Survival = new Maple2.Server.Game.Manager.SurvivalManager(session);
+        test.SetTable(Table() with {
+            Periods = new Dictionary<int, MapleSurvivalTable.Period> {
+                [1] = new(1, 1, new DateTime(2018, 8, 22), new DateTime(2019, 1, 1), 800),
+                [2] = new(2, 1, new DateTime(2019, 1, 2), new DateTime(2099, 1, 1), 500),
+            },
+        });
+        Maple2.Model.Game.Account account = session.Player.Value.Account;
+        account.SurvivalSeason = 1;
+        account.SurvivalLevel = 3;
+        account.ActiveGoldPass = true;
+        account.SurvivalSilverLevelRewardClaimed = 3;
+        account.SurvivalGoldLevelRewardClaimed = 3;
+        test.TakeSent();
+        session.Survival.Load();
+        Assert.That((account.SurvivalSeason, account.SurvivalLevel, account.ActiveGoldPass), Is.EqualTo((2, 1, false)));
+        Assert.That((account.SurvivalSilverLevelRewardClaimed, account.SurvivalGoldLevelRewardClaimed), Is.EqualTo((0, 0)));
+    }
+
     // A match takes the units that fit its count (a unit that would go past it waits): 18 solo players and a squad of
     // 4 make no 20-player match; two more solos fill it. A match needs two units.
     [Test]

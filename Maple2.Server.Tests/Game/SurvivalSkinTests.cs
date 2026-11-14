@@ -25,6 +25,11 @@ public class SurvivalSkinTests {
             [TailId] = MedalType.Tail,
             [RidingId] = MedalType.Riding,
         }));
+        // No pass period: Load enters the open period before it sends the stats, and there is none.
+        test.SetTable(new MapleSurvivalTable(new Dictionary<int, MapleSurvivalTable.Period>(), new Dictionary<int, long>(),
+            new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>()));
         GameSession session = test.Start();
         session.Survival = new SurvivalManager(session);
         test.TakeSent();

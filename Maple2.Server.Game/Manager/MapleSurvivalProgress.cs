@@ -35,6 +35,11 @@ public static class MapleSurvivalProgress {
         return period;
     }
 
+    // The account enters the open period (SurvivalManager.Load, before it sends the stats).
+    public static void EnterPeriod(GameSession session) {
+        Period(session, Table(session));
+    }
+
     // After each game server entry and on the lobby's refresh (0xC2 0x12).
     public static void SendLobby(GameSession session) {
         Account account = session.Player.Value.Account;

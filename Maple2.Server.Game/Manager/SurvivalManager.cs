@@ -201,6 +201,8 @@ public sealed class SurvivalManager {
                 Unequip(type);
             }
         }
+        // The stats are the open period's: the KR client's entry sends them without the lobby, which enters it too.
+        MapleSurvivalProgress.EnterPeriod(session);
         session.Send(SurvivalPacket.UpdateStats(session.Player.Value.Account));
         session.Send(SurvivalPacket.LoadMedals(inventory, equip));
     }
