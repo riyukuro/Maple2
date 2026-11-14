@@ -280,23 +280,56 @@ public static class SkillHitRules {
     // nearer of the cast and the owner's position now: the client starts a magic at the owner's fire node when it
     // spawns (:1408), after any dash or leap of the motion, and a boomerang's way back homes on its owner (:1386).
     public static bool ReachTooFar(Vector3 point, Vector3 cast, SkillMetadataArrow arrow, IReadOnlyList<MagicPath>? paths, Vector3 owner) {
-        if (paths is not { Count: > 0 }) {
+        float? reach = ArrowReach(arrow, paths);
+        if (reach is not > 0) {
             return false;
+        }
+        return MathF.Min(Vector3.Distance(point, cast), Vector3.Distance(point, owner)) > reach.Value + TargetMargin;
+    }
+
+    // How far from the cast or its owner an arrow's paths take it (ReachTooFar): the longest path's distance with
+    // its fire and end offsets, and a chain's or range bounce's links. Null when a path fires from a fixed point (no
+    // reach from the cast), 0 when no path has a distance.
+    public static float? ArrowReach(SkillMetadataArrow arrow, IReadOnlyList<MagicPath>? paths) {
+        if (paths is not { Count: > 0 }) {
+            return 0;
         }
         float reach = 0;
         foreach (MagicPath path in paths) {
             if (path.FireFixed != Vector3.Zero) {
-                return false;
+                return null;
             }
             reach = MathF.Max(reach, MathF.Max(path.Distance, path.NonTargetMoveDistance) + path.FireOffset.Length() + path.ControlEndOffsetValue.Length());
         }
-        if (reach <= 0) {
-            return false;
-        }
-        if (arrow.BounceType is BounceType.Chain or BounceType.Range) {
+        if (reach > 0 && arrow.BounceType is BounceType.Chain or BounceType.Range) {
             reach += Math.Max(0, arrow.BounceCount) * Math.Max(0, arrow.BounceRadius);
         }
-        return MathF.Min(Vector3.Distance(point, cast), Vector3.Distance(point, owner)) > reach + TargetMargin;
+        return reach;
+    }
+
+    // How much farther than a hit a breakable may lie: the client tests the tag's area against the breakable's box
+    // (its model's bounds, which the server does not have), not its position. Chosen generous.
+    public const float BreakableMargin = 600f;
+
+    // Whether a breakable at the position is past where the cast's attack can reach it. The client registers the
+    // tag's own magic area for a breakable (WorldService::FUN_141bc3470, worldservice_1.cpp:4205), the area the
+    // attack hits with, so the reach is the hit's: a region's ImpactReach of its largest side (distance, height,
+    // width or end width) with its range offsets, or the reach of the attack's magic paths (ArrowReach), from the
+    // cast or the player's position now (a held cast or a dash moves), with BreakableMargin for the box. A path
+    // from a fixed point is not checked.
+    public static bool BreakableTooFar(Vector3 breakable, Vector3 cast, Vector3 player, SkillMetadataAttack attack,
+                                       IReadOnlyList<MagicPath>? paths, IReadOnlyList<MagicPath>? cubePaths) {
+        SkillMetadataRange range = attack.Range;
+        float extent = MathF.Max(MathF.Max(range.Distance, range.Height), MathF.Max(range.Width, range.EndWidth));
+        float reach = ImpactReach(extent) + range.RangeAdd.Length() + range.RangeOffset.Length();
+        foreach (IReadOnlyList<MagicPath>? moves in new[] { paths, cubePaths }) {
+            float? arrow = ArrowReach(attack.Arrow, moves);
+            if (arrow == null) {
+                return false;
+            }
+            reach = MathF.Max(reach, arrow.Value + TargetMargin);
+        }
+        return MathF.Min(Vector3.Distance(breakable, cast), Vector3.Distance(breakable, player)) > reach + BreakableMargin;
     }
 
     // What an arrow packet's points refuse its hits for: only a current point past the paths' reach (ReachTooFar).

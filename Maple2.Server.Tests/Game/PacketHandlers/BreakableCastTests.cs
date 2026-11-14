@@ -32,7 +32,13 @@ public class BreakableCastTests {
         public required SkillMetadataStorage Storage;
     }
 
-    private static Scene Start() {
+    // A box region 300 ahead (ImpactReach 1050), the fixture's attack.
+    private static readonly SkillMetadataRange Box = new(SkillRegion.Box, 300, 150, 150, 0, 0, default, default,
+        IncludeCasterType.Exclude, ApplyTargetType.Hostile, SkillTargetType.None);
+    private static readonly SkillMetadataArrow NoArrow = new(false, false, false, SkillTargetType.None, BounceType.None, 0, 0,
+        false, default, default, 0);
+
+    private static Scene Start(long magicPathId = 0, params MagicPath[] paths) {
         var test = new TestGameSession();
         test.Start();
         FieldManager field = test.Session.Field!;
@@ -44,7 +50,9 @@ public class BreakableCastTests {
         FieldBreakable box = field.AddBreakable("box", new BreakableActor(true, 0, 1000, 1000, 0, Vector3.Zero, Vector3.Zero))!;
 
         // Attack point 0 has a brokenOffence, attack point 1 has none: the client makes a breakable area of 0 only.
-        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with { BrokenOffence = 1 };
+        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with {
+            BrokenOffence = 1, Range = Box, Arrow = NoArrow, MagicPathId = magicPathId,
+        };
         var noBreak = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack));
         var motion = new SkillMetadataMotion(null!, [attack, noBreak], new Dictionary<string, byte>());
         var level = (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with {
@@ -53,6 +61,8 @@ public class BreakableCastTests {
         var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
         var record = new SkillRecord(new SkillMetadata(SkillId, 1, null, property, null!, level), CastUid, test.Session.Player);
         record.Hits.Open(field.FieldTick);
+        test.SetTable(new MagicPathTable(paths.Length == 0 ? new Dictionary<long, IReadOnlyList<MagicPath>>()
+            : new Dictionary<long, IReadOnlyList<MagicPath>> { [magicPathId] = paths }));
         // The fixture's player is not constructed: it has no skill queue.
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<ActiveSkills>k__BackingField", Any)!
             .SetValue(test.Session.Player, new SkillQueue());
@@ -242,5 +252,45 @@ public class BreakableCastTests {
         typeof(FieldManager).GetField("removedSkills", Any)!.SetValue(field, new ConcurrentDictionary<int, (FieldSkill, long)>());
         skills[900] = new FieldSkill(field, 900, scene.Test.Session.Player, scene.Record.Metadata, 1000, Vector3.Zero);
         return Hit(scene, 0, attackPoint: attackPoint) == BreakableState.Break;
+    }
+
+    // The tag's area met the box, so the box lies within the attack's reach (SkillHitRules.BreakableTooFar): a box
+    // region 300 ahead reaches 1050 from the cast, and the box's own size is taken as BreakableMargin (600) more.
+    // Before, a cast broke a box anywhere on the map.
+    [TestCase(1500f, ExpectedResult = true)]
+    [TestCase(1600f, ExpectedResult = true)]
+    [TestCase(5000f, ExpectedResult = false)]
+    public bool ABoxPastTheAttacksReachIsRefused(float away) {
+        Scene scene = Start();
+        scene.Record.CastPosition = new Vector3(away, 0, 0);
+        scene.Test.Session.Player.Position = new Vector3(away, 0, 0);
+        AttackPoint(scene);
+        return Hit(scene) == BreakableState.Break;
+    }
+
+    // A held cast or a dash moved the player since the cast: the box near the player now breaks.
+    [Test]
+    public void ABoxNearThePlayerNowBreaks() {
+        Scene scene = Start();
+        scene.Record.CastPosition = new Vector3(8000, 0, 0);
+        scene.Test.Session.Player.Position = new Vector3(500, 0, 0);
+        AttackPoint(scene);
+        Assert.That(Hit(scene), Is.EqualTo(BreakableState.Break));
+    }
+
+    // An arrow's magic flies its path's distance: a box 3500 away breaks with a 3000 path (3000 + 150 + 600), not
+    // 5000 away. A path from a fixed point has no reach from the cast and is not checked.
+    [TestCase(3500f, false, ExpectedResult = true)]
+    [TestCase(5000f, false, ExpectedResult = false)]
+    [TestCase(50000f, true, ExpectedResult = true)]
+    public bool AnArrowsPathReachesTheBox(float away, bool fixedPoint) {
+        var path = (MagicPath) RuntimeHelpers.GetUninitializedObject(typeof(MagicPath)) with {
+            Distance = 3000, FireFixed = fixedPoint ? new Vector3(0, 0, 100) : Vector3.Zero,
+        };
+        Scene scene = Start(5, path);
+        scene.Record.CastPosition = new Vector3(away, 0, 0);
+        scene.Test.Session.Player.Position = new Vector3(away, 0, 0);
+        AttackPoint(scene);
+        return Hit(scene) == BreakableState.Break;
     }
 }

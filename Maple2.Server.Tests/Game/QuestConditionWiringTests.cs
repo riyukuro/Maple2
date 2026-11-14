@@ -887,7 +887,13 @@ public class QuestConditionWiringTests : TriggerTestBase {
         }
         SkillMetadata cast = CastSkill(10000001);
         // An attack with a brokenOffence: the client makes a breakable area of no other (worldservice_1.cpp:4206).
-        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with { BrokenOffence = 1 };
+        var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with {
+            BrokenOffence = 1,
+            Range = new SkillMetadataRange(SkillRegion.Box, 300, 150, 150, 0, 0, default, default, IncludeCasterType.Exclude,
+                ApplyTargetType.Hostile, SkillTargetType.None),
+            Arrow = new SkillMetadataArrow(false, false, false, SkillTargetType.None, BounceType.None, 0, 0, false, default, default, 0),
+        };
+        test.SetTable(new MagicPathTable(new Dictionary<long, IReadOnlyList<MagicPath>>()));
         SkillMetadata skill = cast with {
             Data = cast.Data with { Motions = [cast.Data.Motions[0] with { Attacks = [attack] }] },
         };

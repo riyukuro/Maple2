@@ -10,6 +10,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -63,6 +64,21 @@ public class BreakableHandler : FieldPacketHandler {
             // Without this every repeat of the packet dropped the box again and counted for the condition.
             if (!BreakableRules.CanBreak(breakable.State)) {
                 return;
+            }
+            // The tag's area met the breakable's box, so the breakable lies within the attack's reach of the cast
+            // (SkillHitRules.BreakableTooFar). Before, any breakable of the map broke for any cast whose attack point
+            // breaks. A region's hit (its own position, placed by the server's region checks) and a skill level the
+            // server's data lacks are not checked.
+            if (breaks == true && !fromRegion && record != null && skill != null) {
+                SkillMetadataAttack attack = skill.Data.Motions[motionPoint].Attacks[attackPoint];
+                IReadOnlyDictionary<long, IReadOnlyList<MagicPath>> paths = session.Field.TableMetadata.MagicPathTable.Entries;
+                paths.TryGetValue(attack.MagicPathId, out IReadOnlyList<MagicPath>? magicPaths);
+                paths.TryGetValue(attack.CubeMagicPathId, out IReadOnlyList<MagicPath>? cubePaths);
+                if (SkillHitRules.BreakableTooFar(breakable.Position, record.CastPosition, session.Player.Position, attack, magicPaths, cubePaths)) {
+                    Logger.Information("Breakable {EntityId} refused: at {Position}, past the reach of cast {SkillUid} skill {SkillId} point {MotionPoint},{AttackPoint} from {Cast} (player at {Player})",
+                        entityId, breakable.Position, skillUid, skillId, motionPoint, attackPoint, record.CastPosition, session.Player.Position);
+                    return;
+                }
             }
             if (breakable.Value.GlobalDropBoxId != 0) {
                 ICollection<Item> items = session.Field.ItemDrop.GetGlobalDropItems(breakable.Value.GlobalDropBoxId, session.Field.Metadata.Drop.Level, session);
