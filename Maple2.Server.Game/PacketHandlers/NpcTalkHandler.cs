@@ -220,6 +220,11 @@ public class NpcTalkHandler : FieldPacketHandler {
             return;
         }
         int pick = packet.ReadInt();
+        // The client sends 0 or an index into its list (UITalkManager::SendNpcTalkMode2); a negative pick passed
+        // the checks below and threw in the quest lookup.
+        if (pick < 0) {
+            return;
+        }
 
         /* The ordering is
         / Quests
