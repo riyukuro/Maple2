@@ -123,8 +123,10 @@ public class AdventureLevelConditionTests {
         using Maple2.Database.Storage.GameStorage.Request check = test.Storage.Context();
         Assert.That(check.LoadPlayer(test.AccountId, test.CharacterId, 1, 1)!.Account.PrestigeLevel, Is.EqualTo(storedBefore));
         Assert.That(storedBefore, Is.Not.EqualTo(11));
-        // Only the refused store's own line: no item neither added nor mailed.
-        Assert.That(test.Errors, Has.All.StartsWith("SavePurchase:"));
+        // The items' own rows were stored although the account row was refused.
+        Assert.That(session.Item.Inventory.Find(30001133).Select(item => check.GetItem(item.Uid)?.Amount ?? 0).Sum(), Is.EqualTo(2));
+        // The refused store's own line (the refusal ran) and nothing else: no item neither added nor mailed.
+        Assert.That(test.Errors, Is.Not.Empty.And.All.StartsWith("SavePurchase:"));
     }
 
     // Prestige 2 (level up): the client finds the PC by its object id and sets the level and plays the effect for
