@@ -139,6 +139,8 @@ public sealed class TestGameSession {
         SetTable(InventoryTabNameTable.Empty);
         SetTable(new UgcCubeCategoryTable(new Dictionary<int, int>()));
         SetTable(new WeddingTable(new Dictionary<MarriageExpType, WeddingReward>(), new Dictionary<int, WeddingPackage>()));
+        // A field mission's progress reads the indoor parents (QuestManager.Update): none until a test sets them.
+        SetTable(new FieldMetaTable(new Dictionary<int, IReadOnlyList<int>>(), new Dictionary<int, IReadOnlyList<int>>()));
         SetServerTable(new InstanceFieldTable(new Dictionary<int, InstanceFieldMetadata>()));
         // A shop load reads the running game events (NpcShopShowItem).
         SetServerTable(new GameEventTable(new Dictionary<int, GameEventMetadata>()));

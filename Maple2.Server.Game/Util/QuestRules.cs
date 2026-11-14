@@ -50,6 +50,15 @@ public static class QuestRules {
 
     // require subJob (CanAcceptQuest, questdata.cpp:476): the player's job (PC::GetSubJob, the Job value, 101 a
     // first-awakened knight) must be listed; no list accepts any job.
+    // The field mission's own field, as the client's quest tracker counts it (CQuestCommon::FUN_140744b90): the first
+    // progress map, or a field whose outdoor parent (CFieldMetaTable::GetParentField) is the first progress map. The
+    // client keeps one parent per field; any of the parents counts here.
+    public static bool FieldMissionTracked(int[] progressMaps, int mapId, IReadOnlyDictionary<int, IReadOnlyList<int>>? indoorParents) {
+        if (progressMaps.Length == 0) return false;
+        int want = progressMaps[0];
+        return want == mapId || (indoorParents != null && indoorParents.TryGetValue(mapId, out IReadOnlyList<int>? parents) && parents.Contains(want));
+    }
+
     public static bool MeetsSubJob(int[]? subJobs, Job job) => subJobs == null || subJobs.Contains((int) job);
 
     // require guildLevel (questdata.cpp:553): -1 checks nothing; 0 needs no guild; a level needs a guild of at least

@@ -3069,9 +3069,12 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
 
         var results = new Dictionary<int, IReadOnlyList<int>>();
+        var outdoor = new Dictionary<int, bool>();
+        var indoorPortals = new Dictionary<int, IReadOnlyList<int>>();
         foreach (XmlNode node in document?.SelectNodes("ms2/fieldPortal")?.Cast<XmlNode>() ?? []) {
             if (node is not XmlElement fieldPortal || !int.TryParse(fieldPortal.GetAttribute("field"), out int field)) continue;
             var targets = new List<int>();
+            var indoorTargets = new List<int>();
             int target = 0;
             foreach (XmlNode child in fieldPortal.SelectNodes("portal")!) {
                 if (child is not XmlElement portal) continue;
@@ -3081,9 +3084,17 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 if (target != 0) {
                     targets.Add(target);
                 }
+                int.TryParse(portal.GetAttribute("portalIndoor"), out int portalIndoor);
+                if (portalIndoor != 0 && target != 0 && !indoorTargets.Contains(target)) {
+                    indoorTargets.Add(target);
+                }
             }
             results[field] = targets;
+            int.TryParse(fieldPortal.GetAttribute("indoor"), out int indoor);
+            outdoor[field] = indoor == 0;
+            indoorPortals[field] = indoorTargets;
         }
+        Dictionary<int, IReadOnlyList<int>> indoorParents = FieldMetaTable.BuildIndoorParents(outdoor, indoorPortals);
 
         var npcFields = new Dictionary<int, List<int>>();
         foreach (XmlNode node in document?.SelectNodes("ms2/npc")?.Cast<XmlNode>() ?? []) {
@@ -3097,8 +3108,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 }
             }
         }
-        Console.WriteLine($"{TableNames.FIELD_METADATA}: portal targets of {results.Count} fields, fields of {npcFields.Count} npcs");
-        return new FieldMetaTable(results, npcFields.ToDictionary(entry => entry.Key, entry => (IReadOnlyList<int>) entry.Value));
+        Console.WriteLine($"{TableNames.FIELD_METADATA}: portal targets of {results.Count} fields, fields of {npcFields.Count} npcs, indoor parents of {indoorParents.Count} fields");
+        return new FieldMetaTable(results, npcFields.ToDictionary(entry => entry.Key, entry => (IReadOnlyList<int>) entry.Value), indoorParents);
     }
 
     // IsElementAvailable and the locale list, as the client's maid recipe tables check each row.

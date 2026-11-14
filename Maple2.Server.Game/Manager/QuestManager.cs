@@ -376,7 +376,8 @@ public sealed class QuestManager {
         foreach (Quest quest in quests) {
             // TODO: Not sure if ProgressMap really means that only progress counts in this map. It doesn't make sense for some quests.
             // Testing only on FieldMission for now.
-            if (quest.Metadata.Basic is { Type: QuestType.FieldMission, ProgressMaps: not null } && session.Field is not null) {
+            if (quest.Metadata.Basic is { Type: QuestType.FieldMission, ProgressMaps: not null } && session.Field is not null
+                && !QuestRules.FieldMissionTracked(quest.Metadata.Basic.ProgressMaps, session.Player.Value.Character.MapId, session.TableMetadata.FieldMetaTable.IndoorParents)) {
                 switch (session.Field.Metadata.Property.ExploreType) {
                     case 1 or 0 when !quest.Metadata.Basic.ProgressMaps.Contains(session.Player.Value.Character.MapId):
                     case 2 when !quest.Metadata.Basic.ProgressMaps.Any(x => session.Player.Value.Character.ReturnMaps.Contains(x)):
