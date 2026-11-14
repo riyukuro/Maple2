@@ -22,12 +22,13 @@ namespace Maple2.Model.Metadata;
 // - attackMethodType of each <attack> (SkillAttackData::Load, 0 when not given): the data pack gives it for 2 skills
 //   only. The client's search of an attack of type 1 takes neither the range offset nor its z rotation
 //   (SkillLevelData::FUN_1408043f0); see ReadAttackMethods.
+// - chargingSkill of <combo> (SkillMetadataState.ChargingSkill): the server pack's skill data has no <combo>.
 public static partial class PlayedClientSkills {
     public const string SkillFolder = "skilldata/";
 
     public readonly record struct Entry(int MainType, int RechargeMaxCount, bool RechargeShared, (int LeftHand, int RightHand)[] Weapons,
         int SplashMaxCount = 0, bool OnlyShadowWorld = false, bool OnlyFlyableMap = false, bool AllowBattleRiding = false,
-        bool OnlyBattleRiding = false, int[]? RequireEffects = null, int[]? NotEffectGroups = null);
+        bool OnlyBattleRiding = false, int[]? RequireEffects = null, int[]? NotEffectGroups = null, bool ChargingSkill = false);
 
     public static bool IsSkillFile(string name) => name.StartsWith(SkillFolder, StringComparison.OrdinalIgnoreCase);
 
@@ -38,6 +39,7 @@ public static partial class PlayedClientSkills {
             XmlElement? state = basic?.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "stateAttr");
             int origin = Number(skill, "originID");
             XmlElement? condition = basic?.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "condition");
+            XmlElement? combo = basic?.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "combo");
             (int, int)[] weapons = condition?.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "weapon")
                 .Select(weapon => (Number(weapon, "lh"), Number(weapon, "rh"))).ToArray() ?? [];
             entries[id] = new Entry(
@@ -51,7 +53,8 @@ public static partial class PlayedClientSkills {
                 AllowBattleRiding: Number(condition, "allowBattleRidingState") != 0,
                 OnlyBattleRiding: Number(condition, "onlyBattleRidingState") != 0,
                 RequireEffects: RequireEffectCodes(condition),
-                NotEffectGroups: NotEffectGroupIds(condition));
+                NotEffectGroups: NotEffectGroupIds(condition),
+                ChargingSkill: Number(combo, "chargingSkill") != 0);
         }
         return entries;
     }

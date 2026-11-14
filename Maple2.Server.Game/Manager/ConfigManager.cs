@@ -46,6 +46,9 @@ public class ConfigManager {
     // The last town casts of those skills, put back with them: a job skill's cooldown is checked on its last cast
     // (CastTimingRefusal). Not kept over a session move, like lastCasts.
     private readonly PvpCooldownHold<SkillCastRules.LastCast> pvpCastHold = new(CastHoldEnd);
+    // The recharge uses a held repeat took at a tick sync (TakeSyncRechargeUse): the cast tick and server tick of
+    // the last one of each skill, for the skill's gap. Cleared with lastCasts; made at the first such use.
+    private Dictionary<int, (int CastTick, long ServerTick)>? syncUses;
     private SkillCastRules.LastMotion? lastMotion;
     public readonly LagBudget Lag = new(); // casts and held-skill iterations that arrive early
     public readonly LagBudget MoveLag = new(); // position syncs that arrive early
@@ -369,7 +372,45 @@ public class ConfigManager {
         }
         long gapMs = lastCasts.TryGetValue(skill.Id, out SkillCastRules.LastCast last)
             ? SkillCastRules.RechargeGapShortfall(skill.Data.Condition.RechargeGap, castTick, last.CastTick, tick, last.ServerTick) : 0;
+        if (syncUses != null && syncUses.TryGetValue(skill.Id, out (int CastTick, long ServerTick) use)) {
+            gapMs = Math.Max(gapMs, SkillCastRules.RechargeGapShortfall(skill.Data.Condition.RechargeGap, castTick, use.CastTick, tick, use.ServerTick));
+        }
         return Math.Max(gapMs, SkillCastRules.RechargeEmptyShortfall(usesOut, skill.State.RechargeMaxCount, endTick, tick));
+    }
+
+    // Why a held repeat's tick sync comes before the client would send it, null when it does not. At a loop end the
+    // client sends the repeat (CSkillRecord::SendSkill) only when the skill's cooldown, its own or its group's, has
+    // run out or a recharge use is ready (StateSkill, stateskill.cpp:917-927: CanUseRechargeSkill, FUN_141765fe0);
+    // else it holds the loop until one is. A skill that continues while held (its cooldown is the loop's time left
+    // then, FUN_1417f16f0) or a charging skill (basic/combo chargingSkill) repeats with no such wait: not checked.
+    // The cooldown is the cast's (the repeat restarts none), checked for a job skill as at a cast
+    // (CastTimingRefusal), with the same draw on the session's lag budget for one that only arrives early.
+    public string? SyncTimingRefusal(SkillMetadata skill, bool jobSkill, int syncTick, long tick) {
+        if (!SkillCastRules.SyncWaitsForCooldown(skill.Property.ContinueSkill, skill.State.ChargingSkill)) {
+            return null;
+        }
+        lock (skillCooldowns) {
+            long cooldownMs = jobSkill && skill.State.RechargeMaxCount <= 0
+                ? SkillCastRules.CooldownShortfall(lastCasts.Values, skill.Id, skill.State.CooldownGroupId, syncTick, tick, AttackSpeed) : 0;
+            long rechargeMs = RechargeShortfall(skill, syncTick, tick);
+            string? reason = SkillCastRules.TimingRefusal(Math.Max(cooldownMs, rechargeMs), CastClock.IsFast(tick), Lag, tick);
+            return reason == null ? null : $"{(rechargeMs >= cooldownMs ? "recharge" : "cooldown")}: {reason}";
+        }
+    }
+
+    // A held repeat of a recharge skill takes one of its uses, as a cast does (CSkillSlot::OnRechargeSkillUsed: the
+    // uses out go up by one and the gap starts again); no other cooldown starts again. Not for a skill that uses an
+    // item or counts its uses on its origin skill (RechargeShortfall), nor for one that continues while held or a
+    // charging skill (they never reach it: the client takes the use only on the repeat path checked above).
+    public void TakeSyncRechargeUse(SkillMetadata skill, int syncTick, long tick) {
+        if (skill.State.RechargeMaxCount <= 0 || skill.State.RechargeShared || skill.Data.Consume.UseItem
+            || !SkillCastRules.SyncWaitsForCooldown(skill.Property.ContinueSkill, skill.State.ChargingSkill)) {
+            return;
+        }
+        SaveSkillCooldown(skill, tick);
+        lock (skillCooldowns) {
+            (syncUses ??= new Dictionary<int, (int CastTick, long ServerTick)>())[skill.Id] = (syncTick, tick);
+        }
     }
 
     public void SaveCastTime(SkillMetadata skill, SkillMetadataMotionProperty motion, int castTick, long tick) {
@@ -475,6 +516,7 @@ public class ConfigManager {
             count = skillCooldowns.Count;
             skillCooldowns.Clear();
             lastCasts.Clear();
+            syncUses?.Clear();
         }
         session.Send(SkillPacket.ResetCooldown());
         return count;
@@ -488,6 +530,7 @@ public class ConfigManager {
             skillCooldowns[skillId] = cooldown;
             // A reset cooldown lets the next cast come at once.
             lastCasts.Remove(skillId);
+            syncUses?.Remove(skillId);
 
             session.Send(SkillPacket.Cooldown(cooldown));
         }

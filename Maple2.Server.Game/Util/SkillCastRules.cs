@@ -393,6 +393,11 @@ public static class SkillCastRules {
     // while held, as KMS2 does; no other skill and no other cost is paid twice.
     public static bool SyncPays(bool continueSkill) => continueSkill;
 
+    // Whether a held repeat's tick sync waits for the skill's cooldown or a recharge use (ConfigManager.SyncTimingRefusal):
+    // the client holds the loop for any skill but one that continues while held or a charging skill
+    // (stateskill.cpp:917: !bReady && cooldown > 0 && !chargingSkill).
+    public static bool SyncWaitsForCooldown(bool continueSkill, bool chargingSkill) => !continueSkill && !chargingSkill;
+
     // Whether the client can send a tick sync for the cast's motion (StateSkill, stateskill.cpp:867-927: at a loop
     // end only): its sequence loops (heldIntervalMs above 0, ConfigManager.HeldInterval), the skill continues while
     // held, or the motion's loop is not known (loopUnknown, ConfigManager.LoopUnknown: a motion with a loop count

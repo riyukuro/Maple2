@@ -61,7 +61,11 @@ public record SkillMetadataState(
     int SuperArmorApplyField = 0,
     // stateAttr splashMaxCount: the regions of this skill one caster holds at most (FieldManager.AddSkill); 0 for no
     // limit. The client loads it (skilloverlapcompare.cpp:872) and shows no use of it.
-    int SplashMaxCount = 0);
+    int SplashMaxCount = 0,
+    // basic/combo chargingSkill (SkillLevelData, skillleveldata.cpp:493; loaded at skilloverlapcompare.cpp:874): a
+    // held repeat of the skill does not wait for its cooldown (StateSkill, stateskill.cpp:917). The server pack's
+    // skill data has no combo element; read from the played client (PlayedClientSkills).
+    bool ChargingSkill = false);
 
 public record SkillMetadataLevel(
     BeginCondition Condition,
