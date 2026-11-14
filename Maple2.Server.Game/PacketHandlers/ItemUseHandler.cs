@@ -205,6 +205,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.PetTraining:
                 HandlePetTraining(session, item, packet);
                 break;
+            case ItemFunction.AddPetEXP:
+                HandleAddPetExp(session, item);
+                break;
             case ItemFunction.UGCMapPackage:
                 HandleUgcMapPackage(session, item, packet);
                 break;
@@ -1192,6 +1195,45 @@ public class ItemUseHandler : FieldPacketHandler {
                 }
             }
             session.Send(PetPacket.TrainingComplete());
+        }
+    }
+
+    // The pet fusion stones (AddPetEXP, 30000915 and 9 more, 30000915 "Increase pet experience by 3,000"): the client has no
+    // handler or pet picker for the function, so a use is the plain item use (invenslot.cpp:848-853 -> TryUseItem
+    // -> the dispatch miss in FUN_140d1bd60 -> Unk_Inventory::RequestUseItem with an empty text). The stone goes to
+    // the summoned pet as the same stone does as a fusion fodder (PetFusionRules.BookExp, ResponsePet 10, and 11 on
+    // a level up). Without a summoned pet, or one fusion takes no exp for (IsTarget), the stone stays.
+    private static void HandleAddPetExp(GameSession session, Item item) {
+        long gain = PetFusionRules.BookExp(item.Metadata.Function);
+        if (gain <= 0) {
+            return;
+        }
+
+        lock (session.Item) {
+            Item? pet = session.Pet?.Pet;
+            if (pet?.Pet == null || !session.ItemMetadata.TryGetPet(pet.Metadata.Property.PetId, out PetMetadata? petMetadata)) {
+                return;
+            }
+            int maxLevel = session.ServerTableMetadata.ConstantsTable.PetMaxLevel;
+            if (!PetFusionRules.IsTarget(petMetadata.Type, pet.Pet.Level, maxLevel)) {
+                return;
+            }
+            if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+                return;
+            }
+
+            int oldLevel = pet.Pet.Level;
+            (int level, long exp) = PetFusionRules.Apply(session.TableMetadata.PetExpTable, pet.Pet.Level, pet.Pet.Exp, pet.Rarity,
+                pet.Metadata.Limit.Level, gain, maxLevel);
+            pet.Pet.Level = (short) level;
+            pet.Pet.Exp = exp;
+
+            session.Send(PetPacket.Fusion(session.Player.ObjectId, pet));
+            if (level != oldLevel) {
+                session.Send(PetPacket.LevelUp(session.Player.ObjectId, pet));
+                // The summoned pet's stats count in the owner's totals.
+                session.Player.Stats.Refresh();
+            }
         }
     }
 
