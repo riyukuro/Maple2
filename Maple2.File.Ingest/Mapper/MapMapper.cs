@@ -17,6 +17,8 @@ public class MapMapper : TypeMapper<MapMetadata> {
     private readonly HashSet<int> playedClientRows = [];
     // The played client's skillUseDisable list of each row (PlayedClientMaps.SkillUseDisable); empty without one.
     private readonly Dictionary<int, int[]> playedDisableSkills = [];
+    // The played client's useEPSkill of each row (PlayedClientMaps.UseEpSkill); empty without one.
+    private readonly Dictionary<int, bool> playedUseEp = [];
 
     public MapMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null) {
         spawnParser = PackTables.NewParser(xmlReader, language);
@@ -28,6 +30,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
             notInPlayedClient = PlayedClientMaps.Missing(fieldTable);
             playedClientRows = PlayedClientMaps.Rows(fieldTable);
             playedDisableSkills = PlayedClientMaps.SkillUseDisable(fieldTable, Helpers.ClientListedRows.Available);
+            playedUseEp = PlayedClientMaps.UseEpSkill(fieldTable, Helpers.ClientListedRows.Available);
         }
     }
 
@@ -52,7 +55,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
             ).ToList();
         }
 
-        int marked = 0, packLists = 0, lists = 0, changedLists = 0, survivalMaps = 0;
+        int marked = 0, packLists = 0, lists = 0, changedLists = 0, survivalMaps = 0, noEp = 0, packNoEp = 0;
         foreach ((int id, string name, MapData data) in parser.Parse()) {
             bool lacking = PlayedClientMaps.Lacks(playedClientRows, notInPlayedClient, id);
             if (lacking) {
@@ -66,6 +69,12 @@ public class MapMapper : TypeMapper<MapMetadata> {
             packLists += packDisable.Length > 0 ? 1 : 0;
             lists += disableSkills.Length > 0 ? 1 : 0;
             changedLists += !disableSkills.SequenceEqual(packDisable) ? 1 : 0;
+            // The client's useEPSkill where it has the field (1 where its row has none); the data pack's differs (0 in
+            // 00000001 to 00000027, 00001001, 00009051 to 00009073, 51000002, 99999912 and others the client allows).
+            // Without a played client the pack's flag is kept.
+            bool useEp = playedUseEp.Count > 0 ? playedUseEp.GetValueOrDefault(id, true) : data.ui.useEPSkill;
+            noEp += useEp ? 0 : 1;
+            packNoEp += data.ui.useEPSkill ? 0 : 1;
             yield return new MapMetadata(
                 Id: id,
                 Name: name,
@@ -114,7 +123,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
                     Fly: data.property.checkFly,
                     Move: data.property.limitMove,
                     FallDamage: data.ui.fallDamage,
-                    Dash: data.ui.useEPSkill,
+                    Dash: useEp,
                     Ride: data.ui.useRidee,
                     Pet: data.ui.usePet,
                     EnterAdminLevel: data.property.enterAdminLevel),
@@ -135,6 +144,7 @@ public class MapMapper : TypeMapper<MapMetadata> {
             survivalMaps += HasSurvival(data.survival) ? 1 : 0;
         }
         Console.WriteLine($"maps with a survival element: {survivalMaps}");
+        Console.WriteLine($"maps whose EP skills are not cast (useEPSkill 0): {noEp} (data pack: {packNoEp})");
         if (playedClientRows.Count > 0) {
             Console.WriteLine($"maps: {marked} marked as not in the played client (entry refused)");
             Console.WriteLine($"maps with a skillUseDisable list: {lists} ({packLists} in the data pack, {changedLists} taken from the played client)");

@@ -182,6 +182,10 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Debug("Cast refused, skill {SkillId} is not for field {MapId}", record.SkillId, session.Field.MapId);
             return false;
         }
+        if (SkillCastRules.EpFieldRefuses(session.Field.Metadata.Limit.Dash, record.Metadata.Data.Consume.Stat.GetValueOrDefault(BasicAttribute.Stamina))) {
+            Logger.Debug("Cast refused, skill {SkillId} costs EP and field {MapId} allows no EP skill", record.SkillId, session.Field.MapId);
+            return false;
+        }
         if (SkillCastRules.RideRefuses(record.Metadata.Property.UnrideOnUse, record.Metadata.Property.MainType,
                 session.Ride.Ride is { Action: RideOnActionDefault } ride && ride.OwnerId == session.Player.ObjectId)) {
             Logger.Debug("Cast refused, skill {SkillId} is not cast from a ride", record.SkillId);

@@ -454,6 +454,12 @@ public static class SkillCastRules {
         return motionPoint != 0 && heldSkillId == skillId && heldMotionPoint < motionPoint;
     }
 
+    // A skill with an EP cost is not cast on a field whose <ui> has useEPSkill="0" (map metadata Limit.Dash): the
+    // client answers 3 before it tests the EP held (CSkillSystem::FUN_14176a530, skillslot.cpp:3111-3115).
+    public static bool EpFieldRefuses(bool fieldUsesEp, long epCost) {
+        return !fieldUsesEp && epCost != 0;
+    }
+
     public static bool MapRefuses(int[] maps, int mapId) {
         return maps.Any(code => code != 0) && Array.IndexOf(maps, mapId) < 0;
     }

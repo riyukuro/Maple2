@@ -48,6 +48,27 @@ public class PlayedClientMapsTests {
         Assert.That(lists.ContainsKey(900005), Is.False, "no environment");
     }
 
+    // The client's useEPSkill: KR 61000003 (MassiveOxQuiz) sets 0 in its <ui>; 02000001 sets 1; a <ui> without the
+    // attribute is 1 (fielddata.h:118); a row with no available environment has no entry. The data pack's map xml
+    // has 0 for 00000001, which the client allows.
+    [Test]
+    public void UseEpSkill_IsTheAvailableEnvironmentsUiFlag() {
+        XmlDocument table = Table("""
+            <fieldData id="61000003"><environment><ui useEPSkill="0" /></environment></fieldData>
+            <fieldData id="2000001"><environment><ui useEPSkill="1" /></environment></fieldData>
+            <fieldData id="1"><environment><ui /></environment></fieldData>
+            <fieldData id="900003"><environment feature="Off"><ui useEPSkill="0" /></environment></fieldData>
+            <fieldData id="900004"><environment><ui useEPSkill="0" /></environment><environment feature="Off"><ui useEPSkill="1" /></environment></fieldData>
+            """);
+        Dictionary<int, bool> flags = PlayedClientMaps.UseEpSkill(table, environment => environment.GetAttribute("feature") != "Off");
+
+        Assert.That(flags[61000003], Is.False);
+        Assert.That(flags[2000001], Is.True);
+        Assert.That(flags[1], Is.True, "no attribute");
+        Assert.That(flags.ContainsKey(900003), Is.False, "no available environment");
+        Assert.That(flags[900004], Is.False, "the one that is off is skipped");
+    }
+
     [Test]
     public void Missing_TableWithoutRows_IsEmpty() {
         Assert.That(PlayedClientMaps.Missing(Table("")), Is.Empty);

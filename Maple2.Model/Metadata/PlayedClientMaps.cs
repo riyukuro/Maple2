@@ -59,6 +59,28 @@ public static class PlayedClientMaps {
         return lists;
     }
 
+    // Whether each row's skills with an EP cost may be cast (<environment><ui useEPSkill="0">), as the client reads it
+    // (CFieldDataCli::vfunc_1, fielddatacli.cpp:228; 1 when the attribute is absent, fielddata.h:118) and tests it in
+    // its cast check (skillslot.cpp:3111-3115). Of several available environments the last is taken, as for
+    // SkillUseDisable. A row with no available environment is left out.
+    public static Dictionary<int, bool> UseEpSkill(XmlDocument fieldTable, Func<XmlElement, bool> available) {
+        var flags = new Dictionary<int, bool>();
+        XmlNodeList? rows = fieldTable.SelectNodes("ms2/fieldData");
+        if (rows == null) {
+            return flags;
+        }
+        foreach (XmlNode node in rows) {
+            if (node is not XmlElement row || !int.TryParse(row.GetAttribute("id"), out int id)) {
+                continue;
+            }
+            foreach (XmlElement environment in row.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "environment" && available(child))) {
+                string flag = environment.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "ui")?.GetAttribute("useEPSkill") ?? "";
+                flags[id] = !int.TryParse(flag, out int value) || value != 0;
+            }
+        }
+        return flags;
+    }
+
     // The ids of all rows, loadable or not.
     public static HashSet<int> Rows(XmlDocument fieldTable) {
         var ids = new HashSet<int>();

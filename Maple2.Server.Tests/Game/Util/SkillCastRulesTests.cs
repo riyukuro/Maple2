@@ -339,6 +339,17 @@ public class SkillCastRulesTests {
         Assert.That(SkillCastRules.MapRefuses([0, 2000001], 2000003), Is.True);
     }
 
+    // KR 10100091 costs 40 EP; field 84000007's <ui> has useEPSkill="0", field 02000001's useEPSkill="1". The client
+    // answers 3 for an EP skill on such a field whatever EP is held; a skill with no EP cost is cast there.
+    [Test]
+    public void SkillWithAnEpCostIsNotCastOnAFieldWithoutEpSkills() {
+        Assert.Multiple(() => {
+            Assert.That(SkillCastRules.EpFieldRefuses(false, 40), Is.True);
+            Assert.That(SkillCastRules.EpFieldRefuses(true, 40), Is.False);
+            Assert.That(SkillCastRules.EpFieldRefuses(false, 0), Is.False);
+        });
+    }
+
     [Test]
     public void ItemOfACastMustBeThereBeforePaying() {
         Assert.That(SkillCastRules.ItemMissing(false, 0, false, false), Is.False);
