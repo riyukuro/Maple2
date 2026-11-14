@@ -39,8 +39,17 @@ public class WeddingHandler : FieldPacketHandler {
         ReceiveSkillItem = 37,
     }
 
+    // The client asks IsWeddingEnabled (Wedding, featuremanager id 0x104, weddingproxy.cpp:474) before it proposes (3),
+    // changes a reservation (20) or enters a ceremony by its invitation (26) (WeddingManager::SendPropose,
+    // SendReservationChange and SendInvitation, weddingmanager.cpp:972/1012/388); with it off those requests are dropped.
+    public const string Feature = "Wedding";
+
     public override void Handle(GameSession session, IByteReader packet) {
         var command = packet.Read<Command>();
+        if (command is Command.Propose or Command.ChangeReservation or Command.EnterCeremony
+            && !session.ServerTableMetadata.FeatureTable.IsOn(Feature)) {
+            return;
+        }
 
         switch (command) {
             case Command.Propose:
