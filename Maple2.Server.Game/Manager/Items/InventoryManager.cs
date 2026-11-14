@@ -580,31 +580,32 @@ public class InventoryManager {
 
     public bool Consume(ICollection<IngredientInfo> ingredients) {
         lock (session.Item) {
+            // Entries naming the same tag add up (each stack is counted once, not once per entry).
+            Dictionary<ItemTag, int> needed = new();
+            foreach (IngredientInfo info in ingredients) {
+                if (info.Amount <= 0) {
+                    continue;
+                }
+                needed[info.Tag] = needed.GetValueOrDefault(info.Tag) + info.Amount;
+            }
+
             // Build this index so we don't need to find materials twice.
-            Dictionary<ItemTag, IList<Item>> ingredientsByTag = ingredients.ToDictionary(
-                entry => entry.Tag,
-                entry => Filter(item => item.Metadata.Property.Tag == entry.Tag && item.IsSpendable())
+            Dictionary<ItemTag, IList<Item>> ingredientsByTag = needed.Keys.ToDictionary(
+                tag => tag,
+                tag => Filter(item => item.Metadata.Property.Tag == tag && item.IsSpendable())
             );
 
             // Validate
-            foreach (IngredientInfo info in ingredients) {
-                int remaining = info.Amount;
-                foreach (Item ingredient in ingredientsByTag[info.Tag]) {
-                    remaining -= ingredient.Amount;
-                    if (remaining <= 0) {
-                        break;
-                    }
-                }
-
-                if (remaining > 0) {
+            foreach ((ItemTag tag, int amount) in needed) {
+                if (ingredientsByTag[tag].Sum(item => (long) item.Amount) < amount) {
                     return false;
                 }
             }
 
             // Consume
-            foreach (IngredientInfo info in ingredients) {
-                int remaining = info.Amount;
-                foreach (Item ingredient in ingredientsByTag[info.Tag]) {
+            foreach ((ItemTag tag, int amount) in needed) {
+                int remaining = amount;
+                foreach (Item ingredient in ingredientsByTag[tag]) {
                     int consume = Math.Min(remaining, ingredient.Amount);
                     if (!ConsumeInternal(ingredient.Uid, consume)) {
                         Log.Error("Failed to consume ingredient {ItemUid}", ingredient.Uid);

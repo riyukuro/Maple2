@@ -52,7 +52,7 @@ public class InventoryConsumeTests {
         });
     }
 
-    // A key and a box of one tag are asked as one entry of the sum (two entries of a tag cannot be indexed).
+    // A key and a box of one tag can be asked as one entry of the sum.
     [Test]
     public void KeyAndBoxOfOneTag_AreTakenAsTheSum() {
         var test = new TestGameSession();
@@ -64,5 +64,20 @@ public class InventoryConsumeTests {
         Assert.That(Held(session, KeyId) + Held(session, BoxId), Is.EqualTo(3));
         Assert.That(session.Item.Inventory.Consume([new IngredientInfo(KeyTag, 2)]), Is.True);
         Assert.That(Held(session, KeyId) + Held(session, BoxId), Is.EqualTo(1));
+    }
+
+    // Two entries of one tag add up: 2 + 2 of a tag held 3 times is refused with nothing taken (before, the index
+    // threw on the second entry), and 1 + 2 takes all three.
+    [Test]
+    public void TwoEntriesOfOneTag_AreCountedOnce() {
+        var test = new TestGameSession();
+        test.Store(Tagged(KeyId, KeyTag), 1);
+        test.Store(Tagged(BoxId, KeyTag), 2);
+        GameSession session = test.Start();
+
+        Assert.That(session.Item.Inventory.Consume([new IngredientInfo(KeyTag, 2), new IngredientInfo(KeyTag, 2)]), Is.False);
+        Assert.That(Held(session, KeyId) + Held(session, BoxId), Is.EqualTo(3));
+        Assert.That(session.Item.Inventory.Consume([new IngredientInfo(KeyTag, 1), new IngredientInfo(KeyTag, 2)]), Is.True);
+        Assert.That(Held(session, KeyId) + Held(session, BoxId), Is.EqualTo(0));
     }
 }
