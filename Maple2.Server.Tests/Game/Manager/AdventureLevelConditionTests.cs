@@ -93,6 +93,40 @@ public class AdventureLevelConditionTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // A refused store of the level does not take back the level already earned and shown: its items are given as
+    // before, the stored level stays as it was, and the next save stores the level.
+    [Test]
+    public void PrestigeLevelUp_ARefusedStoreStillGivesTheItems() {
+        var test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(30001133));
+        test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        test.SetTable(new PrestigeLevelAbilityTable(new Dictionary<int, PrestigeLevelAbilityMetadata>()));
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { AdventureLevelStartLevel = 50, AdventureLevelLimit = 100, characterMaxLevel = 99 });
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(2000001));
+        PacketHandlers.ProgressionOrderTests.LoadConfig(test, session);
+        session.Player.Value.Character.Level = 50;
+        session.Exp.PrestigeLevel = 9;
+        int storedBefore;
+        using (Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context()) {
+            storedBefore = db.LoadPlayer(test.AccountId, test.CharacterId, 1, 1)!.Account.PrestigeLevel;
+        }
+        // Only the account row's store is refused; the items' own rows are stored.
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Account>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified);
+
+        session.Exp.PrestigeLevelUp(2);
+        test.FailSave = null;
+
+        Assert.That(session.Exp.PrestigeLevel, Is.EqualTo(11));
+        Assert.That(session.Item.Inventory.Find(30001133).Sum(item => item.Amount), Is.EqualTo(2));
+        using Maple2.Database.Storage.GameStorage.Request check = test.Storage.Context();
+        Assert.That(check.LoadPlayer(test.AccountId, test.CharacterId, 1, 1)!.Account.PrestigeLevel, Is.EqualTo(storedBefore));
+        Assert.That(storedBefore, Is.Not.EqualTo(11));
+        // Only the refused store's own line: no item neither added nor mailed.
+        Assert.That(test.Errors, Has.All.StartsWith("SavePurchase:"));
+    }
+
     // Prestige 2 (level up): the client finds the PC by its object id and sets the level and plays the effect for
     // any PC in the field, so another player in the field gets it too, with the levelling player's object id.
     [Test]

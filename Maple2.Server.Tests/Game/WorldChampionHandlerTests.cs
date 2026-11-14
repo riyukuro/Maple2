@@ -75,9 +75,11 @@ public class WorldChampionHandlerTests {
     // Every season of the table has ended: the last one's week repeats, the next id on (WorldChampionRules.Find).
     [Test]
     public void Open_RolledSeason() {
-        Start(2000062, Season(3, DateTime.Now.AddDays(-9)));
+        // One clock read: two DateTime.Now calls across a second boundary gave the expected week a second late.
+        DateTime begin = DateTime.Now.AddDays(-9);
+        Start(2000062, Season(3, begin));
         test.World.WorldChampion = new WorldChampionInfo { Season = 4, Step = 2 };
-        WorldChampionTable.Season rolled = Season(3, DateTime.Now.AddDays(-9)) with { Id = 4 };
+        WorldChampionTable.Season rolled = Season(3, begin) with { Id = 4 };
         rolled = rolled with { Begin = rolled.Begin.AddDays(7), End = rolled.End.AddDays(7) };
         byte[] sent = Send(WorldChampionHandler.OpenMode).Single();
         Assert.That(sent[3..7], Is.EqualTo(BitConverter.GetBytes(4)));
