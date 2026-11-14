@@ -218,6 +218,30 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(npc.MinimumHealth, Is.EqualTo(0));
     }
 
+    // A linkHP member (AiSummon.SharedHealth) that runs a Suicide node leaves the link and goes to 0 health: the
+    // link's damage floor (here the owner's MinimumHp floor of 50) holds the others, not the member that ended itself.
+    [Test]
+    public void Suicide_OfALinkedMemberLeavesTheLink() {
+        Spawn([new SuicideNode("suicide", [])]);
+        Assert.That(Field.NpcMetadata.TryGet(NpcId, out NpcMetadata? metadata), Is.True);
+        FieldNpc owner = Field.SpawnNpc(metadata!, new Vector3(1200, 0, 0), Vector3.Zero)!;
+        owner.MinimumHealth = 50;
+        var link = new HealthLink(owner);
+        link.Add(npc);
+        PropertyInfo linkProperty = typeof(FieldNpc).GetProperty(nameof(FieldNpc.HealthLink))!;
+        linkProperty.SetValue(owner, link);
+        linkProperty.SetValue(npc, link);
+        Assert.That(link.Count, Is.EqualTo(2));
+
+        npc.AiState.Update(Field.FieldTick);
+        link.Share();
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(link.Count, Is.EqualTo(1));
+        Assert.That(npc.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(0));
+        Assert.That(owner.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(100));
+    }
+
     // KR AI_Witch2CerberosTrainer_PaterA.xml: <node name="teleport" pos="-2700, -1800, 2750" isKeepBattle="true"> (its
     // children then target a far player, 300 to 1300 away). The node holds the battle; one without the flag does not.
     [Test]

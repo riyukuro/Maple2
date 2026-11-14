@@ -822,6 +822,8 @@ public class AiState {
     }
 
     private void ProcessNode(SuicideNode node) {
+        // A linkHP member leaves its link first, so the link's damage floor does not undo the node (HealthLink.Leave).
+        actor.HealthLink?.Leave(actor);
         actor.Stats.Values[BasicAttribute.Health].Current = 0;
     }
 

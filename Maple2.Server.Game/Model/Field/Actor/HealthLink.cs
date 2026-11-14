@@ -35,12 +35,24 @@ public sealed class HealthLink {
         }
     }
 
+    // A member that ends itself (an AI Suicide node) leaves the link first: its health goes to 0 on its own, not
+    // through the shared health, whose damage floor (AiSummon.MemberFloor) would hold a no_die member at 1 and undo
+    // the node. The others keep the shared health.
+    public void Leave(FieldNpc npc) {
+        lock (members) {
+            Share();
+            members.RemoveAll(member => member.Npc == npc);
+        }
+    }
+
     public void Share() {
         lock (members) {
-            shared = AiSummon.SharedHealth(shared, owner.Stats.Values[BasicAttribute.Health].Total,
-                members.Select(member => (member.Npc.Stats.Values[BasicAttribute.Health].Current, member.Seen)),
-                members.Select(member => AiSummon.MemberFloor(member.Npc.NoDie, member.Npc.MinimumHealth)).DefaultIfEmpty(0).Max());
+            IReadOnlyList<(long Current, long Seen)> changes = members
+                .Select(member => (member.Npc.Stats.Values[BasicAttribute.Health].Current, member.Seen)).ToList();
             members.RemoveAll(member => member.Npc.IsDead || !member.Npc.Field.Mobs.ContainsKey(member.Npc.ObjectId) && !member.Npc.Field.Npcs.ContainsKey(member.Npc.ObjectId));
+            // The floor of the members that stay: a dead or gone member's own floor no longer holds the link.
+            shared = AiSummon.SharedHealth(shared, owner.Stats.Values[BasicAttribute.Health].Total, changes,
+                members.Select(member => AiSummon.MemberFloor(member.Npc.NoDie, member.Npc.MinimumHealth)).DefaultIfEmpty(0).Max());
             for (int i = 0; i < members.Count; i++) {
                 FieldNpc npc = members[i].Npc;
                 Stat health = npc.Stats.Values[BasicAttribute.Health];
