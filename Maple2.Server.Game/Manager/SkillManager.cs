@@ -102,12 +102,15 @@ public class SkillManager {
 
     // clientRank: the client's rank number of the request, echoed in the reply.
     public bool SaveSkillTab(long activeSkillTabId, SkillRank ranks, int clientRank, SkillTab? tab = null) {
-        if (GetSkillTab(activeSkillTabId) != null) {
-            SkillBook.ActiveSkillTabId = activeSkillTabId;
-        }
+        // The active tab named is taken only with a save that is taken (a refused save leaves it as it was) and only
+        // when that tab already existed, as before.
+        bool activeKnown = GetSkillTab(activeSkillTabId) != null;
 
         // Switching Active Tab
         if (tab == null) {
+            if (activeKnown) {
+                SkillBook.ActiveSkillTabId = activeSkillTabId;
+            }
             SkillTab? activeTab = GetActiveTab();
             if (activeTab != null) {
                 SkillInfo.SetTab(activeTab);
@@ -134,8 +137,10 @@ public class SkillManager {
             }
         }
 
-        // The tab is the tree the client's simulator checked before the send (UISkillBookTreeDialog::RequestTree,
-        // uiskillbookautodistributedialog.cpp:1122: the points GetUsedPoints gives per skill), and a tab switch puts
+        // The tab's points are what the client's simulator gives per skill (UISkillBookTreeDialog::RequestTree,
+        // uiskillbookautodistributedialog.cpp:1122: GetUsedPoints) for a tree built under its rules; the send is not
+        // always after SkillPointSimulator::Validate (apply sends it before RequestJob, rename, add paid tab and close
+        // with no Validate, :1009, 733, 718, 940), but an honest tab is such a tree all the same. A tab switch puts
         // its points on the skills (SkillInfo.SetTab). So the tree it gives passes the check Job 9 makes
         // (JobSkillRules.Check: points from the level and every extra source, max levels, required skills, level and
         // quests), or the save is dropped. Before, any points were stored, and a switch to the tab set every skill
@@ -151,12 +156,18 @@ public class SkillManager {
             tab.Skills = skills;
             bool result = CreateSkillTab(tab);
             if (result) {
+                if (activeKnown) {
+                    SkillBook.ActiveSkillTabId = activeSkillTabId;
+                }
                 session.Send(SkillBookPacket.Save(SkillBook, tab.Id, clientRank));
             }
             return result;
         }
 
         existingTab.Skills = skills;
+        if (activeKnown) {
+            SkillBook.ActiveSkillTabId = activeSkillTabId;
+        }
         session.Send(SkillBookPacket.Save(SkillBook, tab.Id, clientRank));
         return true;
     }

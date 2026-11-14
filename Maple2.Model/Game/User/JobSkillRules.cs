@@ -61,8 +61,8 @@ public static class JobSkillRules {
 
     // The tree a skill tab gives (SkillInfo.SetTab): a main skill the tab names is at its base level plus the tab's
     // points, any other at its base level. Null when a count is below 0 or past the skill's max level: the client's
-    // tab is the tree its simulator checked (SkillBookTree 1 is sent after SkillPointSimulator::Validate, as Job 9 is),
-    // so it never holds such a count.
+    // tab points are its simulator's GetUsedPoints of a tree built under the simulator's rules (SkillBookTree 1 is not
+    // always sent after SkillPointSimulator::Validate, but the tree was built under it), so it never holds such a count.
     public static List<JobSkillState>? TabTree(IEnumerable<JobSkillState> current, IReadOnlyDictionary<int, int> tabSkills) {
         var result = new List<JobSkillState>();
         foreach (JobSkillState skill in current) {

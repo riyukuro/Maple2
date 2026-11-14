@@ -237,6 +237,22 @@ public class SkillBookSaveTests {
         Assert.That(Answered(test), Is.False);
     }
 
+    // The save names tab 7 as the active one: a refused save leaves tab 3 active, a taken one makes 7 active.
+    // Before, the active tab moved before the check, so a refused save still switched it.
+    [TestCase(10, 7L)]
+    [TestCase(11, 3L)]
+    public void Save_ARefusedSaveLeavesTheActiveTab(int points, long active) {
+        var test = new TestGameSession();
+        GameSession session = Setup(test);
+        Points(test, session, 15, 4);
+        session.Config.Skill.SkillBook.SkillTabs.Add(new SkillTab("other") { Id = 3 });
+        session.Config.Skill.SkillBook.ActiveSkillTabId = 3;
+
+        SaveTab7(session, points);
+
+        Assert.That(session.Config.Skill.SkillBook.ActiveSkillTabId, Is.EqualTo(active));
+    }
+
     // The client sends each skill once; a repeated id is read as the last one instead of throwing.
     [Test]
     public void ReadTab_ARepeatedSkillDoesNotThrow() {

@@ -201,7 +201,11 @@ public class SkillHandler : FieldPacketHandler {
         record.Position = position;
         record.Direction = direction;
 
-        List<List<TargetRecord>> tags = ReadPointTags(packet, count);
+        List<List<TargetRecord>>? tags = ReadPointTags(packet, count, record.Attack.Arrow.BounceCount);
+        if (tags == null) {
+            Logger.Debug("Attack point dropped: more linked tags than the arrow bounces ({Bounce}): {Record}", record.Attack.Arrow.BounceCount, record);
+            return;
+        }
         DeclarePointTags(record.Hits, attackPoint, iterations, tags);
         foreach (List<TargetRecord> targets in tags) {
             session.Player.InBattle = true;
@@ -255,7 +259,10 @@ public class SkillHandler : FieldPacketHandler {
 
     // The attack point packet's tags after its count: each a first tag (uid, target id, its index m_n84,
     // stateskill.cpp:1381) and while a bool is set a linked one (uid, target id, m_n80, m_n84, :1390-1391).
-    public static List<List<TargetRecord>> ReadPointTags(IByteReader packet, byte count) {
+    // A tag's links are its arrow's bounces: the client adds at most one per call, from the attack's bounceCount down
+    // to 1, and none when it is 0 (StateSkill::FUN_1417f3e80, stateskill.cpp:2615-2622, 2690-2784). More than maxLinks on one tag gives null and
+    // the point is dropped; before, any number was read, declared and relayed to the whole field.
+    public static List<List<TargetRecord>>? ReadPointTags(IByteReader packet, byte count, int maxLinks) {
         var tags = new List<List<TargetRecord>>(count);
         for (byte i = 0; i < count; i++) {
             var targets = new List<TargetRecord>();
@@ -268,6 +275,9 @@ public class SkillHandler : FieldPacketHandler {
 
             // While more targets in packet.
             while (packet.ReadBool()) {
+                if (targets.Count > maxLinks) {
+                    return null;
+                }
                 targetRecord = new TargetRecord {
                     PrevUid = targetRecord.Uid,
                     Uid = packet.ReadLong(),

@@ -49,7 +49,7 @@ public class RegionPathLayoutTests {
             writer.WriteByte(0); // m_n84
             writer.WriteBool(false);
         });
-        var tags = SkillHandler.ReadPointTags(packet, 1);
+        var tags = SkillHandler.ReadPointTags(packet, 1, maxLinks: 1)!;
         Assert.That(packet.Available, Is.EqualTo(0));
         Assert.That(tags, Has.Count.EqualTo(1));
         Assert.That(tags[0].Select(tag => tag.Uid), Is.EqualTo(new long[] { 11, 12 }));
@@ -66,5 +66,43 @@ public class RegionPathLayoutTests {
             Assert.That(budget.TakeTarget(11, 1, 0), Is.True);
             Assert.That(budget.TakeTarget(12, 1, 0), Is.True);
         });
+    }
+
+    // A root tag with links linked tags (uids 1..links+1), then a second root with none.
+    private static ByteReader Chain(int links) => TestGameSession.Packet(writer => {
+        writer.WriteLong(1);
+        writer.WriteInt(0);
+        writer.WriteByte(0);
+        for (int i = 0; i < links; i++) {
+            writer.WriteBool(true);
+            writer.WriteLong(2 + i);
+            writer.WriteInt(0);
+            writer.WriteByte(0);
+            writer.WriteByte(0);
+        }
+        writer.WriteBool(false);
+        writer.WriteLong(100);
+        writer.WriteInt(0);
+        writer.WriteByte(0);
+        writer.WriteBool(false);
+    });
+
+    // The client links at most one tag per bounce (stateskill.cpp:2615-2622, 2690-2784): an arrow of 3 bounces sends
+    // up to 3 links on a tag, one of 0 bounces none. More is refused (the point is dropped); before, any number was
+    // read, declared and relayed to the field.
+    [TestCase(3, 3, true)]
+    [TestCase(3, 2, true)]
+    [TestCase(0, 0, true)]
+    [TestCase(3, 4, false)]
+    [TestCase(0, 1, false)]
+    [TestCase(1, 300, false)]
+    public void PointTagLinksAreCappedAtTheBounceCount(int bounces, int links, bool read) {
+        var tags = SkillHandler.ReadPointTags(Chain(links), 2, maxLinks: bounces);
+        if (!read) {
+            Assert.That(tags, Is.Null);
+            return;
+        }
+        Assert.That(tags, Is.Not.Null);
+        Assert.That(tags!.Select(tag => tag.Count), Is.EqualTo(new[] { links + 1, 1 }));
     }
 }
