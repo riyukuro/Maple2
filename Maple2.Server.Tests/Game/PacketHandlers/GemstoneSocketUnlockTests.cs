@@ -12,7 +12,7 @@ using static Maple2.Model.Error.ItemSocketError;
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
 // ItemSocketSystem 0, a socket unlock (RequestUnlock). An item with no skin type takes exactly 2 copies of itself
-// with as many open sockets (ItemSocketExpansion100 on) and crystal fragments by its level and rarity (a level 0,
+// with as many open sockets (1 with ItemSocketExpansion100 off) and crystal fragments by its level and rarity (a level 0,
 // rarity 1 item: 200); fragments short are paid at 1000 mesos each, and the ReduceGameItemSocketUnlockFee
 // attribute lowers the count.
 public class GemstoneSocketUnlockTests {
@@ -105,6 +105,36 @@ public class GemstoneSocketUnlockTests {
             Assert.That(gear.Socket!.UnlockSlots, Is.EqualTo(1));
             Assert.That(Chips(session), Is.EqualTo(200));
             Assert.That(MaterialsLeft(session), Is.EqualTo(1));
+            Assert.That(Sent(), Is.EqualTo(new[] { Error(s_itemsocketsystem_error_invalid_target_ingredient_count) }));
+        });
+    }
+
+    // With ItemSocketExpansion100 off the page asks one copy (FUN_140628350 gives 1): one unlocks, two are refused.
+    [Test]
+    public void ExpansionOff_OneMaterialUnlocks() {
+        GameSession session = Start(chipCount: 200, mesos: 0, materialCount: 1);
+        test.SetFeaturesOff("ItemSocketExpansion100");
+
+        Unlock(session, materials[0].Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(gear.Socket!.UnlockSlots, Is.EqualTo(2));
+            Assert.That(Chips(session), Is.Zero);
+            Assert.That(MaterialsLeft(session), Is.Zero);
+        });
+    }
+
+    [Test]
+    public void ExpansionOff_TwoMaterials_IsRefused() {
+        GameSession session = Start(chipCount: 200, mesos: 0);
+        test.SetFeaturesOff("ItemSocketExpansion100");
+
+        Unlock(session, materials[0].Uid, materials[1].Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(gear.Socket!.UnlockSlots, Is.EqualTo(1));
+            Assert.That(Chips(session), Is.EqualTo(200));
+            Assert.That(MaterialsLeft(session), Is.EqualTo(2));
             Assert.That(Sent(), Is.EqualTo(new[] { Error(s_itemsocketsystem_error_invalid_target_ingredient_count) }));
         });
     }

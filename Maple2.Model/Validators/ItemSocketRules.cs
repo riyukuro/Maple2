@@ -12,11 +12,10 @@ public static class ItemSocketRules {
     // item's socketDataId only when the feature is on for the locale.
     // The materials a socket unlock takes (RequestUnlock, unit_140f7d060_itemsocketsystempagesocketunlock.cpp:604):
     // none for an item with a skin type, else exactly FUN_140628350's count, 2 while the ItemSocketExpansion100
-    // feature (id 253) is on, else 1. Chosen here: 2, as the server keeps no feature levels after the ingest; the
-    // feature is on in the KR and NA Live data (feature.xml KR 49 and NA 40, feature_setting.xml Live KR 56, NA 47).
-    public const int UnlockMaterialCount = 2;
+    // feature (id 253) is on (the ingested feature.xml; KR 49 and NA 40), else 1.
+    public const string ExpansionFeature = "ItemSocketExpansion100";
 
-    public static int UnlockMaterials(int skinType) => skinType != 0 ? 0 : UnlockMaterialCount;
+    public static int UnlockMaterials(int skinType, bool expansion) => skinType != 0 ? 0 : expansion ? 2 : 1;
 
     public static int SocketId(int socketDataId, int skinType, bool skinSocketEnabled) {
         return skinType != 0 && !skinSocketEnabled ? 0 : socketDataId;

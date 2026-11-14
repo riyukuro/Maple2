@@ -94,7 +94,8 @@ public class ItemSocketHandler : FieldPacketHandler {
             // The client sends no material for an item with a skin type and exactly the feature's count for any
             // other (ItemSocketRules.UnlockMaterials), each a different item of its list.
             int skinType = item.Metadata.Property.SkinType;
-            if (materialUids.Length != ItemSocketRules.UnlockMaterials(skinType)) {
+            if (materialUids.Length != ItemSocketRules.UnlockMaterials(skinType,
+                    session.ServerTableMetadata.FeatureTable.IsOn(ItemSocketRules.ExpansionFeature))) {
                 session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_ingredient_count));
                 return;
             }
