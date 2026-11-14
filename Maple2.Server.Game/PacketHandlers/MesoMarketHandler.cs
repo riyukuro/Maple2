@@ -91,19 +91,47 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Currency.Meso < amount) {
+        // The mesos are held here without a packet (a spend on another thread before the old take made it throw
+        // with the listing already stored, a listing of mesos never taken) and given back on each refusal below;
+        // the packet goes where the take was.
+        if (!session.Currency.TryTakeMeso(amount, notify: false)) {
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_hasNotMeso));
             return;
         }
 
+        MesoListing? listing;
+        bool saving = false;
+        try {
+            listing = CreateListing(session, amount, price, ref saving);
+        } catch {
+            // Given back only for a throw before the listing's save: from the save on it may be stored.
+            if (!saving) {
+                session.Currency.ReturnMeso(amount, notify: false);
+            }
+            throw;
+        }
+        if (listing == null) {
+            session.Currency.ReturnMeso(amount, notify: false);
+            return;
+        }
+
+        session.Player.Value.Account.MesoMarketListed++;
+        session.Currency.NotifyMeso();
+        session.Send(MesoMarketPacket.Create(listing, session.Player.Value.Account.MesoMarketListed));
+        session.Send(MesoMarketPacket.Quota(session.Player.Value.Account.MesoMarketListed, session.Player.Value.Account.MesoMarketPurchased));
+    }
+
+    // The checks after the balance, in CanRegister's order, and the listing stored; null (the refusal sent) when
+    // refused.
+    private MesoListing? CreateListing(GameSession session, long amount, long price, ref bool saving) {
         using GameStorage.Request db = session.GameStorage.Context();
         if (!MesoMarketRules.HasListingSlot(db.GetMyMesoListingsByAccountId(session.AccountId).Count, Constant.MesoMarketListLimit)) {
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_maxCountOwnProduct));
-            return;
+            return null;
         }
         if (session.Player.Value.Account.MesoMarketListed >= Constant.MesoMarketListLimitDay) {
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_maxCountRegister));
-            return;
+            return null;
         }
 
         long averagePrice = AveragePrice(db);
@@ -115,7 +143,7 @@ public class MesoMarketHandler : FieldPacketHandler {
             // the message and the next try use the average of now.
             session.Send(MesoMarketPacket.Load(averagePrice));
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_invalidBuyMerat));
-            return;
+            return null;
         }
 
         var listing = new MesoListing(TimeSpan.FromDays(Constant.MesoMarketSellEndDay)) {
@@ -125,16 +153,12 @@ public class MesoMarketHandler : FieldPacketHandler {
             Amount = amount,
         };
 
-        listing = db.CreateMesoListing(listing);
-        if (listing == null) {
+        saving = true;
+        MesoListing? created = db.CreateMesoListing(listing);
+        if (created == null) {
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_errorDB));
-            return;
         }
-
-        session.Player.Value.Account.MesoMarketListed++;
-        session.Currency.ChangeMeso(-amount);
-        session.Send(MesoMarketPacket.Create(listing, session.Player.Value.Account.MesoMarketListed));
-        session.Send(MesoMarketPacket.Quota(session.Player.Value.Account.MesoMarketListed, session.Player.Value.Account.MesoMarketPurchased));
+        return created;
     }
 
     private long[] ProductUnits() {
