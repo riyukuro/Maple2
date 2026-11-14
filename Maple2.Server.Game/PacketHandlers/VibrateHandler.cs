@@ -35,6 +35,14 @@ public class VibrateHandler : FieldPacketHandler {
             Logger.Warning("Invalid Skill {SkillUid}", skillUid);
             return;
         }
+        // The tag is the attack point's own: the cast's skill data has its motion and attack point. Without this the
+        // reach check below had no attack to measure and any object of the map took the packet.
+        SkillMetadataAttack? attack = record.Metadata.Data.Motions.ElementAtOrDefault(motionPoint)?.Attacks.ElementAtOrDefault(attackPoint);
+        if (attack == null) {
+            Logger.Debug("Vibrate {EntityId} refused: cast {SkillUid} skill {SkillId} has no point {MotionPoint},{AttackPoint}",
+                entityId, skillUid, skillId, motionPoint, attackPoint);
+            return;
+        }
         // The client's tag packet (WorldService::FUN_141bc3560, worldservice_1.cpp:9220): an object it hits is shown
         // and has collision, the tag is the cast's own skill, and each tag sends once per object (its entered set).
         // The tick and position after these fields are the player's, not the attack's: the record keeps its own.
@@ -50,18 +58,15 @@ public class VibrateHandler : FieldPacketHandler {
 
         // The tag's area met the object's box (ShapeDimensions, worldservice_1.cpp:6830-6864), so the object lies
         // within the attack's reach of the cast or the player (SkillHitRules.BreakableTooFar, the same test as a
-        // breakable's). Before, any vibrate object of the map took the packet. An attack point the skill data lacks
-        // is not checked.
-        if (session.Field != null && record.Metadata.Data.Motions.ElementAtOrDefault(motionPoint)?.Attacks.ElementAtOrDefault(attackPoint) is { } attack) {
-            IReadOnlyDictionary<long, IReadOnlyList<MagicPath>> paths = session.Field.TableMetadata.MagicPathTable.Entries;
-            paths.TryGetValue(attack.MagicPathId, out IReadOnlyList<MagicPath>? magicPaths);
-            paths.TryGetValue(attack.CubeMagicPathId, out IReadOnlyList<MagicPath>? cubePaths);
-            float boxReach = SkillHitRules.BreakableReach(0, vibrate!.ShapeDimensions);
-            if (SkillHitRules.BreakableTooFar(vibrate.Position, record.CastPosition, session.Player.Position, attack, magicPaths, cubePaths, boxReach)) {
-                Logger.Debug("Vibrate {EntityId} refused: at {Position}, past the reach of cast {SkillUid} skill {SkillId} point {MotionPoint},{AttackPoint} from {Cast} (player at {Player})",
-                    entityId, vibrate.Position, skillUid, skillId, motionPoint, attackPoint, record.CastPosition, session.Player.Position);
-                return;
-            }
+        // breakable's). Before, any vibrate object of the map took the packet.
+        IReadOnlyDictionary<long, IReadOnlyList<MagicPath>> paths = session.Field!.TableMetadata.MagicPathTable.Entries;
+        paths.TryGetValue(attack.MagicPathId, out IReadOnlyList<MagicPath>? magicPaths);
+        paths.TryGetValue(attack.CubeMagicPathId, out IReadOnlyList<MagicPath>? cubePaths);
+        float boxReach = SkillHitRules.BreakableReach(0, vibrate!.ShapeDimensions);
+        if (SkillHitRules.BreakableTooFar(vibrate.Position, record.CastPosition, session.Player.Position, attack, magicPaths, cubePaths, boxReach)) {
+            Logger.Debug("Vibrate {EntityId} refused: at {Position}, past the reach of cast {SkillUid} skill {SkillId} point {MotionPoint},{AttackPoint} from {Cast} (player at {Player})",
+                entityId, vibrate.Position, skillUid, skillId, motionPoint, attackPoint, record.CastPosition, session.Player.Position);
+            return;
         }
 
         DamageRecord damage = new(record.Metadata, record.Attack) {

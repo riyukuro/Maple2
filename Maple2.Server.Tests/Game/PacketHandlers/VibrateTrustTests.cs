@@ -87,13 +87,13 @@ public class VibrateTrustTests {
     }
 
     // The Vibrate packets the handler relayed for this packet.
-    private static int Vibrate(Scene scene, string entityId, int skillId = SkillId, short level = 1) {
+    private static int Vibrate(Scene scene, string entityId, int skillId = SkillId, short level = 1, byte motionPoint = 0) {
         new VibrateHandler { SkillMetadata = null! }.Handle(scene.Test.Session, TestGameSession.Packet(writer => {
             writer.WriteString(entityId);
             writer.WriteLong(CastUid);
             writer.WriteInt(skillId);
             writer.WriteShort(level);
-            writer.WriteByte(0);
+            writer.WriteByte(motionPoint);
             writer.WriteByte(0);
             writer.WriteInt(123456);
             writer.WriteFloat(5000);
@@ -179,6 +179,20 @@ public class VibrateTrustTests {
         scene.Test.Session.Player.Position = new Vector3(away, 0, 0);
         AttackPoint(scene);
         return Vibrate(scene, "bigtree");
+    }
+
+    // A motion point the skill lacks has no attack whose reach the tree could be in: refused, the tag kept.
+    [Test]
+    public void AMotionPointTheSkillLacksIsRefused() {
+        Scene scene = Start();
+        scene.Record.CastPosition = new Vector3(8000, 0, 0);
+        scene.Test.Session.Player.Position = new Vector3(8000, 0, 0);
+        AttackPoint(scene);
+        Assert.Multiple(() => {
+            Assert.That(Vibrate(scene, "tree", motionPoint: 99), Is.EqualTo(0));
+            scene.Test.Session.Player.Position = new Vector3(500, 0, 0);
+            Assert.That(Vibrate(scene, "tree"), Is.EqualTo(1), "the refused one took nothing");
+        });
     }
 
     // The cast moved since (a dash): the object near the player now is taken.
