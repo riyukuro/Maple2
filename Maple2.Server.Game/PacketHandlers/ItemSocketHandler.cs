@@ -545,9 +545,13 @@ public class ItemSocketHandler : FieldPacketHandler {
     // (FUN_140628200). The client lists sources from the outfit tab and the equipped outfits, targets from the outfit
     // tab only, and pays GetSocketTransferCost. The target is sent back with its socket transfer flag (m_b42) cleared,
     // so it cannot pass the sockets on again.
+    // The request is dropped while ItemSocketTransfer01 is off (the dialog then has no transfer tab).
     private void HandleTransferSocket(GameSession session, IByteReader packet) {
         long sourceItemUid = packet.ReadLong();
         long targetItemUid = packet.ReadLong();
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(ItemSocketRules.TransferFeature)) {
+            return; // no transfer tab: only a forged request gets here
+        }
 
         lock (session.Item) {
             Item? source = session.Item.GetOutfit(sourceItemUid);

@@ -15,6 +15,10 @@ public static class ItemSocketRules {
     // feature (id 253) is on (the ingested feature.xml; KR 49 and NA 40), else 1.
     public const string ExpansionFeature = "ItemSocketExpansion100";
 
+    // The dialog has a socket transfer tab only while ItemSocketTransfer01 (id 167) is on (uiitemsocketsystemdialog.cpp:171
+    // and 243).
+    public const string TransferFeature = "ItemSocketTransfer01";
+
     public static int UnlockMaterials(int skinType, bool expansion) => skinType != 0 ? 0 : expansion ? 2 : 1;
 
     public static int SocketId(int socketDataId, int skinType, bool skinSocketEnabled) {

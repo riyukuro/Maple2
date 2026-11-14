@@ -81,6 +81,23 @@ public class SocketTransferHandlerTests {
         Assert.That(ItemSocketHandler.CanGiveSockets(target, Table), Is.False);
     }
 
+    // With ItemSocketTransfer01 (id 167) off the dialog has no transfer tab (uiitemsocketsystemdialog.cpp:171/243),
+    // so a transfer request is dropped: nothing moves, nothing is paid and nothing is sent.
+    [Test]
+    public void TransferFeatureOff_IsDropped() {
+        GameSession session = Start(Outfit(11400001), Outfit(11400002));
+        test.SetFeaturesOff(ItemSocketRules.TransferFeature);
+
+        Transfer(session, source.Uid, target.Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(source.Socket!.UnlockSlots, Is.EqualTo(2));
+            Assert.That(target.Socket!.UnlockSlots, Is.EqualTo(0));
+            Assert.That(session.Item.Inventory.Get(crystals.Uid)!.Amount, Is.EqualTo(1000));
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
     [Test]
     public void ShortOfCrystals_LackPrice() {
         GameSession session = Start(Outfit(11400001), Outfit(11400002), crystalCount: 399);
