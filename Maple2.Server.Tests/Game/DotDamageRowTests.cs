@@ -136,6 +136,19 @@ public class DotDamageRowTests {
         Assert.That(AdditionalEffectMapper.Convert(new DotDamageProperty { spValue = 10 }), Is.Not.Null);
     }
 
+    // The played KR client's 44190030 (feature DungeonOS04) has a const DotDamage value of 90000000000, which stopped the
+    // ingest (the checked int cast). The client reads it with sscanf "%d", keeping the low 32 bits (-194313216), and its
+    // IsDotDamage (value > 0) is then false: the row deals no damage, so it is dropped. A value that fits is kept as it is.
+    [Test]
+    public void Ingest_ReadsAnOversizedValueAsTheClientsInt() {
+        Assert.That(AdditionalEffectMapper.DotDamageValue(90000000000), Is.EqualTo(-194313216));
+        Assert.That(AdditionalEffectMapper.DotDamageValue(4294967306), Is.EqualTo(10));
+        Assert.That(AdditionalEffectMapper.Convert(new DotDamageProperty { value = 90000000000, isConstDotDamageValue = true }), Is.Null);
+        Assert.That(AdditionalEffectMapper.Convert(new DotDamageProperty { value = 10, isConstDotDamageValue = true })!.HpValue, Is.EqualTo(10));
+        // Wrapping to a positive int: kept with that value, as the client would deal it.
+        Assert.That(AdditionalEffectMapper.Convert(new DotDamageProperty { value = 4294967306, isConstDotDamageValue = true })!.HpValue, Is.EqualTo(10));
+    }
+
     // A hit of the field's own actor is not rolled for evasion, but the target's block and evasion compulsions hold:
     // the KR rows 10100081 (BlockChance 1 on every skill) block it, 10700193 (EvasionChanceOverride 1) make it a Miss.
     [TestCase(10100081, BuffCompulsionEventType.BlockChance, DamageType.Block)]

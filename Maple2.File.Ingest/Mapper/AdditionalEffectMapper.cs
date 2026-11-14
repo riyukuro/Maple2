@@ -634,7 +634,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
 
     // A typed, non-const row with no amount still ticks (the Normal 0 tick), so only an untyped or const empty row is dropped.
     public static AdditionalEffectMetadataDot.DotDamage? Convert(DotDamageProperty dotDamage) {
-        if (dotDamage is { value: <= 0, rate: <= 0, damageByTargetMaxHP: <= 0, spValue: 0, epValue: 0 }
+        int hpValue = DotDamageValue(dotDamage.value);
+        if (dotDamage is { rate: <= 0, damageByTargetMaxHP: <= 0, spValue: 0, epValue: 0 } && hpValue <= 0
             && (dotDamage.type == 0 || dotDamage.isConstDotDamageValue)) {
             return null;
         }
@@ -644,7 +645,7 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             Element: (Element) dotDamage.element,
             UseGrade: dotDamage.useGrade,
             Rate: dotDamage.rate,
-            HpValue: (int) dotDamage.value,
+            HpValue: hpValue,
             SpValue: dotDamage.spValue,
             EpValue: dotDamage.epValue,
             DamageByTargetMaxHp: dotDamage.damageByTargetMaxHP,
@@ -652,6 +653,12 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             IsConstDamage: dotDamage.isConstDotDamageValue,
             NotKill: dotDamage.notKill);
     }
+
+    // The client reads DotDamage value into an int with TinyXML's sscanf "%d" (AdditionalLevelData, additionalactionadditional.cpp:1278;
+    // TiXmlAttribute::QueryIntValue), which keeps the low 32 bits of a larger number: the played KR client's 44190030
+    // (feature DungeonOS04) value 90000000000 reads as -194313216, so IsDotDamage (value > 0) is false and it deals no
+    // damage. The checked (int) cast threw on it and stopped the ingest.
+    public static int DotDamageValue(long value) => unchecked((int) value);
 
     private static AdditionalEffectMetadataDot.DotBuff? Convert(DotBuffProperty? dotBuff) {
         if (dotBuff is not { buffID: > 0 }) {
