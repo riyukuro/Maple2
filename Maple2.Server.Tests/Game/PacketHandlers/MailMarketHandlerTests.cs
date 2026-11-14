@@ -26,7 +26,9 @@ public class MailMarketHandlerTests {
 
     private GameSession Login(long meso = 100000) {
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
-            BlackMarketSellMinPrice = 1, BlackMarketSellMaxPrice = 1000000, BlackMarketSellEndDay = 2,
+            BlackMarketSellMinPrice = 1,
+            BlackMarketSellMaxPrice = 1000000,
+            BlackMarketSellEndDay = 2,
         });
         GameSession session = test.Start();
         session.Currency.Meso = meso;
@@ -81,7 +83,8 @@ public class MailMarketHandlerTests {
         Mail mail = StoreMail();
         GameSession session = Login();
         MailRequest(session, 2, mail.Id);
-        Assert.That(Shape(test.TakeSent()), Is.EqualTo(new[] { (SendOp.Mail, (byte) 2) }));
+        // The read, then the unread count it changed (mode 14).
+        Assert.That(Shape(test.TakeSent()), Is.EqualTo(new[] { (SendOp.Mail, (byte) 2), (SendOp.Mail, (byte) 14) }));
 
         MailRequest(session, 2, mail.Id);
 

@@ -97,7 +97,7 @@ public class MailModeTests {
         Request(session, 13, first.Id, locked.Id, last.Id);
 
         Assert.Multiple(() => {
-            Assert.That(MailSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(MailPacket.Deleted(first.Id)), Hex(MailPacket.Deleted(last.Id)) }));
+            Assert.That(MailSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(MailPacket.Deleted(first.Id)), Hex(MailPacket.Deleted(last.Id)), Hex(MailPacket.Notify(1, false, 1)) }));
             Assert.That(Stored(first.Id), Is.Null);
             Assert.That(Stored(last.Id), Is.Null);
             Assert.That(Stored(locked.Id)?.Items, Has.Count.EqualTo(1));
@@ -268,7 +268,11 @@ public class MailModeTests {
         Request(session, 11, mail.Id);
 
         Assert.Multiple(() => {
-            Assert.That(MailSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(MailPacket.Error(MailError.s_mail_error_receive_expired, 11)) }));
+            Assert.That(MailSent().Select(Convert.ToHexString), Is.EqualTo(new[] {
+                Hex(MailPacket.Error(MailError.s_mail_error_receive_expired, 11)),
+                // The refused collect found the mail expired: it is no longer counted unread.
+                Hex(MailPacket.Notify(0, false, 0)),
+            }));
             Assert.That(session.Currency.Meso, Is.EqualTo(1000));
             Assert.That(Held(session), Is.EqualTo(0));
             Assert.That(Stored(mail.Id)!.Items, Has.Count.EqualTo(1));

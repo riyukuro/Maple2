@@ -42,6 +42,10 @@ internal class Buddy {
     public static void Configure(EntityTypeBuilder<Buddy> builder) {
         builder.ToTable("buddy");
         builder.HasKey(buddy => buddy.Id);
+        // One entry per character pair and side: two invites crossing each other (each checked before the other's
+        // rows were in) gave each side two entries for one character.
+        builder.HasIndex(buddy => new { buddy.OwnerId, buddy.BuddyId })
+            .IsUnique();
 
         builder.HasOne<Character>()
             .WithMany()

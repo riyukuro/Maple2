@@ -90,7 +90,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         int playedSetRows = 0, playedExtractionRows = 0;
         var playedByRange = new SortedDictionary<int, int>();
         if (playedReader != null && known != null) {
-            Dictionary<int, string> playedNames = new ItemParser(playedReader, language).ItemNames();
+            Dictionary<int, string> playedNames = new ItemParser(playedReader, PackTables.PlayedStringFolder(playedReader.Files.Select(file => file.Name), language, "itemname.xml")).ItemNames();
             Dictionary<int, XmlElement> models = PlayedModels();
             HashSet<int> playedSetItems = PlayedTableIds("table/setiteminfo.xml", "set", "itemIDs", available);
             HashSet<int> playedExtractionItems = PlayedTableIds("table/itemextraction.xml", "key", "TargetItemID", available);

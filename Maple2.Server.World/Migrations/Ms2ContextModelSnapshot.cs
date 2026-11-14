@@ -432,7 +432,8 @@ namespace Maple2.Server.World.Migrations
 
                     b.HasIndex("BuddyId");
 
-                    b.HasIndex("OwnerId");
+                    b.HasIndex("OwnerId", "BuddyId")
+                        .IsUnique();
 
                     b.ToTable("buddy", (string)null);
                 });

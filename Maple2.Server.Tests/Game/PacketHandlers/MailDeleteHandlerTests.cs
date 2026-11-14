@@ -55,7 +55,7 @@ public class MailDeleteHandlerTests {
 
         Delete(session, mail.Id);
 
-        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(MailPacket.Deleted(mail.Id)) }));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(MailPacket.Deleted(mail.Id)), Hex(MailPacket.Notify(0, false, 0)) }));
         using (GameStorage.Request db = test.Storage.Context()) {
             Assert.That(db.GetMail(mail.Id, test.CharacterId), Is.Null);
         }

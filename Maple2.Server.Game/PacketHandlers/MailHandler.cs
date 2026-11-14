@@ -37,23 +37,33 @@ public class MailHandler : FieldPacketHandler {
                 HandleSend(session, packet);
                 return;
             case Command.Read:
-                HandleRead(session, packet);
+                Counted(session, () => HandleRead(session, packet));
                 return;
             case Command.Collect:
-                HandleCollect(session, packet);
+                Counted(session, () => HandleCollect(session, packet));
                 return;
             case Command.AdBill:
                 HandleAdBill(session, packet);
                 return;
             case Command.Delete:
-                HandleDelete(session, packet);
+                Counted(session, () => HandleDelete(session, packet));
                 return;
             case Command.BulkRead:
-                HandleBulkRead(session, packet);
+                Counted(session, () => HandleBulkRead(session, packet));
                 return;
             case Command.BulkCollect:
-                HandleBulkCollect(session, packet);
+                Counted(session, () => HandleBulkCollect(session, packet));
                 return;
+        }
+    }
+
+    // A read, collect or delete that changed the unread count sends it (MailManager.SendCounts): the client's badge
+    // has no other source.
+    private static void Counted(GameSession session, Action handle) {
+        int unread = session.Mail.UnreadCount;
+        handle();
+        if (session.Mail.UnreadCount != unread) {
+            session.Mail.SendCounts();
         }
     }
 

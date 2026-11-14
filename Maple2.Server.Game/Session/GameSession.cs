@@ -745,6 +745,10 @@ public sealed partial class GameSession : Core.Network.Session {
         HeldCube = null;
         HeldLiftup = null;
         NpcScript = null;
+        // The beauty dialogs close with the field and have no close packet: a shop kept past it took edits and fees in
+        // any later field. A random pick still waiting keeps the new hair, as a new shop open does (HandleShop).
+        BeautyShop = null;
+        Beauty?.ClearPreviousHair();
         MiniGameRecord = null;
 
         Buffs?.LeaveField();

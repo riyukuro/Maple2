@@ -22,7 +22,8 @@ public static class BeautyPacket {
         StartList = 13,
         ListCount = 14,
         ListHair = 15,
-        SaveHair = 16, // and 17
+        SaveHair = 16,
+        SaveHairExtended = 17,
         DeleteHair = 18,
         SaveSlots = 20,
         ApplySavedHair = 21,
@@ -128,9 +129,10 @@ public static class BeautyPacket {
         return pWriter;
     }
 
-    public static ByteWriter SaveHair(Item currentHair, Item hairCopy) {
+    // extended: the save also extended the style slots (17).
+    public static ByteWriter SaveHair(Item currentHair, Item hairCopy, bool extended = false) {
         var pWriter = Packet.Of(SendOp.Beauty);
-        pWriter.Write<Command>(Command.SaveHair);
+        pWriter.WriteByte((byte) (extended ? Command.SaveHairExtended : Command.SaveHair));
         pWriter.WriteLong(currentHair.Uid);
         pWriter.WriteLong(hairCopy.Uid);
         pWriter.WriteByte();

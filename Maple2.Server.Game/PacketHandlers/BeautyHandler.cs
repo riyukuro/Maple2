@@ -175,18 +175,18 @@ public class BeautyHandler : FieldPacketHandler {
                 Logger.Error("Unknown beauty shop category: {Category}", session.BeautyShop.Metadata.Category);
                 break;
         }
-        return;
+    }
 
-        IEnumerable<BeautyShopItem> FilterItemsByGender(Gender gender, BeautyShopItem[] items) {
-            foreach (BeautyShopItem entry in items) {
-                if (!ItemMetadata.TryGet(entry.Id, out ItemMetadata? itemMetadata)) {
-                    continue;
-                }
+    // The rows of a shop the character's gender can wear.
+    private IEnumerable<BeautyShopItem> FilterItemsByGender(Gender gender, BeautyShopItem[] items) {
+        foreach (BeautyShopItem entry in items) {
+            if (!ItemMetadata.TryGet(entry.Id, out ItemMetadata? itemMetadata)) {
+                continue;
+            }
 
-                if (itemMetadata.Limit.Gender == gender ||
-                    itemMetadata.Limit.Gender == Gender.All) {
-                    yield return entry;
-                }
+            if (itemMetadata.Limit.Gender == gender ||
+                itemMetadata.Limit.Gender == Gender.All) {
+                yield return entry;
             }
         }
     }
@@ -283,10 +283,21 @@ public class BeautyHandler : FieldPacketHandler {
         if (created == null || !CanWear(session, created)) {
             return;
         }
+        // The item's own default color is never the dialog's pick (it resets to none, uibeautyshopdialog.cpp:702).
+        EquipColor? createdColor = created.Appearance?.Color;
+        if (createdColor is { } picked && !(picked.PaletteId == created.Metadata.Customize.ColorPalette
+                                            && picked.Index == created.Metadata.Customize.DefaultColorIndex)
+            && RefusedColor(session, picked)) {
+            return;
+        }
+        bool discounted = !useVoucher && SaleCost(session, session.BeautyShop, entry.Cost).Price < entry.Cost.Price;
         if (HoldFee(session, useVoucher, session.BeautyShop, entry.Cost) is not { } fee) {
             return;
         }
-        if (WearPaid(session, created, fee) != null) {
+        if (WearPaid(session, created, fee) is { } stored) {
+            if (discounted && stored.Appearance is HairAppearance) {
+                session.Beauty.MarkDiscounted(stored.Uid);
+            }
             session.ConditionUpdate(ConditionType.beauty_add, codeLong: itemId);
         }
     }
@@ -334,6 +345,9 @@ public class BeautyHandler : FieldPacketHandler {
         // shop of type 1 or 3 its recolor fee when its color changed, else none (a crop shows no price, :1960).
         EquipColor? startColor = cosmetic.Appearance?.Color;
         bool recolor = startColor != null && !Equals(changed.Appearance?.Color, startColor);
+        if (recolor && changed.Appearance?.Color is { } newColor && RefusedColor(session, newColor)) {
+            return;
+        }
         HeldFee? fee = null;
         if (recolor && (fee = HoldFee(session, useVoucher, shop, shop.Metadata.ColorCostMetadata)) == null) {
             return;
@@ -529,25 +543,40 @@ public class BeautyHandler : FieldPacketHandler {
 
     private static void HandleSaveHair(GameSession session, IByteReader packet) {
         long uid = packet.ReadLong();
-        if (!InStyleSave(session)) {
+        if (!InStyleSave(session) || RefusedDiscountedSave(session, uid)) {
             return;
         }
 
         session.Beauty.AddHair(uid);
     }
 
+    // A hair bought at a sale price while a SaleBeautyShop event still runs: the style dialog answers error 25 with "discounted
+    // hair cannot be stored during the event" (uibeautyshopstyledialog.cpp:1347) and has no check of its own. Before
+    // any extension fee.
+    private static bool RefusedDiscountedSave(GameSession session, long uid) {
+        if (!session.Beauty.IsDiscounted(uid)
+            || !session.FindEvent(GameEventType.SaleBeautyShop).Any(gameEvent => gameEvent.Metadata.Data is SaleBeautyShop { Flag: false })) {
+            return false;
+        }
+        session.Send(BeautyPacket.Error(BeautyError.s_beauty_msg_error_style_save_cant_not_beauty_day));
+        return true;
+    }
+
     // The client sends this instead of SaveHair when its slots are full, after the player agreed to the
     // extension's price (uibeautyshopstyledialog.cpp:986, 1196; uibeautyshopdialog.cpp:1754).
     private static void HandleAddSlots(GameSession session, IByteReader packet) {
         long uid = packet.ReadLong();
-        if (!InStyleSave(session) || !session.Beauty.CanAddHair(uid)) {
+        if (!InStyleSave(session) || !session.Beauty.CanAddHair(uid) || RefusedDiscountedSave(session, uid)) {
             return;
         }
 
-        if (BeautyRules.SaveNeedsExtension(session.Beauty.OpenSlots) && !session.Beauty.ExtendSlots()) {
+        bool extend = BeautyRules.SaveNeedsExtension(session.Beauty.OpenSlots);
+        if (extend && !session.Beauty.ExtendSlots()) {
             return;
         }
-        session.Beauty.AddHair(uid);
+        // A save that extended the slots is answered with 17 (both dialogs read 16 and 17 alike; the shop dialog also
+        // adds the extension to its slot count on 17, uibeautyshopdialog.cpp:1577).
+        session.Beauty.AddHair(uid, extended: extend);
     }
 
     private void HandleDeleteHair(GameSession session, IByteReader packet) {
@@ -578,7 +607,21 @@ public class BeautyHandler : FieldPacketHandler {
 
         // Nothing is charged for a uid that is not a saved style. The fee is stored with the style's copy (WearPaid).
         Item? copy = session.Beauty.SavedCopy(uid);
-        if (copy == null || !CanWear(session, copy)) {
+        if (copy == null) {
+            return;
+        }
+        // The dialog's apply checks the style's gender first (OnClickSave, uibeautyshopstyledialog.cpp:926) and has an
+        // answer for both refusals it cannot check itself (:1331-1365): a style of the other gender (23) and the style
+        // already worn (24). Neither takes the fee.
+        if (copy.Metadata.Limit.Gender != Gender.All && copy.Metadata.Limit.Gender != session.Player.Value.Character.Gender) {
+            session.Send(BeautyPacket.Error(BeautyError.s_beauty_msg_error_style_disable_gender));
+            return;
+        }
+        if (session.Item.Equips.Get(EquipSlot.HR) is { } wornHair && SameLook(wornHair, copy)) {
+            session.Send(BeautyPacket.Error(BeautyError.s_beauty_msg_error_style_apply_already));
+            return;
+        }
+        if (!CanWear(session, copy)) {
             return;
         }
         if (HoldFee(session, false, session.BeautyShop, session.BeautyShop.Metadata.StyleCostMetadata) is not { } fee) {
@@ -590,6 +633,18 @@ public class BeautyHandler : FieldPacketHandler {
         }
         session.Send(BeautyPacket.ApplySavedHair());
         session.ConditionUpdate(ConditionType.beauty_style_apply, codeLong: worn.Id);
+    }
+
+    // The same hair with the same appearance (color, lengths and positions as the client sends them).
+    private static bool SameLook(Item worn, Item style) {
+        if (worn.Id != style.Id || worn.Appearance == null || style.Appearance == null) {
+            return false;
+        }
+        var wornBytes = new ByteWriter();
+        wornBytes.WriteClass<ItemAppearance>(worn.Appearance);
+        var styleBytes = new ByteWriter();
+        styleBytes.WriteClass<ItemAppearance>(style.Appearance);
+        return wornBytes.ToArray().AsSpan().SequenceEqual(styleBytes.ToArray());
     }
 
     // The saved style list (sub-types 16-19, 21) is the style save dialog's (0x4f03, type 4,
@@ -629,6 +684,9 @@ public class BeautyHandler : FieldPacketHandler {
 
             // The colors are read before the fee is taken: a short packet charges nothing.
             ItemAppearance appearance = BeautyRules.ReadDyeColors(packet, item.EquipSlot() == EquipSlot.CP);
+            if (!Equals(appearance.Color, item.Appearance?.Color) && RefusedColor(session, appearance.Color)) {
+                continue;
+            }
             if (HoldFee(session, useVoucher, session.BeautyShop, session.BeautyShop.Metadata.ColorCostMetadata) is not { } fee) {
                 // The client waits for one answer per entry: an item update or an error with a code
                 // other than 0 (uiitemcoloringdialog.cpp:577-591, 939-955, 1044, 1321-1327), and while
@@ -684,7 +742,13 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        var shop = new BeautyShop(shopMetadata, shopMetadata.Items) {
+        // The voucher shop lists only what the character can wear, as an npc's shop does: a row of the other gender
+        // was offered and its create refused only by the equip check, after the dialog showed it.
+        BeautyShopItem[] rows = FilterItemsByGender(session.Player.Value.Character.Gender, shopMetadata.Items).ToArray();
+        if (rows.Length == 0) {
+            return;
+        }
+        var shop = new BeautyShop(shopMetadata, rows) {
             Type = RowType(shopMetadata),
         };
 
@@ -920,6 +984,31 @@ public class BeautyHandler : FieldPacketHandler {
 
     // Whether cosmetic can go on: its one slot is hair, face or face decoration, and the client's equip checks pass
     // (refused with their message box). Checked before the fee is held, so a refused item takes nothing.
+    // A palette color whose trophy grade the character lacks, refused with the color error before any fee. The client
+    // checks the color it picked from a palette the same way on save (UIBeautyShopDialog, uibeautyshopdialog.cpp:1419;
+    // the dye window, uiitemcoloringdialog.cpp:1004): IsPaletteColorLocked (uibeautyshopstyledialog.cpp:748) leaves
+    // palette 0, a row without a trophy or grade and a trophy it has no data for unlocked, else locks it until the
+    // grade is reached (achievemanager.cpp:447). Never stricter than the client: the same exceptions hold here.
+    private static bool RefusedColor(GameSession session, EquipColor color) {
+        if (!PaletteLocked(session, color)) {
+            return false;
+        }
+        session.Send(BeautyPacket.Error(BeautyError.s_beauty_msg_error_color));
+        return true;
+    }
+
+    internal static bool PaletteLocked(GameSession session, EquipColor color) {
+        if (color.PaletteId <= 0 || color.Index < 0
+            || !session.TableMetadata.ColorPaletteTable.Entries.TryGetValue(color.PaletteId, out IReadOnlyDictionary<int, ColorPaletteTable.Entry>? palette)
+            || !palette.TryGetValue(color.Index, out ColorPaletteTable.Entry? row)) {
+            return false;
+        }
+        if (row.AchieveId <= 0 || row.AchieveGrade <= 0 || !session.AchievementMetadata.TryGet(row.AchieveId, out _)) {
+            return false;
+        }
+        return !session.Achievement.HasAchievement(row.AchieveId, row.AchieveGrade);
+    }
+
     private static bool CanWear(GameSession session, Item cosmetic) {
         if (cosmetic.Metadata.SlotNames.Length == 0 || cosmetic.Metadata.SlotNames[0] is not (EquipSlot.HR or EquipSlot.FA or EquipSlot.FD)) {
             return false;

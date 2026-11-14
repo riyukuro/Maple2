@@ -12,6 +12,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Tools.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
@@ -29,7 +30,8 @@ public class BeautyStyleSaveTests {
     private Item hair = null!;
 
     // baseSlots saved style slots, extensions of one slot each up to maxExtra slots, for Price merets.
-    private void Start(BeautyShopType type, int baseSlots = 30, int maxExtra = 5, long meret = 5000) {
+    // hairGender: the worn hair's gender (the character is male).
+    private void Start(BeautyShopType type, int baseSlots = 30, int maxExtra = 5, long meret = 5000, Gender hairGender = Gender.All) {
         test = new TestGameSession();
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
             BeautyStyleDefaultSlotCount = baseSlots,
@@ -37,7 +39,7 @@ public class BeautyStyleSaveTests {
             BeautyStyleExpandSlotCount1time = 1,
             BeautyStyleExpandSlotPrice = (int) Price,
         });
-        hair = test.Store(TestGameSession.Metadata(HairId, EquipSlot.HR), 1, ItemGroup.Outfit, EquipSlot.HR);
+        hair = test.Store(TestGameSession.Metadata(HairId, EquipSlot.HR, hairGender), 1, ItemGroup.Outfit, EquipSlot.HR);
         test.Register(TestGameSession.Metadata(OtherHairId, EquipSlot.HR));
         test.Start();
         test.EnterMap(TestGameSession.Map(2000062));
@@ -146,6 +148,79 @@ public class BeautyStyleSaveTests {
         Assert.That(session.Beauty.SlotCount, Is.EqualTo(2));
         Assert.That(session.Player.Value.Unlock.HairSlotExpand, Is.EqualTo((short) 1));
         Assert.That(session.Currency.Meret, Is.EqualTo(5000L - Price));
+    }
+
+    // A sale of the style shop (event 7001, 30 % off; pcRoom: the PC room row, no sale for others), then the other hair
+    // bought there at its row fee of 1000 meso and the shop turned into the style save list.
+    private Item BuyHairInASale(bool pcRoom = false) {
+        test.AddEvent(7001, GameEventType.SaleBeautyShop, new SaleBeautyShop(510, 3000, pcRoom));
+        var fee = new BeautyShopCostMetadata(ShopCurrencyType.Meso, 1000, string.Empty, 0);
+        session.BeautyShop = new BeautyShop(new BeautyShopMetadata(510, BeautyShopCategory.Hair, 0, fee, fee, false, false, 0, 0,
+            ItemTag.None, [], []), [new BeautyShopItem(OtherHairId, fee, 1, 0, 0, 0, default)]);
+        Send(3, writer => {
+            writer.WriteByte(0);
+            writer.WriteBool(false);
+            writer.WriteInt(OtherHairId);
+            writer.WriteLong(0);
+            writer.WriteClass<HairAppearance>(new HairAppearance(default));
+        });
+        Item bought = session.Item.Equips.Get(EquipSlot.HR)!;
+        Assert.That((bought.Id, session.Currency.Meso), Is.EqualTo((OtherHairId, pcRoom ? 4000L : 4300L)));
+        Open(BeautyShopType.Save);
+        test.TakeSent();
+        return bought;
+    }
+
+    // "Discounted hair cannot be stored during the beauty day event": error 25, which only the style dialog answers
+    // (uibeautyshopstyledialog.cpp:1347); no slot is taken or bought.
+    [Test]
+    public void Save_AHairBoughtInARunningSale_IsRefusedWithError25() {
+        Start(BeautyShopType.Save, baseSlots: 0);
+        Item bought = BuyHairInASale();
+
+        Save(bought.Uid);
+        Assert.That(SentError(BeautyError.s_beauty_msg_error_style_save_cant_not_beauty_day), Is.True);
+        SaveExtending(bought.Uid);
+
+        Assert.That(SentError(BeautyError.s_beauty_msg_error_style_save_cant_not_beauty_day), Is.True);
+        Assert.That((session.Beauty.SavedCount, session.Currency.Meret), Is.EqualTo((0, 5000L)));
+    }
+
+    [Test]
+    public void Save_AHairBoughtInASale_IsListedOnceTheSaleIsOver() {
+        Start(BeautyShopType.Save);
+        Item bought = BuyHairInASale();
+        test.AddEvent(7001, GameEventType.SaleBeautyShop, new SaleBeautyShop(510, 3000, false), DateTime.Now.AddDays(-3), DateTime.Now.AddDays(-1));
+
+        Save(bought.Uid);
+
+        Assert.That(session.Beauty.SavedCount, Is.EqualTo(1));
+    }
+
+    // A PC room row lowers no fee: the hair was bought at its full fee.
+    [Test]
+    public void Save_AHairBoughtAtTheFullFee_IsListedDuringASale() {
+        Start(BeautyShopType.Save);
+        Item bought = BuyHairInASale(pcRoom: true);
+
+        Save(bought.Uid);
+
+        Assert.That(session.Beauty.SavedCount, Is.EqualTo(1));
+    }
+
+    // The save that bought the extension is answered with 17, the plain save with 16 (uibeautyshopdialog.cpp:1577).
+    [TestCase(1, (byte) 17)]
+    [TestCase(30, (byte) 16)]
+    public void SaveExtending_AnswersWithTheCommandOfWhatItDid(int baseSlots, byte command) {
+        Start(BeautyShopType.Save, baseSlots: baseSlots);
+        Save(hair.Uid);
+        Item other = Wear();
+        test.TakeSent();
+
+        SaveExtending(other.Uid);
+
+        byte[] head = BeautyPacket.Error(BeautyError.s_beauty_msg_error_style_slot_max).ToArray()[..2];
+        Assert.That(test.TakeSent().Count(packet => packet.Length > 2 && packet[..2].SequenceEqual(head) && packet[2] == command), Is.EqualTo(1));
     }
 
     // With an open slot the extension is not bought.
@@ -351,6 +426,37 @@ public class BeautyStyleSaveTests {
         Apply(saved);
 
         Assert.That(session.Item.Equips.Get(EquipSlot.HR)?.Uid, Is.EqualTo(other.Uid));
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000L));
+    }
+
+    // A style of the other gender is refused with 23 and takes no fee (uibeautyshopstyledialog.cpp:1354).
+    [Test]
+    public void Apply_AStyleOfTheOtherGender_IsRefusedWithError23() {
+        Start(BeautyShopType.Save, hairGender: Gender.Female);
+        Save(hair.Uid);
+        long saved = SavedUid();
+        Item other = Wear();
+        test.TakeSent();
+
+        Apply(saved);
+
+        Assert.That(SentError(BeautyError.s_beauty_msg_error_style_disable_gender), Is.True);
+        Assert.That(session.Item.Equips.Get(EquipSlot.HR)?.Uid, Is.EqualTo(other.Uid));
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000L));
+    }
+
+    // The style already worn is refused with 24 and takes no fee (uibeautyshopstyledialog.cpp:1345).
+    [Test]
+    public void Apply_TheWornStyle_IsRefusedWithError24() {
+        Start(BeautyShopType.Save);
+        Save(hair.Uid);
+        long saved = SavedUid();
+        test.TakeSent();
+
+        Apply(saved);
+
+        Assert.That(SentError(BeautyError.s_beauty_msg_error_style_apply_already), Is.True);
+        Assert.That(session.Item.Equips.Get(EquipSlot.HR)?.Uid, Is.EqualTo(hair.Uid));
         Assert.That(session.Currency.Meso, Is.EqualTo(5000L));
     }
 

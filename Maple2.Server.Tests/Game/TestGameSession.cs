@@ -138,6 +138,8 @@ public sealed class TestGameSession {
         SetTable(new DungeonConfigTable(new Dictionary<int, int>(), new Dictionary<int, DungeonMissionRankMetadata>()));
         SetTable(InventoryTabNameTable.Empty);
         SetTable(new UgcCubeCategoryTable(new Dictionary<int, int>()));
+        // Beauty saves look up the palette row of every picked color (BeautyHandler.PaletteLocked).
+        SetTable(new ColorPaletteTable(new Dictionary<int, IReadOnlyDictionary<int, ColorPaletteTable.Entry>>()));
         SetTable(new WeddingTable(new Dictionary<MarriageExpType, WeddingReward>(), new Dictionary<int, WeddingPackage>()));
         // A field mission's progress reads the indoor parents (QuestManager.Update): none until a test sets them.
         SetTable(new FieldMetaTable(new Dictionary<int, IReadOnlyList<int>>(), new Dictionary<int, IReadOnlyList<int>>()));
@@ -524,7 +526,8 @@ public sealed class TestGameSession {
     public void SavingConfig(GameSession session) {
         SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
             [JobCode.Newbie] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
-                [SkillRank.Basic] = [], [SkillRank.Awakening] = [],
+                [SkillRank.Basic] = [],
+                [SkillRank.Awakening] = [],
             }, []),
         }));
         SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));

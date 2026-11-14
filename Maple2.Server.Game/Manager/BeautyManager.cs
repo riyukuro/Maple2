@@ -103,7 +103,7 @@ public sealed class BeautyManager : IDisposable {
         return true;
     }
 
-    public void AddHair(long uid) {
+    public void AddHair(long uid, bool extended = false) {
         Item? hair = session.Item.GetOutfit(uid);
         if (hair == null || !hair.Type.IsHair) {
             return;
@@ -122,7 +122,7 @@ public sealed class BeautyManager : IDisposable {
             return;
         }
         items.Add(hairCopy);
-        session.Send(BeautyPacket.SaveHair(hair, hairCopy));
+        session.Send(BeautyPacket.SaveHair(hair, hairCopy, extended));
         session.ConditionUpdate(ConditionType.beauty_style_add, codeLong: hairCopy.Id);
     }
 
@@ -159,6 +159,22 @@ public sealed class BeautyManager : IDisposable {
     public bool HasPreviousHair => previousHair != null;
 
     public bool HasSavedCosmetic(long uid) => items.Get(uid) != null;
+
+    // The hairs bought this session at a SaleBeautyShop price: a save of one is refused while a sale runs (BeautyHandler,
+    // error 25). Not stored: a hair bought before a relog saves.
+    private readonly HashSet<long> discountedHairs = [];
+
+    public void MarkDiscounted(long uid) {
+        lock (discountedHairs) {
+            discountedHairs.Add(uid);
+        }
+    }
+
+    public bool IsDiscounted(long uid) {
+        lock (discountedHairs) {
+            return discountedHairs.Contains(uid);
+        }
+    }
 
     // A new copy of saved style uid to wear (no uid yet), or null for a uid that is no saved style of one slot. The
     // caller stores it with the fee (BeautyHandler, sub-type 21).

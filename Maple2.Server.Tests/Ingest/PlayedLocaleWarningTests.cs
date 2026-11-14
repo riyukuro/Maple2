@@ -25,4 +25,16 @@ public class PlayedLocaleWarningTests {
             Assert.That(PackTables.PlayedLocaleWarning(["KR", "NA"], "NA"), Is.Null);
         });
     }
+    // A played-only row takes its name from the played client's own string folder (string/kr for a KR pack: an NA
+    // string/en row of the same id can name another item), else from the ingest's language.
+    [Test]
+    public void PlayedStringFolder_IsThePacksRegionWhenItHasTheFile() {
+        string[] kr = ["table/kr/a.xml", "string/kr/itemname.xml", "string/en/itemname.xml"];
+        Assert.Multiple(() => {
+            Assert.That(PackTables.PlayedStringFolder(kr, "en", "itemname.xml"), Is.EqualTo("kr"));
+            Assert.That(PackTables.PlayedStringFolder(kr, "en", "npcname.xml"), Is.EqualTo("en"));
+            Assert.That(PackTables.PlayedStringFolder(["table/kr/a.xml", "table/na/a.xml", "string/kr/itemname.xml"], "en", "itemname.xml"), Is.EqualTo("en"));
+            Assert.That(PackTables.PlayedStringFolder(["string/kr/itemname.xml"], "en", "itemname.xml"), Is.EqualTo("en"));
+        });
+    }
 }

@@ -73,6 +73,33 @@ public class ClubModeHandlerTests {
     private static string Hex(ByteWriter packet) => Convert.ToHexString(packet.ToArray());
     private static string[] Unknown => [Hex(ClubPacket.Error(ClubError.s_club_err_unknown))];
 
+    // A create out of a party or by a party member is refused with the client's own text for it, before the World
+    // server is asked (here it cannot be reached, which would answer the unknown error).
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Create_NotAPartyLeader_IsRefusedWithTheNoPartyNotice(bool member) {
+        if (member) {
+            var leader = new Maple2.Model.Game.Party.PartyMember {
+                PartyId = 5,
+                Info = new Maple2.Model.Game.PlayerInfo(new Maple2.Model.Game.CharacterInfo(session.AccountId + 500, otherId, "other", "", "",
+                    Maple2.Model.Enum.Gender.Male, Maple2.Model.Enum.Job.Newbie, 20), "", new Maple2.Model.Game.AchievementInfo(), []),
+            };
+            var party = new Maple2.Model.Game.Party.Party(5, leader);
+            party.Members[leader.CharacterId] = leader;
+            session.Party = new PartyManager(test.World, session);
+            typeof(PartyManager).GetField("<Party>k__BackingField", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .SetValue(session.Party, party);
+        }
+
+        Send(1, writer => writer.WriteUnicodeString("newclub"));
+
+        string notice = Hex(Maple2.Server.Core.Packets.NoticePacket.Notice(Maple2.Server.Core.Packets.NoticePacket.Flags.Alert
+            | Maple2.Server.Core.Packets.NoticePacket.Flags.Message, Maple2.Model.Enum.StringCode.s_club_err_create_no_party));
+        string[] sent = test.TakeSent().Select(Convert.ToHexString).ToArray();
+        Assert.That(sent, Does.Contain(notice));
+        Assert.That(sent.Where(packet => packet.StartsWith(Hex(ClubPacket.Error(ClubError.s_club_err_unknown))[..4])), Is.Empty);
+    }
+
     [Test]
     public void StagedReply_WorldDown_UnknownInMode4() {
         Send(3, writer => {

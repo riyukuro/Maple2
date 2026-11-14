@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Shop;
@@ -21,7 +23,9 @@ public class BeautyShopKindTests {
     private GameSession session => test.Session;
 
     private BeautyHandler Handler() => new() {
-        ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata, NpcMetadata = null!,
+        ItemMetadata = session.ItemMetadata,
+        TableMetadata = test.TableMetadata,
+        NpcMetadata = null!,
         ServerTableMetadata = test.ServerTableMetadata,
     };
 
@@ -69,5 +73,53 @@ public class BeautyShopKindTests {
         }));
 
         Assert.That(session.BeautyShop?.Type, Is.EqualTo(type));
+    }
+
+    // A coupon shop lists only the rows the character's gender can wear, as an npc's shop does (HandleShop); a shop
+    // with nothing to wear is not opened.
+    [TestCase(Gender.Male, new[] { Hair, Hair + 1 })]
+    [TestCase(Gender.Female, new[] { Hair, Hair + 2 })]
+    public void ACouponShopListsTheRowsOfTheCharactersGender(Gender gender, int[] listed) {
+        test = new TestGameSession(gender: gender);
+        test.Register(TestGameSession.Metadata(Hair, EquipSlot.HR),
+            TestGameSession.Metadata(Hair + 1, EquipSlot.HR, Gender.Male),
+            TestGameSession.Metadata(Hair + 2, EquipSlot.HR, Gender.Female));
+        Item coupon = test.Store(TestGameSession.Metadata(Coupon,
+            function: new ItemMetadataFunction(ItemFunction.ItemChangeBeauty, "ItemChangeBeauty", "600", false)));
+        BeautyShopItem[] rows = Enumerable.Range(Hair, 3)
+            .Select(id => new BeautyShopItem(id, new BeautyShopCostMetadata(ShopCurrencyType.Meso, 300, string.Empty, 0), 1, 0, 0, 0, ShopItemLabel.None))
+            .ToArray();
+        test.SetServerTable(new BeautyShopTable(new Dictionary<int, BeautyShopMetadata> { [600] = Row(600, false, rows) }));
+        test.Start();
+        session.Beauty = new BeautyManager(session);
+
+        Handler().Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(23);
+            writer.WriteLong(coupon.Uid);
+        }));
+
+        Assert.That(session.BeautyShop?.Items.Select(row => row.Id), Is.EqualTo(listed));
+    }
+
+    // The beauty dialogs close with the field and have no close packet: the shop does not outlive the field.
+    [Test]
+    public void TheShopIsClosedWithTheField() {
+        test = new TestGameSession();
+        test.Start();
+        test.EnterMap(TestGameSession.Map(2000062));
+        session.Beauty = new BeautyManager(session);
+        session.BeautyShop = new BeautyShop(Row(510, false), []) { Type = BeautyShopType.Save };
+
+        // What a started session holds and the leave clears: the test session is made without its initializers.
+        foreach (string name in new[] { nameof(GameSession.InteractStarted), nameof(GameSession.CubeStarted) }) {
+            typeof(GameSession).GetField(name)!.SetValue(session, new HashSet<string>());
+        }
+        typeof(GameSession).GetField(nameof(GameSession.ItemLockStaging))!.SetValue(session, new long[18]);
+        FieldInfo dismantle = typeof(GameSession).GetField(nameof(GameSession.DismantleStaging))!;
+        dismantle.SetValue(session, System.Array.CreateInstance(dismantle.FieldType.GetElementType()!, 0));
+        session.Field = null;
+        typeof(GameSession).GetMethod("LeaveField", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, null);
+
+        Assert.That(session.BeautyShop, Is.Null);
     }
 }

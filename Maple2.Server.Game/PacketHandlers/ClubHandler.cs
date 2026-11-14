@@ -8,6 +8,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Packets;
@@ -113,9 +114,12 @@ public class ClubHandler : FieldPacketHandler {
             return;
         }
 
-        // Grabbing party. Clubs can only be created by party leaders.
-        Party? party = session.Party.Party;
+        // Clubs can only be created by party leaders. The client refuses a create out of a party or by a member
+        // with s_club_err_create_no_party (CClubClientManager::FUN_140b15c10, clubcli.cpp:905-914; string 0x36c of its
+        // club table); no club error code shows that text (OnClubError, clubcli.cpp:1430), so it is the notice.
+        Party? party = session.Party?.Party;
         if (party is null || party.LeaderCharacterId != session.Player.Value.Character.Id) {
+            session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_club_err_create_no_party));
             return;
         }
 

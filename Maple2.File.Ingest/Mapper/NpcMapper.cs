@@ -94,7 +94,7 @@ public class NpcMapper : TypeMapper<NpcMetadata> {
         // client spawns them (e.g. the MadDoctor01 dungeon's bosses). They are read from the played client's npcdata.
         int playedOnly = 0;
         if (playedReader != null && known != null) {
-            Dictionary<int, string> playedNames = new NpcParser(playedReader, language).ParseNpcNames();
+            Dictionary<int, string> playedNames = new NpcParser(playedReader, PackTables.PlayedStringFolder(playedReader.Files.Select(file => file.Name), language, "npcname.xml")).ParseNpcNames();
             foreach ((int id, XmlElement environment) in PlayedOnlyEnvironments(packIds)) {
                 NpcData data = PlayedNpcData.Read(environment);
                 NpcMetadata metadata = Build(id, playedNames.GetValueOrDefault(id, string.Empty), data, false,

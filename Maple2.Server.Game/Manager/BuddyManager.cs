@@ -128,6 +128,17 @@ public class BuddyManager : IDisposable {
         }
     }
 
+    // The invite error for the receiver's entry of this character, ok when there is none.
+    private BuddyError PairError(GameStorage.Request db, long receiverId) {
+        return db.GetBuddyType(receiverId, session.CharacterId) switch {
+            BuddyType.Default => s_buddy_err_already_buddy,
+            BuddyType.InRequest => s_buddy_err_already_request_somebody,
+            BuddyType.OutRequest => s_buddy_err_request_somebody,
+            BuddyType.Blocked => s_buddy_refused_request_from_somebody,
+            _ => ok,
+        };
+    }
+
     public void SendInvite(string name, string message) {
         if (name.Length > Constant.CharacterNameLengthMax || message.Length > Constant.BuddyMessageLengthMax) {
             session.Send(BuddyPacket.Invite(error: s_buddy_err_unknown));
@@ -160,13 +171,7 @@ public class BuddyManager : IDisposable {
             return;
         }
 
-        BuddyError error = db.GetBuddyType(receiverId, session.CharacterId) switch {
-            BuddyType.Default => s_buddy_err_already_buddy,
-            BuddyType.InRequest => s_buddy_err_already_request_somebody,
-            BuddyType.OutRequest => s_buddy_err_request_somebody,
-            BuddyType.Blocked => s_buddy_refused_request_from_somebody,
-            _ => ok,
-        };
+        BuddyError error = PairError(db, receiverId);
         if (error != ok) {
             session.Send(BuddyPacket.Invite(name, error: error));
             return;
@@ -183,7 +188,10 @@ public class BuddyManager : IDisposable {
             BuddyEntry? entry = db.CreateBuddy(session.CharacterId, receiverId, BuddyType.OutRequest, message);
             if (entry == null || db.CreateBuddy(receiverId, session.CharacterId, BuddyType.InRequest, message) == null) {
                 db.Rollback();
-                session.Send(BuddyPacket.Invite(error: s_buddy_err_unknown));
+                // The pair is kept once per side (unique index): an invite of the receiver that crossed this one and
+                // was stored first refuses these rows, and is answered as the check above answers it.
+                BuddyError crossed = PairError(db, receiverId);
+                session.Send(crossed == ok ? BuddyPacket.Invite(error: s_buddy_err_unknown) : BuddyPacket.Invite(name, error: crossed));
                 return;
             }
             db.Commit();

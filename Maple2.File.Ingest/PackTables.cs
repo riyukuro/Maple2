@@ -47,6 +47,19 @@ public static class PackTables {
                $"Run the ingest and the servers with LOCALE={playedFolders[0]}, or the server answers by another region's rules than the client's.";
     }
 
+    // The string folder the played client names its rows from: its own region's (a KR client shows string/kr, whose
+    // rows a pack's string/en may give to another item of the same id, e.g. an NA inventory expansion for a KR
+    // capsule), when the pack has exactly one region folder and that folder's file; else the ingest's language.
+    public static string PlayedStringFolder(IEnumerable<string> playedFileNames, string language, string file) {
+        string[] names = playedFileNames as string[] ?? playedFileNames.ToArray();
+        string[] folders = RegionFolders(names);
+        if (folders.Length != 1) {
+            return language;
+        }
+        string folder = folders[0].ToLowerInvariant();
+        return names.Contains($"string/{folder}/{file}", StringComparer.OrdinalIgnoreCase) ? folder : language;
+    }
+
     public static TableParser NewParser(M2dReader xmlReader, string language) {
         string rowLocale = FeatureLocaleFilter.Locale;
         FeatureLocaleFilter.Locale = Locale;

@@ -136,6 +136,19 @@ public class BuddyNameLimitTests {
     private static string[] BuddySent(TestGameSession test) =>
         test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Buddy).Select(Convert.ToHexString).ToArray();
 
+    // Two invites that cross: each passed the pair check before the other's rows were in. The pair is kept once per
+    // side, so the later one's rows are refused, and it is answered as the check answers an invite already received.
+    [Test]
+    public void AnInviteCrossedByTheReceiversInviteGetsTheRequestError() {
+        fault.BeforeAdd = () => Invite(other, "Alice");
+
+        Invite(player, "Bobby");
+
+        Assert.That(BuddySent(playerTest), Does.Contain(Hex(BuddyPacket.Invite("Bobby", error: BuddyError.s_buddy_err_request_somebody))));
+        Assert.That(Entries(player.CharacterId).Select(entry => (entry.BuddyId, entry.Type)), Is.EqualTo(new[] { (other.CharacterId, BuddyType.InRequest) }));
+        Assert.That(Entries(other.CharacterId).Select(entry => (entry.BuddyId, entry.Type)), Is.EqualTo(new[] { (player.CharacterId, BuddyType.OutRequest) }));
+    }
+
     [Test]
     public void ARequestToTheOwnNameInAnotherCaseIsRefused() {
         Invite(player, "aLICE");
@@ -309,8 +322,16 @@ public class BuddyNameLimitTests {
     // A save that deletes a buddy row fails (TrySaveChanges turns it into false).
     private sealed class BuddyDeleteFault : SaveChangesInterceptor {
         public bool Fail;
+        // Run once at the next save that adds a buddy row, which then fails as the unique pair index refuses it.
+        public Action? BeforeAdd;
 
         public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result) {
+            if (BeforeAdd is { } before && eventData.Context != null && eventData.Context.ChangeTracker.Entries<Maple2.Database.Model.Buddy>()
+                    .Any(entry => entry.State == EntityState.Added)) {
+                BeforeAdd = null;
+                before();
+                throw new InvalidOperationException("Duplicate entry for key 'IX_buddy_OwnerId_BuddyId'");
+            }
             if (Fail && eventData.Context != null && eventData.Context.ChangeTracker.Entries<Maple2.Database.Model.Buddy>()
                     .Any(entry => entry.State == EntityState.Deleted)) {
                 throw new InvalidOperationException("The test made this save fail");

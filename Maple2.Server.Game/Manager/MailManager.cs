@@ -63,6 +63,30 @@ public sealed class MailManager {
         session.Send(MailPacket.Notify(unreadMail, unreadMail > 0, unreadAlarm));
     }
 
+    // The inbox's unread mails, as the count notice (Mail 14) gives them.
+    public int UnreadCount {
+        get {
+            lock (inbox) {
+                return MailRules.UnreadCount(inbox.Values, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            }
+        }
+    }
+
+    // The counts again after a read, collect or delete changed them. The client's mail menu badge is only set by the
+    // count notice (CUserMail::SetUnreadCount from OnMail mode 14, scenestategame.cpp:11608): the read (mode 2) and
+    // delete (mode 13) answers change the list alone, so a bulk delete of unread mails left the badge at the old
+    // count. No new-mail notice (alert false): nothing arrived.
+    public void SendCounts() {
+        int unreadMail;
+        int unreadAlarm;
+        lock (inbox) {
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            unreadMail = MailRules.UnreadCount(inbox.Values, now);
+            unreadAlarm = MailRules.UnreadAlarmCount(inbox.Values, now);
+        }
+        session.Send(MailPacket.Notify(unreadMail, false, unreadAlarm));
+    }
+
     // Pieces of each item on the inbox's mails, after one fetch so a mail just sent counts. A fetch that brought
     // mail sends its notice now (Notify), so a temporary item's notice is not held back to the next notify.
     public Dictionary<int, int> HeldAmounts(IEnumerable<int> itemIds) {
