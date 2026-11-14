@@ -116,6 +116,25 @@ public abstract class TriggerTestBase {
     protected void SetRandom(float value) {
         typeof(TriggerContext).GetField("currentRandom", Any)!.SetValue(context, value);
     }
+
+    // The effect is known to the field's skill data, and the field's own actor (the caster of trigger buffs) is a
+    // real one.
+    protected void WithEffect(int id) {
+        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", Any)!.GetValue(skills)!;
+        // No begin condition: the effect is on once held.
+        var always = new BeginCondition(0, 0, Gender.All, [], 1, 0, 0, 0, false, false, false, true, false, true, [],
+            new Dictionary<BasicAttribute, long>(), [], [], [], [], null, null, null, null);
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(id, (short) 1), DisabledBuffTests.Effect(id) with {
+            Condition = always,
+            Reflect = new AdditionalEffectMetadataReflect(0, 0, 0, 0, 0, 0, new Dictionary<BasicAttribute, long>(), new Dictionary<BasicAttribute, float>()),
+            Update = new AdditionalEffectMetadataUpdate(null, [], [], [], []),
+            Consume = new AdditionalEffectMetadataConsume(0, 0),
+        }]);
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, skills);
+        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), Any)!.SetValue(Field, new FieldActor(Field, 99, Field.Metadata, null!));
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
+    }
 }
 
 public class TriggerFieldObjectTests : TriggerTestBase {
@@ -699,24 +718,6 @@ public class TriggerFieldStateTests : TriggerTestBase {
         Action("""<action name="set_skill" trigger_ids="801" enable="0" />""");
         ByteReader removed = Sent(SendOp.RegionSkill).Single();
         Assert.That((removed.ReadByte(), removed.ReadInt()), Is.EqualTo(((byte) 1, objectId)));
-    }
-    // The effect is known to the field's skill data, and the field's own actor (the caster of trigger buffs) is a
-    // real one.
-    private void WithEffect(int id) {
-        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
-        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", Any)!.GetValue(skills)!;
-        // No begin condition: the effect is on once held.
-        var always = new BeginCondition(0, 0, Gender.All, [], 1, 0, 0, 0, false, false, false, true, false, true, [],
-            new Dictionary<BasicAttribute, long>(), [], [], [], [], null, null, null, null);
-        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(id, (short) 1), DisabledBuffTests.Effect(id) with {
-            Condition = always,
-            Reflect = new AdditionalEffectMetadataReflect(0, 0, 0, 0, 0, 0, new Dictionary<BasicAttribute, long>(), new Dictionary<BasicAttribute, float>()),
-            Update = new AdditionalEffectMetadataUpdate(null, [], [], [], []),
-            Consume = new AdditionalEffectMetadataConsume(0, 0),
-        }]);
-        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, skills);
-        typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), Any)!.SetValue(Field, new FieldActor(Field, 99, Field.Metadata, null!));
-        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
     }
 
     // add_buff (977), remove_buff (173), check_any_user_additional_effect (86): the players in the boxes get the
@@ -1848,6 +1849,18 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That(new[] { reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat(), reader.ReadFloat() },
             Is.EqualTo(new[] { 450f, 30000f, 30000f, 115f }));
         Assert.That((reader.ReadBool(), reader.ReadByte(), reader.ReadBool()), Is.EqualTo((true, (byte) 45, false)));
+    }
+
+    // change_background (9 KR uses, dds only): ChangeBackground carries the texture name as the narrow string the
+    // client's OnChangeBackground reads (scenestategame.cpp:6675).
+    [Test]
+    public void ChangeBackground_SendsTheTexture() {
+        Start();
+
+        Action("""<action name="change_background" dds="BG_RedLapenta_B.dds" />""");
+        ByteReader reader = Sent(SendOp.ChangeBackground).Single();
+        Assert.That(reader.ReadString(), Is.EqualTo("BG_RedLapenta_B.dds"));
+        Assert.That(reader.Available, Is.Zero);
     }
 
     // set_ambient_light (82): the AmbientLight (8) property is added.

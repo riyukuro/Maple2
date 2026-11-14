@@ -406,6 +406,7 @@ public sealed class TestGameSession {
         var marriage = Uninitialized<MarriageManager>();
         typeof(MarriageManager).GetField("session", Any)!.SetValue(marriage, session);
         typeof(MarriageManager).GetField("logger", Any)!.SetValue(marriage, Serilog.Log.Logger.ForContext<MarriageManager>());
+        typeof(MarriageManager).GetField("ticketsSent", Any)!.SetValue(marriage, new HashSet<(long, long)>());
         marriage.Marriage = Marriage.Default;
         session.Marriage = marriage;
         session.Guild = Uninitialized<GuildManager>();

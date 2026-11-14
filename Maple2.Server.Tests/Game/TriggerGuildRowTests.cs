@@ -11,6 +11,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Serilog;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
@@ -67,6 +68,21 @@ public class TriggerGuildRowTests : TriggerTestBase {
         GuildVsGameField game = Field.StartGuildVsGame();
         game.SetMatch(0, GuildId, 80, _ => { });
         game.Arrive(session.Player);
+    }
+
+    // set_user_value_from_guild_vs_game_score (12 KR uses: team 1 to BlueteamScore, 2 to RedteamScore): the team's
+    // total becomes the trigger's user value.
+    [Test]
+    public void SetUserValueFromGuildVsGameScore_TheTeamsTotal() {
+        StartMatch();
+        typeof(FieldManager).GetField(nameof(FieldManager.UserValues))!.SetValue(Field, new TriggerUserValues());
+        Field.GuildVsGame!.State.ScoreRound(2, 1, 3);
+        Field.GuildVsGame.State.ScoreRound(0, 1, 2);
+        Field.GuildVsGame.State.ScoreRound(3, 1, 1);
+
+        Action("""<action name="set_user_value_from_guild_vs_game_score" team_id="1" key="BlueteamScore" />""");
+        Action("""<action name="set_user_value_from_guild_vs_game_score" team_id="2" key="RedteamScore" />""");
+        Assert.That((Field.UserValues.Get(1, "BlueteamScore"), Field.UserValues.Get(1, "RedteamScore")), Is.EqualTo((4, 2)));
     }
 
     private GuildRequest? NextRequest(int waitMs) {

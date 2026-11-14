@@ -9,6 +9,7 @@ using DotRecast.Core.Numerics;
 using DotRecast.Detour;
 using DotRecast.Detour.Crowd;
 using DotRecast.Recast.Toolset.Builder;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
@@ -145,6 +146,36 @@ public class TriggerHallGameTests : TriggerTestBase {
         Assert.That(Moves(), Is.Empty);
         Action("""<action name="wedding_move_user" entry_type="Groom" portal_ids="22" box_id="1" />""");
         Assert.That(Moves(), Has.Length.EqualTo(1));
+    }
+
+    // wedding_vow_complete (12 KR uses, no attributes): with the couple in the room the engaged marriage is stored as
+    // married and the couple's own marriage turns married; a second vow, or one without the couple, changes nothing.
+    // The test field holds one player, so the couple here is that player twice.
+    [Test]
+    public void WeddingVowComplete_MarriesTheCouple() {
+        StartHall();
+        long marriageId;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Account account = db.CreateAccount(new Account { Username = "partner" }, "pw");
+            var partner = new Character { AccountId = account.Id, Name = "partner", Mastery = new Mastery() };
+            partner.ReturnMaps.Push(2000062);
+            long partnerId = db.CreateCharacter(partner)!.Id;
+            marriageId = db.CreateMarriage(CharacterId, partnerId)!.Id;
+            test.Session.Marriage.Marriage = db.GetMarriage(CharacterId)!;
+        }
+
+        Field.Wedding = new WeddingCeremony(marriageId, CharacterId, PartnerId, CharacterId);
+        Action("""<action name="wedding_vow_complete" />""");
+        Assert.That(Field.Wedding.Complete, Is.False);
+
+        Field.Wedding = new WeddingCeremony(marriageId, CharacterId, CharacterId, CharacterId);
+        Action("""<action name="wedding_vow_complete" />""");
+        Assert.That(Field.Wedding.Complete, Is.True);
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.GetMarriage(CharacterId)!.Status, Is.EqualTo(MaritalStatus.Married));
+        }
+        Assert.That((test.Session.Marriage.Marriage.Status, test.Session.Player.Value.Character.MarriageInfo.Status),
+            Is.EqualTo((MaritalStatus.Married, MaritalStatus.Married)));
     }
 
     // wedding_entry_in_field (60): GroomBride with is_in_field 1 holds while both of the couple are in the room, 0

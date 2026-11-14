@@ -142,6 +142,26 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
         Assert.That(sent.Count(packet => TestGameSession.Op(packet) == SendOp.FieldAddNpc), Is.EqualTo(1));
     }
 
+    // patrol_condition_user (11 KR uses, effects 73000005-73000008): a player with the additional effect walks the path
+    // behind a dummy npc, as move_user_path moves one; without the effect nobody moves.
+    [Test]
+    public void PatrolConditionUser_ThePlayerWithTheEffect() {
+        StartSpawns();
+        var patrol = new MS2PatrolData("uuid", "MS2PatrolData_01", false, 1, false,
+            [new MS2WayPoint("w1", true, new Vector3(500, 0, 0), Vector3.Zero, "", "", 0, false)]);
+        typeof(MapEntityMetadata).GetField("<Patrols>k__BackingField", Any)!.SetValue(Field.Entities, new List<MS2PatrolData> { patrol });
+        WithEffect(73000005);
+        test.Session.Player.Buffs.AddBuff(test.Session.Player, test.Session.Player, 73000005, 1, Field.FieldTick);
+
+        Action("""<action name="patrol_condition_user" patrol_name="MS2PatrolData_01" patrol_index="1" additional_effect_id="73000006" />""");
+        Assert.That(Field.Npcs, Is.Empty);
+
+        Action("""<action name="patrol_condition_user" patrol_name="MS2PatrolData_01" patrol_index="1" additional_effect_id="73000005" />""");
+        FieldNpc dummy = Field.Npcs.Values.Single();
+        Assert.That((dummy.Position, dummy.Patrol), Is.EqualTo((new Vector3(100, 200, 0), patrol)));
+        Assert.That(Sent(SendOp.FollowNpc).Select(reader => reader.ReadInt()), Is.EqualTo(new[] { dummy.ObjectId }));
+    }
+
     // wedding_user_to_patrol (24): the groom or the bride of the room's ceremony walks the path behind a dummy npc,
     // as move_user_path moves a player; the other role, or a room without a ceremony, moves no one.
     [Test]
