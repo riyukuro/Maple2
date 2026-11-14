@@ -154,8 +154,6 @@ public static class PlayedAdditionalRows {
         return names.Any(name => !Numbers(status?.GetAttribute(name) ?? "").SequenceEqual(Numbers(pack?.GetAttribute(name) ?? "")));
     }
 
-    // A list as the pack's parser reads it ("1,2", "0.1", "true"): numbers and flags (true 1, false 0) by value, other
-    // text as it is; 0 for an empty list's lone value.
     // The compulsion event of a played level's <Status> (null for none) as the client reads it
     // (additionalactionadditional.cpp:1223-1225: one type, one rate, 0 where absent, the skill codes): null for the
     // type None, as the pack's (AdditionalEffectMapper.Status).
@@ -177,6 +175,8 @@ public static class PlayedAdditionalRows {
         return a.Type == b.Type && Same(a.Rate, b.Rate) && a.SkillIds.SequenceEqual(b.SkillIds);
     }
 
+    // A list as the pack's parser reads it ("1,2", "0.1", "true"): numbers and flags (true 1, false 0) by value, other
+    // text as it is; 0 for an empty list's lone value.
     private static IEnumerable<string> Numbers(string list) {
         string[] values = Split(list).Select(Value).ToArray();
         return values.Length == 1 && values[0] == "0" ? [] : values;
