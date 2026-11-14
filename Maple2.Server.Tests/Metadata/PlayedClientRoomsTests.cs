@@ -169,5 +169,9 @@ public class PlayedClientRoomsTests {
         Assert.That(rules[3].DurationTick, Is.EqualTo(0));
         Assert.That(rules[3].LimitedDropBoxIds2, Is.Empty);
         Assert.That(rules[4].DurationTick, Is.EqualTo(0));
+
+        // The ingest's reward list: the room's own boxes, then the second list.
+        Assert.That(PlayedClientRooms.LimitedDropBoxIds([23200007], rules[23006003].LimitedDropBoxIds2), Is.EqualTo(new[] { 23200007, 20001002 }));
+        Assert.That(PlayedClientRooms.LimitedDropBoxIds([23200007], null), Is.EqualTo(new[] { 23200007 }));
     }
 }

@@ -2458,7 +2458,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
                     ExpRate: dungeon.rewardExpRate,
                     Meso: dungeon.rewardMeso,
                     // rewardLimitedDropBoxIds2 follows, as in the client's reward list (PlayedClientRooms.Rules).
-                    LimitedDropBoxIds: dungeon.rewardLimitedDropBoxIds.Concat(rules.LimitedDropBoxIds2 ?? []).ToArray(),
+                    LimitedDropBoxIds: PlayedClientRooms.LimitedDropBoxIds(dungeon.rewardLimitedDropBoxIds, rules.LimitedDropBoxIds2),
                     UnlimitedDropBoxIds: dungeon.rewardUnlimitedDropBoxIds,
                     UnionRewardId: dungeon.unionRewardID,
                     SeasonRankRewardId: dungeon.seasonRankRewardID,

@@ -59,7 +59,8 @@ public sealed class HealthLink {
                 long value = Math.Min(shared, health.Total);
                 // A player's hit lands on the session thread, outside this lock: one taken since the read above stays
                 // on top of the shared value, and the next Share passes it on (Seen is the shared value).
-                long current = AiSummon.KeepLateChange(value, read[npc], health.Current, health.Total);
+                long current = AiSummon.KeepLateChange(value, read[npc], health.Current, health.Total,
+                    AiSummon.MemberFloor(npc.NoDie, npc.MinimumHealth));
                 if (health.Current != current) {
                     health.Current = current;
                     npc.Field.Broadcast(StatsPacket.Update(npc, BasicAttribute.Health));

@@ -261,6 +261,12 @@ public class AiSummonTests {
             Assert.That(AiSummon.KeepLateChange(4000, 5000, 5000, 10000), Is.EqualTo(4000));
             Assert.That(AiSummon.KeepLateChange(100, 5000, 0, 10000), Is.EqualTo(0));
             Assert.That(AiSummon.KeepLateChange(9900, 5000, 5500, 10000), Is.EqualTo(10000));
+            // A no_die member (floor 1) read at 100, shared down to 1, hit to 1 in between: it stays at 1, not 0.
+            Assert.That(AiSummon.KeepLateChange(1, 100, 1, 10000, 1), Is.EqualTo(1));
+            // A member under its floor is not lifted to it (a killing hit stays a kill), and a share above the floor
+            // keeps the late hit whole.
+            Assert.That(AiSummon.KeepLateChange(100, 5000, 0, 10000, 1), Is.EqualTo(0));
+            Assert.That(AiSummon.KeepLateChange(4000, 5000, 4700, 10000, 1), Is.EqualTo(3700));
             // The next share takes the late hit: Seen is 4000, the member reads 3700.
             Assert.That(AiSummon.SharedHealth(4000, 10000, [(3700, 4000), (4000, 4000)]), Is.EqualTo(3700));
         });

@@ -292,6 +292,31 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(owner.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(100));
     }
 
+    // The share on the field (HealthLink.Share, run before each member's update): a hit on one no_die member passes
+    // to the other, and the link's floor of 1 holds both; a broadcast of the new health goes out for each.
+    [Test]
+    public void Share_PassesAHitOnAndHoldsTheFloor() {
+        Spawn([]);
+        Assert.That(Field.NpcMetadata.TryGet(NpcId, out NpcMetadata? metadata), Is.True);
+        FieldNpc owner = Field.SpawnNpc(metadata!, new Vector3(1200, 0, 0), Vector3.Zero)!;
+        owner.KeepAlive = true;
+        npc.KeepAlive = true;
+        var link = new HealthLink(owner);
+        link.Add(npc);
+
+        npc.Stats.Values[BasicAttribute.Health].Current = 70;
+        link.Share();
+        Assert.That(owner.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(70));
+        Assert.That(npc.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(70));
+
+        owner.Stats.Values[BasicAttribute.Health].Current = 1;
+        npc.Stats.Values[BasicAttribute.Health].Current = 1;
+        link.Share();
+        Assert.That(owner.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(1));
+        Assert.That(npc.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(1));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // KR AI_Witch2CerberosTrainer_PaterA.xml: <node name="teleport" pos="-2700, -1800, 2750" isKeepBattle="true"> (its
     // children then target a far player, 300 to 1300 away). The node holds the battle; one without the flag does not.
     [Test]
