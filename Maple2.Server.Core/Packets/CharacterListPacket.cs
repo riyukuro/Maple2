@@ -217,7 +217,9 @@ public static class CharacterListPacket {
         writer.WriteLong(character.LastModified.ToEpochSeconds());
         writer.WriteInt(); // count for long list (charObj+0x1B8 region)
         writer.WriteInt(); // count for long list (charObj+0x1E8 region)
-        writer.WriteShort(); // charObj+0x120c, Survival (triggers field player refresh)
+        // charObj+0x120c, the Maple Survival level (Unk_UserProxy +0x1ac, PC::FUN_141663b10): at 5 or more the
+        // client shows the SURVIVAL_LEVEL nametag icon of the level (nametagsymboltable.cpp:277, 297).
+        writer.WriteShort((short) Math.Clamp(account.SurvivalLevel, 0, short.MaxValue));
         writer.WriteLong();
     }
 }
