@@ -782,17 +782,17 @@ public sealed class QuestManager {
             .All(condition => condition.Value.Counter >= condition.Value.Metadata.Value);
     }
 
-    /// <summary>
-    /// Quest 0x18, the claim button of the daily mission page and the level guide (and 0x1b, 0x1d, 0x27, the event,
-    /// mentoring and wedding claims): completes the held quest when a page of that mode lists it and the client and
-    /// the server agree it is due (QuestRules.RemoteClaimCheck), else says why.
-    /// </summary>
     // The running events whose quest lists a claim of this mode reads (0x1b, 0x1d).
     private IEnumerable<GameEventData> ClaimListEvents(byte mode) =>
         mode is QuestRules.EventClaimMode or QuestRules.MentoringClaimMode
             ? QuestRules.ClaimListEvents.SelectMany(type => session.FindEvent(type)).Select(gameEvent => gameEvent.Metadata.Data)
             : [];
 
+    /// <summary>
+    /// Quest 0x18, the claim button of the daily mission page and the level guide (and 0x1b, 0x1d, 0x27, the event,
+    /// mentoring and wedding claims): completes the held quest when a page of that mode lists it and the client and
+    /// the server agree it is due (QuestRules.RemoteClaimCheck), else says why.
+    /// </summary>
     public QuestRules.RemoteClaim RemoteComplete(int questId, byte mode = QuestRules.RemoteCompleteMode) {
         TryGetQuest(questId, out Quest? quest);
         QuestRules.RemoteClaim claim = QuestRules.RemoteClaimCheck(session.QuestMetadata.TryGet(questId, out _), quest,
