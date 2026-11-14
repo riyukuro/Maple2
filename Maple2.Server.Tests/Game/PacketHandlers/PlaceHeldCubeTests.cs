@@ -270,8 +270,8 @@ public class PlaceHeldCubeTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(4000));
     }
 
-    // Decorating exp: the construct row's curve at the decorator's level for each placed cube, up to
-    // ConstructExpMaxCount a day; the first place past it gets ResponseCube 0x3d [100][1], later ones nothing.
+    // Decorating exp (the ConstructExp feature, on in the test session): the construct row's curve at the decorator's
+    // level for each placed cube, up to ConstructExpMaxCount a day; the first place past it gets ResponseCube 0x3d [100][1], later ones nothing.
     private void WithConstructExp(GameSession session, int maxPerDay) {
         test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> { [ExpType.construct] = new(1, 1f) }));
         test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
@@ -323,6 +323,28 @@ public class PlaceHeldCubeTests {
             Assert.That(plot.Cubes, Has.Count.EqualTo(1));
             Assert.That(session.Player.Value.Character.Exp, Is.EqualTo(exp));
             Assert.That(session.Player.Value.Character.ConstructExpCount, Is.EqualTo(0));
+        });
+    }
+
+    // The operator's feature.xml has ConstructExp off: the construct row is still in the table, but a place pays
+    // nothing, counts nothing and sends no notice.
+    [Test]
+    public void WithTheFeatureOff_APlacePaysNoConstructExp() {
+        (GameSession session, Plot plot) = StartInHome();
+        WithConstructExp(session, maxPerDay: 1);
+        test.SetFeaturesOff("ConstructExp");
+        long exp = session.Player.Value.Character.Exp;
+
+        Place(session, Cube, Cube, new Vector3B(-1, -1, 1));
+        Place(session, Cube, Cube, new Vector3B(-2, -1, 1));
+        List<string> sent = test.TakeSent().Select(Convert.ToHexString).ToList();
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes, Has.Count.EqualTo(2));
+            Assert.That(session.Player.Value.Character.Exp, Is.EqualTo(exp));
+            Assert.That(session.Player.Value.Character.ConstructExpCount, Is.EqualTo(0));
+            Assert.That(sent, Has.None.EqualTo(OverTime));
+            Assert.That(test.Errors, Is.Empty);
         });
     }
 

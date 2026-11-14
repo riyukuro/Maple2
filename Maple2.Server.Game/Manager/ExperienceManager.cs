@@ -169,11 +169,15 @@ public sealed class ExperienceManager {
             prestigeRate: prestigeRate);
     }
 
-    // Decorating exp for a cube the player placed in a home (ConstructExpRules); the count is stored before the exp.
+    // Decorating exp for a cube the player placed in a home (ConstructExpRules); the count is stored before the exp. It is
+    // the server-side feature ConstructExp (192; the client only names its error), so it is paid only while the feature
+    // server table (the operator's feature.xml) has it on, and the common exp table has its construct row.
     public void AddConstructExp() {
         Character character = session.Player.Value.Character;
+        bool enabled = session.ServerTableMetadata.FeatureTable.IsOn("ConstructExp")
+                       && session.TableMetadata.CommonExpTable.Entries.ContainsKey(ExpType.construct);
         int paidToday = PetFusionRules.DailyCount(character.ConstructExpCount, character.ConstructExpTime, PetFusionRules.LastResetTime());
-        ConstructExpRules.Step step = ConstructExpRules.Check(session.TableMetadata.CommonExpTable.Entries.ContainsKey(ExpType.construct),
+        ConstructExpRules.Step step = ConstructExpRules.Check(enabled,
             paidToday, session.ServerTableMetadata.ConstantsTable.ConstructExpMaxCount);
         if (step == ConstructExpRules.Step.None) {
             return;
