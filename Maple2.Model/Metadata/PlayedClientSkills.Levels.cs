@@ -111,6 +111,38 @@ public static partial class PlayedClientSkills {
             Motions: Children(level, "motion").Select(BuildMotion).ToArray());
     }
 
+    // Of a data pack skill's level values (in order), the one a level the pack lacks takes the rest from: the highest
+    // below it, else the lowest above it; none when the pack has no level.
+    public static short? NearestLevel(IReadOnlyList<short> packValues, short value) {
+        short? below = null;
+        foreach (short pack in packValues) {
+            if (pack < value) below = pack;
+            else return below ?? pack;
+        }
+        return below;
+    }
+
+    // A played client's level (BuildLevel) added to a data pack skill: the client's own condition fields (cooldown,
+    // shadow world, flyable map, battle ride, map codes, hand weapons, recharge gap) and cost, and what the client's
+    // level does not give from the pack's level: the rest of its begin condition (level, jobs, stats, targets) and
+    // whether it is an item skill's level (consume useItem, which the cast checks its condition and cooldown for).
+    public static SkillMetadataLevel WithPackLevel(SkillMetadataLevel built, SkillMetadataLevel pack) {
+        BeginCondition client = built.Condition;
+        return built with {
+            Condition = pack.Condition with {
+                CooldownTime = client.CooldownTime,
+                OnlyShadowWorld = client.OnlyShadowWorld,
+                OnlyFlyableMap = client.OnlyFlyableMap,
+                AllowOnBattleMount = client.AllowOnBattleMount,
+                OnlyOnBattleMount = client.OnlyOnBattleMount,
+                Maps = client.Maps,
+                Weapon = client.Weapon,
+                RechargeGap = client.RechargeGap,
+            },
+            Consume = built.Consume with { UseItem = pack.Consume.UseItem },
+        };
+    }
+
     // The rows of the skill's <condition> the server's condition has no place for.
     public static int UnreadConditionRows(XmlElement skill) {
         XmlElement? condition = Child(Child(skill, "basic"), "condition");

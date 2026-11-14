@@ -139,7 +139,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         List<long> magicPaths = [];
         List<long> cubeMagicPaths = [];
         int clientAdded = 0, clientUnmatched = 0, clientSkills = 0, clientNotBuffOwned = 0;
-        int playedLevelsAdded = 0, playedSkillsAdded = 0, playedConditionRows = 0;
+        int playedLevelsAdded = 0, playedSkillsAdded = 0, playedConditionRows = 0, playedLevelsOfPackSkills = 0, playedLevelsOfItemSkills = 0;
         var packIds = new HashSet<int>();
         foreach ((int id, string name, SkillData data) in parser.Parse()) {
             packIds.Add(id);
@@ -251,12 +251,23 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     OnlyManualActiveSplash: level.splashManualActiveProperty?.onlyManualActiveSplash == true
                 ));
 
-            // The played client's levels of the skill that the data pack lacks (PlayedClientSkills.BuildLevel).
+            // The played client's levels of the skill that the data pack lacks (PlayedClientSkills.BuildLevel), with
+            // what the client does not read taken from the data pack's nearest level (PlayedClientSkills.WithPackLevel):
+            // an item skill's level stays an item skill's.
             if (playedSkills.TryGetValue(id, out var playedSkill)) {
+                short[] packValues = levels.Keys.Order().ToArray();
                 foreach ((short value, System.Xml.XmlElement level) in playedSkill.Levels) {
-                    if (value >= 1 && levels.TryAdd(value, PlayedClientSkills.BuildLevel(playedSkill.Skill, level))) {
-                        playedLevelsAdded++;
+                    if (value < 1 || levels.ContainsKey(value)) {
+                        continue;
                     }
+                    SkillMetadataLevel built = PlayedClientSkills.BuildLevel(playedSkill.Skill, level);
+                    if (PlayedClientSkills.NearestLevel(packValues, value) is { } nearest) {
+                        built = PlayedClientSkills.WithPackLevel(built, levels[nearest]);
+                        playedLevelsOfPackSkills++;
+                        if (built.Consume.UseItem) playedLevelsOfItemSkills++;
+                    }
+                    levels.Add(value, built);
+                    playedLevelsAdded++;
                 }
             }
 
@@ -331,7 +342,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                 Levels: levels);
         }
         if (playedSkills.Count > 0) {
-            Console.WriteLine($"Skills and levels added from the played client's skill data: {playedSkillsAdded} skills, {playedLevelsAdded} levels ({playedConditionRows} condition rows of the added skills with no place in the server's condition)");
+            Console.WriteLine($"Skills and levels added from the played client's skill data: {playedSkillsAdded} skills, {playedLevelsAdded} levels ({playedConditionRows} condition rows of the added skills with no place in the server's condition; {playedLevelsOfPackSkills} levels of data pack skills given the rest of their condition and the item use from the nearest data pack level, {playedLevelsOfItemSkills} of them an item skill's)");
         }
         if (clientEffects.Count > 0) {
             Console.WriteLine($"Skill effects added from the played client's skill data: {clientAdded} in {clientSkills} skills ({clientUnmatched} attack effects with no attack of their point)");

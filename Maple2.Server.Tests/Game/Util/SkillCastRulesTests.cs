@@ -1135,4 +1135,38 @@ public class SkillCastRulesTests {
             Assert.That((linked.FireCount, linked.Splash?.Chain), Is.EqualTo((2, (SkillEffectMetadataChain?) null)));
         });
     }
+
+    // A played client's level added to a data pack item skill: before, the added level had UseItem false and the
+    // pack condition's jobs and level left out, so the cast took it as a job skill's and skipped its condition and
+    // cooldown. It now takes them from the pack's nearest level and keeps the client's cooldown and weapons.
+    [Test]
+    public void PlayedClientLevel_OfAPackSkill_TakesThePackLevelsItemUseAndCondition() {
+        var document = new XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="310">
+                <basic><condition><weapon lh="0" rh="32" /></condition></basic>
+                <level value="3" cooldown="4000" sp="5" />
+              </skill>
+            </ms2>
+            """);
+        XmlElement skill = (XmlElement) document.SelectSingleNode("ms2/skill")!;
+        SkillMetadataLevel built = PlayedClientSkills.BuildLevel(skill, (XmlElement) skill.SelectSingleNode("level")!);
+        SkillMetadataLevel pack = built with {
+            Condition = built.Condition with { Level = 20, JobCode = [JobCode.Knight], CooldownTime = 9f, Weapon = [] },
+            Consume = built.Consume with { UseItem = true, Stat = new Dictionary<BasicAttribute, long>() },
+        };
+        SkillMetadataLevel added = PlayedClientSkills.WithPackLevel(built, pack);
+        Assert.Multiple(() => {
+            Assert.That(added.Consume.UseItem, Is.True);
+            Assert.That((added.Condition.Level, added.Condition.JobCode), Is.EqualTo(((short) 20, new[] { JobCode.Knight })));
+            Assert.That(added.Condition.CooldownTime, Is.EqualTo(4f));
+            Assert.That(added.Condition.Weapon!.Select(weapon => weapon.RightHand.Type), Is.EqualTo(new[] { 32 }));
+            Assert.That(added.Consume.Stat, Is.EqualTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.Spirit] = 5 }));
+
+            Assert.That(PlayedClientSkills.NearestLevel(new short[] { 1, 2, 5 }, 3), Is.EqualTo((short?) 2));
+            Assert.That(PlayedClientSkills.NearestLevel(new short[] { 4, 5 }, 3), Is.EqualTo((short?) 4));
+            Assert.That(PlayedClientSkills.NearestLevel(new short[] { }, 3), Is.Null);
+        });
+    }
 }
