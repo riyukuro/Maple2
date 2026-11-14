@@ -87,6 +87,14 @@ public class DungeonUnitedRewardResetTests {
     }
 
     [Test]
+    public void FeatureOffIs0x21() {
+        test.SetFeaturesOff(DungeonRoomRules.UnitedRewardResetFeature);
+        Record(Weekly);
+        Assert.That(Reset(), Is.EqualTo(new[] { Hex(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_error_shutdown_united_reawrd_reset)) }));
+        Assert.That(session.Dungeon.Records[Room].UnionClears, Is.EqualTo(Weekly));
+    }
+
+    [Test]
     public void RuleOrder() {
         Assert.That(DungeonRoomRules.UnitedRewardResetError(60, 50, 5, 5, 0, 100), Is.Null);
         Assert.That(DungeonRoomRules.UnitedRewardResetError(60, 50, 6, 5, 99, 100), Is.Null); // the last reset's week is over

@@ -351,6 +351,9 @@ public static class DungeonRoomRules {
     // every united dungeon's clear counts on (unionRewardID), its weekly count the steps of UnitedWeeklyRewards.
     public const int UnitedRewardRoomId = 1006;
 
+    // The client feature of the reset button and the boost (185, DungeonRewardCountJoin02).
+    public const string UnitedRewardResetFeature = "DungeonRewardCountJoin02";
+
     // The rates the client applies to the united weekly steps' meso and exp it shows while the boost of a reset is
     // active (Gvg kind 42, DungeonRecordManagerCli::OnRates; ApplyBoostRates, uidungeonhelper.cpp:158). Neither the
     // client nor the server pack has a value: 1, so the window shows what the steps give.

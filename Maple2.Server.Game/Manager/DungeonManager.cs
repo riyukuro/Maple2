@@ -116,6 +116,12 @@ public class DungeonManager {
     // the account's mark are stored at once, together; a failed store keeps both as they were and answers nothing.
     // The client shows no price for the reset, so it is free. The steps earned again pay what they pay the first time.
     public void ResetUnitedReward() {
+        // The reset button shows only with the client feature (uidungeonhelper.cpp:273); off, the answer is the
+        // client's text for the reset being switched off (0x21).
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(DungeonRoomRules.UnitedRewardResetFeature)) {
+            session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_error_shutdown_united_reawrd_reset));
+            return;
+        }
         Account account = session.Player.Value.Account;
         long now = DateTime.Now.ToEpochSeconds();
         Records.TryGetValue(DungeonRoomRules.UnitedRewardRoomId, out DungeonRecord? record);
@@ -142,6 +148,7 @@ public class DungeonManager {
             account.UnitedRewardResetCharacterId = characterId;
             account.UnitedRewardResetExpiry = expiry;
             logger.Error("Failed to store the united reward reset of {CharacterId}", session.CharacterId);
+            session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_error_shutdown_united_reawrd_reset));
             return;
         }
 
