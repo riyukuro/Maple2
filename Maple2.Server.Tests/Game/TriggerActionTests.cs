@@ -2286,13 +2286,17 @@ public class TriggerDungeonTests : TriggerTestBase {
         Assert.That(test.TakeSent().Select(Convert.ToHexString).ToArray(), Is.EqualTo(new[] { Hex(DungeonMissionPacket.Update(mission)) }));
     }
 
-    // set_dungeon_variable writes the room record's store, which dungeon_variable reads (an unset id reads 0).
+    // The dungeon_variable action (KR scripts never name set_dungeon_variable: 59 dungeon_variable actions, e.g.
+    // 02000344_bf main, the state after dungeon_clear) writes the room record's store, which the dungeon_variable
+    // condition reads (an unset id reads 0). set_dungeon_variable does the same.
     [Test]
     public void SetDungeonVariable_TheRoomStore() {
         StartRoom();
         Assert.That(Condition("""<condition name="dungeon_variable" var_id="2" value="0" />"""), Is.True);
-        Action("""<action name="set_dungeon_variable" var_id="2" value="1" />""");
+        Action("""<action name="dungeon_variable" value="1" var_id="2" />""");
         Assert.That(record.Variables[2], Is.EqualTo(1));
+        Action("""<action name="set_dungeon_variable" var_id="3" value="1" />""");
+        Assert.That(record.Variables[3], Is.EqualTo(1));
         Assert.That(Condition("""<condition name="dungeon_variable" var_id="2" value="1" />"""), Is.True);
         Assert.That(Condition("""<condition name="dungeon_variable" var_id="2" value="0" />"""), Is.False);
     }

@@ -66,6 +66,8 @@ public static class TriggerFunctionMapping {
         { "dungeon_set_end_time", _ => new Trigger.DungeonSetEndTime() },
         { "dungeon_set_lap_time", attrs => new Trigger.DungeonSetLapTime(ParseInt(attrs?["id"]?.Value), ParseInt(attrs?["lap_time"]?.Value)) },
         { "dungeon_stop_timer", _ => new Trigger.DungeonStopTimer() },
+        // KR scripts set a variable with the dungeon_variable action (59 uses); none names set_dungeon_variable.
+        { "dungeon_variable", attrs => new Trigger.SetDungeonVariable(ParseInt(attrs?["var_id"]?.Value), ParseInt(attrs?["value"]?.Value)) },
         { "set_dungeon_variable", attrs => new Trigger.SetDungeonVariable(ParseInt(attrs?["var_id"]?.Value), ParseInt(attrs?["value"]?.Value)) },
         { "enable_local_camera", attrs => new Trigger.EnableLocalCamera(ParseBool(attrs?["is_enable"]?.Value)) },
         { "enable_spawn_point_pc", attrs => new Trigger.EnableSpawnPointPc(ParseInt(attrs?["spawn_id"]?.Value), ParseBool(attrs?["is_enable"]?.Value)) },
