@@ -470,8 +470,10 @@ public class DungeonManager {
         // A limitEnter room is entered only while its reward record has a count left. The client's OnError 4
         // reads the room id and shows that room's record expire (dungeonrecordcli.cpp:338).
         // With useTicket (UIDungeonRoomInfo::AskExtraTicketEnter, uidungeonroomdialog.cpp:1675: the confirmed box of
-        // a room with an extra reward ticket and no count left) one extra reward count is bought first, as mode 8
-        // buys it; a refused purchase gets that purchase's error and no room.
+        // a room with an extra reward ticket and no count left) one extra reward count is bought, as mode 8 buys it,
+        // once every other check has passed (so a refused request spends no ticket); a refused purchase gets that
+        // purchase's error and no room.
+        (DungeonRoomMetadata Room, int Id)? ticketReward = null;
         if (metadata.LimitEnter) {
             (DungeonRoomMetadata rewardRoom, int rewardId) = RewardRoom(metadata);
             Records.TryGetValue(rewardId, out DungeonRecord? rewardRecord);
@@ -480,9 +482,7 @@ public class DungeonManager {
                     session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_party_err_cooldown, metadata.Id));
                     return;
                 }
-                if (!BuyExtraRewardCount(rewardRoom, rewardId)) {
-                    return;
-                }
+                ticketReward = (rewardRoom, rewardId);
             }
         }
 
@@ -524,6 +524,10 @@ public class DungeonManager {
         if (withParty && Party!.DungeonMatchKind != 0) {
             // The party searches (dungeon match): no room of the leader's own (rv44 MINOR 4); World refuses it too.
             session.Send(PartyPacket.Error(PartyError.s_party_err_dungeon_match_another));
+            return;
+        }
+
+        if (ticketReward != null && !BuyExtraRewardCount(ticketReward.Value.Room, ticketReward.Value.Id)) {
             return;
         }
 

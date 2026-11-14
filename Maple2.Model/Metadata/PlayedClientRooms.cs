@@ -116,17 +116,24 @@ public static class PlayedClientRooms {
     // and ClientListedRows puts the client row's attributes over the NA row, so an attribute only the NA row sets
     // stayed: KR rooms whose client shows the meret revive had it closed (59, NA limitMeratRevival), the meso revive
     // closed (7: 23040003, 23100001, the guild raids 26001001-26005001), a gear limit (6: 20008001 1500) and a
-    // minimum party (29006001: 4). A later available row of a room replaces an earlier one.
-    public static Dictionary<int, PlayedRoomRules> Rules(XmlDocument roomTable, Func<XmlElement, bool> available) {
-        var rules = new Dictionary<int, PlayedRoomRules>();
+    // minimum party (29006001: 4). Of two available rows of a room the one select keeps is read, as the client's
+    // table load keeps the one CFeatureManager::SelectFeatureElement picks (FUN_14028faa0, commonutil.cpp:1748; the
+    // ingest passes PlayedNpcStats.SelectFeatureElement). KMS2 has no such duplicate today.
+    public static Dictionary<int, PlayedRoomRules> Rules(XmlDocument roomTable, Func<XmlElement, bool> available,
+            Func<XmlElement, XmlElement, XmlElement> select) {
+        var selected = new Dictionary<int, XmlElement>();
         XmlNodeList? rows = roomTable.SelectNodes("ms2/dungeonRoom");
         if (rows == null) {
-            return rules;
+            return [];
         }
         foreach (XmlNode node in rows) {
             if (node is not XmlElement row || !available(row) || !int.TryParse(row.GetAttribute("dungeonRoomID"), out int id)) {
                 continue;
             }
+            selected[id] = selected.TryGetValue(id, out XmlElement? kept) ? select(kept, row) : row;
+        }
+        var rules = new Dictionary<int, PlayedRoomRules>();
+        foreach ((int id, XmlElement row) in selected) {
             rules[id] = new PlayedRoomRules(
                 RewardCount: Number(row, "rewardCount"),
                 CooldownValue: Number(row, "cooldownValue"),

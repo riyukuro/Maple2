@@ -2415,7 +2415,8 @@ public class TableMapper : TypeMapper<TableMetadata> {
             System.Xml.XmlDocument roomTable = playedReader.GetXmlDocument(roomEntry);
             playedLimitEnter = PlayedClientRooms.LimitEnter(roomTable, available);
             playedHelperBoxes = PlayedClientRooms.HelperRewardDropBoxes(roomTable, available);
-            playedRules = PlayedClientRooms.Rules(roomTable, available);
+            playedRules = PlayedClientRooms.Rules(roomTable, available, (a, b) => Utils.PlayedNpcStats.SelectFeatureElement(a, b,
+                feature => FeatureLocaleFilter.Features.GetValueOrDefault(feature), FeatureLocaleFilter.Locale));
             Maple2.File.IO.Crypto.Common.PackFileEntry? couponEntry = playedReader.Files.FirstOrDefault(file => file.Name == PlayedClientRooms.CouponTable);
             if (couponEntry != null) {
                 playedTickets = PlayedClientRooms.ExtraRewardTickets(roomTable, PlayedClientRooms.Coupons(playedReader.GetXmlDocument(couponEntry), available), available);
