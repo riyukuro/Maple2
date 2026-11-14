@@ -40,6 +40,15 @@ public static class PetRules {
         return tamingRank >= 95 ? 3 : tamingRank >= 70 ? 2 : 1;
     }
 
+    // The pet taming mastery of a capture. No table or client code gives it (the client only names a gain the server
+    // sends, scenestategame.cpp:3960), so the amount is the server's own: a snare craft's 30 (masteryreceipe type 11)
+    // for a normal pet, doubled for each rarity above it.
+    public const int CaptureMasteryBase = 30;
+
+    public static int CaptureMastery(int rarity) {
+        return CaptureMasteryBase << (Math.Clamp(rarity, 1, 4) - 1);
+    }
+
     // RequestPet 16 (another player's pet): the popup names the pet the owner has summoned; a pet that was put
     // away or switched since then is not shown.
     public static bool IsShownPet(long? summonedUid, long requestedUid) {

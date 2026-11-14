@@ -22,6 +22,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Util;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Session;
 using Maple2.Model.Common;
 using Maple2.Database.Context;
 using Microsoft.EntityFrameworkCore;
@@ -994,6 +995,7 @@ public class QuestConditionWiringTests : TriggerTestBase {
             [1] = Enumerable.Range(1, 99).ToDictionary(level => level, level => level * 10L),
         }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
         test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long> { [ExpType.petTaming] = 15000 }));
+        test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>>()));
         test.Register(TestGameSession.Metadata(61000153), TestGameSession.Metadata(61000154));
         Quest byId = StartQuest(Condition(ConditionType.pet_catch_id, 2, ["61000153"], []));
         Quest byGroup = test.StartQuest(TestGameSession.QuestData(QuestId + 1) with {
@@ -1018,6 +1020,47 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.Multiple(() => {
             Assert.That(byId.Conditions[0].Counter, Is.EqualTo(1));
             Assert.That(byGroup.Conditions[0].Counter, Is.EqualTo(1));
+        });
+    }
+    #endregion
+    #region pet taming mastery (FieldPet.DropItem, a wild pet caught)
+    // A capture gives pet taming mastery by the pet's rarity (rank 100: epic, 240, the server's own amount), with a
+    // running PetMastery event's capture rate (5000: half again; the other rate adds nothing), named as a capture
+    // (3200) so the client shows the capture event's text.
+    [TestCase(0, 0, 240)]
+    [TestCase(5000, 0, 360)]
+    [TestCase(0, 5000, 240)]
+    public void PetCatch_GivesPetTamingMastery(int captureRate, int otherRate, int mastery) {
+        StartField(2000001, Npc(21000001));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> { [ExpType.petTaming] = new(1, 1f) }));
+        test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
+            [1] = Enumerable.Range(1, 99).ToDictionary(level => level, level => level * 10L),
+        }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long> { [ExpType.petTaming] = 15000 }));
+        test.SetTable(new MasteryRewardTable(new Dictionary<MasteryType, IReadOnlyDictionary<int, MasteryRewardTable.Entry>>()));
+        test.Register(TestGameSession.Metadata(61000153));
+        if (captureRate > 0 || otherRate > 0) {
+            // The session's server took its events at the start: the event goes into its cache.
+            object server = typeof(GameSession).GetField("server", Any)!.GetValue(test.Session)!;
+            var cache = (IDictionary<int, GameEvent>) server.GetType().GetField("eventCache", Any)!.GetValue(server)!;
+            cache[731001] = test.AddEvent(731001, GameEventType.PetMastery, new PetMastery(captureRate, otherRate));
+        }
+        Assert.That(Field.NpcMetadata.TryGet(21000001, out NpcMetadata? npc), Is.True);
+        var petMetadata = (PetMetadata) RuntimeHelpers.GetUninitializedObject(typeof(PetMetadata)) with {
+            Id = 21000001, NpcId = 21000001, CollectGroup = 5,
+        };
+        var pet = new FieldPet(Field, 901, Field.Navigation.AddAgent(npc!, new Vector3(100, 0, 0)), new Npc(npc!, null),
+            Field.ItemDrop.CreateItem(61000153)!, petMetadata, string.Empty) { Origin = new Vector3(100, 0, 0), TamingRank = 100 };
+        test.TakeSent();
+        typeof(FieldPet).GetMethod("DropItem", Any)!.Invoke(pet, [test.Session.Player]);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(test.Session.Mastery[MasteryType.PetTaming], Is.EqualTo(mastery));
+        byte[] sent = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.Mastery && packet[2] == 0);
+        Assert.Multiple(() => {
+            Assert.That(sent[3], Is.EqualTo((byte) MasteryType.PetTaming));
+            Assert.That(BitConverter.ToInt32(sent, 4), Is.EqualTo(mastery));
+            Assert.That(BitConverter.ToInt32(sent, 8), Is.EqualTo((int) ExpMessageCode.petTaming));
         });
     }
     #endregion

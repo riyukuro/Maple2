@@ -15,12 +15,14 @@ public static class MasteryPacket {
         Error = 3,
     }
 
-    public static ByteWriter UpdateMastery(MasteryType type, int mastery) {
+    // subType: the gain's reason. For pet taming the client names a capture's gain (3200, ExpMessageCode.petTaming)
+    // with the capture rate's event text and any other with the other rate's (CSceneStateGame::OnMastery).
+    public static ByteWriter UpdateMastery(MasteryType type, int mastery, int subType = 0) {
         var pWriter = Packet.Of(SendOp.Mastery);
         pWriter.Write<Command>(Command.UpdateMastery);
         pWriter.Write<MasteryType>(type);
         pWriter.WriteInt(mastery);
-        pWriter.WriteInt(); // unk
+        pWriter.WriteInt(subType);
 
         return pWriter;
     }

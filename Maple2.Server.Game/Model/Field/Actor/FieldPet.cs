@@ -218,6 +218,11 @@ public sealed class FieldPet : FieldNpc {
             player.Session.Send(FieldPacket.DropItem(fieldItem));
             // The capture's exp: the common exp table's petTaming curve, named with the pet taming reason (3200).
             player.Session.Exp.AddExp(ExpType.petTaming);
+            // The capture's pet taming mastery by the pet's rarity, with a running PetMastery event's capture rate,
+            // named as a capture (3200) so the client shows the capture event's text.
+            int captureRate = EventSaleRules.PetMasteryRates(player.Session.FindEvent(GameEventType.PetMastery)).Capture;
+            player.Session.Mastery.Add(MasteryType.PetTaming,
+                EventSaleRules.PetMasteryWithEvent(PetRules.CaptureMastery(pet.Rarity), captureRate), (int) ExpMessageCode.petTaming);
         } else {
             Field.Broadcast(FieldPacket.DropItem(fieldItem));
         }

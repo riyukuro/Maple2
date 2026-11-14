@@ -23,6 +23,25 @@ public class MasteryManager {
         this.session = session;
     }
 
+    // The reason the next mastery packet names (MasteryPacket.UpdateMastery's subType), 0 outside Add.
+    private int gainSubType;
+
+    /// <summary>
+    /// Adds a mastery gain whose packet names its reason (the client picks a pet taming gain's text by it).
+    /// </summary>
+    public void Add(MasteryType type, int gain, int subType) {
+        // The client names every pet taming packet as a gain ("obtained 0" for none): a capped mastery sends nothing.
+        if (gain <= 0 || (type == MasteryType.PetTaming && this[type] >= Constant.PetTamingMasteryMax)) {
+            return;
+        }
+        gainSubType = subType;
+        try {
+            this[type] += gain;
+        } finally {
+            gainSubType = 0;
+        }
+    }
+
     public int this[MasteryType type] {
         get => type switch {
             MasteryType.Fishing => Mastery.Fishing,
@@ -79,7 +98,7 @@ public class MasteryManager {
                     throw new ArgumentOutOfRangeException(nameof(type), type, "Invalid mastery type.");
             }
 
-            session.Send(MasteryPacket.UpdateMastery(type, session.Mastery[type]));
+            session.Send(MasteryPacket.UpdateMastery(type, session.Mastery[type], gainSubType));
             int currentLevel = GetLevel(type);
             // The first mastery gained earns grade 1; a set that leaves the mastery at 0 earns nothing.
             int deltaLevel = currentLevel - startLevel + (startValue == 0 && this[type] > 0 ? 1 : 0);

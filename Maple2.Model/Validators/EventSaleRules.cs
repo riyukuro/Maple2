@@ -55,6 +55,32 @@ public static class EventSaleRules {
         return (int) Math.Min(gain + EventBonus(gain, MasteryRewardRate(events, type, mapId)), int.MaxValue);
     }
 
+    // The running PetMastery events' highest rate of each kind (GameEventPetMastery::OnStart sets the capture rate and
+    // the other rate under the event's id; CGameRule reads the highest of each), 0 when none runs.
+    public static (int Capture, int Other) PetMasteryRates(IEnumerable<GameEvent> events) {
+        int capture = 0;
+        int other = 0;
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is PetMastery petMastery) {
+                capture = Math.Max(capture, petMastery.CaptureRate);
+                other = Math.Max(other, petMastery.OtherRate);
+            }
+        }
+        return (capture, other);
+    }
+
+    // A pet taming mastery gain with a PetMastery event rate: the gain plus gain * rate / 10000 as a float, truncated
+    // (CGameRule::ApplyPetMasteryBonus for the capture rate and FUN_14047f260 for the other, commonfiles/gamerule.cpp:2731;
+    // ScaleByRate), up to int.MaxValue.
+    public static int PetMasteryWithEvent(int gain, int rate) {
+        if (gain <= 0 || rate <= 0) {
+            return gain;
+        }
+        float ratio = (float) (rate / 10000.0);
+        long bonus = (long) ((uint) gain * (double) ratio + 1e-06);
+        return (int) Math.Min(gain + bonus, int.MaxValue);
+    }
+
     // The extra share an exp event adds to a gain: gain * rate / 10000, cut to 32 bits unsigned as the shared rule
     // (CGameRule::CalcAdventureLevelBonusExp, commonfiles/gamerule.cpp:612); 0 for no event or no gain. The prestige
     // exp event (AdventureLevelBonusExpRate) and the guild exp event (GuildExp, whose client only shows the rate as
