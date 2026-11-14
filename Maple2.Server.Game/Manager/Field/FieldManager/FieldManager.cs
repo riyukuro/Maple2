@@ -424,9 +424,7 @@ public partial class FieldManager : IField {
             SpawnPortal(portal);
         }
 
-        foreach (FieldTrigger trigger in fieldTriggers.Values) {
-            trigger.Update(FieldTick);
-        }
+        FieldTrigger.UpdateAll(fieldTriggers.Values, FieldTick);
 
         IList<MapMetadata> bonusMaps = MapMetadata.GetMapsByType(Metadata.Property.Continent, MapType.PocketRealm);
         foreach (MapMetadataSpawn spawn in Metadata.Spawns) {
@@ -593,7 +591,7 @@ public partial class FieldManager : IField {
         Scheduler.InvokeAll();
 
         FieldTick = Environment.TickCount64;
-        foreach (FieldTrigger trigger in fieldTriggers.Values) trigger.Update(FieldTick);
+        FieldTrigger.UpdateAll(fieldTriggers.Values, FieldTick);
 
         foreach (FieldPlayer player in Players.Values) player.Update(FieldTick);
         foreach (FieldNpc npc in Npcs.Values) npc.Update(FieldTick);

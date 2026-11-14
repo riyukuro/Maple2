@@ -65,7 +65,24 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
         return false;
     }
 
+    // The field's triggers in one update: every state entered this tick runs its onEnter before any trigger tests
+    // its conditions, so no condition depends on the dictionary's order. 02000300's mobspawn waits for monster_dead
+    // of spawn point 1099 while main spawns 1099 in its first onEnter: tested first, mobspawn saw no monster of 1099
+    // (all dead) and went to its end state before the boss stood.
+    public static void UpdateAll(ICollection<FieldTrigger> triggers, long tickCount) {
+        foreach (FieldTrigger trigger in triggers) trigger.UpdateEnter(tickCount);
+        foreach (FieldTrigger trigger in triggers) trigger.UpdateTick();
+    }
+
     public override void Update(long tickCount) {
+        UpdateEnter(tickCount);
+        UpdateTick();
+    }
+
+    private bool tickDue;
+
+    private void UpdateEnter(long tickCount) {
+        tickDue = false;
         Context.Events.InvokeAll();
 
         if (tickCount < nextTick) {
@@ -88,6 +105,15 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
                 return;
             }
         }
+
+        tickDue = true;
+    }
+
+    private void UpdateTick() {
+        if (!tickDue) {
+            return;
+        }
+        tickDue = false;
 
         if (Interlocked.Exchange(ref forceNext, 0) != 0 && state != null) {
             nextState = state.ForceNext();
