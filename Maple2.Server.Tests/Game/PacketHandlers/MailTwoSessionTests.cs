@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using Maple2.Database.Storage;
 using Maple2.Model.Error;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
@@ -20,7 +21,7 @@ public class MailTwoSessionTests {
 
     private TestGameSession senderTest = null!;
     private TestGameSession recipientTest = null!;
-    private readonly MailHandler handler = new();
+    private readonly MailHandler handler = new() { BanWordStorage = TestGameSession.BanWords() };
     private GameSession sender => senderTest.Session;
     private GameSession recipient => recipientTest.Session;
 
@@ -193,5 +194,24 @@ public class MailTwoSessionTests {
 
         Assert.That(Hex(Mail(senderTest)), Is.EqualTo(new[] { Hex(MailPacket.Error(MailError.s_mail_error_sendmail, Send)) }));
         Assert.That(senderTest.World.MailNotifications, Is.Empty);
+    }
+
+    // UIMailSendDialog::OnSend refuses a banned word in the title or the text before it sends: the mail error for
+    // it (31) and no mail. Before, the mail was written and reached the recipient.
+    [TestCase("badword", "text")]
+    [TestCase("title", "a BadWord here")]
+    public void Mail_WithABannedWordIsRefused(string title, string content) {
+        var banning = new MailHandler { BanWordStorage = TestGameSession.BanWords("badword") };
+        banning.Handle(sender, TestGameSession.Packet(writer => {
+            writer.WriteByte(Send);
+            writer.WriteUnicodeString(recipient.PlayerName);
+            writer.WriteUnicodeString(title);
+            writer.WriteUnicodeString(content);
+        }));
+
+        Assert.That(Hex(Mail(senderTest)), Is.EqualTo(new[] { Hex(MailPacket.Error(MailError.s_mail_error_bancheck, Send)) }));
+        Assert.That(senderTest.World.MailNotifications, Is.Empty);
+        using GameStorage.Request db = sender.GameStorage.Context();
+        Assert.That(db.GetAllMail(recipient.CharacterId), Is.Empty);
     }
 }

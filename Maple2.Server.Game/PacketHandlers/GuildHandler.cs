@@ -786,6 +786,12 @@ public class GuildHandler : PacketHandler<GameSession> {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
             return;
         }
+        // The guild window refuses a banned word in the title or the text before it sends (as the member message):
+        // the forbidden-word text, no mail and no mail turn taken.
+        if (MailRules.TextBanned(title, content, BanWordStorage.ContainsBannedWord)) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_name_value));
+            return;
+        }
         // Server rule: one guild mail per sender in GuildRules.MailCooldownSeconds. World keeps the time, so
         // the limit holds on every channel and over a new login.
         try {

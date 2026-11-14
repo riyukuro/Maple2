@@ -13,6 +13,12 @@ public static class MailRules {
         return title.Length is > 0 and <= MaxTitleLength && content.Length is > 0 and <= MaxContentLength;
     }
 
+    // The player's send dialog and the guild mail (CGuildManager::SendGuildMail) check the title and the text
+    // for banned words (CheckMailTitleText, CheckContentText) before they send.
+    public static bool TextBanned(string title, string content, Func<string, bool> isBanned) {
+        return isBanned(title) || isBanned(content);
+    }
+
     // CMailInfo::IsExpired: a mail is expired once the server time reaches its expiry.
     public static bool IsExpired(Mail mail, long now) {
         return mail.ExpiryTime > 0 && now >= mail.ExpiryTime;

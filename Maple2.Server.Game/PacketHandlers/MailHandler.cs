@@ -14,6 +14,8 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class MailHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.Mail;
 
+    public required BanWordStorage BanWordStorage { private get; init; }
+
     private enum Command : byte {
         Load = 0,
         Send = 1,
@@ -59,13 +61,19 @@ public class MailHandler : FieldPacketHandler {
         session.Mail.Load();
     }
 
-    private static void HandleSend(GameSession session, IByteReader packet) {
+    private void HandleSend(GameSession session, IByteReader packet) {
         string receiverName = packet.ReadUnicodeString();
         string title = packet.ReadUnicodeString();
         string content = packet.ReadUnicodeString();
 
         if (!MailRules.CanSend(title, content)) {
             session.Send(MailPacket.Error(MailError.s_mail_error_sendmail, (byte) Command.Send));
+            return;
+        }
+        // UIMailSendDialog::OnSend runs the title and the text through its ban-text check before it sends, so a
+        // banned word on the wire did not come from the client's box: the mail error for it (31), nothing written.
+        if (MailRules.TextBanned(title, content, BanWordStorage.ContainsBannedWord)) {
+            session.Send(MailPacket.Error(MailError.s_mail_error_bancheck, (byte) Command.Send));
             return;
         }
 

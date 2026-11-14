@@ -16,7 +16,7 @@ public class MailGoneHandlerTests {
     private const long Missing = 987654321;
 
     private TestGameSession test = null!;
-    private readonly MailHandler handler = new();
+    private readonly MailHandler handler = new() { BanWordStorage = TestGameSession.BanWords() };
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter packet) => Convert.ToHexString(packet.ToArray());
 

@@ -21,7 +21,7 @@ public class BuddyBlockTwoSessionTests {
     private TestGameSession playerTest = null!;
     private TestGameSession otherTest = null!;
     private readonly BuddyHandler buddyHandler = new() { BanWordStorage = TestGameSession.BanWords() };
-    private readonly MailHandler mailHandler = new();
+    private readonly MailHandler mailHandler = new() { BanWordStorage = TestGameSession.BanWords() };
     private GameSession player => playerTest.Session;
     private GameSession other => otherTest.Session;
 

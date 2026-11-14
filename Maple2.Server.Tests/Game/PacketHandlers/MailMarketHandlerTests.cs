@@ -41,7 +41,7 @@ public class MailMarketHandlerTests {
     }
 
     private static void MailRequest(GameSession session, byte command, long mailId) {
-        new MailHandler().Handle(session, TestGameSession.Packet(writer => {
+        new MailHandler { BanWordStorage = TestGameSession.BanWords() }.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(command);
             writer.WriteLong(mailId);
         }));
@@ -55,7 +55,7 @@ public class MailMarketHandlerTests {
         StoreMail();
         GameSession session = Login();
 
-        new MailHandler().Handle(session, TestGameSession.Packet(writer => writer.WriteByte(0)));
+        new MailHandler { BanWordStorage = TestGameSession.BanWords() }.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(0)));
 
         Assert.That(Shape(test.TakeSent()), Is.EqualTo(new[] { (SendOp.Mail, (byte) 16), (SendOp.Mail, (byte) 0), (SendOp.Mail, (byte) 17) }));
     }

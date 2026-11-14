@@ -273,4 +273,18 @@ public class GuildModeHandlerTests {
         Assert.That(test.World.GuildRequests.Single().UpdateNotice.Message, Is.EqualTo(text));
         Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.UpdateNotice(text)) }));
     }
+
+    // A guild mail with a banned word in the title or the text: the forbidden-word text (12), no mail turn taken
+    // and no mail written. Before, the mail went to every member.
+    [TestCase("badword", "text")]
+    [TestCase("title", "a BadWord here")]
+    public void GuildMail_Banned_Refused(string title, string content) {
+        Send(71, writer => {
+            writer.WriteUnicodeString(title);
+            writer.WriteUnicodeString(content);
+        });
+
+        Assert.That(test.World.GuildRequests, Is.Empty);
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildError.s_guild_err_name_value)) }));
+    }
 }
