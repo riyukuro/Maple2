@@ -120,6 +120,50 @@ public class BagFullRewardTests {
         });
     }
 
+    // The member's GuildCoin rate (SA 0x39, KR 90000515 +20%, 110000009 +50%) raises the check-in's guild coin; the
+    // client never reads the stat, the rate is chosen here.
+    [Test]
+    public void GuildCheckIn_GuildCoinRate_RaisesTheCoin() {
+        GameSession session = Start(TestGameSession.Metadata(Constant.GuildCoinId));
+        Join(session, Property(checkInCoin: 5));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
+        session.Player.Stats.Values[SpecialAttribute.GuildCoin].AddTotal(1000);
+        FullBag(session, session.Field!.ItemDrop.CreateItem(Constant.GuildCoinId)!);
+        var handler = new GuildHandler {
+            World = test.World,
+            TableMetadata = test.TableMetadata,
+            BanWordStorage = null!,
+            ServerTableMetadata = test.ServerTableMetadata,
+        };
+        test.World.GuildWorld = _ => new GuildResponse { GuildId = GuildId };
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(15)));
+
+        Assert.Multiple(() => {
+            Assert.That(Mailed(Constant.GuildCoinId), Is.EqualTo(10));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // The guild vs game's coin is raised by each member's own GuildCoin rate.
+    [Test]
+    public void GuildVsGameCoin_GuildCoinRate_RaisesThePlayersCoin() {
+        GameSession session = Start(TestGameSession.Metadata(Constant.GuildCoinId));
+        Join(session, Property(winCoin: 7));
+        session.Player.Stats.Values[SpecialAttribute.GuildCoin].AddTotal(1000);
+        FullBag(session, session.Field!.ItemDrop.CreateItem(Constant.GuildCoinId)!);
+        var game = new GuildVsGameField(session.Field);
+        game.SetMatch(1, GuildId, GuildId + 1, _ => { });
+        game.Arrive(session.Player);
+
+        game.GiveReward("guildCoin", GuildVsGameState.BlueTeam, isWin: true);
+
+        Assert.Multiple(() => {
+            Assert.That(Mailed(Constant.GuildCoinId), Is.EqualTo(14));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // A mail of an item row whose move fails leaves no empty mail, and the row keeps its owner and place. Before,
     // the empty mail stayed in the inbox.
     [Test]

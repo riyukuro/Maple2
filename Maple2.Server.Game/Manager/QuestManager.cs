@@ -859,6 +859,8 @@ public sealed class QuestManager {
         // completeReward guildCoin: the guild coin item, as the check-in gives it.
         int guildCoinCount = guildFactor == null ? reward.GuildCoin : (int) GuildRules.QuestRewardBonus(reward.GuildCoin, guildFactor.GuildCoin);
         guildCoinCount = (int) Math.Min(int.MaxValue, QuestRewardEventRules.Raise(guildCoinCount, rewardEvent, QuestRewardEventRules.GuildCoin));
+        // The player's guild coin rate (SpecialAttribute.GuildCoin) raises it after the event.
+        guildCoinCount = KillRate.Apply(guildCoinCount, session.Player.Stats.Values[SpecialAttribute.GuildCoin].Multiplier());
         if (guildCoinCount > 0) {
             Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, guildCoinCount);
             if (guildCoin != null) {
@@ -964,8 +966,11 @@ public sealed class QuestManager {
 
         long guildExp = guildFactor != null ? GuildRules.QuestRewardBonus(reward.GuildExp, guildFactor.GuildExp) : reward.GuildExp;
         long guildFund = guildFactor != null ? GuildRules.QuestRewardBonus(reward.GuildFund, guildFactor.GuildFund) : reward.GuildFund;
-        session.Guild.AddExpFund(QuestRewardEventRules.Raise(guildExp, rewardEvent, QuestRewardEventRules.GuildExp),
-            QuestRewardEventRules.Raise(guildFund, rewardEvent, QuestRewardEventRules.GuildFund));
+        // The player's guild exp rate (SpecialAttribute.GuildExp) raises the exp after the quest reward event; the fund
+        // is unchanged. World adds a running GuildExp game event's share to what arrives.
+        long raisedGuildExp = KillRate.Apply(QuestRewardEventRules.Raise(guildExp, rewardEvent, QuestRewardEventRules.GuildExp),
+            session.Player.Stats.Values[SpecialAttribute.GuildExp].Multiplier());
+        session.Guild.AddExpFund(raisedGuildExp, QuestRewardEventRules.Raise(guildFund, rewardEvent, QuestRewardEventRules.GuildFund));
         // A guild daily or weekly quest is worth its contribution row to the member.
         string? contributionKind = GuildRules.QuestContributionKind(quest.Metadata.Basic.Type, quest.Metadata.Basic.Repeat);
         if (contributionKind != null) {

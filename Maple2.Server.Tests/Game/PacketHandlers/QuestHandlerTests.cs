@@ -1075,6 +1075,23 @@ public class QuestHandlerTests {
         });
     }
 
+    // The quest's guild coin is raised by the player's GuildCoin rate (+50%: 8 -> 12).
+    [Test]
+    public void Complete_GuildCoinRate_RaisesTheGuildCoin() {
+        var prepared = new TestGameSession();
+        prepared.Register(TestGameSession.Metadata(Constant.GuildCoinId));
+        GameSession session = Login(prepared: prepared);
+        session.Player.Stats.Values[SpecialAttribute.GuildCoin].AddTotal(500);
+        StartedWith(QuestType.GuildQuest, reward => reward with { GuildCoin = 8 });
+
+        Complete(session);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(Constant.GuildCoinId).Sum(item => item.Amount), Is.EqualTo(12));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // KR 10001172: essentialJobItem lists a weapon of each job (rarity 3); the player gets the ones recommended to its
     // job. 13000020 recommends the newbie (JobCode 1), 13200072 the knight (10), 13100069 the thief (70). The client
     // takes the newbie as a knight (ItemLimit::IsJobRecommended), so the test's newbie gets the knight's weapon and

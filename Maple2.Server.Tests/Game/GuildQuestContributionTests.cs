@@ -162,6 +162,35 @@ public class GuildQuestContributionTests {
         Assert.That((first!.AddExpFund?.Exp, first.AddExpFund?.Fund), Is.EqualTo(((int?) exp, (int?) fund)));
     }
 
+    // The member's GuildExp rate (SA 0x38, KR 90000516 +20%, 110000008 +50%) raises the quest's guild exp; the fund
+    // is not raised. The client never reads the stat, the rate is chosen here. It multiplies the exp the quest reward
+    // event gave (+50% on top of the daily event's +100%: 120 -> 240 -> 360).
+    [TestCase(false, 180, 20000)]
+    [TestCase(true, 360, 40000)]
+    public void GuildQuest_GuildExpRate_RaisesTheExp(bool rewardEvent, int exp, int fund) {
+        int[] rates = new int[8];
+        rates[QuestRewardEventRules.GuildFund] = 10000;
+        rates[QuestRewardEventRules.GuildExp] = 10000;
+        GameSession session = rewardEvent
+            ? Start(before: prepared => prepared.AddEvent(90200001, GameEventType.QuestAdditionalReward,
+                new QuestAdditionalReward((int) QuestType.GuildQuest, 2, rates, [])))
+            : Start();
+        session.Player.Stats.Values[SpecialAttribute.GuildExp].AddTotal(500);
+        QuestMetadata data = TestGameSession.QuestData(73000001, QuestType.GuildQuest);
+        Quest quest = test.StartQuest(data with {
+            Basic = data.Basic with { Repeat = 2 },
+            CompleteReward = data.CompleteReward with { GuildExp = 120, GuildFund = 20000 },
+            Conditions = [new ConditionMetadata(ConditionType.jump, 1, null, null)],
+        });
+        quest.Conditions[0].Counter = 1;
+
+        Assert.That(session.Quest.Complete(quest), Is.True);
+
+        Assert.That(world.Received.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(world.Requests.TryDequeue(out GuildRequest? first), Is.True);
+        Assert.That((first!.AddExpFund?.Exp, first.AddExpFund?.Fund), Is.EqualTo(((int?) exp, (int?) fund)));
+    }
+
     // A guild quest done once, another quest type of a daily repeat, or a player without a guild: nothing is sent.
     [TestCase(QuestType.GuildQuest, 0, true)]
     [TestCase(QuestType.EpicQuest, 2, true)]

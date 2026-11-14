@@ -592,7 +592,8 @@ public class GuildHandler : PacketHandler<GameSession> {
         session.Send(GuildPacket.CheckedIn());
         session.ConditionUpdate(ConditionType.guild_attendance);
         session.Exp.AddExp(ExpType.guildUserExp, session.Guild.Properties.CheckInPlayerExpRate);
-        int coin = session.Guild.Properties.CheckInCoin;
+        // The player's guild coin rate (SpecialAttribute.GuildCoin) raises the check-in coin.
+        int coin = KillRate.Apply(session.Guild.Properties.CheckInCoin, session.Player.Stats.Values[SpecialAttribute.GuildCoin].Multiplier());
         if (coin > 0) {
             // The check-in is taken by the World by now: a full bag sends the coin by mail (before, it was dropped).
             Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, coin);

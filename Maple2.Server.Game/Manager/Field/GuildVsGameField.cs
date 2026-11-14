@@ -1,8 +1,10 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager.Field;
@@ -173,8 +175,13 @@ public sealed class GuildVsGameField {
                         break;
                     }
                     // A full bag sends the coin by mail: before, the bag's refusal dropped it.
+                    // Each player's guild coin rate (SpecialAttribute.GuildCoin) raises their coin.
                     foreach (FieldPlayer player in players) {
-                        Item? item = field.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, coin);
+                        int playerCoin = KillRate.Apply(coin, player.Session.Player.Stats.Values[SpecialAttribute.GuildCoin].Multiplier());
+                        if (playerCoin <= 0) {
+                            continue;
+                        }
+                        Item? item = field.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, playerCoin);
                         if (item == null || !player.Session.Item.AddOrMail(item, true)) {
                             logger.Error("Guild vs game coin of {CharacterId} not given", player.Session.CharacterId);
                         }
