@@ -2016,6 +2016,9 @@ public sealed partial class GameSession : Core.Network.Session {
                 Logger.Warning("MigrationSave: a reset is still being stored after {Wait}, the move is refused AccountId={AccountId} CharacterId={CharacterId}",
                     ResetWait, AccountId, CharacterId);
                 return false;
+            case SaveResult.Unknown:
+                // Logged with its stack where the commit threw, and the session is ended there (one try was made).
+                return false;
         }
         Logger.Fatal("MigrationSave: not stored after a second try, the move is refused and the session is ended; the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}",
             AccountId, CharacterId);
@@ -2163,7 +2166,7 @@ public sealed partial class GameSession : Core.Network.Session {
         if (!storeUnknown) {
             return false;
         }
-        Logger.Error("{Where}: an earlier purchase save of this session ended unknown, nothing more is stored AccountId={AccountId} CharacterId={CharacterId}",
+        Logger.Error("{Where}: an earlier save of this session (a purchase or a session save) ended unknown, nothing more is stored AccountId={AccountId} CharacterId={CharacterId}",
             where, AccountId, CharacterId);
         return true;
     }
@@ -2282,6 +2285,9 @@ public sealed partial class GameSession : Core.Network.Session {
             case SaveResult.ResetRunning:
                 field.Scheduler.Schedule(() => TimedSaveOnField(field), TimedSaveRetryDelay);
                 return;
+            case SaveResult.Unknown:
+                // Logged where the commit threw, and the session is ended there: no try again.
+                return;
         }
         Logger.Warning("TimedSave: not stored, tried again in {Delay} AccountId={AccountId} CharacterId={CharacterId}", TimedSaveRetryDelay, AccountId, CharacterId);
         field.Scheduler.Schedule(() => TimedSaveRetry(field), TimedSaveRetryDelay);
@@ -2296,6 +2302,8 @@ public sealed partial class GameSession : Core.Network.Session {
                 return;
             case SaveResult.ResetRunning:
                 field.Scheduler.Schedule(() => TimedSaveRetry(field), TimedSaveRetryDelay);
+                return;
+            case SaveResult.Unknown:
                 return;
         }
         Logger.Fatal("TimedSave: not stored after a second try, the session is ended; the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}",
