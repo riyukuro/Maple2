@@ -95,10 +95,12 @@ public class ItemMergeHandler : FieldPacketHandler {
         return (revertItemUid, itemUid);
     }
 
-    // Client UIItemMergeOptionDialog::RequestMaterial: the material picked for the item.
+    // Client UIItemMergeOptionDialog::RequestMaterial (uiitemmergeoptiondialog.cpp:1018): the dialog's GM debug button,
+    // sent only from its onDebug callback and only at a GM level of 50 or more (:572). No reply in OnItemFusion is tied to
+    // it, and a player's own material pick is mode 2 (SelectCrystal). Dropped.
     private void HandleSelectMaterial(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
         long materialUid = packet.ReadLong();
-        Logger.Debug("ItemMerge material {MaterialUid} for {ItemUid} not implemented", materialUid, itemUid);
+        Logger.Debug("ItemMerge GM debug request (mode 7) for {ItemUid}, material {MaterialUid}: dropped", itemUid, materialUid);
     }
 }
