@@ -111,6 +111,10 @@ public enum GameEventUserValueType {
     PlayGiftIndex = 2440,
     PlayGiftSeconds = 2441,
 
+    // Returner gift (ReturnUserYearRound): when the account got the event's gift, unix seconds, kept until the
+    // row's wait is over. Not a KMS2 value; the client keeps any type in its list and reads this one nowhere.
+    ReturnUserGiftTime = 2450,
+
     // Long-term attendance (LongTermAttendGift), read by its dialog (uilongtermattendgiftdialog.cpp)
     LongTermAttendClaimedDays = 2700, // claimed reward days, "5,11,20"
     LongTermAttendPoints = 2701,

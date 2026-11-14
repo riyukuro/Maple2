@@ -2268,6 +2268,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 return EventMailReader.FirstConnect(value1);
             case GameEventType.SendMail:
                 return EventMailReader.SendMail(value1, value2, value3);
+            case GameEventType.ReturnUserYearRound:
+                return EventMailReader.YearRound(value1, value2, value3);
             case GameEventType.SAHotTime:
                 specialRates ??= ClientSpecialRates();
                 // Without a client pack every attribute counts as a rate: the 12 the KR rows name are rates.

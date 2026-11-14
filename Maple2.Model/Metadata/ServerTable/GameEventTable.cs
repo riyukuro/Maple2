@@ -145,10 +145,11 @@ public record ActiveUser(
     ) : GameEventData;
 
 /// <summary>
-/// Year round event that gives users a mail and an item.
+/// Year round event that gives users a mail and an item. Server only (the client has no class for it). Read by
+/// EventMailReader.YearRound and given at entry (ReturnUserGift).
 /// </summary>
-/// <param name="MailId">ID of the mail.</param>
-/// <param name="Item">Item given in mail.</param>
+/// <param name="MailId">ID of the mail: a string/systemmailcontent row (value1).</param>
+/// <param name="Item">Item given in mail (value2).</param>
 /// <param name="MinDaysInactive">In the start of the event, the minimum amount of days a user has to be inactive.</param>
 /// <param name="CooldownDays">After the user has already been considered a Return User, there must be this amount of days before the user can be considered a Return User again.</param>
 public record ReturnUserYearRound(

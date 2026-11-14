@@ -307,6 +307,8 @@ public sealed partial class GameSession : Core.Network.Session {
             // A running SendMail ReturnUser row mails a character that enters after its days away (KR 10100100:
             // 90), stored with the entry's stamp.
             IList<GameEvent> sendMail = FindEvent(GameEventType.SendMail);
+            // A running ReturnUserYearRound row gives a returner its box (ReturnUserGift), stored in the same load.
+            IList<GameEvent> yearRound = FindEvent(GameEventType.ReturnUserYearRound);
             // The resets the rows below hold: read first, with a share lock, in the load's transaction.
             resetsSeen = new ResetsSeen(db.GetResetStamps(ResetWait));
             // The claim before the load reads anything: a save of the session this one follows that still runs (its
@@ -318,7 +320,16 @@ public sealed partial class GameSession : Core.Network.Session {
                 return EventMailRules.ReturnUser(sendMail.Select(gameEvent => gameEvent.Metadata), CharacterId, lastSave,
                     DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             });
-            db.Commit();
+            if (player != null && !ReturnUserGift.Store(db, AccountId, CharacterId, yearRound.Select(gameEvent => gameEvent.Metadata),
+                    EntryLastSave, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), reward => ItemDropManager.Create(ItemMetadata, ItemStatsCalc,
+                        TableMetadata, ServerTableMetadata, reward.ItemId, reward.Rarity, reward.Amount))) {
+                // None of the load's writes are kept: the entry fails.
+                db.Rollback();
+                Logger.Error("Returner gift of {CharacterId} not stored, entry refused", CharacterId);
+                player = null;
+            } else {
+                db.Commit();
+            }
         } finally {
             // Only a lock this load took: one not taken may be another holder's.
             if (locked) {

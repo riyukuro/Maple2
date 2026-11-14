@@ -8,6 +8,9 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Helpers;
+using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Util;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -139,4 +142,104 @@ public class EventMailTests {
             Assert.That(context.Character.Single(character => character.Id == test.CharacterId).Channel, Is.EqualTo(7));
         }
     }
+
+    // KR 180005: value1 170531001, value2 "20303031,1,1,0" (id, count, rank, unread), value3 "30,90".
+    [Test]
+    public void YearRoundReader_KrRow() {
+        Assert.That(EventMailReader.YearRound("170531001", "20303031,1,1,0", "30,90"),
+            Is.EqualTo(new ReturnUserYearRound(170531001, new RewardItem(20303031, 1, 1), 30, 90)));
+        Assert.That(EventMailReader.YearRound(" 160616101 ", "20300284, 2, 3", "60"),
+            Is.EqualTo(new ReturnUserYearRound(160616101, new RewardItem(20300284, 3, 2), 60, 0)));
+    }
+
+    // No mail, no readable item, or no days away is not stored.
+    [TestCase(null, "20303031,1,1,0", "30,90")]
+    [TestCase("0", "20303031,1,1,0", "30,90")]
+    [TestCase("170531001", null, "30,90")]
+    [TestCase("170531001", "20303031,1", "30,90")]
+    [TestCase("170531001", "0,1,1,0", "30,90")]
+    [TestCase("170531001", "20303031,0,1,0", "30,90")]
+    [TestCase("170531001", "20303031,1,x,0", "30,90")]
+    [TestCase("170531001", "20303031,1,1,0", null)]
+    [TestCase("170531001", "20303031,1,1,0", "0,90")]
+    [TestCase("170531001", "20303031,1,1,0", "x,90")]
+    public void YearRoundReader_Unusable(string? value1, string? value2, string? value3) {
+        Assert.That(EventMailReader.YearRound(value1, value2, value3), Is.Null);
+    }
+
+    // The client has no GameEventReturnUserYearRound class: the event list leaves it out.
+    [Test]
+    public void YearRound_NotSentToClient() {
+        Assert.That(new GameEvent(Row(180005, GameEventType.ReturnUserYearRound, YearRoundRow)).SentToClient, Is.False);
+    }
+
+    private static readonly ReturnUserYearRound YearRoundRow = new(170531001, new RewardItem(20303031, 1, 1), 30, 90);
+
+    // 30 days away gives the box once the account's last gift of the row is 90 days old (or there is none); less
+    // away, a gift inside the wait, or a character never saved gets none.
+    [Test]
+    public void YearRound_AwayAndWait() {
+        GameEventMetadata[] running = [
+            Row(180005, GameEventType.ReturnUserYearRound, YearRoundRow),
+            Row(10100100, GameEventType.SendMail, new SendMailEvent("ReturnUser", 170531002, MailType.Notice, 90)),
+        ];
+        Assert.Multiple(() => {
+            EventMailRules.YearRoundGift[] gifts = EventMailRules.YearRound(running, CharacterId, Now - 30 * Day, Now, _ => null).ToArray();
+            Assert.That(gifts.Select(gift => (gift.EventId, gift.Mail.Type, gift.Mail.ReceiverId, gift.Mail.Content, gift.Item, gift.WaitDays)),
+                Is.EqualTo(new[] { (180005, MailType.System, CharacterId, "170531001", new RewardItem(20303031, 1, 1), 90) }));
+            Assert.That(EventMailRules.YearRound(running, CharacterId, Now - 30 * Day + 1, Now, _ => null), Is.Empty);
+            Assert.That(EventMailRules.YearRound(running, CharacterId, 0, Now, _ => null), Is.Empty);
+            Assert.That(EventMailRules.YearRound(running, CharacterId, Now - 30 * Day, Now, id => id == 180005 ? Now - 90 * Day : null).Count(), Is.EqualTo(1));
+            Assert.That(EventMailRules.YearRound(running, CharacterId, Now - 30 * Day, Now, id => id == 180005 ? Now - 90 * Day + 1 : null), Is.Empty);
+            Assert.That(EventMailRules.YearRound(running, CharacterId, Now - 30 * Day, Now, id => id == 999 ? Now : null).Count(), Is.EqualTo(1));
+        });
+    }
+
+    // Stored: the mail with its item and the account's gift time; the next entry inside the wait gets none, also
+    // with another character of the account.
+    [Test]
+    public void YearRound_StoreOnce() {
+        var test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(20303031));
+        GameEventMetadata[] running = [Row(180005, GameEventType.ReturnUserYearRound, YearRoundRow)];
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(ReturnUserGift.Store(db, test.AccountId, test.CharacterId, running, now - 40 * Day, now, MakeItem), Is.True);
+        }
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Mail[] mails = db.GetAllMail(test.CharacterId).ToArray();
+            Assert.That(mails.Select(mail => (mail.Type, mail.Content)), Is.EqualTo(new[] { (MailType.System, "170531001") }));
+            GameEventUserValue time = db.GetAccountEventValues(test.AccountId).Single();
+            Assert.Multiple(() => {
+                Assert.That((time.EventId, time.Type, time.Value), Is.EqualTo((180005, GameEventUserValueType.ReturnUserGiftTime, now.ToString())));
+                Assert.That(time.ExpirationTime, Is.EqualTo(now + 90 * Day));
+            });
+            Assert.That(ReturnUserGift.Store(db, test.AccountId, test.CharacterId + 1, running, now - 40 * Day, now + 10 * Day, MakeItem), Is.True);
+        }
+        using (var context = new Ms2Context(test.Options)) {
+            long mailId = context.Mail.Single().Id;
+            Assert.That(context.Item.Where(item => item.OwnerId == mailId).Select(item => item.ItemId).ToArray(), Is.EqualTo(new[] { 20303031 }));
+            Assert.That(context.Mail.Count(), Is.EqualTo(1));
+        }
+        Assert.That(GameEventManager.AccountValue(GameEventUserValueType.ReturnUserGiftTime), Is.True);
+    }
+
+    // A write that fails answers false (the load is not committed); an item that cannot be made is left out unmarked.
+    [Test]
+    public void YearRound_StoreFailures() {
+        var test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(20303031));
+        GameEventMetadata[] running = [Row(180005, GameEventType.ReturnUserYearRound, YearRoundRow)];
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(ReturnUserGift.Store(db, test.AccountId, test.CharacterId, running, now - 40 * Day, now, _ => null), Is.True);
+            Assert.That(db.GetAccountEventValues(test.AccountId), Is.Empty);
+        }
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.AccountEventValue>().Any(entry => entry.State == EntityState.Added);
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(ReturnUserGift.Store(db, test.AccountId, test.CharacterId, running, now - 40 * Day, now, MakeItem), Is.False);
+        }
+    }
+
+    private static Item MakeItem(RewardItem reward) => new(TestGameSession.Metadata(reward.ItemId), reward.Rarity, reward.Amount);
 }

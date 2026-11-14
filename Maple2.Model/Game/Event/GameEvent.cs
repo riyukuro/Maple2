@@ -24,7 +24,7 @@ public class GameEvent : IByteSerializable {
     // registers them), so they go out only when the server serves it.
     public bool SentToClient => Metadata.Data is not (NewUser or ReturnUserCandidate or ActiveUser
         or MapleSurvivalOpenPeriod or MiniGameBonusReward or SpawnNpcEvent or NpcShopShowItem
-        or CharacterFirstConnectMail or SendMailEvent or DailyLoginReward or RankDuelRewardRate or PlayGift
+        or CharacterFirstConnectMail or SendMailEvent or ReturnUserYearRound or DailyLoginReward or RankDuelRewardRate or PlayGift
         or ReverseRaidDungeonOpen)
         && (RestoredSurvivalClient || Metadata.Data is not (ShutdownMapleSurvival or ShutdownMapleSurvivalSquad
             or ShutdownMapleSurvivalPass or ShutdownSurvivalObserver or MapleSurvivalPassBundle));

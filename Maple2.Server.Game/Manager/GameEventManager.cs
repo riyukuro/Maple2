@@ -134,6 +134,8 @@ public sealed class GameEventManager {
     // Chosen here: an item collection's claim is the account's as well, so that one set of condition items, which
     // stay with the player, is not claimed by every character of the account in turn.
     // So are the daily login mail's mark (UpdateDailyLoginReward) and the item box's day (EventRewardHandler).
+    // So is the returner gift's time (ReturnUserGift): one gift per account in the row's wait, whichever character
+    // enters.
     // So are the snowman's values: the KR rows of the latest snowman event (900070) give snowflakes for the account
     // (promotionContents isAccount 1).
     // So are the burning levelup values (2000-2004): the character list picks one character of the account
@@ -142,6 +144,7 @@ public sealed class GameEventManager {
     public static bool AccountValue(GameEventUserValueType type) => StampValueTypes.Contains(type)
         || BurningLevelupRules.ValueTypes.Contains(type)
         || type is GameEventUserValueType.CollectItemGroup or GameEventUserValueType.DailyLoginRewardGiven
+            or GameEventUserValueType.ReturnUserGiftTime
             or GameEventUserValueType.ItemBoxReceivedDay
             or GameEventUserValueType.SnowflakeCount or GameEventUserValueType.DailyCompleteCount
             or GameEventUserValueType.AccumCompleteCount or GameEventUserValueType.AccumCompleteRewardReceived;
