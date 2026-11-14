@@ -21,7 +21,7 @@ public static class InstrumentRules {
     // 34000038 and 34000051 among them), and an expired one stays in the bag until a sort takes it out.
     public static bool IsPlayable(long expiryTime, long now) => expiryTime <= 0 || now < expiryTime;
 
-    // The field limitContent bit of a map with no instrument play (KR: 177 fields, as the 50000015 event map).
+    // The field limitContent bit of a map with no instrument play (KR: 177 fields, as 51000001).
     public const int NoInstrumentContent = 8;
 
     // The client's own refusals when an instrument item is used (OpenInstrument, 0x140d23c50), before it enters the
