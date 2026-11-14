@@ -2469,34 +2469,39 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     private ShopTable ParseShop() {
         var results = new Dictionary<int, ShopMetadata>();
         foreach ((int shopId, ShopGameInfo shopInfo) in parser.ParseShopGameInfo()) {
-            var entry = new ShopMetadata(
-                Id: shopInfo.shopID,
-                CategoryId: shopInfo.categoryID,
-                Name: shopInfo.iconName,
-                FrameType: (ShopFrameType) shopInfo.uiFrameType,
-                DisplayOnlyUsable: shopInfo.showOnlyUsableItem,
-                HideStats: shopInfo.hideOptionInfo,
-                DisplayProbability: shopInfo.showProbInfo,
-                IsOnlySell: shopInfo.isOnlySell,
-                OpenWallet: shopInfo.isOpenTokenPocket,
-                DisplayNew: false, // this isn't present in the table
-                DisableDisplayOrderSort: shopInfo.disableDisplayOrderSort,
-                RestockTime: string.IsNullOrEmpty(shopInfo.resetFixedTime) ? 0 : DateTime.ParseExact(shopInfo.resetFixedTime, "yyyy-MM-dd-HH-mm-ss", CultureInfo.InvariantCulture).ToEpochSeconds(),
-                EnableReset: shopInfo.resetEnable,
-                RestockData: new ShopRestockData(
-                    ResetType: (ResetType) shopInfo.resetType,
-                    CurrencyType: (ShopCurrencyType) shopInfo.resetPaymentType,
-                    ExcessCurrencyType: (ShopCurrencyType) shopInfo.resetPaymentType, // not present in the table, using resetPaymentType for now
-                    MinItemCount: shopInfo.resetListMin,
-                    MaxItemCount: shopInfo.resetListMax,
-                    Price: shopInfo.resetPrice,
-                    EnablePriceMultiplier: false, // not present in the table
-                    DisableInstantRestock: shopInfo.resetButtonHide,
-                    AccountWide: shopInfo.resetByAccount)
-            );
-            results.Add(shopId, entry);
+            results.Add(shopId, MapShop(shopInfo));
         }
         return new ShopTable(results);
+    }
+
+    public static ShopMetadata MapShop(ShopGameInfo shopInfo) {
+        return new ShopMetadata(
+            Id: shopInfo.shopID,
+            CategoryId: shopInfo.categoryID,
+            Name: shopInfo.iconName,
+            FrameType: (ShopFrameType) shopInfo.uiFrameType,
+            DisplayOnlyUsable: shopInfo.showOnlyUsableItem,
+            HideStats: shopInfo.hideOptionInfo,
+            DisplayProbability: shopInfo.showProbInfo,
+            IsOnlySell: shopInfo.isOnlySell,
+            OpenWallet: shopInfo.isOpenTokenPocket,
+            DisplayNew: false, // this isn't present in the table
+            DisableDisplayOrderSort: shopInfo.disableDisplayOrderSort,
+            RestockTime: string.IsNullOrEmpty(shopInfo.resetFixedTime) ? 0 : DateTime.ParseExact(shopInfo.resetFixedTime, "yyyy-MM-dd-HH-mm-ss", CultureInfo.InvariantCulture).ToEpochSeconds(),
+            EnableReset: shopInfo.resetEnable,
+            RestockData: new ShopRestockData(
+                ResetType: (ResetType) shopInfo.resetType,
+                CurrencyType: (ShopCurrencyType) shopInfo.resetPaymentType,
+                ExcessCurrencyType: (ShopCurrencyType) shopInfo.resetPaymentType, // not present in the table, using resetPaymentType for now
+                MinItemCount: shopInfo.resetListMin,
+                MaxItemCount: shopInfo.resetListMax,
+                Price: shopInfo.resetPrice,
+                // The client reads it as useLuaResetPayment (npcshopdata) and, with it set, shows the tiered
+                // reset tooltip (Shop.RestockCost). Before, it was always off. No KR shop sets it.
+                EnablePriceMultiplier: shopInfo.useLuaResetPayment,
+                DisableInstantRestock: shopInfo.resetButtonHide,
+                AccountWide: shopInfo.resetByAccount)
+        );
     }
 
     private ShopItemTable ParseShopItems() {
