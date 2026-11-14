@@ -1797,7 +1797,7 @@ public sealed class QuestManager {
             return;
         }
 
-        // The round and its stat points are in the database before its item is given, so a crash between them
+        // The round and its stat and skill points are in the database before its item is given, so a crash between them
         // cannot give the round twice (the progress stayed in memory until the next save). A failed save takes both
         // back and gives nothing; the client may send the round again.
         int previous = session.Config.ExplorationProgress;
@@ -1808,6 +1808,9 @@ public sealed class QuestManager {
             if (metadata.StatPoints > 0) {
                 session.Config.AddStatPoint(AttributePointSource.Exploration, metadata.StatPoints, send: false);
             }
+            if (metadata.SkillPoints > 0) {
+                session.Config.AddSkillPoint(SkillPointSource.Exploration, metadata.SkillPoints, metadata.SkillRank, send: false);
+            }
             session.Config.Save(db);
             return true;
         })) {
@@ -1815,6 +1818,9 @@ public sealed class QuestManager {
                 session.Config.ExplorationProgress = previous;
                 if (metadata.StatPoints > 0) {
                     session.Config.AddStatPoint(AttributePointSource.Exploration, -metadata.StatPoints, send: false);
+                }
+                if (metadata.SkillPoints > 0) {
+                    session.Config.AddSkillPoint(SkillPointSource.Exploration, -metadata.SkillPoints, metadata.SkillRank, send: false);
                 }
             }
             logger.Warning("Exploration round {Mission} not stored, nothing given", mission);
@@ -1831,6 +1837,11 @@ public sealed class QuestManager {
 
         if (metadata.StatPoints > 0) {
             session.Config.AddStatPoint(AttributePointSource.Exploration, 0);
+        }
+        // The client shows the round's skill points itself (CFieldMission::Complete, s_reward_notify_skill_point);
+        // the sources packet adds them to the points it counts.
+        if (metadata.SkillPoints > 0) {
+            session.Config.LoadSkillPoints();
         }
     }
 

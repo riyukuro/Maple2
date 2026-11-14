@@ -705,9 +705,11 @@ public class ConfigManager {
         return result;
     }
 
-    public void AddSkillPoint(SkillPointSource source, int amount, short rank = 0) {
+    public void AddSkillPoint(SkillPointSource source, int amount, short rank = 0, bool send = true) {
         skillPoints[source][rank] += amount;
-        session.Send(SkillPointPacket.Sources(skillPoints));
+        if (send) {
+            session.Send(SkillPointPacket.Sources(skillPoints));
+        }
     }
 
     public IList<long> GetFavoriteDesigners() {

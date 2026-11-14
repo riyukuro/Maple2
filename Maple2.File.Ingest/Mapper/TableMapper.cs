@@ -2208,29 +2208,50 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
     }
 
+    // Read as XML, as CFieldMissionTable::Load reads it (commonfiles/fieldmissiontable.cpp): the parser drops the
+    // subJobLevel of a skillPoint round and leaves out a round of any other type, which the client still keeps as a
+    // round with no reward (GetNextRound walks every row), so the claim of the round after it was refused for good.
     private FieldMissionTable ParseFieldMissionTable() {
+        Maple2.File.IO.Crypto.Common.PackFileEntry? entry = xmlReader.Files.FirstOrDefault(file =>
+            file.Name.Equals($"table/{language}/fieldmission.xml", StringComparison.OrdinalIgnoreCase));
+        return new FieldMissionTable(entry == null ? [] : ReadFieldMissions(xmlReader.GetXmlDocument(entry)));
+    }
+
+    // Each <round>: mission (the round, a later row of the same round replaces it), type item / statPoint /
+    // skillPoint (any case; anything else is a round with no reward) and value: "id,rarity,amount" for an item, else
+    // the points. A skillPoint round's subJobLevel 1 gives awakening points, anything else base job points (the
+    // client's reward starts at the base job and only 0 and 1 change it).
+    public static Dictionary<int, FieldMissionTable.Entry> ReadFieldMissions(XmlDocument document) {
         var results = new Dictionary<int, FieldMissionTable.Entry>();
-        foreach ((int id, FieldMission mission) in parser.ParseFieldMission()) {
-            switch (mission.type) {
-                case QuestRewardType.item:
-                    results.Add(id, new FieldMissionTable.Entry(
-                        MissionCount: mission.mission,
-                        StatPoints: 0,
-                        Item: new ItemComponent(
-                            ItemId: mission.value[0],
-                            Rarity: mission.value[1],
-                            Amount: mission.value[2],
-                            Tag: ItemTag.None)));
-                    continue;
-                case QuestRewardType.statPoint:
-                    results.Add(id, new FieldMissionTable.Entry(
-                        MissionCount: mission.mission,
-                        StatPoints: mission.value[0],
-                        Item: null));
-                    continue;
-            }
+        XmlNodeList? nodes = document.SelectNodes("/ms2/round");
+        if (nodes == null) {
+            return results;
         }
-        return new FieldMissionTable(results);
+
+        foreach (XmlElement node in nodes.OfType<XmlElement>()) {
+            int mission = Int(node.GetAttribute("mission"));
+            string type = node.GetAttribute("type");
+            string value = node.GetAttribute("value");
+            ItemComponent? item = null;
+            int statPoints = 0;
+            int skillPoints = 0;
+            short skillRank = 0;
+            if (type.Equals("item", StringComparison.OrdinalIgnoreCase)) {
+                string[] parts = value.Split(',');
+                if (parts.Length == 3) {
+                    item = new ItemComponent(ItemId: Int(parts[0]), Rarity: Int(parts[1]), Amount: Int(parts[2]), Tag: ItemTag.None);
+                }
+            } else if (type.Equals("statPoint", StringComparison.OrdinalIgnoreCase)) {
+                statPoints = Int(value);
+            } else if (type.Equals("skillPoint", StringComparison.OrdinalIgnoreCase)) {
+                skillPoints = Int(value);
+                skillRank = (short) (Int(node.GetAttribute("subJobLevel")) == 1 ? 1 : 0);
+            }
+            results[mission] = new FieldMissionTable.Entry(mission, item, statPoints, skillPoints, skillRank);
+        }
+        return results;
+
+        static int Int(string text) => int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int result) ? result : 0;
     }
 
     private WorldMapTable ParseWorldMapTable() {

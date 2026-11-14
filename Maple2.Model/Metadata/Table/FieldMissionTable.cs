@@ -6,6 +6,8 @@ public record FieldMissionTable(IReadOnlyDictionary<int, FieldMissionTable.Entry
     public record Entry(
         int MissionCount,
         ItemComponent? Item,
-        int StatPoints) {
+        int StatPoints,
+        int SkillPoints = 0,
+        short SkillRank = 0) {
     }
 }

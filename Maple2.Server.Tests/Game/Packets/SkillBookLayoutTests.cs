@@ -67,7 +67,8 @@ public class SkillBookLayoutTests {
         ByteReader reader = Read(SkillPointPacket.Sources(points), SendOp.SkillPoint);
         Assert.That(reader.ReadInt(), Is.EqualTo(4));
         int sources = reader.ReadInt();
-        Assert.That(sources, Is.EqualTo(3));
+        // Trophy, Chapter, Unknown (the GM command) and Exploration; the client reads any count of sources.
+        Assert.That(sources, Is.EqualTo(4));
         int awakening = 0;
         for (int i = 0; i < sources; i++) {
             int source = reader.ReadInt();

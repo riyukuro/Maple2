@@ -84,6 +84,12 @@ public class QuestHandlerTests {
         return attributes.Sources[AttributePointSource.Exploration];
     }
 
+    // The exploration skill points of each job rank (0 base, 1 awakening).
+    private static int[] ExplorationSkillPoints(ConfigManager config) {
+        var points = (SkillPoint) typeof(ConfigManager).GetField("skillPoints", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(config)!;
+        return [points[SkillPointSource.Exploration][0], points[SkillPointSource.Exploration][1]];
+    }
+
     // The exploration progress stored in the character's config row.
     private int StoredExploration(GameSession session) {
         using GameStorage.Request db = test.Storage.Context();
@@ -1176,6 +1182,96 @@ public class QuestHandlerTests {
             Assert.That(QuestRules.NextFieldMissionRound([10, 5], 10), Is.EqualTo(0));
             Assert.That(QuestRules.NextFieldMissionRound([], 0), Is.EqualTo(0));
             Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // fieldMission.xml read as CFieldMissionTable::Load reads it. Synthetic rows (KR has no skillPoint round): a
+    // skillPoint round with subJobLevel 1 gives awakening points, with none base job points; a round of another type
+    // stays a round with no reward; the type is matched in any case; a later row of the same round replaces it.
+    [Test]
+    public void FieldMission_ReadsEveryRoundAsTheClient() {
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+                <round mission="5" type="item" value="20000028,1,10" />
+                <round mission="10" type="statPoint" value="3" />
+                <round mission="15" type="skillPoint" value="2" subJobLevel="1" />
+                <round mission="20" type="SKILLPOINT" value="4" />
+                <round mission="25" type="gold" value="7" />
+                <round mission="30" type="statPoint" value="1" />
+                <round mission="30" type="skillPoint" value="1" subJobLevel="2" />
+            </ms2>
+            """);
+
+        Dictionary<int, FieldMissionTable.Entry> rows = Maple2.File.Ingest.Mapper.TableMapper.ReadFieldMissions(document);
+
+        Assert.That(rows.Keys.Order(), Is.EqualTo(new[] { 5, 10, 15, 20, 25, 30 }));
+        Assert.Multiple(() => {
+            Assert.That(rows[5], Is.EqualTo(new FieldMissionTable.Entry(5, new ItemComponent(20000028, 1, 10, ItemTag.None), 0)));
+            Assert.That(rows[10], Is.EqualTo(new FieldMissionTable.Entry(10, null, 3)));
+            Assert.That(rows[15], Is.EqualTo(new FieldMissionTable.Entry(15, null, 0, 2, 1)));
+            Assert.That(rows[20], Is.EqualTo(new FieldMissionTable.Entry(20, null, 0, 4, 0)));
+            Assert.That(rows[25], Is.EqualTo(new FieldMissionTable.Entry(25, null, 0)));
+            Assert.That(rows[30], Is.EqualTo(new FieldMissionTable.Entry(30, null, 0, 1, 0)));
+        });
+    }
+
+    // A skillPoint round gives its points to its job rank, stored with the round, and the sources packet goes out
+    // once the round is stored. A round with no reward after it is still claimed, so the next round is taken too.
+    [Test]
+    public void FieldMission_ASkillPointRoundGivesItsPoints() {
+        GameSession session = ConfigLogin();
+        test.SetTable(new FieldMissionTable(new Dictionary<int, FieldMissionTable.Entry> {
+            [5] = new(5, null, 0, 2, 1),
+            [10] = new(10, null, 0),
+            [15] = new(15, null, 0, 3, 0),
+        }));
+        for (int i = 0; i < 15; i++) {
+            test.StartQuest(TestGameSession.QuestData(QuestId + 1 + i, QuestType.FieldMission)).State = QuestState.Completed;
+        }
+        test.TakeSent();
+        void Claim(int round) => handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(26);
+            writer.WriteInt(round);
+        }));
+
+        Claim(5);
+        Assert.That(test.TakeSent().Count(p => TestGameSession.Op(p) == SendOp.SkillPoint), Is.EqualTo(1));
+        Claim(10);
+        Claim(15);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Config.ExplorationProgress, Is.EqualTo(15));
+            Assert.That(ExplorationSkillPoints(session.Config), Is.EqualTo(new[] { 3, 2 }));
+            using GameStorage.Request db = test.Storage.Context();
+            Assert.That(ExplorationSkillPoints(new ConfigManager(db, session)), Is.EqualTo(new[] { 3, 2 }));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A save that fails gives no skill points either and sends no sources packet; the round stays to claim.
+    [Test]
+    public void FieldMission_AFailedSaveGivesNoSkillPoints() {
+        GameSession session = ConfigLogin();
+        test.SetTable(new FieldMissionTable(new Dictionary<int, FieldMissionTable.Entry> {
+            [5] = new(5, null, 0, 2, 1),
+        }));
+        for (int i = 0; i < 5; i++) {
+            test.StartQuest(TestGameSession.QuestData(QuestId + 1 + i, QuestType.FieldMission)).State = QuestState.Completed;
+        }
+        test.TakeSent();
+        test.FailSave = _ => true;
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(26);
+            writer.WriteInt(5);
+        }));
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Config.ExplorationProgress, Is.EqualTo(0));
+            Assert.That(ExplorationSkillPoints(session.Config), Is.EqualTo(new[] { 0, 0 }));
+            Assert.That(test.TakeSent().Count(p => TestGameSession.Op(p) == SendOp.SkillPoint), Is.EqualTo(0));
         });
     }
 
