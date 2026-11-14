@@ -32,6 +32,16 @@ public static class QuestRules {
         return achievement.Completed ? achievement.CurrentGrade >= grade : achievement.CurrentGrade > grade;
     }
 
+    // A job-limited reward row (essentialJobItem) is given when the item recommends the job, as the client shows it
+    // (ItemLimit::IsJobRecommended, itemdatastruct.cpp): an item without recommended jobs (the server pack writes 0 for
+    // all jobs) goes to every job, and the beginner (job 1) is taken as a knight (10).
+    public static bool IsRewardForJob(JobCode[] recommends, JobCode job) {
+        if (recommends.Length == 0 || recommends.Contains(JobCode.None)) {
+            return true;
+        }
+        return recommends.Contains(job == JobCode.Newbie ? JobCode.Knight : job);
+    }
+
     // require guildNpcLevel (CanAcceptQuest, questdata.cpp:569): with a level, the player must be in a guild
     // (vfunc_o10_9) whose quest npc (CGuildInfo::GetNpcLevel(6), 0 without one) is at exactly that level; the guild
     // dailies and weeklies of level 1 and of level 2 are separate groups, so a level-2 guild takes only the latter.

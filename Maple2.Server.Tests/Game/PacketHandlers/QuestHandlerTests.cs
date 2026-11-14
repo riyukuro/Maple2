@@ -932,25 +932,30 @@ public class QuestHandlerTests {
     }
 
     // KR 10001172: essentialJobItem lists a weapon of each job (rarity 3); the player gets the ones recommended to its
-    // job. 13000020 recommends the newbie (JobCode 1), 13100069 the thief (70).
+    // job. 13000020 recommends the newbie (JobCode 1), 13200072 the knight (10), 13100069 the thief (70). The client
+    // takes the newbie as a knight (ItemLimit::IsJobRecommended), so the test's newbie gets the knight's weapon and
+    // the row of job 1 goes to nobody.
     [Test]
     public void Complete_GivesTheJobItemsOfThePlayersJob() {
         var prepared = new TestGameSession();
-        foreach ((int id, JobCode job) in new[] { (13000020, JobCode.Newbie), (13100069, JobCode.Thief) }) {
+        foreach ((int id, JobCode job) in new[] { (13000020, JobCode.Newbie), (13200072, JobCode.Knight), (13100069, JobCode.Thief) }) {
             ItemMetadata metadata = TestGameSession.Metadata(id);
             prepared.Register(metadata with { Limit = metadata.Limit with { JobRecommends = [job] } });
         }
         GameSession session = Login(prepared: prepared);
+        Assume.That(session.Player.Value.Character.Job, Is.EqualTo(Job.Newbie));
         Quest quest = StartedWith(QuestType.EpicQuest, reward => reward with {
-            EssentialJobItem = [new QuestMetadataReward.Item(13000020, 3, 1), new QuestMetadataReward.Item(13100069, 3, 1)],
+            EssentialJobItem = [new QuestMetadataReward.Item(13000020, 3, 1), new QuestMetadataReward.Item(13100069, 3, 1),
+                new QuestMetadataReward.Item(13200072, 3, 1)],
         });
 
         Complete(session);
 
         Assert.Multiple(() => {
             Assert.That(quest.State, Is.EqualTo(QuestState.Completed));
-            Assert.That(session.Item.Inventory.Find(13000020).Sum(item => item.Amount), Is.EqualTo(1));
-            Assert.That(session.Item.Inventory.Find(13000020).Single().Rarity, Is.EqualTo(3));
+            Assert.That(session.Item.Inventory.Find(13200072).Sum(item => item.Amount), Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Find(13200072).Single().Rarity, Is.EqualTo(3));
+            Assert.That(session.Item.Inventory.Find(13000020), Is.Empty);
             Assert.That(session.Item.Inventory.Find(13100069), Is.Empty);
             Assert.That(test.Errors, Is.Empty);
         });

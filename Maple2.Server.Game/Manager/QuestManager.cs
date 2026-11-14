@@ -757,6 +757,26 @@ public sealed class QuestManager {
         return Complete(quest!) ? QuestRules.RemoteClaim.Done : QuestRules.RemoteClaim.InventoryFull;
     }
 
+    // The essentialJobItem rows of a reward that go to the character's job (QuestRules.IsRewardForJob); an unknown item
+    // is not given, as the client shows none for it (questdata.cpp, FUN_140748050).
+    private List<Item> JobRewardItems(QuestMetadataReward reward) {
+        List<Item> items = [];
+        JobCode job = session.Player.Value.Character.Job.Code();
+        foreach (QuestMetadataReward.Item entry in reward.EssentialJobItem) {
+            if (!session.ItemMetadata.TryGet(entry.Id, out ItemMetadata? metadata) || !QuestRules.IsRewardForJob(metadata.Limit.JobRecommends, job)) {
+                continue;
+            }
+
+            Item? item = session.Field?.ItemDrop.CreateItem(entry.Id, entry.Rarity, entry.Amount);
+            if (item is null) {
+                continue;
+            }
+
+            items.Add(item);
+        }
+        return items;
+    }
+
     /// <summary>
     /// Gives the player the rewards for completing the quest.
     /// </summary>
@@ -783,22 +803,7 @@ public sealed class QuestManager {
             rewards.Add(item);
         }
 
-        foreach (QuestMetadataReward.Item entry in reward.EssentialJobItem) {
-            if (!session.ItemMetadata.TryGet(entry.Id, out ItemMetadata? metadata)) {
-                continue;
-            }
-
-            if (metadata.Limit.JobRecommends.Length > 0 && !metadata.Limit.JobRecommends.Contains(JobCode.None) && !metadata.Limit.JobRecommends.Contains(session.Player.Value.Character.Job.Code())) {
-                continue;
-            }
-
-            Item? item = session.Field?.ItemDrop.CreateItem(entry.Id, entry.Rarity, entry.Amount);
-            if (item is null) {
-                continue;
-            }
-
-            rewards.Add(item);
-        }
+        rewards.AddRange(JobRewardItems(reward));
 
         // A guild quest's reward gets the bonus of the guild's quest npc level, as the reward line shows it.
         GuildTable.QuestRewardFactor? guildFactor = quest.Metadata.Basic.Type == QuestType.GuildQuest ? session.Guild.QuestRewardFactor() : null;
