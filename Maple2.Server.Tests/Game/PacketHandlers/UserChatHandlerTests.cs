@@ -42,8 +42,12 @@ public class UserChatHandlerTests {
         ChannelField.SetValue(null, channelBefore);
     }
 
-    private GameSession Login(long meret) {
+    // rps: a running rock-paper-scissors event (the client sends mini game lines, type 23, only from its game state).
+    private GameSession Login(long meret, bool rps = false) {
         test = new TestGameSession();
+        if (rps) {
+            test.AddEvent(9000, GameEventType.RPS, new Rps(0, [], string.Empty));
+        }
         test.AddMap(TestGameSession.Map(2000023));
         handler = new UserChatHandler { World = test.World, GameStorage = test.Storage, ServerTableMetadata = test.ServerTableMetadata };
         GameSession session = test.Start();
@@ -252,7 +256,7 @@ public class UserChatHandlerTests {
     // A rock-paper-scissors line (type 23) goes back to the field as type 23 with channel 0 and nothing to the world.
     [Test]
     public void MicroGameLine_GoesToTheFieldWithItsType() {
-        GameSession session = Login(meret: 0);
+        GameSession session = Login(meret: 0, rps: true);
 
         Say(session, (ChatType) 23, "hi");
 
@@ -366,11 +370,36 @@ public class UserChatHandlerTests {
         Assert.That(test.World.Chats, Has.Count.EqualTo(1));
     }
 
+    // With no rock-paper-scissors event running no client is in the game state that sends a mini game line, so a
+    // forged one (which skips the chat spam limits) goes nowhere.
+    [Test]
+    public void MicroGameLine_NeedsARunningRpsEvent() {
+        GameSession session = Login(meret: 0);
+
+        Say(session, ChatType.MicroGame, "hi");
+
+        Assert.That(Lines(test, Maple2.Server.Core.Constants.SendOp.UserChat), Is.Empty);
+    }
+
+    // A link the client would not write (broken markup, an item tooltip without its uid) links nothing; it used to
+    // throw and cut the session. A good link next to it still counts.
+    [Test]
+    public void LinkedItemUids_SkipsBrokenLinks() {
+        test = new TestGameSession();
+        test.Store(TestGameSession.Metadata(11300001, EquipSlot.CP, slotMax: 1));
+        GameSession session = test.Start();
+        long uid = session.Item.Inventory.Find(11300001).Single().Uid;
+        string message = $"<A HREF=\"event:itemTooltip\">bare</A> <A HREF=\"event:itemTooltip,{uid}\">a&lt;b</A> "
+            + $"<A HREF=\"event:itemTooltip,{uid}\">hat</A>";
+
+        Assert.That(UserChatHandler.LinkedItemUids(session, message), Is.EqualTo(new[] { uid }));
+    }
+
     // The party and chaos DPS reports are party lines the client builds itself, well past the input box limit; mini
     // game lines come from a string key. Neither is held to MaxChatLength.
     [Test]
     public void ClientBuiltLines_PassMaxChatLength() {
-        GameSession session = Login(meret: 0);
+        GameSession session = Login(meret: 0, rps: true);
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { MaxChatLength = 5 });
         var manager = new Maple2.Server.Game.Manager.PartyManager(test.World, session);
         typeof(Maple2.Server.Game.Manager.PartyManager).GetProperty("Party")!
@@ -394,7 +423,7 @@ public class UserChatHandlerTests {
     // line past it, or a mini game line, goes nowhere; one at the cap goes out.
     [Test]
     public void ClientBuiltLines_PastTheHardCap_AreDropped() {
-        GameSession session = Login(meret: 0);
+        GameSession session = Login(meret: 0, rps: true);
         var manager = new Maple2.Server.Game.Manager.PartyManager(test.World, session);
         typeof(Maple2.Server.Game.Manager.PartyManager).GetProperty("Party")!
             .SetValue(manager, new Maple2.Model.Game.Party.Party(31, session.AccountId, session.CharacterId, session.PlayerName));

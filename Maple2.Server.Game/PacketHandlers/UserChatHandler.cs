@@ -106,6 +106,12 @@ public class UserChatHandler : FieldPacketHandler {
                 // joinUGCEvent link); the client never sends it, so one from a client goes nowhere.
                 return;
             case ChatType.MicroGame:
+                // The client sends it only from the rock-paper-scissors state (UIMicroGameRps::OnRandChat, state
+                // 0x3c, uimicrogamerps.cpp:1007), which an RPS event's banner opens; with no such event running the
+                // line goes nowhere.
+                if (!session.FindEvent(GameEventType.RPS).Any(gameEvent => gameEvent.IsActive())) {
+                    return;
+                }
                 // KMS2 gives the line back to the field with the same type and channel 0.
                 session.Field.Broadcast(ChatPacket.Message(session.Player.Value, ChatType.MicroGame, message));
                 break;
@@ -494,7 +500,11 @@ public class UserChatHandler : FieldPacketHandler {
         foreach (string link in links) {
             string linkHtml = System.Net.WebUtility.HtmlDecode(link);
             XmlDocument xml = new();
-            xml.LoadXml(linkHtml);
+            try {
+                xml.LoadXml(linkHtml);
+            } catch (XmlException) {
+                continue; // The client writes well-formed links; a broken one links nothing.
+            }
 
             // Select the 'A' node and get the 'HREF' attribute
             XmlNode? aNode = xml.SelectSingleNode("//A");
@@ -510,7 +520,7 @@ public class UserChatHandler : FieldPacketHandler {
 
             switch (parameters[0]) {
                 case "itemTooltip":
-                    if (!long.TryParse(parameters[1], out long itemUid)) {
+                    if (parameters.Length < 2 || !long.TryParse(parameters[1], out long itemUid)) {
                         continue;
                     }
                     // Can only link items player owns.
