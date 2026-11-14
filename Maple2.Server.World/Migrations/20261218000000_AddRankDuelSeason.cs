@@ -35,11 +35,20 @@ namespace Maple2.Server.World.Migrations
                 name: "IX_rank-duel-season_Season_Rating",
                 table: "rank-duel-season",
                 columns: new[] { "Season", "Rating" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_rank-duel-record_Season_Rating",
+                table: "rank-duel-record",
+                columns: new[] { "Season", "Rating" });
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropIndex(
+                name: "IX_rank-duel-record_Season_Rating",
+                table: "rank-duel-record");
+
             migrationBuilder.DropTable(
                 name: "rank-duel-season");
         }

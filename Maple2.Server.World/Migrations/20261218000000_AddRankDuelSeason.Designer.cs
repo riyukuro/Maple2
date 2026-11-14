@@ -1861,6 +1861,8 @@ namespace Maple2.Server.World.Migrations
 
                     b.HasKey("CharacterId");
 
+                    b.HasIndex("Season", "Rating");
+
                     b.ToTable("rank-duel-record", (string)null);
                 });
 

@@ -37,13 +37,17 @@ public partial class GameStorage {
                 }
             }
 
-            foreach ((long characterId, RankDuelRecord record) in records) {
-                Stage(characterId, record);
+            // Two saves at once can both stage the same closed-season row (Stage reads that it is not there yet); the
+            // second fails on its key. The second try stages again from the database, sees that row and skips it.
+            for (int attempt = 0; attempt < 2; attempt++) {
+                foreach ((long characterId, RankDuelRecord record) in records) {
+                    Stage(characterId, record);
+                }
+                if (Context.TrySaveChanges()) {
+                    return true;
+                }
+                Context.ChangeTracker.Clear();
             }
-            if (Context.TrySaveChanges()) {
-                return true;
-            }
-            Context.ChangeTracker.Clear();
             return false;
         }
 

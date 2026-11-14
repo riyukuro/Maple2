@@ -18,6 +18,8 @@ internal class RankDuelRecord {
             .WithMany()
             .HasForeignKey(record => record.CharacterId)
             .OnDelete(DeleteBehavior.Cascade);
+        // The boards of a season read its rows by rating (GameStorage.RankDuelRanking).
+        builder.HasIndex(record => new { record.Season, record.Rating });
     }
 }
 
