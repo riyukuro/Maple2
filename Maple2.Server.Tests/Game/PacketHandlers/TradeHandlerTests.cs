@@ -195,15 +195,20 @@ public class TradeHandlerTests {
         });
     }
 
-    // A cancelled trade gives the offered mesos back in memory; no store had taken them, so none is made.
+    // A cancelled trade gives the offered mesos back in memory. A save made while they were offered (here a purchase
+    // save, as a timed save) stored the wallet without them, so the refund is stored too; before, it waited in memory.
     [Test]
-    public void Cancel_StoresNoWallet() {
-        long before = StoredMeso(taker);
+    public void Cancel_StoresTheRefund() {
         Offer();
+        Assert.That(taker.SavePurchase(), Is.True);
+        Assert.That(StoredMeso(taker), Is.EqualTo(4000));
 
         Send(taker, 7);
 
-        Assert.That((taker.Currency.Meso, StoredMeso(taker)), Is.EqualTo((5000L, before)));
+        Assert.Multiple(() => {
+            Assert.That((taker.Currency.Meso, StoredMeso(taker)), Is.EqualTo((5000L, 5000L)));
+            Assert.That(takerTest.Errors, Is.Empty);
+        });
     }
 
     // The handed item's row is the taker's once the trade ends. Before, it stayed the giver's until the taker's next

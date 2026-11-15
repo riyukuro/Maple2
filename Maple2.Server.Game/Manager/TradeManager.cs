@@ -455,19 +455,29 @@ public class TradeManager : IDisposable {
 
         // On success the sessions were swapped: each offer's giver is the other trader's session.
         bool mesosMoved = success && (sender.Mesos != 0 || receiver.Mesos != 0);
+        // On a cancel, the sessions whose offered mesos come back (HandOver clears the offers).
+        GameSession[] refunded = success ? [] : new[] { sender, receiver }.Where(trader => trader.Mesos != 0)
+            .Select(trader => trader.Session).ToArray();
         HandOver(sender, success ? receiver.Session : sender.Session, success);
         HandOver(receiver, success ? sender.Session : receiver.Session, success);
         // The items' rows move at once (HandOver), but the mesos were in memory only: an offer is taken from the
         // giver's wallet in memory (SetMesos) and paid to the receiver in memory, both stored only by each session's
         // next save. A crash before those saves kept the bought item with its buyer and gave the buyer the mesos back,
         // while the seller had neither. Both wallets are stored now (SavePurchase: the currency alone, tried again on
-        // the field queue while a reset is being stored), so only the moment between the two stores is left. A
-        // cancelled trade gives back mesos no store had taken, so it stores nothing.
+        // the field queue while a reset is being stored), so only the moment between the two stores is left.
         if (mesosMoved) {
             foreach (GameSession wallet in new[] { sender.Session, receiver.Session }) {
                 if (!wallet.SavePurchase()) {
                     logger.Error("Trade mesos of {CharacterId} not stored now, left to the next save", wallet.CharacterId);
                 }
+            }
+        }
+        // A cancel gives the offered mesos back in memory. A save made while they were offered (a timed save) stored
+        // the wallet without them, so the refund is stored too (SaveRefund, tried again on a failure); without it a
+        // crash before the next save lost the offer.
+        foreach (GameSession wallet in refunded) {
+            if (!wallet.SaveRefund()) {
+                logger.Error("Trade mesos given back to {CharacterId} not stored now, left to the next save", wallet.CharacterId);
             }
         }
 
