@@ -370,12 +370,17 @@ public partial class FieldManager {
                 case CubePortalDestination.PortalInHome:
                     targetMapId = Constant.DefaultHomeMapId;
                     break;
+                // A target stored before HomeEditRules.PortalAllowed checked it may not be a number: no portal then.
                 case CubePortalDestination.SelectedMap:
-                    targetMapId = int.Parse(cubePortalSettings.DestinationTarget);
+                    if (!int.TryParse(cubePortalSettings.DestinationTarget, out targetMapId)) {
+                        return null;
+                    }
                     break;
                 case CubePortalDestination.FriendHome:
                     targetMapId = Constant.DefaultHomeMapId;
-                    targetHomeAccountId = long.Parse(cubePortalSettings.DestinationTarget);
+                    if (!long.TryParse(cubePortalSettings.DestinationTarget, out targetHomeAccountId)) {
+                        return null;
+                    }
                     break;
             }
         }

@@ -51,6 +51,16 @@ public static class HomeEditRules {
         if (method > MaxPortalMethod || destination > MaxPortalDestination) {
             return false;
         }
+        // The dialog's target lists hold a map id (destination 1, FUN_140fb1040) or a buddy's account id (2,
+        // FUN_140fb15a0) as digits, and their "none" row no id (uiugcportaldialog.cpp); anything else would stop the
+        // portal's spawn after the settings were taken.
+        if (target.Length > 0 && destination switch {
+                1 => !int.TryParse(target, out _),
+                2 => !long.TryParse(target, out _),
+                _ => false,
+            }) {
+            return false;
+        }
         return !otherNames.Contains(name);
     }
 

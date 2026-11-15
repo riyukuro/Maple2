@@ -59,6 +59,21 @@ public class HomeEditRulesTests {
         Assert.That(HomeEditRules.PortalAllowed("c", 0, 0, new string('x', HomeEditRules.MaxPortalTargetLength + 1), others), Is.False);
     }
 
+    // A map (1) or a friend's home (2) is sent as digits; a target that is not a number is refused before anything
+    // changes (it threw in the portal's spawn after the cube's settings were taken).
+    [Test]
+    public void PortalTarget_MustBeANumberForAMapOrAHome() {
+        string[] others = [];
+        Assert.Multiple(() => {
+            Assert.That(HomeEditRules.PortalAllowed("c", 0, 1, "2000062", others), Is.True);
+            Assert.That(HomeEditRules.PortalAllowed("c", 0, 1, "", others), Is.True);
+            Assert.That(HomeEditRules.PortalAllowed("c", 0, 1, "abc", others), Is.False);
+            Assert.That(HomeEditRules.PortalAllowed("c", 0, 2, "123456789012", others), Is.True);
+            Assert.That(HomeEditRules.PortalAllowed("c", 0, 2, "x1", others), Is.False);
+            Assert.That(HomeEditRules.PortalAllowed("c", 0, 0, "anything", others), Is.True);
+        });
+    }
+
     [Test]
     public void Notice() {
         Assert.That(HomeEditRules.NoticeAllowed(new string('x', HomeEditRules.MaxNoticeLength)), Is.True);
