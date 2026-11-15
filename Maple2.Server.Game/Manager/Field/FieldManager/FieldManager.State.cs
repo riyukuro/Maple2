@@ -170,6 +170,10 @@ public partial class FieldManager {
             }
             player.Character.ReturnMaps.Push(Metadata.Property.EnterReturnId);
         }
+        // Placed: an arrival in the return field (by its spot or not) ends the spot.
+        if (FieldEntryRules.EndsReturnSpot(MapId, player.Character.ReturnMaps.IsEmpty ? 0 : player.Character.ReturnMaps.Peek())) {
+            player.Character.ReturnPosition = default;
+        }
 
         lock (entryLock) {
             if (!Retired) {

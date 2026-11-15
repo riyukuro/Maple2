@@ -93,6 +93,44 @@ public class FieldEntryRulesTests {
         Assert.That(FieldEntryRules.KeepsReturnSpot(0, 2000062), Is.False);
     }
 
+    // A portal out of the return field keeps the spot it was used at: 02000043's hidden portal 4 into the solo quest
+    // instance 52000037 (The End of Nelph). Not a move inside the field, not a portal of another field, not a touch
+    // portal (an arrival on it would go through again).
+    [Test]
+    public void KeepsSpotLeaving_PortalOutOfTheReturnField() {
+        Assert.Multiple(() => {
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(2000043, 2000043, 52000037, PortalActionType.Interact), Is.True);
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(2000043, 2000043, 2000043, PortalActionType.Interact), Is.False);
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(52000037, 2000043, 52000066, PortalActionType.Interact), Is.False);
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(2000043, 2000043, 2000044, PortalActionType.Touch), Is.False);
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(0, 0, 2000043, PortalActionType.Interact), Is.False);
+        });
+    }
+
+    // An arrival in the return field ends its spot; one in another field keeps it.
+    [Test]
+    public void EndsReturnSpot_OnArrivalInTheReturnField() {
+        Assert.Multiple(() => {
+            Assert.That(FieldEntryRules.EndsReturnSpot(2000043, 2000043), Is.True);
+            Assert.That(FieldEntryRules.EndsReturnSpot(52000066, 2000043), Is.False);
+            Assert.That(FieldEntryRules.EndsReturnSpot(0, 0), Is.False);
+        });
+    }
+
+    // Only a login (the move names no map) on the return field, not into a room or a home, arrives at the spot.
+    [Test]
+    public void LoginUsesReturnSpot_OnlyALoginOnTheReturnField() {
+        Assert.Multiple(() => {
+            Assert.That(FieldEntryRules.LoginUsesReturnSpot(0, MigrationType.Normal, 0, 0, 2000043, 2000043), Is.True);
+            Assert.That(FieldEntryRules.LoginUsesReturnSpot(2000043, MigrationType.Normal, 0, 0, 2000043, 2000043), Is.False);
+            Assert.That(FieldEntryRules.LoginUsesReturnSpot(0, MigrationType.Normal, 0, 0, 52000037, 2000043), Is.False);
+            Assert.That(FieldEntryRules.LoginUsesReturnSpot(0, MigrationType.Dungeon, 0, 0, 2000043, 2000043), Is.False);
+            Assert.That(FieldEntryRules.LoginUsesReturnSpot(0, MigrationType.Normal, 0, 7, 2000043, 2000043), Is.False);
+            Assert.That(FieldEntryRules.LoginUsesReturnSpot(0, MigrationType.Normal, 5, 0, 2000043, 2000043), Is.False);
+            Assert.That(FieldEntryRules.LoginUsesReturnSpot(0, MigrationType.Normal, 0, 0, 0, 0), Is.False);
+        });
+    }
+
     // A login on a map of a running room the character entered goes back into that room's field (the lobby on the
     // lobby map); a room the character never entered, or a map that is none of the room's, gives null. Of two rooms
     // on the same map the newest is taken.

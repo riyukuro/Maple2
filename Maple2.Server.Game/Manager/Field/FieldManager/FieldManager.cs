@@ -952,10 +952,20 @@ public partial class FieldManager : IField {
             return true;
         }
 
+        // The spot the portal was used at is the return field's spot while the player is away (a logout comes back
+        // to it); a refused move keeps the one there was.
+        Character character = session.Player.Value.Character;
+        Vector3 spotBefore = character.ReturnPosition;
+        if (FieldEntryRules.KeepsSpotLeaving(MapId, character.ReturnMaps.IsEmpty ? 0 : character.ReturnMaps.Peek(), srcPortal.TargetMapId, srcPortal.ActionType)) {
+            character.ReturnPosition = session.Player.Position;
+        }
         // A portal to a room (a bonus map) leads into that room, not into the map's shared field. The quest "map"
         // condition is counted by the field entry that follows (GameSession.EnterField), not here: a count here
         // too made each move by portal count twice.
         bool entered = session.PrepareFieldByPortal(srcPortal.TargetMapId, portalId: srcPortal.TargetPortalId, roomId: fieldPortal.RoomId);
+        if (!entered) {
+            character.ReturnPosition = spotBefore;
+        }
 
         session.SendFieldEnter(entered);
         return true;

@@ -397,6 +397,11 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         int fieldId = mapId == 0 ? player.Character.MapId : mapId;
+        // A login on the return field arrives at its spot: the player logged out in a field it left to from there.
+        if (position == default && FieldEntryRules.LoginUsesReturnSpot(mapId, migrationType, ownerId, roomId, fieldId,
+                player.Character.ReturnMaps.IsEmpty ? 0 : player.Character.ReturnMaps.Peek())) {
+            position = player.Character.ReturnPosition;
+        }
         // A dungeon arrival whose room was closed in the meantime: enter the return field as a plain arrival.
         // The same for a rank duel arrival whose match field is gone, and for a login on a rank duel map (the
         // character left the match by logging out): a rank duel field is entered only through its match.

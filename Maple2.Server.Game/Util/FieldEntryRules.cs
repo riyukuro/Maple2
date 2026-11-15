@@ -87,6 +87,27 @@ public static class FieldEntryRules {
     // outlives the session it was taken in.
     public static bool KeepsReturnSpot(int returnMapBefore, int returnMapSaved) => returnMapBefore == returnMapSaved;
 
+    // A portal out of the return field takes the spot it was used at, as a dungeon hall's room entry does
+    // (DungeonHallRules.KeepsReturnPosition): a field entered that way that saves no return field of its own (a solo
+    // quest instance such as 52000037, which 02000043's hidden portal 4 leads into) goes back there, and a logout in
+    // it comes back there (LoginUsesReturnSpot) instead of at the return field's spawn, far from a hidden portal with
+    // no minimap mark. A move within the field keeps the spot it has. Not a touch portal's spot: an arrival there
+    // would be taken through the portal again at once.
+    public static bool KeepsSpotLeaving(int fieldMapId, int returnMapId, int targetMapId, PortalActionType actionType) {
+        return fieldMapId != 0 && fieldMapId == returnMapId && targetMapId != fieldMapId && actionType != PortalActionType.Touch;
+    }
+
+    // An arrival in the return field ends its spot: it is a spot to go back to only while the player is away, and one
+    // left from an earlier trip would else place a login after a logout in the field itself.
+    public static bool EndsReturnSpot(int arrivalMapId, int returnMapId) => arrivalMapId != 0 && arrivalMapId == returnMapId;
+
+    // A login (the character list's move names no map: the character's saved one is entered) on the return field
+    // arrives at its spot: the quit put the saved map back to the return field (QuitHandler), so a logout in a field
+    // left to from there comes back where the player left it. With no spot (0 0 0) it is the field's spawn as before.
+    public static bool LoginUsesReturnSpot(int migrateMapId, MigrationType type, long ownerId, int roomId, int fieldId, int returnMapId) {
+        return migrateMapId == 0 && type == MigrationType.Normal && ownerId == 0 && roomId == 0 && fieldId != 0 && fieldId == returnMapId;
+    }
+
     // A running dungeon room on this channel: its lobby room id, whether the character has a record in it (it entered
     // the room's lobby), the lobby's map and the room's fields by map.
     public readonly record struct RunningRoom<T>(int RoomId, bool Member, int LobbyMapId, T Lobby, IReadOnlyDictionary<int, T> Fields);
