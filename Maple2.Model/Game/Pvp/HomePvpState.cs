@@ -42,7 +42,9 @@ public enum HomePvpPhase {
 }
 
 // One participant: its PvP point, the one the client keys its enemies by (two players with points above 0 that differ
-// are enemies, CPvPInfo::ReadPointTeamMode). Out once it left the home, or died under survival.
+// are enemies, CPvPInfo::ReadPointTeamMode). The sides are numbered from PvpPoints.First (101): the client's hit test
+// never hits a target of team 2 and lets one of team 2 hit anyone, and team 1 is a PC without a point (PvpPoints).
+// Out once it left the home, or died under survival.
 public sealed class HomePvpEntry {
     public required long CharacterId { get; init; }
     public required int Point { get; init; }
@@ -91,11 +93,11 @@ public sealed class HomePvpState {
             int point;
             if (Settings.ByParty && partyId != 0) {
                 if (!points.TryGetValue(partyId, out point)) {
-                    point = points.Count + 1;
+                    point = PvpPoints.First + points.Count;
                     points[partyId] = point;
                 }
             } else {
-                point = points.Count + 1;
+                point = PvpPoints.First + points.Count;
                 // A key no party id has: a player's own side.
                 points[-characterId] = point;
             }

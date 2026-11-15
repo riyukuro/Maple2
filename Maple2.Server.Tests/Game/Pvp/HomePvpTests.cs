@@ -55,6 +55,8 @@ public class HomePvpTests {
         Assert.That(state.DueToActivate(5000), Is.True);
         IReadOnlyList<HomePvpEntry> entries = state.Activate([(1, 7), (2, 7), (3, 0)], 5000);
         Assert.That(entries.Select(entry => entry.Point).Distinct().Count(), Is.EqualTo(3));
+        // From 101: with 1 and 2 the side of point 2 could not be hit and hit anyone (the client's own teams).
+        Assert.That(entries.Select(entry => entry.Point), Is.EqualTo(new[] { PvpPoints.First, PvpPoints.Second, PvpPoints.Second + 1 }));
         Assert.That(state.Hostile(1, 2), Is.True);
         Assert.That(state.Hostile(1, 1), Is.False);
         Assert.That(state.Hostile(1, 4), Is.False);
@@ -67,6 +69,7 @@ public class HomePvpTests {
         Dictionary<long, int> points = entries.ToDictionary(entry => entry.CharacterId, entry => entry.Point);
         Assert.That(points[1], Is.EqualTo(points[2]));
         Assert.That(new[] { points[1], points[3], points[4] }.Distinct().Count(), Is.EqualTo(3));
+        Assert.That(points.Values, Has.All.GreaterThanOrEqualTo(PvpPoints.First));
         Assert.That(state.Hostile(1, 2), Is.False);
         Assert.That(state.Hostile(1, 3), Is.True);
     }
