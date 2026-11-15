@@ -379,16 +379,18 @@ public static class SkillHitRules {
     // (FUN_141467100, magicdata.cpp:2420), the target's position when it has no parts. The server has neither the parts
     // nor a PhysX scene, so it leans toward keeping: a hit counts as blocked only when the ray to the target's position
     // and the ray to the point of its shape's circle nearest the owner are both blocked (none when the owner stands in
-    // that circle, where a part may be), and as dropped overhead only when its position is straight above or below.
+    // that circle, where a part may be), and as dropped overhead only when its position is straight above or below
+    // and it has no circle. That lean is not strict: a part outside the circle, or off the line to the position, may
+    // see past a wall's edge where both rays are blocked, so a hit logged as blocked can still be one the client keeps.
     public static SightDrop SightTest(Vector3 owner, Vector3 position, float radius, IReadOnlyCollection<FieldBoxColliderEntity> boxes, out FieldBoxColliderEntity? blocker) {
         blocker = null;
         var away = new Vector2(position.X - owner.X, position.Y - owner.Y);
         float distance = away.Length();
-        if (distance <= 0) {
-            return SightDrop.Overhead;
-        }
         if (radius > 0 && distance <= radius) {
             return SightDrop.None;
+        }
+        if (distance <= 0) {
+            return SightDrop.Overhead;
         }
         if (SightBlocker(owner, position, boxes) is not { } box) {
             return SightDrop.None;

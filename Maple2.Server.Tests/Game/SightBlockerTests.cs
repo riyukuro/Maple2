@@ -69,11 +69,13 @@ public class SightBlockerTests {
     }
 
     // The client drops a hit whose point is straight above or below the owner (flattened length 0, magicdata.cpp:1793).
+    // A target with a circle there holds the owner, and its nearest part may stand off that line: not counted.
     [Test]
     public void ATargetStraightAboveTheOwner_IsDroppedOverhead() {
         Assert.Multiple(() => {
             Assert.That(SkillHitRules.SightTest(Caster, new Vector3(0, 0, 500), 0, [], out FieldBoxColliderEntity? blocker), Is.EqualTo(SkillHitRules.SightDrop.Overhead));
             Assert.That(blocker, Is.Null);
+            Assert.That(SkillHitRules.SightTest(Caster, new Vector3(0, 0, 500), 50, [], out _), Is.EqualTo(SkillHitRules.SightDrop.None));
         });
     }
 
