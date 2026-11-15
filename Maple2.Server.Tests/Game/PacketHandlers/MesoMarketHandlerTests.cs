@@ -207,13 +207,55 @@ public class MesoMarketHandlerTests {
         Send(session, 6, own.Id);
         test.FailSave = null;
 
-        // The mesos added in the store are taken back before the account lock is given back (its undo), and the
-        // failure is answered with the database error.
         Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(2) }));
         Assert.That(session.Currency.Meso, Is.EqualTo(0));
         Assert.That(StoredMeso(session), Is.EqualTo(0));
         using GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetMesoListing(own.Id), Is.Not.Null);
+    }
+
+    // A store that fails after the mesos were added takes them back before the account lock is given back (its undo):
+    // a store waiting for the lock would write the wallet as it is then.
+    [Test]
+    public void TakeBack_FailedSave_TakesTheMesosBackBeforeTheLockGoes() {
+        GameSession session = Login();
+        MesoListing own = OwnListing(session);
+        test.FailSave = context => session.Currency.Meso == BASE && WalletWritten(context);
+        var atRelease = new List<long>();
+        test.World.OnRelease = () => atRelease.Add(session.Currency.Meso);
+
+        Send(session, 6, own.Id);
+        test.FailSave = null;
+        test.World.OnRelease = null;
+
+        Assert.That(atRelease, Is.EqualTo(new[] { 0L }), "the added mesos were still in the wallet when the lock was given back");
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(2) }));
+        Assert.That(session.Currency.Meso, Is.EqualTo(0));
+    }
+
+    // A listing gone between the read and the store (bought, or taken back from another session) answers not found
+    // (9), gives nothing and logs no failure.
+    [Test]
+    public void TakeBack_GoneBeforeTheStore_AnswersNotFound() {
+        GameSession session = Login();
+        MesoListing own = OwnListing(session);
+        bool taken = false;
+        test.FailSave = context => {
+            // Once: the other request's own delete comes through here too.
+            if (!taken && context.ChangeTracker.Entries<Maple2.Database.Model.MesoListing>().Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Deleted)) {
+                taken = true;
+                using GameStorage.Request other = test.Storage.Context();
+                other.DeleteMesoListing(own.Id);
+            }
+            return false;
+        };
+
+        Send(session, 6, own.Id);
+        test.FailSave = null;
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(9) }));
+        Assert.That((session.Currency.Meso, StoredMeso(session)), Is.EqualTo((0L, 0L)));
+        Assert.That(test.Errors, Is.Empty);
     }
 
     private MesoListing OwnListing(GameSession session) {
