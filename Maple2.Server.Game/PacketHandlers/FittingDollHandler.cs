@@ -112,26 +112,50 @@ public class FittingDollHandler : FieldPacketHandler {
                 short inventorySlot = item.Slot;
                 item.Group = ItemGroup.FittingDoll;
                 item.Slot = (short) slot;
+                // The items taken off that become this character's move in the put-on's own write (SwapFittingDoll):
+                // each moved in a write of its own after it, a crash in between left a taken-off item on the doll's
+                // slot beside the one put on. An item bound to another character of the account goes to that
+                // character afterwards, as before (ToInventoryOrMail).
+                var toCharacter = displaced.Where(worn => !FittingDollRules.BoundToOther(worn.Transfer?.Binding, session.CharacterId)).ToList();
+                var wornSlots = displaced.ToDictionary(worn => worn.Uid, worn => (EquipSlot) worn.Slot);
+                foreach (Item worn in toCharacter) {
+                    worn.Group = ItemGroup.Default;
+                    worn.Slot = -1;
+                }
                 ItemMove moved;
                 using (GameStorage.Request db = session.GameStorage.Context()) {
-                    moved = db.PutOnFittingDoll(item, doll.Uid, doll.Plot.Id);
+                    moved = toCharacter.Count == 0
+                        ? db.PutOnFittingDoll(item, doll.Uid, doll.Plot.Id)
+                        : db.SwapFittingDoll(doll.Uid, doll.Plot.Id, session.CharacterId, [item], toCharacter);
                 }
                 if (moved != ItemMove.Moved) {
                     // Nothing was written: the item goes back where it was and the doll is unchanged. TargetGone is a
-                    // doll whose cube was removed (and saved) in another field instance of this home.
+                    // doll whose cube was removed (and saved) in another field instance of this home; SourceGone a
+                    // taken-off item another field instance of this home already took.
+                    foreach (Item worn in toCharacter) {
+                        worn.Group = ItemGroup.FittingDoll;
+                        worn.Slot = (short) wornSlots[worn.Uid];
+                    }
                     item.Group = ItemGroup.Default;
                     item.Slot = inventorySlot;
                     if (!session.Item.AddOrMail(item)) {
                         Serilog.Log.Logger.Error("Failed to put item {ItemUid} back after a failed fitting doll save", item.Uid);
                     }
+                    if (moved == ItemMove.SourceGone) {
+                        Reload(session, doll);
+                    }
                     return moved == ItemMove.TargetGone ? FittingDollRules.Error.InvalidDoll : FittingDollRules.Error.InvalidItem;
                 }
 
                 foreach (Item worn in displaced) {
-                    var wornSlot = (EquipSlot) worn.Slot;
+                    EquipSlot wornSlot = wornSlots[worn.Uid];
                     doll.Items.Remove(wornSlot);
                     session.Field?.Broadcast(FittingDollPacket.PutOff(doll, wornSlot));
-                    ToInventoryOrMail(session, doll.Uid, worn);
+                    if (toCharacter.Contains(worn)) {
+                        ToInventoryStored(session, worn);
+                    } else {
+                        ToInventoryOrMail(session, doll.Uid, worn);
+                    }
                 }
                 doll.Items[slot] = item;
                 session.Field?.Broadcast(FittingDollPacket.PutOn(doll, item));
@@ -440,13 +464,18 @@ public class FittingDollHandler : FieldPacketHandler {
         if (toOther) {
             return true;
         }
+        ToInventoryStored(owner, item);
+        return true;
+    }
+
+    // A doll item whose row is the owner's already (group Default) goes to the inventory, or by mail when it has no room.
+    private static void ToInventoryStored(GameSession owner, Item item) {
         if (owner.Field != null && owner.Item.Inventory.FreeSlots(item.Inventory) > 0 && owner.Item.Inventory.Add(item, commit: true)) {
-            return true;
+            return;
         }
         if (!owner.Item.MailHeldItem(item)) {
             // The row is the character's now (group Default), so it is in the inventory at the next login.
             Serilog.Log.Logger.Error("Failed to return fitting doll item {ItemUid} to {CharacterId}", item.Uid, owner.CharacterId);
         }
-        return true;
     }
 }
