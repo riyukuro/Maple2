@@ -82,7 +82,10 @@ public partial class WorldService {
         }
 
         // A member whose client is at its club limit cannot take the club and would never answer it: the staged
-        // club is removed as a declined one is (Club 0xf fail), and the leader is told 58.
+        // club is removed as a declined one is (Club 5, then the disband), and the leader is told 58. A leader whose
+        // channel got Club 2 before the refusal answers it at once (clubcli.cpp:1043-1046); that answer may reach World
+        // after the disband and get a second box (null club). The club itself cannot be established: the refused member
+        // never accepts.
         error = manager.BroadcastCreate(new ChannelClubRequest {
             Create = new ChannelClubRequest.Types.Create {
                 Info = ToClubInfo(manager.Club),
