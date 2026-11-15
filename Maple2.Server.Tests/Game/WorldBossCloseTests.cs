@@ -100,4 +100,57 @@ public class WorldBossCloseTests {
         Assert.That(test.TakeSentOps(), Is.Empty);
         Assert.That(monitored, Is.Empty);
     }
+
+    // The announce queues the spawn on the field's thread; a close sent right after it is queued behind it there.
+    // Run at once (as before), the close found no boss yet and the boss then stayed with no monitor.
+    [Test]
+    public void ACloseSentBeforeTheQueuedSpawnRan_FindsTheBoss() {
+        field.DespawnWorldBoss();
+        test.TakeSent();
+        field.RunOnField(() => {
+            field.Mobs[BossObjectId] = boss;
+            typeof(FieldManager).GetField("worldBossObjectId", Any)!.SetValue(field, BossObjectId);
+        });
+
+        service.QueueCloseWorldBoss(field, NpcId, MapId);
+
+        Assert.That(test.TakeSentOps(), Is.Empty, "nothing runs on the calling thread");
+        field.RunFieldActions();
+
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Notice }));
+        Assert.That(field.GetWorldBossNpc(), Is.Null, "never hit: the spawned boss leaves");
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The idle monitor's check (run on the field's thread): idle past the despawn time, the warning and the
+    // "disappeared" notice, the boss leaves and the watch ends.
+    [Test]
+    public void MonitorCheck_IdlePastTheDespawnTime_TheBossLeaves() {
+        LastHit(Constant.WorldBossDespawnThreshold);
+        var watch = new ChannelService.BossWatch();
+
+        bool watching = ChannelService.MonitorBossTick(field, NpcId, watch, Now);
+
+        Assert.Multiple(() => {
+            Assert.That(watching, Is.False);
+            Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Notice, SendOp.Notice }));
+            Assert.That(field.GetWorldBossNpc(), Is.Null);
+        });
+    }
+
+    // Hit a second ago: no notice, the watch goes on.
+    [Test]
+    public void MonitorCheck_RecentHit_KeepsWatching() {
+        LastHit(TimeSpan.FromSeconds(1));
+        var watch = new ChannelService.BossWatch();
+
+        bool watching = ChannelService.MonitorBossTick(field, NpcId, watch, Now);
+
+        Assert.Multiple(() => {
+            Assert.That(watching, Is.True);
+            Assert.That(test.TakeSentOps(), Is.Empty);
+            Assert.That(field.GetWorldBossNpc(), Is.SameAs(boss));
+            Assert.That(watch.WarningSent, Is.False);
+        });
+    }
 }

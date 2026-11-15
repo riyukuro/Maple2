@@ -48,16 +48,16 @@ public partial class ChannelService {
             if (session is not null) {
                 // Player is online and their plot expired, update their furnishing inventory with the new items and
                 // set their outside plot to null: on the player's field thread, beside the player's handlers.
+                // The expiry notice goes out after the plot is taken off the session.
                 GameSession owner = session;
+                ByteWriter? notice = ExpiredNotice(mapId, plotNumber, request);
                 owner.RunAsPlayer(() => {
                     owner.Item.ReInstantiateFurnishing();
                     owner.Housing.SetPlot(null);
+                    if (notice != null) {
+                        owner.Send(notice);
+                    }
                 });
-                // The owner may be on a channel that has not loaded the plot's map, so the notice does not wait for it.
-                ByteWriter? notice = ExpiredNotice(mapId, plotNumber, request);
-                if (notice != null) {
-                    session.Send(notice);
-                }
             }
         }
 

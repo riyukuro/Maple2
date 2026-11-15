@@ -133,10 +133,16 @@ public partial class ChannelService {
             FieldManager? field = server.GetField(targetMapId);
             if (field == null) continue;
 
-            CloseWorldBoss(field, npcId, targetMapId, Environment.TickCount64);
+            QueueCloseWorldBoss(field, npcId, targetMapId);
         }
 
         return new TimeEventResponse();
+    }
+
+    // On the field's thread, after a spawn the announce queued there: a close run at once could come before that
+    // spawn, find no boss, and the boss would then stay with no idle monitor.
+    internal void QueueCloseWorldBoss(FieldManager field, int npcId, int targetMapId) {
+        field.RunOnField(() => CloseWorldBoss(field, npcId, targetMapId, Environment.TickCount64));
     }
 
     // The close of one target field: a boss idle at the warning time leaves with the "disappeared" notice,
@@ -156,27 +162,26 @@ public partial class ChannelService {
         field.DespawnWorldBoss();
     }
 
+    // Each check runs on the field's thread (beside the spawn and the close queued there); this task only waits.
     private async Task MonitorExtendedBossLifetimeAsync(FieldManager field, int npcId, int targetMapId) {
-        bool warningSent = false;
+        var watch = new BossWatch();
         try {
-            while (true) {
+            while (!field.Disposed) {
                 await Task.Delay(Constant.WorldBossMonitorInterval);
 
-                FieldNpc? bossNpc = field.GetWorldBossNpc();
-                if (bossNpc == null) return;
-
-                long idleMs = bossNpc.LastDamageTick == 0
-                    ? long.MaxValue
-                    : Environment.TickCount64 - bossNpc.LastDamageTick;
-
-                if (!warningSent && idleMs >= (long) Constant.WorldBossIdleWarningThreshold.TotalMilliseconds) {
-                    field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext1, npcId.ToString()), LifetimeNotice));
-                    warningSent = true;
+                var check = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                field.RunOnField(() => {
+                    try {
+                        check.TrySetResult(MonitorBossTick(field, npcId, watch, Environment.TickCount64));
+                    } catch (Exception ex) {
+                        check.TrySetException(ex);
+                    }
+                });
+                // A field disposed with the check still queued never runs it.
+                while (!check.Task.IsCompleted && !field.Disposed) {
+                    await Task.WhenAny(check.Task, Task.Delay(Constant.WorldBossMonitorInterval));
                 }
-
-                if (idleMs >= (long) Constant.WorldBossDespawnThreshold.TotalMilliseconds) {
-                    field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext2, npcId.ToString()), LifetimeNotice));
-                    field.DespawnWorldBoss();
+                if (!check.Task.IsCompleted || !await check.Task) {
                     return;
                 }
             }
@@ -185,6 +190,32 @@ public partial class ChannelService {
         } finally {
             monitoringBossFields.TryRemove(targetMapId, out _);
         }
+    }
+
+    internal sealed class BossWatch {
+        public bool WarningSent;
+    }
+
+    // One idle check of the monitor, on the field's thread. False when the watch ends (the boss is gone or leaves).
+    internal static bool MonitorBossTick(FieldManager field, int npcId, BossWatch watch, long nowTick) {
+        FieldNpc? bossNpc = field.GetWorldBossNpc();
+        if (bossNpc == null) return false;
+
+        long idleMs = bossNpc.LastDamageTick == 0
+            ? long.MaxValue
+            : nowTick - bossNpc.LastDamageTick;
+
+        if (!watch.WarningSent && idleMs >= (long) Constant.WorldBossIdleWarningThreshold.TotalMilliseconds) {
+            field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext1, npcId.ToString()), LifetimeNotice));
+            watch.WarningSent = true;
+        }
+
+        if (idleMs >= (long) Constant.WorldBossDespawnThreshold.TotalMilliseconds) {
+            field.Broadcast(NoticePacket.Message(new InterfaceText(StringCode.s_timeevent_boss_lifetimetext2, npcId.ToString()), LifetimeNotice));
+            field.DespawnWorldBoss();
+            return false;
+        }
+        return true;
     }
 
     private TimeEventResponse GetField(TimeEventRequest.Types.GetField field) {
