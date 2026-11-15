@@ -275,7 +275,13 @@ public class NpcTalkHandler : FieldPacketHandler {
                         return;
                     }
                     if (!session.ScriptMetadata.TryGet(session.NpcScript.Quests.ElementAt(pick).Value.Id, out ScriptMetadata? metadata)) {
-                        session.Send(NpcTalkPacket.Respond(npc, NpcTalkType.None, default));
+                        // A quest with no script row (10 in the KR data, 80000220 to 80000225 among them): the talk
+                        // ends. The client set its pending flag on this mode 2 (UITalkManager::SendNpcTalkMode2,
+                        // uitalkcinematic.cpp:1674) and clears it only on a mode 2 answer; a Respond (s2c mode 1)
+                        // left the talk's buttons dead. Close (s2c mode 0) ends the talk (OnTalkPacket, :1030), as
+                        // KMS answers a mode 2 it has no page for, and as QuestRespond does for a quest with no state.
+                        session.Send(NpcTalkPacket.Close());
+                        npc.StopTalk();
                         session.NpcScript = null;
                         return;
                     }

@@ -19,9 +19,13 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class NpcTalkPickTests {
     private const int NpcId = 11000001;
 
+    // pick 0 on the select list is the quest, which has no script row here (the test session's script table is
+    // empty): the talk ends with one close (s2c mode 0). Before, a Respond (mode 1) left the client's pending flag
+    // set and the talk's buttons dead.
     [TestCase(-1)]
     [TestCase(int.MinValue)]
-    public void ANegativePick_EndsTheTalk(int pick) {
+    [TestCase(0)]
+    public void APickWithNoPage_EndsTheTalkWithOneClose(int pick) {
         var test = new TestGameSession();
         test.SetServerTable(new ScriptConditionTable(new Dictionary<int, Dictionary<int, ScriptConditionMetadata>>()));
         GameSession session = test.Start();
@@ -45,7 +49,8 @@ public class NpcTalkPickTests {
         })));
         Assert.Multiple(() => {
             Assert.That(session.NpcScript, Is.Null);
-            Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.NpcTalk).Count(), Is.EqualTo(1));
+            Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.NpcTalk).Select(packet => packet[2]),
+                Is.EqualTo(new byte[] { 0 })); // one NpcTalk, mode 0 (Close)
         });
     }
 }
