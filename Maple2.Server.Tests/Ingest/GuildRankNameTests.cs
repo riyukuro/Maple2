@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Xml;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
+using Maple2.File.Ingest.Helpers;
 using Maple2.File.Ingest.Mapper;
+using Maple2.File.IO;
 using Maple2.Model.Common;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -41,8 +44,6 @@ public class GuildRankNameTests {
         Assert.That(TableMapper.GuildRankNames(Strings(("s_other", "x"))), Is.SameAs(GuildRankNameTable.Empty));
     }
 
-    // A KR guild's stored defaults show as the client's; a typed name, a default at another rank's place and a rank
-    // past the six are kept.
     // The region's file comes first: its names win over the English ones, and English fills a key it lacks or leaves
     // empty. Each key says which file it came from.
     [Test]
@@ -63,7 +64,43 @@ public class GuildRankNameTests {
         Assert.That(TableMapper.GuildRankNames([], out _), Is.SameAs(GuildRankNameTable.Empty));
     }
 
-    // The client's string folder per region: its own language, English on NA.
+    // The ingest's order over the packs: a key the played client's string/kr lacks or leaves empty comes from the
+    // data pack's string/kr before either English file; English fills only what no kr file names.
+    [Test]
+    public void Ingest_PlayedKr_ThenPackKr_ThenEnglish() {
+        string root = Directory.CreateTempSubdirectory("ms2-rank-test-").FullName;
+        try {
+            string Pack(string name, params (string Path, (string Id, string Value)[] Keys)[] files) {
+                string dir = Path.Combine(root, name);
+                foreach ((string path, (string Id, string Value)[] keys) in files) {
+                    string file = Path.Combine(dir, path);
+                    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                    System.IO.File.WriteAllText(file, Strings(keys).OuterXml);
+                }
+                string m2d = Path.Combine(root, $"{name}.m2d");
+                PlayedClientOverlay.Create(PlayedClientOverlay.Files([dir]), m2d);
+                return m2d;
+            }
+            string[] k = GuildRankNameTable.Keys;
+            string data = Pack("data",
+                ("string/kr/stringcommon.xml", [(k[1], "K1"), (k[2], "K2")]),
+                ("string/en/stringcommon.xml", English.Select((name, i) => (k[i], name)).ToArray()));
+            string played = Pack("played",
+                ("string/kr/stringcommon.xml", [(k[0], "P0"), (k[2], "")]),
+                ("string/en/stringcommon.xml", [(k[3], "E3")]));
+            using var dataReader = new M2dReader(data);
+            using var playedReader = new M2dReader(played);
+            var mapper = new TableMapper(dataReader, "en", playedReader, null, "KR");
+            MethodInfo parse = typeof(TableMapper).GetMethod("ParseGuildRankNames", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+            var table = (GuildRankNameTable) parse.Invoke(mapper, null)!;
+            Assert.That(table.Names, Is.EqualTo(new[] { "P0", "K1", "K2", "E3", English[4], English[5] }));
+        } finally {
+            Directory.Delete(root, true);
+        }
+    }
+
+    // The string folder taken per region: the language its client usually runs in, English on NA.
     [TestCase("KR", "kr")]
     [TestCase("NA", "en")]
     [TestCase("CN", "cn")]
@@ -72,6 +109,8 @@ public class GuildRankNameTests {
         Assert.That(TableMapper.StringDirectory(locale), Is.EqualTo(directory));
     }
 
+    // A KR guild's stored defaults show as the client's; a typed name, a default at another rank's place and a rank
+    // past the six are kept.
     [Test]
     public void Shown_MapsOnlyTheDataDefaultAtItsPlace() {
         IReadOnlyList<string> kr = GuildRules.DefaultRankNames("KR");

@@ -3102,21 +3102,24 @@ public class TableMapper : TypeMapper<TableMetadata> {
     }
 
     // The played client's string/<directory>/stringcommon.xml (else the data pack's), with where it was read.
-    private (XmlDocument Document, string Source)? StringCommon(string directory) {
+    private (XmlDocument Document, string Source)? StringCommon(string directory) => StringCommons(directory).FirstOrDefault();
+
+    // Every copy of string/<directory>/stringcommon.xml: the played client's, then the data pack's.
+    private IEnumerable<(XmlDocument Document, string Source)> StringCommons(string directory) {
         string name = $"string/{directory}/{TableNames.STRING_COMMON}";
         foreach ((M2dReader? reader, string pack) in new[] { (playedReader, "played client"), ((M2dReader?) xmlReader, "data pack") }) {
             Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (reader != null && entry != null) {
-                return (reader.GetXmlDocument(entry), $"{pack} {name}");
+                yield return (reader.GetXmlDocument(entry), $"{pack} {name}");
             }
         }
-        return null;
     }
 
-    // The string folder a region's client reads: the client keeps its strings under string/<language>/ (CFileSystem
-    // takes a string file from the folder SetLanguage picks, localepath.cpp:578-592: kr unless set otherwise), and a
-    // region's client runs in its own language, English on NA. A region without a folder of its own (TH, TW) finds
-    // no file there, and its names come from the English one.
+    // The string folder taken for a region's client. The client keeps its strings under string/<language>/ and picks
+    // the folder from its language option, not its region (CFileSystem with the folder SetLanguage sets,
+    // localepath.cpp:578-592: kr unless the option says otherwise), so this is the language the region's client
+    // usually runs in: English on NA, the region's own elsewhere. A TH or TW client left on the default option reads
+    // kr; the packs have no th or tw folder, so on those regions the names come from the English one.
     public static string StringDirectory(string locale) => locale == "NA" ? "en" : locale.ToLowerInvariant();
 
     // The inventory tab names, from stringcommon.
@@ -3127,16 +3130,14 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return table;
     }
 
-    // The client's default guild rank names, from the stringcommon of the region's client (StringDirectory), the
-    // played client's first: the names that client shows in its own guild window. A key it lacks is taken from the
-    // English stringcommon. Each name's file is logged.
+    // The client's default guild rank names, from the stringcommon of the region's client (StringDirectory): the
+    // names that client shows in its own guild window. Each key is taken from the first file that names it: the
+    // played client's, then the data pack's, then the same two of the English folder. Each name's file is logged.
     private GuildRankNameTable ParseGuildRankNames() {
         string directory = StringDirectory(locale);
         var sources = new List<(XmlDocument Document, string Source)>();
         foreach (string folder in directory == "en" ? new[] { "en" } : new[] { directory, "en" }) {
-            if (StringCommon(folder) is { } found) {
-                sources.Add(found);
-            }
+            sources.AddRange(StringCommons(folder));
         }
         GuildRankNameTable table = GuildRankNames(sources.Select(source => source.Document).ToArray(), out int[] from);
         Console.WriteLine($"guild rank names ({locale}): {table.Names.Count(name => name.Length > 0)} of {GuildRankNameTable.Keys.Length}");
