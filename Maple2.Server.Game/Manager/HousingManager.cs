@@ -1465,6 +1465,14 @@ public class HousingManager {
             if (meratBack > 0) {
                 session.Currency.ReturnMeret(meratBack);
             }
+            // The part a helper spent stays taken, but the take was silent (notify false): the balance goes out, as the
+            // client still shows the wallet before the rise. The merets spent are reported as the stored rise's are.
+            if (mesoBack < mesoCost) {
+                session.Currency.NotifyMeso();
+            }
+            if (meratBack < meratCost) {
+                session.Currency.NotifyMeretTaken(meratCost - meratBack);
+            }
             logger.Error("Failed to save the build budget of home {AccountId}.", session.AccountId);
             session.Send(CubePacket.UpdateBuildBudget((byte) HomeBuildRules.Refused));
             return;

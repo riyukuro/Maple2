@@ -676,12 +676,17 @@ public class PlaceHeldCubeTests {
             return true;
         };
 
+        test.TakeSent();
+
         session.Housing.SetBuildBudget(3000, 0);
         test.FailSave = null;
 
         Assert.Multiple(() => {
             Assert.That(home.BuildMeso, Is.EqualTo(0));
             Assert.That(session.Currency.Meso, Is.EqualTo(4000));
+            // The silent take's kept part is shown: the client had the wallet before the rise (5000).
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Does.Contain(Convert.ToHexString(CurrencyPacket.UpdateMeso(session.Player.Value.Currency).ToArray())));
         });
     }
 
