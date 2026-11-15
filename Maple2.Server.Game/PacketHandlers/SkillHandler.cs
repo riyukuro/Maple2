@@ -388,6 +388,14 @@ public class SkillHandler : FieldPacketHandler {
                     Vector3.Distance(impactPosition, impactPosition2), impactPosition, impactPosition2, longStep, fast, unloggedSteps, targetUid, session.PlayerName, record);
             }
             area = SkillHitRules.ArrowArea(record.Attack.Arrow, impactPosition, impactPosition2, direction);
+            // The client stops an arrow with rayPhysxTest short of a wall (SkillHitRules.StepBlocker); a step through one
+            // is logged only, its hits pay.
+            if (record.Attack.Arrow.RayPhysXTest
+                && SkillHitRules.StepBlocker(impactPosition, impactPosition2, SkillHitRules.StepBoxes(session.Field.AccelerationStructure, impactPosition, impactPosition2)) is { } wall
+                && session.Config.SightLog.Count(session.Field.FieldTick) is > 0 and int unloggedWalls) {
+                Logger.Information("Arrow step through a box collider the client's ray stops at (logged only): from {Last} to {Current}, {Kind} {Box} {Min}-{Max}, {Unlogged} since the last line, attack {AttackUid} of {Player}: {Record}",
+                    impactPosition, impactPosition2, wall.IsWhiteBox ? "whitebox" : "cube", wall.Id, wall.Bounds.Min, wall.Bounds.Max, unloggedWalls, targetUid, session.PlayerName, record);
+            }
         } else {
             if (!SkillHitRules.FacingNear(direction.Z, record.Rotation.Z, session.Player.Rotation.Z)) {
                 packetRefusal = HitRefusal.Facing;

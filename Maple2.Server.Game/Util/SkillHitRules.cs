@@ -456,6 +456,74 @@ public static class SkillHitRules {
         return boxes;
     }
 
+    // How far inside a box collider an arrow's step must reach to count as passing through it (StepBlocker): float noise
+    // between the client's box and the server's.
+    public const float StepWallMargin = 2f;
+
+    // The client moves an arrow with rayPhysxTest frame by frame (CMagic::FUN_14145ec50, magicdata.cpp:1011-1019): a
+    // PhysX ray (groups 0x201) from the arrow's point along its direction over the frame's step and 1 more stops it 5
+    // short of what it hits, and the arrow goes no further. A target packet's step (m_ptLast to m_ptCurrent, :1961) is
+    // one frame's, so an honest step never enters a box the ray tests. The first box collider (in a group the ray tests,
+    // not fluid, turned only by quarter turns, not holding the step's start) the step passes more than StepWallMargin
+    // into. Not strict: the client's ray runs along the arrow's direction, which on a curved path is not the step's.
+    public static FieldBoxColliderEntity? StepBlocker(Vector3 last, Vector3 current, IEnumerable<FieldBoxColliderEntity> boxes) {
+        Vector3 delta = current - last;
+        if (delta.LengthSquared() <= 0) {
+            return null;
+        }
+        var margin = new Vector3(StepWallMargin);
+        foreach (FieldBoxColliderEntity box in boxes) {
+            BoundingBox3 bounds = box.Bounds;
+            if (!SightGroup(box.CollisionGroup) || box.IsFluid || !QuarterTurned(box.Rotation)) {
+                continue;
+            }
+            if (Vector3.Clamp(last, bounds.Min, bounds.Max) == last) {
+                continue;
+            }
+            Vector3 min = bounds.Min + margin, max = bounds.Max - margin;
+            if (min.X < max.X && min.Y < max.Y && min.Z < max.Z && SegmentCrosses(last, delta, min, max)) {
+                return box;
+            }
+        }
+        return null;
+    }
+
+    // The map's box colliders near an arrow's step; none when the field has no map data.
+    public static List<FieldBoxColliderEntity> StepBoxes(FieldAccelerationStructure? map, Vector3 last, Vector3 current) {
+        var boxes = new List<FieldBoxColliderEntity>();
+        if (map == null) {
+            return boxes;
+        }
+        var pad = new Vector3(FieldAccelerationStructure.BLOCK_SIZE);
+        map.QueryBox(Vector3.Min(last, current) - pad, Vector3.Max(last, current) + pad, entity => {
+            if (entity is FieldBoxColliderEntity box) {
+                boxes.Add(box);
+            }
+        });
+        return boxes;
+    }
+
+    // Whether the segment from start over delta passes through the inside of the box.
+    private static bool SegmentCrosses(Vector3 start, Vector3 delta, Vector3 min, Vector3 max) {
+        float enter = 0, leave = 1;
+        for (int axis = 0; axis < 3; axis++) {
+            float p = axis switch { 0 => start.X, 1 => start.Y, _ => start.Z };
+            float d = axis switch { 0 => delta.X, 1 => delta.Y, _ => delta.Z };
+            float lo = axis switch { 0 => min.X, 1 => min.Y, _ => min.Z };
+            float hi = axis switch { 0 => max.X, 1 => max.Y, _ => max.Z };
+            if (Math.Abs(d) < 1e-6f) {
+                if (p <= lo || p >= hi) {
+                    return false;
+                }
+                continue;
+            }
+            float t1 = (lo - p) / d, t2 = (hi - p) / d;
+            enter = Math.Max(enter, Math.Min(t1, t2));
+            leave = Math.Min(leave, Math.Max(t1, t2));
+        }
+        return enter < leave;
+    }
+
     private static bool QuarterTurned(Vector3 rotation) {
         const float slack = 0.5f;
         float z = Math.Abs(rotation.Z % 90f);

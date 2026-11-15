@@ -109,6 +109,45 @@ public class SightBlockerTests {
 
     [Test]
     public void AFieldWithoutMapData_HasNoBoxes() {
-        Assert.That(SkillHitRules.SightBoxes(null, Caster, [(Target, 50f)]), Is.Empty);
+        Assert.Multiple(() => {
+            Assert.That(SkillHitRules.SightBoxes(null, Caster, [(Target, 50f)]), Is.Empty);
+            Assert.That(SkillHitRules.StepBoxes(null, Caster, Target), Is.Empty);
+        });
+    }
+
+    // The client stops an arrow with rayPhysxTest 5 short of a box its ray tests (magicdata.cpp:1011-1019), so a
+    // frame's step never enters one.
+    [Test]
+    public void AnArrowStepThroughAWall_IsFound() {
+        var from = new Vector3(0, 0, 50);
+        Assert.Multiple(() => {
+            Assert.That(SkillHitRules.StepBlocker(from, new Vector3(600, 0, 50), [Floor, Wall]), Is.SameAs(Wall), "through");
+            Assert.That(SkillHitRules.StepBlocker(from, new Vector3(245, 0, 50), [Floor, Wall]), Is.Null, "stopped 5 short");
+            Assert.That(SkillHitRules.StepBlocker(new Vector3(400, 0, 50), new Vector3(600, 0, 50), [Floor, Wall]), Is.Null, "past it");
+            Assert.That(SkillHitRules.StepBlocker(new Vector3(0, 0, 400), new Vector3(600, 0, 400), [Floor, Wall]), Is.Null, "over it");
+        });
+    }
+
+    [Test]
+    public void AnArrowStep_IntoTheFloorPastTheMargin_IsFound() {
+        var from = new Vector3(0, 0, 50);
+        Assert.Multiple(() => {
+            Assert.That(SkillHitRules.StepBlocker(from, new Vector3(100, 0, 0), [Floor]), Is.Null, "onto the floor");
+            Assert.That(SkillHitRules.StepBlocker(from, new Vector3(100, 0, -1), [Floor]), Is.Null, "within the margin");
+            Assert.That(SkillHitRules.StepBlocker(from, new Vector3(100, 0, -10), [Floor]), Is.SameAs(Floor), "into it");
+        });
+    }
+
+    [Test]
+    public void AnArrowStep_ThroughABoxTheRayPasses_OrFromInsideOne_IsNotFound() {
+        var from = new Vector3(0, 0, 50);
+        var to = new Vector3(600, 0, 50);
+        Assert.Multiple(() => {
+            Assert.That(SkillHitRules.StepBlocker(from, to, [Box(Wall.Bounds.Min, Wall.Bounds.Max, group: 7)]), Is.Null, "group 7");
+            Assert.That(SkillHitRules.StepBlocker(from, to, [Box(Wall.Bounds.Min, Wall.Bounds.Max, fluid: true)]), Is.Null, "fluid");
+            Assert.That(SkillHitRules.StepBlocker(from, to, [Box(Wall.Bounds.Min, Wall.Bounds.Max, rotationZ: 45)]), Is.Null, "turned");
+            Assert.That(SkillHitRules.StepBlocker(new Vector3(300, 0, 50), to, [Wall]), Is.Null, "from inside");
+            Assert.That(SkillHitRules.StepBlocker(from, from, [Wall]), Is.Null, "no step");
+        });
     }
 }
