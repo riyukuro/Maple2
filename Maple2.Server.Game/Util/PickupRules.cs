@@ -17,6 +17,15 @@ public static class PickupRules {
     public const float DefaultMaxLength = 300f;
     // Server rule: the farthest the client throws a drop from the server's position (KR at most 580).
     public const float MaxThrow = 600f;
+    // Server rule: how long a death may take to reach the client. The server decides the death; until the client
+    // hears of it, its loot tick (MyPC::FUN_141530db0, mypc.cpp:4713) still sends pickups.
+    public const int DeadRaceGraceMs = 2000;
+
+    /// <summary>The player's own pickup (RequestItemPickup with no pet, RequestMesoPickup) comes only from the client's
+    /// loot tick, which sends nothing while the player is dead (MyPC::FUN_141530db0, mypc.cpp:4713). A pickup from a
+    /// player dead for <see cref="DeadRaceGraceMs"/> or more is refused; a pet's pickup has no such test
+    /// (statesummon.cpp:909).</summary>
+    public static bool DeadRefuses(bool dead, long deadMs) => dead && deadMs >= DeadRaceGraceMs;
 
     /// <summary>The horizontal reach of a pickup: the client's range (at least the throw) plus the throw from the
     /// server's position, plus the position lag.</summary>

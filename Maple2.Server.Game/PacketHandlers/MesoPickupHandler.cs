@@ -19,6 +19,9 @@ public class MesoPickupHandler : FieldPacketHandler {
             return;
         }
 
+        // Mesos come only from the client's loot tick, which sends nothing while the player is dead
+        // (PickupRules.DeadRefuses): each such drop is refused, so the client asks again after the revival.
+        bool deadRefuses = PickupRules.DeadRefuses(session.Player.IsDead, session.Player.DeadMs(Environment.TickCount64));
         byte count = packet.ReadByte();
         for (byte i = 0; i < count; i++) {
             int objectId = packet.ReadInt();
@@ -28,7 +31,7 @@ public class MesoPickupHandler : FieldPacketHandler {
             }
 
             // A drop that stays (no meso, or another player's) is refused, so the client can ask for it again.
-            if (!fieldItem.Value.IsMeso() || (fieldItem.ReceiverId != 0 && fieldItem.ReceiverId != session.CharacterId)) {
+            if (deadRefuses || !fieldItem.Value.IsMeso() || (fieldItem.ReceiverId != 0 && fieldItem.ReceiverId != session.CharacterId)) {
                 session.Send(ItemPickupPacket.Refuse(objectId));
                 continue;
             }

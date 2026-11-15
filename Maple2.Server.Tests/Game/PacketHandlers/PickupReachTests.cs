@@ -152,4 +152,44 @@ public class PickupReachTests {
             Assert.That(PickupRules.InReach(Vector3.Zero, new Vector3(float.NaN, 0, 0), 1350f), Is.False);
         });
     }
+    // Dead for deadMs: the client's loot tick sends no pickup of the player's own while it is dead
+    // (MyPC::FUN_141530db0, mypc.cpp:4713), but one it sent before it heard of the death may still come.
+    private static void Dead(GameSession session, long deadMs) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        typeof(FieldPlayer).GetField("isDead", any)!.SetValue(session.Player, true);
+        typeof(FieldPlayer).GetField("deadSinceTick", any)!.SetValue(session.Player, Environment.TickCount64 - deadMs);
+    }
+
+    // Dead past the race grace: the player's item and meso pickups are refused (answered, so the client asks again
+    // after the revival) and the drops stay. Before, both were taken. Just dead, the client may not know yet.
+    [TestCase(PickupRules.DeadRaceGraceMs + 1000, false)]
+    [TestCase(0, true)]
+    public void Pickups_OfADeadPlayer(long deadMs, bool taken) {
+        GameSession session = Start();
+        FieldItem item = Drop(session, Stackable, 0f);
+        FieldItem meso = Drop(session, Meso, 0f);
+        Dead(session, deadMs);
+
+        PickItem(session, item);
+        PickMeso(session, meso);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Field!.TryGetItem(item.ObjectId, out _), Is.EqualTo(!taken));
+            Assert.That(session.Field!.TryGetItem(meso.ObjectId, out _), Is.EqualTo(!taken));
+            Assert.That(session.Item.Inventory.Find(Stackable).Sum(entry => entry.Amount), Is.EqualTo(taken ? 1 : 0));
+        });
+    }
+
+    // A pet's pickup has no test of its owner's death in the client (statesummon.cpp:909): it is served.
+    [Test]
+    public void ItemPickup_ByThePetOfADeadPlayer_IsTaken() {
+        GameSession session = Start();
+        FieldItem drop = Drop(session, Stackable, 0f);
+        int petId = Summon(session, session.Player.Position);
+        Dead(session, PickupRules.DeadRaceGraceMs + 1000);
+
+        PickItem(session, drop, pickerId: petId);
+
+        Assert.That(session.Field!.TryGetItem(drop.ObjectId, out _), Is.False);
+    }
 }

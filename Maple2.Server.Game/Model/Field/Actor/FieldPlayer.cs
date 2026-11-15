@@ -49,6 +49,7 @@ public class FieldPlayer : Actor<Player> {
     // The actor the last state sync names for a hold or a grab (AiTargetState), else 0.
     public int StateActorId { get; private set; }
     private bool isDead;
+    private long deadSinceTick; // when the player last died
     public override bool IsDead {
         get => isDead;
         protected set {
@@ -59,6 +60,7 @@ public class FieldPlayer : Actor<Player> {
             if (!isDead) {
                 DeathState = DeathState.Alive;
             } else {
+                deadSinceTick = Environment.TickCount64;
                 if (Session.Field.Metadata.Property.OnlyDarkTomb) {
                     DeathState = DeathState.Metal;
                 } else {
@@ -67,6 +69,9 @@ public class FieldPlayer : Actor<Player> {
             }
         }
     }
+    /// <summary>How long the player has been dead at <paramref name="tickCount"/> (0 while alive).</summary>
+    public long DeadMs(long tickCount) => isDead ? tickCount - deadSinceTick : 0;
+
     public ActorSubState SubState { get; set; }
     public PlayerObjectFlag Flag { get; set; }
     private long flagTick;
