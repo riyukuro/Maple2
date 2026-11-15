@@ -26,6 +26,17 @@ public sealed class WorldCallDeadline : Interceptor {
 
     // The calls left as they are (method names of the World service).
     private static readonly HashSet<string> Unbounded = ["Disconnect"];
+    // The calls always sent, the World answering or not (they still get the deadline): the release of an account
+    // lock the World just granted. Skipped, the lock stayed held to its 30 s expiry and refused the next save.
+    private static readonly HashSet<string> NeverSkipped = ["ReleaseLock"];
+
+    // The trailer that marks a call not sent (its Unavailable is not a World that is down).
+    private const string NotSentKey = "ms2-not-sent";
+
+    // The call was not sent because the World is not answering. Its Unavailable says nothing of the World's state: a
+    // World that is down holds nothing, a slow one may (an account lock, so AcquireLock reads this as held).
+    public static bool NotSent(RpcException ex) =>
+        ex.StatusCode == StatusCode.Unavailable && ex.Trailers.Any(entry => entry.Key == NotSentKey);
 
     // The thread is a field's loop (FieldManager.UpdateLoop).
     [ThreadStatic]
@@ -70,7 +81,7 @@ public sealed class WorldCallDeadline : Interceptor {
 
     // A call on a field's thread is sent: the World answers, or the retry time came (this call takes it).
     internal static bool Admit(string method, DateTime now) {
-        if (!fieldThread || !worldSlow || Unbounded.Contains(method)) {
+        if (!fieldThread || !worldSlow || Unbounded.Contains(method) || NeverSkipped.Contains(method)) {
             return true;
         }
         long retry = Interlocked.Read(ref retryAt);
@@ -81,18 +92,22 @@ public sealed class WorldCallDeadline : Interceptor {
         return Interlocked.CompareExchange(ref retryAt, (now + FieldWait + RetryWait).Ticks, retry) == retry;
     }
 
-    private static ClientInterceptorContext<TRequest, TResponse> WithDeadline<TRequest, TResponse>(ClientInterceptorContext<TRequest, TResponse> context)
-        where TRequest : class where TResponse : class {
+    // capped: the call runs on the field thread's FieldWait (not on its own shorter deadline).
+    private static ClientInterceptorContext<TRequest, TResponse> WithDeadline<TRequest, TResponse>(ClientInterceptorContext<TRequest, TResponse> context,
+        out bool capped) where TRequest : class where TResponse : class {
         DateTime? deadline = DeadlineFor(context.Method.Name, context.Options, DateTime.UtcNow);
+        capped = fieldThread && deadline != null;
         if (deadline == null) {
             return context;
         }
         return new ClientInterceptorContext<TRequest, TResponse>(context.Method, context.Host, context.Options.WithDeadline(deadline.Value));
     }
 
-    private static void Answered(string method, Exception? error) {
+    // Only a call that ran out on the FieldWait cap makes the World count as not answering: a call's own shorter
+    // deadline (MapPopulation's 2 s) can run out on a busy but answering World.
+    private static void Answered(string method, bool capped, Exception? error) {
         if (error is RpcException { StatusCode: StatusCode.DeadlineExceeded }) {
-            if (!fieldThread) {
+            if (!capped) {
                 return;
             }
             if (!worldSlow) {
@@ -113,22 +128,23 @@ public sealed class WorldCallDeadline : Interceptor {
             return continuation(request, context);
         }
         if (!Admit(context.Method.Name, DateTime.UtcNow)) {
-            throw new RpcException(new Status(StatusCode.Unavailable, $"World not answering: {context.Method.Name} not sent"));
+            throw new RpcException(new Status(StatusCode.Unavailable, $"World not answering: {context.Method.Name} not sent"),
+                new Grpc.Core.Metadata { { NotSentKey, "1" } });
         }
-        context = WithDeadline(context);
+        context = WithDeadline(context, out bool capped);
         try {
             TResponse response = continuation(request, context);
-            Answered(context.Method.Name, null);
+            Answered(context.Method.Name, capped, null);
             return response;
         } catch (Exception ex) {
-            Answered(context.Method.Name, ex);
+            Answered(context.Method.Name, capped, ex);
             throw;
         }
     }
 
     public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(TRequest request, ClientInterceptorContext<TRequest, TResponse> context,
         AsyncUnaryCallContinuation<TRequest, TResponse> continuation) {
-        return continuation(request, WithDeadline(context));
+        return continuation(request, WithDeadline(context, out _));
     }
 }
 

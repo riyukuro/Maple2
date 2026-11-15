@@ -197,6 +197,66 @@ public class WorldCallDeadlineTests {
         Assert.That(WorldCallDeadline.WorldSlow, Is.False);
     }
 
+    // A call's own shorter deadline (MapPopulation's 2 s) that runs out does not make the World count as not
+    // answering: only one on the FieldWait cap does. Before, every field call failed for RetryWait after it.
+    [Test]
+    public void AnOwnShorterDeadline_ThatRunsOut_SkipsNothing() {
+        WorldCallDeadline.FieldThread = true;
+        Assert.Throws<RpcException>(() => Call(Late, new CallOptions(deadline: DateTime.UtcNow.AddSeconds(2))));
+        Assert.That(WorldCallDeadline.WorldSlow, Is.False);
+
+        Assert.Throws<RpcException>(() => Call(Late));
+        Assert.That(WorldCallDeadline.WorldSlow, Is.True);
+    }
+
+    // A World client whose calls go through the interceptor and are answered at once (counted).
+    private sealed class CountingInvoker : CallInvoker {
+        public int Calls;
+
+        public override TResponse BlockingUnaryCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request) {
+            Calls++;
+            return (TResponse) Activator.CreateInstance(typeof(TResponse))!;
+        }
+
+        public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request) => throw new NotSupportedException();
+        public override AsyncServerStreamingCall<TResponse> AsyncServerStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request) => throw new NotSupportedException();
+        public override AsyncClientStreamingCall<TRequest, TResponse> AsyncClientStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options) => throw new NotSupportedException();
+        public override AsyncDuplexStreamingCall<TRequest, TResponse> AsyncDuplexStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options) => throw new NotSupportedException();
+    }
+
+    private static GameSession SessionWith(WorldClient world) {
+        var session = (GameSession) System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(GameSession));
+        typeof(GameSession).GetProperty(nameof(GameSession.World))!.SetValue(session, world);
+        typeof(Maple2.Server.Core.Network.Session).GetField("Logger", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(session, new Serilog.LoggerConfiguration().CreateLogger());
+        return session;
+    }
+
+    private static object? Invoke(GameSession session, string name, object[] args) {
+        System.Reflection.MethodInfo method = typeof(GameSession).GetMethod(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        return method.Invoke(session, args);
+    }
+
+    // While the World is not answering, the account lock is not asked on a field's thread: that is a lock held (the
+    // store is refused), not a World that is down (which holds none, and the store went on without the lock). The
+    // release of a lock taken is still sent, else the lock stayed held to its expiry.
+    [Test]
+    public void WhileTheWorldIsNotAnswering_TheLockCountsAsHeld_AndItsReleaseIsSent() {
+        var invoker = new CountingInvoker();
+        GameSession session = SessionWith(new WorldClient(invoker.Intercept(WorldCallDeadline.Instance)));
+        WorldCallDeadline.FieldThread = true;
+        WorldCallDeadline.SetSlow(DateTime.UtcNow.AddMinutes(1));
+
+        object? take = Invoke(session, "AcquireLock", [1L, 0L, 5]);
+        Assert.Multiple(() => {
+            Assert.That(take?.ToString(), Is.EqualTo("Held"));
+            Assert.That(invoker.Calls, Is.Zero);
+        });
+
+        Invoke(session, "ReleaseLock", [1L, 7L]);
+        Assert.That(invoker.Calls, Is.EqualTo(1));
+    }
+
     // A mail sent while the World hangs: the handler (on the field's thread) ends at once; the notice is sent.
     [Test]
     public void AMailNotice_ToAHungWorld_DoesNotHoldTheHandler() {

@@ -1770,6 +1770,11 @@ public sealed partial class GameSession : Core.Network.Session {
                 response = World.AcquireLock(new LockRequest {
                     AccountId = accountId,
                 });
+            } catch (RpcException ex) when (WorldCallDeadline.NotSent(ex)) {
+                // Not sent: the World is alive but not answering, and may hold the lock. The store is refused as for
+                // a lock held elsewhere (without the lock it could write over another server's save).
+                Logger.Warning("World not answering; lock for account {AccountId} not asked, taken as held", accountId);
+                return LockTake.Held;
             } catch (RpcException ex) when (ex.StatusCode == StatusCode.Unavailable) {
                 // A world that is down (stopped before this server) holds no locks and grants none. The save goes on
                 // without the lock, as after the retries below; a throw here would skip the save.
