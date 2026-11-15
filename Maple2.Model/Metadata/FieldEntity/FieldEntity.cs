@@ -70,7 +70,10 @@ public record FieldBoxColliderEntity(
     Vector3 Size,
     bool IsWhiteBox,
     bool IsFluid,
-    MapAttribute MapAttribute) : FieldEntity(Id, Position, Rotation, Scale, Bounds);
+    MapAttribute MapAttribute,
+    // The client's PhysX shape group: a whitebox's PropCollisionGroup (worldservice_1.cpp:3748-3756), 9 for a cube's
+    // GeneratePhysX box (cubemapinformationservice_3.cpp:4342).
+    ushort CollisionGroup) : FieldEntity(Id, Position, Rotation, Scale, Bounds);
 
 public record FieldMeshColliderEntity(
     FieldEntityId Id,

@@ -368,6 +368,11 @@ public static class SkillHitRules {
     // feet): the floor the owner stands on, and a server position a little below the client's, never count.
     public const float SightFloorMargin = 20f;
 
+    // The ray's shape groups: 0x201 is groups 0 and 9 (CPhysXHelper::RayCastFromPoint, physxhelper.cpp:433, into
+    // raycastAllShapes over all shapes, physxhelper.cpp:218). Most whiteboxes are group 7, which it passes; live players
+    // and NPCs are group 2. A cube's own group-8 shapes are mesh colliders, which SightBlocker never tests.
+    public static bool SightGroup(ushort group) => group is 0 or 9;
+
     // What the client's line of sight does with a region's hit (SightTest).
     public enum SightDrop { None, Blocked, Overhead }
 
@@ -405,9 +410,9 @@ public static class SkillHitRules {
         return SightDrop.Blocked;
     }
 
-    // The first of the map's box colliders (not fluid, turned only by quarter turns about Z, so its bounds are the box)
-    // that the flattened ray from the owner to the target passes through: one that rises past SightFloorMargin above the
-    // owner's feet, reaches below them, and does not hold the owner. Which colliders groups 0x201 take is not mapped.
+    // The first of the map's box colliders (in a group the ray tests, not fluid, turned only by quarter turns about Z, so
+    // its bounds are the box) that the flattened ray from the owner to the target passes through: one that rises past
+    // SightFloorMargin above the owner's feet, reaches below them, and does not hold the owner.
     public static FieldBoxColliderEntity? SightBlocker(Vector3 owner, Vector3 target, IEnumerable<FieldBoxColliderEntity> boxes) {
         var start = new Vector2(owner.X, owner.Y);
         var delta = new Vector2(target.X - owner.X, target.Y - owner.Y);
@@ -416,7 +421,7 @@ public static class SkillHitRules {
         }
         foreach (FieldBoxColliderEntity box in boxes) {
             BoundingBox3 bounds = box.Bounds;
-            if (box.IsFluid || !QuarterTurned(box.Rotation) || owner.Z <= bounds.Min.Z || owner.Z >= bounds.Max.Z - SightFloorMargin) {
+            if (!SightGroup(box.CollisionGroup) || box.IsFluid || !QuarterTurned(box.Rotation) || owner.Z <= bounds.Min.Z || owner.Z >= bounds.Max.Z - SightFloorMargin) {
                 continue;
             }
             if (start.X >= bounds.Min.X && start.X <= bounds.Max.X && start.Y >= bounds.Min.Y && start.Y <= bounds.Max.Y) {

@@ -51,6 +51,26 @@ public class MapDataFormatTests {
         });
     }
 
+    // A box collider keeps the client's PhysX group through the map data: the line of sight tests only groups 0 and 9.
+    [Test]
+    public void BoxColliderGroupReads() {
+        var whitebox = new FieldBoxColliderEntity(new FieldEntityId(3, 4, "wall"), new Vector3(0, 0, 0), Vector3.Zero, 1,
+            new BoundingBox3(new Vector3(-50, -50, 0), new Vector3(50, 50, 300)), new Vector3(100, 100, 300), IsWhiteBox: true,
+            IsFluid: false, MapAttribute: default, CollisionGroup: 7);
+        var structure = new FieldAccelerationStructure();
+        structure.AddEntities(new Dictionary<Vector3S, List<FieldEntity>>(), new Vector3S(short.MaxValue, 0, 0),
+            new Vector3S(0, 0, 0), [whitebox], 0);
+        var writer = new ByteWriter();
+        writer.WriteClass(structure);
+
+        var read = new ByteReader(writer.ToArray(), 0).ReadClassWithNew<FieldAccelerationStructure>();
+        var groups = new List<ushort>();
+        read.QueryBox(new Vector3(-100, -100, -100), new Vector3(100, 100, 400), entity => {
+            if (entity is FieldBoxColliderEntity box) groups.Add(box.CollisionGroup);
+        });
+        Assert.That(groups, Is.EqualTo(new List<ushort> { 7 }));
+    }
+
     // A blob from the older ingest starts with the grid size: it has no marker.
     [Test]
     public void UnmarkedBlobStops() {

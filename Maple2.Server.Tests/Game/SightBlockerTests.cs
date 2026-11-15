@@ -12,8 +12,8 @@ namespace Maple2.Server.Tests.Game;
 public class SightBlockerTests {
     private static readonly FieldEntityId Id = new(0, 0, string.Empty);
 
-    private static FieldBoxColliderEntity Box(Vector3 min, Vector3 max, bool fluid = false, float rotationZ = 0) {
-        return new FieldBoxColliderEntity(Id, 0.5f * (min + max), new Vector3(0, 0, rotationZ), 1f, new BoundingBox3(min, max), max - min, false, fluid, MapAttribute.grass);
+    private static FieldBoxColliderEntity Box(Vector3 min, Vector3 max, bool fluid = false, float rotationZ = 0, ushort group = 9) {
+        return new FieldBoxColliderEntity(Id, 0.5f * (min + max), new Vector3(0, 0, rotationZ), 1f, new BoundingBox3(min, max), max - min, false, fluid, MapAttribute.grass, group);
     }
 
     private static readonly Vector3 Caster = new(0, 0, 0);
@@ -38,6 +38,18 @@ public class SightBlockerTests {
             Assert.That(SkillHitRules.SightBlocker(Caster, Target, [Box(Wall.Bounds.Min, Wall.Bounds.Max, fluid: true)]), Is.Null);
             Assert.That(SkillHitRules.SightBlocker(Caster, Target, [Box(Wall.Bounds.Min, Wall.Bounds.Max, rotationZ: 45)]), Is.Null);
             Assert.That(SkillHitRules.SightBlocker(Caster, Target, [Box(Wall.Bounds.Min, Wall.Bounds.Max, rotationZ: 270)]), Is.Not.Null, "a quarter turn keeps the box");
+        });
+    }
+
+    // The ray tests PhysX groups 0 and 9 (0x201): a whitebox of group 7 (most of them) or a cube of group 8 is passed.
+    [Test]
+    public void ABoxOutsideTheRaysGroups_DoesNotBlock() {
+        Assert.Multiple(() => {
+            Assert.That(SkillHitRules.SightBlocker(Caster, Target, [Box(Wall.Bounds.Min, Wall.Bounds.Max, group: 7)]), Is.Null);
+            Assert.That(SkillHitRules.SightBlocker(Caster, Target, [Box(Wall.Bounds.Min, Wall.Bounds.Max, group: 8)]), Is.Null);
+            Assert.That(SkillHitRules.SightBlocker(Caster, Target, [Box(Wall.Bounds.Min, Wall.Bounds.Max, group: 3)]), Is.Null);
+            Assert.That(SkillHitRules.SightBlocker(Caster, Target, [Box(Wall.Bounds.Min, Wall.Bounds.Max, group: 0)]), Is.Not.Null, "group 0");
+            Assert.That(SkillHitRules.SightBlocker(Caster, Target, [Box(Wall.Bounds.Min, Wall.Bounds.Max, group: 9)]), Is.Not.Null, "group 9");
         });
     }
 

@@ -659,9 +659,9 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
     // The map-data blob begins with this marker and FormatVersion, so a blob of another layout stops with a message
     // instead of being misread. Read as the old layout's grid size, the marker gives negative X and Y, which no map has.
     // Version 1 was the unmarked layout; 2 added the vibrate entities' HideGroupId, 3 their MaterialTag,
-    // 4 their ShapeDimensions.
+    // 4 their ShapeDimensions, 5 the box colliders' CollisionGroup.
     public const int FormatMarker = unchecked((int) 0x8D41F2A0);
-    public const int FormatVersion = 4;
+    public const int FormatVersion = 5;
 
     /// <summary>Reads the marker and version; a blob without them or of another version throws.</summary>
     public static void ReadFormat(IByteReader reader) {
@@ -832,6 +832,7 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                 writer.Write(boxCollider.IsWhiteBox);
                 writer.Write(boxCollider.IsFluid);
                 writer.Write(boxCollider.MapAttribute);
+                writer.Write<ushort>(boxCollider.CollisionGroup);
                 break;
             case FieldMeshColliderEntity meshCollider:
                 if ((memberFlags & FieldEntityMembers.Llid) != 0) {
@@ -998,7 +999,8 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                     Size: reader.Read<Vector3>(),
                     IsWhiteBox: reader.Read<bool>(),
                     IsFluid: reader.Read<bool>(),
-                    MapAttribute: reader.Read<MapAttribute>());
+                    MapAttribute: reader.Read<MapAttribute>(),
+                    CollisionGroup: reader.Read<ushort>());
             case FieldEntityType.MeshCollider:
                 if ((memberFlags & FieldEntityMembers.Llid) != 0) {
                     llid = reader.Read<uint>();

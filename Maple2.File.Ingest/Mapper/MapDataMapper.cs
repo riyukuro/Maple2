@@ -21,6 +21,11 @@ namespace Maple2.File.Ingest.Mapper;
 public class MapDataMapper : TypeMapper<MapDataMetadata> {
     private const float BLOCK_SIZE = (float) Constant.BlockSize;
     private const float HALF_BLOCK = 0.5f * BLOCK_SIZE;
+    // The client's PhysX groups for box colliders: a whitebox defaults to 3 unless its PropCollisionGroup says otherwise
+    // (WorldService::OnPhysXProp, worldservice_1.cpp:3748-3756), a cube's GeneratePhysX box is always 9
+    // (CubeMapInformationService::GeneratePhysX, cubemapinformationservice_3.cpp:4342).
+    private const ushort WHITEBOX_GROUP = 3;
+    private const ushort GENERATE_PHYSX_GROUP = 9;
 
     private readonly HashSet<string> xBlocks;
     private readonly XBlockParser parser;
@@ -127,7 +132,8 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                         Size: whitebox.ShapeDimensions,
                         IsWhiteBox: true,
                         IsFluid: false,
-                        MapAttribute: MapAttribute.none);
+                        MapAttribute: MapAttribute.none,
+                        CollisionGroup: whitebox is IPhysXProp whiteboxProp ? whiteboxProp.PropCollisionGroup : WHITEBOX_GROUP);
                     break;
                 case IMesh mesh:
                     if (entity is IMS2Vibrate { Enabled: true } vibrate) {
@@ -193,7 +199,8 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                                 Size: meshPhysXDimension,
                                 IsWhiteBox: false,
                                 IsFluid: isFluid,
-                                MapAttribute: attribute);
+                                MapAttribute: attribute,
+                                CollisionGroup: GENERATE_PHYSX_GROUP);
 
                             break;
                         }
@@ -273,7 +280,8 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                         Size: physXDimension,
                         IsWhiteBox: false,
                         IsFluid: false,
-                        MapAttribute: MapAttribute.none);
+                        MapAttribute: MapAttribute.none,
+                        CollisionGroup: GENERATE_PHYSX_GROUP);
                     break;
                 default:
                     continue;

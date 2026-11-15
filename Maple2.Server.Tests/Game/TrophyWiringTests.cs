@@ -692,7 +692,7 @@ public class TrophyWiringTests {
         Quest elsewhere = test.StartQuest(QuestWith(QuestId + 3, ConditionType.stay_cube, codes: [Town + 1]));
         test.EnterMap(TestGameSession.Map(Town));
         var id = new Maple2.Model.Metadata.FieldEntity.FieldEntityId(0, 0, string.Empty);
-        var cube = new Maple2.Model.Metadata.FieldEntity.FieldBoxColliderEntity(id, default, default, 1f, default, default, false, false, MapAttribute.grass);
+        var cube = new Maple2.Model.Metadata.FieldEntity.FieldBoxColliderEntity(id, default, default, 1f, default, default, false, false, MapAttribute.grass, 9);
 
         // Standing still: the block under the player is looked up once per second, whatever the state.
         Maple2.Server.Game.Model.FieldPlayer.ReportStayCube(session, cube);

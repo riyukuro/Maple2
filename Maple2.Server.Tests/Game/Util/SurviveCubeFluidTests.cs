@@ -33,7 +33,7 @@ public class SurviveCubeFluidTests {
         new(Id, Block * new Vector3(cell.X, cell.Y, cell.Z), default, 1f, LiquidType.lava, CellBounds(cell), 0, false, true, MapAttribute.none);
 
     private static FieldBoxColliderEntity Grass(Vector3S cell) =>
-        new(Id, Block * new Vector3(cell.X, cell.Y, cell.Z), default, 1f, CellBounds(cell), default, false, false, MapAttribute.grass);
+        new(Id, Block * new Vector3(cell.X, cell.Y, cell.Z), default, 1f, CellBounds(cell), default, false, false, MapAttribute.grass, 9);
 
     private static List<LiquidType> At(FieldAccelerationStructure structure, Vector3 position) {
         var liquids = new List<LiquidType>();
