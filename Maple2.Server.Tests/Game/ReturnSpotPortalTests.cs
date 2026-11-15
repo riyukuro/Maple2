@@ -54,4 +54,33 @@ public class ReturnSpotPortalTests {
 
         Assert.That(test.Session.Player.Value.Character.ReturnPosition, Is.EqualTo(new Vector3(1, 2, 3)));
     }
+
+    // The move made: the player is in the instance, and the spot is where portal 4 was used (the instance saves no
+    // return field of its own, so the arrival keeps it). A touch portal's spot is not taken.
+    [TestCase(PortalActionType.Interact, true)]
+    [TestCase(PortalActionType.Touch, false)]
+    public void MadeMove_TakesThePortalsSpot(PortalActionType actionType, bool taken) {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(Instance));
+        FieldManager target = session.Field!;
+        test.EnterMap(TestGameSession.Map(ReturnMap));
+        FieldManager field = session.Field!;
+        QuestConditionWiringTests.SetSkills(test);
+        QuestConditionWiringTests.ReadyFieldChange(test, target);
+        field.SpawnPortal(new Portal(4, Instance, 1, PortalType.Field, actionType, new Vector3(1350, -1275, 2575), Vector3.Zero,
+            new Vector3(200, 350, 250), 0, 0, true, true, true));
+        Character character = session.Player.Value.Character;
+        character.ReturnMaps.Push(ReturnMap);
+        character.ReturnPosition = new Vector3(1, 2, 3);
+        session.Player.Position = new Vector3(1350, -1275, 2575);
+
+        Assert.That(field.UsePortal(session, 4, ""), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Field, Is.SameAs(target));
+            Assert.That(character.ReturnMaps.Peek(), Is.EqualTo(ReturnMap));
+            Assert.That(character.ReturnPosition, Is.EqualTo(taken ? new Vector3(1350, -1275, 2575) : new Vector3(1, 2, 3)));
+        });
+    }
 }

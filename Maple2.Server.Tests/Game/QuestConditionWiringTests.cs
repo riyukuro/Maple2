@@ -330,32 +330,14 @@ public class QuestConditionWiringTests : TriggerTestBase {
     private static MapMetadata LimitedMap(int id) =>
         TestGameSession.Map(id) with { Limit = new MapMetadataLimit(0, 0, 0, 0, [], true, true, true, true, true, true, true) };
 
-    // A channel's field factory that already runs the given field.
-    private static FieldManager.Factory RunningFactory(TestGameSession test, FieldManager running) {
-        var factory = (FieldManager.Factory) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager.Factory));
-        void Set(string name, object value) => typeof(FieldManager.Factory).GetField(name, Any)!.SetValue(factory, value);
-        Set("mapLocks", new ConcurrentDictionary<int, SemaphoreSlim>());
-        Set("fields", new ConcurrentDictionary<int, ConcurrentDictionary<int, FieldManager>> {
-            [running.MapId] = new ConcurrentDictionary<int, FieldManager> { [0] = running },
-        });
-        Set("<ServerTableMetadata>k__BackingField", test.ServerTableMetadata);
-        return factory;
-    }
-
-    // 10001001: <condition type="map" code="02000062" />. A portal move into the map is one entry: the portal
-    // itself does not count, the field entry that follows does (GameSession.EnterField counts every entry, a portal's
-    // included). Before, the portal counted too, so a move by portal counted twice.
-    [Test]
-    public void Map_10001001_APortalMoveIsNotCountedByThePortal() {
-        Start();
-        test.EnterMap(LimitedMap(2000062));
-        FieldManager target = test.Session.Field!;
-        test.EnterMap(LimitedMap(2000001));
-        SetSkills();
+    // What a field change by portal on this server reads, for a test field the player is in and a running target
+    // field the channel's factory hands out (also used by ReturnSpotPortalTests).
+    internal static void ReadyFieldChange(TestGameSession test, FieldManager target) {
+        FieldManager current = test.Session.Field!;
         typeof(Maple2.Server.Game.Session.GameSession).GetField("<FieldFactory>k__BackingField", Any)!
             .SetValue(test.Session, RunningFactory(test, target));
         // The two fields' entity tables and locks (the test fields leave them unset).
-        foreach (FieldManager field in new[] { target, Field }) {
+        foreach (FieldManager field in new[] { target, current }) {
             foreach (FieldInfo info in typeof(FieldManager).GetFields(Any)) {
                 if (info.GetValue(field) == null
                     && (info.FieldType == typeof(object) || info.FieldType.IsGenericType
@@ -372,10 +354,6 @@ public class QuestConditionWiringTests : TriggerTestBase {
         SetSession(nameof(test.Session.InteractStarted), new HashSet<string>());
         SetSession(nameof(test.Session.CubeStarted), new HashSet<string>());
         SetSession(nameof(test.Session.Scheduler), new Maple2.Tools.Scheduler.EventQueue(Serilog.Log.Logger));
-        FieldPortal portal = Field.SpawnPortal(new Portal(3, 2000062, 1, PortalType.Field, PortalActionType.Touch, Vector3.Zero, Vector3.Zero,
-            Vector3.Zero, 0, 0, true, true, true));
-        Quest quest = StartQuest(Condition(ConditionType.map, 1, ["02000062"], []));
-
         // The arrival portal (1) is not one of the map's: the player comes in at the default place.
         var entities = (MapEntityMetadata) RuntimeHelpers.GetUninitializedObject(typeof(MapEntityMetadata));
         typeof(MapEntityMetadata).GetField("<Portals>k__BackingField", Any)!.SetValue(entities, new Dictionary<int, Portal>());
@@ -404,8 +382,37 @@ public class QuestConditionWiringTests : TriggerTestBase {
             }
         }
         typeof(GuildManager).GetField("session", Any)!.SetValue(test.Session.Guild, test.Session); // no guild
-        Field.Players.Clear(); // the leave of the old field is not what is asked here
+        current.Players.Clear(); // the leave of the old field is not what is asked here
         typeof(FieldPlayer).GetField("scheduler", Any)!.SetValue(test.Session.Player, new Maple2.Tools.Scheduler.EventQueue(Serilog.Log.Logger));
+    }
+
+    // A channel's field factory that already runs the given field.
+    private static FieldManager.Factory RunningFactory(TestGameSession test, FieldManager running) {
+        var factory = (FieldManager.Factory) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager.Factory));
+        void Set(string name, object value) => typeof(FieldManager.Factory).GetField(name, Any)!.SetValue(factory, value);
+        Set("mapLocks", new ConcurrentDictionary<int, SemaphoreSlim>());
+        Set("fields", new ConcurrentDictionary<int, ConcurrentDictionary<int, FieldManager>> {
+            [running.MapId] = new ConcurrentDictionary<int, FieldManager> { [0] = running },
+        });
+        Set("<ServerTableMetadata>k__BackingField", test.ServerTableMetadata);
+        return factory;
+    }
+
+    // 10001001: <condition type="map" code="02000062" />. A portal move into the map is one entry: the portal
+    // itself does not count, the field entry that follows does (GameSession.EnterField counts every entry, a portal's
+    // included). Before, the portal counted too, so a move by portal counted twice.
+    [Test]
+    public void Map_10001001_APortalMoveIsNotCountedByThePortal() {
+        Start();
+        test.EnterMap(LimitedMap(2000062));
+        FieldManager target = test.Session.Field!;
+        test.EnterMap(LimitedMap(2000001));
+        SetSkills();
+        ReadyFieldChange(test, target);
+        FieldPortal portal = Field.SpawnPortal(new Portal(3, 2000062, 1, PortalType.Field, PortalActionType.Touch, Vector3.Zero, Vector3.Zero,
+            Vector3.Zero, 0, 0, true, true, true));
+        Quest quest = StartQuest(Condition(ConditionType.map, 1, ["02000062"], []));
+
         Assert.That(Field.UsePortal(test.Session, portal.Value.Id, ""), Is.True);
 
         Assert.Multiple(() => {

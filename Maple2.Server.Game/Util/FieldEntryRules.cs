@@ -1,5 +1,7 @@
-﻿using Maple2.Model.Enum;
+﻿using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
+using Maple2.Model.Game;
 
 namespace Maple2.Server.Game.Util;
 
@@ -92,20 +94,32 @@ public static class FieldEntryRules {
     // quest instance such as 52000037, which 02000043's hidden portal 4 leads into) goes back there, and a logout in
     // it comes back there (LoginUsesReturnSpot) instead of at the return field's spawn, far from a hidden portal with
     // no minimap mark. A move within the field keeps the spot it has. Not a touch portal's spot: an arrival there
-    // would be taken through the portal again at once.
-    public static bool KeepsSpotLeaving(int fieldMapId, int returnMapId, int targetMapId, PortalActionType actionType) {
-        return fieldMapId != 0 && fieldMapId == returnMapId && targetMapId != fieldMapId && actionType != PortalActionType.Touch;
+    // would be taken through the portal again at once. Not in a dungeon field: some room maps return to themselves
+    // (Zakum's 2000426), and the spot there is the dungeon hall's (DungeonRoomHandler), not one inside the room.
+    public static bool KeepsSpotLeaving(int fieldMapId, int returnMapId, int targetMapId, PortalActionType actionType, bool inDungeon) {
+        return !inDungeon && fieldMapId != 0 && fieldMapId == returnMapId && targetMapId != fieldMapId && actionType != PortalActionType.Touch;
     }
 
     // An arrival in the return field ends its spot: it is a spot to go back to only while the player is away, and one
-    // left from an earlier trip would else place a login after a logout in the field itself.
-    public static bool EndsReturnSpot(int arrivalMapId, int returnMapId) => arrivalMapId != 0 && arrivalMapId == returnMapId;
+    // left from an earlier trip would else place a login after a logout in the field itself. Not an arrival in a
+    // dungeon room field of the return field's map: the hall's spot is the way out of the room.
+    public static bool EndsReturnSpot(int arrivalMapId, int returnMapId, bool inDungeon) =>
+        !inDungeon && arrivalMapId != 0 && arrivalMapId == returnMapId;
 
     // A login (the character list's move names no map: the character's saved one is entered) on the return field
     // arrives at its spot: the quit put the saved map back to the return field (QuitHandler), so a logout in a field
     // left to from there comes back where the player left it. With no spot (0 0 0) it is the field's spawn as before.
     public static bool LoginUsesReturnSpot(int migrateMapId, MigrationType type, long ownerId, int roomId, int fieldId, int returnMapId) {
         return migrateMapId == 0 && type == MigrationType.Normal && ownerId == 0 && roomId == 0 && fieldId != 0 && fieldId == returnMapId;
+    }
+
+    // The spot a login enters at: the one the move names, else the return field's spot when LoginUsesReturnSpot.
+    public static Vector3 LoginPosition(Vector3 position, int migrateMapId, MigrationType type, long ownerId, int roomId, int fieldId, Character character) {
+        if (position == default && LoginUsesReturnSpot(migrateMapId, type, ownerId, roomId, fieldId,
+                character.ReturnMaps.IsEmpty ? 0 : character.ReturnMaps.Peek())) {
+            return character.ReturnPosition;
+        }
+        return position;
     }
 
     // A running dungeon room on this channel: its lobby room id, whether the character has a record in it (it entered

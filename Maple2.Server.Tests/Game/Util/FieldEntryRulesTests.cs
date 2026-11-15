@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
+using Maple2.Model.Game;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
@@ -99,11 +101,13 @@ public class FieldEntryRulesTests {
     [Test]
     public void KeepsSpotLeaving_PortalOutOfTheReturnField() {
         Assert.Multiple(() => {
-            Assert.That(FieldEntryRules.KeepsSpotLeaving(2000043, 2000043, 52000037, PortalActionType.Interact), Is.True);
-            Assert.That(FieldEntryRules.KeepsSpotLeaving(2000043, 2000043, 2000043, PortalActionType.Interact), Is.False);
-            Assert.That(FieldEntryRules.KeepsSpotLeaving(52000037, 2000043, 52000066, PortalActionType.Interact), Is.False);
-            Assert.That(FieldEntryRules.KeepsSpotLeaving(2000043, 2000043, 2000044, PortalActionType.Touch), Is.False);
-            Assert.That(FieldEntryRules.KeepsSpotLeaving(0, 0, 2000043, PortalActionType.Interact), Is.False);
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(2000043, 2000043, 52000037, PortalActionType.Interact, false), Is.True);
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(2000043, 2000043, 2000043, PortalActionType.Interact, false), Is.False);
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(52000037, 2000043, 52000066, PortalActionType.Interact, false), Is.False);
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(2000043, 2000043, 2000044, PortalActionType.Touch, false), Is.False);
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(0, 0, 2000043, PortalActionType.Interact, false), Is.False);
+            // A dungeon room field of a map that returns to itself (Zakum's 2000426) keeps the hall's spot.
+            Assert.That(FieldEntryRules.KeepsSpotLeaving(2000426, 2000426, 2000427, PortalActionType.Interact, true), Is.False);
         });
     }
 
@@ -111,9 +115,10 @@ public class FieldEntryRulesTests {
     [Test]
     public void EndsReturnSpot_OnArrivalInTheReturnField() {
         Assert.Multiple(() => {
-            Assert.That(FieldEntryRules.EndsReturnSpot(2000043, 2000043), Is.True);
-            Assert.That(FieldEntryRules.EndsReturnSpot(52000066, 2000043), Is.False);
-            Assert.That(FieldEntryRules.EndsReturnSpot(0, 0), Is.False);
+            Assert.That(FieldEntryRules.EndsReturnSpot(2000043, 2000043, false), Is.True);
+            Assert.That(FieldEntryRules.EndsReturnSpot(52000066, 2000043, false), Is.False);
+            Assert.That(FieldEntryRules.EndsReturnSpot(0, 0, false), Is.False);
+            Assert.That(FieldEntryRules.EndsReturnSpot(2000426, 2000426, true), Is.False);
         });
     }
 
@@ -128,6 +133,23 @@ public class FieldEntryRulesTests {
             Assert.That(FieldEntryRules.LoginUsesReturnSpot(0, MigrationType.Normal, 0, 7, 2000043, 2000043), Is.False);
             Assert.That(FieldEntryRules.LoginUsesReturnSpot(0, MigrationType.Normal, 5, 0, 2000043, 2000043), Is.False);
             Assert.That(FieldEntryRules.LoginUsesReturnSpot(0, MigrationType.Normal, 0, 0, 0, 0), Is.False);
+        });
+    }
+
+    // A login on the return field (the quit put the saved map back to it) enters at the spot the portal out of it was
+    // used at; a move that names a spot keeps it, and with no spot it is the field's spawn (0 0 0).
+    [Test]
+    public void LoginPosition_EntersAtTheReturnSpot() {
+        var character = new Character { Name = "x", Mastery = new Mastery(), MapId = 2000043, ReturnPosition = new Vector3(1350, -1275, 2575) };
+        character.ReturnMaps.Push(2000043);
+        var named = new Vector3(1, 2, 3);
+        Assert.Multiple(() => {
+            Assert.That(FieldEntryRules.LoginPosition(default, 0, MigrationType.Normal, 0, 0, 2000043, character),
+                Is.EqualTo(new Vector3(1350, -1275, 2575)));
+            Assert.That(FieldEntryRules.LoginPosition(named, 0, MigrationType.Normal, 0, 0, 2000043, character), Is.EqualTo(named));
+            Assert.That(FieldEntryRules.LoginPosition(default, 2000044, MigrationType.Normal, 0, 0, 2000044, character), Is.EqualTo(Vector3.Zero));
+            character.ReturnPosition = default;
+            Assert.That(FieldEntryRules.LoginPosition(default, 0, MigrationType.Normal, 0, 0, 2000043, character), Is.EqualTo(Vector3.Zero));
         });
     }
 

@@ -956,7 +956,8 @@ public partial class FieldManager : IField {
         // to it); a refused move keeps the one there was.
         Character character = session.Player.Value.Character;
         Vector3 spotBefore = character.ReturnPosition;
-        if (FieldEntryRules.KeepsSpotLeaving(MapId, character.ReturnMaps.IsEmpty ? 0 : character.ReturnMaps.Peek(), srcPortal.TargetMapId, srcPortal.ActionType)) {
+        if (FieldEntryRules.KeepsSpotLeaving(MapId, character.ReturnMaps.IsEmpty ? 0 : character.ReturnMaps.Peek(), srcPortal.TargetMapId, srcPortal.ActionType,
+                this is DungeonFieldManager)) {
             character.ReturnPosition = session.Player.Position;
         }
         // A portal to a room (a bonus map) leads into that room, not into the map's shared field. The quest "map"
