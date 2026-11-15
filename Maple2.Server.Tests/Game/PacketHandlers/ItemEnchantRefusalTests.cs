@@ -72,7 +72,7 @@ public class ItemEnchantRefusalTests {
         GameSession session = Login(30000, 30000, 30000, 1000000);
         var slots = new Dictionary<int, EnchantLimitTable.Limit> { [30] = new(20, 99, 15) };
         if (hasRow) {
-            slots[0] = new EnchantLimitTable.Limit(minLevel, maxLevel, 15);
+            slots[14] = new EnchantLimitTable.Limit(minLevel, maxLevel, 15); // 11400001: the client's subtype 14
         }
         test.SetServerTable(new EnchantLimitTable(slots));
 
@@ -80,6 +80,28 @@ public class ItemEnchantRefusalTests {
 
         byte[] refusal = Maple2.Server.Game.Packets.ItemEnchantPacket.Error(Maple2.Model.Error.ItemEnchantError.s_itemenchant_invalid_item).ToArray();
         Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.ItemEnchant).Contains(refusal, new BytesEqual()), Is.EqualTo(!staged));
+    }
+
+    // The row is the client's equip subtype, the id's digits (GearScoreRules.SubType), not the server pack's: KR Live
+    // has subtype 0 for the Cruelty Throwing Star 13400021 (34 in the client), and no row is 0, so it was refused
+    // while the client listed it.
+    [TestCase(0)]
+    [TestCase(16)]
+    [TestCase(34)]
+    public void Stage_ReadsTheClientSubtypeOfTheId(int packSubType) {
+        test = new TestGameSession();
+        ItemMetadata starMetadata = TestGameSession.Metadata(13400021, EquipSlot.LH, type: 1);
+        Item star = test.Store(starMetadata with {
+            Limit = starMetadata.Limit with { Level = 50 },
+            Property = starMetadata.Property with { SubType = packSubType },
+        });
+        test.SetServerTable(new EnchantOptionTable(new Dictionary<int, EnchantOptionMetadata>()));
+        GameSession session = test.Start();
+        session.Item.Inventory.Get(star.Uid)!.Rarity = 4;
+        test.TakeSent();
+        test.SetServerTable(new EnchantLimitTable(new Dictionary<int, EnchantLimitTable.Limit> { [34] = new(50, 99, 15) }));
+
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, star.Uid), Is.True);
     }
 
     private sealed class BytesEqual : IEqualityComparer<byte[]> {

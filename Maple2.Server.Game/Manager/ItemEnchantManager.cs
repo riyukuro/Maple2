@@ -175,8 +175,11 @@ public class ItemEnchantManager {
 
     private ConstantsTable Constants => session.ServerTableMetadata.ConstantsTable;
 
+    // The limit row is the client's equip subtype (GearScoreRules.SubType: the id's digits), not the server pack's:
+    // KR Live has 0 for most weapons (the Cruelty Throwing Star 13400021: 0 there, 34 in the client), which no row
+    // has, so every such item was refused while the client listed it.
     private bool CanEnchant(Item item, int enchants) => ItemEnchantRules.CanEnchant(session.ServerTableMetadata.EnchantLimitTable,
-        item.Metadata.Property.Type, item.Metadata.Property.SubType, item.Metadata.Limit.Level, item.Metadata.Limit.EnableEnchant,
+        item.Metadata.Property.Type, GearScoreRules.SubType(item.Id), item.Metadata.Limit.Level, item.Metadata.Limit.EnableEnchant,
         enchants, item.LimitBreak?.Level ?? 0, item.ExpiryTime);
 
     // The staged Ophelia try's rate, the client dialog's total (m_23c): a running EnchantRate event for the level the
