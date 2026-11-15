@@ -191,12 +191,21 @@ public static class DungeonRoomRules {
     // The first blocking limit in member order, null when none blocks.
     public static DungeonEnterLimit? PartyBlockingLimit(IEnumerable<IReadOnlyDictionary<int, DungeonEnterLimit>> members, int dungeonId) {
         foreach (IReadOnlyDictionary<int, DungeonEnterLimit> limits in members) {
-            if (limits.TryGetValue(dungeonId, out DungeonEnterLimit limit) && (byte) limit >= 10) {
+            if (EnterBlockingLimit(limits, dungeonId) is { } limit) {
                 return limit;
             }
         }
         return null;
     }
+
+    // One player's enter state for a room when it blocks (10 and above, a missing room 0), else null: the test the
+    // recruit links make before their join box (Unk_MsgUser::GetDungeonEnterState, uimessenger.cpp:2380 / :2423).
+    public static DungeonEnterLimit? EnterBlockingLimit(IReadOnlyDictionary<int, DungeonEnterLimit> limits, int dungeonId) =>
+        limits.TryGetValue(dungeonId, out DungeonEnterLimit limit) && (byte) limit >= 10 ? limit : null;
+
+    // The helper link's test (CanClaimHelperReward, dungeonrecordcli.cpp:509) by room: a room the table lacks reads false.
+    public static bool CanClaimHelperReward(DungeonRoomMetadata? room, DungeonRecord? record) =>
+        room != null && CanClaimHelperReward(record, room.HelperRequireClearCount);
 
     // limitDayOfWeeks: the days a room can be entered, none for every day. The client reads the list as day
     // numbers with Sunday 1 (DungeonRoom ReadDayBits, commonfiles/dungeonroom.cpp:408) and tests the bit of

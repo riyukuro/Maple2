@@ -165,6 +165,7 @@ public static class PlayedClientRooms {
                 MaxRevivalCount: Number(row, "defaultRevivalLimitCount"),
                 DurationTick: (int) Math.Min(Math.Max(Number(row, "durationSeconds"), 0) * 1000L, int.MaxValue),
                 LimitedDropBoxIds2: BoxIds(row.GetAttribute("rewardLimitedDropBoxIds2")),
+                UseRandomMatch: IsOn(row.GetAttribute("isUseRandomMatch")),
                 Reward: new PlayedRoomReward(
                     SubRewardCount: Number(row, "subRewardCount"),
                     AccountWide: IsOn(row.GetAttribute("isAccountReward")),
@@ -200,7 +201,9 @@ public record PlayedRoomRules(
     int MaxRevivalCount,
     int DurationTick = 0,
     int[]? LimitedDropBoxIds2 = null,
-    PlayedRoomReward? Reward = null);
+    PlayedRoomReward? Reward = null,
+    // isUseRandomMatch (dungeonroom.cpp:434): the room dialog's Party 33 party-search button.
+    bool UseRandomMatch = false);
 
 /// <summary>
 /// The reward values of a dungeon room as the played client's own row gives them (DungeonRoom::Load,

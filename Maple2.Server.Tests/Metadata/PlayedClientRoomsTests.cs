@@ -170,6 +170,25 @@ public class PlayedClientRoomsTests {
         Assert.That(rules[5].RewardCount, Is.EqualTo(7));
     }
 
+    // Shaped like KMS2 rows 24090004 (isUseRandomMatch="1", one of the two KMS2 rows with it) and 26001001 (none):
+    // the room dialog's Party 33 button (uidungeonroomdialog.cpp:1200); a row without it is false.
+    [Test]
+    public void Rules_ReadUseRandomMatch() {
+        XmlDocument rooms = Table("""
+            <dungeonRoom dungeonRoomID="24090004" groupType="8" maxUserCount="10" isUseRandomMatch="1" />
+            <dungeonRoom dungeonRoomID="26001001" maxUserCount="10" />
+            <dungeonRoom dungeonRoomID="4" isUseRandomMatch="true" />
+            """);
+
+        Dictionary<int, PlayedRoomRules> rules = PlayedClientRooms.Rules(rooms, Available, (a, _) => a);
+
+        Assert.Multiple(() => {
+            Assert.That(rules[24090004].UseRandomMatch, Is.True);
+            Assert.That(rules[26001001].UseRandomMatch, Is.False);
+            Assert.That(rules[4].UseRandomMatch, Is.True);
+        });
+    }
+
     // Shaped like KMS2 rows 23006003 (1200 s, box 20001002 after its own) and 26001001 (no time, box 390000081):
     // durationSeconds is the room's time in ms, rewardLimitedDropBoxIds2 its second box list; a row without them
     // has neither.

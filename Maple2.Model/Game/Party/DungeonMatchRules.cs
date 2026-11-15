@@ -79,6 +79,11 @@ public static class DungeonMatchRules {
         return DungeonMatchError.ok;
     }
 
+    // The room Party 33 searches: the room dialog sends it from its party-search button, shown only for a room with
+    // isUseRandomMatch (UIDungeonRoomInfo, uidungeonroomdialog.cpp:1200; OnPartySearch :1329). Another room is
+    // searched as a room missing from the table (RoomError 4), null here.
+    public static DungeonRoomMetadata? PartySearchRoom(DungeonRoomMetadata? room) => room is { UseRandomMatch: true } ? room : null;
+
     // The error of a search whose rooms were checked with RoomError (the refused ones with their maxUserCount), and
     // the int it carries. Picked rooms (Party 32 with rooms, Party 33): a room over its user count gives 2 with the
     // smallest such count, else one picked room gives its own error and several give 4 ("one of the selected

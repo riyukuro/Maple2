@@ -228,6 +228,40 @@ public class DungeonRoomRulesTests {
         Assert.That(DungeonRoomRules.CanClaimHelperReward(null, 5), Is.False);
     }
 
+    // EnterBlockingLimit: the recruit links' test of the joiner's own enter state (uimessenger.cpp:2380 / :2423),
+    // 10 and above blocks, a room without a state reads 0.
+    [TestCase(DungeonEnterLimit.Rookie, false)]
+    [TestCase(DungeonEnterLimit.Veteran, false)]
+    [TestCase(DungeonEnterLimit.MinLevel, true)]
+    [TestCase(DungeonEnterLimit.DungeonClear, true)]
+    public void EnterBlockingLimit_TenAndAboveBlocks(DungeonEnterLimit limit, bool blocks) {
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.EnterBlockingLimit(Limits(5, limit), 5), blocks ? Is.EqualTo(limit) : Is.Null);
+            Assert.That(DungeonRoomRules.EnterBlockingLimit(Limits(5, limit), 6), Is.Null);
+        });
+    }
+
+    // The helper link's test by room (CanClaimHelperReward): the room's dungeonHelperRequireClearCount, false for a
+    // room the table lacks.
+    [Test]
+    public void CanClaimHelperReward_ByRoom() {
+        DungeonRoomMetadata room = HelperRoom(5);
+        Assert.Multiple(() => {
+            Assert.That(DungeonRoomRules.CanClaimHelperReward(room, HelperRecord(5, true)), Is.True);
+            Assert.That(DungeonRoomRules.CanClaimHelperReward(room, HelperRecord(4, true)), Is.False);
+            Assert.That(DungeonRoomRules.CanClaimHelperReward(room, null), Is.False);
+            Assert.That(DungeonRoomRules.CanClaimHelperReward(HelperRoom(0), HelperRecord(9, true)), Is.False);
+            Assert.That(DungeonRoomRules.CanClaimHelperReward((DungeonRoomMetadata?) null, HelperRecord(9, true)), Is.False);
+        });
+    }
+
+    private static DungeonRoomMetadata HelperRoom(int requireCount) {
+        var limit = new DungeonRoomLimitMetadata(0, 4, 0, 0, 0, false, [], [], [], false, false, false, false, false, 0);
+        var reward = new DungeonRoomRewardMetadata(false, 0, 0, 0, 0, 0, [], [], 0, 0, 0);
+        return new DungeonRoomMetadata(1, 0, DungeonPlayType.none, DungeonGroupType.normal, DungeonCooldownType.none, 0, 0, 0, [], reward, limit,
+            0, 0, requireCount, false, 0, 0, false, [], [], false, default, false);
+    }
+
     // WithOtherRookie: another player of the clear is not a veteran; the player's own state does not count.
     [Test]
     public void WithOtherRookie_CountsOtherPlayersOnly() {

@@ -2712,7 +2712,9 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 LimitEnter: playedLimitEnter.Contains(dungeon.dungeonRoomID),
                 ExtraRewardTicket: playedTickets.GetValueOrDefault(dungeon.dungeonRoomID),
                 // The played client's row when it has one (the server's NA rows set no box), else the server's.
-                HelperRewardDropBoxIds: playedHelperBoxes?.GetValueOrDefault(dungeon.dungeonRoomID) ?? dungeon.findHelperRewardDropBoxIds ?? []
+                HelperRewardDropBoxIds: playedHelperBoxes?.GetValueOrDefault(dungeon.dungeonRoomID) ?? dungeon.findHelperRewardDropBoxIds ?? [],
+                // The played client's row when it has one, as its room dialog reads it, else the server's.
+                UseRandomMatch: playedRules.TryGetValue(id, out PlayedRoomRules? played) ? played.UseRandomMatch : dungeon.isUseRandomMatch
                 ));
         }
 

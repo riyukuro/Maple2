@@ -36,7 +36,10 @@ public record DungeonRoomMetadata(
     // extraRewardTicketTableID with its coupon row: the ticket that buys an extra reward count. null without one.
     DungeonExtraRewardTicket? ExtraRewardTicket = null,
     // findHelperRewardDropBoxIds: the boxes a veteran's helper reward comes from (DungeonManager.GiveHelperReward).
-    int[]? HelperRewardDropBoxIds = null
+    int[]? HelperRewardDropBoxIds = null,
+    // isUseRandomMatch (DungeonRoom::Load, dungeonroom.cpp:434): the room dialog shows its Party 33 party-search
+    // button only with it (uidungeonroomdialog.cpp:1200), so only such a room is searched alone (DungeonMatchRules.PartySearchRoom).
+    bool UseRandomMatch = false
 );
 
 // A room's extra reward ticket: the room's extraRewardTicketBaseCount and the Table/DungeonRewardCoupon.xml row of

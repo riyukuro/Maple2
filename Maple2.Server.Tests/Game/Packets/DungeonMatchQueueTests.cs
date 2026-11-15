@@ -321,6 +321,24 @@ public class DungeonMatchQueueTests {
         Assert.That(DungeonMatchRules.RoomError(normal, 1, 40, 5, false, null), Is.EqualTo(DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser));
     }
 
+    // Party 33 comes from the room dialog's party-search button, shown only for a room with isUseRandomMatch
+    // (uidungeonroomdialog.cpp:1200; in KMS2 only 24090004 and 29003001): another room is searched as one missing
+    // from the table, so RoomError refuses it with 4.
+    [Test]
+    public void PartySearchRoomOnlyWithUseRandomMatch() {
+        DungeonRoomMetadata worldBoss = Room(24090004, DungeonGroupType.worldBossDungeon, 0, 10) with { UseRandomMatch = true };
+        DungeonRoomMetadata normal = Room(1, DungeonGroupType.normal, 0, 10);
+        Assert.Multiple(() => {
+            Assert.That(DungeonMatchRules.PartySearchRoom(worldBoss), Is.SameAs(worldBoss));
+            Assert.That(DungeonMatchRules.PartySearchRoom(normal), Is.Null);
+            Assert.That(DungeonMatchRules.PartySearchRoom(null), Is.Null);
+            Assert.That(DungeonMatchRules.RoomError(DungeonMatchRules.PartySearchRoom(normal), 1, 40, 1, false, null),
+                Is.EqualTo(DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter));
+            Assert.That(DungeonMatchRules.RoomError(DungeonMatchRules.PartySearchRoom(worldBoss), 2, 40, 1, false, null),
+                Is.EqualTo(DungeonMatchError.ok));
+        });
+    }
+
     [Test]
     public void SearchErrorOfPickedAndRecommendedRooms() {
         (DungeonMatchError, int) lack = (DungeonMatchError.s_dungeonMatch_error_lackRequire, 4);

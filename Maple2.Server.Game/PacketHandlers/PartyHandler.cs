@@ -4,7 +4,9 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -87,8 +89,10 @@ public class PartyHandler : FieldPacketHandler {
                 HandleVoteReply(session, packet);
                 return;
             case Command.Unknown39:
+                HandleJoinDungeonRecruit(session, packet, helper: true);
+                return;
             case Command.DungeonMemberConfirm:
-                HandleJoinDungeonRecruit(session, packet);
+                HandleJoinDungeonRecruit(session, packet, helper: false);
                 return;
         }
 
@@ -300,13 +304,28 @@ public class PartyHandler : FieldPacketHandler {
     // UIMessenger::FUN_141a17bc0 (uimessenger.cpp:2502, join as a dungeon helper) and
     // UIMessenger::OnDungeonMemberConfirm (uimessenger.cpp:2520, join as a member): party id and dungeon room id from
     // the confirm box of a recruiting notice's chat link (DungeonHelp 0x0109). Both join as an ordinary member, held
-    // to the room's limits; the party does not keep which link was used (r63, FORK.md).
-    private void HandleJoinDungeonRecruit(GameSession session, IByteReader packet) {
+    // to the room's limits; the party does not keep which link was used (r63, FORK.md). Before its box the client
+    // checks (UIMessenger::FUN_141a16cc0 / FUN_141a172a0, uimessenger.cpp:2365-2392 / :2405-2427): not in a party,
+    // the enter state of the room under 10 (else ShowEnterLimitMessage, the message FieldEntrance 2 shows), and for
+    // the helper link only, the helper reward claimable (CanClaimHelperReward, else s_party_join_only_dungeon_expert,
+    // a text with no string code, so a refused helper gets no reply).
+    private void HandleJoinDungeonRecruit(GameSession session, IByteReader packet, bool helper) {
         int partyId = packet.ReadInt();
         int roomId = packet.ReadInt();
 
         if (session.Party.Party != null) {
             session.Send(PartyPacket.Error(PartyError.s_party_err_already));
+            return;
+        }
+        DungeonEnterLimit? limit = DungeonRoomRules.EnterBlockingLimit(session.Player.Value.Character.DungeonEnterLimits, roomId);
+        if (limit != null) {
+            session.Send(FieldEntrancePacket.Error(roomId, limit.Value));
+            return;
+        }
+        if (helper && !DungeonRoomRules.CanClaimHelperReward(
+                session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(roomId, out DungeonRoomMetadata? room) ? room : null,
+                session.Dungeon.Records.TryGetValue(roomId, out DungeonRecord? record) ? record : null)) {
+            Logger.Debug("Helper join refused for {CharacterId}: no helper reward for dungeon {DungeonId}", session.CharacterId, roomId);
             return;
         }
 
@@ -373,7 +392,7 @@ public class PartyHandler : FieldPacketHandler {
         session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(roomId.Value, out DungeonRoomMetadata? room);
         byte kind = room == null ? (byte) 0 : DungeonMatchRules.KindOf(room.GroupType);
         (short level, _) = LowestMember(session);
-        SearchDungeonMatch(session, kind, true, [room], level);
+        SearchDungeonMatch(session, kind, true, [DungeonMatchRules.PartySearchRoom(room)], level);
     }
 
     // The rooms are checked (DungeonMatchRules.RoomError) and a refused search gets DungeonMatch 0 with the client's
