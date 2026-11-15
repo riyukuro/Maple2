@@ -506,6 +506,29 @@ public class BuffAttributeTests {
         Assert.That(Held(), Is.EqualTo(new[] { 10000051, 10100051 }));
     }
 
+    // An immune holder whose begin condition fails is not enabled, and a buff that is not enabled keeps nothing off
+    // (the has-buff convention: only enabled buffs count). KR 10500292 is immune to 10500298 only while its owner holds
+    // 10500293; without it 10500298 lands.
+    [TestCase(false, new[] { 10500292, 10500298 })]
+    [TestCase(true, new[] { 10500292, 10500293 })]
+    public void ImmuneIds_OnlyAnEnabledHolderKeepsTheBuffOff(bool holdsSwitch, int[] held) {
+        var needs293 = new BeginConditionTarget([new BeginConditionTarget.HasBuff(10500293, 0, false, 0, CompareType.Equals)],
+            new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []), [], [], [],
+            new Dictionary<MasteryType, int>(), [], []);
+        AdditionalEffectMetadata holder = Updating(10500292, Plain, new AdditionalEffectMetadataUpdate(null, [10500298], [], [], []));
+        Start(MapType.None, holder with { Condition = holder.Condition with { Owner = needs293 } },
+            Effect(10500293, Plain), Effect(10500298, Plain));
+        if (holdsSwitch) {
+            Add(10500293);
+        }
+        Add(10500292);
+        Assert.That(Only(10500292).Enabled, Is.EqualTo(holdsSwitch));
+
+        Add(10500298);
+
+        Assert.That(Held(), Is.EqualTo(held));
+    }
+
     // immuneEffectCategories: while held, no buff of the category is put on. 40500047 (KR: category 8), 10200062.
     [Test]
     public void ImmuneCategories_KeepTheCategoryOff() {
