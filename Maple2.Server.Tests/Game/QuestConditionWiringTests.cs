@@ -20,6 +20,7 @@ using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
@@ -787,6 +788,38 @@ public class QuestConditionWiringTests : TriggerTestBase {
 
         Assert.That(test.Errors, Is.Empty);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(10));
+    }
+
+    // The server's own move (EnsurePlayerPosition's return from out of the map, a trigger's move) does not count: the
+    // client's next sync still falls, from the place it was sent to.
+    [Test]
+    public void Distance_NotTheJumpOfAServerMove() {
+        FieldPlayer player = StateSyncField(2000001);
+        Quest quest = StartQuest(Condition(ConditionType.fall, 1000, [], []));
+        Vector3 start = player.Position;
+
+        player.OnStateSync(new StateSync { State = ActorState.Fall, Position = start });
+        PortalPacket.MoveByPortal(player, start + new Vector3(5000, 0, 0), default);
+        player.OnStateSync(new StateSync { State = ActorState.Fall, Position = start + new Vector3(5000, 0, 0) });
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+    }
+
+    // A sync further than the fastest move goes counts only as far as that move: a forged position does not finish
+    // the trophy. With no time between, that is the TrophyMoveBudget.HeldMs kept, 3,600 units on foot.
+    [Test]
+    public void Distance_NoFurtherThanTheFastestMove() {
+        FieldPlayer player = StateSyncField(2000001);
+        Quest quest = StartQuest(Condition(ConditionType.run, 1_000_000, [], []));
+        Vector3 start = player.Position;
+
+        player.OnStateSync(new StateSync { State = ActorState.Walk, Position = start });
+        player.OnStateSync(new StateSync { State = ActorState.Walk, Position = start + new Vector3(100_000, 0, 0) });
+        player.OnStateSync(new StateSync { State = ActorState.Walk, Position = start });
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(36));
     }
 
     // 60110210: <condition type="run" code="82000012,82000001,82000003" value="1000" />, a run on one of the maps

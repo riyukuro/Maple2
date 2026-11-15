@@ -456,6 +456,7 @@ public sealed class TestGameSession {
         // The moves the client synced: a server move (MoveByPortal) starts them again.
         typeof(FieldPlayer).GetField(nameof(FieldPlayer.Moves), Any)!.SetValue(fieldPlayer, new MoveWindow());
         typeof(FieldPlayer).GetField(nameof(FieldPlayer.RideMoves), Any)!.SetValue(fieldPlayer, new MoveWindow());
+        typeof(FieldPlayer).GetField(nameof(FieldPlayer.TrophyMoves), Any)!.SetValue(fieldPlayer, new TrophyMoveBudget());
         Set(session, nameof(GameSession.Player), fieldPlayer);
         // The objects and cubes whose interaction the session began.
         typeof(GameSession).GetField(nameof(GameSession.InteractStarted), Any)!.SetValue(session, new HashSet<string>());

@@ -31,6 +31,7 @@ public class FieldPlayer : Actor<Player> {
     public Vector3 LastGroundPosition;
     public readonly MoveWindow Moves = new(); // the positions the client synced in the last second
     public readonly MoveWindow RideMoves = new(); // the same for its RideSync positions, by the ride's speed
+    public readonly TrophyMoveBudget TrophyMoves = new(); // how much of the synced moves counts for movement trophies
 
     public override StatsManager Stats => Session.Stats;
     public override BuffManager Buffs => Session.Buffs;
@@ -451,7 +452,8 @@ public class FieldPlayer : Actor<Player> {
         }
     }
 
-    public void OnStateSync(StateSync stateSync) {
+    // maxPerSecond: the farthest the fastest honest move goes in a second (TrophyMoveBudget); a ride's from RideSync.
+    public void OnStateSync(StateSync stateSync, float maxPerSecond = MoveRules.MaxDistance) {
         int syncEmotion = TrophyTimeRules.EmotionSkillId(stateSync);
         if (syncEmotion != emotionSkillId) {
             emotionSkillId = syncEmotion;
@@ -466,6 +468,8 @@ public class FieldPlayer : Actor<Player> {
         float syncDistance = Vector3.Distance(Position, stateSync.Position); // distance between old player position and new state sync position
         long syncTick = Field.FieldTick - StateSyncTrackingTick; // time elapsed since last state sync
         StateSyncTrackingTick = Field.FieldTick;
+        float countedDistance = TrophyMoves.Take(syncDistance, Environment.TickCount64,
+            stateSync.State == ActorState.Fall ? maxPerSecond * TrophyMoveBudget.FallFactor : maxPerSecond);
 
         Position = stateSync.Position;
         Rotation = new Vector3(0, 0, stateSync.Rotation / 10f);
@@ -574,7 +578,7 @@ public class FieldPlayer : Actor<Player> {
 
         int UpdateStateSyncTracking() {
             stateSyncDistanceTracking.TryGetValue(state, out float totalDistance);
-            int counts = TrophyMoveRules.Counts(ref totalDistance, syncDistance);
+            int counts = TrophyMoveRules.Counts(ref totalDistance, countedDistance);
             stateSyncDistanceTracking[state] = totalDistance;
             return counts;
         }
@@ -1026,6 +1030,13 @@ public class FieldPlayer : Actor<Player> {
     }
 
     public override void KeyframeEvent(string keyName) { }
+
+    // The server moves the player itself (PortalPacket.MoveByPortal): the moves it checks start again.
+    public void ServerMoved(long now) {
+        Moves.ServerMoved(now);
+        RideMoves.ServerMoved(now);
+        TrophyMoves.ServerMoved(now);
+    }
 
     public void MoveToPosition(Vector3 position, Vector3 rotation) {
         if (!Field.ValidPosition(position)) {

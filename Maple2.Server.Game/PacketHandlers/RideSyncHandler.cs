@@ -51,7 +51,7 @@ public class RideSyncHandler : FieldPacketHandler {
             session.Field?.Broadcast(buffer, sender: session);
         }
 
-        session.Player.OnStateSync(stateSyncs[^1]);
+        session.Player.OnStateSync(stateSyncs[^1], maxDistance);
     }
 
     // The client writes RideSync like UserSync (StateRideeController::vfunc_0): u8, i32 server tick, i32 elapsed,
