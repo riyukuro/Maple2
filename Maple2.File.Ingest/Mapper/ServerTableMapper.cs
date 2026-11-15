@@ -804,7 +804,10 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         var results = new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>();
 
         XmlDocument? clientTable = ClientListedRows.PlayedTable(playedReader, FeatureLocaleFilter.Locale, "individualitemdrop_final.xml");
-        IEnumerable<(int Id, IndividualItemDrop Box)> dropBoxes = ServerDropTable.Read(xmlReader, dropFile, clientTable, out ClientDropBoxes.Counts? clientCounts);
+        // The boxes item use opens: only they are taken from the client's table when the server's rows cover fewer groups.
+        HashSet<string>? itemBoxes = clientTable == null ? null : ItemBoxDropIds.Collect(clientReader, playedReader);
+        IEnumerable<(int Id, IndividualItemDrop Box)> dropBoxes = ServerDropTable.Read(xmlReader, dropFile, clientTable, out ClientDropBoxes.Counts? clientCounts,
+            itemBoxes == null ? null : itemBoxes.Contains);
         foreach ((int id, IndividualItemDrop dropBox) in dropBoxes) {
             var entries = new Dictionary<int, IndividualDropItemTable.Entry>();
 
@@ -869,7 +872,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             results.Add(id, entries);
         }
         if (clientCounts != null) {
-            Console.WriteLine($"individualItemDrop: {clientCounts.Replaced + clientCounts.Appended} boxes without an available row taken from the played client's table ({clientCounts.Replaced} replaced, {clientCounts.Appended} added); {clientCounts.ServerGroups} groups with the server's weights, {clientCounts.ClientGroups} with the client's rows only");
+            Console.WriteLine($"individualItemDrop: {clientCounts.Replaced + clientCounts.Appended} boxes taken from the played client's table ({clientCounts.Replaced} replaced, {clientCounts.Appended} added); {clientCounts.GroupsAdded} client groups added to {clientCounts.Short} item boxes ({clientCounts.GroupsMatched} client groups matched a server group by rows, {clientCounts.GroupsOverlapping} shared items with one and were left out); {clientCounts.ServerGroups} groups with the server's weights, {clientCounts.ClientGroups} with the client's rows only");
         }
         Console.WriteLine($"individualItemDrop: {dropFile} read, {results.Count} boxes, {results.Values.Sum(box => box.Values.Sum(group => group.Items.Count))} rows after the locale and feature filter");
 

@@ -25,7 +25,10 @@ public class ClientDropBoxesTests {
     }
 
     // 1 has a KR row; 2 has NA rows that match the client's; 3 has NA rows that differ from the client's in group 2;
-    // 4 has CN rows only and the client none for KR; 5 is not in the server table.
+    // 4 has CN rows only and the client none for KR; 5 is not in the server table; 6 is an item box with an NA group and
+    // two KR groups, one with a drop chance holding the client's group 2 under id 3 and one the client lacks, where the
+    // client lists three KR groups (the adventure bonus box 330001968 shape); 7 has as many KR groups as the client; 8 is box 6's shape that no item opens
+    // (a monster box); 9 is an item box whose KR group has 2 of the client group's 3 rows (330001417).
     private const string Server = """
         <ms2>
           <dropBox dropBoxID="1" comment="server">
@@ -51,6 +54,39 @@ public class ClientDropBoxesTests {
           <dropBox dropBoxID="4">
             <group dropGroupID="1" locale="CN">
               <v itemID="40000001" minCount="1" maxCount="1" weight="1" />
+            </group>
+          </dropBox>
+          <dropBox dropBoxID="6">
+            <group dropGroupID="1" smartDropRate="100">
+              <v itemID="60000009" minCount="1" maxCount="1" weight="10000" locale="NA" />
+            </group>
+            <group dropGroupID="3" smartDropRate="100" dropCount="0,1" dropCountProbability="9950,50">
+              <v itemID="60000002" minCount="3" maxCount="3" weight="10000" locale="KR" />
+            </group>
+            <group dropGroupID="5">
+              <v itemID="60000005" minCount="1" maxCount="1" weight="10000" locale="KR" />
+            </group>
+          </dropBox>
+          <dropBox dropBoxID="7">
+            <group dropGroupID="1">
+              <v itemID="70000001" minCount="1" maxCount="1" weight="5" />
+            </group>
+            <group dropGroupID="2">
+              <v itemID="70000002" minCount="1" maxCount="1" weight="5" />
+            </group>
+          </dropBox>
+          <dropBox dropBoxID="8">
+            <group dropGroupID="1">
+              <v itemID="80000009" minCount="1" maxCount="1" weight="10000" locale="NA" />
+            </group>
+            <group dropGroupID="3" dropCount="0,1" dropCountProbability="9950,50">
+              <v itemID="80000002" minCount="1" maxCount="1" weight="10000" locale="KR" />
+            </group>
+          </dropBox>
+          <dropBox dropBoxID="9">
+            <group dropGroupID="2">
+              <v itemID="90000001" minCount="2" maxCount="2" weight="60" locale="KR" />
+              <v itemID="90000002" minCount="2" maxCount="2" weight="40" locale="KR" />
             </group>
           </dropBox>
         </ms2>
@@ -90,6 +126,50 @@ public class ClientDropBoxesTests {
               <v itemID="50000001" minCount="1" maxCount="1" />
             </group>
           </dropBox>
+          <dropBox dropBoxID="6">
+            <group dropGroupID="1" smartDropRate="1">
+              <v itemID="60000001" />
+            </group>
+            <group dropGroupID="2" smartDropRate="1">
+              <v itemID="60000002" minCount="3" locale="KR" />
+              <v itemID="60000002" minCount="12" locale="CN" />
+            </group>
+            <group dropGroupID="3" smartDropRate="1">
+              <v itemID="60000003" minCount="53" />
+            </group>
+            <group dropGroupID="4" locale="CN" smartDropRate="1">
+              <v itemID="60000004" />
+            </group>
+          </dropBox>
+          <dropBox dropBoxID="7">
+            <group dropGroupID="1">
+              <v itemID="70000009" />
+            </group>
+            <group dropGroupID="2">
+              <v itemID="70000008" />
+            </group>
+          </dropBox>
+          <dropBox dropBoxID="8">
+            <group dropGroupID="1">
+              <v itemID="80000001" />
+            </group>
+            <group dropGroupID="2">
+              <v itemID="80000002" />
+            </group>
+            <group dropGroupID="3">
+              <v itemID="80000003" />
+            </group>
+          </dropBox>
+          <dropBox dropBoxID="9">
+            <group dropGroupID="1">
+              <v itemID="90000009" minCount="30" />
+            </group>
+            <group dropGroupID="2">
+              <v itemID="90000001" />
+              <v itemID="90000002" />
+              <v itemID="90000003" />
+            </group>
+          </dropBox>
         </ms2>
         """;
 
@@ -101,7 +181,7 @@ public class ClientDropBoxesTests {
 
     private static Dictionary<int, IndividualItemDrop> Read(out ClientDropBoxes.Counts counts) {
         XmlDocument server = Doc(Server);
-        counts = ClientDropBoxes.Add(server, Doc(Client), ClientListedRows.Available);
+        counts = ClientDropBoxes.Add(server, Doc(Client), ClientListedRows.Available, id => id is "6" or "9");
         return ServerDropTable.Read(new XmlNodeReader(server)).ToDictionary(box => box.Id, box => box.Box);
     }
 
@@ -142,7 +222,66 @@ public class ClientDropBoxesTests {
         Assert.Multiple(() => {
             Assert.That(boxes[4].group, Is.Empty);
             Assert.That(boxes[5].group.Single().v.Single().itemID, Is.EqualTo(50000001));
-            Assert.That(counts, Is.EqualTo(new ClientDropBoxes.Counts(2, 1, 2, 2)));
+            Assert.That(counts, Is.EqualTo(new ClientDropBoxes.Counts(2, 1, 2, 5, 2, 3, 1, 1)));
         });
+    }
+
+    // An item box whose KR rows cover fewer groups than the client's KR rows gets the client's KR groups that no server
+    // group holds, matched by rows, not by id: the server's group 3 is the client's group 2 (kept with its drop
+    // chance), the client's group 1 takes the place of the server's NA group 1, and the client's group 3 gets a free
+    // id, as the server's group 3 is taken. The server's group 5, which the client lacks, stays; the CN group and the
+    // CN row are left out. Each stack once. Before, the box gave 60000002 x3 alone.
+    [Test]
+    public void ItemBox_FewerAvailableGroupsThanTheClient_AddsTheClientGroups() {
+        List<IndividualItemDrop.Group> groups = Read(out _)[6].group.Where(group => group.v.Count > 0).ToList();
+        Assert.Multiple(() => {
+            Assert.That(groups.Select(group => (group.dropGroupID, group.v.Select(v => (v.itemID, v.minCount)).Single())),
+                Is.EqualTo(new[] { (1, (60000001, 0)), (3, (60000002, 3)), (5, (60000005, 1)), (6, (60000003, 53)) }));
+            Assert.That(groups[1].dropCount, Is.EqualTo(new[] { 0, 1 }));
+            Assert.That(groups[1].v.Single().weight, Is.EqualTo(10000));
+        });
+    }
+
+    // A client group that shares items with a kept server group is another version of it: the server's group, with its
+    // weights, stays alone (no second pick of 90000001); the client's other group is added.
+    [Test]
+    public void ItemBox_ClientGroupSharingItems_KeepsTheServerGroupAlone() {
+        List<IndividualItemDrop.Group> groups = Read(out _)[9].group.Where(group => group.v.Count > 0).ToList();
+        Assert.That(groups.Select(group => (group.dropGroupID, group.v.Select(v => (v.itemID, v.weight)).ToArray())),
+            Is.EqualTo(new[] { (2, new[] { (90000001, 60), (90000002, 40) }), (1, new[] { (90000009, 0) }) }));
+    }
+
+    // The same shape in a box no item opens (a monster box) keeps the server's rows only: the client's rows carry no
+    // drop chances, so their groups would drop on every kill.
+    [Test]
+    public void FewerAvailableGroups_NotAnItemBox_KeepsTheServerRows() {
+        List<IndividualItemDrop.Group> groups = Read(out _)[8].group.Where(group => group.v.Count > 0).ToList();
+        Assert.Multiple(() => {
+            Assert.That(groups.Select(group => group.v.Single().itemID), Is.EqualTo(new[] { 80000002 }));
+            Assert.That(groups.Single().dropCount, Is.EqualTo(new[] { 0, 1 }));
+        });
+    }
+
+    // The box ids item functions name, in ItemBoxManager's places.
+    [TestCase("OpenItemBox", "0,1,0,330001968", "", new[] { "330001968" })]
+    [TestCase("OpenItemBox", "0,1,30000303,0", "", new string[0])]
+    [TestCase("OpenItemBox", "", "30005", new[] { "30005" })]
+    [TestCase("OpenItemBox", "<v individualDropBoxId=\"330001542\" additionalEffectId=\"90000654\" />", "", new[] { "330001542" })]
+    [TestCase("SelectItemBox", "1,330001859", "", new[] { "330001859" })]
+    [TestCase("OpenItemBoxWithKey", "30001041,1,0,0,0,330001839", "", new[] { "330001839" })]
+    [TestCase("OpenItemBoxLimitedQuantity", "< v individualDropBoxId=\"340000326\" />", "", new[] { "340000326" })]
+    [TestCase("OpenItemBoxLullu", "<v commonBoxId=\"330000961\" unCommonBoxId=\"330000962\" />", "", new[] { "330000961", "330000962" })]
+    [TestCase("OpenPetBox", "<v itemTag=\"PetBoxKey\" commonBoxId=\"330000101\" unCommonBoxId=\"330000102,330000103\" />", "", new[] { "330000101", "330000102", "330000103" })]
+    [TestCase("OpenGachaBox", "1001001,22101001", "", new string[0])]
+    public void ItemBoxDropIds_NamesTheBoxes(string name, string parameter, string param1, string[] ids) {
+        Assert.That(ItemBoxDropIds.Of(name, parameter, param1), Is.EqualTo(ids));
+    }
+
+    // A box with as many KR groups as the client keeps the server's rows, though the items differ.
+    [Test]
+    public void AsManyAvailableGroupsAsTheClient_KeepsTheServerRows() {
+        IndividualItemDrop box = Read(out _)[7];
+        Assert.That(box.group.Select(group => (group.v.Single().itemID, group.v.Single().weight)),
+            Is.EqualTo(new[] { (70000001, 5), (70000002, 5) }));
     }
 }

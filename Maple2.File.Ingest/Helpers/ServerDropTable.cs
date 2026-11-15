@@ -43,7 +43,8 @@ public static class ServerDropTable {
 
     // The same read with the boxes the server's table has no available row for taken from the played client's copy
     // of the table (ClientDropBoxes); counts is null without a client table.
-    public static IEnumerable<(int Id, IndividualItemDrop Box)> Read(M2dReader reader, string file, XmlDocument? client, out ClientDropBoxes.Counts? counts) {
+    public static IEnumerable<(int Id, IndividualItemDrop Box)> Read(M2dReader reader, string file, XmlDocument? client, out ClientDropBoxes.Counts? counts,
+            Func<string, bool>? itemBox = null) {
         counts = null;
         if (client == null) {
             return Read(reader, file);
@@ -54,7 +55,7 @@ public static class ServerDropTable {
         }
         var server = new XmlDocument();
         server.LoadXml(reader.GetString(entry));
-        counts = ClientDropBoxes.Add(server, client, ClientListedRows.Available);
+        counts = ClientDropBoxes.Add(server, client, ClientListedRows.Available, itemBox);
         return Read(new XmlNodeReader(server)).ToList();
     }
 
