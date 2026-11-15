@@ -8,8 +8,6 @@ namespace Maple2.Model.Validators;
 // ItemExchangeScroll mode 1 (UIItemExchangeScrollDialog::SendItemExchangeScrollMode1): the exchange of
 // count sets of a scroll's ingredients for count sets of its reward.
 public static class ItemExchangeScrollRules {
-    // Server limit. The client refuses 0 itself and bounds the count by what the player holds.
-    public const int MaxCount = 1000;
 
     // After the mode byte: i64 scroll uid, i64 target uid, i32 count.
     public static (long ScrollUid, long TargetUid, int Count) ReadExchange(IByteReader packet) {
@@ -19,8 +17,16 @@ public static class ItemExchangeScrollRules {
         return (scrollUid, targetUid, count);
     }
 
+    // The client refuses 0 itself (code 7) and bounds the count only by what the player holds (GetExchangeErrorCode,
+    // uiitemexchangescrolldialog.cpp:577-589), so any count from 1 up is read; AmountsFit bounds it by the amounts.
     public static bool CountAllowed(int count) {
-        return count is >= 1 and <= MaxCount;
+        return count >= 1;
+    }
+
+    // Each amount of one exchange (the scroll, every material, the reward) times the count stays a whole int, as the
+    // bag's plan counts in int: a count past that is more than any bag holds.
+    public static bool AmountsFit(IEnumerable<int> perExchange, int count) {
+        return perExchange.All(amount => amount >= 0 && (long) amount * count <= int.MaxValue);
     }
 
     // The fee of count exchanges, or -1 when it is not a payable amount.

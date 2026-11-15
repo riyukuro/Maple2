@@ -81,6 +81,13 @@ public class ItemExchangeScroll : FieldPacketHandler {
                 return;
             }
 
+            // The client bounds the count only by what the player holds; one past an int total of any amount is more.
+            if (!ItemExchangeScrollRules.AmountsFit(scrollMetadata.RequiredItems.Select(item => item.Amount)
+                    .Append(scrollMetadata.RecipeScroll.Amount).Append(scrollMetadata.RewardItem.Amount), quantity)) {
+                session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_invalid));
+                return;
+            }
+
             // An upgrade takes the target the dialog holds (m_uidTarget), once: the dialog sends count 1
             // (FUN_140f54120, uiitemexchangescrolldialog.cpp:640).
             Item? target = null;

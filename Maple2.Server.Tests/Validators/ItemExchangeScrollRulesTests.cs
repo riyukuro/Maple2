@@ -18,14 +18,26 @@ public class ItemExchangeScrollRulesTests {
         Assert.That(reader.Available, Is.EqualTo(0));
     }
 
+    // The client refuses only 0; a count over 1000 (enough scrolls and materials held) is read.
     [TestCase(1, true)]
     [TestCase(1000, true)]
+    [TestCase(1001, true)]
+    [TestCase(int.MaxValue, true)]
     [TestCase(0, false)]
     [TestCase(-1, false)]
-    [TestCase(1001, false)]
     [TestCase(int.MinValue, false)]
     public void Count(int count, bool expected) {
         Assert.That(ItemExchangeScrollRules.CountAllowed(count), Is.EqualTo(expected));
+    }
+
+    // Every amount of one exchange times the count stays an int, so the bag's plan cannot wrap to a negative take.
+    [Test]
+    public void AmountsFit() {
+        Assert.That(ItemExchangeScrollRules.AmountsFit([1, 100, 5], 2000), Is.True);
+        Assert.That(ItemExchangeScrollRules.AmountsFit([1, int.MaxValue], 1), Is.True);
+        Assert.That(ItemExchangeScrollRules.AmountsFit([1, 100_000], 30_000), Is.False);
+        Assert.That(ItemExchangeScrollRules.AmountsFit([1, 2], int.MaxValue), Is.False);
+        Assert.That(ItemExchangeScrollRules.AmountsFit([-1], 1), Is.False);
     }
 
     [Test]
