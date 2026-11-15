@@ -37,8 +37,14 @@ public class ItemBoxManager {
         return nowTick - lastUseTick >= cooldownSeconds * 1000L - CooldownSlackMs;
     }
 
-    public bool TryStartCooldown(int itemId, int cooldownSeconds, long nowTick) {
-        if (cooldownSeconds <= 0) {
+    // The client tests the cooldown only below GM level 50 (OpenItemBoxLimitedQuantity, unit_140d1ae30 @0x140d25c50):
+    // a GM's use is sent at once and not recorded in its map.
+    public static bool CooldownApplies(int cooldownSeconds, AdminPermissions permissions) {
+        return cooldownSeconds > 0 && AdminLevel.Of(permissions) < AdminLevel.GameMaster;
+    }
+
+    public bool TryStartCooldown(int itemId, int cooldownSeconds, long nowTick, AdminPermissions permissions) {
+        if (!CooldownApplies(cooldownSeconds, permissions)) {
             return true;
         }
         if (lastUseTicks.TryGetValue(itemId, out long lastUseTick) && !IsCooldownOver(lastUseTick, nowTick, cooldownSeconds)) {

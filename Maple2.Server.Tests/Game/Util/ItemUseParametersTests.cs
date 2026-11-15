@@ -1,4 +1,5 @@
-﻿using Maple2.Server.Game.Manager;
+﻿using Maple2.Model.Enum;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Util;
@@ -37,5 +38,15 @@ public class ItemUseParametersTests {
         // A use that arrives a little early because the first one was delayed still passes.
         Assert.That(ItemBoxManager.IsCooldownOver(10_000, 13_000 - ItemBoxManager.CooldownSlackMs, 3), Is.True);
         Assert.That(ItemBoxManager.IsCooldownOver(10_000, 13_000 - ItemBoxManager.CooldownSlackMs - 1, 3), Is.False);
+    }
+
+    [Test]
+    public void BoxCooldown_NoneForAGm() {
+        Assert.That(ItemBoxManager.CooldownApplies(3, AdminPermissions.None), Is.True);
+        Assert.That(ItemBoxManager.CooldownApplies(3, AdminPermissions.Warp), Is.True);
+        // GM level 50 or more skips the client's cooldown test.
+        Assert.That(ItemBoxManager.CooldownApplies(3, AdminPermissions.GameMaster), Is.False);
+        Assert.That(ItemBoxManager.CooldownApplies(3, AdminPermissions.Admin), Is.False);
+        Assert.That(ItemBoxManager.CooldownApplies(0, AdminPermissions.None), Is.False);
     }
 }

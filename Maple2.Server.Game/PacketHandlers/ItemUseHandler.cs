@@ -1466,11 +1466,11 @@ public class ItemUseHandler : FieldPacketHandler {
     }
 
     // The client's OpenItemBoxLimitedQuantity: an item box with a per-item cooldown between uses
-    // (xml parameter cooldownTime, seconds). The client drops an early use without sending it.
+    // (xml parameter cooldownTime, seconds). The client drops an early use without sending it; a GM has no cooldown.
     private static void HandleOpenItemBoxLimitedQuantity(GameSession session, Item item) {
         Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function?.Parameters);
         int cooldownSeconds = parameters.TryGetValue("cooldownTime", out string? cooldown) && int.TryParse(cooldown, out int seconds) ? seconds : 0;
-        if (!session.ItemBox.TryStartCooldown(item.Id, cooldownSeconds, Environment.TickCount64)) {
+        if (!session.ItemBox.TryStartCooldown(item.Id, cooldownSeconds, Environment.TickCount64, session.Player.Value.Account.AdminPermissions)) {
             return;
         }
 
