@@ -33,8 +33,8 @@ public static class PickupRules {
 
     /// <summary>The client's loot tick also sends nothing while the player rides a mount whose riding row sets
     /// disablePickUp (mypc.cpp:4716-4719; KR: the battle robots 99910340, 99910350 and 99910360). Refused only for the
-    /// ride's owner, on it for <see cref="RideRaceGraceMs"/> or more: a passenger's ridee in the client is not proven,
-    /// so its pickups stay served.</summary>
+    /// ride's owner, on it for <see cref="RideRaceGraceMs"/> or more: a passenger has no ridee of its own in the client
+    /// (only the actor's own ride-on sets it, pcbase.cpp:2754/3314), so its pickups stay served.</summary>
     public static bool RideRefuses(Ride? ride, int playerObjectId, long tickCount) =>
         ride != null && ride.OwnerId == playerObjectId && ride.Metadata.Basic.DisablePickUp
         && tickCount - ride.StartTick >= RideRaceGraceMs;
