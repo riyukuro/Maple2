@@ -59,16 +59,42 @@ public class SightBlockerTests {
         });
     }
 
+    // A ray only along a box's edge passes; a target straight above or below has no ray (SightTest drops it).
     [Test]
-    public void ARayAlongAnEdge_OrStraightUp_DoesNotBlock() {
+    public void ARayAlongAnEdge_OrNoRayAtAll_HasNoBlocker() {
         Assert.Multiple(() => {
             Assert.That(SkillHitRules.SightBlocker(Caster, new Vector3(600, 500, 0), [Box(new Vector3(250, 500, -150), new Vector3(350, 900, 300))]), Is.Null);
             Assert.That(SkillHitRules.SightBlocker(Caster, new Vector3(0, 0, 500), [Wall]), Is.Null);
         });
     }
 
+    // The client drops a hit whose point is straight above or below the owner (flattened length 0, magicdata.cpp:1793).
     [Test]
-    public void AFieldWithoutMapData_LogsNothing() {
-        Assert.That(SkillHitRules.SightBlocker(null, Caster, Target), Is.Null);
+    public void ATargetStraightAboveTheOwner_IsDroppedOverhead() {
+        Assert.Multiple(() => {
+            Assert.That(SkillHitRules.SightTest(Caster, new Vector3(0, 0, 500), 0, [], out FieldBoxColliderEntity? blocker), Is.EqualTo(SkillHitRules.SightDrop.Overhead));
+            Assert.That(blocker, Is.Null);
+        });
+    }
+
+    // The client aims at the target's nearest collision part, which the server lacks: a hit is blocked only when the ray
+    // to its position and the ray to the point of its circle nearest the owner are both blocked.
+    [Test]
+    public void ATargetWhoseNearSideIsInSight_IsNotBlocked() {
+        // A big target standing in the wall (x 250-350): its centre at x 400 is behind it, its side at x 240 is not.
+        var big = new Vector3(400, 0, 0);
+        var target = new Vector3(600, 0, 0);
+        Assert.Multiple(() => {
+            Assert.That(SkillHitRules.SightTest(Caster, big, 0, [Wall], out _), Is.EqualTo(SkillHitRules.SightDrop.Blocked), "no radius: the position decides");
+            Assert.That(SkillHitRules.SightTest(Caster, big, 160, [Wall], out _), Is.EqualTo(SkillHitRules.SightDrop.None), "the near side is in sight");
+            Assert.That(SkillHitRules.SightTest(Caster, target, 50, [Wall], out FieldBoxColliderEntity? blocker), Is.EqualTo(SkillHitRules.SightDrop.Blocked), "both blocked");
+            Assert.That(blocker, Is.SameAs(Wall));
+            Assert.That(SkillHitRules.SightTest(new Vector3(560, 0, 0), target, 50, [Wall], out _), Is.EqualTo(SkillHitRules.SightDrop.None), "the owner stands in the target's circle");
+        });
+    }
+
+    [Test]
+    public void AFieldWithoutMapData_HasNoBoxes() {
+        Assert.That(SkillHitRules.SightBoxes(null, Caster, [(Target, 50f)]), Is.Empty);
     }
 }

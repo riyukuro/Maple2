@@ -368,12 +368,44 @@ public static class SkillHitRules {
     // feet): the floor the owner stands on, and a server position a little below the client's, never count.
     public const float SightFloorMargin = 20f;
 
+    // What the client's line of sight does with a region's hit (SightTest).
+    public enum SightDrop { None, Blocked, Overhead }
+
     // The client's line of sight for a region's hits (CMagic::FUN_141464d00, magicdata.cpp:1781-1799): with the
     // attack's arrow rayPhysxTest set, each hit but the owner's own is kept only when a PhysX ray (groups 0x201) from
-    // the skill owner's (the caster's) position to it, flattened to the owner's height, is not blocked. The server has no PhysX scene; this
-    // finds the first of the map's box colliders (not fluid, turned only by quarter turns about Z, so its bounds are
-    // the box) that such a ray passes through: one that rises past SightFloorMargin above the owner's feet, reaches
-    // below them, and does not hold the owner. Logged only: which groups 0x201 takes is not mapped to the colliders.
+    // the owner's position (where the region stands, spCtx->m_ptOwner :1768: the packet's owner position) to the hit's
+    // point, flattened to the owner's height, is not blocked; a point straight above or below the owner (flattened
+    // length 0) is dropped too (:1793). The hit's point is the centre of the target's collision part nearest the magic
+    // (FUN_141467100, magicdata.cpp:2420), the target's position when it has no parts. The server has neither the parts
+    // nor a PhysX scene, so it leans toward keeping: a hit counts as blocked only when the ray to the target's position
+    // and the ray to the point of its shape's circle nearest the owner are both blocked (none when the owner stands in
+    // that circle, where a part may be), and as dropped overhead only when its position is straight above or below.
+    public static SightDrop SightTest(Vector3 owner, Vector3 position, float radius, IReadOnlyCollection<FieldBoxColliderEntity> boxes, out FieldBoxColliderEntity? blocker) {
+        blocker = null;
+        var away = new Vector2(position.X - owner.X, position.Y - owner.Y);
+        float distance = away.Length();
+        if (distance <= 0) {
+            return SightDrop.Overhead;
+        }
+        if (radius > 0 && distance <= radius) {
+            return SightDrop.None;
+        }
+        if (SightBlocker(owner, position, boxes) is not { } box) {
+            return SightDrop.None;
+        }
+        if (radius > 0) {
+            Vector2 near = new Vector2(position.X, position.Y) - away * (radius / distance);
+            if (SightBlocker(owner, new Vector3(near, position.Z), boxes) == null) {
+                return SightDrop.None;
+            }
+        }
+        blocker = box;
+        return SightDrop.Blocked;
+    }
+
+    // The first of the map's box colliders (not fluid, turned only by quarter turns about Z, so its bounds are the box)
+    // that the flattened ray from the owner to the target passes through: one that rises past SightFloorMargin above the
+    // owner's feet, reaches below them, and does not hold the owner. Which colliders groups 0x201 take is not mapped.
     public static FieldBoxColliderEntity? SightBlocker(Vector3 owner, Vector3 target, IEnumerable<FieldBoxColliderEntity> boxes) {
         var start = new Vector2(owner.X, owner.Y);
         var delta = new Vector2(target.X - owner.X, target.Y - owner.Y);
@@ -395,21 +427,26 @@ public static class SkillHitRules {
         return null;
     }
 
-    // The map's box colliders near the ray from the owner to the target (SightBlocker); none when the field has no map
-    // data.
-    public static FieldBoxColliderEntity? SightBlocker(FieldAccelerationStructure? map, Vector3 owner, Vector3 target) {
-        if (map == null) {
-            return null;
-        }
-        Vector3 end = target with { Z = owner.Z };
-        var pad = new Vector3(1, 1, FieldAccelerationStructure.BLOCK_SIZE);
+    // The map's box colliders near the rays from the owner to the targets (positions, with their shape's radius), in
+    // one query for a packet; none when the field has no map data.
+    public static List<FieldBoxColliderEntity> SightBoxes(FieldAccelerationStructure? map, Vector3 owner, IEnumerable<(Vector3 Position, float Radius)> targets) {
         var boxes = new List<FieldBoxColliderEntity>();
-        map.QueryBox(Vector3.Min(owner, end) - pad, Vector3.Max(owner, end) + pad, entity => {
+        if (map == null) {
+            return boxes;
+        }
+        Vector3 min = owner, max = owner;
+        foreach ((Vector3 position, float radius) in targets) {
+            var reach = new Vector3(radius, radius, 0);
+            min = Vector3.Min(min, position with { Z = owner.Z } - reach);
+            max = Vector3.Max(max, position with { Z = owner.Z } + reach);
+        }
+        var pad = new Vector3(1, 1, FieldAccelerationStructure.BLOCK_SIZE);
+        map.QueryBox(min - pad, max + pad, entity => {
             if (entity is FieldBoxColliderEntity box) {
                 boxes.Add(box);
             }
         });
-        return SightBlocker(owner, target, boxes);
+        return boxes;
     }
 
     private static bool QuarterTurned(Vector3 rotation) {

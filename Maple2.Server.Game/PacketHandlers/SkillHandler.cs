@@ -397,16 +397,15 @@ public class SkillHandler : FieldPacketHandler {
             float reach = SkillUtils.KeyMoveReach(record.Motion.MotionProperty, record.Attack.Arrow, record.Rotate2Z, record.CastDirection);
             Vector3 centre = SkillHitRules.RegionCentre(impactPosition2, session.Player.Position);
             area = SkillHitRules.RegionArea(record.Attack, centre, direction.Z, reach);
-            // The client's ray starts at the skill owner's own position (the caster), not the region's.
+            // The client's ray starts where the region stands, the owner's position (SkillHitRules.SightTest).
             if (record.Attack.Arrow.RayPhysXTest) {
-                sightOwner = session.Player.Position;
+                sightOwner = centre;
             }
         }
 
         int refused = 0;
         HitRefusal reason = HitRefusal.None;
-        int behind = 0;
-        FieldBoxColliderEntity? blocker = null;
+        List<IActor>? sightHits = sightOwner == null ? null : [];
         for (int i = 0; i < count; i++) {
             // TakeHit first, so the attack counts each hit as the client did.
             HitRefusal refusal = record.Hits.TakeHit(targetUid, ids[i], ordinals[i], shape);
@@ -426,18 +425,13 @@ public class SkillHandler : FieldPacketHandler {
                 reason = refusal;
                 continue;
             }
-            // The client drops a hit behind a wall of the attack's line of sight (SkillHitRules.SightBlocker); the
-            // server only logs it, the hit pays.
-            if (sightOwner is { } owner && found[i] != record.Caster
-                && SkillHitRules.SightBlocker(session.Field.AccelerationStructure, owner, found[i]!.Position) is { } box) {
-                behind++;
-                blocker = box;
+            if (sightHits != null && found[i] != record.Caster) {
+                sightHits.Add(found[i]!);
             }
             record.Targets.TryAdd(ids[i], found[i]!);
         }
-        if (behind > 0 && session.Config.SightLog.Count(session.Field.FieldTick, behind) is > 0 and int unloggedSight) {
-            Logger.Information("Region hits past a box collider in the client's line of sight (logged only): {Behind} of {Count}, last past {Kind} {Box} {Min}-{Max}, owner {Owner}, {Unlogged} since the last line, attack {AttackUid} of {Player}: {Record}",
-                behind, count, blocker!.IsWhiteBox ? "whitebox" : "cube", blocker.Id, blocker.Bounds.Min, blocker.Bounds.Max, sightOwner, unloggedSight, targetUid, session.PlayerName, record);
+        if (sightOwner is { } owner && sightHits is { Count: > 0 }) {
+            LogSight(session, owner, sightHits, count, targetUid, record);
         }
         if (refused > 0 && session.Config.HitLog.Count(session.Field.FieldTick, refused) is > 0 and int unlogged) {
             Logger.Information("Target packet hits skipped: {Refused} of {Count} ({Reason} last), {Unlogged} since the last line, attack {AttackUid} of {Player}: {Record}",
@@ -571,6 +565,30 @@ public class SkillHandler : FieldPacketHandler {
         session.Animation.TryPlaySequence(motion.SequenceName, motion.SequenceSpeed, AnimationType.Skill, record.Metadata);
     }
 
+    // The client drops a region hit its line of sight blocks (SkillHitRules.SightTest); the server only logs it, the
+    // hit pays.
+    private void LogSight(GameSession session, Vector3 owner, List<IActor> hits, int count, long targetUid, SkillRecord record) {
+        static float Radius(IActor actor) => actor.Shape.Polygon is Circle circle ? circle.Radius : 0;
+        List<FieldBoxColliderEntity> boxes = SkillHitRules.SightBoxes(session.Field.AccelerationStructure, owner, hits.Select(hit => (hit.Position, Radius(hit))));
+        int behind = 0, overhead = 0;
+        FieldBoxColliderEntity? blocker = null;
+        foreach (IActor hit in hits) {
+            switch (SkillHitRules.SightTest(owner, hit.Position, Radius(hit), boxes, out FieldBoxColliderEntity? box)) {
+                case SkillHitRules.SightDrop.Blocked:
+                    behind++;
+                    blocker = box;
+                    break;
+                case SkillHitRules.SightDrop.Overhead:
+                    overhead++;
+                    break;
+            }
+        }
+        if (behind + overhead > 0 && session.Config.SightLog.Count(session.Field.FieldTick, behind + overhead) is > 0 and int unlogged) {
+            Logger.Information("Region hits the client's line of sight drops (logged only): {Behind} past a box collider, {Overhead} straight above or below the owner, of {Count}, last past {Kind} {Box} {Min}-{Max}, owner {Owner}, {Unlogged} since the last line, attack {AttackUid} of {Player}: {Record}",
+                behind, overhead, count, blocker == null ? "none" : blocker.IsWhiteBox ? "whitebox" : "cube", blocker?.Id, blocker?.Bounds.Min, blocker?.Bounds.Max, owner, unlogged, targetUid, session.PlayerName, record);
+        }
+    }
+
     private void HandleTickSync(GameSession session, IByteReader packet) {
         long skillUid = packet.ReadLong();
         SkillRecord? record = session.Player.ActiveSkills.Get(skillUid);
@@ -599,9 +617,9 @@ public class SkillHandler : FieldPacketHandler {
             !record.Metadata.Data.Consume.UseItem && SkillCastRules.IsJobSkill(record.SkillId, session.Config.Skill.SkillInfo.InAnyTree(record.SkillId)),
             record.ServerTick, tick, record.Hits.SyncEarlyBy(tick, intervalMs)) : null;
         if (early != null) {
-            Logger.Debug("Tick sync keeps the point group hits, the repeat comes before the client sends it ({Reason}): {Record}", early, record);
+            Logger.Debug("Tick sync keeps the point group hits, the repeat comes before the client sends it, on the cooldown, a recharge use or the loop's end ({Reason}): {Record}", early, record);
         } else if (!record.Hits.Sync(tick, loops, intervalMs, earlyDrawn: true)) {
-            Logger.Debug("Tick sync keeps the point group hits (early or no loop): interval {Interval} ms: {Record}", intervalMs, record);
+            Logger.Debug("Tick sync keeps the point group hits (no loop): interval {Interval} ms: {Record}", intervalMs, record);
         } else {
             session.Config.TakeSyncRechargeUse(record.Metadata, record.ServerTick, tick);
         }
