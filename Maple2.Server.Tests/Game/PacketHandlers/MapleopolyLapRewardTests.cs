@@ -118,4 +118,41 @@ public class MapleopolyLapRewardTests {
         Assert.That(Held(session, EveryLap), Is.EqualTo(2));
         Assert.That(test.Errors, Is.Empty);
     }
+
+    // The client's tile names (its slot type parser): an empty or unknown name is its fail tile (1), not an item tile.
+    [TestCase("fail", BlueMarbleSlotType.Lose)]
+    [TestCase("backward", BlueMarbleSlotType.Backward)]
+    [TestCase("forward", BlueMarbleSlotType.Forward)]
+    [TestCase("gotostarting", BlueMarbleSlotType.GoToStarting)]
+    [TestCase("dicemore", BlueMarbleSlotType.Roll)]
+    [TestCase("Starting", BlueMarbleSlotType.Start)]
+    [TestCase("trap", BlueMarbleSlotType.Trap)]
+    [TestCase("worldtour", BlueMarbleSlotType.WorldTour)]
+    [TestCase("paradise", BlueMarbleSlotType.Paradise)]
+    [TestCase("item", BlueMarbleSlotType.Item)]
+    [TestCase("", BlueMarbleSlotType.Lose)]
+    [TestCase(null, BlueMarbleSlotType.Lose)]
+    [TestCase("lose", BlueMarbleSlotType.Lose)]
+    [TestCase("bonus", BlueMarbleSlotType.Lose)]
+    public void Mapleopoly_TileName_IsTheClientsKind(string? name, BlueMarbleSlotType expected) {
+        Assert.That(ServerTableMapper.ParseBlueMarbleSlotType(name), Is.EqualTo(expected));
+    }
+
+    // With no live board the load, roll and result requests are answered with the client's error 5 (kind 6), which
+    // shows its notice and turns the dice button back on.
+    [TestCase((byte) 0)]
+    [TestCase((byte) 1)]
+    [TestCase((byte) 3)]
+    public void Mapleopoly_NoBoard_IsTheClientsError5(byte mode) {
+        var test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(Ticket));
+        GameSession session = test.Start();
+        test.TakeSent();
+
+        new MapleopolyHandler { ItemMetadata = null! }.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(mode)));
+
+        byte[] reply = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.Mapleopoly);
+        Assert.That(reply.Skip(2).ToArray(), Is.EqualTo(new byte[] { 6, 5 }));
+        Assert.That(test.Errors, Is.Empty);
+    }
 }

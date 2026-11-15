@@ -1679,14 +1679,27 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     // A tile of a BlueMarble row's value2: <v type="item" arg1="20001037" arg2="5" />. Every KR and NA board's first
     // tile is type="starting", which is no BlueMarbleSlotType name: read as an item tile of item 0, a roll that ends
     // on it got no result (the tile item cannot be made), so the client kept its dice button off.
+    // The client's tile names (its slot type parser): an empty or unknown name is its fail tile (1), not an item tile.
+    public static BlueMarbleSlotType ParseBlueMarbleSlotType(string? type) {
+        switch (type?.ToLowerInvariant()) {
+            case "fail": return BlueMarbleSlotType.Lose;
+            case "backward": return BlueMarbleSlotType.Backward;
+            case "forward": return BlueMarbleSlotType.Forward;
+            case "gotostarting": return BlueMarbleSlotType.GoToStarting;
+            case "dicemore": return BlueMarbleSlotType.Roll;
+            case "starting": return BlueMarbleSlotType.Start;
+            case "trap": return BlueMarbleSlotType.Trap;
+            case "worldtour": return BlueMarbleSlotType.WorldTour;
+            case "paradise": return BlueMarbleSlotType.Paradise;
+            case "item": return BlueMarbleSlotType.Item;
+            default:
+                Console.WriteLine($"blueMarble: tile type '{type}' is not a client tile name, read as the fail tile");
+                return BlueMarbleSlotType.Lose;
+        }
+    }
+
     public static BlueMarble.Slot ParseBlueMarbleSlot(XmlNode vNode) {
-        string? type = vNode.Attributes?["type"]?.Value;
-        if (string.Equals(type, "starting", StringComparison.OrdinalIgnoreCase)) {
-            type = nameof(BlueMarbleSlotType.Start);
-        }
-        if (!Enum.TryParse(type, true, out BlueMarbleSlotType slotType)) {
-            slotType = BlueMarbleSlotType.Item;
-        }
+        BlueMarbleSlotType slotType = ParseBlueMarbleSlotType(vNode.Attributes?["type"]?.Value);
 
         if (!int.TryParse(vNode.Attributes?["arg1"]?.Value, out int arg1)) {
             arg1 = 0;

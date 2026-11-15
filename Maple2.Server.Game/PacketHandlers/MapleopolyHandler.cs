@@ -58,9 +58,19 @@ public class MapleopolyHandler : FieldPacketHandler {
         }
     }
 
-    private void HandleLoad(GameSession session) {
+    // With no live board the client is told it cannot roll right now (its error 5): the notice shows and the dice
+    // button turns back on, where silence would leave the button off.
+    private static (GameEvent, BlueMarble)? LiveBoard(GameSession session) {
         GameEvent? gameEvent = session.FindEvent(GameEventType.BlueMarble).FirstOrDefault();
         if (gameEvent?.Metadata.Data is not BlueMarble blueMarble) {
+            session.Send(MapleopolyPacket.Error(MapleopolyError.s_bluemarble_result_dice_not_complete));
+            return null;
+        }
+        return (gameEvent, blueMarble);
+    }
+
+    private void HandleLoad(GameSession session) {
+        if (LiveBoard(session) is not (GameEvent gameEvent, BlueMarble blueMarble)) {
             return;
         }
 
@@ -72,8 +82,7 @@ public class MapleopolyHandler : FieldPacketHandler {
     }
 
     private void HandleRoll(GameSession session, int dice1 = 0, int dice2 = 0) {
-        GameEvent? gameEvent = session.FindEvent(GameEventType.BlueMarble).FirstOrDefault();
-        if (gameEvent?.Metadata.Data is not BlueMarble blueMarble) {
+        if (LiveBoard(session) is not (GameEvent gameEvent, BlueMarble blueMarble)) {
             return;
         }
 
@@ -106,8 +115,7 @@ public class MapleopolyHandler : FieldPacketHandler {
     }
 
     private void HandleResult(GameSession session) {
-        GameEvent? gameEvent = session.FindEvent(GameEventType.BlueMarble).FirstOrDefault();
-        if (gameEvent?.Metadata.Data is not BlueMarble blueMarble) {
+        if (LiveBoard(session) is not (GameEvent gameEvent, BlueMarble blueMarble)) {
             return;
         }
 
