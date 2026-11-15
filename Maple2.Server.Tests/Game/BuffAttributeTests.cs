@@ -529,6 +529,33 @@ public class BuffAttributeTests {
         Assert.That(Held(), Is.EqualTo(held));
     }
 
+    // The holder's condition is tested when a buff comes, not taken from its last update: 10500293 gained after the
+    // holder (no update between) makes it immune to 10500298 at once, and 10500293 lost ends that at once.
+    [TestCase(false, new[] { 10500292, 10500293 })]
+    [TestCase(true, new[] { 10500292, 10500298 })]
+    public void ImmuneIds_TheHoldersConditionIsTestedWhenTheBuffComes(bool switchLost, int[] held) {
+        var needs293 = new BeginConditionTarget([new BeginConditionTarget.HasBuff(10500293, 0, false, 0, CompareType.Equals)],
+            new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []), [], [], [],
+            new Dictionary<MasteryType, int>(), [], []);
+        AdditionalEffectMetadata holder = Updating(10500292, Plain, new AdditionalEffectMetadataUpdate(null, [10500298], [], [], []));
+        Start(MapType.None, holder with { Condition = holder.Condition with { Owner = needs293 } },
+            Effect(10500293, Plain), Effect(10500298, Plain));
+        if (switchLost) {
+            Add(10500293);
+            Add(10500292);
+            Assert.That(Only(10500292).Enabled, Is.True);
+            Buffs.Remove(10500293, Player.ObjectId);
+        } else {
+            Add(10500292);
+            Assert.That(Only(10500292).Enabled, Is.False);
+            Add(10500293);
+        }
+
+        Add(10500298);
+
+        Assert.That(Held(), Is.EqualTo(held));
+    }
+
     // immuneEffectCategories: while held, no buff of the category is put on. 40500047 (KR: category 8), 10200062.
     [Test]
     public void ImmuneCategories_KeepTheCategoryOff() {

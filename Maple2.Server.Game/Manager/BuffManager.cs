@@ -936,11 +936,12 @@ public class BuffManager : IUpdatable {
         foreach (Buff buff in EnumerateBuffs()) {
             // Only an enabled holder is immune, as only enabled buffs count in the client's has-buff tests (the client
             // loads ImmuneEffect, additionalactionadditional.cpp:1127-1132, and leaves the check to the server). KR
-            // 10500292 and 10500297 are immune only while their begin condition holds (FORK.md).
-            if (!buff.Enabled) {
+            // 10500292 and 10500297 are immune only while their begin condition holds (FORK.md). The condition is
+            // tested now, not taken from the holder's last update, so a buff gained or lost just before counts.
+            if (!buff.Metadata.Update.ImmuneIds.Contains(newBuffId) && !buff.Metadata.Update.ImmuneCategories.Contains(category)) {
                 continue;
             }
-            if (buff.Metadata.Update.ImmuneIds.Contains(newBuffId) || buff.Metadata.Update.ImmuneCategories.Contains(category)) {
+            if (buff.UpdateEnabled()) {
                 return false;
             }
         }
