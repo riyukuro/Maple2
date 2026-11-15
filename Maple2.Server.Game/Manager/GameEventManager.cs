@@ -111,11 +111,12 @@ public sealed class GameEventManager {
     // A mentoring return (MentoringReturnUser) is read until its own end also after its event: a ReturnUserCandidate
     // row keeps a return for the next season, which starts after the row ends (MentoringManager.LoadCandidate). It
     // is also kept to the end of a running season of its number (EventValueRules.FollowSeason).
+    // A value of no event (id 0: the new-user and returning-user marks, UserMarks) is read until its own end.
     public static GameEventUserValue? LoadValue(GameEventUserValue userValue, IEnumerable<GameEvent> events, long now) {
-        GameEvent? gameEvent = events.FirstOrDefault(gameEvent => gameEvent.Id == userValue.EventId);
+        GameEvent? gameEvent = userValue.EventId == 0 ? null : events.FirstOrDefault(gameEvent => gameEvent.Id == userValue.EventId);
         if (gameEvent == null) {
             GameEventUserValue kept = EventValueRules.FollowSeason(userValue, events, now);
-            return kept.Type == GameEventUserValueType.MentoringReturnUser && kept.ExpirationTime > now ? kept : null;
+            return (kept.Type == GameEventUserValueType.MentoringReturnUser || kept.EventId == 0) && kept.ExpirationTime > now ? kept : null;
         }
         GameEventUserValue loaded = EventValueRules.FollowSeason(FollowEventEnd(userValue, gameEvent), events, now);
         return loaded.ExpirationTime < now ? null : loaded;
@@ -766,6 +767,35 @@ public sealed class GameEventManager {
     // The running snowman event that gathers snowflakes and pays claims: the lowest id when several run.
     public GameEvent? SnowmanEvent() {
         return session.FindEvent(GameEventType.Snowman).Where(found => found.Metadata.Data is Snowman).MinBy(found => found.Id);
+    }
+
+    // The new-user and returning-user marks due at this entry (UserMarks), set with event id 0 to the end of the
+    // row that gives them and stored at once: the next entry's last save is recent, so a mark lost with the session
+    // would not come back. Before Load, which sends them. Times in epoch seconds.
+    public void Mark(long creationTime, long lastSave) {
+        long now = DateTime.Now.ToEpochSeconds();
+        Dictionary<GameEventUserValueType, long> due = UserMarks.Due(
+            session.FindEvent(GameEventType.ReturnUser).Concat(session.FindEvent(GameEventType.NewUser)), creationTime, lastSave, now);
+        List<GameEventUserValue> marked = [];
+        lock (valuesLock) {
+            foreach ((GameEventUserValueType type, long end) in due) {
+                GameEventUserValue held = GetLocked(type, 0, end, now);
+                if (held.Value == UserMarks.Set && held.ExpirationTime >= end) {
+                    continue;
+                }
+                var mark = new GameEventUserValue(type, Math.Max(end, held.ExpirationTime), 0);
+                mark.SetValue(UserMarks.Set);
+                eventValues[0][type] = mark;
+                marked.Add(mark);
+            }
+        }
+        if (marked.Count == 0) {
+            return;
+        }
+        using GameStorage.Request db = session.GameStorage.Context();
+        if (!db.SaveGameEventUserValues(session.CharacterId, marked)) {
+            logger.Warning("User marks of {CharacterId} not stored", session.CharacterId);
+        }
     }
 
     public void Set(int gameEventId, GameEventUserValueType type, object value) {

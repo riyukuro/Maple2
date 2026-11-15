@@ -362,7 +362,7 @@ public class EventRewardClaimTests {
     #region StampEvent
     // Two stamps and a special one; a reward at one stamp (two items), at two stamps and at one special stamp.
     private static StampEvent Stamps() {
-        return new StampEvent("tag", 1, [
+        return new StampEvent("tag", 0, [
             new StampEvent.Stamp(QuestA, false, 0, 0),
             new StampEvent.Stamp(QuestB, false, 1, 0),
             new StampEvent.Stamp(QuestS, true, 2, 0),

@@ -317,7 +317,8 @@ public class EventRewardHandler : FieldPacketHandler {
     }
 
     private static GameEvent? StampEvent(GameSession session) {
-        return StampEventRules.PickEvent(session.FindEvent(GameEventType.StampEvent), gameEvent => gameEvent.Metadata.Data as StampEvent);
+        return StampEventRules.PickEvent(session.FindEvent(GameEventType.StampEvent), gameEvent => gameEvent.Metadata.Data as StampEvent,
+            key => AttendanceRules.UserValueTrue(session.GameEvent.Peek((GameEventUserValueType) key, 0)));
     }
 
     private static bool QuestCompleted(GameSession session, int questId) {

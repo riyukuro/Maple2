@@ -127,8 +127,10 @@ public record ReturnUser(
     int DaysInactive,
     int RequiredLevel) : GameEventData;
 
+// UserValue (value2): the mark a character created on or after DateCreatedBy (value1) gets, a user value type with
+// event id 0 (UserMarks).
 public record NewUser(
-    int SeasonId,
+    int UserValue,
     DateTimeOffset DateCreatedBy) : GameEventData;
 
 public record ReturnUserCandidate(

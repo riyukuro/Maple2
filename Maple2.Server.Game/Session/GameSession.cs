@@ -675,6 +675,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Config.LoadKeyTable();
         Send(GuideRecordPacket.Load(Config.GuideRecords));
         // DailyWonder*
+        // The new-user and returning-user marks first: the values sent next carry them.
+        GameEvent.Mark(Player.Value.Character.CreationTime, EntryLastSave);
         GameEvent.Load();
         // The attendance events started with an item (CashAttendEvent), after the user values they are read from.
         Send(AttendancePacket.StartedEvents(GameEvent.ItemStartedEvents()));

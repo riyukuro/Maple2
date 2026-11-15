@@ -147,18 +147,26 @@ public class StampEventRulesTests {
         });
     }
 
-    // Several live cards: the one without a key, the last of them as the client keeps it, else the first.
+    // Several live cards, as the client picks one: the card of key 10001 while that mark is set, else 10002's,
+    // else the last card without a key, else a card whose mark is set; none when no mark is set and all have keys.
     [Test]
-    public void PickEvent_TheLastCardWithoutAKeyElseTheFirst() {
-        StampEvent keyed = Card with { Key = 10001 };
-        StampEvent other = Card with { Key = 10002 };
+    public void PickEvent_ByTheMarksAsTheClient() {
+        StampEvent newUser = Card with { Key = 10001 };
+        StampEvent returner = Card with { Key = 10002 };
         StampEvent later = Card with { Key = 0 };
+        StampEvent other = Card with { Key = 10005 };
+        Func<int, bool> none = _ => false;
+        Func<int, bool> Marks(params int[] set) => key => set.Contains(key);
         Assert.Multiple(() => {
-            Assert.That(StampEventRules.PickEvent<StampEvent>([keyed, Card, other], card => card), Is.SameAs(Card));
-            Assert.That(StampEventRules.PickEvent<StampEvent>([Card, keyed, later, other], card => card), Is.SameAs(later));
-            Assert.That(StampEventRules.PickEvent<StampEvent>([keyed, other], card => card), Is.SameAs(keyed));
-            Assert.That(StampEventRules.PickEvent<StampEvent>([], card => card), Is.Null);
-            Assert.That(StampEventRules.PickEvent<string>(["x"], _ => null), Is.Null);
+            Assert.That(StampEventRules.PickEvent<StampEvent>([newUser, Card, returner], card => card, none), Is.SameAs(Card));
+            Assert.That(StampEventRules.PickEvent<StampEvent>([Card, newUser, later, returner], card => card, none), Is.SameAs(later));
+            Assert.That(StampEventRules.PickEvent<StampEvent>([newUser, returner], card => card, none), Is.Null);
+            Assert.That(StampEventRules.PickEvent<StampEvent>([newUser, returner], card => card, Marks(10002)), Is.SameAs(returner));
+            Assert.That(StampEventRules.PickEvent<StampEvent>([returner, newUser], card => card, Marks(10001, 10002)), Is.SameAs(newUser));
+            Assert.That(StampEventRules.PickEvent<StampEvent>([Card, returner], card => card, Marks(10002)), Is.SameAs(returner));
+            Assert.That(StampEventRules.PickEvent<StampEvent>([newUser, other], card => card, Marks(10005)), Is.SameAs(other));
+            Assert.That(StampEventRules.PickEvent<StampEvent>([], card => card, none), Is.Null);
+            Assert.That(StampEventRules.PickEvent<string>(["x"], _ => null, none), Is.Null);
         });
     }
 

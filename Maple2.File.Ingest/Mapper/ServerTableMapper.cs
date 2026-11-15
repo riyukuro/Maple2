@@ -1666,6 +1666,13 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 Tag: ItemTag.None));
     }
 
+    // A ReturnUser or NewUser row's value1 date, to the minute or to the second, in the server's time zone as the
+    // event times are; DateTimeOffset.MinValue when it is no date (a ReturnUser row's days).
+    public static DateTimeOffset UserDate(string? text) {
+        DateTime time = AttendGiftReplay.ParseTime(text);
+        return time == DateTime.MinValue ? DateTimeOffset.MinValue : new DateTimeOffset(time);
+    }
+
     private GameEventData? ParseGameEventData(GameEventType type, string value1, string value2, string value3, string value4) {
         var value1Xml = new XmlDocument();
         var value2Xml = new XmlDocument();
@@ -1849,11 +1856,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     Requirement: giftRequirement,
                     Pay: payAttend);
             case GameEventType.ReturnUser:
-                var requiredTime = DateTimeOffset.MinValue;
+                // value1: a date (last online before it, to the minute or to the second: 180119 and 170035 differ)
+                // or the days away.
+                DateTimeOffset requiredTime = UserDate(value1);
                 int daysInactive = 0;
-                if (DateTime.TryParseExact(value1, "yyyy-MM-dd-HH-mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime returnUserTime)) {
-                    requiredTime = new DateTimeOffset(returnUserTime);
-                } else if (int.TryParse(value1, out daysInactive)) {
+                if (requiredTime == DateTimeOffset.MinValue) {
+                    int.TryParse(value1, out daysInactive);
                 }
 
                 return new ReturnUser(
@@ -1864,14 +1872,11 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     RequiredLevel: int.TryParse(value1, out int levelRequirement) ? levelRequirement : 0,
                     RequiredUserValue: int.TryParse(value2, out int userValue) ? userValue : 0);
             case GameEventType.NewUser:
-                var requiredNewUserTime = DateTimeOffset.MinValue;
-                if (DateTime.TryParseExact(value1, "yyyy-MM-dd-HH-mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime newUserTime)) {
-                    requiredNewUserTime = new DateTimeOffset(newUserTime);
-                }
-
+                // value1: created on or after it (to the minute or to the second: 170036 has seconds); value2: the
+                // mark (user value type) its new users get.
                 return new NewUser(
-                    SeasonId: int.TryParse(value2, out int newUserSeason) ? newUserSeason : 0,
-                    DateCreatedBy: requiredNewUserTime);
+                    UserValue: int.TryParse(value2, out int newUserValue) ? newUserValue : 0,
+                    DateCreatedBy: UserDate(value1));
             case GameEventType.ReturnUserCandidate:
                 var unknownTime = DateTimeOffset.MinValue;
                 if (DateTime.TryParseExact(value4, "yyyy-MM-dd-HH-mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime requiredDateTime)) {

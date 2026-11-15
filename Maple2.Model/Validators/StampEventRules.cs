@@ -7,23 +7,34 @@ namespace Maple2.Model.Validators;
 // claimed, 1201 the counts of the claimed reward rows as "4,7", 1202 the same for the special rows. It sends
 // EventReward 0 + int count + byte special to claim a reward row and EventReward 1 for the complete reward.
 public static class StampEventRules {
-    // Several live cards: the one without a key (the client shows it whatever the player's values), else the first.
-    // Of several cards without a key the last in the order sent: the client keeps one card per key, and a later
-    // card of the same key replaces the earlier one (gamerule.cpp:2175).
-    public static T? PickEvent<T>(IEnumerable<T> events, Func<T, StampEvent?> data) where T : class {
-        T? first = null;
-        T? keyless = null;
+    // The card the client shows (CGameRule::GetStampEvent, gamerule.cpp:2175). It keeps one card per key, a later
+    // card of a key replacing the earlier (the order sent), then takes the card of key 10001 while that mark (the
+    // user value of that type with event id 0, UserMarks) reads true, else the card of key 10002 while that one
+    // does, else the card without a key, else a card whose mark reads true. None otherwise: the client shows no
+    // card then, so nothing is claimed on one. `marked` reads a mark as the client does (true, false when absent).
+    public static T? PickEvent<T>(IEnumerable<T> events, Func<T, StampEvent?> data, Func<int, bool> marked) where T : class {
+        var byKey = new Dictionary<int, T>();
+        var keys = new List<int>();
         foreach (T gameEvent in events) {
             StampEvent? stampEvent = data(gameEvent);
             if (stampEvent == null) {
                 continue;
             }
-            if (stampEvent.Key == 0) {
-                keyless = gameEvent;
+            if (!byKey.ContainsKey(stampEvent.Key)) {
+                keys.Add(stampEvent.Key);
             }
-            first ??= gameEvent;
+            byKey[stampEvent.Key] = gameEvent;
         }
-        return keyless ?? first;
+        foreach (int key in new[] { 10001, 10002 }) {
+            if (byKey.TryGetValue(key, out T? card) && marked(key)) {
+                return card;
+            }
+        }
+        if (byKey.TryGetValue(0, out T? keyless)) {
+            return keyless;
+        }
+        int found = keys.FirstOrDefault(key => marked(key), -1);
+        return found < 0 ? null : byKey[found];
     }
 
     // The stamps of the kind (special or not) whose quest is completed.
