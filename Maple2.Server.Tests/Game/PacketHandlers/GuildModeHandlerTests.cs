@@ -153,6 +153,20 @@ public class GuildModeHandlerTests {
         Assert.That(test.World.GuildRequests.Single().UpdateRank.Name, Is.EqualTo("Jr. Master"));
     }
 
+    // A rank still named the data's default is shown as the client's default; a rights-only edit sends that shown name
+    // back, and the World gets the data's default, so the stored row keeps it. A typed name goes as typed.
+    [Test]
+    public void UpdateRank_RightsOnlyOnAShownClientDefault_StoresTheDataDefault() {
+        IReadOnlyList<string> defaults = GuildRules.DefaultRankNames(Target.LOCALE);
+        test.SetTable(new GuildRankNameTable(["C0", "C1", "C2", "C3", "C4", "C5"]));
+        session.Guild.Guild!.Ranks[1].Name = "C1";
+        test.World.GuildWorld = _ => new GuildResponse { GuildId = 7 };
+        SendRank(1, "C1", GuildPermission.Default | GuildPermission.InviteMembers);
+        SendRank(1, "Elder", GuildPermission.Default);
+
+        Assert.That(test.World.GuildRequests.Select(request => request.UpdateRank.Name), Is.EqualTo(new[] { defaults[1], "Elder" }));
+    }
+
     [Test]
     public void UpdateRank_NewNameOverTheMaximum_Refused() {
         SendRank(1, "A rank name of 16", GuildPermission.Default);

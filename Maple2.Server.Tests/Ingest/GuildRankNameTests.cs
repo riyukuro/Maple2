@@ -77,6 +77,22 @@ public class GuildRankNameTests {
         }
     }
 
+    // The reverse of Shown: the client default at its place goes back as the data default; anything else as sent.
+    [Test]
+    public void Stored_MapsOnlyTheClientDefaultAtItsPlace() {
+        IReadOnlyList<string> kr = GuildRules.DefaultRankNames("KR");
+        var table = new GuildRankNameTable(English);
+        for (int i = 0; i < 6; i++) {
+            Assert.That(table.Stored(i, English[i], kr), Is.EqualTo(kr[i]));
+            Assert.That(table.Shown(i, table.Stored(i, English[i], kr), kr), Is.EqualTo(English[i]));
+        }
+        Assert.That(table.Stored(0, English[1], kr), Is.EqualTo(English[1]));
+        Assert.That(table.Stored(0, "Abc", kr), Is.EqualTo("Abc"));
+        Assert.That(table.Stored(6, English[0], kr), Is.EqualTo(English[0]));
+        Assert.That(GuildRankNameTable.Empty.Stored(0, English[0], kr), Is.EqualTo(English[0]));
+        Assert.That(new GuildRankNameTable(["", "", "", "", "", ""]).Stored(0, "", kr), Is.EqualTo(""));
+    }
+
     [Test]
     public void Table_RoundTripsAsJson() {
         Table table = new GuildRankNameTable(English);

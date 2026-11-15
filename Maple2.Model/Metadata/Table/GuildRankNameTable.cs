@@ -22,4 +22,13 @@ public record GuildRankNameTable(IReadOnlyList<string> Names) : Table {
         }
         return Names[rank].Length > 0 ? Names[rank] : stored;
     }
+
+    // The name to store for rank |rank|'s |sent| name (the reverse of Shown): the client's default for that place is
+    // stored as the data's default, so a rank the master only changed the rights of keeps its default name.
+    public string Stored(int rank, string sent, IReadOnlyList<string> dataDefaults) {
+        if (rank < 0 || rank >= Names.Count || rank >= dataDefaults.Count || Names[rank].Length == 0 || sent != Names[rank]) {
+            return sent;
+        }
+        return dataDefaults[rank];
+    }
 }

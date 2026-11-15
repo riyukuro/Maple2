@@ -730,13 +730,16 @@ public class GuildHandler : FieldPacketHandler {
             return;
         }
 
+        // The client's default name the window showed goes back as the data's default (GuildRankNameTable.Stored).
+        string name = session.TableMetadata.GuildRankNameTable.Stored(rankId, rank.Name, GuildRules.DefaultRankNames(Target.LOCALE));
+
         try {
             GuildResponse response = World.Guild(new GuildRequest {
                 RequestorId = session.CharacterId,
                 UpdateRank = new GuildRequest.Types.UpdateRank {
                     GuildId = session.Guild.Id,
                     RankId = rankId,
-                    Name = rank.Name,
+                    Name = name,
                     Permission = (int) rank.Permission,
                 },
             });
