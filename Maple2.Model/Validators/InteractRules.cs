@@ -136,6 +136,40 @@ public static class InteractRules {
         return ends;
     }
 
+    // The client sends the end only once its cast bar has run out: it sends the start (11) as the interact state
+    // begins, casts for the object's reactTime in ms (CInteractObject::vfunc_6, interactobject.cpp:447;
+    // stateinteractdata.cpp:283-293) and sends the end (12) when the cast finishes (stateinteractdata.cpp:378,
+    // 470-483). A gathered object's cast is divided by a running MasteryReduce event's rate / 10000
+    // (CInteractGatheringObject::vfunc_6, interactobject.cpp:1495; CGameEventValueMasteryReduce::Apply,
+    // gameeventvalue.cpp:644): the highest running rate is taken, the shortest cast the client can have.
+    public static int CastTime(int reactTime, bool gathered, int masteryReduceRate) {
+        if (reactTime <= 0) {
+            return 0;
+        }
+        if (!gathered || masteryReduceRate <= 0) {
+            return reactTime;
+        }
+        return (int) (uint) ((float) (uint) reactTime / ((float) (uint) masteryReduceRate / 10000.0f));
+    }
+
+    // Server rule: room for the start packet's lag. The end follows the start on the same connection, so the gap the
+    // server sees is the cast less what the start was held up more than the end.
+    public const int CastSlackMs = 500;
+
+    // Why an end came too soon, logged only: no start since the player came into the field, or less time since the
+    // last start than the cast less the slack. A cast within the slack is not tested.
+    public enum EarlyEnd { None, NoStart, Soon }
+
+    public static EarlyEnd EndTiming(long? startTick, long now, int castTime) {
+        if (castTime <= CastSlackMs) {
+            return EarlyEnd.None;
+        }
+        if (startTick is not { } start) {
+            return EarlyEnd.NoStart;
+        }
+        return now - start < castTime - CastSlackMs ? EarlyEnd.Soon : EarlyEnd.None;
+    }
+
     // Server rule: an object's npc spawn list (interactobject spawn, which the client reads and never uses, so the
     // spawn is the server's). One roll in [0, 10000) takes the first entry whose running sum of probabilities is
     // above it; a list summing under 10000 spawns nothing for the rest (a single 3000 entry spawns 30% of uses).

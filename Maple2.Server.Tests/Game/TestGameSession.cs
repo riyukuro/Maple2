@@ -490,6 +490,10 @@ public sealed class TestGameSession {
         typeof(ConfigManager).GetField("favoriteDesigners", Any)!.SetValue(session.Config, new List<long>());
         // No shard worn: what the skill cast check reads.
         typeof(ConfigManager).GetField("lapenshards", Any)!.SetValue(session.Config, new Dictionary<LapenshardSlot, int>());
+        // A fresh gate for each logged-only check (the cast, hit and interact logs).
+        foreach (FieldInfo gate in typeof(ConfigManager).GetFields(Any).Where(field => field.FieldType == typeof(LogGate))) {
+            gate.SetValue(session.Config, new LogGate());
+        }
         session.Quest = quest;
         var marriage = Uninitialized<MarriageManager>();
         typeof(MarriageManager).GetField("session", Any)!.SetValue(marriage, session);

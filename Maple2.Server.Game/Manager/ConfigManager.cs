@@ -64,6 +64,8 @@ public class ConfigManager {
     public readonly LogGate RegionLog = new();
     // Region hits past a box collider in the line of sight the client tests (SkillHitRules.SightBlocker), logged only.
     public readonly LogGate SightLog = new();
+    // InteractObject ends sooner than the object's cast after the start (InteractRules.EndTiming), logged only.
+    public readonly LogGate InteractLog = new();
     private long heldCastUid;
     private long heldAttackSpeed;
     private readonly IDictionary<string, int> statLimits;

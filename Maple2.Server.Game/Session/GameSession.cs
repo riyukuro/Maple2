@@ -156,6 +156,8 @@ public sealed partial class GameSession : Core.Network.Session {
     public PartyManager Party { get; set; } = null!;
     // The object names of the last InteractObject start packet; used by the session's own packet thread only.
     public readonly HashSet<string> InteractStarted = [];
+    // The field tick of the last InteractObject start packet, null for none in this field; same thread rule.
+    public long? InteractStartTick;
     // The farming and breeding cube ids of the last FunctionCube begin packet; same thread rule.
     public readonly HashSet<string> CubeStarted = [];
     // The attends at game start a reset being stored refused (AttendanceHandler), by event id, each with its try
@@ -718,6 +720,7 @@ public sealed partial class GameSession : Core.Network.Session {
 
     private void LeaveField() {
         InteractStarted.Clear();
+        InteractStartTick = null;
         CubeStarted.Clear();
         Array.Clear(ItemLockStaging);
         Array.Clear(DismantleStaging);

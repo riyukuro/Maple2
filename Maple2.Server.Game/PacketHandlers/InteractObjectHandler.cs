@@ -63,6 +63,8 @@ public class InteractObjectHandler : FieldPacketHandler {
 
     // Start and End carry a count, then that many object names (CInteractObject and StateInteraction senders).
     private void HandleStart(GameSession session, IByteReader packet) {
+        // The tick of every start, kept or not: the client casts from it (InteractRules.EndTiming).
+        session.InteractStartTick = session.Field?.FieldTick;
         // The names are kept: the end of a gathered object is taken only if this start named it.
         // The client starts only on an object within reach (interactobject.cpp:1075, stateinteractdata.cpp:283, 382).
         InteractRules.TakeStarts(session.InteractStarted, InteractRules.ReadNames(packet), name => {
@@ -90,7 +92,25 @@ public class InteractObjectHandler : FieldPacketHandler {
             return (interact.Value.Type == InteractType.Gathering, InReach(session, interact));
         });
         foreach (string name in ends) {
+            LogEarlyEnd(session, name);
             End(session, name);
+        }
+    }
+
+    // An end the client could not have sent yet: its cast bar runs the object's cast from the start (InteractRules.CastTime).
+    // Logged only until honest play shows none.
+    private void LogEarlyEnd(GameSession session, string name) {
+        if (session.Field is not { } field || !field.TryGetInteract(name, out FieldInteract? interact) || interact == null) {
+            return;
+        }
+        bool gathered = interact.Value.Type == InteractType.Gathering;
+        int masteryReduce = gathered ? EventSaleRules.HighestRate(session.FindEvent(GameEventType.MasteryReduce)) : 0;
+        int castTime = InteractRules.CastTime(interact.Value.Time.React, gathered, masteryReduce);
+        long now = field.FieldTick;
+        InteractRules.EarlyEnd early = InteractRules.EndTiming(session.InteractStartTick, now, castTime);
+        if (early != InteractRules.EarlyEnd.None && session.Config.InteractLog.Count(now) is > 0 and int unlogged) {
+            Logger.Information("InteractObject end before its cast (logged only): {Early}, {Elapsed} ms since the start of a {CastTime} ms cast, object {Name} ({InteractId}), {Unlogged} since the last line, {Player}",
+                early, now - session.InteractStartTick, castTime, name, interact.Value.Id, unlogged, session.PlayerName);
         }
     }
 
