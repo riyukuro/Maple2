@@ -291,7 +291,7 @@ UpdateDatabase(metadataContext, new QuestMapper(xmlReader, language, playedReade
 UpdateDatabase(metadataContext, new RideMapper(xmlReader));
 UpdateDatabase(metadataContext, new ScriptMapper(xmlReader, language, playedReader));
 UpdateDatabase(metadataContext, new SkillMapper(xmlReader, language, playedReader));
-UpdateDatabase(metadataContext, new TableMapper(xmlReader, language, playedReader, serverReader));
+UpdateDatabase(metadataContext, new TableMapper(xmlReader, language, playedReader, serverReader, locale));
 UpdateDatabase(metadataContext, new AchievementMapper(xmlReader, playedReader));
 UpdateDatabase(metadataContext, new FunctionCubeMapper(xmlReader));
 UpdateDatabase(metadataContext, new BanWordMapper(xmlReader));

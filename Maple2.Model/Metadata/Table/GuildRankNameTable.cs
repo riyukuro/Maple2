@@ -1,7 +1,8 @@
 namespace Maple2.Model.Metadata;
 
 // The client's own default guild rank names, master first (CGuildInfo::ResetGrades, guilddef_1.cpp:2269): the values of
-// s_guild_grade_default_master and _group1 to _group5 in the played client's string/<language>/stringcommon.xml. The
+// s_guild_grade_default_master and _group1 to _group5 in the stringcommon.xml of the region's client (string/kr on KR,
+// string/en on NA; the played client's first, a key it lacks from string/en; TableMapper.ParseGuildRankNames). The
 // client prints a rank name as the server sends it (CGuildGrade::ReadPacket; the player info window's
 // s_char_info_guild_name), so a guild made on another region's data showed that region's default names, e.g. Korean on
 // KR data with an English client. An empty name: the strings lack that key.

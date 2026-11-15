@@ -36,13 +36,42 @@ public class GuildRankNameTests {
 
     [Test]
     public void Parse_AMissingKeyIsEmpty_NoKeyIsTheEmptyTable() {
-        GuildRankNameTable table = TableMapper.GuildRankNames(Strings(("s_guild_grade_default_group2", "Équipe")));
-        Assert.That(table.Names, Is.EqualTo(new[] { "", "", "Équipe", "", "", "" }));
+        GuildRankNameTable table = TableMapper.GuildRankNames(Strings(("s_guild_grade_default_group2", "\u00C9quipe")));
+        Assert.That(table.Names, Is.EqualTo(new[] { "", "", "\u00C9quipe", "", "", "" }));
         Assert.That(TableMapper.GuildRankNames(Strings(("s_other", "x"))), Is.SameAs(GuildRankNameTable.Empty));
     }
 
     // A KR guild's stored defaults show as the client's; a typed name, a default at another rank's place and a rank
     // past the six are kept.
+    // The region's file comes first: its names win over the English ones, and English fills a key it lacks or leaves
+    // empty. Each key says which file it came from.
+    [Test]
+    public void Parse_TheRegionFileWins_EnglishFillsAKeyItLacks() {
+        XmlDocument kr = Strings(
+            ("s_guild_grade_default_master", "Leader"), ("s_guild_grade_default_group1", "Officer"),
+            ("s_guild_grade_default_group2", "Member"), ("s_guild_grade_default_group3", ""),
+            ("s_guild_grade_default_group4", "\uAE38\uB4DC\uC6D02"));
+        XmlDocument en = Strings(English.Select((name, i) => (GuildRankNameTable.Keys[i], name)).ToArray());
+
+        GuildRankNameTable table = TableMapper.GuildRankNames([kr, en], out int[] from);
+        Assert.That(table.Names, Is.EqualTo(new[] { "Leader", "Officer", "Member", English[3], "\uAE38\uB4DC\uC6D02", English[5] }));
+        Assert.That(from, Is.EqualTo(new[] { 0, 0, 0, 1, 0, 1 }));
+
+        GuildRankNameTable none = TableMapper.GuildRankNames([Strings(("s_other", "x"))], out int[] nowhere);
+        Assert.That(none, Is.SameAs(GuildRankNameTable.Empty));
+        Assert.That(nowhere, Is.EqualTo(new[] { -1, -1, -1, -1, -1, -1 }));
+        Assert.That(TableMapper.GuildRankNames([], out _), Is.SameAs(GuildRankNameTable.Empty));
+    }
+
+    // The client's string folder per region: its own language, English on NA.
+    [TestCase("KR", "kr")]
+    [TestCase("NA", "en")]
+    [TestCase("CN", "cn")]
+    [TestCase("JP", "jp")]
+    public void StringDirectory_IsTheRegionsLanguage(string locale, string directory) {
+        Assert.That(TableMapper.StringDirectory(locale), Is.EqualTo(directory));
+    }
+
     [Test]
     public void Shown_MapsOnlyTheDataDefaultAtItsPlace() {
         IReadOnlyList<string> kr = GuildRules.DefaultRankNames("KR");

@@ -46,14 +46,19 @@ public class TableMapper : TypeMapper<TableMetadata> {
     private readonly TableParser parser;
     private readonly ItemOptionParser optionParser;
     private readonly string language;
+    // The region the data is ingested for (LOCALE): the client of that region reads its strings from its own
+    // language's folder (StringDirectory).
+    private readonly string locale;
     private readonly M2dReader xmlReader;
     // The Xml pack of the client that is played, when it is not the data folder's (MS2_PLAYED_CLIENT_XML).
     private readonly M2dReader? playedReader;
     // The server pack (Server.m2d), for the attributes only its copy of a table has (enchant scroll rates).
     private readonly M2dReader? serverReader;
 
-    public TableMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null, M2dReader? serverReader = null) {
+    public TableMapper(M2dReader xmlReader, string language, M2dReader? playedReader = null, M2dReader? serverReader = null,
+                       string locale = Maple2.Tools.Locale.Default) {
         this.xmlReader = xmlReader;
+        this.locale = locale;
         this.playedReader = playedReader;
         this.serverReader = serverReader;
         parser = PackTables.NewParser(xmlReader, language);
@@ -3096,42 +3101,71 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return new MaidTable(results, exps, recipes, groups, jackpotRates);
     }
 
-    // The played client's string/<language>/stringcommon.xml (else the data pack's).
-    private XmlDocument? StringCommon() {
-        string name = $"string/{language}/{TableNames.STRING_COMMON}";
-        foreach (M2dReader? reader in new[] { playedReader, xmlReader }) {
+    // The played client's string/<directory>/stringcommon.xml (else the data pack's), with where it was read.
+    private (XmlDocument Document, string Source)? StringCommon(string directory) {
+        string name = $"string/{directory}/{TableNames.STRING_COMMON}";
+        foreach ((M2dReader? reader, string pack) in new[] { (playedReader, "played client"), ((M2dReader?) xmlReader, "data pack") }) {
             Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (reader != null && entry != null) {
-                return reader.GetXmlDocument(entry);
+                return (reader.GetXmlDocument(entry), $"{pack} {name}");
             }
         }
         return null;
     }
 
+    // The string folder a region's client reads: the client keeps its strings under string/<language>/ (CFileSystem
+    // takes a string file from the folder SetLanguage picks, localepath.cpp:578-592: kr unless set otherwise), and a
+    // region's client runs in its own language, English on NA. A region without a folder of its own (TH, TW) finds
+    // no file there, and its names come from the English one.
+    public static string StringDirectory(string locale) => locale == "NA" ? "en" : locale.ToLowerInvariant();
+
     // The inventory tab names, from stringcommon.
     private InventoryTabNameTable ParseInventoryTabNames() {
-        XmlDocument? document = StringCommon();
+        XmlDocument? document = StringCommon(language)?.Document;
         InventoryTabNameTable table = document == null ? InventoryTabNameTable.Empty : InventoryTabNames(document);
         Console.WriteLine($"string/{language}/{TableNames.STRING_COMMON}: {table.Names.Count} of {InventoryTab.Count} inventory tab names");
         return table;
     }
 
-    // The client's default guild rank names, from stringcommon.
+    // The client's default guild rank names, from the stringcommon of the region's client (StringDirectory), the
+    // played client's first: the names that client shows in its own guild window. A key it lacks is taken from the
+    // English stringcommon. Each name's file is logged.
     private GuildRankNameTable ParseGuildRankNames() {
-        XmlDocument? document = StringCommon();
-        GuildRankNameTable table = document == null ? GuildRankNameTable.Empty : GuildRankNames(document);
-        Console.WriteLine($"string/{language}/{TableNames.STRING_COMMON}: {table.Names.Count(name => name.Length > 0)} of {GuildRankNameTable.Keys.Length} guild rank names");
+        string directory = StringDirectory(locale);
+        var sources = new List<(XmlDocument Document, string Source)>();
+        foreach (string folder in directory == "en" ? new[] { "en" } : new[] { directory, "en" }) {
+            if (StringCommon(folder) is { } found) {
+                sources.Add(found);
+            }
+        }
+        GuildRankNameTable table = GuildRankNames(sources.Select(source => source.Document).ToArray(), out int[] from);
+        Console.WriteLine($"guild rank names ({locale}): {table.Names.Count(name => name.Length > 0)} of {GuildRankNameTable.Keys.Length}");
+        for (int i = 0; i < GuildRankNameTable.Keys.Length; i++) {
+            Console.WriteLine($"  {GuildRankNameTable.Keys[i]}: {(from[i] < 0 ? "none" : sources[from[i]].Source)}");
+        }
         return table;
     }
 
     // Each default rank key's value (GuildRankNameTable.Keys), "" for a key the strings lack; the empty table when
-    // none is there. A key listed twice keeps its last value, as for the tab names.
-    public static GuildRankNameTable GuildRankNames(XmlDocument document) {
-        var values = new Dictionary<string, string>();
-        foreach (XmlElement key in document.GetElementsByTagName("key").OfType<XmlElement>()) {
-            values[key.GetAttribute("id")] = key.GetAttribute("value");
+    // none is there. A key listed twice in a file keeps its last value, as for the tab names.
+    public static GuildRankNameTable GuildRankNames(XmlDocument document) => GuildRankNames([document], out _);
+
+    // The same over several files in order: a key takes the first file's non-empty value. |from| is that file's
+    // index per key, -1 for a key no file names.
+    public static GuildRankNameTable GuildRankNames(IReadOnlyList<XmlDocument> documents, out int[] from) {
+        var files = documents.Select(document => {
+            var values = new Dictionary<string, string>();
+            foreach (XmlElement key in document.GetElementsByTagName("key").OfType<XmlElement>()) {
+                values[key.GetAttribute("id")] = key.GetAttribute("value");
+            }
+            return values;
+        }).ToArray();
+        string[] names = new string[GuildRankNameTable.Keys.Length];
+        from = new int[names.Length];
+        for (int i = 0; i < names.Length; i++) {
+            from[i] = Array.FindIndex(files, values => values.TryGetValue(GuildRankNameTable.Keys[i], out string? value) && value.Length > 0);
+            names[i] = from[i] < 0 ? "" : files[from[i]][GuildRankNameTable.Keys[i]];
         }
-        string[] names = GuildRankNameTable.Keys.Select(id => (values.TryGetValue(id, out string? value) ? value : "")).ToArray();
         return names.Any(name => name.Length > 0) ? new GuildRankNameTable(names) : GuildRankNameTable.Empty;
     }
 
