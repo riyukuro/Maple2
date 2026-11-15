@@ -45,9 +45,18 @@ public partial class ChannelService {
         }
     }
 
+    // A member whose client is at its limit (clubs and open invites, CClubClientManager::IsClubLimitReached) does not
+    // add the club: AddClub asserts and returns, and SendClubMode3 then finds no club to answer for
+    // (clubcli.cpp:707-711, :933-938), so the staged club would wait for an answer that never comes. That member
+    // gets no Club 2 and the reply is 58 (s_club_err_full_club_member), so the World removes the staged club.
     private ClubResponse Create(long clubId, IEnumerable<long> receiverIds, ClubRequest.Types.Create create) {
+        ClubError error = ClubError.none;
         foreach (long receiverId in receiverIds) {
             if (!server.GetSession(receiverId, out GameSession? session)) {
+                continue;
+            }
+            if (ClubRules.CreateRefused(session.Clubs.Count, session.ClubInvites.Count(Environment.TickCount64))) {
+                error = ClubError.s_club_err_full_club_member;
                 continue;
             }
 
@@ -60,7 +69,7 @@ public partial class ChannelService {
             }
         }
 
-        return new ClubResponse();
+        return new ClubResponse { Error = (int) error };
     }
 
     private ClubResponse StagedClubFail(long clubId, IEnumerable<long> receiverIds, ClubRequest.Types.StagedClubFail stagedClubFail) {

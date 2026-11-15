@@ -81,12 +81,21 @@ public partial class WorldService {
             };
         }
 
-        manager.Broadcast(new ChannelClubRequest {
+        // A member whose client is at its club limit cannot take the club and would never answer it: the staged
+        // club is removed as a declined one is (Club 0xf fail), and the leader is told 58.
+        error = manager.BroadcastCreate(new ChannelClubRequest {
             Create = new ChannelClubRequest.Types.Create {
                 Info = ToClubInfo(manager.Club),
             },
             ClubId = manager.Club.Id,
         });
+        if (error != ClubError.none) {
+            manager.FailStaged();
+            clubLookup.Disband(clubId);
+            return new ClubResponse {
+                Error = (int) error,
+            };
+        }
 
         return new ClubResponse();
     }

@@ -435,6 +435,40 @@ public class ClubManager : IDisposable {
         });
     }
 
+    // Club 2 to the members' channels, as Broadcast sends it, but the first channel refusal is returned: a channel
+    // answers 58 for a member whose client is at its club limit (ChannelService.Club Create).
+    public ClubError BroadcastCreate(ClubRequest request) {
+        ClubError result = ClubError.none;
+        foreach (IGrouping<short, ClubMember> group in Club.Members.Values.GroupBy(member => member.Info.Channel)) {
+            if (!ChannelClients.TryGetClient(group.Key, out ChannelClient? client)) {
+                continue;
+            }
+
+            request.ReceiverIds.Clear();
+            request.ReceiverIds.AddRange(group.Select(member => member.Info.CharacterId));
+
+            try {
+                ClubResponse response = client.Club(request);
+                if (result == ClubError.none && response.Error != 0) {
+                    result = (ClubError) response.Error;
+                }
+            } catch (Exception ex) {
+                Serilog.Log.Warning(ex, "Club {ClubId} {Case} did not reach channel {Channel}", Club.Id, request.ClubCase, group.Key);
+            }
+        }
+        return result;
+    }
+
+    // The staged club will not be founded: the members who got Club 2 are told, as for a declined club.
+    public void FailStaged() {
+        Broadcast(new ClubRequest {
+            ClubId = Club.Id,
+            StagedClubFail = new ClubRequest.Types.StagedClubFail {
+                Reply = (int) Model.Enum.ClubResponse.Fail,
+            },
+        });
+    }
+
     public void Broadcast(ClubRequest request, ClubMember? also = null) {
         if (request.ClubId > 0 && request.ClubId != Club.Id) {
             throw new InvalidOperationException($"Broadcasting {request.ClubCase} for incorrect guild: {request.ClubId} => {Club.Id}");

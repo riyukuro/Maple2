@@ -321,4 +321,56 @@ public class ClubCreateTests {
         using GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetClub(playerLookup, clubId), Is.Null);
     }
+
+    // A member whose client holds three clubs and open invites in all cannot add the club (AddClub asserts) and never
+    // answers it (SendClubMode3 finds no club). Before, the channel sent Club 2 anyway and the club stayed staged.
+    [TestCase(0, 3)]
+    [TestCase(2, 1)]
+    public void MemberAtTheClientLimit_NoClub2AndTheClubGoes(int clubs, int invites) {
+        WorldClubManager manager = StagedClub();
+        long clubId = manager.Club.Id;
+        long now = Environment.TickCount64;
+        for (int i = 0; i < clubs; i++) {
+            session.Clubs[-1 - i] = null!;
+        }
+        for (int i = 0; i < invites; i++) {
+            session.ClubInvites.Add(-10 - i, now);
+        }
+
+        Model.Error.ClubError error = manager.BroadcastCreate(new ClubRequest {
+            Create = new ClubRequest.Types.Create { Info = ToClubInfo(manager.Club) },
+            ClubId = clubId,
+        });
+
+        Assert.That(error, Is.EqualTo(Model.Error.ClubError.s_club_err_full_club_member));
+        Assert.That(ClubPackets(), Is.Empty, "no Club 2 the client would refuse");
+        Assert.That(session.Clubs.ContainsKey(clubId), Is.False);
+        for (int i = 0; i < clubs; i++) {
+            session.Clubs.TryRemove(-1 - i, out _);
+        }
+    }
+
+    // One club and one open invite: the client takes the club, so Club 2 is sent as before.
+    [Test]
+    public void MemberUnderTheClientLimit_GetsClub2() {
+        WorldClubManager manager = StagedClub();
+        session.ClubInvites.Add(-10, Environment.TickCount64);
+
+        Model.Error.ClubError error = manager.BroadcastCreate(new ClubRequest {
+            Create = new ClubRequest.Types.Create { Info = ToClubInfo(manager.Club) },
+            ClubId = manager.Club.Id,
+        });
+
+        Assert.That(error, Is.EqualTo(Model.Error.ClubError.none));
+        Assert.That(ClubPackets().Select(packet => packet[2]), Is.EqualTo(new byte[] { 2 }));
+    }
+
+    [TestCase(0, 2, false)]
+    [TestCase(2, 0, false)]
+    [TestCase(0, 3, true)]
+    [TestCase(1, 2, true)]
+    [TestCase(3, 0, true)]
+    public void CreateRefused_ClubsAndInvites(int clubs, int invites, bool expected) {
+        Assert.That(Model.Validators.ClubRules.CreateRefused(clubs, invites), Is.EqualTo(expected));
+    }
 }

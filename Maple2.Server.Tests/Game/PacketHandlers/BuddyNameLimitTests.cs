@@ -102,11 +102,11 @@ public class BuddyNameLimitTests {
         return new BuddyResponse { Channel = 1 };
     }
 
-    private void Invite(GameSession session, string name) {
+    private void Invite(GameSession session, string name, string memo = "hi") {
         buddyHandler.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(Request);
             writer.WriteUnicodeString(name);
-            writer.WriteUnicodeString("hi");
+            writer.WriteUnicodeString(memo);
         }));
     }
 
@@ -147,6 +147,24 @@ public class BuddyNameLimitTests {
         Assert.That(BuddySent(playerTest), Does.Contain(Hex(BuddyPacket.Invite("Bobby", error: BuddyError.s_buddy_err_request_somebody))));
         Assert.That(Entries(player.CharacterId).Select(entry => (entry.BuddyId, entry.Type)), Is.EqualTo(new[] { (other.CharacterId, BuddyType.InRequest) }));
         Assert.That(Entries(other.CharacterId).Select(entry => (entry.BuddyId, entry.Type)), Is.EqualTo(new[] { (player.CharacterId, BuddyType.OutRequest) }));
+    }
+
+    // The client's memo box takes 50 characters; a memo of that length is a request like any other.
+    [TestCase(26)]
+    [TestCase(50)]
+    public void AMemoUpToTheClientsBoxIsSent(int length) {
+        Invite(player, "Bobby", new string('m', length));
+
+        Assert.That(BuddySent(playerTest), Has.None.EqualTo(Hex(BuddyPacket.Invite(error: BuddyError.s_buddy_err_unknown))));
+        Assert.That(Entries(player.CharacterId).Select(entry => (entry.BuddyId, entry.Type)), Is.EqualTo(new[] { (other.CharacterId, BuddyType.OutRequest) }));
+    }
+
+    [Test]
+    public void AMemoLongerThanTheClientsBoxIsRefused() {
+        Invite(player, "Bobby", new string('m', 51));
+
+        Assert.That(BuddySent(playerTest), Is.EqualTo(new[] { Hex(BuddyPacket.Invite(error: BuddyError.s_buddy_err_unknown)) }));
+        Assert.That(Entries(player.CharacterId), Is.Empty);
     }
 
     [Test]

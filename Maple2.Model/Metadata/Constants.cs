@@ -16,7 +16,10 @@ public static class Constant {
     public const long StarPointMax = 999999;
     public const long MesoTokenMax = 100000;
     public const int MaxSkillTabCount = 3;
-    public const int BuddyMessageLengthMax = 25;
+    // The memo boxes of the client's friend dialogs take 50 characters (TextInput maxChars 50 in uicommunitydialog and
+    // uicommunityquerydialog), and the fixed memos are sent as their string reads (s_buddy_request_default_msg is 26 in
+    // the GMS pt table).
+    public const int BuddyMessageLengthMax = 50;
     public const int GemstoneGrade = 4;
     public const int LapenshardGrade = 3;
     public const int InventoryExpandRowCount = 6;

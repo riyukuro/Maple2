@@ -32,8 +32,9 @@ public class ClubBuffTests {
     [TestCase(110002001, 1, 110002001, 1, false)] // the club has it already
     [TestCase(110002001, 2, 0, 0, false)] // not a row's level
     [TestCase(110002004, 1, 0, 0, false)] // not a row
-    [TestCase(0, 0, 110002001, 1, false)] // the window never clears the buff
-    [TestCase(0, 0, 0, 0, false)]
+    [TestCase(0, 0, 110002001, 1, true)] // 0, 0 clears the buff (clubcli.cpp:508-511)
+    [TestCase(0, 0, 0, 0, false)] // no buff to clear: the client sends nothing
+    [TestCase(0, 1, 110002001, 1, false)] // only both zero is the clear
     public void OnlyATableRowIsSet(int buffId, int buffLevel, int currentId, int currentLevel, bool expected) {
         Assert.That(ClubRules.BuffAllowed(Rows, buffId, buffLevel, currentId, currentLevel), Is.EqualTo(expected));
     }
