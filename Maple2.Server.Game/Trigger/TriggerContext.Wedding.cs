@@ -14,9 +14,17 @@ namespace Maple2.Server.Game.Trigger;
 // when the room is entered through Wedding 0x1a; in a room without one (a GM who warped in) every condition is
 // false and every action does nothing.
 public partial class TriggerContext {
-    // Nothing in the client or the hall triggers shows a state this changes: the action only stands between a
-    // notice and moving everyone out. Left without effect.
-    public void WeddingBroken() { }
+    // The hall scripts call it when the couple did not come in time (the 12 KR hall wait scripts, between the
+    // closing notice and moving everyone out) and note it as the declaration that the wedding fell through, for the
+    // log. Nothing in the client or the scripts shows a state it changes, so its effect is this one log line.
+    public void WeddingBroken() {
+        WeddingCeremony? ceremony = Field.Wedding;
+        if (ceremony == null) {
+            return;
+        }
+        logger.Information("[WeddingBroken] marriage:{MarriageId}, couple:{Partner1},{Partner2}, map:{MapId}, room:{RoomId}",
+            ceremony.MarriageId, ceremony.Couple[0], ceremony.Couple[1], Field.MapId, Field.RoomId);
+    }
 
     // Moves the players of one role to a random portal of the list, in this hall (the hall scripts' own note on
     // the action; a move to another map is left without effect). Guest: the players in the box who are not the

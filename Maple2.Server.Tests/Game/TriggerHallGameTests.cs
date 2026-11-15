@@ -148,6 +148,43 @@ public class TriggerHallGameTests : TriggerTestBase {
         Assert.That(Moves(), Has.Length.EqualTo(1));
     }
 
+    // wedding_broken (12 KR uses, the hall wait scripts, noted there as the declaration for the log that the wedding
+    // fell through): one Information line with the marriage, the couple and the room; nothing in a room without a
+    // ceremony.
+    [Test]
+    [NonParallelizable]
+    public void WeddingBroken_LogsTheCeremony() {
+        StartHall();
+        var sink = new CollectSink();
+        Serilog.ILogger previous = Serilog.Log.Logger;
+        Serilog.Log.Logger = new Serilog.LoggerConfiguration().MinimumLevel.Verbose().WriteTo.Sink(sink).CreateLogger();
+        try {
+            context = NewContext();
+        } finally {
+            Serilog.Log.Logger = previous;
+        }
+
+        Action("""<action name="wedding_broken" />""");
+        Assert.That(sink.Lines(), Is.Empty);
+
+        Field.Wedding = new WeddingCeremony(7001, CharacterId, PartnerId, CharacterId);
+        Action("""<action name="wedding_broken" />""");
+        Assert.That(sink.Lines(), Is.EqualTo(new[] {
+            $"Information [WeddingBroken] marriage:7001, couple:{CharacterId},{PartnerId}, map:{Field.MapId}, room:{Field.RoomId}",
+        }));
+    }
+
+    private sealed class CollectSink : Serilog.Core.ILogEventSink {
+        private readonly ConcurrentQueue<Serilog.Events.LogEvent> events = new();
+
+        public void Emit(Serilog.Events.LogEvent logEvent) => events.Enqueue(logEvent);
+
+        public string[] Lines() => events
+            .Where(e => e.MessageTemplate.Text.StartsWith("[WeddingBroken]"))
+            .Select(e => $"{e.Level} {e.RenderMessage()}")
+            .ToArray();
+    }
+
     // wedding_vow_complete (12 KR uses, no attributes): with the couple in the room the engaged marriage is stored as
     // married and the couple's own marriage turns married; a second vow, or one without the couple, changes nothing.
     // The test field holds one player, so the couple here is that player twice.
