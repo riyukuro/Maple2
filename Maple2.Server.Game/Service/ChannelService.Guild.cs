@@ -273,8 +273,10 @@ public partial class ChannelService {
                 continue;
             }
 
-            session.Guild.UseBuff(update.RequestorName, new GuildBuff(update.Id, update.Level, update.UseTime),
-                update.EffectId, (short) update.EffectLevel, update.Duration);
+            // The guild's skill list is the field thread's (its handlers read and iterate it), so it is replaced there.
+            GameSession member = session;
+            member.RunAsPlayer(() => member.Guild.UseBuff(update.RequestorName, new GuildBuff(update.Id, update.Level, update.UseTime),
+                update.EffectId, (short) update.EffectLevel, update.Duration));
         }
 
         return new GuildResponse();
@@ -314,7 +316,9 @@ public partial class ChannelService {
                 continue;
             }
 
-            session.Guild.UpgradeBuff(update.RequestorName, new GuildBuff(update.Id, update.Level, update.ExpiryTime));
+            // On the field thread, beside the handlers that read the guild's skill list.
+            GameSession member = session;
+            member.RunAsPlayer(() => member.Guild.UpgradeBuff(update.RequestorName, new GuildBuff(update.Id, update.Level, update.ExpiryTime)));
         }
 
         return new GuildResponse();
@@ -326,7 +330,9 @@ public partial class ChannelService {
                 continue;
             }
 
-            session.Guild.UpgradeNpc(update.RequestorName, new GuildNpc((GuildNpcType) update.Type, update.Level));
+            // On the field thread: an Add here while a handler iterates the NPC list (NpcLevel) threw there.
+            GameSession member = session;
+            member.RunAsPlayer(() => member.Guild.UpgradeNpc(update.RequestorName, new GuildNpc((GuildNpcType) update.Type, update.Level)));
         }
 
         return new GuildResponse();
