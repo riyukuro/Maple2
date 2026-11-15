@@ -78,4 +78,21 @@ public class FieldPlotThreadTests {
         Assert.DoesNotThrow(field.RunFieldActions);
         Assert.That(ran, Is.EqualTo(1));
     }
+
+    // A throw in the field's update (here from a queued field action's caller: an actor update that throws) is caught
+    // by the loop's update, so the field's thread goes on. Before, it ended the thread and the process.
+    [Test]
+    public void AThrowInTheFieldUpdate_DoesNotLeaveTheLoop() {
+        typeof(FieldManager).GetField("fieldActions", Any)!.SetValue(field, null);
+        field.Players.Clear();
+        int ran = 0;
+        typeof(FieldManager).GetField("queuedPackets", Any)!.SetValue(field, null);
+
+        Assert.DoesNotThrow(field.RunUpdate, "the null packet queue throws inside Update");
+        field.RunOnField(() => ran++);
+        typeof(FieldManager).GetField("queuedPackets", Any)!.SetValue(field,
+            Activator.CreateInstance(typeof(FieldManager).GetField("queuedPackets", Any)!.FieldType));
+        field.RunUpdate();
+        Assert.That(ran, Is.EqualTo(1), "the next update runs");
+    }
 }

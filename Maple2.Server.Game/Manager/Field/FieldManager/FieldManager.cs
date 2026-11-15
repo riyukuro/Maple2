@@ -582,11 +582,28 @@ public partial class FieldManager : IField {
     private void UpdateLoop() {
         while (!cancel.IsCancellationRequested) {
             if (!(DebugRenderer?.IsActive ?? false)) {
-                Update();
+                RunUpdate();
             }
 
             // Environment.TickCount has ~16ms precision so sleep until next update
             Thread.Sleep(15);
+        }
+    }
+
+    private DropLogLimiter? updateErrorLog;
+
+    // One update of the loop. A throw (an actor's update, a trigger) is logged and the loop goes on: uncaught, it
+    // ended the field's thread and, as an unhandled exception on a thread of its own, the whole channel process. The
+    // actors after the thrower are not updated in that tick. The log is limited (a thrower that fails every tick
+    // logs its first lines, then one line a minute with the count).
+    internal void RunUpdate() {
+        try {
+            Update();
+        } catch (Exception ex) {
+            DropLogLimiter limiter = LazyInitializer.EnsureInitialized(ref updateErrorLog);
+            if (limiter.ShouldLog(DateTime.UtcNow, out int count)) {
+                (logger ?? Log.Logger).Error(ex, "Field update failed MapId={MapId} RoomId={RoomId} ({Count} since the last line)", MapId, RoomId, count);
+            }
         }
     }
 
