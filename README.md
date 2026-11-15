@@ -89,21 +89,33 @@ Servers:
 
 ## Client data
 
-Nothing from either game is in this repository or in MS2Recomp: bring your own KMS2 client and its data.
+Nothing from either game is in this repository or in MS2Recomp: bring your own KMS2 client data, and for Mushking
+Royale a global (GMS) client's data too.
 
-The restored client's Mushking Royale needs six survival tables that the KMS2 pack does not ship
-(`mapleSurvivalOpenPeriod.xml`, `mapleSurvivalSkinInfo.xml`, `survivalLevel.xml`, `survivalLevelReward.xml`,
-`survivalPassReward.xml`, `survivalPassReward_paid.xml`). Take them from a client data pack that has them, such as a
-global (GMS) client. The `restore` branch's README says where they go: as loose files in `Data/Xml/Table/na/` next to
-the client's `Data/Xml.m2d`. The same files must reach the ingest, in either of two ways:
+The restored client's data is built with `m2d patch` from MS2Recomp's
+[`restore`](https://github.com/riyukuro/MS2Recomp/tree/restore) branch (`tools/m2d`, needs the .NET 8 SDK). It
+applies the patch files in `tools/restore/patches/` to your own copies of the client packs:
 
-- Set `MS2_PLAYED_CLIENT_OVERLAY` to the client's `Data/Xml` folder, so the ingest reads the client's loose files
-  exactly as the client does.
-- Or put them in the server data's `table/na`.
+- `survival-items`: the Mushking Royale skins and the pass and level reward items the KMS2 pack lacks, copied by id
+  from the global client, with the skin table and the survival pass buffs.
+- `string-names`: achievement names and NPC titles the KMS2 Korean table lacks.
+- `daily-mission` (optional): the Daily Missions menu entries and window texts, for a server that turns the
+  `DailyMission` feature on in its own `feature.xml`.
 
-Without them the survival tables are empty: no season, no levels, no pass.
+A patch holds no game data: it copies rows from your packs and stops without writing anything when your pack is not
+the one it was made for. The restore branch's README ("Client data you supply") has the command, what each patch
+changes, and the survival tables that you still put in as loose files yourself.
 
-MS2Recomp's `tools/m2d` lists, extracts and repacks `.m2d` packs (`m2d list|info|extract|cat|repack`).
+`m2d patch` writes loose files under its `--out` directory (`Xml/...`), which can be the client's own `Data`
+directory, or with `--repack` patched copies of `Xml.m2d` and `Xml.m2h`. The ingest must read the same data the
+client reads:
+
+- Loose files: set `MS2_PLAYED_CLIENT_OVERLAY` to the `Xml` directory under `--out` (the client's `Data/Xml`), so
+  the ingest reads them over the played pack as the client does.
+- A repacked pack: set `MS2_PLAYED_CLIENT_XML` to the patched `Xml.m2d`.
+
+The ingest reads the survival season, level and pass tables from the data pack's `table/na` (v1.3.2 has them), and
+the skin table, the items and the names from the played pack with these files over it.
 
 ## Status
 
