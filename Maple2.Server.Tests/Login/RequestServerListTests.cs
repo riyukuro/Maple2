@@ -111,11 +111,23 @@ public class RequestServerListTests {
         byte[] list = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.ServerList);
         var reader = new ByteReader(list, 2);
         Assert.Multiple(() => {
-            Assert.That(reader.ReadString(), Is.EqualTo("dev"));
+            Assert.That(reader.ReadString(), Is.EqualTo("live"));
             Assert.That(reader.ReadByte(), Is.EqualTo(1)); // one server
             Assert.That(reader.ReadInt(), Is.EqualTo(1));
             Assert.That(reader.ReadUnicodeString(), Is.EqualTo(Target.SERVER_NAME));
             Assert.That(reader.ReadByte(), Is.EqualTo(2));
+        });
+    }
+
+    // The list's first string is the server type name: "live" (the client's parser gives 5, not a test server), sent as
+    // a short length then its bytes, by both the list and its error. "dev" made every server a test server.
+    [Test]
+    public void TheServerTypeIsLive() {
+        ByteWriter load = ServerListPacket.Load("s", [], [1], 0);
+        ByteWriter error = ServerListPacket.Error();
+        Assert.Multiple(() => {
+            Assert.That(Convert.ToHexString(load.Buffer, 2, 6), Is.EqualTo("04006C697665"));
+            Assert.That(Convert.ToHexString(error.Buffer[..error.Length]), Is.EqualTo(Convert.ToHexString(error.Buffer, 0, 2) + "04006C69766500"));
         });
     }
 

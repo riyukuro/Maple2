@@ -10,9 +10,15 @@ public static class ServerListPacket {
         Load = 1,
     }
 
+    // The server type name the client stores from the list (CFeatureManager::SetServerTypeName, featuremanager.cpp:1116).
+    // Its parser (commonenum.cpp:613) reads dev, devstage and qa as test servers (IsTestServerType), which always show
+    // the character list's server list button (uicharacterlistdialog.cpp:723); stage is 4 and live 5. The client's own
+    // default is "Live". "dev" was sent, so every server showed as a test server.
+    public const string ServerType = "live";
+
     public static ByteWriter Error() {
         var pWriter = Packet.Of(SendOp.ServerList);
-        pWriter.WriteString("dev"); // the client reads this string before the result byte (as in Load)
+        pWriter.WriteString(ServerType); // the client reads this string before the result byte (as in Load)
         pWriter.Write<Command>(Command.Error);
 
         return pWriter;
@@ -24,7 +30,7 @@ public static class ServerListPacket {
     // charCnt, uiserverlistdialog.cpp:483), the addresses, the traffic percent (trafficPercent, :484) and the channels.
     public static ByteWriter Load(string serverName, IList<IPEndPoint> serverIps, ICollection<int> channels, int characters, int online = 0) {
         var pWriter = Packet.Of(SendOp.ServerList);
-        pWriter.WriteString("dev"); // env (Live, Staging, qa, dev)
+        pWriter.WriteString(ServerType);
         pWriter.Write<Command>(Command.Load); // one server
         pWriter.WriteInt(1); // server id
         pWriter.WriteUnicodeString(serverName);
