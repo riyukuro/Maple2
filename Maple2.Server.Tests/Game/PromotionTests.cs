@@ -157,6 +157,25 @@ public class PromotionTests {
         Assert.That(Stored(), Is.EqualTo(new[] { (0L, 8804, 1) }));
     }
 
+    // The count and the drop are written together: the count was written on its own first, so an item write that
+    // failed spent it with nothing given. Now nothing is given or counted, and the row can drop again.
+    [Test]
+    public void LimitedDrop_ItemWriteFails_CountsNothing() {
+        GameSession session = Login(Row(8806, ConditionType.fish, new ConditionMetadata.Parameters(Integers: [FishId]), limit: 1));
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any(entry => entry.State == EntityState.Added);
+
+        session.ConditionUpdate(ConditionType.fish, codeLong: FishId, targetLong: 2000001);
+        test.FailSave = null;
+
+        Assert.That(Held(session), Is.EqualTo(0));
+        Assert.That(Stored(), Is.Empty);
+        Assert.That(test.TakeSent().Any(packet => BitConverter.ToUInt16(packet, 0) == (ushort) SendOp.TaskEvent), Is.False);
+
+        session.ConditionUpdate(ConditionType.fish, codeLong: FishId, targetLong: 2000001);
+        Assert.That(Held(session), Is.EqualTo(1));
+        Assert.That(Stored(), Is.EqualTo(new[] { (0L, 8804, 1) }));
+    }
+
     [Test]
     public void OtherCode_LowLevel_FailedRoll_OutsideDates_GiveNothing() {
         GameSession session = Login(Row(8806, ConditionType.fish, new ConditionMetadata.Parameters(Integers: [FishId]), prop: 150),
@@ -194,6 +213,8 @@ public class PromotionTests {
         session.ConditionUpdate(ConditionType.map, codeLong: 80000004);
         Assert.That(Held(session), Is.EqualTo(3));
         Assert.That(Stored(), Is.EqualTo(new[] { (0L, 8804, 1) }));
+        // A reached limit is no failure: nothing is logged as an error.
+        Assert.That(test.Errors, Is.Empty);
     }
 
     [Test]

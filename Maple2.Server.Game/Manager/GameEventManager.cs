@@ -649,10 +649,13 @@ public sealed class GameEventManager {
                 || Roll(10000) >= entry.Prop) {
                 continue;
             }
-            if (entry.LimitType != PromotionLimit.none && !TakePromotionCount(entry, now)) {
+            ICollection<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, level, entry.IndividualDropBoxId);
+            if (entry.LimitType != PromotionLimit.none) {
+                // After a store this condition may be counted in: its account lock is let go first.
+                PromotionTable.Entry limited = entry;
+                session.AfterStore(() => ClaimPromotion(limited, items, now));
                 continue;
             }
-            ICollection<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, level, entry.IndividualDropBoxId);
             foreach (Item item in items) {
                 if (!session.Item.Inventory.Add(item, true)) {
                     session.Item.MailItem(item);
@@ -664,15 +667,27 @@ public sealed class GameEventManager {
         }
     }
 
-    // A failed read or write (no promotion-count table) takes nothing and is logged; the counted action goes on.
-    private bool TakePromotionCount(PromotionTable.Entry entry, DateTime now) {
-        try {
-            using GameStorage.Request db = session.GameStorage.Context();
-            return db.TakePromotionCount(session.AccountId, entry.IsAccount ? 0 : session.CharacterId, entry.ShareId,
-                entry.LimitCount, PromotionRules.Expiration(entry, now), now.ToEpochSeconds());
-        } catch (Exception ex) {
-            logger.Error(ex, "Promotion {Id} limit of {CharacterId} not taken", entry.Id, session.CharacterId);
-            return false;
+    // A limited row's drop: the count and the items (bag rows, or mails when the bag does not take them) are stored
+    // in one transaction (EventClaim.Give). The count was written on its own before the items' rows, so an item
+    // write that failed (or a stop between the two) spent the count with nothing given. A reached limit gives
+    // nothing; a failed store gives and counts nothing (logged), and the counted action goes on.
+    private void ClaimPromotion(PromotionTable.Entry entry, ICollection<Item> items, DateTime now) {
+        bool full = false;
+        long characterId = entry.IsAccount ? 0 : session.CharacterId;
+        List<Item>? given = EventClaim.Give(session, items.ToList(), [], alsoSave: db => {
+            bool? taken = db.TakePromotionCountInStore(session.AccountId, characterId, entry.ShareId, entry.LimitCount,
+                PromotionRules.Expiration(entry, now), now.ToEpochSeconds());
+            full = taken == false;
+            return taken == true;
+        }, refused: () => full);
+        if (given == null) {
+            if (!full) {
+                logger.Error("Promotion {Id} drop of {CharacterId} not stored", entry.Id, session.CharacterId);
+            }
+            return;
+        }
+        if (items.Count > 0) {
+            session.Send(TaskEventPacket.Reward(entry.Kind, items));
         }
     }
 

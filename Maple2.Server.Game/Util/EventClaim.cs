@@ -24,8 +24,9 @@ public static class EventClaim {
     // The stored items (bag or mail rows), or null when nothing was stored. Each mark's value must be held already
     // (a GameEventManager.Get of it): its expiration is kept. alsoSave stores a claim's marks kept elsewhere (account
     // fields) in the same transaction, false refusing it; afterCommit puts them in memory once it committed.
+    // refused: true when alsoSave's false is no failure (a limit reached); that refusal is logged as information.
     public static List<Item>? Give(GameSession session, IReadOnlyList<Item> items, IReadOnlyList<Mark> marks,
-            Func<GameStorage.Request, bool>? alsoSave = null, Action? afterCommit = null) {
+            Func<GameStorage.Request, bool>? alsoSave = null, Action? afterCommit = null, Func<bool>? refused = null) {
         if (Values(session, marks) is not var (characterValues, accountValues)) {
             return null;
         }
@@ -103,9 +104,11 @@ public static class EventClaim {
                 }
             });
             return true;
-        });
+        }, refused ?? (() => false), out _);
         if (!stored) {
-            Logger.Error("Event claim of {Marks} not stored for {CharacterId}, nothing given", string.Join(",", marks.Select(mark => $"{mark.EventId}:{mark.Type}")), session.CharacterId);
+            if (refused?.Invoke() != true) {
+                Logger.Error("Event claim of {Marks} not stored for {CharacterId}, nothing given", string.Join(",", marks.Select(mark => $"{mark.EventId}:{mark.Type}")), session.CharacterId);
+            }
             return null;
         }
 
