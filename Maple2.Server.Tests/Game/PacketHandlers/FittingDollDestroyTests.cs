@@ -328,6 +328,26 @@ public class FittingDollDestroyTests {
         });
     }
 
+    // The take-off's move not written: refused, and the item keeps the binding the event's take-off gave it, its row
+    // stays on the doll, and the doll shows it again. Before, the item stayed rebound and off the doll in memory.
+    [Test]
+    public void TakeOff_MoveNotStored_KeepsTheItemAndItsBinding() {
+        long bound = 0;
+        Start(() => bound = NewCharacter(test.AccountId), null, true, false, 1);
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.Entity is Maple2.Database.Model.Item);
+        List<string> sent = TakeOff();
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(sent.Last(), Is.EqualTo(Error(0xc)));
+            AssertKept();
+            Assert.That(doll.Items[EquipSlot.CL].Transfer?.Binding?.CharacterId, Is.EqualTo(bound));
+            Assert.That(top.Transfer?.Binding?.CharacterId, Is.EqualTo(bound));
+            Assert.That(top.Group, Is.EqualTo(ItemGroup.FittingDoll));
+            Assert.That(session.Item.Inventory.Get(top.Uid), Is.Null);
+        });
+    }
+
     [Test]
     public void TakeOff_OwnOrFreeGems_TakesTheItem() {
         Start(() => test.CharacterId, () => [0, test.CharacterId]);

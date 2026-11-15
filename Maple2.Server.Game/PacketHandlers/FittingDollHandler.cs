@@ -334,12 +334,25 @@ public class FittingDollHandler : FieldPacketHandler {
                     return FittingDollRules.Error.InventoryFull;
                 }
 
+                ItemBinding? binding = item.Transfer?.Binding;
                 doll.Items.Remove(slot);
                 if (transfer) {
                     item.Transfer?.Rebind(session.Player.Value.Character);
                 }
                 session.Field?.Broadcast(FittingDollPacket.PutOff(doll, slot));
-                return ToInventoryOrMail(session, doll.Uid, item) ? FittingDollRules.Error.None : FittingDollRules.Error.InvalidItem;
+                if (!ToInventoryOrMail(session, doll.Uid, item)) {
+                    // The move was not written (it failed, or another instance of this home took the row): the item
+                    // keeps its binding, group and slot, and the doll shows its stored rows again. Before, the item
+                    // stayed rebound and off the doll in memory while its row was still on the cube.
+                    if (binding != null) {
+                        item.Transfer?.RestoreBinding(binding);
+                    }
+                    item.Group = ItemGroup.FittingDoll;
+                    item.Slot = (short) slot;
+                    Reload(session, doll);
+                    return FittingDollRules.Error.InvalidItem;
+                }
+                return FittingDollRules.Error.None;
             }
         }
     }
