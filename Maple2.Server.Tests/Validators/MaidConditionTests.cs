@@ -23,6 +23,18 @@ public class MaidConditionTests {
 
     private static KeyValuePair<int, bool> Kv(int key, bool value) => new(key, value);
 
+    // A locale without the maid constants takes the client's defaults (ClientConstants ...Define): a 30-day contract,
+    // the salary talk open in its last 30 days and affinity up to level 9. With 0 a new maid was already expired.
+    [Test]
+    public void MaidConstants_ClientDefaults() {
+        var constants = new ConstantsTable();
+        Assert.Multiple(() => {
+            Assert.That(constants.PeriodOfMaidEmployment, Is.EqualTo(30));
+            Assert.That(constants.MaidReadyToPay, Is.EqualTo(30));
+            Assert.That(constants.MaidAffinityMax, Is.EqualTo(9));
+        });
+    }
+
     // CMaid::IsTime38Over: strictly more than the seconds.
     [TestCase(1800, ExpectedResult = false)]
     [TestCase(1801, ExpectedResult = true)]

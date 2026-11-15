@@ -362,9 +362,9 @@ public record ConstantsTable(
     int shadowChannelMin = 0,
     int shadowChannelUser = 0,
     int dynamicChannelDecreaseTick = 0,
-    int PeriodOfMaidEmployment = 0,
+    int PeriodOfMaidEmployment = 30, // the client's default (ClientConstants PeriodOfMaidEmployment.Define)
     int MaidReadyToPay = 30, // the client's default (ClientConstants MaidReadyToPay.Define)
-    int MaidAffinityMax = 0,
+    int MaidAffinityMax = 9, // the client's default (ClientConstants MaidAffinityMax.Define)
     float invokeEffectTargetCountFactor1 = 0f,
     float invokeEffectTargetCountFactor2 = 0f,
     float invokeEffectTargetCountFactor3 = 0f,
