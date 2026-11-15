@@ -153,10 +153,10 @@ public class UgcHandler : FieldPacketHandler {
                 break;
         }
         // The refund is stored now, as the fee is (StoreFee): a session save between the upload and here may have
-        // stored the charge, and a crash before the next save kept it. A failed store is logged; the next save
-        // stores it.
-        if (!session.SavePurchase()) {
-            Logger.Error("UGC fee refund of {UgcUid} for {CharacterId} not stored now, left to the next save", fee.UgcUid, session.CharacterId);
+        // stored the charge, and a crash before the next save kept it. A failed store is tried once more 2 s later
+        // (SaveRefund), then left to the next save.
+        if (!session.SaveRefund()) {
+            Logger.Warning("UGC fee refund of {UgcUid} for {CharacterId} not stored now, tried again later", fee.UgcUid, session.CharacterId);
         }
     }
 

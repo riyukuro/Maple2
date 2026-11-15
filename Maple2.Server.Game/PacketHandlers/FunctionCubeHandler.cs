@@ -299,8 +299,11 @@ public class FunctionCubeHandler : FieldPacketHandler {
             Logger.Error("Nurturing feed of account {AccountId}, cube {CubeId} not stored, the feed kept", session.AccountId, fieldCube.InteractCube.Metadata.Id);
             return;
         }
+        // A feed that cannot be taken now gives nothing: no drop and no trophy count. The stored feeding stays (the
+        // pet's growth and the day's count, kept in memory to match).
         if (!session.Item.Inventory.Consume(hasItem.Uid, amount: 1)) {
             Logger.Error("Nurturing feed of account {AccountId}: the feed {ItemUid} found for it could not be taken", session.AccountId, hasItem.Uid);
+            return;
         }
         if (rewardItem is not null) {
             session.Field.DropItem(fieldCube.Position, fieldCube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
