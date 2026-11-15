@@ -1518,6 +1518,16 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     }
                 }
         }
+        // The mentoring season out of the box: the seasons after the last one when none runs or is still to come.
+        List<GameEventMetadata> seasons = DefaultMentoringSeason.Rows(results.Values.Concat(ended), now,
+            FeatureLocaleFilter.FeatureEnabled(DefaultMentoringSeason.Feature), results.Keys.ToHashSet());
+        foreach (GameEventMetadata season in seasons) {
+            results.Add(season.Id, season);
+        }
+        if (seasons.Count > 0) {
+            Console.WriteLine($"Mentoring: no season row runs; seasons {seasons[0].Value3} to {seasons[^1].Value3} added after the last one "
+                              + $"({seasons[0].StartTime:yyyy-MM-dd HH:mm} to {seasons[^1].EndTime:yyyy-MM-dd HH:mm})");
+        }
         return new GameEventTable(results);
     }
 
