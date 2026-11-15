@@ -12,16 +12,14 @@ public static class StampEventRules {
     // user value of that type with event id 0, UserMarks) reads true, else the card of key 10002 while that one
     // does, else the card without a key, else a card whose mark reads true. None otherwise: the client shows no
     // card then, so nothing is claimed on one. `marked` reads a mark as the client does (true, false when absent).
+    // Of several marked cards the client takes the first in its map's iteration (a CAtlMap by key, gamerule.cpp:2186),
+    // an order of hash bins the server does not model; here the lowest key, so the pick does not hang on the order sent.
     public static T? PickEvent<T>(IEnumerable<T> events, Func<T, StampEvent?> data, Func<int, bool> marked) where T : class {
         var byKey = new Dictionary<int, T>();
-        var keys = new List<int>();
         foreach (T gameEvent in events) {
             StampEvent? stampEvent = data(gameEvent);
             if (stampEvent == null) {
                 continue;
-            }
-            if (!byKey.ContainsKey(stampEvent.Key)) {
-                keys.Add(stampEvent.Key);
             }
             byKey[stampEvent.Key] = gameEvent;
         }
@@ -33,7 +31,7 @@ public static class StampEventRules {
         if (byKey.TryGetValue(0, out T? keyless)) {
             return keyless;
         }
-        int found = keys.FirstOrDefault(key => marked(key), -1);
+        int found = byKey.Keys.Where(key => marked(key)).DefaultIfEmpty(-1).Min();
         return found < 0 ? null : byKey[found];
     }
 

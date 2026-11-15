@@ -111,12 +111,15 @@ public sealed class GameEventManager {
     // A mentoring return (MentoringReturnUser) is read until its own end also after its event: a ReturnUserCandidate
     // row keeps a return for the next season, which starts after the row ends (MentoringManager.LoadCandidate). It
     // is also kept to the end of a running season of its number (EventValueRules.FollowSeason).
-    // A value of no event (id 0: the new-user and returning-user marks, UserMarks) is read until its own end.
+    // A character value of no event (id 0: the new-user and returning-user marks, UserMarks) is read until its own
+    // end. An account value of no event is not: the registration stored before mentoring had seasons
+    // (MentoringRegistration, event id 0) is moved or dropped at login (MentoringManager), and a loaded one would be
+    // stored again at logout (Save) and taken into the next season.
     public static GameEventUserValue? LoadValue(GameEventUserValue userValue, IEnumerable<GameEvent> events, long now) {
         GameEvent? gameEvent = userValue.EventId == 0 ? null : events.FirstOrDefault(gameEvent => gameEvent.Id == userValue.EventId);
         if (gameEvent == null) {
             GameEventUserValue kept = EventValueRules.FollowSeason(userValue, events, now);
-            return (kept.Type == GameEventUserValueType.MentoringReturnUser || kept.EventId == 0) && kept.ExpirationTime > now ? kept : null;
+            return (kept.Type == GameEventUserValueType.MentoringReturnUser || (kept.EventId == 0 && !AccountValue(kept.Type))) && kept.ExpirationTime > now ? kept : null;
         }
         GameEventUserValue loaded = EventValueRules.FollowSeason(FollowEventEnd(userValue, gameEvent), events, now);
         return loaded.ExpirationTime < now ? null : loaded;

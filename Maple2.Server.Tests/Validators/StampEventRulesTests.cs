@@ -148,7 +148,7 @@ public class StampEventRulesTests {
     }
 
     // Several live cards, as the client picks one: the card of key 10001 while that mark is set, else 10002's,
-    // else the last card without a key, else a card whose mark is set; none when no mark is set and all have keys.
+    // else the last card without a key, else the marked card of the lowest key; none when no mark is set and all have keys.
     [Test]
     public void PickEvent_ByTheMarksAsTheClient() {
         StampEvent newUser = Card with { Key = 10001 };
@@ -165,6 +165,10 @@ public class StampEventRulesTests {
             Assert.That(StampEventRules.PickEvent<StampEvent>([returner, newUser], card => card, Marks(10001, 10002)), Is.SameAs(newUser));
             Assert.That(StampEventRules.PickEvent<StampEvent>([Card, returner], card => card, Marks(10002)), Is.SameAs(returner));
             Assert.That(StampEventRules.PickEvent<StampEvent>([newUser, other], card => card, Marks(10005)), Is.SameAs(other));
+            // Several marked cards besides 10001 and 10002: the lowest key, in any order sent.
+            StampEvent third = Card with { Key = 10006 };
+            Assert.That(StampEventRules.PickEvent<StampEvent>([third, other], card => card, Marks(10005, 10006)), Is.SameAs(other));
+            Assert.That(StampEventRules.PickEvent<StampEvent>([other, third], card => card, Marks(10005, 10006)), Is.SameAs(other));
             Assert.That(StampEventRules.PickEvent<StampEvent>([], card => card, none), Is.Null);
             Assert.That(StampEventRules.PickEvent<string>(["x"], _ => null, none), Is.Null);
         });

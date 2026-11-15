@@ -1234,6 +1234,27 @@ public class MentorHandlerTests {
         Assert.That(db.GetMentoring(other.CharacterId, 1), Is.Empty);
     }
 
+    // The old registration (an account value of event 0) is not loaded with the event values: the login that ends it
+    // does not store it again at logout, and it is gone at the next login.
+    [Test]
+    public void Load_WithoutASeasonTheOldRegistrationIsNotStoredAgain() {
+        Login(season: false);
+        Unseasoned();
+
+        // The login's event values are read before mentoring (GameSession), as a new manager reads them.
+        session.GameEvent = new GameEventManager(session);
+        Assert.That(session.GameEvent.Peek(GameEventUserValueType.MentoringRegistration, 0), Is.Null);
+        session.Mentoring.Load();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            session.GameEvent.Save(db);
+        }
+        Assert.That(HasUnseasonedRegistration(session), Is.False);
+        session.GameEvent = new GameEventManager(session);
+        session.Mentoring.Load();
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.None));
+        Assert.That(HasUnseasonedRegistration(session), Is.False);
+    }
+
     // An account that registered for the season already keeps that registration; the old one is dropped.
     [Test]
     public void Load_KeepsTheSeasonsRegistrationOverTheOldOne() {
