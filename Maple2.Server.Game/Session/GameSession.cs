@@ -1017,6 +1017,19 @@ public sealed partial class GameSession : Core.Network.Session {
         Field.Broadcast(StatsPacket.Update(Player), Player.Session);
     }
 
+    // A map entered for the first time joins the visited maps. The client gets them in ServerEnter only, which this
+    // server sends at login (KMS sends one before most field enters), so the new map also goes to the client with
+    // FindFields (CSceneStateGame::OnFindFields, scenestategame.cpp:6497): the world map draws a tile's icons,
+    // world bosses included, only on a visited ("not sealed") tile, so a map first entered this session stayed dark
+    // until the next login.
+    internal bool MarkVisited(int mapId) {
+        if (!Player.Value.Unlock.Maps.Add(mapId)) {
+            return false;
+        }
+        Send(FindFieldsPacket.Add([mapId]));
+        return true;
+    }
+
     public bool EnterField() {
         if (Field == null) return false;
 
@@ -1073,7 +1086,7 @@ public sealed partial class GameSession : Core.Network.Session {
             ConditionUpdate(ConditionType.continent, codeLong: (int) Field.Metadata.Property.Continent);
             ConditionUpdate(ConditionType.explore, codeLong: Field.MapId);
         }
-        Player.Value.Unlock.Maps.Add(Player.Value.Character.MapId);
+        MarkVisited(Player.Value.Character.MapId);
 
         Send(AdminPacket.Level(AdminLevel.Of(Player.AdminPermissions)));
 
