@@ -90,6 +90,8 @@ if (playedOverlayDirs.Count > 0 && playedXmlPath == null) {
 bool originalDropTable = Maple2.File.Ingest.Helpers.ServerDropTable.UseOriginal(Environment.GetEnvironmentVariable(Maple2.File.Ingest.Helpers.ServerDropTable.Option));
 // Optional: keep one ended attendance gift event, moved to start on the ingest day (AttendGiftReplay).
 bool replayAttendGift = Maple2.File.Ingest.Helpers.AttendGiftReplay.Enabled(Environment.GetEnvironmentVariable(Maple2.File.Ingest.Helpers.AttendGiftReplay.Option));
+// Optional: keep the ended events of the listed ids, moved to start on the ingest day (EventReplay).
+int[] replayEvents = Maple2.File.Ingest.Helpers.EventReplay.Ids(Environment.GetEnvironmentVariable(Maple2.File.Ingest.Helpers.EventReplay.Option));
 // Optional: a directory of server pack files read instead of the pack's (ServerOverlay).
 var serverOverlay = Maple2.File.Ingest.Helpers.ServerOverlay.FromEnvironment();
 if (serverOverlay.Root != null) {
@@ -276,7 +278,7 @@ UpdateDatabase(metadataContext, new TriggerMapper(xmlReader, playedReader));
 UpdateDatabase(metadataContext, new ItemMapper(xmlReader, language, false, playedReader));
 UpdateDatabase(metadataContext, new NpcMapper(xmlReader, language, playedReader));
 
-UpdateDatabase(metadataContext, new ServerTableMapper(serverReader, xmlReader, playedReader, originalDropTable, replayAttendGift, exportedReader, serverOverlay));
+UpdateDatabase(metadataContext, new ServerTableMapper(serverReader, xmlReader, playedReader, originalDropTable, replayAttendGift, exportedReader, serverOverlay, replayEvents));
 UpdateDatabase(metadataContext, new AiMapper(serverReader));
 
 UpdateDatabase(metadataContext, new AdditionalEffectMapper(xmlReader, playedReader));

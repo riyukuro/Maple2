@@ -52,13 +52,16 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     private readonly string dropFile;
     // MS2_REPLAY_ATTEND_GIFT (AttendGiftReplay): one ended attendance gift event is kept, moved to the ingest day.
     private readonly bool replayAttendGift;
+    // MS2_REPLAY_EVENTS (EventReplay): the ended events kept by id, moved to the ingest day.
+    private readonly int[] replayEvents;
     // Resource/Exported.m2d: the maps' xblock files (the Hide and Seek props).
     private readonly M2dReader? exportedReader;
     // MS2_SERVER_OVERLAY (ServerOverlay): files read instead of the pack's, for the tables that take one.
     private readonly ServerOverlay overlay;
 
-    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null, bool originalDropTable = false, bool replayAttendGift = false, M2dReader? exportedReader = null, ServerOverlay? overlay = null) {
+    public ServerTableMapper(M2dReader xmlReader, M2dReader? clientReader = null, M2dReader? playedReader = null, bool originalDropTable = false, bool replayAttendGift = false, M2dReader? exportedReader = null, ServerOverlay? overlay = null, int[]? replayEvents = null) {
         this.xmlReader = xmlReader;
+        this.replayEvents = replayEvents ?? [];
         this.overlay = overlay ?? ServerOverlay.None;
         this.exportedReader = exportedReader;
         this.replayAttendGift = replayAttendGift;
@@ -1518,6 +1521,19 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                     }
                 }
         }
+
+        if (replayEvents.Length > 0) {
+            (List<GameEventMetadata> replayed, List<int> missing) = EventReplay.Pick(replayEvents, ended, results.ContainsKey, now);
+            foreach (GameEventMetadata moved in replayed) {
+                results.Add(moved.Id, moved);
+                GameEventMetadata original = ended.Last(e => e.Id == moved.Id);
+                Console.WriteLine($"{EventReplay.Option}: {moved.Type} {moved.Id} ({original.StartTime:yyyy-MM-dd HH:mm} to {original.EndTime:yyyy-MM-dd HH:mm}) replayed {moved.StartTime:yyyy-MM-dd HH:mm} to {moved.EndTime:yyyy-MM-dd HH:mm}");
+            }
+            foreach (int id in missing) {
+                Console.WriteLine($"{EventReplay.Option}: {id} is no ended event the ingest read, not replayed");
+            }
+        }
+
         // The mentoring season out of the box: the seasons after the last one when none runs or is still to come.
         List<GameEventMetadata> seasons = DefaultMentoringSeason.Rows(results.Values.Concat(ended), now,
             FeatureLocaleFilter.FeatureEnabled(DefaultMentoringSeason.Feature), results.Keys.ToHashSet());
