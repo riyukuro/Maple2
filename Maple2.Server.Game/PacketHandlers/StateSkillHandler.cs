@@ -62,9 +62,11 @@ public class StateSkillHandler : FieldPacketHandler {
         }
 
         cast.StateNextTick = SkillCastRules.NextStateTick(session.Field.FieldTick);
-        long keepMs = SkillHitRules.CastKeepMs(metadata, session.Field.TableMetadata.MagicPathTable.Entries);
-        cast.Hits.FlightMs = keepMs - SkillHitRules.HitWindowMs;
-        session.Player.ActiveSkills.Add(cast, session.Field.FieldTick, keepMs);
+        // The cast's hit window opens at the cast, as SkillHandler's does, so its attacks' packets are taken.
+        IReadOnlyDictionary<long, IReadOnlyList<MagicPath>> paths = session.Field.TableMetadata.MagicPathTable.Entries;
+        cast.Hits.Open(session.Field.FieldTick);
+        cast.Hits.FlightMs = SkillHitRules.CastFlightMs(metadata, paths);
+        session.Player.ActiveSkills.Add(cast, session.Field.FieldTick, SkillHitRules.CastKeepMs(metadata, paths));
         session.Field.Broadcast(SkillPacket.StateSkill(session.Player, skillId, skillCastUid));
     }
 

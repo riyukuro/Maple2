@@ -207,10 +207,10 @@ public class BreakableCastTests {
         typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(field, tick);
     }
 
-    // A cast whose magic path lives 15 s (keep time 5 + 15 s), then 40 fast casts, 0.3 s apart: the magic still breaks
-    // the box 15 s after its cast, however many casts came after it; past its keep time it no longer does.
+    // A cast whose magic path lives 15 s (keep time 5 + 15 + 2 s), then 40 fast casts, 0.3 s apart: the magic still
+    // breaks the box 15 s after its cast, however many casts came after it; past its keep time it no longer does.
     [TestCase(15000, ExpectedResult = true)]
-    [TestCase(21000, ExpectedResult = false)]
+    [TestCase(23000, ExpectedResult = false)]
     public bool ALongLivedMagicOutlivesFortyCasts(long sinceCast) {
         Scene scene = Start();
         FieldManager field = scene.Test.Session.Field!;
@@ -224,7 +224,7 @@ public class BreakableCastTests {
             },
         };
         long keepMs = SkillHitRules.CastKeepMs(metadata, new Dictionary<long, IReadOnlyList<MagicPath>> { [5] = [path] });
-        Assert.That(keepMs, Is.EqualTo(20000));
+        Assert.That(keepMs, Is.EqualTo(22000));
 
         var magic = new SkillRecord(metadata, 500, scene.Test.Session.Player);
         magic.Hits.Open(start);

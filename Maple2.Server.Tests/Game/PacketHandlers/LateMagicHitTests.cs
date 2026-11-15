@@ -17,7 +17,8 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // 2402), with its cast's id, however many casts the player made since and however long its path flies. Before, the
 // server looked the cast up among the 3 pending ones only, and took these packets only within 5 s of the cast, so a
 // quick caster's slow magic and a path longer than the window paid nothing; a cancelled cast's magics stopped paying
-// 2 s after the cancel however long they still flew. The skill id is made up.
+// 2 s after the cancel however long they still flew; an arrow's bounces (each its own magic, one after the other)
+// counted one flight, and a packet lagging past the flight was dropped. The skill id is made up.
 public class LateMagicHitTests : TriggerTestBase {
     private const int SkillId = 90000953;
     private const long CastUid = 5;
@@ -26,12 +27,12 @@ public class LateMagicHitTests : TriggerTestBase {
 
     private long start;
 
-    // The cast's magic path flies lifeTime seconds.
-    private void Cast(float lifeTime) {
+    // The cast's magic path flies lifeTime seconds; its arrow bounces bounceCount times.
+    private void Cast(float lifeTime, int bounceCount = 0) {
         Start();
         test.EnterMap(TestGameSession.Map(2000001) with { Limit = new MapMetadataLimit(0, 0, 0, 0, [], true, true, true, true, true, true, true) });
         SkillMetadata cast = QuestConditionWiringTests.CastSkill(SkillId);
-        var arrow = (SkillMetadataArrow) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataArrow)) with { BounceCount = 0 };
+        var arrow = (SkillMetadataArrow) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataArrow)) with { BounceCount = bounceCount };
         var attack = (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with {
             Arrow = arrow, TargetCount = 1, MagicPathId = MagicPathId,
             Range = (SkillMetadataRange) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataRange)),
@@ -151,9 +152,11 @@ public class LateMagicHitTests : TriggerTestBase {
         Assert.That(RegionPath(record), Is.True);
     }
 
-    // A path that flies 3 s: its packets are taken until 8 s after the cast (the 5 s window, then the flight), not after.
+    // A path that flies 3 s: its packets are taken until 10 s after the cast (the 5 s window, the flight, then 2 s for
+    // the packet's lag), not after.
     [TestCase(7000, ExpectedResult = true)]
-    [TestCase(8100, ExpectedResult = false)]
+    [TestCase(9500, ExpectedResult = true)]
+    [TestCase(10100, ExpectedResult = false)]
     public bool ATargetPacketPastTheWindowIsTakenWithinTheFlight(long sinceCast) {
         Cast(3);
         SkillRecord record = test.Session.Player.ActiveSkills.Get(CastUid)!;
@@ -162,7 +165,8 @@ public class LateMagicHitTests : TriggerTestBase {
     }
 
     [TestCase(7000, ExpectedResult = true)]
-    [TestCase(8100, ExpectedResult = false)]
+    [TestCase(9500, ExpectedResult = true)]
+    [TestCase(10100, ExpectedResult = false)]
     public bool ARegionPathPastTheWindowIsTakenWithinTheFlight(long sinceCast) {
         Cast(3);
         SkillRecord record = test.Session.Player.ActiveSkills.Get(CastUid)!;
@@ -176,8 +180,29 @@ public class LateMagicHitTests : TriggerTestBase {
         Cast(1);
         SkillRecord record = test.Session.Player.ActiveSkills.Get(CastUid)!;
         CastThreeMore();
-        SetTick(start + 6100);
+        SetTick(start + 8100);
         Assert.That(Target(record), Is.False);
+    }
+
+    // An arrow that bounces twice links two more magics, each flying the 3 s path when the one before it ends
+    // (magicdata.cpp:1140-1148, stateskill.cpp:2774-2784): the last one's packets come up to 9 s of flight after the
+    // attack point, so they are taken until 16 s after the cast, not after.
+    [TestCase(15500, ExpectedResult = true)]
+    [TestCase(16100, ExpectedResult = false)]
+    public bool ATargetPacketOfTheLastBounceIsTaken(long sinceCast) {
+        Cast(3, bounceCount: 2);
+        SkillRecord record = test.Session.Player.ActiveSkills.Get(CastUid)!;
+        SetTick(start + sinceCast);
+        return Target(record);
+    }
+
+    [TestCase(15500, ExpectedResult = true)]
+    [TestCase(16100, ExpectedResult = false)]
+    public bool ARegionPathOfTheLastBounceIsTaken(long sinceCast) {
+        Cast(3, bounceCount: 2);
+        SkillRecord record = test.Session.Player.ActiveSkills.Get(CastUid)!;
+        SetTick(start + sinceCast);
+        return RegionPath(record);
     }
 
     // The cast's cancel (Skill 4), a second after it.
@@ -191,9 +216,11 @@ public class LateMagicHitTests : TriggerTestBase {
     }
 
     // A cancel leaves the magics already flying, and those with a delay, to go on (CMagicModel::CanCancel,
-    // magicdata.cpp:2574), so a 3 s path's packets are taken until 2 s plus its flight after the cancel, not after.
+    // magicdata.cpp:2574), so a 3 s path's packets are taken until 2 s, its flight and 2 s for the packet's lag after the
+    // cancel, not after.
     [TestCase(4000, ExpectedResult = true)]
-    [TestCase(5100, ExpectedResult = false)]
+    [TestCase(6500, ExpectedResult = true)]
+    [TestCase(7100, ExpectedResult = false)]
     public bool ATargetPacketAfterTheCancelIsTakenWithinTheFlight(long sinceCancel) {
         Cast(3);
         SkillRecord record = test.Session.Player.ActiveSkills.Get(CastUid)!;
@@ -203,7 +230,8 @@ public class LateMagicHitTests : TriggerTestBase {
     }
 
     [TestCase(4000, ExpectedResult = true)]
-    [TestCase(5100, ExpectedResult = false)]
+    [TestCase(6500, ExpectedResult = true)]
+    [TestCase(7100, ExpectedResult = false)]
     public bool ARegionPathAfterTheCancelIsTakenWithinTheFlight(long sinceCancel) {
         Cast(3);
         SkillRecord record = test.Session.Player.ActiveSkills.Get(CastUid)!;

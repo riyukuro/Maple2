@@ -75,17 +75,28 @@ public static class SkillHitRules {
     public static bool TooLate(long tick, long windowTick) => tick - windowTick > HitWindowMs;
 
     // How long after its hit window (the cast, or a held skill's last attack point packet) a cast's magic may still
-    // meet something and the client still names the cast (a Breakable tag): the hit window, then the longest flight of
-    // the cast's magic paths. A path's flight is its delay, spawn, trace and destroy times and the longer of its
-    // lifeTime and its move (distance or nonTargetMoveDistance over velocity) with the hold at the move's end, both ways
-    // for a boomerang. Chosen here: generous (every part added), at most MaxCastFlightMs of flight.
+    // meet something and the client still names the cast (a Breakable tag): the hit window, the longest flight of the
+    // cast's magic paths (CastFlightMs), then MagicLagAllowanceMs for the magic's packet to come.
+    public static long CastKeepMs(SkillMetadata skill, IReadOnlyDictionary<long, IReadOnlyList<MagicPath>>? paths) =>
+        HitWindowMs + CastFlightMs(skill, paths) + MagicLagAllowanceMs;
+
+    // Chosen here: a magic's target or region path packet may come this much later than its flight (the link's lag on
+    // that packet past the attack point's), as long as the session's LagBudget holds.
+    public const long MagicLagAllowanceMs = LagBudget.CapacityMs;
+
+    // The longest flight of a cast's magic paths. A path's flight is its delay, spawn, trace and destroy times and the
+    // longer of its lifeTime and its move (distance or nonTargetMoveDistance over velocity) with the hold at the move's
+    // end, both ways for a boomerang. An arrow with a bounce count links up to that many more magics under the same
+    // cast id (StateSkill::FUN_1417f3e80, stateskill.cpp:2774-2784), each started when the one before it ends
+    // (magicdata.cpp:1140-1148), so its flight is (1 + bounce count) flights. Chosen here: generous (every part added,
+    // the bounces counted whatever the bounce type), at most MaxCastFlightMs.
     public const long MaxCastFlightMs = 60_000;
 
-    public static long CastKeepMs(SkillMetadata skill, IReadOnlyDictionary<long, IReadOnlyList<MagicPath>>? paths) {
+    public static long CastFlightMs(SkillMetadata skill, IReadOnlyDictionary<long, IReadOnlyList<MagicPath>>? paths) {
         float flightMs = 0;
         foreach (SkillMetadataMotion motion in skill.Data.Motions) {
             foreach (SkillMetadataAttack attack in motion.Attacks) {
-                int ways = attack.Arrow?.BounceType == BounceType.Boomerang ? 2 : 1;
+                int ways = (attack.Arrow?.BounceType == BounceType.Boomerang ? 2 : 1) * (1 + Math.Max(0, attack.Arrow?.BounceCount ?? 0));
                 foreach (long id in new[] { attack.MagicPathId, attack.CubeMagicPathId }) {
                     if (id == 0 || paths == null || !paths.TryGetValue(id, out IReadOnlyList<MagicPath>? moves)) {
                         continue;
@@ -96,7 +107,7 @@ public static class SkillHitRules {
                 }
             }
         }
-        return HitWindowMs + (long) MathF.Min(MaxCastFlightMs, MathF.Ceiling(flightMs));
+        return (long) MathF.Min(MaxCastFlightMs, MathF.Ceiling(flightMs));
     }
 
     private static float PathFlightMs(MagicPath path) {
@@ -639,14 +650,14 @@ public sealed class SkillHitBudget {
 
     public bool TooLate(long tick) => SkillHitRules.TooLate(tick, windowTick);
 
-    // The longest flight of the cast's magic paths (SkillHitRules.CastKeepMs less the hit window), 0 when it has none.
+    // The longest flight of the cast's magic paths (SkillHitRules.CastFlightMs), 0 when it has none.
     public long FlightMs { get; set; }
 
     // Whether a magic's packet (target or region path) comes past the hit window and the flight after it: a magic the
     // last attack point packet fired still flies its path and sends its hits and its end then (magicdata.cpp:1846,
     // 1956, 2402); one whose path is longer than the 5 s window (KMS2 job skills fly up to 4.6 s, fired after the
-    // cast's attack point) sends past the window.
-    public bool MagicTooLate(long tick) => tick - windowTick > SkillHitRules.HitWindowMs + FlightMs;
+    // cast's attack point) sends past the window. The packet may then come up to SkillHitRules.MagicLagAllowanceMs late.
+    public bool MagicTooLate(long tick) => tick - windowTick > SkillHitRules.HitWindowMs + FlightMs + SkillHitRules.MagicLagAllowanceMs;
 
     // What the last taken attack point packet would have been refused for with enforce set; null when nothing.
     public string? Unenforced { get; private set; }

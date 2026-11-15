@@ -140,9 +140,9 @@ public class SkillHandler : FieldPacketHandler {
         if (record.Metadata.State.InBattle) {
             session.Player.BattleCastShowsStance();
         }
-        long keepMs = SkillHitRules.CastKeepMs(record.Metadata, session.Field.TableMetadata.MagicPathTable.Entries);
-        record.Hits.FlightMs = keepMs - SkillHitRules.HitWindowMs;
-        session.Player.ActiveSkills.Add(record, startTick, keepMs);
+        IReadOnlyDictionary<long, IReadOnlyList<MagicPath>> paths = session.Field.TableMetadata.MagicPathTable.Entries;
+        record.Hits.FlightMs = SkillHitRules.CastFlightMs(record.Metadata, paths);
+        session.Player.ActiveSkills.Add(record, startTick, SkillHitRules.CastKeepMs(record.Metadata, paths));
         session.Field.Broadcast(SkillPacket.Use(record));
         session.Send(StatsPacket.Init(session.Player));
         session.Field.Broadcast(StatsPacket.Update(session.Player), session);
@@ -321,7 +321,7 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Warning("Invalid Attack-Target Skill {SkillUid}", skillUid);
             return;
         }
-        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick, record.Hits.FlightMs)) {
+        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick, record.Hits.FlightMs + SkillHitRules.MagicLagAllowanceMs)) {
             Logger.Debug("Attack target dropped, cast {SkillUid} of skill {SkillId} was cancelled {Ms} ms ago", skillUid, record.SkillId, session.Field.FieldTick - record.CancelTick);
             return;
         }
@@ -495,7 +495,7 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Warning("Invalid Attack-Splash Skill {SkillUid}", skillUid);
             return;
         }
-        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick, record.Hits.FlightMs)) {
+        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick, record.Hits.FlightMs + SkillHitRules.MagicLagAllowanceMs)) {
             Logger.Debug("Region path dropped, cast {SkillUid} of skill {SkillId} was cancelled {Ms} ms ago", skillUid, record.SkillId, session.Field.FieldTick - record.CancelTick);
             return;
         }

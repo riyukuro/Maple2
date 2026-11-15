@@ -227,7 +227,7 @@ public class VibrateTrustTests {
         Scene scene = Start();
         AttackPoint(scene);
         FieldManager field = scene.Test.Session.Field!;
-        typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(field, field.FieldTick + SkillHitRules.HitWindowMs + 1000);
+        typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(field, field.FieldTick + SkillHitRules.HitWindowMs + SkillHitRules.MagicLagAllowanceMs + 1000);
         Assert.That(Vibrate(scene, "tree"), Is.EqualTo(0));
     }
 
