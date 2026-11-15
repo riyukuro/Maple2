@@ -42,6 +42,10 @@ public class RideSyncHandler : FieldPacketHandler {
                 Logger.Information("Fast ride: player {Player} ({CharacterId}) on ride {RideId} from {From} to {To} beyond {Max} ({Count} since the last line)",
                     session.PlayerName, session.CharacterId, ride.Metadata.Id, from, stateSyncs[i].Position, maxDistance, count);
             }
+            // A rider falls from the ride's top when it gets off mid-air (pcbase.cpp:3414).
+            if (session.Config.FallWatch.Seen(stateSyncs[i].Position, now) is { } excess) {
+                FallDamageHandler.LogExcess(Logger, session, excess, now);
+            }
         }
 
         using (var buffer = new PoolByteWriter()) {

@@ -68,6 +68,9 @@ public class ConfigManager {
     public readonly LogGate InteractLog = new();
     // StateReact packets sooner than the reactor's cast after the last one (ReactorRules.ReactTooSoon), logged only.
     public readonly LogGate ReactLog = new();
+    // StateFallDamage heights above the z range of the records since the last one (FallHeightWatch), logged only.
+    public readonly FallHeightWatch FallWatch = new();
+    public readonly LogGate FallLog = new();
     private long heldCastUid;
     private long heldAttackSpeed;
     private readonly IDictionary<string, int> statLimits;

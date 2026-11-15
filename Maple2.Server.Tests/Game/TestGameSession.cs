@@ -494,6 +494,7 @@ public sealed class TestGameSession {
         foreach (FieldInfo gate in typeof(ConfigManager).GetFields(Any).Where(field => field.FieldType == typeof(LogGate))) {
             gate.SetValue(session.Config, new LogGate());
         }
+        typeof(ConfigManager).GetField(nameof(ConfigManager.FallWatch))!.SetValue(session.Config, new FallHeightWatch());
         session.Quest = quest;
         var marriage = Uninitialized<MarriageManager>();
         typeof(MarriageManager).GetField("session", Any)!.SetValue(marriage, session);
