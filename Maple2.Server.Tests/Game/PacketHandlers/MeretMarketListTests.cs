@@ -207,6 +207,43 @@ public class MeretMarketListTests {
         Assert.That(session.UgcMarket.IsDesignListed(DesignUid), Is.True);
     }
 
+    // A cube placed on one of the player's plots, in the furnishing inventory (the client's cube stock).
+    private long Place(UgcItemLook? template) {
+        var cube = new PlotCube(TestGameSession.Metadata(Design, EquipSlot.CP, slotMax: 1), id: 880001, template: template) {
+            Type = PlotCube.CubeType.Construction,
+        };
+        var placed = (System.Collections.Concurrent.ConcurrentDictionary<long, PlotCube>) typeof(Maple2.Server.Game.Manager.Items.FurnishingManager)
+            .GetField("inventory", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(session.Item.Furnishing)!;
+        placed[cube.Id] = cube;
+        return cube.Id;
+    }
+
+    // The register dialog also offers a design whose only copy is placed in the player's home, by the cube's uid
+    // (CollectListableItems reads the cube stock); it was refused as not listable. Nothing leaves the plot.
+    [Test]
+    public void PlacedDesignIsListed() {
+        Start();
+        long cubeUid = Place(new UgcItemLook { Id = 777002, Name = "Placed", Url = "item/ugc/placed.png", AccountId = session.AccountId });
+
+        List<byte[]> sent = Send(13, cubeUid, 500);
+
+        Assert.Multiple(() => {
+            Assert.That(sent.Select(p => p[2]), Does.Not.Contain((byte) 0x00));
+            Assert.That(session.UgcMarket.IsDesignListed(777002), Is.True);
+            Assert.That(session.Item.Furnishing.GetPlacedCube(cubeUid), Is.Not.Null);
+        });
+    }
+
+    // A placed cube with no design, or another account's design, is refused as for a stack.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void PlacedCubeWithoutOwnDesignIsRefused(bool foreign) {
+        Start();
+        long cubeUid = Place(foreign ? new UgcItemLook { Id = 777003, Name = "Foreign", Url = "item/ugc/foreign.png", AccountId = 424242 } : null);
+        AssertRefused(Send(13, cubeUid, 500), 13, 0x9A, cubeUid);
+    }
+
     [Test]
     public void RelistOfUnknownListingIsNotSale() {
         Start();

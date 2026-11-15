@@ -68,6 +68,9 @@ public class FurnishingManager {
         }
     }
 
+    // A cube of this account placed on one of its plots (the furnishing inventory, the client's cube stock).
+    public PlotCube? GetPlacedCube(long cubeUid) => inventory.GetValueOrDefault(cubeUid);
+
     public Item? GetItem(int itemId) {
         lock (session.Item) {
             return storage.FirstOrDefault(item => item.Id == itemId);

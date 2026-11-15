@@ -287,8 +287,16 @@ public class MeretMarketHandler : FieldPacketHandler {
                 return result;
             }
 
-            result = session.Item.GetOutfit(uid);
-            return result ?? session.Item.Furnishing.GetCube(uid);
+            result = session.Item.GetOutfit(uid) ?? session.Item.Furnishing.GetCube(uid);
+            if (result != null) {
+                return result;
+            }
+
+            // The register dialog also offers a design placed on one of the player's plots, by the cube's uid (the
+            // cube stock, CollectListableItems/CanFindItem, uimeratmarketregisterdialog.cpp:527, 614). The listing
+            // needs only the cube's item and design; nothing is taken from the plot.
+            PlotCube? cube = session.Item.Furnishing.GetPlacedCube(uid);
+            return cube?.Template == null ? null : new Item(cube.Metadata) { Template = cube.Template.Clone() };
         }
     }
 
