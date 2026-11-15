@@ -474,10 +474,11 @@ public class RequestCubeHandler : FieldPacketHandler {
     }
 
     private void HandleSetPasscode(GameSession session, IByteReader packet) {
-        // MyPC::SendHouseSetting: the kind (0 public, 1 password, 2 private), the password text, then a flag byte.
+        // MyPC::SendHouseSetting: the kind (0 public, 1 password, 2 private), the password text, then a flag byte
+        // (UIHomePasswordDialog sends no flag). The home option dialog's untouched password field keeps the passcode.
         byte kind = packet.ReadByte();
         string text = packet.ReadUnicodeString();
-        if (!HomeOpenRules.TryGetPasscode(kind, text, out string passcode)) {
+        if (!HomeOpenRules.TryGetPasscode(kind, text, session.Player.Value.Home.Passcode, out string passcode)) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_center));
             return;
         }

@@ -1,7 +1,7 @@
 namespace Maple2.Model.Validators;
 
 // RequestCube 24 (home visit setting, MyPC::SendHouseSetting): a kind byte, then a text.
-// Kind 0 opens the home to all, kind 1 asks visitors for the six digits in the text, kind 2 closes it to visitors.
+// Kind 0 opens the home to all, kind 1 asks visitors for the six characters in the text, kind 2 closes it to visitors.
 public static class HomeOpenRules {
     public const byte Public = 0;
     public const byte Password = 1;
@@ -9,9 +9,14 @@ public static class HomeOpenRules {
 
     public const int PasscodeLength = 6;
 
-    // The stored passcode of a private home. It is not six digits, so no visitor's entry equals it and
+    // The stored passcode of a private home. It is not six characters long, so no visitor's entry equals it and
     // no client can set it as a password.
     public const string PrivatePasscode = "private";
+
+    // What the home option dialog (UIHomeOptionDialog "apply") sends as the password when the owner did not
+    // retype it: the field shows six asterisks and the dialog only checks the trimmed length. It stands for
+    // "keep the passcode the home has".
+    public const string UnchangedPasscode = "******";
 
     public static bool IsPrivate(string? passcode) {
         return passcode == PrivatePasscode;
@@ -60,16 +65,22 @@ public static class HomeOpenRules {
         return string.IsNullOrEmpty(passcode) ? Public : Password;
     }
 
-    public static bool IsPasscode(string text) {
-        return text.Length == PasscodeLength && text.All(c => c is >= '0' and <= '9');
+    // A password the client lets an owner set: six characters after its Trim. Only the visit question
+    // (CPersonalInfoAgreement) asks for digits; the home option and home password dialogs check the length alone.
+    public static bool IsPasscode(string? text) {
+        return text?.Length == PasscodeLength;
     }
 
-    // The passcode to store for a setting; false for a kind the client does not send or a password that is not six digits.
-    public static bool TryGetPasscode(byte kind, string text, out string passcode) {
+    // The passcode to store for a setting, given the stored one; false for a kind the client does not send, a
+    // password that is not six characters, or the unchanged-password mask when the home has no password to keep.
+    public static bool TryGetPasscode(byte kind, string text, string? stored, out string passcode) {
         switch (kind) {
             case Public:
                 passcode = string.Empty;
                 return true;
+            case Password when text == UnchangedPasscode:
+                passcode = stored ?? string.Empty;
+                return IsPasscode(stored);
             case Password when IsPasscode(text):
                 passcode = text;
                 return true;

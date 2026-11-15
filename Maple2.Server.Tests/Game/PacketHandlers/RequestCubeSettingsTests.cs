@@ -98,6 +98,48 @@ public class RequestCubeSettingsTests {
     }
 
     [Test]
+    public void SetPasscode_NotDigits_SavedLikeTheOptionDialogAllows() {
+        Passcode(1, "abc12!");
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Home.Passcode, Is.EqualTo("abc12!"));
+            Assert.That(Sent().Take(2), Is.EqualTo(new[] { Hex(CubePacket.SetPasscode()), Hex(CubePacket.UpdateProfile(session.Player)) }));
+        });
+    }
+
+    // An owner on Passcode who presses Apply in the home option dialog without retyping the password (the
+    // "******" case) keeps the passcode and gets the normal answer, not the centre error.
+    [Test]
+    public void SetPasscode_UnchangedMask_KeepsThePasscode() {
+        Passcode(1, "123456");
+        test.TakeSent();
+
+        Send(24, writer => {
+            writer.WriteByte(1);
+            writer.WriteUnicodeString(HomeOpenRules.UnchangedPasscode);
+            writer.WriteByte(1);
+        });
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Home.Passcode, Is.EqualTo("123456"));
+            Assert.That(Sent().Take(2), Is.EqualTo(new[] { Hex(CubePacket.SetPasscode()), Hex(CubePacket.UpdateProfile(session.Player)) }));
+        });
+    }
+
+    [Test]
+    public void SetPasscode_UnchangedMaskOnAPrivateHome_RefusedAndStaysPrivate() {
+        Passcode(2, "");
+        test.TakeSent();
+
+        Passcode(1, HomeOpenRules.UnchangedPasscode);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Home.Passcode, Is.EqualTo(HomeOpenRules.PrivatePasscode));
+            Assert.That(Sent(), Is.EqualTo(new[] { CenterError }));
+        });
+    }
+
+    [Test]
     public void SetPasscode_Public_ClearsIt() {
         Passcode(1, "123456");
         test.TakeSent();
@@ -115,7 +157,7 @@ public class RequestCubeSettingsTests {
     }
 
     [TestCase((byte) 1, "12345", TestName = "SetPasscode_PasswordTooShort_Refused")]
-    [TestCase((byte) 1, "abcdef", TestName = "SetPasscode_PasswordNotDigits_Refused")]
+    [TestCase((byte) 1, HomeOpenRules.UnchangedPasscode, TestName = "SetPasscode_UnchangedWithNoPassword_Refused")]
     [TestCase((byte) 3, "123456", TestName = "SetPasscode_UnknownKind_Refused")]
     public void SetPasscode_Refused(byte kind, string text) {
         Passcode(kind, text);

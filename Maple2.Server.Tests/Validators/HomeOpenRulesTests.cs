@@ -9,7 +9,7 @@ public class HomeOpenRulesTests {
         var packet = new ByteReader(body, 0);
         byte kind = packet.ReadByte();
         string text = packet.ReadUnicodeString();
-        return HomeOpenRules.TryGetPasscode(kind, text, out passcode);
+        return HomeOpenRules.TryGetPasscode(kind, text, null, out passcode);
     }
 
     private static byte[] Body(byte kind, string text, byte flag = 1) {
@@ -29,7 +29,7 @@ public class HomeOpenRulesTests {
     }
 
     [Test]
-    public void PasswordIsSixDigits() {
+    public void PasswordIsSixDigits_FromTheVisitQuestion() {
         // Kind 1, "123456" (06 00 and six wide digits), flag 0.
         byte[] body = { 0x01, 0x06, 0x00, 0x31, 0x00, 0x32, 0x00, 0x33, 0x00, 0x34, 0x00, 0x35, 0x00, 0x36, 0x00, 0x00 };
         Assert.That(Read(body, out string passcode), Is.True);
@@ -37,9 +37,38 @@ public class HomeOpenRulesTests {
 
         Assert.That(Read(Body(1, "12345"), out _), Is.False);
         Assert.That(Read(Body(1, "1234567"), out _), Is.False);
-        Assert.That(Read(Body(1, "12345a"), out _), Is.False);
-        Assert.That(Read(Body(1, "+12345"), out _), Is.False);
         Assert.That(Read(Body(1, ""), out _), Is.False);
+    }
+
+    // The home option and home password dialogs check only the trimmed length, so any six characters are a password.
+    [TestCase("12345a")]
+    [TestCase("+12345")]
+    [TestCase("abcdef")]
+    [TestCase("ab cd!")]
+    public void PasswordIsAnySixCharacters(string text) {
+        Assert.That(Read(Body(1, text), out string passcode), Is.True);
+        Assert.That(passcode, Is.EqualTo(text));
+        Assert.That(HomeOpenRules.CheckEnter(false, false, passcode, text), Is.EqualTo(HomeOpenRules.Enter.Allow));
+        Assert.That(HomeOpenRules.CheckEnter(false, false, passcode, "123456"), Is.EqualTo(HomeOpenRules.Enter.WrongPassword));
+    }
+
+    // UIHomeOptionDialog "apply" with the password field not retyped: kind 1, "******", flag 1.
+    [TestCase("123456", true, "123456")]
+    [TestCase("abcdef", true, "abcdef")]
+    [TestCase(null, false, "")]
+    [TestCase("", false, "")]
+    [TestCase(HomeOpenRules.PrivatePasscode, false, HomeOpenRules.PrivatePasscode)]
+    public void UnchangedPassword_KeepsTheStoredOne(string? stored, bool accepted, string expected) {
+        // 01 06 00 then six wide '*', flag 01.
+        byte[] body = { 0x01, 0x06, 0x00, 0x2A, 0x00, 0x2A, 0x00, 0x2A, 0x00, 0x2A, 0x00, 0x2A, 0x00, 0x2A, 0x00, 0x01 };
+        var packet = new ByteReader(body, 0);
+        byte kind = packet.ReadByte();
+        string text = packet.ReadUnicodeString();
+        Assert.That(text, Is.EqualTo(HomeOpenRules.UnchangedPasscode));
+        Assert.That(HomeOpenRules.TryGetPasscode(kind, text, stored, out string passcode), Is.EqualTo(accepted));
+        if (accepted) {
+            Assert.That(passcode, Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -92,8 +121,9 @@ public class HomeOpenRulesTests {
 
     [Test]
     public void NoSixDigitCodeReadsAsPrivate() {
-        // The marker is the word "private": not six characters and not digits, so no code a player can set equals it.
+        // The marker is the word "private": not six characters, so no code a player can set equals it.
         Assert.That(HomeOpenRules.PrivatePasscode, Is.EqualTo("private"));
+        Assert.That(HomeOpenRules.IsPasscode(HomeOpenRules.PrivatePasscode), Is.False);
         for (int code = 0; code <= 999999; code++) {
             string text = code.ToString("D6");
             Assert.That(HomeOpenRules.IsPrivate(text), Is.False);
