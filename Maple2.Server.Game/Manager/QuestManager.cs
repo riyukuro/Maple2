@@ -385,20 +385,22 @@ public sealed class QuestManager {
     /// <param name="targetLong">condition target parameter in long.</param>
     /// <param name="codeString">condition code parameter in string.</param>
     /// <param name="codeLong">condition code parameter in long.</param>
-    public void Update(ConditionType type, long counter = 1, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0) {
+    /// <param name="fieldMapId">the field a field mission counts in, when it is not the character's map now (0: that map).</param>
+    public void Update(ConditionType type, long counter = 1, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0, int fieldMapId = 0) {
         IEnumerable<Quest> quests = QuestRules.UpdateCandidates(characterValues.Values.Concat(accountValues.Values), type);
+        int mapId = fieldMapId != 0 ? fieldMapId : session.Player.Value.Character.MapId;
         foreach (Quest quest in quests) {
             // A field mission counts only where the client tracks it (CFieldQuest::GetTrackingState, FUN_140744b90): the
             // first progress map or a field whose outdoor parent it is; the client reads no exploreType there. Without the
             // parent table (an older ingest) the return maps stand in for the indoor parents.
             IReadOnlyDictionary<int, int>? indoorParents = session.TableMetadata.FieldMetaTable.IndoorParents;
             if (quest.Metadata.Basic is { Type: QuestType.FieldMission, ProgressMaps: not null } && session.Field is not null
-                && !QuestRules.FieldMissionTracked(quest.Metadata.Basic.ProgressMaps, session.Player.Value.Character.MapId, indoorParents)) {
+                && !QuestRules.FieldMissionTracked(quest.Metadata.Basic.ProgressMaps, mapId, indoorParents)) {
                 if (indoorParents != null) {
                     continue;
                 }
                 switch (session.Field.Metadata.Property.ExploreType) {
-                    case 1 or 0 when !quest.Metadata.Basic.ProgressMaps.Contains(session.Player.Value.Character.MapId):
+                    case 1 or 0 when !quest.Metadata.Basic.ProgressMaps.Contains(mapId):
                     case 2 when !quest.Metadata.Basic.ProgressMaps.Any(x => session.Player.Value.Character.ReturnMaps.Contains(x)):
                         continue;
                 }

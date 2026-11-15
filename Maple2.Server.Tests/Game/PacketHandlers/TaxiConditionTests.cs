@@ -72,7 +72,8 @@ public class TaxiConditionTests {
         return storage;
     }
 
-    private static (long Counter, long Paid) Ride(long meso, FreeAirTaxiTests.Outcome outcome = FreeAirTaxiTests.Outcome.Went, bool airTaxi = true) {
+    private static (long Counter, long Paid) Ride(long meso, FreeAirTaxiTests.Outcome outcome = FreeAirTaxiTests.Outcome.Went, bool airTaxi = true,
+        int[]? fieldMissionMaps = null) {
         var test = new TestGameSession();
         MapMetadata from = Field(From, airTaxi: airTaxi);
         test.AddMap(from, Field(To, notInPlayedClient: outcome == FreeAirTaxiTests.Outcome.RefusedHere, airTaxi: airTaxi));
@@ -92,8 +93,11 @@ public class TaxiConditionTests {
         session.Player.Value.Character.MapId = From;
         session.Player.Value.Unlock.Taxis.Add(To);
         session.Currency.Meso = meso;
-        Quest quest = test.StartQuest(TestGameSession.QuestData(91000001) with {
-            Conditions = [new ConditionMetadata(ConditionType.taxiuse, 1, null, null)],
+        QuestMetadata metadata = TestGameSession.QuestData(91000001, fieldMissionMaps == null ? QuestType.EpicQuest : QuestType.FieldMission);
+        Quest quest = test.StartQuest(metadata with {
+            Basic = metadata.Basic with { ProgressMaps = fieldMissionMaps },
+            // A field mission completes itself at its goal: a goal of 2 keeps the count to read.
+            Conditions = [new ConditionMetadata(ConditionType.taxiuse, fieldMissionMaps == null ? 1 : 2, null, null)],
         });
         new TaxiHandler {
             MapMetadata = test.MapMetadata,
@@ -134,6 +138,19 @@ public class TaxiConditionTests {
         Assert.Multiple(() => {
             Assert.That(paid, Is.GreaterThan(0));
             Assert.That(counter, Is.EqualTo(1));
+        });
+    }
+
+    // A field mission "Travel by taxi from <map>" (KR 72000065: taxiuse, progress map 02000036) counts the ride from its
+    // map, not the ride to it. The ride's count runs once the change went, with the character on the arrival map; it
+    // counted for the arrival's mission.
+    [TestCase(From, 1)]
+    [TestCase(To, 0)]
+    public void AFieldMissionCountsTheRideFromItsMap(int progressMap, long expected) {
+        (long counter, long paid) = Ride(1_000_000, fieldMissionMaps: [progressMap]);
+        Assert.Multiple(() => {
+            Assert.That(paid, Is.GreaterThan(0));
+            Assert.That(counter, Is.EqualTo(expected));
         });
     }
 

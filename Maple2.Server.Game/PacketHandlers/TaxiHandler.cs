@@ -104,9 +104,13 @@ public class TaxiHandler : FieldPacketHandler {
 
         Vector3 position = entities.Taxi.Position.Offset(-VectorExtensions.BLOCK_SIZE, entities.Taxi.Rotation);
         Vector3 rotation = entities.Taxi.Rotation;
+        // The ride counts for the field it left: the field missions "Travel by taxi from <map>" (KR 72000065 and the
+        // like, taxiuse with that map as their progress map) are the departure's. The payment runs once the change went,
+        // with the character already on the arrival map, so a ride ticked the arrival's mission and never the departure's.
+        int departure = session.Player.Value.Character.MapId;
         RideForMeso(session, mapId, cost, () => {
-            session.ConditionUpdate(ConditionType.taxiuse);
-            session.ConditionUpdate(ConditionType.taxifee, counter: cost);
+            session.ConditionUpdate(ConditionType.taxiuse, fieldMapId: departure);
+            session.ConditionUpdate(ConditionType.taxifee, counter: cost, fieldMapId: departure);
         }, position, rotation);
     }
 
