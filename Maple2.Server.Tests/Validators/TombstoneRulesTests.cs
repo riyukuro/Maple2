@@ -107,6 +107,21 @@ public class TombstoneRulesTests {
         Assert.That(TombstoneRules.PetHitDue(19_000, 10_000, 3), Is.False);
     }
 
+    [Test]
+    public void SavedUpPetHitsAreCapped() {
+        // Entered at 10 000, no hit taken for 30 s (a disableRevivalHere buff refused them): the schedule allows 10 by
+        // 40 000, but only the backlog of 2 stays, so a third hit at once is refused.
+        long counted = TombstoneRules.PetHitsCounted(40_000, 10_000, 0);
+        Assert.That(TombstoneRules.PetHitAllowance(40_000, 10_000), Is.EqualTo(10));
+        Assert.That(counted, Is.EqualTo(8));
+        Assert.That(TombstoneRules.PetHitDue(40_000, 10_000, counted), Is.True);
+        Assert.That(TombstoneRules.PetHitDue(40_000, 10_000, counted + 1), Is.True);
+        Assert.That(TombstoneRules.PetHitDue(40_000, 10_000, counted + 2), Is.False);
+        // On schedule nothing is taken away: the jitter cases keep their room.
+        Assert.That(TombstoneRules.PetHitsCounted(15_800, 10_000, 1), Is.EqualTo(1));
+        Assert.That(TombstoneRules.PetHitsCounted(19_000, 10_000, 1), Is.EqualTo(1));
+    }
+
     // The client darkens the tombstone for a death penalty count above 0 at death, and clears the count itself when
     // the server tick reaches the end tick; an end tick of 0 is never cleared.
     [TestCase(0, 0L, 1_000L, false)]

@@ -63,9 +63,24 @@ public static class TombstoneRules {
     // state (which is after the server put the pet in it). Hits are paced against that schedule, not against the last
     // arrival: a late packet followed by one on time (network jitter) both count, and only more hits than the time
     // since the entry (plus the slack) allows are refused.
-    public static bool PetHitDue(long tick, long enteredTick, int hitsTaken) {
+    public static bool PetHitDue(long tick, long enteredTick, long hitsTaken) {
+        return hitsTaken < PetHitAllowance(tick, enteredTick);
+    }
+
+    // The hits the schedule allows by now: one per interval since the entry, the slack ahead.
+    public static long PetHitAllowance(long tick, long enteredTick) {
         long elapsed = tick - enteredTick + PET_HIT_SLACK_MS;
-        return elapsed >= 0 && hitsTaken < elapsed / PET_HIT_INTERVAL_MS;
+        return elapsed >= 0 ? elapsed / PET_HIT_INTERVAL_MS : 0;
+    }
+
+    // Chosen here: how many unused hits of the schedule may be saved up (a late packet and one on time). Without a cap,
+    // time the hits were refused (a disableRevivalHere buff) or not sent would let a client burst them all at once,
+    // where the real client sends one per interval.
+    public const int PET_HIT_BACKLOG = 2;
+
+    // The hit count the next check runs against: hits the schedule allowed beyond the backlog count as spent.
+    public static long PetHitsCounted(long tick, long enteredTick, long hitsTaken) {
+        return Math.Max(hitsTaken, PetHitAllowance(tick, enteredTick) - PET_HIT_BACKLOG);
     }
 
     // The death penalty count makes the tombstone dark only while it runs: the client clears its count when the server

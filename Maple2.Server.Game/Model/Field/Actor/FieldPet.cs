@@ -56,7 +56,7 @@ public sealed class FieldPet : FieldNpc {
         }
     }
 
-    private int reviveHits; // pet hits taken since the pet entered its revive state
+    private long reviveHits; // pet hits taken since the pet entered its revive state
     private long reviveEnterTick; // 0 while the pet is out of its revive state
 
     // Called each update after the revive state is set: the tick the pet entered SummonRevive, kept while it stays.
@@ -89,6 +89,7 @@ public sealed class FieldPet : FieldNpc {
             refusal = "pet not in its revive state";
             return false;
         }
+        reviveHits = TombstoneRules.PetHitsCounted(tickCount, reviveEnterTick, reviveHits);
         if (!TombstoneRules.PetHitDue(tickCount, reviveEnterTick, reviveHits)) {
             refusal = "too soon";
             return false;
