@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 namespace Maple2.Database.Model;
 
 // One row per character and Maple Survival season (the period id of maplesurvivalopenperiod): the season rating
-// and the games, wins and kills. The rows go with the character.
+// and the games, wins and kills, and the time of the last game (Unix seconds). The rows go with the character.
 internal class SurvivalRecord {
     public long CharacterId { get; set; }
     public int SeasonId { get; set; }
@@ -12,6 +12,7 @@ internal class SurvivalRecord {
     public int Games { get; set; }
     public int Wins { get; set; }
     public int Kills { get; set; }
+    public long LastGame { get; set; }
 
     public static void Configure(EntityTypeBuilder<SurvivalRecord> builder) {
         builder.ToTable("survival-record");

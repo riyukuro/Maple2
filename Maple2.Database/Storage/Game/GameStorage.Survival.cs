@@ -12,7 +12,7 @@ public partial class GameStorage {
                 .FirstOrDefault(record => record.CharacterId == characterId && record.SeasonId == seasonId);
             return row == null
                 ? new SurvivalSeasonRecord { SeasonId = seasonId, Rating = SurvivalRules.StartRating }
-                : new SurvivalSeasonRecord { SeasonId = seasonId, Rating = row.Rating, Games = row.Games, Wins = row.Wins, Kills = row.Kills };
+                : new SurvivalSeasonRecord { SeasonId = seasonId, Rating = row.Rating, Games = row.Games, Wins = row.Wins, Kills = row.Kills, LastGame = row.LastGame };
         }
 
         public bool SaveSurvivalRecord(long characterId, SurvivalSeasonRecord record) {
@@ -30,12 +30,14 @@ public partial class GameStorage {
                     Games = record.Games,
                     Wins = record.Wins,
                     Kills = record.Kills,
+                    LastGame = record.LastGame,
                 });
             } else {
                 row.Rating = record.Rating;
                 row.Games = record.Games;
                 row.Wins = record.Wins;
                 row.Kills = record.Kills;
+                row.LastGame = record.LastGame;
                 Context.SurvivalRecord.Update(row);
             }
             return Context.TrySaveChanges();

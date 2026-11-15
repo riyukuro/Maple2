@@ -9,6 +9,8 @@ public sealed class SurvivalSeasonRecord {
     public int Games { get; set; }
     public int Wins { get; set; }
     public int Kills { get; set; }
+    // The time of the last game (Unix seconds); the ranking rows show it as "N days ago".
+    public long LastGame { get; set; }
 }
 
 // What a game gives and what the pass gives, against the NA tables (MapleSurvivalTable). The account keeps the

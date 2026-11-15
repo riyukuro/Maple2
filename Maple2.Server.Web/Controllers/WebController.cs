@@ -8,6 +8,7 @@ using Maple2.Database.Model.Ranking;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Web.Packet;
@@ -90,6 +91,10 @@ public class WebController : ControllerBase {
             GameRankingType.GuildPvpPersonal or GameRankingType.GuildPvpPersonalPreviousSeason => PersonalGuildPvp(type, seasonId, characterId),
             GameRankingType.Pvp or GameRankingType.PvpPreviousSeason => RankDuelBoard(type, seasonId, userName),
             GameRankingType.PvpPersonal or GameRankingType.PvpPersonalPreviousSeason => PersonalRankDuel(type, seasonId, characterId),
+            GameRankingType.Survival or GameRankingType.SurvivalPreviousSeason
+                or GameRankingType.SurvivalSquad or GameRankingType.SurvivalSquadPreviousSeason => SurvivalBoard(type, seasonId, userName),
+            GameRankingType.SurvivalPersonal or GameRankingType.SurvivalPersonalPreviousSeason
+                or GameRankingType.SurvivalSquadPersonal or GameRankingType.SurvivalSquadPersonalPreviousSeason => PersonalSurvival(type, seasonId, characterId),
             GameRankingType.Arcade or GameRankingType.ArcadePreviousSeason => ArcadeBoard(type, rankingId, seasonId, userName),
             GameRankingType.ArcadePersonal or GameRankingType.ArcadePersonalPreviousSeason => PersonalArcade(type, rankingId, seasonId, characterId),
             GameRankingType.Ugc or GameRankingType.UgcPreviousSeason => HomeCommend(type, seasonId, userName),
@@ -512,6 +517,39 @@ public class WebController : ControllerBase {
         return result;
     }
 
+    private ByteWriter SurvivalBoard(GameRankingType type, int seasonId, string userName) {
+        IReadOnlyDictionary<int, SeasonDataTable.Entry> seasons = SurvivalRanking.Seasons(type, tableMetadata.SeasonDataTable);
+        int season = SurvivalRanking.Season(type, seasonId, seasons, DateTime.Now);
+        string cacheKey = $"Survival_{type}_{season}_{SearchKey(userName)}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = SurvivalRanking.Board(db, type, season, seasons, userName ?? string.Empty);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
+    private ByteWriter PersonalSurvival(GameRankingType type, int seasonId, long characterId) {
+        int season = SurvivalRanking.Season(type, seasonId, SurvivalRanking.Seasons(type, tableMetadata.SeasonDataTable), DateTime.Now);
+        string cacheKey = $"PersonalSurvival_{type}_{season}_{characterId}";
+
+        if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
+            using GameStorage.Request db = gameStorage.Context();
+            ByteWriter writer = SurvivalRanking.Personal(db, type, season, characterId);
+            cachedData = writer.Buffer[..writer.Length];
+            cache.Set(cacheKey, cachedData, RankingCacheDuration);
+        }
+
+        var result = new ByteWriter();
+        result.WriteBytes(cachedData!);
+        return result;
+    }
+
     private ByteWriter ArcadeBoard(GameRankingType type, int arcadeId, int seasonId, string userName) {
         string cacheKey = $"Arcade_{type}_{arcadeId}_{seasonId}_{SearchKey(userName)}";
 
@@ -543,7 +581,7 @@ public class WebController : ControllerBase {
     }
 
     private ByteWriter GuildPvpBoard(GameRankingType type, int seasonId, string userName) {
-        IReadOnlyDictionary<int, Maple2.Model.Metadata.SeasonDataTable.Entry> seasons = tableMetadata.SeasonDataTable.GuildPvp;
+        IReadOnlyDictionary<int, SeasonDataTable.Entry> seasons = tableMetadata.SeasonDataTable.GuildPvp;
         int season = GuildPvpRanking.Season(type, seasonId, seasons, DateTime.Now);
         string cacheKey = $"GuildPvp_{type}_{season}_{SearchKey(userName)}";
 

@@ -347,4 +347,49 @@ public static class InGameRankPacket {
 
         return pWriter;
     }
+
+    // The Maple Survival boards (0xad, 0xae solo; 0xc1, 0xc2 squad), as the restored client's GameRanking::Survival reads
+    // them (GMS GameRankingItem::Survival::Read 0x72d580, CGameRankingCli::Convert 0x727ba0): the header, then a count
+    // of rows, each a rank, the character id, its name and profile picture, the grade (string table 0x2d, the season's
+    // grade thresholds over the rating as GuildPvp.Grade counts them), a long, the rating (shown as the points), an
+    // int, the wins (shown; Convert's int at +0x38), two ints and a long, and the time of the last game (shown as days,
+    // hours or minutes ago). The long before the rating and the other ints and long after it are read but not shown: 0.
+    public static ByteWriter Survival(GameRankingType type, IList<SurvivalRankInfo> rankInfos, IReadOnlyList<int> grades) {
+        var pWriter = new ByteWriter();
+        pWriter.WriteInt((int) type);
+        pWriter.WriteInt(0);
+        pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        pWriter.WriteInt(rankInfos.Count);
+        foreach (SurvivalRankInfo info in rankInfos) {
+            pWriter.WriteInt(info.Rank);
+            pWriter.WriteLong(info.CharacterId);
+            pWriter.WriteUnicodeStringWithLength(info.Name);
+            pWriter.WriteUnicodeStringWithLength(info.Profile);
+            pWriter.WriteInt(Maple2.Model.Game.GuildPvp.Grade(info.Rating, grades));
+            pWriter.WriteLong(0);
+            pWriter.WriteInt(info.Rating);
+            pWriter.WriteInt(0);
+            pWriter.WriteInt(info.Wins);
+            pWriter.WriteInt(0);
+            pWriter.WriteInt(0);
+            pWriter.WriteLong(0);
+            pWriter.WriteUnicodeStringWithLength(DateTimeOffset.FromUnixTimeSeconds(info.LastGame).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
+        }
+
+        return pWriter;
+    }
+
+    // The own rank on a Maple Survival board (0xab, 0xac solo; 0xbf, 0xc0 squad), as the client's MyRankPercent reads
+    // it: the header, a kind and the rank. Kind 0 shows the rank (s_gameranking_tab_my_rank); any other kind shows the
+    // value as a percent up or down. 0 here, with rank 0 when the character has no record that season.
+    public static ByteWriter SurvivalPersonalRank(GameRankingType type, int rank) {
+        var pWriter = new ByteWriter();
+        pWriter.WriteInt((int) type);
+        pWriter.WriteInt(0);
+        pWriter.WriteUnicodeStringWithLength(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        pWriter.WriteInt(0);
+        pWriter.WriteInt(rank);
+
+        return pWriter;
+    }
 }

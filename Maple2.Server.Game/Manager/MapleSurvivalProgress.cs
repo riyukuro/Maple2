@@ -344,6 +344,7 @@ public static class MapleSurvivalProgress {
                 record.Games++;
                 record.Wins += rank == 1 ? 1 : 0;
                 record.Kills += kills;
+                record.LastGame = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 ratingAfter = record.Rating;
                 inSeason = true;
                 if (!db.SaveSurvivalRecord(session.CharacterId, record)) {

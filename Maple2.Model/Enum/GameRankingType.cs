@@ -47,6 +47,17 @@ public enum GameRankingType {
     FameChallengeFirstClears = 151,
     FameChallengeShortestClearPersonal = 161,
     FameChallengeShortestClears = 162,
+    // The Maple Survival board (the ranking dialog's board 0xd; the date is the season id, sub 1 solo and 4 squad;
+    // GMS CGameRankingCli::BuildKey 0x727480 and BuildMyRankKey 0x7277c0): the own rank and the characters by their
+    // season rating, the current season and the ones before.
+    SurvivalPersonal = 171,
+    SurvivalPersonalPreviousSeason = 172,
+    Survival = 173,
+    SurvivalPreviousSeason = 174,
+    SurvivalSquadPersonal = 191,
+    SurvivalSquadPersonalPreviousSeason = 192,
+    SurvivalSquad = 193,
+    SurvivalSquadPreviousSeason = 194,
     ColosseumPersonal = 201,
     ColosseumPersonalPreviousSeason = 202,
     Colosseum = 203,

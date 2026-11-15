@@ -2139,6 +2139,9 @@ namespace Maple2.Server.World.Migrations
                     b.Property<int>("Kills")
                         .HasColumnType("int");
 
+                    b.Property<long>("LastGame")
+                        .HasColumnType("bigint");
+
                     b.Property<int>("Rating")
                         .HasColumnType("int");
 
