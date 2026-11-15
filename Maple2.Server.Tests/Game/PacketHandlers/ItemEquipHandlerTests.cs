@@ -57,6 +57,30 @@ public class ItemEquipHandlerTests {
         Assert.That(session.Item.Equips.Get(cap.Uid), Is.Null);
     }
 
+    // Hair, a face, face decoration and ears do not come off (CItem::HasAnyEquipSlotOf, slots 1/2/3/18, refused by the
+    // client with notice 207): an unequip for one is dropped and the item stays worn, with room in the bag. It was
+    // discarded (UnequipInternal gives these slots up). A cap still comes off into the bag.
+    [TestCase(EquipSlot.HR, 10200001, false)]
+    [TestCase(EquipSlot.FA, 10300001, false)]
+    [TestCase(EquipSlot.FD, 10400001, false)]
+    [TestCase(EquipSlot.ER, 10500001, false)]
+    [TestCase(EquipSlot.CP, 11300001, true)]
+    public void Unequip_OfABeautySlotIsDropped(EquipSlot slot, int itemId, bool comesOff) {
+        test = new TestGameSession();
+        Item item = test.Store(TestGameSession.Metadata(itemId, slot), 1, ItemGroup.Outfit, slot);
+        GameSession session = test.Start();
+        Assert.That(session.Item.Equips.Get(item.Uid), Is.Not.Null);
+        test.TakeSent();
+
+        Unequip(session, item);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Equips.Get(item.Uid) == null, Is.EqualTo(comesOff));
+            Assert.That(session.Item.Inventory.Get(item.Uid) != null, Is.EqualTo(comesOff));
+            Assert.That(test.TakeSent().Count == 0, Is.EqualTo(!comesOff));
+        });
+    }
+
     // A worn item taken off with a full bag stays worn and gets the bag's notice; an unknown uid is dropped. Before,
     // the item left its slot before the bag was checked (lost from both), and either request cut the session.
     [Test]

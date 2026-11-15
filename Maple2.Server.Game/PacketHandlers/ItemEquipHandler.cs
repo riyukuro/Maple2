@@ -62,6 +62,11 @@ public class ItemEquipHandler : FieldPacketHandler {
         if (worn == null || session.Item.Equips.Badge.Values.Contains(worn)) {
             return;
         }
+        // Hair, a face, face decoration and ears do not come off (CItem::HasAnyEquipSlotOf, slots 1/2/3/18): the
+        // client refuses them with its own notice 207 and sends nothing. A sent one discarded the worn item.
+        if (worn.Metadata.SlotNames.Any(slot => slot is EquipSlot.HR or EquipSlot.FA or EquipSlot.FD or EquipSlot.ER)) {
+            return;
+        }
         if (!session.Item.Equips.Unequip(itemUid)) {
             session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
         }
