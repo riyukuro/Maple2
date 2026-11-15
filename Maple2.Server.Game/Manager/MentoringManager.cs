@@ -331,16 +331,56 @@ public class MentoringManager : IDisposable {
         }
 
         (int coin, int newLevel, long newNext) = MentoringAttend.Claim(Config, level, next, now);
-        session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringAttendLevel, newLevel);
-        session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringAttendNext, newNext);
-        // Stored at once, before the coin: a lost session must not give the day's coin twice.
-        if (!session.GameEvent.Store(season.Id, GameEventUserValueType.MentoringAttendLevel)
-            || !session.GameEvent.Store(season.Id, GameEventUserValueType.MentoringAttendNext)) {
-            logger.Warning("Mentoring attend of {CharacterId} not stored", session.CharacterId);
+        // The day (streak and next claim time), the coins today and the token are stored together (a purchase store,
+        // as TakeMentorCoins): a lost session can neither give the day's coin twice nor use up the day without it.
+        // A claim that is not stored gives nothing and keeps the day; the date sent again enables the button.
+        long today = MenteeCoinsToday(season, now);
+        long room = session.ServerTableMetadata.ConstantsTable.MenteeTokenMax - session.Currency[CurrencyType.MenteeToken];
+        long given = Math.Max(0, Math.Min(Config.RewardableCoin(coin, today, mentee: true), room));
+        GameEventUserValue? heldLevel = session.GameEvent.Held(season.Id, GameEventUserValueType.MentoringAttendLevel);
+        GameEventUserValue? heldNext = session.GameEvent.Held(season.Id, GameEventUserValueType.MentoringAttendNext);
+        GameEventUserValue? heldCount = session.GameEvent.Held(season.Id, GameEventUserValueType.MentoringMenteeCoinToday);
+        if (heldLevel == null || heldNext == null || heldCount == null) {
             return;
         }
-        AddMenteeCoin(coin, fromQuest: false);
+        var values = new List<GameEventUserValue> {
+            Value(heldLevel, newLevel),
+            Value(heldNext, newNext),
+            Value(heldCount, today + given),
+        };
+
+        CurrencyManager.Added added = default;
+        bool stored = session.TrySavePurchase(db => {
+            added = session.Currency.AddUnsent(CurrencyType.MenteeToken, given);
+            if (!db.SaveGameEventUserValues(session.CharacterId, values) || !db.SaveCurrency(session.Player)) {
+                return false;
+            }
+            // The values reach memory once stored, under the account lock, so no session save between writes the old
+            // ones.
+            db.AfterCommit(() => {
+                session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringAttendLevel, newLevel);
+                session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringAttendNext, newNext);
+                session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringMenteeCoinToday, today + given);
+            });
+            return true;
+        }, () => session.Currency.TakeBackAdded(added));
+        if (!stored) {
+            logger.Warning("Mentoring attend of {CharacterId} not stored, no coin given", session.CharacterId);
+            session.Send(MentorPacket.AttendDate(level, next));
+            return;
+        }
+        session.Currency.NotifyAdded(added);
+        if (given > 0) {
+            SendDailyCoins();
+        }
         session.Send(MentorPacket.AttendDate(newLevel, newNext));
+    }
+
+    // A held event value with a new value, its expiration kept, to store.
+    private static GameEventUserValue Value(GameEventUserValue held, long value) {
+        var stored = new GameEventUserValue(held.Type, held.ExpirationTime, held.EventId);
+        stored.SetValue(value.ToString());
+        return stored;
     }
 
     // The mentee coins of the mentoring rewards (the attend coin and a quest's menteeCoin). A mentee's coins in a

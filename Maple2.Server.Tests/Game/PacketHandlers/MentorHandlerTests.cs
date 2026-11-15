@@ -848,6 +848,38 @@ public class MentorHandlerTests {
         Assert.That(Mentor(test), Has.Member(AttendDate(1, NextMidnight())));
     }
 
+    // The day, the coins today and the token are one store: a claim the database refuses gives no coin, keeps the
+    // day (nothing stored, nothing in memory, the old date sent again), and the next claim gives the coin once.
+    [Test]
+    public void AttendReward_NotStoredGivesNothingAndKeepsTheDay() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        Mentor(test);
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.GameEventUserValue>().Any();
+        Send(session, Reward);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Mentor(test), Is.EqualTo(new[] { AttendDate(0, 0) }));
+            Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(0));
+            Assert.That(session.GameEvent.Peek(GameEventUserValueType.MentoringAttendLevel, 77), Is.Not.EqualTo("1"));
+            Assert.That(session.GameEvent.Peek(GameEventUserValueType.MentoringMenteeCoinToday, 77), Is.Not.EqualTo("100"));
+        });
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.GetEventUserValues(session.CharacterId), Is.Empty);
+            Assert.That(db.LoadPlayer(test.AccountId, test.CharacterId, 1, 1)!.Currency.MenteeToken, Is.EqualTo(0));
+        }
+        test.Errors.Clear();
+
+        Send(session, Reward);
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Coins(100), AttendDate(1, NextMidnight()) }));
+        Send(session, Reward);
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(100));
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.LoadPlayer(test.AccountId, test.CharacterId, 1, 1)!.Currency.MenteeToken, Is.EqualTo(100));
+        }
+    }
+
     [Test]
     public void AttendReward_OnlyAMenteeInASeason() {
         Login(season: true);
