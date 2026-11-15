@@ -118,6 +118,25 @@ public class PetItemUpdateSendTests {
         Assert.That(db.GetItem(pet.Uid)!.Pet!.Name, Is.EqualTo("Mochi"));
     }
 
+    // A paid rename whose store fails changes nothing: the merets are given back and the pet keeps its name, in memory
+    // and in its row.
+    [Test]
+    public void APaidRename_NotStored_KeepsMeretsAndName() {
+        GameSession session = Start();
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { PetChangeNameMerat = 100 });
+        session.Currency.Meret = 150;
+        pet.Pet!.RenameRemaining = 0;
+        string name = pet.Pet.Name;
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any();
+
+        session.Pet!.Rename("Mochi");
+        test.FailSave = null;
+
+        Assert.That((pet.Pet.Name, pet.Pet.RenameRemaining, session.Currency.Meret), Is.EqualTo((name, 0, 150L)));
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetItem(pet.Uid)!.Pet!.Name, Is.EqualTo(name));
+    }
+
     // The re-roll keeps (ChangeAttributes 2 and the scroll's Select) send it for the summoned pet only.
     [Test]
     public void OptionKeep_OnlyTheSummonedPet() {

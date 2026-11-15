@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Maple2.Database.Storage;
@@ -104,6 +104,18 @@ public class PetBagRowTests {
         Setup(5, 3, out _, out Item? inBag);
         manager.Remove(inBag!.Uid, -1, 5);
         Assert.That(StoredNow(), Is.EqualTo((8, 0)), () => dump);
+    }
+
+    // A deposit the full bag cannot take is refused and the item stays in the inventory, its row unchanged.
+    [Test]
+    public void ADepositTheBagCannotTake_StaysInTheInventory() {
+        Setup(0, 5, out Item held, out _);
+        for (short slot = 0; slot < 6; slot++) {
+            bag.Add(new Item(TestGameSession.Metadata(2000100 + slot), 1, 1) { Uid = 900 + slot, Slot = slot });
+        }
+        Assert.That(manager.Add(held.Uid, 0, 2), Is.EqualTo(Maple2.Model.Enum.StringCode.s_pet_inventory_not_sendin));
+        Assert.That(session.Item.Inventory.Get(held.Uid)?.Amount, Is.EqualTo(5));
+        Assert.That(StoredNow(), Is.EqualTo((5, 0)), () => dump);
     }
 
     [Test]

@@ -522,6 +522,80 @@ public class PetPaymentHandlerTests {
         Assert.That(StoredPet().Points, Is.EqualTo(2));
     }
 
+    // Evolve points whose store fails take nothing: the mesos are given back, the fodders stay and the points too.
+    [Test]
+    public void EvolvePoints_NotStored_TakesNothing() {
+        GameSession session = Login(meso: 50000, pets: 3);
+        pet.Pet!.Level = 50;
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any();
+
+        new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(18);
+            writer.WriteLong(pet.Uid);
+            writer.WriteShort(2);
+            writer.WriteLong(Fodders[0].Uid);
+            writer.WriteLong(Fodders[1].Uid);
+        }));
+        test.FailSave = null;
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(50000));
+        Assert.That(session.Item.Inventory.Get(Fodders[0].Uid), Is.Not.Null);
+        Assert.That(session.Item.Inventory.Get(Fodders[1].Uid), Is.Not.Null);
+        Assert.That(pet.Pet.EvolvePoints, Is.EqualTo(0));
+        Assert.That(test.Row(Fodders[0].Uid)!.OwnerId, Is.EqualTo(test.CharacterId));
+    }
+
+    // A fodder locked between the request's check and its store (here while the wallet is written) is not taken:
+    // the checks run again under the item lock at save time. Before, the store took the locked fodder.
+    [Test]
+    public void Fusion_FodderLockedBeforeTheStore_TakesNothing() {
+        GameSession session = Login(meso: 10_000_000, pets: 2);
+        Item fodder = Fodders[0];
+        test.FailSave = _ => {
+            fodder.IsLocked = true;
+            return false;
+        };
+
+        new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteLong(pet.Uid);
+            writer.WriteShort(1);
+            writer.WriteLong(fodder.Uid);
+            writer.WriteInt(1);
+        }));
+        test.FailSave = null;
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
+        Assert.That(session.Item.Inventory.Get(fodder.Uid), Is.Not.Null);
+        Assert.That(test.Row(fodder.Uid)!.OwnerId, Is.EqualTo(test.CharacterId));
+        Assert.That(StoredPet(), Is.EqualTo(((short) 1, 0L, 0)));
+    }
+
+    [Test]
+    public void EvolvePoints_FodderLockedBeforeTheStore_TakesNothing() {
+        GameSession session = Login(meso: 50000, pets: 3);
+        pet.Pet!.Level = 50;
+        Item fodder = Fodders[1];
+        test.FailSave = _ => {
+            fodder.IsLocked = true;
+            return false;
+        };
+
+        new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(18);
+            writer.WriteLong(pet.Uid);
+            writer.WriteShort(2);
+            writer.WriteLong(Fodders[0].Uid);
+            writer.WriteLong(fodder.Uid);
+        }));
+        test.FailSave = null;
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(50000));
+        Assert.That(test.Row(Fodders[0].Uid)!.OwnerId, Is.EqualTo(test.CharacterId));
+        Assert.That(test.Row(fodder.Uid)!.OwnerId, Is.EqualTo(test.CharacterId));
+        Assert.That(StoredPet().Points, Is.EqualTo(0));
+    }
+
     // A running PetComposeSale event lowers each fodder's fee by its rate (CGameRule::GetPetComposeSaleRate, the
     // highest of the running events); an ended one does not.
     [Test]

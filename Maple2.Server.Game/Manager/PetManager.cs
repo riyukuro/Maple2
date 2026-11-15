@@ -176,12 +176,28 @@ public sealed class PetManager : IDisposable {
                 amount -= remaining;
             }
 
+            // The bag must take the whole count before anything leaves the inventory: an add the bag refused used to
+            // drop the item taken out (items.Add returns nothing then), and the client is told it was not put in.
+            Item probe = deposit.Clone();
+            probe.Amount = amount;
+            probe.Slot = slot;
+            if (!items.TakesAll([probe])) {
+                return StringCode.s_pet_inventory_not_sendin;
+            }
+
             if (!session.Item.Inventory.Remove(uid, out deposit, amount)) {
                 return StringCode.s_empty_string;
             }
 
             deposit.Slot = slot;
             IList<(Item, int Added)> result = items.Add(deposit, true);
+            if (result.Count == 0) {
+                // Not reached after TakesAll; the item goes back to the inventory rather than being lost.
+                Log.Error("Pet bag refused deposit {Uid} of {CharacterId}; given back", deposit.Uid, session.CharacterId);
+                deposit.Slot = -1;
+                session.Item.Inventory.Add(deposit, commit: true);
+                return StringCode.s_pet_inventory_not_sendin;
+            }
             StoreDeposit(deposit, result.Select(entry => entry.Item1).ToArray());
             foreach ((Item item, int _) in result) {
                 session.Send(deposit.Uid == item.Uid

@@ -215,62 +215,21 @@ public class PetHandler : FieldPacketHandler {
             return;
         }
 
-        Item? pet;
         Character character = session.Player.Value.Character;
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
         int maxLevel = constants.PetMaxLevel;
         PetExpTable table = session.TableMetadata.PetExpTable;
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        int dailyCount;
-        int petFodders = 0;
-        long gain = 0;
-        long cost = 0;
-        // The rows taken: a pet fodder whole, a book by its count.
-        var plan = new List<(long Uid, int Amount)>();
-        lock (session.Item) {
-            pet = FindOwnPet(session, petUid);
-            if (pet?.Pet == null || !session.ItemMetadata.TryGetPet(pet.Metadata.Property.PetId, out PetMetadata? petMetadata)) {
-                return;
-            }
-
-            if (!PetFusionRules.IsTarget(petMetadata.Type, pet.Pet.Level, maxLevel)) {
-                return;
-            }
-
-            long summonedUid = session.Pet?.Pet.Uid ?? 0;
-            dailyCount = PetFusionRules.DailyCount(character.PetFusionCount, character.PetFusionTime, PetFusionRules.LastResetTime());
-            int bonusLimit = constants.DailyPetEnchantMaxCount;
-            int saleRate = PetComposeSaleRate(session);
-
-            int units = 0;
-            foreach ((long uid, int amount) in entries) {
-                Item? fodder = session.Item.Inventory.Get(uid);
-                int? fodderType = fodder?.Pet != null && session.ItemMetadata.TryGetPet(fodder.Metadata.Property.PetId, out PetMetadata? fodderMetadata)
-                    ? fodderMetadata.Type : null;
-                PetFusionRules.FodderKind kind = fodder == null ? PetFusionRules.FodderKind.None : PetFusionRules.KindOf(fodder, fodderType);
-                if (PetFusionRules.CheckFodder(pet, fodder, kind, amount, summonedUid, now) != PetFusionRules.FodderError.None) {
-                    return;
-                }
-
-                for (int i = 0; i < amount; i++) {
-                    (int predicted, _) = PetFusionRules.Apply(table, pet.Pet.Level, pet.Pet.Exp, pet.Rarity, pet.Metadata.Limit.Level, gain, maxLevel);
-                    if (PetFusionRules.CheckUnit(units, predicted, maxLevel) != PetFusionRules.FodderError.None) {
-                        return;
-                    }
-
-                    if (kind == PetFusionRules.FodderKind.Pet) {
-                        (long baseExp, long bonusExp) = PetFusionRules.PetExp(pet, fodder!, dailyCount + petFodders, bonusLimit);
-                        gain += baseExp + bonusExp;
-                        petFodders++;
-                    } else {
-                        gain += PetFusionRules.BookExp(fodder!.Metadata.Function);
-                    }
-                    units++;
-                }
-                cost += PetFusionRules.ApplySale(PetFusionRules.UnitCost(pet, fodder!, kind), saleRate) * amount;
-                plan.Add((fodder!.Uid, kind == PetFusionRules.FodderKind.Pet ? fodder.Amount : amount));
-            }
+        FusionPlan? checkedPlan = PlanFusion(session, petUid, entries, now);
+        if (checkedPlan == null) {
+            return;
         }
+        Item pet = checkedPlan.Pet;
+        int dailyCount = checkedPlan.DailyCount;
+        int petFodders = checkedPlan.PetFodders;
+        long gain = checkedPlan.Gain;
+        long cost = checkedPlan.Cost;
+        List<(long Uid, int Amount)> plan = checkedPlan.Taken;
 
         // KMS2 order: the meso, then the fodders. The meso is held in memory; the wallet, the fodders' rows and the
         // pet's row with its new level and exp are stored in one transaction, and the bag and the pet follow once it
@@ -287,13 +246,20 @@ public class PetHandler : FieldPacketHandler {
         (int Level, long Exp) Fused() => PetFusionRules.Apply(table, fused.Pet!.Level, fused.Pet.Exp, fused.Rarity, fused.Metadata.Limit.Level, gain, maxLevel);
         int oldLevel = 0;
         bool stored = session.TrySavePurchase(db => {
-            foreach ((long uid, int amount) in plan) {
-                if (!session.Item.Inventory.SaveConsumed(db, uid, amount)) {
+            // The checks again, with the bag held until the rows are written: a fodder or the pet may have changed
+            // since the request was checked (the lock was let go for the save).
+            lock (session.Item) {
+                if (PlanFusion(session, petUid, entries, now) is not { } again || !again.SameAs(checkedPlan)) {
                     return false;
                 }
-            }
-            if (!SavePetAs(session, db, fused, item => (item.Pet!.Level, item.Pet.Exp) = ((short, long)) Fused())) {
-                return false;
+                foreach ((long uid, int amount) in plan) {
+                    if (!session.Item.Inventory.SaveConsumed(db, uid, amount)) {
+                        return false;
+                    }
+                }
+                if (!SavePetAs(session, db, fused, item => (item.Pet!.Level, item.Pet.Exp) = ((short, long)) Fused())) {
+                    return false;
+                }
             }
             // Under the account lock, so no session save between the commit and memory writes the old rows.
             db.AfterCommit(() => {
@@ -343,6 +309,70 @@ public class PetHandler : FieldPacketHandler {
         // "Acquire 10,000 pet experience through fusion" (70600033): the exp the fodders gave.
         if (gain > 0) {
             session.ConditionUpdate(ConditionType.pet_enchant_exp, counter: gain);
+        }
+    }
+
+    // A checked fusion request: the pet, the rows it takes (a pet fodder whole, a book by its count), the exp they
+    // give, the meso it costs and the daily count it starts from.
+    private sealed record FusionPlan(Item Pet, short Level, long Exp, List<(long Uid, int Amount)> Taken, long Gain, long Cost, int PetFodders, int DailyCount) {
+        public bool SameAs(FusionPlan other) => ReferenceEquals(Pet, other.Pet) && Level == other.Level && Exp == other.Exp
+            && Taken.SequenceEqual(other.Taken) && Gain == other.Gain && Cost == other.Cost && PetFodders == other.PetFodders && DailyCount == other.DailyCount;
+    }
+
+    // The server's checks of a fusion request (null: refused), under the item lock.
+    private static FusionPlan? PlanFusion(GameSession session, long petUid, List<(long Uid, int Amount)> entries, long now) {
+        Character character = session.Player.Value.Character;
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        int maxLevel = constants.PetMaxLevel;
+        PetExpTable table = session.TableMetadata.PetExpTable;
+        int petFodders = 0;
+        long gain = 0;
+        long cost = 0;
+        var plan = new List<(long Uid, int Amount)>();
+        lock (session.Item) {
+            Item? pet = FindOwnPet(session, petUid);
+            if (pet?.Pet == null || !session.ItemMetadata.TryGetPet(pet.Metadata.Property.PetId, out PetMetadata? petMetadata)) {
+                return null;
+            }
+
+            if (!PetFusionRules.IsTarget(petMetadata.Type, pet.Pet.Level, maxLevel)) {
+                return null;
+            }
+
+            long summonedUid = session.Pet?.Pet.Uid ?? 0;
+            int dailyCount = PetFusionRules.DailyCount(character.PetFusionCount, character.PetFusionTime, PetFusionRules.LastResetTime());
+            int bonusLimit = constants.DailyPetEnchantMaxCount;
+            int saleRate = PetComposeSaleRate(session);
+
+            int units = 0;
+            foreach ((long uid, int amount) in entries) {
+                Item? fodder = session.Item.Inventory.Get(uid);
+                int? fodderType = fodder?.Pet != null && session.ItemMetadata.TryGetPet(fodder.Metadata.Property.PetId, out PetMetadata? fodderMetadata)
+                    ? fodderMetadata.Type : null;
+                PetFusionRules.FodderKind kind = fodder == null ? PetFusionRules.FodderKind.None : PetFusionRules.KindOf(fodder, fodderType);
+                if (PetFusionRules.CheckFodder(pet, fodder, kind, amount, summonedUid, now) != PetFusionRules.FodderError.None) {
+                    return null;
+                }
+
+                for (int i = 0; i < amount; i++) {
+                    (int predicted, _) = PetFusionRules.Apply(table, pet.Pet.Level, pet.Pet.Exp, pet.Rarity, pet.Metadata.Limit.Level, gain, maxLevel);
+                    if (PetFusionRules.CheckUnit(units, predicted, maxLevel) != PetFusionRules.FodderError.None) {
+                        return null;
+                    }
+
+                    if (kind == PetFusionRules.FodderKind.Pet) {
+                        (long baseExp, long bonusExp) = PetFusionRules.PetExp(pet, fodder!, dailyCount + petFodders, bonusLimit);
+                        gain += baseExp + bonusExp;
+                        petFodders++;
+                    } else {
+                        gain += PetFusionRules.BookExp(fodder!.Metadata.Function);
+                    }
+                    units++;
+                }
+                cost += PetFusionRules.ApplySale(PetFusionRules.UnitCost(pet, fodder!, kind), saleRate) * amount;
+                plan.Add((fodder!.Uid, kind == PetFusionRules.FodderKind.Pet ? fodder.Amount : amount));
+            }
+            return new FusionPlan(pet, pet.Pet.Level, pet.Pet.Exp, plan, gain, cost, petFodders, dailyCount);
         }
     }
 
@@ -449,31 +479,14 @@ public class PetHandler : FieldPacketHandler {
             return;
         }
 
-        Item? pet;
-        long total;
-        var fodders = new List<Item>();
-        lock (session.Item) {
-            pet = FindOwnPet(session, petUid);
-            if (pet?.Pet == null || !IsEvolveTarget(session, pet)) {
-                return;
-            }
-
-            int need = PetEvolveRules.Need(session.TableMetadata.PetEvolutionTable, pet.Metadata.Limit.Level, pet.Rarity);
-            long summonedUid = session.Pet?.Pet.Uid ?? 0;
-            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            total = pet.Pet.EvolvePoints;
-            foreach (long uid in fodderUids) {
-                Item? fodder = session.Item.Inventory.Get(uid, InventoryType.Pets);
-                if (fodders.Any(taken => taken.Uid == uid)) {
-                    return;
-                }
-                if (PetEvolveRules.CheckFodder(pet, fodder, summonedUid, total, need, now) != PetEvolveRules.FodderError.None) {
-                    return;
-                }
-                fodders.Add(fodder!);
-                total += PetEvolveRules.FodderPoints(fodder!.Pet!.EvolvePoints);
-            }
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        EvolvePlan? checkedPlan = PlanEvolvePoints(session, petUid, fodderUids, now);
+        if (checkedPlan == null) {
+            return;
         }
+        Item pet = checkedPlan.Pet;
+        long total = checkedPlan.Total;
+        List<Item> fodders = checkedPlan.Fodders;
 
         long cost = PetEvolveRules.Cost(fodders.Select(fodder => fodder.Rarity));
         // KMS2 order: the meso, then the fodders. As a fusion: the meso held in memory, the wallet, the fodders' rows
@@ -490,13 +503,19 @@ public class PetHandler : FieldPacketHandler {
         bool taken = true;
         var held = new List<int>();
         bool stored = session.TrySavePurchase(db => {
-            foreach (Item fodder in fodders) {
-                if (!session.Item.Inventory.SaveConsumed(db, fodder.Uid, fodder.Amount)) {
+            // The checks again, with the bag held until the rows are written (as a fusion).
+            lock (session.Item) {
+                if (PlanEvolvePoints(session, petUid, fodderUids, now) is not { } again || !again.SameAs(checkedPlan)) {
                     return false;
                 }
-            }
-            if (!SavePetAs(session, db, evolving, item => item.Pet!.EvolvePoints = points)) {
-                return false;
+                foreach (Item fodder in fodders) {
+                    if (!session.Item.Inventory.SaveConsumed(db, fodder.Uid, fodder.Amount)) {
+                        return false;
+                    }
+                }
+                if (!SavePetAs(session, db, evolving, item => item.Pet!.EvolvePoints = points)) {
+                    return false;
+                }
             }
             db.AfterCommit(() => {
                 // KMS2 order: the meso, then the fodders.
@@ -525,6 +544,40 @@ public class PetHandler : FieldPacketHandler {
         PetManager.SendItemUpdate(session, evolving);
         // 23100387-23100390 "Gain {0} evolution point(s) with a normal pet": the points gained, by the pet's rarity.
         session.ConditionUpdate(ConditionType.pet_evolution_point_by_rank, counter: points - before, codeLong: evolving.Rarity);
+    }
+
+    // A checked evolution points request: the pet, its fodders (each taken whole) and the points it ends with.
+    private sealed record EvolvePlan(Item Pet, int Points, List<Item> Fodders, List<int> Amounts, long Total) {
+        public bool SameAs(EvolvePlan other) => ReferenceEquals(Pet, other.Pet) && Points == other.Points && Total == other.Total
+            && Fodders.Count == other.Fodders.Count && Fodders.Zip(other.Fodders).All(pair => ReferenceEquals(pair.First, pair.Second))
+            && Amounts.SequenceEqual(other.Amounts);
+    }
+
+    // The server's checks of an evolution points request (null: refused), under the item lock.
+    private static EvolvePlan? PlanEvolvePoints(GameSession session, long petUid, List<long> fodderUids, long now) {
+        var fodders = new List<Item>();
+        lock (session.Item) {
+            Item? pet = FindOwnPet(session, petUid);
+            if (pet?.Pet == null || !IsEvolveTarget(session, pet)) {
+                return null;
+            }
+
+            int need = PetEvolveRules.Need(session.TableMetadata.PetEvolutionTable, pet.Metadata.Limit.Level, pet.Rarity);
+            long summonedUid = session.Pet?.Pet.Uid ?? 0;
+            long total = pet.Pet.EvolvePoints;
+            foreach (long uid in fodderUids) {
+                Item? fodder = session.Item.Inventory.Get(uid, InventoryType.Pets);
+                if (fodders.Any(taken => taken.Uid == uid)) {
+                    return null;
+                }
+                if (PetEvolveRules.CheckFodder(pet, fodder, summonedUid, total, need, now) != PetEvolveRules.FodderError.None) {
+                    return null;
+                }
+                fodders.Add(fodder!);
+                total += PetEvolveRules.FodderPoints(fodder!.Pet!.EvolvePoints);
+            }
+            return new EvolvePlan(pet, pet.Pet.EvolvePoints, fodders, fodders.Select(fodder => fodder.Amount).ToList(), total);
+        }
     }
 
     // The pet the evolution tab picked: in the pet inventory, or the summoned pet.
