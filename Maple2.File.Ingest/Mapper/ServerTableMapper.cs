@@ -1676,6 +1676,43 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                 Tag: ItemTag.None));
     }
 
+    // A tile of a BlueMarble row's value2: <v type="item" arg1="20001037" arg2="5" />. Every KR and NA board's first
+    // tile is type="starting", which is no BlueMarbleSlotType name: read as an item tile of item 0, a roll that ends
+    // on it got no result (the tile item cannot be made), so the client kept its dice button off.
+    public static BlueMarble.Slot ParseBlueMarbleSlot(XmlNode vNode) {
+        string? type = vNode.Attributes?["type"]?.Value;
+        if (string.Equals(type, "starting", StringComparison.OrdinalIgnoreCase)) {
+            type = nameof(BlueMarbleSlotType.Start);
+        }
+        if (!Enum.TryParse(type, true, out BlueMarbleSlotType slotType)) {
+            slotType = BlueMarbleSlotType.Item;
+        }
+
+        if (!int.TryParse(vNode.Attributes?["arg1"]?.Value, out int arg1)) {
+            arg1 = 0;
+        }
+
+        if (!int.TryParse(vNode.Attributes?["arg2"]?.Value, out int arg2)) {
+            arg2 = 0;
+        }
+
+        int moveAmount = 0;
+        if (slotType is BlueMarbleSlotType.Backward or BlueMarbleSlotType.Forward) {
+            moveAmount = arg1;
+        }
+
+        var blueMarbleSlotItem = new ItemComponent(0, 0, 0, ItemTag.None);
+        if (slotType is BlueMarbleSlotType.Item or BlueMarbleSlotType.Paradise) {
+            // TODO: Get rarity from item xmls
+            blueMarbleSlotItem = new ItemComponent(arg1, -1, arg2, ItemTag.None);
+        }
+
+        return new BlueMarble.Slot(
+            Type: slotType,
+            MoveAmount: moveAmount,
+            Item: blueMarbleSlotItem);
+    }
+
     // A ReturnUser or NewUser row's value1 date, to the minute or to the second, in the server's time zone as the
     // event times are; DateTimeOffset.MinValue when it is no date (a ReturnUser row's days).
     public static DateTimeOffset UserDate(string? text) {
@@ -1723,33 +1760,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
                 var slots = new List<BlueMarble.Slot>();
                 foreach (XmlNode vNode in slotsNode.ChildNodes) {
-                    if (!Enum.TryParse(vNode.Attributes?["type"]?.Value, true, out BlueMarbleSlotType slotType)) {
-                        slotType = BlueMarbleSlotType.Item;
-                    }
-
-                    if (!int.TryParse(vNode.Attributes?["arg1"]?.Value, out int arg1)) {
-                        arg1 = 0;
-                    }
-
-                    if (!int.TryParse(vNode.Attributes?["arg2"]?.Value, out int arg2)) {
-                        arg2 = 0;
-                    }
-
-                    int moveAmount = 0;
-                    if (slotType is BlueMarbleSlotType.Backward or BlueMarbleSlotType.Forward) {
-                        moveAmount = arg1;
-                    }
-
-                    var blueMarbleSlotItem = new ItemComponent(0, 0, 0, ItemTag.None);
-                    if (slotType is BlueMarbleSlotType.Item or BlueMarbleSlotType.Paradise) {
-                        // TODO: Get rarity from item xmls
-                        blueMarbleSlotItem = new ItemComponent(arg1, -1, arg2, ItemTag.None);
-                    }
-
-                    slots.Add(new BlueMarble.Slot(
-                        Type: slotType,
-                        MoveAmount: moveAmount,
-                        Item: blueMarbleSlotItem));
+                    slots.Add(ParseBlueMarbleSlot(vNode));
                 }
                 return new BlueMarble(
                     RequiredItem: requiredItem,

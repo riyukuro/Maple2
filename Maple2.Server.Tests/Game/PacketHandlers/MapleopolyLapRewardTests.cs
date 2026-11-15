@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
@@ -7,6 +8,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 
@@ -83,5 +85,37 @@ public class MapleopolyLapRewardTests {
 
         BlueMarble.Round everyLap = ServerTableMapper.ParseBlueMarbleRound(root.ChildNodes[1]!);
         Assert.That(everyLap, Is.EqualTo(new BlueMarble.Round(0, new ItemComponent(20302686, -1, 1, ItemTag.None))));
+    }
+
+    // Every KR and NA board starts with <v type="starting" />. Read as the start tile, a roll that ends on it (a lap
+    // walked to its end) is answered with its result (kind 6) and the lap reward; read as an item tile of item 0,
+    // the result request was dropped and the client kept its dice button off.
+    [Test]
+    public void Mapleopoly_StartingTile_IsTheStartTile() {
+        var xml = new XmlDocument();
+        xml.LoadXml("<slots><v type=\"starting\" /><v type=\"forward\" arg1=\"1\" /></slots>");
+        BlueMarble.Slot[] slots = xml.FirstChild!.ChildNodes.Cast<XmlNode>().Select(ServerTableMapper.ParseBlueMarbleSlot).ToArray();
+        Assert.That(slots[0].Type, Is.EqualTo(BlueMarbleSlotType.Start));
+        Assert.That(slots[1], Is.EqualTo(new BlueMarble.Slot(BlueMarbleSlotType.Forward, 1, new ItemComponent(0, 0, 0, ItemTag.None))));
+
+        var test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(EveryLap), TestGameSession.Metadata(Ticket));
+        var board = new BlueMarble(new ItemComponent(Ticket, -1, 1, ItemTag.None), [
+            new BlueMarble.Round(0, new ItemComponent(EveryLap, -1, 2, ItemTag.None)),
+        ], slots);
+        GameEvent gameEvent = test.AddEvent(EventId, GameEventType.BlueMarble, board);
+        GameSession session = test.Start();
+        session.GameEvent.Get(GameEventUserValueType.MapleopolyTotalSlotCount, gameEvent.Id, gameEvent.EndTime);
+        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.MapleopolyTotalSlotCount, 2);
+        session.GameEvent.Mapleopoly.Rolled();
+        test.TakeSent();
+
+        new MapleopolyHandler { ItemMetadata = null! }.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(3)));
+
+        byte[] result = test.TakeSent().Single(packet => TestGameSession.Op(packet) == SendOp.Mapleopoly);
+        Assert.That(result[2], Is.EqualTo(4));
+        Assert.That(BitConverter.ToInt16(result, 3), Is.EqualTo((short) BlueMarbleSlotType.Start));
+        Assert.That(Held(session, EveryLap), Is.EqualTo(2));
+        Assert.That(test.Errors, Is.Empty);
     }
 }
