@@ -68,6 +68,7 @@ Ingest (`Maple2.File.Ingest`):
 | `MS2_SERVER_OVERLAY` | unset | A directory of server pack files laid out as in `Server.m2d`. Its `WorldChampionBase.xml` and `table/Server/NA/GameEvent.xml` (rows by `gameEventID`) are read over the pack's, so you can run ended seasons and events again with new dates. See "World champion seasons and trophies" in [Fixes so far](FORK.md#fixes-so-far-by-system). |
 | `MS2_FEATURE_ENV` | `Live` | The `feature_setting.xml` server type the features are read at: Dev, Qa, DevStage, Stage or Live. An unknown value stops the ingest. |
 | `MS2_REPLAY_ATTEND_GIFT` | `0` | `1` replays one ended event of each type that the data pack has only ended rows of, moved to start on the ingest day with its own length: attendance gifts, the stamp card, sales, hot times, event arcades, the minigames, the item box, the snowman and others. See "Ended attendance event replay" in [Known not to work](FORK.md#known-not-to-work). |
+| `MS2_REPLAY_EVENTS` | unset | Ended game event ids, comma separated, to run again from the ingest day with their own length, e.g. `320002` for the epic quest restart or the Mapleopoly boards `270001` to `270005`. An event the played client lacks an item or quest for is not replayed, with a line. A value that is not a list of ids stops the ingest. See "Ended event replay by id" in [Known not to work](FORK.md#known-not-to-work). |
 
 Servers:
 
