@@ -207,8 +207,8 @@ public class GuildManager : IDisposable {
         if (!Guild.Members.TryGetValue(characterId, out GuildMember? member)) {
             return GuildError.s_guild_err_not_join_member;
         }
-        // Only a member of a lower rank (the client asks only for the right and leaves out the requestor itself).
-        if (!GuildRules.Outranks(requestor.Rank, member.Rank)) {
+        // CGuildManager::SendGuildMode8 never sends the requestor's own name; it compares no ranks (GuildRules.IsExpelTarget).
+        if (!GuildRules.IsExpelTarget(requestor.CharacterId, member.CharacterId)) {
             return GuildError.s_guild_err_no_authority;
         }
 
@@ -280,10 +280,6 @@ public class GuildManager : IDisposable {
         }
 
         if (rankId != null) {
-            if (member.Rank == rankId) {
-                return GuildError.s_guild_err_set_grade_failed;
-            }
-
             GuildRank? rank = Guild.Ranks.ElementAtOrDefault(requestor.Rank);
             if (rank == null || !rank.Permission.HasFlag(GuildPermission.EditRank)) {
                 return GuildError.s_guild_err_no_authority;
@@ -295,15 +291,13 @@ public class GuildManager : IDisposable {
             if (!GuildRules.CanChangeRankOf(member.Rank)) {
                 return GuildError.s_guild_err_set_grade_failed;
             }
-            // The order of the ranks holds: only a member of a lower rank, and only to a rank below the requestor's
-            // own (so not the requestor's own rank either).
-            if (!GuildRules.Outranks(requestor.Rank, member.Rank)) {
-                return GuildError.s_guild_err_no_authority;
+            // The client compares no ranks (GuildRules.CanChangeRankOf). Its rank box opens on the member's own rank,
+            // so OK on it sends that rank: nothing to store, and not refused.
+            if (member.Rank == rankId) {
+                rankId = null;
             }
-            if (!GuildRules.Outranks(requestor.Rank, (byte) rankId)) {
-                return GuildError.s_guild_err_invalid_grade_range;
-            }
-
+        }
+        if (rankId != null) {
             byte oldRank = member.Rank;
             member.Rank = (byte) rankId;
             if (!TrySaveMember(member)) {

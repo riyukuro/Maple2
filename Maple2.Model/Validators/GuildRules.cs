@@ -574,16 +574,24 @@ public static class GuildRules {
         return Math.Max(0, useTime + row.Cooldown * 60L - now);
     }
 
-    // The master keeps rank 0 until the master changes.
+    // Guild 10 (set a rank), as the client checks it: CGuildManager::SendGuildMode10 (guildmanager.cpp:529) asks for
+    // the right 0x20 and a rank from 1 to the last index; the guild window (uiguilddialog.cpp:874) refuses the master's
+    // name, and its Flash rank box (GuildPopupEditMemberGrade.ShowPopup) opens only for a member whose rank is not 0
+    // and lists ranks 1 up. None of them compares the requestor's rank with the member's or the new one, and the
+    // requestor's own name is not left out, so a member with the right may set any member but the master, itself
+    // included, to any rank but 0. The server keeps only what an honest client never sends: the master keeps rank 0
+    // until the master changes.
     public static bool CanChangeRankOf(byte memberRank) {
         return memberRank != MasterRank;
     }
 
-    // Guild 8 (expel) and Guild 10 (set a rank): the client asks only for the right (0x04, 0x20), so the server keeps
-    // the order of the ranks: a lower index is the higher rank, and a member acts only on a rank below its own (the
-    // master, rank 0, on every other). The same rank is not below: no peer and not the requestor itself.
-    public static bool Outranks(byte requestorRank, byte rank) {
-        return requestorRank < rank;
+    // Guild 8 (expel), as the client checks it: CGuildManager::SendGuildMode8 (guildmanager.cpp:513) asks for the
+    // right 0x04 and leaves out the requestor's own name and the master's (the guild window refuses the master's name
+    // too, uiguilddialog.cpp:890). It compares no ranks, so a member with the right may expel any other member but
+    // the master. The server keeps what an honest client never sends: not the requestor itself (the master is
+    // checked apart, with its own error).
+    public static bool IsExpelTarget(long requestorId, long characterId) {
+        return requestorId != characterId;
     }
 
     // guild_exp ("Obtain 100 guild experience", 70300016): the guild exp a member's own action added. Every

@@ -10,9 +10,10 @@ using Maple2.Server.World.Containers;
 
 namespace Maple2.Server.Tests.World;
 
-// Guild 8 (expel), Guild 10 (set a rank) and Guild 63 (new master) in the world: the client asks only for the right, so
-// the world keeps the order of the ranks (a member acts only on a lower rank and gives no rank at or above its own), and
-// a rank or master change is stored at once.
+// Guild 8 (expel), Guild 10 (set a rank) and Guild 63 (new master) in the world. The client asks only for the right and
+// compares no ranks (GuildRules.CanChangeRankOf, IsExpelTarget), so the world refuses only what an honest client never
+// sends: the requestor expelling itself, anyone expelling the master or moving the master's rank 0, and rank 0 itself.
+// A rank or master change is stored at once.
 public class GuildRankOrderTests {
     private TestGameSession test = null!;
     private Guild guild = null!;
@@ -78,30 +79,53 @@ public class GuildRankOrderTests {
         return context.GuildMember.Single(row => row.GuildId == guild.Id && row.CharacterId == member.CharacterId).Rank;
     }
 
+    // The client leaves the requestor's own name in: a member with the right may give itself another rank (not 0).
     [Test]
-    public void SetRank_NotOwnRank() {
-        Assert.That(manager.UpdateMember(officer.CharacterId, officer.CharacterId, 1, null), Is.EqualTo(GuildError.s_guild_err_no_authority));
-        Assert.That(officer.Rank, Is.EqualTo(2));
-        Assert.That(StoredRank(officer), Is.EqualTo(2));
+    public void SetRank_OwnRank() {
+        Assert.That(manager.UpdateMember(officer.CharacterId, officer.CharacterId, 1, null), Is.EqualTo(GuildError.none));
+        Assert.That(officer.Rank, Is.EqualTo(1));
+        Assert.That(StoredRank(officer), Is.EqualTo(1));
     }
 
+    // The client compares no ranks: a rank at or above the requestor's own is given as any other (not 0).
     [TestCase((byte) 1)]
     [TestCase((byte) 2)]
-    public void SetRank_NotAtOrAboveOwnRank(byte rank) {
-        Assert.That(manager.UpdateMember(officer.CharacterId, junior.CharacterId, rank, null), Is.EqualTo(GuildError.s_guild_err_invalid_grade_range));
+    public void SetRank_AtOrAboveOwnRank(byte rank) {
+        Assert.That(manager.UpdateMember(officer.CharacterId, junior.CharacterId, rank, null), Is.EqualTo(GuildError.none));
+        Assert.That(junior.Rank, Is.EqualTo(rank));
+        Assert.That(StoredRank(junior), Is.EqualTo(rank));
+    }
+
+    [Test]
+    public void SetRank_OfAPeerOrAHigherRank() {
+        Assert.That(manager.UpdateMember(officer.CharacterId, peer.CharacterId, 4, null), Is.EqualTo(GuildError.none));
+        Assert.That(manager.UpdateMember(officer.CharacterId, senior.CharacterId, 4, null), Is.EqualTo(GuildError.none));
+        Assert.That(StoredRank(peer), Is.EqualTo(4));
+        Assert.That(StoredRank(senior), Is.EqualTo(4));
+    }
+
+    // The rank box opens on the member's own rank, so OK on it sends that rank: not refused, nothing changes.
+    [Test]
+    public void SetRank_SameRank_IsNotRefused() {
+        Assert.That(manager.UpdateMember(officer.CharacterId, junior.CharacterId, 3, null), Is.EqualTo(GuildError.none));
         Assert.That(junior.Rank, Is.EqualTo(3));
+        Assert.That(StoredRank(junior), Is.EqualTo(3));
     }
 
+    // What an honest client never sends: the master's rank moved, rank 0 given, a request without the right.
     [Test]
-    public void SetRank_NotOfAPeerOrAHigherRank() {
-        Assert.That(manager.UpdateMember(officer.CharacterId, peer.CharacterId, 4, null), Is.EqualTo(GuildError.s_guild_err_no_authority));
-        Assert.That(manager.UpdateMember(officer.CharacterId, senior.CharacterId, 4, null), Is.EqualTo(GuildError.s_guild_err_no_authority));
+    public void SetRank_NotTheMasterNorRankZeroNorWithoutTheRight() {
+        Assert.That(manager.UpdateMember(officer.CharacterId, master.CharacterId, 4, null), Is.EqualTo(GuildError.s_guild_err_set_grade_failed));
+        Assert.That(manager.UpdateMember(master.CharacterId, master.CharacterId, 1, null), Is.EqualTo(GuildError.s_guild_err_set_grade_failed));
+        Assert.That(manager.UpdateMember(officer.CharacterId, junior.CharacterId, 0, null), Is.EqualTo(GuildError.s_guild_err_invalid_grade_index));
+        Assert.That(manager.UpdateMember(junior.CharacterId, peer.CharacterId, 4, null), Is.EqualTo(GuildError.s_guild_err_no_authority));
+        Assert.That(master.Rank, Is.EqualTo(0));
+        Assert.That(junior.Rank, Is.EqualTo(3));
         Assert.That(peer.Rank, Is.EqualTo(2));
-        Assert.That(senior.Rank, Is.EqualTo(1));
     }
 
     [Test]
-    public void SetRank_BelowOwnRankIsStored() {
+    public void SetRank_IsStored() {
         Assert.That(manager.UpdateMember(officer.CharacterId, junior.CharacterId, 4, null), Is.EqualTo(GuildError.none));
         Assert.That(junior.Rank, Is.EqualTo(4));
         Assert.That(StoredRank(junior), Is.EqualTo(4));
@@ -110,14 +134,18 @@ public class GuildRankOrderTests {
         Assert.That(StoredRank(junior), Is.EqualTo(1));
     }
 
+    // The client compares no ranks: a member with the right expels a peer or a higher rank, but never itself or the master.
     [Test]
-    public void Expel_NotAPeerNorItself() {
-        Assert.That(manager.Expel(officer.CharacterId, peer.CharacterId), Is.EqualTo(GuildError.s_guild_err_no_authority));
+    public void Expel_APeerOrAHigherRank_NotItselfNorTheMaster() {
         Assert.That(manager.Expel(officer.CharacterId, officer.CharacterId), Is.EqualTo(GuildError.s_guild_err_no_authority));
-        Assert.That(guild.Members.ContainsKey(peer.CharacterId) && guild.Members.ContainsKey(officer.CharacterId), Is.True);
+        Assert.That(manager.Expel(officer.CharacterId, master.CharacterId), Is.EqualTo(GuildError.s_guild_err_expel_target_master));
+        Assert.That(manager.Expel(junior.CharacterId, peer.CharacterId), Is.EqualTo(GuildError.s_guild_err_no_authority));
+        Assert.That(guild.Members.ContainsKey(officer.CharacterId) && guild.Members.ContainsKey(master.CharacterId), Is.True);
+        Assert.That(guild.Members.ContainsKey(peer.CharacterId), Is.True);
 
-        Assert.That(manager.Expel(officer.CharacterId, junior.CharacterId), Is.EqualTo(GuildError.none));
-        Assert.That(guild.Members.ContainsKey(junior.CharacterId), Is.False);
+        Assert.That(manager.Expel(officer.CharacterId, peer.CharacterId), Is.EqualTo(GuildError.none));
+        Assert.That(manager.Expel(officer.CharacterId, senior.CharacterId), Is.EqualTo(GuildError.none));
+        Assert.That(guild.Members.ContainsKey(peer.CharacterId) || guild.Members.ContainsKey(senior.CharacterId), Is.False);
     }
 
     [Test]
