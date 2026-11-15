@@ -4,6 +4,8 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Session;
 using Microsoft.EntityFrameworkCore;
 using StoredItem = Maple2.Model.Game.Item;
@@ -106,6 +108,47 @@ public class MailCollectTests {
             Assert.That(reload.GetAllItems(expired), Is.Empty);
             Assert.That(session.Mail.Collect(expired), Is.EqualTo(MailError.mail_not_found));
         });
+    }
+
+    // Mesos that would take the wallet over MaxMeso stay on the mail: the collect is refused with the mail error box,
+    // gives nothing, does not send mode 11 (it claims the mesos too) and leaves the mesos uncollected in the database,
+    // so they come once the wallet has room. They were collected anyway and the part over the cap was lost.
+    [Test]
+    public void Collect_MesoOverTheCap_StaysOnTheMail() {
+        GameSession session = Start();
+        session.Currency.Meso = Constant.MaxMeso - 40;
+        long mailId = MesoMail(session, 100);
+        test.TakeSent();
+
+        MailError refused = session.Mail.Collect(mailId);
+        long walletAfterRefused = session.Currency.Meso;
+        byte[] mailModes = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Mail).Select(packet => packet[2]).ToArray();
+        long collectTime;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            collectTime = db.GetMail(mailId, test.CharacterId)!.MesoCollectTime;
+        }
+
+        session.Currency.Meso = 0;
+        MailError collected = session.Mail.Collect(mailId);
+
+        Assert.Multiple(() => {
+            Assert.That(refused, Is.EqualTo(MailError.s_mail_error));
+            Assert.That(walletAfterRefused, Is.EqualTo(Constant.MaxMeso - 40));
+            Assert.That(mailModes, Does.Not.Contain((byte) 10).And.Not.Contain((byte) 11));
+            Assert.That(collectTime, Is.EqualTo(0));
+            Assert.That(collected, Is.EqualTo(MailError.none));
+            Assert.That(session.Currency.Meso, Is.EqualTo(100));
+        });
+    }
+
+    // A mail with mesos and no attachment, in the player's inbox.
+    private long MesoMail(GameSession session, long meso) {
+        long mailId;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            mailId = db.CreateMail(new Mail { ReceiverId = test.CharacterId, Type = MailType.System, Title = "t", Content = "c", Meso = meso })!.Id;
+        }
+        session.Mail.Notify(force: true);
+        return mailId;
     }
 
     private long Mail(GameSession session, params StoredItem[] items) => Mail(session, 0, items);

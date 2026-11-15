@@ -217,7 +217,7 @@ public class MailModeTests {
 
         MailError first = session.Mail.Collect(mail.Id);
         var collect = typeof(MailManager).GetMethod("CollectCurrency", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        var second = (MailError) collect.Invoke(session.Mail, [stale, DateTimeOffset.UtcNow.ToUnixTimeSeconds()])!;
+        var second = (MailError) collect.Invoke(session.Mail, [stale, DateTimeOffset.UtcNow.ToUnixTimeSeconds(), false])!;
 
         Assert.Multiple(() => {
             Assert.That(first, Is.EqualTo(MailError.none));

@@ -193,17 +193,22 @@ public sealed class MailManager {
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MailError error;
+        bool mesoLeft = false;
         lock (session.Item) {
             error = CollectCheck(db, mail, now);
         }
         // The currency is stored with the collect mark under the account lock, which is taken before the bag lock
         // (a purchase's after-commit work takes the bag lock under the account lock).
         if (error == MailError.none) {
-            error = CollectCurrency(mail, now);
+            error = CollectCurrency(mail, now, out mesoLeft);
         }
         lock (session.Item) {
             if (error == MailError.none) {
-                error = CollectItems(mail, now);
+                error = CollectItems(mail, now, mesoLeft);
+            }
+            // The rest was given; the mesos that did not fit stay on the mail (CollectCurrency).
+            if (error == MailError.none && mesoLeft) {
+                error = MailError.s_mail_error;
             }
             // Lock order: session.Item, then inbox (nothing takes inbox, then session.Item).
             lock (inbox) {
@@ -324,12 +329,20 @@ public sealed class MailManager {
     // The mail's mesos and merets are stored as collected together with the balance that holds them, in one
     // transaction, and are taken back from the balance when that store fails. The collect mark used to be committed
     // at once and the currency held in memory until the next session save, so a crash in between lost it.
-    private MailError CollectCurrency(Mail mail, long now) {
+    // Mesos that would take the wallet over MaxMeso are not collected and stay on the mail (mesoLeft): they were
+    // collected anyway and the part over the cap was lost. The client checks no wallet before a collect and has no
+    // mail text for a full one (OnMail mode 0x14 has none), so the refusal is the generic mail error box.
+    private MailError CollectCurrency(Mail mail, long now, out bool mesoLeft) {
         (long Meso, long Meret, long GameMeret) read = (mail.MesoCollectTime, mail.MeretCollectTime, mail.GameMeretCollectTime);
+        mesoLeft = false;
         bool collectMeso = false;
-        if (!mail.MesoCollected()) { // Allow mesos to be collected regardless and just overflow.
-            mail.MesoCollectTime = now;
-            collectMeso = true;
+        if (!mail.MesoCollected()) {
+            if (session.Currency.CanAddMeso(mail.Meso) == mail.Meso) {
+                mail.MesoCollectTime = now;
+                collectMeso = true;
+            } else {
+                mesoLeft = true;
+            }
         }
         bool collectMeret = false;
         if (!mail.MeretCollected() && session.Currency.CanAddMeret(mail.Meret) == mail.Meret) {
@@ -375,7 +388,8 @@ public sealed class MailManager {
     }
 
     // Items on input mail will be cleared.
-    private MailError CollectItems(Mail mail, long now) {
+    // mesoLeft: the mail's mesos were not collected; mode 11 would show them as collected (it claims the currencies too).
+    private MailError CollectItems(Mail mail, long now, bool mesoLeft) {
         // The slot of an attachment is its place in the list (Mail.WriteTo).
         MailError error = MailError.none;
         for (int i = mail.Items.Count - 1; i >= 0; i--) {
@@ -391,7 +405,7 @@ public sealed class MailManager {
         }
 
         // What was given is always reported; the closing packet only when nothing is left behind.
-        if (error == MailError.none) {
+        if (error == MailError.none && !mesoLeft) {
             session.Send(MailPacket.CollectRead(mail));
         }
         return error;
