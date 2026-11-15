@@ -98,7 +98,9 @@ public sealed class ArenaMatchField {
         }
         try {
             Item? item = field.ItemDrop.CreateItem(itemId, amount: count);
-            if (item == null || !player.Session.Item.AddOrMail(item, notifyNew: true, commit: true)) {
+            if (item == null) {
+                logger.Error("Arena reward {ItemId} x{Count} of {CharacterId} not given: no such item", itemId, count, player.Value.Character.Id);
+            } else if (!player.Session.Item.AddOrMail(item, notifyNew: true, commit: true)) {
                 logger.Warning("Arena reward {ItemId} x{Count} of {CharacterId} not given", itemId, count, player.Value.Character.Id);
             }
         } catch (Exception ex) {

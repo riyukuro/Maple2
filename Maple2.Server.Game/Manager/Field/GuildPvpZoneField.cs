@@ -369,8 +369,10 @@ public sealed class GuildPvpZoneField : IPvpZoneField {
             try {
                 if (count > 0 && constants.PvpGuildRewardItem > 0) {
                     Item? item = field.ItemDrop.CreateItem(constants.PvpGuildRewardItem, amount: count);
-                    if (item == null || !player.Session.Item.AddOrMail(item, notifyNew: true, commit: true)) {
-                        logger.Warning("Guild PvP reward of {CharacterId} not added", characterId);
+                    if (item == null) {
+                        logger.Error("Guild PvP reward {ItemId} of {CharacterId} not given: no such item", constants.PvpGuildRewardItem, characterId);
+                    } else if (!player.Session.Item.AddOrMail(item, notifyNew: true, commit: true)) {
+                        logger.Warning("Guild PvP reward of {CharacterId} not given", characterId);
                     }
                 }
             } catch (Exception ex) {

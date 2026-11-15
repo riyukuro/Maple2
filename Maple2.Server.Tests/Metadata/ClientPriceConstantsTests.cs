@@ -73,6 +73,21 @@ public class ClientPriceConstantsTests {
         Assert.That(result.Any(entry => entry.Key == "MaxChatLength"), Is.False); // not a price
     }
 
+    // The PvP result dialogs' rewards: the client shows its own table's item and counts, so its rows win. The KR server
+    // pack's one punch item 90090010 is no client item; the KMS2 client table has 30001533 and 9 for rank 1.
+    [Test]
+    public void Differences_ClientValueWinsForPvpRewards() {
+        List<ClientPriceConstants.Override> result = ClientPriceConstants.Differences(
+            ClientPriceConstants.Select([("PvpOnePunchRewardItem", "90090010"), ("PvpOnePunchReward1Count", "3"),
+                ("PvpFFARewardItem", "90000006"), ("pvpBtiRewardWinnerCount", "30"), ("PvpOnePunchScoreNpcKill", "-50")]),
+            ClientPriceConstants.Select([("PvpOnePunchRewardItem", "30001533"), ("PvpOnePunchReward1Count", "9"),
+                ("PvpFFARewardItem", "90000006"), ("pvpBtiRewardWinnerCount", "40"), ("PvpOnePunchScoreNpcKill", "-10")]));
+
+        Assert.That(result.Select(entry => (entry.Key, entry.ClientValue)), Is.EquivalentTo(new[] {
+            ("PvpOnePunchRewardItem", "30001533"), ("PvpOnePunchReward1Count", "9"), ("pvpBtiRewardWinnerCount", "40"),
+        }));
+    }
+
     // The home bank and doctor cooltimes: the client counts its own row down, so its row wins like a price.
     [Test]
     public void Differences_ClientValueWinsForHomeCooltimes() {

@@ -37,6 +37,24 @@ public static partial class ClientPriceConstants {
         return ClientCaps.Contains(key);
     }
 
+    // Rewards the client's PvP result dialog shows from its own table (UIPvPResultDialog::FUN_141344210 reads the
+    // item and the rank's count; the team dialog reads pvpBtiReward*): the server must give what the dialog showed.
+    // The KR server pack's one punch rows name item 90090010, which no client has, and other counts.
+    private static readonly HashSet<string> ClientRewards = new(StringComparer.OrdinalIgnoreCase) {
+        "PvpOnePunchRewardItem",
+        "PvpOnePunchReward1Count", "PvpOnePunchReward2Count", "PvpOnePunchReward3Count", "PvpOnePunchReward4Count",
+        "PvpOnePunchReward5Count", "PvpOnePunchReward6Count", "PvpOnePunchReward7Count", "PvpOnePunchReward8Count",
+        "PvpOnePunchReward9Count", "PvpOnePunchReward10Count",
+        "PvpFFARewardItem", "PvpFFAAdditionRewardRate",
+        "PvpFFAReward1Count", "PvpFFAReward2Count", "PvpFFAReward3Count", "PvpFFAReward4Count", "PvpFFAReward5Count",
+        "PvpFFAReward6Count", "PvpFFAReward7Count", "PvpFFAReward8Count", "PvpFFAReward9Count", "PvpFFAReward10Count",
+        "pvpBtiRewardItem", "pvpBtiRewardWinnerCount", "pvpBtiRewardLoserCount",
+    };
+
+    public static bool IsClientReward(string key) {
+        return ClientRewards.Contains(key);
+    }
+
     // The ingest option that names the Xml pack of the client that is really played (MS2_PLAYED_CLIENT_XML).
     // Not set or blank: no such pack, the data folder's Xml pack alone is "the client".
     public static string? PackOption(string? value) {
@@ -68,11 +86,11 @@ public static partial class ClientPriceConstants {
         return result;
     }
 
-    // The price, cooltime and cap constants whose client value differs from the server's (or that the server pack has no row for).
+    // The price, cooltime, cap and reward constants whose client value differs from the server's (or that the server pack has no row for).
     public static List<Override> Differences(IReadOnlyDictionary<string, string> server, IReadOnlyDictionary<string, string> client) {
         var result = new List<Override>();
         foreach ((string key, string clientValue) in client.OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)) {
-            if (!IsPrice(key) && !IsClientCooltime(key) && !IsClientCap(key)) {
+            if (!IsPrice(key) && !IsClientCooltime(key) && !IsClientCap(key) && !IsClientReward(key)) {
                 continue;
             }
             server.TryGetValue(key, out string? serverValue);

@@ -220,7 +220,9 @@ public sealed class PvpZoneField : IPvpZoneField {
     private void Tokens(FieldPlayer player, int count, int itemId) {
         if (count > 0 && itemId > 0) {
             Item? item = field.ItemDrop.CreateItem(itemId, amount: count);
-            if (item != null && !player.Session.Item.AddOrMail(item, notifyNew: true, commit: true)) {
+            if (item == null) {
+                logger.Error("PvP zone reward {ItemId} x{Count} of {CharacterId} not given: no such item", itemId, count, player.Value.Character.Id);
+            } else if (!player.Session.Item.AddOrMail(item, notifyNew: true, commit: true)) {
                 logger.Warning("PvP zone reward {ItemId} x{Count} of {CharacterId} not given", itemId, count, player.Value.Character.Id);
             }
         }
