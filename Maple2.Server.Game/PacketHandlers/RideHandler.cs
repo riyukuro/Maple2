@@ -214,6 +214,8 @@ public class RideHandler : FieldPacketHandler {
 
         other.Session.Ride.Ride.Passengers[index] = session.Player.ObjectId;
         session.Ride.Ride = other.Session.Ride.Ride;
+        // Its fall after getting off is not tested (FallHeightWatch).
+        session.Config.FallWatch.Passenger();
 
         session.Field.Broadcast(RidePacket.Join(session.Ride.Ride.OwnerId, session.Player.ObjectId, index));
     }

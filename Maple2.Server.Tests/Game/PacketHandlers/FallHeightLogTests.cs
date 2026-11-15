@@ -50,6 +50,8 @@ public class FallHeightLogTests {
         var metadata = new RideMetadata(1, "", new RideMetadataBasic(RideOnType.Default, 0, 0, 0, false, 0, 1), new RideMetadataSpeed(5.25f, 8f, 10f, 3.5f),
             new Dictionary<BasicAttribute, long>());
         test.Session.Ride.Ride = new Ride(objectId, metadata, new RideOnAction(1, objectId));
+        // No grace to wait: the packet after the report's ripens it, the next settles it.
+        typeof(ConfigManager).GetField(nameof(ConfigManager.FallWatch))!.SetValue(test.Session.Config, new FallHeightWatch(0));
         test.TakeSent();
     }
 
@@ -93,25 +95,27 @@ public class FallHeightLogTests {
 
     private List<string> Above() => lines.Where(line => line.Contains("above the records")).ToList();
 
-    // A second report settles the first at once, with no grace to wait.
     [Test]
     public void AFallAboveTheRideRecords_IsLogged() {
         Sync(1000, 1000);
         Sync(0, 1500);
         Fall(5000);
-        Assert.That(Above(), Is.Empty, "pending its grace");
+        Sync(0, 2000);
+        Assert.That(Above(), Is.Empty, "settled at the packet after");
 
-        Fall(0);
+        Sync(0, 2500);
 
         Assert.That(Above(), Has.Count.EqualTo(1));
     }
 
+    // The top and the landing records may come after the report.
     [Test]
     public void AFallWithinTheRideRecords_IsNotLogged() {
-        Sync(3000, 1000);
-        Sync(0, 1500);
+        Sync(0, 1000);
         Fall(2900);
-        Fall(0);
+        Sync(3000, 1500);
+        Sync(0, 2000);
+        Sync(0, 2500);
 
         Assert.That(Above(), Is.Empty);
     }

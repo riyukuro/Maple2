@@ -16,10 +16,7 @@ public class FallDamageHandler : FieldPacketHandler {
 
     public override void Handle(GameSession session, IByteReader packet) {
         float height = packet.ReadFloat();
-        long now = Environment.TickCount64;
-        if (session.Config.FallWatch.Fell(height, session.Player.Position, now) is { } excess) {
-            LogExcess(Logger, session, excess, now);
-        }
+        session.Config.FallWatch.Fell(height, session.Player.Position, Environment.TickCount64);
         // The client sends nothing in a field without fall damage (pcbase.cpp:4356-4358).
         float distance = FallDamageRules.Distance(height, session.Field.Metadata.Limit.FallDamage);
         if (distance <= 0) {
@@ -31,8 +28,12 @@ public class FallDamageHandler : FieldPacketHandler {
 
     // A fall height the records did not allow (FallHeightWatch). Logged only until honest play shows none; the damage is
     // taken as before.
-    public static void LogExcess(ILogger logger, GameSession session, FallHeightWatch.Excess excess, long now) {
-        if (session.Config.FallLog.Count(now) is > 0 and int unlogged) {
+    public static void LogExcess(ILogger logger, GameSession session, IReadOnlyList<FallHeightWatch.Excess> found, long now) {
+        if (found.Count == 0) {
+            return;
+        }
+        FallHeightWatch.Excess excess = found[^1];
+        if (session.Config.FallLog.Count(now, found.Count) is > 0 and int unlogged) {
             logger.Information("StateFallDamage above the records (logged only): a height of {Height}, the records allow {Allowed}, {Unlogged} since the last line, {Player} ({CharacterId})",
                 excess.Height, excess.Allowed, unlogged, session.PlayerName, session.CharacterId);
         }

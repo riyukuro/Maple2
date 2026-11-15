@@ -60,10 +60,8 @@ public class UserSyncHandler : FieldPacketHandler {
                 Logger.Information("Fast move: player {Player} ({CharacterId}) from {From} to {To} in state {State} ({Count} since the last line)",
                     session.PlayerName, session.CharacterId, from, stateSyncs[i].Position, stateSyncs[i].State, count);
             }
-            if (session.Config.FallWatch.Seen(stateSyncs[i].Position, now) is { } excess) {
-                FallDamageHandler.LogExcess(Logger, session, excess, now);
-            }
         }
+        FallDamageHandler.LogExcess(Logger, session, session.Config.FallWatch.Seen(stateSyncs.Select(stateSync => stateSync.Position), now), now);
 
         using (var buffer = new PoolByteWriter()) {
             buffer.Player(session.Player.ObjectId, stateSyncs);
