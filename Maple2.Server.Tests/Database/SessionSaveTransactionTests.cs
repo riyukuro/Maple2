@@ -387,7 +387,8 @@ public class SessionSaveTransactionTests {
     }
 
     // The reward's mesos are stored with the completed quest row, not left to the next session save (a crash in
-    // between kept the quest completed without them). A refused row stores and holds none of them, and sends none.
+    // between kept the quest completed without them). A refused row stores and holds none of them, and sends no Quest
+    // packet (the take-back sends the meso balance).
     [Test]
     public void Complete_RewardMesoStoredWithTheQuestRow() {
         test.EnterMap(TestGameSession.Map(2000023));

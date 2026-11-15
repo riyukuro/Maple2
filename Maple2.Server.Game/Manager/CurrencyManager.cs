@@ -425,8 +425,9 @@ public class CurrencyManager {
         }
     }
 
-    // A token gain made by AddUnsent(type, amount): what was added (capped) and the condition that counts it.
-    public readonly record struct Added(CurrencyType Type, long Amount, ConditionType? Condition);
+    // A token gain made by AddUnsent(type, amount): what was added (capped), the condition that counts it, and the
+    // part over the cap (the packet's overflow: the client's over-cap message, scenestategame.cpp:7115).
+    public readonly record struct Added(CurrencyType Type, long Amount, ConditionType? Condition, long Overflow = 0);
 
     // AddUnsent for a token currency (MentorToken and the like): added up to its cap inside a purchase transaction,
     // with no packet and no count of its condition (get_mentor_token and the like); NotifyAdded sends and counts it
@@ -436,17 +437,19 @@ public class CurrencyManager {
             return new Added(type, 0, null);
         }
         lock (walletLock) {
-            long added = SetLocked(type, Sum(this[type], amount), out ConditionType? condition, send: false);
-            return new Added(type, added, condition);
+            long added = SetLocked(type, Sum(this[type], amount), out ConditionType? condition, out long overflow, send: false);
+            return new Added(type, added, condition, overflow);
         }
     }
 
+    // A gain at the cap (nothing added, a part over it) is sent too, as Change sends it: the client shows its over-cap
+    // message for a non-zero overflow.
     public void NotifyAdded(Added added) {
-        if (added.Amount <= 0) {
+        if (added.Amount <= 0 && added.Overflow <= 0) {
             return;
         }
         lock (walletLock) {
-            session.Send(CurrencyPacket.UpdateCurrency(Currency, added.Type, added.Amount, 0));
+            session.Send(CurrencyPacket.UpdateCurrency(Currency, added.Type, added.Amount, added.Overflow));
         }
         Report(added.Condition, added.Amount);
     }
@@ -604,10 +607,12 @@ public class CurrencyManager {
     }
 
     // send: the balance packet (AddUnsent leaves it to NotifyAdded).
-    private long SetLocked(CurrencyType type, long value, out ConditionType? condition, bool send = true) {
+    private long SetLocked(CurrencyType type, long value, out ConditionType? condition, bool send = true) =>
+        SetLocked(type, value, out condition, out _, send);
+
+    private long SetLocked(CurrencyType type, long value, out ConditionType? condition, out long overflow, bool send) {
         condition = null;
         long delta;
-        long overflow;
         switch (type) {
             case CurrencyType.ValorToken:
                 delta = Math.Min(value, Constants.HonorTokenMax) - Currency.ValorToken;
