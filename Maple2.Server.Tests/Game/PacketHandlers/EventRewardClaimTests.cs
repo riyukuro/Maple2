@@ -284,6 +284,27 @@ public class EventRewardClaimTests {
         Assert.That(context.Account.Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(20));
     }
 
+    // A store that fails: the merets are given back (one balance update, change 0), the day stays open and there
+    // is no reply.
+    [Test]
+    public void LongTerm_AttendWithMerets_FailedStore_GivesTheMeretsBack() {
+        GameSession session = Login(GameEventType.LongTermAttendGift, LongTerm(merat: 30));
+        session.Currency.Meret = 50;
+        test.TakeSent();
+        test.FailSave = _ => true;
+
+        AttendDay(session, merat: true);
+        test.FailSave = null;
+
+        Assert.That(session.Currency.Meret, Is.EqualTo(50));
+        Assert.That(Value(session, GameEventUserValueType.LongTermAttendDays), Is.Null.Or.Empty.Or.EqualTo("0"));
+        List<string> sent = SentHex();
+        string update = Hex(CurrencyPacket.UpdateMeret(session.Player.Value.Currency, 0));
+        Assert.That(sent, Does.Not.Contain(Hex(EventRewardPacket.LongTermAttend())));
+        Assert.That(sent.Where(hex => hex.StartsWith(update[..4])), Is.EqualTo(new[] { update }));
+        Assert.That(Stored(GameEventUserValueType.LongTermAttendDays), Is.Null);
+    }
+
     [Test]
     public void LongTerm_AttendWithPoint_IsStoredWithTheDay() {
         GameSession session = Login(GameEventType.LongTermAttendGift, LongTerm());
