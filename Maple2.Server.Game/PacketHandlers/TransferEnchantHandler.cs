@@ -36,8 +36,11 @@ public class TransferEnchantHandler : FieldPacketHandler {
             return;
         }
 
+        Item? item;
+        ItemEnchantTransformTable.Entry? entry;
+        List<Item> outputs;
         lock (session.Item) {
-            Item? item = session.Item.Inventory.Get(itemUid);
+            item = session.Item.Inventory.Get(itemUid);
             if (item == null) {
                 return;
             }
@@ -47,7 +50,7 @@ public class TransferEnchantHandler : FieldPacketHandler {
                 return;
             }
 
-            ItemEnchantTransformTable.Entry? entry = EnchantTransform.Find(TableMetadata.ItemEnchantTransformTable,
+            entry = EnchantTransform.Find(TableMetadata.ItemEnchantTransformTable,
                 item.Id, (int) item.Type.Type, item.Enchant?.Enchants ?? 0, item.Rarity);
             if (entry == null) {
                 return;
@@ -60,7 +63,7 @@ public class TransferEnchantHandler : FieldPacketHandler {
                 return;
             }
 
-            var outputs = new List<Item>();
+            outputs = new List<Item>();
             foreach (ItemEnchantTransformTable.Output output in entry.Outputs) {
                 Item? created = session.Field?.ItemDrop.CreateItem(output.ItemId, output.Rarity, output.Amount);
                 if (created == null) {
@@ -79,28 +82,30 @@ public class TransferEnchantHandler : FieldPacketHandler {
                     return;
                 }
             }
-
-            // The input and the meso are stored as taken in one save before the outputs are given (their rows are
-            // made right after): taken in memory only, a crash before the next session save kept the outputs and gave
-            // the input and the meso back, so the transform could be made again.
-            if (!session.Item.Inventory.ConsumeNow([(item.Uid, item.Amount)])) {
-                session.Currency.ReturnMeso(entry.NeedMeso, notify: false);
-                return;
-            }
-            session.Currency.NotifyMeso();
-
-            // Each output gets its row from the bag's add (the character's), or from the mail when the bag's write
-            // fails. Before, each row was made first with no owner and a failed write threw after the input and the
-            // meso were taken: that output and the ones after it were lost, and no result was sent. An output neither
-            // the bag nor the mail takes is logged (chosen here: the transform stands, as for other rewards).
-            foreach (Item output in outputs) {
-                if (!session.Item.AddOrMail(output, notifyNew: true)) {
-                    Logger.Error("TransferEnchant output {ItemId} x{Amount} of {CharacterId} neither added nor mailed",
-                        output.Id, output.Amount, session.CharacterId);
-                }
-            }
-
-            session.Send(TransferEnchantPacket.Result());
         }
+
+        // The input and the meso are stored as taken in one save before the outputs are given (their rows are
+        // made right after): taken in memory only, a crash before the next session save kept the outputs and gave
+        // the input and the meso back, so the transform could be made again. Not under the bag lock (a session save
+        // takes the account lock, then the bag's); an input that leaves between the check and the save fails the
+        // save's check or its take, and nothing is given with the meso back.
+        if (!session.Item.Inventory.ConsumeNow([(item.Uid, item.Amount)])) {
+            session.Currency.ReturnMeso(entry.NeedMeso, notify: false);
+            return;
+        }
+        session.Currency.NotifyMeso();
+
+        // Each output gets its row from the bag's add (the character's), or from the mail when the bag's write
+        // fails. Before, each row was made first with no owner and a failed write threw after the input and the
+        // meso were taken: that output and the ones after it were lost, and no result was sent. An output neither
+        // the bag nor the mail takes is logged (chosen here: the transform stands, as for other rewards).
+        foreach (Item output in outputs) {
+            if (!session.Item.AddOrMail(output, notifyNew: true)) {
+                Logger.Error("TransferEnchant output {ItemId} x{Amount} of {CharacterId} neither added nor mailed",
+                    output.Id, output.Amount, session.CharacterId);
+            }
+        }
+
+        session.Send(TransferEnchantPacket.Result());
     }
 }

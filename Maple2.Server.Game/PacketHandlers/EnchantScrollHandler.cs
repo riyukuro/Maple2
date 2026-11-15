@@ -252,13 +252,13 @@ public class EnchantScrollHandler : FieldPacketHandler {
         // locked and expired items are not taken. The meso and the ingredients are stored in one save before the
         // rewards are given (their rows are made by the bag's add right after). Before, both were taken in memory
         // only, left to the next session save, while each reward was a new row at once: a crash in between kept the
-        // rewards and gave the price back, so the craft could be made again.
-        lock (session.Item) {
-            Dictionary<long, int>? ingredients = session.Item.Inventory.PickCraftIngredients(recipe.RequiredItems);
-            if (ingredients == null || !session.Item.Inventory.ConsumeNow(ingredients.Select(pair => (pair.Key, pair.Value)).ToList())) {
-                session.Currency.ReturnMeso(recipe.RequiredMeso);
-                return;
-            }
+        // rewards and gave the price back, so the craft could be made again. Not under the bag lock (a session save
+        // takes the account lock, then the bag's); a stack that changes between the pick and the save fails the save's
+        // check or its take, and the craft gives nothing with the meso back.
+        Dictionary<long, int>? ingredients = session.Item.Inventory.PickCraftIngredients(recipe.RequiredItems);
+        if (ingredients == null || !session.Item.Inventory.ConsumeNow(ingredients.Select(pair => (pair.Key, pair.Value)).ToList())) {
+            session.Currency.ReturnMeso(recipe.RequiredMeso);
+            return;
         }
         session.Currency.NotifyMeso();
 

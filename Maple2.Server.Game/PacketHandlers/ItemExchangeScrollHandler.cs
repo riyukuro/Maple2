@@ -66,6 +66,9 @@ public class ItemExchangeScroll : FieldPacketHandler {
             return;
         }
 
+        long fee;
+        Item? rewardItem;
+        List<(long Uid, int Amount)> plan;
         lock (session.Item) {
             Item? scrollItem = session.Item.Inventory.Get(scrollItemUid);
             if (!IsScroll(scrollItem)) {
@@ -97,7 +100,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
             // ExchangeScrollSale event of the row, times the count (CheckExchangeRequirements,
             // uiitemexchangescrolldialog.cpp:392).
             int saleRate = EventSaleRules.ExchangeScrollSaleRate(session.FindEvent(GameEventType.ExchangeScrollSale), scrollId);
-            long fee = ItemExchangeScrollRules.Fee(EventSaleRules.ExchangeScrollFee(scrollMetadata.RequiredMeso, saleRate), quantity);
+            fee = ItemExchangeScrollRules.Fee(EventSaleRules.ExchangeScrollFee(scrollMetadata.RequiredMeso, saleRate), quantity);
             // Held here without a packet (the materials' packets go out before the fee was taken, and a spend on
             // another thread could come in between), given back on each refusal below; the packet goes where the
             // take was.
@@ -118,7 +121,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
             }
 
             // The reward is made before anything is taken.
-            Item? rewardItem = session.Field?.ItemDrop.CreateItem(scrollMetadata.RewardItem.ItemId, scrollMetadata.RewardItem.Rarity, (int) rewardAmount);
+            rewardItem = session.Field?.ItemDrop.CreateItem(scrollMetadata.RewardItem.ItemId, scrollMetadata.RewardItem.Rarity, (int) rewardAmount);
             if (rewardItem == null) {
                 session.Currency.ReturnMeso(fee, notify: false);
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
@@ -141,7 +144,7 @@ public class ItemExchangeScroll : FieldPacketHandler {
             // (the reward's row is made by the bag's add right after). Before, they were taken in memory only, left
             // to the next session save, while the reward was a new row at once: a crash in between kept the reward
             // and gave the price back, so the exchange could be made again.
-            var plan = new List<(long Uid, int Amount)>(materials);
+            plan = new List<(long Uid, int Amount)>(materials);
             for (int i = 0; i < scrolls.Count; i++) {
                 if (take[i] > 0) {
                     plan.Add((scrolls[i].Uid, take[i]));
@@ -150,16 +153,19 @@ public class ItemExchangeScroll : FieldPacketHandler {
             if (target != null) {
                 plan.Add((target.Uid, 1));
             }
-            if (!session.Item.Inventory.ConsumeNow(plan)) {
-                session.Currency.ReturnMeso(fee, notify: false);
-                session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_invalid));
-                return;
-            }
+        }
 
-            session.Currency.NotifyMeso();
-            if (!session.Item.Inventory.Add(rewardItem, true)) {
-                session.Item.MailItem(rewardItem);
-            }
+        // Not under the bag lock: a session save takes the account lock, then the bag's. A stack that changes between
+        // the plan and the save fails the save's check or its take: nothing is given and the fee comes back.
+        if (!session.Item.Inventory.ConsumeNow(plan)) {
+            session.Currency.ReturnMeso(fee, notify: false);
+            session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_unknown));
+            return;
+        }
+
+        session.Currency.NotifyMeso();
+        if (!session.Item.Inventory.Add(rewardItem, true)) {
+            session.Item.MailItem(rewardItem);
         }
         session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_ok));
     }
