@@ -152,6 +152,12 @@ public class UgcHandler : FieldPacketHandler {
                 session.Currency.ChangeGameMeret(fee.Amount);
                 break;
         }
+        // The refund is stored now, as the fee is (StoreFee): a session save between the upload and here may have
+        // stored the charge, and a crash before the next save kept it. A failed store is logged; the next save
+        // stores it.
+        if (!session.SavePurchase()) {
+            Logger.Error("UGC fee refund of {UgcUid} for {CharacterId} not stored now, left to the next save", fee.UgcUid, session.CharacterId);
+        }
     }
 
     // The client's lack text (ShowLackCurrencyMessage, uicommon.cpp:1083-1105): currencies 3 and 10 share the

@@ -161,4 +161,24 @@ public class UgcUploadWalletTests {
         Assert.That(session.Currency.Meret, Is.EqualTo(1000));
         Assert.That(session.Currency.GameMeret, Is.EqualTo(1000));
     }
+
+    // A session save between the upload and its failure stored the charge: the refund is stored with the give-back.
+    // Before, it was in memory only until the next save.
+    [Test]
+    public void ChargeStored_RefundIsStoredAtTheGiveBack() {
+        GameSession session = Start(1, meret: 1000, red: 1000);
+        UgcHandler handler = Handler(session);
+        handler.Handle(session, Upload());
+        Uploaded();
+        Assert.That(session.SavePurchase(), Is.True);
+        Assert.That(StoredMeret(), Is.EqualTo(1000 - Price));
+
+        handler.Handle(session, UploadFailed());
+        Assert.That(StoredMeret(), Is.EqualTo(1000));
+    }
+
+    private long StoredMeret() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Account.AsNoTracking().Single(account => account.Id == test.AccountId).Currency.Meret;
+    }
 }
