@@ -29,7 +29,7 @@ public class DisconnectCommand : GameCommand {
         DisconnectResponse? disconnectResponse;
         if (all) {
             ctx.Console.Out.WriteLine("Disconnecting all players...");
-            disconnectResponse = session.World.Disconnect(new DisconnectRequest {
+            disconnectResponse = session.Kick(new DisconnectRequest {
                 CharacterId = 0,
                 All = true,
             });
@@ -56,7 +56,7 @@ public class DisconnectCommand : GameCommand {
             return;
         }
 
-        disconnectResponse = session.World.Disconnect(new DisconnectRequest {
+        disconnectResponse = session.Kick(new DisconnectRequest {
             CharacterId = characterId,
         });
 

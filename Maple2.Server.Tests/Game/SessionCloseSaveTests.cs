@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -186,6 +186,7 @@ public class SessionCloseSaveTests {
         // save and the logout update log nothing.
         Assert.That(test.Errors.Where(error => error.Contains("session cleanup") || error.Contains("logout")), Is.Empty);
     }
+
     // A stand-in for the field's loop on a thread of its own, as the field's: first a handler of the player, in a
     // packet batch, runs until it is let go; then the loop runs the field's queued actions until stopped.
     private sealed class FieldLoop : IDisposable {
@@ -217,6 +218,9 @@ public class SessionCloseSaveTests {
             thread.Start();
             InHandler.Wait();
         }
+
+        // The field is disposed: its loop ends after the handler, without running the actions queued meanwhile.
+        public void Stop() => cancel.Cancel();
 
         public void Dispose() {
             Release.Set();
@@ -268,22 +272,80 @@ public class SessionCloseSaveTests {
     }
 
     // A field thread stuck past CloseWait: the close leaves the field beside it (logged), and the queued leave does
-    // nothing once the loop runs again.
+    // nothing once the loop runs again. Until then the next close on the field does not wait again (a server stop
+    // closes its sessions one by one); once the loop ran its actions, a close waits for it again.
     [Test]
     public void AFieldThreadStuckPastTheWait_IsLeftBesideIt_Once() {
         Playing();
         FieldManager field = session.Field!;
         using var loop = new FieldLoop(field, session.Player.ObjectId, () => { }, () => { });
         int runs = 0;
+        bool OnTheFieldThread() => field.OnFieldThread;
 
         bool onField = field.RunOnFieldAndWait(TimeSpan.FromMilliseconds(200), () => Interlocked.Increment(ref runs));
+        var next = System.Diagnostics.Stopwatch.StartNew();
+        bool nextOnField = field.RunOnFieldAndWait(TimeSpan.FromSeconds(30), () => Interlocked.Increment(ref runs));
+        next.Stop();
         loop.Release.Set();
         Thread.Sleep(200);
+        bool after = false;
+        bool afterOnField = field.RunOnFieldAndWait(TimeSpan.FromSeconds(30), () => after = OnTheFieldThread());
 
         Assert.Multiple(() => {
             Assert.That(onField, Is.False);
-            Assert.That(runs, Is.EqualTo(1));
-            Assert.That(field.OnFieldThread, Is.False);
+            Assert.That(nextOnField, Is.False);
+            Assert.That(next.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "the next close waited for the stuck thread again");
+            Assert.That(runs, Is.EqualTo(2));
+            Assert.That(afterOnField, Is.True);
+            Assert.That(after, Is.True, "after the loop ran again the action did not run on the field's thread");
+        });
+    }
+
+    // A field disposed while a close waits for its thread (its loop ends without running the queued leave): the close
+    // goes on at once, not after the whole CloseWait.
+    [Test]
+    public void AFieldStoppingWhileACloseWaits_EndsTheWait() {
+        Playing();
+        FieldManager field = session.Field!;
+        using var loop = new FieldLoop(field, session.Player.ObjectId, () => { }, () => { });
+        int runs = 0;
+
+        Task<bool> wait = Task.Run(() => field.RunOnFieldAndWait(TimeSpan.FromSeconds(30), () => Interlocked.Increment(ref runs)));
+        Assert.That(wait.Wait(300), Is.False);
+        loop.Stop();
+
+        Assert.That(wait.Wait(TimeSpan.FromSeconds(5)), Is.True, "the close waited on for a field that stopped");
+        Assert.That(runs, Is.EqualTo(1));
+    }
+
+    // A GM's kick on the field thread (a command) waits for the World, which answers once the kicked session closed;
+    // here the GM kicks its own session. The close does not wait for the field thread then (it waits on this close):
+    // it leaves the field beside it and saves, and the World answers. Before, the close waited for the packet batch and
+    // then for the field thread, each until its wait ran out, and the World's kick ran out first.
+    [Test]
+    public void AKickOnTheFieldThread_DoesNotMakeTheCloseWaitForThatThread() {
+        Playing();
+        Leavable(session.Field!);
+        session.Currency.Meso = 3000;
+        session.Currency.Meret = 30;
+        GameSession.PacketBatchWait = TimeSpan.FromSeconds(30);
+        GameSession.CloseWait = TimeSpan.FromSeconds(30);
+        bool closed = false;
+        test.World.OnDisconnect = _ => {
+            closed = Task.Run(session.Dispose).Wait(TimeSpan.FromSeconds(10));
+            return new DisconnectResponse { Success = closed };
+        };
+        DisconnectResponse? answer = null;
+
+        using var loop = new FieldLoop(session.Field!, session.Player.ObjectId,
+            () => answer = session.Kick(new DisconnectRequest { CharacterId = session.CharacterId, Force = true }), () => { });
+
+        Assert.Multiple(() => {
+            Assert.That(closed, Is.True, "the close waited for the field thread that waited on it");
+            Assert.That(answer?.Success, Is.True);
+            Assert.That(session.Field!.Players.ContainsKey(session.Player.ObjectId), Is.False);
+            Assert.That(StoredWallets(), Is.EqualTo((3000L, 30L)));
+            Assert.That(test.Errors.Where(error => error.Contains("session cleanup")), Is.Empty);
         });
     }
 }

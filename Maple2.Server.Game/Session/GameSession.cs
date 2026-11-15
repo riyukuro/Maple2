@@ -70,11 +70,14 @@ public sealed partial class GameSession : Core.Network.Session {
     private volatile bool packetsClosed;
     // How long a closing session waits for its field's running packet batch to end (ClosePackets).
     internal static TimeSpan PacketBatchWait { get; set; } = TimeSpan.FromSeconds(10); // tests shorten it
-    // How long the close waits for its LeaveField on the field's thread (CloseLeaveField) and for a receive-thread
-    // handler before the last save (SaveBeforeLeaving): longer than a handler's own bounded waits (a move's save waits
-    // up to ResetWait for a reset, on each of its two tries). Past it the thread is stuck (for every player of the
-    // field), and the close goes on beside it, logged.
-    internal static TimeSpan CloseWait { get; set; } = TimeSpan.FromMinutes(3); // tests shorten it
+    // How long the close waits in all for its LeaveField on the field's thread (CloseLeaveField) and for a
+    // receive-thread handler before the last save (SaveBeforeLeaving): longer than a handler's own bounded waits (a
+    // move's save waits up to ResetWait for a reset, on each of its two tries). Past it the thread is stuck (for every
+    // player of the field), and the close goes on beside it, logged. A kick's wait for the close
+    // (ChannelService.CloseWait) holds it.
+    internal static TimeSpan CloseWait { get; set; } = TimeSpan.FromSeconds(130); // tests shorten it
+    // The end of the close's CloseWait (Environment.TickCount64), set when the close first waits on it.
+    private long closeWaitEnd;
     // The account's and character's item rows, held from an entry that took the account lock (see EnterServer).
     private IDisposable? heldRows;
     // The account's session generation this entry claimed (GameStorage.ClaimSession): a save writes only while the
@@ -2062,9 +2065,27 @@ public sealed partial class GameSession : Core.Network.Session {
             LeaveField();
             return;
         }
-        if (!field.RunOnFieldAndWait(CloseWait, LeaveField)) {
-            Logger.Warning("Close of {Session}: the field's thread still runs after {Wait}, leaving the field beside it", this, CloseWait);
+        if (!field.RunOnFieldAndWait(CloseWaitLeft(), LeaveField)) {
+            Logger.Warning("Close of {Session}: the field's thread did not take the leave (busy past {Wait}, or waiting on a kick), leaving the field beside it",
+                this, CloseWait);
         }
+    }
+
+    // What is left of the close's CloseWait, which starts at the first wait on it.
+    private TimeSpan CloseWaitLeft() {
+        long now = Environment.TickCount64;
+        if (Interlocked.CompareExchange(ref closeWaitEnd, now + (long) CloseWait.TotalMilliseconds, 0) == 0) {
+            return CloseWait;
+        }
+        return TimeSpan.FromMilliseconds(Math.Max(0, Interlocked.Read(ref closeWaitEnd) - now));
+    }
+
+    // A kick through the World (the GM commands). The World answers once the kicked session's close ended, and that
+    // close leaves its field on the field's thread: asked there, the field knows its thread waits, so such a close
+    // (the GM's own, or that of a player of this field) goes on beside it instead of waiting for it.
+    public DisconnectResponse? Kick(DisconnectRequest request) {
+        FieldManager? field = Field;
+        return field == null ? World.Disconnect(request) : field.WhileWaitingOnAKick(() => World.Disconnect(request));
     }
 
     // Dispose's last save: as a move's, with no session left to end.
@@ -2085,9 +2106,9 @@ public sealed partial class GameSession : Core.Network.Session {
         // the global portal and the field war). A handler that leads to the save itself (a portal move) holds the
         // gate already. The wait is bounded: a handler stuck past InlineGateWait (a World call without a deadline)
         // does not hold the field thread longer; the save then goes on, logged.
-        // The close's save waits longer (CloseWait): no player waits on it, and saved beside a running handler it would
-        // store that handler's change half made.
-        TimeSpan gateWait = last ? CloseWait : InlineGateWait;
+        // The close's save waits longer (what is left of CloseWait): no player waits on it, and saved beside a running
+        // handler it would store that handler's change half made.
+        TimeSpan gateWait = last ? CloseWaitLeft() : InlineGateWait;
         bool gated = Monitor.TryEnter(InlineGate, gateWait);
         try {
             if (preMigrationSaved) return SaveResult.Stored;

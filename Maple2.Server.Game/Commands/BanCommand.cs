@@ -96,7 +96,7 @@ public class BanCommand : GameCommand {
         string durationLabel = expiryUtc == null ? "Permanently" : $"until {expiryUtc:yyyy-MM-dd HH:mm:ss} UTC";
         ctx.Console.Out.WriteLine($"Banned '{targetAccount.Username}' (Account {targetAccount.Id}) {durationLabel}. BanId={banIdNew} Reason='{reason}'.");
 
-        DisconnectResponse? disconnectResponse = session.World.Disconnect(new DisconnectRequest {
+        DisconnectResponse? disconnectResponse = session.Kick(new DisconnectRequest {
             CharacterId = characterId,
             Force = true,
         });
@@ -124,7 +124,7 @@ public class BanCommand : GameCommand {
         long banId = db.CreateBan(targetAccount.Id, reason, null, details, ipAddress: ip);
         ctx.Console.Out.WriteLine($"IP banned '{targetAccount.Username}' (Account {targetAccount.Id}) permanently. IP={ip} BanId={banId} Reason='{reason}'.");
 
-        DisconnectResponse? disconnectResponse = session.World.Disconnect(new DisconnectRequest {
+        DisconnectResponse? disconnectResponse = session.Kick(new DisconnectRequest {
             CharacterId = characterId,
             Force = true,
         });
@@ -148,7 +148,7 @@ public class BanCommand : GameCommand {
         long banId = db.CreateBan(targetAccount.Id, reason, null, details, machineId: machineId);
         ctx.Console.Out.WriteLine($"Hardware banned '{targetAccount.Username}' (Account {targetAccount.Id}) permanently. MachineId={machineId} BanId={banId} Reason='{reason}'.");
 
-        DisconnectResponse? disconnectResponse = session.World.Disconnect(new DisconnectRequest {
+        DisconnectResponse? disconnectResponse = session.Kick(new DisconnectRequest {
             CharacterId = characterId,
             Force = true,
         });

@@ -536,9 +536,14 @@ public partial class FieldManager : IField {
 
     // Runs action between two packet batches: a batch ProcessPackets runs ends first (up to timeout; false then, and
     // action is not run). On the field thread inside a batch it runs at once (the lock is its own).
+    // The wait ends early (false) while the field's thread waits on a kick (WhileWaitingOnAKick): the batch it runs
+    // waits for this caller then.
     internal bool AfterPacketBatch(TimeSpan timeout, Action action) {
-        if (!Monitor.TryEnter(queuedPackets, timeout)) {
-            return false;
+        long end = Environment.TickCount64 + (long) timeout.TotalMilliseconds;
+        while (!Monitor.TryEnter(queuedPackets, ThreadWaitStep)) {
+            if (WaitsOnAKick || Environment.TickCount64 >= end) {
+                return false;
+            }
         }
         try {
             action();
@@ -622,14 +627,45 @@ public partial class FieldManager : IField {
     // The field's loop runs, so an action RunOnField queues will be run.
     private bool LoopRuns => thread is { IsAlive: true } && cancel is { IsCancellationRequested: false };
 
+    // Kicks asked on the field's thread that wait for the World's answer (WhileWaitingOnAKick): the World answers once
+    // the kicked session's close ended, so while one waits no close may wait for this thread (the GM's own close, or
+    // that of a player of this field, would wait on itself until the kick's own wait ran out).
+    private int kicksWaiting;
+    // A close waited its whole time for this thread (RunOnFieldAndWait): later closes on the field go on beside it at
+    // once (a server stop closes its sessions one by one) until the loop runs its actions again.
+    private volatile bool stuck;
+    // Short steps of the waits for the field's thread, which recheck that it will still come.
+    private static readonly TimeSpan ThreadWaitStep = TimeSpan.FromMilliseconds(50);
+
+    // The field's thread waits, in call, for an answer that may wait for a close.
+    internal T WhileWaitingOnAKick<T>(Func<T> call) {
+        if (!OnFieldThread) {
+            return call();
+        }
+        Interlocked.Increment(ref kicksWaiting);
+        try {
+            return call();
+        } finally {
+            Interlocked.Decrement(ref kicksWaiting);
+        }
+    }
+
+    private bool WaitsOnAKick => Volatile.Read(ref kicksWaiting) > 0;
+
     // Runs action on the field's thread at the start of its next update, so after the packet batch and the update that
     // run now, and waits for it up to timeout. Runs it at once on the field's thread itself, or when the loop does not
-    // run (a field being disposed). Past timeout (a handler stuck on the field thread) it runs action on this thread
-    // instead, and false is returned; the queued one then does nothing. A throw of action is thrown here.
+    // run (a field being disposed; true). It runs action on this thread instead, false returned, when the thread will
+    // not take it: past timeout (a handler stuck there), the field marked stuck by an earlier wait, the thread waiting
+    // on a kick (WhileWaitingOnAKick), or the loop stopping meanwhile (true then); the queued one then does nothing.
+    // A throw of action is thrown here.
     internal bool RunOnFieldAndWait(TimeSpan timeout, Action action) {
         if (OnFieldThread || !LoopRuns) {
             action();
             return true;
+        }
+        if (stuck || WaitsOnAKick) {
+            action();
+            return false;
         }
 
         int claimed = 0;
@@ -648,13 +684,23 @@ public partial class FieldManager : IField {
             }
         });
 
+        long end = Environment.TickCount64 + (long) timeout.TotalMilliseconds;
         try {
-            if (!done.Wait(timeout)) {
+            while (!done.Wait(ThreadWaitStep)) {
+                bool expired = Environment.TickCount64 >= end;
+                bool stopped = !LoopRuns;
+                if (!expired && !stopped && !WaitsOnAKick) {
+                    continue;
+                }
                 if (Interlocked.Exchange(ref claimed, 1) == 0) {
+                    if (expired) {
+                        stuck = true;
+                    }
                     action();
-                    return false;
+                    return stopped && !expired;
                 }
                 done.Wait(); // the field thread took it just now: it ends first
+                break;
             }
         } finally {
             done.Dispose(); // set, or never to be: the queued one does nothing once claimed here
@@ -665,6 +711,7 @@ public partial class FieldManager : IField {
 
     // Each action logged on a throw; the others still run.
     internal void RunFieldActions() {
+        stuck = false;
         while (FieldActions.TryDequeue(out Action? action)) {
             try {
                 action();

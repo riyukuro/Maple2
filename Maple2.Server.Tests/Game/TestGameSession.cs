@@ -1075,9 +1075,12 @@ public sealed class TestGameSession {
             return new AdminResponse();
         }
 
+        // The World's side of a kick (it answers once the kicked session closed); none: answered at once.
+        public Func<DisconnectRequest, DisconnectResponse>? OnDisconnect;
+
         public override DisconnectResponse Disconnect(DisconnectRequest request, CallOptions options) {
             Disconnects.Add(request);
-            return new DisconnectResponse { Success = true };
+            return OnDisconnect?.Invoke(request) ?? new DisconnectResponse { Success = true };
         }
     }
 
