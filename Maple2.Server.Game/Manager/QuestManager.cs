@@ -396,7 +396,9 @@ public sealed class QuestManager {
             IReadOnlyDictionary<int, int>? indoorParents = session.TableMetadata.FieldMetaTable.IndoorParents;
             if (quest.Metadata.Basic is { Type: QuestType.FieldMission, ProgressMaps: not null } && session.Field is not null
                 && !QuestRules.FieldMissionTracked(quest.Metadata.Basic.ProgressMaps, mapId, indoorParents)) {
-                if (indoorParents != null) {
+                // A count for a field the character has left (fieldMapId) is that field's only: the exploreType and the
+                // return maps below are the current field's.
+                if (indoorParents != null || fieldMapId != 0) {
                     continue;
                 }
                 switch (session.Field.Metadata.Property.ExploreType) {

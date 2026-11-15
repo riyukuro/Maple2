@@ -125,4 +125,33 @@ public class FieldMissionIndoorTests {
             session.Dispose();
         }
     }
+
+    // A count for a field the character has left (a taxi ride's departure, fieldMapId) is that field's only: the
+    // exploreType-2 fallback reads the current field and its return maps, so it does not count the ride from a map that
+    // is not the mission's. Without fieldMapId the same update counts by the return map, as above.
+    [TestCase(1000000, 0)]
+    [TestCase(0, 1)]
+    public void LeftField_DoesNotCountByTheCurrentReturnMaps(int fieldMapId, int expected) {
+        const int otherIndoor = 2000070;
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        try {
+            test.SetTable(new FieldMetaTable(new Dictionary<int, IReadOnlyList<int>>(), new Dictionary<int, IReadOnlyList<int>>(), null));
+            MapMetadata map = TestGameSession.Map(otherIndoor);
+            test.EnterMap(map with { Property = map.Property with { ExploreType = 2 } });
+            Character character = session.Player.Value.Character;
+            character.MapId = otherIndoor;
+            character.ReturnMaps = new LimitedStack<int>(3, Outdoor);
+            QuestMetadata metadata = TestGameSession.QuestData(990252, QuestType.FieldMission) with {
+                Conditions = [new ConditionMetadata(ConditionType.trigger, 2, new ConditionMetadata.Parameters(Strings: ["r252"]), null)],
+            };
+            Quest quest = test.StartQuest(metadata with { Basic = metadata.Basic with { ProgressMaps = [Outdoor] } });
+
+            session.Quest.Update(ConditionType.trigger, codeString: "r252", fieldMapId: fieldMapId);
+
+            Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
+        } finally {
+            session.Dispose();
+        }
+    }
 }
