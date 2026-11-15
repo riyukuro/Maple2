@@ -425,19 +425,21 @@ public class FunctionCubeHandler : FieldPacketHandler {
             SenderName = session.PlayerName,
         };
 
-        mail = db.CreateMail(mail);
-        if (mail is null) {
+        // The gift's row is written first, with no owner, and moves to the mail in the mail's own transaction
+        // (CreateMail). Before, the mail was written first and a failed item write left the owner an empty gift
+        // mail. A mail that fails leaves the ownerless row to the world server's start-up purge.
+        Item? item = db.CreateItem(0, rewardItem);
+        if (item is null) {
+            Logger.Error("Failed to create the reward item for account {0} and item {1}", session.AccountId, rewardPlay.ItemId);
+            return null;
+        }
+        mail.Items.Add(item);
+        Mail? stored = db.CreateMail(mail);
+        if (stored is null) {
             Logger.Error("Failed to create mail for account {0}", session.AccountId);
             return null;
         }
 
-        Item? item = db.CreateItem(mail.Id, rewardItem);
-        if (item is null) {
-            Logger.Error("Failed to create item for mail {0} and item {1}", mail.Id, rewardPlay.ItemId);
-            return null;
-        }
-
-        mail.Items.Add(item);
-        return mail;
+        return stored;
     }
 }

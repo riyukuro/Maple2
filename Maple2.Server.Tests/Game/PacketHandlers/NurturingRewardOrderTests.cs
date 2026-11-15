@@ -213,4 +213,18 @@ public class NurturingRewardOrderTests {
         using GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetAllMail(test.AccountId + 1000).Count, Is.EqualTo(mails));
     }
+
+    // The gift's row not stored: no mail. Before, the mail was written first and the owner got it empty.
+    [Test]
+    public void OwnerMail_GiftNotStored_NoMail() {
+        (GameSession session, FieldFunctionInteract nest) = Start(true, false, mailGift: MailGift, stageExp: 0, FeedItem, MailGift);
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added
+            && entry.Entity is Maple2.Database.Model.Item row && row.ItemId == MailGift);
+
+        Use(session, nest);
+        test.FailSave = null;
+
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetAllMail(test.AccountId + 1000), Is.Empty);
+    }
 }
