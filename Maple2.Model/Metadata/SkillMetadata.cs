@@ -197,7 +197,13 @@ public record SkillMetadataRange(
     // targets of the range (RangeTargetSelect.Excludes). The client's range loader reads neither (only its sensor
     // reads a targetHasNotBuffID), so only the server's searches use them.
     int[]? IgnoreNpcClasses = null,
-    int HasNotBuffId = 0);
+    int HasNotBuffId = 0,
+    // The attack's <damage> stateHitIgnore and stateHitOnly (SkillDamage::Load, skillattackdata.cpp:286-287): an actor
+    // in the first state is no target, and with the second set only an actor in that state is one
+    // (RangeTargetSelect.Excludes). Kept with the range since every target search goes through its exclusions. The
+    // client reads both but no client code uses them, so only the server's searches apply them.
+    ActorState StateHitIgnore = ActorState.None,
+    ActorState StateHitOnly = ActorState.None);
 
 // The range's target choice (rangeProperty targetSelectType ... targetStatCompareFunction). Mode 2 keeps only the
 // targets that pass (none if none pass), mode 3 keeps them if any pass, other modes keep all with the passing ones

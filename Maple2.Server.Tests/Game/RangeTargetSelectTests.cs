@@ -11,6 +11,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.Model.State;
 using Maple2.Server.Game.Util;
 using Maple2.Tools.Collision;
 
@@ -173,6 +174,35 @@ public class RangeTargetSelectTests {
             Assert.That(RangeTargetSelect.Excludes(range, scene.B), Is.False, "a player");
             Assert.That(range.Filters() && !Range(null).Filters(), Is.True);
         });
+    }
+
+    // stateHitIgnore (60011031, a ground shockwave, ignores 6 Jump): a jumping player is no target, one standing or in
+    // JumpTo is; a jumping npc neither. stateHitOnly (44110081 takes only 11 Emotion): only an actor in that state is.
+    [Test]
+    public void StateHits_ExcludeByTheTargetsState() {
+        SkillMetadataRange ignore = Range(null) with { StateHitIgnore = ActorState.Jump };
+        SkillMetadataRange only = Range(null) with { StateHitOnly = ActorState.Emotion };
+        Scene scene = Start();
+        FieldNpc npc = ClassNpc(0);
+        npc.State = new NpcState { State = ActorState.Jump };
+        Assert.Multiple(() => {
+            scene.B.State = ActorState.Idle;
+            Assert.That(RangeTargetSelect.Excludes(ignore, scene.B), Is.False, "idle");
+            Assert.That(RangeTargetSelect.Excludes(only, scene.B), Is.True, "idle, only emotion");
+            scene.B.State = ActorState.JumpTo;
+            Assert.That(RangeTargetSelect.Excludes(ignore, scene.B), Is.False, "jump to");
+            scene.B.State = ActorState.Jump;
+            Assert.That(RangeTargetSelect.Excludes(ignore, scene.B), Is.True, "jump");
+            Assert.That(RangeTargetSelect.Excludes(Range(null), scene.B), Is.False, "jump, no state filter");
+            scene.B.State = ActorState.Emotion;
+            Assert.That(RangeTargetSelect.Excludes(only, scene.B), Is.False, "emotion");
+            Assert.That(RangeTargetSelect.Excludes(ignore, npc), Is.True, "jumping npc");
+            Assert.That(RangeTargetSelect.Excludes(only, npc), Is.True, "jumping npc, only emotion");
+            Assert.That(ignore.Filters() && only.Filters(), Is.True);
+        });
+        scene.B.State = ActorState.Jump;
+        scene.C.State = ActorState.Idle;
+        Assert.That(Targets(scene, ignore, 5), Is.EqualTo(new[] { scene.C.ObjectId }), "the search");
     }
 
     // An npc with only its metadata's class.

@@ -303,7 +303,7 @@ public static partial class PlayedClientSkills {
             BrokenOffence: Number(attack, "brokenOffence"),
             CompulsionTypes: Tokens(attack, "compulsionType").Select(type => (CompulsionType) type).ToArray(),
             Pet: null,
-            Range: BuildRange(Child(attack, "range")),
+            Range: BuildRange(Child(attack, "range"), Child(attack, "damage")),
             Arrow: TakeArrow(taken, point, point)!,
             Damage: BuildDamage(Child(attack, "damage")),
             Skills: Children(attack, "actionSkill").Select(BuildSplash).ToArray(),
@@ -317,8 +317,8 @@ public static partial class PlayedClientSkills {
 
     // Unk_RangeProperty::LoadElement (unit_1408001f0_skillrangeandtarget.cpp:150): the shape, the target properties,
     // the buff, party and guild fields only when targetSelectType is set, the stat sort always, and the npc ranks to
-    // leave out. The select as the data pack's (SkillMapper.ConvertSelect).
-    private static SkillMetadataRange BuildRange(XmlElement? range) {
+    // leave out. The select as the data pack's (SkillMapper.ConvertSelect). The state filters from the attack's <damage>.
+    private static SkillMetadataRange BuildRange(XmlElement? range, XmlElement? damage) {
         int mode = Number(range, "targetSelectType");
         bool filters = mode != 0;
         int statSort = Number(range, "targetStatCompareFunction");
@@ -344,7 +344,9 @@ public static partial class PlayedClientSkills {
                 Stat: (BasicAttribute) Number(range, "targetStatCompare"),
                 StatSort: statSort),
             IgnoreNpcClasses: ranks.Length > 0 ? ranks : null,
-            HasNotBuffId: filters ? Number(range, "targetHasNotBuffID") : 0);
+            HasNotBuffId: filters ? Number(range, "targetHasNotBuffID") : 0,
+            StateHitIgnore: (ActorState) Number(damage, "stateHitIgnore"),
+            StateHitOnly: (ActorState) Number(damage, "stateHitOnly"));
     }
 
     // SkillDamage::Load (skillattackdata.cpp:251-290; count 1, hit speed 1 and push probability 1 when not given, the

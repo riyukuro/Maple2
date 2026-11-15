@@ -74,6 +74,12 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
         return played.TryGetValue(id, out PlayedClientAdditionalEffects.Entry? entry) && entry.Hide.TryGetValue(level, out bool hide) ? hide : hides.Get(id, level);
     }
 
+    // The states of MotionProperty clearCondition, 0 (no state) left out; null when none is left.
+    public static ActorState[]? ClearConditions(int[]? clearCondition) {
+        ActorState[] states = (clearCondition ?? []).Where(state => state != 0).Distinct().Select(state => (ActorState) state).ToArray();
+        return states.Length > 0 ? states : null;
+    }
+
     protected override IEnumerable<AdditionalEffectMetadata> Map() {
         int packMasks = 0, masks = 0, changed = 0;
         var packIds = new HashSet<int>();
@@ -400,7 +406,8 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 AttackPossible: AttackPossible(data.BasicProperty),
                 PvpOnOff: data.BasicProperty.pvpOnOff,
                 SpecialEffect: specialEffects.Get(id, data.BasicProperty.level),
-                Hide: Hide(id, data.BasicProperty.level)),
+                Hide: Hide(id, data.BasicProperty.level),
+                ClearConditions: ClearConditions(data.MotionProperty.clearCondition)),
             Consume: new AdditionalEffectMetadataConsume(
                 HpRate: data.ConsumeProperty.hpRate,
                 SpRate: data.ConsumeProperty.spRate),

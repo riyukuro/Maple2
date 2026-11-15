@@ -54,8 +54,13 @@ public class FieldNpc : Actor<Npc> {
         get => state;
         [MemberNotNull(nameof(state))]
         set {
+            // The first state, set while the npc is made, ends nothing.
+            ActorState? before = state?.State;
             state = value;
             SendControl = true;
+            if (before != null && before != value.State) {
+                Buffs.ClearOnState(value.State);
+            }
         }
     }
     public short SequenceId {

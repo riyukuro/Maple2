@@ -52,6 +52,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
     // a played client.
     private readonly Dictionary<(int Skill, short Level, int Motion, int Attack), PlayedClientSkills.AttackRange> clientRanges = [];
     private int clientRangesTaken;
+    private int clientStateHitsTaken;
     private int clientTargetCountsTaken;
     private int clientTargetCountsZero;
     private int rangePointMismatches;
@@ -391,6 +392,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
         }
         if (clientRanges.Count > 0) {
             Console.WriteLine($"Skill attacks given the played client's range shape over the data pack's: {clientRangesTaken}, target count: {clientTargetCountsTaken} ({rangePointMismatches} with another point at that place, the data pack's kept; {clientTargetCountsZero} with no client target count, the data pack's kept)");
+            Console.WriteLine($"Skill attacks given the played client's stateHitIgnore or stateHitOnly: {clientStateHitsTaken}");
         }
         if (clientPushes.Count > 0) {
             Console.WriteLine($"Skill attacks given the played client's push over the data pack's: {clientPushesTaken} ({pushPointMismatches} with another point at that place, the data pack's kept)");
@@ -482,8 +484,11 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             return pack;
         }
         SkillMetadataRange taken = PlayedClientSkills.WithShape(pack, played);
-        if (taken != pack) {
+        if (taken with { StateHitIgnore = pack.StateHitIgnore, StateHitOnly = pack.StateHitOnly } != pack) {
             clientRangesTaken++;
+        }
+        if (taken.StateHitIgnore != ActorState.None || taken.StateHitOnly != ActorState.None) {
+            clientStateHitsTaken++;
         }
         return taken;
     }

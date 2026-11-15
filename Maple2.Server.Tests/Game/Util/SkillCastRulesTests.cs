@@ -982,13 +982,16 @@ public class SkillCastRulesTests {
         // Attacks as the played client gives them (Unk_RangeShape::Load reads the attack's <range>, SkillAttackData::Load
         // its targetCount, 0 and no type when not given, a vector only as three values): 10400193 hits a cylinder of 8
         // targets where the data pack has a box of 3, 10700273 reaches 550 with a range add of 70, 11000146 is placed 75
-        // ahead, and an attack with no <range> has none.
+        // ahead, and an attack with no <range> has none. The attack's <damage> gives the state filters (60011031 ignores 6
+        // Jump, 44110081 takes only 11 Emotion).
         var document = new System.Xml.XmlDocument();
         document.LoadXml("""
             <ms2>
               <skill id="10400193"><level value="1"><motion><attack point="p0" targetCount="8"><range rangeType="cylinder" distance="250" height="150" width="0" /></attack></motion></level></skill>
               <skill id="10700273"><level value="1"><motion><attack point="p0" targetCount="1"><range rangeType="box" distance="550" width="100" endWidth="20" rangeAdd="0,70,0" rangeZRotateDegree="45" /></attack><attack point="p1" /></motion></level></skill>
               <skill id="11000146"><level value="1"><motion><attack point="p0"><range rangeType="circle" distance="210" height="150" rangeOffset="0,75,0" rangeAdd="0,70" /></attack></motion></level></skill>
+              <skill id="60011031"><level value="1"><motion><attack point="p0"><range rangeType="cylinder" distance="450" height="50" /><damage stateHitIgnore="6" /></attack></motion></level></skill>
+              <skill id="44110081"><level value="1"><motion><attack point="p0"><damage stateHitOnly="11" /></attack></motion></level></skill>
             </ms2>
             """);
         Dictionary<(int Skill, short Level, int Motion, int Attack), PlayedClientSkills.AttackRange> read = PlayedClientSkills.ReadAttackRanges([document]);
@@ -997,6 +1000,8 @@ public class SkillCastRulesTests {
             [(10700273, 1, 0, 0)] = new("box", 550, 0, 100, 20, new Vector3(0, 70, 0), Vector3.Zero, 45, 1, "p0"),
             [(10700273, 1, 0, 1)] = new("", 0, 0, 0, 0, Vector3.Zero, Vector3.Zero, 0, 0, "p1"),
             [(11000146, 1, 0, 0)] = new("circle", 210, 150, 0, 0, Vector3.Zero, new Vector3(0, 75, 0), 0, 0, "p0"),
+            [(60011031, 1, 0, 0)] = new("cylinder", 450, 50, 0, 0, Vector3.Zero, Vector3.Zero, 0, 0, "p0", ActorState.Jump),
+            [(44110081, 1, 0, 0)] = new("", 0, 0, 0, 0, Vector3.Zero, Vector3.Zero, 0, 0, "p0", StateHitOnly: ActorState.Emotion),
         }));
     }
 
@@ -1010,6 +1015,8 @@ public class SkillCastRulesTests {
         var played = new PlayedClientSkills.AttackRange("cylinder", 550, 150, 0, 0, new Vector3(0, 70, 0), new Vector3(0, 75, 0), 0, 8, "p0");
         Assert.That(PlayedClientSkills.WithShape(pack, played), Is.EqualTo(new SkillMetadataRange(SkillRegion.Cylinder, 550, 150, 0, 0, 0,
             new Vector3(0, 70, 0), new Vector3(0, 75, 0), IncludeCasterType.Priority, ApplyTargetType.Hostile, SkillTargetType.Target, HasNotBuffId: 7)));
+        // The state filters only the client has (the data pack read lacks <damage> stateHitIgnore/stateHitOnly).
+        Assert.That(PlayedClientSkills.WithShape(pack, played with { StateHitIgnore = ActorState.Jump }).StateHitIgnore, Is.EqualTo(ActorState.Jump));
         Assert.That(PlayedClientSkills.WithShape(pack, played with { Type = "circle" }).Type, Is.EqualTo(SkillRegion.None));
         Assert.That(PlayedClientSkills.WithShape(pack, played with { Type = "" }).Type, Is.EqualTo(SkillRegion.None));
         Assert.That(PlayedClientSkills.WithTargetCount(8, 0), Is.EqualTo(8));

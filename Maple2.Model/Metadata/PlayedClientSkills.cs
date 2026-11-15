@@ -226,10 +226,12 @@ public static partial class PlayedClientSkills {
                     int attackIndex = 0;
                     foreach (XmlElement attack in motion.ChildNodes.OfType<XmlElement>().Where(child => child.Name == "attack")) {
                         XmlElement? range = attack.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "range");
+                        XmlElement? damage = attack.ChildNodes.OfType<XmlElement>().FirstOrDefault(child => child.Name == "damage");
                         result[(id, value, motionIndex, attackIndex++)] = new AttackRange(range?.GetAttribute("rangeType") ?? "",
                             Real(range, "distance"), Real(range, "height"), Real(range, "width"), Real(range, "endWidth"),
                             Point(range, "rangeAdd"), Point(range, "rangeOffset"), Real(range, "rangeZRotateDegree"),
-                            Number(attack, "targetCount"), attack.GetAttribute("point"));
+                            Number(attack, "targetCount"), attack.GetAttribute("point"),
+                            (ActorState) Number(damage, "stateHitIgnore"), (ActorState) Number(damage, "stateHitOnly"));
                     }
                     motionIndex++;
                 }
@@ -239,12 +241,15 @@ public static partial class PlayedClientSkills {
     }
 
     public record AttackRange(string Type, float Distance, float Height, float Width, float EndWidth, Vector3 RangeAdd,
-        Vector3 RangeOffset, float RotateZDegree, int TargetCount, string Point);
+        Vector3 RangeOffset, float RotateZDegree, int TargetCount, string Point, ActorState StateHitIgnore = ActorState.None,
+        ActorState StateHitOnly = ActorState.None);
 
     // The data pack's range with the client's whole hit shape. CSkillCollisionManager builds the shape from the type,
     // distance, height, width and end width (skillcollisionmanager.cpp:147-208) and StateSkill::FUN_1417e95a0 places it
     // by the range offset (stateskill.cpp:1167), so no part of the shape is kept from the data pack. The target
-    // properties (includeCaster, applyTarget, castTarget, the target select and filters) stay the data pack's.
+    // properties (includeCaster, applyTarget, castTarget, the target select and filters) stay the data pack's, but for
+    // the state filters of the attack's <damage>, which the data pack read does not have (parser 2.3.7), so the
+    // client's are taken.
     public static SkillMetadataRange WithShape(SkillMetadataRange pack, AttackRange played) {
         return pack with {
             Type = ShapeType(played.Type),
@@ -255,6 +260,8 @@ public static partial class PlayedClientSkills {
             RotateZDegree = played.RotateZDegree,
             RangeAdd = played.RangeAdd,
             RangeOffset = played.RangeOffset,
+            StateHitIgnore = played.StateHitIgnore,
+            StateHitOnly = played.StateHitOnly,
         };
     }
 

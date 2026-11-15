@@ -672,6 +672,20 @@ public class BuffManager : IUpdatable {
         Remove(buffsToRemove);
     }
 
+    // MotionProperty clearCondition: the holder taking one of the listed states ends the buff (Dark Sight 10800051 ends on
+    // a jump, a ladder, an emotion or death; the npc hides 49100021-49100029 on a jump, their hit state 13 being one the
+    // server's npc AI never takes). The client loads the list and leaves it to the server. A player's state comes from
+    // its state sync on the packet handler's thread, so the buffs are copied as there.
+    public void ClearOnState(ActorState state) {
+        (int buffId, int casterId)[] cleared = CopyFromHandler(EnumerateBuffs)
+            .Where(buff => buff.Metadata.Property.ClearConditions is { } states && states.Contains(state))
+            .Select(buff => (buff.Id, buff.Caster.ObjectId))
+            .ToArray();
+        if (cleared.Length > 0) {
+            Remove(cleared);
+        }
+    }
+
     public void ModifyDuration(int buffId, int modifyValue) {
         foreach (Buff buff in EnumerateBuffs(buffId)) {
             buff.UpdateEndTime(modifyValue);

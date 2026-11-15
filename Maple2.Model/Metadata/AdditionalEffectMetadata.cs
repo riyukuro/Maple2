@@ -58,7 +58,10 @@ public record AdditionalEffectMetadataProperty(
     AttackPossibleMetadata? AttackPossible = null, // BasicProperty attackPossible*: the only hits the holder takes
     bool PvpOnOff = false, // BasicProperty pvpOnOff: on a pk field no other player is hostile to the holder, nor the holder to them
     SpecialEffectMetadata? SpecialEffect = null, // SpecialEffectProperty of the types the server applies (SpecialEffectRules)
-    bool Hide = false); // the client's Motion hide: the holder is no target of a range without applyTarget bit 4 (BuffManager.Hidden)
+    bool Hide = false, // the client's Motion hide: the holder is no target of a range without applyTarget bit 4 (BuffManager.Hidden)
+    // MotionProperty clearCondition: the holder's states that end the effect when the holder takes one (BuffManager.ClearOnState).
+    // The client loads the list (MotionProperty +0x90, additionalactionadditional.cpp:1101) and no client code reads it.
+    ActorState[]? ClearConditions = null);
 
 // BasicProperty attackPossibleSkillIDs, attackPossibleDotEffectIDs and attackPossibleEffectID (additionalactionadditional.cpp:1080):
 // the skills and the damage over time effects that still hit the holder, and an effect whose holders hit it with anything.

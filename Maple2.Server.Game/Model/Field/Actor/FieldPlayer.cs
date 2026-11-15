@@ -41,6 +41,7 @@ public class FieldPlayer : Actor<Player> {
         set {
             if (state == value) return;
             state = value;
+            Buffs.ClearOnState(value);
             Flag |= PlayerObjectFlag.State;
             StateSyncTimeTracking = 0; // Reset time tracking on state change
         }

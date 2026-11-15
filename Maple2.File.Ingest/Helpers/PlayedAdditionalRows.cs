@@ -72,7 +72,7 @@ public static class PlayedAdditionalRows {
                 property.KeepCondition, property.ResetCondition, property.DotCondition, property.ClearOnDistanceFromCaster, property.DisableRevivalHere,
                 property.IgnoreReduceTime, property.ClearCooldownOnPvpZone, property.ForceApplyTarget,
             }),
-            ["Motion"] = Json(new object?[] { property.ImmuneBreak, property.Stun, property.SkillUseDisableIds, property.SuperArmor, property.SuperArmorApplyField }),
+            ["Motion"] = Json(new object?[] { property.ImmuneBreak, property.Stun, property.SkillUseDisableIds, property.SuperArmor, property.SuperArmorApplyField, property.ClearConditions }),
             ["Exp"] = Json(property.Exp),
             ["Ridee"] = Json(property.RideId),
             ["Condition"] = Json(metadata.Condition),
@@ -377,6 +377,7 @@ public static class PlayedAdditionalRows {
                 SkillUseDisableIds = client.SkillUseDisableIds,
                 SuperArmor = client.SuperArmor,
                 SuperArmorApplyField = client.SuperArmorApplyField,
+                ClearConditions = client.ClearConditions,
             };
         }
         if (taken.Contains("Exp")) {

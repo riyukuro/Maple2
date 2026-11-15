@@ -135,15 +135,34 @@ public static class RangeTargetSelect {
 
     // The range's own exclusions (applyTargetIgnoreNpcRanks, targetHasNotBuffID), which the client's range loader does
     // not read. Chosen here: an npc of a listed class (npcdata class) and an actor holding an enabled buff of that id
-    // are no targets of the range, taken out before the target choice and the target count.
-    public static bool Filters(this SkillMetadataRange range) => range.IgnoreNpcClasses is { Length: > 0 } || range.HasNotBuffId != 0;
+    // are no targets of the range, taken out before the target choice and the target count. The same for the attack's
+    // stateHitIgnore and stateHitOnly (no client code uses them): an actor in the ignored state, or with an only state
+    // set an actor in any other state, is no target. The state is the actor's own as the server holds it (a player's
+    // from its state sync, an npc's from its AI), compared as is, so JumpTo is not Jump.
+    public static bool Filters(this SkillMetadataRange range) => range.IgnoreNpcClasses is { Length: > 0 } || range.HasNotBuffId != 0
+        || range.StateHitIgnore != ActorState.None || range.StateHitOnly != ActorState.None;
 
     public static bool Excludes(SkillMetadataRange range, IActor target) {
         if (range.IgnoreNpcClasses is { Length: > 0 } classes && target is FieldNpc npc && classes.Contains(npc.Value.Metadata.Basic.Class)) {
             return true;
         }
+        if (range.StateHitIgnore != ActorState.None || range.StateHitOnly != ActorState.None) {
+            ActorState state = StateOf(target);
+            if (range.StateHitIgnore != ActorState.None && state == range.StateHitIgnore) {
+                return true;
+            }
+            if (range.StateHitOnly != ActorState.None && state != range.StateHitOnly) {
+                return true;
+            }
+        }
         return range.HasNotBuffId != 0 && target.Buffs.EnumerateBuffs(range.HasNotBuffId).Any(buff => buff.Enabled);
     }
+
+    private static ActorState StateOf(IActor actor) => actor switch {
+        FieldPlayer player => player.State,
+        FieldNpc npc => npc.State.State,
+        _ => ActorState.None,
+    };
 
     public static bool Passes(SkillMetadataRangeSelect select, IActor caster, IActor target) {
         if (select.BuffId != 0 && !target.Buffs.EnumerateBuffs(select.BuffId)

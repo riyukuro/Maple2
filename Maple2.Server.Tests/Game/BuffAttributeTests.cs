@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
+using Maple2.File.Ingest.Mapper;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -425,6 +426,28 @@ public class BuffAttributeTests {
 
     private static AdditionalEffectMetadataUpdate.CancelEffect Cancel(int[] ids, BuffCategory[] categories, bool sameCaster = false) =>
         new(sameCaster, false, ids, categories);
+
+    // clearCondition: the holder taking a listed state ends the buff, any other state leaves it. Dark Sight 10800051
+    // (KR: 3,4,6,7,8,11,12) beside a plain buff; JumpTo (7) is listed, Walk (2) and Hit (13) are not.
+    [Test]
+    public void ClearCondition_EndsTheBuffOnAListedState() {
+        ActorState[] darkSight = AdditionalEffectMapper.ClearConditions([3, 4, 6, 7, 8, 11, 12])!;
+        Start(MapType.None, Effect(10800051, Plain with { ClearConditions = darkSight }), Effect(10000051, Plain));
+        Add(10800051);
+        Add(10000051);
+
+        Player.State = ActorState.Walk;
+        Player.State = ActorState.Hit;
+        Assert.That(Held(), Is.EqualTo(new[] { 10000051, 10800051 }));
+
+        Player.State = ActorState.JumpTo;
+        Assert.That(Held(), Is.EqualTo(new[] { 10000051 }));
+        Assert.Multiple(() => {
+            Assert.That(AdditionalEffectMapper.ClearConditions([0]), Is.Null, "a 0 alone is no state");
+            Assert.That(AdditionalEffectMapper.ClearConditions(null), Is.Null);
+            Assert.That(AdditionalEffectMapper.ClearConditions([6, 7, 13]), Is.EqualTo(new[] { ActorState.Jump, ActorState.JumpTo, ActorState.Hit }));
+        });
+    }
 
     // cancelEffectCodes: the start takes off the effects it names. 10100181 (KR: cancels 10100061).
     [Test]
