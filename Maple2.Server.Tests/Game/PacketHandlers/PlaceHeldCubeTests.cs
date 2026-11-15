@@ -579,6 +579,20 @@ public class PlaceHeldCubeTests {
         });
     }
 
+    // A pickup of a cube storage cannot take back (here one not held in the furnishing inventory) leaves it on the
+    // plot. Before, it was taken off the plot and went nowhere.
+    [Test]
+    public void APickup_StorageTakesNothing_LeavesTheCube() {
+        (GameSession session, Plot plot) = StartInHome();
+        session.ItemMetadata.TryGet(Cube, out ItemMetadata? metadata);
+        var position = new Vector3B(-1, -1, 1);
+        plot.Cubes[position] = new PlotCube(metadata!) { Position = position, Type = PlotCube.CubeType.Construction };
+
+        Assert.That(session.Housing.TryRemoveCube(plot, position, out _), Is.False);
+
+        Assert.That(plot.Cubes.Keys, Is.EqualTo(new[] { position }));
+    }
+
     // A build helper's cube, bought from the owner's budget, stores the budget (the home's row), the storage row and
     // the cube's row together. Before, the budget waited for the next save of the home and the stack for the session's.
     // The owner stands in as the helper here: the budget path is the helper's.
@@ -644,6 +658,69 @@ public class PlaceHeldCubeTests {
         Assert.Multiple(() => {
             Assert.That(session.Currency.Meso, Is.EqualTo(5000));
             Assert.That(session.Player.Value.Home.BuildMeso, Is.EqualTo(0));
+        });
+    }
+
+    // A raise whose store fails after a helper spent part of it meanwhile: the budget goes back by the raise (what is
+    // left of it) and only that much comes back to the wallet. Before, the budget was put back only when unchanged,
+    // so it kept the raise's rest and the wallet got the whole raise back.
+    [Test]
+    public void ABudgetRaise_NotStored_AfterASpend_GivesBackOnlyTheRest() {
+        (GameSession session, _) = StartInHome();
+        Home home = session.Player.Value.Home;
+        test.FailSave = context => {
+            if (!context.ChangeTracker.Entries<Maple2.Database.Model.Home>().Any()) {
+                return false;
+            }
+            home.BuildMeso -= 1000; // a helper's place between the raise and its store
+            return true;
+        };
+
+        session.Housing.SetBuildBudget(3000, 0);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(home.BuildMeso, Is.EqualTo(0));
+            Assert.That(session.Currency.Meso, Is.EqualTo(4000));
+        });
+    }
+
+    // A place from storage whose rows are not stored places nothing and keeps the stack's count.
+    [Test]
+    public void APlaceFromStorage_NotStored_KeepsTheStack() {
+        (GameSession session, Plot plot) = StartInHome();
+        long uid = session.Item.Furnishing.AddCube(Cube);
+        session.Item.Furnishing.AddCube(Cube);
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any();
+
+        Place(session, Cube, Cube, uid: uid);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(session.Item.Furnishing.GetCube(uid)?.Amount, Is.EqualTo(2));
+        });
+    }
+
+    // A helper's budget place whose rows are not stored places nothing: the budget is given back and storage keeps
+    // no piece.
+    [Test]
+    public void ABudgetPlace_NotStored_GivesTheBudgetBack() {
+        (GameSession session, Plot plot) = StartInHome();
+        session.Player.Value.Home.BuildMeso = 3000;
+        session.ItemMetadata.TryGet(Cube, out ItemMetadata? metadata);
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Home>().Any();
+
+        bool placed = session.Housing.TryPlaceCube(new PlotCube(metadata!) { Type = PlotCube.CubeType.Construction }, plot, metadata!,
+            new Vector3B(-1, -1, 1), 0, out _, helper: session, byPlayer: true);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(placed, Is.False);
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(session.Player.Value.Home.BuildMeso, Is.EqualTo(3000));
+            Assert.That(session.Item.Furnishing.GetItem(Cube), Is.Null.Or.Property(nameof(Item.Amount)).EqualTo(0));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
         });
     }
 }

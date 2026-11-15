@@ -1136,9 +1136,19 @@ public class HousingManager {
         if (outdoor && itemMetadata.Install.IndoorPortal) {
             FieldPortal? fieldPortal = session.Field.SpawnFieldToHomePortal(result, plot.OwnerId);
             if (fieldPortal is null) {
-                DeleteCube(plot, result);
-                Refuse(UgcMapError.s_ugcmap_not_owned_item);
-                return false;
+                // The place is stored already: the cube goes back to storage as a pickup does (its row deleted and the
+                // stack given back in one transaction). Before, its row was deleted and the stack's take kept, so the
+                // cube was in neither. When that store fails too, the cube stays placed, without its portal.
+                if (ReturnToStorage(result)) {
+                    if (result.Interact is not null) {
+                        session.Field.RemoveFieldFunctionInteract(result.Interact.Id);
+                    }
+                    Refuse(UgcMapError.s_ugcmap_not_owned_item);
+                    return false;
+                }
+                plot.Cubes.Add(position, result);
+                session.Field.AddMaid(result, plot, announce: MoveMaidToCube(storedUid, result, plot));
+                return true;
             }
             session.Field.Broadcast(PortalPacket.Add(fieldPortal));
         }
@@ -1216,9 +1226,21 @@ public class HousingManager {
             FittingDollHandler.ReturnItems(session, cube.Id);
         }
 
-        // The storage stack the cube goes back to, the maid it takes along and the cube row's delete are stored in
-        // one transaction. Before, the cube row went at once and the stack waited for the session's next save, so a
-        // stop before it lost the cube.
+        if (!ReturnToStorage(cube)) {
+            // The cube stays where it is: on the plot and in its row (and in storage nothing changed).
+            plot.Cubes[position] = cube;
+            notify.Send(CubePacket.EditError(CubePacket.Edit.Remove, UgcMapError.s_ugcmap_db, notify.Player.ObjectId));
+            cube = null;
+            return false;
+        }
+        return true;
+    }
+
+    // A placed cube goes back to the owner's storage: the storage stack it joins (or its new row), the maid it takes
+    // along and the cube row's delete are stored in one transaction, and the bag follows. Before, the cube row went
+    // at once and the stack waited for the session's next save, so a stop before it lost the cube. False when
+    // nothing was stored (the cube is in the furnishing inventory and its row as before).
+    private bool ReturnToStorage(PlotCube cube) {
         long itemUid;
         Maid? moved = null;
         lock (session.Item) {
@@ -1226,6 +1248,7 @@ public class HousingManager {
             db.BeginTransaction();
             itemUid = session.Item.Furnishing.RetrieveCube(cube.Id, db, out bool created);
             if (itemUid == 0) {
+                // RetrieveCube kept the cube in the furnishing inventory.
                 logger.Error("Failed to deposit cube {CubeId} back into storage.", cube.Id);
                 return false;
             }
@@ -1237,12 +1260,8 @@ public class HousingManager {
             }
             stored = stored && db.DeleteCube(cube) && db.Commit();
             if (!stored) {
-                // The cube stays where it is: on the plot and in its row; storage gives the piece back.
-                logger.Error("Pickup of cube {CubeId} not stored; the cube stays on plot {PlotId}", cube.Id, plot.Number);
+                logger.Error("Return of cube {CubeId} to storage not stored; the cube stays placed", cube.Id);
                 session.Item.Furnishing.UndoRetrieve(itemUid, cube, created);
-                plot.Cubes[position] = cube;
-                notify.Send(CubePacket.EditError(CubePacket.Edit.Remove, UgcMapError.s_ugcmap_db, notify.Player.ObjectId));
-                cube = null;
                 return false;
             }
         }
@@ -1252,7 +1271,6 @@ public class HousingManager {
                 session.Send(MaidCraftItemPacket.Add(moved));
             }
         }
-
         return true;
     }
 
@@ -1381,11 +1399,9 @@ public class HousingManager {
         // with its budget are stored in one purchase save. Before, the home's row was stored at once and the wallet
         // left to the next session save, so a stop before it gave back the mesos (and merets) of a raise with the
         // budget kept, or took back those of a fall with the budget lowered.
-        long mesoCost, meratCost, mesoBefore, meratBefore, sends;
+        long mesoCost, meratCost, sends;
         lock (session.Item) {
             lock (Home) {
-                mesoBefore = Home.BuildMeso;
-                meratBefore = Home.BuildMerat;
                 mesoCost = meso - Home.BuildMeso;
                 meratCost = merat - Home.BuildMerat;
                 UgcMapError error = HomeBuildRules.CheckBudget(meso, merat, Home.BuildMeso, Home.BuildMerat,
@@ -1428,17 +1444,26 @@ public class HousingManager {
             return saved && (added == default || db.SaveCurrency(session.Player));
         }, () => session.Currency.TakeBackAdded(added));
         if (!stored) {
+            // Put back by the difference, not to the old values: a helper's buy may have charged the budget since.
+            // A rise gives back what is still in the budget, and the wallet gets that much; what a helper spent of it
+            // meanwhile stays paid by the wallet. A fall gives its amount back to the budget (the wallet's gain was
+            // taken back by the store's undo).
+            long mesoBack, meratBack;
             lock (Home) {
-                if (Home.BuildMeso == meso && Home.BuildMerat == merat) {
-                    Home.BuildMeso = mesoBefore;
-                    Home.BuildMerat = meratBefore;
-                }
+                mesoBack = Math.Min(Math.Max(0, mesoCost), Home.BuildMeso);
+                meratBack = Math.Min(Math.Max(0, meratCost), Home.BuildMerat);
+                Home.BuildMeso += mesoCost > 0 ? -mesoBack : -mesoCost;
+                Home.BuildMerat += meratCost > 0 ? -meratBack : -meratCost;
             }
-            if (mesoCost > 0) {
-                session.Currency.ReturnHeldMeso(mesoCost, sends);
+            if (mesoBack < mesoCost || meratBack < meratCost) {
+                logger.Warning("Build budget of home {AccountId} spent meanwhile: {Meso} mesos and {Merat} merets of the failed rise kept",
+                    session.AccountId, mesoCost - mesoBack, Math.Max(0, meratCost) - meratBack);
             }
-            if (meratCost > 0) {
-                session.Currency.ReturnMeret(meratCost);
+            if (mesoBack > 0) {
+                session.Currency.ReturnHeldMeso(mesoBack, sends);
+            }
+            if (meratBack > 0) {
+                session.Currency.ReturnMeret(meratBack);
             }
             logger.Error("Failed to save the build budget of home {AccountId}.", session.AccountId);
             session.Send(CubePacket.UpdateBuildBudget((byte) HomeBuildRules.Refused));

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using Maple2.Database.Storage;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -45,8 +46,17 @@ public class HomeShrinkAndFurnitureReachTests {
         new RequestCubeHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(command)));
     }
 
-    private static PlotCube Cube(Plot plot, Vector3B position) {
+    // A placed cube as a place leaves it: its plot row, and held in the owner's furnishing inventory (a take-off
+    // returns only a held cube to storage and keeps any other on the plot).
+    private PlotCube Cube(Plot plot, Vector3B position) {
+        GameSession session = test.Session;
+        long uid = session.Item.Furnishing.AddCube(CubeItemId);
         var cube = new PlotCube(TestGameSession.Metadata(CubeItemId)) { Position = position, Type = PlotCube.CubeType.Construction };
+        using (GameStorage.Request db = test.Storage.Context()) {
+            cube = db.CreateCube(plot, cube)!;
+        }
+        cube.Position = position;
+        Assert.That(session.Item.Furnishing.TryAddCube(uid, cube), Is.True);
         plot.Cubes[position] = cube;
         return cube;
     }
