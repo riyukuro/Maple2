@@ -96,4 +96,33 @@ public class FieldMissionIndoorTests {
             session.Dispose();
         }
     }
+
+    // An exploreType-2 field entered from the mission's map that is not its indoor child: the client does not track the
+    // mission there, so nothing counts; only an ingest without the parent table still counts it by the return map.
+    [TestCase(true, 0)]
+    [TestCase(false, 1)]
+    public void OtherIndoorField_CountsOnlyWithoutParents(bool withParents, int expected) {
+        const int otherIndoor = 2000070;
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        try {
+            test.SetTable(new FieldMetaTable(new Dictionary<int, IReadOnlyList<int>>(), new Dictionary<int, IReadOnlyList<int>>(),
+                withParents ? new Dictionary<int, int> { [Indoor] = Outdoor } : null));
+            MapMetadata map = TestGameSession.Map(otherIndoor);
+            test.EnterMap(map with { Property = map.Property with { ExploreType = 2 } });
+            Character character = session.Player.Value.Character;
+            character.MapId = otherIndoor;
+            character.ReturnMaps = new LimitedStack<int>(3, Outdoor);
+            QuestMetadata metadata = TestGameSession.QuestData(990251, QuestType.FieldMission) with {
+                Conditions = [new ConditionMetadata(ConditionType.trigger, 2, new ConditionMetadata.Parameters(Strings: ["r251"]), null)],
+            };
+            Quest quest = test.StartQuest(metadata with { Basic = metadata.Basic with { ProgressMaps = [Outdoor] } });
+
+            session.Quest.Update(ConditionType.trigger, codeString: "r251");
+
+            Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
+        } finally {
+            session.Dispose();
+        }
+    }
 }

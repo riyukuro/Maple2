@@ -388,10 +388,15 @@ public sealed class QuestManager {
     public void Update(ConditionType type, long counter = 1, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0) {
         IEnumerable<Quest> quests = QuestRules.UpdateCandidates(characterValues.Values.Concat(accountValues.Values), type);
         foreach (Quest quest in quests) {
-            // TODO: Not sure if ProgressMap really means that only progress counts in this map. It doesn't make sense for some quests.
-            // Testing only on FieldMission for now.
+            // A field mission counts only where the client tracks it (CFieldQuest::GetTrackingState, FUN_140744b90): the
+            // first progress map or a field whose outdoor parent it is; the client reads no exploreType there. Without the
+            // parent table (an older ingest) the return maps stand in for the indoor parents.
+            IReadOnlyDictionary<int, int>? indoorParents = session.TableMetadata.FieldMetaTable.IndoorParents;
             if (quest.Metadata.Basic is { Type: QuestType.FieldMission, ProgressMaps: not null } && session.Field is not null
-                && !QuestRules.FieldMissionTracked(quest.Metadata.Basic.ProgressMaps, session.Player.Value.Character.MapId, session.TableMetadata.FieldMetaTable.IndoorParents)) {
+                && !QuestRules.FieldMissionTracked(quest.Metadata.Basic.ProgressMaps, session.Player.Value.Character.MapId, indoorParents)) {
+                if (indoorParents != null) {
+                    continue;
+                }
                 switch (session.Field.Metadata.Property.ExploreType) {
                     case 1 or 0 when !quest.Metadata.Basic.ProgressMaps.Contains(session.Player.Value.Character.MapId):
                     case 2 when !quest.Metadata.Basic.ProgressMaps.Any(x => session.Player.Value.Character.ReturnMaps.Contains(x)):
