@@ -36,11 +36,16 @@ public class MentorHandlerTests {
 
     private DbContextOptions options = null!;
 
-    private void Login(bool season, int[]? questIds = null, int daysInactive = 0) {
-        options = new DbContextOptionsBuilder()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+    // A scratch MySQL game database (MS2_TEST_GAME_DB) for the tests of a rollback the in-memory store cannot show.
+    private static readonly string? MySqlConnection = Environment.GetEnvironmentVariable("MS2_TEST_GAME_DB");
+
+    private void Login(bool season, int[]? questIds = null, int daysInactive = 0, bool mySql = false) {
+        options = mySql
+            ? new DbContextOptionsBuilder().UseMySql(MySqlConnection, ServerVersion.AutoDetect(MySqlConnection)).Options
+            : new DbContextOptionsBuilder()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                .Options;
         test = new TestGameSession(options);
         otherTest = new TestGameSession(options);
         foreach (TestGameSession each in new[] { test, otherTest }) {
@@ -106,8 +111,8 @@ public class MentorHandlerTests {
     }
 
     // The session as mentor and the other player as mentee, each known to the other's world.
-    private void MentorAndMentee() {
-        Login(season: true);
+    private void MentorAndMentee(bool mySql = false) {
+        Login(season: true, mySql: mySql);
         Send(session, RegisterMentor);
         Send(other, RegisterMentee);
         WorldKnowsOther();
@@ -632,6 +637,49 @@ public class MentorHandlerTests {
         Assert.That(session.Player.Value.Currency.MentorToken, Is.EqualTo(1000));
     }
 
+    // The pair and its reward mail are one store: a mail the database refuses refuses the accept (an error, no mail,
+    // no pair told). On MySQL the pair rolls back too and the request still waits (Accept_MailRefused_KeepsTheRequest).
+    [Test]
+    public void Accept_MailRefused_RefusesTheAccept() {
+        MentorAndMentee();
+        test.Register(TestGameSession.Metadata(90000023));
+        otherTest.Register(TestGameSession.Metadata(90000023));
+        InviteOther();
+        long id = Rows().Single().Id;
+        Mentor(otherTest);
+        otherTest.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Mail>().Any(entry => entry.State == EntityState.Added);
+
+        Send(other, Accept, writer => writer.WriteLong(id));
+        otherTest.FailSave = null;
+
+        Assert.That(Mentor(otherTest), Is.EqualTo(new[] { Error(MentorError.TargetNotExists) }));
+        Assert.That(MentorMails(), Is.Empty);
+        Assert.That(otherTest.World.MentoringRequests.Any(request => request.Reload != null), Is.False);
+    }
+
+    [Test]
+    public void Accept_MailRefused_KeepsTheRequest() {
+        if (MySqlConnection == null) {
+            Assert.Ignore("the accept's rollback needs a real database: set MS2_TEST_GAME_DB");
+        }
+        MentorAndMentee(mySql: true);
+        test.Register(TestGameSession.Metadata(90000023));
+        otherTest.Register(TestGameSession.Metadata(90000023));
+        InviteOther();
+        long id = Rows().Single().Id;
+        otherTest.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Mail>().Any(entry => entry.State == EntityState.Added);
+
+        Send(other, Accept, writer => writer.WriteLong(id));
+        otherTest.FailSave = null;
+
+        Assert.That(Rows().Single(), Is.EqualTo(new MentoringEntry(id, session.CharacterId, other.CharacterId, false)));
+        Assert.That(MentorMails(), Is.Empty);
+
+        Send(other, Accept, writer => writer.WriteLong(id));
+        Assert.That(Rows().Single().Accepted, Is.True);
+        Assert.That(MentorMails(), Has.Count.EqualTo(1));
+    }
+
     private List<(long Id, string Title, List<(int Id, int Amount)> Items)> MentorMails() {
         using var context = new Ms2Context(options);
         return context.Mail.AsNoTracking().Where(mail => mail.ReceiverId == session.CharacterId).ToList()
@@ -1064,6 +1112,35 @@ public class MentorHandlerTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // A mentee's quest coin and its mentor's coins are one store: a mentor-coin write the database refuses refuses
+    // the completion (no mentee coin, no mentor coin, the quest still open). Before, it was logged and the mentor's
+    // coins were lost.
+    [Test]
+    public void MentorCoins_NotStored_RefusesTheQuest() {
+        Paired();
+        foreach (TestGameSession each in new[] { test, otherTest }) {
+            each.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+            each.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+            each.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+            each.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        }
+        QuestMetadata data = TestGameSession.QuestData(90000042);
+        Quest quest = otherTest.StartQuest(data with { CompleteReward = data.CompleteReward with { MenteeCoin = 100 } });
+        otherTest.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Mentoring>().Any(entry => entry.State == EntityState.Modified);
+
+        Assert.That(other.Quest.Complete(quest), Is.False);
+        otherTest.FailSave = null;
+
+        Assert.That(other.Currency[CurrencyType.MenteeToken], Is.EqualTo(0));
+        Assert.That(MentorCoinRows(), Is.Empty);
+        Assert.That(quest.State, Is.EqualTo(QuestState.Started));
+        otherTest.Errors.Clear();
+
+        Assert.That(other.Quest.Complete(quest), Is.True);
+        Assert.That(other.Currency[CurrencyType.MenteeToken], Is.EqualTo(100));
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(100));
+    }
+
     // The attend coin and the coins of a mentee with no pair earn no mentor coins.
     [Test]
     public void MentorCoins_NotFromTheAttendCoinNorWithoutAPair() {
@@ -1266,7 +1343,8 @@ public class MentorHandlerTests {
         Assert.That(HasUnseasonedRegistration(other), Is.False);
         // The pair is the season's: the mentee's mentor coins reach the mentor.
         using GameStorage.Request db = test.Storage.Context();
-        Assert.That(db.AddMentorCoins(other.CharacterId, 1, 100), Is.EqualTo(session.CharacterId));
+        Assert.That(db.AddMentorCoins(other.CharacterId, 1, 100, out long mentorId), Is.True);
+        Assert.That(mentorId, Is.EqualTo(session.CharacterId));
     }
 
     // Without a season they end: the season they were made in is over, and a later season does not take them.

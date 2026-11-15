@@ -131,28 +131,34 @@ public partial class GameStorage {
         }
 
         // Adds coins to the mentor coins of the mentee's pair of the season, in one statement, so adds made at the
-        // same time all count. The pair's mentor, 0 when the mentee has none or nothing was stored.
-        public long AddMentorCoins(long menteeId, int season, long coins) {
+        // same time all count; written in the store of what pays the mentee's coin (MentoringManager), so neither is
+        // kept without the other. mentorId: the pair's mentor, 0 when the mentee has none (true: nothing to add).
+        // False when the write failed: the store is refused.
+        public bool AddMentorCoins(long menteeId, int season, long coins, out long mentorId) {
+            mentorId = 0;
             if (coins <= 0) {
-                return 0;
+                return true;
             }
-            try {
-                IQueryable<Model.Mentoring> pair = Context.Mentoring.Where(row => row.MenteeId == menteeId && row.Season == season && row.Accepted);
-                long mentorId = pair.AsNoTracking().OrderBy(row => row.Id).Select(row => row.MentorId).FirstOrDefault();
-                if (mentorId == 0) {
-                    return 0;
+            IQueryable<Model.Mentoring> pair = Context.Mentoring.Where(row => row.MenteeId == menteeId && row.Season == season && row.Accepted);
+            long mentor = pair.AsNoTracking().OrderBy(row => row.Id).Select(row => row.MentorId).FirstOrDefault();
+            if (mentor == 0) {
+                return true;
+            }
+            if (Context.Database.IsRelational()) {
+                // No row updated: the pair was removed since the read, so there is no mentor to pay.
+                if (pair.ExecuteUpdate(update => update.SetProperty(row => row.MentorCoins, row => row.MentorCoins + coins)) <= 0) {
+                    return true;
                 }
-                if (Context.Database.IsRelational()) {
-                    return pair.ExecuteUpdate(update => update.SetProperty(row => row.MentorCoins, row => row.MentorCoins + coins)) > 0 ? mentorId : 0;
-                }
+            } else {
                 foreach (Model.Mentoring row in pair.AsTracking()) {
                     row.MentorCoins += coins;
                 }
-                return Context.TrySaveChanges() ? mentorId : 0;
-            } catch (Exception ex) {
-                Logger.LogError(ex, "Mentor coins of mentee {MenteeId} not stored", menteeId);
-                return 0;
+                if (!Context.TrySaveChanges()) {
+                    return false;
+                }
             }
+            mentorId = mentor;
+            return true;
         }
 
         // The mentor's pairs of the season that hold mentor coins, and how many, oldest first.

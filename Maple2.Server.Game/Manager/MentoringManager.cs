@@ -390,7 +390,7 @@ public class MentoringManager : IDisposable {
     // cap (MenteeTokenMax) lets in. The token and the day's count are stored together, and with what pays the coin
     // when there is such a store (a quest's completion, QuestManager): the count was stored on its own and the token
     // left to the next session save, so a stop between kept the day's cap used up and the quest completed without
-    // its coin. A quest's coin given to a paired mentee also earns its mentor the same coin (EarnMentorCoins).
+    // its coin. A quest's coin given to a paired mentee also earns its mentor the same coin (TellMentorOfCoins).
     public readonly record struct MenteeCoinGrant(long Given, GameEvent? Season, GameEventUserValue? Count);
 
     // The coin to give and, for a mentee in a season, the day's count to store with it. Given 0: nothing to give.
@@ -416,28 +416,34 @@ public class MentoringManager : IDisposable {
     }
 
     // Inside a purchase store, before its wallet is saved: the coin added unsent and the day's count written; the
-    // count reaches memory once stored. The store's undo takes `added` back.
-    public bool WriteMenteeCoin(GameStorage.Request db, MenteeCoinGrant grant, out CurrencyManager.Added added) {
+    // count reaches memory once stored. The store's undo takes `added` back. A quest's coin to a paired mentee also
+    // earns its mentor the same coins, written in the same store (mentorId: the mentor to tell, 0 for none).
+    public bool WriteMenteeCoin(GameStorage.Request db, MenteeCoinGrant grant, bool fromQuest, out CurrencyManager.Added added, out long mentorId) {
         added = session.Currency.AddUnsent(CurrencyType.MenteeToken, grant.Given);
+        mentorId = 0;
         if (grant is not { Season: { } season, Count: { } count }) {
             return true;
         }
         if (!db.SaveGameEventUserValues(session.CharacterId, [count])) {
             return false;
         }
+        if (fromQuest && season.Metadata.Data is ReturnUser { SeasonId: > 0 } returnUser
+            && !db.AddMentorCoins(session.CharacterId, returnUser.SeasonId, grant.Given, out mentorId)) {
+            return false;
+        }
         db.AfterCommit(() => session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringMenteeCoinToday, count.Value));
         return true;
     }
 
-    // Once stored: the token sent, the coins today, and a quest's coin earns the mentor its coins.
-    public void MenteeCoinGiven(MenteeCoinGrant grant, CurrencyManager.Added added, bool fromQuest = true) {
+    // Once stored: the token sent, the coins today, and the mentor told of the coins it earned.
+    public void MenteeCoinGiven(MenteeCoinGrant grant, CurrencyManager.Added added, long mentorId) {
         session.Currency.NotifyAdded(added);
         if (grant.Season == null) {
             return;
         }
         SendDailyCoins();
-        if (fromQuest) {
-            EarnMentorCoins(grant.Season, grant.Given);
+        if (mentorId != 0) {
+            TellMentorOfCoins(mentorId);
         }
     }
 
@@ -448,31 +454,22 @@ public class MentoringManager : IDisposable {
             return 0;
         }
         CurrencyManager.Added added = default;
-        if (!session.TrySavePurchase(db => WriteMenteeCoin(db, grant, out added) && db.SaveCurrency(session.Player),
+        long mentorId = 0;
+        if (!session.TrySavePurchase(db => WriteMenteeCoin(db, grant, fromQuest, out added, out mentorId) && db.SaveCurrency(session.Player),
                 () => session.Currency.TakeBackAdded(added))) {
             logger.Warning("Mentee coin {Coin} of {CharacterId} not stored, not given", grant.Given, session.CharacterId);
             return 0;
         }
-        MenteeCoinGiven(grant, added, fromQuest);
+        MenteeCoinGiven(grant, added, mentorId);
         return grant.Given;
     }
 
     // Chosen here (no client code or table says how a mentor earns coins; the client has only the mentor's daily
     // cap, maxMentorDailyRewardCoin, and the mentor page's count of Mentor 11): the mentee coins a paired mentee gets
     // from a quest (the season missions' menteeCoin) earn its mentor the same coins. They are added to the pair's
-    // row, which the mentor takes from (TakeMentorCoins), so a mentor on another channel or offline gets them too;
-    // its game server is told at once.
-    private void EarnMentorCoins(GameEvent season, long coins) {
-        if (season.Metadata.Data is not ReturnUser { SeasonId: > 0 } returnUser) {
-            return;
-        }
-        long mentorId;
-        using (GameStorage.Request db = session.GameStorage.Context()) {
-            mentorId = db.AddMentorCoins(session.CharacterId, returnUser.SeasonId, coins);
-        }
-        if (mentorId == 0) {
-            return;
-        }
+    // row (WriteMenteeCoin), which the mentor takes from (TakeMentorCoins), so a mentor on another channel or
+    // offline gets them too; its game server is told at once.
+    private void TellMentorOfCoins(long mentorId) {
         // After a store this coin may be given in: its account lock is let go first.
         session.AfterStore(() => {
             try {
@@ -486,7 +483,7 @@ public class MentoringManager : IDisposable {
         });
     }
 
-    // The mentor coins the mentor's mentees earned for it (EarnMentorCoins), at each field entry and when a mentee
+    // The mentor coins the mentor's mentees earned for it (WriteMenteeCoin), at each field entry and when a mentee
     // earns some: given as MentorToken up to the mentor's daily cap (maxMentorDailyRewardCoin, counted per day as the
     // mentee's coins are, MentoringAttend) and up to MentorTokenMax, the coins over either are dropped. The pairs'
     // coins, the count today and the token are stored together (a purchase store): a take that is not stored gives
@@ -665,18 +662,46 @@ public class MentoringManager : IDisposable {
 
     // The mentee accepts a mentor's request (uiinvitementoringdialog.cpp:453): only a waiting request to this player.
     // The mentee gets Mentor 6 (the client moves the request to its pair and drops the others, which are removed
-    // here too); the mentor, when online, its pair list again.
+    // here too); the mentor, when online, its pair list again. The pair, the removed requests and the new mentor's
+    // reward mail (MentorRewardMail) are written in one transaction: the mail was written after the pair, so a
+    // failed write kept the pair without the mentor's reward. Not stored: an error and nothing kept.
     public void Accept(long id) {
         if (Season is not { } season) {
             session.Send(MentorPacket.Error(MentorError.TargetNotExists));
             return;
         }
 
+        Item? points = MentorRewardPoints();
         MentorError? error;
         MentoringEntry? pair;
+        Mail? mail = null;
         lock (StoreLock) {
             using GameStorage.Request db = session.GameStorage.Context();
+            db.BeginTransaction();
+            int failed = db.FailedSaves;
             error = db.AcceptMentoring(id, session.CharacterId, season.SeasonId, Constant.MaxMentees, out pair);
+            if (error == null && pair != null && points != null) {
+                mail = MentorRewardMail(db, pair.MentorId, points);
+                if (mail == null) {
+                    (error, pair) = (MentorError.TargetNotExists, null);
+                }
+            }
+            // A refusal that removed the request (3, 7) keeps the removal; any write that failed keeps nothing (the
+            // request dropped here rolls back).
+            bool keep = db.FailedSaves == failed
+                        && (error == null && pair != null || error is MentorError.InvalidTarget or MentorError.MenteeHasAlreadyMentor);
+            if (keep) {
+                try {
+                    keep = db.Commit();
+                } catch (Exception ex) {
+                    logger.Error(ex, "Mentoring accept of request {Id} by {CharacterId}: the commit threw", id, session.CharacterId);
+                    keep = false;
+                }
+            }
+            if (!keep && error == null) {
+                logger.Error("Mentoring accept of request {Id} by {CharacterId} not stored", id, session.CharacterId);
+                (error, pair, mail) = (MentorError.TargetNotExists, null, null);
+            }
         }
         if (error != null || pair == null) {
             session.Send(MentorPacket.Error(error ?? MentorError.TargetNotExists));
@@ -689,7 +714,13 @@ public class MentoringManager : IDisposable {
         }
 
         session.Send(MentorPacket.AcceptMentorInvite(id));
-        MailMentorReward(pair.MentorId);
+        if (mail != null) {
+            try {
+                session.World.NotifyMail(pair.MentorId, mail.Id);
+            } catch (Exception ex) {
+                logger.Warning(ex, "Mentor reward mail {MailId} not announced", mail.Id);
+            }
+        }
         try {
             session.World.Mentoring(new MentoringRequest {
                 ReceiverId = pair.MentorId,
@@ -705,49 +736,38 @@ public class MentoringManager : IDisposable {
     // (item 90000023, MentorToken when collected). The client parses the coin (mentoringdatatable.cpp:80) and reads it
     // nowhere, and no client code sends the mail, so the server sends it when a mentee accepts. Chosen here: the coin
     // is not counted against the mentor's daily cap (maxMentorDailyRewardCoin 400 is below the 1000 the mail names);
-    // a table coin of 0 sends no mail; a mail or item the database refuses is logged and the pair stays.
-    private void MailMentorReward(long mentorId) {
+    // a table coin of 0 sends no mail, and an item the data cannot make is logged and the pair is made without it.
+    private Item? MentorRewardPoints() {
         int rewardCoin = Config.MentorRewardCoin;
         if (rewardCoin <= 0) {
-            return;
+            return null;
         }
         Item? points = session.Field?.ItemDrop.CreateItem(MentoringAttend.MentorPointItemId, amount: rewardCoin);
         if (points == null) {
-            logger.Error("Mentor reward item {ItemId} not created for {CharacterId}", MentoringAttend.MentorPointItemId, mentorId);
-            return;
+            logger.Error("Mentor reward item {ItemId} not created for the mentor of {CharacterId}", MentoringAttend.MentorPointItemId, session.CharacterId);
         }
+        return points;
+    }
 
+    // The reward mail and its points written in the accept's transaction; null when a write failed.
+    private Mail? MentorRewardMail(GameStorage.Request db, long mentorId, Item points) {
         var mail = new Mail {
             ReceiverId = mentorId,
             SenderId = mentorId,
             Type = MailType.System,
             TitleArgs = [("str", session.PlayerName)],
-            ContentArgs = [("str", session.PlayerName), ("str", rewardCoin.ToString())],
+            ContentArgs = [("str", session.PlayerName), ("str", points.Amount.ToString())],
         };
         mail.SetSenderName(StringCode.s_mentoring_new_mentor_mail_sender);
         mail.SetTitle(StringCode.s_mentoring_new_mentor_mail_title);
         mail.SetContent(StringCode.s_mentoring_new_mentor_mail_content);
 
-        using (GameStorage.Request db = session.GameStorage.Context()) {
-            Mail? stored = db.CreateMail(mail);
-            if (stored == null) {
-                logger.Error("Mentor reward mail not created for {CharacterId}", mentorId);
-                return;
-            }
-            points.Slot = -1;
-            if (db.CreateItem(stored.Id, points) == null) {
-                logger.Error("Mentor reward item not stored on mail {MailId}", stored.Id);
-                db.DeleteMail(stored.Id, mentorId);
-                return;
-            }
-            mail = stored;
+        Mail? stored = db.CreateMail(mail);
+        if (stored == null) {
+            return null;
         }
-
-        try {
-            session.World.NotifyMail(mentorId, mail.Id);
-        } catch (Exception ex) {
-            logger.Warning(ex, "Mentor reward mail {MailId} not announced", mail.Id);
-        }
+        points.Slot = -1;
+        return db.CreateItem(stored.Id, points) == null ? null : stored;
     }
 
     // The mentee declines a mentor's request (uiinvitementoringdialog.cpp:266): only a waiting request to this player.

@@ -1010,11 +1010,12 @@ public sealed class QuestManager {
         long ownerId = quest.Metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
         (long Meso, long Meret, long GameMeret) addedMeso = default;
         CurrencyManager.Added addedTreva = default, addedRue = default, addedMentee = default;
+        long menteeMentorId = 0;
         if (!session.TrySavePurchase(db => {
                 addedMeso = session.Currency.AddUnsent(meso + extraMeso, 0, 0);
                 addedTreva = session.Currency.AddUnsent(CurrencyType.Treva, treva);
                 addedRue = session.Currency.AddUnsent(CurrencyType.Rue, rue + extraRue);
-                return session.Mentoring.WriteMenteeCoin(db, menteeGrant, out addedMentee)
+                return session.Mentoring.WriteMenteeCoin(db, menteeGrant, true, out addedMentee, out menteeMentorId)
                        && db.SaveQuests(ownerId, [quest]) && db.SaveCurrency(session.Player);
             }, undo: () => {
                 session.Currency.TakeBackAdded(addedMeso);
@@ -1038,7 +1039,7 @@ public sealed class QuestManager {
         session.Currency.NotifyAdded(addedTreva);
         session.Currency.NotifyAdded(addedRue);
 
-        session.Mentoring.MenteeCoinGiven(menteeGrant, addedMentee);
+        session.Mentoring.MenteeCoinGiven(menteeGrant, addedMentee, menteeMentorId);
 
         // weddingExp: the wedding mission's intimacy, once for each partner who completes it.
         session.Marriage.AddWeddingMissionExp(reward.WeddingExp);
