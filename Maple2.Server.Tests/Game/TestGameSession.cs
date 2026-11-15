@@ -467,6 +467,7 @@ public sealed class TestGameSession {
         // What an item box roll reads from the field: its map, the tables and the item data.
         var map = Uninitialized<MapMetadata>();
         typeof(MapMetadata).GetField("<Id>k__BackingField", Any)!.SetValue(map, player.Character.MapId);
+        typeof(MapMetadata).GetField("<Property>k__BackingField", Any)!.SetValue(map, Map(player.Character.MapId).Property);
         session.Field = NewField<FieldManager>(map);
 
         session.Currency = new CurrencyManager(session);

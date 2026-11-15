@@ -19,6 +19,8 @@ public class JobHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.Job;
 
     public const string RankResetFeature = "JobChange_01";
+    // CFieldData::HasLimitContent(0x10): the skill tree is not applied on the map (s_msg_skillbook_set_disable_field).
+    public const int SkillTreeLimitContent = 0x10;
 
     private enum Command : byte {
         Advance = 2,
@@ -108,8 +110,20 @@ public class JobHandler : FieldPacketHandler {
         session.Send(JobPacket.Load(session.Player, session.Config.Skill.SkillInfo));
     }
 
+    // Modes 9 and 11 come only from UISkillBookTreeDialog::RequestJob, which runs CanApply right before the send
+    // (uiskillbookautodistributedialog.cpp:612): no battle stance, no map with limit content 0x10. One the client
+    // could not send stores nothing; the reply still carries the stored tree, so the dialog re-reads it and does not
+    // wait. Reset (10) is sent from its confirm box with no second check, so a stance that came after the box is
+    // the client's own and is served.
+    private static bool ApplyRefused(GameSession session) {
+        return session.Field != null && (session.Player.ShowsBattleStance(Environment.TickCount64)
+                                         || (session.Field.Metadata.Property.LimitContent & SkillTreeLimitContent) != 0);
+    }
+
     private void HandleUpdate(GameSession session, IByteReader packet) {
-        UpdateTree(session, packet);
+        if (!ApplyRefused(session)) {
+            UpdateTree(session, packet);
+        }
 
         session.Send(JobPacket.Update(session.Player, session.Config.Skill.SkillInfo));
         session.Config.UpdateHotbarSkills();
@@ -135,7 +149,9 @@ public class JobHandler : FieldPacketHandler {
     }
 
     private void AutoDistribute(GameSession session, IByteReader packet) {
-        UpdateTree(session, packet);
+        if (!ApplyRefused(session)) {
+            UpdateTree(session, packet);
+        }
 
         session.Send(JobPacket.AutoDistribute(session.Player, session.Config.Skill.SkillInfo));
         session.Config.UpdateHotbarSkills();

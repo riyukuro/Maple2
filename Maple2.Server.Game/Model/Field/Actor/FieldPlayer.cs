@@ -84,6 +84,8 @@ public class FieldPlayer : Actor<Player> {
     private long healthSyncTick; // the tick of the last Update
 
     private long battleTick;
+    private long battleStartTick; // when InBattle last turned on
+    private bool battleStanceDropped; // the client dropped its stance on its own (an instrument play) since the last battle action
     // The party buffs follow the party members in the field; checked once a second.
     private const int PartyBuffIntervalMs = 1000;
     private long partyBuffTick;
@@ -192,14 +194,27 @@ public class FieldPlayer : Actor<Player> {
         set {
             if (value != inBattle) {
                 inBattle = value;
+                if (value) {
+                    battleStartTick = Environment.TickCount64;
+                }
                 Session.Field?.Broadcast(SkillPacket.InBattle(this));
             }
 
             if (inBattle) {
                 battleTick = Environment.TickCount64;
+                battleStanceDropped = false;
             }
         }
     }
+
+    /// <summary>An instrument play starts: the client drops its battle stance there (stateplayinstrumentdata.cpp:244).</summary>
+    public void DropBattleStance() => battleStanceDropped = true;
+
+    // Tests: as if the stance had turned on ms earlier.
+    internal void BackdateBattleStart(long ms) => battleStartTick -= ms;
+
+    /// <summary>The client shows the battle stance at <paramref name="tickCount"/> for sure (BattleStanceRules).</summary>
+    public bool ShowsBattleStance(long tickCount) => BattleStanceRules.Refuses(inBattle, battleStanceDropped, tickCount - battleStartTick);
 
     public bool DebugAi {
         get => debugAi;

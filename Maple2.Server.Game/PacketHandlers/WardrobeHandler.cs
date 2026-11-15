@@ -115,6 +115,11 @@ public class WardrobeHandler : FieldPacketHandler {
         if (!session.Config.TryGetWardrobe(index, out Wardrobe? wardrobe)) {
             return;
         }
+        // The client sends the apply only out of its battle stance (UIClosetDialog::SendApply, uiclosetdialog.cpp:1497;
+        // s_closet_msg_cant_use_when_battle_state is its own notice): an apply in a stance it must show is dropped.
+        if (session.Player.ShowsBattleStance(Environment.TickCount64)) {
+            return;
+        }
 
         // KMS2 ends every closet equip with a chat-and-alert notice, also when every item is already worn.
         // An item already worn is not equipped again (it is not in the bag, which would bring a "do not have"

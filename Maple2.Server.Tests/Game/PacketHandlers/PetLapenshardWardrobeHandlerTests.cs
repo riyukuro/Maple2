@@ -319,7 +319,7 @@ public class PetLapenshardWardrobeHandlerTests {
         Assert.That(session.Item.Inventory.Get(crystals.Uid)?.Amount, Is.EqualTo(50));
     }
 
-    private static Wardrobe Closet(GameSession session, int type, params (Item Item, EquipSlot Slot)[] items) {
+    internal static Wardrobe Closet(GameSession session, int type, params (Item Item, EquipSlot Slot)[] items) {
         var wardrobe = new Wardrobe(type, "tab");
         foreach ((Item item, EquipSlot slot) in items) {
             wardrobe.Equips[slot] = new Wardrobe.Equip(item.Uid, item.Id, slot, item.Rarity);
@@ -329,7 +329,7 @@ public class PetLapenshardWardrobeHandlerTests {
         return wardrobe;
     }
 
-    private static void ClosetRequest(GameSession session, byte command, bool layer) {
+    internal static void ClosetRequest(GameSession session, byte command, bool layer) {
         new WardrobeHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
             writer.WriteByte(command);
             writer.WriteInt(0);

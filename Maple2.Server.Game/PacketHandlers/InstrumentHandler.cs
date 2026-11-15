@@ -411,6 +411,7 @@ public class InstrumentHandler : FieldPacketHandler {
         }
 
         fieldInstrument = session.Field.SpawnInstrument(session.Player, metadata);
+        session.Player.DropBattleStance();
         fieldInstrument.StartTick = startTick;
         fieldInstrument.Ensemble = ensemble;
         return true;
