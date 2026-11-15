@@ -837,13 +837,16 @@ public sealed class GameEventManager {
     }
 
     public void Load() {
-        // One packet: the client clears its list on every Load (GameEventUserValue::Read,
-        // commonfiles/gameeventuservalue.cpp:139), so batches would leave only the last one.
+        // One packet per client store: the client clears a store on every Load of it (GameEventUserValue::Read,
+        // commonfiles/gameeventuservalue.cpp:139), so batches would leave only the last one. The second store is sent
+        // even when empty, so a character entered after another does not keep the other's values.
         List<GameEventUserValue> values;
         lock (valuesLock) {
             values = eventValues.Values.SelectMany(dict => dict.Values).ToList();
         }
-        session.Send(GameEventUserValuePacket.Load(values));
+        session.Send(GameEventUserValuePacket.Load(values.Where(value => GameEventUserValuePacket.Store(value.Type) == GameEventUserValuePacket.FirstStore).ToList()));
+        session.Send(GameEventUserValuePacket.Load(values.Where(value => GameEventUserValuePacket.Store(value.Type) == GameEventUserValuePacket.SecondStore).ToList(),
+            GameEventUserValuePacket.SecondStore));
     }
 
     // The value held for the event and type, expired or not; null when there is none. Unlike Get it adds no value.

@@ -10,6 +10,7 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
@@ -100,6 +101,82 @@ public class EpicRestartTests {
         Assert.That(Quests(session), Does.Contain(Dropped));
         Assert.That(session.Config.ExtraSkillPoints()[0], Is.EqualTo(2));
         Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // The game menu refuses a second restart itself (s_quest_epic_restart_restarted) when the event's value 1100 is
+    // set in the client's second value store (uigamemenudialog.cpp:1955); the byte after the mode picks the store
+    // (accountsessionstate FUN_140930fe0). Sent in the first store, the menu offered the restart again and the server's
+    // refusal had no answer.
+    [Test]
+    public void Restart_SetsTheDoneValueInTheMenusStore() {
+        GameSession session = Login();
+        Request(session);
+
+        List<byte[]> updates = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.GameEventUserValue).ToList();
+        Assert.That(updates, Has.Count.EqualTo(1));
+        var reader = new ByteReader(updates[0]);
+        reader.Read<SendOp>();
+        Assert.Multiple(() => {
+            Assert.That(reader.ReadByte(), Is.EqualTo(1)); // Update
+            Assert.That(reader.ReadByte(), Is.EqualTo(GameEventUserValuePacket.SecondStore));
+            Assert.That(reader.ReadInt(), Is.EqualTo((int) GameEventUserValueType.EpicRestartDone));
+            Assert.That(reader.ReadInt(), Is.EqualTo(EventId));
+            Assert.That(reader.ReadUnicodeString(), Is.EqualTo("1"));
+        });
+    }
+
+    // At login each store gets its own Load (a Load clears only its store): the done value in the second, the rest
+    // in the first, and the second is sent even when empty.
+    [Test]
+    public void Login_LoadsTheDoneValueIntoTheMenusStore() {
+        GameSession session = Login();
+        session.GameEvent.Get(GameEventUserValueType.AttendanceActive, EventId, long.MaxValue);
+        session.GameEvent.Load();
+        List<(byte Store, GameEventUserValueType[] Types)> loads = Loads(test.TakeSent());
+        Assert.That(loads.Select(load => load.Store), Is.EqualTo(new[] { GameEventUserValuePacket.FirstStore, GameEventUserValuePacket.SecondStore }));
+        Assert.That(loads[1].Types, Is.Empty);
+
+        Request(session);
+        test.TakeSent();
+        session.GameEvent.Load();
+        loads = Loads(test.TakeSent());
+        Assert.Multiple(() => {
+            Assert.That(loads[0].Types, Does.Contain(GameEventUserValueType.AttendanceActive));
+            Assert.That(loads[0].Types, Does.Not.Contain(GameEventUserValueType.EpicRestartDone));
+            Assert.That(loads[1].Types, Is.EqualTo(new[] { GameEventUserValueType.EpicRestartDone }));
+        });
+    }
+
+    private static List<(byte Store, GameEventUserValueType[] Types)> Loads(List<byte[]> sent) {
+        var loads = new List<(byte, GameEventUserValueType[])>();
+        foreach (byte[] packet in sent.Where(packet => TestGameSession.Op(packet) == SendOp.GameEventUserValue)) {
+            var reader = new ByteReader(packet);
+            reader.Read<SendOp>();
+            Assert.That(reader.ReadByte(), Is.EqualTo(0)); // Load
+            byte store = reader.ReadByte();
+            int count = reader.ReadInt();
+            var types = new GameEventUserValueType[count];
+            for (int i = 0; i < count; i++) {
+                types[i] = (GameEventUserValueType) reader.ReadInt();
+                reader.ReadInt();
+                reader.ReadUnicodeString();
+                reader.ReadLong();
+            }
+            Assert.That(reader.Available, Is.EqualTo(0));
+            loads.Add((store, types));
+        }
+        return loads;
+    }
+
+    [Test]
+    public void Store_IsTheSecondOnlyForTheValuesItsReadersTake() {
+        Assert.Multiple(() => {
+            Assert.That(GameEventUserValuePacket.Store(GameEventUserValueType.EpicRestartDone), Is.EqualTo(GameEventUserValuePacket.SecondStore));
+            Assert.That(GameEventUserValuePacket.Store(GameEventUserValueType.TimeRunFinalRewardReceived), Is.EqualTo(GameEventUserValuePacket.SecondStore));
+            Assert.That(GameEventUserValuePacket.Store(GameEventUserValueType.TimeRunStepRewardKey), Is.EqualTo(GameEventUserValuePacket.SecondStore));
+            Assert.That(GameEventUserValuePacket.Store(GameEventUserValueType.AttendanceActive), Is.EqualTo(GameEventUserValuePacket.FirstStore));
+            Assert.That(GameEventUserValuePacket.Store(GameEventUserValueType.DTRewardTotalTime), Is.EqualTo(GameEventUserValuePacket.FirstStore));
+        });
     }
 
     [Test]
