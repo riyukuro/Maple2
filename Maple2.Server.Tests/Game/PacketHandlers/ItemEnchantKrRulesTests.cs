@@ -292,4 +292,49 @@ public class ItemEnchantKrRulesTests {
             Assert.That(test.TakeSent().Select(System.Convert.ToHexString), Is.EqualTo(new[] { lack }));
         });
     }
+
+    // An expired copy is not one the client lists (PC::CanUseItem refuses an expired item, CItem::FUN_140528980):
+    // adding it is refused.
+    [TestCase(EnchantType.Ophelia)]
+    [TestCase(EnchantType.Peachy)]
+    public void FromEleven_AnExpiredCopyIsRefused(EnchantType type) {
+        GameSession session = Login(4, new ItemEnchant(enchants: 11), copies: 3);
+        session.Item.Inventory.Get(copyUids[2])!.ExpiryTime = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds();
+        Assert.That(session.ItemEnchant.StageItem(type, gear.Uid), Is.True);
+        test.TakeSent();
+
+        Assert.Multiple(() => {
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[2], true), Is.False);
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[0], true), Is.True);
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[1], true), Is.True);
+        });
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
+        Assert.That(session.Item.Inventory.Get(copyUids[2]), Is.Not.Null);
+    }
+
+    // A copy that expires after it was added fails the check before the try: the onyx, chaos onyx and fragments
+    // stay, the copies stay, and the try answers lack_ingredient (the inventory will not consume an expired item, so
+    // nothing may be taken before it).
+    [TestCase(EnchantType.Ophelia)]
+    [TestCase(EnchantType.Peachy)]
+    public void FromEleven_ACopyThatExpiredSinceItWasAddedTakesNothing(EnchantType type) {
+        GameSession session = Login(4, new ItemEnchant(enchants: 11), copies: 2);
+        Assert.That(session.ItemEnchant.StageItem(type, gear.Uid), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[0], true), Is.True);
+            Assert.That(session.ItemEnchant.UpdateFodder(copyUids[1], true), Is.True);
+        });
+        session.Item.Inventory.Get(copyUids[1])!.ExpiryTime = DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeSeconds();
+        test.TakeSent();
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.False);
+        Assert.Multiple(() => {
+            Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(30000));
+            Assert.That(Held(session, ItemTag.ChaosOnix), Is.EqualTo(30000));
+            Assert.That(Held(session, ItemTag.CrystalPiece), Is.EqualTo(30000));
+            Assert.That(session.Item.Inventory.Get(copyUids[0]), Is.Not.Null);
+            Assert.That(session.Item.Inventory.Get(copyUids[1]), Is.Not.Null);
+            Assert.That(session.Item.Inventory.Get(gear.Uid)!.Enchant!.Enchants, Is.EqualTo(11));
+        });
+    }
 }

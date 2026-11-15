@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Model;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -616,11 +617,13 @@ public class ItemEnchantManager {
         return IsValidToolkit(item, fodder) ? 2 : 1;
     }
 
-    // A copy the client lists (UIItemEnchantDialog::FUN_1419c9260): not the staged item itself, not locked or
-    // unlocking (CItem::FUN_140528e20: lock state 1, or state 0 with the unlock time ahead), and of the item's id and
-    // rarity or a toolkit of its rarity.
+    // A copy the client lists (UIItemEnchantDialog::FUN_1419c9260): not the staged item itself, usable (PC::CanUseItem,
+    // whose first test CItem::FUN_140528980 refuses an expired item), not locked or unlocking (CItem::FUN_140528e20:
+    // lock state 1, or state 0 with the unlock time ahead), and of the item's id and rarity or a toolkit of its rarity.
+    // An expired copy is also one the inventory will not consume, so letting it through would take the catalysts and
+    // the fee before the copy fails.
     private static bool IsUsableFodder(Item item, Item fodder) {
-        if (fodder.Uid == item.Uid || fodder.IsLocked || fodder.UnlockTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+        if (fodder.Uid == item.Uid || fodder.IsExpired() || fodder.IsLocked || fodder.UnlockTime > DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
             return false;
         }
         return IsValidFodder(item, fodder);
