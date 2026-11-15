@@ -146,6 +146,31 @@ public class ItemBoxHandlerTests {
         Assert.That(test.Row(box.Uid)?.Amount, Is.EqualTo(1), "the box row is stored lowered at the open");
     }
 
+    // The fixed-item shape of OpenItemBox, "global,1,item,0" (30000933 "0,1,30000303,0"; 11 boxes in the server
+    // data): no individual box, so no individual table row. It was refused before its item was given (no answer, the
+    // box kept); now the box is taken and gives its item.
+    [Test]
+    public void OpenItemBox_Use_FixedItemWithNoDropBox_GivesTheItem() {
+        GameSession session = Login(ItemFunction.OpenItemBox, $"0,1,{RewardB},0", amount: 1);
+
+        Use(session);
+
+        Assert.That(Held(session, BoxId), Is.EqualTo(0));
+        Assert.That(Held(session, RewardB), Is.EqualTo(1));
+        Assert.That(Held(session, RewardA), Is.EqualTo(0));
+    }
+
+    // A fixed item the data has no row for, with no drop box: the box gives nothing, so it is kept.
+    [Test]
+    public void OpenItemBox_Use_UnknownFixedItemWithNoDropBox_KeepsTheBox() {
+        GameSession session = Login(ItemFunction.OpenItemBox, "0,1,29999999,0", amount: 1);
+
+        Use(session);
+
+        Assert.That(Held(session, BoxId), Is.EqualTo(1));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
     // The item box meso rate (SpecialAttribute.ItemBoxRewardMeso, +100% here) raises the mesos a box gives; its
     // items are unchanged.
     [Test]

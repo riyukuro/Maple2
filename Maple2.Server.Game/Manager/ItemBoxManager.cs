@@ -89,6 +89,14 @@ public class ItemBoxManager {
             }
             return OpenItemBox(item, globalDropBoxId, 0, 0, individualDropBoxId, 1, count);
         }
+        // The other OpenItemBox parameter shape, an xml list (20301055, 20301056, 20301303, 20301304): its drop boxes
+        // and an additional effect the opening adds. The comma parse reads it as all zero, which refused the box.
+        if (item.Metadata.Function.Type == ItemFunction.OpenItemBox && item.Metadata.Function.Parameters.TrimStart().StartsWith('<')) {
+            Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function.Parameters);
+            int Value(string key) => parameters.TryGetValue(key, out string? text) && int.TryParse(text, out int value) ? value : 0;
+            return OpenItemBox(item, Value("globalDropBoxId"), 0, 0, Value("individualDropBoxId"), 1, count,
+                Value("additionalEffectId"), (short) Math.Max(1, Value("additionalEffectLevel")));
+        }
         if (item.Metadata.Function.Type == ItemFunction.OpenItemBoxLimitedQuantity) {
             Dictionary<string, string> parameters = XmlParseUtil.GetParameters(item.Metadata.Function.Parameters);
             if (!parameters.TryGetValue("individualDropBoxId", out string? boxIdStr) || !int.TryParse(boxIdStr, out int boxId)) {
@@ -382,7 +390,15 @@ public class ItemBoxManager {
         return error;
     }
 
-    private ItemBoxError OpenItemBox(Item item, int globalDropBoxId, int unknownId, int itemId, int individualDropBoxId, int itemRequiredAmount, int count = 1) {
+    // The box item ids whose missing individual drop box was logged.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> MissingBoxLogged = new();
+
+    // An OpenItemBox gives something: its individual box's rows, its global box's groups or its fixed item.
+    public static bool OpenItemBoxGives(int individualRows, int globalGroups, bool fixedItem) =>
+        individualRows > 0 || globalGroups > 0 || fixedItem;
+
+    private ItemBoxError OpenItemBox(Item item, int globalDropBoxId, int unknownId, int itemId, int individualDropBoxId, int itemRequiredAmount, int count = 1,
+            int effectId = 0, short effectLevel = 1) {
         if (session.Field is null) return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         // unknownId is treated as a bool. if 1 = receive one item from each drop group, if 0 = receive all items from one drop group.
         // There are occasions where this number is higher than 1. No idea what it is as it's not a globaldropBoxId
@@ -391,9 +407,16 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
-        // Verify table exists before consuming items
-        if (!session.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId, out IDictionary<int, IndividualDropItemTable.Entry>? entryDic)) {
-            return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+        // Verify the box gives something before consuming items. A box of a fixed item alone ("0,1,30000303,0", the
+        // individual box 0) has no individual table row; it was refused before its item was given.
+        // A nonzero individual box the data lacks also counts as empty (the client never reads the parameters), logged
+        // once per box item.
+        int individualCount = 0;
+        if (session.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId,
+                out IDictionary<int, IndividualDropItemTable.Entry>? entryDic)) {
+            individualCount = entryDic.Count;
+        } else if (individualDropBoxId != 0 && MissingBoxLogged.TryAdd(item.Id, 0)) {
+            logger.Warning("Item box {ItemId} names individual drop box {BoxId}, which the data does not have", item.Id, individualDropBoxId);
         }
 
         Dictionary<int, IList<GlobalDropItemBoxTable.Group>>? globalDropEntries = [];
@@ -401,7 +424,8 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
-        if (entryDic.Count == 0 && globalDropEntries.Count == 0) {
+        bool fixedItem = itemId > 0 && session.ItemMetadata.TryGet(itemId, out ItemMetadata? fixedMetadata) && PlayedClientItems.CanCreate(fixedMetadata);
+        if (!OpenItemBoxGives(individualCount, globalDropEntries.Count, fixedItem)) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
@@ -412,6 +436,9 @@ public class ItemBoxManager {
                 return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
             }
 
+            if (effectId > 0) {
+                session.Player.Buffs.AddBuff(session.Player, session.Player, effectId, effectLevel, session.Field.FieldTick, notifyField: true);
+            }
             // The item box special effects held (type 8) open a box of their item ids a second time, the box not
             // taken again.
             int opens = 1 + session.Buffs.TakeSpecialEffects(SpecialEffectRules.ItemBoxAgain,

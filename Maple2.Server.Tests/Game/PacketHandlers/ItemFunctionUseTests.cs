@@ -891,6 +891,29 @@ public class ItemFunctionUseTests {
         Assert.That(Sent(), Is.Empty);
     }
 
+    // 20301055 (OpenItemBox with an xml parameter list: individual box 330001542 and additional effect 90000654
+    // level 1). The comma parse read it as all zero, so the box was refused with no answer; now it opens, gives its
+    // box and starts the effect.
+    [Test]
+    public void OpenItemBox_XmlParameters_GivesTheBoxAndStartsTheEffect() {
+        Item box = Login(20301055, ItemFunction.OpenItemBox,
+            "<v individualDropBoxId=\"330001542\" additionalEffectId=\"90000654\" additionalEffectLevel=\"1\" />", amount: 2, setup: () => {
+                test.Register(TestGameSession.Metadata(30001369));
+                test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
+                    new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
+                test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+                    [330001542] = TestGameSession.DropBox([(30001369, 2)]),
+                }));
+            });
+        EffectField(BuffAttributeTests.Effect(90000654, DisabledBuffTests.Property with { DurationTick = 600000 }));
+
+        Use(box);
+
+        Assert.That(session.Item.Inventory.Get(box.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == 30001369).Sum(item => item.Amount), Is.EqualTo(2));
+        Assert.That(session.Player.Buffs.EnumerateBuffs(90000654), Has.Count.EqualTo(1));
+    }
+
     private static MapMetadata RecallField(bool recall) => TestGameSession.Map(2000062) with {
         CashCall = new MapMetadataCashCall(false, false, false, false, recall),
         Limit = new MapMetadataLimit(0, 0, 0, 0, [], false, false, false, false, false, false, false),

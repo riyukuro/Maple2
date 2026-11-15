@@ -718,8 +718,13 @@ public class ItemUseHandler : FieldPacketHandler {
         session.ItemBox.Reset();
     }
 
-    private static void HandleOpenItemBox(GameSession session, Item item) {
-        session.ItemBox.Open(item);
+    // A box used from the bag is answered by the inventory packets alone; the client reads ItemBox only for its
+    // multi-open dialog (CSceneStateGame::OnItemBox), so a refused box is logged here.
+    private void HandleOpenItemBox(GameSession session, Item item) {
+        ItemBoxError error = session.ItemBox.Open(item);
+        if (error is not ItemBoxError.ok) {
+            Logger.Debug("Item box {ItemId} not opened: {Error} (parameters {Parameters})", item.Id, error, item.Metadata.Function?.Parameters);
+        }
         session.ItemBox.Reset();
     }
 
