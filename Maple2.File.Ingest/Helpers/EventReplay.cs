@@ -28,23 +28,71 @@ public static class EventReplay {
         return ids.ToArray();
     }
 
-    // The ended events of the ids, moved to the ingest day; ids already in the table (running, or replayed by
-    // MS2_REPLAY_ATTEND_GIFT) are left out. The second list names the ids that are neither ended nor kept.
-    public static (List<GameEventMetadata> Replayed, List<int> Missing) Pick(IReadOnlyCollection<int> ids, IEnumerable<GameEventMetadata> ended,
-                                                                           Func<int, bool> kept, DateTime now) {
+    // What happened to each listed id.
+    public enum Outcome { Replayed, Companion, Kept, Missing, NoData, NoRewards, NoQuests, NoPlayItem }
+
+    public readonly record struct Result(int Id, Outcome Outcome, GameEventMetadata? Original = null, GameEventMetadata? Moved = null, int With = 0);
+
+    // The ended events of the ids, moved to the ingest day, with the tests MS2_REPLAY_ATTEND_GIFT makes before it
+    // replays an event (AttendGiftReplay): an event whose type needs its data and has none, whose reward items the
+    // client's item data lacks (clientRank 0: the client asserts on such an item at login), whose quests the
+    // client's quest table lacks, or whose play item no ended row gives (with items the client has) is not
+    // replayed. The play item's rows (AttendGiftReplay.Companions) whose items the client has move with the event.
+    // An id already in the table (running, or replayed by MS2_REPLAY_ATTEND_GIFT) is left as it is.
+    public static List<Result> Pick(IReadOnlyCollection<int> ids, IReadOnlyCollection<GameEventMetadata> ended, Func<int, bool> kept, DateTime now,
+                                    Func<int, int> clientRank, Func<int, bool> clientQuest) {
         Dictionary<int, GameEventMetadata> byId = ended.GroupBy(e => e.Id).ToDictionary(group => group.Key, group => group.Last());
-        var replayed = new List<GameEventMetadata>();
-        var missing = new List<int>();
+        var results = new List<Result>();
+        var added = new HashSet<int>();
+        bool Kept(int id) => kept(id) || added.Contains(id);
         foreach (int id in ids) {
-            if (kept(id)) {
+            if (Kept(id)) {
+                results.Add(new Result(id, Outcome.Kept));
                 continue;
             }
-            if (byId.TryGetValue(id, out GameEventMetadata? gameEvent)) {
-                replayed.Add(AttendGiftReplay.Redate(gameEvent, now));
-            } else {
-                missing.Add(id);
+            if (!byId.TryGetValue(id, out GameEventMetadata? gameEvent)) {
+                results.Add(new Result(id, Outcome.Missing));
+                continue;
+            }
+            GameEventMetadata[] companions = AttendGiftReplay.Companions(gameEvent, ended)
+                .Where(companion => AttendGiftReplay.ClientHasRewards(companion, clientRank)).ToArray();
+            Outcome? refused = AttendGiftReplay.NeedData.Contains(gameEvent.Type) && gameEvent.Data == null ? Outcome.NoData
+                : !AttendGiftReplay.ClientHasRewards(gameEvent, clientRank) ? Outcome.NoRewards
+                : !AttendGiftReplay.ClientHasQuests(gameEvent, clientQuest) ? Outcome.NoQuests
+                : AttendGiftReplay.PlayItem(gameEvent.Data) != 0 && companions.Length == 0 ? Outcome.NoPlayItem
+                : null;
+            if (refused is Outcome outcome) {
+                results.Add(new Result(id, outcome, gameEvent));
+                continue;
+            }
+            GameEventMetadata moved = AttendGiftReplay.Redate(gameEvent, now);
+            results.Add(new Result(id, Outcome.Replayed, gameEvent, moved));
+            added.Add(id);
+            foreach (GameEventMetadata companion in companions) {
+                if (Kept(companion.Id)) {
+                    continue;
+                }
+                results.Add(new Result(companion.Id, Outcome.Companion, companion, AttendGiftReplay.Shift(companion, moved.StartTime - gameEvent.StartTime), id));
+                added.Add(companion.Id);
             }
         }
-        return (replayed, missing);
+        return results;
+    }
+
+    // The ingest's line for a result.
+    public static string Line(Result result) {
+        GameEventMetadata? o = result.Original;
+        GameEventMetadata? m = result.Moved;
+        return result.Outcome switch {
+            Outcome.Replayed => $"{Option}: {o!.Type} {result.Id} ({o.StartTime:yyyy-MM-dd HH:mm} to {o.EndTime:yyyy-MM-dd HH:mm}) replayed {m!.StartTime:yyyy-MM-dd HH:mm} to {m.EndTime:yyyy-MM-dd HH:mm}",
+            Outcome.Companion => $"{Option}: {o!.Type} {result.Id} replayed with {result.With}, {m!.StartTime:yyyy-MM-dd HH:mm} to {m.EndTime:yyyy-MM-dd HH:mm}",
+            Outcome.Kept => $"{Option}: {result.Id} is already in the table (running or replayed), left as it is",
+            Outcome.Missing => $"{Option}: {result.Id} is no ended event the ingest read, not replayed",
+            Outcome.NoData => $"{Option}: {o!.Type} {result.Id} not replayed, its data was not read",
+            Outcome.NoRewards => $"{Option}: {o!.Type} {result.Id} not replayed, a reward item has no rank in the client's item data",
+            Outcome.NoQuests => $"{Option}: {o!.Type} {result.Id} not replayed, a quest is not in the client's quest table",
+            Outcome.NoPlayItem => $"{Option}: {o!.Type} {result.Id} not replayed, no ended row gives its play item",
+            _ => $"{Option}: {result.Id}",
+        };
     }
 }

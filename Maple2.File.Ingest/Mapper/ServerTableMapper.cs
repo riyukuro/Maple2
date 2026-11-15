@@ -1471,24 +1471,24 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             results.Add(id, metadata);
         }
 
-        if (replayAttendGift) {
-            // The rank the client's item data gives an item id (0: not there, or no rank); the played client's
-            // item data when MS2_PLAYED_CLIENT_XML names it.
-            int ClientRank(int itemId) =>
-                ItemMapper.ItemMetadataById.TryGetValue(itemId, out ItemMetadata? item) && !item.Property.NotInPlayedClient
-                    ? item.Property.Rank ?? 0 : 0;
-            // The quests of the played client's quest table (PlayedClientQuests); without a played client every
-            // quest of the data counts as known.
-            HashSet<int>? playedQuests = null;
-            Maple2.File.IO.Crypto.Common.PackFileEntry? questTable = playedReader?.Files.FirstOrDefault(file =>
-                string.Equals(file.Name, PlayedClientQuests.QuestTable, StringComparison.OrdinalIgnoreCase));
-            if (playedReader != null && questTable != null) {
-                playedQuests = PlayedClientQuests.Ids(playedReader.GetXmlDocument(questTable), node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")));
-                if (playedQuests.Count == 0) {
-                    playedQuests = null;
-                }
+        // The rank the client's item data gives an item id (0: not there, or no rank); the played client's
+        // item data when MS2_PLAYED_CLIENT_XML names it.
+        int ClientRank(int itemId) =>
+            ItemMapper.ItemMetadataById.TryGetValue(itemId, out ItemMetadata? item) && !item.Property.NotInPlayedClient
+                ? item.Property.Rank ?? 0 : 0;
+        // The quests of the played client's quest table (PlayedClientQuests); without a played client every
+        // quest of the data counts as known. Read only for a replay.
+        HashSet<int>? playedQuests = null;
+        Maple2.File.IO.Crypto.Common.PackFileEntry? questTable = !replayAttendGift && replayEvents.Length == 0 ? null : playedReader?.Files.FirstOrDefault(file =>
+            string.Equals(file.Name, PlayedClientQuests.QuestTable, StringComparison.OrdinalIgnoreCase));
+        if (playedReader != null && questTable != null) {
+            playedQuests = PlayedClientQuests.Ids(playedReader.GetXmlDocument(questTable), node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")));
+            if (playedQuests.Count == 0) {
+                playedQuests = null;
             }
-            bool ClientQuest(int questId) => playedQuests == null || playedQuests.Contains(questId);
+        }
+        bool ClientQuest(int questId) => playedQuests == null || playedQuests.Contains(questId);
+        if (replayAttendGift) {
             // An event whose data was not read (null) is not a candidate.
             GameEventMetadata[] readableEvents = ended.Where(e => !AttendGiftReplay.NeedData.Contains(e.Type) || e.Data != null).ToArray();
             // An event with a play item is taken only with a row that gives it (AttendGiftReplay.Companions), whose
@@ -1523,14 +1523,11 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         }
 
         if (replayEvents.Length > 0) {
-            (List<GameEventMetadata> replayed, List<int> missing) = EventReplay.Pick(replayEvents, ended, results.ContainsKey, now);
-            foreach (GameEventMetadata moved in replayed) {
-                results.Add(moved.Id, moved);
-                GameEventMetadata original = ended.Last(e => e.Id == moved.Id);
-                Console.WriteLine($"{EventReplay.Option}: {moved.Type} {moved.Id} ({original.StartTime:yyyy-MM-dd HH:mm} to {original.EndTime:yyyy-MM-dd HH:mm}) replayed {moved.StartTime:yyyy-MM-dd HH:mm} to {moved.EndTime:yyyy-MM-dd HH:mm}");
-            }
-            foreach (int id in missing) {
-                Console.WriteLine($"{EventReplay.Option}: {id} is no ended event the ingest read, not replayed");
+            foreach (EventReplay.Result result in EventReplay.Pick(replayEvents, ended, results.ContainsKey, now, ClientRank, ClientQuest)) {
+                if (result.Moved != null) {
+                    results.Add(result.Id, result.Moved);
+                }
+                Console.WriteLine(EventReplay.Line(result));
             }
         }
 
