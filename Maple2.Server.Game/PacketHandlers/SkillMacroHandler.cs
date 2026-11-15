@@ -30,11 +30,12 @@ public class SkillMacroHandler : FieldPacketHandler {
 
     private void HandleLoad(GameSession session) {
         session.Config.LoadMacros();
+        session.SkillMacroLoadTick = Environment.TickCount64;
     }
 
     private void HandleUpdate(GameSession session, IByteReader packet) {
         int count = packet.ReadInt();
-        if (!SkillMacroRules.IsTabCount(count)) {
+        if (!SkillMacroRules.IsTabCount(count, session.SkillMacroLoadTick, Environment.TickCount64)) {
             return;
         }
 

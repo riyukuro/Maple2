@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Game;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
@@ -74,6 +75,27 @@ public class SkillMacroHandlerTests {
         }));
 
         Assert.That(Load(), Is.EqualTo(Expected(new SkillMacro("a", 5, new HashSet<int> { 11 }))));
+    }
+
+    // A close right after the load answer (the client's list may still be empty) keeps the stored tabs.
+    [Test]
+    public void Update_EmptyTabListRightAfterTheLoadStoresNothing() {
+        Update(("a", 5, [11]));
+        Load();
+        Update();
+
+        Assert.That(Load(), Is.EqualTo(Expected(new SkillMacro("a", 5, new HashSet<int> { 11 }))));
+    }
+
+    // The player removed the last tab some time after the tabs arrived: the empty list is stored.
+    [Test]
+    public void Update_EmptyTabListAfterTheGraceIsStored() {
+        Update(("a", 5, [11]));
+        Load();
+        test.Session.SkillMacroLoadTick -= SkillMacroRules.EmptySaveGraceMs;
+        Update();
+
+        Assert.That(Load(), Is.EqualTo(Expected()));
     }
 
     [Test]

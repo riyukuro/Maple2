@@ -10,9 +10,17 @@ public static class SkillMacroRules {
     // is s_skill_compact_control_default_tabname, which no box limits: 16 is the longest in the client's languages.
     public const int MaxDefaultNameLength = 16;
 
-    // The client removes a tab without asking how many are left and saves on every close, also before the load
-    // answer came. An empty list is refused so that such an early close does not wipe the stored tabs.
-    public static bool IsTabCount(int count) {
+    // The client removes a tab without asking how many are left (RemoveTab, uiskillcompactcontroldialog.cpp:910) and
+    // saves its list on every close (vfunc_67, :154), also before the load answer came, when the list is still empty.
+    // An empty list is taken only once EmptySaveGraceMs have passed since the server answered the load: a player who
+    // removed the last tab clicked after the tabs arrived, while an early close comes within a round trip. A list
+    // the server stored as empty gets the client's default tab on the next load (vfunc_79, :523).
+    public const long EmptySaveGraceMs = 2000;
+
+    public static bool IsTabCount(int count, long loadAnsweredTick, long nowTick) {
+        if (count == 0) {
+            return loadAnsweredTick != 0 && nowTick - loadAnsweredTick >= EmptySaveGraceMs;
+        }
         return count is >= 1 and <= MaxTabs;
     }
 

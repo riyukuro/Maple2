@@ -116,6 +116,8 @@ public sealed partial class GameSession : Core.Network.Session {
     public DateTime EventFieldsAskedAt;
     // Environment.TickCount64 of the last minimap ping passed on; 0 when there was none.
     public long MinimapPingTick;
+    // When SkillMacro 0 was last answered (0 before any): an empty macro save is taken only some time after it.
+    public long SkillMacroLoadTick;
     public required NpcMetadataStorage NpcMetadata { get; init; }
     public required AchievementMetadataStorage AchievementMetadata { get; init; }
     public required QuestMetadataStorage QuestMetadata { get; init; }

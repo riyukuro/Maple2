@@ -8,7 +8,6 @@ public class SkillMacroRulesTests {
     // SkillMacro 0x007B mode 1 starts with the i32 tab count.
     [TestCase(1, true)]
     [TestCase(3, true)]
-    [TestCase(0, false)] // an empty save is not stored (a close before the load answer sends one)
     [TestCase(4, false)]
     [TestCase(-1, false)]
     [TestCase(int.MaxValue, false)]
@@ -16,7 +15,18 @@ public class SkillMacroRulesTests {
         var writer = new ByteWriter();
         writer.WriteInt(count);
         var packet = new ByteReader(writer.ToArray(), 0);
-        Assert.That(SkillMacroRules.IsTabCount(packet.ReadInt()), Is.EqualTo(expected));
+        Assert.That(SkillMacroRules.IsTabCount(packet.ReadInt(), 1000, 1000 + SkillMacroRules.EmptySaveGraceMs), Is.EqualTo(expected));
+    }
+
+    // An empty save: a close before the load answer arrived sends one, so it is refused before any load answer and
+    // within the grace after it; later it is the player removing the last tab, and it is taken.
+    [TestCase(0, 50_000, false)]
+    [TestCase(10_000, 10_000, false)]
+    [TestCase(10_000, 10_000 + SkillMacroRules.EmptySaveGraceMs - 1, false)]
+    [TestCase(10_000, 10_000 + SkillMacroRules.EmptySaveGraceMs, true)]
+    public void EmptySave_TakenOnlyAfterTheGrace(long loadTick, long now, bool expected) {
+        Assert.That(SkillMacroRules.IsTabCount(0, loadTick, now), Is.EqualTo(expected));
+        Assert.That(SkillMacroRules.IsTabCount(1, loadTick, now), Is.True);
     }
 
     // One tab: name, i64 key, i32 skill count, the ids. The count must fit in what is left of the packet.
