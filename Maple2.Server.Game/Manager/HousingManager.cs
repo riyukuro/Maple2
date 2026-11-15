@@ -745,14 +745,15 @@ public class HousingManager {
 
     public bool TryPlaceCube(HeldCube cube, Plot plot, ItemMetadata itemMetadata, in Vector3B position, float rotation,
                              [NotNullWhen(true)] out PlotCube? result, bool isReplace = false, GameSession? helper = null, bool byPlayer = false) {
-        lock (plot.EditLock) {
-            try {
+        try {
+            lock (plot.EditLock) {
                 return PlaceCube(cube, plot, itemMetadata, position, rotation, out result, isReplace, helper, byPlayer);
-            } finally {
-                // A layout apply places many cubes and stores their prices once, after the last (StoreCubePrices).
-                if (byPlayer) {
-                    StoreCubePrices();
-                }
+            }
+        } finally {
+            // Stored after the plot's lock is let go, so the store's account lock and commit do not hold other edits
+            // of the plot. A layout apply places many cubes and stores their prices once, after the last.
+            if (byPlayer) {
+                StoreCubePrices();
             }
         }
     }
