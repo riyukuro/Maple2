@@ -517,9 +517,18 @@ public class WebController : ControllerBase {
         return result;
     }
 
+    // The Maple Survival open periods (the solo seasons the game keeps the records in), null without the table.
+    private MapleSurvivalTable? SurvivalPeriods() {
+        try {
+            return tableMetadata.MapleSurvivalTable;
+        } catch (InvalidOperationException) {
+            return null;
+        }
+    }
+
     private ByteWriter SurvivalBoard(GameRankingType type, int seasonId, string userName) {
         IReadOnlyDictionary<int, SeasonDataTable.Entry> seasons = SurvivalRanking.Seasons(type, tableMetadata.SeasonDataTable);
-        int season = SurvivalRanking.Season(type, seasonId, seasons, DateTime.Now);
+        int season = SurvivalRanking.Season(type, seasonId, seasons, SurvivalPeriods(), DateTime.Now);
         string cacheKey = $"Survival_{type}_{season}_{SearchKey(userName)}";
 
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {
@@ -535,7 +544,7 @@ public class WebController : ControllerBase {
     }
 
     private ByteWriter PersonalSurvival(GameRankingType type, int seasonId, long characterId) {
-        int season = SurvivalRanking.Season(type, seasonId, SurvivalRanking.Seasons(type, tableMetadata.SeasonDataTable), DateTime.Now);
+        int season = SurvivalRanking.Season(type, seasonId, SurvivalRanking.Seasons(type, tableMetadata.SeasonDataTable), SurvivalPeriods(), DateTime.Now);
         string cacheKey = $"PersonalSurvival_{type}_{season}_{characterId}";
 
         if (!cache.TryGetValue(cacheKey, out byte[]? cachedData)) {

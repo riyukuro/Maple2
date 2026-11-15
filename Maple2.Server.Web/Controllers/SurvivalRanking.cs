@@ -33,10 +33,17 @@ public static class SurvivalRanking {
         return IsSquad(type) ? table.SurvivalSquad : table.Survival;
     }
 
-    // The season of a request: the one running now (the one the game keeps the records in) for the current boards,
-    // else the season id it asks for. 0: none.
-    public static int Season(GameRankingType type, int seasonId, IReadOnlyDictionary<int, SeasonDataTable.Entry> seasons, DateTime now) {
-        return IsCurrent(type) ? SurvivalRules.SeasonAt(seasons, now) : seasonId;
+    // The season of a request: for the current boards the one the game keeps this time's records in (MapleSurvivalProgress:
+    // solo, the open period of maplesurvivalopenperiod; squad, the SeasonData_MapleSurvivalSquad season), else the season
+    // id it asks for. 0: none (no period table: null).
+    public static int Season(GameRankingType type, int seasonId, IReadOnlyDictionary<int, SeasonDataTable.Entry> seasons, MapleSurvivalTable? periods, DateTime now) {
+        if (!IsCurrent(type)) {
+            return seasonId;
+        }
+        if (IsSquad(type)) {
+            return SurvivalRules.SeasonAt(seasons, now);
+        }
+        return periods == null ? 0 : SurvivalRules.CurrentPeriod(periods, now)?.Id ?? 0;
     }
 
     // The survival-record season id the board's records are kept under.

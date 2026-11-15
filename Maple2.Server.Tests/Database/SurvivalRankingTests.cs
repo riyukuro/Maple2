@@ -56,6 +56,21 @@ public class SurvivalRankingTests {
         [NextSeason] = new(NextSeason, new DateTime(2050, 2, 1, 0, 0, 1), new DateTime(2050, 3, 1), Grades),
     };
 
+    // The open periods (the solo record seasons): the same ids and spans as Seasons.
+    private static readonly MapleSurvivalTable Periods = PeriodTable(
+        new MapleSurvivalTable.Period(Season, 0, new DateTime(2050, 1, 1), new DateTime(2050, 2, 1), 0),
+        new MapleSurvivalTable.Period(NextSeason, 0, new DateTime(2050, 2, 1, 0, 0, 1), new DateTime(2050, 3, 1), 0));
+
+    private static MapleSurvivalTable PeriodTable(params MapleSurvivalTable.Period[] periods) {
+        var byId = new Dictionary<int, MapleSurvivalTable.Period>();
+        foreach (MapleSurvivalTable.Period period in periods) {
+            byId[period.Id] = period;
+        }
+        return new MapleSurvivalTable(byId, new Dictionary<int, long>(), new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>());
+    }
+
     private ByteWriter Board(GameRankingType type, int season, string userName = "") {
         using GameStorage.Request db = storage.Context();
         return SurvivalRanking.Board(db, type, season, Seasons, userName);
@@ -107,11 +122,33 @@ public class SurvivalRankingTests {
     [Test]
     public void RequestSeason_RunningForTheCurrentTabs_AskedForTheOthers() {
         var now = new DateTime(2050, 2, 15);
-        Assert.That(SurvivalRanking.Season(GameRankingType.Survival, Season, Seasons, now), Is.EqualTo(NextSeason));
-        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalSquadPersonal, 0, Seasons, now), Is.EqualTo(NextSeason));
-        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalPreviousSeason, Season, Seasons, now), Is.EqualTo(Season));
-        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalSquadPersonalPreviousSeason, Season, Seasons, now), Is.EqualTo(Season));
-        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalSquad, 0, Seasons, new DateTime(2049, 1, 1)), Is.EqualTo(0));
+        Assert.That(SurvivalRanking.Season(GameRankingType.Survival, Season, Seasons, Periods, now), Is.EqualTo(NextSeason));
+        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalSquadPersonal, 0, Seasons, Periods, now), Is.EqualTo(NextSeason));
+        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalPreviousSeason, Season, Seasons, Periods, now), Is.EqualTo(Season));
+        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalSquadPersonalPreviousSeason, Season, Seasons, Periods, now), Is.EqualTo(Season));
+        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalSquad, 0, Seasons, Periods, new DateTime(2049, 1, 1)), Is.EqualTo(0));
+        Assert.That(SurvivalRanking.Season(GameRankingType.Survival, 0, Seasons, null, now), Is.EqualTo(0));
+    }
+
+    // The current solo tabs read the season the game writes the records in (SurvivalRules.CurrentPeriod over the open
+    // periods, the lowest id holding the time), not SeasonData_MapleSurvival; the squad tabs read the squad season
+    // table (SurvivalRules.SeasonAt), as MapleSurvivalProgress does.
+    [Test]
+    public void RequestSeason_SoloFollowsTheOpenPeriod_WhenTheTablesDiffer() {
+        var now = new DateTime(2050, 2, 1);
+        // Periods 5 and 6 both hold the time (touching spans): the game writes period 5. The season table holds 2 there.
+        MapleSurvivalTable periods = PeriodTable(
+            new MapleSurvivalTable.Period(6, 0, new DateTime(2050, 2, 1), new DateTime(2050, 3, 1), 0),
+            new MapleSurvivalTable.Period(5, 0, new DateTime(2050, 1, 1), new DateTime(2050, 2, 1), 0));
+        var seasons = new Dictionary<int, SeasonDataTable.Entry> {
+            [Season] = new(Season, new DateTime(2050, 1, 1), new DateTime(2050, 2, 1), Grades),
+            [NextSeason] = new(NextSeason, new DateTime(2050, 2, 1), new DateTime(2050, 3, 1), Grades),
+        };
+        Assert.That(SurvivalRules.CurrentPeriod(periods, now)!.Id, Is.EqualTo(5));
+        Assert.That(SurvivalRanking.Season(GameRankingType.Survival, 0, seasons, periods, now), Is.EqualTo(5));
+        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalPersonal, 0, seasons, periods, now), Is.EqualTo(5));
+        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalSquad, 0, seasons, periods, now), Is.EqualTo(NextSeason));
+        Assert.That(SurvivalRanking.Season(GameRankingType.SurvivalSquadPersonal, 0, seasons, periods, now), Is.EqualTo(NextSeason));
     }
 
     [Test]
