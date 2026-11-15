@@ -104,6 +104,8 @@ public class DefaultMentoringSeasonTests {
             Assert.That(DefaultMentoringSeason.Rows([Last], Now, false, new HashSet<int>()), Is.Empty);
             Assert.That(DefaultMentoringSeason.Rows([Mark], Now, true, new HashSet<int>()), Is.Empty);
             Assert.That(DefaultMentoringSeason.Rows([], Now, true, new HashSet<int>()), Is.Empty);
+            // A last row without a readable end (MinValue) adds none.
+            Assert.That(DefaultMentoringSeason.Rows([Last with { EndTime = DateTime.MinValue }], Now, true, new HashSet<int>()), Is.Empty);
         });
     }
 

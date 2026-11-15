@@ -31,6 +31,7 @@ public static class DefaultMentoringSeason {
         var lastData = (ReturnUser) last.Data;
         TimeSpan length = last.EndTime - last.StartTime;
         if (length <= TimeSpan.Zero || last.StartTime == DateTime.MinValue) {
+            Console.WriteLine($"Mentoring: no season runs and the last season row {last.Id} has no readable start or end; no season added");
             return rows;
         }
         // The first season that has not ended at `now`.
