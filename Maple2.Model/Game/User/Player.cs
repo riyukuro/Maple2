@@ -94,6 +94,11 @@ public class Unlock {
 }
 
 public class Currency {
+    // The lock of the balances: the game server's CurrencyManager changes them under it (on the session's, the field's
+    // and other sessions' threads), and a save copies them under it with Snapshot, so a stored row never mixes wallets
+    // from before and after one change. A leaf lock: nothing else is taken while it is held.
+    public readonly object Lock = new();
+
     public long Meret;
     public long GameMeret;
     public long Meso;
@@ -107,4 +112,25 @@ public class Currency {
     public long MenteeToken;
     public long StarPoint;
     public long MesoToken;
+
+    // A copy of every balance, taken under Lock.
+    public Currency Snapshot() {
+        lock (Lock) {
+            return new Currency {
+                Meret = Meret,
+                GameMeret = GameMeret,
+                Meso = Meso,
+                EventMeret = EventMeret,
+                ValorToken = ValorToken,
+                Treva = Treva,
+                Rue = Rue,
+                HaviFruit = HaviFruit,
+                ReverseCoin = ReverseCoin,
+                MentorToken = MentorToken,
+                MenteeToken = MenteeToken,
+                StarPoint = StarPoint,
+                MesoToken = MesoToken,
+            };
+        }
+    }
 };

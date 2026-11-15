@@ -22,8 +22,9 @@ public class CurrencyManager {
     // mini game, rank duel, trigger and dungeon rewards, items given there; another session's: a trade's hand-over, a
     // wedding hall paid by the partner): each change reads and writes its balance under this lock, so one cannot undo
     // another. The lock is a leaf: only the balance and its packet are under it; condition and quest updates (which may
-    // take the bag lock) run after it is let go.
-    private readonly object walletLock = new();
+    // take the bag lock) run after it is let go. It is the wallets' own lock, so a save's copy (Currency.Snapshot) waits
+    // for a change in progress (AddUnsent changes three balances in one step).
+    private object walletLock => Currency.Lock;
     // Meso packets sent so far (under walletLock): a held take's refusal tells by it whether a packet showed the take.
     private long mesoSends;
     private readonly ILogger logger = Log.Logger.ForContext<CurrencyManager>();

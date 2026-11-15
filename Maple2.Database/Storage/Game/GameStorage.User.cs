@@ -447,11 +447,13 @@ public partial class GameStorage {
         public bool SavePlayer(Player player) {
             Logger.LogInformation("> Begin Save... {ContextId}:{CharacterId}", Context.ContextId, player.Character.Id);
 
+            // One copy of the wallets, so the account's and the character's currency come from the same moment.
+            Currency wallets = player.Currency.Snapshot();
             Model.Account account = player.Account;
-            account.Currency = ToAccountCurrency(player.Currency);
+            account.Currency = ToAccountCurrency(wallets);
 
             Model.Character character = player.Character;
-            character.Currency = ToCharacterCurrency(player.Currency);
+            character.Currency = ToCharacterCurrency(wallets);
 
             Model.Account? dbAccount = Context.Account.Find(account.Id);
             if (dbAccount == null) {
@@ -592,8 +594,9 @@ public partial class GameStorage {
                 return false;
             }
 
-            account.Currency = ToAccountCurrency(player.Currency);
-            character.Currency = ToCharacterCurrency(player.Currency);
+            Currency wallets = player.Currency.Snapshot();
+            account.Currency = ToAccountCurrency(wallets);
+            character.Currency = ToCharacterCurrency(wallets);
             if (!Context.TrySaveChanges()) {
                 return false;
             }
