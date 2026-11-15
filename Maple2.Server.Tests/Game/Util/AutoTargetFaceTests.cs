@@ -49,4 +49,15 @@ public class AutoTargetFaceTests {
     public void OutsideTheConeFailsEvenInRange() {
         Assert.That(AutoTargetFace.Passes(At(170, 50), Front, 90, 300, 0), Is.False);
     }
+
+    // faceTarget="1" always turns; otherwise the motion must ask and rotationDisabled must be off.
+    [TestCase(1, false, false, true, true)]
+    [TestCase(0, true, true, false, true)]
+    [TestCase(0, true, true, true, false)]
+    [TestCase(0, false, true, false, false)]
+    [TestCase(0, true, false, false, false)]
+    [TestCase(2, true, true, true, false)]
+    public void RotationDisabledStopsOnlyTheMotionTurn(int faceTarget, bool motion, bool autoTargeting, bool disabled, bool expected) {
+        Assert.That(AutoTargetFace.CastTurns(faceTarget, motion, autoTargeting, disabled), Is.EqualTo(expected));
+    }
 }

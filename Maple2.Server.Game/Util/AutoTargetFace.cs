@@ -9,6 +9,15 @@ public static class AutoTargetFace {
     /// The client's cylinder height when autoTargetingMaxHeight is 0.
     public const float DefaultHeight = 150f;
 
+    /// Whether a cast may turn the caster toward its target. faceTarget="1" on the AI skill node always turns it.
+    /// Otherwise the motion must ask for it (MotionProperty faceTarget, with autoTargeting for the cone check) and the
+    /// npc's basic rotationDisabled must be off: the client never reads that flag, so it is the server's. Of the
+    /// 225 AI files of npcs with the flag (fixed boss parts: Zakum's arms, statues, totems, cannons), 153 ask for
+    /// faceTarget="1" on their nodes, so the flag cannot stop every turn. Chosen here: it stops only the turns the AI
+    /// node does not ask for; walking still faces the way the npc goes.
+    public static bool CastTurns(int faceTarget, bool motionFaceTarget, bool hasAutoTargeting, bool rotationDisabled) =>
+        faceTarget == 1 || (!rotationDisabled && motionFaceTarget && hasAutoTargeting);
+
     public static bool Passes(Vector3 offset, Vector3 front, float maxDegree, float maxDistance, float maxHeight) {
         var flat = new Vector2(offset.X, offset.Y);
         float distance = flat.Length();

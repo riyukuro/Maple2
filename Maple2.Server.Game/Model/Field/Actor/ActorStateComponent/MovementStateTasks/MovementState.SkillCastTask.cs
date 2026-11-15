@@ -48,12 +48,13 @@ public partial class MovementState {
             return;
         }
 
-        if (faceTarget != 1) {
-            if (!metadata.Data.Motions[motion].MotionProperty.FaceTarget || metadata.Data.AutoTargeting is null) {
-                return;
-            }
+        if (!AutoTargetFace.CastTurns(faceTarget, metadata.Data.Motions[motion].MotionProperty.FaceTarget,
+                metadata.Data.AutoTargeting is not null, actor.Value.Metadata.Basic.RotationDisabled)) {
+            return;
+        }
 
-            SkillMetadataAutoTargeting autoTargeting = metadata.Data.AutoTargeting;
+        if (faceTarget != 1) {
+            SkillMetadataAutoTargeting autoTargeting = metadata.Data.AutoTargeting!;
             if (!AutoTargetFace.Passes(offset, actor.Transform.FrontAxis, autoTargeting.MaxDegree, autoTargeting.MaxDistance, autoTargeting.MaxHeight)) {
                 return;
             }
