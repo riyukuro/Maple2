@@ -130,6 +130,19 @@ public class TriggerConditionTests : TriggerTestBase {
         Assert.That(Condition("""<condition name="wait_tick" wait_tick="30000" />"""), Is.False);
     }
 
+    // A weight outside 0-100 never passes; 0 never passes and 100 always does, whatever the roll.
+    [TestCase(-1f, 50f, false)]
+    [TestCase(100.5f, 50f, false)]
+    [TestCase(0f, 0f, false)]
+    [TestCase(0f, 99.9f, false)]
+    [TestCase(100f, 99.9f, true)]
+    [TestCase(100f, 0f, true)]
+    public void RandomCondition_WeightBounds(float weight, float roll, bool expected) {
+        Start();
+        SetRandom(roll);
+        Assert.That(Condition($"""<condition name="random_condition" weight="{weight}" />"""), Is.EqualTo(expected));
+    }
+
     // The base harness leaves the field's user values unmade.
     private new void Start(params Maple2.Model.Metadata.Ms2Trigger[] triggers) {
         base.Start(triggers);
