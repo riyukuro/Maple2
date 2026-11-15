@@ -194,20 +194,25 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
         foreach ((DamageType damageType, long amount) in targetRecord.Damage) {
             switch (damageType) {
+                // The client only loads eventCondition (AdditionalLevelData::LoadCondition); the server fires every event.
+                // OnAttacked is any landed hit, normal or critical, and its event target is the attacker: KR's procs on
+                // being hit (Ranger 10500281's mark tests the attacker's 10500283, Soul Binder 11100311 makes the attacker
+                // its dot's caster) need the attacker, and none is limited to crits. Block and evade name the attacker too.
                 case DamageType.Critical:
                     caster.Buffs.TriggerEvent(caster, caster, this, EventConditionType.OnOwnerAttackHit, skillId: damage.SkillId);
                     caster.Buffs.TriggerEvent(caster, caster, this, EventConditionType.OnOwnerAttackCrit, skillId: damage.SkillId);
-                    Buffs.TriggerEvent(this, this, this, EventConditionType.OnAttacked, skillId: damage.SkillId);
+                    Buffs.TriggerEvent(this, this, caster, EventConditionType.OnAttacked, skillId: damage.SkillId);
                     break;
                 case DamageType.Normal:
                     caster.Buffs.TriggerEvent(caster, caster, this, EventConditionType.OnOwnerAttackHit, skillId: damage.SkillId);
+                    Buffs.TriggerEvent(this, this, caster, EventConditionType.OnAttacked, skillId: damage.SkillId);
                     break;
                 case DamageType.Block:
-                    Buffs.TriggerEvent(this, this, this, EventConditionType.OnBlock, skillId: damage.SkillId);
+                    Buffs.TriggerEvent(this, this, caster, EventConditionType.OnBlock, skillId: damage.SkillId);
                     break;
                 case DamageType.Miss:
                     caster.Buffs.TriggerEvent(caster, caster, this, EventConditionType.OnAttackMiss, skillId: damage.SkillId);
-                    Buffs.TriggerEvent(this, this, this, EventConditionType.OnEvade, skillId: damage.SkillId);
+                    Buffs.TriggerEvent(this, this, caster, EventConditionType.OnEvade, skillId: damage.SkillId);
                     break;
             }
         }

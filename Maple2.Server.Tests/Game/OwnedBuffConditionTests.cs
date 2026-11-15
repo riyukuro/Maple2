@@ -165,10 +165,10 @@ public class OwnedBuffConditionTests {
 
     // 10300271 on its holder, cast by the caster: at 10 stacks its event skill casts 10300275 when the holder holds the
     // caster's own copy at 10 (the Owner test with hasBuffOwner, as in the KR data).
-    private static Buff Debuff(IActor holder, IActor caster, int stacks) {
+    private static Buff Debuff(IActor holder, IActor caster, int stacks, int count = 10, CompareType compare = CompareType.GreaterEquals) {
         var payoff = new SkillEffectMetadata(0, [new SkillEffectMetadata.Skill(10300275, 1)],
             new SkillEffectMetadataCondition(Condition(null, null) with {
-                Owner = new BeginConditionTarget([new BeginConditionTarget.HasBuff(Stacked, 0, true, 10, CompareType.GreaterEquals)],
+                Owner = new BeginConditionTarget([new BeginConditionTarget.HasBuff(Stacked, 0, true, count, compare)],
                     new BeginConditionTarget.EventCondition(EventConditionType.OnBuffStacksReached, false, [], [], []), [], [], [],
                     new Dictionary<MasteryType, int>(), [], []),
             }, SkillTargetType.Owner, SkillTargetType.Owner, 0, false), null);
@@ -211,5 +211,20 @@ public class OwnedBuffConditionTests {
         Buff full = Debuff(mob, b, stacks: 9);
         Assert.That(full.Stack(), Is.True);
         Assert.That(mob.Applied, Has.Count.EqualTo(1));
+    }
+
+    // Every new stack fires the stack event, so a row naming a count below the maximum fires on reaching it (Wizard
+    // 10300272 at 4 of 10300271's 10, hasBuffCount Equals); the next stack is past it and does not.
+    [TestCase(3, 1)]
+    [TestCase(4, 0)]
+    [TestCase(9, 0)]
+    public void StacksReached_BelowTheMaximum_FiresAtTheNamedCount(int before, int fired) {
+        var ta = new TestGameSession();
+        ta.Start();
+        FieldPlayer a = Player(ta, 1);
+        EffectLogNpc mob = Mob(ta.Session.Field!, 10);
+        Buff mark = Debuff(mob, a, stacks: before, count: 4, compare: CompareType.Equals);
+        Assert.That(mark.Stack(), Is.True);
+        Assert.That(mob.Applied, Has.Count.EqualTo(fired));
     }
 }

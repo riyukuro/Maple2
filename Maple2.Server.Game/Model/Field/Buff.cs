@@ -202,11 +202,13 @@ public class Buff : IUpdatable, IByteSerializable {
         if (silent) {
             return true;
         }
-        // What is kept by count follows first, so a skill started by reaching the maximum sees the new totals.
+        // What is kept by count follows first, so a skill started by a stack count sees the new totals.
         if (Stacks > 0) {
             Owner.Buffs.StacksChanged(this);
         }
-        if (Stacks >= Metadata.Property.MaxCount) {
+        // Every new stack fires the stack event, not only the maximum: each KR row names its count (hasBuffCount, Equals),
+        // and 32 of 87 test one below the maximum (Wizard 10300272/10300273 at 4 and 7 of 10300271's 10).
+        if (Stacks > currentStacks) {
             Owner.Buffs.TriggerEvent(Owner, Owner, Owner, EventConditionType.OnBuffStacksReached, buffId: Id);
         }
 
