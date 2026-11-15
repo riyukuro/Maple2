@@ -247,7 +247,7 @@ public partial class TriggerContext {
 
     // The run's exp brings the server pack's Exp_DarkStream prestige (a run with no reward count left gets no exp, so
     // none); before, the exp named no type and the run added no prestige.
-    private void GiveDarkStreamReward(FieldPlayer player, DarkStreamGame.Reward reward) {
+    internal static void GiveDarkStreamReward(FieldPlayer player, DarkStreamGame.Reward reward) {
         player.Session.Exp.AddExp(reward.Exp, ExpMessageCode.s_msg_take_exp, ExpType.darkStream);
         if (reward.Meso > 0) {
             player.Session.Currency.ChangeMeso(reward.Meso);
@@ -256,7 +256,7 @@ public partial class TriggerContext {
             player.Session.Currency.Change(CurrencyType.HaviFruit, reward.Habi);
         }
         foreach (RewardItem rewardItem in reward.Items) {
-            Item? item = Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+            Item? item = player.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
             if (item == null) {
                 continue;
             }

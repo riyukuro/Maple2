@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using Maple2.Model;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
@@ -29,6 +28,9 @@ public class AdventureExpTests {
         test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
             [1] = Enumerable.Range(1, 99).ToDictionary(level => level, level => level * 10L),
         }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
         test.SetServerTable(new MonsterExpTable(new Dictionary<int, MonsterExpMetadata> {
             [50] = new(100, 200, 300, 400, 500),
             [51] = new(225, 200, 300, 400, 500),
@@ -125,24 +127,26 @@ public class AdventureExpTests {
 
     // The navigator's daily missions and the guild's quests have their own rows in the server pack (KR: 709 daily
     // missions of guideType 4, 24 level and 10 level_boost guides; 40 daily and 20 weekly guild quests); they added
-    // Exp_QuestETC's 15000.
+    // Exp_QuestETC's 15000. Completed through the quest manager, with a repeat and a guide type that give another row
+    // when read the other way round.
     [TestCase(QuestType.DailyMission, 1, 4, 45000)]
-    [TestCase(QuestType.DailyMission, 0, 3, 45000)]
+    [TestCase(QuestType.DailyMission, 2, 3, 45000)]
     [TestCase(QuestType.DailyMission, 0, 1, 45001)]
-    [TestCase(QuestType.DailyMission, 0, 2, 45001)]
+    [TestCase(QuestType.DailyMission, 4, 2, 45001)]
     [TestCase(QuestType.GuildQuest, 2, 0, 75000)]
     [TestCase(QuestType.GuildQuest, 3, 0, 150000)]
     public void Quest_DailyMissionAndGuildQuest_AddTheirRows(QuestType type, int repeat, int guideType, long prestige) {
         GameSession session = Start();
+        QuestMetadata data = TestGameSession.QuestData(90000041, type);
+        Quest quest = test.StartQuest(data with {
+            Basic = data.Basic with { Repeat = repeat, GuideType = guideType, StandardLevel = 20 },
+            CompleteReward = data.CompleteReward with { Exp = 5000 },
+        });
+        test.TakeSent();
 
-        session.Exp.AddQuestExp(5000, QuestExpRules.Reason(type, 20).Message(), QuestExpRules.PrestigeType(type, repeat, guideType));
+        Assert.That(session.Quest.Complete(quest), Is.True);
 
         Assert.That(Sent(), Is.EqualTo((1010, prestige)));
-    }
-
-    private static void Set<T>(object target, string field, object? value) {
-        (typeof(T).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
-         ?? throw new MissingFieldException(typeof(T).Name, field)).SetValue(target, value);
     }
 
     // A Dark Stream run's reward exp adds Exp_DarkStream (KR 150000); it added none. A run with no reward count left
@@ -151,14 +155,9 @@ public class AdventureExpTests {
     [TestCase(0, 0)]
     public void DarkStreamReward_AddsTheDarkStreamRow(int exp, long prestige) {
         GameSession session = Start();
-        var trigger = (FieldTrigger) RuntimeHelpers.GetUninitializedObject(typeof(FieldTrigger));
-        Set<FieldEntity<TriggerModel>>(trigger, "<Field>k__BackingField", session.Field);
-        var context = (TriggerContext) RuntimeHelpers.GetUninitializedObject(typeof(TriggerContext));
-        Set<TriggerContext>(context, "owner", trigger);
         long before = session.Exp.PrestigeCurrentExp;
 
-        typeof(TriggerContext).GetMethod("GiveDarkStreamReward", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(context, [session.Player, new DarkStreamGame.Reward(exp, 0, 0, [])]);
+        TriggerContext.GiveDarkStreamReward(session.Player, new DarkStreamGame.Reward(exp, 0, 0, []));
 
         Assert.That(session.Exp.PrestigeCurrentExp - before, Is.EqualTo(prestige));
     }
