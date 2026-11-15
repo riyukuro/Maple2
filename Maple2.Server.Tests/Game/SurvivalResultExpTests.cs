@@ -4,6 +4,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Tests.Game.PacketHandlers;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -15,7 +16,7 @@ public class SurvivalResultExpTests {
     private const long Row = 250;   // KR Exp_mapleSurvival
     private TestGameSession test = null!;
 
-    private GameSession Start(short level) {
+    private GameSession Start(short level, long nextExp = 50_000_000L) {
         test = new TestGameSession();
         test.SetTable(new MapleSurvivalTable(
             new Dictionary<int, MapleSurvivalTable.Period>(),
@@ -28,10 +29,14 @@ public class SurvivalResultExpTests {
         }));
         test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
             [1] = Enumerable.Range(1, 99).ToDictionary(lv => lv, _ => Base),
-        }, Enumerable.Range(1, 99).ToDictionary(lv => lv, _ => 50_000_000L)));
+        }, Enumerable.Range(1, 99).ToDictionary(lv => lv, _ => nextExp)));
         test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long> { [ExpType.mapleSurvival] = Row }));
-        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { AdventureLevelStartLevel = 50 });
+        test.SetTable(new PrestigeLevelRewardTable(new Dictionary<int, PrestigeLevelRewardMetadata>()));
+        test.SetTable(new PrestigeLevelAbilityTable(new Dictionary<int, PrestigeLevelAbilityMetadata>()));
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { AdventureLevelStartLevel = 50, characterMaxLevel = 99 });
         GameSession session = test.Start();
+        // What a level up reads: the config's skill tree, stat points and hot bars.
+        ProgressionOrderTests.LoadConfig(test, session);
         test.EnterMap(TestGameSession.Map(2000062));
         session.Player.Value.Character.Level = level;
         session.Survival = new SurvivalManager(session);
@@ -51,6 +56,17 @@ public class SurvivalResultExpTests {
         Assert.That(session.Exp.PrestigeCurrentExp - prestige, Is.EqualTo(Row));
         // The window's character and prestige levels are read after the gain.
         Assert.That((values[12], values[13]), Is.EqualTo((60, session.Player.Value.Account.PrestigeLevel)));
+    }
+
+    // A game whose exp reaches the next level: the window shows the level the game's exp reached.
+    [Test]
+    public void Result_LevelUp_WindowShowsTheReachedLevel() {
+        GameSession session = Start(60, nextExp: Base);
+
+        int[] values = MapleSurvivalProgress.Result(session, 3, 10, 1, 120, out _);
+
+        Assert.That(session.Player.Value.Character.Level, Is.EqualTo(61));
+        Assert.That(values[12], Is.EqualTo(61));
     }
 
     // Below the prestige start level the exp is given and no prestige, as for every gain.
