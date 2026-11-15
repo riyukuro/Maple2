@@ -1462,13 +1462,9 @@ public class GuildHandler : FieldPacketHandler {
         if (session.Field?.GuildVsGame is { MatchId: > 0 }) {
             return;
         }
-        // As the rank duel and Maple Survival joins: no move while dead, from a dungeon, a refused instance or a
-        // rank duel or arena field (the World is not asked).
-        if (!PvpHandler.CanLeave(session)) {
-            session.Send(GuildPacket.VsGameOpen(0));
-            return;
-        }
-
+        // Where the player is, and whether it is dead, is not checked: the client's entry prompt (FUN_1413c45e0)
+        // and its Enter button (SendGuildMode120, guildmanager.cpp:3386-3396) send 120 from anywhere, dead or in a
+        // dungeon or a room, and the move leaves that field as any other move does.
         GuildResponse? response = VsGameRequest(session, new GuildRequest {
             RequestorId = session.CharacterId,
             VsGameJoin = new GuildRequest.Types.VsGameJoin { GuildId = session.Guild.Id },

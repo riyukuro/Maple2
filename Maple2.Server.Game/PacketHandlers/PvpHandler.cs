@@ -135,8 +135,10 @@ public class PvpHandler : FieldPacketHandler {
             return;
         }
         // A join the server refuses: the client leaves its state 2 with the failed box; the match counts the
-        // character as not come.
-        if (!CanLeave(session)) {
+        // character as not come. Only death is refused, as the client's own check (CPvpRankDuelComponent::
+        // RequestCancelMatch, pvprankduelcomponent.cpp:450-463, string 0x279): it sends the join from a dungeon or
+        // any room, and the move leaves that field as any other move does.
+        if (session.Player.IsDead) {
             session.Send(PvpPacket.RankDuelMatchFailed());
             return;
         }

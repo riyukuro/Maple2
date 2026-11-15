@@ -149,25 +149,28 @@ public class GuildMoneyHandlerTests {
         });
     }
 
-    // Guild 120 (the guild vs game's Enter) from where a match move is refused: dead or in a dungeon. The World is
-    // not asked and the client's open game is cleared (Guild 119 with 0).
+    // Guild 120 (the guild vs game's Enter) dead or from a dungeon: the client sends it from anywhere
+    // (SendGuildMode120 has no check), so the World is asked and the member moves into the match field. Before, the
+    // server refused it and cleared the client's open game.
     [TestCase(false)]
     [TestCase(true)]
-    public void VsGameJoin_RefusedWhereTheMoveIs(bool dungeon) {
+    public void VsGameJoin_DeadOrInADungeon_MovesIntoTheMatch(bool dungeon) {
         Join();
         if (dungeon) {
             test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000062));
         } else {
             typeof(Maple2.Server.Game.Model.FieldPlayer).GetField("isDead", Any)!.SetValue(session.Player, true);
         }
+        test.World.GuildWorld = _ => new GuildResponse { Channel = 1, MapId = 63000062, RoomId = 55 };
         test.TakeSent();
 
         handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(120)));
 
         Assert.Multiple(() => {
-            Assert.That(test.World.GuildRequests, Is.Empty);
-            Assert.That(test.World.Moves, Is.Empty);
-            Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.VsGameOpen(0)) }));
+            Assert.That(test.World.GuildRequests.Single().VsGameJoin.GuildId, Is.EqualTo(session.Guild.Id));
+            MigrateOutRequest move = test.World.Moves.Single();
+            Assert.That((move.Channel, move.MapId, move.RoomId), Is.EqualTo((1, 63000062, 55)));
+            Assert.That(GuildAnswers(), Does.Not.Contain(Hex(GuildPacket.VsGameOpen(0))));
         });
     }
 

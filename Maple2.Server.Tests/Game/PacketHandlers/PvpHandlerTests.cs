@@ -99,15 +99,17 @@ public class PvpHandlerTests {
         Assert.That(test.World.Moves, Is.Empty);
     }
 
-    // From a dungeon the join is refused before the World is asked (the field it would leave).
+    // From a dungeon the join is taken: the client checks only death (RequestCancelMatch) and sends it from any
+    // field. Before, the server refused it with the failed box.
     [Test]
-    public void RankDuelJoin_FromADungeon_IsRefused() {
+    public void RankDuelJoin_FromADungeon_MovesIntoTheMatchField() {
         TestGameSession test = NewTest();
         GameSession session = Start(test);
         test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000062));
-        Assert.That(Send(test, session, "10"), Is.EqualTo(new[] { "B600" + "10" + "00" }));
-        Assert.That(test.World.PvpRequests, Is.Empty);
-        Assert.That(test.World.Moves, Is.Empty);
+        test.World.PvpResponses[PvpRequest.PvpOneofCase.Join] = new PvpResponse { Channel = 1, MapId = 65010004, RoomId = 321 };
+        Send(test, session, "10");
+        MigrateOutRequest move = test.World.Moves.Single();
+        Assert.That((move.Channel, move.MapId, move.RoomId, move.Type), Is.EqualTo((1, 65010004, 321, MigrationType.PvpMatch)));
     }
 
     // The register is not stricter than the client's (UIRankPvPDialog::FUN_140f95750, UIIndividualPvPDialog::
