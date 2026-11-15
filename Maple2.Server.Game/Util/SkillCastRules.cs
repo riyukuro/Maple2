@@ -796,6 +796,12 @@ public static class SkillCastRules {
     // NoPlayerSource, PlayerSkillSources): an NPC or boss skill, or one only the server casts from a condition or an effect.
     public static bool SourceRefuses(bool inAnyTree, bool noPlayerSource) => !inAnyTree && noPlayerSource;
 
+    // A skill only a mount's skill set gives (RideSkillSets, PlayerSkillSources.RideOnlySkills) is one the client
+    // holds from the get-on (MyPC::vfunc_120, mypc.cpp:3299) to the ride-off (vfunc_121, :3351): its first motion is
+    // refused off a mount with one of those sets. A later motion is not: a ride-off during the cast keeps it going.
+    public static bool RideSetRefuses(bool laterMotion, bool inAnyTree, int[]? rideSkillSets, int? rideSkillSet) =>
+        !laterMotion && !inAnyTree && rideSkillSets is { Length: > 0 } && (rideSkillSet is not { } held || !rideSkillSets.Contains(held));
+
     // A cast of a skill that is in a job's skill tree is refused when the caster's own tree lacks it or holds
     // it at a lower level. A skill in no tree (mount, lift-up, a skill a buff gives or changes to) is not checked.
     // learnedLevel: the level in the caster's tree (a sub skill's is its main skill's), null when not in it.

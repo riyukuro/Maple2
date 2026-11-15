@@ -175,6 +175,10 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
             AddCastEdges(id, PlayerSkillSources.Edges(skill));
         }
         var granted = new HashSet<int>();
+        // The skill sets (both readers' rows of a set together), the sets a mount gives and the sets an effect gives.
+        var skillSets = new Dictionary<int, HashSet<int>>();
+        var rideSetIds = new HashSet<int>();
+        var effectSetIds = new HashSet<int>();
         foreach (M2dReader reader in new[] { xmlReader, playedReader }) {
             foreach (Maple2.File.IO.Crypto.Common.PackFileEntry file in reader.Files.Where(file => file.Name.StartsWith("table/"))) {
                 switch (Path.GetFileName(file.Name)) {
@@ -182,12 +186,32 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         granted.UnionWith(PlayerSkillSources.TreeSkills(reader.GetXmlDocument(file)));
                         break;
                     case "skillset.xml":
-                        granted.UnionWith(PlayerSkillSources.SkillSetSkills(reader.GetXmlDocument(file)));
+                        foreach ((int setId, int[] setSkills) in PlayerSkillSources.SkillSets(reader.GetXmlDocument(file))) {
+                            if (!skillSets.TryGetValue(setId, out HashSet<int>? held)) {
+                                skillSets[setId] = held = [];
+                            }
+                            held.UnionWith(setSkills);
+                        }
                         break;
                     case "constants.xml":
                         granted.UnionWith(PlayerSkillSources.ConstantSkills(reader.GetXmlDocument(file)));
                         break;
                 }
+            }
+            foreach (Maple2.File.IO.Crypto.Common.PackFileEntry file in reader.Files.Where(file => file.Name.StartsWith("riding/"))) {
+                rideSetIds.UnionWith(PlayerSkillSources.RideSkillSets(reader.GetXmlDocument(file)));
+            }
+            foreach (Maple2.File.IO.Crypto.Common.PackFileEntry file in reader.Files.Where(file => file.Name.StartsWith("additionaleffect/"))) {
+                effectSetIds.UnionWith(PlayerSkillSources.EffectSkillSets(reader.GetXmlDocument(file)));
+            }
+        }
+        // A mount's set (no effect gives it) counts only while on that mount (RideSkillSets); the other sets always.
+        Dictionary<int, int[]> rideSets = skillSets
+            .Where(entry => rideSetIds.Contains(entry.Key) && !effectSetIds.Contains(entry.Key))
+            .ToDictionary(entry => entry.Key, entry => entry.Value.ToArray());
+        foreach ((int setId, HashSet<int> setSkills) in skillSets) {
+            if (!rideSets.ContainsKey(setId)) {
+                granted.UnionWith(setSkills);
             }
         }
         foreach (ItemMetadata item in ItemMapper.ItemMetadataById.Values) {
@@ -196,15 +220,22 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                 granted.Add(itemSkill.WeaponId);
             }
         }
-        HashSet<int> castable = PlayerSkillSources.Castable(played.ToDictionary(entry => entry.Key, entry => entry.Value.MainType), castEdges, granted);
+        Dictionary<int, int> mainTypes = played.ToDictionary(entry => entry.Key, entry => entry.Value.MainType);
+        HashSet<int> castable = PlayerSkillSources.Castable(mainTypes, castEdges, granted.Concat(rideSets.Values.SelectMany(setSkills => setSkills)));
+        Dictionary<int, int[]> rideOnly = PlayerSkillSources.RideOnlySkills(mainTypes, castEdges, granted, rideSets);
         int marked = 0;
+        int rideMarked = 0;
         for (int i = 0; i < skills.Count; i++) {
             if (!castable.Contains(skills[i].Id)) {
                 skills[i] = skills[i] with { Property = skills[i].Property with { NoPlayerSource = true } };
                 marked++;
+            } else if (rideOnly.TryGetValue(skills[i].Id, out int[]? sets)) {
+                skills[i] = skills[i] with { Property = skills[i].Property with { RideSkillSets = sets } };
+                rideMarked++;
             }
         }
         Console.WriteLine($"Skills no client path gives to a player (refused outside the job trees): {marked} of {skills.Count} ({castable.Count} castable)");
+        Console.WriteLine($"Skills only a mount's skill set gives (refused off those mounts): {rideMarked} ({rideSets.Count} mount skill sets, {effectSetIds.Count} effect skill sets)");
         return skills;
     }
 

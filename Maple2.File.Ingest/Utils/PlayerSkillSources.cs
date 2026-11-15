@@ -57,6 +57,72 @@ public static class PlayerSkillSources {
         }
     }
 
+    /// <summary>Each skill set of a skillset.xml with its skills (skillIDs).</summary>
+    public static IEnumerable<(int Id, int[] Skills)> SkillSets(XmlDocument skillSet) {
+        XmlNodeList? nodes = skillSet.SelectNodes("//skillSet");
+        if (nodes == null) {
+            yield break;
+        }
+        foreach (XmlElement set in nodes.OfType<XmlElement>()) {
+            if (int.TryParse(set.GetAttribute("id"), out int id) && id != 0) {
+                yield return (id, Ids(set.GetAttribute("skillIDs")).ToArray());
+            }
+        }
+    }
+
+    /// <summary>The skill sets a riding file's mounts give (&lt;basic skillSetID=".."/&gt;), whatever their feature or locale.</summary>
+    public static IEnumerable<int> RideSkillSets(XmlDocument riding) {
+        XmlNodeList? nodes = riding.SelectNodes("//basic");
+        if (nodes == null) {
+            yield break;
+        }
+        foreach (XmlElement basic in nodes.OfType<XmlElement>()) {
+            if (int.TryParse(basic.GetAttribute("skillSetID"), out int id) && id != 0) {
+                yield return id;
+            }
+        }
+    }
+
+    /// <summary>The skill sets an additional effect file's levels give (skillSetID, any element).</summary>
+    public static IEnumerable<int> EffectSkillSets(XmlDocument effect) {
+        XmlNodeList? nodes = effect.SelectNodes("//*[@skillSetID]");
+        if (nodes == null) {
+            yield break;
+        }
+        foreach (XmlElement node in nodes.OfType<XmlElement>()) {
+            if (int.TryParse(node.GetAttribute("skillSetID"), out int id) && id != 0) {
+                yield return id;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The skills only a mount's skill set lets the client cast, each with the sets that do. The client adds the
+    /// set of the ridee it gets on (MyPC::vfunc_120, mypc.cpp:3299) and removes it on the ride-off (vfunc_121, :3351);
+    /// JobSystemCli::vfunc_2 passes a skill that needs learning only while a held set has it. A ride set is one no
+    /// additional effect gives (a set the effects give too is held without a ride). A skill castable without the ride
+    /// sets (baseGranted: trees, the other sets, items, constants, and what their casts turn into) is not listed;
+    /// one a ride set's cast turns into is listed with that set.
+    /// </summary>
+    public static Dictionary<int, int[]> RideOnlySkills(IReadOnlyDictionary<int, int> mainTypes, IReadOnlyDictionary<int, HashSet<int>> edges,
+            IEnumerable<int> baseGranted, IReadOnlyDictionary<int, int[]> rideSets) {
+        HashSet<int> granted = baseGranted.ToHashSet();
+        HashSet<int> castable = Castable(mainTypes, edges, granted);
+        var sets = new Dictionary<int, SortedSet<int>>();
+        foreach ((int setId, int[] skills) in rideSets) {
+            foreach (int id in Castable(mainTypes, edges, granted.Concat(skills))) {
+                if (castable.Contains(id)) {
+                    continue;
+                }
+                if (!sets.TryGetValue(id, out SortedSet<int>? held)) {
+                    sets[id] = held = [];
+                }
+                held.Add(setId);
+            }
+        }
+        return sets.ToDictionary(entry => entry.Key, entry => entry.Value.ToArray());
+    }
+
     /// <summary>The values of the skill constants of a constants.xml, whatever their feature or locale.</summary>
     public static IEnumerable<int> ConstantSkills(XmlDocument constants) {
         XmlNodeList? nodes = constants.SelectNodes("//v");

@@ -43,7 +43,10 @@ public record SkillMetadataProperty(
     // No client path gives the skill to a player (PlayerSkillSources): not a main type that needs no learning, not in a
     // job tree, skill set, item or skill constant, and no such skill turns into it. Only the server casts it (NPC and
     // boss skills, condition and effect skills). False in metadata ingested before it was added.
-    bool NoPlayerSource = false);
+    bool NoPlayerSource = false,
+    // The mount skill sets that alone give the skill (PlayerSkillSources.RideOnlySkills): the client casts it only
+    // while on a mount with one of them. Null for any other skill, and in metadata ingested before it was added.
+    int[]? RideSkillSets = null);
 
 public record SkillMetadataState(
     bool InBattle,

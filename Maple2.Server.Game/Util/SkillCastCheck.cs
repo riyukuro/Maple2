@@ -131,6 +131,10 @@ public static class SkillCastCheck {
             Logger.Debug("Cast refused, no client path gives skill {SkillId} to a player", record.SkillId);
             return false;
         }
+        if (SkillCastRules.RideSetRefuses(laterMotion, inAnyTree, record.Metadata.Property.RideSkillSets, session.Ride.Ride?.Metadata.Basic.SkillSetId)) {
+            Logger.Debug("Cast refused, skill {SkillId} is a mount's skill and the caster is not on such a mount", record.SkillId);
+            return false;
+        }
         if (!laterMotion && !inAnyTree && SkillCastRules.ShardSourceRefuses(record.SkillId, record.Level, laterMotion, inAnyTree,
                 ShardSkills(session).Contains(record.SkillId) && !SkillCastRules.NoLearnMainTypes.Contains(record.Metadata.Property.MainType),
                 record.ItemUid > 0 && record.Level <= 1 && session.Item.Inventory.Get(record.ItemUid) is { } bagItem
