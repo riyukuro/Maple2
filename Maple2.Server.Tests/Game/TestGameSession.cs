@@ -1033,6 +1033,13 @@ public sealed class TestGameSession {
             return GroupChatWorld?.Invoke(request) ?? new GroupChatResponse();
         }
 
+        // The world's answer to a group chat lookup of a player's chats (it may throw); no chats without it.
+        public Func<GroupChatInfoRequest, GroupChatInfoResponse>? GroupChatInfoWorld;
+
+        public override GroupChatInfoResponse GroupChatInfo(GroupChatInfoRequest request, CallOptions options) {
+            return GroupChatInfoWorld?.Invoke(request) ?? new GroupChatInfoResponse();
+        }
+
         // The world's answer to a group chat request (it may throw what an unreachable world would); empty without it.
         public Func<GroupChatRequest, GroupChatResponse>? GroupChatWorld;
 
