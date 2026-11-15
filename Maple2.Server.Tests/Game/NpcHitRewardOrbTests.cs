@@ -70,6 +70,26 @@ public class NpcHitRewardOrbTests : TriggerTestBase {
         Assert.That(Ground(Field).Count, Is.EqualTo(2));
     }
 
+    // A dot tick on an npc is the caster's damage (the death's dealers, the last hitter) but no hit: with the full rate it
+    // drops no orb (nor hit loot). A dot the npc cast on itself after it takes no credit, so the player keeps the last hit.
+    [Test]
+    public void DotTick_CreditsTheCaster_NoHitDrops() {
+        FieldNpc npc = SpawnMob();
+        FieldPlayer player = test.Session.Player;
+        player.Stats.Values[SpecialAttribute.NpcHitRewardSpBall].AddTotal(1000);
+
+        DotDamageCreditTests.DotTick(player, npc, 10);
+        DotDamageCreditTests.DotTick(npc, npc, 20);
+
+        Assert.Multiple(() => {
+            Assert.That(npc.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(70));
+            Assert.That(npc.DamageByDealer.ToArray(), Is.EqualTo(new[] { (player.ObjectId, 10L) }));
+            Assert.That(npc.GetLastAttacker(), Is.SameAs(player));
+            Assert.That(npc.AccumulatedDamage, Is.EqualTo(10));
+            Assert.That(Ground(Field), Is.Empty);
+        });
+    }
+
     [Test]
     public void NoRate_NoOrb() {
         FieldNpc npc = SpawnMob();

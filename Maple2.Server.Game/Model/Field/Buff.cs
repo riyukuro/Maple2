@@ -446,8 +446,9 @@ public class Buff : IUpdatable, IByteSerializable {
             }
             Owner.Stats.Values[BasicAttribute.Health].Add(healthChange);
             targetUpdated.Add(BasicAttribute.Health);
-            if (record.HpAmount < 0) {
-                // Credited like a skill hit's damage (Actor.ApplyDamage): the whole tick, before the floors.
+            if (record.HpAmount < 0 && caster != Owner) {
+                // Credited like a skill hit's damage (Actor.ApplyDamage): the whole tick, before the floors. A dot the
+                // holder cast on itself (or a reflected share of its own) is no one's damage: it takes no last-hit slot.
                 Owner.RecordDotDamage(caster, -record.HpAmount);
             }
             if (record.HpAmount < 0 && Owner is FieldPlayer player) {

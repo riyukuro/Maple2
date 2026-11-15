@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -695,7 +695,8 @@ public class BuffAttributeTests {
         int[] casters = test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.SkillDamage && packet[2] == 3)
             .Select(packet => BitConverter.ToInt32(packet, 3)).ToArray();
         Assert.That(casters, Is.EquivalentTo(new[] { Player.ObjectId, Field.FieldActor.ObjectId }));
-        Assert.That(Player.DamageByDealer, Is.EquivalentTo(new[] { (Player.ObjectId, 16L), (Field.FieldActor.ObjectId, 30L) }));
+        // The holder's own share (16) is no one's damage; the field's share (30) is its caster's.
+        Assert.That(Player.DamageByDealer, Is.EquivalentTo(new[] { (Field.FieldActor.ObjectId, 30L) }));
     }
 
     // Status rates: a held buff's rate adds that share of the stat. 10100071 (KR: Rates Defense -0.01, one stack) on
