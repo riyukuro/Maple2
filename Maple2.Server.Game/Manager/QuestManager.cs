@@ -952,27 +952,6 @@ public sealed class QuestManager {
             return false;
         }
 
-        // The order KMS2 sends: the quest's complete packet, the meso, the exp, the items, then what counts the quest.
-        (long endTime, long lastStartTime, long lastEndTime, QuestState state, int completionCount) =
-            (quest.EndTime, quest.LastStartTime, quest.LastEndTime, quest.State, quest.CompletionCount);
-        quest.EndTime = DateTime.Now.ToEpochSeconds();
-        quest.LastStartTime = 0;
-        quest.LastEndTime = 0;
-        quest.State = QuestState.Completed;
-        quest.CompletionCount++;
-        // The completed row is stored before any reward is paid: the reward items get their rows at once (Inventory.Add,
-        // MailItem), so a completion left to the next session save paid the rewards again after a crash or a failed
-        // save (the stored quest was still open). Not stored: nothing is paid and the quest stays open.
-        long ownerId = quest.Metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
-        if (!session.TrySavePurchase(db => db.SaveQuests(ownerId, [quest]), out completeResetRefused)) {
-            (quest.EndTime, quest.LastStartTime, quest.LastEndTime, quest.State, quest.CompletionCount) =
-                (endTime, lastStartTime, lastEndTime, state, completionCount);
-            return false;
-        }
-        session.Send(QuestPacket.Complete(quest));
-        OfferDispatch(quest, QuestDispatchType.DirectComplete);
-        session.AdventureProtect.Update();
-
         // The meso the reward line shows: a guild quest's relativeMeso row at the player's level with the guild bonus,
         // else the fixed money.
         long? relativeMeso = reward.RelativeMeso != 0
@@ -989,11 +968,11 @@ public sealed class QuestManager {
             exp = GuildRules.QuestRewardBonus(exp, guildFactor.UserExp);
         }
 
-        // The quest reward special effects held (type 7): more exp, meso or rue for a quest of their repeat type.
-        (long extraExp, long extraMeso, long extraRue) = SpecialEffectRules.QuestExtra(
-            session.Buffs.TakeSpecialEffects(SpecialEffectRules.QuestReward,
-                effect => SpecialEffectRules.QuestApplies(effect, basic.Repeat, exp, meso, reward.Rue)),
-            exp, meso, reward.Rue);
+        // The quest reward special effects held (type 7): more exp, meso or rue for a quest of their repeat type. Their
+        // messages are sent once the completion is stored.
+        List<SpecialEffectMetadata> specialEffects = session.Buffs.RollSpecialEffects(SpecialEffectRules.QuestReward,
+            effect => SpecialEffectRules.QuestApplies(effect, basic.Repeat, exp, meso, reward.Rue));
+        (long extraExp, long extraMeso, long extraRue) = SpecialEffectRules.QuestExtra(specialEffects, exp, meso, reward.Rue);
 
         // The quest reward event's share of the same exp and meso adds as well (the client's reward line raises the
         // exp and the meso it shows by the event rate, questmanager_1.cpp:342 and 354).
@@ -1005,22 +984,52 @@ public sealed class QuestManager {
         exp = QuestExpRules.StatBonus(exp, session.Player.Stats.Values[SpecialAttribute.QuestExp].Multiplier(), basic.StandardLevel,
             session.ServerTableMetadata.ConstantsTable.QuestRewardSAIgnoreLevel);
 
-        if (meso + extraMeso > 0) {
-            session.Currency.ChangeMeso(meso + extraMeso);
+        long treva = QuestRewardEventRules.Raise(reward.Treva, rewardEvent, QuestRewardEventRules.Treva);
+        long rue = QuestRewardEventRules.Raise(reward.Rue, rewardEvent, QuestRewardEventRules.Rue);
+
+        // The order KMS2 sends: the quest's complete packet, the meso, the exp, the items, then what counts the quest.
+        (long endTime, long lastStartTime, long lastEndTime, QuestState state, int completionCount) =
+            (quest.EndTime, quest.LastStartTime, quest.LastEndTime, quest.State, quest.CompletionCount);
+        quest.EndTime = DateTime.Now.ToEpochSeconds();
+        quest.LastStartTime = 0;
+        quest.LastEndTime = 0;
+        quest.State = QuestState.Completed;
+        quest.CompletionCount++;
+        // The completed row is stored before any reward is paid: the reward items get their rows at once (Inventory.Add,
+        // MailItem), so a completion left to the next session save paid the rewards again after a crash or a failed
+        // save (the stored quest was still open). Not stored: nothing is paid and the quest stays open.
+        // The reward's mesos, treva and rue are stored with the row (the wallet is part of the same store): left to the
+        // next session save, a crash in between kept the quest completed without them. They are added unsent there and
+        // sent, with the meso quests and the token conditions, once the row is stored; not stored, they are taken back
+        // before the account lock is let go, so no session save waiting for it writes them.
+        long ownerId = quest.Metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
+        (long Meso, long Meret, long GameMeret) addedMeso = default;
+        CurrencyManager.Added addedTreva = default, addedRue = default;
+        if (!session.TrySavePurchase(db => {
+                addedMeso = session.Currency.AddUnsent(meso + extraMeso, 0, 0);
+                addedTreva = session.Currency.AddUnsent(CurrencyType.Treva, treva);
+                addedRue = session.Currency.AddUnsent(CurrencyType.Rue, rue + extraRue);
+                return db.SaveQuests(ownerId, [quest]) && db.SaveCurrency(session.Player);
+            }, undo: () => {
+                session.Currency.TakeBackAdded(addedMeso);
+                session.Currency.TakeBackAdded(addedTreva);
+                session.Currency.TakeBackAdded(addedRue);
+            }, out completeResetRefused)) {
+            (quest.EndTime, quest.LastStartTime, quest.LastEndTime, quest.State, quest.CompletionCount) =
+                (endTime, lastStartTime, lastEndTime, state, completionCount);
+            return false;
         }
+        session.Send(QuestPacket.Complete(quest));
+        OfferDispatch(quest, QuestDispatchType.DirectComplete);
+        session.AdventureProtect.Update();
+        session.Buffs.NotifySpecialEffects(specialEffects);
+
+        session.Currency.NotifyAdded(addedMeso);
         if (exp + extraExp + eventExp > 0) {
             session.Exp.AddQuestExp(exp + extraExp + eventExp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message(), QuestExpRules.PrestigeType(basic.Type, basic.Repeat, basic.GuideType));
         }
-
-        long treva = QuestRewardEventRules.Raise(reward.Treva, rewardEvent, QuestRewardEventRules.Treva);
-        if (treva > 0) {
-            session.Currency.Change(CurrencyType.Treva, treva);
-        }
-
-        long rue = QuestRewardEventRules.Raise(reward.Rue, rewardEvent, QuestRewardEventRules.Rue);
-        if (rue + extraRue > 0) {
-            session.Currency.Change(CurrencyType.Rue, rue + extraRue);
-        }
+        session.Currency.NotifyAdded(addedTreva);
+        session.Currency.NotifyAdded(addedRue);
 
         // menteeCoin: the mentee token the mentoring page shows on the reward line (FUN_140762be0,
         // commonfiles/questmasktable.cpp:1000, no bonus); the currency caps it and counts get_mentee_token. While a

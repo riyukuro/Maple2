@@ -11,6 +11,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.PacketHandlers;
@@ -383,6 +384,41 @@ public class SessionSaveTransactionTests {
         Assert.That(session.Quest.Complete(quest), Is.False);
         session.SessionSave();
         Assert.That((StoredQuest(QuestId), StoredItems(RewardItemId)), Is.EqualTo(((QuestState?) QuestState.Completed, 2)));
+    }
+
+    // The reward's mesos are stored with the completed quest row, not left to the next session save (a crash in
+    // between kept the quest completed without them). A refused row stores and holds none of them, and sends none.
+    [Test]
+    public void Complete_RewardMesoStoredWithTheQuestRow() {
+        test.EnterMap(TestGameSession.Map(2000023));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        QuestMetadata data = TestGameSession.QuestData(QuestId);
+        data = data with { CompleteReward = data.CompleteReward with { Meso = 1000 } };
+        test.Register(data);
+        Quest quest = test.StartQuest(data);
+        session.SessionSave();
+        long before = session.Currency.Meso;
+        Assume.That((StoredQuest(QuestId), StoredMeso(), test.Errors.Count), Is.EqualTo(((QuestState?) QuestState.Started, before, 0)));
+        RefuseAlways("UPDATE `quest`");
+        test.TakeSent();
+
+        Assert.That(session.Quest.Complete(quest), Is.False);
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(before));
+            Assert.That(StoredMeso(), Is.EqualTo(before));
+            Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.Quest));
+        });
+
+        hook.Before = null;
+        Assert.That(session.Quest.Complete(quest), Is.True);
+        long held = session.Currency.Meso;
+        Assert.Multiple(() => {
+            Assert.That(held, Is.GreaterThan(before));
+            Assert.That((StoredQuest(QuestId), StoredMeso()), Is.EqualTo(((QuestState?) QuestState.Completed, held)));
+        });
     }
 
     // A lapenshard taken off while the config row is refused stays worn and gets no item row: the config without the

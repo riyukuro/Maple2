@@ -518,13 +518,23 @@ public class BuffManager : IUpdatable {
     // The special effects of a type held that take effect this time (SpecialEffectRules.Taken). A player holder is
     // sent the activateMsg of each one taken.
     public List<SpecialEffectMetadata> TakeSpecialEffects(int type, Func<SpecialEffectMetadata, bool>? applies = null) {
-        List<SpecialEffectMetadata> taken = SpecialEffectRules.Taken(SpecialEffects(), type, SpecialEffectRandom, applies);
+        List<SpecialEffectMetadata> taken = RollSpecialEffects(type, applies);
+        NotifySpecialEffects(taken);
+        return taken;
+    }
+
+    // TakeSpecialEffects without the messages: the caller sends them with NotifySpecialEffects (after a store, say).
+    public List<SpecialEffectMetadata> RollSpecialEffects(int type, Func<SpecialEffectMetadata, bool>? applies = null) {
+        return SpecialEffectRules.Taken(SpecialEffects(), type, SpecialEffectRandom, applies);
+    }
+
+    // The messages of the effects taken (their activateMsg).
+    public void NotifySpecialEffects(IEnumerable<SpecialEffectMetadata> taken) {
         if (Actor is FieldPlayer player) {
             foreach (string message in SpecialEffectRules.Messages(taken)) {
                 player.Session.Send(NoticePacket.Message(message));
             }
         }
-        return taken;
     }
 
     // The resistance rates of the buffs held, each times its stack count (Buff.StackFactor).
