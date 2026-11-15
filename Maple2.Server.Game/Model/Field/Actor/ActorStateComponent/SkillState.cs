@@ -190,6 +190,7 @@ public class SkillState {
             ServerTick = cast.ServerTick,
             Position = cast.Position,
             CastPosition = cast.CastPosition,
+            SentPosition = cast.SentPosition,
             Direction = direction,
             Rotation = cast.Rotation,
             SplashPlaced = cast.SplashPlaced,

@@ -23,6 +23,9 @@ public class SkillRecord {
 
     public Vector3 Position;
     public Vector3 CastPosition; // the cast's position as taken at the use; attack packets are held to it
+    // The cast's position as the client sent it, which its attack point packets carry (StateSkill m_ptPos); it differs
+    // from CastPosition when the server stood the cast at the player's position instead (SkillHitRules.CastTooFar).
+    public Vector3 SentPosition;
     public readonly SkillHitBudget Hits = new();
     public readonly VibrateRules.Budget Vibrates = new(); // the Vibrate packets taken, per attack point and object
     public Vector3 ImpactPosition;

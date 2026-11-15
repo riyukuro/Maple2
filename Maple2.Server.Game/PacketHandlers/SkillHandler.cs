@@ -115,6 +115,7 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         long startTick = session.Field.FieldTick;
+        record.SentPosition = record.Position;
         // A cast position away from the player's own is not taken: the cast stands where the server has the player.
         if (SkillHitRules.CastTooFar(record.Position, session.Player.Position, session.Player.SinceStateSync)) {
             Logger.Debug("Cast position {Cast} away from the player at {Player}: {Record}", record.Position, session.Player.Position, record);
@@ -189,8 +190,10 @@ public class SkillHandler : FieldPacketHandler {
         // Note: counts up for skills that are held down (reused skillUid)
         int iterations = packet.ReadInt();
 
-        // An attack point packet outside what a cast sends (SkillHitRules) is dropped: nothing is declared or relayed.
-        bool taken = !SkillHitRules.PointMoved(position, record.CastPosition)
+        // An attack point packet outside what a cast sends (SkillHitRules) is dropped: nothing is declared or relayed. The
+        // client's point carries its own cast position (stateskill.cpp:1376), the one it sent with the use, so the point is
+        // held to that, not to where the server stood a cast too far from the player.
+        bool taken = !SkillHitRules.PointMoved(position, record.SentPosition)
             && record.Hits.TakePoint(attackPoint, iterations, record.Metadata.Property.ContinueSkill, count, session.Field.FieldTick,
                 SkillHitRules.MaxAttacks(record.Attack.TargetCount, record.Attack.Arrow.NonTarget == SkillTargetType.Owner),
                 session.Config.HeldInterval(record.Motion.MotionProperty, record.CastUid), session.Config.Lag, CastCheckSetting.Enforce);
@@ -209,8 +212,9 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Debug("Attack point dropped: more linked tags than the arrow bounces ({Bounce}): {Record}", record.Attack.Arrow.BounceCount, record);
             return;
         }
-        // Only a point that is taken moves the cast (a dropped one leaves its position and direction).
-        record.Position = position;
+        // Only a point that is taken moves the cast (a dropped one leaves its position and direction), by what it moved
+        // from the sent cast position, so a cast stood at the player's position stays there.
+        record.Position = record.CastPosition + (position - record.SentPosition);
         record.Direction = direction;
         DeclarePointTags(record.Hits, attackPoint, iterations, tags);
         foreach (List<TargetRecord> targets in tags) {
