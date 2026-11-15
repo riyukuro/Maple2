@@ -725,13 +725,15 @@ public class FieldPlayer : Actor<Player> {
         // A duelist who dies in the rank duel's fight loses it; a PvP zone counts the death and the kill.
         Field.RankDuel?.Death(this);
         Field.PvpZone?.Death(this);
+        // Read before the game counts the fall: the fall that ends the match is still one in the running game.
+        bool inRunningGame = Field.Survival?.InRunningGame(Value.Character.Id) == true;
         Field.Survival?.Death(this);
         // Spring Farm and Boom Boom Ocean: a death takes one of the game's lives.
         Field.SpringFarmDied();
         Field.BoomBoomOceanDied(this);
 
         // A survival map's lobby death: revived here at the next update, at this field's spawn (Revive below).
-        reviveInField = MapleSurvivalRules.ServerRevives(Session.Field.Metadata.Property.Type, Field.Survival?.InRunningGame(Value.Character.Id) == true);
+        reviveInField = MapleSurvivalRules.ServerRevives(Session.Field.Metadata.Property.Type, Session.Field.Metadata.XBlock, inRunningGame);
         if (reviveInField) {
             autoReviveDelay = 1;
             autoReviveTick = 0;

@@ -16,6 +16,7 @@ using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
+using Maple2.Server.Game.Session;
 using Maple2.Tools.Collision;
 
 namespace Maple2.Server.Tests.Game.Pvp;
@@ -231,16 +232,49 @@ public class PkFieldTests {
         });
     }
 
-    // The restored client hides the revive box on a survival map (solo 15, squad 16), so a death there outside a
-    // running match is the server's to revive; a participant's fall in the match stays down.
-    [TestCase(MapType.SurvivalSolo, false, true)]
-    [TestCase(MapType.SurvivalTeam, false, true)]
-    [TestCase(MapType.SurvivalSolo, true, false)]
-    [TestCase(MapType.SurvivalTeam, true, false)]
-    [TestCase(MapType.None, false, false)]
-    [TestCase(MapType.Pvp, false, false)]
-    public void Survival_ServerRevives(MapType type, bool inRunningGame, bool expected) {
-        Assert.That(MapleSurvivalRules.ServerRevives(type, inRunningGame), Is.EqualTo(expected));
+    // The restored client hides the revive box on a survival map (type 15 solo, 16 squad, or an xblock ending in
+    // "_survival": the KMS2 Mushking fields have no map type), so a death there outside a running match is the
+    // server's to revive; a participant's fall in the match stays down.
+    [TestCase(MapType.SurvivalSolo, "", false, true)]
+    [TestCase(MapType.SurvivalTeam, "", false, true)]
+    [TestCase(MapType.None, "82000000_survival", false, true)]
+    [TestCase(MapType.SurvivalSolo, "", true, false)]
+    [TestCase(MapType.SurvivalTeam, "", true, false)]
+    [TestCase(MapType.None, "82000000_survival", true, false)]
+    [TestCase(MapType.None, "02000001_tw_tria", false, false)]
+    [TestCase(MapType.Pvp, "", false, false)]
+    public void Survival_ServerRevives(MapType type, string xBlock, bool inRunningGame, bool expected) {
+        Assert.That(MapleSurvivalRules.ServerRevives(type, xBlock, inRunningGame), Is.EqualTo(expected));
+    }
+
+    // A death in the KMS2 survival lobby (no map type, the "_survival" xblock, no running game): the server revives the
+    // player in this field at the next update, though the field names another revival return map.
+    [Test]
+    public void Survival_LobbyDeathRevivedInField() {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        MapMetadata map = TestGameSession.Map(Map);
+        test.EnterMap(map with { XBlock = $"{Map}_survival", Property = map.Property with { RevivalReturnId = 2000001 } });
+        FieldManager field = session.Field!;
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(session.Player, field);
+        session.Party = new PartyManager(test.World, session);
+        session.Ride = new RideManager(session);
+        typeof(ConfigManager).GetField("session", Any)!.SetValue(session.Config, session);
+        var spawns = new ConcurrentDictionary<int, FieldPlayerSpawnPoint>();
+        typeof(FieldManager).GetField("fieldPlayerSpawnPoints", Any)!.SetValue(field, spawns);
+        spawns[1] = new FieldPlayerSpawnPoint(field, 9001, new SpawnPointPC(1, new Vector3(300, 0, 0), Vector3.Zero, true, true), 1);
+        typeof(FieldPlayer).GetProperty(nameof(FieldPlayer.IsDead))!.SetValue(session.Player, true);
+        typeof(FieldPlayer).GetMethod("OnDeath", Any)!.Invoke(session.Player, null);
+        Assume.That(session.Player.IsDead, Is.True);
+        // OnDeath schedules the revive for the next update (the update loop calls Revive once its tick is past).
+        Assert.That(typeof(FieldPlayer).GetField("autoReviveDelay", Any)!.GetValue(session.Player), Is.EqualTo(1));
+        Assert.That(session.Player.Revive(), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(session.Player.IsDead, Is.False);
+            Assert.That(typeof(FieldPlayer).GetField("reviveInField", Any)!.GetValue(session.Player), Is.False);
+            Assert.That(session.Field, Is.SameAs(field));
+            Assert.That(session.Player.Position, Is.EqualTo(new Vector3(300, 0, 25)));
+        });
     }
 
     [Test]
