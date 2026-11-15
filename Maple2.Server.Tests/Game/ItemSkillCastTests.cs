@@ -107,6 +107,41 @@ public class ItemSkillCastTests : TriggerTestBase {
         Assert.That(Held(Potion), Is.EqualTo(left));
     }
 
+    // The client starts a potion's cooldown at its use, the server at the use's arrival: a first use the link held up
+    // (here by 2 s, past the 1.5 s slack) makes the second, on time by the client's 5 s, arrive early here. The time it
+    // is early by past the slack is drawn from the session's lag allowance (2 s), so one held use passes; a second use
+    // further ahead than the allowance is still refused. Before, any use past the slack was refused.
+    [TestCase(3500, 3)]
+    [TestCase(3000, 3)]
+    [TestCase(1600, 3)]
+    [TestCase(1000, 4)]
+    public void ASecondUseAfterAHeldFirst_IsTakenOnTheLagAllowance(long sinceFirstArrived, int left) {
+        SkillMetadata potion = ItemSkill(PotionSkill);
+        QuestConditionWiringTests.SetSkills(test, potion with { Data = potion.Data with { Condition = potion.Data.Condition with { CooldownTime = 5f, CooldownShownInUi = true } } });
+        long first = Field.FieldTick;
+        Cast(PotionSkill, Uid(Potion), castId: 1);
+        typeof(Maple2.Server.Game.Manager.Field.FieldManager).GetField("<FieldTick>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(Field, first + sinceFirstArrived);
+        Cast(PotionSkill, Uid(Potion), castId: 2);
+        Assert.That(Held(Potion), Is.EqualTo(left));
+    }
+
+    // The allowance is drawn once: right after a use taken on it, another held use is refused until it refills.
+    [Test]
+    public void TheLagAllowance_IsNotDrawnTwiceInARow() {
+        SkillMetadata potion = ItemSkill(PotionSkill);
+        QuestConditionWiringTests.SetSkills(test, potion with { Data = potion.Data with { Condition = potion.Data.Condition with { CooldownTime = 5f, CooldownShownInUi = true } } });
+        long first = Field.FieldTick;
+        FieldInfo tick = typeof(Maple2.Server.Game.Manager.Field.FieldManager).GetField("<FieldTick>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Cast(PotionSkill, Uid(Potion), castId: 1);
+        tick.SetValue(Field, first + 2000);
+        Cast(PotionSkill, Uid(Potion), castId: 2);
+        Assert.That(Held(Potion), Is.EqualTo(3), "the second use draws 1.5 s");
+        tick.SetValue(Field, first + 4000);
+        Cast(PotionSkill, Uid(Potion), castId: 3);
+        Assert.That(Held(Potion), Is.EqualTo(3), "the third, 1.5 s early again, finds 0.7 s left");
+    }
+
     // The ingest reads useCoolDownShowUI from the played client's <basic><condition>, 0 when not given (made-up rows),
     // for a skill it has (Read) and for a level only it has (BuildLevel, kept by WithPackLevel).
     [Test]

@@ -91,6 +91,12 @@ public static class SkillCastRules {
 
     public static bool OnCooldown(long tick, long endTick) => tick < endTick - CooldownSlackMs;
 
+    // How long before a cooldown's end, less the slack, a use arrives (0 when it does not). An item skill's cooldown
+    // starts at the use's arrival here, but at the use itself in the client (CSkillRecord m_fCooldown), so a use that
+    // the link held up starts a later end here, and the next use, on time by the client's own cooldown, arrives early by
+    // the time the first was held. That time is drawn from the session's LagBudget (SkillCastCheck.Allowed).
+    public static long CooldownShortfallMs(long tick, long endTick) => Math.Max(0, endTick - CooldownSlackMs - tick);
+
     // clearCooldownFromPVPZone, loaded with a skill's stateAttr (skilloverlapcompare.cpp:867) and an effect's
     // BasicProperty (additionalactionadditional.cpp:1073) and read nowhere else in the client: entering a PvP
     // zone (a map of type Pvp, as for clearEffectFromPVPZone) ends the cooldown of each flagged skill or effect.
