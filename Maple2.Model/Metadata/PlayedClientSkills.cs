@@ -19,6 +19,8 @@ namespace Maple2.Model.Metadata;
 //   there and not in the client, so a pack flag would refuse a cast the client sends).
 // - the requireEffect codes and hasNotAdditionalEffectGroup ids of <condition>, which the same cast test reads (answers
 //   0x14 and 0x18); the data pack's beginCondition has neither.
+// - useCoolDownShowUI of <condition> (0 when not given), which the cast test's cooldown check reads (BeginCondition.
+//   CooldownShownInUi); the data pack's beginCondition differs for four skills (10500293, 10100061, 11000145, 11000146).
 // - attackMethodType of each <attack> (SkillAttackData::Load, 0 when not given): the data pack gives it for 2 skills
 //   only. The client's search of an attack of type 1 takes neither the range offset nor its z rotation
 //   (SkillLevelData::FUN_1408043f0); see ReadAttackMethods.
@@ -28,7 +30,7 @@ public static partial class PlayedClientSkills {
 
     public readonly record struct Entry(int MainType, int RechargeMaxCount, bool RechargeShared, (int LeftHand, int RightHand)[] Weapons,
         int SplashMaxCount = 0, bool OnlyShadowWorld = false, bool OnlyFlyableMap = false, bool AllowBattleRiding = false,
-        bool OnlyBattleRiding = false, int[]? RequireEffects = null, int[]? NotEffectGroups = null, bool ChargingSkill = false);
+        bool OnlyBattleRiding = false, int[]? RequireEffects = null, int[]? NotEffectGroups = null, bool ChargingSkill = false, bool CooldownShownInUi = false);
 
     public static bool IsSkillFile(string name) => name.StartsWith(SkillFolder, StringComparison.OrdinalIgnoreCase);
 
@@ -54,7 +56,8 @@ public static partial class PlayedClientSkills {
                 OnlyBattleRiding: Number(condition, "onlyBattleRidingState") != 0,
                 RequireEffects: RequireEffectCodes(condition),
                 NotEffectGroups: NotEffectGroupIds(condition),
-                ChargingSkill: Number(combo, "chargingSkill") != 0);
+                ChargingSkill: Number(combo, "chargingSkill") != 0,
+                CooldownShownInUi: Number(condition, "useCoolDownShowUI") != 0);
         }
         return entries;
     }

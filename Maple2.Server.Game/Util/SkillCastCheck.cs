@@ -169,6 +169,14 @@ public static class SkillCastCheck {
         // (allowMapleSurvival, level, gender, job, stats and the rest; SkillCondition::Load, skilloverlapcompare.cpp:522),
         // and what it does read is checked above (HandsAndSpiritAllow included). KR: 83 of the 94 item skills lack allowMapleSurvival, so every potion
         // was refused in the Maple Survival fields (82000000-82000003, map type 15).
+        // A skill whose cooldown is not shown in the UI (useCoolDownShowUI 0) is cast by the client on cooldown when a
+        // skill state picks it as its next record (a held quickslot key, MyPC::vfunc_104 under SetCastAllowed(1),
+        // stateskill.cpp:2906): the cooldown check answers 0x23 only without that (CSkillSystem::FUN_14176a530). Such a
+        // cast cannot be told from another here, so the cooldown refuses none. KR: 18 item skills (90000121 and the other
+        // Maple Survival items with 3 s, 90000040 to 90000043 and others with 0.5 s).
+        if (!condition.CooldownShownInUi) {
+            return true;
+        }
         blocking = session.Config.BlockingCooldown(record.Metadata, tick);
         return blocking == null;
     }

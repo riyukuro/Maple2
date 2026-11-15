@@ -40,7 +40,11 @@ public record BeginCondition(
     // The played client's hasNotAdditionalEffectGroup ids: an enabled buff held of one of these groups refuses the
     // cast (answer 0x18). Both are read from the skill's <basic><condition> (SkillCondition::Load) and tested by the
     // client's cast check (CSkillSystem::FUN_14176a8c0); SkillCastCheck tests them on a cast's first motion.
-    int[]? NotEffectGroups = null);
+    int[]? NotEffectGroups = null,
+    // useCoolDownShowUI: the client refuses a cast on cooldown of a skill with the flag 0 only when the cast does not
+    // come from a skill state picking its next record (CSkillSystem::FUN_14176a530, m_nCastAllowed), so it can send one
+    // on cooldown; with the flag 1 it never does. True when the data says nothing.
+    bool CooldownShownInUi = true);
 
 public record BeginConditionWeapon(
     ItemType LeftHand,

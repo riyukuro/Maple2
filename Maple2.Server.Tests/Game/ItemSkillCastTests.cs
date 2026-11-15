@@ -39,10 +39,10 @@ public class ItemSkillCastTests : TriggerTestBase {
     }
 
     // The player's cast of the skill at level 1 (command 0, a use) paid with the item uid.
-    private void Cast(int skillId, long itemUid) {
+    private void Cast(int skillId, long itemUid, long castId = 1) {
         new SkillHandler { SkillMetadata = Field.SkillMetadata, TableMetadata = null! }.Handle(test.Session, TestGameSession.Packet(writer => {
             writer.WriteByte(0);
-            writer.WriteLong(1);
+            writer.WriteLong(castId);
             writer.WriteInt((int) Field.FieldTick);
             writer.WriteInt(skillId);
             writer.WriteShort(1);
@@ -92,6 +92,39 @@ public class ItemSkillCastTests : TriggerTestBase {
         Assert.Multiple(() => {
             Assert.That(Held(Potion), Is.EqualTo(4));
             Assert.That(test.Session.Player.ActiveSkills.Get(1), Is.Not.Null, "the cast runs");
+        });
+    }
+
+    // A second use on cooldown: refused for a cooldown shown in the UI; taken for one that is not, which the client
+    // casts on cooldown when a held quickslot key makes it a skill state's next record (SkillCastCheck.Allowed).
+    [TestCase(true, 4)]
+    [TestCase(false, 3)]
+    public void ASecondUseOnCooldown_IsTakenOnlyWhenTheCooldownIsNotShown(bool shown, int left) {
+        SkillMetadata potion = ItemSkill(PotionSkill);
+        QuestConditionWiringTests.SetSkills(test, potion with { Data = potion.Data with { Condition = potion.Data.Condition with { CooldownTime = 5f, CooldownShownInUi = shown } } });
+        Cast(PotionSkill, Uid(Potion), castId: 1);
+        Cast(PotionSkill, Uid(Potion), castId: 2);
+        Assert.That(Held(Potion), Is.EqualTo(left));
+    }
+
+    // The ingest reads useCoolDownShowUI from the played client's <basic><condition>, 0 when not given (made-up rows),
+    // for a skill it has (Read) and for a level only it has (BuildLevel, kept by WithPackLevel).
+    [Test]
+    public void TheIngestReadsTheCooldownUiFlagFromThePlayedClient() {
+        var document = new System.Xml.XmlDocument();
+        document.LoadXml("""
+            <ms2>
+              <skill id="100"><basic><condition useCoolDownShowUI="1" /></basic><level value="1" cooldown="5000" /></skill>
+              <skill id="101"><basic><condition /></basic><level value="1" cooldown="3000" /></skill>
+            </ms2>
+            """);
+        var skills = document.SelectNodes("ms2/skill")!.OfType<System.Xml.XmlElement>().ToArray();
+        System.Collections.Generic.Dictionary<int, PlayedClientSkills.Entry> read = PlayedClientSkills.Read([document]);
+        SkillMetadataLevel pack = ItemSkill(PotionSkill).Data;
+        Assert.Multiple(() => {
+            Assert.That((read[100].CooldownShownInUi, read[101].CooldownShownInUi), Is.EqualTo((true, false)));
+            Assert.That(skills.Select(skill => PlayedClientSkills.WithPackLevel(PlayedClientSkills.BuildLevel(skill, (System.Xml.XmlElement) skill.SelectSingleNode("level")!), pack).Condition.CooldownShownInUi),
+                Is.EqualTo(new[] { true, false }));
         });
     }
 

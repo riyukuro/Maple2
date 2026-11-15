@@ -99,7 +99,8 @@ public static partial class PlayedClientSkills {
                 Caster: null,
                 RechargeGap: Real(condition, "defaultRechargingCooldownTime"),
                 RequireEffects: RequireEffectCodes(condition),
-                NotEffectGroups: NotEffectGroupIds(condition)),
+                NotEffectGroups: NotEffectGroupIds(condition),
+                CooldownShownInUi: Number(condition, "useCoolDownShowUI") != 0),
             Change: null,
             AutoTargeting: null,
             Consume: new SkillMetadataConsume(
@@ -128,7 +129,7 @@ public static partial class PlayedClientSkills {
 
     // A played client's level (BuildLevel) added to a data pack skill: the client's own condition fields (cooldown,
     // shadow world, flyable map, battle ride, map codes, hand weapons, recharge gap, required effects and refused
-    // effect groups) and cost, and what the client's
+    // effect groups, cooldown shown in the UI) and cost, and what the client's
     // level does not give from the pack's level: the rest of its begin condition (level, jobs, stats, targets) and
     // whether it is an item skill's level (consume useItem, which the cast checks its condition and cooldown for).
     public static SkillMetadataLevel WithPackLevel(SkillMetadataLevel built, SkillMetadataLevel pack) {
@@ -145,6 +146,7 @@ public static partial class PlayedClientSkills {
                 RechargeGap = client.RechargeGap,
                 RequireEffects = client.RequireEffects,
                 NotEffectGroups = client.NotEffectGroups,
+                CooldownShownInUi = client.CooldownShownInUi,
             },
             Consume = built.Consume with { UseItem = pack.Consume.UseItem },
         };

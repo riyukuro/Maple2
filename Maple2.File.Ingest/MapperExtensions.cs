@@ -349,7 +349,8 @@ public static class MapperExtensions {
             Caster: Convert(beginCondition.skillCaster),
             RechargeGap: beginCondition.defaultRechargingCooldownTime,
             PvpZone: Enum.IsDefined((PvpZoneApply) beginCondition.applyPvPZoneType) ? (PvpZoneApply) beginCondition.applyPvPZoneType : PvpZoneApply.Everywhere,
-            UseTargetCountFactor: beginCondition.useTargetCountFactor);
+            UseTargetCountFactor: beginCondition.useTargetCountFactor,
+            CooldownShownInUi: beginCondition.useCoolDownShowUI);
     }
 
     // We use this default to avoid writing useless checks

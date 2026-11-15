@@ -280,6 +280,7 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                         OnlyOnBattleMount = played.OnlyBattleRiding,
                         RequireEffects = played.RequireEffects,
                         NotEffectGroups = played.NotEffectGroups,
+                        CooldownShownInUi = played.CooldownShownInUi,
                     }
                         : level.beginCondition.Convert()),
                     Change: level.changeSkill?.Convert(),
