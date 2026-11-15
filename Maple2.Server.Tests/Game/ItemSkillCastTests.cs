@@ -18,8 +18,8 @@ public class ItemSkillCastTests : TriggerTestBase {
 
     private static SkillMetadata ItemSkill(int id) {
         SkillMetadata skill = QuestConditionWiringTests.CastSkill(id);
-        // An item skill also passes its own condition (SkillCastCheck.Allowed): one that always holds.
-        BeginCondition always = skill.Data.Condition with { Probability = 1f, Gender = Gender.All, PvpZone = PvpZoneApply.Everywhere };
+        // The pack's condition of a KR potion: no allowMapleSurvival, which the client does not read.
+        BeginCondition always = skill.Data.Condition with { Probability = 1f, Gender = Gender.All, PvpZone = PvpZoneApply.Everywhere, AllowOnSurvival = false };
         return skill with { Data = skill.Data with { Condition = always, Consume = skill.Data.Consume with { UseItem = true } } };
     }
 
@@ -65,6 +65,30 @@ public class ItemSkillCastTests : TriggerTestBase {
     [Test]
     public void TheItemsOwnSkill_IsCastAndTakesOnePiece() {
         Cast(PotionSkill, Uid(Potion));
+        Assert.Multiple(() => {
+            Assert.That(Held(Potion), Is.EqualTo(4));
+            Assert.That(test.Session.Player.ActiveSkills.Get(1), Is.Not.Null, "the cast runs");
+        });
+    }
+
+    // The client tests none of the pack's beginCondition fields that only the server's condition check reads
+    // (allowMapleSurvival, level, gender and the rest; SkillCondition::Load reads none of them), so a potion is cast in
+    // a Maple Survival field (KR 82000000-82000003, map type 15) and by a player under the pack's level.
+    [TestCase(MapType.SurvivalSolo, (short) 0)]
+    [TestCase(MapType.SurvivalTeam, (short) 0)]
+    [TestCase(MapType.None, (short) 99)]
+    public void ThePacksOwnCondition_DoesNotStopThePotion(MapType type, short level) {
+        MapMetadata map = TestGameSession.Map(2000001);
+        test.EnterMap(map with {
+            Property = map.Property with { Type = type },
+            Limit = new MapMetadataLimit(0, 0, 0, 0, [], true, true, true, true, true, true, true),
+        });
+        SkillMetadata potion = ItemSkill(PotionSkill);
+        QuestConditionWiringTests.SetSkills(test, potion with { Data = potion.Data with { Condition = potion.Data.Condition with { Level = level } } });
+        test.TakeSent();
+
+        Cast(PotionSkill, Uid(Potion));
+
         Assert.Multiple(() => {
             Assert.That(Held(Potion), Is.EqualTo(4));
             Assert.That(test.Session.Player.ActiveSkills.Get(1), Is.Not.Null, "the cast runs");

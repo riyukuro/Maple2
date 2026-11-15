@@ -45,9 +45,9 @@ public static class SkillCastCheck {
     // Checked before any cost is paid. A dead player casts only a skill that allows it, and no one casts a skill
     // that a buff held disables or that names other fields, or a skill that takes the caster off the ride while on it;
     // no first motion comes without the buffs the condition requires or with a buff of a group it refuses. A skill of a job's tree
-    // must be in the caster's own tree at that level or above; a skill of no tree must be one some client path gives a player. An item skill must also pass its own condition and
-    // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast and must find
-    // its hand weapons held and its spirit threshold met.
+    // must be in the caster's own tree at that level or above; a skill of no tree must be one some client path gives a player. An item skill must also
+    // be off cooldown, its own and its cooldown group's; a job skill must not come too early after its last cast. Every skill must
+    // find its hand weapons held and its spirit threshold met.
     // No cast comes before the motion of the last cast lets the next one in. castTick null (a state skill) leaves
     // the timing checks out.
     public static bool Allowed(GameSession session, SkillRecord record, long tick, int? castTick, out SkillCooldown? blocking) {
@@ -151,16 +151,20 @@ public static class SkillCastCheck {
         if (castTick is { } sentTick && !TimingAllows(session, record, useItem, inAnyTree, sentTick, tick)) {
             return false;
         }
+        if (!HandsAndSpiritAllow(session, record)) {
+            return false;
+        }
         if (!useItem) {
-            return HandsAndSpiritAllow(session, record);
+            return true;
         }
         if (RecoveryFull(session, record) is { } full) {
             Logger.Debug("Cast refused, item skill {SkillId}: the client's check answers {Answer} for a full pool", record.SkillId, full);
             return false;
         }
-        if (!condition.Check(session.Player, session.Player, session.Player)) {
-            return false;
-        }
+        // The pack's beginCondition is not tested here: the client's cast check reads none of what only it holds
+        // (allowMapleSurvival, level, gender, job, stats and the rest; SkillCondition::Load, skilloverlapcompare.cpp:522),
+        // and what it does read is checked above (HandsAndSpiritAllow included). KR: 83 of the 94 item skills lack allowMapleSurvival, so every potion
+        // was refused in the Maple Survival fields (82000000-82000003, map type 15).
         blocking = session.Config.BlockingCooldown(record.Metadata, tick);
         return blocking == null;
     }
@@ -202,7 +206,8 @@ public static class SkillCastCheck {
         static (long, long) Pool(Stats stats, BasicAttribute attribute) => (stats[attribute].Current, stats[attribute].Total);
     }
 
-    // A job skill's weapon condition and spirit threshold (an item skill's own condition checks both).
+    // A skill's weapon condition and spirit threshold, tested for every skill as the client tests them (FUN_14176a8c0;
+    // no KR item skill has either).
     private static bool HandsAndSpiritAllow(GameSession session, SkillRecord record) {
         BeginCondition condition = record.Metadata.Data.Condition;
         if (condition.Weapon is { Length: > 0 } weapons) {
