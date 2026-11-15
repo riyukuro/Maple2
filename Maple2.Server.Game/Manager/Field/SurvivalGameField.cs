@@ -47,7 +47,9 @@ public sealed class SurvivalGameField {
     public SurvivalGameField(FieldManager field, IEnumerable<FieldPlayer> players) {
         this.field = field;
         startTick = field.FieldTick;
-        List<FieldPlayer> list = players.ToList();
+        // A player dead when the game starts is no participant: it neither counts as alive nor wins (the lobby revive,
+        // FieldPlayer.OnDeath, normally has it up before then).
+        List<FieldPlayer> list = players.Where(player => !player.IsDead).ToList();
         foreach (FieldPlayer player in list) {
             names[player.Value.Character.Id] = player.Value.Character.Name;
         }

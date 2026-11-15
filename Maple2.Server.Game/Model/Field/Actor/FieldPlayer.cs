@@ -79,6 +79,8 @@ public class FieldPlayer : Actor<Player> {
     // (MyPC::vfunc_137, mypc.cpp:1351), so the server revives the player when the time is over.
     private int autoReviveDelay;
     private long autoReviveTick;
+    // The pending server revive stays in this field (a survival lobby death): no revival return map.
+    private bool reviveInField;
     // The client makes a revived player invincible for UserRevivalInvincibleTick (CSceneStateGame::OnRevival,
     // scenestategame.cpp:7408) and a player who arrives by portal for UserPortalInvincibleTick (InvincibleEffect,
     // scenestategame.cpp:4280). Monster damage is ours, so the server keeps the same window. The client ends it
@@ -728,6 +730,13 @@ public class FieldPlayer : Actor<Player> {
         Field.SpringFarmDied();
         Field.BoomBoomOceanDied(this);
 
+        // A survival map's lobby death: revived here at the next update, at this field's spawn (Revive below).
+        reviveInField = MapleSurvivalRules.ServerRevives(Session.Field.Metadata.Property.Type, Field.Survival?.InRunningGame(Value.Character.Id) == true);
+        if (reviveInField) {
+            autoReviveDelay = 1;
+            autoReviveTick = 0;
+            return;
+        }
         int autoReviveMs = AutoReviveDelayMs(Session.Field.Metadata.Property);
         if (autoReviveMs > 0) {
             autoReviveDelay = autoReviveMs;
@@ -766,6 +775,8 @@ public class FieldPlayer : Actor<Player> {
 
         autoReviveDelay = 0;
         autoReviveTick = 0;
+        bool inField = reviveInField;
+        reviveInField = false;
 
         IsDead = false;
         // OnDeath took every buff without keepOnDeath, the lasting ones too: passive skills, gear and set
@@ -792,7 +803,7 @@ public class FieldPlayer : Actor<Player> {
         // When the return field cannot be entered (a GM-only or missing map, a field that failed to load), the player
         // has the move error and comes back here: before, the revive stopped with the player alive on the server and
         // no revive packet, the client still showing the death.
-        if (!instant && Field.Metadata.Property.RevivalReturnId != 0 && Field.Metadata.Property.RevivalReturnId != Field.Metadata.Id) {
+        if (!instant && !inField && Field.Metadata.Property.RevivalReturnId != 0 && Field.Metadata.Property.RevivalReturnId != Field.Metadata.Id) {
             bool prepared = Session.PrepareField(Field.Metadata.Property.RevivalReturnId);
             Session.SendFieldEnter(prepared);
             if (RevivalRules.LeftForTheReturnField(prepared, Session.FieldChangeMigrated)) {

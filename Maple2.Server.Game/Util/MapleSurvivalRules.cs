@@ -1,3 +1,4 @@
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Util;
@@ -29,6 +30,14 @@ public static class MapleSurvivalRules {
     public static bool RestoredClient => Maple2.Model.Game.Event.GameEvent.RestoredSurvivalClient;
 
     public static IndividualArenaTable.Entry Entry => new(Arena, MapId, PlayerCount, 0, 0, 0, 0, 0, 0);
+
+    // A death on a survival map (type 15 solo, 16 squad) outside a running match (the lobby wait before the script's
+    // CreateFieldGame, or after the end) gets no revive box: the restored client hides the box on those maps (GMS
+    // 0xb4d120), so the server revives the player at the field's spawn itself. A participant's fall in the running
+    // match stays down (it watches).
+    public static bool ServerRevives(MapType mapType, bool inRunningGame) {
+        return mapType is MapType.SurvivalSolo or MapType.SurvivalTeam && !inRunningGame;
+    }
 
     // The script's user count in a survival match's field: its 20 is the match's own count.
     public static int ScriptCount(int scriptCount, bool survivalMatch) {

@@ -13,6 +13,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.Model.Widget;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
 using Maple2.Tools.Collision;
@@ -199,6 +200,47 @@ public class PkFieldTests {
             Assert.That(scene.Field.PlayerHostile(scene.A, scene.B), Is.False);
             Assert.That(scene.Field.PlayerHostile(scene.B, scene.A), Is.False);
         });
+    }
+
+    // A player dead when the game starts (killed in the lobby) is no participant: not alive, not hostile, not the
+    // winner. With one living player left the game ends at once.
+    [Test]
+    public void Survival_DeadAtStartIsNoParticipant() {
+        Scene scene = Start(pk: true);
+        typeof(FieldPlayer).GetField("isDead", Any)!.SetValue(scene.B, true);
+        typeof(FieldManager).GetField(nameof(FieldManager.Widgets))!.SetValue(scene.Field, new Dictionary<string, Widget>());
+        scene.TestA.TakeSent();
+        scene.Field.StartSurvival();
+        string finish = Convert.ToHexString(MapleSurvivalPacket.GameFinish(true, [scene.A.Value.Character.Id]).ToArray());
+        Assert.Multiple(() => {
+            Assert.That(scene.TestA.TakeSent().Select(Convert.ToHexString), Does.Contain(finish));
+            Assert.That(scene.Field.Survival!.Ended, Is.True);
+            Assert.That(scene.Field.Survival!.InRunningGame(scene.B.Value.Character.Id), Is.False);
+            Assert.That(scene.Field.Survival!.Hostile(scene.A, scene.B), Is.False);
+        });
+    }
+
+    [Test]
+    public void Survival_BothAliveBothPlay() {
+        Scene scene = Start(pk: true);
+        scene.Field.StartSurvival();
+        Assert.Multiple(() => {
+            Assert.That(scene.Field.Survival!.Ended, Is.False);
+            Assert.That(scene.Field.Survival!.Playing(scene.A.Value.Character.Id), Is.True);
+            Assert.That(scene.Field.Survival!.Playing(scene.B.Value.Character.Id), Is.True);
+        });
+    }
+
+    // The restored client hides the revive box on a survival map (solo 15, squad 16), so a death there outside a
+    // running match is the server's to revive; a participant's fall in the match stays down.
+    [TestCase(MapType.SurvivalSolo, false, true)]
+    [TestCase(MapType.SurvivalTeam, false, true)]
+    [TestCase(MapType.SurvivalSolo, true, false)]
+    [TestCase(MapType.SurvivalTeam, true, false)]
+    [TestCase(MapType.None, false, false)]
+    [TestCase(MapType.Pvp, false, false)]
+    public void Survival_ServerRevives(MapType type, bool inRunningGame, bool expected) {
+        Assert.That(MapleSurvivalRules.ServerRevives(type, inRunningGame), Is.EqualTo(expected));
     }
 
     [Test]
