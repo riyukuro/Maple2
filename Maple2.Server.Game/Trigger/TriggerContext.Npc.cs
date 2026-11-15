@@ -364,6 +364,32 @@ public partial class TriggerContext {
 
     public static bool InSealedRoom(int mapId, int spawnPointId) => SealedRoomSpawns.Contains((mapId, spawnPointId));
 
+    // Spawn points the script uses after the player has moved on. 52000138 spawns 112 (act2_wave3_move) back in the
+    // first corridor section once the player is in the second one, about 2,200 units behind them; its agents see
+    // 2,000 and roam 450 from their point, so it never came and the escape, which waits on 101-123, stalled for a
+    // player who did not walk back. It spawns on the line from the nearest player toward its point, at most
+    // RearSpawnReach from them, on the floor reachable from the player spawn.
+    private static readonly HashSet<(int MapId, int SpawnPointId)> RearSpawns = [(52000138, 112)];
+    public const float RearSpawnReach = 1500;
+    private const float RearSpawnFloorReach = 300;
+
+    public static bool IsRearSpawn(int mapId, int spawnPointId) => RearSpawns.Contains((mapId, spawnPointId));
+
+    // The spawn point itself when no player is there or it is within reach (on the floor plane); else the point
+    // reach away from the player toward it, at the spawn point's height.
+    public static Vector3 RearSpawnPoint(Vector3 spawn, Vector3? player, float reach) {
+        if (player is not Vector3 at) {
+            return spawn;
+        }
+        var offset = new Vector2(spawn.X - at.X, spawn.Y - at.Y);
+        float distance = offset.Length();
+        if (distance <= reach) {
+            return spawn;
+        }
+        Vector2 point = new Vector2(at.X, at.Y) + offset / distance * reach;
+        return new Vector3(point.X, point.Y, spawn.Z);
+    }
+
     // The event spawn point of that id, else the map's plain npc spawn point of that id: scripts also spawn
     // on plain spawn points, which the event table does not hold.
     public static SpawnPointNPC? FindSpawnPoint(IReadOnlyDictionary<int, EventSpawnPointNPC> eventSpawns, IEnumerable<SpawnPointNPC> npcSpawns, int spawnId) {
@@ -419,6 +445,14 @@ public partial class TriggerContext {
                 spawnAnimationString = eventSpawn.SpawnAnimation;
             }
             Vector3 position = InSealedRoom(Field.MapId, spawnId) ? Field.NearestPlayerFloor(spawn.Position, SealedRoomReach) : spawn.Position;
+            if (IsRearSpawn(Field.MapId, spawnId)) {
+                Vector3? player = Field.Players.Values.Select(p => (Vector3?) p.Position)
+                    .MinBy(at => Vector2.Distance(new Vector2(at!.Value.X, at.Value.Y), new Vector2(spawn.Position.X, spawn.Position.Y)));
+                Vector3 rear = RearSpawnPoint(spawn.Position, player, RearSpawnReach);
+                if (rear != spawn.Position) {
+                    position = Field.NearestPlayerFloor(rear, RearSpawnFloorReach);
+                }
+            }
             FieldNpc? fieldNpc = Field.SpawnNpc(npc, position, spawn.Rotation, spawnPointNpc: spawn, spawnAnimation: spawnAnimationString);
             if (fieldNpc == null) {
                 logger.Error("[SpawnNpc] Failed to spawn npcId:{NpcId}", npcId);

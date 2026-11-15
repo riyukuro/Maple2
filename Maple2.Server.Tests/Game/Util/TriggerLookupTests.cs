@@ -79,6 +79,20 @@ public class TriggerLookupTests {
         });
     }
 
+    [Test]
+    public void SpawnNpc_RearSpawnComesWithinReachOfThePlayer() {
+        var spawn = new Vector3(1575, -75, 300);
+        Assert.Multiple(() => {
+            Assert.That(TriggerContext.IsRearSpawn(52000138, 112), Is.True);
+            Assert.That(TriggerContext.IsRearSpawn(52000138, 110), Is.False);
+            Assert.That(TriggerContext.IsRearSpawn(52000137, 112), Is.False);
+            Assert.That(TriggerContext.RearSpawnPoint(spawn, null, 1500), Is.EqualTo(spawn));
+            Assert.That(TriggerContext.RearSpawnPoint(spawn, new Vector3(2575, -75, 0), 1500), Is.EqualTo(spawn));
+            Assert.That(TriggerContext.RearSpawnPoint(spawn, new Vector3(4050, -75, 0), 1500), Is.EqualTo(new Vector3(2550, -75, 300)));
+            Assert.That(TriggerContext.RearSpawnReach, Is.LessThan(2000 - 300));
+        });
+    }
+
     // 'monster_in_combat' (02000066 spawn_ids="5001"): a monster of a listed spawn point that is in battle.
     [Test]
     public void MonsterInCombat_LooksAtTheListedSpawnPoints() {
