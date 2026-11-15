@@ -59,7 +59,7 @@ public class GuildRaidClearTests {
             new Dictionary<int, IReadOnlyDictionary<int, GuildTable.House>>(),
             new Dictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>>(),
             new Dictionary<short, GuildTable.Property>(),
-            Raids: new Dictionary<int, GuildTable.Raid> { [Room] = new(Room, 300, 1f, 1f) }));
+            Raids: new Dictionary<int, GuildTable.Raid> { [Room] = new(Room, 300, 1.75f, 1.3f) }));
 
         GameSession session = test.Start();
         world = new GuildWorld();
@@ -74,6 +74,8 @@ public class GuildRaidClearTests {
         Set<GuildManager>(manager, "session", session);
         Set<GuildManager>(manager, "logger", new LoggerConfiguration().CreateLogger());
         Set<GuildManager>(manager, "<Guild>k__BackingField", guild);
+        var property = (GuildTable.Property) RuntimeHelpers.GetUninitializedObject(typeof(GuildTable.Property));
+        Set<GuildManager>(manager, "<Properties>k__BackingField", property with { Level = 3, RaidExp = 180, RaidFund = 36000 });
         session.Guild = manager;
 
         test.EnterDungeon(room).State = DungeonState.Clear;
@@ -95,6 +97,18 @@ public class GuildRaidClearTests {
         Assert.That(world.Requests, Is.Empty);
     }
 
+    // The result's guild lines (kinds 4 and 5, shown for a guild raid room only) carry the fund and exp the clear
+    // adds to the guild: KR level 3 (raidGuildFund 36000, raidGuildExp 180) at 1.75 and 1.3. Before, both showed 0.
+    [Test]
+    public void ClearWithTheClearReward_ResultShowsTheGuildFundAndExp() {
+        GameSession session = Start(rewardCount: 10);
+
+        session.Dungeon.CompleteDungeon(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+        IDictionary<DungeonRewardType, int> rewards = session.Dungeon.UserRecord!.Rewards;
+        Assert.That((rewards[DungeonRewardType.GuildFund], rewards[DungeonRewardType.GuildExp]), Is.EqualTo((63000, 234)));
+    }
+
     // No reward count left: the clear gives no clear reward, so it does not count for the guild raid.
     [Test]
     public void ClearWithoutTheClearReward_SendsNothing() {
@@ -104,6 +118,7 @@ public class GuildRaidClearTests {
 
         Assert.That(world.Received.Wait(TimeSpan.FromMilliseconds(300)), Is.False);
         Assert.That(world.Requests, Is.Empty);
+        Assert.That(session.Dungeon.UserRecord!.Rewards.ContainsKey(DungeonRewardType.GuildFund), Is.False);
     }
 
     [Test]

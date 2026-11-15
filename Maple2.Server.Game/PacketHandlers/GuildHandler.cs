@@ -598,14 +598,19 @@ public class GuildHandler : FieldPacketHandler {
         session.Send(GuildPacket.CheckedIn());
         session.ConditionUpdate(ConditionType.guild_attendance);
         session.Exp.AddExp(ExpType.guildUserExp, session.Guild.Properties.CheckInPlayerExpRate);
-        // The player's guild coin rate (SpecialAttribute.GuildCoin) raises the check-in coin.
-        int coin = KillRate.Apply(session.Guild.Properties.CheckInCoin, session.Player.Stats.Values[SpecialAttribute.GuildCoin].Multiplier());
-        if (coin > 0) {
-            // The check-in is taken by the World by now: a full bag sends the coin by mail (before, it was dropped).
-            Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, coin);
-            if (guildCoin == null || !session.Item.AddOrMail(guildCoin, true)) {
-                Logger.Error("Guild check-in coin of {CharacterId} not given", session.CharacterId);
-            }
+        GiveGuildCoin(session, session.Guild.Properties.CheckInCoin, "check-in");
+    }
+
+    // The guild coin of a check-in or a donation, raised by the player's guild coin rate (SpecialAttribute.GuildCoin).
+    // The World has taken the request by now: a full bag sends the coin by mail (before, it was dropped).
+    private void GiveGuildCoin(GameSession session, long amount, string source) {
+        int coin = KillRate.Apply((int) Math.Min(amount, int.MaxValue), session.Player.Stats.Values[SpecialAttribute.GuildCoin].Multiplier());
+        if (coin <= 0) {
+            return;
+        }
+        Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, coin);
+        if (guildCoin == null || !session.Item.AddOrMail(guildCoin, true)) {
+            Logger.Error("Guild {Source} coin of {CharacterId} not given", source, session.CharacterId);
         }
     }
 
@@ -1360,6 +1365,11 @@ public class GuildHandler : FieldPacketHandler {
             self.DailyDonationCount = response.DonationCount;
             self.DonationTime = response.DonationTime;
             session.Send(GuildPacket.Donated(self));
+            // A donation rewards the donor with exp (s_guild_ui_donate_popup: "mesos are added to your guild funds and
+            // you are rewarded with experience"): the guild level's donationUserExpFactor times the guild user exp row,
+            // per donation, as the check-in's checkInUserExpFactor; and donateGuildCoin guild coins per donation.
+            session.Exp.AddExp(ExpType.guildUserExp, session.Guild.Properties.DonatePlayerExpRate * count);
+            GiveGuildCoin(session, (long) session.Guild.Properties.DonateCoin * count, "donation");
         } catch (RpcException ex) {
             Logger.Error(ex, "Failed to donate to guild; {Cost} meso of character {CharacterId} stay taken", cost, session.CharacterId);
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));

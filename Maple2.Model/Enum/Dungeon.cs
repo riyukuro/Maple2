@@ -121,6 +121,10 @@ public enum DungeonRewardType : byte {
     Meso = 1,
     Exp = 2,
     Prestige = 3,
+    // A guild raid room's (group type 6) guild fund and guild exp lines of the result (UIDungeonRewardDialog,
+    // uidungeonrewarddialog.cpp:624-625, GetReward(4) and (5)); sent only for such a clear.
+    GuildFund = 4,
+    GuildExp = 5,
 }
 
 [Flags]

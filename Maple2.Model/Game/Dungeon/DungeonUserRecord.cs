@@ -34,7 +34,8 @@ public class DungeonUserRecord : IUserContentRecord {
             AccumulationRecords[type] = 0;
         }
         var rewardTypeEnumList = new List<DungeonRewardType>((DungeonRewardType[]) System.Enum.GetValues(typeof(DungeonRewardType)));
-        foreach (DungeonRewardType type in rewardTypeEnumList) {
+        // The guild raid lines are added only by a guild raid clear: every other result keeps its three lines.
+        foreach (DungeonRewardType type in rewardTypeEnumList.Where(type => type < DungeonRewardType.GuildFund)) {
             Rewards[type] = 0;
             BonusRewards[type] = 0;
         }

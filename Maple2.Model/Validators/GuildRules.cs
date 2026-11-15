@@ -263,6 +263,17 @@ public static class GuildRules {
         return (int) Math.Min((long) funds + addFunds, ceiling);
     }
 
+    // A guild raid clear's exp or fund: the guild level's raidGuildExp / raidGuildFund times the raid's
+    // clearGuildExp / clearGuildFund, cut to an int. The factor is taken as its decimal text (1.3, not the float
+    // 1.29999995), so 180 x 1.3 is 234, not 233; a product of 0 or less adds none.
+    public static int RaidClearGain(int gain, float factor) {
+        if (gain <= 0 || !(factor > 0) || float.IsInfinity(factor)) {
+            return 0;
+        }
+        decimal product = gain * (decimal) factor;
+        return product >= int.MaxValue ? int.MaxValue : (int) product;
+    }
+
     // A guild shop buy from the guild fund: the master only (shop error 26), and the fund must cover the price (27).
     public static GuildError CheckSpendFund(bool isMaster, int funds, int amount) {
         if (!isMaster) {

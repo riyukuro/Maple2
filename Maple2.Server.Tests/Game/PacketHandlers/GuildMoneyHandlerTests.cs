@@ -52,6 +52,8 @@ public class GuildMoneyHandlerTests {
             new Dictionary<int, IReadOnlyDictionary<int, GuildTable.House>>(),
             new Dictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>>(),
             new Dictionary<short, GuildTable.Property> { [1] = property with { Level = 1, Capacity = 10, DonateMax = 3 } }));
+        // A donation the World took gives guild user exp; no row here, so none.
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
         test.Start();
         session = test.Session;
         session.Player.Value.Character.Level = 20;
@@ -70,13 +72,15 @@ public class GuildMoneyHandlerTests {
     }
 
     // The session as a member of a guild whose level allows three donations a day (or of no guild).
-    private void Join(bool inGuild = true) {
+    private void Join(bool inGuild = true, float donateExpRate = 0, int donateCoin = 0) {
         var manager = (GuildManager) RuntimeHelpers.GetUninitializedObject(typeof(GuildManager));
         typeof(GuildManager).GetField("session", Any)!.SetValue(manager, session);
         typeof(GuildManager).GetField("tokenSource", Any)!.SetValue(manager, new CancellationTokenSource());
         typeof(GuildManager).GetField("logger", Any)!.SetValue(manager, Log.Logger);
         var property = (GuildTable.Property) RuntimeHelpers.GetUninitializedObject(typeof(GuildTable.Property));
-        typeof(GuildManager).GetProperty("Properties", Any)!.SetValue(manager, property with { Level = 1, DonateMax = 3 });
+        typeof(GuildManager).GetProperty("Properties", Any)!.SetValue(manager, property with {
+            Level = 1, DonateMax = 3, DonatePlayerExpRate = donateExpRate, DonateCoin = donateCoin,
+        });
         if (inGuild) {
             var info = new PlayerInfo(new CharacterInfo(session.AccountId, session.CharacterId, "Self", "", "", Gender.Male, Job.Newbie, 20), "",
                 new AchievementInfo(), []);
@@ -202,6 +206,35 @@ public class GuildMoneyHandlerTests {
         Assert.That((sent.RequestorId, sent.Donate.GuildId, sent.Donate.Count, sent.Donate.Fund), Is.EqualTo((session.CharacterId, 7L, 2, 20000L)));
         Assert.That((self.DailyDonationCount, self.DonationTime), Is.EqualTo((2, 123456L)));
         Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Donated(self)) }));
+    }
+
+    // A donation the World took rewards the donor (s_guild_ui_donate_popup): per donation, the guild level's
+    // donationUserExpFactor times the guild user exp row (here 200 at level 20, factor 1.1: 2 donations are 440) and
+    // donateGuildCoin guild coins. Before, it gave neither. A refused donation gives none.
+    [TestCase(true, 440, 6)]
+    [TestCase(false, 0, 0)]
+    public void Donate_GivesTheDonorExpAndGuildCoins(bool taken, long exp, int coins) {
+        test.Register(TestGameSession.Metadata(Constant.GuildCoinId));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry> { [ExpType.guildUserExp] = new(1, 1f) }));
+        test.SetTable(new ExpTable(new Dictionary<int, IReadOnlyDictionary<int, long>> {
+            [1] = Enumerable.Range(1, 99).ToDictionary(level => level, level => level * 10L),
+        }, Enumerable.Range(1, 99).ToDictionary(level => level, _ => 1_000_000L)));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        Join(donateExpRate: 1.1f, donateCoin: 3);
+        session.Currency.Meso = 50000;
+        test.World.GuildWorld = request => taken
+            ? new GuildResponse { DonationCount = request.Donate.Count, DonationTime = 123456 }
+            : new GuildResponse { Error = (int) GuildError.s_guild_err_unknown };
+        long before = session.Player.Value.Character.Exp;
+        test.TakeSent();
+
+        Donate(2);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Character.Exp - before, Is.EqualTo(exp));
+            Assert.That(session.Item.Inventory.Filter(item => item.Id == Constant.GuildCoinId).Sum(item => item.Amount), Is.EqualTo(coins));
+            Assert.That(test.Errors, Is.Empty);
+        });
     }
 
     // The world refuses (the day's count is used up there, or the fund is full): the meso comes back.

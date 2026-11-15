@@ -15,7 +15,7 @@ public class MiniGameRewardTests {
     public void MiniGameRewardItemIsIdCountRank() {
         var record = new MiniGameUserRecord(1) { MinRound = 1, TotalRounds = 5, ShowResult = true, ClearedRounds = 3 };
         record.RewardItems.Add(new RewardItem(20000027, 4, 7));
-        int rewardKinds = System.Enum.GetValues<DungeonRewardType>().Length;
+        const int rewardKinds = 3; // meso, exp, prestige
 
         ByteWriter writer = DungeonRewardPacket.MiniGame(record);
         var reader = new ByteReader(writer.Buffer, 0);

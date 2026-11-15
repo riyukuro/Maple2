@@ -1171,12 +1171,32 @@ public class GuildManager : IDisposable {
         // Under the guild's lock, as the other writers and the saves: two clears of one member, or a clear during a
         // save or the weekly reset, do not race on the raid map. Stored now, only the member's row: a failed save
         // keeps the value here for the next save of the guild.
+        // The clear also adds the guild level's raid exp and fund (table/guildproperty.xml raidGuildExp,
+        // raidGuildFund) times the raid's clearGuildExp and clearGuildFund: the guild window's exp and fund tooltips
+        // name a guild raid clear as a source (s_guild_ui_info_guild_raid_tooltip, uiguilddialog.cpp:482, :497).
+        // Chosen here: per member clear, as the raid's contribution row and points.
         int value;
+        int guildExp;
+        int guildFund;
         lock (guildLock) {
             value = GuildRules.AddRaidClear(requestor, raid.DungeonRoomId, raid.ClearRaidPoint);
             TrySaveMember(requestor);
+            GuildTable.Property property = GuildProperty();
+            Guild.Experience = AddExp(Guild.Experience, GuildRules.RaidClearGain(property.RaidExp, raid.ClearGuildExp));
+            Guild.Funds = GuildRules.AddFund(Guild.Funds, GuildRules.RaidClearGain(property.RaidFund, raid.ClearGuildFund), property.FundMax);
+            guildExp = Guild.Experience;
+            guildFund = Guild.Funds;
+            // Stored now, as a check-in's gain; a failed save keeps the gain here for the next save.
+            TrySave();
         }
 
+        Broadcast(new GuildRequest {
+            UpdateContribution = new GuildRequest.Types.UpdateContribution {
+                ContributorId = requestor.CharacterId,
+                GuildExp = guildExp,
+                GuildFund = guildFund,
+            },
+        });
         Broadcast(new GuildRequest {
             MemberRaid = new GuildRequest.Types.MemberRaid {
                 Name = requestor.Name,

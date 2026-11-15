@@ -332,6 +332,17 @@ public class GuildManager : IDisposable {
         });
     }
 
+    // The guild fund and exp a clear of the raid room adds, as the World server adds them (the guild level's
+    // raidGuildFund and raidGuildExp times the room's clearGuildFund and clearGuildExp), for the result's guild
+    // lines. Shown before the World's own limits: a running guild exp event raises the exp there, and the fund stops
+    // at the level's ceiling.
+    public (int Fund, int Exp) RaidClearGain(int dungeonRoomId) {
+        if (Guild == null || session.TableMetadata.GuildTable.Raids?.TryGetValue(dungeonRoomId, out GuildTable.Raid? raid) != true || raid == null) {
+            return (0, 0);
+        }
+        return (GuildRules.RaidClearGain(Properties.RaidFund, raid.ClearGuildFund), GuildRules.RaidClearGain(Properties.RaidExp, raid.ClearGuildExp));
+    }
+
     // Contribution of one kind (GuildContributionKind) this player earned outside the guild dialog (the guild vs game,
     // a guild quest) goes to World, which reads the kind's row, keeps the member's value and tells the guild; off the
     // caller's thread, as a raid clear. Null when nothing is added (no guild, or the kind has no row).

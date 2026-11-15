@@ -95,6 +95,45 @@ public class GuildRaidTests {
         Assert.That((row.WeeklyContribution, row.TotalContribution), Is.EqualTo((60, 60)));
     }
 
+    // A clear adds the guild level's raidGuildExp and raidGuildFund times the raid's clearGuildExp and clearGuildFund
+    // (KR level 3: 180 and 36000; room 26004001: 1.3 and 1.75), the fund stopping at the level's ceiling, and stores
+    // the guild row. The factor is read as 1.3, not as the float under it: 180 x 1.3 is 234. Before, a clear added
+    // neither.
+    [Test]
+    public void Clear_AddsTheRaidsGuildExpAndFund() {
+        const int room = Room + 1;
+        var property = (GuildTable.Property) RuntimeHelpers.GetUninitializedObject(typeof(GuildTable.Property));
+        test.SetTable(new GuildTable(
+            new Dictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, GuildTable.House>>(),
+            new Dictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>>(),
+            new Dictionary<short, GuildTable.Property> {
+                [1] = property with { Level = 1, Capacity = 10, FundMax = 1000, RaidExp = 180, RaidFund = 300 },
+            },
+            Raids: new Dictionary<int, GuildTable.Raid> { [room] = new(room, 300, 1.75f, 1.3f) }));
+
+        Assert.That(manager.RaidClear(master.CharacterId, room), Is.EqualTo(GuildError.none));
+        Assert.That((guild.Experience, guild.Funds), Is.EqualTo((234, 525)));
+
+        Assert.That(manager.RaidClear(master.CharacterId, room), Is.EqualTo(GuildError.none));
+        using GameStorage.Request db = test.Storage.Context();
+        Guild stored = db.GetGuild(guild.Id)!;
+        Assert.That((guild.Experience, guild.Funds, stored.Experience, stored.Funds), Is.EqualTo((468, 1000, 468, 1000)));
+    }
+
+    // The gain of a factor: cut to an int after the factor is read as its decimal text; none for no gain or factor.
+    [TestCase(180, 1.3f, 234)]
+    [TestCase(165, 1.1f, 181)]
+    [TestCase(36000, 1.75f, 63000)]
+    [TestCase(150, 1f, 150)]
+    [TestCase(0, 2f, 0)]
+    [TestCase(150, 0f, 0)]
+    [TestCase(150, -1f, 0)]
+    [TestCase(int.MaxValue, 2f, int.MaxValue)]
+    public void Rules_RaidClearGain(int gain, float factor, int expected) {
+        Assert.That(GuildRules.RaidClearGain(gain, factor), Is.EqualTo(expected));
+    }
+
     // A refused clear gives no contribution either.
     [Test]
     public void Clear_RefusedForAStrangerOrARoomNotInTheTable() {

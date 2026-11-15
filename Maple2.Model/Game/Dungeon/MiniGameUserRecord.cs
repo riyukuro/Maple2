@@ -19,7 +19,8 @@ public class MiniGameUserRecord : IUserContentRecord {
     public MiniGameUserRecord(long characterId) {
         CharacterId = characterId;
         var enumList = new List<DungeonRewardType>((DungeonRewardType[]) System.Enum.GetValues(typeof(DungeonRewardType)));
-        foreach (DungeonRewardType type in enumList) {
+        // The guild raid lines (4, 5) belong to a guild raid clear only.
+        foreach (DungeonRewardType type in enumList.Where(type => type < DungeonRewardType.GuildFund)) {
             Rewards[type] = 0;
         }
     }

@@ -849,8 +849,11 @@ public class DungeonManager {
             session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveReward, Lobby.DungeonId));
             // A guild raid room's clear counts for the member's guild raid record (Guild 37). Chosen here: only a
             // clear that gave the clear reward counts, so a limitReward room's clears past its reward count do not.
-            if (Metadata.GroupType == DungeonGroupType.guildRaid) {
-                session.Guild.RaidClear(Lobby.DungeonId);
+            // The result's guild lines show the fund and exp the clear adds to the guild (GuildManager.RaidClearGain).
+            if (Metadata.GroupType == DungeonGroupType.guildRaid && session.Guild.RaidClear(Lobby.DungeonId) != null) {
+                (int fund, int exp) = session.Guild.RaidClearGain(Lobby.DungeonId);
+                UserRecord.Rewards[DungeonRewardType.GuildFund] = fund;
+                UserRecord.Rewards[DungeonRewardType.GuildExp] = exp;
             }
         }
 
