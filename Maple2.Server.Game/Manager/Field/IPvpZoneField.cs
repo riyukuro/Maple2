@@ -15,4 +15,6 @@ public interface IPvpZoneField {
     void Death(FieldPlayer victim);
     void Enter(FieldPlayer player);
     void Leave(FieldPlayer player);
+    // A player of the field revived (before its HP fill).
+    void Revived(FieldPlayer player) { }
 }

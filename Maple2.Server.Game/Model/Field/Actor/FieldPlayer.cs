@@ -789,6 +789,7 @@ public class FieldPlayer : Actor<Player> {
         if (RevivalRules.RestoresLastingBuffs(instant, Field.Metadata.Property.RevivalReturnId, Field.Metadata.Id)) {
             RestoreLastingBuffs();
         }
+        Field.PvpZone?.Revived(this);
         RecoverHp((int) Stats.Values[BasicAttribute.Health].Total);
 
         // Apply death penalty if field requires it

@@ -163,6 +163,19 @@ public sealed class HomePvpField : IPvpZoneField {
         }
     }
 
+    // A death took the match's buff (70000171 and 70000173 have no keepOnDeath), so a participant that revives while
+    // the fight runs gets it again before its HP fill: before, it came back at its own HP (2631 of 99451) for the rest
+    // of the match. One that is out (survival, left) does not.
+    public void Revived(FieldPlayer player) {
+        lock (mutex) {
+            if (!state.InPlay(player.Value.Character.Id)) {
+                return;
+            }
+            (int effectId, short level) = state.Settings.Effect;
+            player.Buffs.AddBuff(field.FieldActor, player, effectId, level, field.FieldTick);
+        }
+    }
+
     // A participant that left is out; its buff ends with the field (or here if it is still listed).
     public void Leave(FieldPlayer player) {
         lock (mutex) {

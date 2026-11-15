@@ -9,10 +9,12 @@ using Maple2.Model.Game;
 using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 using Microsoft.EntityFrameworkCore;
 
@@ -254,6 +256,56 @@ public class HomePvpTests {
         match.Update(home.Field.FieldTick + HomePvpState.CountdownMs);
         Assert.That(home.Field.PvpZone, Is.Null);
         Assert.That(HomeRowCheck.Blocks(home.Owner.Session, HomePermission.Pvp), Is.False);
+    }
+
+    // A death takes the match's buff; a participant's revive while the fight runs gives it again, before the HP fill,
+    // so it comes back at the match's HP. After the match a revive gives nothing.
+    [Test]
+    public void ARevive_InTheFight_GivesTheMatchBuffAgain() {
+        Home home = InAHome();
+        Dialog(home.Owner, 1, new HomePvpSettings(0, 2, 0, 1, 0, 0));
+        var match = (HomePvpField) home.Field.PvpZone!;
+        match.Update(home.Field.FieldTick + HomePvpState.CountdownMs);
+        FieldPlayer visitor = home.Visitor.Session.Player;
+        Assume.That(visitor.Buffs.HasBuff(HomePvpSettings.HealthEffectId, 2), Is.True);
+
+        Die(home.Visitor);
+        Assert.That(visitor.Buffs.HasBuff(HomePvpSettings.HealthEffectId, 2), Is.False);
+        Assert.That(visitor.Revive(), Is.True);
+        Assert.That(visitor.Buffs.HasBuff(HomePvpSettings.HealthEffectId, 2), Is.True);
+        Assert.That(match.IsParticipant(visitor), Is.True);
+
+        Assert.That(home.Field.StopPvp(), Is.True);
+        Die(home.Visitor);
+        Assert.That(visitor.Revive(), Is.True);
+        Assert.That(visitor.Buffs.HasBuff(HomePvpSettings.HealthEffectId, 2), Is.False);
+    }
+
+    private static void Die(TestGameSession test) {
+        GameSession session = test.Session;
+        session.Party ??= new PartyManager(test.World, session);
+        session.Ride ??= new RideManager(session);
+        typeof(ConfigManager).GetField("session", Any)!.SetValue(session.Config, session);
+        // What a revive's lasting buffs read: the skill book, the ability tables and the guild.
+        test.SetTable(new JobTable(new Dictionary<JobCode, JobTable.Entry> {
+            [JobCode.Newbie] = new(new JobTable.Tutorial(0, 0, 0, [], [], [], []), new Dictionary<SkillRank, JobTable.Skill[]> {
+                [SkillRank.Basic] = [], [SkillRank.Awakening] = [],
+            }, []),
+        }));
+        typeof(ConfigManager).GetField(nameof(ConfigManager.Skill))!.SetValue(session.Config, new SkillManager(session, new SkillBook()));
+        test.SetTable(new PrestigeLevelAbilityTable(new Dictionary<int, PrestigeLevelAbilityMetadata>()));
+        test.SetTable(new CharacterAbilityTable(new Dictionary<int, CharacterAbilityTable.Entry>()));
+        test.SetTable(new PremiumClubTable(new Dictionary<int, PremiumClubTable.Buff>(), new Dictionary<int, PremiumClubTable.Item>(),
+            new Dictionary<int, PremiumClubTable.Package>()));
+        test.SetTable(new InsigniaTable(new Dictionary<int, InsigniaTable.Entry>()));
+        typeof(GuildManager).GetField("session", Any)!.SetValue(session.Guild, session);
+        // The home's spawn point the revive moves the player to.
+        var spawns = new System.Collections.Concurrent.ConcurrentDictionary<int, FieldPlayerSpawnPoint>();
+        spawns[1] = new FieldPlayerSpawnPoint(session.Field!, 1, new SpawnPointPC(1, new System.Numerics.Vector3(100, 200, 0), System.Numerics.Vector3.Zero, true, true), 1);
+        typeof(FieldManager).GetField("fieldPlayerSpawnPoints", Any)!.SetValue(session.Field, spawns);
+        typeof(FieldPlayer).GetProperty(nameof(FieldPlayer.IsDead))!.SetValue(session.Player, true);
+        typeof(FieldPlayer).GetMethod("OnDeath", Any)!.Invoke(session.Player, null);
+        Assume.That(session.Player.IsDead, Is.True);
     }
 
     [Test]
