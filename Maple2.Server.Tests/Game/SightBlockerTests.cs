@@ -1,5 +1,8 @@
+using System.Collections.Generic;
 using System.Numerics;
+using Maple2.Model.Common;
 using Maple2.Model.Enum;
+using Maple2.Model.Game.Field;
 using Maple2.Model.Metadata.FieldEntity;
 using Maple2.Server.Game.Util;
 using Maple2.Tools.VectorMath;
@@ -112,6 +115,21 @@ public class SightBlockerTests {
         Assert.Multiple(() => {
             Assert.That(SkillHitRules.SightBoxes(null, Caster, [(Target, 50f)]), Is.Empty);
             Assert.That(SkillHitRules.StepBoxes(null, Caster, Target), Is.Empty);
+        });
+    }
+
+    // A point that is not finite passes the reach check (a NaN distance is never too far): it queries no cells.
+    [Test]
+    public void AStepWithANaNPoint_QueriesNoBoxes() {
+        FieldBoxColliderEntity cube = Box(new Vector3(-75, -75, 0), new Vector3(75, 75, 150));
+        var map = new FieldAccelerationStructure();
+        map.AddEntities(new Dictionary<Vector3S, List<FieldEntity>> { [new Vector3S(0, 0, 0)] = [cube] }, new Vector3S(0, 0, 0), new Vector3S(4, 4, 4), [], 0);
+        var nan = new Vector3(float.NaN, 0, 0);
+        Assert.Multiple(() => {
+            Assert.That(SkillHitRules.StepBoxes(map, Caster, new Vector3(10, 0, 0)), Does.Contain(cube), "a finite step finds the cube");
+            Assert.That(SkillHitRules.StepBoxes(map, Caster, nan), Is.Empty, "current");
+            Assert.That(SkillHitRules.StepBoxes(map, nan, Caster), Is.Empty, "last");
+            Assert.That(SkillHitRules.StepBoxes(map, Caster, new Vector3(float.PositiveInfinity, 0, 0)), Is.Empty, "infinite");
         });
     }
 

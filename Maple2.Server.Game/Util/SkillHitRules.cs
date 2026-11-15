@@ -488,10 +488,11 @@ public static class SkillHitRules {
         return null;
     }
 
-    // The map's box colliders near an arrow's step; none when the field has no map data.
+    // The map's box colliders near an arrow's step; none when the field has no map data, or when a point is not finite
+    // (a NaN passes the reach check).
     public static List<FieldBoxColliderEntity> StepBoxes(FieldAccelerationStructure? map, Vector3 last, Vector3 current) {
         var boxes = new List<FieldBoxColliderEntity>();
-        if (map == null) {
+        if (map == null || !Finite(last) || !Finite(current)) {
             return boxes;
         }
         var pad = new Vector3(FieldAccelerationStructure.BLOCK_SIZE);
@@ -502,6 +503,8 @@ public static class SkillHitRules {
         });
         return boxes;
     }
+
+    private static bool Finite(Vector3 point) => float.IsFinite(point.X) && float.IsFinite(point.Y) && float.IsFinite(point.Z);
 
     // Whether the segment from start over delta passes through the inside of the box.
     private static bool SegmentCrosses(Vector3 start, Vector3 delta, Vector3 min, Vector3 max) {
