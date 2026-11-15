@@ -1,6 +1,13 @@
+using System.Collections.Concurrent;
 using System.Linq;
+using System.Reflection;
 using System.Numerics;
+using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Model.Widget;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 
@@ -86,5 +93,68 @@ public class TriggerActionGapTests : TriggerTestBase {
                     Is.EqualTo(((byte) 3, type, script, "", 0)));
                 break;
         }
+    }
+
+    // The box 1 field with portal 5 at (50, 60) on a flat navmesh.
+    private void StartWithPortal() {
+        StartWithBox();
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        typeof(FieldManager).GetField("fieldPortals", any)!.SetValue(Field, new ConcurrentDictionary<int, FieldPortal>());
+        Field.SpawnPortal(new Portal(5, 0, 0, PortalType.Field, PortalActionType.Touch, new Vector3(50, 60, 0), Vector3.Zero,
+            new Vector3(100, 100, 100), 0, 0, false, false, false));
+        typeof(FieldManager).GetField("<Navigation>k__BackingField", any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", any)!.SetValue(test.Session.Player, Field);
+    }
+
+    // move_user to the field's own map (client: the portal's place on the same map): the players in the box get the
+    // by-portal move to the portal's position; players outside the box do not.
+    [Test]
+    public void MoveUser_OwnMapMovesTheBoxToThePortal() {
+        StartWithPortal();
+        Action($"""<action name="move_user" map_id="{Field.MapId}" portal_id="5" box_id="2" />""");
+        Assert.That(Sent(SendOp.UserMoveByPortal), Is.Empty);
+
+        Action($"""<action name="move_user" map_id="{Field.MapId}" portal_id="5" box_id="1" />""");
+        ByteReader reader = Sent(SendOp.UserMoveByPortal).Single();
+        int id = reader.ReadInt();
+        Vector3 at = reader.Read<Vector3>();
+        // The height comes from the navmesh floor.
+        Assert.That((id, at.X, at.Y), Is.EqualTo((test.Session.Player.ObjectId, 50f, 60f)));
+    }
+
+    // move_random_user with map 0 (or the field's own map) and a portal: the picked players of the box get the
+    // by-portal move inside the field, no field change; players in another box are not picked.
+    [TestCase(0)]
+    [TestCase(-1)]
+    public void MoveRandomUser_MapZeroOrOwnMovesToThePortal(int mapId) {
+        StartWithPortal();
+        string map = mapId == 0 ? "0" : Field.MapId.ToString();
+
+        Action($"""<action name="move_random_user" map_id="{map}" portal_id="5" box_id="2" count="3" />""");
+        Assert.That(test.TakeSentOps(), Is.Empty);
+
+        Action($"""<action name="move_random_user" map_id="{map}" portal_id="5" box_id="1" count="3" />""");
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.UserMoveByPortal }));
+    }
+
+    // create_widget: the script's widget type picks the widget class the later widget actions find under that name;
+    // a type the server has no class for gets a plain widget, so the script's actions on it do not fail.
+    [TestCase("OxQuiz", typeof(OxQuizWidget))]
+    [TestCase("OxQuizUGC", typeof(OxQuizUgcWidget))]
+    [TestCase("ReverseRaidPortal", typeof(ReverseRaidPortalWidget))]
+    [TestCase("SceneMovie", typeof(SceneMovieWidget))]
+    [TestCase("Guide", typeof(GuideWidget))]
+    [TestCase("SurvivalContents", typeof(SurvivalContentsWidget))]
+    [TestCase("TypingGame", typeof(TypingGameWidget))]
+    [TestCase("Round", typeof(RoundWidget))]
+    [TestCase("RainbowMonster", typeof(RainbowMonsterWidget))]
+    [TestCase("SomethingElse", typeof(Widget))]
+    public void CreateWidget_ByType(string type, System.Type expected) {
+        Start();
+        typeof(FieldManager).GetField(nameof(FieldManager.Widgets))!.SetValue(Field, new System.Collections.Generic.Dictionary<string, Widget>());
+
+        Action($"""<action name="create_widget" type="{type}" />""");
+
+        Assert.That(Field.Widgets[type].GetType(), Is.EqualTo(expected));
     }
 }

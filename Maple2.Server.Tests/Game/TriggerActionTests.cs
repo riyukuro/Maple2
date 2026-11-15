@@ -1871,6 +1871,17 @@ public class TriggerItemTests : TriggerTestBase {
         Assert.That(Drops().Select(drop => (drop.ItemId, drop.Receiver)), Is.EqualTo(new[] { (QuestItem, test.Session.CharacterId) }));
     }
 
+    // spawn_item_group (61000035): each group picks random_pick_count of its spawn points and drops their items; a
+    // point the map lacks drops nothing, and every group drops on its own.
+    [Test]
+    public void SpawnItemGroup_EachGroupDropsItsPick() {
+        Action("""<action name="spawn_item_group" group_count="3" group0="9001" group1="9001" group2="9003" random_pick_count="1" life_time="5" />""");
+        Assert.That(Drops(), Is.EqualTo(new[] {
+            (Coin, 3, 0L, new Vector3(100, 200, 300), ItemDropKind.Trigger, true),
+            (Coin, 3, 0L, new Vector3(100, 200, 300), ItemDropKind.Trigger, true),
+        }));
+    }
+
     // A group mixing quest-only and plain rows rolls its drop count once over all of them, as the client's box roll
     // does (ItemDropTable::DropIndividualGroup calls PickDropCount once per group): a count of 1 gives one row, the
     // plain one for anyone or the quest one for the player who needs it, never both.
