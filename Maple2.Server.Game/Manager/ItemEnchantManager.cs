@@ -175,7 +175,7 @@ public class ItemEnchantManager {
 
     private ConstantsTable Constants => session.ServerTableMetadata.ConstantsTable;
 
-    // The limit row is the client's equip subtype (GearScoreRules.SubType: the id's digits), not the server pack's:
+    // The limit row is the client's equip subtype (GearScoreRules.SubType: in KR data the id's digits equal it), not the server pack's:
     // KR Live has 0 for most weapons (the Cruelty Throwing Star 13400021: 0 there, 34 in the client), which no row
     // has, so every such item was refused while the client listed it.
     private bool CanEnchant(Item item, int enchants) => ItemEnchantRules.CanEnchant(session.ServerTableMetadata.EnchantLimitTable,
