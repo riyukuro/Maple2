@@ -167,6 +167,32 @@ public class GuildModeHandlerTests {
         Assert.That(test.World.GuildRequests.Select(request => request.UpdateRank.Name), Is.EqualTo(new[] { defaults[1], "Elder" }));
     }
 
+    // The real defaults: every rank stored under the data's default (as the World and the db hold it) or as the
+    // session shows it, and the window sending the English client defaults with new rights. On KR data the English
+    // names (up to 14 characters) are over the KR maximum of 7, but they are no new names: each goes to the World
+    // as the data's default.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void UpdateRank_RightsOnlyOnEveryEnglishDefault_GoesToTheWorld(bool shownInSession) {
+        IReadOnlyList<string> defaults = GuildRules.DefaultRankNames(Target.LOCALE);
+        string[] english = ["Leader", "Co-Leader", "Guild Member", "Initiate", "Guild Member 2", "Initiate 2"];
+        var table = new GuildRankNameTable(english);
+        test.SetTable(table);
+        Guild guild = session.Guild.Guild!;
+        guild.Ranks.Clear();
+        for (byte i = 0; i < 6; i++) {
+            string stored = shownInSession ? table.Shown(i, defaults[i], defaults) : defaults[i];
+            guild.Ranks.Add(new GuildRank { Id = i, Name = stored, Permission = GuildPermission.Default });
+        }
+        test.World.GuildWorld = _ => new GuildResponse { GuildId = 7 };
+        for (byte i = 0; i < 6; i++) {
+            SendRank(i, english[i], GuildPermission.Default | GuildPermission.InviteMembers);
+        }
+
+        Assert.That(GuildAnswers(), Has.None.EqualTo(Hex(GuildPacket.Error(GuildError.s_guild_err_invalid_grade_data))));
+        Assert.That(test.World.GuildRequests.Select(request => request.UpdateRank.Name), Is.EqualTo(defaults));
+    }
+
     [Test]
     public void UpdateRank_NewNameOverTheMaximum_Refused() {
         SendRank(1, "A rank name of 16", GuildPermission.Default);

@@ -720,18 +720,22 @@ public class GuildHandler : FieldPacketHandler {
         if (session.Guild.Guild == null) {
             return;
         }
+        // The client's default name the window showed goes back as the data's default (GuildRankNameTable.Stored),
+        // and is compared as that: a rank that keeps its default name is not checked again, whatever the length of
+        // the client's name for it.
+        IReadOnlyList<string> defaults = GuildRules.DefaultRankNames(Target.LOCALE);
+        GuildRankNameTable rankNames = session.TableMetadata.GuildRankNameTable;
+        string name = rankNames.Stored(rankId, rank.Name, defaults);
         // A new name as the client checks it (GuildRules.IsRankName), with the ban words; the stored name is kept
         // as it is (GuildRules.IsRankNameChange).
         string? storedName = session.Guild.Guild.Ranks.FirstOrDefault(stored => stored.Id == rankId)?.Name;
-        bool badName = GuildRules.IsRankNameChange(rank.Name, storedName)
-            && (!GuildRules.IsRankName(rank.Name, Target.LOCALE) || BanWordStorage.ContainsBannedWord(rank.Name));
+        storedName = storedName == null ? null : rankNames.Stored(rankId, storedName, defaults);
+        bool badName = GuildRules.IsRankNameChange(name, storedName)
+            && (!GuildRules.IsRankName(name, Target.LOCALE) || BanWordStorage.ContainsBannedWord(name));
         if (rank.Id != rankId || rankId >= MaxRanks || (int) rank.Permission is < 0 or > MaxRankPermission || badName) {
             session.Send(GuildPacket.Error(GuildError.s_guild_err_invalid_grade_data));
             return;
         }
-
-        // The client's default name the window showed goes back as the data's default (GuildRankNameTable.Stored).
-        string name = session.TableMetadata.GuildRankNameTable.Stored(rankId, rank.Name, GuildRules.DefaultRankNames(Target.LOCALE));
 
         try {
             GuildResponse response = World.Guild(new GuildRequest {
