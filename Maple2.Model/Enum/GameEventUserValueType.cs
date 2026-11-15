@@ -94,6 +94,13 @@ public enum GameEventUserValueType {
     // row until it ends, or on a ReturnUserCandidate row until its value4 date (the next season's end). Not a KMS2
     // value.
     MentoringReturnUser = 2413,
+    // The account's registered mentoring character of the season (on the season's ReturnUser row, until it ends):
+    // "role,character id", role 2 (mentee) or 5 (mentor). An account value: the client's register texts allow one
+    // mentor or one returning character per account for the season (s_mentoring_mentor_accept_warn), and its menu names
+    // that character to the account's others (Mentor 12, roles 3 and 6). Not a KMS2 value.
+    MentoringRegistration = 2414,
+    // The mentor coins a mentor took today, until the next midnight (Mentor 11). Not a KMS2 value.
+    MentoringMentorCoinToday = 2415,
 
     // Daily login mail (DailyLoginReward): 1 once today's mail is sent. Not a KMS2 value; the client keeps any
     // type in its list and reads this one nowhere.

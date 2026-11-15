@@ -84,12 +84,11 @@ public class MentorHandler : FieldPacketHandler {
 
     private void HandleLoad(GameSession session) {
         session.Mentoring.SendRequests();
-        // The page's coins today (Mentor 11): a mentee's mentee coins, 0 for a mentor.
+        // The page's coins today (Mentor 11): a mentee's mentee coins, a mentor's mentor coins.
         session.Mentoring.SendDailyCoins();
         session.Send(MentorPacket.Load());
         session.Mentoring.SendAttend();
         //session.Send(MentorPacket.MyList());
-        //  session.Send(MentorPacket.Unknown12());
         //   session.Send(MentorPacket.Unknown15(10));
         //   session.Send(MentorPacket.MenteeInvitations());
         //  session.Send(MentorPacket.Unknown16());

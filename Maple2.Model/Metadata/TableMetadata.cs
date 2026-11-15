@@ -108,4 +108,5 @@ public class TableMetadata {
 [JsonDerivedType(typeof(InventoryTabNameTable), typeDiscriminator: "inventorytabname")]
 [JsonDerivedType(typeof(UserConditionEventTable), typeDiscriminator: "userconditionevent")]
 [JsonDerivedType(typeof(PaybackTable), typeDiscriminator: "payback")]
+[JsonDerivedType(typeof(MentoringConfigTable), typeDiscriminator: "mentoringconfig")]
 public abstract record Table;

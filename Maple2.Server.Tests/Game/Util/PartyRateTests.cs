@@ -1,4 +1,5 @@
-﻿using Maple2.Server.Game.Util;
+﻿using Maple2.Model.Enum;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Game.Util;
 
@@ -11,6 +12,19 @@ public class PartyRateTests {
     [TestCase(9, 3)]
     public void LevelByOthersHere(int others, int level) {
         Assert.That(PartyBuff.Level(others), Is.EqualTo(level));
+    }
+
+    // The returning-user party buff: a registered returning character (role 2) among the party members here, the
+    // player or another, with at least one other member here; a candidate (1) or an unregistered character (3) is not one.
+    [TestCase(MentorRole.Mentee, new MentorRole[] { MentorRole.Mentor }, true)]
+    [TestCase(MentorRole.Mentee, new MentorRole[] { MentorRole.None }, true)]
+    [TestCase(MentorRole.None, new MentorRole[] { MentorRole.None, MentorRole.Mentee }, true)]
+    [TestCase(MentorRole.Mentor, new MentorRole[] { MentorRole.Mentee }, true)]
+    [TestCase(MentorRole.Mentee, new MentorRole[0], false)]
+    [TestCase(MentorRole.None, new MentorRole[] { MentorRole.Mentor, MentorRole.None }, false)]
+    [TestCase(MentorRole.MenteeCandidate, new MentorRole[] { MentorRole.UnregisteredMentee }, false)]
+    public void ReturnUserBuffByRolesHere(MentorRole self, MentorRole[] others, bool given) {
+        Assert.That(PartyBuff.ReturnUser(self, others), Is.EqualTo(given));
     }
 
     [Test]

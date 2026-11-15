@@ -142,13 +142,15 @@ public sealed class GameEventManager {
     // So are the burning levelup values (2000-2004): the character list picks one character of the account
     // (UICharacterListDialog::ShowBurningLevelupPopup, uicharacterlistdialog.cpp:2041, and the login stores the
     // pick before any character enters), and the picked character's reach and reward claim go with that pick.
+    // So is the mentoring registration: one mentor or returning character per account for the season.
     public static bool AccountValue(GameEventUserValueType type) => StampValueTypes.Contains(type)
         || BurningLevelupRules.ValueTypes.Contains(type)
         || type is GameEventUserValueType.CollectItemGroup or GameEventUserValueType.DailyLoginRewardGiven
             or GameEventUserValueType.ReturnUserGiftTime
             or GameEventUserValueType.ItemBoxReceivedDay
             or GameEventUserValueType.SnowflakeCount or GameEventUserValueType.DailyCompleteCount
-            or GameEventUserValueType.AccumCompleteCount or GameEventUserValueType.AccumCompleteRewardReceived;
+            or GameEventUserValueType.AccumCompleteCount or GameEventUserValueType.AccumCompleteRewardReceived
+        || type is GameEventUserValueType.MentoringRegistration;
 
     private static GameEventUserValueType[] StampValueTypes => EventValueRules.StampValueTypes;
 

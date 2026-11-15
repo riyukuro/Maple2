@@ -92,7 +92,8 @@ public sealed class TestGameSession {
     private ItemStatsCalculator stats = null!;
     private FieldPlayer fieldPlayer = null!;
 
-    public TestGameSession(DbContextOptions? options = null, Gender gender = Gender.Male) {
+    // accountId: a character of that account (made by an earlier session on the same options) instead of a new account.
+    public TestGameSession(DbContextOptions? options = null, Gender gender = Gender.Male, long accountId = 0) {
         sendQueue = NewSendQueue();
         Options = options != null ? new DbContextOptionsBuilder(options).AddInterceptors(faults).Options : new DbContextOptionsBuilder()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -137,6 +138,8 @@ public sealed class TestGameSession {
         SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata>()));
         SetTable(new DungeonConfigTable(new Dictionary<int, int>(), new Dictionary<int, DungeonMissionRankMetadata>()));
         SetTable(InventoryTabNameTable.Empty);
+        // The mentoring caps and coins: KMS2's file.
+        SetTable(MentoringConfigTable.Kms2);
         SetTable(new UgcCubeCategoryTable(new Dictionary<int, int>()));
         // Beauty saves look up the palette row of every picked color (BeautyHandler.PaletteLocked).
         SetTable(new ColorPaletteTable(new Dictionary<int, IReadOnlyDictionary<int, ColorPaletteTable.Entry>>()));
@@ -165,7 +168,10 @@ public sealed class TestGameSession {
 
         // The rows a login finds. The account row is added directly: CreateAccount hashes a password, which is slow.
         string name = Guid.NewGuid().ToString("N")[..12];
-        using (var context = new Ms2Context(Options)) {
+        if (accountId > 0) {
+            AccountId = accountId;
+        } else {
+            using var context = new Ms2Context(Options);
             Maple2.Database.Model.Account account = new Account { Username = name };
             // In the in-memory store the account's id differs from the character's (both would be 1), so the rows
             // an account owns (its storage) are not mixed up with the character's.

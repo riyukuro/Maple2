@@ -16,6 +16,9 @@ public partial class ChannelService {
             case MentoringRequest.MentoringOneofCase.Reload:
                 session.Mentoring.Reload();
                 break;
+            case MentoringRequest.MentoringOneofCase.Coins:
+                session.Mentoring.ScheduleTakeMentorCoins();
+                break;
         }
 
         return Task.FromResult(new MentoringResponse());

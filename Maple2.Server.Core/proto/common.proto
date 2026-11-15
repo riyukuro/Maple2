@@ -360,11 +360,14 @@ message MentoringRequest {
   }
   // The receiver's stored pairs changed: it reads them again.
   message Reload {}
+  // A mentee of the receiver (a mentor) earned it mentor coins: it takes them.
+  message Coins {}
 
   int64 receiver_id = 1;
   oneof mentoring {
     Requested requested = 2;
     Reload reload = 3;
+    Coins coins = 4;
   }
 }
 

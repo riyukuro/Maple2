@@ -29,7 +29,8 @@ public static class InsigniaRules {
             InsigniaConditionType.Burning => facts.BurningSymbol,
             // The client: the mentoring table's isShowIcon and the wearer's mentoring role 2, a registered mentee
             // (PC +0x11cc, set from the field's character block and Mentor 1; nametagsymboltable.cpp:267).
-            InsigniaConditionType.return_user => MentoringAttend.ShowIcon && facts.Mentee,
+            // Mentee holds both (Shown below).
+            InsigniaConditionType.return_user => facts.Mentee,
             _ => false,
         };
     }
@@ -58,7 +59,7 @@ public static class InsigniaRules {
             Gm: GmCheck.IsGm(session.Player.Value.Account.AdminPermissions),
             BurningSymbol: session.GameEvent.BurningLevelupEvent() is { Metadata.Data: BurningLevelup burning }
                            && burning.NametagSymbolId == session.Player.Value.Character.Insignia,
-            Mentee: session.Player.Value.Character.MentorRole == MentorRole.Mentee));
+            Mentee: session.Player.Value.Character.MentorRole == MentorRole.Mentee && session.TableMetadata.MentoringConfigTable.ShowIcon));
     }
 
     // The effect a worn insignia gives when its wearer enters a field: the row's effect when the insignia is

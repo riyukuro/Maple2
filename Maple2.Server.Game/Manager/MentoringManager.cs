@@ -28,6 +28,11 @@ public class MentoringManager : IDisposable {
     // index keeps a second row out when two game servers store the same request.
     private static readonly object StoreLock = new();
 
+    // One take of the mentor coins at a time (TakeMentorCoins): its count today is read before its store.
+    private readonly object takeLock = new();
+
+    private MentoringConfigTable Config => session.TableMetadata.MentoringConfigTable;
+
     // The running ReturnUser season. Without one the client's menu does not open the mentoring dialogs, and no
     // request or pair is stored or sent. Only a mentoring row is a season (value3 the season number, value2 10003):
     // the stamp ReturnUser rows have no value3 and run at the same time as some seasons (KR/NA 180112 in season 5's
@@ -36,6 +41,9 @@ public class MentoringManager : IDisposable {
     private GameEvent? SeasonEvent => session.FindEvent(GameEventType.ReturnUser)
         .Where(gameEvent => gameEvent.Metadata.Data is ReturnUser { SeasonId: > 0 })
         .MinBy(gameEvent => gameEvent.Id);
+
+    // Whether a season runs now (the returning-user party buff, PartyBuff.ReturnUser).
+    public bool SeasonRuns => SeasonEvent != null;
 
     // The partners whose login and logout are pushed as Mentor 15 (the online flag last sent for each).
     // A listener stops once its partner's entry is removed or replaced.
@@ -64,7 +72,7 @@ public class MentoringManager : IDisposable {
         if (role is not (MentorRole.Mentee or MentorRole.Mentor)) {
             return;
         }
-        if (Season is not { } returnUser) {
+        if (SeasonEvent is not { Metadata.Data: ReturnUser returnUser } seasonEvent) {
             // No season runs; the client's menu does not open the dialog then, so only a dialog left open from
             // the season gets here. The register box waits for Mentor 4 or 8, so each refusal sends a notice:
             // a mentee "not a returning user" (1), a mentor "invalid target" (3), as the client's error list
@@ -103,6 +111,25 @@ public class MentoringManager : IDisposable {
             return;
         }
 
+        // One registered character per account for the season (MentoringRegistration): the account's other characters
+        // hold role 3 or 6 from their login and are refused above; a registration of another character found here
+        // (stored since this login) gets the same refusal.
+        if (Registration(seasonEvent) is { } registered && registered.CharacterId != session.CharacterId) {
+            session.Send(MentorPacket.Error(role == MentorRole.Mentee ? MentorError.IsNotReturnUser : MentorError.InvalidTarget));
+            return;
+        }
+        // The account's registration is stored before the role is given: a registration lost with the session would
+        // let another character of the account register as well. A store the database refuses gets the refusal's
+        // notice and changes nothing.
+        session.GameEvent.Get(GameEventUserValueType.MentoringRegistration, seasonEvent.Id, seasonEvent.EndTime);
+        session.GameEvent.Set(seasonEvent.Id, GameEventUserValueType.MentoringRegistration, MentoringRegistration.Text(role, session.CharacterId));
+        if (!session.GameEvent.Store(seasonEvent.Id, GameEventUserValueType.MentoringRegistration)) {
+            logger.Warning("Mentoring registration of {CharacterId} not stored", session.CharacterId);
+            session.GameEvent.Set(seasonEvent.Id, GameEventUserValueType.MentoringRegistration, "");
+            session.Send(MentorPacket.Error(role == MentorRole.Mentee ? MentorError.IsNotReturnUser : MentorError.InvalidTarget));
+            return;
+        }
+
         // The role is set first: the season's quests can require it (require mentee, as 70600057 does).
         session.Player.Value.Character.MentorRole = role;
         if (role == MentorRole.Mentee) {
@@ -126,14 +153,29 @@ public class MentoringManager : IDisposable {
             session.Field.Broadcast(update);
         }
         session.Send(role == MentorRole.Mentee ? MentorPacket.AssignReturningUser() : MentorPacket.AssignMentor());
+        SendAccountCharacters();
+    }
+
+    // The account's registration of the running season, null when there is none.
+    private (MentorRole Role, long CharacterId)? Registration(GameEvent season) {
+        return MentoringRegistration.Parse(session.GameEvent.Peek(GameEventUserValueType.MentoringRegistration, season.Id));
+    }
+
+    // Mentor 12: the account's registered mentor and mentee characters of the running season (0 for none), which
+    // the menu's role-6 and role-3 notices name.
+    private void SendAccountCharacters() {
+        (long mentor, long mentee) = SeasonEvent is { } season ? MentoringRegistration.Ids(Registration(season)) : (0, 0);
+        session.Send(MentorPacket.AccountCharacters(mentor, mentee));
     }
 
     // The login: the waiting requests to a mentee (Mentor 2), the pairs (Mentor 3) and whether their other
-    // characters are online (Mentor 15). Without a season only the empty pair list, as before.
+    // characters are online (Mentor 15), then the account's registered characters (Mentor 12). Without a season only
+    // the empty pair list and Mentor 12 with no one.
     public void Load() {
-        LoadCandidate();
+        LoadRole();
         if (Season == null) {
             session.Send(MentorPacket.MyList());
+            SendAccountCharacters();
             return;
         }
 
@@ -143,14 +185,16 @@ public class MentoringManager : IDisposable {
         session.Send(MentorPacket.PairOnline(pairs));
         ListenPartners(pairs);
         SendAttend();
+        SendAccountCharacters();
     }
 
-    // The candidate role, set before the field entry so the field's character block carries it (the client reads the
-    // role only from there and from Mentor 1, and its menu opens the register pages only for roles 1 and 4,
-    // UIMentoringDialog::GetTabs; a mentee is the party's returning user, uipartydialog.cpp:1080). A registered or
-    // unregistered role (2, 3, 5, 6) is kept as it is. While a ReturnUser season runs, any other player is a mentee
-    // candidate (1) when it returns and a mentor candidate (4) otherwise; without a season a candidate role goes
-    // back to none.
+    // The role of the login, set before the field entry so the field's character block carries it (the client reads
+    // the role only from there and from Mentor 1, and its menu opens the register pages only for roles 1 and 4,
+    // UIMentoringDialog::GetTabs; a mentee is the party's returning user, uipartydialog.cpp:1080). While a ReturnUser
+    // season runs it comes from the account's registration of the season (MentoringRegistration.Role): the registered
+    // character gets its role (2 or 5), the account's others 3 (after a mentee) or 6 (after a mentor); while the
+    // account has registered no one, a character is a mentee candidate (1) when it returns and a mentor candidate (4)
+    // otherwise. Without a season every role goes back to none, so a registration ends with its season.
     // Returning, from the server data (GameEvent.xml): a mentoring ReturnUser row (value3 the season, value4 its
     // quests) gives the days away in value1 (KR/NA 30, CN 20); a date there would be read as "last online before
     // it" (only stamp rows, which are no season, have one). A ReturnUserCandidate row (KR 180105, CN 180004: value1 30,
@@ -159,13 +203,11 @@ public class MentoringManager : IDisposable {
     // so a later entry or a channel move keeps it. The days are a character's (its last save before this entry):
     // the data does not say account or character, and per character no returning account is left out. The rows'
     // levels are not read: the client's menu checks the constants' levels, as UpdateRole does.
-    private void LoadCandidate() {
+    private void LoadRole() {
         MentorRole role = Role;
-        if (role is not (MentorRole.None or MentorRole.MenteeCandidate or MentorRole.MentorCandidate)) {
-            return;
-        }
         MentorRole candidate = MentorRole.None;
         GameEvent? season = SeasonEvent;
+        MoveUnseasoned(season);
         if (season?.Metadata.Data is ReturnUser returnUser) {
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             long lastSave = session.EntryLastSave;
@@ -185,7 +227,7 @@ public class MentoringManager : IDisposable {
                 }
             }
             bool returning = session.GameEvent.HasValue(GameEventUserValueType.MentoringReturnUser, returnUser.SeasonId.ToString(), now);
-            candidate = returning ? MentorRole.MenteeCandidate : MentorRole.MentorCandidate;
+            candidate = MentoringRegistration.Role(Registration(season), session.CharacterId, returning);
         }
         if (candidate == role) {
             return;
@@ -197,6 +239,35 @@ public class MentoringManager : IDisposable {
             MentorRole = (int) candidate,
             Async = true,
         });
+    }
+
+    // Mentoring stored before rows and registrations had a season (AddMentoringSeason): the character's requests
+    // and pairs (season 0) and the account's registered character (event 0, which the migration made from a stored
+    // role 2 or 5) go to the season running at the first login since, so an upgrade during a season keeps them. A
+    // login without a season ends them instead: the season they were made in is over, and a later one starts
+    // from nothing. A registration the account already has for the season is kept and the old one dropped.
+    private void MoveUnseasoned(GameEvent? season) {
+        int? seasonId = season?.Metadata.Data is ReturnUser returnUser ? returnUser.SeasonId : null;
+        using GameStorage.Request db = session.GameStorage.Context();
+        if (!db.MoveUnseasonedMentoring(session.CharacterId, seasonId)) {
+            logger.Warning("Mentoring rows of {CharacterId} not moved to season {Season}", session.CharacterId, seasonId);
+        }
+        GameEventUserValue? old = db.GetAccountEventValues(session.AccountId)
+            .FirstOrDefault(value => value.EventId == 0 && value.Type == GameEventUserValueType.MentoringRegistration);
+        if (old == null) {
+            return;
+        }
+        if (season != null && Registration(season) == null && MentoringRegistration.Parse(old.Value) != null) {
+            session.GameEvent.Get(GameEventUserValueType.MentoringRegistration, season.Id, season.EndTime);
+            session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringRegistration, old.Value);
+            if (!session.GameEvent.Store(season.Id, GameEventUserValueType.MentoringRegistration)) {
+                // Kept for the next login.
+                logger.Warning("Mentoring registration of account {AccountId} not moved to the season", session.AccountId);
+                session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringRegistration, "");
+                return;
+            }
+        }
+        db.RemoveAccountEventValue(old, session.AccountId);
     }
 
     // The return for `seasonNumber`, kept on the event `eventId` until `until`; stored at once. A value that already
@@ -254,12 +325,12 @@ public class MentoringManager : IDisposable {
             return;
         }
         if (session.Currency[CurrencyType.MenteeToken] >= session.ServerTableMetadata.ConstantsTable.MenteeTokenMax
-            || MenteeCoinsToday(season, now) >= MentoringAttend.MenteeDailyCoinMax) {
+            || MenteeCoinsToday(season, now) >= Config.MaxMenteeDailyRewardCoin) {
             session.Send(MentorPacket.Error(MentorError.FullEarnCoin));
             return;
         }
 
-        (int coin, int newLevel, long newNext) = MentoringAttend.Claim(level, next, now);
+        (int coin, int newLevel, long newNext) = MentoringAttend.Claim(Config, level, next, now);
         session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringAttendLevel, newLevel);
         session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringAttendNext, newNext);
         // Stored at once, before the coin: a lost session must not give the day's coin twice.
@@ -268,7 +339,7 @@ public class MentoringManager : IDisposable {
             logger.Warning("Mentoring attend of {CharacterId} not stored", session.CharacterId);
             return;
         }
-        AddMenteeCoin(coin);
+        AddMenteeCoin(coin, fromQuest: false);
         session.Send(MentorPacket.AttendDate(newLevel, newNext));
     }
 
@@ -278,8 +349,9 @@ public class MentoringManager : IDisposable {
     // player without a role; the page shows them 0) gets the coin as before. The count holds only what the token
     // cap (MenteeTokenMax) lets in. It is stored at once; a store the database refuses is logged and the coin is
     // still given, as the claim it pays for is already used up (the attend day stored, the quest completed).
+    // A quest's coin given to a paired mentee also earns its mentor the same coin (EarnMentorCoins).
     // Returns the coin given.
-    public long AddMenteeCoin(long coin) {
+    public long AddMenteeCoin(long coin, bool fromQuest = true) {
         if (coin <= 0) {
             return 0;
         }
@@ -293,7 +365,7 @@ public class MentoringManager : IDisposable {
         DateTime now = DateTime.Now;
         long today = MenteeCoinsToday(season, now);
         long room = session.ServerTableMetadata.ConstantsTable.MenteeTokenMax - session.Currency[CurrencyType.MenteeToken];
-        long given = Math.Min(MentoringAttend.DailyPart(coin, today), room);
+        long given = Math.Min(Config.RewardableCoin(coin, today, mentee: true), room);
         if (given <= 0) {
             return 0;
         }
@@ -303,25 +375,133 @@ public class MentoringManager : IDisposable {
         }
         session.Currency.Change(CurrencyType.MenteeToken, given);
         SendDailyCoins();
+        if (fromQuest) {
+            EarnMentorCoins(season, given);
+        }
         return given;
     }
 
-    // Mentor 11: the coins today the mentoring page shows against the daily cap, until the next midnight. A mentee
-    // in a running season gets the mentee coins today; a mentor 0, as how a mentor earns coins is not known.
+    // Chosen here (no client code or table says how a mentor earns coins; the client has only the mentor's daily
+    // cap, maxMentorDailyRewardCoin, and the mentor page's count of Mentor 11): the mentee coins a paired mentee gets
+    // from a quest (the season missions' menteeCoin) earn its mentor the same coins. They are added to the pair's
+    // row, which the mentor takes from (TakeMentorCoins), so a mentor on another channel or offline gets them too;
+    // its game server is told at once.
+    private void EarnMentorCoins(GameEvent season, long coins) {
+        if (season.Metadata.Data is not ReturnUser { SeasonId: > 0 } returnUser) {
+            return;
+        }
+        long mentorId;
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            mentorId = db.AddMentorCoins(session.CharacterId, returnUser.SeasonId, coins);
+        }
+        if (mentorId == 0) {
+            return;
+        }
+        // After a store this coin may be given in: its account lock is let go first.
+        session.AfterStore(() => {
+            try {
+                session.World.Mentoring(new MentoringRequest {
+                    ReceiverId = mentorId,
+                    Coins = new MentoringRequest.Types.Coins(),
+                });
+            } catch (Exception ex) {
+                logger.Warning(ex, "Mentor coins of {CharacterId} not announced to mentor {MentorId}", session.CharacterId, mentorId);
+            }
+        });
+    }
+
+    // The mentor coins the mentor's mentees earned for it (EarnMentorCoins), at each field entry and when a mentee
+    // earns some: given as MentorToken up to the mentor's daily cap (maxMentorDailyRewardCoin, counted per day as the
+    // mentee's coins are, MentoringAttend) and up to MentorTokenMax, the coins over either are dropped. The pairs'
+    // coins, the count today and the token are stored together (a purchase store): a take that is not stored gives
+    // nothing and leaves the coins on the pairs. A coin counts on the day the mentor takes it.
+    public void TakeMentorCoins() {
+        lock (takeLock) {
+            if (Role != MentorRole.Mentor || SeasonEvent is not { Metadata.Data: ReturnUser { SeasonId: > 0 } returnUser } season) {
+                return;
+            }
+            IList<(long Id, long Coins)> owed;
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                owed = db.GetMentorCoins(session.CharacterId, returnUser.SeasonId);
+            }
+            long total = owed.Sum(pair => pair.Coins);
+            if (total <= 0) {
+                return;
+            }
+
+            DateTime now = DateTime.Now;
+            long today = MentorCoinsToday(season, now);
+            long room = Math.Max(0, session.ServerTableMetadata.ConstantsTable.MentorTokenMax - session.Currency[CurrencyType.MentorToken]);
+            long given = Math.Min(Config.RewardableCoin(total, today, mentee: false), room);
+            GameEventUserValue? held = session.GameEvent.Held(season.Id, GameEventUserValueType.MentoringMentorCoinToday);
+            if (held == null) {
+                return;
+            }
+            var count = new GameEventUserValue(GameEventUserValueType.MentoringMentorCoinToday, held.ExpirationTime, season.Id);
+            count.SetValue((today + given).ToString());
+
+            CurrencyManager.Added added = default;
+            bool stored = session.TrySavePurchase(db => {
+                if (!db.TakeMentorCoins(owed)) {
+                    return false;
+                }
+                added = session.Currency.AddUnsent(CurrencyType.MentorToken, given);
+                if (!db.SaveGameEventUserValues(session.CharacterId, [count]) || !db.SaveCurrency(session.Player)) {
+                    return false;
+                }
+                // The count reaches memory once stored, under the account lock, so no session save between writes the
+                // old one.
+                db.AfterCommit(() => session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringMentorCoinToday, today + given));
+                return true;
+            }, () => session.Currency.TakeBackAdded(added));
+            if (!stored) {
+                logger.Warning("Mentor coins {Coins} of {CharacterId} not taken", total, session.CharacterId);
+                return;
+            }
+            session.Currency.NotifyAdded(added);
+            if (added.Amount < total) {
+                logger.Information("Mentor {CharacterId} took {Given} of {Coins} mentor coins (daily cap or MentorTokenMax)", session.CharacterId, added.Amount, total);
+            }
+            SendDailyCoins();
+        }
+    }
+
+    // The world's word that a mentee earned this mentor coins: taken on the field's thread, as the field entry does;
+    // a mentor between fields takes them in the next field.
+    public void ScheduleTakeMentorCoins() {
+        if (session.Field is not { } field) {
+            return;
+        }
+        field.Scheduler.Schedule(() => {
+            if (session.Field == field) {
+                TakeMentorCoins();
+            }
+        });
+    }
+
+    // Mentor 11: the coins today the mentoring page shows against the daily cap, until the next midnight. In a
+    // running season a mentee gets its mentee coins today and a mentor its mentor coins today; anyone else 0.
     public void SendDailyCoins() {
         long midnight = DateTime.Now.Date.AddDays(1).ToEpochSeconds();
         GameEvent? season = SeasonEvent;
-        if (season?.Metadata.Data is not ReturnUser || Role != MentorRole.Mentee) {
+        if (season?.Metadata.Data is not ReturnUser || Role is not (MentorRole.Mentee or MentorRole.Mentor)) {
             session.Send(MentorPacket.DailyPoints(0, midnight));
             return;
         }
-        session.Send(MentorPacket.DailyPoints((int) MenteeCoinsToday(season, DateTime.Now), midnight));
+        long today = Role == MentorRole.Mentee ? MenteeCoinsToday(season, DateTime.Now) : MentorCoinsToday(season, DateTime.Now);
+        session.Send(MentorPacket.DailyPoints((int) today, midnight));
     }
 
     // The day's value ends at the midnight after `now` and is tested against `now`.
     private long MenteeCoinsToday(GameEvent season, DateTime now) {
         long midnight = now.Date.AddDays(1).ToEpochSeconds();
         return session.GameEvent.Get(GameEventUserValueType.MentoringMenteeCoinToday, season.Id, Math.Min(midnight, season.EndTime), now.ToEpochSeconds()).Long();
+    }
+
+    // As MenteeCoinsToday, for the mentor's coins.
+    private long MentorCoinsToday(GameEvent season, DateTime now) {
+        long midnight = now.Date.AddDays(1).ToEpochSeconds();
+        return session.GameEvent.Get(GameEventUserValueType.MentoringMentorCoinToday, season.Id, Math.Min(midnight, season.EndTime), now.ToEpochSeconds()).Long();
     }
 
     private (int Level, long Next) Attend(GameEvent season) {
@@ -361,7 +541,7 @@ public class MentoringManager : IDisposable {
             session.Send(MentorPacket.Error(MentorError.TargetIsNotMentee));
             return;
         }
-        if (Season == null) {
+        if (Season is not { } season) {
             session.Send(MentorPacket.Error(MentorError.InvalidTarget));
             return;
         }
@@ -372,7 +552,7 @@ public class MentoringManager : IDisposable {
         MentoringEntry? request;
         lock (StoreLock) {
             using GameStorage.Request db = session.GameStorage.Context();
-            error = db.AddMentoringRequest(session.CharacterId, targetId, Constant.MaxMentees, constants.MentorMaxWaitingCount,
+            error = db.AddMentoringRequest(session.CharacterId, targetId, season.SeasonId, Constant.MaxMentees, constants.MentorMaxWaitingCount,
                 constants.MenteeMaxReceivedCount, out request);
         }
         if (error != null || request == null) {
@@ -393,13 +573,13 @@ public class MentoringManager : IDisposable {
 
     // A mentor's request stored for this player (from the world): shown when it still waits for this player.
     public void ReceiveRequest(long id) {
-        if (Season == null) {
+        if (Season is not { } season) {
             return;
         }
 
         MentoringEntry? row;
         using (GameStorage.Request db = session.GameStorage.Context()) {
-            row = db.GetMentoringEntry(id);
+            row = db.GetMentoringEntry(id, season.SeasonId);
         }
         if (row is not { Accepted: false } || row.MenteeId != session.CharacterId || ToEntry(row) is not { } request) {
             return;
@@ -411,7 +591,7 @@ public class MentoringManager : IDisposable {
     // The mentee gets Mentor 6 (the client moves the request to its pair and drops the others, which are removed
     // here too); the mentor, when online, its pair list again.
     public void Accept(long id) {
-        if (Season == null) {
+        if (Season is not { } season) {
             session.Send(MentorPacket.Error(MentorError.TargetNotExists));
             return;
         }
@@ -420,7 +600,7 @@ public class MentoringManager : IDisposable {
         MentoringEntry? pair;
         lock (StoreLock) {
             using GameStorage.Request db = session.GameStorage.Context();
-            error = db.AcceptMentoring(id, session.CharacterId, Constant.MaxMentees, out pair);
+            error = db.AcceptMentoring(id, session.CharacterId, season.SeasonId, Constant.MaxMentees, out pair);
         }
         if (error != null || pair == null) {
             session.Send(MentorPacket.Error(error ?? MentorError.TargetNotExists));
@@ -449,9 +629,13 @@ public class MentoringManager : IDisposable {
     // (item 90000023, MentorToken when collected). The client parses the coin (mentoringdatatable.cpp:80) and reads it
     // nowhere, and no client code sends the mail, so the server sends it when a mentee accepts. Chosen here: the coin
     // is not counted against the mentor's daily cap (maxMentorDailyRewardCoin 400 is below the 1000 the mail names);
-    // a mail or item the database refuses is logged and the pair stays.
+    // a table coin of 0 sends no mail; a mail or item the database refuses is logged and the pair stays.
     private void MailMentorReward(long mentorId) {
-        Item? points = session.Field?.ItemDrop.CreateItem(MentoringAttend.MentorPointItemId, amount: MentoringAttend.MentorRewardCoin);
+        int rewardCoin = Config.MentorRewardCoin;
+        if (rewardCoin <= 0) {
+            return;
+        }
+        Item? points = session.Field?.ItemDrop.CreateItem(MentoringAttend.MentorPointItemId, amount: rewardCoin);
         if (points == null) {
             logger.Error("Mentor reward item {ItemId} not created for {CharacterId}", MentoringAttend.MentorPointItemId, mentorId);
             return;
@@ -462,7 +646,7 @@ public class MentoringManager : IDisposable {
             SenderId = mentorId,
             Type = MailType.System,
             TitleArgs = [("str", session.PlayerName)],
-            ContentArgs = [("str", session.PlayerName), ("str", MentoringAttend.MentorRewardCoin.ToString())],
+            ContentArgs = [("str", session.PlayerName), ("str", rewardCoin.ToString())],
         };
         mail.SetSenderName(StringCode.s_mentoring_new_mentor_mail_sender);
         mail.SetTitle(StringCode.s_mentoring_new_mentor_mail_title);
@@ -496,10 +680,10 @@ public class MentoringManager : IDisposable {
     // The mentee declines a mentor's request (uiinvitementoringdialog.cpp:266): only a waiting request to this player.
     public void Decline(long id) {
         bool removed = false;
-        if (Season != null) {
+        if (Season is { } season) {
             lock (StoreLock) {
                 using GameStorage.Request db = session.GameStorage.Context();
-                removed = db.DeclineMentoring(id, session.CharacterId);
+                removed = db.DeclineMentoring(id, session.CharacterId, season.SeasonId);
             }
         }
         session.Send(removed ? MentorPacket.DeclineMentorInvite(id) : MentorPacket.Error(MentorError.TargetNotExists));
@@ -553,11 +737,16 @@ public class MentoringManager : IDisposable {
         }
     }
 
-    // The waiting requests to this player (as mentee) and its pairs, each with the other character.
+    // The running season's waiting requests to this player (as mentee) and its pairs, each with the other character;
+    // none without a season. A row of another season is not read: the client's accept box names the season's end as
+    // the pair's end (uiinvitementoringdialog.cpp:226-253).
     private (MentorPacket.Entry[] Requests, MentorPacket.Entry[] Pairs) Lists() {
+        if (Season is not { } season) {
+            return ([], []);
+        }
         IList<MentoringEntry> rows;
         using (GameStorage.Request db = session.GameStorage.Context()) {
-            rows = db.GetMentoring(session.CharacterId);
+            rows = db.GetMentoring(session.CharacterId, season.SeasonId);
         }
 
         MentorPacket.Entry[] requests = rows.Where(row => !row.Accepted && row.MenteeId == session.CharacterId)

@@ -73,6 +73,7 @@ public class TableMetadataStorage {
     private readonly Lazy<InventoryTabNameTable> inventoryTabNameTable;
     private readonly Lazy<UserConditionEventTable> userConditionEventTable;
     private readonly Lazy<PaybackTable> paybackTable;
+    private readonly Lazy<MentoringConfigTable> mentoringConfigTable;
 
     private readonly Lazy<EnchantScrollTable> enchantScrollTable;
     private readonly Lazy<ItemRemakeScrollTable> itemRemakeScrollTable;
@@ -164,6 +165,7 @@ public class TableMetadataStorage {
     public InventoryTabNameTable InventoryTabNameTable => inventoryTabNameTable.Value;
     public UserConditionEventTable UserConditionEventTable => userConditionEventTable.Value;
     public PaybackTable PaybackTable => paybackTable.Value;
+    public MentoringConfigTable MentoringConfigTable => mentoringConfigTable.Value;
 
     public EnchantScrollTable EnchantScrollTable => enchantScrollTable.Value;
     public ItemRemakeScrollTable ItemRemakeScrollTable => itemRemakeScrollTable.Value;
@@ -278,6 +280,8 @@ public class TableMetadataStorage {
         userConditionEventTable = Retrieve(context, TableNames.USER_CONDITION_EVENT, UserConditionEventTable.Empty);
         // A metadata db ingested before this table has no row: no payback levels.
         paybackTable = Retrieve(context, TableNames.PAYBACK, PaybackTable.Empty);
+        // A metadata db ingested before this table has no row: the KMS2 file's values, which the server held before.
+        mentoringConfigTable = Retrieve(context, TableNames.MENTORING_CONFIG, MentoringConfigTable.Kms2);
 
     }
 

@@ -212,12 +212,13 @@ public class FieldPlayer : Actor<Player> {
     }
 
     // The party buffs (PartyBuff) at the level the party members in this field give; none outside a party, alone, or
-    // in a PvP field (the exp and meso buff is removed in one).
+    // in a PvP field (the exp and meso buff is removed in one). The returning-user party buff counts the same members.
     private void UpdatePartyBuffs() {
         int partyId = Session.Party.Id;
-        int others = partyId == 0 || Field.Metadata.Property.Type == MapType.Pvp ? 0
-            : Field.Players.Values.Count(other => other != this && other.Session.Party.Id == partyId);
-        short level = PartyBuff.Level(others);
+        MentorRole[] others = partyId == 0 || Field.Metadata.Property.Type == MapType.Pvp ? []
+            : Field.Players.Values.Where(other => other != this && other.Session.Party.Id == partyId)
+                .Select(other => other.Value.Character.MentorRole).ToArray();
+        short level = PartyBuff.Level(others.Length);
 
         ConstantsTable constants = Session.ServerTableMetadata.ConstantsTable;
         foreach (int buffId in new[] { constants.partyBuffID0, constants.partyBuffID1 }) {
@@ -233,6 +234,18 @@ public class FieldPlayer : Actor<Player> {
             }
             if (level > 0) {
                 Buffs.AddBuff(this, this, buffId, level, Field.FieldTick);
+            }
+        }
+
+        // The returning-user party buff (PartyBuff.ReturnUser), also taken away once the season ends.
+        int returnUserBuffId = constants.returnUserPartyBuffID0;
+        if (returnUserBuffId != 0) {
+            bool held = Buffs.EnumerateBuffs(returnUserBuffId).Count > 0;
+            bool given = PartyBuff.ReturnUser(Value.Character.MentorRole, others) && Session.Mentoring.SeasonRuns;
+            if (held && !given) {
+                Buffs.Remove(returnUserBuffId, ObjectId);
+            } else if (given && !held) {
+                Buffs.AddBuff(this, this, returnUserBuffId, 1, Field.FieldTick);
             }
         }
     }

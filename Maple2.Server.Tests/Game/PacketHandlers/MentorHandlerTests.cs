@@ -68,6 +68,10 @@ public class MentorHandlerTests {
             case MentoringRequest.MentoringOneofCase.Reload:
                 receiver?.Mentoring.Reload();
                 break;
+            // The game server takes them on the field's thread (ScheduleTakeMentorCoins); here at once.
+            case MentoringRequest.MentoringOneofCase.Coins:
+                receiver?.Mentoring.TakeMentorCoins();
+                break;
         }
     }
 
@@ -122,7 +126,7 @@ public class MentorHandlerTests {
 
     private IList<MentoringEntry> Rows() {
         using GameStorage.Request db = test.Storage.Context();
-        return db.GetMentoring(other.CharacterId);
+        return db.GetMentoring(other.CharacterId, 1);
     }
 
     private static string Hex(Maple2.PacketLib.Tools.ByteWriter writer) => Convert.ToHexString(writer.Buffer, 2, writer.Length - 2);
@@ -148,7 +152,7 @@ public class MentorHandlerTests {
         Login(season: true);
         Send(session, RegisterMentee);
 
-        Assert.That(Mentor(test), Is.EqualTo(new[] { Role(MentorRole.Mentee, session), "04" }));
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Role(MentorRole.Mentee, session), "04", Hex(MentorPacket.AccountCharacters(0, session.CharacterId)) }));
         Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentee));
         Assert.That(test.World.PlayerUpdates.Single(update => update.HasMentorRole).MentorRole, Is.EqualTo((int) MentorRole.Mentee));
     }
@@ -172,7 +176,7 @@ public class MentorHandlerTests {
         Login(season: true);
         Send(session, RegisterMentor);
 
-        Assert.That(Mentor(test), Is.EqualTo(new[] { Role(MentorRole.Mentor, session), "08" }));
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Role(MentorRole.Mentor, session), "08", Hex(MentorPacket.AccountCharacters(session.CharacterId, 0)) }));
         Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentor));
     }
 
@@ -253,12 +257,13 @@ public class MentorHandlerTests {
         Assert.That(test.World.PlayerUpdates.Any(update => update.HasMentorRole), Is.False);
     }
 
-    // Without a season a candidate role goes back to none at login (the dialog does not open then); a registered
-    // role stays.
+    // Without a season every role goes back to none at login (the dialog does not open then): a registration ends
+    // with its season.
     [TestCase(MentorRole.MenteeCandidate, MentorRole.None)]
     [TestCase(MentorRole.MentorCandidate, MentorRole.None)]
-    [TestCase(MentorRole.Mentee, MentorRole.Mentee)]
-    public void Load_WithoutASeasonDropsTheCandidateRole(MentorRole held, MentorRole after) {
+    [TestCase(MentorRole.Mentee, MentorRole.None)]
+    [TestCase(MentorRole.UnregisteredMentor, MentorRole.None)]
+    public void Load_WithoutASeasonDropsTheRole(MentorRole held, MentorRole after) {
         Login(season: false);
         session.Player.Value.Character.MentorRole = held;
         session.Mentoring.Load();
@@ -668,7 +673,7 @@ public class MentorHandlerTests {
         Login(season: false);
         MentoringEntry? row;
         using (GameStorage.Request db = test.Storage.Context()) {
-            db.AddMentoringRequest(session.CharacterId, other.CharacterId, 3, 100, 20, out row);
+            db.AddMentoringRequest(session.CharacterId, other.CharacterId, 1, 3, 100, 20, out row);
         }
         Send(other, command, writer => writer.WriteLong(row!.Id));
 
@@ -688,24 +693,26 @@ public class MentorHandlerTests {
         Assert.That(Mentor(otherTest), Is.EqualTo(new[] {
             Hex(MentorPacket.MenteeInvitations(Entry(other, id, session))), "0300000000", "0F00000000",
             AttendDate(0, 0), // the mentee's attend streak, none claimed yet
+            Hex(MentorPacket.AccountCharacters(0, other.CharacterId)), // the account's registered characters
         }));
 
         Send(other, Accept, writer => writer.WriteLong(id));
         Mentor(test);
         session.Mentoring.Load();
         MentorPacket.Entry[] pair = [Entry(session, id, other)];
-        Assert.That(Mentor(test), Is.EqualTo(new[] { "0200000000", Hex(MentorPacket.MyList(pair)), Hex(MentorPacket.PairOnline(pair)) }));
+        Assert.That(Mentor(test), Is.EqualTo(new[] { "0200000000", Hex(MentorPacket.MyList(pair)), Hex(MentorPacket.PairOnline(pair)),
+            Hex(MentorPacket.AccountCharacters(session.CharacterId, 0)) }));
     }
 
     [Test]
-    public void Load_WithoutASeasonSendsTheEmptyPairListOnly() {
+    public void Load_WithoutASeasonSendsTheEmptyPairListAndNoCharacters() {
         Login(season: false);
         using (GameStorage.Request db = test.Storage.Context()) {
-            db.AddMentoringRequest(session.CharacterId, other.CharacterId, 3, 100, 20, out _);
+            db.AddMentoringRequest(session.CharacterId, other.CharacterId, 1, 3, 100, 20, out _);
         }
         other.Mentoring.Load();
 
-        Assert.That(Mentor(otherTest), Is.EqualTo(new[] { "0300000000" }));
+        Assert.That(Mentor(otherTest), Is.EqualTo(new[] { "0300000000", Hex(MentorPacket.AccountCharacters(0, 0)) }));
     }
 
     // The store: accepting removes the mentee's other requests; a mentor with all its mentees takes no request, and
@@ -715,16 +722,16 @@ public class MentorHandlerTests {
         Login(season: true);
         using GameStorage.Request db = test.Storage.Context();
         long mentee = other.CharacterId;
-        Assert.That(db.AddMentoringRequest(session.CharacterId, mentee, 3, 100, 20, out MentoringEntry? first), Is.Null);
-        Assert.That(db.AddMentoringRequest(424242, mentee, 3, 100, 20, out MentoringEntry? second), Is.Null);
-        Assert.That(db.AcceptMentoring(first!.Id, mentee, 3, out _), Is.Null);
-        Assert.That(db.GetMentoring(mentee).Select(row => row.Id), Is.EqualTo(new[] { first.Id }));
-        Assert.That(db.GetMentoringEntry(second!.Id), Is.Null);
+        Assert.That(db.AddMentoringRequest(session.CharacterId, mentee, 1, 3, 100, 20, out MentoringEntry? first), Is.Null);
+        Assert.That(db.AddMentoringRequest(424242, mentee, 1, 3, 100, 20, out MentoringEntry? second), Is.Null);
+        Assert.That(db.AcceptMentoring(first!.Id, mentee, 1, 3, out _), Is.Null);
+        Assert.That(db.GetMentoring(mentee, 1).Select(row => row.Id), Is.EqualTo(new[] { first.Id }));
+        Assert.That(db.GetMentoringEntry(second!.Id, 1), Is.Null);
 
-        Assert.That(db.AddMentoringRequest(session.CharacterId, 515151, 1, 100, 20, out _), Is.EqualTo(MentorError.InvalidTarget));
-        Assert.That(db.AddMentoringRequest(session.CharacterId, 515151, 2, 100, 20, out MentoringEntry? third), Is.Null);
-        Assert.That(db.AcceptMentoring(third!.Id, 515151, 1, out _), Is.EqualTo(MentorError.InvalidTarget));
-        Assert.That(db.GetMentoringEntry(third.Id), Is.Null);
+        Assert.That(db.AddMentoringRequest(session.CharacterId, 515151, 1, 1, 100, 20, out _), Is.EqualTo(MentorError.InvalidTarget));
+        Assert.That(db.AddMentoringRequest(session.CharacterId, 515151, 1, 2, 100, 20, out MentoringEntry? third), Is.Null);
+        Assert.That(db.AcceptMentoring(third!.Id, 515151, 1, 1, out _), Is.EqualTo(MentorError.InvalidTarget));
+        Assert.That(db.GetMentoringEntry(third.Id, 1), Is.Null);
     }
 
     // A request another game server stored while this mentee's pair was accepted (its "has a mentor" check ran
@@ -737,7 +744,7 @@ public class MentorHandlerTests {
         Send(other, Accept, writer => writer.WriteLong(id));
         long stuck;
         using (var context = new Ms2Context(options)) {
-            var row = new Maple2.Database.Model.Mentoring { MentorId = 424242, MenteeId = other.CharacterId, CreationTime = DateTime.UtcNow };
+            var row = new Maple2.Database.Model.Mentoring { MentorId = 424242, MenteeId = other.CharacterId, Season = 1, CreationTime = DateTime.UtcNow };
             context.Mentoring.Add(row);
             context.SaveChanges();
             stuck = row.Id;
@@ -838,7 +845,7 @@ public class MentorHandlerTests {
                 }));
         }
         session.Mentoring.Load();
-        Assert.That(Mentor(test).Last(), Is.EqualTo(AttendDate(1, NextMidnight())));
+        Assert.That(Mentor(test), Has.Member(AttendDate(1, NextMidnight())));
     }
 
     [Test]
@@ -899,7 +906,7 @@ public class MentorHandlerTests {
         Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.FullEarnCoin) }));
         Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(1500));
         session.Mentoring.Load();
-        Assert.That(Mentor(test).Last(), Is.EqualTo(AttendDate(0, 0)));
+        Assert.That(Mentor(test), Has.Member(AttendDate(0, 0)));
     }
 
     // The dialog's open sends a mentee the coins today; without a season the coins are given as before, uncounted.
@@ -940,5 +947,271 @@ public class MentorHandlerTests {
         Assert.That(session.Mentoring.AddMenteeCoin(100), Is.EqualTo(50));
         Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(max));
         Assert.That(Mentor(test), Is.EqualTo(new[] { Coins(50) }));
+    }
+
+    // ---- The mentor coins: a paired mentee's quest coins earn its mentor the same, under the mentor's caps ----
+
+    // The session as mentor paired with the other player as mentee.
+    private void Paired() {
+        MentorAndMentee();
+        InviteOther();
+        long id = Rows().Single().Id;
+        Send(other, Accept, writer => writer.WriteLong(id));
+        Mentor(test);
+        Mentor(otherTest);
+    }
+
+    private IList<(long Id, long Coins)> MentorCoinRows() {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.GetMentorCoins(session.CharacterId, 1);
+    }
+
+    [Test]
+    public void MentorCoins_AMenteesQuestCoinGivesItsMentorTheSame() {
+        Paired();
+        Assert.That(other.Mentoring.AddMenteeCoin(100), Is.EqualTo(100));
+
+        Assert.That(otherTest.World.MentoringRequests.Where(request => request.Coins != null).Select(request => request.ReceiverId),
+            Is.EqualTo(new[] { session.CharacterId }));
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(100));
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Coins(100) }));
+        Assert.That(MentorCoinRows(), Is.Empty);
+        // The dialog's open shows the mentor its coins today (it showed 0 before).
+        Send(session, OpenDialog);
+        Assert.That(Mentor(test), Has.Member(Coins(100)));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The attend coin and the coins of a mentee with no pair earn no mentor coins.
+    [Test]
+    public void MentorCoins_NotFromTheAttendCoinNorWithoutAPair() {
+        MentorAndMentee();
+        other.Mentoring.AddMenteeCoin(100);
+        Assert.That(otherTest.World.MentoringRequests.Any(request => request.Coins != null), Is.False);
+
+        Paired();
+        other.Mentoring.AddMenteeCoin(100, fromQuest: false);
+        Assert.That(MentorCoinRows(), Is.Empty);
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(0));
+    }
+
+    // The table's mentor cap (maxMentorDailyRewardCoin 400): the part over it is dropped, and the coins today stay
+    // at the cap until midnight.
+    [Test]
+    public void MentorCoins_StopAtTheMentorsDailyCap() {
+        Paired();
+        other.Mentoring.AddMenteeCoin(300);
+        other.Mentoring.AddMenteeCoin(300);
+        other.Mentoring.AddMenteeCoin(300);
+
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(400));
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Coins(300), Coins(400), Coins(400) }));
+        Assert.That(MentorCoinRows(), Is.Empty);
+    }
+
+    // A mentor the world does not reach (offline, another server down) takes the coins at its next field entry.
+    [Test]
+    public void MentorCoins_AMentorAwayTakesThemLater() {
+        Paired();
+        otherTest.World.MentoringWorld = null;
+        other.Mentoring.AddMenteeCoin(100);
+        other.Mentoring.AddMenteeCoin(150);
+        Assert.That(MentorCoinRows().Select(row => row.Coins), Is.EqualTo(new[] { 250L }));
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(0));
+
+        session.Mentoring.TakeMentorCoins();
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(250));
+        Assert.That(MentorCoinRows(), Is.Empty);
+        // Nothing left: a second take gives nothing.
+        session.Mentoring.TakeMentorCoins();
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(250));
+    }
+
+    // Near MentorTokenMax only what it lets in is given and counted; the rest is dropped.
+    [Test]
+    public void MentorCoins_CountOnlyWhatTheTokenCapLetsIn() {
+        Paired();
+        int max = session.ServerTableMetadata.ConstantsTable.MentorTokenMax;
+        session.Currency.Change(CurrencyType.MentorToken, max - 30);
+        Mentor(test);
+
+        other.Mentoring.AddMenteeCoin(100);
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(max));
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Coins(30) }));
+        Assert.That(MentorCoinRows(), Is.Empty);
+    }
+
+    // A take that is not stored gives no token, counts nothing and leaves the coins on the pair.
+    [Test]
+    public void MentorCoins_ATakeNotStoredGivesNothing() {
+        Paired();
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Mentoring>()
+            .Any(entry => entry.State == EntityState.Modified && entry.Entity.MentorId == session.CharacterId && entry.Entity.MentorCoins == 0);
+        otherTest.World.MentoringWorld = null;
+        other.Mentoring.AddMenteeCoin(100);
+        session.Mentoring.TakeMentorCoins();
+        test.FailSave = null;
+
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(0));
+        Assert.That(MentorCoinRows().Select(row => row.Coins), Is.EqualTo(new[] { 100L }));
+        test.Errors.Clear();
+        Send(session, OpenDialog);
+        Assert.That(Mentor(test), Has.Member(Coins(0)));
+
+        session.Mentoring.TakeMentorCoins();
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(100));
+    }
+
+    // ---- One registered character per account for the season, Mentor 12, the season of the rows ----
+
+    // Another character of the session's account, logged in with the season (`seasonId`) running, roles loaded.
+    private TestGameSession SameAccount(int seasonId = 1) {
+        var second = new TestGameSession(options, accountId: session.AccountId);
+        second.AddMap(TestGameSession.Map(2000023));
+        second.AddEvent(77, GameEventType.ReturnUser, new ReturnUser(SeasonId: seasonId, QuestIds: [], RequiredUserValue: 0,
+            DateInactiveSince: DateTimeOffset.MinValue, DaysInactive: 0, RequiredLevel: 0));
+        second.Start();
+        second.EnterMap(TestGameSession.Map(2000023));
+        second.World.MentoringWorld = Deliver;
+        second.Session.Mentoring.Load();
+        return second;
+    }
+
+    // A mentor registration is the account's for the season: the account's other characters log in with role 6 and
+    // Mentor 12 naming the mentor, and their register requests are refused without storing anything.
+    [Test]
+    public void Register_TheAccountsOtherCharactersGetRole6AndAreRefused() {
+        Login(season: true);
+        Send(session, RegisterMentor);
+
+        TestGameSession second = SameAccount();
+        Assert.That(second.Session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.UnregisteredMentor));
+        Assert.That(Mentor(second), Has.Member(Hex(MentorPacket.AccountCharacters(session.CharacterId, 0))));
+
+        foreach (byte command in new[] { RegisterMentor, RegisterMentee }) {
+            handler.Handle(second.Session, TestGameSession.Packet(writer => writer.WriteByte(command)));
+            Assert.That(Mentor(second), Is.EqualTo(new[] { Error(command == RegisterMentee ? MentorError.IsNotReturnUser : MentorError.InvalidTarget) }));
+        }
+        Assert.That(second.Session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.UnregisteredMentor));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetAccountEventValues(session.AccountId).Single(value => value.Type == GameEventUserValueType.MentoringRegistration).Value,
+            Is.EqualTo($"5,{session.CharacterId}"));
+    }
+
+    // After a mentee registration the account's others get role 3 and Mentor 12 with the mentee second; the
+    // registered character keeps its role at its next login from the account's value, whatever its stored role.
+    [Test]
+    public void Register_AMenteeGivesTheOthersRole3AndKeepsItsRole() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+
+        TestGameSession second = SameAccount();
+        Assert.That(second.Session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.UnregisteredMentee));
+        Assert.That(Mentor(second), Has.Member(Hex(MentorPacket.AccountCharacters(0, session.CharacterId))));
+
+        session.Player.Value.Character.MentorRole = MentorRole.MenteeCandidate;
+        session.Mentoring.Load();
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentee));
+    }
+
+    // The registration is stored before the role is given: a store the database refuses gets the refusal's notice,
+    // gives no role and leaves the account free.
+    [Test]
+    public void Register_AStoreRefusedGivesNoRole() {
+        Login(season: true);
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.AccountEventValue>().Any();
+        Send(session, RegisterMentor);
+        test.FailSave = null;
+
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(MentorError.InvalidTarget) }));
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.MentorCandidate));
+        Assert.That(test.World.PlayerUpdates.Any(update => update.HasMentorRole), Is.False);
+        Assert.That(SameAccount().Session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.MentorCandidate));
+    }
+
+    // A pair and a request of another season are not listed and do not count in this one: the mentee who had a
+    // mentor in another season can be invited again in season 1.
+    [Test]
+    public void Rows_OfAnotherSeasonAreNotRead() {
+        MentorAndMentee();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.AddMentoringRequest(session.CharacterId, other.CharacterId, 2, 3, 100, 20, out MentoringEntry? old), Is.Null);
+            Assert.That(db.AcceptMentoring(old!.Id, other.CharacterId, 2, 3, out _), Is.Null);
+            Assert.That(db.GetMentoring(other.CharacterId, 1), Is.Empty);
+        }
+        other.Mentoring.Load();
+        Assert.That(Mentor(otherTest), Has.Member("0300000000"));
+
+        InviteOther();
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Hex(MentorPacket.MenteeInvite(other.CharacterId, other.PlayerName)) }));
+        Assert.That(Rows().Single().Accepted, Is.False);
+    }
+
+    // Mentoring stored before rows and registrations had a season (AddMentoringSeason): a season-0 pair and each
+    // account's registration under event 0, as the migration leaves them.
+    private long Unseasoned() {
+        using GameStorage.Request db = test.Storage.Context();
+        db.AddMentoringRequest(session.CharacterId, other.CharacterId, 0, 3, 100, 20, out MentoringEntry? request);
+        db.AcceptMentoring(request!.Id, other.CharacterId, 0, 3, out _);
+        foreach ((long accountId, string value) in new[] { (session.AccountId, $"5,{session.CharacterId}"), (other.AccountId, $"2,{other.CharacterId}") }) {
+            db.SaveAccountEventValues(accountId, [new GameEventUserValue(value) {
+                Type = GameEventUserValueType.MentoringRegistration, EventId = 0, ExpirationTime = long.MaxValue,
+            }]);
+        }
+        return request.Id;
+    }
+
+    private bool HasUnseasonedRegistration(GameSession of) {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.GetAccountEventValues(of.AccountId).Any(value => value.EventId == 0 && value.Type == GameEventUserValueType.MentoringRegistration);
+    }
+
+    // An upgrade during a season keeps the pairs and registrations: each login moves its rows and its account's
+    // registration to the running season.
+    [Test]
+    public void Load_DuringASeasonMovesWhatWasStoredBeforeSeasons() {
+        Login(season: true);
+        long id = Unseasoned();
+
+        session.Mentoring.Load();
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentor));
+        Assert.That(Rows(), Is.EqualTo(new[] { new MentoringEntry(id, session.CharacterId, other.CharacterId, true) }));
+        Assert.That(HasUnseasonedRegistration(session), Is.False);
+        Assert.That(HasUnseasonedRegistration(other), Is.True);
+
+        other.Mentoring.Load();
+        Assert.That(other.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentee));
+        Assert.That(HasUnseasonedRegistration(other), Is.False);
+        // The pair is the season's: the mentee's mentor coins reach the mentor.
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.AddMentorCoins(other.CharacterId, 1, 100), Is.EqualTo(session.CharacterId));
+    }
+
+    // Without a season they end: the season they were made in is over, and a later season does not take them.
+    [Test]
+    public void Load_WithoutASeasonEndsWhatWasStoredBeforeSeasons() {
+        Login(season: false);
+        Unseasoned();
+
+        session.Mentoring.Load();
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.None));
+        Assert.That(HasUnseasonedRegistration(session), Is.False);
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMentoring(session.CharacterId, 0), Is.Empty);
+        Assert.That(db.MoveUnseasonedMentoring(other.CharacterId, 1), Is.True);
+        Assert.That(db.GetMentoring(other.CharacterId, 1), Is.Empty);
+    }
+
+    // An account that registered for the season already keeps that registration; the old one is dropped.
+    [Test]
+    public void Load_KeepsTheSeasonsRegistrationOverTheOldOne() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        Unseasoned();
+        Mentor(test);
+
+        session.Mentoring.Load();
+        Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentee));
+        Assert.That(HasUnseasonedRegistration(session), Is.False);
     }
 }

@@ -1633,14 +1633,20 @@ namespace Maple2.Server.World.Migrations
                     b.Property<long>("MenteeId")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("MentorCoins")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("MentorId")
                         .HasColumnType("bigint");
+
+                    b.Property<int>("Season")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
                     b.HasIndex("MenteeId");
 
-                    b.HasIndex("MentorId", "MenteeId")
+                    b.HasIndex("MentorId", "MenteeId", "Season")
                         .IsUnique();
 
                     b.ToTable("mentoring", (string)null);

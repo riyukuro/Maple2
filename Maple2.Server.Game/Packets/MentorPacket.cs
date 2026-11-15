@@ -21,7 +21,7 @@ public static class MentorPacket {
         Load = 9,
         AttendDate = 10,
         DailyPoints = 11,
-        Unknown12 = 12,
+        AccountCharacters = 12,
         ReceiveMenteeInvite = 14,
         PairMode = 15,
         Unknown16 = 16,
@@ -143,11 +143,15 @@ public static class MentorPacket {
         return pWriter;
     }
 
-    public static ByteWriter Unknown12() {
+    // CMentoringManager::OnSetIds (mentoringmanager.cpp:490): the account's registered mentor character, then its
+    // registered mentee character (0 for none). The menu names them in its role-6 and role-3 notices
+    // (s_mentoring_error_mentor_none_mentor, s_mentoring_error_mentee_none_mentee, uigamemenudialog.cpp:2066-2076),
+    // looked up in the character list.
+    public static ByteWriter AccountCharacters(long mentorId, long menteeId) {
         var pWriter = Packet.Of(SendOp.Mentor);
-        pWriter.WriteByte((byte) Command.Unknown12);
-        pWriter.WriteLong();
-        pWriter.WriteLong();
+        pWriter.WriteByte((byte) Command.AccountCharacters);
+        pWriter.WriteLong(mentorId);
+        pWriter.WriteLong(menteeId);
 
         return pWriter;
     }

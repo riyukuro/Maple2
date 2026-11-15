@@ -124,6 +124,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.STRING_COMMON, Table = ParseInventoryTabNames() };
         yield return new TableMetadata { Name = TableNames.USER_CONDITION_EVENT, Table = ParseUserConditionEventTable() };
         yield return new TableMetadata { Name = TableNames.PAYBACK, Table = ParsePayback() };
+        yield return new TableMetadata { Name = TableNames.MENTORING_CONFIG, Table = ParseMentoringConfig() };
 
         // Marriage/Wedding
         yield return new TableMetadata { Name = TableNames.WEDDING, Table = ParseWeddingTable() };
@@ -374,6 +375,56 @@ public class TableMapper : TypeMapper<TableMetadata> {
 
         static int ParseUint(string value) => uint.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out uint result)
             ? (int) Math.Min(result, int.MaxValue) : 0;
+    }
+
+    // The parser has no reader for this table either; the played client's file wins as for the payback table. Without
+    // the file the client keeps its constructor's values (MentoringConfigTable.Empty).
+    private MentoringConfigTable ParseMentoringConfig() {
+        foreach (M2dReader? reader in new[] { playedReader, xmlReader }) {
+            Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name == $"table/{TableNames.MENTORING_CONFIG}");
+            if (reader == null || entry == null) {
+                continue;
+            }
+            MentoringConfigTable table = ReadMentoringConfig(reader.GetXmlDocument(entry));
+            Console.WriteLine($"{TableNames.MENTORING_CONFIG}: mentor cap {table.MaxMentorDailyRewardCoin}, mentee cap {table.MaxMenteeDailyRewardCoin}, {table.AttendRewardCoins.Count} attend coins");
+            return table;
+        }
+        return MentoringConfigTable.Empty;
+    }
+
+    // MentoringDataTable::Init: the first ms2/MentoringConfig element; each value read as uint, one that is missing or
+    // not a number keeping the constructor's (0, the icon shown). isShowIcon as TinyXML's bool attribute
+    // (tinyxmlhelper.cpp:211, QueryBoolAttribute): a number is true when not 0, else true or false; anything else
+    // keeps it. The attend coins are its first AttendReward's RewardCoin v values in order, one that is not a number
+    // read as 0.
+    public static MentoringConfigTable ReadMentoringConfig(XmlDocument document) {
+        MentoringConfigTable table = MentoringConfigTable.Empty;
+        if (document.SelectSingleNode("/ms2/MentoringConfig") is not XmlElement config) {
+            return table;
+        }
+        var coins = new List<int>();
+        if (config.SelectSingleNode("AttendReward") is XmlElement attend) {
+            foreach (XmlElement coin in attend.SelectNodes("RewardCoin")?.OfType<XmlElement>() ?? []) {
+                coins.Add(ParseUint(coin.GetAttribute("v"), 0));
+            }
+        }
+        bool showIcon = table.ShowIcon;
+        if (config.HasAttribute("isShowIcon")) {
+            string text = config.GetAttribute("isShowIcon").Trim();
+            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number)) {
+                showIcon = number != 0;
+            } else if (bool.TryParse(text, out bool flag)) {
+                showIcon = flag;
+            }
+        }
+        int mentorReward = config.SelectSingleNode("MentorReward") is XmlElement reward ? ParseUint(reward.GetAttribute("coin"), 0) : 0;
+        return new MentoringConfigTable(
+            ParseUint(config.GetAttribute("maxMentorDailyRewardCoin"), table.MaxMentorDailyRewardCoin),
+            ParseUint(config.GetAttribute("maxMenteeDailyRewardCoin"), table.MaxMenteeDailyRewardCoin),
+            showIcon, coins, mentorReward);
+
+        static int ParseUint(string value, int fallback) => uint.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out uint result)
+            ? (int) Math.Min(result, int.MaxValue) : fallback;
     }
 
     private EnchantScrollRecipeTable ParseEnchantScrollRecipe() {

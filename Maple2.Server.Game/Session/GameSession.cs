@@ -690,9 +690,9 @@ public sealed partial class GameSession : Core.Network.Session {
         Party = new PartyManager(World, this);
         Send(HomeCommandPacket.LoadHome(AccountId, db.GetLastHomeCommend(AccountId)));
         // ResponseCube
-        // Mentor: the stored requests and pairs while a ReturnUser season runs.
+        // Mentor: the stored requests and pairs while a ReturnUser season runs, and the account's registered
+        // characters (Mentor 12).
         Mentoring.Load();
-        Send(MentorPacket.Unknown12());
         Config.LoadChatStickers();
         // Mail (the ReturnUser mails were stored by LoadPlayer)
         Mail.Notify(true);
@@ -1066,6 +1066,8 @@ public sealed partial class GameSession : Core.Network.Session {
         Quest.CompleteStampQuests();
         Quest.CompleteFieldMissions();
         AttendAgainAtFieldEntry();
+        // The mentor coins the mentor's mentees earned while it was away (MentoringManager.TakeMentorCoins).
+        Mentoring.TakeMentorCoins();
         if (firstVisit) {
             ConditionUpdate(ConditionType.explore_continent, codeLong: (int) Field.Metadata.Property.Continent);
             ConditionUpdate(ConditionType.continent, codeLong: (int) Field.Metadata.Property.Continent);

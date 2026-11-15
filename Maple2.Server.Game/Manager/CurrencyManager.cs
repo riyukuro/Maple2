@@ -424,6 +424,42 @@ public class CurrencyManager {
         }
     }
 
+    // A token gain made by AddUnsent(type, amount): what was added (capped) and the condition that counts it.
+    public readonly record struct Added(CurrencyType Type, long Amount, ConditionType? Condition);
+
+    // AddUnsent for a token currency (MentorToken and the like): added up to its cap inside a purchase transaction,
+    // with no packet and no count of its condition (get_mentor_token and the like); NotifyAdded sends and counts it
+    // once the save is stored, TakeBackAdded takes it back when it is not.
+    public Added AddUnsent(CurrencyType type, long amount) {
+        if (amount <= 0) {
+            return new Added(type, 0, null);
+        }
+        lock (walletLock) {
+            long added = SetLocked(type, Sum(this[type], amount), out ConditionType? condition, send: false);
+            return new Added(type, added, condition);
+        }
+    }
+
+    public void NotifyAdded(Added added) {
+        if (added.Amount <= 0) {
+            return;
+        }
+        lock (walletLock) {
+            session.Send(CurrencyPacket.UpdateCurrency(Currency, added.Type, added.Amount, 0));
+        }
+        Report(added.Condition, added.Amount);
+    }
+
+    // As TakeBackAdded above: the balance is sent, a part spent meanwhile stays spent.
+    public void TakeBackAdded(Added added) {
+        if (added.Amount <= 0) {
+            return;
+        }
+        lock (walletLock) {
+            SetLocked(added.Type, Math.Max(0, this[added.Type] - added.Amount), out _);
+        }
+    }
+
     // Sends the balance (after TryTakeMeso with notify false).
     public void NotifyMeso() {
         lock (walletLock) {
@@ -562,7 +598,8 @@ public class CurrencyManager {
         }
     }
 
-    private long SetLocked(CurrencyType type, long value, out ConditionType? condition) {
+    // send: the balance packet (AddUnsent leaves it to NotifyAdded).
+    private long SetLocked(CurrencyType type, long value, out ConditionType? condition, bool send = true) {
         condition = null;
         long delta;
         long overflow;
@@ -624,7 +661,9 @@ public class CurrencyManager {
                 throw new ArgumentOutOfRangeException(nameof(type), type, "Invalid currency type.");
         }
 
-        session.Send(CurrencyPacket.UpdateCurrency(Currency, type, delta, overflow));
+        if (send) {
+            session.Send(CurrencyPacket.UpdateCurrency(Currency, type, delta, overflow));
+        }
         return delta;
     }
 }
