@@ -853,6 +853,34 @@ public class PlaceHeldCubeTests {
         });
     }
 
+    // A stack with no template places none, and a bought cube takes none: the client's url-less template is dropped.
+    [Test]
+    public void AStackWithoutATemplate_PlacesNone() {
+        (GameSession session, Plot plot) = StartInHome();
+        long uid = session.Item.Furnishing.AddCube(Cube);
+        Assume.That(session.Item.Furnishing.GetCube(uid)?.Template, Is.Null);
+        test.TakeSent();
+
+        Place(session, Cube, Cube, uid: uid, look: new UgcItemLook { Id = 77, Author = "someone else" });
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes.Values.Single().Template, Is.Null);
+            Assert.That(session.Item.Furnishing.GetCube(uid)?.Amount, Is.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void ABoughtCube_TakesNoTemplate() {
+        (GameSession session, Plot plot) = StartInHome();
+
+        Place(session, Cube, Cube, look: new UgcItemLook { Id = 77, Author = "someone else" });
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes.Values.Single().Template, Is.Null);
+            Assert.That(session.Currency.Meso, Is.EqualTo(4000));
+        });
+    }
+
     // A layout's cube is placed from the stack of its own design (with pieces left first).
     [Test]
     public void TheLayoutStackLookup_FindsTheCubesDesign() {

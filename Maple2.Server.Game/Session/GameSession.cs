@@ -2457,6 +2457,14 @@ public sealed partial class GameSession : Core.Network.Session {
         return result == SaveResult.Stored;
     }
 
+    // TrySavePurchase with both: a refusal that is no failure (refused), and the caller's memory put back (undo) before
+    // the account lock is given back.
+    public bool TrySavePurchase(Func<GameStorage.Request, bool> alsoSave, Func<bool> refused, Action undo, out bool resetRunning) {
+        SaveResult result = PurchaseSave(alsoSave, refused, undo);
+        resetRunning = result == SaveResult.ResetRunning;
+        return result == SaveResult.Stored;
+    }
+
     // TrySavePurchase whose rows may be refused for a reason that is no failure (refused answers true then: a listing
     // another buyer took first); such a refusal is logged as information, not as an error.
     public bool TrySavePurchase(Func<GameStorage.Request, bool> alsoSave, Func<bool> refused, out bool resetRunning) {

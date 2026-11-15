@@ -217,8 +217,9 @@ public class MesoMarketHandler : FieldPacketHandler {
 
         // The delete and the mesos it gives back are stored in one transaction, and the mesos sent once it is
         // committed. Before, the row was deleted at once and the mesos added in memory only: a stop before the next
-        // save lost them.
-        // A row already gone (bought, or taken back from another session) is no failure to log.
+        // save lost them. A row already gone (bought, or taken back from another session) is no failure to log; it is
+        // answered as not found, as a listing missing at the read above is. The mesos added are taken back under the
+        // account lock (undo), so no store waiting for it writes them while the listing stays.
         (long Meso, long Meret, long GameMeret) added = default;
         bool gone = false;
         if (!session.TrySavePurchase(purchase => {
@@ -228,11 +229,14 @@ public class MesoMarketHandler : FieldPacketHandler {
                 }
                 added = session.Currency.AddUnsent(listing.Amount, 0, 0);
                 return purchase.SaveCurrency(session.Player);
-            }, () => gone, out _)) {
-            if (added != default) {
-                session.Currency.TakeBackAdded(added);
-            }
-            session.Send(MesoMarketPacket.Error(s_mesoMarket_error_errorDB));
+            }, () => gone, () => {
+                if (added != default) {
+                    session.Currency.TakeBackAdded(added);
+                }
+            }, out bool resetRunning)) {
+            // 4 (alreadyDbWork) while a reset is being stored: the player can take it back a few seconds later.
+            session.Send(MesoMarketPacket.Error(gone ? s_mesoMarket_error_notFoundProduct
+                : resetRunning ? s_mesoMarket_error_alreadyDbWork : s_mesoMarket_error_errorDB));
             return;
         }
 

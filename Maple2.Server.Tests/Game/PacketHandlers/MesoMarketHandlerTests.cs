@@ -207,6 +207,9 @@ public class MesoMarketHandlerTests {
         Send(session, 6, own.Id);
         test.FailSave = null;
 
+        // The mesos added in the store are taken back before the account lock is given back (its undo), and the
+        // failure is answered with the database error.
+        Assert.That(Sent(), Is.EqualTo(new[] { "00" + Int(2) }));
         Assert.That(session.Currency.Meso, Is.EqualTo(0));
         Assert.That(StoredMeso(session), Is.EqualTo(0));
         using GameStorage.Request db = test.Storage.Context();
