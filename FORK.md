@@ -1,6 +1,6 @@
 ﻿# Maple2 for the KMS 2525 client
 
-This fork is upstream [Maple2](https://github.com/MS2Community/Maple2) with fixes for the Korean MapleStory 2 client, build 2525. The branch is `kms2525`. Upstream's README.md is unchanged, which keeps merges from upstream simple. Setup and running are the same as upstream.
+This fork is upstream [Maple2](https://github.com/MS2Community/Maple2) with fixes for the Korean MapleStory 2 client, build 2525. The branch is `kms2525`. [README.md](README.md) has the quick start and the operator settings; this file is the full record.
 
 ## How changes are made and checked
 
