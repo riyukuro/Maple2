@@ -338,7 +338,13 @@ public static class SkillCastRules {
     // ends itself, goes to everyone, its owner too.
     public static bool CancelGoesToCaster(bool endedByServer) => endedByServer;
 
-    public static bool CancelledRefuses(long cancelTick, long tick) => cancelTick != 0 && tick - cancelTick > CancelledAttackWindowMs;
+    // flightMs: for a magic's own packets (target and region path), the cast's longest magic path flight
+    // (SkillHitBudget.FlightMs). The cancel removes only the magics that may still be cancelled (CMagicModel::CanCancel,
+    // magicdata.cpp:2574, via RemoveCasterModels at state end, stateskill.cpp:520): one already flying or with a delay
+    // goes on, and the attacks not yet launched start at the cancel (SetTargetStartTicks, stateskill.cpp:525-534), so
+    // their hits and ends come up to their flight after it. Attack point packets come only inside the state.
+    public static bool CancelledRefuses(long cancelTick, long tick, long flightMs = 0) =>
+        cancelTick != 0 && tick - cancelTick > CancelledAttackWindowMs + Math.Max(0, flightMs);
 
     // The speed of a motion (calc_pc_asiR): the attack speed scales it between 0.1 and 1.5 times.
     public const int UnscaledMoveType = 3;

@@ -321,7 +321,7 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Warning("Invalid Attack-Target Skill {SkillUid}", skillUid);
             return;
         }
-        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick)) {
+        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick, record.Hits.FlightMs)) {
             Logger.Debug("Attack target dropped, cast {SkillUid} of skill {SkillId} was cancelled {Ms} ms ago", skillUid, record.SkillId, session.Field.FieldTick - record.CancelTick);
             return;
         }
@@ -495,7 +495,7 @@ public class SkillHandler : FieldPacketHandler {
             Logger.Warning("Invalid Attack-Splash Skill {SkillUid}", skillUid);
             return;
         }
-        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick)) {
+        if (SkillCastRules.CancelledRefuses(record.CancelTick, session.Field.FieldTick, record.Hits.FlightMs)) {
             Logger.Debug("Region path dropped, cast {SkillUid} of skill {SkillId} was cancelled {Ms} ms ago", skillUid, record.SkillId, session.Field.FieldTick - record.CancelTick);
             return;
         }

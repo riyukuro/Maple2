@@ -16,7 +16,8 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 // A magic sends its target and region path packets when it meets something or ends (CMagic, magicdata.cpp:1846, 1956,
 // 2402), with its cast's id, however many casts the player made since and however long its path flies. Before, the
 // server looked the cast up among the 3 pending ones only, and took these packets only within 5 s of the cast, so a
-// quick caster's slow magic and a path longer than the window paid nothing. The skill id is made up.
+// quick caster's slow magic and a path longer than the window paid nothing; a cancelled cast's magics stopped paying
+// 2 s after the cancel however long they still flew. The skill id is made up.
 public class LateMagicHitTests : TriggerTestBase {
     private const int SkillId = 90000953;
     private const long CastUid = 5;
@@ -177,5 +178,37 @@ public class LateMagicHitTests : TriggerTestBase {
         CastThreeMore();
         SetTick(start + 6100);
         Assert.That(Target(record), Is.False);
+    }
+
+    // The cast's cancel (Skill 4), a second after it.
+    private void Cancel() {
+        SetTick(start + 1000);
+        Handle(writer => {
+            writer.WriteByte(4);
+            writer.WriteLong(CastUid);
+        });
+        Assert.That(test.Session.Player.ActiveSkills.Get(CastUid)!.CancelTick, Is.EqualTo(start + 1000));
+    }
+
+    // A cancel leaves the magics already flying, and those with a delay, to go on (CMagicModel::CanCancel,
+    // magicdata.cpp:2574), so a 3 s path's packets are taken until 2 s plus its flight after the cancel, not after.
+    [TestCase(4000, ExpectedResult = true)]
+    [TestCase(5100, ExpectedResult = false)]
+    public bool ATargetPacketAfterTheCancelIsTakenWithinTheFlight(long sinceCancel) {
+        Cast(3);
+        SkillRecord record = test.Session.Player.ActiveSkills.Get(CastUid)!;
+        Cancel();
+        SetTick(start + 1000 + sinceCancel);
+        return Target(record);
+    }
+
+    [TestCase(4000, ExpectedResult = true)]
+    [TestCase(5100, ExpectedResult = false)]
+    public bool ARegionPathAfterTheCancelIsTakenWithinTheFlight(long sinceCancel) {
+        Cast(3);
+        SkillRecord record = test.Session.Player.ActiveSkills.Get(CastUid)!;
+        Cancel();
+        SetTick(start + 1000 + sinceCancel);
+        return RegionPath(record);
     }
 }
