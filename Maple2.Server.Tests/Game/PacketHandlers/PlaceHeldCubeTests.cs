@@ -690,6 +690,33 @@ public class PlaceHeldCubeTests {
         });
     }
 
+    // The same race for merets: only the rest comes back, and the kept part is sent with its change (the client had
+    // the wallet before the rise).
+    [Test]
+    public void AMeretBudgetRaise_NotStored_AfterASpend_SendsTheKeptPart() {
+        (GameSession session, _) = StartInHome();
+        Home home = session.Player.Value.Home;
+        session.Player.Value.Currency.Meret = 500;
+        test.FailSave = context => {
+            if (!context.ChangeTracker.Entries<Maple2.Database.Model.Home>().Any()) {
+                return false;
+            }
+            home.BuildMerat -= 100; // a helper's place between the raise and its store
+            return true;
+        };
+        test.TakeSent();
+
+        session.Housing.SetBuildBudget(0, 300);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(home.BuildMerat, Is.EqualTo(0));
+            Assert.That(session.Player.Value.Currency.Meret, Is.EqualTo(400));
+            Assert.That(test.TakeSent().Select(Convert.ToHexString),
+                Does.Contain(Convert.ToHexString(CurrencyPacket.UpdateMeret(session.Player.Value.Currency, -100).ToArray())));
+        });
+    }
+
     // A place from storage whose rows are not stored places nothing and keeps the stack's count.
     [Test]
     public void APlaceFromStorage_NotStored_KeepsTheStack() {
