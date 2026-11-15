@@ -288,15 +288,23 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 return;
             }
         }
-        if (!session.Item.Inventory.Consume(hasItem.Uid, amount: 1)) {
+        // The feeding is stored (the pet's growth and the day's record) before the feed is taken and the drop made.
+        // The record's result was not read: a failed store took the feed and made the drop with the growth and the
+        // day's count in memory only, so a reload fed again past the day's limit. A failed store now changes nothing.
+        long exp = nurturing.Exp;
+        Nurturing.Kept kept = nurturing.Keep();
+        nurturing.Feed(Constants.NurturingEatGrowth);
+        if (!db.RecordNurturing(session.AccountId, session.AccountId, fieldCube.InteractCube, played: false)) {
+            nurturing.Restore(kept);
+            Logger.Error("Nurturing feed of account {AccountId}, cube {CubeId} not stored, the feed kept", session.AccountId, fieldCube.InteractCube.Metadata.Id);
             return;
+        }
+        if (!session.Item.Inventory.Consume(hasItem.Uid, amount: 1)) {
+            Logger.Error("Nurturing feed of account {AccountId}: the feed {ItemUid} found for it could not be taken", session.AccountId, hasItem.Uid);
         }
         if (rewardItem is not null) {
             session.Field.DropItem(fieldCube.Position, fieldCube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
         }
-        long exp = nurturing.Exp;
-        nurturing.Feed(Constants.NurturingEatGrowth);
-        db.RecordNurturing(session.AccountId, session.AccountId, fieldCube.InteractCube, played: false);
         // 92000118 "Feed ... in your home" (nurturing_eat) and 92000096 "Contribute 100 growth points ... through
         // feeding or play" (nurturing_growth, the points the pet gained) count the owner's feeding.
         int trophyCode = nurturing.NurturingMetadata.TrophyCode(fieldCube.ItemId);
@@ -338,7 +346,16 @@ public class FunctionCubeHandler : FieldPacketHandler {
         }
 
         long exp = nurturing.Exp;
+        Nurturing.Kept kept = nurturing.Keep();
         if (!nurturing.Play(session.AccountId, Constants.NurturingPlayGrowth, Constants.NurturingPlayMaxGrowth)) {
+            return;
+        }
+        // The play is stored (the pet's growth, who played and the day's record) before it counts and drops. The
+        // record's result was not read: a failed store gave the drop with the play in memory only, so after a reload
+        // the visitor played again for another drop. A failed store now changes nothing.
+        if (!db.RecordNurturing(session.AccountId, plot.OwnerId, cube.InteractCube, played: true)) {
+            nurturing.Restore(kept);
+            Logger.Error("Nurturing play of account {AccountId} with the pet of {OwnerId} not stored, no drop", session.AccountId, plot.OwnerId);
             return;
         }
         // 92000095 "Play with ... in someone's home" (nurturing_play) and nurturing_growth count the visitor's play.
@@ -351,8 +368,6 @@ public class FunctionCubeHandler : FieldPacketHandler {
         if (rewardItem is not null) {
             session.Field.DropItem(cube.Position, cube.Rotation, rewardItem, owner: session.Player, characterId: session.CharacterId);
         }
-
-        db.RecordNurturing(session.AccountId, plot.OwnerId, cube.InteractCube, played: true);
 
         session.Field.Broadcast(FunctionCubePacket.UpdateFunctionCube(cube.InteractCube));
         SendDailyRecord(session, db, cube, plot.OwnerId);

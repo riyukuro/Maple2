@@ -156,6 +156,49 @@ public class NurturingRewardOrderTests {
         });
     }
 
+    private void UseWithRecordFailing(GameSession session, FieldFunctionInteract nest) {
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added
+                                                                               && entry.Entity.GetType().Name == "NurturingDaily");
+        try {
+            Use(session, nest);
+        } finally {
+            test.FailSave = null;
+        }
+    }
+
+    private ICollection<FieldItem> Ground(GameSession session) => ((ConcurrentDictionary<int, FieldItem>) typeof(FieldManager)
+        .GetField("fieldItems", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Field)!).Values;
+
+    // The feeding's record cannot be stored: the feed stays in the bag, the pet does not grow and nothing drops. The
+    // feed was taken and the drop made with the growth and the day's count in memory only.
+    [Test]
+    public void Feed_RecordNotStored_ChangesNothing() {
+        (GameSession session, FieldFunctionInteract nest) = Start(false, true, FeedReward);
+
+        UseWithRecordFailing(session, nest);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(FeedItem).Sum(item => item.Amount), Is.EqualTo(1));
+            Assert.That((nest.InteractCube.Nurturing!.Exp, StoredExp(test.AccountId)), Is.EqualTo((0L, 0L)));
+            Assert.That(Ground(session), Is.Empty);
+        });
+    }
+
+    // A visitor's play whose record cannot be stored: it is not counted, nothing drops and the visitor may play again.
+    [Test]
+    public void Play_RecordNotStored_ChangesNothing() {
+        (GameSession session, FieldFunctionInteract nest) = Start(true, false, FeedItem);
+
+        UseWithRecordFailing(session, nest);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TrophyCounter(PlayTrophy), Is.Null);
+            Assert.That(nest.InteractCube.Nurturing!.PlayedBy, Is.Empty);
+            Assert.That(nest.InteractCube.Nurturing!.Exp, Is.Zero);
+            Assert.That(Ground(session), Is.Empty);
+        });
+    }
+
     // A visitor's play mails the owner the feeding gift; the mail is written only with its item. It was written first,
     // so a gift the server cannot make left the owner an empty mail.
     [TestCase(true, 1, TestName = "OwnerMail_GiftMade_Mailed")]

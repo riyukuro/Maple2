@@ -67,6 +67,18 @@ public class Nurturing : IByteSerializable {
         }
     }
 
+    // What a feeding or a play changes, to put back when its record is not stored.
+    public readonly record struct Kept(long Exp, short Stage, DateTimeOffset LastFeedTime, long[] PlayedBy);
+
+    public Kept Keep() => new(Exp, Stage, LastFeedTime, PlayedBy.ToArray());
+
+    public void Restore(Kept kept) {
+        Exp = kept.Exp;
+        Stage = kept.Stage;
+        LastFeedTime = kept.LastFeedTime;
+        PlayedBy = kept.PlayedBy.ToList();
+    }
+
     public void Feed(int nurturingEatGrowth) {
         if (Exp >= NurturingMetadata.RequiredGrowth.Last().Exp) {
             return;
