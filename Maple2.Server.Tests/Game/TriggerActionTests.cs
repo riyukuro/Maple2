@@ -2487,11 +2487,15 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That((sent.ReadBool(), sent.ReadFloat(), sent.ReadFloat(), sent.ReadFloat(), sent.ReadByte()), Is.EqualTo((true, 1f, 0.1f, 3f, (byte) 2)));
     }
 
-    // day_of_week (37): today's day (1 = Sunday) is in the list; negate: it is not.
+    // day_of_week (37): today's day (1 = Sunday) is in the list; negate: it is not. The clock is pinned to an instant
+    // whose UTC and local days differ in zones behind UTC, and the day is taken from it as the condition takes it (its
+    // local date), so the test holds in any zone at any hour.
     [Test]
     public void DayOfWeek_Today() {
         Start();
-        int today = (int) DateTime.UtcNow.DayOfWeek + 1;
+        var now = new DateTimeOffset(2026, 11, 15, 0, 30, 0, TimeSpan.Zero);
+        context.Clock = () => now;
+        int today = (int) now.LocalDateTime.DayOfWeek + 1;
         int other = today % 7 + 1;
 
         Assert.That(Condition($"""<condition name="day_of_week" day_of_weeks="{other},{today}" />"""), Is.True);
