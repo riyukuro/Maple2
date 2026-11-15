@@ -481,7 +481,11 @@ public sealed class QuestManager {
     /// Checks if player can start a quest.
     /// </summary>
     /// <param name="metadata">Metadata of the quest.</param>
-    public bool CanStart(QuestMetadata metadata) {
+    public bool CanStart(QuestMetadata metadata) => CanStart(metadata, true);
+
+    // unrequireGroup: false leaves out the unrequireGroup test, as the client's CanAcceptQuest does with its flag 1 for
+    // the picked quest of an unrequired group (questdata.cpp:520, 532).
+    private bool CanStart(QuestMetadata metadata, bool unrequireGroup) {
         if (metadata.Basic.Disabled || !PlayedClientQuests.Known(metadata.Basic)) {
             return false;
         }
@@ -601,7 +605,7 @@ public sealed class QuestManager {
             return false;
         }
 
-        if (require.UnrequireGroup != null && !UnrequiredGroupsFree(require.UnrequireGroup, DateTime.Now)) {
+        if (unrequireGroup && require.UnrequireGroup != null && !UnrequiredGroupsFree(require.UnrequireGroup, DateTime.Now)) {
             return false;
         }
 
@@ -730,17 +734,35 @@ public sealed class QuestManager {
     }
 
     // unrequireGroup (CanAcceptQuest, questdata.cpp:520): no picked quest of the groups is in progress, and none is
-    // completed unless it may be started again (the client's vfunc_o10_21 on it; CanStartAgain is its repeat rule).
+    // completed unless it could be accepted again now: the client asks vfunc_o10_21(picked, 0, 1) (questdata.cpp:323),
+    // every require of the picked quest but its own unrequireGroup, its group pick, weekday and term, then its state
+    // and repeat. Here CanStart without unrequireGroup, and CanStartAgain or HeldFromAnotherTerm for the repeat.
     private bool UnrequiredGroupsFree(IEnumerable<int> groupIds, DateTime now) {
         foreach (int groupId in groupIds) {
             foreach (int questId in GroupPicks(groupId, now)) {
-                if (TryGetQuest(questId, out Quest? quest) && (quest.State == QuestState.Started
-                                                                || quest.State == QuestState.Completed && !CanStartAgain(quest))) {
+                if (!TryGetQuest(questId, out Quest? quest)) {
+                    continue;
+                }
+                if (quest.State == QuestState.Started) {
+                    return false;
+                }
+                if (quest.State == QuestState.Completed
+                    && (!(CanStartAgain(quest) || HeldFromAnotherTerm(quest)) || !CanStart(quest.Metadata, false))) {
                     return false;
                 }
             }
         }
         return true;
+    }
+
+    // The client accepts a field mission only on its first progress map or a field whose outdoor parent that map is
+    // (CQuestManager::vfunc_1, questmanager_2.cpp:560-569; no progress map refuses it). Without a field or without the
+    // parent table (an ingest older than it) the server cannot tell, and accepts as before.
+    public static bool FieldMissionAcceptable(int[] progressMaps, int? mapId, IReadOnlyDictionary<int, int>? indoorParents) {
+        if (mapId is not int map || indoorParents == null) {
+            return true;
+        }
+        return QuestRules.FieldMissionTracked(progressMaps, map, indoorParents);
     }
 
     /// <summary>

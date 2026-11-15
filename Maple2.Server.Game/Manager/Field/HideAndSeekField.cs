@@ -657,7 +657,7 @@ public sealed class HideAndSeekField {
                     (int itemId, int count) = Reward(player);
                     player.Session.Send(HideAndSeekPacket.Result(player.ObjectId, ResultRound, itemId, count));
                     foreach (string code in state.EventsOf(player.Value.Character.Id)) {
-                        player.Session.ConditionUpdate(ConditionType.trigger, codeString: code);
+                        player.Session.ConditionUpdate(ConditionType.trigger, targetLong: field.MapId, codeString: code);
                     }
                 }
                 logger.Information("Hide and Seek game on {MapId}: team {Winner} won{Left}", field.MapId, state.Winner,

@@ -69,10 +69,15 @@ public class EpicChainConditionTests {
     public void Trigger_CountsTheSetAchievementCode(int questId, string code, string? target) {
         Assert.That(Enum.TryParse("trigger", out ConditionType type) && type == ConditionType.trigger, Is.True);
         ConditionMetadata condition = Row(ConditionType.trigger, code, 1, target);
-        Assert.That(condition.Check(null!, codeString: code), Is.True, $"{questId} {code}");
+        // The target is the map the trigger runs in (TriggerContext.SetAchievement passes it).
+        long map = target == null ? 2000001 : long.Parse(target);
+        Assert.That(condition.Check(null!, targetLong: map, codeString: code), Is.True, $"{questId} {code}");
+        if (target != null) {
+            Assert.That(condition.Check(null!, targetLong: map + 1, codeString: code), Is.False, $"{questId} {code} on another map");
+        }
         // The match is exact: another trigger's code, or the code in another case, does not count.
-        Assert.That(condition.Check(null!, codeString: "ClearHideandSeek"), Is.False);
-        Assert.That(condition.Check(null!, codeString: code.ToUpperInvariant()), Is.False);
+        Assert.That(condition.Check(null!, targetLong: map, codeString: "ClearHideandSeek"), Is.False);
+        Assert.That(condition.Check(null!, targetLong: map, codeString: code.ToUpperInvariant()), Is.False);
     }
 
     // lv12, 60100045: item_move code 30000119 target 600. On 02000084 the liftables are item 30000119 and the

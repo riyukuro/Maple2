@@ -159,8 +159,10 @@ public partial class TriggerContext {
             conditionType = ConditionType.unknown;
         }
 
+        // A trigger row's target is the map of the trigger (jordysave, jordysave2, jordysave3: target 52000119).
+        long target = conditionType == ConditionType.trigger ? Field.MapId : 0;
         foreach (FieldPlayer player in PlayersInBox(triggerId)) {
-            player.Session.ConditionUpdate(conditionType, codeString: code);
+            player.Session.ConditionUpdate(conditionType, targetLong: target, codeString: code);
         }
     }
 

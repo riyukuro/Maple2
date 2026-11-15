@@ -110,6 +110,18 @@ public class QuestGroupTests {
         Assert.That(session.Quest.CanStart(metadata!), Is.True);
     }
 
+    // Done before, the pick holds the quest back while it could not be accepted again anyway: the client asks
+    // vfunc_o10_21(picked, 0, 1), which runs the pick's own requires (here a level above the player's).
+    [Test]
+    public void Unrequire_RefusedWhenThePickWasDoneBeforeButItsRequireFails() {
+        int picked = Picked();
+        QuestMetadata pick = Daily(picked, GroupId);
+        test.Register(pick with { Require = pick.Require with { Level = 99 } });
+        Hold(picked, QuestState.Completed, DateTime.Now.AddDays(-2));
+        session.QuestMetadata.TryGet(Unrequiring, out QuestMetadata? metadata);
+        Assert.That(session.Quest.CanStart(metadata!), Is.False);
+    }
+
     // Another quest of the group in progress (a pick of an earlier day) does not count.
     [Test]
     public void Unrequire_OtherMemberDoesNotCount() {

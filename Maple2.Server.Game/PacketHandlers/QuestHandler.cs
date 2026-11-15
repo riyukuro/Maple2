@@ -9,6 +9,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -185,6 +186,13 @@ public class QuestHandler : FieldPacketHandler {
 
     private static QuestError AcceptError(GameSession session, int questId, int npcObjectId) {
         if (!session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata)) {
+            return QuestError.s_quest_error_accept_fail;
+        }
+
+        // The client's accept test (CQuestManager::vfunc_1) asks a field mission for its map; the starts by item,
+        // script or command do not go through it.
+        if (metadata.Basic.Type == QuestType.FieldMission && !QuestManager.FieldMissionAcceptable(metadata.Basic.ProgressMaps ?? [],
+                session.Field?.MapId, session.TableMetadata.FieldMetaTable.IndoorParents)) {
             return QuestError.s_quest_error_accept_fail;
         }
 

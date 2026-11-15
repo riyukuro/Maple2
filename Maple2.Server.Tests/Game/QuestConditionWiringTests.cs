@@ -799,6 +799,33 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
     }
 
+    // 60110230: <condition type="glide" target="82000012,82000001,82000003" value="150" />, the Mushking Royale maps
+    // as the target (as laddertime 60110115): a meter glided on one of them counts, on another map it does not.
+    [TestCase(82000003, 1)]
+    [TestCase(82000002, 0)]
+    public void Glide_60110230_OnTheMapsOfTheTarget(int mapId, int expected) {
+        FieldPlayer player = StateSyncField(mapId);
+        Quest quest = StartQuest(Condition(ConditionType.glide, 150, [], ["82000012", "82000001", "82000003"]));
+        Vector3 start = player.Position;
+        player.OnStateSync(new StateSync { State = ActorState.Glide, Position = start });
+        player.OnStateSync(new StateSync { State = ActorState.Glide, Position = start + new Vector3(150, 0, 0) });
+
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
+    }
+
+    // 30000384: <condition type="glide" code="02000258" value="100" />, the map as the code.
+    [TestCase(2000258, 1)]
+    [TestCase(2000259, 0)]
+    public void Glide_30000384_OnTheMapOfTheCode(int mapId, int expected) {
+        FieldPlayer player = StateSyncField(mapId);
+        Quest quest = StartQuest(Condition(ConditionType.glide, 100, ["02000258"], []));
+        Vector3 start = player.Position;
+        player.OnStateSync(new StateSync { State = ActorState.Glide, Position = start });
+        player.OnStateSync(new StateSync { State = ActorState.Glide, Position = start + new Vector3(150, 0, 0) });
+
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
+    }
+
     // One second in the state: 40001710 swimtime 120, 40001690 laddertime 300 (and ropetime, 12 rows like it).
     [TestCase(ConditionType.swimtime, ActorState.Swim)]
     [TestCase(ConditionType.swimtime, ActorState.SwimDash)]

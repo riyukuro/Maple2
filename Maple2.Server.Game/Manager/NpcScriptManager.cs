@@ -170,6 +170,8 @@ public sealed class NpcScriptManager {
             return;
         }
         session.ConditionUpdate(ConditionType.talk_in, targetLong: State.Id, codeLong: Npc.Value.Id);
+        // dialogue with a target names the script the same way (40001290: target 10 of npc 11001008).
+        session.ConditionUpdate(ConditionType.dialogue, targetLong: State.Id, codeLong: Npc.Value.Id);
     }
 
     public bool Continue(int pick) {

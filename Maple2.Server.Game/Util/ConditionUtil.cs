@@ -19,9 +19,9 @@ public static class ConditionUtil {
         }
         bool code = condition.Codes == null || condition.Codes.CheckCode(session, condition.Type, codeString, codeLong);
         bool target;
-        if (condition.Type == ConditionType.talk_in && condition.Target?.Integers == null && condition.Target?.Range == null && condition.Target?.Ranges == null) {
-            // talk_in without a script target (none, or target=""): the talk's start (target 0) counts, not each npc
-            // script the talk reaches.
+        if ((condition.Type is ConditionType.talk_in or ConditionType.dialogue) && condition.Target?.Integers == null && condition.Target?.Range == null && condition.Target?.Ranges == null) {
+            // talk_in and dialogue without a script target (none, or target=""): the talk's start (target 0) counts,
+            // not each npc script the talk reaches.
             target = targetLong == 0;
         } else {
             target = condition.Target == null || condition.Target.CheckTarget(session, condition.Type, targetString, targetLong);
@@ -326,6 +326,9 @@ public static class ConditionUtil {
     internal static bool CheckTarget(this ConditionMetadata.Parameters target, GameSession session, ConditionType conditionType, string stringValue = "", long longValue = 0) {
         switch (conditionType) {
             case ConditionType.talk_in: // target: the npc script the talk reaches (NpcScriptManager.TalkReached)
+            // dialogue: the same (the client files both under one kind, 0x27 in conditionutil.cpp; 40001290's one
+            // row, code 11001008 target 10, names that npc's random-talk script 10).
+            case ConditionType.dialogue:
                 if (InRange(target, (int) longValue) ||
                     (target.Integers != null && target.Integers.Contains((int) longValue))) {
                     return true;
@@ -518,6 +521,8 @@ public static class ConditionUtil {
             case ConditionType.hero_achieve:
             case ConditionType.chat:
             case ConditionType.character_ability_learn:
+            // trigger: the map the trigger runs in (TriggerContext.SetAchievement).
+            case ConditionType.trigger:
                 if (InRange(target, (int) longValue)) {
                     return true;
                 }
@@ -555,7 +560,6 @@ public static class ConditionUtil {
             case ConditionType.beauty_random:
             case ConditionType.beauty_style_add:
             case ConditionType.beauty_style_apply:
-            case ConditionType.trigger:
             case ConditionType.mastery_gathering:
             case ConditionType.mastery_gathering_try:
             case ConditionType.mastery_harvest:
@@ -568,7 +572,6 @@ public static class ConditionUtil {
             case ConditionType.quest_clear_by_chapter:
             case ConditionType.quest_clear:
             case ConditionType.buff:
-            case ConditionType.dialogue:
             case ConditionType.change_profile:
             case ConditionType.buddy_request:
             case ConditionType.job:

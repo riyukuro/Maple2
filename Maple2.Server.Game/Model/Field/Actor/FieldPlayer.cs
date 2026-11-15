@@ -526,7 +526,9 @@ public class FieldPlayer : Actor<Player> {
                 break;
             case ActorState.Glide:
                 if (UpdateStateSyncTracking()) {
-                    Session.ConditionUpdate(ConditionType.glide, codeLong: Value.Character.MapId);
+                    // The rows name the map as the code (30000384: code 02000258) or as the target (60110230, the
+                    // Mushking Royale maps, as laddertime 60110115 does).
+                    Session.ConditionUpdate(ConditionType.glide, targetLong: Value.Character.MapId, codeLong: Value.Character.MapId);
                 }
                 break;
             case ActorState.Climb:

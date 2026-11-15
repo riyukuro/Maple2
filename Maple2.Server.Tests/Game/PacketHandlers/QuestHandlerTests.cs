@@ -690,6 +690,40 @@ public class QuestHandlerTests {
         });
     }
 
+    // A field mission is accepted on its first progress map or a field whose outdoor parent that map is, nowhere else
+    // (CQuestManager::vfunc_1, questmanager_2.cpp:560-569); a mission without a progress map is refused. Without the
+    // parent table (an older ingest) the server cannot tell, and accepts.
+    [TestCase(2000062, new[] { 2000062, 2000001 }, true, true)]
+    [TestCase(2000069, new[] { 2000062 }, true, true)]
+    [TestCase(2000001, new[] { 2000062, 2000001 }, true, false)]
+    [TestCase(2000062, new int[0], true, false)]
+    [TestCase(2000001, new[] { 2000062 }, false, true)]
+    public void Accept_FieldMissionOnItsMapOnly(int mapId, int[] progressMaps, bool withParents, bool expected) {
+        GameSession session = Login();
+        test.SetTable(new FieldMetaTable(new Dictionary<int, IReadOnlyList<int>>(), new Dictionary<int, IReadOnlyList<int>>(),
+            withParents ? new Dictionary<int, int> { [2000069] = 2000062 } : null));
+        test.EnterMap(TestGameSession.Map(mapId));
+        QuestMetadata data = Data(type: QuestType.FieldMission);
+        test.Register(data with { Basic = data.Basic with { ProgressMaps = progressMaps } });
+
+        Accept(session);
+
+        Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.EqualTo(expected));
+    }
+
+    // A start that does not go through the client's accept test (an item's, a script's) is not asked for the map.
+    [Test]
+    public void FieldMission_StartOffItsMapByItemOrScript() {
+        GameSession session = Login();
+        test.SetTable(new FieldMetaTable(new Dictionary<int, IReadOnlyList<int>>(), new Dictionary<int, IReadOnlyList<int>>(),
+            new Dictionary<int, int>()));
+        test.EnterMap(TestGameSession.Map(2000001));
+        QuestMetadata data = Data(type: QuestType.FieldMission);
+        test.Register(data with { Basic = data.Basic with { ProgressMaps = [2000062] } });
+
+        Assert.That(session.Quest.Start(QuestId), Is.EqualTo(QuestError.none));
+    }
+
     // The quest's own items do not fit: the full-bag text, and the quest is not started.
     [Test]
     public void Accept_WithAFullBagDoesNotStartTheQuest() {
