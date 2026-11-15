@@ -35,6 +35,16 @@ public static class PackTables {
             .ToArray();
     }
 
+    // The names the operator's overlay added to the played client's pack (PlayedClientOverlay), set before the
+    // mappers run. They are left out where the played pack's region is told (PlayedNames): an overlay's table/na/...
+    // over a KR pack is an NA table the restored client reads (maplesurvival.cpp ForEachRow), not a second region.
+    public static IReadOnlySet<string> PlayedOverlayNames { get; set; } = new HashSet<string>();
+
+    // The played pack's own file names, without the overlay's additions: what its region folder is told from.
+    public static IEnumerable<string> PlayedNames(M2dReader playedReader) {
+        return playedReader.Files.Select(file => file.Name).Where(name => !PlayedOverlayNames.Contains(name));
+    }
+
     // The played client's pack (MS2_PLAYED_CLIENT_XML) carries its own region's folder only. When that region is
     // not LOCALE, the server runs another region's script branches and rows than the client it serves (e.g. a KR
     // client stages an outfit for dismantling by its KR script branch, while LOCALE=NA previews and pays nothing).

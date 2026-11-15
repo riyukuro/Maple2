@@ -80,6 +80,11 @@ string? playedXmlPath = Maple2.Model.Metadata.ClientPriceConstants.PackOption(En
 if (playedXmlPath != null && !File.Exists(playedXmlPath)) {
     throw new FileNotFoundException($"MS2_PLAYED_CLIENT_XML is set, but there is no file at path: {playedXmlPath}");
 }
+// Optional: loose files read over the played client's pack (PlayedClientOverlay).
+IReadOnlyList<string> playedOverlayDirs = PlayedClientOverlay.Dirs(Environment.GetEnvironmentVariable(PlayedClientOverlay.Option));
+if (playedOverlayDirs.Count > 0 && playedXmlPath == null) {
+    throw new ArgumentException($"{PlayedClientOverlay.Option} is set without MS2_PLAYED_CLIENT_XML: the overlay goes over the played client's pack");
+}
 
 // Optional: read the server pack's original (KMS) drop table instead of today's (ServerDropTable).
 bool originalDropTable = Maple2.File.Ingest.Helpers.ServerDropTable.UseOriginal(Environment.GetEnvironmentVariable(Maple2.File.Ingest.Helpers.ServerDropTable.Option));
@@ -181,6 +186,25 @@ Console.WriteLine("Game Migration complete!");
 using var xmlReader = new M2dReader(xmlPath);
 using var exportedReader = new M2dReader(exportedPath);
 using var serverReader = new M2dReader(serverPath);
+string? playedMergedDir = null;
+if (playedXmlPath != null && playedOverlayDirs.Count > 0) {
+    playedMergedDir = Directory.CreateTempSubdirectory("ms2-played-").FullName;
+    // The merged pack is a full copy of the played pack: removed on exit, a failed run included.
+    string mergedDir = playedMergedDir;
+    void RemoveMerged() {
+        try {
+            Directory.Delete(mergedDir, true);
+        } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => RemoveMerged();
+    AppDomain.CurrentDomain.UnhandledException += (_, _) => RemoveMerged();
+    string merged = Path.Combine(playedMergedDir, "Xml.m2d");
+    PlayedClientOverlay.Counts counts = PlayedClientOverlay.Merge(playedXmlPath, PlayedClientOverlay.Files(playedOverlayDirs), merged);
+    Console.WriteLine($"{PlayedClientOverlay.Option}: {string.Join(';', playedOverlayDirs)} over {playedXmlPath} " +
+                      $"({counts.Replaced} replaced, {counts.Added.Count} added)");
+    PackTables.PlayedOverlayNames = counts.Added.ToHashSet();
+    playedXmlPath = merged;
+}
 using M2dReader? playedReader = playedXmlPath == null ? null : new M2dReader(playedXmlPath);
 
 string dataDbConnection = $"Server={server};Port={port};Database={database};User={user};Password={password};oldguids=true";
@@ -228,7 +252,7 @@ if (playedReader != null) {
 }
 PackTables.Load(xmlReader, locale);
 Console.WriteLine($"Rows filtered for {locale}; table/<region> files read from {PackTables.Locale}.");
-if (playedReader != null && PackTables.PlayedLocaleWarning(PackTables.RegionFolders(playedReader.Files.Select(file => file.Name)), locale) is { } playedLocaleWarning) {
+if (playedReader != null && PackTables.PlayedLocaleWarning(PackTables.RegionFolders(PackTables.PlayedNames(playedReader)), locale) is { } playedLocaleWarning) {
     Console.WriteLine(playedLocaleWarning);
 }
 

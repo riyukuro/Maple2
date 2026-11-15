@@ -2444,8 +2444,22 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
     }
 
+    // The skins the played client knows when it has the table: table/na, then table, as the restored client loads
+    // it (maplesurvival.cpp ForEachRow), each row kept as its IsElementAvailable keeps it (feature on, locale the
+    // played one). An operator's own copy comes in through MS2_PLAYED_CLIENT_OVERLAY. Before, the server pack's rows
+    // were read with the played client's features, so a KR ingest (SurvivalContents03 off) kept none and every skin
+    // item was refused. Without a played client, or one without the table, the server pack's rows as before.
     private SurvivalSkinInfoTable ParseSurvivalSkinTable() {
         var results = new Dictionary<int, MedalType>();
+        Maple2.File.IO.Crypto.Common.PackFileEntry? played = playedReader == null ? null
+            : new[] { "table/na/maplesurvivalskininfo.xml", "table/maplesurvivalskininfo.xml" }
+                .Select(path => playedReader.Files.FirstOrDefault(file => file.Name.Equals(path, StringComparison.OrdinalIgnoreCase)))
+                .FirstOrDefault(entry => entry != null);
+        if (played != null) {
+            Dictionary<int, MedalType> skins = PlayedSurvivalSkins(playedReader!.GetXmlDocument(played));
+            Console.WriteLine($"survival skins: {skins.Count} from the played client's {played.Name}");
+            return new SurvivalSkinInfoTable(skins);
+        }
         foreach ((int id, MapleSurvivalSkinInfo skin) in parser.ParseMapleSurvivalSkinInfo()) {
             MedalType type = skin.type switch {
                 SurvivalSkinType.gliding => MedalType.Gliding,
@@ -2457,6 +2471,26 @@ public class TableMapper : TypeMapper<TableMetadata> {
         }
 
         return new SurvivalSkinInfoTable(results);
+    }
+
+    // The played client's skin rows (<skinInfo id type .../>) it keeps, by id; a type no medal slot takes is left out.
+    public static Dictionary<int, MedalType> PlayedSurvivalSkins(XmlDocument table) {
+        var results = new Dictionary<int, MedalType>();
+        foreach (XmlElement row in table.SelectNodes("ms2/skinInfo")!.OfType<XmlElement>()) {
+            if (!FeatureLocaleFilter.FeatureEnabled(row.GetAttribute("feature")) || !FeatureLocaleFilter.HasLocale(row.GetAttribute("locale"))) {
+                continue;
+            }
+            MedalType? type = row.GetAttribute("type") switch {
+                "effectTail" => MedalType.Tail,
+                "riding" => MedalType.Riding,
+                "gliding" => MedalType.Gliding,
+                _ => null,
+            };
+            if (type != null && int.TryParse(row.GetAttribute("id"), out int id)) {
+                results[id] = type.Value;
+            }
+        }
+        return results;
     }
 
     private BannerTable ParseBanner() {
