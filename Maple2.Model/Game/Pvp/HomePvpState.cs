@@ -2,9 +2,9 @@ namespace Maple2.Model.Game.Pvp;
 
 // The six choices of the home's PvP control dialog (UIUGCPVPControlDialog, its OnStart; HomeAction 14, 1), each the
 // selected index of its list: type 0 every player for themselves, 1 by party; buff 0 the PvP default, 1 to 4 the 50x,
-// 100x, 300x and 500x health; potion 0 anyone may drink, 1 no one; revive 0 the revive in place is offered, 1 it is
-// not; rule 0 any number of revives, 1 survival; time 0 no limit, 1 3 minutes, 2 5 minutes, 3 10 minutes. The dialog
-// starts at 0 everywhere. Under survival the dialog sets revive to 0 and turns its list off (onRuleChange).
+// 100x, 300x and 500x health; potion 0 no one may drink, 1 anyone may (its list is disable, enable); revive 0 the revive
+// in place is not offered, 1 it is (the same order); rule 0 any number of revives, 1 survival; time 0 no limit, 1 3
+// minutes, 2 5 minutes, 3 10 minutes. The dialog starts at 0 everywhere. Under survival the dialog sets revive to 0 and turns its list off (onRuleChange).
 public readonly record struct HomePvpSettings(byte Type, byte Buff, byte Potion, byte Revive, byte Rule, byte Time) {
     public static readonly HomePvpSettings Default = new(0, 0, 0, 0, 0, 0);
 
@@ -13,9 +13,9 @@ public readonly record struct HomePvpSettings(byte Type, byte Buff, byte Potion,
 
     public bool ByParty => Type == 1;
     public bool Survival => Rule == 1;
-    public bool NoPotion => Potion == 1;
+    public bool NoPotion => Potion == 0;
     // The dialog sends revive 0 under survival; a 1 there is not the dialog's and is not taken.
-    public bool NoRevive => Revive == 1 && Rule == 0;
+    public bool NoRevive => Revive == 0 || Rule == 1;
 
     public int Seconds => Time switch {
         1 => 180,

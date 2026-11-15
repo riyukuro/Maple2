@@ -81,14 +81,19 @@ public sealed class HomePvpField : IPvpZoneField {
     }
 
     // The owner used the console during the match: it ends now (or never starts).
-    public void Stop() {
+    // False when it had already ended (the field's update got there first).
+    public bool Stop() {
         lock (mutex) {
             if (state.Phase == HomePvpPhase.Active) {
                 End();
-            } else if (state.Phase == HomePvpPhase.Countdown) {
+                return true;
+            }
+            if (state.Phase == HomePvpPhase.Countdown) {
                 state.Activate([], field.FieldTick);
                 Deactivate();
+                return true;
             }
+            return false;
         }
     }
 

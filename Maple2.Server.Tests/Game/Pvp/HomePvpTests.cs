@@ -30,16 +30,20 @@ public class HomePvpTests {
         Assert.That(new HomePvpSettings(2, 0, 0, 0, 0, 0).Valid, Is.False);
         Assert.That(new HomePvpSettings(0, 5, 0, 0, 0, 0).Valid, Is.False);
         Assert.That(new HomePvpSettings(0, 0, 0, 0, 0, 4).Valid, Is.False);
-        Assert.That(new HomePvpSettings(0, 0, 0, 1, 0, 0).NoRevive, Is.True);
+        // The potion and revive lists are disable, enable: 0 is off.
+        Assert.That(HomePvpSettings.Default.NoPotion, Is.True);
+        Assert.That(new HomePvpSettings(0, 0, 1, 0, 0, 0).NoPotion, Is.False);
+        Assert.That(HomePvpSettings.Default.NoRevive, Is.True);
+        Assert.That(new HomePvpSettings(0, 0, 0, 1, 0, 0).NoRevive, Is.False);
         // Survival: the dialog sends revive 0, a 1 there is not taken.
-        Assert.That(new HomePvpSettings(0, 0, 0, 1, 1, 0).NoRevive, Is.False);
+        Assert.That(new HomePvpSettings(0, 0, 0, 1, 1, 0).NoRevive, Is.True);
         Assert.That(new HomePvpSettings(0, 0, 0, 0, 0, 2).Seconds, Is.EqualTo(300));
         Assert.That(HomePvpSettings.Default.Seconds, Is.EqualTo(0));
         Assert.That(HomePvpSettings.Default.Effect, Is.EqualTo((70000171, (short) 1)));
         Assert.That(new HomePvpSettings(0, 3, 0, 0, 0, 0).Effect, Is.EqualTo((70000173, (short) 3)));
-        Assert.That(HomePvpField.Rows(new HomePvpSettings(0, 0, 1, 1, 0, 0)),
+        Assert.That(HomePvpField.Rows(new HomePvpSettings(0, 0, 1, 1, 0, 0)), Is.EqualTo(new[] { HomePermission.Pvp }));
+        Assert.That(HomePvpField.Rows(HomePvpSettings.Default),
             Is.EqualTo(new[] { HomePermission.Pvp, HomePermission.Potion, HomePermission.Revival }));
-        Assert.That(HomePvpField.Rows(HomePvpSettings.Default), Is.EqualTo(new[] { HomePermission.Pvp }));
     }
 
     [Test]
@@ -205,7 +209,7 @@ public class HomePvpTests {
     public void TheFight_GivesPointsBuffsAndRows_TheStopTakesThemBack() {
         Home home = InAHome();
         home.Field.Home.Permissions[HomePermission.Potion] = HomePermissionSetting.Self;
-        Dialog(home.Owner, 1, new HomePvpSettings(0, 2, 1, 0, 0, 0));
+        Dialog(home.Owner, 1, new HomePvpSettings(0, 2, 0, 1, 0, 0));
         var match = (HomePvpField) home.Field.PvpZone!;
         home.Owner.TakeSent();
         home.Visitor.TakeSent();

@@ -32,13 +32,9 @@ public class HomeFieldManager : FieldManager {
         }
     }
 
-    // The owner's console during a match ends it; false when none runs.
+    // The owner's console during a match ends it; false when none runs (or it ended just now), so the dialog opens.
     public bool StopPvp() {
-        if (PvpZone is not HomePvpField match) {
-            return false;
-        }
-        match.Stop();
-        return true;
+        return PvpZone is HomePvpField match && match.Stop();
     }
 
     // The match is over: the field is free for the next.
