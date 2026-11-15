@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -178,6 +181,191 @@ public class HomeActionHandlerTests {
     public void Request_PlainCube_Silent() {
         Request(PlainCell);
         Request(new Vector3B(9, 9, 9));
+
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // ---- survey (command 5): the owner's started survey; a visitor's answer is kept once and ends it at the last one.
+
+    private const long SurveyId = 77;
+
+    private HomeSurvey StartSurvey(params string[] voters) {
+        var survey = new HomeSurvey(SurveyId, "best?", publicQuestion: true);
+        survey.Options["a"] = [];
+        survey.Options["b"] = [];
+        survey.AvailableCharacters = voters.ToList();
+        survey.Started = true;
+        survey.MaxAnswers = voters.Length;
+        ((HomeFieldManager) session.Field!).SetHomeSurvey(survey);
+        test.TakeSent();
+        return survey;
+    }
+
+    private void Answer(long surveyId, byte index) {
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(5);
+            writer.WriteByte(0);
+            writer.WriteLong(session.CharacterId);
+            writer.WriteLong(surveyId);
+            writer.WriteByte(index);
+        }));
+    }
+
+    private List<string> SentHex() => test.TakeSent().Select(p => Convert.ToHexString(p.ToArray())).ToList();
+
+    [Test]
+    public void Survey_Answer_KeptAndAnswered() {
+        HomeSurvey survey = StartSurvey(session.PlayerName, "someone");
+
+        Answer(SurveyId, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(survey.Options["b"], Is.EqualTo(new[] { session.PlayerName }));
+            Assert.That(survey.AvailableCharacters, Is.EqualTo(new[] { "someone" }));
+            Assert.That(survey.Answers, Is.EqualTo(1));
+            Assert.That(survey.Ended, Is.False);
+            Assert.That(SentHex(), Is.EqualTo(new[] { Convert.ToHexString(HomeActionPacket.SurveyAnswer(session.PlayerName).ToArray()) }));
+        });
+    }
+
+    [Test]
+    public void Survey_LastAnswer_EndsTheSurveyWithTheResult() {
+        HomeSurvey survey = StartSurvey(session.PlayerName);
+
+        Answer(SurveyId, 0);
+
+        // The end packet is built from the survey as it stood before End() emptied the question.
+        Assert.Multiple(() => {
+            Assert.That(survey.Ended, Is.True);
+            Assert.That(survey.Started, Is.False);
+            Assert.That(SentHex(), Has.Count.EqualTo(2));
+        });
+    }
+
+    [TestCase(78L, (byte) 0, TestName = "Survey_OtherSurveyId_Ignored")]
+    [TestCase(SurveyId, (byte) 5, TestName = "Survey_OptionOutOfRange_Ignored")]
+    public void Survey_Refused_KeepsTheSurvey(long surveyId, byte index) {
+        HomeSurvey survey = StartSurvey(session.PlayerName);
+
+        Answer(surveyId, index);
+
+        Assert.Multiple(() => {
+            Assert.That(survey.Answers, Is.EqualTo(0));
+            Assert.That(survey.AvailableCharacters, Is.EqualTo(new[] { session.PlayerName }));
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
+    [Test]
+    public void Survey_NotInvited_Ignored() {
+        HomeSurvey survey = StartSurvey("someone");
+
+        Answer(SurveyId, 0);
+
+        Assert.That(survey.Options["a"], Is.Empty);
+    }
+
+    [Test]
+    public void Survey_SecondAnswer_Ignored() {
+        HomeSurvey survey = StartSurvey(session.PlayerName, "someone");
+        Answer(SurveyId, 0);
+        test.TakeSent();
+
+        Answer(SurveyId, 0);
+
+        Assert.Multiple(() => {
+            Assert.That(survey.Answers, Is.EqualTo(1));
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
+    [Test]
+    public void Survey_NotStarted_Ignored() {
+        HomeSurvey survey = StartSurvey(session.PlayerName);
+        survey.Started = false;
+
+        Answer(SurveyId, 0);
+
+        Assert.That(survey.Answers, Is.EqualTo(0));
+    }
+
+    // ---- ball (command 7): the owner's moves go to the others; a hit goes to the ball's owner.
+
+    private const int BallId = 4242;
+    private static readonly Vector3 Coord = new(10, 20, 30);
+    private static readonly Vector3 Velocity = new(1, 2, 3);
+    private static readonly Vector3 Angular = new(4, 5, 6);
+
+    private FieldGuideObject GiveBall() {
+        var ball = new FieldGuideObject(session.Field!, BallId, new BallGuideObject(1f)) { CharacterId = session.CharacterId };
+        session.GuideObject = ball;
+        session.Field!.Players[session.Player.ObjectId] = session.Player;
+        test.TakeSent();
+        return ball;
+    }
+
+    private void BallPacket(byte mode, int objectId, Vector3 a, Vector3 b, Vector3? c = null) {
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(7);
+            writer.WriteByte(mode);
+            writer.WriteInt(objectId);
+            writer.Write<Vector3>(a);
+            writer.Write<Vector3>(b);
+            if (c.HasValue) {
+                writer.Write<Vector3>(c.Value);
+            }
+        }));
+    }
+
+    [Test]
+    public void Ball_Move_UpdatesThePosition() {
+        FieldGuideObject ball = GiveBall();
+
+        BallPacket(2, BallId, Coord, Velocity, Angular);
+
+        Assert.That(ball.Position, Is.EqualTo(Coord));
+    }
+
+    [TestCase(9999, TestName = "Ball_Move_OtherObjectId_Ignored")]
+    public void Ball_Move_NotTheOwnersBall_Ignored(int objectId) {
+        FieldGuideObject ball = GiveBall();
+        Vector3 before = ball.Position;
+
+        BallPacket(2, objectId, Coord, Velocity, Angular);
+
+        Assert.That(ball.Position, Is.EqualTo(before));
+    }
+
+    [Test]
+    public void Ball_Move_WithoutABall_Ignored() {
+        BallPacket(2, BallId, Coord, Velocity, Angular);
+
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    [Test]
+    public void Ball_Hit_GoesToTheBallsOwner() {
+        FieldGuideObject ball = GiveBall();
+
+        BallPacket(3, BallId, Velocity, Angular);
+
+        Assert.That(SentHex(), Does.Contain(Convert.ToHexString(HomeActionPacket.HitBall(ball, Velocity, Angular).ToArray())));
+    }
+
+    [Test]
+    public void Ball_Hit_NonFiniteForce_Dropped() {
+        GiveBall();
+
+        BallPacket(3, BallId, new Vector3(float.NaN, 0, 0), Angular);
+
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    [Test]
+    public void Ball_Hit_UnknownBall_Dropped() {
+        GiveBall();
+
+        BallPacket(3, 9999, Velocity, Angular);
 
         Assert.That(test.TakeSent(), Is.Empty);
     }
