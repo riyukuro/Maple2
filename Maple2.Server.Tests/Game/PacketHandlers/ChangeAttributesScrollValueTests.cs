@@ -185,6 +185,17 @@ public class ChangeAttributesScrollValueTests {
         Assert.That(ChangeAttributesHandler.IsValidItem(Rolled(61000001, BasicAttribute.Strength)), Is.True);
     }
 
+    // The item page refuses gear with no random option as the pet page does (item.cpp:1868, result 6). Before, the
+    // roll failed later on the empty group and the reply was the could-not-apply code.
+    [Test]
+    public void ItemPage_RefusesGearWithNoOption() {
+        Assert.Multiple(() => {
+            Assert.That(ChangeAttributesHandler.HasRandomOption(Rolled(11400001)), Is.False);
+            Assert.That(ChangeAttributesHandler.HasRandomOption(Rolled(11400001, BasicAttribute.Strength)), Is.True);
+            Assert.That(ChangeAttributesHandler.HasRandomOption(new Item(TestGameSession.Metadata(11400001), rarity: 4) { Stats = null }), Is.False);
+        });
+    }
+
     private static Item Rolled(int id, params BasicAttribute[] basics) {
         var random = new Dictionary<BasicAttribute, BasicOption>();
         foreach (BasicAttribute basic in basics) {

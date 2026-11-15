@@ -93,6 +93,10 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_null_status));
                 return;
             }
+            if (!HasRandomOption(item)) {
+                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
+                return;
+            }
             // A pet's locks (kept options, the lock candy) are offered only with PetRemakeBlock01 on (the pet remake
             // tab, tabcontentspetremakeoption.cpp:566/709/1341); gear locks only with OptionBlock01 on (the item modify
             // dialog's initData flag, uiitemenchantdialog.cpp:402).
@@ -299,6 +303,14 @@ public class ChangeAttributesHandler : FieldPacketHandler {
     private static void HandleForceFill(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
         int count = packet.ReadInt();
+    }
+
+    // Both pages refuse an item with no option in the random group (CItem::FUN_1405264c0 and FUN_140526670,
+    // GetGroupOptionCount(2) == 0, result 6, commonfiles/item.cpp:1868 and :1909; the callers pass group 2,
+    // astooltip.cpp:3476, tabcontentspetremakeoption.cpp:1075). The roll would fail on the empty group anyway; this
+    // gives the client's code and refuses before anything else.
+    internal static bool HasRandomOption(Item item) {
+        return item.Stats != null && item.Stats[ItemStats.Type.Random].Count > 0;
     }
 
     // It needs to be epic or better armor and accessories at level 50 and above.
