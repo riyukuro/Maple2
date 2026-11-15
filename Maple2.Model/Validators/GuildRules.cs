@@ -423,9 +423,9 @@ public static class GuildRules {
     // (`CGuildManager::FUN_1413ba4b0`, guildmanager.cpp:902-932), in its order: a dead member (0x279) stays;
     // a member already on the house's map stays (s_common_cant_move_from_here); the current field must be
     // homeReturnable (CFieldData +0x5c) unless its map type is 3, a home. A dungeon field with homeReturnable
-    // set lets the member go, as in the client. The client's battle check (0x27a) is not repeated: the
-    // server's battle flag ends on its own clock, which could refuse a click the client sent after its own
-    // battle state ended. Guild 100 (the event entry) asks nothing of the member or the field.
+    // set lets the member go, as in the client. The client's battle check (0x27a) is the handler's
+    // (FieldPlayer.ShowsBattleStance: only a stance the client must show, so no click it sent out of its stance is
+    // refused). Guild 100 (the event entry) asks nothing of the member or the field.
     public static bool CanGoToGuildField(bool dead, int currentMapId, int houseMapId, bool homeReturnable,
             bool inHome) {
         if (dead || currentMapId == houseMapId) {

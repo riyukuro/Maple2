@@ -1272,6 +1272,10 @@ public class GuildHandler : FieldPacketHandler {
                 property.HomeReturnable, property.Type == MapType.Home)) {
             return;
         }
+        // The client sends the entry only out of its battle stance (guildmanager.cpp:911, its own notice 0x27a).
+        if (session.Player.ShowsBattleStance(Environment.TickCount64)) {
+            return;
+        }
 
         session.Migrate(house.MapId, session.Guild.Id);
     }
