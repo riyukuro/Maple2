@@ -613,12 +613,21 @@ public class FurnishingManager {
                 return;
             }
 
+            // A stored maid item takes its maid with it. The maid's row goes at once, so the item's emptied row is
+            // stored before it: left to the next save, a crash brought the item back without its maid. Not stored,
+            // the item is kept and nothing is deleted.
+            bool maid = item.Metadata.Housing?.MaidId > 0;
+            int previousAmount = item.Amount;
             item.Amount = 0;
+            using GameStorage.Request? db = maid ? session.GameStorage.Context() : null;
+            if (db != null && !db.SaveItems(session.AccountId, item)) {
+                item.Amount = previousAmount;
+                logger.Error("Emptied maid item {ItemUid} of {AccountId} not stored, kept", itemUid, session.AccountId);
+                return;
+            }
 
             session.Send(FurnishingStoragePacket.Remove(itemUid));
-            // A stored maid item takes its maid with it.
-            if (item.Metadata.Housing?.MaidId > 0) {
-                using GameStorage.Request db = session.GameStorage.Context();
+            if (db != null) {
                 if (db.DeleteMaid(itemUid)) {
                     session.Send(UserMaidPacket.Remove(itemUid));
                     session.Send(MaidCraftItemPacket.Remove(itemUid)); // its craft, if any, goes too
