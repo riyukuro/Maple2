@@ -215,6 +215,38 @@ public class TradeHandlerTests {
         });
     }
 
+    // The same with the giver paying: alone (the taker offers no mesos), or both offering and the giver paying more.
+    // The giver's store fails, so the taker's stored wallet stays as it was.
+    [TestCase(0L, 6000L, 4000L)]
+    [TestCase(1000L, 7000L, 3000L)]
+    public void Complete_GiverPaysNotStored_TakerWaits(long takerOffer, long takerAfter, long giverAfter) {
+        giver.Currency.Meso = 5000;
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(3);
+            writer.WriteInt(0);
+        });
+        Send(giver, 10, writer => writer.WriteLong(1000 + 2 * takerOffer));
+        if (takerOffer != 0) {
+            Send(taker, 10, writer => writer.WriteLong(takerOffer));
+        }
+        long takerStored = StoredMeso(taker);
+        // The taker's options carry the giver's fault hook too (one database), so only the giver's row fails.
+        long giverId = giver.CharacterId;
+        giverTest.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Character>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified && entry.Entity.Id == giverId);
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        Send(taker, 13);
+        giverTest.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That((giver.Currency.Meso, taker.Currency.Meso), Is.EqualTo((giverAfter, takerAfter)));
+            Assert.That(StoredMeso(taker), Is.EqualTo(takerStored));
+        });
+    }
+
     // A cancelled trade gives the offered mesos back in memory. A save made while they were offered (here a purchase
     // save, as a timed save) stored the wallet without them, so the refund is stored too; before, it waited in memory.
     [Test]
