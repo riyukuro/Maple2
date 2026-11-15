@@ -473,4 +473,177 @@ public class PlaceHeldCubeTests {
     [Test]
     public void TheOverTimeNotice_IsResponseCube0x3dWithError100()
         => Assert.That(CubePacket.ConstructExpOverTime().ToArray()[2..], Is.EqualTo(new byte[] { 0x3d, 100, 1 }));
+
+    // What a stop would leave: the stored amount of the cube's storage rows and its plot rows.
+    private (int Stored, int Placed) StoredCube(int itemId = Cube) {
+        using var context = new Ms2Context(test.Options);
+        int stored = context.Item.AsNoTracking().Where(row => row.ItemId == itemId && row.OwnerId == test.AccountId).Sum(row => row.Amount);
+        int placed = context.UgcMapCube.AsNoTracking().Count(row => row.ItemId == itemId);
+        return (stored, placed);
+    }
+
+    // A place from a storage stack stores the stack's lower count with the cube's row. Before, the cube's row was
+    // written at once and the stack waited for the session's next save: a stop before it kept the cube twice.
+    [Test]
+    public void APlaceFromStorage_StoresTheStackWithTheCube() {
+        (GameSession session, Plot plot) = StartInHome();
+        long uid = session.Item.Furnishing.AddCube(Cube);
+        session.Item.Furnishing.AddCube(Cube);
+        using (GameStorage.Request db = test.Storage.Context()) {
+            session.Item.Furnishing.Save(db);
+        }
+        Assume.That(StoredCube(), Is.EqualTo((2, 0)));
+
+        Place(session, Cube, Cube, uid: uid);
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes, Has.Count.EqualTo(1));
+            Assert.That(session.Item.Furnishing.GetCube(uid)?.Amount, Is.EqualTo(1));
+            Assert.That(StoredCube(), Is.EqualTo((1, 1)));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A bought cube's new storage row is stored as the place leaves it (no piece in storage) with the cube's row.
+    // Before, the row was made with one piece and the place's take waited for the next save: a bought cube twice.
+    [Test]
+    public void ABoughtPlace_StoresNoStoragePiece() {
+        (GameSession session, Plot plot) = StartInHome();
+
+        Place(session, Cube, Cube);
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes, Has.Count.EqualTo(1));
+            Assert.That(StoredCube(), Is.EqualTo((0, 1)));
+            Assert.That((session.Currency.Meso, StoredMeso(session)), Is.EqualTo((4000L, 4000L)));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A pickup stores the stack's higher count with the cube row's delete. Before, the row went at once and the stack
+    // waited for the next save: a stop before it lost the cube.
+    [Test]
+    public void APickup_StoresTheStackWithTheDelete() {
+        (GameSession session, Plot plot) = StartInHome();
+        long uid = session.Item.Furnishing.AddCube(Cube);
+        Place(session, Cube, Cube, uid: uid);
+        Vector3B position = plot.Cubes.Keys.Single();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            session.Item.Furnishing.Save(db);
+        }
+        Assume.That(StoredCube(), Is.EqualTo((0, 1)));
+
+        Assert.That(session.Housing.TryRemoveCube(plot, position, out _), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(session.Item.Furnishing.GetCube(uid)?.Amount, Is.EqualTo(1));
+            Assert.That(StoredCube(), Is.EqualTo((1, 0)));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A bought place whose rows are not stored places nothing and takes nothing: the price is given back and storage
+    // keeps no piece.
+    [Test]
+    public void ABoughtPlace_NotStored_TakesNothing() {
+        (GameSession session, Plot plot) = StartInHome();
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any();
+
+        Place(session, Cube, Cube);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(session.Item.Furnishing.GetItem(Cube), Is.Null.Or.Property(nameof(Item.Amount)).EqualTo(0));
+        });
+    }
+
+    // A pickup whose rows are not stored leaves the cube where it was: on the plot, and storage keeps its count. (The
+    // in-memory test store has no rollback, so only memory is checked.)
+    [Test]
+    public void APickup_NotStored_LeavesTheCube() {
+        (GameSession session, Plot plot) = StartInHome();
+        long uid = session.Item.Furnishing.AddCube(Cube);
+        Place(session, Cube, Cube, uid: uid);
+        Vector3B position = plot.Cubes.Keys.Single();
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.UgcMapCube>().Any(entry => entry.State == EntityState.Deleted);
+
+        Assert.That(session.Housing.TryRemoveCube(plot, position, out _), Is.False);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes.Keys, Is.EqualTo(new[] { position }));
+            Assert.That(session.Item.Furnishing.GetCube(uid)?.Amount, Is.EqualTo(0));
+        });
+    }
+
+    // A build helper's cube, bought from the owner's budget, stores the budget (the home's row), the storage row and
+    // the cube's row together. Before, the budget waited for the next save of the home and the stack for the session's.
+    // The owner stands in as the helper here: the budget path is the helper's.
+    [Test]
+    public void ABudgetPlace_StoresTheBudgetWithTheCube() {
+        (GameSession session, Plot plot) = StartInHome();
+        session.Player.Value.Home.BuildMeso = 3000;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assume.That(db.SaveHome(session.Player.Value.Home), Is.True);
+        }
+        session.ItemMetadata.TryGet(Cube, out ItemMetadata? metadata);
+
+        bool placed = session.Housing.TryPlaceCube(new PlotCube(metadata!) { Type = PlotCube.CubeType.Construction }, plot, metadata!,
+            new Vector3B(-1, -1, 1), 0, out _, helper: session, byPlayer: true);
+
+        using var context = new Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(placed, Is.True);
+            Assert.That(session.Player.Value.Home.BuildMeso, Is.EqualTo(2000));
+            Assert.That(context.Home.AsNoTracking().Single(row => row.AccountId == test.AccountId).BuildMeso, Is.EqualTo(2000));
+            Assert.That(StoredCube(), Is.EqualTo((0, 1)));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+    }
+
+    private long StoredBuildMeso() {
+        using var context = new Ms2Context(test.Options);
+        return context.Home.AsNoTracking().Single(row => row.AccountId == test.AccountId).BuildMeso;
+    }
+
+    // RequestCube 56: a raise of the build budget stores the mesos it takes with the home's budget, and a fall the
+    // mesos it gives. Before, the home's row was stored at once and the wallet left to the next session save.
+    [Test]
+    public void ABudgetChange_StoresTheWalletWithTheHome() {
+        (GameSession session, _) = StartInHome();
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.SaveCurrency(session.Player);
+        }
+
+        session.Housing.SetBuildBudget(3000, 0);
+        Assert.Multiple(() => {
+            Assert.That((session.Currency.Meso, StoredMeso(session)), Is.EqualTo((2000L, 2000L)));
+            Assert.That(StoredBuildMeso(), Is.EqualTo(3000));
+        });
+
+        session.Housing.SetBuildBudget(1000, 0);
+        Assert.Multiple(() => {
+            Assert.That((session.Currency.Meso, StoredMeso(session)), Is.EqualTo((4000L, 4000L)));
+            Assert.That(StoredBuildMeso(), Is.EqualTo(1000));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A budget change whose store fails changes nothing: the mesos are given back and the budget stays.
+    [Test]
+    public void ABudgetChange_NotStored_ChangesNothing() {
+        (GameSession session, _) = StartInHome();
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Home>().Any();
+
+        session.Housing.SetBuildBudget(3000, 0);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(session.Player.Value.Home.BuildMeso, Is.EqualTo(0));
+        });
+    }
 }

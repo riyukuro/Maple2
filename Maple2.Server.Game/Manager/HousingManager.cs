@@ -675,7 +675,10 @@ public class HousingManager {
 
     // The row is made with the expiry of the storage item the cube is placed from (TryAddCube sets the same value), so
     // a placed cube keeps its end time even if the plot is never saved after it.
-    private PlotCube? CreateCube(PlotInfo plot, ItemMetadata itemMetadata, FunctionCubeMetadata? functionCubeMetadata, UgcItemLook? template, Vector3 position, float rotation, long expiryTime) {
+    // inTransaction: the request the row is written in (a player's place writes it with the storage row); null for
+    // a row written at once.
+    private PlotCube? CreateCube(PlotInfo plot, ItemMetadata itemMetadata, FunctionCubeMetadata? functionCubeMetadata, UgcItemLook? template, Vector3 position, float rotation, long expiryTime,
+                                 GameStorage.Request? inTransaction = null) {
         var result = new PlotCube(itemMetadata, 0, template) {
             Type = PlotCube.CubeType.Construction,
             Position = position,
@@ -683,7 +686,8 @@ public class HousingManager {
             ExpiryTime = expiryTime,
         };
 
-        using GameStorage.Request db = session.GameStorage.Context();
+        using GameStorage.Request? own = inTransaction == null ? session.GameStorage.Context() : null;
+        GameStorage.Request db = inTransaction ?? own!;
 
         if (functionCubeMetadata is not null) {
             result.Interact = new InteractCube(position, functionCubeMetadata);
@@ -1023,54 +1027,105 @@ public class HousingManager {
             return true;
         }
 
-        result = CreateCube(plot, itemMetadata, functionCubeMetadata, cube.Template, position, rotation, expiryTime);
-        if (result is null) {
-            Refuse(UgcMapError.s_ugcmap_db);
-            return false;
-        }
-
-        long storedUid = 0; // the storage item the cube was placed from, when it was in storage already
-        if (helper != null) {
-            if (!TryBuyFromBudget(helper, cube, shopEntry, result, edit)) {
-                DeleteCube(plot, result);
-                return false;
-            }
-        } else if (session.Item.Furnishing.TryAddCube(cube.Id, result)) {
-            storedUid = cube.Id;
-        } else {
+        // The cube's source: a helper's buy from the budget, the owner's storage stack, or the owner's buy. The buy's
+        // price is taken first, outside the transaction below (a meso take updates quests, which may store).
+        bool fromStorage = helper == null && storedItem is { Amount: > 0 };
+        bool buyHere = helper == null && !fromStorage;
+        if (buyHere) {
             // A cube bought here goes to storage only once it is paid: a cube not for sale, or one the player cannot
             // pay for, leaves no storage item. Room was asked above, so the paid cube is not refused by storage.
             if (shopEntry is null) {
-                DeleteCube(plot, result);
                 Refuse(UgcMapError.s_err_cannot_buy_limited_item_more);
                 return false;
             }
-
             if (!session.Item.Furnishing.PurchaseCube(shopEntry, out UgcMapError purchaseError)) {
-                DeleteCube(plot, result);
                 if (purchaseError != UgcMapError.s_ugcmap_ok) {
                     Refuse(purchaseError);
                 }
                 return false;
             }
+        }
 
-            long itemUid = session.Item.Furnishing.AddCube(cube);
-            if (itemUid == 0) {
-                logger.Error("Paid cube {ItemId} could not be added to storage, refunded", cube.ItemId);
-                session.Item.Furnishing.RefundCube(shopEntry);
-                DeleteCube(plot, result);
-                Refuse(UgcMapError.s_ugcmap_db);
+        // The cube's row and its storage stack's row (a bought cube's new stack too, and for a helper the home's row
+        // with the budget it charged) are written in one transaction, and the bag follows. Before, the cube's row was
+        // written at once and the stack (and budget) waited for the session's next save: a stop before it kept the cube
+        // on the plot and in storage both (or a bought cube twice). A buy's price is still stored after the place
+        // (StoreCubePrices).
+        long storedUid = 0; // the storage item the cube was placed from, when it was in storage already
+        bool bought = false;
+        lock (session.Item) {
+            using GameStorage.Request db = session.GameStorage.Context();
+            db.BeginTransaction();
+            Action? undo = buyHere ? () => session.Item.Furnishing.RefundCube(shopEntry!) : null;
+            bool Fail(UgcMapError error) {
+                undo?.Invoke();
+                Refuse(error);
                 return false;
             }
-            pricesTaken = true;
-            session.Item.Furnishing.ReportPurchase(shopEntry);
 
-            session.Send(CubePacket.PurchaseCube(session.Player.ObjectId));
-            // Now that we have purchased the cube, it must be placeable.
-            if (!session.Item.Furnishing.TryAddCube(itemUid, result)) {
-                DeleteCube(plot, result);
-                Refuse(UgcMapError.s_ugcmap_not_owned_item);
-                return false;
+            result = CreateCube(plot, itemMetadata, functionCubeMetadata, cube.Template, position, rotation, expiryTime, db);
+            if (result is null) {
+                return Fail(UgcMapError.s_ugcmap_db);
+            }
+            PlotCube placed = result;
+
+            if (helper != null) {
+                if (!BuyFromBudget(helper, cube, shopEntry, placed, edit, db, out undo)) {
+                    undo?.Invoke();
+                    return false;
+                }
+            } else if (fromStorage) {
+                long stackUid = cube.Id;
+                if (!session.Item.Furnishing.TryAddCube(stackUid, placed)) {
+                    return Fail(UgcMapError.s_ugcmap_not_owned_item);
+                }
+                undo = () => session.Item.Furnishing.UndoPlace(stackUid, placed.Id, created: false);
+                if (!session.Item.Furnishing.SaveStack(db, stackUid)) {
+                    return Fail(UgcMapError.s_ugcmap_db);
+                }
+                storedUid = stackUid;
+            } else {
+                long itemUid = session.Item.Furnishing.AddCube(cube, db, out bool created);
+                if (itemUid == 0) {
+                    logger.Error("Paid cube {ItemId} could not be added to storage, refunded", cube.ItemId);
+                    return Fail(UgcMapError.s_ugcmap_db);
+                }
+                Action refund = undo!;
+                undo = () => {
+                    session.Item.Furnishing.UndoBuy(itemUid, created);
+                    refund();
+                };
+                // KMS2 sends the bought notice between the storage add and the place.
+                session.Send(CubePacket.PurchaseCube(session.Player.ObjectId));
+                // Now that we have purchased the cube, it must be placeable.
+                if (!session.Item.Furnishing.TryAddCube(itemUid, placed)) {
+                    return Fail(UgcMapError.s_ugcmap_not_owned_item);
+                }
+                undo = () => {
+                    session.Item.Furnishing.UndoPlace(itemUid, placed.Id, created: false);
+                    session.Item.Furnishing.UndoBuy(itemUid, created);
+                    refund();
+                };
+                if (!session.Item.Furnishing.SaveStack(db, itemUid)) {
+                    return Fail(UgcMapError.s_ugcmap_db);
+                }
+                bought = true;
+            }
+
+            if (!db.Commit()) {
+                logger.Error("Cube {ItemId} of plot {PlotId} not stored; nothing placed", cube.ItemId, plot.Number);
+                return Fail(UgcMapError.s_ugcmap_db);
+            }
+        }
+
+        if (bought) {
+            pricesTaken = true;
+            session.Item.Furnishing.ReportPurchase(shopEntry!);
+        }
+        if (helper != null) {
+            helper.Send(CubePacket.PurchaseCube(helper.Player.ObjectId));
+            if (shopEntry!.Price > 0) {
+                SendBuildBudget();
             }
         }
 
@@ -1114,20 +1169,6 @@ public class HousingManager {
 
     // A maid cube picked up keeps its maid: the row moves from the cube uid to the storage item the cube went back
     // to, which the maid item tooltip and the owner's list look it up by.
-    private void MoveMaidToItem(PlotCube cube, long itemUid) {
-        if (cube.Metadata.Housing?.MaidId is not > 0) {
-            return;
-        }
-        using GameStorage.Request db = session.GameStorage.Context();
-        Maid? moved = db.MoveMaid(cube.Id, itemUid);
-        if (moved != null) {
-            session.Send(UserMaidPacket.Add(moved));
-            if (MaidRules.IsCrafting(moved)) {
-                session.Send(MaidCraftItemPacket.Add(moved));
-            }
-        }
-    }
-
     public bool TryRemoveCube(Plot plot, in Vector3B position, [NotNullWhen(true)] out PlotCube? cube, GameSession? helper = null) {
         lock (plot.EditLock) {
             return RemoveCube(plot, position, out cube, helper);
@@ -1175,15 +1216,42 @@ public class HousingManager {
             FittingDollHandler.ReturnItems(session, cube.Id);
         }
 
-        long itemUid = session.Item.Furnishing.RetrieveCube(cube.Id);
-        if (itemUid == 0) {
-            logger.Error("Failed to deposit cube {CubeId} back into storage.", cube.Id);
-            return false;
+        // The storage stack the cube goes back to, the maid it takes along and the cube row's delete are stored in
+        // one transaction. Before, the cube row went at once and the stack waited for the session's next save, so a
+        // stop before it lost the cube.
+        long itemUid;
+        Maid? moved = null;
+        lock (session.Item) {
+            using GameStorage.Request db = session.GameStorage.Context();
+            db.BeginTransaction();
+            itemUid = session.Item.Furnishing.RetrieveCube(cube.Id, db, out bool created);
+            if (itemUid == 0) {
+                logger.Error("Failed to deposit cube {CubeId} back into storage.", cube.Id);
+                return false;
+            }
+            // Before the cube row goes, which would take a maid still keyed by it.
+            bool stored = session.Item.Furnishing.SaveStack(db, itemUid);
+            if (stored && cube.Metadata.Housing?.MaidId is > 0) {
+                // A maid that cannot move goes with the cube row, as before.
+                moved = db.MoveMaid(cube.Id, itemUid);
+            }
+            stored = stored && db.DeleteCube(cube) && db.Commit();
+            if (!stored) {
+                // The cube stays where it is: on the plot and in its row; storage gives the piece back.
+                logger.Error("Pickup of cube {CubeId} not stored; the cube stays on plot {PlotId}", cube.Id, plot.Number);
+                session.Item.Furnishing.UndoRetrieve(itemUid, cube, created);
+                plot.Cubes[position] = cube;
+                notify.Send(CubePacket.EditError(CubePacket.Edit.Remove, UgcMapError.s_ugcmap_db, notify.Player.ObjectId));
+                cube = null;
+                return false;
+            }
         }
-
-        // Before the cube row goes, which would take a maid still keyed by it.
-        MoveMaidToItem(cube, itemUid);
-        DeleteCube(plot, cube);
+        if (moved != null) {
+            session.Send(UserMaidPacket.Add(moved));
+            if (MaidRules.IsCrafting(moved)) {
+                session.Send(MaidCraftItemPacket.Add(moved));
+            }
+        }
 
         return true;
     }
@@ -1309,10 +1377,17 @@ public class HousingManager {
             return;
         }
 
+        // A raise is held from the wallet and a fall is given to it inside the store: the wallet and the home's row
+        // with its budget are stored in one purchase save. Before, the home's row was stored at once and the wallet
+        // left to the next session save, so a stop before it gave back the mesos (and merets) of a raise with the
+        // budget kept, or took back those of a fall with the budget lowered.
+        long mesoCost, meratCost, mesoBefore, meratBefore, sends;
         lock (session.Item) {
             lock (Home) {
-                long mesoCost = meso - Home.BuildMeso;
-                long meratCost = merat - Home.BuildMerat;
+                mesoBefore = Home.BuildMeso;
+                meratBefore = Home.BuildMerat;
+                mesoCost = meso - Home.BuildMeso;
+                meratCost = merat - Home.BuildMerat;
                 UgcMapError error = HomeBuildRules.CheckBudget(meso, merat, Home.BuildMeso, Home.BuildMerat,
                     session.Currency.Meso, session.Currency.Meret, Constant.MaxMeso, Constant.MaxMeret);
                 if (error == UgcMapError.s_ugcmap_ok &&
@@ -1326,7 +1401,8 @@ public class HousingManager {
                 }
                 // The mesos can be taken on another thread too (a field's take) after the check: a raise takes them
                 // in one step, and when they are gone the merets taken above go back.
-                if (error == UgcMapError.s_ugcmap_ok && mesoCost > 0 && !session.Currency.TryTakeMeso(mesoCost)) {
+                sends = session.Currency.MesoSends;
+                if (error == UgcMapError.s_ugcmap_ok && mesoCost > 0 && !session.Currency.TryTakeMeso(mesoCost, notify: false)) {
                     if (meratCost > 0) {
                         session.Currency.ReturnMeret(meratCost);
                     }
@@ -1337,21 +1413,44 @@ public class HousingManager {
                     return;
                 }
 
-                if (mesoCost < 0) {
-                    session.Currency.ChangeMeso(-mesoCost);
-                }
-                if (meratCost > 0) {
-                    session.Currency.NotifyMeretTaken(meratCost);
-                } else if (meratCost < 0) {
-                    session.Currency.ChangeMeret(-meratCost);
-                }
                 Home.BuildMeso = meso;
                 Home.BuildMerat = merat;
             }
         }
 
-        if (!SaveHome()) {
+        (long Meso, long Meret, long GameMeret) added = default;
+        bool stored = session.TrySavePurchase(db => {
+            added = session.Currency.AddUnsent(Math.Max(0, -mesoCost), Math.Max(0, -meratCost), 0);
+            bool saved;
+            lock (Home) {
+                saved = db.SaveHome(Home);
+            }
+            return saved && (added == default || db.SaveCurrency(session.Player));
+        }, () => session.Currency.TakeBackAdded(added));
+        if (!stored) {
+            lock (Home) {
+                if (Home.BuildMeso == meso && Home.BuildMerat == merat) {
+                    Home.BuildMeso = mesoBefore;
+                    Home.BuildMerat = meratBefore;
+                }
+            }
+            if (mesoCost > 0) {
+                session.Currency.ReturnHeldMeso(mesoCost, sends);
+            }
+            if (meratCost > 0) {
+                session.Currency.ReturnMeret(meratCost);
+            }
             logger.Error("Failed to save the build budget of home {AccountId}.", session.AccountId);
+            session.Send(CubePacket.UpdateBuildBudget((byte) HomeBuildRules.Refused));
+            return;
+        }
+
+        if (mesoCost > 0) {
+            session.Currency.NotifyMeso();
+        }
+        session.Currency.NotifyAdded(added);
+        if (meratCost > 0) {
+            session.Currency.NotifyMeretTaken(meratCost);
         }
         SendBuildBudget();
     }
@@ -1417,7 +1516,12 @@ public class HousingManager {
 
     // A helper cannot use the owner's stored cubes or its own (the client's palette lists none for it), so
     // each cube it places is bought, from the home's budget, into the owner's storage and placed from there.
-    private bool TryBuyFromBudget(GameSession helper, HeldCube cube, FurnishingShopTable.Entry? shopEntry, PlotCube result, CubePacket.Edit edit) {
+    // It is bought in db's transaction: the budget (the home's row), the storage stack and the cube's row are stored
+    // together (before, the storage item was written at once and the charge stored just before it, apart from the
+    // cube's row and the stack's take). undo takes back the memory side when the transaction is not committed.
+    private bool BuyFromBudget(GameSession helper, HeldCube cube, FurnishingShopTable.Entry? shopEntry, PlotCube result, CubePacket.Edit edit,
+                               GameStorage.Request db, out Action? undo) {
+        undo = null;
         if (shopEntry is not { Buyable: true }) {
             helper.Send(CubePacket.EditError(edit, UgcMapError.s_ugcmap_not_for_sale, helper.Player.ObjectId));
             return false;
@@ -1431,42 +1535,41 @@ public class HousingManager {
                 return false;
             }
         }
-
-        // The storage item below is written at once, so the charge is stored before it: a charge left in memory
-        // came back after a crash while the bought item stayed in the owner's storage.
-        if (shopEntry.Price > 0 && !SaveHome()) {
+        void RefundBudget() {
             lock (Home) {
                 HomeBuildRules.Refund(Home, merat, shopEntry.Price);
             }
-            logger.Error("Build budget charge of home {AccountId} not stored, the cube not bought", session.AccountId);
-            helper.Send(CubePacket.EditError(edit, UgcMapError.s_ugcmap_db, helper.Player.ObjectId));
-            return false;
         }
+        undo = RefundBudget;
 
-        long itemUid = session.Item.Furnishing.AddCube(cube);
+        long itemUid = session.Item.Furnishing.AddCube(cube, db, out bool created);
         if (itemUid == 0) {
-            lock (Home) {
-                HomeBuildRules.Refund(Home, merat, shopEntry.Price);
-            }
-            if (shopEntry.Price > 0 && !SaveHome()) {
-                logger.Error("Build budget refund of home {AccountId} not stored now, left to the next save", session.AccountId);
-            }
             helper.Send(CubePacket.EditError(edit, UgcMapError.s_ugcmap_not_for_sale, helper.Player.ObjectId));
             return false;
         }
+        undo = () => {
+            session.Item.Furnishing.UndoBuy(itemUid, created);
+            RefundBudget();
+        };
 
-        // The item was bought into the owner's storage and stays there, so the charge stays too.
+        // The item is bought into the owner's storage for the place: a place that fails gives all of it back.
         if (!session.Item.Furnishing.TryAddCube(itemUid, result)) {
-            if (shopEntry.Price > 0) {
-                SendBuildBudget();
-            }
             helper.Send(CubePacket.EditError(edit, UgcMapError.s_ugcmap_not_owned_item, helper.Player.ObjectId));
             return false;
         }
+        undo = () => {
+            session.Item.Furnishing.UndoPlace(itemUid, result.Id, created: false);
+            session.Item.Furnishing.UndoBuy(itemUid, created);
+            RefundBudget();
+        };
 
-        helper.Send(CubePacket.PurchaseCube(helper.Player.ObjectId));
-        if (shopEntry.Price > 0) {
-            SendBuildBudget();
+        bool homeStored;
+        lock (Home) {
+            homeStored = shopEntry.Price <= 0 || db.SaveHome(Home);
+        }
+        if (!session.Item.Furnishing.SaveStack(db, itemUid) || !homeStored) {
+            helper.Send(CubePacket.EditError(edit, UgcMapError.s_ugcmap_db, helper.Player.ObjectId));
+            return false;
         }
         return true;
     }

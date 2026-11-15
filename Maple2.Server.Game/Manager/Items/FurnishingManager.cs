@@ -199,11 +199,16 @@ public class FurnishingManager {
         }
     }
 
-    public long AddCube(HeldCube cube) {
+    public long AddCube(HeldCube cube) => AddCube(cube, null, out _);
+
+    // AddCube whose new storage row (created) is written in db's transaction; UndoBuy takes it back when that
+    // transaction is not committed.
+    public long AddCube(HeldCube cube, GameStorage.Request? db, out bool created) {
         const int amount = 1;
+        created = false;
         lock (session.Item) {
             int count = storage.Count;
-            long itemUid = AddStorage(cube);
+            long itemUid = AddStorage(cube, db, out created);
             if (itemUid == 0) {
                 return 0;
             }
@@ -490,13 +495,76 @@ public class FurnishingManager {
     }
 
     // Returns the cube to storage: the uid of the storage item it went to, 0 when it was not in the inventory.
-    public long RetrieveCube(long uid) {
+    // Writes the storage stack uid as it is now in db's transaction (a place's take, a pickup's return, written with
+    // the cube's own row; before, the stack waited for the session's next save, so a stop before it kept the cube on
+    // the plot and in storage both, or in neither).
+    public bool SaveStack(GameStorage.Request db, long uid) {
+        lock (session.Item) {
+            Item? item = storage.Get(uid);
+            return item != null && db.SaveItems(session.AccountId, item);
+        }
+    }
+
+    // Takes back a place from the stack uid (TryAddCube) whose transaction was not committed: the cube leaves the
+    // furnishing inventory and the stack gets its piece again; created: the stack was made for this place (a buy,
+    // AddCube) and its row was not stored, so it goes.
+    public void UndoPlace(long uid, long cubeId, bool created) {
+        lock (session.Item) {
+            RemoveInventory(cubeId, out _);
+            Item? item = storage.Get(uid);
+            if (item == null) {
+                return;
+            }
+            if (created) {
+                storage.Remove(uid, out _);
+                session.Send(FurnishingStoragePacket.Remove(uid));
+                session.Send(FurnishingStoragePacket.Count(storage.Count));
+                return;
+            }
+            item.Amount += 1;
+            session.Send(FurnishingStoragePacket.Update(item.Uid, item.Amount));
+        }
+    }
+
+    // Takes back a buy into the stack uid (AddCube) whose transaction was not committed, when the cube was not placed.
+    public void UndoBuy(long uid, bool created) {
+        lock (session.Item) {
+            Item? item = storage.Get(uid);
+            if (item == null) {
+                return;
+            }
+            if (created) {
+                storage.Remove(uid, out _);
+                session.Send(FurnishingStoragePacket.Remove(uid));
+                session.Send(FurnishingStoragePacket.Count(storage.Count));
+                return;
+            }
+            item.Amount -= 1;
+            session.Send(item.Amount > 0 ? FurnishingStoragePacket.Update(item.Uid, item.Amount) : FurnishingStoragePacket.Remove(item.Uid));
+        }
+    }
+
+    // Takes back a pickup into the stack uid (RetrieveCube) whose transaction was not committed: the stack gives the
+    // piece back and the cube is in the furnishing inventory again.
+    public void UndoRetrieve(long uid, PlotCube cube, bool created) {
+        lock (session.Item) {
+            UndoBuy(uid, created);
+            AddInventory(cube);
+        }
+    }
+
+    public long RetrieveCube(long uid) => RetrieveCube(uid, null, out _);
+
+    // RetrieveCube whose new storage row (created) is written in db's transaction; UndoRetrieve takes it back when
+    // that transaction is not committed.
+    public long RetrieveCube(long uid, GameStorage.Request? db, out bool created) {
+        created = false;
         lock (session.Item) {
             if (!RemoveInventory(uid, out PlotCube? cube)) {
                 return 0;
             }
 
-            long itemUid = AddStorage(cube);
+            long itemUid = AddStorage(cube, db, out created);
             if (itemUid == 0) {
                 // The cube stays in the furnishing inventory, as a cube still placed (HousingManager asks CanRetrieve first).
                 logger.Error("Failed to return cube: {CubeId} to storage", cube.Id);
@@ -510,7 +578,8 @@ public class FurnishingManager {
 
     // A cube goes back with its expiry (KeptExpiry; the server's own, HeldCube.ReadFrom keeps none from the client),
     // not with a new item's: it joins only a stack of the same expiry, or an empty one.
-    private long AddStorage(HeldCube cube) {
+    private long AddStorage(HeldCube cube, GameStorage.Request? db, out bool created) {
+        created = false;
         Item? item = session.Field?.ItemDrop.CreateItem(cube.ItemId);
         if (item == null) {
             return 0;
@@ -518,9 +587,9 @@ public class FurnishingManager {
 
         if (KeptExpiry(item.Metadata, cube.ExpiryTime) is { } expiryTime) {
             item.ExpiryTime = expiryTime;
-            return AddStorage(item, cube.Template, keepExpiry: true);
+            return AddStorage(item, cube.Template, keepExpiry: true, db, out created);
         }
-        return AddStorage(item, cube.Template);
+        return AddStorage(item, cube.Template, keepExpiry: false, db, out created);
     }
 
     private long AddStorage(int itemId) {
@@ -532,8 +601,13 @@ public class FurnishingManager {
         return AddStorage(item);
     }
 
-    public long AddStorage(Item item, UgcItemLook? template = null, bool keepExpiry = false) {
+    public long AddStorage(Item item, UgcItemLook? template = null, bool keepExpiry = false) =>
+        AddStorage(item, template, keepExpiry, null, out _);
+
+    // db: the transaction a new storage row is created in (created); null for a row of its own, written at once.
+    private long AddStorage(Item item, UgcItemLook? template, bool keepExpiry, GameStorage.Request? inTransaction, out bool created) {
         const int amount = 1;
+        created = false;
 
         lock (session.Item) {
             bool maidItem = item.Metadata.Housing?.MaidId > 0;
@@ -554,7 +628,8 @@ public class FurnishingManager {
                 if (template != null) {
                     item.Template = template.Clone();
                 }
-                using GameStorage.Request db = session.GameStorage.Context();
+                using GameStorage.Request? own = inTransaction == null ? session.GameStorage.Context() : null;
+                GameStorage.Request db = inTransaction ?? own!;
                 Item? newItem = db.CreateItem(session.AccountId, item);
                 if (newItem == null) {
                     return 0;
@@ -565,6 +640,7 @@ public class FurnishingManager {
                     return 0;
                 }
 
+                created = true;
                 session.Send(FurnishingStoragePacket.Add(newItem));
                 return newItem.Uid;
             }
