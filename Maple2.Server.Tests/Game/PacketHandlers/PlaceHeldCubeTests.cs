@@ -13,6 +13,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
+using Maple2.Tools.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
@@ -63,7 +64,8 @@ public class PlaceHeldCubeTests {
         return (session, plot);
     }
 
-    private void Place(GameSession session, int held, int placed, Vector3B? position = null, long uid = 0, float rotation = 0, byte command = 10) {
+    private void Place(GameSession session, int held, int placed, Vector3B? position = null, long uid = 0, float rotation = 0, byte command = 10,
+                       UgcItemLook? look = null) {
         session.HeldCube = null;
         if (held != 0) {
             session.ItemMetadata.TryGet(held, out ItemMetadata? metadata);
@@ -75,7 +77,10 @@ public class PlaceHeldCubeTests {
             writer.WriteInt(placed);
             writer.WriteLong(uid);
             writer.WriteLong(0);
-            writer.WriteBool(false);
+            writer.WriteBool(look != null);
+            if (look != null) {
+                writer.WriteClass<UgcItemLook>(look);
+            }
             writer.WriteFloat(rotation);
             if (command == 16) {
                 writer.WriteByte(0); // the side the cube is attached to
@@ -753,6 +758,97 @@ public class PlaceHeldCubeTests {
             Assert.That(session.Player.Value.Home.BuildMeso, Is.EqualTo(3000));
             Assert.That(session.Item.Furnishing.GetItem(Cube), Is.Null.Or.Property(nameof(Item.Amount)).EqualTo(0));
             Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+    }
+    private static UgcItemLook Look(long id, string url, string author = "maker") =>
+        new() { Id = id, Url = url, Author = author, AccountId = 7, CharacterId = 8 };
+
+    private long StackOf(GameSession session, UgcItemLook look) {
+        session.ItemMetadata.TryGet(TemplateCube, out ItemMetadata? metadata);
+        return session.Item.Furnishing.AddCube(new PlotCube(metadata!, template: look) { Type = PlotCube.CubeType.Construction });
+    }
+
+    // A UGC cube placed from storage takes its stack's design: the client's template names it (by url), and a
+    // template of another design is refused with 0x0A s_ugcmap_not_owned_item. Before, the client's template was
+    // placed and went back to storage on pick-up, so a plain stack made any design.
+    [Test]
+    public void AStoredDesign_PlacedAsAnotherDesign_IsRefused() {
+        (GameSession session, Plot plot) = StartInHome();
+        long uid = StackOf(session, Look(11, "ugc/a.png"));
+        test.TakeSent();
+
+        Place(session, TemplateCube, TemplateCube, uid: uid, look: Look(12, "ugc/b.png"));
+
+        byte[] refusal = CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_ugcmap_not_owned_item, session.Player.ObjectId).ToArray();
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(refusal) }));
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(session.Item.Furnishing.GetCube(uid)?.Amount, Is.EqualTo(1));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+    }
+
+    [Test]
+    public void AStoredDesign_TakesTheStacksTemplate_NotTheClients() {
+        (GameSession session, Plot plot) = StartInHome();
+        long uid = StackOf(session, Look(11, "ugc/a.png"));
+        test.TakeSent();
+
+        Place(session, TemplateCube, TemplateCube, uid: uid, look: Look(99, "ugc/a.png", author: "someone else"));
+
+        PlotCube placed = plot.Cubes.Values.Single();
+        Assert.Multiple(() => {
+            Assert.That(placed.Template?.Id, Is.EqualTo(11));
+            Assert.That(placed.Template?.Author, Is.EqualTo("maker"));
+            Assert.That(session.Item.Furnishing.GetCube(uid)?.Amount, Is.EqualTo(0));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+    }
+
+    // A design is never bought: a UGC cube not from storage with a design (url) is refused, nothing paid.
+    [Test]
+    public void ABoughtDesign_IsRefused() {
+        (GameSession session, Plot plot) = StartInHome();
+
+        Place(session, TemplateCube, TemplateCube, look: Look(12, "ugc/b.png"));
+
+        byte[] refusal = CubePacket.EditError(CubePacket.Edit.Place, UgcMapError.s_ugcmap_not_owned_item, session.Player.ObjectId).ToArray();
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(refusal) }));
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(session.Item.Furnishing.GetItem(TemplateCube), Is.Null);
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+    }
+
+    // A plain stack's uid with a design template is a buy of that design, refused the same way.
+    [Test]
+    public void APlainStack_WithADesign_IsRefused() {
+        (GameSession session, Plot plot) = StartInHome();
+        long uid = StackOf(session, new UgcItemLook { Id = 5 });
+        test.TakeSent();
+
+        Place(session, TemplateCube, TemplateCube, uid: uid, look: Look(12, "ugc/b.png"));
+
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(session.Item.Furnishing.GetCube(uid)?.Amount, Is.EqualTo(1));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+    }
+
+    // A layout's cube is placed from the stack of its own design (with pieces left first).
+    [Test]
+    public void TheLayoutStackLookup_FindsTheCubesDesign() {
+        (GameSession session, _) = StartInHome();
+        long a = StackOf(session, Look(11, "ugc/a.png"));
+        long b = StackOf(session, Look(12, "ugc/b.png"));
+
+        Assert.Multiple(() => {
+            Assert.That(a, Is.Not.EqualTo(b));
+            Assert.That(session.Item.Furnishing.GetItem(TemplateCube, "ugc/b.png")?.Uid, Is.EqualTo(b));
+            Assert.That(session.Item.Furnishing.GetItem(TemplateCube, "ugc/a.png")?.Uid, Is.EqualTo(a));
+            Assert.That(session.Item.Furnishing.GetItem(TemplateCube, "ugc/c.png"), Is.Null);
         });
     }
 }

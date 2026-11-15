@@ -478,6 +478,24 @@ public class ShopHandlerTests {
         Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(5));
     }
 
+    // A sale is stored at once, the sold row (owner 0) with the wallet. Before, a whole stack kept the character as
+    // owner until the next session save while a later purchase stored the sale's mesos: a stop in between gave
+    // back the item and kept the mesos. A part sold is stored the same way.
+    [TestCase(5)]
+    [TestCase(2)]
+    public void Sell_StoresTheRowWithTheMesos(int quantity) {
+        GameSession session = Login();
+
+        Sell(session, bagItem.Uid, quantity);
+
+        Assert.Multiple(() => {
+            Assert.That(StoredMeso(), Is.EqualTo(10000 + 70 * quantity));
+            Assert.That(ItemRows(20000003).OrderBy(row => row.Owner).ToList(), quantity == 5
+                ? Is.EqualTo(new[] { (0L, 5) })
+                : Is.EqualTo(new[] { (0L, quantity), (test.CharacterId, 5 - quantity) }));
+        });
+    }
+
     // The shop sell rate (SpecialAttribute.ShopBuyingMeso, +20% here) raises the sale; the buy back costs the raised
     // price, so selling and buying back gains nothing.
     [Test]

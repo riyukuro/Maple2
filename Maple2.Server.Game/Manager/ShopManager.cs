@@ -915,6 +915,11 @@ public sealed class ShopManager {
         // KMS2 order: the item leaves the bag, the buy-back entry is listed, then the mesos are paid.
         session.Send(ShopPacket.LoadBuyBackItem(buyBackItems[entryId]));
         session.Currency.ChangeMeso(sellPrice);
+        // The sold row (a whole stack keeps the character as owner until the next session save) and the wallet are
+        // stored together at once. Before, a later purchase stored the sale's mesos while the row waited for that
+        // save, so a stop in between gave back the item and kept the mesos.
+        Item sold = item;
+        session.SavePurchase(db => db.SaveItems(0, sold));
     }
 
     // A shop price taken in memory and not yet stored (HoldPayment): the purchase's transaction stores it (SavePayment),

@@ -553,6 +553,9 @@ public class TradeHandlerTests {
         ItemMetadata petData = TestGameSession.Metadata(petId, type: 11, slotMax: 1);
         StartTrade(petData with { Property = petData.Property with { PetId = petId } }, amount: 1);
         Item pet = giver.Item.Inventory.Get(item.Uid)!;
+        // The test store numbers item rows from 1 like the characters, so the load reads the giver's own rows as the
+        // pet's bag; its bag is empty here.
+        pet.Pet!.HasItems = false;
         if (summoned) {
             // The trade reads the summoned item only; the field pet itself needs the npc and the navigation data a
             // test session has none of.
@@ -575,6 +578,28 @@ public class TradeHandlerTests {
         Assert.Multiple(() => {
             Assert.That(giver.Item.Inventory.Get(item.Uid) != null, Is.EqualTo(summoned));
             Assert.That(takerTest.TakeSent(), summoned ? Is.Empty : Is.Not.Empty);
+        });
+    }
+
+    // A pet whose bag holds items stays too: the bag's rows are the pet uid's and went with it, bound items as well
+    // (the shop and the black market refuse it the same way). With an empty bag it goes.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void AddItem_APetWithItemsInItsBagStays(bool hasItems) {
+        const int petId = 60000001;
+        ItemMetadata petData = TestGameSession.Metadata(petId, type: 11, slotMax: 1);
+        StartTrade(petData with { Property = petData.Property with { PetId = petId } }, amount: 1);
+        giver.Item.Inventory.Get(item.Uid)!.Pet = new ItemPet { HasItems = hasItems };
+
+        Send(giver, 8, writer => {
+            writer.WriteLong(item.Uid);
+            writer.WriteInt(1);
+            writer.WriteInt(0);
+        });
+
+        Assert.Multiple(() => {
+            Assert.That(giver.Item.Inventory.Get(item.Uid) != null, Is.EqualTo(hasItems));
+            Assert.That(takerTest.TakeSent(), hasItems ? Is.Empty : Is.Not.Empty);
         });
     }
 

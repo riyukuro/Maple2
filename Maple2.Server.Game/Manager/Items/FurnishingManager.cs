@@ -74,6 +74,17 @@ public class FurnishingManager {
         }
     }
 
+    // The storage stack of an item with this design (template url), one with pieces left first: a layout's cube is
+    // placed from the stack of its own design.
+    public Item? GetItem(int itemId, string? templateUrl) {
+        lock (session.Item) {
+            string? design = MaidRules.DesignKey(templateUrl);
+            return storage.Where(item => item.Id == itemId && MaidRules.DesignKey(item.Template?.Url) == design)
+                .OrderBy(item => item.Amount > 0 ? 0 : 1)
+                .FirstOrDefault();
+        }
+    }
+
     /// <summary>
     /// Places a cube of the specified item uid at the requested location.
     /// If there are no amount remaining, we still keep the entry to allow reuse of the item uid.

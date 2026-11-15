@@ -68,6 +68,14 @@ public sealed class BlackMarketManager {
             return;
         }
 
+        // A summoned pet, or a pet whose bag holds items, is not listed (as the shop does not buy them): the bag's rows
+        // are the pet uid's, so the buyer got them with it, bound items too. The client does not test either; the
+        // generic refusal answers it.
+        if (session.Pet?.Pet.Uid == item.Uid || Items.InventoryManager.PetBagHasItems(item)) {
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_disable_registitem, 2));
+            return;
+        }
+
         // An item past its time is not listed; the refusal is answered, the client waits for one.
         if (item.IsExpired()) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_disable_registitem, 2));

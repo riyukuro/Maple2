@@ -1,5 +1,6 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Model.Validators;
@@ -96,6 +97,11 @@ public static class CubeEditRules {
     // (Unk_PCCubeCraft::ConfirmPlacement, cubecraft_2.cpp:964-972).
     public static UgcMapError EmptyTemplate(string mesh, long? templateId) =>
         !string.IsNullOrEmpty(mesh) && templateId is null or 0 ? UgcMapError.s_err_ugcmap_cant_build_empty_ugc : UgcMapError.s_ugcmap_ok;
+
+    // Whether a placed cube may carry this template: from a storage stack only that stack's design (by url), and
+    // a cube not from storage (a buy) no design at all. A template without a url (a blank mesh item) is no design.
+    public static bool SameDesign(Item? stack, UgcItemLook? template) =>
+        MaidRules.DesignKey(template?.Url) == MaidRules.DesignKey(stack?.Template?.Url);
 
     private static bool IsHouse(ItemMetadata item, FunctionCubeMetadata? _) => item.Property.Type == 6 && item.Property.SubType == 4;
 }

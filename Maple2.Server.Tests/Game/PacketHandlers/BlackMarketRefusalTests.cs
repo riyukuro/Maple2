@@ -164,6 +164,9 @@ public class BlackMarketRefusalTests {
     [TestCase("writtenScore", true)]
     [TestCase("tradeable", false)]
     [TestCase("tradesLeft", false)]
+    // A pet whose bag holds items: the bag's rows are the pet uid's and went to the buyer with it.
+    [TestCase("petWithItems", true)]
+    [TestCase("petEmptyBag", false)]
     public void Add_ItemTheMarketDoesNotTake(string kind, bool refused) {
         test = new TestGameSession();
         Item stored = test.Store(metadata, amount: 5);
@@ -190,6 +193,14 @@ public class BlackMarketRefusalTests {
                 break;
             case "tradesLeft":
                 item.Transfer = new ItemTransfer(TransferFlag.LimitTrade, remainTrades: 1);
+                break;
+            case "petWithItems":
+                item.Transfer = new ItemTransfer(TransferFlag.Trade);
+                item.Pet = new ItemPet { HasItems = true };
+                break;
+            case "petEmptyBag":
+                item.Transfer = new ItemTransfer(TransferFlag.Trade);
+                item.Pet = new ItemPet();
                 break;
         }
 

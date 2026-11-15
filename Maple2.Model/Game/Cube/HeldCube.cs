@@ -11,7 +11,7 @@ public class HeldCube : IByteSerializable, IByteDeserializable {
     public int ItemId { get; protected set; }
     public ItemType ItemType { get; protected set; }
 
-    public UgcItemLook? Template { get; protected set; }
+    public UgcItemLook? Template { get; set; }
     // The cube's expiry time (epoch seconds, 0 for none): a placed cube takes it from the storage item it was placed
     // from (Item.ExpiryTime), and keeps it in its row.
     public long ExpiryTime { get; set; }

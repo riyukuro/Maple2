@@ -927,6 +927,17 @@ public class HousingManager {
             if (storedItem != null && storedItem.Id != cube.ItemId) {
                 storedItem = null;
             }
+            // The design (template) of a UGC cube is the storage stack's, never the client's: a cube from storage must
+            // name its stack's design and takes the stack's template, and a design is never bought. Before, the
+            // client's template was placed and went back to storage on pick-up, so any design (another player's, or
+            // one never paid for) could be made from a plain stack or a shop buy.
+            if (!CubeEditRules.SameDesign(storedItem is { Amount: > 0 } ? storedItem : null, cube.Template)) {
+                Refuse(UgcMapError.s_ugcmap_not_owned_item);
+                return false;
+            }
+            if (storedItem is { Amount: > 0, Template: not null }) {
+                cube.Template = storedItem.Template.Clone();
+            }
             if (storedItem is { Amount: > 0 }) {
                 expiryTime = storedItem.ExpiryTime;
             } else {
@@ -1695,7 +1706,7 @@ public class HousingManager {
         }
 
         foreach (PlotCube cube in layout.Cubes) {
-            Item? item = session.Item.Furnishing.GetItem(cube.ItemId);
+            Item? item = session.Item.Furnishing.GetItem(cube.ItemId, cube.Template?.Url);
             cube.Id = item?.Uid ?? 0;
             ItemMetadata? metadata = null;
             if (item is null) {

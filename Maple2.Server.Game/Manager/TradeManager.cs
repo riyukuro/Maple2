@@ -211,6 +211,12 @@ public class TradeManager : IDisposable {
                     Refused(caller, offered, "the summoned pet");
                     return;
                 }
+                // Nor a pet whose bag holds items: the bag's rows are the pet uid's and would go with it, bound items too
+                // (the shop and the black market refuse it as well).
+                if (Items.InventoryManager.PetBagHasItems(offered)) {
+                    Refused(caller, offered, "a pet with items in its bag");
+                    return;
+                }
                 // Nor the score being played (TryAddToTrade: s_trade_tradelimit_playing_score, shown by the client).
                 if (offered.Uid == (caller.Instrument?.Score?.Uid ?? 0)) {
                     Refused(caller, offered, "the score being played");
