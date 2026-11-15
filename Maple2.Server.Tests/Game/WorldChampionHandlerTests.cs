@@ -156,10 +156,12 @@ public class WorldChampionHandlerTests {
         }));
     }
 
-    // The World down (the call throws): the map's request is still answered, with no boss.
+    // The World down (the call throws): the map's request is still answered, with no boss; a season that is on
+    // still shows its icon, at the first step (the World's step is not known).
     [Test]
     public void MapLoad_WorldDown_AnswersNoBoss() {
-        Start(2000062);
+        WorldChampionTable.Season season = Season(3, DateTime.Now.AddHours(-1));
+        Start(2000062, season);
         test.World.TimeEventFailure = new RpcException(new Status(StatusCode.Unavailable, "no world"));
 
         Assert.DoesNotThrow(() => new WorldMapHandler().Handle(test.Session, TestGameSession.Packet(writer => {
@@ -167,7 +169,26 @@ public class WorldChampionHandlerTests {
             writer.WriteByte(0);
             writer.WriteInt(102);
         })));
-        Assert.That(test.TakeSent(), Is.EqualTo(new[] { WorldMapPacket.Load([], []).ToArray() }));
+        var icon = new MapWorldBoss(23500110, 2000423, 0, new DateTimeOffset(season.Begin).ToUnixTimeSeconds(), MapWorldBoss.WorldChampionType);
+        Assert.That(test.TakeSent(), Is.EqualTo(new[] { WorldMapPacket.Load([[icon]], []).ToArray() }));
+    }
+
+    // Both World calls of the map's request (the boss list and the season's state) have a deadline, so a World that
+    // hangs cannot hold the handler.
+    [Test]
+    public void MapLoad_WorldCallsHaveADeadline() {
+        Start(2000062, Season(3, DateTime.Now.AddHours(-1)));
+        test.World.WorldChampion = new WorldChampionInfo { Season = 3, Step = 1 };
+        DateTime before = DateTime.UtcNow;
+
+        new WorldMapHandler().Handle(test.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(0);
+            writer.WriteByte(0);
+            writer.WriteInt(102);
+        }));
+        Assert.That(test.World.TimeEventDeadlines, Has.Count.EqualTo(2));
+        Assert.That(test.World.TimeEventDeadlines, Has.All.Not.Null);
+        Assert.That(test.World.TimeEventDeadlines, Has.All.InRange(before, DateTime.UtcNow + WorldMapHandler.BossesDeadline));
     }
 
     // The World server down: the first step's npc.

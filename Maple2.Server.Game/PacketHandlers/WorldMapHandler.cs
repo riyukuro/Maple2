@@ -19,6 +19,8 @@ public class WorldMapHandler : FieldPacketHandler {
     // answer is kept for a few seconds and the call has a deadline; a failed call is kept as no answer for as long.
     internal static readonly TimeSpan PopulationLifetime = TimeSpan.FromSeconds(5);
     internal static readonly TimeSpan PopulationDeadline = TimeSpan.FromSeconds(2);
+    // The map's world boss list waits as long for the World: a World that hangs leaves the map without bosses.
+    internal static readonly TimeSpan BossesDeadline = TimeSpan.FromSeconds(2);
     internal Func<DateTime> Now = () => DateTime.UtcNow;
     private readonly object populationLock = new();
     private MapPopulationResponse? population;
@@ -48,12 +50,13 @@ public class WorldMapHandler : FieldPacketHandler {
         // 102 = Victoria, 103 = Karkar, 105 = Kritias
         int mapCode = packet.ReadInt();
 
-        // The World down: no boss is listed (the map still gets its answer, with the champion icon if any).
+        // The World down or past the deadline: no boss is listed (the map still gets its answer, with the champion
+        // icon if any).
         IEnumerable<TimeEventResponse.Types.ActiveWorldBoss> activeBosses = [];
         try {
             activeBosses = session.World.TimeEvent(new TimeEventRequest {
                 GetActiveWorldBosses = new TimeEventRequest.Types.GetActiveWorldBosses(),
-            }).ActiveWorldBosses;
+            }, deadline: DateTime.UtcNow + BossesDeadline).ActiveWorldBosses;
         } catch (RpcException ex) {
             Log.Logger.Warning(ex, "World map: the World did not answer the active world bosses");
         }

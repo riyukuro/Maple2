@@ -894,8 +894,11 @@ public sealed class TestGameSession {
 
         // A World server that does not answer TimeEvent (the call throws it) when set.
         public RpcException? TimeEventFailure;
+        // The deadline of each TimeEvent call.
+        public readonly List<DateTime?> TimeEventDeadlines = [];
 
         public override TimeEventResponse TimeEvent(TimeEventRequest request, CallOptions options) {
+            TimeEventDeadlines.Add(options.Deadline);
             if (TimeEventFailure != null) {
                 throw TimeEventFailure;
             }

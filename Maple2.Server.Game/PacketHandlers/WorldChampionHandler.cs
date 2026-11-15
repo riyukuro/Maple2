@@ -21,6 +21,9 @@ public class WorldChampionHandler : FieldPacketHandler {
     public const byte MoveMode = 9;
 
     private static readonly ILogger Logger = Log.Logger.ForContext<WorldChampionHandler>();
+    // How long the season's state waits for the World (the season window and the world map's icon); past it the
+    // state is read as no answer.
+    internal static readonly TimeSpan StateDeadline = TimeSpan.FromSeconds(2);
 
     public override void Handle(GameSession session, IByteReader packet) {
         byte mode = packet.ReadByte();
@@ -142,7 +145,7 @@ public class WorldChampionHandler : FieldPacketHandler {
         try {
             Maple2.Server.World.Service.TimeEventResponse response = session.World.TimeEvent(new WorldTimeEventRequest {
                 WorldChampion = new WorldTimeEventRequest.Types.WorldChampion(),
-            });
+            }, deadline: DateTime.UtcNow + StateDeadline);
             if (response.Error != 0 || response.WorldChampionInfo == null) {
                 return null;
             }
