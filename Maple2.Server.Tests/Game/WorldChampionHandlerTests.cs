@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Grpc.Core;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.PacketHandlers;
@@ -153,6 +154,20 @@ public class WorldChampionHandlerTests {
                 new[] { icon },
             ], []).ToArray(),
         }));
+    }
+
+    // The World down (the call throws): the map's request is still answered, with no boss.
+    [Test]
+    public void MapLoad_WorldDown_AnswersNoBoss() {
+        Start(2000062);
+        test.World.TimeEventFailure = new RpcException(new Status(StatusCode.Unavailable, "no world"));
+
+        Assert.DoesNotThrow(() => new WorldMapHandler().Handle(test.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(0);
+            writer.WriteByte(0);
+            writer.WriteInt(102);
+        })));
+        Assert.That(test.TakeSent(), Is.EqualTo(new[] { WorldMapPacket.Load([], []).ToArray() }));
     }
 
     // The World server down: the first step's npc.

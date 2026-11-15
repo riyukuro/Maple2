@@ -8,6 +8,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
+using Serilog;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -47,12 +48,18 @@ public class WorldMapHandler : FieldPacketHandler {
         // 102 = Victoria, 103 = Karkar, 105 = Kritias
         int mapCode = packet.ReadInt();
 
-        TimeEventResponse bossResponse = session.World.TimeEvent(new TimeEventRequest {
-            GetActiveWorldBosses = new TimeEventRequest.Types.GetActiveWorldBosses(),
-        });
+        // The World down: no boss is listed (the map still gets its answer, with the champion icon if any).
+        IEnumerable<TimeEventResponse.Types.ActiveWorldBoss> activeBosses = [];
+        try {
+            activeBosses = session.World.TimeEvent(new TimeEventRequest {
+                GetActiveWorldBosses = new TimeEventRequest.Types.GetActiveWorldBosses(),
+            }).ActiveWorldBosses;
+        } catch (RpcException ex) {
+            Log.Logger.Warning(ex, "World map: the World did not answer the active world bosses");
+        }
 
         var bossGroups = new List<ICollection<MapWorldBoss>>();
-        foreach (TimeEventResponse.Types.ActiveWorldBoss active in bossResponse.ActiveWorldBosses) {
+        foreach (TimeEventResponse.Types.ActiveWorldBoss active in activeBosses) {
             if (!session.ServerTableMetadata.TimeEventTable.WorldBoss.TryGetValue(active.MetadataId, out WorldBossMetadata? metadata)) {
                 continue;
             }
