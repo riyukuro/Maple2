@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
@@ -160,5 +161,141 @@ public class HomeActionUgcOxTests {
         Quiz(sub, writer => writer.WriteUnicodeString("q"));
 
         Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // The test field stands in for the stadium: the event is set on it by hand, as the factory does.
+    private UgcOxEvent Host(long hostCharacterId = -1) {
+        var ox = new UgcOxEvent(session.AccountId, hostCharacterId == -1 ? session.CharacterId : hostCharacterId, "host", 2000001,
+            new UgcOxRules.Settings(1000, 10, 50));
+        session.Field!.SetUgcOx(ox);
+        return ox;
+    }
+
+    [Test]
+    public void Start_WithTooFewEntrants_CancelsTheEvent() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host();
+        Quiz(7);
+        Assert.Multiple(() => {
+            Assert.That(ox.Canceled, Is.True);
+            Assert.That(ox.Phase, Is.EqualTo(UgcOxPhase.Welcome));
+        });
+    }
+
+    [Test]
+    public void Start_WithEntrants_RunsTheGame() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host();
+        ox.Enter(11, _ => true);
+        ox.Enter(12, _ => true);
+        Quiz(7);
+        Assert.That(ox.Phase, Is.EqualTo(UgcOxPhase.Running));
+    }
+
+    [Test]
+    public void Finish_AtTheWelcome_Cancels() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host();
+        Quiz(8);
+        Assert.Multiple(() => {
+            Assert.That(ox.Canceled, Is.True);
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
+    [Test]
+    public void Finish_BeforeTheSecondRound_IsRefusedWithTheClientKey() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host();
+        ox.Enter(11, _ => true);
+        ox.Enter(12, _ => true);
+        ox.Start();
+        ox.NextRound();
+        Quiz(8);
+        Assert.Multiple(() => {
+            Assert.That(ox.Finished, Is.False);
+            Assert.That(Sent(), Is.EqualTo(new[] { Hex(NoticePacket.Message("s_ugcox_finish_fail_by_round")) }));
+        });
+    }
+
+    [Test]
+    public void Finish_FromTheSecondRound_EndsAfterTheRound() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host();
+        ox.Enter(11, _ => true);
+        ox.Enter(12, _ => true);
+        ox.Start();
+        ox.NextRound();
+        ox.NextRound();
+        Quiz(8);
+        Assert.That(ox.Finished, Is.True);
+    }
+
+    [Test]
+    public void Question_WhileAsked_IsKeptTrimmed() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host();
+        ox.Enter(11, _ => true);
+        ox.Enter(12, _ => true);
+        ox.Start();
+        ox.SetHostStep(UgcOxHostStep.InputQuiz);
+        Quiz(10, writer => writer.WriteUnicodeString("  Is it?  "));
+        Assert.That(ox.Question, Is.EqualTo("Is it?"));
+    }
+
+    [Test]
+    public void Question_WhenNotAsked_Ignored() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host();
+        Quiz(10, writer => writer.WriteUnicodeString("Is it?"));
+        Assert.That(ox.Question, Is.Null);
+    }
+
+    [TestCase((byte) 1, true)]
+    [TestCase((byte) 0, false)]
+    public void Answer_WhileAsked_IsKept(byte value, bool expected) {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host();
+        ox.Enter(11, _ => true);
+        ox.Enter(12, _ => true);
+        ox.Start();
+        ox.SetHostStep(UgcOxHostStep.SelectAnswer);
+        Quiz(11, writer => writer.WriteByte(value));
+        Assert.That(ox.Answer, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void RemoveWall_WhileAnswerAsked_SetsTheFlag() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host();
+        ox.Enter(11, _ => true);
+        ox.Enter(12, _ => true);
+        ox.Start();
+        ox.SetHostStep(UgcOxHostStep.SelectAnswer);
+        Quiz(17);
+        Assert.That(ox.WallRemoved, Is.True);
+    }
+
+    [TestCase((byte) 9)] // leave: a pause only
+    [TestCase((byte) 16)] // judge: the script judges
+    [TestCase((byte) 99)] // unknown
+    public void HostCommandsWithNoEffect_ChangeNothing(byte sub) {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host();
+        Quiz(sub);
+        Assert.Multiple(() => {
+            Assert.That(ox.Canceled, Is.False);
+            Assert.That(ox.Phase, Is.EqualTo(UgcOxPhase.Welcome));
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
+    [Test]
+    public void StadiumCommands_FromAnotherCharacter_Ignored() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Host(session.CharacterId + 1);
+        Quiz(8);
+        Quiz(7);
+        Assert.That(ox.Canceled, Is.False);
     }
 }
