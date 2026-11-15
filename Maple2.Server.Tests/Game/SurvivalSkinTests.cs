@@ -129,6 +129,41 @@ public class SurvivalSkinTests {
         Assert.That(Contains(list, BitConverter.GetBytes(TailId).Concat(BitConverter.GetBytes(end)).ToArray()), Is.True);
     }
 
+    // A tester's state: one lasting medal of each type learned by the GM item (rows Slot -1, the far end), loaded at
+    // login. The list has the three slots in the client's order (tail, riding, gliding), none worn, each with its own
+    // medal and the stored end (9999-12-31, never before the client's server time).
+    [Test]
+    public void Load_LastingMedalOfEachType_OneInEachSlot() {
+        const int glidingId = 20920001;
+        GameSession session = Start();
+        test.SetTable(new SurvivalSkinInfoTable(new Dictionary<int, MedalType> {
+            [TailId] = MedalType.Tail,
+            [RidingId] = MedalType.Riding,
+            [glidingId] = MedalType.Gliding,
+        }));
+        DateTime far = (DateTime.MaxValue.ToEpochSeconds() - 1).FromEpochSeconds();
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            foreach (int id in new[] { glidingId, TailId, RidingId }) {
+                context.Medal.Add(new Maple2.Database.Model.Medal { Id = id, OwnerId = test.CharacterId, Slot = -1, ExpiryTime = far });
+            }
+            context.SaveChanges();
+        }
+        session.Survival = new SurvivalManager(session);
+        test.TakeSent();
+        session.Survival.Load();
+
+        byte[] list = test.TakeSent().Single(packet => packet[2] == 0x1e);
+        var expected = new List<byte> { 0x19, 0x01, 0x1e, 3 };
+        foreach (int id in new[] { TailId, RidingId, glidingId }) {
+            expected.AddRange(BitConverter.GetBytes(0));
+            expected.AddRange(BitConverter.GetBytes(1));
+            expected.AddRange(BitConverter.GetBytes(id));
+            expected.AddRange(BitConverter.GetBytes(far.ToEpochSeconds()));
+        }
+        Assert.That(list, Is.EqualTo(expected.ToArray()));
+        Assert.That(far.ToEpochSeconds(), Is.GreaterThan(new DateTime(9999, 1, 1).ToEpochSeconds()));
+    }
+
     // An ended medal is refused, as the restored client refuses it (s_item_err_puton_expired); a live one is worn.
     [Test]
     public void Equip_EndedMedal_IsRefused() {
