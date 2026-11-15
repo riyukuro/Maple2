@@ -81,28 +81,79 @@ public class PvpHandlerTests {
         Assert.That(test.World.PvpRequests, Is.Empty);
     }
 
-    // A dead player is refused before the World is asked: the failed box, state 0.
-    [TestCase("0E")]
-    [TestCase("10")]
-    public void RankDuel_Dead_IsRefused(string request) {
-        TestGameSession test = NewTest();
-        GameSession session = Start(test);
+    private static void SetDead(GameSession session) {
         typeof(Maple2.Server.Game.Model.FieldPlayer)
             .GetField("isDead", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .SetValue(session.Player, true);
-        Assert.That(Send(test, session, request), Is.EqualTo(new[] { "B600" + "10" + "00" }));
+    }
+
+    // The join of a dead player is refused before the World is asked (the client refuses it itself,
+    // CPvpRankDuelComponent::RequestCancelMatch, string 0x279): the failed box, state 0.
+    [Test]
+    public void RankDuelJoin_Dead_IsRefused() {
+        TestGameSession test = NewTest();
+        GameSession session = Start(test);
+        SetDead(session);
+        Assert.That(Send(test, session, "10"), Is.EqualTo(new[] { "B600" + "10" + "00" }));
         Assert.That(test.World.PvpRequests, Is.Empty);
         Assert.That(test.World.Moves, Is.Empty);
     }
 
-    // From a dungeon the register and the join are refused before the World is asked.
-    [TestCase("0E")]
-    [TestCase("10")]
-    public void RankDuel_FromADungeon_IsRefused(string request) {
+    // From a dungeon the join is refused before the World is asked (the field it would leave).
+    [Test]
+    public void RankDuelJoin_FromADungeon_IsRefused() {
         TestGameSession test = NewTest();
         GameSession session = Start(test);
         test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000062));
-        Assert.That(Send(test, session, request), Is.EqualTo(new[] { "B600" + "10" + "00" }));
+        Assert.That(Send(test, session, "10"), Is.EqualTo(new[] { "B600" + "10" + "00" }));
+        Assert.That(test.World.PvpRequests, Is.Empty);
+        Assert.That(test.World.Moves, Is.Empty);
+    }
+
+    // The register is not stricter than the client's (UIRankPvPDialog::FUN_140f95750, UIIndividualPvPDialog::
+    // FUN_1412cb4e0: state 0, no 0x5f5e107 buff, the level): a dead player or one in a dungeon is queued (state 1),
+    // and only the join checks the field it leaves.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void RankDuelRegister_DeadOrInADungeon_IsQueued(bool dead) {
+        TestGameSession test = NewTest();
+        GameSession session = Start(test);
+        if (dead) {
+            SetDead(session);
+        } else {
+            test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000062));
+        }
+        Assert.That(Send(test, session, "0E"), Is.EqualTo(new[] { "B600" + "0E" }));
+        Assert.That(test.World.PvpRequests.Single().PvpCase, Is.EqualTo(PvpRequest.PvpOneofCase.Register));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ArenaRegister_DeadOrInADungeon_IsQueued(bool dead) {
+        TestGameSession test = NewTest();
+        GameSession session = Start(test);
+        if (dead) {
+            SetDead(session);
+        } else {
+            test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000062));
+        }
+        Assert.That(Send(test, session, "09" + "01000000")[0], Is.EqualTo("B600" + "09" + "01000000"));
+        Assert.That(test.World.PvpRequests.Single().PvpCase, Is.EqualTo(PvpRequest.PvpOneofCase.ArenaRegister));
+    }
+
+    // The arena's join keeps the field check (CPVPManager::SendCancelRequest refuses only a dead player): from a
+    // dungeon, or dead, Pvp 10 (state 0) and the World is not asked.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ArenaJoin_DeadOrInADungeon_IsRefused(bool dead) {
+        TestGameSession test = NewTest();
+        GameSession session = Start(test);
+        if (dead) {
+            SetDead(session);
+        } else {
+            test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000062));
+        }
+        Assert.That(Send(test, session, "0B"), Is.EqualTo(new[] { "B600" + "0A" }));
         Assert.That(test.World.PvpRequests, Is.Empty);
         Assert.That(test.World.Moves, Is.Empty);
     }

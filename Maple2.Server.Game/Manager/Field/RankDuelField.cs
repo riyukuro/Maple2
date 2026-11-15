@@ -63,8 +63,8 @@ public sealed class RankDuelField {
     public bool Runs => IsRunning(Phase);
     public static bool IsRunning(RankDuelPhase phase) => phase != RankDuelPhase.Closed;
 
-    // Whether a character may leave its field for the rank duel (register or join). Chosen here (the client only
-    // checks death itself): not while dead, not from a dungeon or a room it would lose by leaving
+    // Whether a character may leave its field for a match (the rank duel's and the arena's join; not their register,
+    // which the client sends from anywhere). Chosen here (the client only checks death itself): not while dead, not from a dungeon or a room it would lose by leaving
     // (RefusesInstance), not from a rank duel field.
     // The instance types left only by their own way out: solo rooms, dungeon lobbies, the event and game rooms, and
     // the PvP and survival rooms. Open fields (none, channelScale), homes, guild houses and wedding halls are not.

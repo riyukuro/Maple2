@@ -91,7 +91,9 @@ public class PvpHandler : FieldPacketHandler {
         }
         // The rank duel arenas are the maps of the PvPRankingDuelMode feature (KR level 13): with the feature off in the
         // operator's feature.xml there is no arena to fight in, so the register is refused before the World is asked.
-        if (!CanLeave(session) || !session.ServerTableMetadata.FeatureTable.IsOn(RankDuelFeature)
+        // Where the player is, and whether it is dead, is not checked: UIRankPvPDialog::FUN_140f95750 sends the
+        // register from anywhere (state 0, no 0x5f5e107 buff, the level), and the join checks the field it leaves.
+        if (!session.ServerTableMetadata.FeatureTable.IsOn(RankDuelFeature)
             || session.Player.Value.Character.Level < MinLevel) {
             session.Send(PvpPacket.RankDuelMatchFailed());
             return;
@@ -152,7 +154,9 @@ public class PvpHandler : FieldPacketHandler {
     // whose field runs a round the server builds is queued (PvpMatchMaps.PlayableArenaFields); the others get Pvp 10,
     // the client's state 0, as before. The register is answered first (state 1), then the World queues the character.
     private static void HandleArenaRegister(GameSession session, int arenaType) {
-        if (session.Field?.RankDuel != null || session.Field?.Arena != null || !CanLeave(session)
+        // As the rank duel's register: the field and death are the join's checks (UIIndividualPvPDialog::FUN_1412cb4e0
+        // sends the register from anywhere; CPVPManager::SendCancelRequest refuses the join of a dead player).
+        if (session.Field?.RankDuel != null || session.Field?.Arena != null
             || session.Player.Value.Character.Level < MinLevel
             || !session.TableMetadata.IndividualArenaTable.Entries.TryGetValue(arenaType, out IndividualArenaTable.Entry? arena)
             || !PvpMatchMaps.PlayableArenaFields.Contains(arena.FieldId)) {
