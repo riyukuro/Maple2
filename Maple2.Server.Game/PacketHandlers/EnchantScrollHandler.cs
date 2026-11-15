@@ -156,12 +156,13 @@ public class EnchantScrollHandler : FieldPacketHandler {
         if (!metadata.Rarities.Contains(item.Rarity)) {
             return s_enchantscroll_invalid_rank;
         }
-        if ((item.Enchant?.Enchants ?? 0) >= metadata.Enchants.Max()) {
-            return s_enchantscroll_invalid_grade;
-        }
-        // No idea what it even means for an item to be unstable, but you can't enchant something to 0.
+        // A scroll that only sets grade 0 gets its own answer (string 2937, uienchantscrolldialog.cpp:299 maps result 8).
+        // It is tested before the grade check, which every item meets for a grade-0 scroll.
         if (metadata.Enchants is [0]) {
             return s_enchantscroll_not_breaking_item;
+        }
+        if ((item.Enchant?.Enchants ?? 0) >= metadata.Enchants.Max()) {
+            return s_enchantscroll_invalid_grade;
         }
 
         return s_enchantscroll_ok;

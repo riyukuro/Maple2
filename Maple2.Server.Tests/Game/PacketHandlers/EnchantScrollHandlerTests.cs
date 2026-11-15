@@ -146,15 +146,15 @@ public class EnchantScrollHandlerTests {
         Assert.That(Sent(), Is.EqualTo(new[] { Error(EnchantScrollError.s_enchantscroll_invalid_grade) }));
     }
 
-    // IsCompatibleScroll tests the grade first, and no item is below grade 0, so a grade-0 scroll never reaches its
-    // s_enchantscroll_not_breaking_item line: the dialog shows the grade error (see work notes, bugs.md).
+    // A grade-0 scroll answers s_enchantscroll_not_breaking_item (the dialog's result 8, string 2937), not the grade
+    // error every item would otherwise hit first.
     [Test]
-    public void AScrollToGradeZero_AnswersInvalidGrade() {
+    public void AScrollToGradeZero_AnswersNotBreakingItem() {
         Start(Row(EnchantScrollType.Restore, enchants: [0]));
 
         Send(1, scroll.Uid, gear.Uid);
 
-        Assert.That(Sent(), Is.EqualTo(new[] { Error(EnchantScrollError.s_enchantscroll_invalid_grade) }));
+        Assert.That(Sent(), Is.EqualTo(new[] { Error(EnchantScrollError.s_enchantscroll_not_breaking_item) }));
     }
 
     [TestCase(EnchantScrollType.Enchant)]
