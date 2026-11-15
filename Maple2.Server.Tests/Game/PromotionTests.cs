@@ -176,6 +176,25 @@ public class PromotionTests {
         Assert.That(Stored(), Is.EqualTo(new[] { (0L, 8804, 1) }));
     }
 
+    // A full counter is read first: an action past the limit makes no store at all.
+    [Test]
+    public void LimitReached_MakesNoStore() {
+        GameSession session = Login(Row(8806, ConditionType.fish, new ConditionMetadata.Parameters(Integers: [FishId]), limit: 1));
+        session.ConditionUpdate(ConditionType.fish, codeLong: FishId, targetLong: 2000001);
+        int saves = 0;
+        test.FailSave = _ => {
+            saves++;
+            return false;
+        };
+
+        session.ConditionUpdate(ConditionType.fish, codeLong: FishId, targetLong: 2000001);
+        test.FailSave = null;
+
+        Assert.That(saves, Is.EqualTo(0));
+        Assert.That(Held(session), Is.EqualTo(1));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     [Test]
     public void OtherCode_LowLevel_FailedRoll_OutsideDates_GiveNothing() {
         GameSession session = Login(Row(8806, ConditionType.fish, new ConditionMetadata.Parameters(Integers: [FishId]), prop: 150),
@@ -232,20 +251,20 @@ public class PromotionTests {
         Assert.That(test.TakeSent().Count(packet => BitConverter.ToUInt16(packet, 0) == (ushort) SendOp.TaskEvent && packet[2] == 1), Is.EqualTo(1));
     }
 
-    // Two sessions of one account restart the same expired counter: the count is 1 before and after, so only the
-    // end tells the second writer that the row moved; its save fails and it reads again (TakePromotionCount).
+    // Two writers restart the same expired counter: the count is 1 before and after, so only the end tells the second
+    // writer that the row moved; its save fails, and a take after it reads the restarted counter.
     [Test]
     public void ExpiredCounter_RestartedByAnotherSession_LosesTheRace() {
         test = new TestGameSession();
         test.Start();
         using (GameStorage.Request db = test.Storage.Context()) {
-            Assert.That(db.TakePromotionCount(1, 0, 4, 1, 1_010, 1_000), Is.True);
+            Assert.That(db.TakePromotionCountInStore(1, 0, 4, 1, 1_010, 1_000), Is.EqualTo(true));
         }
 
         using var stale = new Ms2Context(test.Options);
         var row = stale.PromotionCount.AsTracking().Single(count => count.ShareId == 4);
         using (GameStorage.Request other = test.Storage.Context()) {
-            Assert.That(other.TakePromotionCount(1, 0, 4, 1, 1_100, 1_050), Is.True);
+            Assert.That(other.TakePromotionCountInStore(1, 0, 4, 1, 1_100, 1_050), Is.EqualTo(true));
         }
         row.Count = 1;
         row.ExpirationTime = 1_100;
@@ -253,7 +272,7 @@ public class PromotionTests {
         Assert.Throws<DbUpdateConcurrencyException>(() => stale.SaveChanges());
         using (GameStorage.Request again = test.Storage.Context()) {
             // Read again, the restarted counter is full.
-            Assert.That(again.TakePromotionCount(1, 0, 4, 1, 1_100, 1_050), Is.False);
+            Assert.That(again.TakePromotionCountInStore(1, 0, 4, 1, 1_100, 1_050), Is.EqualTo(false));
         }
     }
 
@@ -265,14 +284,16 @@ public class PromotionTests {
         using GameStorage.Request db = test.Storage.Context();
 
         Assert.Multiple(() => {
-            Assert.That(db.TakePromotionCount(1, 7, 4, 2, now + 10, now), Is.True);
-            Assert.That(db.TakePromotionCount(1, 7, 4, 2, now + 10, now), Is.True);
-            Assert.That(db.TakePromotionCount(1, 7, 4, 2, now + 10, now), Is.False);
-            Assert.That(db.TakePromotionCount(1, 8, 4, 2, now + 10, now), Is.True);
+            Assert.That(db.TakePromotionCountInStore(1, 7, 4, 2, now + 10, now), Is.EqualTo(true));
+            Assert.That(db.TakePromotionCountInStore(1, 7, 4, 2, now + 10, now), Is.EqualTo(true));
+            Assert.That(db.TakePromotionCountInStore(1, 7, 4, 2, now + 10, now), Is.EqualTo(false));
+            Assert.That(db.PromotionCountFull(1, 7, 4, 2, now), Is.True);
+            Assert.That(db.PromotionCountFull(1, 7, 4, 2, now + 11), Is.False);
+            Assert.That(db.TakePromotionCountInStore(1, 8, 4, 2, now + 10, now), Is.EqualTo(true));
             // Past the end: counted from 0 again, with the new end.
-            Assert.That(db.TakePromotionCount(1, 7, 4, 2, now + 100, now + 11), Is.True);
-            Assert.That(db.TakePromotionCount(1, 7, 4, 2, now + 100, now + 11), Is.True);
-            Assert.That(db.TakePromotionCount(1, 7, 4, 2, now + 100, now + 11), Is.False);
+            Assert.That(db.TakePromotionCountInStore(1, 7, 4, 2, now + 100, now + 11), Is.EqualTo(true));
+            Assert.That(db.TakePromotionCountInStore(1, 7, 4, 2, now + 100, now + 11), Is.EqualTo(true));
+            Assert.That(db.TakePromotionCountInStore(1, 7, 4, 2, now + 100, now + 11), Is.EqualTo(false));
         });
     }
 }

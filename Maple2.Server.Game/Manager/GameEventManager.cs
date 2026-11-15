@@ -631,8 +631,8 @@ public sealed class GameEventManager {
     // The promotionContents rows (PromotionTable): each running row of this condition whose code and target the
     // condition meets (ConditionUtil.Check, as a quest or trophy condition) gives its individual drop box with its
     // chance, to a player of its level, while its counter (the account's or the character's) is below its limit for
-    // the period. The counter is taken and stored first, in its own write, so a failed write gives nothing; then the
-    // box's items go to the bag (else by mail), and the reward notifier lists them (TaskEvent with the row's type).
+    // the period. The counter is taken and the box's items stored (to the bag, else by mail) in one transaction
+    // (ClaimPromotion), and the reward notifier lists them (TaskEvent with the row's type).
     // Chosen here: one box per counted action, whatever its count (a gathering of several counts once), and the row's
     // limit is taken also when the box's roll gives no item.
     public void PromotionCondition(ConditionType type, string targetString, long targetLong, string codeString, long codeLong) {
@@ -672,8 +672,19 @@ public sealed class GameEventManager {
     // write that failed (or a stop between the two) spent the count with nothing given. A reached limit gives
     // nothing; a failed store gives and counts nothing (logged), and the counted action goes on.
     private void ClaimPromotion(PromotionTable.Entry entry, ICollection<Item> items, DateTime now) {
-        bool full = false;
         long characterId = entry.IsAccount ? 0 : session.CharacterId;
+        // A counter that is full is read first: a reached limit costs no store (account lock, transaction, item rows
+        // written and rolled back) for each counted action.
+        try {
+            using GameStorage.Request read = session.GameStorage.Context();
+            if (read.PromotionCountFull(session.AccountId, characterId, entry.ShareId, entry.LimitCount, now.ToEpochSeconds())) {
+                return;
+            }
+        } catch (Exception ex) {
+            logger.Error(ex, "Promotion {Id} limit of {CharacterId} not read", entry.Id, session.CharacterId);
+            return;
+        }
+        bool full = false;
         List<Item>? given = EventClaim.Give(session, items.ToList(), [], alsoSave: db => {
             bool? taken = db.TakePromotionCountInStore(session.AccountId, characterId, entry.ShareId, entry.LimitCount,
                 PromotionRules.Expiration(entry, now), now.ToEpochSeconds());
