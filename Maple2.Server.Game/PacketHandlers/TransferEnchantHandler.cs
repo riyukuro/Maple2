@@ -80,7 +80,10 @@ public class TransferEnchantHandler : FieldPacketHandler {
                 }
             }
 
-            if (!session.Item.Inventory.Consume(item.Uid)) {
+            // The input and the meso are stored as taken in one save before the outputs are given (their rows are
+            // made right after): taken in memory only, a crash before the next session save kept the outputs and gave
+            // the input and the meso back, so the transform could be made again.
+            if (!session.Item.Inventory.ConsumeNow([(item.Uid, item.Amount)])) {
                 session.Currency.ReturnMeso(entry.NeedMeso, notify: false);
                 return;
             }

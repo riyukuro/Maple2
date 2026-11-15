@@ -126,4 +126,55 @@ public class TransferEnchantTests {
             Assert.That(test.TakeSentOps(), Does.Contain(SendOp.TransferEnchant));
         });
     }
+
+    private GameSession StartTransform(out Item gear) {
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(GearId, EquipSlot.CP, slotMax: 1), TestGameSession.Metadata(OutputId));
+        GameSession session = test.Start();
+        gear = session.Field!.ItemDrop.CreateItem(GearId)!;
+        Assert.That(session.Item.Inventory.Add(gear, commit: true), Is.True);
+        gear = session.Item.Inventory.Find(GearId).Single();
+        test.SetTable(new ItemEnchantTransformTable([
+            new ItemEnchantTransformTable.Entry(gear.Rarity, 0, 0, [(int) gear.Type.Type], [GearId], 100,
+                [new ItemEnchantTransformTable.Output(OutputId, 1, 3)]),
+        ]));
+        session.Currency.Meso = 1000;
+        test.TakeSent();
+        return session;
+    }
+
+    // The gear and the meso are stored taken in one save at the transform, before the output's row is made. Before,
+    // both were taken in memory only until the session save while the output's row was stored at once: a crash in
+    // between kept the output and gave the gear and the meso back.
+    [Test]
+    public void Transform_StoresThePriceBeforeTheOutput() {
+        GameSession session = StartTransform(out Item gear);
+
+        new TransferEnchantHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => writer.WriteLong(gear.Uid)));
+
+        using var context = new Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(OutputId).Sum(item => item.Amount), Is.EqualTo(3));
+            Assert.That(test.Row(gear.Uid)?.OwnerId, Is.EqualTo(0), "the gear is stored taken at the transform");
+            Assert.That(context.Character.AsNoTracking().Single(character => character.Id == test.CharacterId).Currency.Meso,
+                Is.EqualTo(900), "the meso is stored taken at the transform");
+        });
+    }
+
+    // A refused save takes nothing and gives nothing; the meso comes back.
+    [Test]
+    public void Transform_RefusedSave_GivesNothing() {
+        GameSession session = StartTransform(out Item gear);
+        test.FailSave = _ => true;
+
+        new TransferEnchantHandler { TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => writer.WriteLong(gear.Uid)));
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(session.Item.Inventory.Find(GearId).Count(), Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Find(OutputId), Is.Empty);
+            Assert.That(test.TakeSentOps(), Does.Not.Contain(SendOp.TransferEnchant));
+        });
+    }
 }

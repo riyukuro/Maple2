@@ -96,4 +96,25 @@ public class FestivalEventTests {
         Assert.That(ItemUseHandler.FestivalUsable(fieldIds, 2000023, eventRunning: true, useType, festivalTypes), Is.EqualTo(expected));
         Assert.That(ItemUseHandler.FestivalUsable(fieldIds, 2000023, eventRunning: false, useType, festivalTypes), Is.False);
     }
+
+    // The item is stored taken at the use, before the box's items are given (their rows are stored at once). Before,
+    // the take was left to the session save: a crash in between kept both, and the item could be used again.
+    [Test]
+    public void Use_StoresTheTakeBeforeTheBoxGives() {
+        GameSession session = Start(festivalType: 1);
+        Use(session);
+        Assert.That(test.Row(festivalItem.Uid)?.Amount, Is.EqualTo(1), "the item row is stored lowered at the use");
+        Assert.That(Prizes(session), Is.EqualTo(3));
+    }
+
+    // A refused save takes nothing and gives nothing.
+    [Test]
+    public void Use_RefusedSave_GivesNothing() {
+        GameSession session = Start(festivalType: 1);
+        test.FailSave = _ => true;
+        Use(session);
+        test.FailSave = null;
+        Assert.That(session.Item.Inventory.Get(festivalItem.Uid)!.Amount, Is.EqualTo(2));
+        Assert.That(Prizes(session), Is.Zero);
+    }
 }

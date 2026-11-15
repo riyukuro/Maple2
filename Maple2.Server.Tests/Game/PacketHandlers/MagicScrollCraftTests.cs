@@ -9,6 +9,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -194,5 +195,43 @@ public class MagicScrollCraftTests {
             new ItemComponent(33000161, 4, 2000, ItemTag.ProtectStone),
         }));
         Assert.That(row.RewardItems, Is.Empty);
+    }
+
+    private long StoredMeso() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Character.AsNoTracking().Single(character => character.Id == test.CharacterId).Currency.Meso;
+    }
+
+    // The meso and the stones are stored taken in one save at the craft, before the scroll's row is made. Before,
+    // both were taken in memory only until the session save while the scroll's row was stored at once: a crash in
+    // between kept the scroll and gave the price back.
+    [Test]
+    public void Craft_StoresThePriceBeforeTheScroll() {
+        GameSession session = Start(3000, 0, Meso + 7);
+        long stoneUid = session.Item.Inventory.Find(StoneId).Single().Uid;
+
+        Craft(session);
+
+        Assert.Multiple(() => {
+            Assert.That(Count(session, ScrollId), Is.EqualTo(1));
+            Assert.That(test.Row(stoneUid)?.Amount, Is.EqualTo(1000), "the stones are stored taken at the craft");
+            Assert.That(StoredMeso(), Is.EqualTo(7), "the meso is stored taken at the craft");
+        });
+    }
+
+    // A refused save takes nothing and gives nothing; the meso comes back.
+    [Test]
+    public void Craft_RefusedSave_GivesNothing() {
+        GameSession session = Start(3000, 0, Meso + 7);
+        test.FailSave = _ => true;
+
+        Craft(session);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Count(session, ScrollId), Is.Zero);
+            Assert.That(Count(session, StoneId), Is.EqualTo(3000));
+            Assert.That(session.Currency.Meso, Is.EqualTo(Meso + 7));
+        });
     }
 }

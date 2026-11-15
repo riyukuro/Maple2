@@ -987,7 +987,7 @@ public class ItemUseHandler : FieldPacketHandler {
     // its fieldID lists (0: any), while the game event its gameEvent names runs, and, when its itemUseType is not 0,
     // while a festival of that use type runs. The use opens its dropItem, an individual drop box; the reward is
     // the server's, chosen here: the box's items, the item taken once.
-    private static void HandleFestivalEvent(GameSession session, Item item) {
+    private void HandleFestivalEvent(GameSession session, Item item) {
         if (session.Field == null) {
             return;
         }
@@ -1005,12 +1005,16 @@ public class ItemUseHandler : FieldPacketHandler {
         if (!FestivalUsable(fieldIds, session.Field.MapId, eventRunning, useType, festivalTypes)) {
             return;
         }
-        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+        // The item is stored as taken before the box's items are given (their rows are made by the bag's add right
+        // after): taken in memory only, a crash before the next session save kept the item and the items it gave,
+        // so it could be used again.
+        if (!session.Item.Inventory.ConsumeNow([(item.Uid, 1)])) {
             return;
         }
         foreach (Item reward in session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId)) {
-            if (!session.Item.Inventory.Add(reward, true)) {
-                session.Item.MailItem(reward);
+            if (!session.Item.AddOrMail(reward, true)) {
+                Logger.Error("Festival item {ItemId} reward {RewardId} x{Amount} was neither added nor mailed to {CharacterId}",
+                    item.Id, reward.Id, reward.Amount, session.CharacterId);
             }
         }
     }

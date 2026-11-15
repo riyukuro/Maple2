@@ -130,23 +130,30 @@ public class ItemExchangeScroll : FieldPacketHandler {
             ItemExchangeScrollRules.DeductTrades(rewardItem.Transfer, scrollMetadata.TradeCountDeduction);
 
             // The target is no material: a requirement of the target's id is paid with other items.
-            if (!session.Item.Inventory.ConsumeItemComponents(scrollMetadata.RequiredItems, quantity, target?.Uid ?? 0)) {
+            IReadOnlyList<(long Uid, int Amount)>? materials = session.Item.Inventory.PlanItemComponents(scrollMetadata.RequiredItems, quantity, target?.Uid ?? 0);
+            if (materials == null) {
                 session.Currency.ReturnMeso(fee, notify: false);
                 session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_invalid));
                 return;
             }
 
+            // The fee, the materials, the scrolls and the target are stored in one save before the reward is given
+            // (the reward's row is made by the bag's add right after). Before, they were taken in memory only, left
+            // to the next session save, while the reward was a new row at once: a crash in between kept the reward
+            // and gave the price back, so the exchange could be made again.
+            var plan = new List<(long Uid, int Amount)>(materials);
             for (int i = 0; i < scrolls.Count; i++) {
-                if (take[i] > 0 && !session.Item.Inventory.Consume(scrolls[i].Uid, take[i])) {
-                    session.Currency.ReturnMeso(fee, notify: false);
-                    Logger.Fatal("Failed to consume item {ItemUid}", scrolls[i].Uid);
-                    throw new InvalidOperationException($"Fatal: Consuming item: {scrolls[i].Uid}");
+                if (take[i] > 0) {
+                    plan.Add((scrolls[i].Uid, take[i]));
                 }
             }
-            if (target != null && !session.Item.Inventory.Consume(target.Uid, 1)) {
+            if (target != null) {
+                plan.Add((target.Uid, 1));
+            }
+            if (!session.Item.Inventory.ConsumeNow(plan)) {
                 session.Currency.ReturnMeso(fee, notify: false);
-                Logger.Fatal("Failed to consume item {ItemUid}", target.Uid);
-                throw new InvalidOperationException($"Fatal: Consuming item: {target.Uid}");
+                session.Send(ItemExchangeScrollPacket.Error(ItemExchangeScrollError.s_itemslot_exchange_count_invalid));
+                return;
             }
 
             session.Currency.NotifyMeso();

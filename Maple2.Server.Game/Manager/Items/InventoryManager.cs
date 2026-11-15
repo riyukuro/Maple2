@@ -639,10 +639,14 @@ public class InventoryManager {
     // session save, a crash after the gift was stored kept the box, key or ticket, which then gave it again. Memory
     // follows once the save is committed. False when the plan is null or the save is refused (nothing is taken then),
     // or when a stored take was not taken from the bag (below): no gift is given then.
-    public bool ConsumeNow(IReadOnlyList<(long Uid, int Amount)>? plan) {
-        if (plan == null || plan.Count == 0) {
+    // A uid named more than once (a craft's materials and its scroll from one stack) is taken once, the amounts
+    // summed, so the stored check sees the whole take against the stack.
+    public bool ConsumeNow(IReadOnlyList<(long Uid, int Amount)>? parts) {
+        if (parts == null || parts.Count == 0) {
             return false;
         }
+        List<(long Uid, int Amount)> plan = parts.GroupBy(part => part.Uid)
+            .Select(group => (group.Key, group.Sum(part => part.Amount))).ToList();
         bool taken = true;
         var held = new List<int>();
         if (!session.TrySavePurchase(db => {

@@ -7,6 +7,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 using BagItem = Maple2.Model.Game.Item;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
@@ -153,6 +154,48 @@ public class ItemExchangeScrollHandlerTests {
             Assert.That(session.Currency.Meso, Is.EqualTo(1500));
             Assert.That(Rewards(session), Is.Zero);
             Assert.That(Held(session, lockedScroll), Is.True);
+        });
+    }
+
+    private long StoredMeso() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Character.AsNoTracking().Single(character => character.Id == test.CharacterId).Currency.Meso;
+    }
+
+    private int StoredHeld(int itemId) => test.Rows().Where(row => row.ItemId == itemId).Sum(row => row.Amount);
+
+    // The fee, the scroll and the material are stored taken in one save at the exchange, before the reward's row is
+    // made. Before, they were taken in memory only until the session save while the reward's row was stored at once:
+    // a crash in between kept the reward and gave the price back.
+    [Test]
+    public void Exchange_StoresThePriceBeforeTheReward() {
+        GameSession session = Start(out BagItem lockedScroll, out _, out _, out _, fee: 100, meso: 1000);
+
+        Exchange(session, lockedScroll.Uid, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(Rewards(session), Is.EqualTo(1));
+            Assert.That(StoredMeso(), Is.EqualTo(900), "the fee is stored at the exchange");
+            Assert.That(StoredHeld(ScrollId), Is.EqualTo(1), "one scroll is stored taken");
+            Assert.That(StoredHeld(MaterialId), Is.EqualTo(1), "one material is stored taken");
+            Assert.That(StoredHeld(RewardId), Is.EqualTo(1));
+        });
+    }
+
+    // A refused save takes nothing and gives nothing; the fee comes back.
+    [Test]
+    public void Exchange_RefusedSave_GivesNothing() {
+        GameSession session = Start(out BagItem lockedScroll, out BagItem freeScroll, out BagItem lockedMaterial, out BagItem freeMaterial, fee: 100, meso: 1000);
+        test.FailSave = _ => true;
+
+        Exchange(session, lockedScroll.Uid, 1);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(Rewards(session), Is.Zero);
+            Assert.That(Held(session, lockedScroll) && Held(session, freeScroll), Is.True);
+            Assert.That(Held(session, lockedMaterial) && Held(session, freeMaterial), Is.True);
         });
     }
 }
