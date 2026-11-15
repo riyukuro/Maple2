@@ -1,8 +1,15 @@
+using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
@@ -78,6 +85,51 @@ public class BattleStanceRefusalTests {
         again.Player.InBattle = true;
         PetLapenshardWardrobeHandlerTests.ClosetRequest(again, 1, layer: true);
         Assert.That(again.Item.Equips.Get(cap2.Uid), Is.Null);
+    }
+
+    // The player's own idle sync with a sub-state, through FieldPlayer.OnStateSync on the session's field (the setup of
+    // QuestConditionWiringTests' riding test).
+    private static void IdleSync(GameSession session, ActorSubState subState) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        FieldPlayer player = session.Player;
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", any)!.SetValue(player, session.Field);
+        typeof(FieldPlayer).GetField("stateSyncDistanceTracking", any)!.SetValue(player, new Dictionary<ActorState, float>());
+        // The map's bounds hold the player, so the sync is not moved back.
+        var entities = (MapEntityMetadata) RuntimeHelpers.GetUninitializedObject(typeof(MapEntityMetadata));
+        typeof(MapEntityMetadata).GetField("<BoundingBox>k__BackingField", any)!.SetValue(entities,
+            new Maple2.Tools.Collision.Prism(new Maple2.Tools.Collision.Circle(Vector2.Zero, 100000), -100000, 200000));
+        typeof(FieldManager).GetField("<Entities>k__BackingField", any)!.SetValue(session.Field, entities);
+        player.OnStateSync(new StateSync { State = ActorState.Idle, SubState = subState, Position = player.Position });
+    }
+
+    // The idle sub-states whose animation drops the client's stance (stateidle.cpp:386-408): the player's own sync
+    // entering one drops it on the server too, until the next battle action. A plain idle sync does not.
+    [TestCase(ActorSubState.Idle_Fitting, true)]
+    [TestCase(ActorSubState.Idle_Fitting_Basic, true)]
+    [TestCase(ActorSubState.Idle_ListenMusic, true)]
+    [TestCase(ActorSubState.Idle_Idle, false)]
+    public void ClosetApply_AfterAnIdleSyncThatDropsTheStance(ActorSubState subState, bool served) {
+        (_, GameSession session, Item cap) = Closet();
+        HeldStance(session);
+        IdleSync(session, subState);
+
+        PetLapenshardWardrobeHandlerTests.ClosetRequest(session, 1, layer: true);
+
+        Assert.That(session.Item.Equips.Get(cap.Uid) != null, Is.EqualTo(served));
+    }
+
+    [Test]
+    public void SkillTreeApply_AfterAListenMusicSync_IsStored() {
+        var test = new TestGameSession();
+        GameSession session = SkillBookSaveTests.Setup(test);
+        test.EnterMap(TestGameSession.Map(Town));
+        HeldStance(session);
+        IdleSync(session, ActorSubState.Idle_ListenMusic);
+        test.TakeSent();
+
+        new JobHandler().Handle(session, Job9());
+
+        Assert.That(session.Config.Skill.SkillInfo.GetMainSkill(SkillId)!.Level, Is.EqualTo(1));
     }
 
     private static IByteReader Job9() => TestGameSession.Packet(writer => {

@@ -85,7 +85,7 @@ public class FieldPlayer : Actor<Player> {
 
     private long battleTick;
     private long battleStartTick; // when InBattle last turned on
-    private bool battleStanceDropped; // the client dropped its stance on its own (an instrument play) since the last battle action
+    private bool battleStanceDropped; // the client dropped its stance on its own since the last battle action
     // The party buffs follow the party members in the field; checked once a second.
     private const int PartyBuffIntervalMs = 1000;
     private long partyBuffTick;
@@ -207,7 +207,8 @@ public class FieldPlayer : Actor<Player> {
         }
     }
 
-    /// <summary>An instrument play starts: the client drops its battle stance there (stateplayinstrumentdata.cpp:244).</summary>
+    /// <summary>The client drops its battle stance on its own: an instrument play starts (stateplayinstrumentdata.cpp:244)
+    /// or a sync enters an idle sub-state that drops it (BattleStanceRules.DropsStance).</summary>
     public void DropBattleStance() => battleStanceDropped = true;
 
     // Tests: as if the stance had turned on ms earlier.
@@ -455,6 +456,9 @@ public class FieldPlayer : Actor<Player> {
 
         State = stateSync.State;
         SubState = stateSync.SubState;
+        if (BattleStanceRules.DropsStance(State, SubState)) {
+            DropBattleStance();
+        }
         StateActorId = AiTargetState.ActorOf(stateSync);
 
         if (stateSync.SyncNumber != int.MaxValue) {
