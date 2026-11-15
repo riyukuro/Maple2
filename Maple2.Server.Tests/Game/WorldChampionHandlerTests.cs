@@ -127,6 +127,34 @@ public class WorldChampionHandlerTests {
         Assert.That(test.TakeSent(), Is.EqualTo(new[] { WorldMapPacket.Load([new[] { icon }], []).ToArray() }));
     }
 
+    // The world map's boss icons go only in the answer to the map's request (KMS2 sends none at login): the alive
+    // boss, one row per channel it is alive on, then the champion's icon as its own group.
+    [Test]
+    public void MapLoad_AliveBossesAndTheIcon() {
+        WorldChampionTable.Season season = Season(3, DateTime.Now.AddHours(-1));
+        Start(2000062, season);
+        test.World.WorldChampion = new WorldChampionInfo { Season = 3, Step = 2 };
+        var boss = new WorldBossMetadata(1000, 100, DateTime.Now.AddDays(-1), DateTime.Now.AddDays(1), TimeSpan.FromHours(1), TimeSpan.Zero,
+            TimeSpan.FromMinutes(5), [2000084], [100], [23000013], 1000, true, false, 1, false, false);
+        test.SetServerTable(new TimeEventTable(new Dictionary<int, GlobalPortalMetadata>(), new Dictionary<int, WorldBossMetadata> { [boss.Id] = boss }));
+        var alive = new TimeEventResponse.Types.ActiveWorldBoss { MetadataId = boss.Id, SpawnTimestamp = 1700000000 };
+        alive.AliveChannels.AddRange([1, 2]);
+        test.World.ActiveWorldBosses.Add(alive);
+        var icon = new MapWorldBoss(23500111, 2000423, 0, new DateTimeOffset(season.Begin).ToUnixTimeSeconds(), MapWorldBoss.WorldChampionType);
+
+        new WorldMapHandler().Handle(test.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(0);
+            writer.WriteByte(0);
+            writer.WriteInt(102);
+        }));
+        Assert.That(test.TakeSent(), Is.EqualTo(new[] {
+            WorldMapPacket.Load([
+                new[] { new MapWorldBoss(23000013, 2000084, 1, 1700000000), new MapWorldBoss(23000013, 2000084, 2, 1700000000) },
+                new[] { icon },
+            ], []).ToArray(),
+        }));
+    }
+
     // The World server down: the first step's npc.
     [Test]
     public void MapIcon_WorldDown() {

@@ -660,29 +660,9 @@ public sealed partial class GameSession : Core.Network.Session {
         Pet?.Load();
         Send(PetPacket.LoadCollection(Player.Value.Unlock.Pets));
         Send(LegionBattlePacket.Load(ServerTableMetadata.TimeEventTable.WorldBoss));
-        var bossGroups = new List<ICollection<MapWorldBoss>>();
-        try {
-            TimeEventResponse bossResponse = World.TimeEvent(new TimeEventRequest {
-                GetActiveWorldBosses = new TimeEventRequest.Types.GetActiveWorldBosses(),
-            });
-            foreach (TimeEventResponse.Types.ActiveWorldBoss active in bossResponse.ActiveWorldBosses) {
-                if (!ServerTableMetadata.TimeEventTable.WorldBoss.TryGetValue(active.MetadataId, out WorldBossMetadata? bossMetadata)) {
-                    continue;
-                }
-                int bossNpcId = bossMetadata.NpcIds.Length > 0 ? bossMetadata.NpcIds[0] : 0;
-                int bossMapId = bossMetadata.TargetMapIds.Length > 0 ? bossMetadata.TargetMapIds[0] : 0;
-                bossGroups.Add(active.AliveChannels.Select(ch => new MapWorldBoss(bossNpcId, bossMapId, (short) ch, active.SpawnTimestamp)).ToList());
-            }
-        } catch (RpcException ex) {
-            Logger.Warning(ex, "Failed to fetch active field bosses");
-        }
-        // The world champion's icon of the season on (its World call logs its own failure).
-        if (WorldChampionHandler.MapIcon(this) is { } champion) {
-            bossGroups.Add([champion]);
-        }
-        if (bossGroups.Count > 0) {
-            Send(WorldMapPacket.Load(bossGroups, []));
-        }
+        // The world map's boss icons (WorldMap Load) are not sent here: KMS2 sends them only as the answer to the
+        // map's own request, which the map makes each time it opens (UIWorldMapDialog::SendRequestWorldmapMode0,
+        // uiworldmapdialog.cpp:388; WorldMapHandler).
         Config.LoadCharacterAbilities();
         Config.LoadKeyTable();
         Send(GuideRecordPacket.Load(Config.GuideRecords));

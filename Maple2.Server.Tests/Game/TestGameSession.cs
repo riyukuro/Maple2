@@ -887,6 +887,8 @@ public sealed class TestGameSession {
         public FieldWarInfo? OpenFieldWar;
         // The world champion state the World answers (none: the call answers no info).
         public WorldChampionInfo? WorldChampion;
+        // The world bosses the World answers as alive (GetActiveWorldBosses).
+        public readonly List<TimeEventResponse.Types.ActiveWorldBoss> ActiveWorldBosses = [];
 
         // A World server that does not answer TimeEvent (the call throws it) when set.
         public RpcException? TimeEventFailure;
@@ -901,6 +903,9 @@ public sealed class TestGameSession {
             }
             if (request.GetFieldWar != null && OpenFieldWar != null) {
                 response.FieldWarInfo = OpenFieldWar;
+            }
+            if (request.GetActiveWorldBosses != null) {
+                response.ActiveWorldBosses.AddRange(ActiveWorldBosses);
             }
             if (request.WorldChampion != null && WorldChampion != null) {
                 response.WorldChampionInfo = WorldChampion;
