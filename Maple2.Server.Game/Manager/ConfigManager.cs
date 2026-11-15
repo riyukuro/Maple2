@@ -66,6 +66,8 @@ public class ConfigManager {
     public readonly LogGate SightLog = new();
     // InteractObject ends sooner than the object's cast after the start (InteractRules.EndTiming), logged only.
     public readonly LogGate InteractLog = new();
+    // StateReact packets sooner than the reactor's cast after the last one (ReactorRules.ReactTooSoon), logged only.
+    public readonly LogGate ReactLog = new();
     private long heldCastUid;
     private long heldAttackSpeed;
     private readonly IDictionary<string, int> statLimits;

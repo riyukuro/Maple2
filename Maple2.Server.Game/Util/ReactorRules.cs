@@ -18,6 +18,20 @@ public static class ReactorRules {
     // CReactor::FUN_140b79490/FUN_140b79a10 read the connected players behind a u8 count.
     public const int MaxConnected = byte.MaxValue;
 
+    // ReactorAction::vfunc_2 (actionkeyobject.cpp:2909-2934): a reactor with a reactTimeMSec puts the player in the react
+    // state (0x3d), which casts that time (statereact.cpp:157-168, CReactor::GetReactorInfo) and sends StateReact when the
+    // cast ends (statereact.cpp:302-314); with 0 the client sends at once. One state at a time, so a react's cast starts
+    // after the last StateReact was sent. Server rule: a react that comes sooner than its cast after the last one, less
+    // ReactSlackMs for lag, is logged; casts of ReactSlackMs or less are not tested.
+    public const int ReactSlackMs = 500;
+
+    public static bool ReactTooSoon(long? lastReactTick, long now, int reactTimeMs) {
+        if (reactTimeMs <= ReactSlackMs || lastReactTick is not { } last) {
+            return false;
+        }
+        return now - last < reactTimeMs - ReactSlackMs;
+    }
+
     public enum Step {
         Stay,
         Advance,

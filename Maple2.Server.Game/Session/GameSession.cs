@@ -160,6 +160,8 @@ public sealed partial class GameSession : Core.Network.Session {
     public long? InteractStartTick;
     // The farming and breeding cube ids of the last FunctionCube begin packet; same thread rule.
     public readonly HashSet<string> CubeStarted = [];
+    // The field tick of the last StateReact packet, null for none in this field; same thread rule.
+    public long? LastReactTick;
     // The attends at game start a reset being stored refused (AttendanceHandler), by event id, each with its try
     // again: run 2 s later on the field's queue, or at the next field entry once the session left that field.
     private readonly Dictionary<int, Action> attendRefused = [];
@@ -721,6 +723,7 @@ public sealed partial class GameSession : Core.Network.Session {
     private void LeaveField() {
         InteractStarted.Clear();
         InteractStartTick = null;
+        LastReactTick = null;
         CubeStarted.Clear();
         Array.Clear(ItemLockStaging);
         Array.Clear(DismantleStaging);

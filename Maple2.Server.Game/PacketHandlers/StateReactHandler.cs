@@ -30,9 +30,16 @@ public class StateReactHandler : FieldPacketHandler {
         }
 
         int objectId = packet.ReadInt();
-        if (session.Field == null || !session.Field.TryGetReactor(objectId, out FieldReactor? reactor)) {
+        if (session.Field == null) {
             return;
         }
+        long now = session.Field.FieldTick;
+        long? lastReact = session.LastReactTick;
+        session.LastReactTick = now;
+        if (!session.Field.TryGetReactor(objectId, out FieldReactor? reactor)) {
+            return;
+        }
+        LogTooSoon(session, reactor, lastReact, now);
         if (Vector3.Distance(session.Player.Position, reactor.Position) > reactor.Metadata.ReactDistance + DistanceSlack) {
             return;
         }
@@ -111,5 +118,17 @@ public class StateReactHandler : FieldPacketHandler {
         }
         session.Send(ReactorPacket.Reward(reactor.Metadata.Rewards));
         reactor.Disconnect(session.CharacterId);
+    }
+
+    // A react the client could not have sent yet: its cast bar runs the reactor's reactTimeMSec after the last react.
+    // Logged only until honest play shows none; the react is handled as before.
+    private void LogTooSoon(GameSession session, FieldReactor reactor, long? lastReact, long now) {
+        if (lastReact is not { } last || !ReactorRules.ReactTooSoon(last, now, reactor.Metadata.ReactTimeMs)) {
+            return;
+        }
+        if (session.Config.ReactLog.Count(now) is > 0 and int unlogged) {
+            Logger.Information("StateReact before its cast (logged only): {Elapsed} ms since the last react, a {CastTime} ms cast, reactor {ReactorId} ({ObjectId}), {Unlogged} since the last line, {Player}",
+                now - last, reactor.Metadata.ReactTimeMs, reactor.Metadata.Id, reactor.ObjectId, unlogged, session.PlayerName);
+        }
     }
 }
