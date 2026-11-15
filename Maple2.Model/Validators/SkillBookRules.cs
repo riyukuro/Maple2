@@ -7,6 +7,10 @@ public static class SkillBookRules {
     // A server limit; the client refuses an empty name and runs its own text check before it sends.
     public const int MaxNameLength = 64;
 
+    // The client refuses only an empty name (uiskillbookautodistributedialog.cpp:1043); its text check
+    // (CBanTextChecker::CheckAutoDistributeEntryName, commonstringtable.cpp:935) looks for banned words and has no
+    // space rule, so a name of spaces only reaches the server and is taken.
+
     // Mode 2: i64 tab id, string name (uiskillbookautodistributedialog.cpp:1054).
     public static (long TabId, string Name) ReadRename(IByteReader packet) {
         long tabId = packet.ReadLong();
@@ -15,7 +19,7 @@ public static class SkillBookRules {
     }
 
     public static bool NameAllowed(string name) {
-        return !string.IsNullOrWhiteSpace(name) && name.Length <= MaxNameLength;
+        return name.Length > 0 && name.Length <= MaxNameLength;
     }
 
     // The client runs its text check on the name before it sends (uiskillbookautodistributedialog.cpp:1045-1053).

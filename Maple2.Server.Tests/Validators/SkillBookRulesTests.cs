@@ -20,7 +20,7 @@ public class SkillBookRulesTests {
     public void Name() {
         Assert.That(SkillBookRules.NameAllowed("Build"), Is.True);
         Assert.That(SkillBookRules.NameAllowed(""), Is.False);
-        Assert.That(SkillBookRules.NameAllowed("  "), Is.False);
+        Assert.That(SkillBookRules.NameAllowed("  "), Is.True);
         Assert.That(SkillBookRules.NameAllowed(new string('a', SkillBookRules.MaxNameLength)), Is.True);
         Assert.That(SkillBookRules.NameAllowed(new string('a', SkillBookRules.MaxNameLength + 1)), Is.False);
     }
