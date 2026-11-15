@@ -139,6 +139,29 @@ public class MapleSurvivalPassTests {
         Assert.That((session.Player.Value.Account.SurvivalSilverLevelRewardClaimed, Amount(session, BonusItemId)), Is.EqualTo((1, 2)));
     }
 
+    // survivalPassReward(_paid).xml hold several reward sets (row id), each with its own levels: a claim gives the
+    // level's rewards of the open period's survivalRewardID only, not another set's row for the same level.
+    [Test]
+    public void ClaimPass_GivesTheSetOfTheOpenPeriod() {
+        const int otherItemId = 20000996;
+        IReadOnlyList<MapleSurvivalTable.Reward> Level(int itemId, int count) => [new MapleSurvivalTable.Reward("item", [itemId], [1], [count])];
+        var table = new MapleSurvivalTable(
+            new Dictionary<int, MapleSurvivalTable.Period> { [1] = new(1, 2, new DateTime(2018, 8, 22), new DateTime(2099, 1, 1), PassPrice) },
+            new Dictionary<int, long> { [1] = 0, [2] = 2400 },
+            new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>(),
+            new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>> {
+                [1] = new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>> { [1] = Level(otherItemId, 1) },
+                [2] = new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>> { [1] = Level(BonusItemId, 2) },
+                [3] = new Dictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>> { [1] = Level(otherItemId, 3) },
+            },
+            new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>>>());
+        GameSession session = Start(table: table);
+        test.Register(TestGameSession.Metadata(otherItemId));
+        session.Player.Value.Account.SurvivalLevel = 1;
+        MapleSurvivalProgress.ClaimPass(session, 1, 0);
+        Assert.That((Amount(session, BonusItemId), Amount(session, otherItemId)), Is.EqualTo((2, 0)));
+    }
+
     // When the levels claimed cannot be stored, no item is given and nothing is claimed; the claim gives them later.
     [Test]
     public void ClaimPass_LevelsNotStored_NothingGiven() {
