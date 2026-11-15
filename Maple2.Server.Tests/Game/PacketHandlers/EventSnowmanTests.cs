@@ -9,6 +9,7 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
+using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -151,6 +152,25 @@ public class EventSnowmanTests {
         Assert.That(stored.GetValueOrDefault(GameEventUserValueType.DailyCompleteCount), Is.EqualTo("1,0"));
         Assert.That(test.StoredEventValues(EventId), Is.Empty);
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The stored values keep their ends: the snowflakes and today's completes the day's, all completes the event's.
+    [Test]
+    public void Snowman_DailyClaim_StoresTheValuesWithTheirEnds() {
+        GameSession session = Login();
+        DateTime now = DateTime.Now;
+        session.GameEvent.Clock = () => now;
+        Kill(session, 3);
+
+        Claim(session, false, 0);
+
+        using var db = test.Storage.Context();
+        Dictionary<GameEventUserValueType, long> ends = db.GetAccountEventValues(test.AccountId).Where(value => value.EventId == EventId)
+            .ToDictionary(value => value.Type, value => value.ExpirationTime);
+        long dayEnd = GameEventManager.DtRewardExpiry(now);
+        Assert.That(ends.GetValueOrDefault(GameEventUserValueType.SnowflakeCount), Is.EqualTo(dayEnd));
+        Assert.That(ends.GetValueOrDefault(GameEventUserValueType.DailyCompleteCount), Is.EqualTo(dayEnd));
+        Assert.That(ends.GetValueOrDefault(GameEventUserValueType.AccumCompleteCount), Is.EqualTo(gameEvent.EndTime));
     }
 
     [Test]
