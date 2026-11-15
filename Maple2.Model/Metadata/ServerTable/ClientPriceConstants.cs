@@ -38,7 +38,8 @@ public static partial class ClientPriceConstants {
     }
 
     // Rewards the client's PvP result dialog shows from its own table (UIPvPResultDialog::FUN_141344210 reads the
-    // item and the rank's count; the team dialog reads pvpBtiReward*): the server must give what the dialog showed.
+    // item and the rank's count; the team dialog reads only pvpBtiRewardItem and takes its count from Pvp 0x6e, which
+    // the server fills from these rows): the server must give what the dialog showed.
     // The KR server pack's one punch rows name item 90090010, which no client has, and other counts.
     private static readonly HashSet<string> ClientRewards = new(StringComparer.OrdinalIgnoreCase) {
         "PvpOnePunchRewardItem",

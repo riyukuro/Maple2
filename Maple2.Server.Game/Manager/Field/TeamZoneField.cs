@@ -201,7 +201,7 @@ public sealed class TeamZoneField : IPvpZoneField {
                     if (item == null) {
                         logger.Error("Team zone reward {ItemId} of {CharacterId} not given: no such item", constants.pvpBtiRewardItem, entry.CharacterId);
                     } else if (!player.Session.Item.AddOrMail(item, notifyNew: true, commit: true)) {
-                        logger.Warning("Team zone reward of {CharacterId} not given", entry.CharacterId);
+                        logger.Warning("Team zone reward {ItemId} x{Count} of {CharacterId} not given", constants.pvpBtiRewardItem, count, entry.CharacterId);
                     }
                 }
                 if (field.Arena != null) {
