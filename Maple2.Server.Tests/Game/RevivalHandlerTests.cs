@@ -127,4 +127,107 @@ public class RevivalHandlerTests {
         Assert.That(session.Player.IsDead, Is.True);
         Assert.That(test.TakeSent(), Is.Empty);
     }
+
+    private int Level => session.Player.Value.Character.Level;
+    private static int MesoPrice(int level, int usedToday) => Maple2.Server.Game.LuaFunctions.Lua.CalcRevivalMeso(level,
+        Math.Max(Maple2.Server.Game.LuaFunctions.Lua.GetMesoRevivalDailyMaxCount() - usedToday, 0), 0);
+
+    [Test]
+    public void MesoRevive_ChargesThePriceOnceAndSendsTheBalance() {
+        long price = MesoPrice(Level, 0);
+        Assert.That(price, Is.GreaterThan(0));
+        session.Currency.ChangeMeso(price + 123);
+        Die();
+
+        Send(2, 0);
+
+        Assert.That(session.Player.IsDead, Is.False);
+        Assert.That(session.Currency.Meso, Is.EqualTo(123));
+        Assert.That(session.Config.InstantReviveCount, Is.EqualTo(1));
+        var ops = test.TakeSent().Select(TestGameSession.Op).ToList();
+        Assert.That(ops, Does.Contain(SendOp.Revival));
+        Assert.That(ops.Count(op => op == SendOp.Meso), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void MesoRevive_ShortOfMesosChargesNothingAndStaysDead() {
+        long price = MesoPrice(Level, 0);
+        session.Currency.ChangeMeso(price - 1);
+        Die();
+
+        Send(2, 0);
+
+        Assert.That(session.Player.IsDead, Is.True);
+        Assert.That(session.Currency.Meso, Is.EqualTo(price - 1));
+        Assert.That(session.Config.InstantReviveCount, Is.EqualTo(0));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    [Test]
+    public void MesoRevive_TheDailyMaximumClosesIt() {
+        session.Config.InstantReviveCount = Maple2.Server.Game.LuaFunctions.Lua.GetMesoRevivalDailyMaxCount();
+        session.Currency.ChangeMeso(10_000_000);
+        Die();
+
+        Send(2, 0);
+
+        Assert.That(session.Player.IsDead, Is.True);
+        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
+    }
+
+    [Test]
+    public void MesoRevive_ThePriceRisesWithEachRevive() {
+        long first = MesoPrice(Level, 0);
+        long second = MesoPrice(Level, 1);
+        session.Currency.ChangeMeso(first + second + 5);
+        Die();
+        Send(2, 0);
+        Die();
+
+        Send(2, 0);
+
+        Assert.That(session.Player.IsDead, Is.False);
+        Assert.That(session.Currency.Meso, Is.EqualTo(5));
+        Assert.That(session.Config.InstantReviveCount, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void MesoRevive_AliveChargesNothing() {
+        session.Currency.ChangeMeso(10_000_000);
+        test.TakeSent();
+
+        Send(2, 0);
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
+        Assert.That(session.Config.InstantReviveCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void MeretRevive_ChargesThePriceOnceAndRevives() {
+        long price = Maple2.Server.Game.LuaFunctions.Lua.CalcRevivalMerat(Level, 0);
+        Assert.That(price, Is.GreaterThan(0));
+        session.Currency.ChangeMeret(price + 7, reportSpent: false);
+        Die();
+
+        Send(1, 0);
+
+        Assert.That(session.Player.IsDead, Is.False);
+        Assert.That(session.Currency.Meret, Is.EqualTo(7));
+        var ops = test.TakeSent().Select(TestGameSession.Op).ToList();
+        Assert.That(ops, Does.Contain(SendOp.Revival));
+        Assert.That(ops.Count(op => op == SendOp.Meret), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void MeretRevive_OneMeretShortChargesNothing() {
+        long price = Maple2.Server.Game.LuaFunctions.Lua.CalcRevivalMerat(Level, 0);
+        session.Currency.ChangeMeret(price - 1, reportSpent: false);
+        Die();
+
+        Send(1, 0);
+
+        Assert.That(session.Player.IsDead, Is.True);
+        Assert.That(session.Currency.Meret, Is.EqualTo(price - 1));
+        Assert.That(test.TakeSent().Select(TestGameSession.Op), Does.Contain(SendOp.Notice));
+    }
 }
