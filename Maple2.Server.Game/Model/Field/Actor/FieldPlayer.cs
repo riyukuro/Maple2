@@ -195,14 +195,17 @@ public class FieldPlayer : Actor<Player> {
             if (value != inBattle) {
                 inBattle = value;
                 if (value) {
+                    // The broadcast below gives the client its stance back (CSceneStateGame::OnUserBattle).
                     battleStartTick = Environment.TickCount64;
+                    battleStanceDropped = false;
                 }
                 Session.Field?.Broadcast(SkillPacket.InBattle(this));
             }
 
+            // A battle action with InBattle already on sends nothing, so a stance the client dropped stays dropped
+            // (a cube liftup, a hit): only a battle cast brings it back (BattleCastShowsStance).
             if (inBattle) {
                 battleTick = Environment.TickCount64;
-                battleStanceDropped = false;
             }
         }
     }
@@ -210,6 +213,9 @@ public class FieldPlayer : Actor<Player> {
     /// <summary>The client drops its battle stance on its own: an instrument play starts (stateplayinstrumentdata.cpp:244)
     /// or a sync enters an idle sub-state that drops it (BattleStanceRules.DropsStance).</summary>
     public void DropBattleStance() => battleStanceDropped = true;
+
+    /// <summary>A cast of a battle skill: the client takes its stance at the cast's start (stateskill.cpp:432).</summary>
+    public void BattleCastShowsStance() => battleStanceDropped = false;
 
     // Tests: as if the stance had turned on ms earlier.
     internal void BackdateBattleStart(long ms) => battleStartTick -= ms;

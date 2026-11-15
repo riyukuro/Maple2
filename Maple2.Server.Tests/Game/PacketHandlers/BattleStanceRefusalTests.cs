@@ -82,9 +82,38 @@ public class BattleStanceRefusalTests {
         (_, GameSession again, Item cap2) = Closet();
         HeldStance(again);
         again.Player.DropBattleStance();
-        again.Player.InBattle = true;
+        again.Player.BattleCastShowsStance();
         PetLapenshardWardrobeHandlerTests.ClosetRequest(again, 1, layer: true);
         Assert.That(again.Item.Equips.Get(cap2.Uid), Is.Null);
+    }
+
+    // A battle action that sends no stance (a cube liftup, RequestCubeHandler's InBattle = true while already in
+    // battle) leaves the client's dropped stance dropped, so the apply it then sends is served. Before, any battle
+    // action cleared the drop and the apply was dropped.
+    [Test]
+    public void ClosetApply_AfterAListenMusicSyncAndALiftup_IsServed() {
+        (_, GameSession session, Item cap) = Closet();
+        HeldStance(session);
+        IdleSync(session, ActorSubState.Idle_ListenMusic);
+        session.Player.InBattle = true;
+
+        PetLapenshardWardrobeHandlerTests.ClosetRequest(session, 1, layer: true);
+
+        Assert.That(session.Item.Equips.Get(cap.Uid), Is.Not.Null);
+    }
+
+    // The stance turning on again (the false-to-true broadcast) gives the client its stance back.
+    [Test]
+    public void ClosetApply_AfterADropAndANewStance_IsDropped() {
+        (_, GameSession session, Item cap) = Closet();
+        HeldStance(session);
+        session.Player.DropBattleStance();
+        session.Player.InBattle = false;
+        HeldStance(session);
+
+        PetLapenshardWardrobeHandlerTests.ClosetRequest(session, 1, layer: true);
+
+        Assert.That(session.Item.Equips.Get(cap.Uid), Is.Null);
     }
 
     // The player's own idle sync with a sub-state, through FieldPlayer.OnStateSync on the session's field (the setup of
