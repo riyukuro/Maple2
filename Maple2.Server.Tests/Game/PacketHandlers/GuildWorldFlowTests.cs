@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -8,6 +9,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Tools.Extensions;
 using Maple2.Server.Core.Constants;
@@ -415,5 +417,140 @@ public class GuildWorldFlowTests {
         Send(84, body);
 
         Assert.That(Answers(), Is.EqualTo(new[] { Error(GuildError.s_guild_err_full_member), Error(GuildError.s_guild_err_unknown) }));
+    }
+    // Guild 85 (list the requests sent to the guild): a member with the invite right only.
+    [Test]
+    public void ListApplications_WithoutAGuild_IsIgnored() {
+        Send(85);
+
+        Assert.That(Answers(), Is.Empty);
+    }
+
+    [Test]
+    public void ListApplications_WithoutTheInviteRight_IsIgnored() {
+        Join(false, GuildPermission.Default & ~GuildPermission.InviteMembers);
+
+        Send(85);
+
+        Assert.That(Answers(), Is.Empty);
+    }
+
+    [Test]
+    public void ListApplications_WithNoRequests_AnswersAnEmptyList() {
+        Join(false, GuildPermission.InviteMembers);
+
+        Send(85);
+
+        Assert.That(Answers(), Is.EqualTo(new[] { Hex(GuildPacket.ListApplications(new List<GuildApplication>())) }));
+    }
+
+    // Guild 86 (the requests a player without a guild sent).
+    [Test]
+    public void ListAppliedGuilds_InsideAGuild_IsIgnored() {
+        Join();
+
+        Send(86);
+
+        Assert.That(Answers(), Is.Empty);
+    }
+
+    // Guild 87 and 88 (guild search): only a player without a guild, with a focus the client can send or a name
+    // of two characters or more.
+    [TestCase(0)]
+    [TestCase(1 << 20)]
+    public void SearchGuilds_WithAFocusTheClientCannotSend_IsIgnored(int focus) {
+        Send(87, writer => {
+            writer.WriteInt(focus);
+            writer.WriteInt(1);
+        });
+
+        Assert.That(Answers(), Is.Empty);
+    }
+
+    [TestCase(1)]
+    [TestCase(GuildRules.SearchAnyFocus)]
+    public void SearchGuilds_WithNoGuildsFound_AnswersAnEmptyList(int focus) {
+        Send(87, writer => {
+            writer.WriteInt(focus);
+            writer.WriteInt(1);
+        });
+
+        Assert.That(Answers(), Is.EqualTo(new[] { Hex(GuildPacket.ListGuilds(new List<(GuildSearchEntry, int)>())) }));
+    }
+
+    [Test]
+    public void SearchGuilds_InsideAGuild_IsIgnored() {
+        Join();
+
+        Send(87, writer => {
+            writer.WriteInt(GuildRules.SearchAnyFocus);
+            writer.WriteInt(1);
+        });
+
+        Assert.That(Answers(), Is.Empty);
+    }
+
+    [Test]
+    public void SearchGuildName_OfOneCharacter_IsIgnored() {
+        Send(88, writer => writer.WriteUnicodeString("A"));
+
+        Assert.That(Answers(), Is.Empty);
+    }
+
+    [Test]
+    public void SearchGuildName_OfTwoCharacters_AnswersTheList() {
+        Send(88, writer => writer.WriteUnicodeString("Gu"));
+
+        Assert.That(Answers(), Is.EqualTo(new[] { Hex(GuildPacket.ListGuilds(new List<(GuildSearchEntry, int)>())) }));
+    }
+
+    [Test]
+    public void SearchGuildName_InsideAGuild_IsIgnored() {
+        Join();
+
+        Send(88, writer => writer.WriteUnicodeString("Guild"));
+
+        Assert.That(Answers(), Is.Empty);
+    }
+
+    // Guild 91 (a personal guild skill) and 112 (the storage log).
+    [Test]
+    public void UsePersonalBuff_WithoutAGuild_IsIgnored() {
+        Send(91, writer => writer.WriteInt(1));
+
+        Assert.That(Answers(), Is.Empty);
+    }
+
+    [Test]
+    public void UpdateGiftLog_WithoutAGuild_IsIgnored() {
+        Send(112);
+
+        Assert.That(Answers(), Is.Empty);
+    }
+
+    [Test]
+    public void UpdateGiftLog_WithNoStoredGuildRow_AnswersAnEmptyLog() {
+        Join();
+
+        Send(112);
+
+        Assert.That(Answers(), Is.EqualTo(new[] { Hex(GuildPacket.StorageHistory(new GuildStorageLog[0])) }));
+    }
+
+    // Guild 103 (enter the guild house): nothing without a guild, nor for a guild whose house rank has no row.
+    [Test]
+    public void EnterHouse_WithoutAGuild_IsIgnored() {
+        Send(103);
+
+        Assert.That(Answers(), Is.Empty);
+    }
+
+    [Test]
+    public void EnterHouse_WithoutAHouseRow_IsIgnored() {
+        Join();
+
+        Send(103);
+
+        Assert.That(Answers(), Is.Empty);
     }
 }
