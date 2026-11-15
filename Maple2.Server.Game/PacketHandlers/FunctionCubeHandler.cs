@@ -7,6 +7,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -103,6 +104,23 @@ public class FunctionCubeHandler : FieldPacketHandler {
     // sets m_bLike, functioncubeobject.cpp:541, read by FUN_141236a60 at :489).
     private const byte UseBySkillHit = 2;
 
+    // A home's PvP cube (ControlType PVP: 50400174 the console, which only the owner can use, 50400175 and 50400176
+    // with team 1 and 2, which anyone can; CFunctionCubeObject::vfunc_8 sends the use of each). The client reads the
+    // cube's team and does nothing with it, and has no match rule: the owner's use opens the PvP control dialog with
+    // the home's last choices (HomeAction 14, 0), or ends the match that runs; any other use does nothing.
+    private static void HandlePvpConsole(GameSession session, FieldFunctionInteract fieldInteract, byte via) {
+        if (session.Field is not HomeFieldManager home || !HomeEditRules.OwnsPlot(home.OwnerId, session.AccountId)) {
+            return;
+        }
+        float reach = via == UseBySkillHit ? InteractRules.SkillHitReach : InteractRules.OtherReach;
+        if (!InteractRules.InReach(session.Player.Position, fieldInteract.Position, reach)) {
+            return;
+        }
+        if (!home.StopPvp()) {
+            session.Send(HomeActionPacket.PvpControl(home.PvpSettings));
+        }
+    }
+
     private void HandleUseCube(GameSession session, string interactId, byte via) {
         if (!interactId.Contains('_')) {
             Logger.Error("Unexpected interactId {0}", interactId);
@@ -120,6 +138,9 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 if (fieldInteract.InteractCube.Nurturing is not null) {
                     HandleNurturing(session, fieldInteract);
                 }
+                break;
+            case InteractCubeControlType.PVP:
+                HandlePvpConsole(session, fieldInteract, via);
                 break;
             case InteractCubeControlType.Farming:
             case InteractCubeControlType.Breeding:

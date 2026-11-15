@@ -3,6 +3,7 @@ using System.Numerics;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Pvp;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
@@ -20,6 +21,7 @@ public static class HomeActionPacket {
         UgcOx = 10,
         Roll = 11,
         NoticeCube = 12,
+        PvpControl = 14,
     }
 
     private enum SurveyCommand : byte {
@@ -63,6 +65,21 @@ public static class HomeActionPacket {
         Remove = 1,
         Update = 2,
         Hit = 3,
+    }
+
+    // 14, 0: opens the home's PvP control dialog with these choices selected (CSceneStateGame::OnHomeAction, ReadPvpControl:
+    // six u8, the dialog's lists in its order); the dialog's start sends them back (HomeAction 14, 1).
+    public static ByteWriter PvpControl(HomePvpSettings settings) {
+        var pWriter = Packet.Of(SendOp.HomeAction);
+        pWriter.Write<HomeActionCommand>(HomeActionCommand.PvpControl);
+        pWriter.WriteByte(0);
+        pWriter.WriteByte(settings.Type);
+        pWriter.WriteByte(settings.Buff);
+        pWriter.WriteByte(settings.Potion);
+        pWriter.WriteByte(settings.Revive);
+        pWriter.WriteByte(settings.Rule);
+        pWriter.WriteByte(settings.Time);
+        return pWriter;
     }
 
     public static ByteWriter SendCubePortalSettings(PlotCube cube, List<string> otherPortalsNames) {

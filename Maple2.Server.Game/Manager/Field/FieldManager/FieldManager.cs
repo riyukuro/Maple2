@@ -115,8 +115,9 @@ public partial class FieldManager : IField {
         Arena = new ArenaMatchField(this, matchId, arena, characters, onEnd);
     }
 
-    // The trigger's PvP zone (set_pvp_zone) while it runs and after (pvp_zone_ended); null before one is set.
-    public IPvpZoneField? PvpZone { get; private set; }
+    // The trigger's PvP zone (set_pvp_zone) while it runs and after (pvp_zone_ended); null before one is set. In a home,
+    // the owner's PvP match while it runs (HomeFieldManager.StartPvp).
+    public IPvpZoneField? PvpZone { get; protected set; }
 
     // The World's guild championship match this field was made for (Factory.CreateGuildPvp); null in every other field.
     public GuildPvpFieldMatch? GuildPvp { get; private set; }

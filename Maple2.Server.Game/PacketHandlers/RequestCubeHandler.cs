@@ -717,7 +717,10 @@ public class RequestCubeHandler : FieldPacketHandler {
             if (session.Field is HomeFieldManager home && home.Home != session.Player.Value.Home) {
                 HomePermissionRules.Enable(home.Home.Permissions, permission, enabled);
             }
-            session.Field.Broadcast(CubePacket.EnablePermission(permission, enabled));
+            // A home PvP match's row stays as the match has it; the match puts the saved row back at its end.
+            if (!MatchHolds(session, permission)) {
+                session.Field.Broadcast(CubePacket.EnablePermission(permission, enabled));
+            }
         }
     }
 
@@ -730,8 +733,14 @@ public class RequestCubeHandler : FieldPacketHandler {
             if (session.Field is HomeFieldManager home && home.Home != session.Player.Value.Home) {
                 HomePermissionRules.Set(home.Home.Permissions, permission, setting);
             }
-            session.Field.Broadcast(CubePacket.SetPermission(permission, applied));
+            if (!MatchHolds(session, permission)) {
+                session.Field.Broadcast(CubePacket.SetPermission(permission, applied));
+            }
         }
+    }
+
+    private static bool MatchHolds(GameSession session, HomePermission permission) {
+        return session.Field is HomeFieldManager { PvpZone: HomePvpField match } && match.Overlays(permission);
     }
 
     // The save slot dialog's name box holds 0x14 characters (UIHomeSaveSlotDialog, uihomesaveslotdialog.cpp:452 for a

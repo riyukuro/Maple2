@@ -2,6 +2,7 @@
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
@@ -65,13 +66,26 @@ public partial class HomeActionHandler : FieldPacketHandler {
                 HandleQuiz(session, packet);
                 break;
             case Command.PvpControl:
-                // UIUGCPVPControlDialog "OnStart" (uiugcpvpcontroldialog.cpp:109): a constant 1 and the six values
-                // of the PvP control dialog. The server has no PvP mode for homes; the client reads only the six
-                // values back (HomeAction 14, 0) and has no refusal text. Read and logged. The PVP function cubes of
-                // items 50400174 to 50400176 carry a team (0, 1, 2); the client has no match rule and names no flag.
-                Logger.Debug("HomeAction {Command} from {CharacterId}: {Type} {A} {B} {C} {D} {E} {F}", command, session.CharacterId,
-                    packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte());
+                HandlePvpControl(session, packet);
                 break;
+        }
+    }
+
+    // UIUGCPVPControlDialog "OnStart" (uiugcpvpcontroldialog.cpp:109): a constant 1 and the six choices of the dialog
+    // (HomePvpSettings). The console that opens the dialog takes only the owner's use (object 50400174's
+    // StateChangeActionPermissionType 1), so the start is the owner's, in its home; choices off the dialog's lists
+    // are not the client's. The client has no refusal text: a start while a match runs is dropped.
+    public const byte PvpControlStart = 1;
+
+    private void HandlePvpControl(GameSession session, IByteReader packet) {
+        byte sub = packet.ReadByte();
+        var settings = new HomePvpSettings(packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte(), packet.ReadByte());
+        if (sub != PvpControlStart || session.Field is not HomeFieldManager home || !HomeEditRules.OwnsPlot(home.OwnerId, session.AccountId)
+            || !settings.Valid) {
+            return;
+        }
+        if (!home.StartPvp(settings)) {
+            Logger.Debug("Home PvP start of {CharacterId} dropped: a match runs", session.CharacterId);
         }
     }
 

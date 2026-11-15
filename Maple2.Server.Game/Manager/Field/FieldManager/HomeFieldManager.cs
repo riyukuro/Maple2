@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using Maple2.Database.Storage;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Pvp;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Manager.Field;
@@ -10,6 +11,44 @@ public class HomeFieldManager : FieldManager {
     public Home Home { get; init; }
 
     public HomeSurvey? HomeSurvey { get; private set; }
+
+    // The PvP control dialog's last choices in this home (HomeAction 14, 1), shown when the owner opens it again. Kept
+    // with the field (chosen here: the client keeps none and the home row has no place for them); all 0 at first,
+    // as the dialog starts.
+    public HomePvpSettings PvpSettings { get; private set; } = HomePvpSettings.Default;
+    private readonly object pvpMutex = new();
+
+    // The owner's start: no match while one runs or a trigger's PvP zone is set. The choices are kept either way.
+    public bool StartPvp(HomePvpSettings settings) {
+        lock (pvpMutex) {
+            PvpSettings = settings;
+            if (PvpZone != null) {
+                return false;
+            }
+            var match = new HomePvpField(this, settings, FieldTick);
+            PvpZone = match;
+            match.Started();
+            return true;
+        }
+    }
+
+    // The owner's console during a match ends it; false when none runs.
+    public bool StopPvp() {
+        if (PvpZone is not HomePvpField match) {
+            return false;
+        }
+        match.Stop();
+        return true;
+    }
+
+    // The match is over: the field is free for the next.
+    internal void EndPvp(HomePvpField match) {
+        lock (pvpMutex) {
+            if (PvpZone == match) {
+                PvpZone = null;
+            }
+        }
+    }
 
     private readonly int roomId;
     // The cube rows of each plot (by number) as this field loaded them or last saved them (CommitPlot).
