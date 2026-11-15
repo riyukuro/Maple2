@@ -935,9 +935,8 @@ public class HousingManager {
                 Refuse(UgcMapError.s_ugcmap_not_owned_item);
                 return false;
             }
-            if (storedItem is { Amount: > 0, Template: not null }) {
-                cube.Template = storedItem.Template.Clone();
-            }
+            // No field of the client's template is kept: the stack's (or none on a buy).
+            cube.Template = storedItem is { Amount: > 0 } ? storedItem.Template?.Clone() : null;
             if (storedItem is { Amount: > 0 }) {
                 expiryTime = storedItem.ExpiryTime;
             } else {

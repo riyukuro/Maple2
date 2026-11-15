@@ -496,6 +496,27 @@ public class ShopHandlerTests {
         });
     }
 
+    // The sale's store may come back 2 s later (a reset being stored): by then the item may be bought back, and its
+    // row, the character's again, is not written to owner 0.
+    [Test]
+    public void Sell_ARetriedStoreAfterABuyBack_LeavesTheRow() {
+        GameSession session = Login();
+        Item sold = session.Item.Inventory.Get(bagItem.Uid)!;
+        Sell(session, bagItem.Uid, 5);
+        int entryId = BitConverter.ToInt32(test.TakeSent()[1], 5);
+        new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteInt(entryId);
+        }));
+        Assume.That(ItemOwner(bagItem.Uid), Is.EqualTo(test.CharacterId));
+
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(session.Shop.StoreSold(db, entryId, sold), Is.False);
+        }
+
+        Assert.That(ItemOwner(bagItem.Uid), Is.EqualTo(test.CharacterId));
+    }
+
     // The shop sell rate (SpecialAttribute.ShopBuyingMeso, +20% here) raises the sale; the buy back costs the raised
     // price, so selling and buying back gains nothing.
     [Test]

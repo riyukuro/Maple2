@@ -919,7 +919,14 @@ public sealed class ShopManager {
         // stored together at once. Before, a later purchase stored the sale's mesos while the row waited for that
         // save, so a stop in between gave back the item and kept the mesos.
         Item sold = item;
-        session.SavePurchase(db => db.SaveItems(0, sold));
+        session.SavePurchase(db => StoreSold(db, entryId, sold));
+    }
+
+    // The sold row goes to owner 0 only while its buy-back entry is still listed: a store retried later (a reset was
+    // being stored) must not write a row bought back in between to owner 0. An entry dropped from the full list was
+    // discarded already.
+    internal bool StoreSold(GameStorage.Request db, int entryId, Item sold) {
+        return buyBackItems.TryGetValue(entryId, out BuyBackItem? entry) && ReferenceEquals(entry.Item, sold) && db.SaveItems(0, sold);
     }
 
     // A shop price taken in memory and not yet stored (HoldPayment): the purchase's transaction stores it (SavePayment),

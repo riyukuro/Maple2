@@ -837,6 +837,22 @@ public class PlaceHeldCubeTests {
         });
     }
 
+    // A stack without a design (a template with no url) places its own template, not the client's.
+    [Test]
+    public void APlainStack_PlacesItsOwnTemplate() {
+        (GameSession session, Plot plot) = StartInHome();
+        long uid = StackOf(session, new UgcItemLook { Id = 5, Author = "maker" });
+        test.TakeSent();
+
+        Place(session, TemplateCube, TemplateCube, uid: uid, look: new UgcItemLook { Id = 77, Author = "someone else" });
+
+        PlotCube placed = plot.Cubes.Values.Single();
+        Assert.Multiple(() => {
+            Assert.That(placed.Template?.Id, Is.EqualTo(5));
+            Assert.That(placed.Template?.Author, Is.EqualTo("maker"));
+        });
+    }
+
     // A layout's cube is placed from the stack of its own design (with pieces left first).
     [Test]
     public void TheLayoutStackLookup_FindsTheCubesDesign() {
