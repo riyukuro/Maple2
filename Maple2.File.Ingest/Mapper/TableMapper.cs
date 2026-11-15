@@ -1340,9 +1340,33 @@ public class TableMapper : TypeMapper<TableMetadata> {
             SocketTransfer: FeatureLocaleFilter.FeatureEnabled("ItemSocketTransfer01"));
     }
 
+    // The client keys its recipes by id from its own pack's table/masteryreceipe.xml, rows its feature and locale filter
+    // keeps (CMasteryTable::LoadReceipes). The KR Live client lists 11 recipes the data folder's pack has no row for
+    // (SkinSocket, ItemMerge and DustExchangeScroll01 rows of smithing and alchemy) and higher gathering rate counts on
+    // 31 breeding and farming rows. The played client's row wins for each id it lists; an id only the data folder's
+    // pack lists is kept (the client never sends it).
+    public static IEnumerable<(int Id, T Recipe)> PlayedRecipesFirst<T>(IEnumerable<(int Id, T Recipe)> played, IEnumerable<(int Id, T Recipe)> pack) {
+        var seen = new HashSet<int>();
+        foreach ((int id, T recipe) in played) {
+            if (seen.Add(id)) {
+                yield return (id, recipe);
+            }
+        }
+        foreach ((int id, T recipe) in pack) {
+            if (seen.Add(id)) {
+                yield return (id, recipe);
+            }
+        }
+    }
+
+    private const string MasteryRecipeFile = "table/masteryreceipe.xml";
+
     private MasteryRecipeTable ParseMasteryRecipe() {
         var results = new Dictionary<int, MasteryRecipeTable.Entry>();
-        foreach ((long id, MasteryRecipe recipe) in parser.ParseMasteryRecipe()) {
+        IEnumerable<(int, MasteryRecipe)> played = playedReader != null && playedReader.Files.Any(file => file.Name == MasteryRecipeFile)
+            ? PackTables.NewParser(playedReader, language).ParseMasteryRecipe()
+            : [];
+        foreach ((int id, MasteryRecipe recipe) in PlayedRecipesFirst(played, parser.ParseMasteryRecipe())) {
             var requiredItems = new List<ItemComponent>();
             ItemComponent? requiredItem1 = ParseMasteryIngredient(recipe.requireItem1);
             if (requiredItem1 != null) requiredItems.Add(requiredItem1);
