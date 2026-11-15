@@ -71,7 +71,7 @@ public class GlobalDropJobTests {
         Assert.That(Drops(Job.Knight, rolls: 20), Is.Empty);
     }
 
-    // A roll without a player (a trigger spawn or a dungeon reward roll) keeps every job's gear.
+    // A roll without a player (a trigger spawn) keeps every job's gear.
     [Test]
     public void NoPlayer_KeepsEveryJob() {
         SetUp((PriestItem, [JobCode.Priest]), (KnightItem, [JobCode.Knight]));

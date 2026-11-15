@@ -1119,7 +1119,9 @@ public class DungeonManager {
 
             ICollection<Item> items = [];
             // Each box is rolled for the player as an opened item box is (drop count, smart drop by job, gender, level):
-            // a room box such as 21001001 holds every job's gear, and gave all 55 entries at once unrolled.
+            // a room box such as 21001001 holds every job's gear, and gave all 55 entries at once unrolled. A global
+            // box (the room's box 10) gets the player too: ItemDropTable::Drop gives DropGlobal the same context, which
+            // leaves out gear recommended only for other jobs.
             IEnumerable<int> boxIds = DungeonRoomRules.ClearDropBoxIds(rewardMetadata).ToArray();
             if (bonus != null) {
                 // The room's boxes once more per roll of the bonus, then the bonus' own boxes once.
@@ -1127,7 +1129,7 @@ public class DungeonManager {
             }
             foreach (int boxId in boxIds) {
                 items = items.Concat(Lobby.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId)).ToList();
-                items = items.Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level)).ToList();
+                items = items.Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level, session)).ToList();
             }
 
             foreach (Item item in items) {
@@ -1187,7 +1189,7 @@ public class DungeonManager {
         List<Item> items = [];
         foreach (int boxId in DungeonRoomRules.ClearDropBoxIds(metadata.Reward)) {
             items.AddRange(field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId));
-            items.AddRange(field.ItemDrop.GetGlobalDropItems(boxId, metadata.Level));
+            items.AddRange(field.ItemDrop.GetGlobalDropItems(boxId, metadata.Level, session));
         }
         foreach (Item item in items) {
             GiveItem(item);
@@ -1233,7 +1235,7 @@ public class DungeonManager {
         int times = EventSaleRules.HelperRewardTimes(session.FindEvent(GameEventType.FindDungeonHelperBonus)
             .Select(gameEvent => gameEvent.Metadata.Data is FindDungeonHelperBonus bonus ? bonus.Bonus : 0));
         foreach (int boxId in Enumerable.Repeat(Metadata.HelperRewardDropBoxIds ?? [], times).SelectMany(ids => ids)) {
-            foreach (Item item in Lobby.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId).Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level))) {
+            foreach (Item item in Lobby.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, boxId).Concat(Lobby.ItemDrop.GetGlobalDropItems(boxId, Metadata.Level, session))) {
                 UserRecord.RewardItems.Add(item);
                 grants.Add(() => GiveItem(item));
             }
