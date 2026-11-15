@@ -44,6 +44,9 @@ public static class CommonExpRules {
             case ExpType.construct:
             // A pet capture: the tamer's own level, as the other life skills.
             case ExpType.petTaming:
+            // A Maple Survival game's result (the client's commonexptable row mapleSurvival, feature
+            // SurvivalContents01): the player's own level, as the arenas' results.
+            case ExpType.mapleSurvival:
                 return LevelSource.Character;
             case ExpType.taxi:
             case ExpType.mapCommon:

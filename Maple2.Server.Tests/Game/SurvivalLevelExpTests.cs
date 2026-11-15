@@ -40,6 +40,8 @@ public class SurvivalLevelExpTests {
             test.SetFeaturesOff(Maple2.Model.Game.Pvp.SurvivalRules.PassFeature);
         }
         test.SetTable(Table(missingItemId));
+        // A game's result also gives the mapleSurvival common exp row (none here).
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
         test.Register(TestGameSession.Metadata(RewardId));
         tonic = test.Store(TestGameSession.Metadata(ItemId,
             function: new ItemMetadataFunction(ItemFunction.SurvivalLevelExp, "SurvivalLevelExp", parameters, false), type: 10), amount: 2);

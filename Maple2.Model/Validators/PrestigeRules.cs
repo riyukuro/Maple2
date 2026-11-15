@@ -62,6 +62,11 @@ public static class PrestigeRules {
     // 18750 at 0.25); every other gain adds its row as it is.
     public static bool ScalesWithExpRate(ExpType type) => type is ExpType.miniGame or ExpType.userMiniGame;
 
+    // A gain whose reason is the plain text but whose type has its own prestige row: the prestige row is the type's,
+    // not the reason's (which brings none). A Maple Survival game names no reason (the client's ExpUp text has no
+    // survival case, uiworldshareinfoeventlistener FUN_1413606c0) and adds the server pack's Exp_mapleSurvival (250).
+    public static ExpType? OwnRow(ExpType type) => type is ExpType.mapleSurvival ? type : null;
+
     // The prestige levels a stock of prestige exp pays for, up to the level limit.
     public static int LevelsGained(long exp, long expPerLevel, int level, int levelLimit) {
         if (expPerLevel <= 0 || level >= levelLimit) {

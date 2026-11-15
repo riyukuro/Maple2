@@ -319,6 +319,11 @@ public static class MapleSurvivalProgress {
     // squad: the player played in a squad; its rating goes to the squad season's record (SurvivalRules.SquadSeasonOffset).
     public static int[] Result(GameSession session, int rank, int participants, int kills, int seconds, out List<ResultItem> items, bool squad = false) {
         items = [];
+        // The game's character exp and prestige exp (the commonexptable row mapleSurvival and the server pack's
+        // Exp_mapleSurvival, both feature SurvivalContents01, which no other content names): once a game, as the
+        // window shows the character's level and prestige level after it (setCharLevelResult, setHeroLevelResult,
+        // r12 and r13). Given first, so those two are the levels it reached.
+        session.Exp.AddExp(ExpType.mapleSurvival);
         Account account = session.Player.Value.Account;
         MapleSurvivalTable? table = Table(session);
         MapleSurvivalTable.Period? period = Period(session, table);

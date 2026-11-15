@@ -182,7 +182,7 @@ public sealed class ExperienceManager {
             modifier = CommonExpRules.WithRate(modifier, session.Player.Stats.Values[massive].Multiplier());
         }
         return AddExp(CommonExpRules.Amount(expValue, modifier, entry.Factor, additionalExp), message ?? expType.Message(), kill: false,
-            prestigeRate: prestigeRate);
+            prestigeType: PrestigeRules.OwnRow(expType), prestigeRate: prestigeRate);
     }
 
     // Decorating exp for a cube the player placed in a home (ConstructExpRules); the count is stored before the exp. It is
