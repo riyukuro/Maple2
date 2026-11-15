@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Manager.Items;
@@ -98,10 +99,7 @@ public class ItemManager {
             mail.Items.Add(item);
 
             try {
-                session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = session.CharacterId,
-                    MailId = mail.Id,
-                });
+                session.World.NotifyMail(session.CharacterId, mail.Id);
             } catch { /* ignored */ }
         }
         return true;
@@ -142,10 +140,7 @@ public class ItemManager {
             }
 
             try {
-                session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = session.CharacterId,
-                    MailId = mail.Id,
-                });
+                session.World.NotifyMail(session.CharacterId, mail.Id);
             } catch { /* ignored */ }
         }
         return true;

@@ -708,10 +708,7 @@ public class MentoringManager : IDisposable {
         }
 
         try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = mentorId,
-                MailId = mail.Id,
-            });
+            session.World.NotifyMail(mentorId, mail.Id);
         } catch (Exception ex) {
             logger.Warning(ex, "Mentor reward mail {MailId} not announced", mail.Id);
         }

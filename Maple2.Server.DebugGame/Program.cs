@@ -80,7 +80,7 @@ builder.Logging.AddSerilog(dispose: true);
 IGraphicsContext debugGraphicsContext = new DebugGraphicsContext();
 
 builder.Services.AddGrpc();
-builder.Services.RegisterModule<WorldClientModule>();
+builder.Services.RegisterModule<GameWorldClientModule>();
 builder.Services.AddSingleton<GameServer>(provider => new GameServer(
     provider.GetRequiredService<FieldManager.Factory>(),
     provider.GetRequiredService<PacketRouter<GameSession>>(),

@@ -435,10 +435,7 @@ public sealed class MarriageManager {
             }
 
             try {
-                session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = guestId,
-                    MailId = mail.Id,
-                });
+                session.World.NotifyMail(guestId, mail.Id);
             } catch { /* ignored */ }
         }
     }
@@ -484,10 +481,7 @@ public sealed class MarriageManager {
             logger.Error("Failed to create mail for expired engagement for {CharacterId}", Marriage.Partner2.CharacterId);
         } else {
             try {
-                session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = Marriage.Partner2.CharacterId,
-                    MailId = mail.Id,
-                });
+                session.World.NotifyMail(Marriage.Partner2.CharacterId, mail.Id);
             } catch { /* ignored */
             }
         }
@@ -504,10 +498,7 @@ public sealed class MarriageManager {
             logger.Error("Failed to create mail for expired engagement for {CharacterId}", Marriage.Partner1.CharacterId);
         } else {
             try {
-                session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = Marriage.Partner1.CharacterId,
-                    MailId = partnerMail.Id,
-                });
+                session.World.NotifyMail(Marriage.Partner1.CharacterId, partnerMail.Id);
             } catch { /* ignored */
             }
         }
@@ -714,10 +705,7 @@ public sealed class MarriageManager {
         }
 
         try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = receiverId,
-                MailId = mail.Id,
-            });
+            session.World.NotifyMail(receiverId, mail.Id);
         } catch { /* ignored */ }
     }
 
@@ -1258,10 +1246,7 @@ public sealed class MarriageManager {
 
         if (giftMail != null) {
             try {
-                session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = partner.Value.Character.Id,
-                    MailId = giftMail.Id,
-                });
+                session.World.NotifyMail(partner.Value.Character.Id, giftMail.Id);
             } catch { /* ignored */
             }
         }
@@ -1403,10 +1388,7 @@ public sealed class MarriageManager {
         fieldPartner.Session.Send(WeddingPacket.AcceptCancelReservation());
 
         try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = cancelled.ReserverCharacterId,
-                MailId = couponMail.Id,
-            });
+            session.World.NotifyMail(cancelled.ReserverCharacterId, couponMail.Id);
         } catch { /* ignored */
         }
         MailGuests(db, cancelled, cancelGuests.Keys, WeddingGuestMail.Cancel);

@@ -987,7 +987,24 @@ public sealed class TestGameSession {
 
         public override MailNotificationResponse MailNotification(MailNotificationRequest request, CallOptions options) {
             MailNotifications.Add(request);
+            MailNoticeHang?.Wait();
             return new MailNotificationResponse();
+        }
+
+        // While set, a mail notice is answered only once it is set (a World that hangs).
+        public System.Threading.ManualResetEventSlim? MailNoticeHang;
+
+        // The notice sent without waiting (WorldNotices.NotifyMail): recorded when it is sent.
+        public override AsyncUnaryCall<MailNotificationResponse> MailNotificationAsync(MailNotificationRequest request, CallOptions options) {
+            MailNotifications.Add(request);
+            System.Threading.ManualResetEventSlim? hang = MailNoticeHang;
+            System.Threading.Tasks.Task<MailNotificationResponse> answer = hang == null
+                ? System.Threading.Tasks.Task.FromResult(new MailNotificationResponse())
+                : System.Threading.Tasks.Task.Run(() => {
+                    hang.Wait();
+                    return new MailNotificationResponse();
+                });
+            return new AsyncUnaryCall<MailNotificationResponse>(answer, System.Threading.Tasks.Task.FromResult(new Grpc.Core.Metadata()), () => Status.DefaultSuccess, () => new Grpc.Core.Metadata(), () => { });
         }
 
         // The chat lines handed to the world.

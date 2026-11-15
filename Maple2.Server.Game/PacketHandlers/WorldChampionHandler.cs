@@ -9,6 +9,7 @@ using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Serilog;
 using static Maple2.Model.Error.MigrationError;
+using Maple2.Server.Game.Util.Sync;
 using WorldTimeEventRequest = Maple2.Server.World.Service.TimeEventRequest;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -109,10 +110,7 @@ public class WorldChampionHandler : FieldPacketHandler {
                 continue;
             }
             try {
-                session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = session.CharacterId,
-                    MailId = sent.Id,
-                });
+                session.World.NotifyMail(session.CharacterId, sent.Id);
             } catch { /* ignored */ }
         }
     }

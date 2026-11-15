@@ -31,6 +31,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Tools.DotRecast;
 using Maple2.Tools.Extensions;
 using Maple2.Tools.Scheduler;
@@ -582,6 +583,8 @@ public partial class FieldManager : IField {
     }
 
     private void UpdateLoop() {
+        // The World calls this thread makes get the field's short deadline (WorldCallDeadline).
+        WorldCallDeadline.MarkFieldThread();
         while (!cancel.IsCancellationRequested) {
             if (!(DebugRenderer?.IsActive ?? false)) {
                 RunUpdate();

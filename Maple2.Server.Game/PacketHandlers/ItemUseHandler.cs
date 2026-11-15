@@ -20,6 +20,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using static Maple2.Model.Error.CharacterCreateError;
@@ -546,10 +547,7 @@ public class ItemUseHandler : FieldPacketHandler {
         session.Item.Inventory.UpdateHeld(held);
 
         try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = receiverInfo.CharacterId,
-                MailId = sentMail.Id,
-            });
+            session.World.NotifyMail(receiverInfo.CharacterId, sentMail.Id);
         } catch { /* ignored */
         }
 

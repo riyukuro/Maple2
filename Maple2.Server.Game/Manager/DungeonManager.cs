@@ -15,6 +15,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Maple2.Tools.Extensions;
@@ -272,10 +273,7 @@ public class DungeonManager {
             return;
         }
         try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = session.CharacterId,
-                MailId = mail.Id,
-            });
+            session.World.NotifyMail(session.CharacterId, mail.Id);
         } catch { /* ignored */ }
     }
 

@@ -8,6 +8,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.Game.Util;
 using static Maple2.Model.Error.MesoMarketError;
 
@@ -334,10 +335,7 @@ public class MesoMarketHandler : FieldPacketHandler {
 
         foreach (Mail mail in new[] { mails.Value.Buyer, mails.Value.Seller }) {
             try {
-                session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = mail.ReceiverId,
-                    MailId = mail.Id,
-                });
+                session.World.NotifyMail(mail.ReceiverId, mail.Id);
             } catch { /* ignored */ }
         }
 

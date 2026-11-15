@@ -13,6 +13,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util.Sync;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -249,10 +250,7 @@ public class AttendanceHandler : FieldPacketHandler {
 
         storedMail.Items.Add(storedItem);
         try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = session.CharacterId,
-                MailId = storedMail.Id,
-            });
+            session.World.NotifyMail(session.CharacterId, storedMail.Id);
         } catch { /* ignored */ }
         return true;
     }

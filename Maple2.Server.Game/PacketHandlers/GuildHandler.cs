@@ -11,6 +11,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Maple2.Tools.Extensions;
@@ -843,10 +844,7 @@ public class GuildHandler : FieldPacketHandler {
             }
 
             try {
-                World.MailNotification(new MailNotificationRequest {
-                    CharacterId = receiverId,
-                    MailId = mail.Id,
-                });
+                World.NotifyMail(receiverId, mail.Id);
             } catch (RpcException) { /* the member sees the mail at the next login */ }
         }
 

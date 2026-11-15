@@ -7,6 +7,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util.Sync;
 
 namespace Maple2.Server.Game.Trigger;
 
@@ -203,10 +204,7 @@ public partial class TriggerContext {
                 continue;
             }
             try {
-                player.Session.World.MailNotification(new MailNotificationRequest {
-                    CharacterId = characterId,
-                    MailId = mailId,
-                });
+                player.Session.World.NotifyMail(characterId, mailId);
             } catch { /* ignored */ }
         }
         // "Complete {0} weddings" (23100428) counts the couple, "Attend {0} weddings as a guest" (23100446) every

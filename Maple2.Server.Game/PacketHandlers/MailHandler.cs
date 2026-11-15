@@ -7,6 +7,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -137,10 +138,7 @@ public class MailHandler : FieldPacketHandler {
         session.ConditionUpdate(ConditionType.send_mail);
         session.Send(MailPacket.Send());
         try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = receiverId,
-                MailId = mail.Id,
-            });
+            session.World.NotifyMail(receiverId, mail.Id);
         } catch { /* ignored */ }
     }
 

@@ -9,6 +9,7 @@ using Maple2.Model.Validators;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.World.Service;
 using Serilog;
 
@@ -309,10 +310,7 @@ public sealed class BlackMarketManager {
         }
 
         try {
-            session.World.MailNotification(new MailNotificationRequest {
-                CharacterId = sellerMail.ReceiverId,
-                MailId = sellerMail.Id,
-            });
+            session.World.NotifyMail(sellerMail.ReceiverId, sellerMail.Id);
         } catch { /*ignored*/ }
     }
 

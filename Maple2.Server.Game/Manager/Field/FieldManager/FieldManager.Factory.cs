@@ -11,6 +11,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Serilog;
@@ -416,10 +417,7 @@ public partial class FieldManager {
                 logger.Information("OX quiz event of {HostCharacterId}: {Kind} of {Amount} mesos mailed to {CharacterId} ({MailId})",
                     ox.HostCharacterId, payment.Kind, payment.Amount, payment.CharacterId, mail.Id);
                 try {
-                    World.MailNotification(new MailNotificationRequest {
-                        CharacterId = payment.CharacterId,
-                        MailId = mail.Id,
-                    });
+                    World.NotifyMail(payment.CharacterId, mail.Id);
                 } catch { /* ignored: the mail is there at the next login */ }
             } catch (Exception ex) {
                 logger.Error(ex, "OX quiz event of {HostCharacterId}: {Kind} of {Amount} mesos for {CharacterId} could not be mailed",
