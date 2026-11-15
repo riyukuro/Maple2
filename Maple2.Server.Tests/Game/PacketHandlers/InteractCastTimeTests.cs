@@ -121,6 +121,17 @@ public class InteractCastTimeTests {
     [TestCase(30000, 0)]
     [TestCase(0, 1)]
     public void AGather_UsesTheMasteryReduceCast(int rate, int logged) {
+        GameSession session = StartGather(rate);
+        Send(session, 11, "ab");
+        session.InteractStartTick = session.Field!.FieldTick - 800;
+
+        Send(session, 12, "ab");
+
+        Assert.That(Early(), Has.Count.EqualTo(logged));
+    }
+
+    // A session with a 3 s gathered object "ab" and a MasteryReduce event 520001 of the rate (none for 0).
+    private GameSession StartGather(int rate) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(RewardItemId));
         test.SetTable(new MasteryRecipeTable(new Dictionary<int, MasteryRecipeTable.Entry> {
@@ -142,12 +153,88 @@ public class InteractCastTimeTests {
         test.EnterMap(TestGameSession.Map(2000001) with { Drop = new MapMetadataDrop(1, 0, []) });
         test.SetGatheringCounts();
         test.AddInteract(Row(13, InteractType.Gathering, 3000, RecipeId), new InteractGatheringObject("ab", new Ms2InteractActor(13, Vector3.Zero, Vector3.Zero)));
+        return session;
+    }
+
+    // The event is over: the server no longer finds it.
+    private static void EndEvent(GameSession session, int id) {
+        object server = typeof(GameSession).GetField("server", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
+        var cache = (IDictionary<int, GameEvent>) typeof(Maple2.Server.Game.GameServer).GetField("eventCache", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(server)!;
+        cache.Remove(id);
+    }
+
+    // The client takes the MasteryReduce rate as the cast starts: a gather started under a 30000 rate casts 1 s even
+    // if the event is over by the end.
+    [Test]
+    public void AGather_KeepsTheRateOfItsStart() {
+        GameSession session = StartGather(rate: 30000);
         Send(session, 11, "ab");
+        Assert.That(session.InteractStartMasteryReduce, Is.EqualTo(30000));
         session.InteractStartTick = session.Field!.FieldTick - 800;
+        EndEvent(session, 520001);
+        Assert.That(session.FindEvent(GameEventType.MasteryReduce), Is.Empty, "the event is over");
 
         Send(session, 12, "ab");
 
-        Assert.That(Early(), Has.Count.EqualTo(logged));
+        Assert.That(Early(), Is.Empty);
+    }
+
+    // An object the client did not find usable gets no start, but the client casts on it all the same and sends the
+    // end if it turned usable meanwhile: no line for an object that turned reactable after the last start.
+    [Test]
+    public void AnObjectTurnedReactableAfterTheStart_IsNotLogged() {
+        test = new TestGameSession();
+        GameSession session = test.Start();
+        FieldInteract interact = test.AddInteract(Row(11, InteractType.Mesh, 3000), new InteractMeshObject("ab", new Ms2InteractMesh(11, Vector3.Zero, Vector3.Zero)));
+        session.InteractStartTick = session.Field!.FieldTick - 100;
+        interact.SetState(InteractState.Normal);
+        interact.SetState(InteractState.Reactable);
+
+        Send(session, 12, "ab");
+
+        Assert.That(Early(), Is.Empty);
+    }
+
+    // One reactable since before the start is still timed.
+    [Test]
+    public void AnObjectReactableBeforeTheStart_IsTimed() {
+        test = new TestGameSession();
+        GameSession session = test.Start();
+        FieldInteract interact = test.AddInteract(Row(11, InteractType.Mesh, 3000), new InteractMeshObject("ab", new Ms2InteractMesh(11, Vector3.Zero, Vector3.Zero)));
+        interact.SetState(InteractState.Normal);
+        interact.SetState(InteractState.Reactable);
+        Send(session, 11, "ab");
+        session.InteractStartTick = interact.ReactableTick + 1;
+
+        Send(session, 12, "ab");
+
+        Assert.That(Early(), Has.Count.EqualTo(1));
+    }
+
+    // Every start sets the tick, even one whose names are all refused; leaving the field clears the tick and the rate.
+    [Test]
+    public void TheStart_IsKeptForAnyStart_AndClearedOnLeavingTheField() {
+        test = new TestGameSession();
+        GameSession session = test.Start();
+        test.AddInteract(Row(11, InteractType.Mesh, 3000), new InteractMeshObject("ab", new Ms2InteractMesh(11, Vector3.Zero, Vector3.Zero)));
+        session.Player.Position = new Vector3(100000, 0, 0);
+
+        Send(session, 11, "ab");
+        Assert.That(session.InteractStarted, Is.Empty, "out of reach");
+        Assert.That(session.InteractStartTick, Is.Not.Null, "a start whose names are all refused");
+        session.InteractStartMasteryReduce = 30000;
+
+        // What the leave clears that the test session is made without (FishingCastTests); the field's own removal is not under test.
+        typeof(GameSession).GetField(nameof(GameSession.ItemLockStaging))!.SetValue(session, new long[18]);
+        FieldInfo dismantle = typeof(GameSession).GetField(nameof(GameSession.DismantleStaging))!;
+        dismantle.SetValue(session, System.Array.CreateInstance(dismantle.FieldType.GetElementType()!, 0));
+        session.Field = null;
+        typeof(GameSession).GetMethod("LeaveField", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, null);
+
+        Assert.Multiple(() => {
+            Assert.That(session.InteractStartTick, Is.Null);
+            Assert.That(session.InteractStartMasteryReduce, Is.Zero);
+        });
     }
 
     private sealed class Lines(List<string> lines) : ILogEventSink {

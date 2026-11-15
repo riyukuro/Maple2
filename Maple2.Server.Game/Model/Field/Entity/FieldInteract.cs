@@ -26,7 +26,18 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
     // The timeEventData type 4 row that put the object on the field (0: none).
     public int TimeEventId { get; init; }
     // A map treasure chest is added with the Add packet, which says reactable: it starts so, with no update sent.
-    public InteractState InitialState { init => State = value; }
+    public InteractState InitialState {
+        init {
+            State = value;
+            if (value == InteractState.Reactable) {
+                ReactableTick = Environment.TickCount64;
+            }
+        }
+    }
+    // When the object last turned reactable (0: never). The client casts on an object it does not find usable without
+    // sending the start, and sends the end if the object turned usable meanwhile (CInteractObject::vfunc_8 and vfunc_10
+    // test vfunc_4, state 1 among other things; interactobject.cpp:391-400, 596-624).
+    public long ReactableTick { get; private set; }
 
     public FieldInteract(FieldManager field, int objectId, string entityId, InteractObjectMetadata value, IInteractObject interactObject) : base(field, objectId, value) {
         EntityId = entityId;
@@ -88,6 +99,9 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
         }
 
         State = state;
+        if (state == InteractState.Reactable) {
+            ReactableTick = Environment.TickCount64;
+        }
         Field.Broadcast(InteractObjectPacket.Update(this));
     }
 

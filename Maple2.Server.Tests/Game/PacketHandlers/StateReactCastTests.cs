@@ -35,11 +35,11 @@ public class StateReactCastTests {
     }
 
     // A reactor in its sleep state where the player stands: the react is handled up to the state test and takes nothing.
-    private void Start(int reactTimeMs) {
+    private void Start(int reactTimeMs, ReactorStateType type = ReactorStateType.Sleep) {
         test = new TestGameSession();
         test.Start();
         typeof(ConfigManager).GetField(nameof(ConfigManager.ReactLog))!.SetValue(session.Config, new LogGate());
-        var metadata = new ReactorTable.Entry(10000000, 155, reactTimeMs, 0, [new ReactorTable.State(101, ReactorStateType.Sleep, 15, 30, [])], []);
+        var metadata = new ReactorTable.Entry(10000000, 155, reactTimeMs, 0, [new ReactorTable.State(101, type, 15, 30, [])], []);
         FieldInfo field = typeof(FieldManager).GetField("fieldReactors", BindingFlags.Instance | BindingFlags.NonPublic)!;
         if (field.GetValue(session.Field) == null) {
             field.SetValue(session.Field, new ConcurrentDictionary<int, FieldReactor>());
@@ -111,6 +111,53 @@ public class StateReactCastTests {
         React();
 
         Assert.That(Early(), Has.Count.EqualTo(1));
+    }
+
+    // A react that is logged is handled as before: a connect state still takes the player.
+    [Test]
+    public void ALoggedReact_IsStillHandled() {
+        Start(1500, ReactorStateType.Connect);
+
+        React(ObjectId + 1);
+        React();
+
+        Assert.That(Early(), Has.Count.EqualTo(1));
+        Assert.That(Reactor().IsConnected(session.CharacterId), Is.True);
+    }
+
+    // One line per LogGate.EveryMs; the reacts in between are counted into the next line.
+    [Test]
+    public void EarlyReacts_AreLoggedOncePerGate() {
+        Start(1500);
+
+        React();
+        React();
+        React();
+        React();
+
+        Assert.That(Early(), Has.Count.EqualTo(1));
+        Assert.That(session.Config.ReactLog.Count(session.Field!.FieldTick + LogGate.EveryMs), Is.EqualTo(3), "the two held back and this one");
+    }
+
+    // A new field starts with no react to time against (GameSession.LeaveField).
+    [Test]
+    public void LeavingTheField_ClearsTheLastReact() {
+        Start(1500);
+        React();
+        Assert.That(session.LastReactTick, Is.Not.Null);
+
+        typeof(GameSession).GetField(nameof(GameSession.ItemLockStaging))!.SetValue(session, new long[18]);
+        FieldInfo dismantle = typeof(GameSession).GetField(nameof(GameSession.DismantleStaging))!;
+        dismantle.SetValue(session, System.Array.CreateInstance(dismantle.FieldType.GetElementType()!, 0));
+        session.Field = null;
+        typeof(GameSession).GetMethod("LeaveField", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, null);
+
+        Assert.That(session.LastReactTick, Is.Null);
+    }
+
+    private FieldReactor Reactor() {
+        var reactors = (ConcurrentDictionary<int, FieldReactor>) typeof(FieldManager).GetField("fieldReactors", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Field)!;
+        return reactors[ObjectId];
     }
 
     private sealed class Lines(List<string> lines) : ILogEventSink {

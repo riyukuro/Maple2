@@ -65,6 +65,7 @@ public class InteractObjectHandler : FieldPacketHandler {
     private void HandleStart(GameSession session, IByteReader packet) {
         // The tick of every start, kept or not: the client casts from it (InteractRules.EndTiming).
         session.InteractStartTick = session.Field?.FieldTick;
+        session.InteractStartMasteryReduce = EventSaleRules.HighestRate(session.FindEvent(GameEventType.MasteryReduce));
         // The names are kept: the end of a gathered object is taken only if this start named it.
         // The client starts only on an object within reach (interactobject.cpp:1075, stateinteractdata.cpp:283, 382).
         InteractRules.TakeStarts(session.InteractStarted, InteractRules.ReadNames(packet), name => {
@@ -104,9 +105,15 @@ public class InteractObjectHandler : FieldPacketHandler {
             return;
         }
         bool gathered = interact.Value.Type == InteractType.Gathering;
-        int masteryReduce = gathered ? EventSaleRules.HighestRate(session.FindEvent(GameEventType.MasteryReduce)) : 0;
+        // The client takes the rate at the start; one running at either end is taken, the shorter cast.
+        int masteryReduce = gathered ? Math.Max(session.InteractStartMasteryReduce, EventSaleRules.HighestRate(session.FindEvent(GameEventType.MasteryReduce))) : 0;
         int castTime = InteractRules.CastTime(interact.Value.Time.React, gathered, masteryReduce);
         long now = field.FieldTick;
+        // An object that is not gathered and turned reactable after the last start (or with none) may have been cast on
+        // without a start: the client casts on an object not usable yet and sends no start for it (FieldInteract.ReactableTick).
+        if (!gathered && interact.ReactableTick != 0 && interact.ReactableTick > (session.InteractStartTick ?? long.MinValue)) {
+            return;
+        }
         InteractRules.EarlyEnd early = InteractRules.EndTiming(session.InteractStartTick, now, castTime);
         if (early != InteractRules.EarlyEnd.None && session.Config.InteractLog.Count(now) is > 0 and int unlogged) {
             Logger.Information("InteractObject end before its cast (logged only): {Early}, {Elapsed} ms since the start of a {CastTime} ms cast, object {Name} ({InteractId}), {Unlogged} since the last line, {Player}",

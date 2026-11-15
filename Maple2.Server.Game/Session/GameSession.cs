@@ -166,6 +166,8 @@ public sealed partial class GameSession : Core.Network.Session {
     public readonly HashSet<string> InteractStarted = [];
     // The field tick of the last InteractObject start packet, null for none in this field; same thread rule.
     public long? InteractStartTick;
+    // The highest running MasteryReduce rate at that start: the client works a gather's cast out as it starts.
+    public int InteractStartMasteryReduce;
     // The farming and breeding cube ids of the last FunctionCube begin packet; same thread rule.
     public readonly HashSet<string> CubeStarted = [];
     // The field tick of the last StateReact packet, null for none in this field; same thread rule.
@@ -712,6 +714,7 @@ public sealed partial class GameSession : Core.Network.Session {
         InteractStarted.Clear();
         InteractStartTick = null;
         LastReactTick = null;
+        InteractStartMasteryReduce = 0;
         CubeStarted.Clear();
         Array.Clear(ItemLockStaging);
         Array.Clear(DismantleStaging);
