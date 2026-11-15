@@ -52,6 +52,7 @@ public class ConfigManager {
     private SkillCastRules.LastMotion? lastMotion;
     public readonly LagBudget Lag = new(); // casts and held-skill iterations that arrive early
     public readonly LagBudget MoveLag = new(); // position syncs that arrive early
+    public readonly LagBudget ItemCooldownLag = new(); // item skill uses that arrive early by a held earlier use
     public readonly ClockRate CastClock = new(ClockRate.CastBoundMs, ClockRate.CastBackMs);
     public readonly ClockRate SyncClock = new(ClockRate.SyncBoundMs);
     // The log-only lines of the cast checks and of the attack point checks; the lines of the target packet hits skipped;

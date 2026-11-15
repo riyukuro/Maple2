@@ -142,6 +142,21 @@ public class ItemSkillCastTests : TriggerTestBase {
         Assert.That(Held(Potion), Is.EqualTo(3), "the third, 1.5 s early again, finds 0.7 s left");
     }
 
+    // The item cooldown's allowance is its own: job casts the same stall held, which drew the cast allowance dry, do not
+    // leave the held potion refused.
+    [Test]
+    public void EarlyJobCasts_DoNotSpendTheItemCooldownAllowance() {
+        SkillMetadata potion = ItemSkill(PotionSkill);
+        QuestConditionWiringTests.SetSkills(test, potion with { Data = potion.Data with { Condition = potion.Data.Condition with { CooldownTime = 5f, CooldownShownInUi = true } } });
+        long first = Field.FieldTick;
+        Cast(PotionSkill, Uid(Potion), castId: 1);
+        typeof(Maple2.Server.Game.Manager.Field.FieldManager).GetField("<FieldTick>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(Field, first + 3000);
+        Assert.That(test.Session.Config.Lag.TryDraw(2000, first + 3000), Is.True, "job casts drain the cast allowance");
+        Cast(PotionSkill, Uid(Potion), castId: 2);
+        Assert.That(Held(Potion), Is.EqualTo(3));
+    }
+
     // The ingest reads useCoolDownShowUI from the played client's <basic><condition>, 0 when not given (made-up rows),
     // for a skill it has (Read) and for a level only it has (BuildLevel, kept by WithPackLevel).
     [Test]

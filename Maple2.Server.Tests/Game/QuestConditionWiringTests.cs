@@ -281,6 +281,7 @@ public class QuestConditionWiringTests : TriggerTestBase {
         typeof(ConfigManager).GetField("lastCasts", Any)!.SetValue(config, new Dictionary<int, SkillCastRules.LastCast>());
         typeof(ConfigManager).GetField(nameof(ConfigManager.CastClock), Any)!.SetValue(config, new ClockRate(ClockRate.CastBoundMs, ClockRate.CastBackMs));
         typeof(ConfigManager).GetField(nameof(ConfigManager.Lag), Any)!.SetValue(config, new LagBudget());
+        typeof(ConfigManager).GetField(nameof(ConfigManager.ItemCooldownLag), Any)!.SetValue(config, new LagBudget());
         typeof(ConfigManager).GetField(nameof(ConfigManager.CastLog), Any)!.SetValue(config, new LogGate());
         test.Session.Ride = new RideManager(test.Session);
         // No rig for the player here: the cast plays no sequence.

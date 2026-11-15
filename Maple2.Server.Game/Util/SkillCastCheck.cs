@@ -178,7 +178,7 @@ public static class SkillCastCheck {
             return true;
         }
         blocking = session.Config.BlockingCooldown(record.Metadata, tick);
-        if (blocking != null && session.Config.Lag.TryDraw(SkillCastRules.CooldownShortfallMs(tick, blocking.EndTick), tick)) {
+        if (blocking != null && session.Config.ItemCooldownLag.TryDraw(SkillCastRules.CooldownShortfallMs(tick, blocking.EndTick), tick)) {
             Logger.Debug("Item skill {SkillId}: a use {Ms} ms before its cooldown's end is taken on the lag allowance", record.SkillId,
                 blocking.EndTick - tick);
             blocking = null;
