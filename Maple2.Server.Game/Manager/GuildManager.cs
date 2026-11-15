@@ -6,6 +6,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Sync;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
@@ -125,9 +126,11 @@ public class GuildManager : IDisposable {
             HouseTheme = info.HouseTheme,
             Pvp = string.IsNullOrEmpty(info.Pvp) ? new GuildPvp() : JsonSerializer.Deserialize<GuildPvp>(info.Pvp) ?? new GuildPvp(),
             PvpState = (GuildPvpState) info.PvpState,
+            // A rank still named the data's default (a new guild's name on this region, GuildRules.DefaultRankNames)
+            // shows the client's own default instead; a typed name is kept (GuildRankNameTable.Shown).
             Ranks = info.Ranks.Select((rank, i) => new GuildRank {
                 Id = (byte) i,
-                Name = rank.Name,
+                Name = session.TableMetadata.GuildRankNameTable.Shown(i, rank.Name, GuildRules.DefaultRankNames(Target.LOCALE)),
                 Permission = (GuildPermission) rank.Permission,
             }).ToArray(),
             Buffs = info.Buffs.Select(buff => new GuildBuff {
@@ -789,7 +792,8 @@ public class GuildManager : IDisposable {
             return false;
         }
 
-        rank.Name = name;
+        // Shown as at load: a rank renamed to the data's default name shows the client's default.
+        rank.Name = session.TableMetadata.GuildRankNameTable.Shown(rankId, name, GuildRules.DefaultRankNames(Target.LOCALE));
         rank.Permission = permission;
         // CGuildManager::OnPacketGradeUpdated: who changed it, then the rank; it refreshes the members of that rank.
         session.Send(GuildPacket.NotifyUpdateRank(new InterfaceText(requestorName), rank));

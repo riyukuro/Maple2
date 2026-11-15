@@ -122,6 +122,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.WEAPON_ACTION, Table = ParseWeaponAction() };
         yield return new TableMetadata { Name = TableNames.QUEST_MASK_NPC, Table = ParseQuestMaskNpcTable() };
         yield return new TableMetadata { Name = TableNames.STRING_COMMON, Table = ParseInventoryTabNames() };
+        yield return new TableMetadata { Name = TableNames.GUILD_RANK_NAMES, Table = ParseGuildRankNames() };
         yield return new TableMetadata { Name = TableNames.USER_CONDITION_EVENT, Table = ParseUserConditionEventTable() };
         yield return new TableMetadata { Name = TableNames.PAYBACK, Table = ParsePayback() };
         yield return new TableMetadata { Name = TableNames.MENTORING_CONFIG, Table = ParseMentoringConfig() };
@@ -3095,20 +3096,43 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return new MaidTable(results, exps, recipes, groups, jackpotRates);
     }
 
-    // The played client's string/<language>/stringcommon.xml (else the data pack's): the inventory tab names.
-    private InventoryTabNameTable ParseInventoryTabNames() {
+    // The played client's string/<language>/stringcommon.xml (else the data pack's).
+    private XmlDocument? StringCommon() {
         string name = $"string/{language}/{TableNames.STRING_COMMON}";
-        XmlDocument? document = null;
         foreach (M2dReader? reader in new[] { playedReader, xmlReader }) {
             Maple2.File.IO.Crypto.Common.PackFileEntry? entry = reader?.Files.FirstOrDefault(file => file.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (reader != null && entry != null) {
-                document = reader.GetXmlDocument(entry);
-                break;
+                return reader.GetXmlDocument(entry);
             }
         }
+        return null;
+    }
+
+    // The inventory tab names, from stringcommon.
+    private InventoryTabNameTable ParseInventoryTabNames() {
+        XmlDocument? document = StringCommon();
         InventoryTabNameTable table = document == null ? InventoryTabNameTable.Empty : InventoryTabNames(document);
-        Console.WriteLine($"{name}: {table.Names.Count} of {InventoryTab.Count} inventory tab names");
+        Console.WriteLine($"string/{language}/{TableNames.STRING_COMMON}: {table.Names.Count} of {InventoryTab.Count} inventory tab names");
         return table;
+    }
+
+    // The client's default guild rank names, from stringcommon.
+    private GuildRankNameTable ParseGuildRankNames() {
+        XmlDocument? document = StringCommon();
+        GuildRankNameTable table = document == null ? GuildRankNameTable.Empty : GuildRankNames(document);
+        Console.WriteLine($"string/{language}/{TableNames.STRING_COMMON}: {table.Names.Count(name => name.Length > 0)} of {GuildRankNameTable.Keys.Length} guild rank names");
+        return table;
+    }
+
+    // Each default rank key's value (GuildRankNameTable.Keys), "" for a key the strings lack; the empty table when
+    // none is there. A key listed twice keeps its last value, as for the tab names.
+    public static GuildRankNameTable GuildRankNames(XmlDocument document) {
+        var values = new Dictionary<string, string>();
+        foreach (XmlElement key in document.GetElementsByTagName("key").OfType<XmlElement>()) {
+            values[key.GetAttribute("id")] = key.GetAttribute("value");
+        }
+        string[] names = GuildRankNameTable.Keys.Select(id => (values.TryGetValue(id, out string? value) ? value : "")).ToArray();
+        return names.Any(name => name.Length > 0) ? new GuildRankNameTable(names) : GuildRankNameTable.Empty;
     }
 
     // Each tab's <key id=... value=...> (InventoryTab.StringKey). Chosen here: a key listed twice keeps its last value,

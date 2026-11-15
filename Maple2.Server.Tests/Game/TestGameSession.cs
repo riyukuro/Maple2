@@ -138,6 +138,8 @@ public sealed class TestGameSession {
         SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata>()));
         SetTable(new DungeonConfigTable(new Dictionary<int, int>(), new Dictionary<int, DungeonMissionRankMetadata>()));
         SetTable(InventoryTabNameTable.Empty);
+        // Guild ranks are shown as stored (no client default names).
+        SetTable(GuildRankNameTable.Empty);
         // The mentoring caps and coins: KMS2's file.
         SetTable(MentoringConfigTable.Kms2);
         SetTable(new UgcCubeCategoryTable(new Dictionary<int, int>()));

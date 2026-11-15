@@ -106,6 +106,7 @@ public class TableMetadata {
 [JsonDerivedType(typeof(WeaponActionTable), typeDiscriminator: "weaponaction")]
 [JsonDerivedType(typeof(QuestMaskNpcTable), typeDiscriminator: "questmasknpc")]
 [JsonDerivedType(typeof(InventoryTabNameTable), typeDiscriminator: "inventorytabname")]
+[JsonDerivedType(typeof(GuildRankNameTable), typeDiscriminator: "guildrankname")]
 [JsonDerivedType(typeof(UserConditionEventTable), typeDiscriminator: "userconditionevent")]
 [JsonDerivedType(typeof(PaybackTable), typeDiscriminator: "payback")]
 [JsonDerivedType(typeof(MentoringConfigTable), typeDiscriminator: "mentoringconfig")]

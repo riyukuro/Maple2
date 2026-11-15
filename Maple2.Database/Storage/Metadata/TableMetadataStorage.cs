@@ -71,6 +71,7 @@ public class TableMetadataStorage {
     private readonly Lazy<WeaponActionTable> weaponActionTable;
     private readonly Lazy<QuestMaskNpcTable> questMaskNpcTable;
     private readonly Lazy<InventoryTabNameTable> inventoryTabNameTable;
+    private readonly Lazy<GuildRankNameTable> guildRankNameTable;
     private readonly Lazy<UserConditionEventTable> userConditionEventTable;
     private readonly Lazy<PaybackTable> paybackTable;
     private readonly Lazy<MentoringConfigTable> mentoringConfigTable;
@@ -163,6 +164,7 @@ public class TableMetadataStorage {
     public WeaponActionTable WeaponActionTable => weaponActionTable.Value;
     public QuestMaskNpcTable QuestMaskNpcTable => questMaskNpcTable.Value;
     public InventoryTabNameTable InventoryTabNameTable => inventoryTabNameTable.Value;
+    public GuildRankNameTable GuildRankNameTable => guildRankNameTable.Value;
     public UserConditionEventTable UserConditionEventTable => userConditionEventTable.Value;
     public PaybackTable PaybackTable => paybackTable.Value;
     public MentoringConfigTable MentoringConfigTable => mentoringConfigTable.Value;
@@ -276,6 +278,8 @@ public class TableMetadataStorage {
         questMaskNpcTable = Retrieve<QuestMaskNpcTable>(context, TableNames.QUEST_MASK_NPC);
         // A metadata db ingested before this table has no row: its notices name a tab by the server's type name.
         inventoryTabNameTable = Retrieve(context, TableNames.STRING_COMMON, InventoryTabNameTable.Empty);
+        // A metadata db ingested before this table has no row: rank names are shown as stored.
+        guildRankNameTable = Retrieve(context, TableNames.GUILD_RANK_NAMES, GuildRankNameTable.Empty);
         // A metadata db ingested before this table has no row: no user condition rows.
         userConditionEventTable = Retrieve(context, TableNames.USER_CONDITION_EVENT, UserConditionEventTable.Empty);
         // A metadata db ingested before this table has no row: no payback levels.

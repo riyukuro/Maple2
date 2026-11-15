@@ -110,6 +110,8 @@ public static class TableNames {
 
     // Strings (string/<language>/)
     public const string STRING_COMMON = "stringcommon.xml";
+    // The default guild rank names, from the same file (a table row of its own).
+    public const string GUILD_RANK_NAMES = "stringcommon.xml/guildgrade";
 
     public static readonly Dictionary<string, string> ItemOptionVariationTableNames = new Dictionary<string, string> {
         { "acc", ITEM_OPTION_VARIATION_ACC },

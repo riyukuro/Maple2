@@ -8,6 +8,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
@@ -289,6 +290,21 @@ public class GuildManagerNotifyTests {
         Assert.That(rank.Name, Is.EqualTo("Elder"));
         Assert.That(rank.Permission, Is.EqualTo(GuildPermission.All));
         Assert.That(Answers(), Is.EqualTo(new[] { Hex(GuildPacket.NotifyUpdateRank(new InterfaceText("Self"), rank)) }));
+    }
+
+    // A rank renamed to the data's default name for its place shows the client's own default, as at load; any
+    // other name is kept as typed.
+    [Test]
+    public void UpdateRank_TheDataDefaultName_ShowsTheClientDefault() {
+        test.SetTable(new GuildRankNameTable(["C0", "C1", "C2", "C3", "C4", "C5"]));
+        Join();
+
+        Assert.That(manager.UpdateRank("Self", 1, GuildRules.DefaultRankNames(Target.LOCALE)[1], GuildPermission.All), Is.True);
+        Assert.That(guild.Ranks.First(r => r.Id == 1).Name, Is.EqualTo("C1"));
+        Assert.That(manager.UpdateRank("Self", 1, GuildRules.DefaultRankNames(Target.LOCALE)[0], GuildPermission.All), Is.True);
+        Assert.That(guild.Ranks.First(r => r.Id == 1).Name, Is.EqualTo(GuildRules.DefaultRankNames(Target.LOCALE)[0]));
+        Assert.That(manager.UpdateRank("Self", 1, "Elder", GuildPermission.All), Is.True);
+        Assert.That(guild.Ranks.First(r => r.Id == 1).Name, Is.EqualTo("Elder"));
     }
 
     [Test]
