@@ -1432,10 +1432,24 @@ public class HousingManager {
             }
         }
 
+        // The storage item below is written at once, so the charge is stored before it: a charge left in memory
+        // came back after a crash while the bought item stayed in the owner's storage.
+        if (shopEntry.Price > 0 && !SaveHome()) {
+            lock (Home) {
+                HomeBuildRules.Refund(Home, merat, shopEntry.Price);
+            }
+            logger.Error("Build budget charge of home {AccountId} not stored, the cube not bought", session.AccountId);
+            helper.Send(CubePacket.EditError(edit, UgcMapError.s_ugcmap_db, helper.Player.ObjectId));
+            return false;
+        }
+
         long itemUid = session.Item.Furnishing.AddCube(cube);
         if (itemUid == 0) {
             lock (Home) {
                 HomeBuildRules.Refund(Home, merat, shopEntry.Price);
+            }
+            if (shopEntry.Price > 0 && !SaveHome()) {
+                logger.Error("Build budget refund of home {AccountId} not stored now, left to the next save", session.AccountId);
             }
             helper.Send(CubePacket.EditError(edit, UgcMapError.s_ugcmap_not_for_sale, helper.Player.ObjectId));
             return false;

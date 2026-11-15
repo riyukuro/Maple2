@@ -242,6 +242,53 @@ public class PlaceHeldCubeTests {
         });
     }
 
+    private long StoredBuildMeso(GameSession session) {
+        using var context = new Ms2Context(test.Options);
+        return context.Home.AsNoTracking().Single(row => row.AccountId == session.AccountId).BuildMeso;
+    }
+
+    // A build helper's cube is bought from the home's budget into the owner's storage. The storage row was written at
+    // once and the charge kept in memory only, so a crash before the next save kept the item and gave the budget back.
+    private (GameSession Owner, GameSession Helper, Plot Plot) HelperInHome() {
+        (GameSession owner, Plot plot) = StartInHome();
+        owner.Player.Value.Home.BuildMeso = 3000;
+        Assert.That(owner.Housing.SaveHome(), Is.True);
+        var helperTest = new TestGameSession(test.Options);
+        GameSession helper = helperTest.Start();
+        return (owner, helper, plot);
+    }
+
+    private static bool HelperPlace(GameSession owner, GameSession helper, Plot plot) {
+        owner.ItemMetadata.TryGet(Cube, out ItemMetadata? metadata);
+        return owner.Housing.TryPlaceCube(new PlotCube(metadata!) { Type = PlotCube.CubeType.Construction }, plot, metadata!, new Vector3B(-1, -1, 1), 0, out _, helper: helper);
+    }
+
+    [Test]
+    public void AHelpersBuy_StoresTheBudgetCharge() {
+        (GameSession owner, GameSession helper, Plot plot) = HelperInHome();
+
+        Assert.That(HelperPlace(owner, helper, plot), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes.Values.Select(cube => cube.ItemId), Is.EqualTo(new[] { Cube }));
+            Assert.That((owner.Player.Value.Home.BuildMeso, StoredBuildMeso(owner)), Is.EqualTo((2000L, 2000L)));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // The charge not stored: nothing is bought, the budget is given back and the helper told s_ugcmap_db.
+    [Test]
+    public void AHelpersBuy_ChargeNotStored_BuysNothing() {
+        (GameSession owner, GameSession helper, Plot plot) = HelperInHome();
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "Home");
+
+        Assert.That(HelperPlace(owner, helper, plot), Is.False);
+        Assert.Multiple(() => {
+            Assert.That(plot.Cubes, Is.Empty);
+            Assert.That(owner.Item.Furnishing.GetItem(Cube), Is.Null);
+            Assert.That((owner.Player.Value.Home.BuildMeso, StoredBuildMeso(owner)), Is.EqualTo((3000L, 3000L)));
+        });
+    }
+
     // The storage uid the client sends is a stack of another item: the stack is not spent and the named cube is bought
     // as any cube not in storage. It was placed from the cheap stack, and taking it back gave the other item.
     [Test]
