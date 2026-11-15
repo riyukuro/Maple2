@@ -3,12 +3,14 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
+using Maple2.Server.Tests.Game.Manager;
 using Maple2.Server.Tests.Game.PacketHandlers;
 
 namespace Maple2.Server.Tests.Game.Pvp;
@@ -191,6 +193,61 @@ public class PvpZoneFieldTests {
         Assert.That(new[] { Held(arena, 2, OnePunchItem), Held(arena, 3, OnePunchItem) }.Order(), Is.EqualTo(new[] { 7, 8 }));
         Assert.That(Held(arena, 0, 90000006) + Held(arena, 0, ArenaItem), Is.Zero);
         Assert.That(arena.Ended, Is.Empty);
+    }
+
+    // The tab of the item with no open slot: its last slot holds a locked stack, which takes no add.
+    private static void FullBag(TestGameSession test, int itemId) {
+        Item sample = test.Session.Field!.ItemDrop.CreateItem(itemId)!;
+        BagSplitTests.Bag(test.Session, sample, (short) (test.Session.Item.Inventory.Filter(_ => true, sample.Inventory).Count + 1), locked: 1);
+    }
+
+    private static int Mailed(TestGameSession test, int itemId) {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.GetAllMail(test.CharacterId).SelectMany(mail => mail.Items).Where(item => item.Id == itemId).Sum(item => item.Amount);
+    }
+
+    // Items are owned by a character, account or mail id, each counted from 1 in the in-memory database: mail ids
+    // are used up past the characters' first (see BagSplitTests.Mail).
+    private static void SkipMailIds(Arena arena) {
+        using GameStorage.Request db = arena.Tests[0].Storage.Context();
+        long last = arena.Tests.Max(test => Math.Max(test.CharacterId, test.AccountId));
+        for (long i = 0; i <= last; i++) {
+            db.CreateMail(new Mail { ReceiverId = last + 1, Type = MailType.System, Title = "t", Content = "c" });
+        }
+    }
+
+    // A full bag: the one punch tokens and the arena row's reward come by mail (before, the bag's refusal dropped them).
+    [Test]
+    public void OnePunch_FullBag_MailsTheTokens() {
+        Arena arena = Start(field => field.StartPvpZone(5, 701, 0, 1, 0, [], _ => field.Players.Values), players: 4, arenaMatch: false);
+        SkipMailIds(arena);
+        FullBag(arena.Tests[0], OnePunchItem);
+        long now = Environment.TickCount64;
+        arena.Field.PvpZone!.Update(now + 10);
+        arena.Field.PvpZone.Damage(arena.Player(0), arena.Player(1), 40);
+        arena.Field.PvpZone.Death(arena.Player(1));
+        arena.Field.PvpZone.Update(now + 2000);
+        Assert.That(arena.Field.PvpZone.Ended, Is.True);
+        Assert.That(Held(arena, 0, OnePunchItem), Is.EqualTo(1), "the locked stack only");
+        Assert.That(Mailed(arena.Tests[0], OnePunchItem), Is.EqualTo(9));
+        Assert.That(Held(arena, 1, OnePunchItem), Is.EqualTo(6));
+        Assert.That(Mailed(arena.Tests[1], OnePunchItem), Is.Zero);
+    }
+
+    [Test]
+    public void FreeForAll_FullBag_MailsTheArenaReward() {
+        Arena arena = Start();
+        SkipMailIds(arena);
+        FullBag(arena.Tests[0], ArenaItem);
+        long now = Environment.TickCount64;
+        arena.Field.PvpZone!.Update(now + 10);
+        arena.Field.PvpZone.Damage(arena.Player(0), arena.Player(1), 40);
+        arena.Field.PvpZone.Death(arena.Player(1));
+        arena.Field.PvpZone.Update(now + 2000);
+        Assert.That(arena.Field.PvpZone.Ended, Is.True);
+        Assert.That(Held(arena, 0, ArenaItem), Is.EqualTo(1), "the locked stack only");
+        Assert.That(Mailed(arena.Tests[0], ArenaItem), Is.EqualTo(100));
+        Assert.That(Held(arena, 2, ArenaItem), Is.EqualTo(10));
     }
 
     // The farm guard: a round with fewer participants than the script's minimum (4) pays no tokens, and a participant

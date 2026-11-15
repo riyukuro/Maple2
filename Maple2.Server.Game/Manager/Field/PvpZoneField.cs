@@ -216,12 +216,12 @@ public sealed class PvpZoneField : IPvpZoneField {
         };
     }
 
-    // The rank's tokens (the result dialog's reward).
+    // The rank's tokens (the result dialog's reward), by mail when the bag is full.
     private void Tokens(FieldPlayer player, int count, int itemId) {
         if (count > 0 && itemId > 0) {
             Item? item = field.ItemDrop.CreateItem(itemId, amount: count);
-            if (item != null && !player.Session.Item.Inventory.Add(item, notifyNew: true, commit: true)) {
-                logger.Warning("PvP zone reward {ItemId} x{Count} of {CharacterId} not added", itemId, count, player.Value.Character.Id);
+            if (item != null && !player.Session.Item.AddOrMail(item, notifyNew: true, commit: true)) {
+                logger.Warning("PvP zone reward {ItemId} x{Count} of {CharacterId} not given", itemId, count, player.Value.Character.Id);
             }
         }
     }
