@@ -347,6 +347,13 @@ public static class SkillUtils {
         if (condition.Event.BuffIds.Length > 0 && !condition.Event.BuffIds.Contains(eventBuffId)) {
             return false;
         }
+        // A stack event is raised for each stack of any buff the holder has, and no KR stack row (87 levels) names an
+        // eventEffectID: each names the stacking buff in its hasBuffID instead. So the row fires only for a stack of a
+        // buff it names; else 10200267's row (10200264 at 4) recast 10200268, restarting it, on each stack of another buff.
+        if (eventType == EventConditionType.OnBuffStacksReached && condition.Event.Type == eventType && condition.Event.BuffIds.Length == 0
+            && condition.Buff.Length > 0 && !condition.Buff.Any(buff => buff.Id == eventBuffId)) {
+            return false;
+        }
         if (condition.Event.SkillIds.Length > 0 && !condition.Event.SkillIds.Contains(eventSkillId)) {
             return false;
         }

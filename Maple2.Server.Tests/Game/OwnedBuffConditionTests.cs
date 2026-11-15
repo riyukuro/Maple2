@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -165,13 +166,14 @@ public class OwnedBuffConditionTests {
 
     // 10300271 on its holder, cast by the caster: at 10 stacks its event skill casts 10300275 when the holder holds the
     // caster's own copy at 10 (the Owner test with hasBuffOwner, as in the KR data).
-    private static Buff Debuff(IActor holder, IActor caster, int stacks, int count = 10, CompareType compare = CompareType.GreaterEquals) {
+    private static Buff Debuff(IActor holder, IActor caster, int stacks, int count = 10, CompareType compare = CompareType.GreaterEquals,
+            SkillTargetType skillOwner = SkillTargetType.Owner) {
         var payoff = new SkillEffectMetadata(0, [new SkillEffectMetadata.Skill(10300275, 1)],
             new SkillEffectMetadataCondition(Condition(null, null) with {
                 Owner = new BeginConditionTarget([new BeginConditionTarget.HasBuff(Stacked, 0, true, count, compare)],
                     new BeginConditionTarget.EventCondition(EventConditionType.OnBuffStacksReached, false, [], [], []), [], [], [],
                     new Dictionary<MasteryType, int>(), [], []),
-            }, SkillTargetType.Owner, SkillTargetType.Owner, 0, false), null);
+            }, skillOwner, SkillTargetType.Owner, 0, false), null);
         AdditionalEffectMetadata metadata = DisabledBuffTests.Effect(Stacked, property: DisabledBuffTests.Property with { MaxCount = 10 })
             with { Skills = [payoff] };
         Buff buff = DisabledBuffTests.Held(metadata, enabled: true, stacks);
@@ -226,5 +228,39 @@ public class OwnedBuffConditionTests {
         Buff mark = Debuff(mob, a, stacks: before, count: 4, compare: CompareType.Equals);
         Assert.That(mark.Stack(), Is.True);
         Assert.That(mob.Applied, Has.Count.EqualTo(fired));
+    }
+
+    // A stack of another buff does not fire a row naming 10300271: no stack row names an eventEffectID, so the row's
+    // hasBuffID is the stacking buff (10200267's row, 10200264 at 4, while 10200032 stacks). Its own next stack still does.
+    [Test]
+    public void StacksReached_AnotherBuffsStack_DoesNotFireTheRow() {
+        var ta = new TestGameSession();
+        ta.Start();
+        FieldPlayer a = Player(ta, 1);
+        EffectLogNpc mob = Mob(ta.Session.Field!, 10);
+        Buff mark = Debuff(mob, a, stacks: 4, count: 4, compare: CompareType.GreaterEquals);
+        AdditionalEffectMetadata other = DisabledBuffTests.Effect(10200032, property: DisabledBuffTests.Property with { MaxCount = 10 });
+        Buff stacking = DisabledBuffTests.Held(other, enabled: true, 1);
+        typeof(Buff).GetField("<Caster>k__BackingField", Any)!.SetValue(stacking, mob);
+        typeof(Buff).GetField("<Owner>k__BackingField", Any)!.SetValue(stacking, mob);
+        var buffs = (ConcurrentDictionary<int, List<Buff>>) typeof(BuffManager).GetField("buffs", Any)!.GetValue(mob.Buffs)!;
+        buffs.GetOrAdd(other.Id, _ => []).Add(stacking);
+
+        Assert.That(stacking.Stack(), Is.True);
+        Assert.That(mob.Applied, Is.Empty);
+        Assert.That(mark.Stack(), Is.True);
+        Assert.That(mob.Applied, Has.Count.EqualTo(1));
+    }
+
+    // skillOwner 3 in a stack row is the buff's caster: Wizard 10300271's payoff on the mob is cast by the Wizard.
+    [Test]
+    public void StacksReached_SkillOwnerCaster_IsTheBuffsCaster() {
+        var ta = new TestGameSession();
+        ta.Start();
+        FieldPlayer a = Player(ta, 1);
+        EffectLogNpc mob = Mob(ta.Session.Field!, 10);
+        Buff mark = Debuff(mob, a, stacks: 9, skillOwner: SkillTargetType.Caster);
+        Assert.That(mark.Stack(), Is.True);
+        Assert.That(mob.Applied.Select(applied => applied.Caster), Is.EqualTo(new IActor[] { a }));
     }
 }

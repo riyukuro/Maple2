@@ -660,7 +660,11 @@ public class BuffManager : IUpdatable {
             }
             // A hasBuffOwner test in a buff's event skills takes the copies of whoever cast that buff: the holder for a
             // buff of its own, the player for a debuff it put on an enemy (10300271 reaching 10 stacks on its target).
-            owner.ApplyEffects(buff.Metadata.Skills, caster, owner, type, skillId, buffId, ownedBy: buff.Caster, targets: [target]);
+            // The event skills' caster (skillOwner or skillTarget 3) is the buff's caster too, as for its interval skills
+            // (Buff.TickSkills): the client loads skillOwner and never reads it (additionalactionadditional.cpp:596-598).
+            // So the Ranger's mark 10500281 casts its dot 10500282 as the Ranger, and 10800201 gives the Assassin its
+            // 10800202; before, both were the marked holder's own. Every caller names the holder as the event's caster.
+            owner.ApplyEffects(buff.Metadata.Skills, buff.Caster, owner, type, skillId, buffId, ownedBy: buff.Caster, targets: [target]);
         }
     }
 

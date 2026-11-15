@@ -106,9 +106,24 @@ public class AttackedEventTests {
         Hit();
         Assert.Multiple(() => {
             Assert.That(Player.Buffs.EnumerateBuffs(Proc).Count(), Is.EqualTo(1), "the attacker holds its own 10500283");
+            Assert.That(Player.Buffs.EnumerateBuffs(Proc).Select(buff => buff.Caster), Is.EqualTo(new IActor[] { Attacker }),
+                "skillOwner 3: the mark's caster casts the dot, not the marked holder");
             Assert.That(Player.Buffs.EnumerateBuffs(AttackerDot).Select(buff => buff.Caster), Is.EqualTo(new IActor[] { Attacker }),
                 "skillOwner 5: the attacker casts the dot");
         });
+    }
+
+    // skillOwner 3 is the buff's caster even when another actor lands the hit: the mark's caster owns the proc.
+    [Test]
+    public void SkillOwnerCaster_IsTheMarksCaster_NotTheHolder() {
+        using var marker = new FieldActor(Field, 98, Field.Metadata, null!);
+        Hold(Player, marker, BuffAttributeTests.Effect(Mark, Plain) with {
+            Skills = [new SkillEffectMetadata(0, [new SkillEffectMetadata.Skill(Proc, 1)], new SkillEffectMetadataCondition(Always with {
+                Owner = Block(EventConditionType.OnAttacked),
+            }, SkillTargetType.Caster, SkillTargetType.Owner, 0, false), null)],
+        });
+        Hit();
+        Assert.That(Player.Buffs.EnumerateBuffs(Proc).Select(buff => buff.Caster), Is.EqualTo(new IActor[] { marker }));
     }
 
     // Without the attacker's own copy the mark's proc stays off; the attacker-cast dot still lands.
