@@ -94,6 +94,12 @@ public class BeautyFeePathTests {
         return (rows.FirstOrDefault()?.OwnerId ?? -1, rows.Count);
     }
 
+    // The vouchers the character's stored rows hold.
+    private int StoredVouchers() {
+        using var context = new Ms2Context(test.Options);
+        return context.Item.AsNoTracking().Where(item => item.ItemId == Voucher && item.OwnerId == test.CharacterId).Sum(item => item.Amount);
+    }
+
     private long StoredMeso() {
         using var context = new Ms2Context(test.Options);
         return context.Character.AsNoTracking().Single(character => character.Id == test.CharacterId).Currency.Meso;
@@ -110,6 +116,7 @@ public class BeautyFeePathTests {
         Assert.Multiple(() => {
             Assert.That(session.Item.Equips.Get(EquipSlot.FA)?.Id, Is.EqualTo(NewFace));
             Assert.That(session.Item.Inventory.Get(voucher.Uid)?.Amount, Is.EqualTo(2));
+            Assert.That(StoredFace(NewFace), Is.EqualTo((test.CharacterId, 1)));
             Assert.That(StoredAmount(voucher.Uid), Is.EqualTo(2));
             Assert.That(session.Currency.Meso, Is.EqualTo(5000L));
             Assert.That(test.TakeSent().Select(System.Convert.ToHexString),
@@ -161,6 +168,7 @@ public class BeautyFeePathTests {
         Assert.Multiple(() => {
             Assert.That(session.Item.Equips.Get(EquipSlot.FA)?.Uid, Is.EqualTo(worn.Uid));
             Assert.That(held, Is.EqualTo(3));
+            Assert.That(StoredVouchers(), Is.EqualTo(3));
             Assert.That(StoredFace(NewFace), Is.EqualTo((0L, 1)));
         });
     }
@@ -186,26 +194,31 @@ public class BeautyFeePathTests {
         Assert.That(StoredFace(Face).OwnerId, Is.EqualTo(0L));
     }
 
-    // Hair, ears, a face and face decoration come off with a full bag (given up); another outfit slot stays on.
-    [TestCase(EquipSlot.HR, 10200001, true)]
-    [TestCase(EquipSlot.FA, 10300001, true)]
-    [TestCase(EquipSlot.FD, 10400001, true)]
-    [TestCase(EquipSlot.CP, 11300001, false)]
-    public void AFullOutfitBagGivesUpOnlyTheBeautySlots(EquipSlot slot, int itemId, bool comesOff) {
+    // A new hair, face or face decoration goes on over the worn one with a full outfit bag: the worn one is given up,
+    // not put in the bag (the beauty change path; the client never sends an unequip for these slots).
+    [TestCase(EquipSlot.HR, 10200001)]
+    [TestCase(EquipSlot.FA, 10300001)]
+    [TestCase(EquipSlot.FD, 10400001)]
+    public void AFullOutfitBagGivesUpTheWornBeautyItem(EquipSlot slot, int itemId) {
         test = new TestGameSession();
-        Item item = test.Store(TestGameSession.Metadata(itemId, slot), 1, ItemGroup.Outfit, slot);
+        Item old = test.Store(TestGameSession.Metadata(itemId, slot), 1, ItemGroup.Outfit, slot);
+        ItemMetadata nextMetadata = TestGameSession.Metadata(itemId + 1, slot);
+        test.Register(nextMetadata);
         ItemMetadata outfit = TestGameSession.Metadata(11400001, EquipSlot.CL, type: 1);
         test.Store(outfit with { Property = outfit.Property with { IsSkin = true } });
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { bagSlotTabSkinCount = [1, 0] });
         test.Start();
         Assert.That(session.Item.Inventory.FreeSlots(InventoryType.Outfit), Is.EqualTo(0));
+        // A beauty item is new and not in the bag (BeautyHandler.WearPaid).
+        var next = new Item(nextMetadata, 1, 1) { Uid = old.Uid + 1000 };
 
-        bool off = session.Item.Equips.Unequip(item.Uid);
+        bool on = session.Item.Equips.EquipCosmetic(next, slot);
 
         Assert.Multiple(() => {
-            Assert.That(off, Is.EqualTo(comesOff));
-            Assert.That(session.Item.Equips.Get(item.Uid) == null, Is.EqualTo(comesOff));
-            Assert.That(session.Item.Inventory.Get(item.Uid), Is.Null);
+            Assert.That(on, Is.True);
+            Assert.That(session.Item.Equips.Get(slot)?.Uid, Is.EqualTo(next.Uid));
+            Assert.That(session.Item.Equips.Get(old.Uid), Is.Null);
+            Assert.That(session.Item.Inventory.Get(old.Uid), Is.Null);
         });
     }
 
