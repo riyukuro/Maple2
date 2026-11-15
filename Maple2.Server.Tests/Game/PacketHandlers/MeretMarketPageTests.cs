@@ -30,9 +30,10 @@ public class MeretMarketPageTests {
         Assert.That(Take(1, 255), Is.EqualTo(Enumerable.Range(0, 5 * MeretMarketHandler.MaxItemsPerPage).ToArray()));
     }
 
+    // (238609296 - 1) * 0x12 is 2^32 + 14: the int offset wrapped to 14 and the search answered entries 14 on.
     [Test]
     public void AHugeStartPage_GivesNothing() {
-        Assert.That(Take(int.MaxValue / 2, 0x12), Is.Empty);
+        Assert.That(Take(238609296, 0x12), Is.Empty);
     }
 
     [Test]
