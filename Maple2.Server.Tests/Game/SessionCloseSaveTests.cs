@@ -318,12 +318,86 @@ public class SessionCloseSaveTests {
         Assert.That(runs, Is.EqualTo(1));
     }
 
-    // A GM's kick on the field thread (a command) waits for the World, which answers once the kicked session closed;
-    // here the GM kicks its own session. The close does not wait for the field thread then (it waits on this close):
-    // it leaves the field beside it and saves, and the World answers. Before, the close waited for the packet batch and
-    // then for the field thread, each until its wait ran out, and the World's kick ran out first.
+    // A GM kick (a command, on the field thread) whose target's close stalls: the kick is asked off the field's
+    // thread, so the handler ends at once and the field runs on while the World has not answered. Before, the handler
+    // waited for the World's answer, holding the field (every player on it) for up to the World's kick wait.
     [Test]
-    public void AKickOnTheFieldThread_DoesNotMakeTheCloseWaitForThatThread() {
+    public void AStalledTargetClose_DoesNotHoldTheGmsField() {
+        Playing();
+        FieldManager field = session.Field!;
+        using var stall = new ManualResetEventSlim();
+        test.World.OnDisconnect = _ => {
+            stall.Wait(TimeSpan.FromSeconds(10));
+            return new DisconnectResponse { Success = true };
+        };
+        Task<DisconnectResponse?>? kick = null;
+        var handler = new System.Diagnostics.Stopwatch();
+
+        using var loop = new FieldLoop(field, session.Player.ObjectId, () => {
+            handler.Start();
+            kick = session.Kick(new DisconnectRequest { CharacterId = 999, Force = true });
+            handler.Stop();
+        }, () => { });
+        loop.Release.Set();
+        bool onItsThread = false;
+        bool ran = field.RunOnFieldAndWait(TimeSpan.FromSeconds(5), () => onItsThread = field.OnFieldThread);
+        bool answeredMeanwhile = kick!.IsCompleted;
+        stall.Set();
+
+        Assert.Multiple(() => {
+            Assert.That(handler.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)), "the handler waited for the World's answer");
+            Assert.That(ran && onItsThread, Is.True, "the field did not run while the kick waited");
+            Assert.That(answeredMeanwhile, Is.False);
+            Assert.That(kick.Wait(TimeSpan.FromSeconds(5)) && kick.Result?.Success == true, Is.True);
+        });
+    }
+
+    // A player of the GM's field closing by themselves while the GM's kick of someone else waits for the World: the
+    // close still waits for the packet batch the field's thread runs and leaves the field on that thread, so the last
+    // save stores the handler's change whole. Before, the kick marked the field as waiting on it, and that close went
+    // on beside the field's thread at once.
+    [Test]
+    public void AVoluntaryCloseDuringAGmKick_StillTakesTheBatchLock() {
+        Playing();
+        Leavable(session.Field!);
+        session.Currency.Meso = 4000;
+        session.Currency.Meret = 40;
+        GameSession.PacketBatchWait = TimeSpan.FromSeconds(30);
+        GameSession.CloseWait = TimeSpan.FromSeconds(30);
+        using var asked = new ManualResetEventSlim();
+        using var stall = new ManualResetEventSlim();
+        test.World.OnDisconnect = _ => {
+            asked.Set();
+            stall.Wait(TimeSpan.FromSeconds(10));
+            return new DisconnectResponse { Success = true };
+        };
+        Task<FieldLoop> start = Task.Run(() => new FieldLoop(session.Field!, session.Player.ObjectId,
+            () => session.Kick(new DisconnectRequest { CharacterId = 999, Force = true }), () => session.Currency.Meret = 41));
+        try {
+            Assert.That(asked.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Task close = Task.Run(session.Dispose);
+            Assert.That(close.Wait(300), Is.False, "the close went on beside the field's packet batch");
+            Assert.That(start.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            start.Result.Release.Set();
+
+            Assert.Multiple(() => {
+                Assert.That(close.Wait(TimeSpan.FromSeconds(10)), Is.True);
+                Assert.That(start.Result.LeftOnItsThread, Is.True);
+                Assert.That(StoredWallets(), Is.EqualTo((4000L, 41L)));
+            });
+        } finally {
+            stall.Set();
+            start.Wait(TimeSpan.FromSeconds(15));
+            if (start.IsCompletedSuccessfully) {
+                start.Result.Dispose();
+            }
+        }
+    }
+
+    // A GM kicking their own session: the kick is answered once the close ended, and that close left the field on the
+    // field's thread and saved.
+    [Test]
+    public void AGmKickingThemselves_IsAnsweredAfterTheirClose() {
         Playing();
         Leavable(session.Field!);
         session.Currency.Meso = 3000;
@@ -335,15 +409,17 @@ public class SessionCloseSaveTests {
             closed = Task.Run(session.Dispose).Wait(TimeSpan.FromSeconds(10));
             return new DisconnectResponse { Success = closed };
         };
-        DisconnectResponse? answer = null;
+        Task<DisconnectResponse?>? kick = null;
 
         using var loop = new FieldLoop(session.Field!, session.Player.ObjectId,
-            () => answer = session.Kick(new DisconnectRequest { CharacterId = session.CharacterId, Force = true }), () => { });
+            () => kick = session.Kick(new DisconnectRequest { CharacterId = session.CharacterId, Force = true }), () => { });
+        loop.Release.Set();
 
         Assert.Multiple(() => {
-            Assert.That(closed, Is.True, "the close waited for the field thread that waited on it");
-            Assert.That(answer?.Success, Is.True);
-            Assert.That(session.Field!.Players.ContainsKey(session.Player.ObjectId), Is.False);
+            Assert.That(kick!.Wait(TimeSpan.FromSeconds(15)), Is.True);
+            Assert.That(closed, Is.True);
+            Assert.That(kick.Result?.Success, Is.True);
+            Assert.That(loop.LeftOnItsThread, Is.True);
             Assert.That(StoredWallets(), Is.EqualTo((3000L, 30L)));
             Assert.That(test.Errors.Where(error => error.Contains("session cleanup")), Is.Empty);
         });

@@ -160,7 +160,8 @@ public class ReportCommandTests {
             Assert.That(lines.Last(), Is.EqualTo("Closed report 3."));
             Assert.That(banned, Is.True);
             Assert.That(ban!.Reason, Is.EqualTo("cheating"));
-            Assert.That(test.World.Disconnects.Single().CharacterId, Is.EqualTo(offender));
+            // The kick is asked off the command's thread (GameSession.Kick).
+            Assert.That(() => test.World.Disconnects.Select(request => request.CharacterId), Is.EqualTo(new[] { offender }).After(5000, 10));
             Assert.That(Closed(3), Is.True);
         });
         Assert.That(Run("ban", "3").Lines, Is.EqualTo(new[] { "Report 3 is closed already." }));

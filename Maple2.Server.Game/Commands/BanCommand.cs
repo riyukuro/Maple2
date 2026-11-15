@@ -96,13 +96,7 @@ public class BanCommand : GameCommand {
         string durationLabel = expiryUtc == null ? "Permanently" : $"until {expiryUtc:yyyy-MM-dd HH:mm:ss} UTC";
         ctx.Console.Out.WriteLine($"Banned '{targetAccount.Username}' (Account {targetAccount.Id}) {durationLabel}. BanId={banIdNew} Reason='{reason}'.");
 
-        DisconnectResponse? disconnectResponse = session.Kick(new DisconnectRequest {
-            CharacterId = characterId,
-            Force = true,
-        });
-        if (disconnectResponse is null || !disconnectResponse.Success) {
-            ctx.Console.Out.WriteLine($"Failed to disconnect '{targetAccount.Username}'.");
-        }
+        Kick(characterId, targetAccount.Username);
     }
 
     private void HandleIpBan(InvocationContext ctx, GameStorage.Request db, Account targetAccount, long characterId, string reason) {
@@ -124,13 +118,7 @@ public class BanCommand : GameCommand {
         long banId = db.CreateBan(targetAccount.Id, reason, null, details, ipAddress: ip);
         ctx.Console.Out.WriteLine($"IP banned '{targetAccount.Username}' (Account {targetAccount.Id}) permanently. IP={ip} BanId={banId} Reason='{reason}'.");
 
-        DisconnectResponse? disconnectResponse = session.Kick(new DisconnectRequest {
-            CharacterId = characterId,
-            Force = true,
-        });
-        if (disconnectResponse is null || !disconnectResponse.Success) {
-            ctx.Console.Out.WriteLine($"Failed to disconnect '{targetAccount.Username}'.");
-        }
+        Kick(characterId, targetAccount.Username);
     }
 
     private void HandleHardwareBan(InvocationContext ctx, GameStorage.Request db, Account targetAccount, long characterId, string reason) {
@@ -148,13 +136,19 @@ public class BanCommand : GameCommand {
         long banId = db.CreateBan(targetAccount.Id, reason, null, details, machineId: machineId);
         ctx.Console.Out.WriteLine($"Hardware banned '{targetAccount.Username}' (Account {targetAccount.Id}) permanently. MachineId={machineId} BanId={banId} Reason='{reason}'.");
 
-        DisconnectResponse? disconnectResponse = session.Kick(new DisconnectRequest {
+        Kick(characterId, targetAccount.Username);
+    }
+
+    // The kick runs off the field's thread (GameSession.Kick); the GM is told once the World answers, if it failed.
+    private void Kick(long characterId, string username) {
+        session.Kick(new DisconnectRequest {
             CharacterId = characterId,
             Force = true,
-        });
-        if (disconnectResponse is null || !disconnectResponse.Success) {
-            ctx.Console.Out.WriteLine($"Failed to disconnect '{targetAccount.Username}'.");
-        }
+        }).ContinueWith(kick => {
+            if (kick.Result is not { Success: true }) {
+                new GameConsole(session).Out.WriteLine($"Failed to disconnect '{username}'.");
+            }
+        }, TaskScheduler.Default);
     }
 }
 

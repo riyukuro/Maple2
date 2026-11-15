@@ -26,19 +26,12 @@ public class DisconnectCommand : GameCommand {
     }
 
     private void Handle(InvocationContext ctx, string playerName, bool all) {
-        DisconnectResponse? disconnectResponse;
         if (all) {
             ctx.Console.Out.WriteLine("Disconnecting all players...");
-            disconnectResponse = session.Kick(new DisconnectRequest {
+            Kick(new DisconnectRequest {
                 CharacterId = 0,
                 All = true,
-            });
-
-            if (disconnectResponse is null || !disconnectResponse.Success) {
-                ctx.Console.Out.WriteLine("Failed to disconnect all players.");
-                ctx.ExitCode = 1;
-                return;
-            }
+            }, null, "Failed to disconnect all players.");
             ctx.ExitCode = 0;
             return;
         }
@@ -56,17 +49,20 @@ public class DisconnectCommand : GameCommand {
             return;
         }
 
-        disconnectResponse = session.Kick(new DisconnectRequest {
+        ctx.Console.Out.WriteLine($"Disconnecting player '{playerName}'...");
+        Kick(new DisconnectRequest {
             CharacterId = characterId,
-        });
-
-        if (disconnectResponse is null || !disconnectResponse.Success) {
-            ctx.Console.Out.WriteLine($"Failed to disconnect player '{playerName}'.");
-            ctx.ExitCode = 1;
-            return;
-        }
-
-        ctx.Console.Out.WriteLine($"Disconnected player '{playerName}'.");
+        }, $"Disconnected player '{playerName}'.", $"Failed to disconnect player '{playerName}'.");
         ctx.ExitCode = 0;
+    }
+
+    // The kick runs off the field's thread (GameSession.Kick); the GM is told its outcome once the World answers.
+    private void Kick(DisconnectRequest request, string? done, string failed) {
+        session.Kick(request).ContinueWith(kick => {
+            string? line = kick.Result is { Success: true } ? done : failed;
+            if (line != null) {
+                new GameConsole(session).Out.WriteLine(line);
+            }
+        }, TaskScheduler.Default);
     }
 }

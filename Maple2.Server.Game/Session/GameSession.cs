@@ -2049,7 +2049,7 @@ public sealed partial class GameSession : Core.Network.Session {
             return;
         }
         if (!field.RunOnFieldAndWait(CloseWaitLeft(), LeaveField)) {
-            Logger.Warning("Close of {Session}: the field's thread did not take the leave (busy past {Wait}, or waiting on a kick), leaving the field beside it",
+            Logger.Warning("Close of {Session}: the field's thread did not take the leave (busy past {Wait}, or stuck before), leaving the field beside it",
                 this, CloseWait);
         }
     }
@@ -2063,12 +2063,18 @@ public sealed partial class GameSession : Core.Network.Session {
         return TimeSpan.FromMilliseconds(Math.Max(0, Interlocked.Read(ref closeWaitEnd) - now));
     }
 
-    // A kick through the World (the GM commands). The World answers once the kicked session's close ended, and that
-    // close leaves its field on the field's thread: asked there, the field knows its thread waits, so such a close
-    // (the GM's own, or that of a player of this field) goes on beside it instead of waiting for it.
-    public DisconnectResponse? Kick(DisconnectRequest request) {
-        FieldManager? field = Field;
-        return field == null ? World.Disconnect(request) : field.WhileWaitingOnAKick(() => World.Disconnect(request));
+    // A kick through the World (the GM commands), asked off the caller's thread: the World answers once the kicked
+    // session's close ended (up to ChannelService.CloseWait), and that close leaves its field on the field's thread,
+    // so a GM's field never waits on it. The answer is null when the World could not be asked.
+    public Task<DisconnectResponse?> Kick(DisconnectRequest request) {
+        return Task.Factory.StartNew(() => {
+            try {
+                return World.Disconnect(request);
+            } catch (Exception ex) {
+                Logger.Warning(ex, "Kick: the World's disconnect failed CharacterId={Target} All={All}", request.CharacterId, request.All);
+                return (DisconnectResponse?) null;
+            }
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 
     // Dispose's last save: as a move's, with no session left to end.
