@@ -16,7 +16,8 @@ public record RideMetadataBasic(
     long RunXStamina,
     bool EnableSwim,
     int FallDamageDown,
-    int Passengers);
+    int Passengers,
+    bool DisablePickUp = false);
 
 public record RideMetadataSpeed(
     float WalkSpeed,

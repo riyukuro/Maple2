@@ -30,7 +30,8 @@ public class RideMapper : TypeMapper<RideMetadata> {
                     RunXStamina: data.basic.runXConsumeEp,
                     EnableSwim: data.basic.enableSwim,
                     FallDamageDown: data.basic.fallDamageDown,
-                    Passengers: passengers.GetValueOrDefault(id)),
+                    Passengers: passengers.GetValueOrDefault(id),
+                    DisablePickUp: data.basic.disablePickUp),
                 Speed: new RideMetadataSpeed(
                     WalkSpeed: data.basic.walkSpeed,
                     RunSpeed: data.basic.runSpeed,

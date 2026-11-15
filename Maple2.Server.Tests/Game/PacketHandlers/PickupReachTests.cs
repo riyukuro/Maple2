@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
@@ -187,6 +189,53 @@ public class PickupReachTests {
         FieldItem drop = Drop(session, Stackable, 0f);
         int petId = Summon(session, session.Player.Position);
         Dead(session, PickupRules.DeadRaceGraceMs + 1000);
+
+        PickItem(session, drop, pickerId: petId);
+
+        Assert.That(session.Field!.TryGetItem(drop.ObjectId, out _), Is.False);
+    }
+
+    // A battle mount (KR 99910340) on for mountedMs: owned by the player or by another (the player a passenger).
+    private static void Mount(GameSession session, bool disablePickUp, long mountedMs, bool owner = true) {
+        var metadata = new RideMetadata(99910340, "", new RideMetadataBasic(RideOnType.Battle, 0, 0, 0, false, 0, 1, disablePickUp),
+            new RideMetadataSpeed(0, 0, 0, 0), new Dictionary<BasicAttribute, long>());
+        session.Ride = new RideManager(session);
+        int ownerId = owner ? session.Player.ObjectId : session.Player.ObjectId + 1;
+        session.Ride.Ride = new Ride(ownerId, metadata, new RideOnActionBattle(metadata.Id, 4242, 0, 1)) {
+            StartTick = Environment.TickCount64 - mountedMs,
+        };
+    }
+
+    // The client's loot tick sends nothing on a disablePickUp ride (mypc.cpp:4716-4719): the owner's item and meso
+    // pickups are refused once the ride has had time to reach the client. Before, both were taken. A ride without the
+    // flag, a ride just started, and a passenger (not proven in the client) are served.
+    [TestCase(true, PickupRules.RideRaceGraceMs + 1000, true, false)]
+    [TestCase(true, 0, true, true)]
+    [TestCase(false, PickupRules.RideRaceGraceMs + 1000, true, true)]
+    [TestCase(true, PickupRules.RideRaceGraceMs + 1000, false, true)]
+    public void Pickups_OnADisablePickUpRide(bool disablePickUp, long mountedMs, bool owner, bool taken) {
+        GameSession session = Start();
+        FieldItem item = Drop(session, Stackable, 0f);
+        FieldItem meso = Drop(session, Meso, 0f);
+        Mount(session, disablePickUp, mountedMs, owner);
+
+        PickItem(session, item);
+        PickMeso(session, meso);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Field!.TryGetItem(item.ObjectId, out _), Is.EqualTo(!taken));
+            Assert.That(session.Field!.TryGetItem(meso.ObjectId, out _), Is.EqualTo(!taken));
+            Assert.That(Refusals(item.ObjectId), Has.Length.EqualTo(taken ? 0 : 1));
+        });
+    }
+
+    // The pet's pickup is the pet's (statesummon.cpp:909), not the loot tick's: it is served on such a ride.
+    [Test]
+    public void ItemPickup_ByThePetOnADisablePickUpRide_IsTaken() {
+        GameSession session = Start();
+        FieldItem drop = Drop(session, Stackable, 0f);
+        int petId = Summon(session, session.Player.Position);
+        Mount(session, true, PickupRules.RideRaceGraceMs + 1000);
 
         PickItem(session, drop, pickerId: petId);
 

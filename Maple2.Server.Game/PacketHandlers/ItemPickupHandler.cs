@@ -31,9 +31,10 @@ public class ItemPickupHandler : FieldPacketHandler {
         }
 
         // A refused pickup of a drop that stays is answered, so the client asks again later. The player's own pickup is
-        // not the client's while it is dead (PickupRules.DeadRefuses); its answer lets it ask again after the revival.
+        // not the client's while it is dead or on a disablePickUp ride (PickupRules.OwnPickupRefuses); its answer lets it ask
+        // again after the revival or the ride.
         if ((fieldItem.ReceiverId != 0 && fieldItem.ReceiverId != session.CharacterId)
-            || (pickerId == 0 && PickupRules.DeadRefuses(session.Player.IsDead, session.Player.DeadMs(Environment.TickCount64)))) {
+            || (pickerId == 0 && PickupRules.OwnPickupRefuses(session, Environment.TickCount64))) {
             session.Send(ItemPickupPacket.Refuse(objectId));
             return;
         }

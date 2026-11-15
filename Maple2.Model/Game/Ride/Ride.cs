@@ -7,6 +7,8 @@ public class Ride {
     public readonly RideMetadata Metadata;
     public readonly RideOnAction Action;
     public readonly int[] Passengers;
+    // Environment.TickCount64 when the ride started (the pickup race grace of a disablePickUp ride).
+    public long StartTick { get; set; } = Environment.TickCount64;
 
     public Ride(int ownerId, RideMetadata metadata, RideOnAction action) {
         OwnerId = ownerId;
