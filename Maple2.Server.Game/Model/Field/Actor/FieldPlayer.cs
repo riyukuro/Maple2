@@ -64,11 +64,14 @@ public class FieldPlayer : Actor<Player> {
                 if (Session.Field.Metadata.Property.OnlyDarkTomb) {
                     DeathState = DeathState.Metal;
                 } else {
-                    DeathState = Session.Config.DeathCount == 0 ? DeathState.FirstDeath : DeathState.Metal;
+                    DeathState = PenaltyDarkens() ? DeathState.Metal : DeathState.FirstDeath;
                 }
             }
         }
     }
+    // The first tombstone: a death while no death penalty count runs (client PC::vfunc_137). Only that one takes the
+    // pet's hits (Revival 3); a death inside the penalty time is the dark (metal) tombstone.
+    private bool PenaltyDarkens() => TombstoneRules.PenaltyRuns(Session.Config.DeathCount, Session.Config.DeathPenaltyEndTick, Session.Field!.FieldTick);
     /// <summary>How long the player has been dead at <paramref name="tickCount"/> (0 while alive).</summary>
     public long DeadMs(long tickCount) => isDead ? tickCount - deadSinceTick : 0;
 
@@ -715,7 +718,7 @@ public class FieldPlayer : Actor<Player> {
         if (RideShare.DismountsOnDeath(Session.Ride.RideType)) {
             Session.Ride.Dismount(RideOffType.Dead);
         }
-        bool darkTomb = Session.Field.Metadata.Property.OnlyDarkTomb || Session.Config.DeathCount > 0;
+        bool darkTomb = Session.Field.Metadata.Property.OnlyDarkTomb || PenaltyDarkens();
         Field.Broadcast(DeadUserPacket.Dead(ObjectId, darkTomb));
 
         Buffs.OnDeath();

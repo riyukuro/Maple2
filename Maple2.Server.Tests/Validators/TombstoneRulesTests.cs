@@ -85,22 +85,37 @@ public class TombstoneRulesTests {
     }
 
     [Test]
-    public void PetHitsComeOncePerState() {
-        Assert.That(TombstoneRules.PetHitTooSoon(13_000, 1_000, 10_000), Is.False);
-        Assert.That(TombstoneRules.PetHitTooSoon(12_500, 1_000, 10_000), Is.False);
-        Assert.That(TombstoneRules.PetHitTooSoon(12_499, 1_000, 10_000), Is.True);
-        Assert.That(TombstoneRules.PetHitTooSoon(10_001, 1_000, 10_000), Is.True);
+    public void ThePetsFirstHitWaitsForItsRevivePass() {
+        // Entered at 10 000: the client's first send is 3000 ms after its own (later) entry; 500 ms slack.
+        Assert.That(TombstoneRules.PetHitDue(10_000, 10_000, 0), Is.False);
+        Assert.That(TombstoneRules.PetHitDue(12_499, 10_000, 0), Is.False);
+        Assert.That(TombstoneRules.PetHitDue(12_500, 10_000, 0), Is.True);
+        Assert.That(TombstoneRules.PetHitDue(5_000, 10_000, 0), Is.False); // a tick before the entry
     }
 
     [Test]
-    public void ThePetsFirstHitWaitsForItsRevivePass() {
-        // No hit yet (lastTick 0): the floor runs from the pet's entry into its revive state, not from nothing.
-        Assert.That(TombstoneRules.PetHitTooSoon(10_000, 10_000, 0), Is.True);
-        Assert.That(TombstoneRules.PetHitTooSoon(12_499, 10_000, 0), Is.True);
-        Assert.That(TombstoneRules.PetHitTooSoon(12_500, 10_000, 0), Is.False);
-        Assert.That(TombstoneRules.PetHitTooSoon(13_000, 10_000, 0), Is.False);
-        // A later death: the new entry, not the last death's hit, starts the floor.
-        Assert.That(TombstoneRules.PetHitTooSoon(21_000, 20_000, 10_000), Is.True);
-        Assert.That(TombstoneRules.PetHitTooSoon(22_500, 20_000, 10_000), Is.False);
+    public void PetHitsArePacedAgainstTheSchedule_NotTheLastArrival() {
+        // Sends at 13 000 and 16 000 arriving at 13 400 and 15 800 (2400 ms apart): both count.
+        Assert.That(TombstoneRules.PetHitDue(13_400, 10_000, 0), Is.True);
+        Assert.That(TombstoneRules.PetHitDue(15_800, 10_000, 1), Is.True);
+        // More hits than the time allows: a second hit inside the first 5500 ms is refused.
+        Assert.That(TombstoneRules.PetHitDue(15_499, 10_000, 1), Is.False);
+        Assert.That(TombstoneRules.PetHitDue(15_500, 10_000, 1), Is.True);
+        // Two held packets arriving together after a stall both count when the schedule had room for them.
+        Assert.That(TombstoneRules.PetHitDue(19_000, 10_000, 1), Is.True);
+        Assert.That(TombstoneRules.PetHitDue(19_000, 10_000, 2), Is.True);
+        Assert.That(TombstoneRules.PetHitDue(19_000, 10_000, 3), Is.False);
+    }
+
+    // The client darkens the tombstone for a death penalty count above 0 at death, and clears the count itself when
+    // the server tick reaches the end tick; an end tick of 0 is never cleared.
+    [TestCase(0, 0L, 1_000L, false)]
+    [TestCase(0, 50_000L, 1_000L, false)]
+    [TestCase(1, 50_000L, 49_999L, true)]
+    [TestCase(1, 50_000L, 50_000L, false)] // the client clears at now >= end
+    [TestCase(3, 50_000L, 90_000L, false)] // ran out while the server still holds the count
+    [TestCase(2, 0L, 90_000L, true)]
+    public void TheDeathPenaltyDarkensTheTombstoneOnlyWhileItRuns(int count, long endTick, long tick, bool expected) {
+        Assert.That(TombstoneRules.PenaltyRuns(count, endTick, tick), Is.EqualTo(expected));
     }
 }
