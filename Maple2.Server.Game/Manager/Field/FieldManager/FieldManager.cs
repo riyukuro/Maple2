@@ -590,7 +590,28 @@ public partial class FieldManager : IField {
         }
     }
 
+    // Changes a World call (a gRPC thread) makes to the field's state, run by the field's own thread at the start of
+    // its next update, with or without players: the Scheduler runs only while the field has players, and its state
+    // (the plots' cubes, the navigation crowd, the NPCs) is not safe to change from another thread.
+    private ConcurrentQueue<Action>? fieldActions;
+    // Made on first use (a field a test made without its constructor has it too).
+    private ConcurrentQueue<Action> FieldActions => LazyInitializer.EnsureInitialized(ref fieldActions);
+
+    public void RunOnField(Action action) => FieldActions.Enqueue(action);
+
+    // Each action logged on a throw; the others still run.
+    internal void RunFieldActions() {
+        while (FieldActions.TryDequeue(out Action? action)) {
+            try {
+                action();
+            } catch (Exception ex) {
+                (logger ?? Log.Logger).Error(ex, "Field action failed MapId={MapId} RoomId={RoomId}", MapId, RoomId);
+            }
+        }
+    }
+
     public void Update() {
+        RunFieldActions();
         ProcessPackets();
 
         if (Players.IsEmpty) {

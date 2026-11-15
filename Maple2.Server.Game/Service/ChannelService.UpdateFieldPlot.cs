@@ -46,10 +46,13 @@ public partial class ChannelService {
         if (request.AccountId > 0) {
             session = server.GetSessionByAccountId(request.AccountId);
             if (session is not null) {
-                // Player is online and their plot expired, update their furnishing inventory with the new items
-                session.Item.ReInstantiateFurnishing();
-                // set their outside plot to null
-                session.Housing.SetPlot(null);
+                // Player is online and their plot expired, update their furnishing inventory with the new items and
+                // set their outside plot to null: on the player's field thread, beside the player's handlers.
+                GameSession owner = session;
+                owner.RunAsPlayer(() => {
+                    owner.Item.ReInstantiateFurnishing();
+                    owner.Housing.SetPlot(null);
+                });
                 // The owner may be on a channel that has not loaded the plot's map, so the notice does not wait for it.
                 ByteWriter? notice = ExpiredNotice(mapId, plotNumber, request);
                 if (notice != null) {
@@ -62,8 +65,12 @@ public partial class ChannelService {
         if (fieldManager == null) {
             return;
         }
+        // The plots and their cubes are the field thread's (its handlers and LoadUgcMap iterate them).
+        fieldManager.RunOnField(() => UpdatePlotOnField(fieldManager, plotNumber, request.Forfeit));
+    }
 
-        if (request.Forfeit) {
+    internal static void UpdatePlotOnField(FieldManager fieldManager, int plotNumber, bool forfeit) {
+        if (forfeit) {
             // remove all cubes from the plot
             if (fieldManager.Plots.TryGetValue(plotNumber, out Plot? plot)) {
                 foreach (KeyValuePair<Vector3B, PlotCube> plotCube in plot.Cubes) {
@@ -73,7 +80,7 @@ public partial class ChannelService {
         }
 
         fieldManager.UpdateAllPlots(plotNumber);
-        if (request.Forfeit) {
+        if (forfeit) {
             if (fieldManager.Plots.TryGetValue(plotNumber, out Plot? plot)) {
                 fieldManager.Broadcast(CubePacket.ForfeitPlot(plot));
             }
@@ -95,6 +102,11 @@ public partial class ChannelService {
         if (fieldManager == null) {
             return;
         }
+        // The plot's cubes are the field thread's (its handlers and LoadUgcMap iterate them).
+        fieldManager.RunOnField(() => UpdateBlockOnField(fieldManager, mapId, plotNumber, request));
+    }
+
+    private void UpdateBlockOnField(FieldManager fieldManager, int mapId, int plotNumber, FieldPlotRequest.Types.UpdateBlock request) {
         if (!fieldManager.Plots.TryGetValue(plotNumber, out Plot? plot)) {
             logger.Error("Plot {PlotNumber} not found in map {MapId}", plotNumber, mapId);
             return;
