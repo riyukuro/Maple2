@@ -496,17 +496,17 @@ public class FieldPlayer : Actor<Player> {
         }
 
         // Condition updates
-        // Distance conditions are in increments of 1 meter, while time conditions are 1 second.
+        // Distance conditions count one for each 100 game units (TrophyMoveRules), time conditions one for each second.
         switch (stateSync.State) {
             case ActorState.Fall:
-                if (UpdateStateSyncTracking()) {
-                    Session.ConditionUpdate(ConditionType.fall, codeLong: Value.Character.MapId);
+                if (UpdateStateSyncTracking() is int fallCounts and > 0) {
+                    Session.ConditionUpdate(ConditionType.fall, fallCounts, codeLong: Value.Character.MapId);
                 }
                 break;
             case ActorState.SwimDash:
             case ActorState.Swim:
-                if (UpdateStateSyncTracking()) {
-                    Session.ConditionUpdate(ConditionType.swim, codeLong: Value.Character.MapId);
+                if (UpdateStateSyncTracking() is int swimCounts and > 0) {
+                    Session.ConditionUpdate(ConditionType.swim, swimCounts, codeLong: Value.Character.MapId);
                 }
 
                 if (UpdateStateSyncTimeTracking()) {
@@ -515,25 +515,25 @@ public class FieldPlayer : Actor<Player> {
                 }
                 break;
             case ActorState.Walk:
-                if (UpdateStateSyncTracking()) {
-                    Session.ConditionUpdate(ConditionType.run, codeLong: Value.Character.MapId);
+                if (UpdateStateSyncTracking() is int runCounts and > 0) {
+                    Session.ConditionUpdate(ConditionType.run, runCounts, codeLong: Value.Character.MapId);
                 }
                 break;
             case ActorState.Crawl:
-                if (UpdateStateSyncTracking()) {
-                    Session.ConditionUpdate(ConditionType.crawl, codeLong: Value.Character.MapId);
+                if (UpdateStateSyncTracking() is int crawlCounts and > 0) {
+                    Session.ConditionUpdate(ConditionType.crawl, crawlCounts, codeLong: Value.Character.MapId);
                 }
                 break;
             case ActorState.Glide:
-                if (UpdateStateSyncTracking()) {
+                if (UpdateStateSyncTracking() is int glideCounts and > 0) {
                     // The rows name the map as the code (30000384: code 02000258) or as the target (60110230, the
                     // Mushking Royale maps, as laddertime 60110115 does).
-                    Session.ConditionUpdate(ConditionType.glide, targetLong: Value.Character.MapId, codeLong: Value.Character.MapId);
+                    Session.ConditionUpdate(ConditionType.glide, glideCounts, targetLong: Value.Character.MapId, codeLong: Value.Character.MapId);
                 }
                 break;
             case ActorState.Climb:
-                if (UpdateStateSyncTracking()) {
-                    Session.ConditionUpdate(ConditionType.climb, codeLong: Value.Character.MapId);
+                if (UpdateStateSyncTracking() is int climbCounts and > 0) {
+                    Session.ConditionUpdate(ConditionType.climb, climbCounts, codeLong: Value.Character.MapId);
                 }
                 break;
             case ActorState.Rope:
@@ -553,8 +553,8 @@ public class FieldPlayer : Actor<Player> {
                 }
                 break;
             case ActorState.Ride:
-                if (UpdateStateSyncTracking()) {
-                    Session.ConditionUpdate(ConditionType.riding, codeLong: Value.Character.MapId);
+                if (UpdateStateSyncTracking() is int ridingCounts and > 0) {
+                    Session.ConditionUpdate(ConditionType.riding, ridingCounts, codeLong: Value.Character.MapId);
                 }
                 break;
                 // TODO: Any more condition states?
@@ -572,19 +572,11 @@ public class FieldPlayer : Actor<Player> {
             return false;
         }
 
-        bool UpdateStateSyncTracking() {
-            if (stateSyncDistanceTracking.TryGetValue(state, out float totalDistance)) {
-                totalDistance += syncDistance;
-                // 150f = BLOCK_SIZE = 1 meter
-                if (totalDistance >= 150F) {
-                    stateSyncDistanceTracking[state] = 0f;
-                    return true;
-                }
-                stateSyncDistanceTracking[state] = totalDistance;
-                return false;
-            }
-            stateSyncDistanceTracking[state] = syncDistance;
-            return false;
+        int UpdateStateSyncTracking() {
+            stateSyncDistanceTracking.TryGetValue(state, out float totalDistance);
+            int counts = TrophyMoveRules.Counts(ref totalDistance, syncDistance);
+            stateSyncDistanceTracking[state] = totalDistance;
+            return counts;
         }
     }
 

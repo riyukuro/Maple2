@@ -728,18 +728,19 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Vector3 start = player.Position;
         void Sync(ActorState state, float x) => player.OnStateSync(new StateSync { State = state, Position = start + new Vector3(x, 0, 0) });
 
+        // 100 units a count, sent once five are due (TrophyMoveRules); walking does not count.
         Sync(ActorState.Walk, 0);
-        Sync(ActorState.Walk, 100);
-        Sync(ActorState.Walk, 200);
+        Sync(ActorState.Walk, 300);
+        Sync(ActorState.Walk, 600);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
-        Sync(ActorState.Ride, 200);
-        Sync(ActorState.Ride, 300);
+        Sync(ActorState.Ride, 600);
+        Sync(ActorState.Ride, 1090);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
-        Sync(ActorState.Ride, 400);
+        Sync(ActorState.Ride, 1120);
 
         Assert.That(test.Errors, Is.Empty);
-        Assert.That(player.Position.X, Is.EqualTo(start.X + 400));
-        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+        Assert.That(player.Position.X, Is.EqualTo(start.X + 1120));
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(5));
     }
     #endregion
     #region run, swim, glide, climb, fall, crawl, swimtime, laddertime, ropetime (FieldPlayer.OnStateSync)
@@ -757,8 +758,8 @@ public class QuestConditionWiringTests : TriggerTestBase {
     }
 
     // 40001860 run 500, 40001730 swim 500, 40001670 glide 200, 40001650 climb 100, 40002260 fall 100, 40001740
-    // crawl 50: each meter (150 units) moved in the state counts (both swim states for swim); the same distance in
-    // another state does not.
+    // crawl 50: each 100 units moved in the state count one, sent once five are due (both swim states for swim); the
+    // same distance in another state does not.
     [TestCase(ConditionType.run, ActorState.Walk, 500)]
     [TestCase(ConditionType.swim, ActorState.Swim, 500)]
     [TestCase(ConditionType.swim, ActorState.SwimDash, 500)]
@@ -773,55 +774,58 @@ public class QuestConditionWiringTests : TriggerTestBase {
         void Sync(ActorState syncState, float x) => player.OnStateSync(new StateSync { State = syncState, Position = start + new Vector3(x, 0, 0) });
 
         Sync(ActorState.Ride, 0);
-        Sync(ActorState.Ride, 100);
-        Sync(ActorState.Ride, 200);
+        Sync(ActorState.Ride, 300);
+        Sync(ActorState.Ride, 600);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
-        Sync(state, 200);
-        Sync(state, 300);
+        Sync(state, 600);
+        Sync(state, 1090);
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
-        Sync(state, 400);
+        Sync(state, 1120);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(5));
+        // The 20 units left over count toward the next step.
+        Sync(state, 1600);
 
         Assert.That(test.Errors, Is.Empty);
-        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(10));
     }
 
-    // 60110210: <condition type="run" code="82000012,82000001,82000003" value="1000" />, a meter run on one of the
-    // maps counts; on another map it does not.
-    [TestCase(82000001, 1)]
+    // 60110210: <condition type="run" code="82000012,82000001,82000003" value="1000" />, a run on one of the maps
+    // counts; on another map it does not.
+    [TestCase(82000001, 5)]
     [TestCase(82000002, 0)]
     public void Run_60110210_OnTheMapsOfTheCode(int mapId, int expected) {
         FieldPlayer player = StateSyncField(mapId);
         Quest quest = StartQuest(Condition(ConditionType.run, 1000, ["82000012", "82000001", "82000003"], []));
         Vector3 start = player.Position;
         player.OnStateSync(new StateSync { State = ActorState.Walk, Position = start });
-        player.OnStateSync(new StateSync { State = ActorState.Walk, Position = start + new Vector3(150, 0, 0) });
+        player.OnStateSync(new StateSync { State = ActorState.Walk, Position = start + new Vector3(500, 0, 0) });
 
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
     }
 
     // 60110230: <condition type="glide" target="82000012,82000001,82000003" value="150" />, the Mushking Royale maps
-    // as the target (as laddertime 60110115): a meter glided on one of them counts, on another map it does not.
-    [TestCase(82000003, 1)]
+    // as the target (as laddertime 60110115): a glide on one of them counts, on another map it does not.
+    [TestCase(82000003, 5)]
     [TestCase(82000002, 0)]
     public void Glide_60110230_OnTheMapsOfTheTarget(int mapId, int expected) {
         FieldPlayer player = StateSyncField(mapId);
         Quest quest = StartQuest(Condition(ConditionType.glide, 150, [], ["82000012", "82000001", "82000003"]));
         Vector3 start = player.Position;
         player.OnStateSync(new StateSync { State = ActorState.Glide, Position = start });
-        player.OnStateSync(new StateSync { State = ActorState.Glide, Position = start + new Vector3(150, 0, 0) });
+        player.OnStateSync(new StateSync { State = ActorState.Glide, Position = start + new Vector3(500, 0, 0) });
 
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
     }
 
     // 30000384: <condition type="glide" code="02000258" value="100" />, the map as the code.
-    [TestCase(2000258, 1)]
+    [TestCase(2000258, 5)]
     [TestCase(2000259, 0)]
     public void Glide_30000384_OnTheMapOfTheCode(int mapId, int expected) {
         FieldPlayer player = StateSyncField(mapId);
         Quest quest = StartQuest(Condition(ConditionType.glide, 100, ["02000258"], []));
         Vector3 start = player.Position;
         player.OnStateSync(new StateSync { State = ActorState.Glide, Position = start });
-        player.OnStateSync(new StateSync { State = ActorState.Glide, Position = start + new Vector3(150, 0, 0) });
+        player.OnStateSync(new StateSync { State = ActorState.Glide, Position = start + new Vector3(500, 0, 0) });
 
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(expected));
     }
