@@ -1,26 +1,15 @@
-﻿using System.Collections.Concurrent;
-using Grpc.Core;
+﻿using Grpc.Core;
+using Maple2.Server.World.Containers;
 
 namespace Maple2.Server.World.Service;
 
 public partial class WorldService {
-    private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(30);
-    private static readonly ConcurrentDictionary<long, DateTime> Locks = new ConcurrentDictionary<long, DateTime>();
+    private static readonly AccountLocks Locks = new();
 
     public override Task<LockResponse> AcquireLock(LockRequest request, ServerCallContext context) {
-        DateTime now = DateTime.UtcNow;
-
-        // Remove expired lock if present
-        if (Locks.TryGetValue(request.AccountId, out DateTime timestamp)) {
-            if (now - timestamp > LockTimeout) {
-                Locks.TryRemove(request.AccountId, out _);
-            }
-        }
-
-        // Try to acquire lock
-        bool acquired = Locks.TryAdd(request.AccountId, now);
-        if (acquired) {
-            return Task.FromResult(new LockResponse());
+        long token = Locks.Take(request.AccountId);
+        if (token != 0) {
+            return Task.FromResult(new LockResponse { Token = token });
         }
         return Task.FromResult(new LockResponse {
             Error = "Lock already held.",
@@ -28,8 +17,7 @@ public partial class WorldService {
     }
 
     public override Task<LockResponse> ReleaseLock(LockRequest request, ServerCallContext context) {
-        bool removed = Locks.TryRemove(request.AccountId, out _);
-        if (removed) {
+        if (Locks.Release(request.AccountId, request.Token)) {
             return Task.FromResult(new LockResponse());
         }
         return Task.FromResult(new LockResponse {

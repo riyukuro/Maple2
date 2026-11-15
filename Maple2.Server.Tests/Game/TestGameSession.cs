@@ -849,14 +849,22 @@ public sealed class TestGameSession {
         public override LockResponse AcquireLock(LockRequest request, CallOptions options) {
             Acquired++;
             OnAcquire?.Invoke();
-            return new LockResponse { Error = LockError ?? "" };
+            if (LockError != null) {
+                return new LockResponse { Error = LockError };
+            }
+            return new LockResponse { Token = ++LastToken };
         }
+
+        // The token of the last lock taken, and the tokens the releases passed back (in order).
+        public long LastToken;
+        public readonly List<long> ReleasedTokens = [];
 
         // Called at each account lock given back (on the giving thread, before the release returns).
         public Action? OnRelease;
 
         public override LockResponse ReleaseLock(LockRequest request, CallOptions options) {
             Released++;
+            ReleasedTokens.Add(request.Token);
             OnRelease?.Invoke();
             return new LockResponse();
         }

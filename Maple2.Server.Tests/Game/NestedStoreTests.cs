@@ -53,6 +53,24 @@ public class NestedStoreTests {
         });
     }
 
+    // Each store gives back the lock it took by the token of its take (the World frees only that take's lock).
+    [Test]
+    public void EachStore_ReleasesTheLockByTheTokenOfItsTake() {
+        test.World.ReleasedTokens.Clear();
+
+        bool purchase = session.TrySavePurchase(_ => true);
+        long purchaseToken = test.World.LastToken;
+        bool save = session.SessionSave();
+        long saveToken = test.World.LastToken;
+
+        Assert.Multiple(() => {
+            Assert.That(purchase, Is.True);
+            Assert.That(save, Is.True);
+            Assert.That(saveToken, Is.Not.EqualTo(purchaseToken));
+            Assert.That(test.World.ReleasedTokens, Is.EqualTo(new[] { purchaseToken, saveToken }));
+        });
+    }
+
     // A session save inside a store is deferred, not refused: it runs once the outer store gave its lock back, and
     // the session goes on (a nesting path not found yet would otherwise disconnect the player).
     [Test]

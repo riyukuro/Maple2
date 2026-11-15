@@ -298,12 +298,13 @@ public sealed partial class GameSession : Core.Network.Session {
         int objectId = FieldManager.NextGlobalId();
         Player? player;
         bool locked = false;
+        long lockToken = 0;
         try {
             // Taken: the channel this session came from has stored its save (its MigrationSave holds the lock), and
             // nothing else writes this account's and character's item rows while the session plays: the item loads
             // may keep the values they read (GameStorage.HoldOwners). Not taken (after the retries, or the world
             // down): another server may still write them, and no load of this session keeps any.
-            locked = AcquireLock(AccountId, 5) == LockTake.Taken;
+            locked = AcquireLock(AccountId, out lockToken, 5) == LockTake.Taken;
             // A running SendMail ReturnUser row mails a character that enters after its days away (KR 10100100:
             // 90), stored with the entry's stamp.
             IList<GameEvent> sendMail = FindEvent(GameEventType.SendMail);
@@ -333,7 +334,7 @@ public sealed partial class GameSession : Core.Network.Session {
         } finally {
             // Only a lock this load took: one not taken may be another holder's.
             if (locked) {
-                ReleaseLock(AccountId);
+                ReleaseLock(AccountId, lockToken);
             }
         }
         if (player == null) {
@@ -1758,7 +1759,9 @@ public sealed partial class GameSession : Core.Network.Session {
     // lock left by a holder that went away expires and is taken.
     internal const int LastSaveLockTries = 64;
 
-    private LockTake AcquireLock(long accountId, int maxRetries = 3) {
+    // token: the take's, which the release passes back (0 when not taken).
+    private LockTake AcquireLock(long accountId, out long token, int maxRetries = 3) {
+        token = 0;
         int retryCount = 0;
         int backoffMs = LockBackoffMs;
 
@@ -1776,6 +1779,7 @@ public sealed partial class GameSession : Core.Network.Session {
             }
 
             if (string.IsNullOrEmpty(response.Error)) {
+                token = response.Token;
                 return LockTake.Taken;
             }
 
@@ -1787,10 +1791,11 @@ public sealed partial class GameSession : Core.Network.Session {
         return LockTake.Held;
     }
 
-    private void ReleaseLock(long accountId) {
+    private void ReleaseLock(long accountId, long token) {
         try {
             LockResponse response = World.ReleaseLock(new LockRequest {
                 AccountId = accountId,
+                Token = token,
             });
             if (!string.IsNullOrEmpty(response.Error)) {
                 Logger.Warning("Failed to release lock for account {AccountId}: {ErrorMessage}", accountId, response.Error);
@@ -2194,9 +2199,10 @@ public sealed partial class GameSession : Core.Network.Session {
         bool outer = BeginStoreScope();
         EnterStore();
         bool locked = false;
+        long lockToken = 0;
         bool unknown = false;
         try {
-            LockTake take = AcquireLock(AccountId, last ? LastSaveLockTries : 5);
+            LockTake take = AcquireLock(AccountId, out lockToken, last ? LastSaveLockTries : 5);
             locked = take == LockTake.Taken;
             if (take == LockTake.Held) {
                 if (!last) {
@@ -2225,7 +2231,7 @@ public sealed partial class GameSession : Core.Network.Session {
             return SaveResult.Failed;
         } finally {
             if (locked) {
-                ReleaseLock(AccountId);
+                ReleaseLock(AccountId, lockToken);
             }
             // Before the queued steps: they run once the lock is given back, and may store.
             LeaveStore();
@@ -2473,6 +2479,7 @@ public sealed partial class GameSession : Core.Network.Session {
         bool outer = BeginStoreScope();
         SaveResult result = SaveResult.Failed;
         bool locked = false;
+        long lockToken = 0;
         bool entered = false;
         bool nested = StoreRefused("SavePurchase") || NestedStore("SavePurchase");
         try {
@@ -2485,7 +2492,7 @@ public sealed partial class GameSession : Core.Network.Session {
             // a lock held elsewhere.
             LockTake take;
             try {
-                take = AcquireLock(AccountId);
+                take = AcquireLock(AccountId, out lockToken);
             } catch (Exception ex) {
                 Logger.Error(ex, "SavePurchase: account lock failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
                 return result;
@@ -2505,7 +2512,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 }
             }
             if (locked) {
-                ReleaseLock(AccountId);
+                ReleaseLock(AccountId, lockToken);
             }
             // Before the queued steps: they run once the lock is given back, and may store.
             if (entered) {

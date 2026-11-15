@@ -1001,12 +1001,16 @@ message DeathInfo {
   int64 stop_time = 3;
 }
 
+// token: the release names the take it ends (0 = none), so a release after an expired take cannot end a newer holder's lock.
 message LockRequest {
   int64 accountId = 1;
+  int64 token = 2;
 }
 
+// token: set on a take, the value the release passes back.
 message LockResponse {
   string error = 1;
+  int64 token = 2;
 }
 
 // The rank duel queue. requester_id is the character.

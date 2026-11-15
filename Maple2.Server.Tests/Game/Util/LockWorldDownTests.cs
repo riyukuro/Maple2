@@ -32,7 +32,7 @@ public class LockWorldDownTests {
     private static string AcquireLock(GameSession session, int tries = 5) {
         MethodInfo acquire = typeof(GameSession).GetMethod("AcquireLock", BindingFlags.Instance | BindingFlags.NonPublic)!;
         try {
-            return acquire.Invoke(session, [1L, tries])!.ToString()!;
+            return acquire.Invoke(session, [1L, 0L, tries])!.ToString()!;
         } catch (TargetInvocationException ex) {
             throw ex.InnerException!;
         }

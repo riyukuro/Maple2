@@ -84,7 +84,9 @@ public class LoginSession : Core.Network.Session {
     }
 
     // True when this caller took the lock (and gives it back); a lock not taken may be another holder's.
-    private bool AcquireLock(long accountId, int maxRetries = 3) {
+    // token: the take's, which the release passes back (0 when not taken).
+    private bool AcquireLock(long accountId, out long token, int maxRetries = 3) {
+        token = 0;
         int retryCount = 0;
         const int backoffMs = 500;
 
@@ -102,6 +104,7 @@ public class LoginSession : Core.Network.Session {
             }
 
             if (string.IsNullOrEmpty(response.Error)) {
+                token = response.Token;
                 return true;
             }
 
@@ -113,10 +116,11 @@ public class LoginSession : Core.Network.Session {
         return false;
     }
 
-    private void ReleaseLock(long accountId) {
+    private void ReleaseLock(long accountId, long token) {
         try {
             LockResponse response = World.ReleaseLock(new LockRequest {
                 AccountId = accountId,
+                Token = token,
             });
             if (!string.IsNullOrEmpty(response.Error)) {
                 Logger.Warning("Failed to release lock for account {AccountId}: {ErrorMessage}", accountId, response.Error);
@@ -175,14 +179,14 @@ public class LoginSession : Core.Network.Session {
     public void ListCharacters() {
         using GameStorage.Request db = GameStorage.Context();
         // The read goes on without the lock (it only reads); only a lock this read took is given back.
-        bool locked = AcquireLock(AccountId);
+        bool locked = AcquireLock(AccountId, out long lockToken);
         Account? readAccount;
         IList<Character>? characters;
         try {
             (readAccount, characters) = db.ListCharacters(AccountId);
         } finally {
             if (locked) {
-                ReleaseLock(AccountId);
+                ReleaseLock(AccountId, lockToken);
             }
         }
         if (readAccount == null || characters == null) {
