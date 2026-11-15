@@ -474,11 +474,12 @@ public static class QuestRules {
         return reach <= 0 || distance <= reach + slack;
     }
 
-    // The kind the dispatch box sends (CQuestManager::SendQuestMode20): 3 for a directAccept box, 4 for a
-    // directComplete one (CStoryQuest m_7c, stringtable.cpp:197 and :241).
+    // The kind the dispatch box sends (CQuestManager::SendQuestMode20): 3 for a monologueAccept box, 4 for a
+    // monologueComplete one (CStoryQuest m_7c, stringtable.cpp:197 and :241; the client's dispatch type numbers,
+    // FUN_140751330, commonfiles/questdata.cpp:2758). directAccept and directComplete raise no box.
     public static bool IsDispatchKind(QuestDispatchType type, int kind) => type switch {
-        QuestDispatchType.DirectAccept => kind == 3,
-        QuestDispatchType.DirectComplete => kind == 4,
+        QuestDispatchType.MonologueAccept => kind == 3,
+        QuestDispatchType.MonologueComplete => kind == 4,
         _ => false,
     };
 

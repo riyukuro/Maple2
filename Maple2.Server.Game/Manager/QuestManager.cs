@@ -219,13 +219,14 @@ public sealed class QuestManager {
             }
             Add(quest);
             session.Send(QuestPacket.Start(quest));
-            OfferDispatch(quest, QuestDispatchType.DirectAccept);
+            OfferDispatch(quest, QuestDispatchType.MonologueAccept);
         }
     }
 
     // The dispatch box of a quest (Quest sub-type 20): the client raises it once for a quest whose dispatch is
-    // directAccept when the quest's start packet arrives (CStoryQuest::DecodeStart, stringtable.cpp:197, kind 3) and
-    // for one whose dispatch is directComplete when its completion arrives (CStoryQuest::Complete, :241, kind 4), and
+    // monologueAccept when the quest's start packet arrives (CStoryQuest::DecodeStart, stringtable.cpp:197, kind 3) and
+    // for one whose dispatch is monologueComplete when its completion arrives (CStoryQuest::Complete, :241, kind 4): the
+    // client reads monologueAccept as 3 and monologueComplete as 4 (FUN_140751330, commonfiles/questdata.cpp:2758), and
     // its yes button sends the quest id and that kind (CQuestManager::SendQuestMode20, questmanager_2.cpp:1795). The
     // server keeps the offers it sent until they are answered; a quest of another dispatch type gets no box.
     private readonly Dictionary<int, QuestDispatchType> dispatchOffers = new();
@@ -366,7 +367,7 @@ public sealed class QuestManager {
         // Items, meso and worn items held before the quest count from its start, as the client shows them.
         CountHeld(quest, AnyHeld);
         session.Send(QuestPacket.Start(quest));
-        OfferDispatch(quest, QuestDispatchType.DirectAccept);
+        OfferDispatch(quest, QuestDispatchType.MonologueAccept);
         if (quest.Metadata.SummonPortal != null) {
             SummonPortal(quest);
         }
@@ -1032,7 +1033,7 @@ public sealed class QuestManager {
             return false;
         }
         session.Send(QuestPacket.Complete(quest));
-        OfferDispatch(quest, QuestDispatchType.DirectComplete);
+        OfferDispatch(quest, QuestDispatchType.MonologueComplete);
         session.AdventureProtect.Update();
         session.Buffs.NotifySpecialEffects(specialEffects);
 

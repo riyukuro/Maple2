@@ -1540,12 +1540,12 @@ public class QuestHandlerTests {
 
     private static readonly string MoveError = Convert.ToHexString(FieldEnterPacket.Error(MigrationError.s_move_err_default).ToArray());
 
-    // KR 10003240 (dispatch type directComplete, field 52100202, portal 6001): the client's box after the
+    // KR 50101010 (dispatch type monologueComplete, field 52100109, portal 1): the client's box after the
     // completion sends Quest 20 with kind 4 and moves the player once (to the move error, see Dispatching). A second send, or a kind 3, does nothing.
     [Test]
-    public void Dispatch_AfterADirectCompleteMovesOnce() {
+    public void Dispatch_AfterAMonologueCompleteMovesOnce() {
         GameSession session = Login();
-        QuestMetadata data = Dispatching(QuestDispatchType.DirectComplete, 52100202, 6001);
+        QuestMetadata data = Dispatching(QuestDispatchType.MonologueComplete, 52100109, 1);
         test.Register(data);
         Quest quest = test.StartQuest(data);
         quest.Conditions[0].Counter = 1;
@@ -1561,15 +1561,17 @@ public class QuestHandlerTests {
         Assert.That(Moved(), Is.Null);
     }
 
-    // KR 10003230 (directAccept, field 52100300, portal 2): the box after the start sends kind 3. Before the
-    // start, with kind 4, or for a monologue dispatch (the client shows no box) nothing moves.
-    [TestCase(QuestDispatchType.DirectAccept, (short) 3, true)]
-    [TestCase(QuestDispatchType.DirectAccept, (short) 4, false)]
-    [TestCase(QuestDispatchType.MonologueAccept, (short) 3, false)]
+    // KR 50100010 (monologueAccept, field 2000062, portal 10): the box after the start sends kind 3. Before the
+    // start, with kind 4, or for a direct dispatch (the client reads directAccept as 1 and directComplete as 2 and
+    // shows no box for them, FUN_140751330, commonfiles/questdata.cpp:2758) nothing moves.
+    [TestCase(QuestDispatchType.MonologueAccept, (short) 3, true)]
+    [TestCase(QuestDispatchType.MonologueAccept, (short) 4, false)]
+    [TestCase(QuestDispatchType.DirectAccept, (short) 3, false)]
+    [TestCase(QuestDispatchType.DirectAccept, (short) 1, false)]
     [TestCase(QuestDispatchType.MonologueAccept, (short) 0, false)]
-    public void Dispatch_AfterADirectAcceptStart(QuestDispatchType type, short kind, bool moves) {
+    public void Dispatch_AfterAMonologueAcceptStart(QuestDispatchType type, short kind, bool moves) {
         GameSession session = Login();
-        test.Register(Dispatching(type, 52100300, 2));
+        test.Register(Dispatching(type, 2000062, 10));
         Dispatch(session, 3);
         Assert.That(test.TakeSent(), Is.Empty);
         Accept(session);

@@ -456,8 +456,8 @@ public class QuestHandler : FieldPacketHandler {
     }
 
     // CQuestManager::SendQuestMode20 (questmanager_2.cpp:1795): the quest id and the box's kind, 3 after the
-    // start of a directAccept quest and 4 after the completion of a directComplete one. Only a box the server
-    // offered moves the player (QuestManager.TakeDispatch), once: a directComplete quest is completed by then.
+    // start of a monologueAccept quest and 4 after the completion of a monologueComplete one. Only a box the server
+    // offered moves the player (QuestManager.TakeDispatch), once: a monologueComplete quest is completed by then.
     private void HandleDispatch(GameSession session, IByteReader packet) {
         int questId = packet.ReadInt();
         short kind = packet.ReadShort();
