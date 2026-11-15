@@ -449,6 +449,7 @@ public class EventRewardHandler : FieldPacketHandler {
         HashSet<int> received = SnowmanRules.Indexes(session.GameEvent.Get(GameEventUserValueType.AccumCompleteRewardReceived, gameEvent.Id, gameEvent.EndTime, now).Value);
 
         RewardItem[] rewards;
+        EventClaim.Mark[] marks;
         if (accum) {
             if (!SnowmanRules.CanClaimAccum(entry, accumCompletes[index], received.Contains(index))) {
                 Logger.Debug("Snowman accum claim {Index} from {CharacterId} refused: {Count} completes", index, session.CharacterId, accumCompletes[index]);
@@ -456,8 +457,7 @@ public class EventRewardHandler : FieldPacketHandler {
             }
             rewards = entry.AccumRewards;
             received.Add(index);
-            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AccumCompleteRewardReceived, SnowmanRules.Join(received.Order()));
-            StoreClaim(session, gameEvent.Id, GameEventUserValueType.AccumCompleteRewardReceived);
+            marks = [EventClaim.Of(gameEvent.Id, GameEventUserValueType.AccumCompleteRewardReceived, SnowmanRules.Join(received.Order()))];
         } else {
             if (!SnowmanRules.CanClaimDaily(entry, snowflakes[index], daily[index])) {
                 Logger.Debug("Snowman daily claim {Index} from {CharacterId} refused: {Snowflakes} snowflakes, {Daily} today", index, session.CharacterId, snowflakes[index], daily[index]);
@@ -467,28 +467,20 @@ public class EventRewardHandler : FieldPacketHandler {
             snowflakes[index] = 0;
             daily[index]++;
             accumCompletes[index]++;
-            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.SnowflakeCount, SnowmanRules.Join(snowflakes));
-            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.DailyCompleteCount, SnowmanRules.Join(daily));
-            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AccumCompleteCount, SnowmanRules.Join(accumCompletes));
-            StoreClaim(session, gameEvent.Id, GameEventUserValueType.SnowflakeCount);
-            StoreClaim(session, gameEvent.Id, GameEventUserValueType.DailyCompleteCount);
-            StoreClaim(session, gameEvent.Id, GameEventUserValueType.AccumCompleteCount);
+            marks = [
+                EventClaim.Of(gameEvent.Id, GameEventUserValueType.SnowflakeCount, SnowmanRules.Join(snowflakes)),
+                EventClaim.Of(gameEvent.Id, GameEventUserValueType.DailyCompleteCount, SnowmanRules.Join(daily)),
+                EventClaim.Of(gameEvent.Id, GameEventUserValueType.AccumCompleteCount, SnowmanRules.Join(accumCompletes)),
+            ];
         }
 
-        var given = new List<RewardItem>();
-        foreach (RewardItem rewardItem in rewards) {
-            Item? item = session.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
-            if (item == null) {
-                Logger.Error("Snowman: event {EventId} item {ItemId} could not be made", gameEvent.Id, rewardItem.ItemId);
-                continue;
-            }
-            if (!session.Item.AddOrMail(item, true)) {
-                Logger.Error("Snowman: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
-                continue;
-            }
-            given.Add(rewardItem);
+        // Every item is made first: one the data lacks refuses the claim, which stays open. The items and the
+        // claim's values are stored together (EventClaim), so a failed store spends nothing and has no reply.
+        List<Item>? items = MakeItems(session, rewards, "Snowman", gameEvent.Id);
+        if (items == null || EventClaim.Give(session, items, marks) == null) {
+            return;
         }
-        session.Send(EventRewardPacket.ClaimSnowmanReward(accum, given));
+        session.Send(EventRewardPacket.ClaimSnowmanReward(accum, rewards));
     }
 
     private void HandleClaimTimeRunFinalReward(GameSession session) {
@@ -595,15 +587,11 @@ public class EventRewardHandler : FieldPacketHandler {
             return;
         }
 
-        var items = new List<Item>();
-        foreach (RewardItem rewardItem in gallery.RewardItems) {
-            Item? item = session.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
-            if (item != null) {
-                items.Add(item);
-            }
-        }
-        // The items and the claim are stored together (EventClaim); the claim was kept in memory only.
-        if (EventClaim.Give(session, items, [EventClaim.Of(gameEvent.Id, GameEventUserValueType.GalleryClaimReward, value + 1)]) == null) {
+        // Every item is made first: one the data lacks refuses the claim (the reply lists all items). The items and
+        // the claim are stored together (EventClaim).
+        List<Item>? items = MakeItems(session, gallery.RewardItems, "Gallery", gameEvent.Id);
+        if (items == null
+            || EventClaim.Give(session, items, [EventClaim.Of(gameEvent.Id, GameEventUserValueType.GalleryClaimReward, value + 1)]) == null) {
             return;
         }
 
@@ -696,29 +684,29 @@ public class EventRewardHandler : FieldPacketHandler {
             return;
         }
 
+        // Every item is made first: one the data lacks refuses the claim, which stays open. The items and the
+        // claimed row are stored together (EventClaim); a failed store spends nothing and has no reply.
         rewardsClaimedList.Add(index);
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.BingoRewardsClaimed, string.Join(',', rewardsClaimedList));
-        StoreClaim(session, gameEvent.Id, GameEventUserValueType.BingoRewardsClaimed);
-
-        foreach (RewardItem rewardItem in bingoEvent.Rewards[index].Items) {
-            Item? item = session.Field.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
-            if (item == null) {
-                continue;
-            }
-
-            if (!session.Item.AddOrMail(item, true)) {
-                Logger.Error("Bingo reward: event {EventId} item {ItemId} went to neither bag nor mail", gameEvent.Id, item.Id);
-            }
+        List<Item>? items = MakeItems(session, bingoEvent.Rewards[index].Items, "Bingo", gameEvent.Id);
+        if (items == null
+            || EventClaim.Give(session, items, [EventClaim.Of(gameEvent.Id, GameEventUserValueType.BingoRewardsClaimed, string.Join(',', rewardsClaimedList))]) == null) {
+            return;
         }
         session.Send(EventRewardPacket.ClaimBingoReward(bingoEvent.Rewards[index].Items));
         session.Send(EventRewardPacket.UpdateBingo(checkedNumbers.Value, rewardsClaimed.Value));
     }
 
-    // A claim is stored with its reward, not at logout: the reward may sit in a stored mail already (a full bag),
-    // and a claim lost with the session would pay again after a restart.
-    private void StoreClaim(GameSession session, int eventId, GameEventUserValueType type) {
-        if (!session.GameEvent.Store(eventId, type)) {
-            Logger.Error("The claim {Type} of event {EventId} by {CharacterId} was not stored", type, eventId, session.CharacterId);
+    // The reward's items, each made; null (logged) when one cannot be made, so the claim is refused whole.
+    private List<Item>? MakeItems(GameSession session, IEnumerable<RewardItem> rewards, string kind, int eventId) {
+        var items = new List<Item>();
+        foreach (RewardItem rewardItem in rewards) {
+            Item? item = session.Field?.ItemDrop.CreateItem(rewardItem.ItemId, rewardItem.Rarity, rewardItem.Amount);
+            if (item == null) {
+                Logger.Error("{Kind}: event {EventId} item {ItemId} could not be made, claim refused", kind, eventId, rewardItem.ItemId);
+                return null;
+            }
+            items.Add(item);
         }
+        return items;
     }
 }

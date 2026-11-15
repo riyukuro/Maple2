@@ -225,6 +225,29 @@ public class EventSnowmanTests {
         Assert.That(Held(session, AccumItem), Is.EqualTo(1));
     }
 
+    // A reward item the item data lacks: the claim is refused whole, nothing given, no value moved and no reply
+    // (the snowman was started again and its completes counted with the item missing).
+    [Test]
+    public void Snowman_DailyClaimOfAnUnknownItem_MarksNothing() {
+        test = new TestGameSession();
+        test.Register(TestGameSession.Metadata(DailyItem), TestGameSession.Metadata(AccumItem));
+        gameEvent = test.AddEvent(EventId, GameEventType.Snowman, new Snowman("ex", [
+            new Snowman.Entry(10, 2, 3, [new RewardItem(DailyItem, 1, 2), new RewardItem(29999999, 1, 1)], [new RewardItem(AccumItem, 1, 1)]),
+        ], "layout", [new Snowman.Source(ConditionType.npc, 4, 10000)]));
+        GameSession session = test.Start();
+        session.GameEvent.Roll = _ => 0;
+        Kill(session, 3);
+        test.TakeSent();
+
+        Claim(session, false, 0);
+
+        Assert.That(SentHex(), Is.Empty);
+        Assert.That(Held(session, DailyItem), Is.EqualTo(0));
+        Assert.That(Value(session, GameEventUserValueType.SnowflakeCount), Is.EqualTo("10"));
+        Assert.That(Value(session, GameEventUserValueType.DailyCompleteCount) ?? "", Is.Empty);
+        Assert.That(StoredAccountValues().ContainsKey(GameEventUserValueType.DailyCompleteCount), Is.False);
+    }
+
     // uisnowmaneventdialog.cpp: 12 or 13, an int count, then the item id and a short count each.
     [Test]
     public void Snowman_ReplyBytes() {

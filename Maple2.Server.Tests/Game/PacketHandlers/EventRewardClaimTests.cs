@@ -688,13 +688,15 @@ public class EventRewardClaimTests {
     private static readonly int[] FirstRow = [17, 2, 10, 16, 1];
 
     // Two days of called numbers; eight reward rows, row 0 gives ItemB, the others ItemC.
-    private static BingoEvent Bingo() {
+    private static BingoEvent Bingo(int firstRowItem = ItemB) {
         return new BingoEvent(Pencil, CashPencil, [[17, 2], [10]],
-            Enumerable.Range(0, 8).Select(i => new BingoEvent.BingoReward([new RewardItem(i == 0 ? ItemB : ItemC, 1, 1)])).ToArray());
+            Enumerable.Range(0, 8).Select(i => new BingoEvent.BingoReward(i == 0
+                ? [new RewardItem(ItemA, 1, 1), new RewardItem(firstRowItem, 1, 1)]
+                : [new RewardItem(ItemC, 1, 1)])).ToArray());
     }
 
-    private GameSession LoginBingo(DateTime? start = null) {
-        GameSession session = Login(GameEventType.BingoEvent, Bingo(), start: start ?? DateTime.Now, before: target => {
+    private GameSession LoginBingo(DateTime? start = null, int firstRowItem = ItemB) {
+        GameSession session = Login(GameEventType.BingoEvent, Bingo(firstRowItem), start: start ?? DateTime.Now, before: target => {
             target.Store(TestGameSession.Metadata(Pencil), 10);
             target.Store(TestGameSession.Metadata(CashPencil), 30);
         });
@@ -790,6 +792,40 @@ public class EventRewardClaimTests {
         Assert.That(Stored(GameEventUserValueType.BingoRewardsClaimed), Is.EqualTo("0"));
     }
 
+    // A row with an item the item data lacks: nothing of the row is given or marked and there is no reply, so the
+    // row can be claimed once the data is there (the claim was stored before its items were made).
+    [Test]
+    public void Bingo_ClaimRowOfAnUnknownItem_MarksNothing() {
+        GameSession session = LoginBingo(firstRowItem: 29999999);
+        foreach (int number in FirstRow) {
+            Cross(session, CashPencil, number);
+        }
+        test.TakeSent();
+
+        ClaimBingo(session, 0);
+
+        Assert.That(SentHex(), Is.Empty);
+        Assert.That(Held(session, ItemA), Is.EqualTo(0));
+        Assert.That(Value(session, GameEventUserValueType.BingoRewardsClaimed) ?? "", Is.Empty);
+        Assert.That(Stored(GameEventUserValueType.BingoRewardsClaimed) ?? "", Is.Empty);
+    }
+
+    // The reply after a claim: the row's items, then the card with the row claimed.
+    [Test]
+    public void Bingo_ClaimRow_RepliesWithTheClaimedRow() {
+        GameSession session = LoginBingo();
+        foreach (int number in FirstRow) {
+            Cross(session, CashPencil, number);
+        }
+        test.TakeSent();
+
+        ClaimBingo(session, 0);
+
+        List<string> sent = SentHex();
+        Assert.That(sent[^2], Is.EqualTo(Hex(EventRewardPacket.ClaimBingoReward(Bingo().Rewards[0].Items))));
+        Assert.That(sent[^1], Is.EqualTo(Hex(EventRewardPacket.UpdateBingo(string.Join(',', FirstRow), "0"))));
+    }
+
     // The client draws no board for seed 0 (UIBingoEventDialog): opening the board draws a new seed.
     [Test]
     public void Bingo_OpenWithSeedZero_DrawsANewSeed() {
@@ -799,6 +835,43 @@ public class EventRewardClaimTests {
         Reward(session, 20);
 
         Assert.That(int.Parse(Value(session, GameEventUserValueType.BingoUid)!), Is.Not.EqualTo(0));
+    }
+    #endregion
+
+    #region Gallery
+    private GameSession LoginGallery(int item) {
+        GameSession session = Login(GameEventType.Gallery, new Gallery([QuestA], [new RewardItem(ItemA, 1, 2), new RewardItem(item, 1, 1)], 1, "image"));
+        test.SetQuest(QuestA, QuestState.Completed);
+        return session;
+    }
+
+    // 9: the reward once all quests are done, stored with the claim; a second claim gives nothing.
+    [Test]
+    public void Gallery_Claim_IsStoredWithTheReward() {
+        GameSession session = LoginGallery(ItemB);
+
+        Reward(session, 9);
+        Reward(session, 9);
+
+        Assert.That(Held(session, ItemA), Is.EqualTo(2));
+        Assert.That(Held(session, ItemB), Is.EqualTo(1));
+        Assert.That(Stored(GameEventUserValueType.GalleryClaimReward), Is.EqualTo("1"));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // An item the item data lacks: nothing is given or marked (the rest of the reward was given with the claim
+    // spent, and the reply listed the missing item too).
+    [Test]
+    public void Gallery_ClaimOfAnUnknownItem_MarksNothing() {
+        GameSession session = LoginGallery(29999999);
+        test.TakeSent();
+
+        Reward(session, 9);
+
+        Assert.That(SentHex(), Is.Empty);
+        Assert.That(Held(session, ItemA), Is.EqualTo(0));
+        Assert.That(Value(session, GameEventUserValueType.GalleryClaimReward), Is.Null.Or.Empty);
+        Assert.That(Stored(GameEventUserValueType.GalleryClaimReward), Is.Null);
     }
     #endregion
 
