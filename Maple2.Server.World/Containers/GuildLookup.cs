@@ -121,7 +121,7 @@ public class GuildLookup : IDisposable {
         if (requestorId != manager.Guild.LeaderCharacterId) {
             return GuildError.s_guild_err_no_master;
         }
-        if (manager.Guild.Members.Count > 1) {
+        if (!manager.TryClose()) {
             return GuildError.s_guild_err_exist_member;
         }
 

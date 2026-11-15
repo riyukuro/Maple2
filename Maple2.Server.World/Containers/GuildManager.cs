@@ -28,6 +28,8 @@ public class GuildManager : IDisposable {
     // Lock order: a member's lock first, then this one (Donate takes both). No path takes a member's lock while it
     // holds this one, or two such paths deadlock; GuildLookup.NameLock goes before this one (Rename).
     private readonly object guildLock = new();
+    // Set by TryClose (a disband): no join after it.
+    private bool closed;
 
     // Time of the last guild mail of each sender, for the server's limit. Old entries go on each insert.
     private readonly Dictionary<long, long> lastMail = new();
@@ -35,6 +37,19 @@ public class GuildManager : IDisposable {
     public GuildManager(Guild guild) {
         Guild = guild;
         pendingInvites = new ConcurrentDictionary<long, (string, DateTime)>();
+    }
+
+    // The disband's check (no member but the leader) and the end of joins are one step under the guild lock.
+    // Before, the check ran without it: a join between the check and the delete added a member to a guild that
+    // was then deleted.
+    public bool TryClose() {
+        lock (guildLock) {
+            if (Guild.Members.Count > 1) {
+                return false;
+            }
+            closed = true;
+            return true;
+        }
     }
 
     public void Dispose() {
@@ -138,6 +153,9 @@ public class GuildManager : IDisposable {
     }
 
     private GuildError JoinLocked(string requestorName, PlayerInfo info, GuildRequest? beforeNotice) {
+        if (closed) {
+            return GuildError.s_guild_err_null_guild;
+        }
         if (Guild.Members.Count >= GuildProperty().Capacity) {
             return GuildError.s_guild_err_full_member;
         }
