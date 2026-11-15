@@ -887,6 +887,8 @@ public sealed class TestGameSession {
         public GlobalPortalInfo? OpenPortal;
         public int TimeEventError;
         public FieldWarInfo? OpenFieldWar;
+        // The field war joins the World was asked for.
+        public readonly List<TimeEventRequest.Types.JoinFieldWar> FieldWarJoins = [];
         // The world champion state the World answers (none: the call answers no info).
         public WorldChampionInfo? WorldChampion;
         // The world bosses the World answers as alive (GetActiveWorldBosses).
@@ -906,7 +908,10 @@ public sealed class TestGameSession {
             if ((request.GetGlobalPortal != null || request.JoinGlobalPortal != null) && OpenPortal != null) {
                 response.GlobalPortalInfo = OpenPortal;
             }
-            if (request.GetFieldWar != null && OpenFieldWar != null) {
+            if (request.JoinFieldWar != null) {
+                FieldWarJoins.Add(request.JoinFieldWar);
+            }
+            if ((request.GetFieldWar != null || request.JoinFieldWar != null) && OpenFieldWar != null) {
                 response.FieldWarInfo = OpenFieldWar;
             }
             if (request.GetActiveWorldBosses != null) {
