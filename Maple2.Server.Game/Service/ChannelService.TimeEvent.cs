@@ -90,9 +90,12 @@ public partial class ChannelService {
         if (boss.NoSpawn) {
             return new TimeEventResponse();
         }
+        // On the field's thread: the spawn adds to the field's NPCs and navigation crowd, and the unique check and the
+        // boss id set after it are not safe from two threads (two announces could each spawn a boss).
+        int eventId = boss.EventId;
         foreach (int targetMapId in metadata.TargetMapIds) {
             FieldManager? field = server.GetField(targetMapId);
-            field?.SpawnWorldBoss(metadata, boss.EventId);
+            field?.RunOnField(() => field.SpawnWorldBoss(metadata, eventId));
         }
 
         return new TimeEventResponse();

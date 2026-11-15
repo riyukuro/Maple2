@@ -1056,14 +1056,13 @@ public partial class FieldManager {
         return npc;
     }
 
+    // Called from World calls and the idle monitor (other threads): the boss id is taken once, so two despawns that
+    // meet remove the boss once.
     public void DespawnWorldBoss() {
-        if (worldBossObjectId == 0) {
-            return;
+        int objectId = Interlocked.Exchange(ref worldBossObjectId, 0);
+        if (objectId != 0) {
+            RemoveNpc(objectId);
         }
-
-        int objectId = worldBossObjectId;
-        worldBossObjectId = 0;
-        RemoveNpc(objectId);
     }
 
     public void ToggleNpcSpawnPoint(int spawnId) {
