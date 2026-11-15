@@ -5,6 +5,7 @@ using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
+using Maple2.Tools.Extensions;
 using NUnit.Framework;
 
 namespace Maple2.Server.Tests.Game.Packets;
@@ -93,6 +94,67 @@ public class FurnishingAndPickupLayoutTests {
         ByteReader update = Reader(FurnishingInventoryPacket.Update(0x1122334455667788, 9), SendOp.FurnishingInventory);
         Assert.Multiple(() => {
             Assert.That(update.ReadByte(), Is.EqualTo(3));
+            Assert.That(update.ReadLong(), Is.EqualTo(0x1122334455667788));
+            Assert.That(update.ReadInt(), Is.EqualTo(9));
+            Assert.That(update.Available, Is.Zero);
+        });
+    }
+    #endregion
+
+    #region FurnishingStorage (0x23)
+    // CSceneStateGame::OnFurnishingStorage (scenestategame.cpp:2736): byte mode; 1 clears the list; 2 int; 3 int item
+    // id, long uid, byte rarity, int slot, then the item (CItem::ReadFromStream, see ItemLayoutTests); 4 long uid; 5 long
+    // uid and int; 7 long uid and int amount. Mode 8 ends the list and reads nothing.
+    [Test]
+    public void Storage_StartCountEnd() {
+        ByteReader start = Reader(FurnishingStoragePacket.StartList(), SendOp.FurnishingStorage);
+        Assert.That(start.ReadByte(), Is.EqualTo(1));
+        Assert.That(start.Available, Is.Zero);
+        ByteReader count = Reader(FurnishingStoragePacket.Count(42), SendOp.FurnishingStorage);
+        Assert.Multiple(() => {
+            Assert.That(count.ReadByte(), Is.EqualTo(2));
+            Assert.That(count.ReadInt(), Is.EqualTo(42));
+            Assert.That(count.Available, Is.Zero);
+        });
+        ByteReader end = Reader(FurnishingStoragePacket.EndList(), SendOp.FurnishingStorage);
+        Assert.That(end.ReadByte(), Is.EqualTo(8));
+        Assert.That(end.Available, Is.Zero);
+    }
+
+    [Test]
+    public void Storage_AddIsHeaderThenTheItem() {
+        var item = new Item(Cube(50200001), 3, 7) { Uid = 0x0102030405060708, Slot = 5 };
+        ByteReader reader = Reader(FurnishingStoragePacket.Add(item), SendOp.FurnishingStorage);
+        var stream = new ByteWriter();
+        stream.WriteClass<Item>(item);
+        Assert.Multiple(() => {
+            Assert.That(reader.ReadByte(), Is.EqualTo(3));
+            Assert.That(reader.ReadInt(), Is.EqualTo(50200001));
+            Assert.That(reader.ReadLong(), Is.EqualTo(0x0102030405060708));
+            Assert.That(reader.ReadByte(), Is.EqualTo(3));
+            Assert.That(reader.ReadInt(), Is.EqualTo(5));
+            Assert.That(reader.ReadBytes(reader.Available), Is.EqualTo(stream.ToArray()));
+        });
+    }
+
+    [Test]
+    public void Storage_RemovePurchaseUpdate() {
+        ByteReader remove = Reader(FurnishingStoragePacket.Remove(0x1122334455667788), SendOp.FurnishingStorage);
+        Assert.Multiple(() => {
+            Assert.That(remove.ReadByte(), Is.EqualTo(4));
+            Assert.That(remove.ReadLong(), Is.EqualTo(0x1122334455667788));
+            Assert.That(remove.Available, Is.Zero);
+        });
+        ByteReader purchase = Reader(FurnishingStoragePacket.Purchase(0x1122334455667788, 2), SendOp.FurnishingStorage);
+        Assert.Multiple(() => {
+            Assert.That(purchase.ReadByte(), Is.EqualTo(5));
+            Assert.That(purchase.ReadLong(), Is.EqualTo(0x1122334455667788));
+            Assert.That(purchase.ReadInt(), Is.EqualTo(2));
+            Assert.That(purchase.Available, Is.Zero);
+        });
+        ByteReader update = Reader(FurnishingStoragePacket.Update(0x1122334455667788, 9), SendOp.FurnishingStorage);
+        Assert.Multiple(() => {
+            Assert.That(update.ReadByte(), Is.EqualTo(7));
             Assert.That(update.ReadLong(), Is.EqualTo(0x1122334455667788));
             Assert.That(update.ReadInt(), Is.EqualTo(9));
             Assert.That(update.Available, Is.Zero);

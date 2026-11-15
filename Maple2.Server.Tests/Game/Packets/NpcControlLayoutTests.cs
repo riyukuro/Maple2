@@ -23,31 +23,11 @@ namespace Maple2.Server.Tests.Game.Packets;
 // state, short sequence, ushort serial; for sequence -2 / -3 a byte absolute and two Vector3 and two floats, or one
 // Vector3; then state 17 (spawn) an int spawn point and state 13 (hit) three floats and a byte. The entry is sized, so
 // the server writes the spawn and hit fields with every such entry (the reader takes them when the serial changes).
-public class NpcControlLayoutTests : TriggerTestBase {
+public class NpcControlLayoutTests : NpcLayoutTestBase {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-    private const int NpcId = 21000001;
 
     private record Entry(int Id, byte Flags, short[] Position, short Rotation, short[] Velocity, short Speed, int? Owner,
         byte State, short Sequence, ushort Serial, byte[] Tail);
-
-    private FieldNpc Spawn(bool boss) {
-        Start();
-        typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
-        typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
-        typeof(FieldManager).GetField("fieldBreakables", Any)!.SetValue(Field, new ConcurrentDictionary<string, FieldBreakable>());
-        typeof(FieldManager).GetField("<FieldInstance>k__BackingField", Any)!.SetValue(Field,
-            new InstanceFieldMetadata(0, InstanceType.none, 0, false, 0, true, 0, 0, 0, 0));
-        test.Register(TestGameSession.Metadata(30000071), TestGameSession.Metadata(50300014), TestGameSession.Metadata(30000084));
-        test.SetServerTable(new NpcStatFactorTable(new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyDictionary<int, NpcStatFactorMetadata>>>()));
-        NpcMetadata metadata = AiStateTests.Npc(NpcId);
-        // CNpcData::IsBoss: a hostile npc (friendly 0) of class 3 or more.
-        metadata = metadata with { Basic = metadata.Basic with { Friendly = 0, Class = boss ? 3 : 1 } };
-        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.NpcTable([], metadata));
-        typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.AiTable());
-        FieldNpc npc = Field.SpawnNpc(metadata, new Vector3(1000, -200, 300), new Vector3(0, 0, 90), disableAi: true)!;
-        test.TakeSent();
-        return npc;
-    }
 
     private static void SetState(FieldNpc npc, ActorState state, NpcControlRules.HitEntry? hit = null) {
         typeof(MovementState).GetField("<State>k__BackingField", Any)!.SetValue(npc.MovementState, state);
@@ -226,5 +206,30 @@ public class NpcControlLayoutTests : TriggerTestBase {
             Assert.That(entry.Sequence, Is.EqualTo(NpcControlPacket.ANI_JUMP_A));
             Assert.That(entry.Tail, Is.EqualTo(expected.ToArray()));
         });
+    }
+}
+
+// A real field npc (spawned through FieldManager.SpawnNpc, its AI off) for the npc packet layout tests.
+public abstract class NpcLayoutTestBase : TriggerTestBase {
+    private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+    protected const int NpcId = 21000001;
+
+    protected FieldNpc Spawn(bool boss) {
+        Start();
+        typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
+        typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
+        typeof(FieldManager).GetField("fieldBreakables", Any)!.SetValue(Field, new ConcurrentDictionary<string, FieldBreakable>());
+        typeof(FieldManager).GetField("<FieldInstance>k__BackingField", Any)!.SetValue(Field,
+            new InstanceFieldMetadata(0, InstanceType.none, 0, false, 0, true, 0, 0, 0, 0));
+        test.Register(TestGameSession.Metadata(30000071), TestGameSession.Metadata(50300014), TestGameSession.Metadata(30000084));
+        test.SetServerTable(new NpcStatFactorTable(new Dictionary<int, IReadOnlyDictionary<int, IReadOnlyDictionary<int, NpcStatFactorMetadata>>>()));
+        NpcMetadata metadata = AiStateTests.Npc(NpcId);
+        // CNpcData::IsBoss: a hostile npc (friendly 0) of class 3 or more.
+        metadata = metadata with { Basic = metadata.Basic with { Friendly = 0, Class = boss ? 3 : 1 } };
+        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.NpcTable([], metadata));
+        typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.AiTable());
+        FieldNpc npc = Field.SpawnNpc(metadata, new Vector3(1000, -200, 300), new Vector3(0, 0, 90), disableAi: true)!;
+        test.TakeSent();
+        return npc;
     }
 }
