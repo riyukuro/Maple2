@@ -54,8 +54,10 @@ public static class DungeonScoreRules {
     // The client marks rank i given while i <= the reward's count and the server time is before its expiry
     // (GetRankRewardCount, dungeonrecordcli.cpp:608), and the reward items are "awarded for reaching Weekly Rank C"
     // (20300932): so the count holds the ranks given in the season week, and a clear gives each rank above the live
-    // count up to its own rank, no higher than the reward's highest rank (DungeonRankRewardBase::GetMaxRank). Inferred
-    // (not found in the client, which never gives them): the ranks below the clear's one are given too, at the clear.
+    // count up to its own rank, no higher than the reward's highest rank (DungeonRankRewardBase::GetMaxRank). The ranks
+    // below the clear's one are given too, at the clear, as the room window's rank bar tooltip says
+    // (s_dungeonRoom_seasonRankBar_tooltip: every rank reached in the period is given, a higher rank gives the lower
+    // ranks' rewards with it, each rank once).
     public static IEnumerable<int> RankRewardRanks(int count, long expiry, long now, DungeonMissionRank rank, int maxRank) {
         int given = now < expiry ? count : 0;
         int top = Math.Min((int) rank, maxRank);
@@ -129,16 +131,16 @@ public static class DungeonScoreRules {
 
     // The season total: the sum of the live CurrentRecords of the player's season rank rooms, as the client adds it
     // (DungeonRecordManagerCli::GetTotalScore, dungeonrecordcli.cpp:580: IsSeasonRankRoom records, Get68 at the
-    // server time, scores above 0). The client never calls it and has no cap; the cap at the season's
-    // maxSeasonScore (when set) is the server's reading of that name.
-    public static int SeasonTotal(IEnumerable<short> scores, int maxSeasonScore) {
+    // server time, scores above 0). Not capped: the client has no cap and no reader of the season's maxSeasonScore
+    // (in KR it equals the top reward's requireScore, so a cap there would change no reward).
+    public static int SeasonTotal(IEnumerable<short> scores) {
         int total = 0;
         foreach (short score in scores) {
             if (score > 0) {
                 total += score;
             }
         }
-        return maxSeasonScore > 0 ? Math.Min(total, maxSeasonScore) : total;
+        return total;
     }
 
     // The season weeks that have ended with a score: season rank records whose CurrentRecord has expired (now at or

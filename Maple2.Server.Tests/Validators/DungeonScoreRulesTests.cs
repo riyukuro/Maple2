@@ -204,9 +204,19 @@ public class DungeonScoreRulesTests {
 
     [Test]
     public void SeasonTotalSumsPositiveScores() {
-        Assert.That(DungeonScoreRules.SeasonTotal(new short[] { 1500, 0, -1, 2000 }, 0), Is.EqualTo(3500));
-        Assert.That(DungeonScoreRules.SeasonTotal(new short[] { 3000, 3000 }, 5000), Is.EqualTo(5000));
-        Assert.That(DungeonScoreRules.SeasonTotal(Array.Empty<short>(), 5000), Is.EqualTo(0));
+        Assert.That(DungeonScoreRules.SeasonTotal(new short[] { 1500, 0, -1, 2000 }), Is.EqualTo(3500));
+        Assert.That(DungeonScoreRules.SeasonTotal(Array.Empty<short>()), Is.EqualTo(0));
+    }
+
+    // The client adds the week's scores with no cap (GetTotalScore) and reads no maxSeasonScore: a total above it is
+    // kept, so a season whose maxSeasonScore is below its top requireScore still gives that reward.
+    [Test]
+    public void SeasonTotalIsNotCappedAtMaxSeasonScore() {
+        var season = new DungeonSeasonTable.Entry(901, new DateTime(2025, 1, 1), new DateTime(2025, 6, 30), 3000, 900100, 6,
+            [new DungeonSeasonTable.Reward(4000, 900203), new DungeonSeasonTable.Reward(1000, 900201)]);
+        int total = DungeonScoreRules.SeasonTotal(new short[] { 3000, 3000 });
+        Assert.That(total, Is.EqualTo(6000));
+        Assert.That(season.GetReward(total)?.ItemId, Is.EqualTo(900203));
     }
 
     [Test]

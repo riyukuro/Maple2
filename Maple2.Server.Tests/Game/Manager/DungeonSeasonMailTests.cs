@@ -136,7 +136,7 @@ public class DungeonSeasonMailTests {
         session.Dungeon.CompleteDungeon(DateTime.Now.ToEpochSeconds());
 
         List<IGrouping<long, DungeonRecord>> weeks = DungeonScoreRules.FinishedWeeks(session.Dungeon.Records.Values, end.ToEpochSeconds()).ToList();
-        Assert.That(weeks.Select(week => (week.Key, DungeonScoreRules.SeasonTotal(week.Select(record => record.CurrentRecord), 0))),
+        Assert.That(weeks.Select(week => (week.Key, DungeonScoreRules.SeasonTotal(week.Select(record => record.CurrentRecord)))),
             Is.EqualTo(new[] { (end.ToEpochSeconds(), 800) }));
         Assert.That(Mails(test), Is.Empty);
         Assert.That(test.Errors, Is.Empty);

@@ -203,7 +203,7 @@ public class DungeonManager {
             int systemMailId = 0;
             DungeonSeasonTable.Entry? season = session.TableMetadata.DungeonSeasonTable.Current(week.Key.FromEpochSeconds().AddSeconds(-1));
             if (season != null) {
-                int total = DungeonScoreRules.SeasonTotal(week.Select(record => record.CurrentRecord), season.MaxSeasonScore);
+                int total = DungeonScoreRules.SeasonTotal(week.Select(record => record.CurrentRecord));
                 DungeonSeasonTable.Reward? reward = season.GetReward(total);
                 if (reward != null && reward.ItemId != 0) {
                     item = MakeRewardItem(field, reward.ItemId, reward.Grade, reward.Count, season.SystemMailId);

@@ -1,9 +1,9 @@
 namespace Maple2.Model.Metadata;
 
 // table/dungeonseason.xml: the dungeon rank seasons (the client's DungeonSeason::Load, dungeonroom.cpp). Each
-// row holds its period, the season's maximum total score, the mail sent with the weekly reward, the day of the
-// week the season week ends on (dayOfWeeks, Sunday = 1 in the client's CMsTime::GetDayOfWeek convention) and
-// its rewards, highest requireScore first.
+// row holds its period, maxSeasonScore (kept, not used: the client loads it and no reader of it was found), the
+// mail sent with the weekly reward, the day of the week the season week ends on (dayOfWeeks, Sunday = 1 in the
+// client's CMsTime::GetDayOfWeek convention) and its rewards, highest requireScore first.
 public record DungeonSeasonTable(IReadOnlyList<DungeonSeasonTable.Entry> Entries) : Table {
     public record Entry(
         int SeasonId,
