@@ -19,7 +19,7 @@ public static class ConditionUtil {
         }
         bool code = condition.Codes == null || condition.Codes.CheckCode(session, condition.Type, codeString, codeLong);
         bool target;
-        if (condition.Type == ConditionType.talk_in && condition.Target?.Integers == null && condition.Target?.Range == null) {
+        if (condition.Type == ConditionType.talk_in && condition.Target?.Integers == null && condition.Target?.Range == null && condition.Target?.Ranges == null) {
             // talk_in without a script target (none, or target=""): the talk's start (target 0) counts, not each npc
             // script the talk reaches.
             target = targetLong == 0;
@@ -42,7 +42,7 @@ public static class ConditionUtil {
                 }
                 break;
             case ConditionType.trophy_point:
-                if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
+                if (InRange(code, (int) longValue)) {
                     return true;
                 }
                 break;
@@ -51,14 +51,14 @@ public static class ConditionUtil {
             case ConditionType.donation_type: // code: the donated item's property type
             case ConditionType.fame_grade: // code: the alliance
             case ConditionType.limited_bundle_buy: // code: the meret market product bought
-                if ((code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) ||
+                if (InRange(code, (int) longValue) ||
                     (code.Integers != null && code.Integers.Contains((int) longValue))) {
                     return true;
                 }
                 break;
             case ConditionType.item_collect:
             case ConditionType.item_collect_revise:
-                if ((code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) ||
+                if (InRange(code, (int) longValue) ||
                     (code.Integers != null && code.Integers.Contains((int) longValue))) {
                     if (session.Player.Value.Unlock.CollectedItems.ContainsKey((int) longValue)) {
                         session.Player.Value.Unlock.CollectedItems[(int) longValue]++;
@@ -199,7 +199,7 @@ public static class ConditionUtil {
             case ConditionType.spawner:
             // worldchampion_damage: the world champion season the damage was dealt in (KR code 1 to 12).
             case ConditionType.worldchampion_damage:
-                if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
+                if (InRange(code, (int) longValue)) {
                     return true;
                 }
 
@@ -211,7 +211,7 @@ public static class ConditionUtil {
             // Lapenta dungeons: codes 27000-27003, rooms 27000001-27003001). The client's dungeon of a room is the room
             // id / 1000 (GetDungeonIdOfRoom, commonfiles/dungeonroom.cpp:258).
             case ConditionType.dungeon_reward:
-                if (code.Integers != null && code.Integers.Contains((int) (longValue / 1000))) {
+                if (Holds(code, (int) (longValue / 1000))) {
                     return true;
                 }
                 break;
@@ -223,7 +223,7 @@ public static class ConditionUtil {
             case ConditionType.survival_win_use_one_skill:
             case ConditionType.survival_item_get:
             case ConditionType.survive_map:
-                if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
+                if (InRange(code, (int) longValue)) {
                     return true;
                 }
 
@@ -254,7 +254,7 @@ public static class ConditionUtil {
             case ConditionType.pvp_win_with_buff:
             case ConditionType.pvp_win_with_grade:
             case ConditionType.pvp_win_perfect:
-                if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
+                if (InRange(code, (int) longValue)) {
                     return true;
                 }
 
@@ -264,7 +264,7 @@ public static class ConditionUtil {
                 break;
             case ConditionType.fish_collect:
             case ConditionType.fish_goldmedal:
-                if ((code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) ||
+                if (InRange(code, (int) longValue) ||
                     (code.Integers != null && code.Integers.Contains((int) longValue))) {
                     return !session.Player.Value.Unlock.FishAlbum.ContainsKey((int) longValue);
                 }
@@ -326,7 +326,7 @@ public static class ConditionUtil {
     internal static bool CheckTarget(this ConditionMetadata.Parameters target, GameSession session, ConditionType conditionType, string stringValue = "", long longValue = 0) {
         switch (conditionType) {
             case ConditionType.talk_in: // target: the npc script the talk reaches (NpcScriptManager.TalkReached)
-                if ((target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) ||
+                if (InRange(target, (int) longValue) ||
                     (target.Integers != null && target.Integers.Contains((int) longValue))) {
                     return true;
                 }
@@ -339,7 +339,7 @@ public static class ConditionUtil {
                 break;
             case ConditionType.emotiontime:
             case ConditionType.emotion:
-                if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, session.Player.Value.Character.MapId)) {
+                if (InRange(target, session.Player.Value.Character.MapId)) {
                     return true;
                 }
 
@@ -352,13 +352,13 @@ public static class ConditionUtil {
             case ConditionType.interact_object_rep:
                 // The interact type of the object (2 telescope: the binocular event quest 89050108; 1 mesh: 23100007,
                 // the investigations of the objects 10000001-18999999).
-                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                if (Holds(target, (int) longValue)) {
                     return true;
                 }
                 break;
             case ConditionType.quest_alliance_by_grade:
                 // The mission's alliance (1 to 5, 6 to 8 for Kritias, 9 for Georg).
-                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                if (Holds(target, (int) longValue)) {
                     return true;
                 }
                 break;
@@ -382,13 +382,13 @@ public static class ConditionUtil {
                 break;
             case ConditionType.lapenshard_upgrade_result:
                 // The tier the lapenshard was fused to (21100060-21100064 "Fuse lapenshards to tier 6" to 10).
-                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                if (Holds(target, (int) longValue)) {
                     return true;
                 }
                 break;
             case ConditionType.fame_grade:
                 // The alliance grade reached (2 to 5 in the fame grade trophies).
-                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                if (Holds(target, (int) longValue)) {
                     return true;
                 }
                 break;
@@ -396,7 +396,7 @@ public static class ConditionUtil {
             case ConditionType.spawner:
                 // item_exist: the map the item is collected on (quest drops of one map, 20001480 and others).
                 // spawner: the map of the spawn, as a region spawn id names a spawn of one map only.
-                if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) {
+                if (InRange(target, (int) longValue)) {
                     return true;
                 }
 
@@ -405,7 +405,7 @@ public static class ConditionUtil {
                 }
                 break;
             case ConditionType.fall_damage:
-                if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) {
+                if (InRange(target, (int) longValue)) {
                     return true;
                 }
 
@@ -465,27 +465,27 @@ public static class ConditionUtil {
             // pvp_win_with_buff: an effect the winner holds (21300035: a win in rage mode, target 90001010, the PvP
             // rage effect); the caller raises the win once per effect held.
             case ConditionType.pvp_win_with_buff:
-                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                if (Holds(target, (int) longValue)) {
                     return true;
                 }
                 break;
             // guild_championship: the target is the guild championship season of the match (90000006 "Season 1
             // Participant", target 1, 20 times); 21300012 has none and counts every season.
             case ConditionType.guild_championship:
-                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                if (Holds(target, (int) longValue)) {
                     return true;
                 }
                 break;
             case ConditionType.item_move:
                 // The target is the id of the box the item goes on (902, 905, 906 in one region), not a minimum:
-                // the client's CConditionParam::Matches finds the value in the id list.
-                if (target.Integers != null && target.Integers.Any(value => longValue == value)) {
+                // the client's CConditionParam::Matches finds the value in the id list or its ranges.
+                if (Holds(target, (int) longValue)) {
                     return true;
                 }
                 break;
             case ConditionType.npc:
                 // The target is the map of the kill; quest 71000065 lists the maps 3000001-3999999 as a range.
-                if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) {
+                if (InRange(target, (int) longValue)) {
                     return true;
                 }
 
@@ -518,7 +518,7 @@ public static class ConditionUtil {
             case ConditionType.hero_achieve:
             case ConditionType.chat:
             case ConditionType.character_ability_learn:
-                if (target.Range != null && InRange((ConditionMetadata.Range<int>) target.Range, (int) longValue)) {
+                if (InRange(target, (int) longValue)) {
                     return true;
                 }
 
@@ -613,6 +613,21 @@ public static class ConditionUtil {
                 return true;
         }
         return false;
+    }
+
+    // An id list with its ranges: CConditionParam::Matches (conditionutil.cpp) holds when any range of the list or
+    // any of its ids is the value.
+    private static bool Holds(ConditionMetadata.Parameters parameters, int value) {
+        return InRange(parameters, value) || parameters.Integers != null && parameters.Integers.Contains(value);
+    }
+
+    // A code or target's ranges: the one range of a lone "a-b", or each range of a list that mixes ranges with ids
+    // (CConditionParam::Matches, conditionutil.cpp: any range of the list holds the value).
+    private static bool InRange(ConditionMetadata.Parameters parameters, int value) {
+        if (parameters.Range is { } range && InRange(range, value)) {
+            return true;
+        }
+        return parameters.Ranges != null && parameters.Ranges.Any(each => InRange(each, value));
     }
 
     private static bool InRange(ConditionMetadata.Range<int> range, int value) {

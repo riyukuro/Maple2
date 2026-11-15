@@ -531,9 +531,16 @@ public static class MapperExtensions {
         if (codes.Length > 1) {
             var integers = new List<int>();
             var strings = new List<string>();
+            var ranges = new List<ConditionMetadata.Range<int>>();
             foreach (string code in codes) {
+                if (DroppedDash(code)) {
+                    continue;
+                }
                 if (int.TryParse(code, out int intCode)) {
                     integers.Add(intCode);
+                } else if (ListRange(code) is { } range) {
+                    // A range in a list: the client parses every comma item alone, a dashed one as a range.
+                    ranges.Add(range);
                 } else {
                     strings.Add(code);
                 }
@@ -541,18 +548,44 @@ public static class MapperExtensions {
 
             return new ConditionMetadata.Parameters(
                 Strings: strings.Count == 0 ? null : strings.ToArray(),
-                Integers: integers.Count == 0 ? null : integers.ToArray());
+                Integers: integers.Count == 0 ? null : integers.ToArray(),
+                Ranges: ranges.Count == 0 ? null : ranges.ToArray());
         }
 
-        string[] split = codes[0].Split('-');
-        if (split.Length > 1) {
-            return new ConditionMetadata.Parameters(
-                Range: new ConditionMetadata.Range<int>(int.Parse(split[0]), int.Parse(split[1])));
+        if (ListRange(codes[0]) is { } lone) {
+            return new ConditionMetadata.Parameters(Range: lone);
+        }
+        if (DroppedDash(codes[0])) {
+            // Nothing is left of the code, so no value matches (not null: no codes would match every value).
+            return new ConditionMetadata.Parameters();
+        }
+        if (codes[0].Contains('-')) {
+            // A dashed code that is not two numbers ("boss-a") is not read as a range; it stays a name, as in a list.
+            Console.WriteLine($"Condition code {codes[0]} is not a range; kept as a name");
         }
 
         if (int.TryParse(codes[0], out int integerResult)) {
             return new ConditionMetadata.Parameters(Integers: [integerResult]);
         }
         return new ConditionMetadata.Parameters(Strings: [codes[0]]);
+    }
+
+    // A dashed item with one part ("-5", "5-"): the client's Tokenize skips the empty part, so the range parse gets
+    // one part and drops the item (CConditionParam::Parse); it matches nothing.
+    private static bool DroppedDash(string code) {
+        if (!code.Contains('-') || code.Split('-', StringSplitOptions.RemoveEmptyEntries).Length != 1) {
+            return false;
+        }
+        Console.WriteLine($"Condition code {code} has one part around its dash; dropped");
+        return true;
+    }
+
+    // One comma item of a list read as "a-b" with two numbers, else null.
+    private static ConditionMetadata.Range<int>? ListRange(string code) {
+        string[] split = code.Split('-');
+        if (split.Length == 2 && int.TryParse(split[0], out int min) && int.TryParse(split[1], out int max)) {
+            return new ConditionMetadata.Range<int>(min, max);
+        }
+        return null;
     }
 }
