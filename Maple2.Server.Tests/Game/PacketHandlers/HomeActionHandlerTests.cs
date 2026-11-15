@@ -369,4 +369,72 @@ public class HomeActionHandlerTests {
 
         Assert.That(test.TakeSent(), Is.Empty);
     }
+
+    // ---- visitor menu (commands 1, 2, 3): the owner's entries on a visitor, with UGCMapFun on.
+
+    private TestGameSession visitorTest = null!;
+    private GameSession visitor => visitorTest.Session;
+
+    private void AddVisitor() {
+        visitorTest = new TestGameSession(test.Options);
+        visitorTest.Start();
+        visitor.Player.Value.Character.MapId = Constant.DefaultHomeMapId;
+        visitor.Field = session.Field;
+        session.Field!.Players[session.Player.ObjectId] = session.Player;
+        session.Field.Players[visitor.Player.ObjectId + 1000] = visitor.Player;
+        test.TakeSent();
+        visitorTest.TakeSent();
+    }
+
+    private void Visitor(byte command, string name) {
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(command);
+            writer.WriteUnicodeString(name);
+        }));
+    }
+
+    private void Die(GameSession target) {
+        typeof(Maple2.Server.Game.Manager.ConfigManager).GetField("session", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(target.Config, target);
+        typeof(FieldPlayer).GetProperty("IsDead")!.GetSetMethod(true)!.Invoke(target.Player, [true]);
+    }
+
+    [Test]
+    public void Visitor_FeatureOff_Ignored() {
+        test.SetFeaturesOff("UGCMapFun");
+        AddVisitor();
+        Die(visitor);
+
+        Visitor(3, visitor.PlayerName);
+
+        Assert.That(visitor.Player.IsDead, Is.True);
+    }
+
+    [Test]
+    public void Visitor_ReviveOnTheLiving_Ignored() {
+        AddVisitor();
+
+        Visitor(3, visitor.PlayerName);
+
+        Assert.That(visitorTest.TakeSent(), Is.Empty);
+    }
+
+    [Test]
+    public void Visitor_OnTheOwnName_Ignored() {
+        AddVisitor();
+        Die(session);
+
+        Visitor(3, session.PlayerName);
+
+        Assert.That(session.Player.IsDead, Is.True);
+    }
+
+    [Test]
+    public void Visitor_UnknownName_Ignored() {
+        AddVisitor();
+
+        Visitor(1, "nobody");
+
+        Assert.That(visitor.Player.IsDead, Is.False);
+    }
 }
