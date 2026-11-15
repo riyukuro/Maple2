@@ -441,6 +441,27 @@ public static class EventSaleRules {
         return (int) (price * (1.0 - Math.Min(rate, FullRate) / 10000.0) + 1e-06);
     }
 
+    // The world and channel chat rates of the running SaleChat events. The client keeps each event's rates under its id
+    // and reads the highest (CGameRule::SetChatMeratRates and GetWorldChatMeratCost / GetChannelChatMeratCost,
+    // gamerule.cpp:728-771; Unk_GameRuleRateMap::Recompute, gamerule.h:85), 0 when none runs. Chosen here: a rate
+    // under 0 counts as 0.
+    public static (int World, int Channel) SaleChatRates(IEnumerable<GameEvent> events) {
+        int world = 0;
+        int channel = 0;
+        foreach (GameEvent gameEvent in events) {
+            if (gameEvent.Metadata.Data is not SaleChat sale) {
+                continue;
+            }
+            world = Math.Max(world, sale.WorldChatDiscount);
+            channel = Math.Max(channel, sale.ChannelChatDiscount);
+        }
+        return (world, channel);
+    }
+
+    // The merets a world or channel line costs under a SaleChat rate: the price the client's confirm box shows
+    // (FUN_140482050, gamerule.cpp:360), the same rule as NpcShopResetPrice. 5 merets at 2500 cost 3, not 4.
+    public static int ChatMeretPrice(int price, int rate) => NpcShopResetPrice(price, rate);
+
     // A beauty fee under a rate (CGameRule::GetDiscountedPrice): price - price * rate / 10000 in unsigned 32 bit
     // whole numbers. Chosen here: the rate is held to 0..10000 (the client does not test it).
     public static int BeautyShopPrice(int price, int rate) {

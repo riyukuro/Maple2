@@ -312,10 +312,9 @@ public class UserChatHandler : FieldPacketHandler {
             return;
         }
 
-        int meretCost = Constants.MeratConsumeWorldChat;
-        if (session.FindEvent(GameEventType.SaleChat).FirstOrDefault()?.Metadata.Data is SaleChat gameEvent) {
-            meretCost -= (int) (meretCost * Convert.ToSingle(gameEvent.WorldChatDiscount) / 10000);
-        }
+        // The price the client's confirm box shows: the highest running SaleChat rate, rounded down.
+        int meretCost = EventSaleRules.ChatMeretPrice(Constants.MeratConsumeWorldChat,
+            EventSaleRules.SaleChatRates(session.FindEvent(GameEventType.SaleChat)).World);
 
         if (!session.Currency.TryTakeMeret(meretCost, notify: false)) {
             session.Send(ChatPacket.Alert(StringCode.s_err_lack_merat));
@@ -353,10 +352,8 @@ public class UserChatHandler : FieldPacketHandler {
             }
             session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_channelchat_use_coupon));
         } else {
-            int meretCost = Constants.MeratConsumeChannelChat;
-            if (session.FindEvent(GameEventType.SaleChat).FirstOrDefault()?.Metadata.Data is SaleChat gameEvent) {
-                meretCost -= (int) (meretCost * Convert.ToSingle(gameEvent.ChannelChatDiscount) / 10000);
-            }
+            int meretCost = EventSaleRules.ChatMeretPrice(Constants.MeratConsumeChannelChat,
+                EventSaleRules.SaleChatRates(session.FindEvent(GameEventType.SaleChat)).Channel);
 
             if (!session.Currency.TryTakeMeret(meretCost)) {
                 session.Send(ChatPacket.Alert(StringCode.s_err_lack_merat));

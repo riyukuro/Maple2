@@ -43,10 +43,14 @@ public class UserChatHandlerTests {
     }
 
     // rps: a running rock-paper-scissors event (the client sends mini game lines, type 23, only from its game state).
-    private GameSession Login(long meret, bool rps = false) {
+    // saleChat: running SaleChat events, (world rate, channel rate) each.
+    private GameSession Login(long meret, bool rps = false, params (int World, int Channel)[] saleChat) {
         test = new TestGameSession();
         if (rps) {
             test.AddEvent(9000, GameEventType.RPS, new Rps(0, [], string.Empty));
+        }
+        for (int i = 0; i < saleChat.Length; i++) {
+            test.AddEvent(9100 + i, GameEventType.SaleChat, new SaleChat(saleChat[i].World, saleChat[i].Channel));
         }
         test.AddMap(TestGameSession.Map(2000023));
         handler = new UserChatHandler { World = test.World, GameStorage = test.Storage, ServerTableMetadata = test.ServerTableMetadata };
@@ -88,6 +92,33 @@ public class UserChatHandlerTests {
         Say(session, ChatType.World, "hello");
 
         Assert.That(test.World.Chats, Is.Empty);
+    }
+
+    // The client's confirm box shows (price * (1 - rate / 10000) + 0.000001) cut to a whole number, at the highest
+    // running SaleChat rate (CGameRule::GetWorldChatMeratCost / GetChannelChatMeratCost); the line costs that.
+    private static int SalePrice(int price, int rate) => (int) (price * (1.0 - rate / 10000.0) + 1e-06);
+
+    [Test]
+    public void WorldChat_UnderASaleCostsTheClientsPrice() {
+        GameSession session = Login(meret: 100000, saleChat: [(1000, 0), (2500, 0)]);
+        int price = test.ServerTableMetadata.ConstantsTable.MeratConsumeWorldChat;
+        Assume.That(price % 4, Is.Not.EqualTo(0)); // a quarter off has a remainder to round
+
+        Say(session, ChatType.World, "hello");
+
+        Assert.That(test.World.Chats, Has.Count.EqualTo(1));
+        Assert.That(session.Currency.Meret, Is.EqualTo(100000 - SalePrice(price, 2500)));
+    }
+
+    [Test]
+    public void ChannelChat_UnderASaleCostsTheClientsPrice() {
+        GameSession session = Login(meret: 100000, saleChat: [(0, 1000), (0, 2500)]);
+        int price = test.ServerTableMetadata.ConstantsTable.MeratConsumeChannelChat;
+        Assume.That(price % 4, Is.Not.EqualTo(0));
+
+        Say(session, ChatType.Channel, "hello");
+
+        Assert.That(session.Currency.Meret, Is.EqualTo(100000 - SalePrice(price, 2500)));
     }
 
     private static RpcException Down() => new(new Status(StatusCode.Unavailable, "down"));
