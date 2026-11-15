@@ -22,19 +22,19 @@ namespace Maple2.Server.Tests.Game;
 // not waited for (WorldNotices): a World that hangs does not hold a field's thread, and through it the field.
 [NonParallelizable]
 public class WorldCallDeadlineTests {
-    private TimeSpan field, probe, other;
+    private TimeSpan field, retry, other;
 
     [SetUp]
     public void Keep() {
-        (field, probe, other) = (WorldCallDeadline.FieldWait, WorldCallDeadline.ProbeWait, WorldCallDeadline.OtherWait);
-        WorldCallDeadline.WorldSlow = false;
+        (field, retry, other) = (WorldCallDeadline.FieldWait, WorldCallDeadline.RetryWait, WorldCallDeadline.OtherWait);
+        WorldCallDeadline.Reset();
         WorldCallDeadline.FieldThread = false;
     }
 
     [TearDown]
     public void Restore() {
-        (WorldCallDeadline.FieldWait, WorldCallDeadline.ProbeWait, WorldCallDeadline.OtherWait) = (field, probe, other);
-        WorldCallDeadline.WorldSlow = false;
+        (WorldCallDeadline.FieldWait, WorldCallDeadline.RetryWait, WorldCallDeadline.OtherWait) = (field, retry, other);
+        WorldCallDeadline.Reset();
         WorldCallDeadline.FieldThread = false;
     }
 
@@ -96,14 +96,15 @@ public class WorldCallDeadlineTests {
         });
     }
 
-    // The deadlines picked: the call's own is kept, Disconnect gets none, a field's thread gets the short one, and the
-    // probe one while the World did not answer there.
+    // The deadlines picked: off a field's thread the call's own is kept, else OtherWait; on a field's thread at most
+    // FieldWait (a longer own one, as the channel moves' 10 s, is cut); Disconnect is left alone.
     [Test]
     public void TheDeadline_ByThreadAndMethod() {
         DateTime now = new(2026, 11, 14, 12, 0, 0, DateTimeKind.Utc);
-        DateTime own = now.AddMinutes(1);
+        DateTime longer = now.AddSeconds(10);
+        DateTime shorter = now.AddSeconds(2);
         Assert.Multiple(() => {
-            Assert.That(WorldCallDeadline.DeadlineFor("Guild", new CallOptions(deadline: own), now), Is.Null);
+            Assert.That(WorldCallDeadline.DeadlineFor("Guild", new CallOptions(deadline: longer), now), Is.Null);
             Assert.That(WorldCallDeadline.DeadlineFor("Guild", new CallOptions(), now), Is.EqualTo(now + WorldCallDeadline.OtherWait));
             Assert.That(WorldCallDeadline.DeadlineFor("Disconnect", new CallOptions(), now), Is.Null);
         });
@@ -111,36 +112,89 @@ public class WorldCallDeadlineTests {
         WorldCallDeadline.FieldThread = true;
         Assert.Multiple(() => {
             Assert.That(WorldCallDeadline.DeadlineFor("Guild", new CallOptions(), now), Is.EqualTo(now + WorldCallDeadline.FieldWait));
+            Assert.That(WorldCallDeadline.DeadlineFor("MigrateOut", new CallOptions(deadline: longer), now), Is.EqualTo(now + WorldCallDeadline.FieldWait));
+            Assert.That(WorldCallDeadline.DeadlineFor("MapPopulation", new CallOptions(deadline: shorter), now), Is.Null);
             Assert.That(WorldCallDeadline.DeadlineFor("Disconnect", new CallOptions(), now), Is.Null);
         });
-        WorldCallDeadline.WorldSlow = true;
-        Assert.That(WorldCallDeadline.DeadlineFor("Guild", new CallOptions(), now), Is.EqualTo(now + WorldCallDeadline.ProbeWait));
     }
 
     private static readonly Method<GuildRequest, GuildResponse> GuildMethod = new(MethodType.Unary, "maple2.server.world.service.World", "Guild",
         Marshallers.Create<GuildRequest>(_ => [], _ => new GuildRequest()), Marshallers.Create<GuildResponse>(_ => [], _ => new GuildResponse()));
 
-    private static GuildResponse Call(Func<CallOptions, GuildResponse> answer) {
-        var context = new ClientInterceptorContext<GuildRequest, GuildResponse>(GuildMethod, null, new CallOptions());
+    private static GuildResponse Call(Func<CallOptions, GuildResponse> answer, CallOptions? options = null) {
+        var context = new ClientInterceptorContext<GuildRequest, GuildResponse>(GuildMethod, null, options ?? new CallOptions());
         return WorldCallDeadline.Instance.BlockingUnaryCall(new GuildRequest(), context, (_, ctx) => answer(ctx.Options));
     }
 
-    // One call that ran out on a field's thread makes the next ones there short; one answered call ends that.
+    private static GuildResponse Late(CallOptions _) => throw new RpcException(new Status(StatusCode.DeadlineExceeded, "late"));
+
+    // After a call on a field's thread ran out, the next ones there are not sent (the World cannot apply what the
+    // caller then refunds) and fail as for a World that is down, a call with its own deadline as well.
     [Test]
-    public void AnAnsweredCall_EndsTheShortWaits() {
+    public void AfterAMiss_FieldCallsAreNotSent() {
         WorldCallDeadline.FieldThread = true;
-        Assert.Throws<RpcException>(() => Call(_ => throw new RpcException(new Status(StatusCode.DeadlineExceeded, "late"))));
+        Assert.Throws<RpcException>(() => Call(Late));
         Assert.That(WorldCallDeadline.WorldSlow, Is.True);
 
+        int sent = 0;
+        var plain = Assert.Throws<RpcException>(() => Call(_ => {
+            sent++;
+            return new GuildResponse();
+        }));
+        var own = Assert.Throws<RpcException>(() => Call(_ => {
+            sent++;
+            return new GuildResponse();
+        }, new CallOptions(deadline: DateTime.UtcNow.AddSeconds(10))));
+        Assert.Multiple(() => {
+            Assert.That(sent, Is.Zero);
+            Assert.That(plain!.StatusCode, Is.EqualTo(StatusCode.Unavailable));
+            Assert.That(own!.StatusCode, Is.EqualTo(StatusCode.Unavailable));
+            Assert.That(WorldCallDeadline.WorldSlow, Is.True);
+        });
+
+        // Off a field's thread calls are still sent.
+        WorldCallDeadline.FieldThread = false;
+        Call(_ => {
+            sent++;
+            return new GuildResponse();
+        });
+        Assert.That(sent, Is.EqualTo(1));
+    }
+
+    // When the retry time came one call is sent with the full field wait (a second one meanwhile is not), and its
+    // answer ends the state.
+    [Test]
+    public void AtTheRetryTime_OneCallIsSent_AndItsAnswerEndsTheState() {
+        WorldCallDeadline.FieldThread = true;
+        WorldCallDeadline.SetSlow(DateTime.UtcNow.AddSeconds(-1));
+
         DateTime? deadline = null;
+        bool othersAdmitted = true;
         Call(options => {
             deadline = options.Deadline;
+            othersAdmitted = WorldCallDeadline.Admit("Guild", DateTime.UtcNow);
             return new GuildResponse();
         });
         Assert.Multiple(() => {
-            Assert.That(deadline, Is.LessThanOrEqualTo(DateTime.UtcNow + WorldCallDeadline.ProbeWait));
+            Assert.That(deadline, Is.GreaterThan(DateTime.UtcNow + WorldCallDeadline.FieldWait - TimeSpan.FromSeconds(1)));
+            Assert.That(othersAdmitted, Is.False);
             Assert.That(WorldCallDeadline.WorldSlow, Is.False);
+            Assert.That(WorldCallDeadline.Admit("Guild", DateTime.UtcNow), Is.True);
         });
+
+        // A retry that runs out again keeps the state.
+        WorldCallDeadline.SetSlow(DateTime.UtcNow.AddSeconds(-1));
+        Assert.Throws<RpcException>(() => Call(Late));
+        Assert.That(WorldCallDeadline.Admit("Guild", DateTime.UtcNow), Is.False);
+    }
+
+    // An answer to a call off a field's thread (a session's load, a call with its own deadline) ends the state too:
+    // a World that answers, if not fast, is not skipped on.
+    [Test]
+    public void AnAnswerOffTheFieldThread_EndsTheState() {
+        WorldCallDeadline.SetSlow(DateTime.UtcNow.AddMinutes(1));
+        Call(_ => new GuildResponse(), new CallOptions(deadline: DateTime.UtcNow.AddSeconds(10)));
+        Assert.That(WorldCallDeadline.WorldSlow, Is.False);
     }
 
     // A mail sent while the World hangs: the handler (on the field's thread) ends at once; the notice is sent.

@@ -454,6 +454,21 @@ public class GuildMoneyHandlerTests {
         Assert.That(session.Guild.Guild, Is.Null);
     }
 
+    // A create whose call ran out may still found the guild on the World (it shows at the next load): the price
+    // stays taken and is sent. Only a definite failure (above) gives it back.
+    [Test]
+    public void Create_ThatRanOutKeepsThePrice() {
+        Join(inGuild: false);
+        session.Currency.Meso = 5000;
+        test.World.GuildWorld = _ => throw new RpcException(new Status(StatusCode.DeadlineExceeded, "late"));
+        test.TakeSent();
+
+        Create("Guild");
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(5000 - CreatePrice));
+        Assert.That(test.TakeSent().Any(packet => TestGameSession.Op(packet) == SendOp.Meso), Is.True);
+    }
+
     // A failure after the guild is founded and its price sent (here the World is down when the founder's guild data
     // goes out) leaves the price paid: the guild stands. Before, the catch gave the price back and answered an error.
     [Test]

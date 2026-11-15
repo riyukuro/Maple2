@@ -1258,6 +1258,11 @@ public class ItemUseHandler : FieldPacketHandler {
                 },
             });
             error = (GuildError) response.Error;
+        } catch (RpcException ex) when (ex.StatusCode == StatusCode.DeadlineExceeded) {
+            // The call ran out: the World may still rename the guild, so the ticket is used as for a rename.
+            Logger.Error(ex, "Guild {GuildId} rename ran out: the outcome is unknown, ticket {ItemUid} is used", guild.Id, item.Uid);
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+            error = GuildError.none;
         } catch (RpcException) {
             error = GuildError.s_guild_err_unknown;
         }

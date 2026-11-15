@@ -330,10 +330,14 @@ public class UserChatHandler : FieldPacketHandler {
     // How long a paid line waits for the World. The inventory is not locked meanwhile (the field thread needs it).
     internal static readonly TimeSpan ChatDeadline = TimeSpan.FromSeconds(10);
 
-    // Hands a paid line to the World; false when it is unreachable or too slow, and the line counts as not sent.
+    // Hands a paid line to the World; false when it did not take it (unreachable, or refused), and the line counts as
+    // not sent. A call that ran out may still have gone out to the channels: it counts as sent, paid for.
     private bool SendToWorld(GameSession session, ChatRequest request) {
         try {
             World.Chat(request, deadline: DateTime.UtcNow + ChatDeadline);
+            return true;
+        } catch (RpcException ex) when (ex.StatusCode == StatusCode.DeadlineExceeded) {
+            Logger.Error(ex, "Chat {Type} of {CharacterId} ran out: the line may be out, it is paid for", request.ChatCase, session.CharacterId);
             return true;
         } catch (RpcException ex) {
             Logger.Error(ex, "Chat {Type} of {CharacterId} was not sent", request.ChatCase, session.CharacterId);

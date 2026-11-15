@@ -117,6 +117,18 @@ public class ChangeGuildNameTests {
         Assert.That(Tickets(), Is.EqualTo(2));
     }
 
+    // The World's answer ran out: the guild may be renamed there, so the ticket is used (an error is shown).
+    [Test]
+    public void RanOut_UsesTheTicket() {
+        Join();
+        test.World.GuildWorld = _ => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.DeadlineExceeded, "late"));
+
+        Use("NewName");
+
+        Assert.That(Tickets(), Is.EqualTo(1));
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildError.s_guild_err_unknown)) }));
+    }
+
     // Renamed: the World is asked for this guild's new name by the master, and one ticket is used.
     [Test]
     public void Renamed() {

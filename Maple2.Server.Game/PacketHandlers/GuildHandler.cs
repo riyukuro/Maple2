@@ -285,6 +285,15 @@ public class GuildHandler : FieldPacketHandler {
                 Logger.Error(ex, "Failed after creating guild: {Name}", guildName);
                 return;
             }
+            // A call that ran out may still found the guild on the World (it shows at the next load): the price is
+            // kept then. Only a call that did not reach the World (or failed there) gives it back.
+            if (ex.StatusCode == StatusCode.DeadlineExceeded) {
+                Logger.Error(ex, "Guild create {Name} of {CharacterId} ran out: the outcome is unknown, the price of {Price} stays taken",
+                    guildName, session.CharacterId, Constants.GuildCreatePrice);
+                session.Currency.NotifyMeso();
+                session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));
+                return;
+            }
             session.Currency.ReturnMeso(Constants.GuildCreatePrice, notify: false);
             Logger.Error(ex, "Failed to create guild: {Name}", guildName);
             session.Send(GuildPacket.Error(GuildError.s_guild_err_unknown));

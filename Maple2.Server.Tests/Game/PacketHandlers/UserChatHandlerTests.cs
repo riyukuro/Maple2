@@ -560,6 +560,44 @@ public class UserChatHandlerTests {
         Assert.That(session.SuperChatId, Is.EqualTo(0));
     }
 
+    // A paid line whose call ran out may still have gone out to the channels: it is paid for (the merets, the coupon
+    // or the megaphone). Only a line the World did not take (down, refused) is free.
+    private static RpcException Late() => new(new Status(StatusCode.DeadlineExceeded, "late"));
+
+    [Test]
+    public void WorldChat_ThatRanOutTakesTheMerets() {
+        GameSession session = Login(meret: 100000);
+        int price = test.ServerTableMetadata.ConstantsTable.MeratConsumeWorldChat;
+        Assume.That(price, Is.GreaterThan(0));
+        test.World.ChatDelivery = _ => throw Late();
+
+        Say(session, ChatType.World, "hello");
+
+        Assert.That(session.Currency.Meret, Is.EqualTo(100000 - price));
+    }
+
+    [Test]
+    public void WorldChat_ThatRanOutTakesTheCoupon() {
+        (GameSession session, _) = LoginWithCoupon();
+        test.World.ChatDelivery = _ => throw Late();
+
+        Say(session, ChatType.World, "hello");
+
+        Assert.That(session.Item.Inventory.Find(20300001), Is.Empty);
+    }
+
+    [TestCase(ItemFunction.SuperWorldChat, ChatType.Super)]
+    [TestCase(ItemFunction.WeddingChat, ChatType.Wedding)]
+    public void MegaphoneLine_ThatRanOutTakesTheItem(ItemFunction function, ChatType type) {
+        GameSession session = LoginWithMegaphone(function);
+        Reserve(session, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 600);
+        test.World.ChatDelivery = _ => throw Late();
+
+        Say(session, type, "come");
+
+        Assert.That(session.Item.Inventory.Find(MegaphoneId), Is.Empty);
+    }
+
     // A megaphone line the World does not take keeps the item and its selection.
     [TestCase(ItemFunction.SuperWorldChat, ChatType.Super)]
     [TestCase(ItemFunction.WeddingChat, ChatType.Wedding)]
