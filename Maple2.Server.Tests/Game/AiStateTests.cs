@@ -63,7 +63,7 @@ public class AiStateTests : TriggerTestBase {
 
     private NpcTask? CurrentTask => (NpcTask?) typeof(AiState).GetField("currentTask", Any)!.GetValue(npc.AiState);
 
-    private static NpcMetadata Npc(int id, NpcMetadataSkill? skill = null) {
+    internal static NpcMetadata Npc(int id, NpcMetadataSkill? skill = null) {
         var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 1, false, 0, 0, 0, 0, [], [], 0);
         var stat = new NpcMetadataStat(new Dictionary<BasicAttribute, long> { [BasicAttribute.Health] = 100 }, [], [], [], []);
         return new NpcMetadata(id, "npc", AiPath, new NpcMetadataModel("test_model", 1, 1), stat, basic,
@@ -73,7 +73,7 @@ public class AiStateTests : TriggerTestBase {
             new NpcMetadataDead(0, 0, 0, 0, 0), null, new NpcMetadataLookAtTarget("", false, false));
     }
 
-    private static NpcMetadataStorage NpcTable(string[] sequences, params NpcMetadata[] npcs) {
+    internal static NpcMetadataStorage NpcTable(string[] sequences, params NpcMetadata[] npcs) {
         var storage = (NpcMetadataStorage) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadataStorage));
         var cache = new LRUCache<int, NpcMetadata>(100, 5);
         foreach (NpcMetadata metadata in npcs) {
@@ -89,7 +89,7 @@ public class AiStateTests : TriggerTestBase {
         return storage;
     }
 
-    private static AiMetadataStorage AiTable(params AiMetadata[] ais) {
+    internal static AiMetadataStorage AiTable(params AiMetadata[] ais) {
         var storage = (AiMetadataStorage) RuntimeHelpers.GetUninitializedObject(typeof(AiMetadataStorage));
         var cache = new LRUCache<string, AiMetadata>(100, 5);
         foreach (AiMetadata ai in ais) {
