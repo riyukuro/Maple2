@@ -8,6 +8,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -107,5 +108,21 @@ public class ItemExtractionHandlerTests {
         Start(anvilTag: ItemTag.None);
         Extract();
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemExtractionPacket.InsufficientAnvils()) }));
+    }
+
+    // The result's row not stored: refused, no anvil spent, the source's forge count kept. Before, the anvils were
+    // spent first and the handler threw.
+    [Test]
+    public void ResultNotStored_SpendsNoAnvil() {
+        Start();
+        test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.State == EntityState.Added && entry.Entity.GetType().Name == "Item");
+        Assert.DoesNotThrow(Extract);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemExtractionPacket.Refused()) }));
+            Assert.That(session.Item.Inventory.Find(ResultId), Is.Empty);
+            Assert.That(session.Item.Inventory.Get(anvil.Uid)?.Amount, Is.EqualTo(1));
+            Assert.That(source.GlamorForges, Is.EqualTo(1));
+        });
     }
 }

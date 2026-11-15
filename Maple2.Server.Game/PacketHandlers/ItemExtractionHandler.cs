@@ -60,16 +60,26 @@ public class ItemExtractionHandler : FieldPacketHandler {
                 return;
             }
 
+            // The result's row is written before the anvils are spent: a row that failed after the spend threw with
+            // the anvils gone and no result. The bag lock is held, so the anvils counted here are the ones spent.
             var anvils = new IngredientInfo(ItemTag.ItemExtraction, entry.ScrollCount);
-            if (!session.Item.Inventory.Consume([anvils])) {
+            if (session.Item.Inventory.PlanConsume([anvils]) == null) {
                 session.Send(ItemExtractionPacket.InsufficientAnvils());
                 return;
             }
 
-            using GameStorage.Request db = session.GameStorage.Context();
-            resultItem = db.CreateItem(0, resultItem);
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                resultItem = db.CreateItem(0, resultItem);
+            }
             if (resultItem == null) {
-                throw new InvalidOperationException($"Failed to create result item: {entry.ResultItemId}");
+                Logger.Error("Extraction result {ItemId} not stored for {CharacterId}, nothing spent", entry.ResultItemId, session.CharacterId);
+                session.Send(ItemExtractionPacket.Refused());
+                return;
+            }
+
+            if (!session.Item.Inventory.Consume([anvils])) {
+                session.Send(ItemExtractionPacket.InsufficientAnvils());
+                return;
             }
 
             session.Item.Inventory.Add(resultItem, true);
