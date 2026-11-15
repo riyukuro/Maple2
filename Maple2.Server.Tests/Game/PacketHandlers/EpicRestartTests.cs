@@ -138,7 +138,8 @@ public class EpicRestartTests {
         Assert.That(ServerTableMapper.MapEpicRestart("x.xml", "", "", document), Is.Null);
     }
 
-    // GameEventEpicRestart::vfunc_4 reads the id, the end time and the three values as narrow strings.
+    // GameEventEpicRestart::vfunc_4 reads the id, the end time and the three values as wide strings (input stream
+    // slot 6, ReadUnicodeStringA: decoded wide, then narrowed).
     [Test]
     public void Packet_IdEndTimeAndValues() {
         var writer = new ByteWriter();
@@ -149,9 +150,42 @@ public class EpicRestartTests {
         Assert.That(reader.ReadUnicodeString(), Is.EqualTo("EpicRestart"));
         Assert.That(reader.ReadInt(), Is.EqualTo(EventId));
         Assert.That(reader.ReadLong(), Is.EqualTo(gameEvent.EndTime));
-        Assert.That(reader.ReadString(), Is.EqualTo("exceptEpicRestart_2.xml"));
-        Assert.That(reader.ReadString(), Is.EqualTo("2000062,13"));
-        Assert.That(reader.ReadString(), Is.EqualTo("52000065"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("exceptEpicRestart_2.xml"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("2000062,13"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("52000065"));
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // The live row (event 320002, 49 barred fields) in the login Load, walked as the client's GameEventManagerCli
+    // Packet0 reads it: the count, then per event the wide type name and the event's own read. With the values written
+    // narrow, the client read the table name wide and then a length from the field list's digits, failing the whole Load
+    // (DecodeStr at client offset 1174).
+    [Test]
+    public void Load_OfTheLiveRow_IsReadToTheEnd() {
+        const string barred = "52000065,52000100,52000101,52000102,52000104,52000105,52000106,52000107,52000108," +
+            "52000109,52000111,52000112,52000113,52000128,52000129,52000130,52000131,52000139,52000140,52000141,52000142," +
+            "52000143,52000144,52000145,52000146,52000147,52000148,52000015,52000016,63000006,63000011,63000012,63000013," +
+            "63000015,63000016,63000017,63000018,63000019,63000020,63000021,63000022,63000023,63000024,63000025,63000026," +
+            "63000027,63000028,63000029,63000030";
+        Assert.That(barred, Has.Length.EqualTo(440));
+        int[] barredIds = barred.Split(',').Select(int.Parse).ToArray();
+        var restart = new EpicRestart("exceptEpicRestart_2.xml", "2000062,13", barred, 2000062, 13, barredIds, [Kept], []);
+        DateTime end = DateTimeOffset.FromUnixTimeSeconds(1796475600).UtcDateTime;
+        var gameEvent = new GameEvent(new GameEventMetadata(EventId, GameEventType.EpicRestart, DateTime.UnixEpoch, end,
+            TimeSpan.Zero, TimeSpan.Zero, [], restart, "", "", "", ""));
+
+        byte[] packet = Maple2.Server.Core.Packets.GameEventPacket.Load(gameEvent).ToArray();
+
+        var reader = new ByteReader(packet);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.GameEvent));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        Assert.That(reader.ReadInt(), Is.EqualTo(1));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("EpicRestart"));
+        Assert.That(reader.ReadInt(), Is.EqualTo(EventId));
+        Assert.That(reader.ReadLong(), Is.EqualTo(1796475600));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("exceptEpicRestart_2.xml"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("2000062,13"));
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo(barred));
+        Assert.That(reader.Available, Is.EqualTo(0));
     }
 }
