@@ -981,6 +981,56 @@ public class MentorHandlerTests {
         Assert.That(Mentor(test), Is.EqualTo(new[] { Coins(50) }));
     }
 
+    // A quest's mentee coin is stored with the completed quest: the token and the day's count. The count was stored
+    // on its own and the token left to the next session save, so a stop between kept the quest done and the day's
+    // cap used without the coin.
+    [Test]
+    public void MenteeCoins_OfAQuestAreStoredWithIt() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        Mentor(test);
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        QuestMetadata data = TestGameSession.QuestData(90000041);
+        Quest quest = test.StartQuest(data with { CompleteReward = data.CompleteReward with { MenteeCoin = 100 } });
+
+        Assert.That(session.Quest.Complete(quest), Is.True);
+
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(100));
+        Assert.That(Mentor(test), Has.Member(Coins(100)));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.LoadPlayer(test.AccountId, test.CharacterId, 1, 1)!.Currency.MenteeToken, Is.EqualTo(100));
+        Assert.That(db.GetEventUserValues(session.CharacterId)
+            .Single(value => value.Type == GameEventUserValueType.MentoringMenteeCoinToday).Value, Is.EqualTo("100"));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A completion the database refuses pays no coin and counts nothing for the day.
+    [Test]
+    public void MenteeCoins_OfAQuestNotStored_GivesAndCountsNothing() {
+        Login(season: true);
+        Send(session, RegisterMentee);
+        Mentor(test);
+        test.SetTable(new ChangeJobTable(new Dictionary<Job, ChangeJobMetadata>()));
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType>()));
+        test.SetTable(new ChapterBookTable(new Dictionary<int, ChapterBookTable.Entry>()));
+        test.SetServerTable(new PrestigeExpTable(new Dictionary<ExpType, long>()));
+        QuestMetadata data = TestGameSession.QuestData(90000041);
+        Quest quest = test.StartQuest(data with { CompleteReward = data.CompleteReward with { MenteeCoin = 100 } });
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.GameEventUserValue>().Any();
+
+        Assert.That(session.Quest.Complete(quest), Is.False);
+        test.FailSave = null;
+
+        Assert.That(session.Currency[CurrencyType.MenteeToken], Is.EqualTo(0));
+        Assert.That(session.GameEvent.Peek(GameEventUserValueType.MentoringMenteeCoinToday, 77), Is.Null.Or.Empty.Or.EqualTo("0"));
+        Assert.That(quest.State, Is.EqualTo(QuestState.Started));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetEventUserValues(session.CharacterId), Is.Empty);
+    }
+
     // ---- The mentor coins: a paired mentee's quest coins earn its mentor the same, under the mentor's caps ----
 
     // The session as mentor paired with the other player as mentee.

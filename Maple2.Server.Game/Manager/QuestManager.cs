@@ -1002,18 +1002,25 @@ public sealed class QuestManager {
         // next session save, a crash in between kept the quest completed without them. They are added unsent there and
         // sent, with the meso quests and the token conditions, once the row is stored; not stored, they are taken back
         // before the account lock is let go, so no session save waiting for it writes them.
+        // menteeCoin: the mentee token the mentoring page shows on the reward line (FUN_140762be0,
+        // commonfiles/questmasktable.cpp:1000, no bonus); the currency caps it and counts get_mentee_token. While a
+        // mentoring season runs it also counts against the mentee's daily coin cap, whose count is stored here too.
+        long menteeCoin = QuestRewardEventRules.Raise(reward.MenteeCoin, rewardEvent, QuestRewardEventRules.MenteeCoin);
+        MentoringManager.MenteeCoinGrant menteeGrant = session.Mentoring.PrepareMenteeCoin(menteeCoin);
         long ownerId = quest.Metadata.Basic.Account > 0 ? session.AccountId : session.CharacterId;
         (long Meso, long Meret, long GameMeret) addedMeso = default;
-        CurrencyManager.Added addedTreva = default, addedRue = default;
+        CurrencyManager.Added addedTreva = default, addedRue = default, addedMentee = default;
         if (!session.TrySavePurchase(db => {
                 addedMeso = session.Currency.AddUnsent(meso + extraMeso, 0, 0);
                 addedTreva = session.Currency.AddUnsent(CurrencyType.Treva, treva);
                 addedRue = session.Currency.AddUnsent(CurrencyType.Rue, rue + extraRue);
-                return db.SaveQuests(ownerId, [quest]) && db.SaveCurrency(session.Player);
+                return session.Mentoring.WriteMenteeCoin(db, menteeGrant, out addedMentee)
+                       && db.SaveQuests(ownerId, [quest]) && db.SaveCurrency(session.Player);
             }, undo: () => {
                 session.Currency.TakeBackAdded(addedMeso);
                 session.Currency.TakeBackAdded(addedTreva);
                 session.Currency.TakeBackAdded(addedRue);
+                session.Currency.TakeBackAdded(addedMentee);
             }, out completeResetRefused)) {
             (quest.EndTime, quest.LastStartTime, quest.LastEndTime, quest.State, quest.CompletionCount) =
                 (endTime, lastStartTime, lastEndTime, state, completionCount);
@@ -1031,11 +1038,7 @@ public sealed class QuestManager {
         session.Currency.NotifyAdded(addedTreva);
         session.Currency.NotifyAdded(addedRue);
 
-        // menteeCoin: the mentee token the mentoring page shows on the reward line (FUN_140762be0,
-        // commonfiles/questmasktable.cpp:1000, no bonus); the currency caps it and counts get_mentee_token. While a
-        // mentoring season runs it also counts against the mentee's daily coin cap.
-        long menteeCoin = QuestRewardEventRules.Raise(reward.MenteeCoin, rewardEvent, QuestRewardEventRules.MenteeCoin);
-        session.Mentoring.AddMenteeCoin(menteeCoin);
+        session.Mentoring.MenteeCoinGiven(menteeGrant, addedMentee);
 
         // weddingExp: the wedding mission's intimacy, once for each partner who completes it.
         session.Marriage.AddWeddingMissionExp(reward.WeddingExp);

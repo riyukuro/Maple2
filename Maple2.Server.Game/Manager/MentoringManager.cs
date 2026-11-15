@@ -387,18 +387,20 @@ public class MentoringManager : IDisposable {
     // running season count against the table's daily cap (maxMenteeDailyRewardCoin), which the mentee page shows
     // with the coins today of Mentor 11: only the part under the cap is given. Anyone else (no season, a mentor, a
     // player without a role; the page shows them 0) gets the coin as before. The count holds only what the token
-    // cap (MenteeTokenMax) lets in. It is stored at once; a store the database refuses is logged and the coin is
-    // still given, as the claim it pays for is already used up (the attend day stored, the quest completed).
-    // A quest's coin given to a paired mentee also earns its mentor the same coin (EarnMentorCoins).
-    // Returns the coin given.
-    public long AddMenteeCoin(long coin, bool fromQuest = true) {
+    // cap (MenteeTokenMax) lets in. The token and the day's count are stored together, and with what pays the coin
+    // when there is such a store (a quest's completion, QuestManager): the count was stored on its own and the token
+    // left to the next session save, so a stop between kept the day's cap used up and the quest completed without
+    // its coin. A quest's coin given to a paired mentee also earns its mentor the same coin (EarnMentorCoins).
+    public readonly record struct MenteeCoinGrant(long Given, GameEvent? Season, GameEventUserValue? Count);
+
+    // The coin to give and, for a mentee in a season, the day's count to store with it. Given 0: nothing to give.
+    public MenteeCoinGrant PrepareMenteeCoin(long coin) {
         if (coin <= 0) {
-            return 0;
+            return default;
         }
         GameEvent? season = SeasonEvent;
         if (season?.Metadata.Data is not ReturnUser || Role != MentorRole.Mentee) {
-            session.Currency.Change(CurrencyType.MenteeToken, coin);
-            return coin;
+            return new MenteeCoinGrant(coin, null, null);
         }
 
         // One time for the day's value and its end, so a coin given across midnight counts to one day.
@@ -406,19 +408,53 @@ public class MentoringManager : IDisposable {
         long today = MenteeCoinsToday(season, now);
         long room = session.ServerTableMetadata.ConstantsTable.MenteeTokenMax - session.Currency[CurrencyType.MenteeToken];
         long given = Math.Min(Config.RewardableCoin(coin, today, mentee: true), room);
-        if (given <= 0) {
-            return 0;
+        GameEventUserValue? held = session.GameEvent.Held(season.Id, GameEventUserValueType.MentoringMenteeCoinToday);
+        if (given <= 0 || held == null) {
+            return default;
         }
-        session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringMenteeCoinToday, today + given);
-        if (!session.GameEvent.Store(season.Id, GameEventUserValueType.MentoringMenteeCoinToday)) {
-            logger.Warning("Mentee coins today of {CharacterId} not stored", session.CharacterId);
+        return new MenteeCoinGrant(given, season, Value(held, today + given));
+    }
+
+    // Inside a purchase store, before its wallet is saved: the coin added unsent and the day's count written; the
+    // count reaches memory once stored. The store's undo takes `added` back.
+    public bool WriteMenteeCoin(GameStorage.Request db, MenteeCoinGrant grant, out CurrencyManager.Added added) {
+        added = session.Currency.AddUnsent(CurrencyType.MenteeToken, grant.Given);
+        if (grant is not { Season: { } season, Count: { } count }) {
+            return true;
         }
-        session.Currency.Change(CurrencyType.MenteeToken, given);
+        if (!db.SaveGameEventUserValues(session.CharacterId, [count])) {
+            return false;
+        }
+        db.AfterCommit(() => session.GameEvent.Set(season.Id, GameEventUserValueType.MentoringMenteeCoinToday, count.Value));
+        return true;
+    }
+
+    // Once stored: the token sent, the coins today, and a quest's coin earns the mentor its coins.
+    public void MenteeCoinGiven(MenteeCoinGrant grant, CurrencyManager.Added added, bool fromQuest = true) {
+        session.Currency.NotifyAdded(added);
+        if (grant.Season == null) {
+            return;
+        }
         SendDailyCoins();
         if (fromQuest) {
-            EarnMentorCoins(season, given);
+            EarnMentorCoins(grant.Season, grant.Given);
         }
-        return given;
+    }
+
+    // A mentee coin in a store of its own (a coin no other store pays). Returns the coin given; 0 when not stored.
+    public long AddMenteeCoin(long coin, bool fromQuest = true) {
+        MenteeCoinGrant grant = PrepareMenteeCoin(coin);
+        if (grant.Given <= 0) {
+            return 0;
+        }
+        CurrencyManager.Added added = default;
+        if (!session.TrySavePurchase(db => WriteMenteeCoin(db, grant, out added) && db.SaveCurrency(session.Player),
+                () => session.Currency.TakeBackAdded(added))) {
+            logger.Warning("Mentee coin {Coin} of {CharacterId} not stored, not given", grant.Given, session.CharacterId);
+            return 0;
+        }
+        MenteeCoinGiven(grant, added, fromQuest);
+        return grant.Given;
     }
 
     // Chosen here (no client code or table says how a mentor earns coins; the client has only the mentor's daily
