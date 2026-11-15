@@ -215,12 +215,28 @@ public class MesoMarketHandler : FieldPacketHandler {
             return;
         }
 
-        if (!db.DeleteMesoListing(listingId)) {
+        // The delete and the mesos it gives back are stored in one transaction, and the mesos sent once it is
+        // committed. Before, the row was deleted at once and the mesos added in memory only: a stop before the next
+        // save lost them.
+        // A row already gone (bought, or taken back from another session) is no failure to log.
+        (long Meso, long Meret, long GameMeret) added = default;
+        bool gone = false;
+        if (!session.TrySavePurchase(purchase => {
+                if (!purchase.DeleteMesoListing(listingId)) {
+                    gone = true;
+                    return false;
+                }
+                added = session.Currency.AddUnsent(listing.Amount, 0, 0);
+                return purchase.SaveCurrency(session.Player);
+            }, () => gone, out _)) {
+            if (added != default) {
+                session.Currency.TakeBackAdded(added);
+            }
             session.Send(MesoMarketPacket.Error(s_mesoMarket_error_errorDB));
             return;
         }
 
-        session.Currency.ChangeMeso(listing.Amount);
+        session.Currency.NotifyAdded(added);
         session.Send(MesoMarketPacket.Cancel(listingId));
     }
 

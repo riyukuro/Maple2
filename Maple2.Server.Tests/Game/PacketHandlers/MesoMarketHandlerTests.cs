@@ -183,6 +183,55 @@ public class MesoMarketHandlerTests {
         Assert.That(session.Currency.Meso, Is.EqualTo(Constant.MaxMeso));
     }
 
+    // Mode 6 stores the delete with the mesos it gives back. Before, the row went at once and the mesos waited in
+    // memory for the next save: a stop in between lost them. A save that fails deletes nothing and gives nothing.
+    [Test]
+    public void TakeBack_StoresTheMesosWithTheDelete() {
+        GameSession session = Login();
+        MesoListing own = OwnListing(session);
+
+        Send(session, 6, own.Id);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { "06" + Int(0) + Long(own.Id) }));
+        Assert.That((session.Currency.Meso, StoredMeso(session)), Is.EqualTo((BASE, BASE)));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(own.Id), Is.Null);
+    }
+
+    [Test]
+    public void TakeBack_FailedSaveKeepsTheListing() {
+        GameSession session = Login();
+        MesoListing own = OwnListing(session);
+        test.FailSave = WalletWritten;
+
+        Send(session, 6, own.Id);
+        test.FailSave = null;
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(0));
+        Assert.That(StoredMeso(session), Is.EqualTo(0));
+        using GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetMesoListing(own.Id), Is.Not.Null);
+    }
+
+    private MesoListing OwnListing(GameSession session) {
+        MesoListing own;
+        using (GameStorage.Request create = test.Storage.Context()) {
+            own = create.CreateMesoListing(new MesoListing(TimeSpan.FromDays(2)) {
+                AccountId = session.AccountId,
+                CharacterId = session.CharacterId,
+                Amount = BASE,
+                Price = 200,
+            })!;
+        }
+        test.TakeSent();
+        return own;
+    }
+
+    private static bool WalletWritten(Microsoft.EntityFrameworkCore.DbContext context) {
+        return context.ChangeTracker.Entries<Maple2.Database.Model.Character>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified);
+    }
+
     // Mode 7: the listings in the amount range, cheapest first, each with its own flag.
     [Test]
     public void Search_ListsTheRange() {

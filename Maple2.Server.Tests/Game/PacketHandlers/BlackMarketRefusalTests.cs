@@ -412,6 +412,9 @@ public class BlackMarketRefusalTests {
         Assert.That(100000 - session.Currency.Meso, Is.EqualTo(Maple2.Server.Game.LuaFunctions.Lua.CalcBlackMarketRegisterDeposit(3003)));
         using GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetBlackMarketListings(test.CharacterId).Single().Deposit, Is.EqualTo(100000 - session.Currency.Meso));
+        // The deposit is stored with the listing made, not left for the next save.
+        using var context = new Ms2Context(test.Options);
+        Assert.That(context.Character.AsNoTracking().Single(row => row.Id == test.CharacterId).Currency.Meso, Is.EqualTo(session.Currency.Meso));
     }
 
     // The played client's minimum is 100 for the total: 4 at 50 each (200) is listed, as the client sends it.

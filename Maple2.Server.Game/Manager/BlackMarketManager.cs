@@ -124,6 +124,9 @@ public sealed class BlackMarketManager {
             CreateRefundErrorMail(item, depositFee);
             return;
         }
+        // The deposit, taken in memory, is stored now that the listing is: it waited for the next save, and a stop
+        // before it kept the listing and gave the deposit back.
+        session.SavePurchase();
 
         // Also add to World
         BlackMarketResponse response = session.World.BlackMarket(new BlackMarketRequest {
