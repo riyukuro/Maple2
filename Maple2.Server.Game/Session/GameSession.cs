@@ -69,7 +69,12 @@ public sealed partial class GameSession : Core.Network.Session {
     public override bool DropsPackets => preMigrationSaved || packetsClosed;
     private volatile bool packetsClosed;
     // How long a closing session waits for its field's running packet batch to end (ClosePackets).
-    internal static readonly TimeSpan PacketBatchWait = TimeSpan.FromSeconds(10);
+    internal static TimeSpan PacketBatchWait { get; set; } = TimeSpan.FromSeconds(10); // tests shorten it
+    // How long the close waits for its LeaveField on the field's thread (CloseLeaveField) and for a receive-thread
+    // handler before the last save (SaveBeforeLeaving): longer than a handler's own bounded waits (a move's save waits
+    // up to ResetWait for a reset, on each of its two tries). Past it the thread is stuck (for every player of the
+    // field), and the close goes on beside it, logged.
+    internal static TimeSpan CloseWait { get; set; } = TimeSpan.FromMinutes(3); // tests shorten it
     // The account's and character's item rows, held from an entry that took the account lock (see EnterServer).
     private IDisposable? heldRows;
     // The account's session generation this entry claimed (GameStorage.ClaimSession): a save writes only while the
@@ -1873,7 +1878,7 @@ public sealed partial class GameSession : Core.Network.Session {
             Scheduler.Stop();
             if (OnLoop != null) OnLoop -= Scheduler.InvokeAll;
             server.OnDisconnected(this);
-            LeaveField();
+            CloseLeaveField();
             Player.Value.Character.Channel = -1;
             Player.Value.Account.Online = false;
             State = SessionState.Disconnected;
@@ -2047,6 +2052,21 @@ public sealed partial class GameSession : Core.Network.Session {
         return false;
     }
 
+    // The close's LeaveField, run on the field's thread at the start of its next update: the buffs, the pet, the
+    // instrument and the trade it ends are state the field's update reads (changed beside it, a collection the update
+    // went through changed under it), and a handler of the player still running there (past PacketBatchWait) ends
+    // first, so the last save after it does not store a change half made. Waited up to CloseWait.
+    private void CloseLeaveField() {
+        FieldManager? field = Field;
+        if (field == null) {
+            LeaveField();
+            return;
+        }
+        if (!field.RunOnFieldAndWait(CloseWait, LeaveField)) {
+            Logger.Warning("Close of {Session}: the field's thread still runs after {Wait}, leaving the field beside it", this, CloseWait);
+        }
+    }
+
     // Dispose's last save: as a move's, with no session left to end.
     private void LastSave() {
         if (SaveBeforeLeaving(last: true) != SaveResult.Stored) {
@@ -2065,7 +2085,10 @@ public sealed partial class GameSession : Core.Network.Session {
         // the global portal and the field war). A handler that leads to the save itself (a portal move) holds the
         // gate already. The wait is bounded: a handler stuck past InlineGateWait (a World call without a deadline)
         // does not hold the field thread longer; the save then goes on, logged.
-        bool gated = Monitor.TryEnter(InlineGate, InlineGateWait);
+        // The close's save waits longer (CloseWait): no player waits on it, and saved beside a running handler it would
+        // store that handler's change half made.
+        TimeSpan gateWait = last ? CloseWait : InlineGateWait;
+        bool gated = Monitor.TryEnter(InlineGate, gateWait);
         try {
             if (preMigrationSaved) return SaveResult.Stored;
             preMigrationSaved = true;
@@ -2074,7 +2097,7 @@ public sealed partial class GameSession : Core.Network.Session {
         }
         if (!gated) {
             Logger.Warning("MigrationSave: a receive-thread handler still runs after {Wait}, saving beside it AccountId={AccountId} CharacterId={CharacterId}",
-                InlineGateWait, AccountId, CharacterId);
+                gateWait, AccountId, CharacterId);
         }
 
         // An open trade ends first, as cancelled: the mesos offered (taken from the wallet when set) come back to it

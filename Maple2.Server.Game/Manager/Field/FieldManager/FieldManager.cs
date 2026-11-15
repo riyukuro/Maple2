@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using DotRecast.Core;
 using DotRecast.Core.Numerics;
 using DotRecast.Detour;
@@ -615,6 +616,52 @@ public partial class FieldManager : IField {
     private ConcurrentQueue<Action> FieldActions => LazyInitializer.EnsureInitialized(ref fieldActions);
 
     public void RunOnField(Action action) => FieldActions.Enqueue(action);
+
+    // The caller is the field's own thread.
+    internal bool OnFieldThread => thread != null && Thread.CurrentThread == thread;
+    // The field's loop runs, so an action RunOnField queues will be run.
+    private bool LoopRuns => thread is { IsAlive: true } && cancel is { IsCancellationRequested: false };
+
+    // Runs action on the field's thread at the start of its next update, so after the packet batch and the update that
+    // run now, and waits for it up to timeout. Runs it at once on the field's thread itself, or when the loop does not
+    // run (a field being disposed). Past timeout (a handler stuck on the field thread) it runs action on this thread
+    // instead, and false is returned; the queued one then does nothing. A throw of action is thrown here.
+    internal bool RunOnFieldAndWait(TimeSpan timeout, Action action) {
+        if (OnFieldThread || !LoopRuns) {
+            action();
+            return true;
+        }
+
+        int claimed = 0;
+        var done = new ManualResetEventSlim();
+        ExceptionDispatchInfo? error = null;
+        RunOnField(() => {
+            if (Interlocked.Exchange(ref claimed, 1) != 0) {
+                return;
+            }
+            try {
+                action();
+            } catch (Exception ex) {
+                error = ExceptionDispatchInfo.Capture(ex);
+            } finally {
+                done.Set();
+            }
+        });
+
+        try {
+            if (!done.Wait(timeout)) {
+                if (Interlocked.Exchange(ref claimed, 1) == 0) {
+                    action();
+                    return false;
+                }
+                done.Wait(); // the field thread took it just now: it ends first
+            }
+        } finally {
+            done.Dispose(); // set, or never to be: the queued one does nothing once claimed here
+        }
+        error?.Throw();
+        return true;
+    }
 
     // Each action logged on a throw; the others still run.
     internal void RunFieldActions() {

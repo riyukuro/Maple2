@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,6 +10,8 @@ using Maple2.Model.Enum;
 using Maple2.Server.Game;
 using Maple2.Tools.Scheduler;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Service;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
@@ -27,6 +29,8 @@ public class SessionCloseSaveTests {
     private TestGameSession test = null!;
     private GameSession session => test.Session;
     private TimeSpan closeWait;
+    private TimeSpan packetBatchWait;
+    private TimeSpan sessionCloseWait;
 
     [SetUp]
     public void Login() {
@@ -39,11 +43,15 @@ public class SessionCloseSaveTests {
         test.TakeSent();
         closeWait = ChannelService.CloseWait;
         ChannelService.CloseWait = TimeSpan.FromSeconds(10);
+        packetBatchWait = GameSession.PacketBatchWait;
+        sessionCloseWait = GameSession.CloseWait;
     }
 
     [TearDown]
     public void Restore() {
         ChannelService.CloseWait = closeWait;
+        GameSession.PacketBatchWait = packetBatchWait;
+        GameSession.CloseWait = sessionCloseWait;
     }
 
     // The test session's server (its events set up by TestGameSession), with the session playing on it.
@@ -177,5 +185,105 @@ public class SessionCloseSaveTests {
         // The harness leaves the guild and the field player half set (their own dispose logs); the cleanup with the
         // save and the logout update log nothing.
         Assert.That(test.Errors.Where(error => error.Contains("session cleanup") || error.Contains("logout")), Is.Empty);
+    }
+    // A stand-in for the field's loop on a thread of its own, as the field's: first a handler of the player, in a
+    // packet batch, runs until it is let go; then the loop runs the field's queued actions until stopped.
+    private sealed class FieldLoop : IDisposable {
+        public readonly ManualResetEventSlim InHandler = new();
+        public readonly ManualResetEventSlim Release = new();
+        private readonly CancellationTokenSource cancel = new();
+        private readonly Thread thread;
+        public bool LeftOnItsThread;
+
+        public FieldLoop(FieldManager field, int objectId, Action handlerStart, Action handlerEnd) {
+            var batch = new List<(FieldPacketHandler, GameSession, Maple2.PacketLib.Tools.ByteReader)>();
+            typeof(FieldManager).GetField("queuedPackets", Any)!.SetValue(field, batch);
+            typeof(FieldManager).GetField("cancel", Any)!.SetValue(field, cancel);
+            thread = new Thread(() => {
+                lock (batch) {
+                    handlerStart();
+                    InHandler.Set();
+                    Release.Wait();
+                    handlerEnd();
+                }
+                while (!cancel.IsCancellationRequested) {
+                    bool before = field.Players.ContainsKey(objectId);
+                    field.RunFieldActions();
+                    LeftOnItsThread |= before && !field.Players.ContainsKey(objectId);
+                    Thread.Sleep(5);
+                }
+            });
+            typeof(FieldManager).GetField("thread", Any)!.SetValue(field, thread);
+            thread.Start();
+            InHandler.Wait();
+        }
+
+        public void Dispose() {
+            Release.Set();
+            cancel.Cancel();
+            thread.Join();
+        }
+    }
+
+    // The members of the half-built test field and session that the field's RemovePlayer reads.
+    private void Leavable(FieldManager field) {
+        session.Ride = new RideManager(session);
+        typeof(FieldManager).GetField("fieldReactors", Any)!.SetValue(field, new ConcurrentDictionary<int, Maple2.Server.Game.Model.FieldReactor>());
+        typeof(FieldManager).GetField("<Rps>k__BackingField", Any)!.SetValue(field, new Maple2.Model.Validators.RpsMatchTable());
+        typeof(FieldManager).GetField("<CoupleDance>k__BackingField", Any)!.SetValue(field, new Maple2.Model.Validators.CoupleDanceMatchTable());
+    }
+
+    private (long Meso, long Meret) StoredWallets() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        long meso = context.Character.AsNoTracking().Single(row => row.Id == session.CharacterId).Currency.Meso;
+        long meret = context.Account.AsNoTracking().Single(row => row.Id == session.AccountId).Currency.Meret;
+        return (meso, meret);
+    }
+
+    // A close while a handler of the player still runs on the field thread past PacketBatchWait: the field is left on
+    // the field's thread once the handler ended, and the last save stores the handler's change whole. Before, the close
+    // went on beside it after PacketBatchWait: the field left on the closing thread (the field's update reading the
+    // buffs and the pet changed under it) and a save that stored the change half made.
+    [Test]
+    public void TheClose_WaitsForTheFieldThreadsHandler_AndLeavesTheFieldOnIt() {
+        Playing();
+        session.Currency.Meso = 1000;
+        session.Currency.Meret = 10;
+        GameSession.PacketBatchWait = TimeSpan.FromMilliseconds(100);
+        GameSession.CloseWait = TimeSpan.FromSeconds(30);
+        Leavable(session.Field!);
+        using var loop = new FieldLoop(session.Field!, session.Player.ObjectId,
+            () => session.Currency.Meso = 2000, () => session.Currency.Meret = 20);
+
+        Task close = Task.Run(session.Dispose);
+        Assert.That(close.Wait(1000), Is.False, "the close went on beside the running handler");
+        loop.Release.Set();
+        Assert.That(close.Wait(TimeSpan.FromSeconds(30)), Is.True);
+
+        Assert.Multiple(() => {
+            Assert.That(loop.LeftOnItsThread, Is.True, "the field was not left on the field's thread");
+            Assert.That(StoredWallets(), Is.EqualTo((2000L, 20L)));
+            Assert.That(test.Errors.Where(error => error.Contains("session cleanup")), Is.Empty);
+        });
+    }
+
+    // A field thread stuck past CloseWait: the close leaves the field beside it (logged), and the queued leave does
+    // nothing once the loop runs again.
+    [Test]
+    public void AFieldThreadStuckPastTheWait_IsLeftBesideIt_Once() {
+        Playing();
+        FieldManager field = session.Field!;
+        using var loop = new FieldLoop(field, session.Player.ObjectId, () => { }, () => { });
+        int runs = 0;
+
+        bool onField = field.RunOnFieldAndWait(TimeSpan.FromMilliseconds(200), () => Interlocked.Increment(ref runs));
+        loop.Release.Set();
+        Thread.Sleep(200);
+
+        Assert.Multiple(() => {
+            Assert.That(onField, Is.False);
+            Assert.That(runs, Is.EqualTo(1));
+            Assert.That(field.OnFieldThread, Is.False);
+        });
     }
 }
