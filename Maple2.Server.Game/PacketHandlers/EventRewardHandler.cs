@@ -130,13 +130,24 @@ public class EventRewardHandler : FieldPacketHandler {
         int attended = session.GameEvent.Get(GameEventUserValueType.LongTermAttendDays, gameEvent.Id, gameEvent.EndTime).Int();
         int missed = LongTermAttendRules.MissedDays(gameEvent.Metadata.StartTime, DateTime.Now, attended, gift.MaxAttendance);
         LongTermAttendRules.AttendStep step = LongTermAttendRules.CheckAttend(withMerat, points, missed, session.Currency.Meret, gift.Merat);
+        EventClaim.Mark day = EventClaim.Of(gameEvent.Id, GameEventUserValueType.LongTermAttendDays, attended + 1);
         switch (step) {
             case LongTermAttendRules.AttendStep.Point:
-                session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendPoints, points - 1);
+                // The point and the day are stored together (EventClaim).
+                if (EventClaim.Give(session, [], [EventClaim.Of(gameEvent.Id, GameEventUserValueType.LongTermAttendPoints, points - 1), day]) == null) {
+                    return;
+                }
                 break;
             case LongTermAttendRules.AttendStep.Merat:
-                if (!session.Currency.TryTakeMeret(gift.Merat)) {
+                // The merets and the day are stored together (the purchase store writes the wallet): the day was kept
+                // in memory only, so any store of the wallet before the next session save (another purchase or claim)
+                // kept the merets taken, and a crash then lost the day. Given back when the store fails.
+                if (!session.Currency.TryTakeMeret(gift.Merat, notify: false)) {
                     Logger.Debug("LongTermAttend from {CharacterId} refused: {Step}", session.CharacterId, LongTermAttendRules.AttendStep.NoMerat);
+                    return;
+                }
+                if (EventClaim.Give(session, [], [day], afterCommit: () => session.Currency.NotifyMeretTaken(gift.Merat)) == null) {
+                    session.Currency.ReturnMeret(gift.Merat);
                     return;
                 }
                 break;
@@ -145,8 +156,6 @@ public class EventRewardHandler : FieldPacketHandler {
                 Logger.Debug("LongTermAttend from {CharacterId} refused: {Step}", session.CharacterId, step);
                 return;
         }
-
-        session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.LongTermAttendDays, attended + 1);
         session.Send(EventRewardPacket.LongTermAttend());
     }
 

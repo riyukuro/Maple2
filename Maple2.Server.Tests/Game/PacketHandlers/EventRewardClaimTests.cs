@@ -262,11 +262,37 @@ public class EventRewardClaimTests {
         Assert.That(session.Currency.Meret, Is.EqualTo(20));
         Assert.That(Value(session, GameEventUserValueType.LongTermAttendDays), Is.EqualTo("1"));
         List<string> sent = SentHex();
-        Assert.That(sent[^2..], Is.EqualTo(new[] {
+        Assert.That(sent[^3..], Is.EqualTo(new[] {
             UserValue(session, GameEventUserValueType.LongTermAttendDays),
+            Hex(CurrencyPacket.UpdateMeret(session.Player.Value.Currency, -30)),
             Hex(EventRewardPacket.LongTermAttend()),
         }));
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // The merets and the day are stored together: the day was kept in memory only, while any store of the wallet
+    // (another purchase or claim) kept the merets taken.
+    [Test]
+    public void LongTerm_AttendWithMerets_IsStoredWithTheDay() {
+        GameSession session = Login(GameEventType.LongTermAttendGift, LongTerm(merat: 30));
+        session.Currency.Meret = 50;
+
+        AttendDay(session, merat: true);
+
+        Assert.That(Stored(GameEventUserValueType.LongTermAttendDays), Is.EqualTo("1"));
+        using var context = new Ms2Context(test.Options);
+        Assert.That(context.Account.Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(20));
+    }
+
+    [Test]
+    public void LongTerm_AttendWithPoint_IsStoredWithTheDay() {
+        GameSession session = Login(GameEventType.LongTermAttendGift, LongTerm());
+        Open(session);
+
+        AttendDay(session, merat: false);
+
+        Assert.That(Stored(GameEventUserValueType.LongTermAttendDays), Is.EqualTo("1"));
+        Assert.That(Stored(GameEventUserValueType.LongTermAttendPoints), Is.EqualTo("0"));
     }
 
     private GameSession LoginAttended(int days, bool fullBag = false) {
