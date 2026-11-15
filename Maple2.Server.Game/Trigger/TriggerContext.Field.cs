@@ -339,7 +339,8 @@ public partial class TriggerContext {
 
         if (missing != null) {
             missing.Sort();
-            logger.Warning("Invalid mesh: {Count} of {Total} ids not on the map: {Ids}", missing.Count, triggerIds.Count, MeshIdList(missing));
+            logger.Warning("Invalid mesh: trigger {Trigger} of field {MapId}: {Count} of {Total} ids not on the map: {Ids}",
+                owner.Value.Name, Field.MapId, missing.Count, triggerIds.Count, MeshIdList(missing));
         }
 
         void UpdateSetMesh(TriggerObjectMesh mesh) {

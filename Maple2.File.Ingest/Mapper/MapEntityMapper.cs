@@ -128,7 +128,7 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
 
                                 return new SpawnPointNPCListEntry(npcId, npcCount);
                             }).WhereNotNull().ToList();
-                            if (npcSpawn.NpcCount == 0 || npcList.Count == 0) {
+                            if (!KeepsNpcSpawn(npcSpawn is IEventSpawnPointNPC, npcSpawn.NpcCount, npcList.Count)) {
                                 //Console.WriteLine($"No NPCs for {xblock}:{entity.EntityId}");
                                 continue;
                             }
@@ -277,6 +277,16 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
             }
         }
 
+    }
+
+    // Whether the ingest keeps an npc spawn point. NpcCount defaults to 0 in both flats (spawnpointnpc and
+    // eventspawnpointnpc), and each NpcList value is that npc's count. An event point is spawned only by a trigger,
+    // which names it to spawn its npcs: one left at 0 spawns its list (12 in the KR map files, among them 02000384_bf 402, the
+    // barricade fight the script waits on, and 02000294_bf 3002/3009/3013). A plain point spawns at field create,
+    // and the plain points at 0 are switched-off copies (02000487_bf lists 11003988 on a second point that is on), so
+    // they stay out.
+    public static bool KeepsNpcSpawn(bool eventPoint, uint npcCount, int listCount) {
+        return listCount > 0 && (npcCount > 0 || eventPoint);
     }
 
     // A spawn point's PatrolData: the MS2PatrolData entity's uuid without dashes (MapEntity.Guid's form), or null for

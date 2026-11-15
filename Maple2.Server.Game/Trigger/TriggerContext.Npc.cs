@@ -234,7 +234,8 @@ public partial class TriggerContext {
 
         // Each npc carries the score: its death adds it to the open board (FieldManager.AddScoreBoardScore).
         foreach (int spawnId in TriggerRandomPick.Pick(spawnIds, randomPickCount, Random.Shared)) {
-            SpawnNpc(spawnId, score: score);
+            // is_auto_targeting plays the point's spawn animation, as spawn_monster's auto_target does.
+            SpawnNpc(spawnId, isAutoTargeting, score);
         }
     }
 
@@ -406,8 +407,9 @@ public partial class TriggerContext {
             return;
         }
         var eventSpawn = spawn as EventSpawnPointNPC;
-        // A plain spawn point's NpcCount caps its list total the way its own regen does (SpawnPointRules).
-        int npcCount = eventSpawn?.NpcCount ?? SpawnPointRules.PlainCap(spawn);
+        // NpcCount caps the list total the way a plain point's own regen does (SpawnPointRules); an event point left
+        // at 0 spawns its list (MapEntityMapper.KeepsNpcSpawn).
+        int npcCount = SpawnPointRules.PlainCap(spawn);
 
         DebugLog("[SpawnNpc] spawnId:{SpawnId}, SpawnRadius:{SpawnRadius}, NpcCount:{NpcCount}, Position:{Position}",
             spawnId, spawn.SpawnRadius, npcCount, spawn.Position);

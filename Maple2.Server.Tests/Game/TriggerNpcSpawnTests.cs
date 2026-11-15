@@ -142,6 +142,37 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
             Is.EqualTo(new[] { "Regen_A", "", "Regen_A" }));
     }
 
+    // spawn_npc_range's is_auto_targeting plays the event point's spawn animation the way spawn_monster's auto_target
+    // does (KR rows write it: 67 with 1, 52 with 0).
+    [Test]
+    public void SpawnNpcRange_SpawnAnimationWhenAutoTargeting() {
+        StartSpawns();
+        var spawn = new EventSpawnPointNPC("", 5, new Vector3(300, 0, 0), new Vector3(0, 0, 90), true, false, 0, 1,
+            [new SpawnPointNPCListEntry(MobId, 1)], 0, 0, "Regen_A");
+        typeof(MapEntityMetadata).GetField("<EventNpcSpawns>k__BackingField", Any)!.SetValue(Field.Entities,
+            new Dictionary<int, EventSpawnPointNPC> { [5] = spawn });
+
+        Action("""<action name="spawn_npc_range" range_ids="5" is_auto_targeting="1" />""");
+        Action("""<action name="spawn_npc_range" range_ids="5" is_auto_targeting="0" />""");
+        Assert.That(Field.Mobs.Values.OrderBy(npc => npc.ObjectId).Select(npc => npc.SpawnAnimation),
+            Is.EqualTo(new[] { "Regen_A", "" }));
+    }
+
+    // An event point left at NpcCount 0 (the flat default) spawns its whole list: 02000384_bf's 402 is the barricade
+    // fight its script waits on with monster_dead, 02000294_bf's 3018 lists one npc at 3.
+    [Test]
+    public void SpawnMonster_EventPointAtZeroSpawnsItsList() {
+        StartSpawns();
+        var spawn = new EventSpawnPointNPC("", 402, new Vector3(300, 0, 0), new Vector3(0, 0, 90), true, true, 0, 0,
+            [new SpawnPointNPCListEntry(MobId, 2), new SpawnPointNPCListEntry(FriendId, 1)], 0, 0, "");
+        typeof(MapEntityMetadata).GetField("<EventNpcSpawns>k__BackingField", Any)!.SetValue(Field.Entities,
+            new Dictionary<int, EventSpawnPointNPC> { [402] = spawn });
+
+        Action("""<action name="spawn_monster" spawn_ids="402" />""");
+        Assert.That(Field.Mobs, Has.Count.EqualTo(2));
+        Assert.That(Field.Npcs, Has.Count.EqualTo(1));
+    }
+
     // An event spawn point's PatrolData goes with the npc a trigger creates there (52020036_qd's 10060: created by
     // spawn_monster, never given a move order); a point without one leaves the npc to its routines.
     [Test]

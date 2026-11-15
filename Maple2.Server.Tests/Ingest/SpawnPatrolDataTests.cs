@@ -11,4 +11,15 @@ public class SpawnPatrolDataTests {
     public void SpawnPatrolData(string? patrolData, string? expected) {
         Assert.That(MapEntityMapper.SpawnPatrolData(patrolData), Is.EqualTo(expected));
     }
+
+    // NpcCount defaults to 0 in both spawn point flats. An event point (spawned only by a trigger) at 0 is kept and
+    // spawns its list; a plain point at 0 is a switched-off copy and stays out; a point without a known npc stays out.
+    [TestCase(true, 0u, 1, ExpectedResult = true)]
+    [TestCase(true, 2u, 1, ExpectedResult = true)]
+    [TestCase(false, 0u, 1, ExpectedResult = false)]
+    [TestCase(false, 1u, 1, ExpectedResult = true)]
+    [TestCase(true, 0u, 0, ExpectedResult = false)]
+    [TestCase(false, 3u, 0, ExpectedResult = false)]
+    public bool KeepsNpcSpawn(bool eventPoint, uint npcCount, int listCount) =>
+        MapEntityMapper.KeepsNpcSpawn(eventPoint, npcCount, listCount);
 }
