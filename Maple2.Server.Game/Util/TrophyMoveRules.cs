@@ -30,7 +30,8 @@ public static class TrophyMoveRules {
 /// How much of a player's synced moves counts for TrophyMoveRules. Chosen here: a move counts as far as the fastest
 /// honest move goes in the time since the last one, with up to HeldMs of that time kept for positions that arrive
 /// together; the jump of a move the server makes itself (a portal, the return from out of the map, a trigger) does
-/// not count, nor do the client's positions for MoveRules.ServerMoveGraceMs after it. Locked: the server's own moves
+/// not count, nor do the client's positions for MoveRules.ServerMoveGraceMs after it, nor its first position after it
+/// however late (the server does not take the place it sends the player to as the player's position). Locked: the server's own moves
 /// can come from another thread than the syncs.
 /// </summary>
 public sealed class TrophyMoveBudget {
@@ -43,10 +44,12 @@ public sealed class TrophyMoveBudget {
     private float available = float.NaN;
     private long last;
     private long graceUntil = long.MinValue;
+    private bool skipNext;
 
     public void ServerMoved(long now) {
         lock (mutex) {
             graceUntil = now + MoveRules.ServerMoveGraceMs;
+            skipNext = true;
         }
     }
 
@@ -60,7 +63,8 @@ public sealed class TrophyMoveBudget {
             available = float.IsNaN(available) ? held
                 : MathF.Min(held, available + perSecond * Math.Clamp(now - last, 0, HeldMs) / 1000f);
             last = now;
-            if (now < graceUntil || !(distance > 0) || !float.IsFinite(distance)) {
+            if (now < graceUntil || skipNext || !(distance > 0) || !float.IsFinite(distance)) {
+                skipNext = false;
                 return 0f;
             }
             float taken = MathF.Min(distance, available);

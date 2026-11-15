@@ -64,4 +64,14 @@ public class TrophyMoveRulesTests {
         Assert.That(budget.Take(300f, 1000 + MoveRules.ServerMoveGraceMs - 1, MoveRules.MaxDistance), Is.EqualTo(0f));
         Assert.That(budget.Take(300f, 1000 + MoveRules.ServerMoveGraceMs, MoveRules.MaxDistance), Is.EqualTo(300f));
     }
+
+    // A player who stands still after the server moved them sends the next position after the grace: it is taken
+    // from the place the server sent them to, so its jump from the old place does not count.
+    [Test]
+    public void Budget_SkipsTheFirstMoveAfterTheServersMoveHoweverLate() {
+        var budget = new TrophyMoveBudget();
+        budget.ServerMoved(1000);
+        Assert.That(budget.Take(5000f, 60_000, MoveRules.MaxDistance), Is.EqualTo(0f));
+        Assert.That(budget.Take(300f, 60_200, MoveRules.MaxDistance), Is.EqualTo(300f));
+    }
 }
