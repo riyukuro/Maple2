@@ -140,7 +140,9 @@ public class SkillHandler : FieldPacketHandler {
         if (record.Metadata.State.InBattle) {
             session.Player.BattleCastShowsStance();
         }
-        session.Player.ActiveSkills.Add(record, startTick, SkillHitRules.CastKeepMs(record.Metadata, session.Field.TableMetadata.MagicPathTable.Entries));
+        long keepMs = SkillHitRules.CastKeepMs(record.Metadata, session.Field.TableMetadata.MagicPathTable.Entries);
+        record.Hits.FlightMs = keepMs - SkillHitRules.HitWindowMs;
+        session.Player.ActiveSkills.Add(record, startTick, keepMs);
         session.Field.Broadcast(SkillPacket.Use(record));
         session.Send(StatsPacket.Init(session.Player));
         session.Field.Broadcast(StatsPacket.Update(session.Player), session);
@@ -314,7 +316,7 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         long skillUid = packet.ReadLong();
-        SkillRecord? record = session.Player.ActiveSkills.Get(skillUid);
+        SkillRecord? record = session.Player.ActiveSkills.Find(skillUid, session.Field.FieldTick);
         if (record == null) {
             Logger.Warning("Invalid Attack-Target Skill {SkillUid}", skillUid);
             return;
@@ -340,7 +342,7 @@ public class SkillHandler : FieldPacketHandler {
         // arrow once per target it can reach, again on a boomerang's way back and after each piercing interval), in
         // time and with the impact near the cast (SkillHitRules). Anything else is dropped without damage.
         session.Field.TableMetadata.MagicPathTable.Entries.TryGetValue(record.Attack.MagicPathId, out IReadOnlyList<MagicPath>? paths);
-        if (record.Hits.TooLate(session.Field.FieldTick)
+        if (record.Hits.MagicTooLate(session.Field.FieldTick)
             || SkillHitRules.ImpactRefused(impactPosition, record.CastPosition, session.Player.Position, record.Attack, paths)
             || !record.Hits.TakeTarget(targetUid, attackPoint, record.Attack.Arrow.BounceCount, SkillHitRules.TargetRounds(record.Attack, paths), count)) {
             Logger.Debug("Target packet dropped: attack {AttackUid} AttackPoint={AttackPoint} impact {Impact}: {Record}",
@@ -488,7 +490,7 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         long skillUid = packet.ReadLong();
-        SkillRecord? record = session.Player.ActiveSkills.Get(skillUid);
+        SkillRecord? record = session.Player.ActiveSkills.Find(skillUid, session.Field.FieldTick);
         if (record == null) {
             Logger.Warning("Invalid Attack-Splash Skill {SkillUid}", skillUid);
             return;
@@ -510,7 +512,7 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         // Only an arrow an attack point packet of the cast declared sends one, once at its end and once per piercing
-        // interval, in the hit window, from a point its paths reach (SkillHitBudget.TakeRegionPath and
+        // interval, in the hit window and its magic's flight, from a point its paths reach (SkillHitBudget.TakeRegionPath and
         // SkillHitRules.ReachTooFar, as a target packet's). Anything else places nothing.
         session.Field.TableMetadata.MagicPathTable.Entries.TryGetValue(record.Attack.MagicPathId, out IReadOnlyList<MagicPath>? paths);
         bool far = SkillHitRules.ReachTooFar(path.Position, record.CastPosition, record.Attack.Arrow, paths, session.Player.Position);

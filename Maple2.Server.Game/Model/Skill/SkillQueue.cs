@@ -53,6 +53,11 @@ public class SkillQueue {
         return null;
     }
 
+    // The cast a magic's packet names (a target or region path packet): one of the pending three, or a recent one still
+    // within its keep time. The client sends these when its magic meets something or ends (CMagic, magicdata.cpp:1846,
+    // 1956, 2402), with the cast's id, after the player may have cast three times more.
+    public SkillRecord? Find(long uid, long tick) => Get(uid) ?? GetRecent(uid, tick);
+
     public SkillRecord? Get(long uid) {
         for (int i = 0; i < MAX_PENDING; i++) {
             if (casts[i]?.CastUid == uid) {

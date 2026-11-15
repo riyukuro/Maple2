@@ -639,6 +639,15 @@ public sealed class SkillHitBudget {
 
     public bool TooLate(long tick) => SkillHitRules.TooLate(tick, windowTick);
 
+    // The longest flight of the cast's magic paths (SkillHitRules.CastKeepMs less the hit window), 0 when it has none.
+    public long FlightMs { get; set; }
+
+    // Whether a magic's packet (target or region path) comes past the hit window and the flight after it: a magic the
+    // last attack point packet fired still flies its path and sends its hits and its end then (magicdata.cpp:1846,
+    // 1956, 2402); one whose path is longer than the 5 s window (KMS2 job skills fly up to 4.6 s, fired after the
+    // cast's attack point) sends past the window.
+    public bool MagicTooLate(long tick) => tick - windowTick > SkillHitRules.HitWindowMs + FlightMs;
+
     // What the last taken attack point packet would have been refused for with enforce set; null when nothing.
     public string? Unenforced { get; private set; }
 
@@ -717,14 +726,14 @@ public sealed class SkillHitBudget {
         uids.Add(attackUid);
     }
 
-    // A region path packet (Skill 1 2): false when its cast is past the hit window, when no attack point packet
-    // declared its arrow, or when the arrows declared under its key already sent rounds each: an arrow
+    // A region path packet (Skill 1 2): false when its cast is past the hit window and its magic's flight (MagicTooLate),
+    // when no attack point packet declared its arrow, or when the arrows declared under its key already sent rounds each: an arrow
     // sends one when it ends (CMagic::FUN_14145f570) and a piercing one per interval (FUN_141466da0, bounce types 3
     // and 4 only, magicdata.cpp:1880), so SkillHitRules.RegionPathRounds. hitCap (SkillHitRules.RegionPathHitCap,
     // 0 for none): once every arrow under the key hit that many different objects (the target packets that did so
     // came before, the client sends them first), each sends only its end one more. Counted only when taken.
     public bool TakeRegionPath(byte attackPoint, int sendCount, int arrow, int rounds, long tick, int hitCap = 0) {
-        if (TooLate(tick)) {
+        if (MagicTooLate(tick)) {
             return false;
         }
         var key = (attackPoint, sendCount, arrow);
