@@ -461,6 +461,10 @@ public class TradeManager : IDisposable {
 
         // On success the sessions were swapped: each offer's giver is the other trader's session.
         bool mesosMoved = success && (sender.Mesos != 0 || receiver.Mesos != 0);
+        // The wallet that pays more is stored first (each session receives its own trader's offer after the swap and
+        // gave the other's), and the other only once that store is kept: a stop or a failed store between the two
+        // can then lose mesos, never make them. Before, the payee could be stored and the payer not.
+        GameSession[] wallets = sender.Mesos <= receiver.Mesos ? [sender.Session, receiver.Session] : [receiver.Session, sender.Session];
         // On a cancel, the sessions whose offered mesos come back (HandOver clears the offers).
         GameSession[] refunded = success ? [] : new[] { sender, receiver }.Where(trader => trader.Mesos != 0)
             .Select(trader => trader.Session).ToArray();
@@ -472,9 +476,10 @@ public class TradeManager : IDisposable {
         // while the seller had neither. Both wallets are stored now (SavePurchase: the currency alone, tried again on
         // the field queue while a reset is being stored), so only the moment between the two stores is left.
         if (mesosMoved) {
-            foreach (GameSession wallet in new[] { sender.Session, receiver.Session }) {
+            foreach (GameSession wallet in wallets) {
                 if (!wallet.SavePurchase()) {
                     logger.Error("Trade mesos of {CharacterId} not stored now, left to the next save", wallet.CharacterId);
+                    break;
                 }
             }
         }

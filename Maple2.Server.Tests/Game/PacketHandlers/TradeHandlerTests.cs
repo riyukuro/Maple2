@@ -195,6 +195,26 @@ public class TradeHandlerTests {
         });
     }
 
+    // The payer's wallet is stored first, and the payee's only once that store is kept: when the payer's fails, the
+    // payee's waits for its next save too, so a stop in between loses the payment rather than making it twice.
+    [Test]
+    public void Complete_PayerNotStored_PayeeWaits() {
+        Offer();
+        long giverStored = StoredMeso(giver);
+        takerTest.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Character>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified);
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        Send(taker, 13);
+        takerTest.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That((giver.Currency.Meso, taker.Currency.Meso), Is.EqualTo((1000L, 4000L)));
+            Assert.That(StoredMeso(giver), Is.EqualTo(giverStored));
+        });
+    }
+
     // A cancelled trade gives the offered mesos back in memory. A save made while they were offered (here a purchase
     // save, as a timed save) stored the wallet without them, so the refund is stored too; before, it waited in memory.
     [Test]
