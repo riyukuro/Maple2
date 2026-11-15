@@ -21,7 +21,10 @@ namespace Maple2.File.Ingest.Helpers;
 // isBindCharacter, disableBreak, constraintsQuest, mapDependency, dropGroupMinLevel or serverDrop. Where the server
 // has the same group with the same items (each item id matched in order), those attributes come from the server's
 // rows. Otherwise the client group is kept as it is: without weights a plain group gives one of its items at an
-// equal chance and a smart drop group gives the player's job item; no rate is made up.
+// equal chance and a smart drop group gives the player's job item; no rate is made up. The counts are always the
+// client's, read as ItemDropTable reads them: minCount 1 when absent, maxCount at least minCount. The server's NA row
+// may have other counts (Prestige Reward Box 330002623: Onyx Crystal 4800 on the server, 2550 in the client), and its
+// maxCount must not turn the client's fixed count into a range.
 public static class ClientDropBoxes {
     // Replaced: server boxes with no available row taken from the client's copy. Short: item boxes the client's groups
     // were added to, GroupsAdded of them; GroupsMatched client groups of those boxes had a server group with their rows,
@@ -78,6 +81,7 @@ public static class ClientDropBoxes {
                         continue;
                     }
                     var group = (XmlElement) server.ImportNode(clientGroup, true);
+                    ClientCounts(group);
                     string groupId = group.GetAttribute("dropGroupID");
                     if (keptIds.Contains(groupId)) {
                         // The id is a kept server group's with other rows: a free id (groups are keyed by id).
@@ -112,6 +116,7 @@ public static class ClientDropBoxes {
             }
 
             var box = (XmlElement) server.ImportNode(clientBox, true);
+            ClientCounts(box);
             if (serverBox != null) {
                 CopyMissing(serverBox, box);
                 foreach (XmlElement group in Children(box, "group")) {
@@ -187,6 +192,17 @@ public static class ClientDropBoxes {
             CopyMissing(match, row);
         }
         return true;
+    }
+
+    // Writes each row's counts as the client reads them (ItemDropTable row load), so CopyMissing takes none from the
+    // server's row.
+    private static void ClientCounts(XmlElement parent) {
+        foreach (XmlElement row in parent.GetElementsByTagName("v").OfType<XmlElement>().ToList()) {
+            int min = int.TryParse(row.GetAttribute("minCount"), out int value) ? value : 1;
+            int max = int.TryParse(row.GetAttribute("maxCount"), out value) ? value : 0;
+            row.SetAttribute("minCount", min.ToString());
+            row.SetAttribute("maxCount", Math.Max(min, max).ToString());
+        }
     }
 
     private static void CopyMissing(XmlElement from, XmlElement to) {

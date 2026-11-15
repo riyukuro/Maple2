@@ -28,7 +28,8 @@ public class ClientDropBoxesTests {
     // 4 has CN rows only and the client none for KR; 5 is not in the server table; 6 is an item box with an NA group and
     // two KR groups, one with a drop chance holding the client's group 2 under id 3 and one the client lacks, where the
     // client lists three KR groups (the adventure bonus box 330001968 shape); 7 has as many KR groups as the client; 8 is box 6's shape that no item opens
-    // (a monster box); 9 is an item box whose KR group has 2 of the client group's 3 rows (330001417).
+    // (a monster box); 9 is an item box whose KR group has 2 of the client group's 3 rows (330001417); 10 has NA rows with
+    // other counts than the client's (the prestige reward box 330002623 shape).
     private const string Server = """
         <ms2>
           <dropBox dropBoxID="1" comment="server">
@@ -87,6 +88,17 @@ public class ClientDropBoxesTests {
             <group dropGroupID="2">
               <v itemID="90000001" minCount="2" maxCount="2" weight="60" locale="KR" />
               <v itemID="90000002" minCount="2" maxCount="2" weight="40" locale="KR" />
+            </group>
+          </dropBox>
+          <dropBox dropBoxID="10">
+            <group dropGroupID="1">
+              <v itemID="10000101" minCount="4800" maxCount="4800" weight="10000" locale="NA" />
+            </group>
+            <group dropGroupID="2">
+              <v itemID="10000102" minCount="10" maxCount="10" weight="10000" locale="NA" />
+            </group>
+            <group dropGroupID="3">
+              <v itemID="10000103" minCount="15" maxCount="15" weight="10000" locale="NA" />
             </group>
           </dropBox>
         </ms2>
@@ -170,6 +182,20 @@ public class ClientDropBoxesTests {
               <v itemID="90000003" />
             </group>
           </dropBox>
+          <dropBox dropBoxID="10">
+            <group dropGroupID="1">
+              <v itemID="10000101" minCount="2550" />
+            </group>
+            <group dropGroupID="2">
+              <v itemID="10000102" minCount="2" />
+            </group>
+            <group dropGroupID="3">
+              <v itemID="10000103" minCount="5" maxCount="9" />
+            </group>
+            <group dropGroupID="4">
+              <v itemID="10000104" />
+            </group>
+          </dropBox>
         </ms2>
         """;
 
@@ -222,7 +248,7 @@ public class ClientDropBoxesTests {
         Assert.Multiple(() => {
             Assert.That(boxes[4].group, Is.Empty);
             Assert.That(boxes[5].group.Single().v.Single().itemID, Is.EqualTo(50000001));
-            Assert.That(counts, Is.EqualTo(new ClientDropBoxes.Counts(2, 1, 2, 5, 2, 3, 1, 1)));
+            Assert.That(counts, Is.EqualTo(new ClientDropBoxes.Counts(3, 1, 5, 6, 2, 3, 1, 1)));
         });
     }
 
@@ -236,7 +262,7 @@ public class ClientDropBoxesTests {
         List<IndividualItemDrop.Group> groups = Read(out _)[6].group.Where(group => group.v.Count > 0).ToList();
         Assert.Multiple(() => {
             Assert.That(groups.Select(group => (group.dropGroupID, group.v.Select(v => (v.itemID, v.minCount)).Single())),
-                Is.EqualTo(new[] { (1, (60000001, 0)), (3, (60000002, 3)), (5, (60000005, 1)), (6, (60000003, 53)) }));
+                Is.EqualTo(new[] { (1, (60000001, 1)), (3, (60000002, 3)), (5, (60000005, 1)), (6, (60000003, 53)) }));
             Assert.That(groups[1].dropCount, Is.EqualTo(new[] { 0, 1 }));
             Assert.That(groups[1].v.Single().weight, Is.EqualTo(10000));
         });
@@ -249,6 +275,16 @@ public class ClientDropBoxesTests {
         List<IndividualItemDrop.Group> groups = Read(out _)[9].group.Where(group => group.v.Count > 0).ToList();
         Assert.That(groups.Select(group => (group.dropGroupID, group.v.Select(v => (v.itemID, v.weight)).ToArray())),
             Is.EqualTo(new[] { (2, new[] { (90000001, 60), (90000002, 40) }), (1, new[] { (90000009, 0) }) }));
+    }
+
+    // A box taken from the client's copy drops the client's counts, read as the client reads them (minCount 1 when
+    // absent, maxCount at least minCount), with the weights of the matching NA rows. Before, the NA row's maxCount was
+    // copied: 2550 became a 2550-4800 range, 2 a 2-10 range.
+    [Test]
+    public void ClientBox_KeepsTheClientCounts() {
+        IndividualItemDrop box = Read(out _)[10];
+        Assert.That(box.group.Select(group => group.v.Select(v => (v.itemID, v.minCount, v.maxCount, v.weight)).Single()),
+            Is.EqualTo(new[] { (10000101, 2550, 2550, 10000), (10000102, 2, 2, 10000), (10000103, 5, 9, 10000), (10000104, 1, 1, 0) }));
     }
 
     // The same shape in a box no item opens (a monster box) keeps the server's rows only: the client's rows carry no
