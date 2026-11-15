@@ -18,11 +18,16 @@ public class DungeonRoundRewardTests {
     private const int MesoTable = 5;
 
     private TestGameSession test = null!;
+    // Every clear of a test is at this one time. The test room has no valid period (TestGameSession.DungeonRoom:
+    // dayOfWeeks 0), so its period ends at the clear itself, as in the client; a clear a wall-clock second later
+    // started a new period and paid all its rounds again.
+    private long clearTime;
     private GameSession session => test.Session;
 
     [SetUp]
     public void SetUp() {
         test = new TestGameSession();
+        clearTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         DungeonRoomMetadata room = TestGameSession.DungeonRoom(Room, 50000013, rewardCount: 13) with {
             Level = RoomLevel, GroupType = DungeonGroupType.colosseum, RoundId = RoundGroup,
         };
@@ -46,7 +51,7 @@ public class DungeonRoundRewardTests {
 
     private void Clear(int round) {
         session.Dungeon.UserRecord!.Round = round;
-        session.Dungeon.CompleteDungeon(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        session.Dungeon.CompleteDungeon(clearTime);
     }
 
     [Test]
@@ -96,7 +101,7 @@ public class DungeonRoundRewardTests {
     public void RepeatedEndStartsANewResult() {
         Clear(2);
         session.Dungeon.Records[Room].UnionClears = 13;
-        session.Dungeon.Records[Room].UnionCooldownTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3600;
+        session.Dungeon.Records[Room].UnionCooldownTimestamp = clearTime + 3600;
 
         Clear(2);
 
