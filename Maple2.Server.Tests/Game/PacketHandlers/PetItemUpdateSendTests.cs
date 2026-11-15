@@ -100,6 +100,24 @@ public class PetItemUpdateSendTests {
         Assert.That(Updates(), Is.EqualTo(new[] { Update(session) }));
     }
 
+    // A paid rename (no free rename left) stores the merets and the new name together at once. Before, both waited for
+    // the session's next save.
+    [Test]
+    public void APaidRename_IsStoredAtOnce() {
+        GameSession session = Start();
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { PetChangeNameMerat = 100 });
+        session.Currency.Meret = 150;
+        pet.Pet!.RenameRemaining = 0;
+
+        session.Pet!.Rename("Mochi");
+
+        Assert.That((pet.Pet.Name, session.Currency.Meret), Is.EqualTo(("Mochi", 50L)));
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(context.Account.Single(row => row.Id == test.AccountId).Currency.Meret, Is.EqualTo(50));
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        Assert.That(db.GetItem(pet.Uid)!.Pet!.Name, Is.EqualTo("Mochi"));
+    }
+
     // The re-roll keeps (ChangeAttributes 2 and the scroll's Select) send it for the summoned pet only.
     [Test]
     public void OptionKeep_OnlyTheSummonedPet() {

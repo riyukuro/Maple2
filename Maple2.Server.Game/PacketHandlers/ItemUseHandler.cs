@@ -1304,7 +1304,9 @@ public class ItemUseHandler : FieldPacketHandler {
             session.Send(PetExtractionPacket.Error(PetExtractionError.s_petextraction_inventoryfull));
             return;
         }
-        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+        // The scroll's row is stored as used before the badge is made (stored at once by its add). Before, the take
+        // waited for the session's next save, so a stop before it gave the scroll back with the badge kept.
+        if (!session.Item.Inventory.ConsumeNow([(item.Uid, 1)])) {
             session.Send(PetExtractionPacket.Error(PetExtractionError.s_petextraction_invalid));
             return;
         }

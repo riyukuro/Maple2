@@ -182,7 +182,7 @@ public sealed class PetManager : IDisposable {
 
             deposit.Slot = slot;
             IList<(Item, int Added)> result = items.Add(deposit, true);
-
+            StoreDeposit(deposit, result.Select(entry => entry.Item1).ToArray());
             foreach ((Item item, int _) in result) {
                 session.Send(deposit.Uid == item.Uid
                     ? PetInventoryPacket.Add(item)
@@ -191,6 +191,18 @@ public sealed class PetManager : IDisposable {
 
             return StringCode.s_empty_string;
         }
+    }
+
+    // A deposit's rows are stored at once, in one transaction: the bag's stacks it went into, and the deposit's own row
+    // at owner 0 when it merged away. Before, they waited for the unsummon: a part split off a stack sat at owner 0
+    // until then (the split stores it so), and a stop before it lost that part.
+    private void StoreDeposit(Item deposit, Item[] stacks) {
+        using GameStorage.Request db = session.GameStorage.Context();
+        db.BeginTransaction();
+        if (db.SaveItems(Pet.Uid, stacks) && (deposit.Amount > 0 || db.SaveItems(0, deposit)) && db.Commit()) {
+            return;
+        }
+        Log.Error("Pet bag deposit of {Uid} for {CharacterId} not stored; the unsummon stores the bag", deposit.Uid, session.CharacterId);
     }
 
     public StringCode Remove(long uid, short slot, int amount) {
@@ -292,10 +304,22 @@ public sealed class PetManager : IDisposable {
 
         int cost = PetRules.RenameCost(ItemPet.RenameRemaining, session.ServerTableMetadata.ConstantsTable.PetChangeNameMerat);
         if (cost > 0) {
-            if (!session.Currency.TryTakeMeret(cost)) {
+            // The merets are held in memory, and the wallet and the pet's row with its new name stored in one
+            // transaction. Before, the take and the name were left to the next session save.
+            if (!session.Currency.TryTakeMeret(cost, notify: false)) {
                 session.Send(PetPacket.Error(PetError.s_err_lack_merat_ask));
                 return;
             }
+            bool stored = session.TrySavePurchase(db => PacketHandlers.PetHandler.SavePetAs(session, db, Pet, item => {
+                item.Pet!.Name = name;
+                item.Pet.RenameRemaining = 0;
+            }));
+            if (!stored) {
+                session.Currency.ReturnMeret(cost);
+                session.Send(PetPacket.Error(PetError.s_common_error_unknown));
+                return;
+            }
+            session.Currency.NotifyMeretTaken(cost);
         }
 
         ItemPet.Name = name;

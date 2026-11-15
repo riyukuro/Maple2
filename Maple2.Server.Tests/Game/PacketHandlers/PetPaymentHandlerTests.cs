@@ -9,6 +9,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -443,6 +444,82 @@ public class PetPaymentHandlerTests {
         Assert.That(ops, Does.Contain(SendOp.ResponsePet));
         Assert.That(session.Currency.Meso, Is.LessThan(10_000_000));
         Assert.That(session.Item.Inventory.Get(Fodders[0].Uid), Is.Null);
+    }
+
+    // What a store left in the database: the wallet's mesos, a row's owner and the pet's level, exp and points.
+    private long StoredMeso() {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Character.AsNoTracking().Single(row => row.Id == test.CharacterId).Currency.Meso;
+    }
+
+    private (short Level, long Exp, int Points) StoredPet() {
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        ItemPet stored = db.GetItem(pet.Uid)!.Pet!;
+        return (stored.Level, stored.Exp, stored.EvolvePoints);
+    }
+
+    // The fusion's take and its result are stored together at once: the wallet, the fodder's row (owner 0) and the
+    // pet's row with its new exp. Before, all of it waited for the session's next save, so a stop before it gave the
+    // mesos and the fodder back.
+    [Test]
+    public void Fusion_IsStoredAtOnce() {
+        GameSession session = Login(meso: 10_000_000, pets: 2);
+
+        new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteLong(pet.Uid);
+            writer.WriteShort(1);
+            writer.WriteLong(Fodders[0].Uid);
+            writer.WriteInt(1);
+        }));
+
+        Assert.That(test.Errors, Is.Empty);
+        Assume.That(session.Currency.Meso, Is.LessThan(10_000_000));
+        Assume.That(pet.Pet!.Exp + pet.Pet.Level, Is.GreaterThan(1));
+        Assert.That(StoredMeso(), Is.EqualTo(session.Currency.Meso));
+        Assert.That(test.Row(Fodders[0].Uid)!.OwnerId, Is.EqualTo(0));
+        Assert.That(StoredPet(), Is.EqualTo((pet.Pet.Level, pet.Pet.Exp, pet.Pet.EvolvePoints)));
+    }
+
+    // A fusion whose store fails takes nothing: the mesos are given back, the fodder stays and the pet keeps its exp.
+    [Test]
+    public void Fusion_NotStored_TakesNothing() {
+        GameSession session = Login(meso: 10_000_000, pets: 2);
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Item>().Any();
+
+        new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteLong(pet.Uid);
+            writer.WriteShort(1);
+            writer.WriteLong(Fodders[0].Uid);
+            writer.WriteInt(1);
+        }));
+        test.FailSave = null;
+
+        Assert.That(session.Currency.Meso, Is.EqualTo(10_000_000));
+        Assert.That(session.Item.Inventory.Get(Fodders[0].Uid), Is.Not.Null);
+        Assert.That((pet.Pet!.Level, pet.Pet.Exp), Is.EqualTo(((short) 1, 0L)));
+    }
+
+    // Evolve points: the wallet, the fodders' rows and the pet's points are stored at once.
+    [Test]
+    public void EvolvePoints_IsStoredAtOnce() {
+        GameSession session = Login(meso: 50000, pets: 3);
+        pet.Pet!.Level = 50;
+
+        new PetHandler { BanWordStorage = null! }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(18);
+            writer.WriteLong(pet.Uid);
+            writer.WriteShort(2);
+            writer.WriteLong(Fodders[0].Uid);
+            writer.WriteLong(Fodders[1].Uid);
+        }));
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(StoredMeso(), Is.EqualTo(10000));
+        Assert.That(test.Row(Fodders[0].Uid)!.OwnerId, Is.EqualTo(0));
+        Assert.That(test.Row(Fodders[1].Uid)!.OwnerId, Is.EqualTo(0));
+        Assert.That(StoredPet().Points, Is.EqualTo(2));
     }
 
     // A running PetComposeSale event lowers each fodder's fee by its rate (CGameRule::GetPetComposeSaleRate, the

@@ -461,11 +461,15 @@ public class CurrencyManager {
     }
 
     // Sends the balance (after TryTakeMeso with notify false).
-    public void NotifyMeso() {
+    // quests false: the packet only, for a step inside a purchase transaction (a quest it completes stores itself);
+    // the caller updates the quests once the save is done (Quest.UpdateMeso).
+    public void NotifyMeso(bool quests = true) {
         lock (walletLock) {
             SendMeso();
         }
-        session.Quest?.UpdateMeso();
+        if (quests) {
+            session.Quest?.UpdateMeso();
+        }
     }
 
     // A meso gain sent with the code of its kind (see CurrencyPacket.UpdateMeso).

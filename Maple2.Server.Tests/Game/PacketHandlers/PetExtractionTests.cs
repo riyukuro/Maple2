@@ -127,6 +127,9 @@ public class PetExtractionTests {
         using GameStorage.Request db = test.Storage.Context();
         Item? stored = db.GetItem(badges[0].Uid);
         Assert.That(stored?.Badge?.PetSkinId, Is.EqualTo(PetId));
+        // The scroll's take is stored with it. Before, it waited for the session's next save, so a stop before it
+        // gave the scroll back with the badge kept.
+        Assert.That(db.GetItem(scroll.Uid)?.Amount, Is.EqualTo(1));
     }
 
     // The answer's layout (uipetextractionscrolldialog.cpp:229): op 0x108, the result byte, the pet's and the
