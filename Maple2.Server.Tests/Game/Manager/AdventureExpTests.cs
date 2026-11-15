@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Trigger;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
@@ -38,6 +42,11 @@ public class AdventureExpTests {
             [ExpType.epicQuest] = 15000,
             [ExpType.miniGame] = 75000,
             [ExpType.userMiniGame] = 15000,
+            [ExpType.dailymission] = 45000,
+            [ExpType.dailymissionLevelUp] = 45001, // KR 45000; apart here to tell the two rows apart
+            [ExpType.dailyGuildQuest] = 75000,
+            [ExpType.weeklyGuildQuest] = 150000,
+            [ExpType.darkStream] = 150000,
         }));
         GameSession session = test.Start();
         test.EnterMap(TestGameSession.Map(2000173));
@@ -112,6 +121,46 @@ public class AdventureExpTests {
         session.Exp.AddQuestExp(5000, QuestExpRules.Reason(type, standardLevel).Message(), QuestExpRules.PrestigeType(type));
 
         Assert.That(Sent(), Is.EqualTo((reason, 15000L)));
+    }
+
+    // The navigator's daily missions and the guild's quests have their own rows in the server pack (KR: 709 daily
+    // missions of guideType 4, 24 level and 10 level_boost guides; 40 daily and 20 weekly guild quests); they added
+    // Exp_QuestETC's 15000.
+    [TestCase(QuestType.DailyMission, 1, 4, 45000)]
+    [TestCase(QuestType.DailyMission, 0, 3, 45000)]
+    [TestCase(QuestType.DailyMission, 0, 1, 45001)]
+    [TestCase(QuestType.DailyMission, 0, 2, 45001)]
+    [TestCase(QuestType.GuildQuest, 2, 0, 75000)]
+    [TestCase(QuestType.GuildQuest, 3, 0, 150000)]
+    public void Quest_DailyMissionAndGuildQuest_AddTheirRows(QuestType type, int repeat, int guideType, long prestige) {
+        GameSession session = Start();
+
+        session.Exp.AddQuestExp(5000, QuestExpRules.Reason(type, 20).Message(), QuestExpRules.PrestigeType(type, repeat, guideType));
+
+        Assert.That(Sent(), Is.EqualTo((1010, prestige)));
+    }
+
+    private static void Set<T>(object target, string field, object? value) {
+        (typeof(T).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+         ?? throw new MissingFieldException(typeof(T).Name, field)).SetValue(target, value);
+    }
+
+    // A Dark Stream run's reward exp adds Exp_DarkStream (KR 150000); it added none. A run with no reward count left
+    // is given no exp and adds none.
+    [TestCase(1000, 150000)]
+    [TestCase(0, 0)]
+    public void DarkStreamReward_AddsTheDarkStreamRow(int exp, long prestige) {
+        GameSession session = Start();
+        var trigger = (FieldTrigger) RuntimeHelpers.GetUninitializedObject(typeof(FieldTrigger));
+        Set<FieldEntity<TriggerModel>>(trigger, "<Field>k__BackingField", session.Field);
+        var context = (TriggerContext) RuntimeHelpers.GetUninitializedObject(typeof(TriggerContext));
+        Set<TriggerContext>(context, "owner", trigger);
+        long before = session.Exp.PrestigeCurrentExp;
+
+        typeof(TriggerContext).GetMethod("GiveDarkStreamReward", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(context, [session.Player, new DarkStreamGame.Reward(exp, 0, 0, [])]);
+
+        Assert.That(session.Exp.PrestigeCurrentExp - before, Is.EqualTo(prestige));
     }
 
     // A round's prestige is the mini game row times the round's exp rate (KMS2: Crazy Runner 75000 at rate 1, Trap

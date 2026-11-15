@@ -50,9 +50,20 @@ public static class QuestExpRules {
         };
     }
 
-    // The prestige row a completed quest's exp adds: Exp_EpicQuest for an epic quest, Exp_QuestETC for any other.
-    public static ExpType PrestigeType(QuestType type) {
-        return type == QuestType.EpicQuest ? ExpType.epicQuest : ExpType.questEtc;
+    // The prestige row a completed quest's exp adds. The server pack has a row for the navigator's daily missions
+    // (Exp_DailyMission, Exp_DailyMissionLevelUp) and for the guild's daily and weekly quests (Exp_DailyGuildQuest,
+    // Exp_WeeklyGuildQuest); with none of them counted those quests added the 15000 of Exp_QuestETC. The split is
+    // chosen here by the quest's own data, as the client does not compute prestige: a daily mission of the level
+    // guides (guideType 1 level, 2 level_boost) is the level-up row, any other the daily row (both 45000 in KR); a
+    // guild quest done again from the week's reset (repeatable 3) is the weekly row, any other the daily row.
+    // Exp_EpicQuest for an epic quest, Exp_QuestETC for the rest.
+    public static ExpType PrestigeType(QuestType type, int repeat = 0, int guideType = 0) {
+        return type switch {
+            QuestType.EpicQuest => ExpType.epicQuest,
+            QuestType.DailyMission => guideType is 1 or 2 ? ExpType.dailymissionLevelUp : ExpType.dailymission,
+            QuestType.GuildQuest => repeat == 3 ? ExpType.weeklyGuildQuest : ExpType.dailyGuildQuest,
+            _ => ExpType.questEtc,
+        };
     }
 
     // The reward's exp: relativeExp is the curve value at the player's level (0 without a relativeExp).

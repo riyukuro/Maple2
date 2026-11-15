@@ -987,7 +987,7 @@ public sealed class QuestManager {
             session.Currency.ChangeMeso(meso + extraMeso);
         }
         if (exp + extraExp + eventExp > 0) {
-            session.Exp.AddQuestExp(exp + extraExp + eventExp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message(), QuestExpRules.PrestigeType(basic.Type));
+            session.Exp.AddQuestExp(exp + extraExp + eventExp, QuestExpRules.Reason(basic.Type, basic.StandardLevel).Message(), QuestExpRules.PrestigeType(basic.Type, basic.Repeat, basic.GuideType));
         }
 
         long treva = QuestRewardEventRules.Raise(reward.Treva, rewardEvent, QuestRewardEventRules.Treva);
