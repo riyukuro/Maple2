@@ -1227,4 +1227,20 @@ public class BuffAttributeTests {
         Assert.That(Field.DebugFieldSkills.Select(skill => (skill.Value.Id, skill.Position)),
             Is.EqualTo(new[] { (10100052, Player.Position), (10100052, Player.Position) }));
     }
+
+    // A job change (JobHandler) clears every buff held before the passives are put back: those of each caster of a
+    // caster-individual buff too (10000061 here, held once from the player and once from another actor).
+    [Test]
+    public void Clear_TakesOffEveryBuffOfEveryCaster() {
+        Start(MapType.None, Effect(10000051, Plain), Effect(10000061, Plain with { CasterIndividualBuff = true }));
+        using var other = new FieldActor(Field, 77, Field.Metadata, null!);
+        Add(10000051);
+        Add(10000061);
+        Add(10000061, caster: other);
+        Assert.That(Buffs.EnumerateBuffs(), Has.Count.EqualTo(3));
+
+        Buffs.Clear();
+
+        Assert.That(Held(), Is.Empty);
+    }
 }
