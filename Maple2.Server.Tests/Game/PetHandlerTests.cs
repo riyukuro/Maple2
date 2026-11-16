@@ -121,4 +121,63 @@ public class PetHandlerTests {
             Assert.That(test.TakeSent(), Has.Count.EqualTo(1));
         });
     }
+
+    // Mode 6 stores the pet's loot window and answers with it; a session without a pet has nothing to store.
+    [Test]
+    public void ALootConfig_IsStoredAndAnswered() {
+        (TestGameSession test, GameSession session, _, _) = Setup();
+        var handler = new PetHandler { BanWordStorage = null! };
+        var config = (PetConfig) typeof(PetManager).GetField("config", Any)!.GetValue(session.Pet)!;
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(6);
+            foreach (bool flag in new[] { true, false, true, false, true, false, true, false }) {
+                writer.WriteBool(flag);
+            }
+            writer.WriteInt(3);
+            writer.WriteBool(true);
+        }));
+        Assert.Multiple(() => {
+            Assert.That(config.LootConfig.Mesos, Is.True);
+            Assert.That(config.LootConfig.Merets, Is.False);
+            Assert.That(config.LootConfig.Rarity, Is.EqualTo(3));
+            Assert.That(config.LootConfig.Enabled, Is.True);
+            Assert.That(test.TakeSent(), Has.Count.EqualTo(1));
+        });
+
+        session.Pet = null;
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(6)));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // Mode 1 names a pet uid: only the summoned pet is put away, another uid leaves it out.
+    [Test]
+    public void AnUnSummonOfAnotherUid_KeepsTheSummonedPet() {
+        (TestGameSession test, GameSession session, PetManager summoned, _) = Setup();
+        var handler = new PetHandler { BanWordStorage = null! };
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteLong(session.Pet!.Pet.Uid + 1);
+        }));
+        Assert.Multiple(() => {
+            Assert.That(session.Pet, Is.SameAs(summoned));
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
+    // Mode 15 (the attack flag) is read and needs no answer; mode 16 for a player that is not in the field has none.
+    [Test]
+    public void TheAttackFlagAndAViewOfAnAbsentOwner_SendNothing() {
+        (TestGameSession test, GameSession session, _, _) = Setup();
+        var handler = new PetHandler { BanWordStorage = null! };
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(15);
+            writer.WriteBool(true);
+        }));
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(16);
+            writer.WriteLong(987654321);
+            writer.WriteLong(1);
+        }));
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
 }
