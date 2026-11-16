@@ -485,8 +485,9 @@ public class Buff : IUpdatable, IByteSerializable {
             victim.PkKilledBy(caster, healthBefore);
         }
         // The lifesteal goes to a living caster, up to its max health (Stat.Add).
-        if (record.RecoverHp > 0 && !caster.IsDead) {
-            caster.Stats.Values[BasicAttribute.Health].Add(record.RecoverHp);
+        long recovered = DotDamageRecord.Lifesteal(dotDamage.RecoverHpByDamage, healthBefore - Owner.Stats.Values[BasicAttribute.Health].Current);
+        if (recovered > 0 && !caster.IsDead) {
+            caster.Stats.Values[BasicAttribute.Health].Add(recovered);
             Field.Broadcast(StatsPacket.Update(caster, BasicAttribute.Health));
         }
     }

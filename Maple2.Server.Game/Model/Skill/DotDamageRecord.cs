@@ -16,7 +16,6 @@ public class DotDamageRecord {
     public readonly int HpAmount;
     public readonly int SpAmount;
     public readonly int EpAmount;
-    public readonly int RecoverHp;
     // The tick's damage was taken away by an invincible buff of the target; the 0 is still sent.
     public readonly bool Invincible;
     // A typed dot that is not constant damage sends its tick even at 0 (a dot with no rate, share or value, as KR
@@ -81,12 +80,13 @@ public class DotDamageRecord {
         HpAmount = (int) -hpAmount;
         SpAmount = -Math.Max(0, Buff.AmountByStacks(dotDamage.SpValue, stacks));
         EpAmount = -Math.Max(0, Buff.AmountByStacks(dotDamage.EpValue, stacks));
-        // casterRecoveryHpByDamage: the caster heals that part of the health the tick takes. The client only loads the
-        // value (AdditionalLevelData, additionalactionadditional.cpp:1284) and computes no amount from it, so the rule is
-        // the server's: the rate times the tick's damage, rounded down, nothing for a tick that takes no health. HpAmount
-        // is the negative change of the holder's health, so the damage is its negation.
-        RecoverHp = HpAmount < 0 ? (int) (dotDamage.RecoverHpByDamage * -HpAmount) : 0;
     }
+
+    // casterRecoveryHpByDamage: the caster heals that part of the health the tick took from the holder (after the
+    // overkill, NoDie and minimum-health floors, so a holder at 50 health gives back at most the rate of 50), rounded
+    // down, nothing for a tick that took none. The client only loads the value (AdditionalLevelData,
+    // additionalactionadditional.cpp:1284) and computes no amount from it, so the rule is the server's.
+    public static long Lifesteal(float rate, long healthTaken) => healthTaken > 0 ? (long) (rate * healthTaken) : 0;
 
     // Invoke type 5 (IncreaseDotDamage): the invokes keyed on a dot's effect or its effect group raise the dot's
     // damage rate by their summed rate, as the client's DPS meter counts the caster's own dot tick (rate + rate *
