@@ -460,4 +460,30 @@ public class CombatLayoutTests {
         Assert.That(battle.ReadByte(), Is.EqualTo(0));
         Assert.That(battle.Available, Is.Zero);
     }
+
+    // StateSkill mode 6 (OnStateSkill :3476): int object id, int64 cast uid, int skill id, int (the level slot).
+    // SkillMacro mode 2 (CSkillSystem::FUN_141767ae0, skillslot.cpp:2530): int count; per macro a unicode name, an
+    // int64 key and an int count with that many int skill ids.
+    [Test]
+    public void StateSkillAndSkillMacro() {
+        FieldPlayer caster = Player();
+        ByteReader state = Reader(SkillPacket.StateSkill(caster, 10200001, 9_000_000_001), SendOp.StateSkill);
+        Assert.That(state.ReadByte(), Is.EqualTo(6));
+        Assert.That(state.ReadInt(), Is.EqualTo(caster.ObjectId));
+        Assert.That(state.ReadLong(), Is.EqualTo(9_000_000_001));
+        Assert.That(state.ReadInt(), Is.EqualTo(10200001));
+        state.ReadInt();
+        Assert.That(state.Available, Is.Zero);
+
+        var macro = new SkillMacro("Combo", 77, [10200001, 10200002]);
+        ByteReader macros = Reader(SkillMacroPacket.Load([macro]), SendOp.SkillMacro);
+        Assert.That(macros.ReadByte(), Is.EqualTo(2));
+        Assert.That(macros.ReadInt(), Is.EqualTo(1));
+        Assert.That(macros.ReadUnicodeString(), Is.EqualTo("Combo"));
+        Assert.That(macros.ReadLong(), Is.EqualTo(77));
+        Assert.That(macros.ReadInt(), Is.EqualTo(2));
+        Assert.That(macros.ReadInt(), Is.EqualTo(10200001));
+        Assert.That(macros.ReadInt(), Is.EqualTo(10200002));
+        Assert.That(macros.Available, Is.Zero);
+    }
 }
