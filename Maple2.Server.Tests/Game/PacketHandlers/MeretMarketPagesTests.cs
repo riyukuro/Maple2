@@ -165,6 +165,22 @@ public class MeretMarketPagesTests {
         });
     }
 
+    // The market dialog sends 103 (ad list) and 107 (sale settings) as bare modes each time it opens
+    // (CMeratMarketMan::SendMeretMarketMode103/107, meratmarketman.cpp:420-435). 103 is answered by an empty ad list
+    // (OnAdProducts: a byte count), 107 by four ints, the last the days before a sale's profit can be collected
+    // (OnSettleSettings, meratmarketman.cpp:2476-2482).
+    [Test]
+    public void DialogOpen_AnswersTheAdListAndTheSaleSettings() {
+        byte[] ads = Send(writer => writer.WriteByte(103)).Single();
+        byte[] settings = Send(writer => writer.WriteByte(107)).Single();
+        Assert.Multiple(() => {
+            Assert.That(ads[2..], Is.EqualTo(new byte[] { 103, 0 }));
+            Assert.That(settings, Has.Length.EqualTo(3 + 16));
+            Assert.That((settings[2], Int(settings, 3), Int(settings, 7), Int(settings, 11), Int(settings, 15)),
+                Is.EqualTo(((byte) 107, 0, 0, 0, Constant.UGCShopProfitDelayDays)));
+        });
+    }
+
     // The blueprint page carries the page size after the total (OnBlueprintPage): the one the condition asked for.
     [Test]
     public void BlueprintPage_CarriesTheAskedPageSize() {

@@ -1,14 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Maple2.Database.Context;
+using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -135,6 +140,64 @@ public class PetItemUpdateSendTests {
         Assert.That((pet.Pet.Name, pet.Pet.RenameRemaining, session.Currency.Meret), Is.EqualTo((name, 0, 150L)));
         using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
         Assert.That(db.GetItem(pet.Uid)!.Pet!.Name, Is.EqualTo(name));
+    }
+
+    // The pet window's rename box (PetInfoBasic::SendRequestPet, tabcontentspetinfo.cpp:652-664) sends RequestPet 4 with
+    // the pet identity (Unk_PetIdentity::FUN_1401fee50): the typed name, then an id, a value and three shorts, all left
+    // at 0. The server takes the name for the summoned pet.
+    private void RequestRename(GameSession session, string name) {
+        BanWordStorage words = BanWordStorage.WithDynamicWords(
+            new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options), () => ["badword"]);
+        new PetHandler { BanWordStorage = words }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(4);
+            writer.WriteUnicodeString(name);
+            writer.WriteLong(0);
+            writer.WriteInt(0);
+            writer.WriteShort(0);
+            writer.WriteShort(0);
+            writer.WriteShort(0);
+        }));
+    }
+
+    [Test]
+    public void RequestRename_NamesTheSummonedPet() {
+        GameSession session = Start();
+        pet.Pet!.RenameRemaining = 1;
+
+        RequestRename(session, "Mochi");
+
+        Assert.That((pet.Pet.Name, pet.Pet.RenameRemaining), Is.EqualTo(("Mochi", (short) 0)));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Contain(Convert.ToHexString(PetPacket.Rename(session.Player.ObjectId, pet.Pet).ToArray())));
+    }
+
+    // A name the server's ban-word list holds gets the filter's message box; a blank name, or a rename with no pet out,
+    // changes nothing and sends nothing.
+    [Test]
+    public void RequestRename_BannedName_GetsTheFilterBox() {
+        GameSession session = Start();
+        pet.Pet!.RenameRemaining = 1;
+        string name = pet.Pet.Name;
+
+        RequestRename(session, "a badword b");
+
+        Assert.That((pet.Pet.Name, pet.Pet.RenameRemaining), Is.EqualTo((name, (short) 1)));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Convert.ToHexString(NoticePacket.MessageBox(StringCode.s_ban_check_err_any).ToArray()) }));
+    }
+
+    [TestCase("   ", true)]
+    [TestCase("Mochi", false)]
+    public void RequestRename_BlankOrWithNoPetOut_ChangesNothing(string newName, bool summoned) {
+        GameSession session = Start();
+        pet.Pet!.RenameRemaining = 1;
+        string name = pet.Pet.Name;
+        if (!summoned) {
+            session.Pet = null;
+        }
+
+        RequestRename(session, newName);
+
+        Assert.That((pet.Pet.Name, pet.Pet.RenameRemaining), Is.EqualTo((name, (short) 1)));
+        Assert.That(test.TakeSent(), Is.Empty);
     }
 
     // The re-roll keeps (ChangeAttributes 2 and the scroll's Select) send it for the summoned pet only.
