@@ -231,6 +231,26 @@ public class CardReverseGameTests {
         Assert.That(Coins(session), Is.EqualTo(1));
     }
 
+    // A shuffle and a pick with no session save after them (a crash): the coin row is one less, as the card's row
+    // is there. Before, the coin was taken in memory only and came back with the card kept.
+    [Test]
+    public void ShuffleAndPick_TheCoinIsStoredTakenWithTheCard() {
+        var test = new TestGameSession();
+        GameSession session = StartAtObject(test);
+        Send(session, 1);
+        Send(session, 2);
+        Sent(test);
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        int coins = context.Item.Where(row => row.ItemId == CoinId && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount);
+        int cards = context.Item.Where(row => CardIds.Contains(row.ItemId) && row.OwnerId == test.CharacterId).Count();
+        Assert.Multiple(() => {
+            Assert.That(Coins(session), Is.EqualTo(1));
+            Assert.That(cards, Is.EqualTo(1));
+            Assert.That(coins, Is.EqualTo(1));
+        });
+    }
+
     [Test]
     public void Pick_UnknownItem_KeepsThePick() {
         var test = new TestGameSession();

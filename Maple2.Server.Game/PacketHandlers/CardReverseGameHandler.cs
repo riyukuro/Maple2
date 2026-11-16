@@ -47,7 +47,9 @@ public class CardReverseGameHandler : FieldPacketHandler {
     }
 
     private static void HandleShuffle(GameSession session, CardReverseGame game) {
-        if (!session.Item.Inventory.ConsumeItemComponents([game.Game.ConsumeItem])) {
+        // The coin is stored taken at once (ConsumeNow): the picks after the shuffle give their cards as rows at once,
+        // so a coin taken in memory came back on a crash before the session save, with the cards kept.
+        if (!session.Item.Inventory.ConsumeNow(session.Item.Inventory.PlanItemComponents([game.Game.ConsumeItem]))) {
             session.Send(CardReverseGamePacket.LackCost());
             return;
         }
