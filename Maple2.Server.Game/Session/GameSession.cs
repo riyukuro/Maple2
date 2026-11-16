@@ -1570,8 +1570,15 @@ public sealed partial class GameSession : Core.Network.Session {
             Send(PrestigePacket.Load(Player.Value.Account));
         });
         // Home
+        // A count or claim made since midnight is the new day's and stays (here and in the dungeon and mini-game steps):
+        // a purchase store takes a reset still due (BeginWithResets) after its claim was set in memory, and the
+        // World's reset can run after a claim stored past midnight; zeroing those let the new day's claim be taken
+        // once more.
+        long dayStart = PetFusionRules.LastResetTime();
         ResetStep(reset, "home", () => {
-            Player.Value.Home.DecorationRewardTimestamp = 0;
+            if (Player.Value.Home.DecorationRewardTimestamp < dayStart) {
+                Player.Value.Home.DecorationRewardTimestamp = 0;
+            }
             Send(CubePacket.DesignRankReward(Player.Value.Home));
         });
         // Meso Market
@@ -1598,8 +1605,11 @@ public sealed partial class GameSession : Core.Network.Session {
             Send(PetPacket.FusionCount(0));
         });
         // Mini-Game M extra rewards
-        Player.Value.Character.MassiveExtraRewardCount = 0;
-        Player.Value.Character.MassiveExtraRewardTime = DateTime.Now.ToEpochSeconds();
+        Character character = Player.Value.Character;
+        if (PetFusionRules.DailyCount(character.MassiveExtraRewardCount, character.MassiveExtraRewardTime, dayStart) == 0) {
+            character.MassiveExtraRewardCount = 0;
+            character.MassiveExtraRewardTime = DateTime.Now.ToEpochSeconds();
+        }
         // Sky fortress mission attacks, with the reset's time.
         ResetStep(reset, "mission attacks", () => Quest.ResetMissionAttacks(resetTime));
     }

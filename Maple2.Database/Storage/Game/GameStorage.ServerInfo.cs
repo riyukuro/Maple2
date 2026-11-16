@@ -102,15 +102,17 @@ public partial class GameStorage {
                 Context.Database.ExecuteSqlRaw("UPDATE `character-config` SET `InstantRevivalCount` = 0");
                 Context.Database.ExecuteSqlRaw("UPDATE `nurturing` SET `PlayedBy` = '[]'");
                 Context.Database.ExecuteSqlRaw("DELETE FROM `nurturing-daily`");
-                Context.Database.ExecuteSqlRaw("UPDATE `home` SET `DecorationRewardTimestamp` = 0");
+                // A check-in or a clear since midnight is the new day's: the reset can run after one was stored.
+                Context.Database.ExecuteSqlRaw("UPDATE `home` SET `DecorationRewardTimestamp` = 0 WHERE `DecorationRewardTimestamp` < {0}",
+                    new DateTimeOffset(DateTime.Today).ToUnixTimeSeconds());
                 Context.Database.ExecuteSqlRaw("UPDATE `character-shop-data` SET `RestockCount` = 0 WHERE `Interval` = 1");
                 // Reset shop item stock purchased for daily shops
                 Context.Database.ExecuteSqlRaw("UPDATE `character-shop-item-data` SET `StockPurchased` = 0 WHERE `ShopId` IN (SELECT `ShopId` FROM `character-shop-data` WHERE `Interval` = 1)");
                 Context.Database.ExecuteSqlRaw("UPDATE `account` SET `MarketLimits` = JSON_SET(MarketLimits, '$.MesoListed', 0)");
                 // Dungeon daily clears
                 // Bought extra counts (ExtraCurrentSubClears) last the record's period and event counts their own, as online.
-                Context.Database.ExecuteSqlRaw("UPDATE `dungeon-record` SET `CurrentSubClears` = 0");
-                Context.Database.ExecuteSqlRaw("UPDATE `dungeon-account-record` SET `CurrentSubClears` = 0");
+                Context.Database.ExecuteSqlRaw("UPDATE `dungeon-record` SET `CurrentSubClears` = 0 WHERE `DailyResetTime` <= {0}", DateTime.Now);
+                Context.Database.ExecuteSqlRaw("UPDATE `dungeon-account-record` SET `CurrentSubClears` = 0 WHERE `DailyResetTime` <= {0}", DateTime.Now);
             });
         }
 

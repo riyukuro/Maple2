@@ -215,7 +215,8 @@ public class DungeonClaimOrderTests {
 
     // A daily reset taken inside a clear's store (BeginWithResets) that is then refused: the clear's counts are taken
     // back, the reset's are not. The reset is stored and marked taken, so putting back the counts from before it
-    // would have the next session save store the old day's counts over the reset.
+    // would have the next session save store the old day's counts over the reset. The reset clears a record whose day
+    // is over (here another room's, from yesterday) and keeps today's (this room's first clear).
     [Test]
     public void ARefusedClearStore_KeepsAResetTakenInsideIt() {
         StartInRoom();
@@ -225,7 +226,10 @@ public class DungeonClaimOrderTests {
         Clear(250, now);
         DungeonRecord record = session.Dungeon.Records[Room];
         int clears = record.UnionClears;
-        Assume.That(record.UnionSubClears, Is.GreaterThan(0), "the first clear spent a daily count");
+        int subClears = record.UnionSubClears;
+        Assume.That(subClears, Is.GreaterThan(0), "the first clear spent a daily count");
+        var yesterday = new DungeonRecord(Room + 1) { UnionSubClears = 1, UnionSubCooldownTimestamp = now - 1 };
+        session.Dungeon.Records[yesterday.DungeonId] = yesterday;
         using (var context = new Ms2Context(test.Options)) {
             Maple2.Database.Model.ServerInfo? daily = context.ServerInfo.Find("DailyReset");
             if (daily == null) {
@@ -243,7 +247,8 @@ public class DungeonClaimOrderTests {
 
         Assert.Multiple(() => {
             Assert.That(recordSaves, Is.EqualTo(2), "the reset was stored inside the clear's store");
-            Assert.That(record.UnionSubClears, Is.EqualTo(0), "the reset's daily count stays");
+            Assert.That(yesterday.UnionSubClears, Is.EqualTo(0), "the reset's daily count stays");
+            Assert.That(record.UnionSubClears, Is.EqualTo(subClears), "today's count is kept by the reset, the refused clear's taken back");
             Assert.That(record.UnionClears, Is.EqualTo(clears), "the refused clear's count is taken back");
         });
     }

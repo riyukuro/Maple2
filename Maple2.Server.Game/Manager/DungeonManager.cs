@@ -159,9 +159,13 @@ public class DungeonManager {
         session.Send(DungeonRoomPacket.UnitedRewardReset());
     }
 
+    // A record whose day is not over (a clear since midnight set its next midnight) keeps its count: see DailyReset.
     public void ResetDailyClears() {
+        long now = DateTime.Now.ToEpochSeconds();
         foreach (DungeonRecord record in Records.Values) {
-            record.UnionSubClears = 0;
+            if (record.UnionSubCooldownTimestamp <= now) {
+                record.UnionSubClears = 0;
+            }
         }
         using GameStorage.Request db = session.GameStorage.Context();
         db.SaveDungeonRecords(session.AccountId, session.CharacterId, accountRooms, Records.Values.ToArray());
