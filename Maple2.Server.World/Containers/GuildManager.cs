@@ -1300,21 +1300,25 @@ public class GuildManager : IDisposable {
         }
 
         // Under the guild lock, as every save of the guild: a save may not run while a donation or an
-        // upgrade is between its change and its own save.
+        // upgrade is between its change and its own save. A failed save keeps the old rank, as the notice.
         lock (guildLock) {
+            string oldName = rank.Name;
+            GuildPermission oldPermission = rank.Permission;
             rank.Name = name;
             rank.Permission = permission;
-
-            using GameStorage.Request db = GameStorage.Context();
-            db.SaveGuild(Guild);
+            if (!TrySave(row => row.Ranks.Any(stored => stored.Id == rankId && stored.Name == name && stored.Permission == permission))) {
+                rank.Name = oldName;
+                rank.Permission = oldPermission;
+                return GuildError.s_guild_err_unknown;
+            }
         }
 
         Broadcast(new GuildRequest {
             UpdateRank = new GuildRequest.Types.UpdateRank {
                 RequestorName = requestor.Name,
                 RankId = rankId,
-                Name = rank.Name,
-                Permission = (int) rank.Permission,
+                Name = name,
+                Permission = (int) permission,
             },
         });
 
@@ -1335,19 +1339,24 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_unknown;
         }
 
+        // A failed save keeps the old focus, as the notice.
         lock (guildLock) {
+            bool oldListed = Guild.Listed;
+            GuildFocus oldFocus = Guild.Focus;
             Guild.Listed = listed;
             Guild.Focus = (GuildFocus) focus;
-
-            using GameStorage.Request db = GameStorage.Context();
-            db.SaveGuild(Guild);
+            if (!TrySave(row => row.Listed == listed && row.Focus == (GuildFocus) focus)) {
+                Guild.Listed = oldListed;
+                Guild.Focus = oldFocus;
+                return GuildError.s_guild_err_unknown;
+            }
         }
 
         Broadcast(new GuildRequest {
             UpdateFocus = new GuildRequest.Types.UpdateFocus {
                 RequestorName = requestor.Name,
-                Listed = Guild.Listed,
-                Focus = (int) Guild.Focus,
+                Listed = listed,
+                Focus = focus,
             },
         });
 
@@ -1363,17 +1372,20 @@ public class GuildManager : IDisposable {
             return GuildError.s_guild_err_no_authority;
         }
 
+        // A failed save keeps the old emblem, as the notice.
         lock (guildLock) {
+            string old = Guild.Emblem;
             Guild.Emblem = emblem;
-
-            using GameStorage.Request db = GameStorage.Context();
-            db.SaveGuild(Guild);
+            if (!TrySave(row => row.Emblem == emblem)) {
+                Guild.Emblem = old;
+                return GuildError.s_guild_err_unknown;
+            }
         }
 
         Broadcast(new GuildRequest {
             UpdateEmblem = new GuildRequest.Types.UpdateEmblem {
                 RequestorName = requestor.Name,
-                Emblem = Guild.Emblem,
+                Emblem = emblem,
             },
         });
 

@@ -118,6 +118,35 @@ public class GuildSettingsTests {
         Assert.That((guild.Emblem, Stored().Emblem), Is.EqualTo(("master.png", "master.png")));
     }
 
+    private void FailGuildSaves() {
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Guild>().Any(entry => entry.State == EntityState.Modified);
+    }
+
+    // A save the database refuses: the rank, the focus and the emblem keep their old values, here and stored, and
+    // the change is answered s_guild_err_unknown (no broadcast of a change that is not kept).
+    [Test]
+    public void SettingsNotStored_KeepTheOldValues() {
+        GuildRank rank = guild.Ranks.Single(r => r.Id == 2);
+        (string name, GuildPermission permission) = (rank.Name, rank.Permission);
+        (bool listed, GuildFocus focus, string emblem) = (guild.Listed, guild.Focus, guild.Emblem);
+        FailGuildSaves();
+
+        Assert.Multiple(() => {
+            Assert.That(manager.UpdateRank(master.CharacterId, 2, "Elder", GuildPermission.All), Is.EqualTo(GuildError.s_guild_err_unknown));
+            Assert.That(manager.UpdateFocus(master.CharacterId, !listed, 0x0003), Is.EqualTo(GuildError.s_guild_err_unknown));
+            Assert.That(manager.UpdateEmblem(master.CharacterId, "master.png"), Is.EqualTo(GuildError.s_guild_err_unknown));
+        });
+        test.FailSave = null;
+
+        Guild stored = Stored();
+        GuildRank storedRank = stored.Ranks.Single(r => r.Id == 2);
+        Assert.Multiple(() => {
+            Assert.That((rank.Name, rank.Permission, storedRank.Name, storedRank.Permission), Is.EqualTo((name, permission, name, permission)));
+            Assert.That((guild.Listed, guild.Focus, stored.Listed, stored.Focus), Is.EqualTo((listed, focus, listed, focus)));
+            Assert.That((guild.Emblem, stored.Emblem), Is.EqualTo((emblem, emblem)));
+        });
+    }
+
     // Any member may put up a poster (the client asks for no right); one of the same id is replaced. Both are in
     // the stored row: a poster is not lost on a World restart before the next guild save.
     [Test]
@@ -135,7 +164,7 @@ public class GuildSettingsTests {
     [Test]
     public void AddOrUpdatePoster_NotStored_KeepsTheOldPoster() {
         Assert.That(manager.AddOrUpdatePoster(1, "first.png", member.CharacterId, member.Name, 11), Is.EqualTo(GuildError.none));
-        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Guild>().Any(entry => entry.State == EntityState.Modified);
+        FailGuildSaves();
 
         Assert.That(manager.AddOrUpdatePoster(1, "second.png", master.CharacterId, master.Name, 12), Is.EqualTo(GuildError.s_guild_err_unknown));
         Assert.That(manager.AddOrUpdatePoster(2, "other.png", master.CharacterId, master.Name, 13), Is.EqualTo(GuildError.s_guild_err_unknown));
