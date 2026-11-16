@@ -691,4 +691,175 @@ public class ItemBoxHandlerTests {
 
         Assert.That(Held(session, RewardA), Is.EqualTo(3));
     }
+
+    // KR key boxes (OpenItemBoxWithKey, 20300133 "30000512,1,0,0,0,330000499": key 30000512 x1, drop box 330000499).
+    // Without the key, or with a drop box the data lacks, the box is kept and nothing is given.
+    [TestCase(0, DropBoxId)]
+    [TestCase(1, 999)]
+    public void OpenItemBoxWithKey_Use_WithoutTheKeyOrTheBoxRowKeepsTheBox(int keys, int dropBox) {
+        GameSession session = Login(ItemFunction.OpenItemBoxWithKey, $"{KeyId},1,0,0,0,{dropBox}", amount: 2, keys: keys);
+
+        Use(session);
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, BoxId), Is.EqualTo(2));
+            Assert.That(Held(session, KeyId), Is.EqualTo(keys));
+            Assert.That(Held(session, RewardA) + Held(session, RewardB), Is.EqualTo(0));
+            Assert.That(test.Row(box.Uid)?.Amount, Is.EqualTo(2));
+        });
+    }
+
+    // With the key: the box and the key are taken, the box's groups are given.
+    [Test]
+    public void OpenItemBoxWithKey_Use_TakesTheBoxAndTheKey() {
+        GameSession session = Login(ItemFunction.OpenItemBoxWithKey, $"{KeyId},1,0,0,0,{DropBoxId}", amount: 2, keys: 3);
+
+        Use(session);
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, BoxId), Is.EqualTo(1));
+            Assert.That(Held(session, KeyId), Is.EqualTo(2));
+            Assert.That(Held(session, RewardA), Is.EqualTo(3));
+            Assert.That(Held(session, RewardB), Is.EqualTo(1));
+        });
+    }
+
+    // A select box (KR 20000679 "1,330001596") whose picked row does not fit: the box is taken, the row goes to the
+    // mail, and the open answers the full-bag error, as the OpenItemBox multi-open does.
+    [Test]
+    public void SelectItemBox_Use_FullBagMailsThePickedRow() {
+        GameSession session = Login(ItemFunction.SelectItemBox, $"1,{DropBoxId}", amount: 2, tabCount: [1, 0]);
+        Assert.That(session.Item.Inventory.FreeSlots(InventoryType.Misc), Is.EqualTo(0));
+
+        Use(session, "1");
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, BoxId), Is.EqualTo(1));
+            Assert.That(Held(session, RewardB), Is.EqualTo(0));
+            Assert.That(Mails(), Is.EqualTo(1));
+            Assert.That(test.Row(box.Uid)?.Amount, Is.EqualTo(1));
+        });
+    }
+
+    // A select box naming a drop box the data lacks keeps the box.
+    [Test]
+    public void SelectItemBox_Use_WithoutItsBoxRowKeepsTheBox() {
+        GameSession session = Login(ItemFunction.SelectItemBox, "1,999", amount: 2);
+
+        Use(session, "0");
+
+        Assert.That(Held(session, BoxId), Is.EqualTo(2));
+        Assert.That(Held(session, RewardA) + Held(session, RewardB), Is.EqualTo(0));
+    }
+
+    private const int LulluBoxId = 20300525;
+
+    // A KR Lulu key (20300524: commonBoxId, unCommonBoxId, keyItemTag LulluKey, boxItemTag LulluBox, boxPrice 1000)
+    // with the given keys, Lulu boxes in the bag and mesos.
+    private (GameSession Session, Item Key) LoginLullu(int keys, int boxes, long meso, int dropBox = DropBoxId) {
+        test = new TestGameSession();
+        string parameters = $"<v commonBoxId=\"{dropBox}\" unCommonBoxId=\"{dropBox}\" keyItemTag=\"LulluKey\" boxItemTag=\"LulluBox\" boxPrice=\"1000\" meratMarketPopup=\"key\"/>";
+        ItemMetadata keyMetadata = TestGameSession.Metadata(KeyId, function: new ItemMetadataFunction(ItemFunction.OpenItemBoxLullu, "OpenItemBoxLullu", parameters, false));
+        keyMetadata = keyMetadata with { Property = keyMetadata.Property with { Tag = ItemTag.LulluKey } };
+        ItemMetadata boxMetadata = TestGameSession.Metadata(LulluBoxId);
+        boxMetadata = boxMetadata with { Property = boxMetadata.Property with { Tag = ItemTag.LulluBox } };
+        test.Register(TestGameSession.Metadata(RewardA), TestGameSession.Metadata(RewardB));
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+            [DropBoxId] = TestGameSession.DropBox([(RewardA, 3)], [(RewardB, 1)]),
+        }));
+        test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
+            new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
+        Item key = test.Store(keyMetadata, amount: keys);
+        if (boxes > 0) {
+            test.Store(boxMetadata, amount: boxes);
+        }
+        GameSession session = test.Start();
+        session.Currency.Meso = meso;
+        test.TakeSent();
+        return (session, key);
+    }
+
+    private void UseLullu(GameSession session, Item key, string text) {
+        var handler = new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! };
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteLong(key.Uid);
+            writer.WriteUnicodeString(text);
+        }));
+    }
+
+    // A Lulu box in the bag pays for the open: the key and the box are taken, the mesos stay, and both drop boxes give.
+    [Test]
+    public void OpenItemBoxLullu_ABoxInTheBag_TakesTheKeyAndTheBox() {
+        (GameSession session, Item key) = LoginLullu(keys: 2, boxes: 2, meso: 5000);
+
+        UseLullu(session, key, "autoPay");
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, KeyId), Is.EqualTo(1));
+            Assert.That(Held(session, LulluBoxId), Is.EqualTo(1));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(Held(session, RewardA), Is.EqualTo(6));
+            Assert.That(Held(session, RewardB), Is.EqualTo(2));
+        });
+    }
+
+    // No box in the bag: without autoPay, or with too few mesos for the price, nothing is taken or given and the open
+    // answers error 4; with both, the price is paid.
+    [TestCase("", 5000L, 5000L, false)]
+    [TestCase("autoPay", 999L, 999L, false)]
+    [TestCase("autoPay", 1000L, 0L, true)]
+    public void OpenItemBoxLullu_NoBox_PaysThePriceOnlyWithAutoPay(string text, long meso, long mesoLeft, bool opens) {
+        (GameSession session, Item key) = LoginLullu(keys: 2, boxes: 0, meso: meso);
+
+        UseLullu(session, key, text);
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, KeyId), Is.EqualTo(opens ? 1 : 2));
+            Assert.That(session.Currency.Meso, Is.EqualTo(mesoLeft));
+            Assert.That(Held(session, RewardA) + Held(session, RewardB), Is.EqualTo(opens ? 8 : 0));
+            Assert.That(Convert.ToHexString(test.TakeSent()[^1]), Is.EqualTo(Hex(ItemBoxPacket.Open(KeyId, opens ? 1 : 0,
+                opens ? ItemBoxError.ok : ItemBoxError.s_err_cannot_open_multi_itembox_inventory))));
+        });
+    }
+
+    // A Lulu key whose drop boxes the data lacks rolls nothing: the key, the box and the mesos stay.
+    [Test]
+    public void OpenItemBoxLullu_EmptyRollTakesNothing() {
+        (GameSession session, Item key) = LoginLullu(keys: 2, boxes: 2, meso: 5000, dropBox: 999);
+
+        UseLullu(session, key, "");
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, KeyId), Is.EqualTo(2));
+            Assert.That(Held(session, LulluBoxId), Is.EqualTo(2));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+    }
+
+    // A pet box rolls its unCommonBoxId boxes (shown as special) and its commonBoxId boxes; with neither, or without
+    // its itemTag, it is refused and keeps the item.
+    [TestCase("<v itemTag=\"LulluKey\" unCommonBoxId=\"100\" commonBoxId=\"100\" />", 1, 8)]
+    [TestCase("<v itemTag=\"LulluKey\" />", 2, 0)]
+    [TestCase("<v unCommonBoxId=\"100\" />", 2, 0)]
+    public void OpenPetBox_RollsBothLists_OrIsRefused(string parameters, int left, int given) {
+        test = new TestGameSession();
+        ItemMetadata metadata = TestGameSession.Metadata(KeyId, function: new ItemMetadataFunction(ItemFunction.OpenPetBox, "OpenPetBox", parameters, false));
+        metadata = metadata with { Property = metadata.Property with { Tag = ItemTag.LulluKey } };
+        test.Register(TestGameSession.Metadata(RewardA), TestGameSession.Metadata(RewardB));
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+            [DropBoxId] = TestGameSession.DropBox([(RewardA, 3)], [(RewardB, 1)]),
+        }));
+        test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
+            new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
+        Item key = test.Store(metadata, amount: 2);
+        GameSession session = test.Start();
+        test.TakeSent();
+
+        UseLullu(session, key, "");
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, KeyId), Is.EqualTo(left));
+            Assert.That(Held(session, RewardA) + Held(session, RewardB), Is.EqualTo(given));
+        });
+    }
 }
