@@ -88,6 +88,24 @@ public class FishingStartTests {
         Assert.That(session.Fishing.Casting, Is.True);
     }
 
+    // A start while the open cast's bite tick is ahead is refused and keeps that cast (the client sends none then:
+    // CFishingManager::FUN_140cdb250); once the tick has passed, a start casts again.
+    [Test]
+    public void Start_BeforeTheOpenCastsBiteTick_IsRefused() {
+        Begin(Table(spot: true, box: true, baitProbability: 10000));
+        Assert.That(session.Fishing.Start(Tile), Is.EqualTo(FishingError.none));
+        FieldInfo biteTick = typeof(FishingManager).GetField("biteTick", Any)!;
+        long open = session.Field!.FieldTick + 10000;
+        biteTick.SetValue(session.Fishing, open);
+
+        Assert.That(session.Fishing.Start(Tile), Is.EqualTo(FishingError.s_fishing_error_system_error));
+        Assert.That(biteTick.GetValue(session.Fishing), Is.EqualTo(open), "the open cast stays");
+
+        biteTick.SetValue(session.Fishing, session.Field.FieldTick - 1);
+        Assert.That(session.Fishing.Start(Tile), Is.EqualTo(FishingError.none));
+        Assert.That(session.Fishing.Casting, Is.True);
+    }
+
     [Test]
     public void Catch_AMissEndsTheCast() {
         Begin(Table(spot: true, box: true, baitProbability: 10000));

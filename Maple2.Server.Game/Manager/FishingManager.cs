@@ -398,6 +398,15 @@ public class FishingManager {
             return FishingError.s_fishing_error_system_error;
         }
 
+        // No new cast before the open one's bite tick. The client casts only while no bite is out
+        // (CFishingManager::FUN_140cdb250 returns 0 while m_nBiteEnd is set; Update clears it once the tick has
+        // passed). A recast at once rolled a new fish each time, so a forged client skipped every cast that does not
+        // bite, which a real client waits out (bore to 2x bore). A cast past its tick that the server still holds
+        // (a result 0 ignored) is replaced, as before.
+        if (Casting && session.Field.FieldTick < biteTick) {
+            return FishingError.s_fishing_error_system_error;
+        }
+
         if (!serverTableMetadata.FishTable.Spots.TryGetValue(session.Field.MapId, out FishTable.Spot? spotMetadata)) {
             return FishingError.s_fishing_error_notexist_fish;
         }
