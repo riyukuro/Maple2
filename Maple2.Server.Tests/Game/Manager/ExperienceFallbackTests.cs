@@ -80,4 +80,34 @@ public class ExperienceFallbackTests {
             Assert.That(session.Player.Value.Character.Exp, Is.EqualTo(before + 300));
         });
     }
+
+    // A static exp of zero or less and a kill at a level no table has give nothing and send nothing.
+    [Test]
+    public void NothingDue_GivesNoExpAndSendsNothing() {
+        GameSession session = Start(0);
+        long before = session.Player.Value.Character.Exp;
+
+        session.Exp.AddStaticExp(0);
+        session.Exp.AddStaticExp(-5);
+        session.Exp.AddMobExp(70, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Character.Exp, Is.EqualTo(before));
+            Assert.That(test.TakeSent(), Is.Empty);
+        });
+    }
+
+    // A static exp is added, sent with the take-exp message and counted by the exp condition.
+    [Test]
+    public void AddStaticExp_AddsAndSendsIt() {
+        GameSession session = Start(0);
+        long before = session.Player.Value.Character.Exp;
+
+        session.Exp.AddStaticExp(40);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Value.Character.Exp, Is.EqualTo(before + 40));
+            Assert.That(test.TakeSentOps(), Does.Contain(SendOp.ExpUp));
+        });
+    }
 }
