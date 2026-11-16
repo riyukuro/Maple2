@@ -1312,6 +1312,13 @@ public partial class FieldManager {
         // FilterTarget ORs it into the query): bit 2 adds the friendly players to a hostile skill (a boss's charm
         // makes the holder hit its allies), bit 1 adds the mobs to a friendly one.
         int force = ForceApplyTarget(caster);
+        // applyTarget is a flag set in the client's filter (FilterTarget, basecollision.cpp:784): 1 hostile, 2 friendly,
+        // 4 takes the untargetable, 8 pets. 5 is hostile plus bit 4, so a player's skill with 5 (the object weapons of
+        // the lifted cubes: KR 99901033) hits what a hostile one does, the mobs; before it took only the players.
+        // Other casters keep the players (region pads and the like).
+        if (targetType == ApplyTargetType.RegionBuff && caster is FieldPlayer) {
+            targetType = ApplyTargetType.Hostile;
+        }
         switch (targetType) {
             case ApplyTargetType.Friendly:
                 if (caster is FieldNpc) {

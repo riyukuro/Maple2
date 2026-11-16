@@ -173,7 +173,7 @@ public class ForceApplyTargetTests {
     }
 
     // A hidden player is no target of the other player's friendly skill nor of a mob's hostile one; a hidden mob is
-    // no target of a player's hostile skill. A range with bit 4 (RegionBuff 5) still takes the hidden player.
+    // no target of a player's hostile skill. A range with bit 4 takes the hidden ones: 5 is hostile plus bit 4 (a player's hits the mobs, hidden or not), 6 friendly plus bit 4.
     [Test]
     public void Hidden_LeftOutWithoutBit4() {
         Scene scene = Start();
@@ -183,7 +183,8 @@ public class ForceApplyTargetTests {
             Assert.That(Pool(scene, scene.A, ApplyTargetType.Friendly), Is.Empty);
             Assert.That(Pool(scene, scene.A, ApplyTargetType.Hostile), Is.Empty);
             Assert.That(Pool(scene, scene.Mob, ApplyTargetType.Hostile), Is.EqualTo(new[] { scene.A.ObjectId }));
-            Assert.That(Pool(scene, scene.A, ApplyTargetType.RegionBuff), Is.EqualTo(new[] { scene.B.ObjectId }));
+            Assert.That(Pool(scene, scene.A, ApplyTargetType.RegionBuff), Is.EqualTo(new[] { scene.Mob.ObjectId }));
+            Assert.That(Pool(scene, scene.Mob, ApplyTargetType.RegionBuff), Is.EquivalentTo(new[] { scene.A.ObjectId, scene.B.ObjectId }));
             Assert.That(Pool(scene, scene.A, ApplyTargetType.RegionBuff2), Is.EqualTo(new[] { scene.B.ObjectId }));
         });
     }
@@ -216,5 +217,18 @@ public class ForceApplyTargetTests {
             Assert.That(takes.Invoke(null, [scene.A, Range(ApplyTargetType.Friendly)]), Is.False);
             Assert.That(takes.Invoke(null, [scene.A, Range(ApplyTargetType.RegionBuff2)]), Is.True);
         });
+    }
+
+    // KR 99901033 (the lifted cube's object weapon): applyTarget 5, a player's attack on mobs. Its target packet names
+    // a mob, which the range must take, and not the other player.
+    [Test]
+    public void ObjectWeaponRange_ApplyTarget5_TakesTheMobsForAPlayerCaster() {
+        Scene scene = Start();
+        SkillMetadataRange range = new(default, 1300, 100, 450, 0, 0, default, default, IncludeCasterType.Exclude,
+            (ApplyTargetType) 5, default);
+
+        IEnumerable<IActor> pool = scene.Field.GetTargets(scene.A, [new Prism(new Circle(Vector2.Zero, 1000), 0, 500)], range, 5);
+
+        Assert.That(pool.Select(actor => actor.ObjectId), Is.EqualTo(new[] { scene.Mob.ObjectId }));
     }
 }
