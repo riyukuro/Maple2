@@ -10,6 +10,7 @@ using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
@@ -853,5 +854,51 @@ public class AiStateTests : TriggerTestBase {
         npc.MovementState.SetStunned(true);
         npc.MovementState.SetSummonRevive(true);
         Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Stun));
+    }
+
+    // teleport node: the npc stands at the node's position and faces facePos (none given: facing unchanged).
+    [Test]
+    public void TeleportNode_MovesTheNpc_AndFacesThePoint() {
+        Spawn([new TeleportNode("teleport", [], new Vector3(200, 300, 0), 100, new Vector3(200, 900, 0), 0, 0, 0, false)]);
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.Multiple(() => {
+            Assert.That(npc.Position, Is.EqualTo(new Vector3(200, 300, 0)));
+            Assert.That(npc.Transform.FrontAxis.Y, Is.GreaterThan(0.99f));
+        });
+    }
+
+    [Test]
+    public void TeleportNode_WithoutFacePos_KeepsTheFacing() {
+        Spawn([new TeleportNode("teleport", [], new Vector3(200, 300, 0), 100, Vector3.Zero, 0, 0, 0, false)]);
+        Vector3 before = npc.Transform.FrontAxis;
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.Multiple(() => {
+            Assert.That(npc.Position, Is.EqualTo(new Vector3(200, 300, 0)));
+            Assert.That(npc.Transform.FrontAxis, Is.EqualTo(before));
+        });
+    }
+
+    // say node: a balloon talk goes to the field (one cinematic packet).
+    [Test]
+    public void SayNode_BroadcastsABalloonTalk() {
+        Spawn([new SayNode("say", [], "hello", 100, 3000, 0, 0, 0, false)]);
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.Cinematic), Is.EqualTo(1));
+    }
+
+    // setData node: stores the value under its key.
+    [Test]
+    public void SetDataNode_StoresTheValue() {
+        Spawn([new SetDataNode("setData", [], "Phase", 4, 0)]);
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(npc.AiExtraData["Phase"], Is.EqualTo(4));
     }
 }
