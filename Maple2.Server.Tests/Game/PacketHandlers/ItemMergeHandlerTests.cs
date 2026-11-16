@@ -10,6 +10,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -495,5 +496,41 @@ public class ItemMergeHandlerTests {
             Assert.That(session.Item.Inventory.Get(revertScroll.Uid), Is.Not.Null);
             Assert.That(session.Item.Inventory.Get(gear.Uid)!.Stats!.HasMergeOption, Is.True);
         });
+    }
+
+    // A disconnect right after a merge: the merge is in memory only (nothing of it is written by the handler), and the
+    // close's save (the one the next login waits for) stores it whole with the session: the price, the crystal and
+    // the materials taken, and the merged item. Its rows are written in one transaction or not at all, as every
+    // session save (SessionSaveTransactionTests), so a save that fails leaves the merge undone, nothing taken.
+    private void Saving(GameSession session) {
+        test.SavingConfig(session);
+        session.Survival = new SurvivalManager(session);
+        typeof(GameSession).GetField(nameof(GameSession.Scheduler))!.SetValue(session, new Maple2.Tools.Scheduler.EventQueue(Serilog.Log.Logger));
+    }
+
+    private (long Meso, int Crystals, int Materials, bool Merged) Stored(GameSession session) {
+        using Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context();
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        long meso = context.Character.AsNoTracking().Single(row => row.Id == session.CharacterId).Currency.Meso;
+        List<Maple2.Database.Model.Item> rows = context.Item.AsNoTracking().Where(row => row.OwnerId == session.CharacterId).ToList();
+        int crystals = rows.Where(row => row.ItemId == 37000002).Sum(row => row.Amount);
+        int materials = rows.Where(row => row.ItemId == 40100001).Sum(row => row.Amount);
+        bool merged = db.GetItem(gear.Uid)?.Stats?.HasMergeOption ?? false;
+        return (meso, crystals, materials, merged);
+    }
+
+    [Test]
+    public void Empower_TheSaveAfterItStoresTheMergeWhole() {
+        GameSession session = Login();
+        Saving(session);
+        Assume.That(session.SessionSave(), Is.True, "the save before the merge");
+        Assume.That(Stored(session), Is.EqualTo((1000L, 2, 10, false)));
+        Send(session, 1, gear.Uid);
+        Send(session, 2, gear.Uid, crystal.Uid);
+
+        Send(session, 3, gear.Uid, crystal.Uid);
+
+        Assert.That(session.SessionSave(), Is.True);
+        Assert.That(Stored(session), Is.EqualTo((900L, 1, 7, true)));
     }
 }
