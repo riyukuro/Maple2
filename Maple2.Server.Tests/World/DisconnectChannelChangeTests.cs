@@ -107,14 +107,35 @@ public class DisconnectChannelChangeTests {
         });
     }
 
+    // The session that left is still closing on the record's channel (after its move's save) while the client
+    // already loads or plays on the target: both are ended. Before, the target was asked only when the record's
+    // channel found no session, and the one on the target played on next to the login.
     [Test]
-    public void ASessionStillOnTheRecordsChannel_EndsThereOnly() {
+    public void ASessionStillClosingOnTheRecordsChannel_AlsoEndsTheOneOnTheTarget() {
+        worldServer.Migrations.Begin(CharacterId, 1, 2, DateTime.UtcNow);
+        left.HasSession = true;
+        target.HasSession = true;
+
+        Assert.Multiple(() => {
+            Assert.That(Disconnect().Success, Is.True);
+            Assert.That(left.Disconnects, Is.EqualTo(new[] { CharacterId }));
+            Assert.That(target.Disconnects, Is.EqualTo(new[] { CharacterId }));
+            Assert.That(players[CharacterId].Channel, Is.EqualTo(-1));
+        });
+    }
+
+    // The client has not reached the target yet: the target finds no session, and the kick still succeeds by the
+    // record's channel.
+    [Test]
+    public void ASessionOnTheRecordsChannelOnly_Succeeds() {
         worldServer.Migrations.Begin(CharacterId, 1, 2, DateTime.UtcNow);
         left.HasSession = true;
 
-        Disconnect();
-
-        Assert.That(target.Disconnects, Is.Empty);
+        Assert.Multiple(() => {
+            Assert.That(Disconnect().Success, Is.True);
+            Assert.That(left.Disconnects, Is.EqualTo(new[] { CharacterId }));
+            Assert.That(target.Disconnects, Is.EqualTo(new[] { CharacterId }));
+        });
     }
 
     [Test]

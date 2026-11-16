@@ -153,12 +153,17 @@ public partial class WorldService {
         DisconnectResponse disconnectResponse = channelClient.Disconnect(new DisconnectRequest {
             CharacterId = info.CharacterId,
         });
-        // Not on the record's channel: the session that arrived on the target is ended, else it plays on next to a
-        // login that ended "the account's session" (a second client of the account would get in next to it).
-        if (!disconnectResponse.Success && target != -1 && channelClients.TryGetClient(target, out ChannelClient? targetClient)) {
-            disconnectResponse = targetClient.Disconnect(new DisconnectRequest {
+        // The session that arrived on the target is ended, else it plays on next to a login that ended "the account's
+        // session" (a second client of the account would get in next to it). Asked also when the record's channel
+        // found one: that is the session that left, still closing after its move's save (its send queue's drain, its
+        // field leave), while the client is already loading or playing on the target.
+        if (target != -1 && channelClients.TryGetClient(target, out ChannelClient? targetClient)) {
+            DisconnectResponse targetResponse = targetClient.Disconnect(new DisconnectRequest {
                 CharacterId = info.CharacterId,
             });
+            if (targetResponse.Success) {
+                disconnectResponse = targetResponse;
+            }
         }
 
         if (!disconnectResponse.Success) {
