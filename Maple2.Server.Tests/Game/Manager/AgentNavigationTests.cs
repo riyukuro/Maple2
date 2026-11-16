@@ -507,12 +507,14 @@ public class AgentNavigationTests {
         });
     }
 
-    // A floor at height 0 over navmesh x -20..0 and, past a 0.3 gap, one drop units lower over x 0.3..20 (both
-    // z -20..20), with no link between them: a ledge. Without the lower floor the top ends over nothing.
-    internal static DtNavMeshCreateParams LedgeParams(float drop, bool lower = true) {
+    // A floor at height 0 over navmesh x -20..0 and, past a gap (0.6, what the navmesh's erosion leaves at a bare
+    // ledge), one drop units lower over x gap..20 (both z -20..20), with no link between them: a ledge. A gap of 0.8
+    // is a 0.2 wall with the floor behind it. Without the lower floor the top ends over nothing.
+    internal static DtNavMeshCreateParams LedgeParams(float drop, bool lower = true, float gap = 0.6f) {
         int top = (int) MathF.Round(drop / 0.1f);
+        int near = 200 + (int) MathF.Round(gap / 0.1f);
         return new DtNavMeshCreateParams {
-            verts = [0, top, 0, 0, top, 400, 200, top, 400, 200, top, 0, 203, 0, 0, 203, 0, 400, 400, 0, 400, 400, 0, 0],
+            verts = [0, top, 0, 0, top, 400, 200, top, 400, 200, top, 0, near, 0, 0, near, 0, 400, 400, 0, 400, 400, 0, 0],
             vertCount = 8,
             polys = lower
                 ? [0, 1, 2, 3, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
@@ -539,8 +541,8 @@ public class AgentNavigationTests {
         };
     }
 
-    private static DtNavMeshQuery LedgeQuery(float drop, bool lower = true) {
-        DtMeshData? data = DtNavMeshBuilder.CreateNavMeshData(LedgeParams(drop, lower));
+    private static DtNavMeshQuery LedgeQuery(float drop, bool lower = true, float gap = 0.6f) {
+        DtMeshData? data = DtNavMeshBuilder.CreateNavMeshData(LedgeParams(drop, lower, gap));
         Assert.That(data, Is.Not.Null);
         var navMesh = new DtNavMesh();
         Assert.That(navMesh.Init(data, 6, 0).Succeeded(), Is.True);
@@ -549,9 +551,9 @@ public class AgentNavigationTests {
 
     // A move of 2 from 0.5 before the ledge, with the drop limit given (navmesh units: 1.5 is the client's push
     // probe of 150, 7.5 its dash probe of 750, infinity a push with pushFall): the end point.
-    private static RcVec3f Ledge(float drop, float maxDrop, bool lower = true) {
-        Assert.That(AgentNavigation.LedgeMove(LedgeQuery(drop, lower), new DtQueryDefaultFilter(), new RcVec3f(-0.5f, 0, 5),
-            new RcVec3f(1.5f, 0, 5), maxDrop, out RcVec3f end), Is.True);
+    private static RcVec3f Ledge(float drop, float maxDrop, bool lower = true, float gap = 0.6f, float toX = 1.5f) {
+        Assert.That(AgentNavigation.LedgeMove(LedgeQuery(drop, lower, gap), new DtQueryDefaultFilter(), new RcVec3f(-0.5f, 0, 5),
+            new RcVec3f(toX, 0, 5), maxDrop, out RcVec3f end), Is.True);
         return end;
     }
 
@@ -591,14 +593,27 @@ public class AgentNavigationTests {
         });
     }
 
-    // No floor below, or a floor at the edge's own height past it (the far side of a wall), or no drop allowed:
-    // the move ends at the edge, on the top.
+    // No floor below, a floor at the edge's own height past it, a lower floor behind a 0.2 wall (gap 0.8), or no drop
+    // allowed: the move ends at the edge, on the top. Never through a wall, whatever the limit.
     [Test]
     public void LedgeMove_StopsAtAWallOrOverNothing() {
-        foreach ((float drop, float maxDrop, bool lower) in new[] { (5f, float.PositiveInfinity, false), (0f, float.PositiveInfinity, true), (1f, 0f, true) }) {
-            RcVec3f end = Ledge(drop, maxDrop, lower);
-            Assert.That(end.X, Is.EqualTo(0f).Within(0.01), $"drop {drop}, limit {maxDrop}, floor {lower}");
-            Assert.That(end.Y, Is.EqualTo(0f).Within(0.05), $"drop {drop}, limit {maxDrop}, floor {lower}");
+        foreach ((float drop, float maxDrop, bool lower, float gap) in new[] {
+                     (5f, float.PositiveInfinity, false, 0.6f), (0f, float.PositiveInfinity, true, 0.6f), (1f, 0f, true, 0.6f),
+                     (1f, 1.5f, true, 0.8f), (1f, float.PositiveInfinity, true, 0.8f),
+                 }) {
+            RcVec3f end = Ledge(drop, maxDrop, lower, gap);
+            Assert.That(end.X, Is.EqualTo(0f).Within(0.01), $"drop {drop}, limit {maxDrop}, floor {lower}, gap {gap}");
+            Assert.That(end.Y, Is.EqualTo(0f).Within(0.05), $"drop {drop}, limit {maxDrop}, floor {lower}, gap {gap}");
         }
+    }
+
+    // A move that ends inside the gap (0.25 past the edge) still steps off: it ends on the floor's near side.
+    [Test]
+    public void LedgeMove_AShortMoveStillStepsOff() {
+        RcVec3f end = Ledge(1f, 1.5f, toX: 0.25f);
+        Assert.Multiple(() => {
+            Assert.That(end.X, Is.EqualTo(0.6f).Within(0.01));
+            Assert.That(end.Y, Is.EqualTo(-1f).Within(0.05));
+        });
     }
 }
