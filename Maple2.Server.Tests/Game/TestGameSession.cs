@@ -508,6 +508,8 @@ public sealed class TestGameSession {
         typeof(MarriageManager).GetField("ticketsSent", Any)!.SetValue(marriage, new HashSet<(long, long)>());
         typeof(MarriageManager).GetField("skillEffects", Any)!.SetValue(marriage, new Dictionary<int, short>());
         marriage.Marriage = Marriage.Default;
+        // As MarriageManager's constructor: no stored hall is the default one (id 0), not null.
+        marriage.WeddingHall = WeddingHall.Default;
         session.Marriage = marriage;
         session.Guild = Uninitialized<GuildManager>();
         session.Exp = new ExperienceManager(session);

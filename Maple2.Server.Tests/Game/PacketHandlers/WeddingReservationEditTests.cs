@@ -313,6 +313,43 @@ public class WeddingReservationEditTests(bool mysql) {
         Assert.That(Wedding(confirmer), Is.EqualTo(new List<(byte, byte[])> { (2, [0x3e]) }));
     }
 
+    // Wedding 0x14 as WeddingManager::SendReservationChange writes it: the mode and a WeddingHallTicket (hall serial,
+    // package, hall, time, public, the reserver's account and character, the two names, the fee's five longs and the
+    // coupon id); the client fills only the package, hall, time and public flag.
+    private void SendChange(int hallId, long ceremonyTime) {
+        handler.Handle(payer.Session, TestGameSession.Packet(writer => {
+            writer.WriteByte(0x14);
+            writer.WriteLong(0);
+            writer.WriteInt(1);
+            writer.WriteInt(hallId);
+            writer.WriteLong(ceremonyTime);
+            writer.WriteBool(false);
+            writer.WriteLong(0);
+            writer.WriteLong(0);
+            writer.WriteUnicodeString(string.Empty);
+            writer.WriteUnicodeString(string.Empty);
+            for (int i = 0; i < 5; i++) {
+                writer.WriteLong(0);
+            }
+            writer.WriteInt(0);
+        }));
+    }
+
+    // Sent as the client does: the same reservation is refused with 0x2c to the payer; another hall at the same
+    // time asks the partner (0x14) and changes nothing yet.
+    [Test]
+    public void Change_FromThePacket() {
+        WeddingHall current = payer.Session.Marriage.WeddingHall;
+        SendChange(1, current.CeremonyTime);
+        Assert.That(Wedding(payer), Is.EqualTo(new List<(byte, byte[])> { (2, [(byte) WeddingError.s_wedding_result_already_same_reservation]) }));
+        Assert.That(Wedding(confirmer), Is.Empty);
+
+        SendChange(2, current.CeremonyTime);
+        Assert.That(Wedding(payer), Is.EqualTo(new List<(byte, byte[])> { (2, [(byte) WeddingError.s_wedding_result_send_wedding_hall_reservation_change]) }));
+        Assert.That(Wedding(confirmer).Select(packet => packet.Mode).ToArray(), Is.EqualTo(new byte[] { 0x14 }));
+        Assert.That(payer.Session.Marriage.WeddingHall.PackageHallId, Is.EqualTo(1));
+    }
+
     [Test]
     public void Change_SameReservation_Is0x2c() {
         WeddingHall current = payer.Session.Marriage.WeddingHall;
