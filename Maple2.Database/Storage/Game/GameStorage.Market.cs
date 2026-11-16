@@ -418,20 +418,32 @@ public partial class GameStorage {
 
         // The listing row and the item's move to it are one transaction: when either fails the caller mails the item
         // and the deposit back, and a listing row left behind would load at World start and could still be bought.
+        // Inside a transaction already open (a purchase save, with the deposit) they join it: the caller's store
+        // commits or rolls back the whole.
         public BlackMarketListing? CreateBlackMarketingListing(BlackMarketListing listing) {
             Model.BlackMarketListing model = listing;
             model.Id = 0;
-            BeginTransaction();
+            bool own = !IsTransaction;
+            if (own) {
+                BeginTransaction();
+            }
             Context.BlackMarketListing.Add(model);
             if (!SaveChanges()) {
-                Rollback();
+                if (own) {
+                    Rollback();
+                }
                 return null;
             }
 
             BlackMarketListing? created = ToBlackMarketingListing(model);
             if (created == null || !SaveItems(created.Id, created.Item)) {
-                Rollback();
+                if (own) {
+                    Rollback();
+                }
                 return null;
+            }
+            if (!own) {
+                return created;
             }
             return Commit() ? created : null;
         }

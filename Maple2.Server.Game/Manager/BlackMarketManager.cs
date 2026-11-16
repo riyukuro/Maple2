@@ -117,16 +117,15 @@ public sealed class BlackMarketManager {
             Quantity = quantity,
         };
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        listing = db.CreateBlackMarketingListing(listing);
-        if (listing == null) {
+        // The listing (with the item's row moved to it) and the deposit taken are stored in one purchase save: the
+        // listing stored first and the deposit after, a stop between kept the listing and gave the deposit back.
+        BlackMarketListing? created = null;
+        if (!session.TrySavePurchase(db => (created = db.CreateBlackMarketingListing(listing)) != null)) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_fail_register, 2));
             CreateRefundErrorMail(item, depositFee);
             return;
         }
-        // The deposit, taken in memory, is stored now that the listing is: it waited for the next save, and a stop
-        // before it kept the listing and gave the deposit back.
-        session.SavePurchase();
+        listing = created!;
 
         // Also add to World
         BlackMarketResponse response = session.World.BlackMarket(new BlackMarketRequest {
