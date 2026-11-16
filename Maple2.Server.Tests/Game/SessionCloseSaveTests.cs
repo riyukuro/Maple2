@@ -11,6 +11,7 @@ using Maple2.Server.Game;
 using Maple2.Tools.Scheduler;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Service;
 using Maple2.Server.Game.Session;
@@ -155,6 +156,68 @@ public class SessionCloseSaveTests {
         Assert.That(found, Is.SameAs(newer));
         var closing = (ConcurrentDictionary<long, GameSession>?) typeof(GameServer).GetField("closing", Any)!.GetValue(server);
         Assert.That(closing?.ContainsKey(session.CharacterId) ?? false, Is.False);
+    }
+
+    private object InlineGate() {
+        return typeof(Maple2.Server.Core.Network.Session).GetProperty("InlineGate", Any)!.GetValue(session)!;
+    }
+
+    private void SetPlayer(FieldPlayer? player) {
+        typeof(GameSession).GetField("<Player>k__BackingField", Any)!.SetValue(session, player);
+    }
+
+    // A kick (a login of the account elsewhere) while the session still loads its character (EnterServer, a handler
+    // on the receive thread under the gate): the close waits for the load and ends the session it made the whole
+    // way, the last save included, and the kick is answered after that. Before, the close took the path of a session
+    // without a character at once and the kick was answered while the load went on: the session it made played on
+    // with no close left to end it.
+    [Test]
+    public void AKickDuringTheCharactersLoad_WaitsForIt_AndEndsTheLoadedSession() {
+        GameServer server = Playing();
+        session.Field = null;
+        FieldPlayer player = session.Player;
+        SetPlayer(null);
+        session.State = SessionState.ChangeMap; // as EnterServer sets it before the load
+        using var loading = new ManualResetEventSlim();
+        using var loaded = new ManualResetEventSlim();
+        Task load = Task.Run(() => {
+            lock (InlineGate()) {
+                loading.Set();
+                loaded.Wait();
+                SetPlayer(player);
+            }
+        });
+        loading.Wait();
+        int locksBefore = test.World.Acquired;
+
+        Task<DisconnectResponse> kick = Kick(server);
+        Assert.That(kick.Wait(300), Is.False, "answered while the character's load still runs");
+        loaded.Set();
+        Assert.That(load.Wait(5000), Is.True);
+        Assert.That(kick.Wait(5000), Is.True);
+
+        Assert.That(kick.Result.Success, Is.True);
+        Assert.That(session.WaitDisposed(TimeSpan.Zero), Is.True);
+        Assert.That(player.Value.Character.Channel, Is.EqualTo(-1), "the loaded session was not ended");
+        Assert.That(player.Value.Account.Online, Is.False);
+        Assert.That(test.World.Acquired, Is.GreaterThan(locksBefore), "no last save");
+        Assert.That(server.GetSessionOrClosing(session.CharacterId, out _), Is.False);
+    }
+
+    // A kick of a session that has not begun its load: no load starts after the close (the character's packet that
+    // arrives later is dropped).
+    [Test]
+    public void AKickBeforeTheCharactersLoad_ClosesItsPackets() {
+        GameServer server = Playing();
+        session.Field = null;
+        SetPlayer(null);
+        session.State = SessionState.ChangeMap;
+
+        DisconnectResponse response = Kick(server).Result;
+
+        Assert.That(response.Success, Is.True);
+        Assert.That(session.WaitDisposed(TimeSpan.Zero), Is.True);
+        Assert.That(session.DropsPackets, Is.True);
     }
 
     [Test]

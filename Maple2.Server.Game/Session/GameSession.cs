@@ -1857,6 +1857,23 @@ public sealed partial class GameSession : Core.Network.Session {
     protected override void Dispose(bool disposing) {
         // Ensure dispose is only run once
         if (Interlocked.CompareExchange(ref gameDisposeState, 1, 0) != 0) return;
+        // A close of a session that has no character yet (a kick from a login of the account, the server's stop) waits
+        // for a load that runs (EnterServer, a receive-thread handler under the gate) and ends the session it made
+        // the whole way, its last save and its logout included. Closed beside the load, the session took the path of
+        // one without a character at once: the load went on, and the session it made played with no close left to
+        // end it (no last save, no logout, its held rows kept), next to the login's own session. With no load
+        // running, no later one starts: the packets are closed under the gate.
+        if (Player == null && disposing) {
+            bool gated = Monitor.TryEnter(InlineGate, CloseWaitLeft());
+            try {
+                if (Player == null) packetsClosed = true;
+            } finally {
+                if (gated) Monitor.Exit(InlineGate);
+            }
+            if (!gated) {
+                Logger.Warning("Close of {Session}: the character's load still runs after {Wait}, closing beside it", this, CloseWait);
+            }
+        }
         // Loads from here on keep nothing (the final save writes what changed all the same).
         heldRows?.Dispose();
 
