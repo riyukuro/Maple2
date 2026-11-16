@@ -5,6 +5,7 @@ using System.Reflection;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -84,10 +85,10 @@ public class MaidCraftMeretReceiveTests {
         return maid;
     }
 
-    private List<byte[]> Send() {
+    private List<byte[]> Send(byte mode = 7) {
         new MaidCraftItemHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
             .Handle(session, TestGameSession.Packet(writer => {
-                writer.WriteByte(7);
+                writer.WriteByte(mode);
                 writer.WriteLong(MaidUid);
             }));
         test.RunFieldQueue();
@@ -238,6 +239,27 @@ public class MaidCraftMeretReceiveTests {
             Assert.That(Held(Product), Is.EqualTo(0));
             Assert.That(Stored(), Is.EqualTo((RecipeId, start, 3700)));
             Assert.That(Crafts(sent), Is.Empty);
+            Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] { BagFull }));
+        });
+    }
+
+    private static string BagFull => Convert.ToHexString(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory).ToArray());
+
+    // The plain receive (mode 6) of a ready craft into a full bag: the client has shown the maid's receive line on
+    // sending, so the bag-full notice is the answer; the craft stays.
+    [Test]
+    public void AReadyCraftIntoAFullBagIsAnsweredWithTheBagNotice() {
+        Login(fullBag: true);
+        long start = DateTime.UtcNow.ToEpochSeconds() - 4000;
+        Place(RecipeId, start, 3700);
+        test.TakeSent();
+
+        List<byte[]> sent = Send(6);
+
+        Assert.Multiple(() => {
+            Assert.That(Held(Product), Is.EqualTo(0));
+            Assert.That(Stored(), Is.EqualTo((RecipeId, start, 3700)));
+            Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] { BagFull }));
         });
     }
 

@@ -1,6 +1,7 @@
 ﻿using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
@@ -210,7 +211,11 @@ public class MaidCraftItemHandler : FieldPacketHandler {
             float expRate = (float) session.Player.Stats.Values[SpecialAttribute.MaidExp].Multiplier();
             lock (session.Item) {
                 if (!session.Item.Inventory.HasRoomFor(product)) {
-                    return; // no client code for a full bag: the craft stays until there is room
+                    // The craft stays until there is room. The client has no receive result for a full bag and has
+                    // already shown the maid's receive line (GetMaidText 2) when it sent the request, so the bag-full
+                    // notice says why nothing came.
+                    session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
+                    return;
                 }
                 // The craft is cleared in storage first, tested against the one this field holds: of two receives
                 // of the same craft (the home open in two channels) only one clears it and only that one gives the
@@ -338,7 +343,11 @@ public class MaidCraftItemHandler : FieldPacketHandler {
                     return;
                 }
                 if (!session.Item.Inventory.HasRoomFor(product)) {
-                    return; // no client code for a full bag: the craft stays until there is room
+                    // The craft stays until there is room. The client has no receive result for a full bag and has
+                    // already shown the maid's receive line (GetMaidText 2) when it sent the request, so the bag-full
+                    // notice says why nothing came.
+                    session.Send(ItemInventoryPacket.Error(ItemInventoryError.s_err_inventory));
+                    return;
                 }
                 // The merets are taken before the add, under the same lock, so a balance spent meanwhile is found
                 // before anything is given (TryTakeMeret checks and takes in one step). Its packet and use_merat go
