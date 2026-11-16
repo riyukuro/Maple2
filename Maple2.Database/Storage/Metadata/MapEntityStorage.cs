@@ -10,6 +10,12 @@ namespace Maple2.Database.Storage;
 public class MapEntityStorage(MetadataContext context) : MetadataStorage<string, MapEntityMetadata>(context, CACHE_SIZE) {
     private const int CACHE_SIZE = 1500; // ~1.1k total Maps
 
+    // A liftable target counts the cell the client finds for the box's position (FUN_1408a1430: each axis
+    // (int) (p / 150), cut toward zero), the cell a drop is compared with (PutDownLiftableAction). Rounding to the
+    // nearest cell, as Vector3 -> Vector3B does, moves a box at or past half a cell, or below zero, one cell away.
+    public static Vector3B LiftableTargetCell(Vector3 position) =>
+        new((int) (position.X / 150f), (int) (position.Y / 150f), (int) (position.Z / 150f));
+
     private const float MAP_LIMIT = sbyte.MaxValue * 150f;
     private static readonly Prism LargeBoundingBox = new(new BoundingBox(
         new Vector2(-MAP_LIMIT, -MAP_LIMIT),
@@ -73,7 +79,7 @@ public class MapEntityStorage(MetadataContext context) : MetadataStorage<string,
                         liftables[entity.Guid] = liftable;
                         break;
                     case LiftableTargetBox liftableTargetBox:
-                        liftableTargetBoxes[liftableTargetBox.Position] = liftableTargetBox;
+                        liftableTargetBoxes[LiftableTargetCell(liftableTargetBox.Position)] = liftableTargetBox;
                         break;
                     case ObjectWeapon objectWeapon:
                         objectWeapons[objectWeapon.Position] = objectWeapon;
