@@ -61,7 +61,7 @@ public class QuestConditionWiringTests : TriggerTestBase {
         test.TakeSent();
     }
 
-    private static NpcMetadata Npc(int id, string[]? races = null) {
+    internal static NpcMetadata Npc(int id, string[]? races = null) {
         var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 1, false, 0, 0, 0, 0, [], [], 0, RaceStrings: races);
         var stat = new NpcMetadataStat(new Dictionary<BasicAttribute, long> { [BasicAttribute.Health] = 100 }, [], [], [], []);
         return new NpcMetadata(id, "npc", "", new NpcMetadataModel("test_model", 1, 1), stat, basic,
@@ -71,7 +71,7 @@ public class QuestConditionWiringTests : TriggerTestBase {
             new NpcMetadataDead(0, 0, 0, 0, 0), null, new NpcMetadataLookAtTarget("", false, false));
     }
 
-    private static NpcMetadataStorage NpcTable(params NpcMetadata[] npcs) {
+    internal static NpcMetadataStorage NpcTable(params NpcMetadata[] npcs) {
         var storage = (NpcMetadataStorage) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadataStorage));
         var cache = new LRUCache<int, NpcMetadata>(100, 5);
         foreach (NpcMetadata npc in npcs) {
