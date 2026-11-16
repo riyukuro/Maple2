@@ -165,7 +165,13 @@ public class BattleState {
         float distanceSquared = (target.Position - position).LengthSquared();
         float verticalOffset = target.Position.Z - position.Z;
 
-        if (!IsInRange(distanceSquared, verticalOffset, radiusSquared, heightUp, -heightDown)) {
+        // A battle pet trails its owner (PetFollow) and sees no target below its own height (sightHeightDown 0 on every
+        // KR pet): on a slope it stood above the monsters by its owner and never fought. Chosen here: it also sees what
+        // stands in its height window from its owner's height, while it stands above its owner (below, on another floor,
+        // the owner's window would show it monsters it cannot reach).
+        if (!IsInRange(distanceSquared, verticalOffset, radiusSquared, heightUp, -heightDown)
+            && !(actor is FieldPet { Battles: true, OwnerPlayer: { } petOwner } && position.Z > petOwner.Position.Z
+                 && IsInRange(distanceSquared, target.Position.Z - petOwner.Position.Z, radiusSquared, heightUp, -heightDown))) {
             return false;
         }
         // A battle pet fights only what stands within its battleTraceDistance of its owner.

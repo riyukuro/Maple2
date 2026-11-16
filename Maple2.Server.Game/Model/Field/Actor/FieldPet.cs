@@ -126,7 +126,51 @@ public sealed class FieldPet : FieldNpc {
         return true;
     }
 
+    // A pet summoned on a field entry comes at the arrival spot (a spawn point or a portal), which stands above the ground
+    // the client lands its owner on: at Ellin Grove's taxi spot (2875) the client's owner falls 24 to the ground, while
+    // the navmesh there lies 146 lower still, under that ground. The pet goes to the spot of its owner's first state sync
+    // on the ground below the arrival spot, as a pet summoned by hand starts on the ground beside its owner. A sync at
+    // the arrival spot's height (an owner who arrived on the ground) is not a landing; the wait ends after
+    // LandingWaitMs. Set by the owner's session, taken on the field's thread.
+    public const long LandingWaitMs = 5000;
+    private readonly object landingLock = new();
+    private float arrivalHeight;
+    private long landingDeadline;
+    private Vector3? landing;
+
+    public void AwaitOwnerLanding(Vector3 arrival, long nowMs) {
+        lock (landingLock) {
+            arrivalHeight = arrival.Z;
+            landingDeadline = nowMs + LandingWaitMs;
+            landing = null;
+        }
+    }
+
+    public void OwnerLanded(Vector3 ground, long nowMs) {
+        if (!float.IsFinite(ground.X) || !float.IsFinite(ground.Y) || !float.IsFinite(ground.Z)) {
+            return;
+        }
+        lock (landingLock) {
+            if (nowMs < landingDeadline && ground.Z < arrivalHeight - 1) {
+                landingDeadline = 0;
+                landing = ground;
+            }
+        }
+    }
+
     public override void Update(long tickCount) {
+        Vector3? ground;
+        lock (landingLock) {
+            ground = landing;
+            landing = null;
+        }
+        if (ground is { } spot && owner?.Field == Field) {
+            // As SpawnPet puts a pet: the agent on the navmesh near the spot, the pet at the spot itself.
+            Navigation?.UpdatePosition(spot);
+            Position = spot;
+            Origin = spot;
+            SendControl = true;
+        }
         base.Update(tickCount);
     }
 

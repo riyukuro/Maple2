@@ -295,8 +295,7 @@ public sealed partial class GameSession : Core.Network.Session {
 
     public bool EnterServer(long accountId, Guid machineId, MigrateInResponse migrateResponse) {
         long characterId = migrateResponse.CharacterId;
-        resummonPetUid = migrateResponse.PetUid;
-        PetAttackOff = migrateResponse.PetAttackOff;
+        ByteWriter petAuto = TakeMigratedPet(migrateResponse);
         int channel = migrateResponse.Channel;
         int mapId = migrateResponse.MapId;
         int portalId = migrateResponse.PortalId;
@@ -693,7 +692,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(InGameRankPacket.Load());
         // The pet auto flag: on as the client starts with it, and after a move between game servers the flag the player
         // left it at, which the client keeps across the move (one CPetManager for the process). It is not stored.
-        Send(PetPacket.AutoChanged(!PetAttackOff));
+        Send(petAuto);
         Send(FieldEnterPacket.Request(Player));
         // The design market's charge table, where KMS2 sends it.
         Send(UgcPacket.CostTable(UgcMarketRules.CostRows));
@@ -717,6 +716,14 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     private long resummonPetUid;
+
+    // The pet a move between game servers hands over: the uid to summon again on the field entry and the attack flag.
+    // Returns the login's AutoChanged, which tells the client the flag.
+    internal ByteWriter TakeMigratedPet(MigrateInResponse migrateResponse) {
+        resummonPetUid = migrateResponse.PetUid;
+        PetAttackOff = migrateResponse.PetAttackOff;
+        return PetPacket.AutoChanged(!PetAttackOff);
+    }
     // The pet attack flag turned off (RequestPet 15 from the game menu's pet attack button, UIGameMenuDialog::OnPetAttack):
     // a summoned battle pet does not fight. The flag is on as the client starts it (CPetManager m_nAuto,
     // petmanager.cpp:715) and as the login's AutoChanged says; a move between game servers carries it.

@@ -511,6 +511,12 @@ public class FieldNpc : Actor<Npc> {
             hasBeenBattling = false;
         }
 
+        // A summoned pet does not walk back to where it was summoned after a fight: it follows its owner (NextFollowTask).
+        // Before, after a field entry it went back to the arrival spot, up a slope a screen away from its owner.
+        if (hasBeenBattling && this is FieldPet { OwnerId: not 0 }) {
+            hasBeenBattling = false;
+        }
+
         if (hasBeenBattling && idleTask is null && MovementState.CastTask is null) {
             Vector3 spawnPoint = Navigation?.GetRandomPatrolPoint() ?? Origin;
 

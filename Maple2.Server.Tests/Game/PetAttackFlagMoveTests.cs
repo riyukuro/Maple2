@@ -3,6 +3,7 @@ using System.Reflection;
 using Maple2.Model.Enum;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
+using Maple2.Server.World.Service;
 using NUnit.Framework;
 
 namespace Maple2.Server.Tests.Game;
@@ -45,5 +46,18 @@ public class PetAttackFlagMoveTests {
         session.Migrate(Target);
 
         Assert.That(test.World.Moves.Single().PetAttackOff, Is.EqualTo(attackOff));
+    }
+
+    // The target's login sends AutoChanged with the flag the move carried (mode 15, then 1 for on).
+    [TestCase(true, (byte) 0)]
+    [TestCase(false, (byte) 1)]
+    public void Login_SendsTheCarriedFlag(bool attackOff, byte sent) {
+        var test = new TestGameSession();
+        GameSession session = test.Start();
+        byte[] packet = session.TakeMigratedPet(new MigrateInResponse { PetUid = 7, PetAttackOff = attackOff }).ToArray();
+
+        Assert.That(session.PetAttackOff, Is.EqualTo(attackOff));
+        Assert.That(packet[^2..], Is.EqualTo(new byte[] { 15, sent }));
+        Assert.That(session.SummonedPetUid, Is.EqualTo(7));
     }
 }

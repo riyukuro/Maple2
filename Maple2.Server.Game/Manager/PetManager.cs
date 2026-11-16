@@ -36,6 +36,9 @@ public sealed class PetManager : IDisposable {
     public Vector3 Position => pet.Position;
     public float FollowDistance => PetFollow.Distances(pet.Metadata.Distance).Follow;
 
+    // The owner's state sync on the ground (FieldPlayer.OnStateSync): a pet summoned on the field entry goes there.
+    public void OwnerLanded(Vector3 ground) => pet.OwnerLanded(ground, Environment.TickCount64);
+
     public PetManager(GameSession session, FieldPet pet) {
         this.session = session;
         this.pet = pet;

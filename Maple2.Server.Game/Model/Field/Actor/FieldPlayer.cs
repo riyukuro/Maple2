@@ -481,6 +481,11 @@ public class FieldPlayer : Actor<Player> {
         }
         StateActorId = AiTargetState.ActorOf(stateSync);
 
+        // The client's owner stands on the ground (not in a fall or a jump): a pet summoned on the field entry goes there.
+        if (stateSync.State is ActorState.Idle or ActorState.Walk or ActorState.Land) {
+            Session.Pet?.OwnerLanded(stateSync.Position);
+        }
+
         if (stateSync.SyncNumber != int.MaxValue) {
             LastGroundPosition = stateSync.Position;
         }

@@ -24,9 +24,15 @@ public class PetBattleTests : NpcCastFixture {
     [TearDown]
     public void DisposePet() => pet?.Dispose();
 
-    private FieldPet Pet(bool owned, int type = 1, float battleTrace = 5000) {
+    // The sight of every KR pet npc (e.g. 61000002): 3000 around, 300 up, 0 down.
+    private static readonly NpcMetadataDistance PetSight = new(100, 3000, 300, 0, 3000, 250, 80);
+
+    private FieldPet Pet(bool owned, int type = 1, float battleTrace = 5000, NpcMetadataDistance? sight = null) {
         StartCaster(["Idle_A"]);
         Assert.That(Field.NpcMetadata.TryGet(CasterId, out NpcMetadata? metadata), Is.True);
+        if (sight != null) {
+            metadata = metadata! with { Distance = sight };
+        }
         var petMetadata = (PetMetadata) RuntimeHelpers.GetUninitializedObject(typeof(PetMetadata)) with {
             Id = CasterId, NpcId = CasterId, Type = type, Distance = new PetMetadataDistance(3000, 300, battleTrace), Effect = [],
         };
@@ -205,5 +211,72 @@ public class PetBattleTests : NpcCastFixture {
         }));
         Assert.That(test.Session.PetAttackOff, Is.False);
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A pet sees nothing below its own height (sightHeightDown 0). It trails its owner, and on a slope it stands above
+    // the monster by its owner: it takes the monster within its height window from its owner's height.
+    [TestCase(0f, true)]
+    [TestCase(150f, false)]
+    public void ABattlePetAboveTheMonster_TakesItFromItsOwnersHeight(float ownerHeight, bool takes) {
+        Pet(owned: true, sight: PetSight);
+        pet.Position = new Vector3(900, 0, 150);
+        test.Session.Player.Position = new Vector3(0, 0, ownerHeight);
+        Assert.That(Search(), takes ? Is.SameAs(npc) : Is.Null);
+    }
+
+    [Test]
+    public void AWildPetAboveTheMonster_DoesNotSeeItFromAPlayersHeight() {
+        Pet(owned: false, sight: PetSight);
+        pet.Position = new Vector3(900, 0, 150);
+        Assert.That(pet.BattleState.ShouldTargetActor(npc, 3000 * 3000, 300, 0), Is.False);
+    }
+
+    // A field entry's summon comes at the arrival spot, above the ground the client lands the owner on (Ellin Grove's
+    // taxi spot 2875: the owner falls 24); the pet goes to the owner's first spot on the ground below it.
+    [Test]
+    public void AFieldEntrysPet_GoesToItsOwnersFirstSpotOnTheGround() {
+        Pet(owned: true);
+        var arrival = new Vector3(450, -2850, 2875);
+        var ground = arrival with { Z = 2851 };
+        test.Session.Player.Position = ground;
+        pet.AwaitOwnerLanding(arrival, 0);
+        pet.OwnerLanded(arrival, 10);
+        pet.Update(Field.FieldTick);
+        Assert.That(pet.Position.X, Is.EqualTo(900), "a sync at the arrival spot's height is no landing");
+
+        pet.OwnerLanded(ground, 200);
+        pet.Update(Field.FieldTick + 100);
+        Assert.That(pet.Position, Is.EqualTo(ground));
+        Assert.That(pet.Origin, Is.EqualTo(ground));
+
+        pet.OwnerLanded(ground with { X = 550, Z = 2800 }, 300);
+        pet.Update(Field.FieldTick + 200);
+        Assert.That(pet.Position, Is.EqualTo(ground), "only the first landing moves the pet");
+    }
+
+    [Test]
+    public void AFieldEntrysPet_StopsWaitingAfterTheLandingWait() {
+        Pet(owned: true);
+        pet.AwaitOwnerLanding(new Vector3(450, -2850, 2875), 0);
+        pet.OwnerLanded(new Vector3(450, -2850, 2851), FieldPet.LandingWaitMs);
+        pet.Update(Field.FieldTick);
+        Assert.That(pet.Position.X, Is.EqualTo(900));
+    }
+
+    [Test]
+    public void APetSummonedByHand_StaysWhenItsOwnerLands() {
+        Pet(owned: true);
+        pet.OwnerLanded(new Vector3(450, -2850, 2851), 0);
+        pet.Update(Field.FieldTick);
+        Assert.That(pet.Position.X, Is.EqualTo(900));
+    }
+
+    // Below its owner (another floor) the pet keeps its own window: the owner's would show it monsters out of reach.
+    [Test]
+    public void ABattlePetBelowItsOwner_DoesNotSeeFromItsOwnersHeight() {
+        Pet(owned: true, sight: PetSight);
+        pet.Position = new Vector3(900, 0, -400);
+        test.Session.Player.Position = Vector3.Zero;
+        Assert.That(Search(), Is.Null);
     }
 }
