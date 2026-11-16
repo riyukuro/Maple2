@@ -1,4 +1,5 @@
 using System.Xml;
+using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 
 namespace Maple2.File.Ingest.Helpers;
@@ -68,5 +69,52 @@ public static class ClientItemBoxes {
     public static string Parameter(Box box, bool global) {
         string parameter = global ? $"{box.Id},1,0,0" : $"0,1,0,{box.Id}";
         return box.Amount > 0 ? $"{parameter},{box.Amount}" : parameter;
+    }
+
+    // The fields the server reads of an item whose box the played client names, taken from the played client's item
+    // (client: the item built from its played environment, as an item only the client has). The release client
+    // reuses some of those ids for another item (20301431 is the client's Halloween weapon box, a mini-game
+    // ticket in the pack), and the client shows and counts its own row: its name (searches, logs), stack size,
+    // category (meret market tab), sell prices, life and the level, trade and sale limits. The bag tab type and the
+    // rank are the client's already (PlayedClientItems.ClientType, ClientRank); the rest stays the pack's. A client
+    // item with no name keeps the pack's name.
+    public static ItemMetadata ClientFields(ItemMetadata pack, ItemMetadata client) {
+        ItemMetadata taken = pack with {
+            Name = string.IsNullOrEmpty(client.Name) ? pack.Name : client.Name,
+            Life = client.Life,
+            Property = pack.Property with {
+                SlotMax = client.Property.SlotMax,
+                Category = client.Property.Category,
+                SellPrices = Values(pack.Property.SellPrices, client.Property.SellPrices),
+                CustomSellPrices = Values(pack.Property.CustomSellPrices, client.Property.CustomSellPrices),
+                TradableCount = client.Property.TradableCount,
+                TradableCountDeduction = client.Property.TradableCountDeduction,
+                RepackCount = client.Property.RepackCount,
+                RepackConsumeCount = client.Property.RepackConsumeCount,
+                RepackScrollIds = Values(pack.Property.RepackScrollIds, client.Property.RepackScrollIds),
+            },
+            Limit = pack.Limit with {
+                Level = client.Limit.Level,
+                TransferType = client.Limit.TransferType,
+                TradeMaxRarity = client.Limit.TradeMaxRarity,
+                ShopSell = client.Limit.ShopSell,
+            },
+        };
+        return taken == pack ? pack : taken;
+    }
+
+    // The client's list, or the pack's when they hold the same values (a missing entry is 0, as Shop.ListPrice reads
+    // a rarity past the list); records compare arrays by reference, so the same values keep the same array.
+    private static T[] Values<T>(T[] pack, T[]? client) where T : struct, IEquatable<T> {
+        client ??= [];
+        int length = Math.Max(pack.Length, client.Length);
+        for (int index = 0; index < length; index++) {
+            T a = index < pack.Length ? pack[index] : default;
+            T b = index < client.Length ? client[index] : default;
+            if (!a.Equals(b)) {
+                return client;
+            }
+        }
+        return pack;
     }
 }

@@ -11,15 +11,17 @@ namespace Maple2.File.Ingest.Helpers;
 // ItemBoxManager: OpenItemBox "global,?,item,box" (or its xml list's individualDropBoxId, or the played client's
 // param1, which PlayedItemData reads as "0,1,0,param1"), SelectItemBox "count,box", OpenItemBoxWithKey
 // "key,amount,item,?,?,box", OpenItemBoxLimitedQuantity individualDropBoxId, the Lullu and pet boxes' commonBoxId and
-// unCommonBoxId (a list for the pet box). A gacha box names its box through the gacha table, so it is not here.
+// unCommonBoxId (a list for the pet box). A gacha box names its box through the gacha table, so it is not here. A
+// played client's param1 that is a global drop box (a globalDropItemBox row of the server pack: the mission boxes
+// name 30003-30006) is not an individual box, as ClientItemBoxes puts it in OpenItemBox's global place.
 public static class ItemBoxDropIds {
-    public static HashSet<string> Collect(M2dReader? pack, M2dReader? played) {
+    public static HashSet<string> Collect(M2dReader? pack, M2dReader? played, IReadOnlySet<int>? globalBoxes = null) {
         var ids = new HashSet<string>();
         foreach (M2dReader reader in new[] { pack, played }.OfType<M2dReader>()) {
             foreach (var file in reader.Files.Where(file => IsItemFile(file.Name))) {
                 XmlDocument document = reader.GetXmlDocument(file);
                 foreach (XmlElement function in document.GetElementsByTagName("function").OfType<XmlElement>()) {
-                    ids.UnionWith(Of(function.GetAttribute("name"), function.GetAttribute("parameter"), function.GetAttribute("param1")));
+                    ids.UnionWith(Of(function.GetAttribute("name"), function.GetAttribute("parameter"), function.GetAttribute("param1"), globalBoxes));
                 }
             }
         }
@@ -30,9 +32,10 @@ public static class ItemBoxDropIds {
         name.StartsWith("item/", StringComparison.OrdinalIgnoreCase) || name.StartsWith("itemdata/", StringComparison.OrdinalIgnoreCase);
 
     // The box ids one function names (none for a function that opens no individual box).
-    public static IEnumerable<string> Of(string name, string parameter, string param1 = "") {
+    public static IEnumerable<string> Of(string name, string parameter, string param1 = "", IReadOnlySet<int>? globalBoxes = null) {
         if (name is "OpenItemBox" && parameter.Length == 0 && param1.Length > 0) {
-            return Positive(ItemBoxRules.Arg(ItemBoxRules.FunctionArgs(param1), 0));
+            int box = ItemBoxRules.Arg(ItemBoxRules.FunctionArgs(param1), 0);
+            return globalBoxes != null && globalBoxes.Contains(box) ? [] : Positive(box);
         }
         if (parameter.TrimStart().StartsWith('<')) {
             return name switch {

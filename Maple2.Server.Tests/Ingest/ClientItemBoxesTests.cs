@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Xml;
 using Maple2.File.Ingest.Helpers;
+using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Tests.Ingest;
 
@@ -62,5 +64,43 @@ public class ClientItemBoxesTests {
     [TestCase(330001700, 5, false, "0,1,0,330001700,5")]
     public void Parameter_PutsTheBoxInItsPlace(int box, int amount, bool global, string parameter) {
         Assert.That(ClientItemBoxes.Parameter(new ClientItemBoxes.Box(box, amount), global), Is.EqualTo(parameter));
+    }
+
+    private static ItemMetadata Item(string name, int slotMax, string category, int level, TransferType transfer, long sell, long duration = 0, int type = 10) {
+        var limit = new ItemMetadataLimit(Gender.All, level, transfer, 4, false, false, true, false, false, false, false, 0, [], []);
+        var property = new ItemMetadataProperty(false, 0, slotMax, type, 0, category, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [sell, sell, sell, sell, sell, sell], [0, 0, 0, 0, 0, 0], 0, 0);
+        var function = new ItemMetadataFunction(ItemFunction.OpenItemBox, nameof(ItemFunction.OpenItemBox), "0,1,0,320000547", false);
+        return new ItemMetadata(20301431, name, [], "", [], new ItemMetadataLife(duration, 0), property, new ItemMetadataCustomize(0, 0), limit, null, function, [], null, null, null, null);
+    }
+
+    // 20301431: a mini-game ticket in the pack (stack 9999, ETC, level 1, account bound), the release client's
+    // weapon box (stack 999, Package, no level, transfer type 1): the client's name, stack, category, limits and sell
+    // prices; the pack's type (the bag tab rule decides that) and function (already the client's box).
+    [Test]
+    public void ClientFields_TakeTheClientsRow() {
+        ItemMetadata pack = Item("Mini-Game: Survival M", 9999, "ETC", 1, TransferType.BindOnLoot, 0);
+        ItemMetadata client = Item("Halloween Weapon Box", 999, "Package", 0, TransferType.Untradeable, 482, 86400, type: 25);
+        ItemMetadata taken = ClientItemBoxes.ClientFields(pack, client);
+        Assert.Multiple(() => {
+            Assert.That(taken.Name, Is.EqualTo("Halloween Weapon Box"));
+            Assert.That((taken.Property.SlotMax, taken.Property.Category, taken.Property.Type), Is.EqualTo((999, "Package", 10)));
+            Assert.That((taken.Limit.Level, taken.Limit.TransferType), Is.EqualTo((0, TransferType.Untradeable)));
+            Assert.That(taken.Property.SellPrices, Is.EqualTo(new long[] { 482, 482, 482, 482, 482, 482 }));
+            Assert.That(taken.Life.ExpirationDuration, Is.EqualTo(86400));
+            Assert.That(taken.Function, Is.SameAs(pack.Function));
+        });
+    }
+
+    // A client row with the pack's values (a mission box the client did not reuse) leaves the row as it is; a client
+    // item without a name keeps the pack's name.
+    [Test]
+    public void ClientFields_SameRowStays() {
+        ItemMetadata pack = Item("Level Up Mission Box", 9999, "Package", 1, TransferType.BindOnLoot, 0);
+        Assert.That(ClientItemBoxes.ClientFields(pack, Item("Level Up Mission Box", 9999, "Package", 1, TransferType.BindOnLoot, 0)), Is.SameAs(pack));
+        Assert.That(ClientItemBoxes.ClientFields(pack, Item("", 9999, "Package", 1, TransferType.BindOnLoot, 0)), Is.SameAs(pack));
+        // A client row without a sell list (the pack's lists are zeros) has the same prices.
+        ItemMetadata noList = Item("Level Up Mission Box", 9999, "Package", 1, TransferType.BindOnLoot, 0);
+        noList = noList with { Property = noList.Property with { SellPrices = [], CustomSellPrices = [] } };
+        Assert.That(ClientItemBoxes.ClientFields(pack, noList), Is.SameAs(pack));
     }
 }

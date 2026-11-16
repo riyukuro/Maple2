@@ -805,7 +805,8 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
         XmlDocument? clientTable = ClientListedRows.PlayedTable(playedReader, FeatureLocaleFilter.Locale, "individualitemdrop_final.xml");
         // The boxes item use opens: only they are taken from the client's table when the server's rows cover fewer groups.
-        HashSet<string>? itemBoxes = clientTable == null ? null : ItemBoxDropIds.Collect(clientReader, playedReader);
+        HashSet<string>? itemBoxes = clientTable == null ? null : ItemBoxDropIds.Collect(clientReader, playedReader,
+            parser.ParseGlobalDropItemBox().Select(entry => entry.Id).ToHashSet());
         IEnumerable<(int Id, IndividualItemDrop Box)> dropBoxes = ServerDropTable.Read(xmlReader, dropFile, clientTable, out ClientDropBoxes.Counts? clientCounts,
             itemBoxes == null ? null : itemBoxes.Contains);
         foreach ((int id, IndividualItemDrop dropBox) in dropBoxes) {

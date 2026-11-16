@@ -313,6 +313,13 @@ public class ClientDropBoxesTests {
         Assert.That(ItemBoxDropIds.Of(name, parameter, param1), Is.EqualTo(ids));
     }
 
+    // The played client's param1 of a mission box names global box 30005, not an individual box of that id.
+    [TestCase("30005", new string[0])]
+    [TestCase("330001648", new[] { "330001648" })]
+    public void ItemBoxDropIds_SkipsGlobalBoxes(string param1, string[] ids) {
+        Assert.That(ItemBoxDropIds.Of("OpenItemBox", "", param1, new HashSet<int> { 30001, 30003, 30005 }), Is.EqualTo(ids));
+    }
+
     // A box with as many KR groups as the client keeps the server's rows, though the items differ.
     [Test]
     public void AsManyAvailableGroupsAsTheClient_KeepsTheServerRows() {

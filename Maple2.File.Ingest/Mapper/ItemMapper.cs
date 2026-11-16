@@ -62,7 +62,17 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 playedBoxes = ClientItemBoxes.Read(itemFiles, available);
             }
         }
-        int clientBoxesGlobal = 0, clientBoxesIndividual = 0;
+        int clientBoxesGlobal = 0, clientBoxesIndividual = 0, clientFields = 0;
+        // The items whose box the played client names (ClientItemBoxes): the release client reuses some of those
+        // ids for another item (20301431 is a weapon box there, a mini-game ticket in the pack), so the fields the
+        // server reads of them are taken from the played client's item data (ClientItemBoxes.ClientFields).
+        HashSet<int> clientBoxItems = [];
+        Dictionary<int, string>? playedNames = null;
+        Dictionary<int, XmlElement?>? clientBoxEnvironments = null;
+        if (playedReader != null && known != null && playedBoxes != null) {
+            playedNames = new ItemParser(playedReader, PackTables.PlayedStringFolder(PackTables.PlayedNames(playedReader), language, "itemname.xml")).ItemNames();
+            clientBoxEnvironments = PlayedEnvironments(playedBoxes.ContainsKey, available).ToDictionary(entry => entry.Id, entry => entry.Environment);
+        }
         int notInPlayed = 0, inPlayed = 0, lockTagsChanged = 0, typesChanged = 0, clientRanks = 0, clientRanksDiffer = 0, playedUnknown = 0;
 
         Dictionary<int, int> itemExtractionTryCount = tableParser.ParseItemExtraction()
@@ -82,6 +92,15 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         foreach ((int id, string name, ItemData data) in parser.Parse()) {
             packIds.Add(id);
             ItemMetadata itemMetadata = Build(id, name, data, false);
+            if (clientBoxItems.Contains(id) && clientBoxEnvironments?.GetValueOrDefault(id) is { } clientEnvironment) {
+                // Built as a played-only item would be, for its fields alone; its counts are not the ingest's.
+                var counts = (playedUnknown, lockTagsChanged, typesChanged, clientRanks, clientRanksDiffer);
+                ItemMetadata client = Build(id, playedNames!.GetValueOrDefault(id, string.Empty), PlayedItemData.Read(clientEnvironment, null), true);
+                (playedUnknown, lockTagsChanged, typesChanged, clientRanks, clientRanksDiffer) = counts;
+                ItemMetadata taken = ClientItemBoxes.ClientFields(itemMetadata, client);
+                if (taken != itemMetadata) clientFields++;
+                itemMetadata = taken;
+            }
             ItemMetadataById[id] = itemMetadata;
             if (known != null) {
                 if (itemMetadata.Property.NotInPlayedClient) notInPlayed++;
@@ -98,11 +117,11 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         int playedSetRows = 0, playedExtractionRows = 0;
         var playedByRange = new SortedDictionary<int, int>();
         if (playedReader != null && known != null) {
-            Dictionary<int, string> playedNames = new ItemParser(playedReader, PackTables.PlayedStringFolder(PackTables.PlayedNames(playedReader), language, "itemname.xml")).ItemNames();
+            playedNames ??= new ItemParser(playedReader, PackTables.PlayedStringFolder(PackTables.PlayedNames(playedReader), language, "itemname.xml")).ItemNames();
             Dictionary<int, XmlElement> models = PlayedModels();
             HashSet<int> playedSetItems = PlayedTableIds("table/setiteminfo.xml", "set", "itemIDs", available);
             HashSet<int> playedExtractionItems = PlayedTableIds("table/itemextraction.xml", "key", "TargetItemID", available);
-            foreach ((int id, XmlElement? environment) in PlayedOnlyEnvironments(packIds, available)) {
+            foreach ((int id, XmlElement? environment) in PlayedEnvironments(id => !packIds.Contains(id), available)) {
                 if (environment == null) {
                     playedNoEnvironment++;
                     continue;
@@ -130,6 +149,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
             Console.WriteLine($"items: {lockTagsChanged} option-lock tags taken from the played client's item data");
             Console.WriteLine($"items: {typesChanged} types taken from the played client's item data (another bag tab)");
             Console.WriteLine($"items: {clientBoxesGlobal + clientBoxesIndividual} item boxes open the played client's box instead of the pack's function ({clientBoxesGlobal} global, {clientBoxesIndividual} individual)");
+            Console.WriteLine($"items: {clientFields} of those item boxes take the played client's name, stack, category, sell prices, life or limits");
             Console.WriteLine($"items: {clientRanks} client ranks from the played client's item data ({clientRanksDiffer} differ from the server pack's rank)");
             Console.WriteLine($"items: {playedOnly} only in the played client's item data, read from it (by id / 1000000: "
                 + string.Join(", ", playedByRange.Select(entry => $"{entry.Key}: {entry.Value}")) + ")");
@@ -239,6 +259,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 bool global = globalBoxes.Contains(clientBox.Id);
                 function = new ItemMetadataFunction(ItemFunction.OpenItemBox, nameof(ItemFunction.OpenItemBox),
                     ClientItemBoxes.Parameter(clientBox, global), data.function.onlyShadowContinent == 1);
+                clientBoxItems.Add(id);
                 if (global) clientBoxesGlobal++;
                 else clientBoxesIndividual++;
             }
@@ -411,10 +432,11 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         }
     }
 
-    // The <environment> the played client keeps of each item of its item data that the data folder's pack lacks,
-    // null for one with no environment the client keeps. When the files hold an id twice the first one kept stays,
-    // as CItemDataTable::LoadItemDataFile inserts into its item map (itemdatatable.cpp:743).
-    private IEnumerable<(int Id, XmlElement? Environment)> PlayedOnlyEnvironments(HashSet<int> packIds, Func<XmlElement, bool> available) {
+    // The <environment> the played client keeps of each item of its item data that include takes (the items the
+    // data folder's pack lacks, or the client box items), null for one with no environment the client keeps. When
+    // the files hold an id twice the first one kept stays, as CItemDataTable::LoadItemDataFile inserts into its item
+    // map (itemdatatable.cpp:743).
+    private IEnumerable<(int Id, XmlElement? Environment)> PlayedEnvironments(Func<int, bool> include, Func<XmlElement, bool> available) {
         var result = new SortedDictionary<int, XmlElement?>();
         foreach (PackFileEntry file in playedReader!.Files.Where(file => PlayedClientItems.IsItemFile(file.Name))) {
             XmlNodeList? items = playedReader.GetXmlDocument(file).DocumentElement?.SelectNodes("item");
@@ -422,7 +444,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 continue;
             }
             foreach (XmlElement item in items.OfType<XmlElement>()) {
-                if (!int.TryParse(item.GetAttribute("id"), out int id) || id == 0 || packIds.Contains(id)
+                if (!int.TryParse(item.GetAttribute("id"), out int id) || id == 0 || !include(id)
                     || result.GetValueOrDefault(id) != null) {
                     continue;
                 }
