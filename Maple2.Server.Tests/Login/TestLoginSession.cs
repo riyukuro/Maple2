@@ -135,7 +135,13 @@ public sealed class TestLoginSession {
         // Characters online on the world (ChannelsResponse.online).
         public int Online;
 
+        // Thrown by Channels: a world that cannot list its channels.
+        public RpcException? ChannelsError;
+
         public override ChannelsResponse Channels(ChannelsRequest request, CallOptions options) {
+            if (ChannelsError != null) {
+                throw ChannelsError;
+            }
             return new ChannelsResponse { Channels = { 1 }, Online = Online };
         }
 
@@ -152,6 +158,9 @@ public sealed class TestLoginSession {
             return new EndTokensResponse();
         }
 
+        // The channel address MigrateOut answers with.
+        public string MigrateOutAddress = "127.0.0.1";
+
         // Thrown by MigrateOut after the move is recorded, as the world server refuses a move.
         public RpcException? MigrateOutError;
 
@@ -160,16 +169,22 @@ public sealed class TestLoginSession {
             if (MigrateOutError != null) {
                 throw MigrateOutError;
             }
-            return new MigrateOutResponse { IpAddress = "127.0.0.1", Port = 20002, Token = 1 };
+            return new MigrateOutResponse { IpAddress = MigrateOutAddress, Port = 20002, Token = 1 };
         }
 
         // The account's online record (AccountInfo); offline (channel -1) unless set. Disconnect ends it.
         public PlayerInfoResponse Account = new() { Channel = -1 };
         public readonly List<DisconnectRequest> Disconnects = [];
+        // The Success of a Disconnect's answer: false when the channel did not find the session to end.
+        public bool DisconnectSucceeds = true;
         // Thrown by Disconnect after the request is recorded.
         public RpcException? DisconnectError;
 
-        public override PlayerInfoResponse AccountInfo(PlayerInfoRequest request, CallOptions options) => Account;
+        // Thrown by AccountInfo: a world that cannot be asked.
+        public Exception? AccountInfoError;
+
+        public override PlayerInfoResponse AccountInfo(PlayerInfoRequest request, CallOptions options) =>
+            AccountInfoError != null ? throw AccountInfoError : Account;
 
         // Runs at a Disconnect, as the ended game session's last save.
         public Action<DisconnectRequest>? OnDisconnect;
@@ -181,15 +196,39 @@ public sealed class TestLoginSession {
             }
             OnDisconnect?.Invoke(request);
             Account = new PlayerInfoResponse { Channel = -1 };
-            return new DisconnectResponse { Success = true };
+            return new DisconnectResponse { Success = DisconnectSucceeds };
         }
 
-        public override LockResponse AcquireLock(LockRequest request, CallOptions options) => new();
+        // The lock answers: an error text refuses the request; an exception is thrown instead of an answer.
+        public int LockRequests;
+        public string AcquireLockErrorText = string.Empty;
+        public RpcException? AcquireLockError;
+        public string ReleaseLockErrorText = string.Empty;
+        public RpcException? ReleaseLockError;
 
-        public override LockResponse ReleaseLock(LockRequest request, CallOptions options) => new();
+        public override LockResponse AcquireLock(LockRequest request, CallOptions options) {
+            LockRequests++;
+            if (AcquireLockError != null) {
+                throw AcquireLockError;
+            }
+            return new LockResponse { Error = AcquireLockErrorText };
+        }
+
+        public override LockResponse ReleaseLock(LockRequest request, CallOptions options) {
+            if (ReleaseLockError != null) {
+                throw ReleaseLockError;
+            }
+            return new LockResponse { Error = ReleaseLockErrorText };
+        }
+
+        // Thrown by UpdatePlayer after the update is recorded.
+        public RpcException? UpdatePlayerError;
 
         public override PlayerUpdateResponse UpdatePlayer(PlayerUpdateRequest request, CallOptions options) {
             PlayerUpdates.Add(request);
+            if (UpdatePlayerError != null) {
+                throw UpdatePlayerError;
+            }
             return new PlayerUpdateResponse();
         }
 
@@ -197,8 +236,14 @@ public sealed class TestLoginSession {
         public readonly List<AdminRequest> Admins = [];
         public bool NoticeLogin;
 
+        // Thrown by Admin after the request is recorded.
+        public RpcException? AdminError;
+
         public override AdminResponse Admin(AdminRequest request, CallOptions options) {
             Admins.Add(request);
+            if (AdminError != null) {
+                throw AdminError;
+            }
             return new AdminResponse { NoticeLogin = NoticeLogin };
         }
 
