@@ -321,8 +321,9 @@ public class FunctionCubeHandler : FieldPacketHandler {
             return;
         }
         // A feed that cannot be taken now gives nothing: no drop and no trophy count. The stored feeding stays (the
-        // pet's growth and the day's count, kept in memory to match).
-        if (!session.Item.Inventory.Consume(hasItem.Uid, amount: 1)) {
+        // pet's growth and the day's count, kept in memory to match). The feed is stored taken at once, as the feeding
+        // is: taken in memory only, a crash before the session save gave it back with the growth kept.
+        if (!session.Item.Inventory.ConsumeNow([(hasItem.Uid, 1)])) {
             Logger.Error("Nurturing feed of account {AccountId}: the feed {ItemUid} found for it could not be taken", session.AccountId, hasItem.Uid);
             return;
         }

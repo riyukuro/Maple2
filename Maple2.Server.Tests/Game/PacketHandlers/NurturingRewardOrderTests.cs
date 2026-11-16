@@ -105,6 +105,10 @@ public class NurturingRewardOrderTests {
             Assert.That(session.Item.Inventory.Find(FeedItem).Sum(item => item.Amount), Is.EqualTo(feedLeft));
             Assert.That(StoredExp(test.AccountId), Is.EqualTo(rewardKnown ? 10 : 0));
         });
+        // The feed's row is stored taken with the growth, with no session save: a crash does not give it back.
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(context.Item.Where(row => row.ItemId == FeedItem && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount),
+            Is.EqualTo(feedLeft));
     }
 
     [TestCase(true, 1L, TestName = "Play_DropMade_Counts")]
