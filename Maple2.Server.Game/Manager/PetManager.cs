@@ -378,13 +378,11 @@ public sealed class PetManager : IDisposable {
     public void Dispose() => Dispose(false);
 
     /// <param name="fieldChange">The owner is leaving the field; the pet comes back in the next one.</param>
-    // Stores the pet's config and its bag (an item put in it is in memory until then).
-    public void Save() {
-        using GameStorage.Request db = session.GameStorage.Context();
+    // The pet's config and its bag, written in db's open transaction: the session's save (with the bag, after its
+    // generation check) or the unsummon's own (SaveAlone).
+    public bool Save(GameStorage.Request db) {
         lock (session.Item) {
-            if (!db.SavePetConfig(Pet.Uid, config) | !db.SaveItems(Pet.Uid, items.ToArray())) {
-                Log.Error("Pet {PetUid} of {CharacterId} not stored", Pet.Uid, session.CharacterId);
-            }
+            return db.SavePetConfig(Pet.Uid, config) & db.SaveItems(Pet.Uid, items.ToArray());
         }
     }
 
@@ -393,7 +391,7 @@ public sealed class PetManager : IDisposable {
             // Not after the save before a move stored it (GameSession.MoveStored): the next server may have loaded
             // the pet's bag already, and a write from here would land after that load.
             if (!session.MoveStored) {
-                Save();
+                session.SaveAlone("Pet", Save);
             }
             // The bag goes with the pet item (GameStorage reads it at load); the client's compose and evolve tabs read
             // it too (s_err_cannot_compose_petitem_hasitem, s_err_cannot_evolution_petitem_hasitem).

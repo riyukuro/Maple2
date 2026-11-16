@@ -650,12 +650,12 @@ public class StorageInventoryHandlerTests {
         context.SaveChanges();
     }
 
-    private static void MoveSave(TestGameSession test, GameSession session) {
+    private static void MoveSave(TestGameSession test, GameSession session, bool stored = true) {
         // The test session skips the save before a move; this test makes the one the move runs.
         test.SavingConfig(session);
         typeof(GameSession).GetField("preMigrationSaved", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
             .SetValue(session, false);
-        Assert.That(session.MigrationSave(), Is.True);
+        Assert.That(session.MigrationSave(), Is.EqualTo(stored));
     }
 
     private long StoredMesos(GameSession session) {
@@ -706,5 +706,38 @@ public class StorageInventoryHandlerTests {
         handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(15)));
 
         Assert.That(StoredOwner(stack.Uid), Is.EqualTo(session.AccountId));
+    }
+
+    // The account lock is held elsewhere (another server claimed the account): the save before the move is refused,
+    // and the open storage is not written either (it is written in the save, after the lock is taken). Before, the
+    // storage was written ahead of the save, so its mesos overwrote what the other server had stored.
+    [Test]
+    public void AHeldAccountLock_WritesNoStorage() {
+        GameSession session = Open(meso: 1000);
+        Mesos(session, deposit: true, 400);
+        SetStoredMesos(session, 0);
+        test.World.LockError = "held";
+
+        MoveSave(test, session, stored: false);
+
+        Assert.That(StoredMesos(session), Is.Zero);
+    }
+
+    // Another entry of the account claimed it (a relog whose kick did not wait for this session's end): the storage's
+    // close writes nothing. Before, its write took no check, and the storage mesos it wrote whole undid what the
+    // next session had stored.
+    [Test]
+    public void TheCloseAfterAnotherEntryClaimedTheAccount_WritesNothing() {
+        GameSession session = Open(meso: 1000);
+        Mesos(session, deposit: true, 400);
+        SetStoredMesos(session, 0);
+        using (Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context()) {
+            db.ClaimSession(session.AccountId);
+        }
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(15)));
+
+        Assert.That(session.Storage, Is.Null);
+        Assert.That(StoredMesos(session), Is.Zero);
     }
 }

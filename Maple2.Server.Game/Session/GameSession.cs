@@ -2160,13 +2160,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // character list lost them. Ended here, the partner cannot finish the trade after the save either (its mesos
         // would reach this wallet unstored). The client sends these moves with a trade open (no trade check).
         Trade?.Dispose();
-        // An open storage and the summoned pet's bag are stored here too, before the save gives the account lock back:
-        // their item moves (a deposit, an item put in the pet's bag) are in memory until they are stored. Stored only
-        // at LeaveField, after the move's save, the next server could load a moved item in the bag first and this
-        // server's write landed after that load (the item in the next session's bag, and stored in the storage or the
-        // pet's bag). Once the move's save stored, they write nothing more (MoveStored).
-        Storage?.Save();
-        Pet?.Save();
+        // An open storage and the summoned pet are stored by the save below (SaveRows), with the bag. Once the move's
+        // save stored, they write nothing more (MoveStored).
 
         SaveResult result = LockedSave(tries: 2, ResetWait, last);
         if (result != SaveResult.Stored) {
@@ -2768,6 +2763,26 @@ public sealed partial class GameSession : Core.Network.Session {
     // player while this session's last save had not run): it writes nothing. The other session loaded the rows
     // before this save, plays on from them and writes them; written here, a row it does not change after would keep
     // this session's values while that session holds others (an item lost or doubled).
+    // A write of the session's own outside its save (the storage's close, the pet's unsummon): in one transaction,
+    // after the same generation check as the save, so it writes nothing once another entry claimed the account.
+    internal void SaveAlone(string what, Func<GameStorage.Request, bool> write) {
+        using GameStorage.Request db = GameStorage.Context();
+        db.BeginTransaction();
+        if (!HoldsSession(db)) {
+            return;
+        }
+        bool stored;
+        try {
+            stored = write(db) && db.Commit();
+        } catch (Exception ex) {
+            Logger.Error(ex, "{What} of {CharacterId}: its commit threw", what, CharacterId);
+            return;
+        }
+        if (!stored) {
+            Logger.Error("{What} of {CharacterId} not stored", what, CharacterId);
+        }
+    }
+
     private bool HoldsSession(GameStorage.Request db) {
         if (db.HoldsSession(AccountId, sessionGen)) {
             return true;
@@ -2806,6 +2821,12 @@ public sealed partial class GameSession : Core.Network.Session {
         TrySaveComponent(Achievement, (manager, request) => manager.Save(request));
         TrySaveComponent(Quest, (manager, request) => manager.Save(request));
         TrySaveComponent(Dungeon, (manager, request) => manager.Save(request));
+        // An open storage and the summoned pet, with the bag: their own writes came only at their close, after a
+        // move's save had given the account lock back and with no generation check, so they could land after the next
+        // server's load (the storage mesos written whole undid a withdrawal stored there; the pet's config overwrote
+        // the next session's).
+        TrySaveComponent(Storage, (manager, request) => threw |= !manager.Save(request));
+        TrySaveComponent(Pet, (manager, request) => threw |= !manager.Save(request));
         if (threw || !db.SaveChanges() || db.FailedSaves != failedSaves) {
             Logger.Error("Save: a component was not saved, nothing stored AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
             return false;
