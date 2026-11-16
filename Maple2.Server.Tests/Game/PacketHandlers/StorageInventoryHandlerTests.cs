@@ -377,4 +377,99 @@ public class StorageInventoryHandlerTests {
         Assert.That(session.Item.Inventory.Find(20000001).Sum(item => item.Amount), Is.EqualTo(5));
         Assert.That(test.Errors, Is.Empty);
     }
+
+    private static Maple2.Server.Game.Manager.Items.ItemCollection Stored(GameSession session) =>
+        (Maple2.Server.Game.Manager.Items.ItemCollection) typeof(Maple2.Server.Game.Manager.Items.StorageManager)
+            .GetField("items", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(session.Storage)!;
+
+    // A drag inside the storage window (StoreSlot, storeslot.cpp:362): mode 2 with the store id, the item and the slot
+    // it was dropped on. The two items swap (an empty slot takes the item), in one Move answer; a slot past the
+    // storage is ignored.
+    [Test]
+    public void Move_SwapsInsideTheStorage() {
+        GameSession session = Open();
+        test.Register(TestGameSession.Metadata(20000002, type: 2));
+        Item other = session.Field!.ItemDrop.CreateItem(20000002)!;
+        Assert.That(session.Item.Inventory.Add(other, commit: true), Is.True);
+        other = session.Item.Inventory.Find(20000002).Single();
+        Item(session, 0, stack.Uid, 5);
+        Item(session, 0, other.Uid, 1);
+        var items = Stored(session);
+        (short slotA, short slotB) = (items.Get(stack.Uid)!.Slot, items.Get(other.Uid)!.Slot);
+        test.TakeSent();
+
+        void Move(long uid, short slot) => handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(2);
+            writer.WriteLong(0);
+            writer.WriteLong(uid);
+            writer.WriteShort(slot);
+        }));
+
+        Move(stack.Uid, slotB);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(StorageInventoryPacket.Move(other.Uid, slotA, stack.Uid, slotB)) }));
+        Assert.That((items.Get(stack.Uid)!.Slot, items.Get(other.Uid)!.Slot), Is.EqualTo((slotB, slotA)));
+
+        Move(stack.Uid, 20);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(StorageInventoryPacket.Move(0, slotB, stack.Uid, 20)) }));
+        Assert.That(items.Get(stack.Uid)!.Slot, Is.EqualTo(20));
+
+        Move(stack.Uid, short.MaxValue);
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // The window's sort button (UIObjectStoreDialog OnSort, uiobjectstoredialog.cpp:217: mode 8 and the store id): the
+    // storage is sorted and sent again, a reset and the item batch.
+    [Test]
+    public void Sort_SendsTheStorageAgain() {
+        GameSession session = Open();
+        Item(session, 0, stack.Uid, 5);
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(8);
+            writer.WriteLong(0);
+        }));
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Select(Convert.ToHexString).First(), Is.EqualTo(Hex(StorageInventoryPacket.Reset())));
+        Assert.That(sent.Select(Convert.ToHexString).Skip(1), Is.EqualTo(new[] { Hex(StorageInventoryPacket.Reload([Stored(session).Get(stack.Uid)!])) }));
+    }
+
+    // Close (mode 0x0f): the storage is saved and let go; the next open loads it again with what was deposited.
+    [Test]
+    public void Close_SavesAndTheNextOpenHasIt() {
+        GameSession session = Open();
+        Item(session, 0, stack.Uid, 5);
+        Mesos(session, deposit: false, 0);
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(15)));
+        Assert.That(session.Storage, Is.Null);
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(12);
+            writer.WriteLong(0);
+        }));
+        Assert.That(Stored(session).Get(stack.Uid)?.Amount, Is.EqualTo(5));
+    }
+
+    // A deposit of more mesos than the character holds, a withdrawal of more than the storage holds, and one the
+    // character's wallet cannot take whole are refused with the invalid money text; nothing moves.
+    [Test]
+    public void Mesos_NotHeld_Refused() {
+        GameSession session = Open(meso: 100);
+        Mesos(session, deposit: true, 60);
+        test.TakeSent();
+
+        Mesos(session, deposit: true, 41);
+        Mesos(session, deposit: false, 61);
+        List<byte[]> refused = test.TakeSent();
+        session.Currency.Meso = Maple2.Model.Metadata.Constant.MaxMeso;
+        test.TakeSent();
+        Mesos(session, deposit: false, 60);
+        refused.AddRange(test.TakeSent());
+
+        string invalid = Hex(StorageInventoryPacket.Error(Maple2.Model.Error.StorageInventoryError.s_store_err_deposit_invalid_money));
+        Assert.That(refused.Select(Convert.ToHexString), Is.EqualTo(new[] { invalid, invalid, invalid }));
+        Mesos(session, deposit: true, 0);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Has.None.EqualTo(Hex(StorageInventoryPacket.UpdateMesos(0))));
+    }
 }

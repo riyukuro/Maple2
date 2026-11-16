@@ -319,6 +319,40 @@ public class ItemFunctionUseTests {
         Assert.That(PartnerBadgeRows(partner), Is.EqualTo(0));
     }
 
+    // The box names a partner, not the opener: the opener's own name, a name no character has, and another character
+    // of the opener's own account each get their message box (s_couple_effect_error_openbox_*), and the box stays.
+    [TestCase("self")]
+    [TestCase("unknown")]
+    [TestCase("sameAccount")]
+    public void OpenCoupleEffectBox_RefusedPartner_KeepsTheBox(string partnerCase) {
+        DbContextOptions options = new DbContextOptionsBuilder()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+        var partner = new TestGameSession(options);
+        partner.Start();
+        test = new TestGameSession(options);
+        test.Register(TestGameSession.Metadata(70800001));
+        Item box = test.Store(TestGameSession.Metadata(20700001,
+            function: new ItemMetadataFunction(ItemFunction.OpenCoupleEffectBox, "OpenCoupleEffectBox", "70800001,4", false)));
+        test.Start();
+        test.EnterMap(TestGameSession.Map(2000062));
+        test.World.AddPlayer(partnerCase == "sameAccount" ? test.AccountId : partner.AccountId, partner.CharacterId, partner.Session.PlayerName);
+        test.TakeSent();
+
+        (string name, StringCode error) = partnerCase switch {
+            "self" => (session.PlayerName, StringCode.s_couple_effect_error_openbox_myself_char),
+            "unknown" => ("nobody", StringCode.s_couple_effect_error_openbox_charname),
+            _ => (partner.Session.PlayerName, StringCode.s_couple_effect_error_openbox_myself_account),
+        };
+        Use(box, name);
+
+        Assert.That(Sent(), Is.EqualTo(new[] { Hex(NoticePacket.MessageBox(error)) }));
+        Assert.That(session.Item.Inventory.Get(box.Uid)?.Amount, Is.EqualTo(1));
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == 70800001), Is.Empty);
+        Assert.That(test.World.MailNotifications, Is.Empty);
+    }
+
     // 21100001 adds sticker set 1 for good; a second coupon of a set held for good is kept.
     [Test]
     public void ChatEmoticonAdd_AddsTheSetOnce() {
