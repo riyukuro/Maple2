@@ -668,6 +668,47 @@ public class InventoryManager {
         return true;
     }
 
+    // Takes a plan's amounts from the bag in memory, as Consume, and keeps what it took for PutBack: each stack with
+    // the amount taken from it. Null when the bag does not hold the plan; nothing is taken then.
+    public List<(Item Item, int Amount)>? ConsumeToPutBack(IReadOnlyList<(long Uid, int Amount)>? plan) {
+        lock (session.Item) {
+            if (plan == null) {
+                return null;
+            }
+            var taken = new List<(Item Item, int Amount)>();
+            foreach ((long uid, int amount) in plan) {
+                Item? item = Get(uid);
+                if (item == null || !ConsumeInternal(uid, amount)) {
+                    PutBack(taken);
+                    return null;
+                }
+                taken.Add((item, amount));
+            }
+            return taken;
+        }
+    }
+
+    // Puts back what ConsumeToPutBack took, as it was taken (a paid move undone after its payment): a stack taken in
+    // part gets its amount back, and a stack taken whole comes back as the same item, with its uid, binding and
+    // expiry. Its row is still the character's, because the take was not stored (Add takes it off the delete list).
+    // Never mailed: a mail is stored at once, and if the session's save then failed, the database held the item
+    // twice. False when a stack could not be put back.
+    public bool PutBack(IReadOnlyList<(Item Item, int Amount)> taken) {
+        lock (session.Item) {
+            bool all = true;
+            foreach ((Item item, int amount) in taken) {
+                if (Get(item.Uid) is { } held) {
+                    held.Amount += amount;
+                    session.Send(ItemInventoryPacket.UpdateAmount(held.Uid, held.Amount));
+                    session.Quest.UpdateHeld(held.Id);
+                } else if (!Add(item)) {
+                    all = false;
+                }
+            }
+            return all;
+        }
+    }
+
     // Takes a plan's amounts from the bag and stores their rows at once, in one purchase save (with the currency) or
     // not at all, for a use whose gift gets its rows at once (an item box's items, a ticket's reward): left to the
     // session save, a crash after the gift was stored kept the box, key or ticket, which then gave it again. Memory

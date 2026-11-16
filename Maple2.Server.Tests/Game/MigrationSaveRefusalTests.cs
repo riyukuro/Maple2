@@ -245,6 +245,58 @@ public class MigrationSaveRefusalTests {
         });
     }
 
+    // Tickets used by tag (the advanced air taxi ticket, ItemUseHandler.HandleCallAirTaxi) for a move to another
+    // server whose second save does not store come back as the stacks they were (InventoryManager.PutBack): an
+    // expiring ticket of one id taken whole and part of a stack of another. The last save stores both rows as before
+    // the move and no mail. Before, `tickets` copies of the used ticket came back as a new row (or a mail when the bag
+    // was full): another id, a fresh expiry.
+    [Test]
+    public void Migrate_SecondSaveFails_TicketsTakenByTag_PutBackAsTheyWere() {
+        var test = new TestGameSession();
+        Maple2.Model.Metadata.ItemMetadata Ticket(int id) {
+            Maple2.Model.Metadata.ItemMetadata metadata = TestGameSession.Metadata(id);
+            return metadata with { Property = metadata.Property with { Tag = ItemTag.air_taxi_advanced } };
+        }
+        test.Store(TestGameSession.Metadata(2000002)); // keeps the item uids off the character id
+        Maple2.Model.Game.Item expiring = test.Store(Ticket(20300001));
+        Maple2.Model.Game.Item stack = test.Store(Ticket(20300002), 3);
+        GameSession session = Closable(test);
+        long expiry = DateTimeOffset.UtcNow.AddDays(3).ToUnixTimeSeconds();
+        session.Item.Inventory.Get(expiring.Uid)!.ExpiryTime = expiry;
+        bool afterMove = false;
+        List<(Maple2.Model.Game.Item Item, int Amount)>? used = null;
+        bool putBack = false;
+        test.FailSave = _ => afterMove;
+
+        session.Migrate(Target, beforeMove: () => {
+            used = session.Item.Inventory.ConsumeToPutBack(
+                session.Item.Inventory.PlanConsume([new Maple2.Model.Game.IngredientInfo(ItemTag.air_taxi_advanced, 2)]));
+            afterMove = true;
+        }, moveUndone: () => {
+            // The move's field: Closable leaves the session off the map, and an item comes back only in a field.
+            test.EnterMap(TestGameSession.Map(2000001));
+            putBack = session.Item.Inventory.PutBack(used!);
+            session.Field = null;
+            afterMove = false; // the last save stores
+        });
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        var rows = context.Item.Where(row => row.OwnerId == test.CharacterId && (row.ItemId == 20300001 || row.ItemId == 20300002))
+            .Select(row => new { row.Id, row.ItemId, row.Amount, row.ExpiryTime }).OrderBy(row => row.ItemId).ToList();
+        Assert.Multiple(() => {
+            Assert.That(used, Has.Count.EqualTo(2), "one of each stack was used");
+            Assert.That(putBack, Is.True);
+            Assert.That(Ended(session), Is.True);
+            Assert.That(session.Item.Inventory.Get(expiring.Uid)?.Amount, Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Get(expiring.Uid)?.ExpiryTime, Is.EqualTo(expiry));
+            Assert.That(session.Item.Inventory.Get(stack.Uid)?.Amount, Is.EqualTo(3));
+            Assert.That(rows.Select(row => (row.Id, row.ItemId, row.Amount)),
+                Is.EqualTo(new[] { (expiring.Uid, 20300001, 1), (stack.Uid, 20300002, 3) }));
+            Assert.That(rows[0].ExpiryTime, Is.EqualTo(Maple2.Database.Extensions.DateTimeExtensions.FromEpochSeconds(expiry)));
+            Assert.That(context.Mail.Count(mail => mail.ReceiverId == test.CharacterId), Is.Zero, "nothing is mailed");
+        });
+    }
+
     // A move that went keeps the payment: moveUndone does not run.
     [Test]
     public void Migrate_PaidMoveThatWent_KeepsThePayment() {

@@ -1690,24 +1690,23 @@ public class ItemUseHandler : FieldPacketHandler {
         }
 
         // A move to another server undone after the tickets were used (its save after them did not store) gets them
-        // back: copies of the used ticket, as many as were used, before a last save that refusal may lead to.
-        Item? usedCopy = null;
+        // back, before a last save that refusal may lead to: the stacks used, as they were (InventoryManager.PutBack).
+        // Before, copies of the used ticket came back: the tag's take can use other ticket ids or other binding and
+        // expiry, so a bound or expiring ticket came back as a fresh one of another kind, and when the bag could not
+        // take them they were mailed (stored at once, beside the rows the failed save left the character's).
+        List<(Item Item, int Amount)>? used = null;
         session.SendFieldEnter(session.PaidFieldChange(mapId, () => {
-            Item? copy = item.Clone(newRow: true);
-            bool consumed = tickets == 1
-                ? session.Item.Inventory.Consume(item.Uid, 1)
-                : session.Item.Inventory.Consume([new IngredientInfo(ItemTag.air_taxi_advanced, tickets)]);
-            if (!consumed) {
+            used = session.Item.Inventory.ConsumeToPutBack(tickets == 1
+                ? [(item.Uid, 1)]
+                : session.Item.Inventory.PlanConsume([new IngredientInfo(ItemTag.air_taxi_advanced, tickets)]));
+            if (used == null) {
                 Logger.Error("Air taxi to {MapId}: {Tickets} ticket(s) counted for {CharacterId} could not be used", mapId, tickets, session.CharacterId);
-            } else if (copy != null) {
-                copy.Amount = tickets;
-                usedCopy = copy;
             }
         }, unpay: () => {
-            if (usedCopy is { } back && !session.Item.AddOrMail(back, true)) {
+            if (used != null && !session.Item.Inventory.PutBack(used)) {
                 Logger.Error("Air taxi to {MapId}: {Tickets} ticket(s) of {CharacterId} not given back after the refused move", mapId, tickets, session.CharacterId);
             }
-            usedCopy = null;
+            used = null;
         }));
     }
 }
