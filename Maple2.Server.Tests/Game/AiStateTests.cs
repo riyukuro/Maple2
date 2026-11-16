@@ -32,7 +32,7 @@ public class AiStateTests : TriggerTestBase {
     private FieldNpc npc = null!;
 
     private FieldNpc Spawn(Entry[] battle, Condition[]? reserved = null, Vector3? position = null, string[]? sequences = null,
-            NpcMetadataSkill? skill = null) {
+            NpcMetadataSkill? skill = null, Entry[]? battleEnd = null, bool onlyDead = false) {
         Start();
         typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
@@ -48,7 +48,7 @@ public class AiStateTests : TriggerTestBase {
         }
         typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, NpcTable(sequences ?? [], Npc(NpcId, skill)));
         typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field,
-            AiTable(new AiMetadata(AiPath, reserved ?? [], battle, [], [])));
+            AiTable(new AiMetadata(AiPath, reserved ?? [], battle, battleEnd ?? [], [], onlyDead)));
         SetTick(1_000_000);
 
         Assert.That(Field.NpcMetadata.TryGet(NpcId, out NpcMetadata? metadata), Is.True);
@@ -658,5 +658,59 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(LastSkillCastTick, Is.EqualTo(start + 2000));
         Assert.That(npc.AiExtraData.ContainsKey("Runaway"), Is.False);
         Assert.That(test.Errors, Is.Empty);
+    }
+
+    private void EndBattle() => typeof(BattleState).GetField("target", Any)!.SetValue(npc.BattleState, null);
+
+    // A battle that ends with the npc alive runs the battleEnd tree (KR AI files' <battleEnd>), once.
+    [Test]
+    public void BattleEnd_RunsWhenTheBattleEndsAlive() {
+        Spawn([Standby(1200)], battleEnd: [SetValue("Ended", 1, isModify: true)]);
+        npc.AiState.Update(Field.FieldTick);
+        Assert.That(npc.AiExtraData.ContainsKey("Ended"), Is.False);
+
+        EndBattle();
+        SetTick(2_000_000); // the standby's limit has passed
+        npc.AiState.Update(Field.FieldTick);
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(npc.AiExtraData["Ended"], Is.EqualTo(1));
+    }
+
+    // <battleEnd onlyDead="true">: no run when a battle ends with the npc alive.
+    [Test]
+    public void BattleEnd_OnlyDead_DoesNotRunWhenTheBattleEndsAlive() {
+        Spawn([Standby(1200)], battleEnd: [SetValue("Ended", 1)], onlyDead: true);
+        npc.AiState.Update(Field.FieldTick);
+
+        EndBattle();
+        SetTick(2_000_000); // the standby's limit has passed
+        npc.AiState.Update(Field.FieldTick);
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(npc.AiExtraData.ContainsKey("Ended"), Is.False);
+    }
+
+    // At the death the tree runs through at once, onlyDead or not; a locked tree does not hold the thread.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void RunDeathBattleEnd_RunsTheTreeThrough(bool onlyDead) {
+        Spawn([Standby(1200)], battleEnd: [SetValue("A", 1), SetValue("B", 2)], onlyDead: onlyDead);
+        npc.AiState.Update(Field.FieldTick);
+
+        npc.AiState.RunDeathBattleEnd();
+
+        Assert.Multiple(() => {
+            Assert.That(npc.AiExtraData["A"], Is.EqualTo(1));
+            Assert.That(npc.AiExtraData["B"], Is.EqualTo(2));
+        });
+    }
+
+    [Test]
+    public void RunDeathBattleEnd_WithoutATree_DoesNothing() {
+        Spawn([Standby(1200)]);
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.DoesNotThrow(() => npc.AiState.RunDeathBattleEnd());
     }
 }
