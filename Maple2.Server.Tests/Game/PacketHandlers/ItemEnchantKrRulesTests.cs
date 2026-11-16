@@ -337,4 +337,28 @@ public class ItemEnchantKrRulesTests {
             Assert.That(session.Item.Inventory.Get(gear.Uid)!.Enchant!.Enchants, Is.EqualTo(11));
         });
     }
+
+    // An enchant at +10 sent twice with its one copy: the first takes the copy and its catalysts; the copy cannot be
+    // added again (it is gone), and the second enchant is refused for the missing copy, with nothing more taken.
+    [Test]
+    public void Ophelia_TheSameCopyTwiceIsTakenOnce() {
+        GameSession session = Login(6, new ItemEnchant(enchants: 10), copies: 1);
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        Dictionary<ItemTag, int> cost = Maple2.Server.Core.Formulas.Enchant.GetEnchantCost(session.Item.Inventory.Get(gear.Uid)!)
+            .ToDictionary(c => c.Tag, c => c.Amount);
+        Assert.That(session.ItemEnchant.UpdateFodder(copyUids[0], add: true), Is.True);
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
+        int onyx = Held(session, ItemTag.Onix);
+
+        bool readded = session.ItemEnchant.UpdateFodder(copyUids[0], add: true);
+        bool again = session.ItemEnchant.Enchant(gear.Uid);
+
+        Assert.Multiple(() => {
+            Assert.That(readded, Is.False);
+            Assert.That(again, Is.False);
+            Assert.That(session.Item.Inventory.Get(copyUids[0]), Is.Null);
+            Assert.That(onyx, Is.EqualTo(30000 - cost.GetValueOrDefault(ItemTag.Onix)));
+            Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(onyx));
+        });
+    }
 }

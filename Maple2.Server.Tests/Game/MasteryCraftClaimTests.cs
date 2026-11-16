@@ -101,4 +101,21 @@ public class MasteryCraftClaimTests {
                 Does.Contain(System.Convert.ToHexString(MasteryPacket.Error(MasteryError.s_mastery_error_lack_item).ToArray())));
         });
     }
+
+    // A craft sent twice with materials for one: the second finds too few, is refused, and takes neither materials
+    // nor fee (5 held, 3 a craft).
+    [Test]
+    public void TwiceWithMaterialsForOne_CraftsOnce() {
+        (GameSession session, Item stack) = Start();
+
+        Craft(session);
+        Craft(session);
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, Product), Is.EqualTo(1));
+            Assert.That(Held(session, Material), Is.EqualTo(2));
+            Assert.That(test.Row(stack.Uid)!.Amount, Is.EqualTo(2));
+            Assert.That(session.Currency.Meso, Is.EqualTo(900));
+        });
+    }
 }

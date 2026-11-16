@@ -552,6 +552,23 @@ public class ItemBoxHandlerTests {
         Assert.That(Held(session, RewardB), Is.EqualTo(1));
     }
 
+    // Two uses of the last capsule: the second finds no capsule and gives nothing, and the capsule's row is gone.
+    [Test]
+    public void OpenGachaBox_Use_TwiceWithOneCapsuleOpensOnce() {
+        GameSession session = Login(ItemFunction.OpenGachaBox, $"{GachaInfoId}", amount: 1);
+        Use(session, "");
+        test.TakeSent();
+
+        Use(session, "");
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSentOps(), Has.No.Member(SendOp.ItemInventory));
+            Assert.That(Held(session, BoxId), Is.EqualTo(0));
+            Assert.That(Held(session, RewardA), Is.EqualTo(3));
+            Assert.That(test.Row(box.Uid)?.OwnerId ?? 0, Is.EqualTo(0), "the capsule's row is no longer the character's");
+        });
+    }
+
     // Two stacks of one select box at two rarities: the dialog of one opens only that stack, whichever the bag
     // lists first.
     [TestCase(OtherRarity, 1, 4, 0)]
