@@ -44,11 +44,6 @@ public static class NpcControlRules {
     // the lift is 0 in every KMS2 packet, so pushUpDistance for it is chosen here.
     public readonly record struct HitEntry(short SequenceId, float Delay, float PushTime, float Lift, bool Down);
 
-    // A damaging hit puts a monster in the hit state when the attack's hitImmuneBreak is above the npc's hitImmune.
-    // KMS2 does it for npc classes 1 and 2 only (never for class 3 and up, whatever their hitImmune). A hit without
-    // a push does it only to an npc that stands or walks: not during a cast, not while the last hit's hold runs. A
-    // hit with a push does it in those too and ends the cast. Chosen here: none while spawning or stunned. Super
-    // armor that holds (SuperArmorRules.Holds) keeps it off as well.
     // A dot tick's hit: the effect's OffensiveProperty hitImmuneBreak (35 KR effects, e.g. 10300032 at 5), no push and
     // no hold after the sequence. The client gives a player's dot tick (CDotDamageRecord) the hitImmuneBreak of its
     // effect's level data (+0x298, the Offensive node's value; CDotDamageRecord::vfunc_1, skillrecord.cpp:650) and a
@@ -63,6 +58,11 @@ public static class NpcControlRules {
             DamageByTargetMaxHp: 0, SuperArmorBreak: false, Push: null),
         Skills: [], SkillsOnDamage: []);
 
+    // A damaging hit puts a monster in the hit state when the attack's hitImmuneBreak is above the npc's hitImmune.
+    // KMS2 does it for npc classes 1 and 2 only (never for class 3 and up, whatever their hitImmune). A hit without
+    // a push does it only to an npc that stands or walks: not during a cast, not while the last hit's hold runs. A
+    // hit with a push does it in those too and ends the cast. Chosen here: none while spawning or stunned. Super
+    // armor that holds (SuperArmorRules.Holds) keeps it off as well.
     public static bool HitReacts(int hitImmuneBreak, int hitImmune, int npcClass, bool push, ActorState state, bool armorHolds = false) {
         if (hitImmuneBreak <= hitImmune || npcClass >= 3 || armorHolds) {
             return false;
