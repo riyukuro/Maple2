@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -188,6 +188,25 @@ public class NpcControlLayoutTests : NpcLayoutTestBase {
             Assert.That(entry.State, Is.Zero);
             Assert.That(entry.Sequence, Is.EqualTo((short) -1));
             Assert.That(entry.Tail, Is.Empty);
+        });
+    }
+
+    // A hit on a corpse: the Hit state with its StateHitData block all zero (delay, push time, lift floats and the
+    // down bool), sequence -1 and no flags, so the client plays the hit reaction on the dead npc.
+    [Test]
+    public void CorpseHit_ZeroedHitData() {
+        FieldNpc npc = Spawn(boss: false);
+        Entry entry = Read(NpcControlPacket.CorpseHit(npc), false)[0];
+        var expected = new ByteWriter();
+        expected.WriteFloat(0);
+        expected.WriteFloat(0);
+        expected.WriteFloat(0);
+        expected.WriteBool(false);
+        Assert.Multiple(() => {
+            Assert.That(entry.Flags, Is.Zero);
+            Assert.That(entry.State, Is.EqualTo((byte) ActorState.Hit));
+            Assert.That(entry.Sequence, Is.EqualTo((short) -1));
+            Assert.That(entry.Tail, Is.EqualTo(expected.ToArray()));
         });
     }
 
