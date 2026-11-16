@@ -2,7 +2,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.File.Ingest.Mapper;
@@ -1197,5 +1199,32 @@ public class BuffAttributeTests {
         Add(44200001, tick: 3000);
         Assert.That(Only(10400182).EndTick, Is.EqualTo(3000 + 20000 + 10000), "a fresh add takes the invoke");
         Assert.That(Only(44200001).EndTick, Is.EqualTo(3000 + 720000), "and the reduction");
+    }
+
+    // A splash row of an effect (KR 10100051: 10100052 with ImmediateActive, a proc each 500 ms for 10 s; no KR
+    // splash row of an effect has a condition) places its region at the holder on each proc, none on its start.
+    [Test]
+    public void EachProcPlacesTheSplashRegionAtTheHolder() {
+        Start(MapType.None, Effect(10100051, Plain with { DurationTick = 10000, IntervalTick = 500 }) with {
+            Dot = new AdditionalEffectMetadataDot(null, null),
+            Skills = [new SkillEffectMetadata(0, [new SkillEffectMetadata.Skill(10100052, 1)], null,
+                new SkillEffectMetadataSplash(0, 0, 0, false, ImmediateActive: true, false, false, false, false, null))],
+        });
+        object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", Any)!.GetValue(Field.SkillMetadata)!;
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(10100052, (short) 1), new SkillMetadata(10100052, 1, null,
+            (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty)), null!,
+            (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with { Motions = [] })]);
+        typeof(FieldManager).GetField("fieldSkills", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldSkill>());
+        Player.Position = new Vector3(300, 150, 0);
+        Add(10100051, tick: 1000);
+        int placed = Field.DebugFieldSkills.Count();
+
+        Buffs.Update(1500);
+        Buffs.Update(2000);
+
+        Assert.That(placed, Is.Zero, "not on its start");
+        Assert.That(Only(10100051).ProcCount, Is.EqualTo(2));
+        Assert.That(Field.DebugFieldSkills.Select(skill => (skill.Value.Id, skill.Position)),
+            Is.EqualTo(new[] { (10100052, Player.Position), (10100052, Player.Position) }));
     }
 }
