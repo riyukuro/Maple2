@@ -718,6 +718,9 @@ public partial class GameStorage {
             return Context.TrySaveChanges();
         }
 
+        // A stored config is written onto the row Find tracks. A new instance given to Update threw (another instance
+        // with the same ItemUid is tracked): every save with a summoned pet whose config row existed failed, and with it
+        // the save before a move (the move refused, the session ended).
         public bool SavePetConfig(long itemUid, PetConfig config) {
             Model.PetConfig? model = Context.PetConfig.Find(itemUid);
             if (model == null) {
@@ -726,10 +729,10 @@ public partial class GameStorage {
 
                 Context.Add(model);
             } else {
-                model = config;
-                model.ItemUid = itemUid;
-
-                Context.Update(model);
+                model.PotionConfigs = config.PotionConfig;
+                model.LootConfig = config.LootConfig;
+                // The json columns have no value comparer: written whole.
+                Context.Entry(model).State = EntityState.Modified;
             }
 
             return Context.TrySaveChanges();
