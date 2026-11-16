@@ -1323,6 +1323,27 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
         Assert.That(quest.Conditions.Values.Select(condition => condition.Counter), Is.EqualTo(new[] { 1, 1, 1 }));
     }
+    // 89010209: <condition type="enter_otherhouse" value="1" />, an entry into another account's home counts; an
+    // entry into the own home, or a re-entry of the same home from itself, does not.
+    [Test]
+    public void EnterOtherHouse_89010209_AnotherAccountsHome() {
+        Start();
+        Quest quest = StartQuest(Condition(ConditionType.enter_otherhouse, 2, [], []));
+        test.EnterHome();
+        test.Session.EntryConditions();
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+
+        var other = (Home) RuntimeHelpers.GetUninitializedObject(typeof(Home));
+        typeof(Home).GetField("<AccountId>k__BackingField", Any)!.SetValue(other, test.AccountId + 1);
+        typeof(HomeFieldManager).GetField("<Home>k__BackingField", Any)!.SetValue(test.Session.Field, other);
+        test.Session.EntryConditions();
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+        typeof(GameSession).GetField("leftField", Any)!.SetValue(test.Session, (test.Session.Field!.MapId, test.AccountId + 1));
+        test.Session.EntryConditions();
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
     #endregion
 
     #region the killing blow (FieldNpc.OnDeath with a last attacker)
