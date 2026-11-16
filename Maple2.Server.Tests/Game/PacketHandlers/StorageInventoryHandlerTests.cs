@@ -575,6 +575,29 @@ public class StorageInventoryHandlerTests {
         });
     }
 
+    // A split deposit whose store fails, and every write after it too (only the split's own insert is let through):
+    // the piece goes back to the bag in memory, and the next bag save leaves the five with the character and none
+    // with the account. Before, the return's failed writes left the piece's row the account's, and the bag save
+    // wrote the stack's whole amount next to it.
+    [Test]
+    public void Deposit_SplitNotStoredNorReturned_EndsInTheBag() {
+        GameSession session = Open();
+        test.FailSave = context => !context.ChangeTracker.Entries().Any(entry =>
+            entry.Entity is Maple2.Database.Model.Item && entry.State == Microsoft.EntityFrameworkCore.EntityState.Added);
+
+        Item(session, 0, stack.Uid, 2);
+        test.FailSave = null;
+        Assert.That(InBag(session), Is.EqualTo(5));
+        using (Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context()) {
+            session.Item.Inventory.Save(db);
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(Rows().Where(row => row.Owner == test.AccountId), Is.Empty, "nothing is left with the account");
+            Assert.That(Rows().Where(row => row.Owner == test.CharacterId).Sum(row => row.Amount), Is.EqualTo(5));
+        });
+    }
+
     // A withdrawal used up in a bag stack: the storage's row is not left with the account.
     [Test]
     public void Withdraw_UsedUpInABagStack_LeavesNoRowWithTheAccount() {

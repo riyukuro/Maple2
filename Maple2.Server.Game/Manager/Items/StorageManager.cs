@@ -160,7 +160,11 @@ public sealed class StorageManager : IDisposable {
         deposit.Slot = -1;
         deposit.Binding = bagBinding;
         Log.Error("Storage deposit {Uid} ({ItemId}) of {CharacterId} not written", deposit.Uid, deposit.Id, session.CharacterId);
-        if (!session.Item.AddOrMail(deposit, commit: true)) {
+        // The return's writes can fail too (the database refuses them all): the piece is then put back in memory
+        // only (an add without commit writes nothing), so the next bag save writes its row with the stack it joined.
+        // Left out, a split piece's row stayed the account's while the bag's next save wrote the stack's whole
+        // amount, and a reload had the piece in storage and in the bag.
+        if (!session.Item.AddOrMail(deposit, commit: true) && !session.Item.Inventory.Add(deposit, commit: false)) {
             Log.Error("Storage deposit {Uid} ({ItemId} x{Amount}) of {CharacterId} not returned", deposit.Uid, deposit.Id, deposit.Amount, session.CharacterId);
         }
         session.Send(StorageInventoryPacket.Error(s_store_err_code));
