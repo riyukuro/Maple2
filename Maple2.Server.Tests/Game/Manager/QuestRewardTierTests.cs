@@ -211,6 +211,9 @@ public class QuestRewardTierTests {
             Assert.That(Held(session, RewardId), Is.EqualTo(completed ? 1 : 0));
             Assert.That(test.Errors, Is.Empty);
         });
+        // Stored as taken with the completion (no session save): a crash does not give the tickets back.
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(context.Item.Where(row => row.ItemId == TicketId && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount), Is.EqualTo(left));
     }
 
     // With FameCompletionTicket off the client offers no ticket, so none is taken and the quest stays.

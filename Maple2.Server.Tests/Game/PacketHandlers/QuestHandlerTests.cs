@@ -764,6 +764,34 @@ public class QuestHandlerTests {
             Assert.That(sent.Contains(Error(QuestError.s_quest_error_inventory_full)), Is.EqualTo(fullBag));
             Assert.That(sent.Contains(Convert.ToHexString(ItemUsePacket.QuestScroll(scrollId).ToArray())), Is.EqualTo(!fullBag));
         });
+        // A used scroll's row is no longer the character's with no session save (a crash keeps the quest started).
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(context.Item.Any(row => row.Id == held.Uid && row.OwnerId == test.CharacterId), Is.EqualTo(fullBag));
+    }
+
+    // A QuestStart item (quest id, level 1) is used once its quest starts, and its row is stored taken with no
+    // session save, as the started quest is: a crash keeps neither the item nor a quest without it.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void QuestStartItem_IsStoredTakenWithTheQuest(bool fullBag) {
+        const int itemId = 40000002;
+        ItemMetadata starter = TestGameSession.Metadata(itemId, type: 2,
+            function: new ItemMetadataFunction(ItemFunction.QuestStart, "QuestStart", $"{QuestId},1", false));
+        test = new TestGameSession();
+        test.Register(starter);
+        Item held = test.Store(starter);
+        GameSession session = Login(fullBag, test);
+        test.Register(Data(acceptItem: true));
+
+        new ItemUseHandler { GameStorage = test.Storage, TableMetadata = test.TableMetadata, BanWordStorage = null! }
+            .Handle(session, TestGameSession.Packet(writer => writer.WriteLong(held.Uid)));
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.EqualTo(!fullBag));
+            Assert.That(session.Item.Inventory.Get(held.Uid), fullBag ? Is.Not.Null : Is.Null);
+            Assert.That(context.Item.Any(row => row.Id == held.Uid && row.OwnerId == test.CharacterId), Is.EqualTo(fullBag));
+        });
     }
 
     // A forced accept (a map script's) is not refused by a full bag: the quest starts and its item is not lost.

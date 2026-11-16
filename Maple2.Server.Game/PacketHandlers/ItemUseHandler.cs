@@ -1138,7 +1138,11 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        session.Item.Inventory.Consume(item.Uid, 1);
+        // The scroll is stored taken at once (ConsumeNow): the started quests (and their accept items) are stored at
+        // once, so a scroll taken in memory only came back on a crash before the session save.
+        if (!session.Item.Inventory.ConsumeNow([(item.Uid, 1)])) {
+            Logger.Error("Quest scroll {ItemUid} of {CharacterId}: quests started, the scroll not taken", item.Uid, session.CharacterId);
+        }
         session.Send(ItemUsePacket.QuestScroll(item.Id));
     }
 
@@ -1619,7 +1623,10 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
-        session.Item.Inventory.Consume(item.Uid, 1);
+        // Stored taken at once, as the started quest is (see HandleQuestScroll).
+        if (!session.Item.Inventory.ConsumeNow([(item.Uid, 1)])) {
+            Logger.Error("Quest start item {ItemUid} of {CharacterId}: quest started, the item not taken", item.Uid, session.CharacterId);
+        }
     }
 
     private void HandleCallAirTaxi(GameSession session, IByteReader packet, Item item) {
