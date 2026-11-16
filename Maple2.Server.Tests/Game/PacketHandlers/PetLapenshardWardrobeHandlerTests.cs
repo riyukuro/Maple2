@@ -119,6 +119,49 @@ public class PetLapenshardWardrobeHandlerTests {
         });
     }
 
+    // A full lapenshard tab (one slot, the 9-stack): the upgraded lapenshard is mailed, and the mail is stored with
+    // the bag in one save. With no session save after it (a crash) the rows hold the price taken (4 left, 30
+    // crystals) next to the mailed one; before, the mail was written alone and the crash gave back the price too.
+    [Test]
+    public void LapenshardUpgrade_AFullTabMailsTheResultWithThePrice() {
+        var test = new TestGameSession();
+        ItemMetadata crystalData = TestGameSession.Metadata(40100001, type: 2);
+        crystalData = crystalData with { Property = crystalData.Property with { Tag = ItemTag.RedCrystal } };
+        Item shards = test.Store(TestGameSession.Metadata(ShardId, type: 21), amount: 9);
+        test.Store(crystalData, amount: 50);
+        test.Register(TestGameSession.Metadata(NextShardId, type: 21));
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { bagSlotTabLapenShardCount = [1, 0] });
+        test.SetTable(new LapenshardUpgradeTable(new Dictionary<int, LapenshardUpgradeTable.Entry> {
+            [ShardId] = new(1, 1, NextShardId, 4, [new LapenshardUpgradeTable.Ingredient(ItemTag.RedCrystal, 20)], 1000),
+        }));
+        GameSession session = test.Start();
+        var handler = new LapenshardHandler { TableMetadata = test.TableMetadata, ItemMetadata = session.ItemMetadata };
+        session.Currency.Meso = 5000;
+        test.TakeSent();
+
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(5);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(ShardId);
+            writer.WriteInt(0);
+            writer.WriteInt(1);
+            writer.WriteLong(shards.Uid);
+            writer.WriteInt(4);
+        }));
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        int Held(int itemId) => Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AsNoTracking(context.Item)
+            .Where(row => row.ItemId == itemId && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount);
+        long[] mails = context.Mail.Where(mail => mail.ReceiverId == test.CharacterId).Select(mail => mail.Id).ToArray();
+        int mailed = Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AsNoTracking(context.Item)
+            .Where(row => row.ItemId == NextShardId && mails.Contains(row.OwnerId)).AsEnumerable().Sum(row => row.Amount);
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Find(NextShardId).Sum(item => item.Amount), Is.EqualTo(0));
+            Assert.That((Held(ShardId), mailed, Held(40100001)), Is.EqualTo((4, 1, 30)));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
     // Two rows naming one tag need their sum: 30 crystals cover each 20 alone but not both, so the fusion is
     // refused with the fodder, the meso and the crystals untouched (a check per row let the fodder and the meso
     // go before Consume failed on the second row).

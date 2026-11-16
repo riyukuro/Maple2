@@ -119,6 +119,7 @@ public class LapenshardHandler : FieldPacketHandler {
             return;
         }
 
+        Item? toMail = null;
         lock (session.Item) {
             if (GetLapenshardId(session, lapenshardUid, slot) != lapenshardId) {
                 return;
@@ -144,7 +145,7 @@ public class LapenshardHandler : FieldPacketHandler {
 
             bool upgraded;
             if (lapenshardUid > 0) {
-                upgraded = UpgradeInventoryLapenshard(session, lapenshardUid, fodders, entry);
+                upgraded = UpgradeInventoryLapenshard(session, lapenshardUid, fodders, entry, out toMail);
                 if (upgraded) {
                     // KMS2 answers with uid 0 for a bag lapenshard too (the old item is gone by now).
                     session.Send(LapenshardPacket.Upgrade(0, lapenshardId, slot));
@@ -164,6 +165,12 @@ public class LapenshardHandler : FieldPacketHandler {
                 session.ConditionUpdate(ConditionType.lapenshard_upgrade_result,
                     targetLong: LapenshardRules.ResultTier(TableMetadata.LapenshardUpgradeTable, entry));
             }
+        }
+
+        // A full bag: the upgraded lapenshard goes by mail, stored with the bag (the price taken) in one save, after the
+        // bag lock (see MailWithBag). Should that save fail, it is mailed alone, as before.
+        if (toMail != null && !session.Item.MailWithBag(toMail) && !session.Item.MailHeldItem(toMail)) {
+            Logger.Fatal("Failed to mail upgraded lapenshard {ItemUid}", toMail.Uid);
         }
     }
 
@@ -211,7 +218,9 @@ public class LapenshardHandler : FieldPacketHandler {
         return true;
     }
 
-    private bool UpgradeInventoryLapenshard(GameSession session, long lapenshardUid, Dictionary<long, int> fodders, LapenshardUpgradeTable.Entry entry) {
+    private bool UpgradeInventoryLapenshard(GameSession session, long lapenshardUid, Dictionary<long, int> fodders, LapenshardUpgradeTable.Entry entry,
+            out Item? toMail) {
+        toMail = null;
         if (!ItemMetadata.TryGet(entry.NextItemId, out ItemMetadata? nextItem)) {
             return false;
         }
@@ -228,9 +237,9 @@ public class LapenshardHandler : FieldPacketHandler {
         }
 
         Item upgradeLapenshard = lapenshard.Mutate(nextItem, Constant.LapenshardGrade);
-        if (!session.Item.AddOrMail(upgradeLapenshard)) {
-            Logger.Fatal("Failed to add upgraded lapenshard {ItemUid} to inventory", upgradeLapenshard.Uid);
-            return false;
+        // The bag takes it, or (full: a piece taken off a stack frees no slot) it is mailed after the lock.
+        if (!session.Item.Inventory.Add(upgradeLapenshard)) {
+            toMail = upgradeLapenshard;
         }
         return true;
     }
