@@ -66,7 +66,7 @@ public class GlobalPortal : FieldPacketHandler {
                     EventId = eventId,
                     Index = index,
                 },
-            });
+            }, deadline: DateTime.UtcNow.Add(ChannelHandler.MoveCallDeadline));
         } catch (RpcException ex) {
             Logger.Warning("Global portal {EventId} enter: the World server did not answer: {Status}", eventId, ex.StatusCode);
             return;
@@ -96,7 +96,7 @@ public class GlobalPortal : FieldPacketHandler {
                 PetUid = session.SummonedPetUid,
             };
 
-            MigrateOutResponse response = World.MigrateOut(request);
+            MigrateOutResponse response = World.MigrateOut(request, deadline: DateTime.UtcNow.Add(ChannelHandler.MoveCallDeadline));
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Global portal", response.IpAddress, response.Port);
                 session.MigrationRefused();

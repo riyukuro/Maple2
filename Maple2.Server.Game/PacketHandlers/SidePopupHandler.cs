@@ -55,7 +55,7 @@ public class SidePopupHandler : FieldPacketHandler {
                     EventId = session.FieldWarUid,
                     CharacterId = session.CharacterId,
                 },
-            });
+            }, deadline: DateTime.UtcNow.Add(ChannelHandler.MoveCallDeadline));
         } catch (RpcException ex) {
             Logger.Error("Field war join: {Message}", ex.Message);
             return;
@@ -79,7 +79,7 @@ public class SidePopupHandler : FieldPacketHandler {
                 RoomId = war.RoomId,
                 MapId = war.MapId,
                 PetUid = session.SummonedPetUid,
-            });
+            }, deadline: DateTime.UtcNow.Add(ChannelHandler.MoveCallDeadline));
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Field war", response.IpAddress, response.Port);
                 session.Send(MigrationPacket.GameToGameError(MigrationError.s_move_err_default));

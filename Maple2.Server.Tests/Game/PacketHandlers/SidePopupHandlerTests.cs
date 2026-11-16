@@ -174,4 +174,17 @@ public class SidePopupHandlerTests {
         Assert.That(reader.ReadByte(), Is.Not.EqualTo(0));
         Assert.That(session.State, Is.Not.EqualTo(SessionState.ChangeMap));
     }
+
+    // The war's join and the move have the move calls' deadline, so a World that hangs cannot hold the handler.
+    [Test]
+    public void Enter_WorldCallsHaveADeadline() {
+        Setup();
+        DateTime before = DateTime.UtcNow;
+        Press();
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.TimeEventDeadlines.Single(), Is.InRange(before, DateTime.UtcNow + ChannelHandler.MoveCallDeadline));
+            Assert.That(test.World.MoveDeadlines.Single(), Is.InRange(before, DateTime.UtcNow + ChannelHandler.MoveCallDeadline));
+        });
+    }
 }

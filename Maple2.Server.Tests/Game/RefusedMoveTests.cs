@@ -147,6 +147,18 @@ public class RefusedMoveTests {
         });
     }
 
+    // The join and the move have the move calls' deadline, so a World that hangs cannot hold the handler.
+    [Test]
+    public void GlobalPortal_WorldCallsHaveADeadline() {
+        DateTime before = DateTime.UtcNow;
+        EnterGlobalPortal();
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.TimeEventDeadlines.Single(), Is.InRange(before, DateTime.UtcNow + ChannelHandler.MoveCallDeadline));
+            Assert.That(test.World.MoveDeadlines.Single(), Is.InRange(before, DateTime.UtcNow + ChannelHandler.MoveCallDeadline));
+        });
+    }
+
     private void MigrateToDungeon() {
         session.Dungeon.Metadata = TestGameSession.DungeonRoom(23000001, 2000062);
         typeof(Maple2.Server.Game.Manager.DungeonManager).GetMethod("MigrateToDungeon", Any)!.Invoke(session.Dungeon, null);

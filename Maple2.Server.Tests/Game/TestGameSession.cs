@@ -833,8 +833,12 @@ public sealed class TestGameSession {
         // Thrown by MigrateOut after the move is recorded, as the World server refuses a move (a channel that is gone).
         public RpcException? MoveError;
 
+        // The deadline of each move call.
+        public readonly List<DateTime?> MoveDeadlines = [];
+
         public override MigrateOutResponse MigrateOut(MigrateOutRequest request, CallOptions options) {
             Moves.Add(request);
+            MoveDeadlines.Add(options.Deadline);
             if (MoveError != null) {
                 throw MoveError;
             }
