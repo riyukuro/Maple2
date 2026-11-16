@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Context;
@@ -144,5 +144,72 @@ public class CharacterCreateRequestTests {
     [TestCase(JobCode.SoulBinder, true)]
     public void CreateJob(JobCode job, bool expected) {
         Assert.That(Maple2.Model.Validators.CharacterCreateRules.IsCreateJob(job), Is.EqualTo(expected));
+    }
+
+    // The create layout with the gender and the equips of the test's choice.
+    private void CreateRaw(byte gender, string name, params (int Id, byte Slot)[] equips) {
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteByte(gender);
+            writer.WriteShort((short) JobCode.Knight);
+            writer.WriteUnicodeString(name);
+            writer.WriteInt(0);
+            writer.WriteInt(0);
+            writer.WriteShort(1);
+            writer.WriteByte((byte) equips.Length);
+            foreach ((int id, byte slot) in equips) {
+                writer.WriteInt(id);
+                writer.WriteByte(slot);
+            }
+            writer.WriteInt(0);
+        }));
+    }
+
+    private void ExpectError(CharacterCreateError error, string name) {
+        Assert.That(SentHex(), Is.EqualTo(new[] { Hex(CharacterListPacket.CreateError(error)) }));
+        Assert.That(Count(name), Is.Zero);
+    }
+
+    // The client sends gender 0 or 1 only.
+    [Test]
+    public void AForgedGender_IsRefused() {
+        CreateRaw(2, "Fresh");
+        ExpectError(s_char_err_system, "Fresh");
+    }
+
+    // A blank or too short name is the name error, an over long one the system error (the client's box limits it),
+    // and a letter the region does not take is the ban-all error.
+    [TestCase(" ", s_char_err_name)]
+    [TestCase("a", s_char_err_name)]
+    [TestCase("abcdefghijklm", s_char_err_system)]
+    [TestCase("a!b", s_char_err_ban_all)]
+    public void ANameTheClientWouldNotSend_IsRefused(string name, CharacterCreateError error) {
+        CreateRaw(0, name);
+        ExpectError(error, name);
+    }
+
+    [Test]
+    public void ATakenName_IsRefused() {
+        test.AddCharacter("Taken", accountId: test.AccountId + 1);
+        CreateRaw(0, "Taken");
+        Assert.That(SentHex(), Is.EqualTo(new[] { Hex(CharacterListPacket.CreateError(s_char_err_already_taken)) }));
+        Assert.That(Count("Taken"), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void AFullAccount_IsRefused() {
+        for (int i = 0; i < 4; i++) {
+            test.AddCharacter($"Own{i}", accountId: test.AccountId);
+        }
+        CreateRaw(0, "Fresh");
+        ExpectError(s_char_err_char_count, "Fresh");
+    }
+
+    // The SK and OH slots are never a default item of a new character.
+    [TestCase((byte) EquipSlot.SK)]
+    [TestCase((byte) EquipSlot.OH)]
+    public void AnEquipOfAForbiddenSlot_IsRefused(byte slot) {
+        CreateRaw(0, "Fresh", (11300001, slot));
+        ExpectError(s_char_err_invalid_def_item, "Fresh");
     }
 }
