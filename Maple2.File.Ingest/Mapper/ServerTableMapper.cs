@@ -786,17 +786,11 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
     // The item ids of the played client's item data (PlayedClientItems), null without a played client or when
     // its pack has no item data.
-    private HashSet<int>? playedItemIds;
     private HashSet<int>? PlayedItemIds() {
         if (playedReader == null) {
             return null;
         }
-        if (playedItemIds == null) {
-            playedItemIds = PlayedClientItems.Ids(
-                playedReader.Files.Where(file => PlayedClientItems.IsItemFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
-                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
-            Console.WriteLine($"played client: {playedItemIds.Count} items in its item data");
-        }
+        HashSet<int> playedItemIds = PlayedItemIndex.Of(playedReader).Ids;
         return playedItemIds.Count == 0 ? null : playedItemIds;
     }
 

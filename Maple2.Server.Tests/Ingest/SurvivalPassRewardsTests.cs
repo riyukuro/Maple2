@@ -1,7 +1,12 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Xml;
+using M2dXmlGenerator;
 using Maple2.File.Ingest.Helpers;
+using Maple2.File.Ingest.Mapper;
+using Maple2.File.IO;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Tests.Ingest;
@@ -80,5 +85,60 @@ public class SurvivalPassRewardsTests {
     [TestCase(11200072, "item/1/12/11200072.xml")]
     public void ServerItemFile(int id, string file) {
         Assert.That(SurvivalPassRewards.ServerItemFile(id), Is.EqualTo(file));
+    }
+
+    // The ingest over packs: the data pack's paid pass (level 26 a box and a 10k tonic, level 29 the tonic alone) and
+    // its tonic item file, the played client's item data with the firework at that id. The tonic rewards are left
+    // out, level 29 keeps its slot, and the box stays.
+    [Test, NonParallelizable]
+    public void Ingest_LeavesOutTheTonicTheClientHasAsAFirework() {
+        Dictionary<string, int> oldFeatures = FeatureLocaleFilter.Features;
+        string oldLocale = FeatureLocaleFilter.Locale;
+        string root = Directory.CreateTempSubdirectory("ms2-survival-pass-test-").FullName;
+        try {
+            FeatureLocaleFilter.Locale = "KR";
+            FeatureLocaleFilter.Features = new Dictionary<string, int> { ["SurvivalContents01"] = 1, ["SurvivalContents03"] = 1 };
+            string Pack(string name, params (string Path, string Xml)[] files) {
+                string dir = Path.Combine(root, name);
+                foreach ((string path, string xml) in files) {
+                    string file = Path.Combine(dir, path);
+                    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                    System.IO.File.WriteAllText(file, xml);
+                }
+                string m2d = Path.Combine(root, $"{name}.m2d");
+                PlayedClientOverlay.Create(PlayedClientOverlay.Files([dir]), m2d);
+                return m2d;
+            }
+            const string row = "<survivalPassReward id=\"1\" level=\"{0}\" isSpecial=\"\" {1} feature=\"SurvivalContents03\" />";
+            const string tonic = "type{0}=\"item\" id{0}=\"20301787\" value{0}=\"2\" count{0}=\"1\"";
+            string paid = "<ms2>" + string.Format(row, 26, "type1=\"item\" id1=\"20300036\" value1=\"1\" count1=\"1\" " + string.Format(tonic, 2))
+                + string.Format(row, 29, string.Format(tonic, 1)) + "</ms2>";
+            string data = Pack("data",
+                ("table/na/survivalpassreward_paid.xml", paid),
+                ("item/2/03/20301787.xml", "<ms2><environment><function name=\"SurvivalLevelExp\" parameter=\"\" /></environment></ms2>"),
+                ("item/2/03/20300036.xml", "<ms2><environment><function name=\"OpenItemBox\" parameter=\"\" /></environment></ms2>"));
+            string played = Pack("played", ("itemdata/203.xml", "<ms2>"
+                + "<item id=\"20301787\"><environment><function name=\"FestivalEvent\" parameter=\"\" /></environment></item>"
+                + "<item id=\"20300036\"><environment><function name=\"OpenItemBox\" parameter=\"\" /></environment></item></ms2>"));
+            using var dataReader = new M2dReader(data);
+            using var playedReader = new M2dReader(played);
+            var mapper = new TableMapper(dataReader, "en", playedReader, null, "KR");
+            MethodInfo parse = typeof(TableMapper).GetMethod("ParseMapleSurvivalTable", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+            var table = (MapleSurvivalTable) parse.Invoke(mapper, null)!;
+            // The pack's item data is read once: the next mapper gets the same index.
+            Assert.That(PlayedItemIndex.Of(playedReader), Is.SameAs(PlayedItemIndex.Of(playedReader)));
+            Assert.That(PlayedItemIndex.Of(playedReader).Ids, Is.EquivalentTo(new[] { 20301787, 20300036 }));
+            IReadOnlyDictionary<int, IReadOnlyList<MapleSurvivalTable.Reward>> levels = table.PaidPass[1];
+            Assert.Multiple(() => {
+                Assert.That(levels.Keys, Is.EquivalentTo(new[] { 26, 29 }));
+                Assert.That(levels[26].SelectMany(reward => reward.Ids), Is.EqualTo(new[] { 20300036 }));
+                Assert.That(levels[29], Is.Empty);
+            });
+        } finally {
+            FeatureLocaleFilter.Features = oldFeatures;
+            FeatureLocaleFilter.Locale = oldLocale;
+            Directory.Delete(root, true);
+        }
     }
 }

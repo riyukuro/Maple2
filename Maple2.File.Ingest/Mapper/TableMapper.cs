@@ -1856,17 +1856,11 @@ public class TableMapper : TypeMapper<TableMetadata> {
 
     // The item ids of the played client's item data (PlayedClientItems), null without a played client or when
     // its pack has no item data.
-    private HashSet<int>? playedItemIds;
     private HashSet<int>? PlayedItemIds() {
         if (playedReader == null) {
             return null;
         }
-        if (playedItemIds == null) {
-            playedItemIds = PlayedClientItems.Ids(
-                playedReader.Files.Where(file => PlayedClientItems.IsItemFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)),
-                node => FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale")));
-            Console.WriteLine($"played client: {playedItemIds.Count} items in its item data");
-        }
+        HashSet<int> playedItemIds = PlayedItemIndex.Of(playedReader).Ids;
         return playedItemIds.Count == 0 ? null : playedItemIds;
     }
 
@@ -2433,13 +2427,19 @@ public class TableMapper : TypeMapper<TableMetadata> {
         if (passOn && playedReader != null) {
             Func<XmlElement, bool> available = node =>
                 FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
-            Dictionary<int, string> played = SurvivalPassRewards.PlayedFunctions(playedReader.Files
-                .Where(file => PlayedClientItems.IsItemFile(file.Name)).Select(file => playedReader.GetXmlDocument(file)), available);
+            Dictionary<int, string> played = PlayedItemIndex.Of(playedReader).Functions;
             Dictionary<string, Maple2.File.IO.Crypto.Common.PackFileEntry> serverItems = xmlReader.Files
                 .Where(file => file.Name.StartsWith("item/", StringComparison.OrdinalIgnoreCase))
                 .ToDictionary(file => file.Name.ToLowerInvariant(), file => file);
-            string? Server(int id) => serverItems.TryGetValue(SurvivalPassRewards.ServerItemFile(id), out var entry)
-                ? SurvivalPassRewards.FunctionName(xmlReader.GetXmlDocument(entry).DocumentElement!, available) : null;
+            // Each server item file is read once, however many rewards name it.
+            var serverFunctions = new Dictionary<int, string?>();
+            string? Server(int id) {
+                if (!serverFunctions.TryGetValue(id, out string? name)) {
+                    serverFunctions[id] = name = serverItems.TryGetValue(SurvivalPassRewards.ServerItemFile(id), out var entry)
+                        ? SurvivalPassRewards.FunctionName(xmlReader.GetXmlDocument(entry).DocumentElement!, available) : null;
+                }
+                return name;
+            }
             reused = id => SurvivalPassRewards.Reused(id, played, Server);
         }
         int droppedRewards = 0;
