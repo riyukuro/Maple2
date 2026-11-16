@@ -188,9 +188,13 @@ public class MeretMarketShopTests {
         Assert.That(SaleStored(sale), Is.False);
         Assert.That(sent.Select(Convert.ToHexString).First(), Is.EqualTo(Hex(MeretMarketPacket.CollectProfit(sale, 350))));
 
-        Assert.That(IdRequest(20, sale), Is.Empty);
+        Assert.That(IdRequest(20, sale).Select(Convert.ToHexString), Is.EqualTo(new[] { CollectFailed }), "collected already");
         Assert.That(session.Currency.Meret, Is.EqualTo(1350));
     }
+
+    // A collect that gives nothing ends the client's collect state, which it set before sending: the collect's error
+    // kind (HandleErrorByRequestKind 0x14) with a code that adds no text of its own.
+    private static string CollectFailed => Hex(MeretMarketPacket.Error(MeretMarketError.CollectKind, MeretMarketError.CollectFailed));
 
     // The profit is stored with the sale's removal, not left to the next session save: a crash after the collect
     // kept neither the sale nor the merets before.
@@ -215,7 +219,7 @@ public class MeretMarketShopTests {
         Start();
         test.FailSave = context => context.ChangeTracker.Entries().Any(entry => entry.Entity.GetType().Name == "SoldUgcMarketItem");
 
-        IdRequest(20, sale);
+        Assert.That(IdRequest(20, sale).Select(Convert.ToHexString), Is.EqualTo(new[] { CollectFailed }), "the client's collect ends");
         Assert.That(session.Currency.Meret, Is.EqualTo(1000));
         Assert.That(SaleStored(sale), Is.True);
         Assert.That(test.TrophyCounter(23200041), Is.Null);
@@ -253,7 +257,7 @@ public class MeretMarketShopTests {
         List<byte[]> sent = IdRequest(20, sale);
         Assert.That(sent, Has.Count.EqualTo(2), "CollectProfit and UpdateProfit");
         Assert.That(session.Currency.Meret, Is.EqualTo(100));
-        Assert.That(IdRequest(20, sale), Is.Empty, "not collected again");
+        Assert.That(IdRequest(20, sale).Select(Convert.ToHexString), Is.EqualTo(new[] { CollectFailed }), "not collected again");
         Assert.That(SaleStored(sale), Is.EqualTo(failsTwice));
         Assert.That(session.Field!.Scheduler.Count, Is.EqualTo(failsTwice ? queued + 1 : queued));
 
@@ -303,7 +307,7 @@ public class MeretMarketShopTests {
 
         session.State = SessionState.Connected;
         session.UgcMarket = new UgcMarketManager(session);
-        Assert.That(IdRequest(20, sale), Is.Empty);
+        Assert.That(IdRequest(20, sale).Select(Convert.ToHexString), Is.EqualTo(new[] { CollectFailed }), "not paid again");
         Assert.That(session.Currency.Meret, Is.EqualTo(100));
         using var context = new Maple2.Database.Context.Ms2Context(test.Options);
         Assert.That(context.Account.Single(account => account.Id == test.AccountId).Currency.Meret, Is.EqualTo(100));
@@ -376,7 +380,7 @@ public class MeretMarketShopTests {
         long listing = CreateListing(UgcMarketListingStatus.Active, DateTime.Now.AddDays(3).ToEpochSeconds());
         long sale = CreateSale(listing, 350, DateTime.Now.AddDays(-Constant.UGCShopProfitDelayDays + 1));
         Start();
-        Assert.That(IdRequest(20, sale), Is.Empty);
+        Assert.That(IdRequest(20, sale).Select(Convert.ToHexString), Is.EqualTo(new[] { CollectFailed }));
         Assert.That(session.Currency.Meret, Is.EqualTo(1000));
         Assert.That(SaleStored(sale), Is.True);
     }
@@ -384,7 +388,7 @@ public class MeretMarketShopTests {
     [Test]
     public void CollectProfit_UnknownSaleIsNotPaid() {
         Start();
-        Assert.That(IdRequest(20, 424242), Is.Empty);
+        Assert.That(IdRequest(20, 424242).Select(Convert.ToHexString), Is.EqualTo(new[] { CollectFailed }));
         Assert.That(session.Currency.Meret, Is.EqualTo(1000));
     }
 

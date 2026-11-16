@@ -146,9 +146,14 @@ public sealed class UgcMarketManager {
         session.Send(MeretMarketPacket.UpdateExpiration(item));
     }
 
+    // A collect that gives nothing is answered with the collect's error (MeretMarket 0x14): the client sets its
+    // collect state before it sends (CMeratMarketMan::FUN_140d54ac0) and only a settled sale or this error ends it
+    // (HandleErrorByRequestKind kind 0x14: the sum so far and its settle-failed notice). Before, these returns sent
+    // nothing and the collect button stayed in its collecting state.
     public void CollectProfit(long id) {
         if (!sales.TryGetValue(id, out SoldUgcMarketItem? sale) ||
             sale.SoldTime.FromEpochSeconds().AddDays(Constant.UGCShopProfitDelayDays) > DateTime.Now) {
+            CollectFailed();
             return;
         }
         // The merets paid and the sale's row taken away are stored together (TrySavePurchase). Before, the row was
@@ -175,6 +180,7 @@ public sealed class UgcMarketManager {
                 return;
             }
             logger.Error("Unable to collect profit and delete SoldUgcMarketItem {Id}.", id);
+            CollectFailed();
             return;
         }
         sales.Remove(id);
@@ -197,6 +203,10 @@ public sealed class UgcMarketManager {
     // field's thread, the session's save on others.
     private readonly HashSet<long> unstoredRemovals = [];
     private readonly object removalLock = new();
+
+    private void CollectFailed() {
+        session.Send(MeretMarketPacket.Error(MeretMarketError.CollectKind, MeretMarketError.CollectFailed));
+    }
 
     private void ProfitSpentBeforeSave(SoldUgcMarketItem sale) {
         sales.Remove(sale.Id);
