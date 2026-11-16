@@ -25,13 +25,18 @@ public static class GroupChatPacket {
         Error = 13,
     }
 
+    // CGroupChatMember::ReadFromPacket (groupchatmanager.cpp:179): the state byte, then the player for state 1 or 2.
+    // 1 is online and 2 offline, as OnPacketMemberOnline and OnPacketMemberOffline set them (:696, :711); the chat's
+    // online count and the messenger's online and offline lists read it.
+    private static byte MemberState(PlayerInfo info) => (byte) (info.Online ? 1 : 2);
+
     public static ByteWriter Load(GroupChat groupChat) {
         var pWriter = Packet.Of(SendOp.GroupChat);
         pWriter.Write<Command>(Command.Load);
         pWriter.WriteInt(groupChat.Id);
         pWriter.WriteByte((byte) groupChat.Members.Count);
         foreach ((long characterId, GroupChatMember member) in groupChat.Members) {
-            pWriter.WriteBool(true); // is member?
+            pWriter.WriteByte(MemberState(member.Info));
             pWriter.WriteClass<PlayerInfo>(member.Info);
         }
 
@@ -79,7 +84,7 @@ public static class GroupChatPacket {
         pWriter.Write<Command>(Command.AddMember);
         pWriter.WriteInt(groupChatId);
         pWriter.WriteUnicodeString(inviterName);
-        pWriter.WriteBool(true); // is member?
+        pWriter.WriteByte(MemberState(targetCharacter));
         pWriter.WriteClass<PlayerInfo>(targetCharacter);
 
         return pWriter;
