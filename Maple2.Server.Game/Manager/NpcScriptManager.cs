@@ -543,12 +543,40 @@ public sealed class NpcScriptManager {
             meso = 0;
             return false;
         }
-        if (items.Count > 0 && !session.Item.Inventory.ConsumeItemComponents(items, taken: taken)) {
-            if (meso > 0) {
-                session.Currency.ReturnHeldMeso(meso, sendsBefore);
+        // The price is stored taken at once (the items with ConsumeNow, which stores the currency with them; mesos
+        // alone in a purchase save): the presents are stored as they are given, so a price taken in memory only came
+        // back on a crash before the session save, next to the presents (KR Lileaf: 30000419 for 30000420).
+        if (items.Count > 0) {
+            IReadOnlyList<(long Uid, int Amount)>? plan = session.Item.Inventory.PlanItemComponents(items);
+            if (plan == null) {
+                if (meso > 0) {
+                    session.Currency.ReturnHeldMeso(meso, sendsBefore);
+                }
+                meso = 0;
+                logger.Information("Missing items for script function {FunctionId} on npc {NpcId}", scriptFunction.FunctionId, Npc?.Value.Id);
+                return false;
             }
+            // Copies of the parts, made before the take (a whole stack leaves the bag), for a price given back.
+            var parts = new List<Item>();
+            foreach ((long uid, int amount) in plan) {
+                if (session.Item.Inventory.Get(uid)?.Clone(newRow: true) is { } part) {
+                    part.Amount = amount;
+                    parts.Add(part);
+                }
+            }
+            if (!session.Item.Inventory.ConsumeNow(plan)) {
+                if (meso > 0) {
+                    session.Currency.ReturnHeldMeso(meso, sendsBefore);
+                }
+                meso = 0;
+                logger.Error("Script function {FunctionId} price of {CharacterId} not stored, nothing taken", scriptFunction.FunctionId, session.CharacterId);
+                return false;
+            }
+            taken.AddRange(parts);
+        } else if (meso > 0 && !session.TrySavePurchase(_ => true)) {
+            session.Currency.ReturnHeldMeso(meso, sendsBefore);
             meso = 0;
-            logger.Information("Missing items for script function {FunctionId} on npc {NpcId}", scriptFunction.FunctionId, Npc?.Value.Id);
+            logger.Error("Script function {FunctionId} price of {CharacterId} not stored, nothing taken", scriptFunction.FunctionId, session.CharacterId);
             return false;
         }
         return true;
@@ -559,6 +587,10 @@ public sealed class NpcScriptManager {
     private void GiveBackPrice(ScriptFunctionMetadata scriptFunction, long meso, long sendsBefore, List<Item> taken) {
         if (meso > 0) {
             session.Currency.ReturnHeldMeso(meso, sendsBefore);
+            // Stored taken with the price, so stored given back too (the items below get their rows at once).
+            if (!session.TrySavePurchase(_ => true)) {
+                logger.Error("Script function {FunctionId} price mesos of {CharacterId} given back in memory only", scriptFunction.FunctionId, session.CharacterId);
+            }
         }
         foreach (Item item in taken) {
             if (!session.Item.AddOrMail(item, true)) {

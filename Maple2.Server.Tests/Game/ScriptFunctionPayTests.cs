@@ -69,6 +69,33 @@ public class ScriptFunctionPayTests {
         });
     }
 
+    // The present's row is stored as it is given, so the price is stored taken at once too: with no session save (a
+    // crash) the stored rows hold the take with the present, not the old material next to it.
+    [Test]
+    public void ThePrice_IsStoredTakenWithThePresent() {
+        GameSession session = Run(Function([new ItemComponent(Material, -1, 10, ItemTag.None)]), material: 12, meso: 0);
+        Assert.That(Count(session, Present), Is.EqualTo(1));
+        Assert.Multiple(() => {
+            Assert.That(Stored(Material), Is.EqualTo(2));
+            Assert.That(Stored(Present), Is.EqualTo(1));
+        });
+    }
+
+    // Mesos alone are stored taken with the present as well.
+    [Test]
+    public void AMesoPrice_IsStoredTakenWithThePresent() {
+        GameSession session = Run(Function([], collectMeso: 1000), material: 0, meso: 1500);
+        Assert.That(Count(session, Present), Is.EqualTo(1));
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Assert.That(Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AsNoTracking(context.Character)
+            .Single(row => row.Id == test.CharacterId).Currency.Meso, Is.EqualTo(500));
+    }
+
+    private int Stored(int itemId) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Item.Where(row => row.ItemId == itemId && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount);
+    }
+
     // 90000001 x10000 is 10000 mesos, not a bag item.
     [Test]
     public void ACollectedMesoItem_TakesMesos() {
