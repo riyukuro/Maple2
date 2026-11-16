@@ -5,6 +5,8 @@ using Maple2.Server.Game.Packets;
 namespace Maple2.Server.Tests.Game.Packets;
 
 // The UGC OX events' HomeAction 10 packets: the byte of the action, the sub command, then its fields, to the last byte.
+// Each layout is the client's reader of that sub command (CSceneStateGame::OnHomeAction 10, then the UGC OX event
+// handler: 0 fees, 1 and 4 promote state, 2 create confirm, 5 move, 12 host dialog, 13 to 15 stage).
 public class HomeUgcOxPacketTests {
     private static ByteReader Open(ByteWriter packet, byte sub) {
         byte[] bytes = packet.ToArray();
