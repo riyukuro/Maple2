@@ -40,14 +40,11 @@ public class GroupChatManager : IDisposable {
         }
     }
 
-    private bool CheckForDisband() {
-        if (GroupChat.Members.Count <= 1 ||
-            GroupChat.Members.Values.Count(member => member.Info.Online) <= 1) {
-            Dispose();
-            return true;
-        }
-        return false;
-    }
+    // A chat ends when nobody is left in it or nobody in it is online. One member alone keeps it: the client makes a
+    // chat with no one invited (CGroupChatManager::Create), keeps a chat a member left with one name in it
+    // (OnPacketRemoveMember, groupchatmanager.cpp:672) and closes a chat only on GroupChat 4 (OnPacketRemoveChat). A
+    // chat ended at one member left that member with an open window and a leave that did nothing.
+    public bool Ended => GroupChat.Members.IsEmpty || !GroupChat.Members.Values.Any(member => member.Info.Online);
 
     public GroupChatError Invite(long requestorId, PlayerInfo info) {
         if (!GroupChat.Members.TryGetValue(requestorId, out GroupChatMember? requester)) {
@@ -86,10 +83,12 @@ public class GroupChatManager : IDisposable {
         return true;
     }
 
-    public void Leave(long characterId, bool refused = false) {
+    // The member leaves; the leaver gets the removal too, which closes its window (GroupChat 4). True when the chat
+    // ended with it (Ended), for the caller to drop it.
+    public bool Leave(long characterId, bool refused = false) {
         if (!GroupChat.Members.TryGetValue(characterId, out GroupChatMember? member)) {
             Log.Error("Failed to remove member {CharacterId} from group chat {GroupChatId} because they were not found", characterId, GroupChat.Id);
-            return;
+            return false;
         }
 
         Broadcast(new GroupChatRequest {
@@ -100,6 +99,6 @@ public class GroupChatManager : IDisposable {
         });
         GroupChat.Members.TryRemove(member.CharacterId, out _);
 
-        CheckForDisband();
+        return Ended;
     }
 }

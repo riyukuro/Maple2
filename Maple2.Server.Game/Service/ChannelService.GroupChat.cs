@@ -119,7 +119,12 @@ public partial class ChannelService {
                 continue;
             }
 
-            manager.Disband();
+            // The client closes a chat only on GroupChat 4 (OnPacketRemoveChat); without it the window stays open
+            // on a chat the World no longer has, and the member's leave finds nothing.
+            if (manager.Disband()) {
+                session.Send(GroupChatPacket.Leave(groupChatId));
+            }
+            session.GroupChats.Remove(groupChatId, out _);
         }
 
         return new GroupChatResponse();

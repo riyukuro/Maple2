@@ -89,7 +89,10 @@ public partial class WorldService {
             };
         }
 
-        manager.Leave(requestorId, leave.Refused);
+        // A chat its last (online) member left is dropped, so it no longer comes back at login or counts.
+        if (manager.Leave(requestorId, leave.Refused)) {
+            groupChatLookup.Disband(groupChatId);
+        }
         return new GroupChatResponse();
     }
 
