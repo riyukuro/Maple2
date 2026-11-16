@@ -1,4 +1,5 @@
 ﻿using Maple2.Model.Error;
+using Maple2.Model.Game;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Packets;
@@ -104,5 +105,58 @@ public class TradeLayoutTests {
         Assert.That(reader.ReadLong(), Is.EqualTo(77));
         Assert.That(reader.ReadInt(), Is.EqualTo(3));
         Assert.That(reader.Available, Is.Zero);
+    }
+
+    // CTradeManagerEx::OnTrade modes: 0 (OnTradeRequest) unicode name and int64 character id; 2 (request sent) and
+    // 14 (FUN_14185d750) read nothing; 4 (FUN_14185cc60) the unicode name; 5 (OnTradeStarted) an int64 id; 6
+    // (OnTradeFinished) a byte; 11 and 12 (confirm and unconfirm) the side byte.
+    [Test]
+    public void TradeRequestAcknowledgeDeclineStartEndAndLatch_FollowTheReaders() {
+        var test = new TestGameSession();
+        test.Start();
+        Player player = test.Session.Player.Value;
+
+        ByteReader reader = Read(TradePacket.Request(player), SendOp.Trade, 0);
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo(player.Character.Name));
+        Assert.That(reader.ReadLong(), Is.EqualTo(player.Character.Id));
+        Assert.That(reader.Available, Is.Zero);
+
+        Assert.That(Read(TradePacket.Acknowledge(), SendOp.Trade, 2).Available, Is.Zero);
+        Assert.That(Read(TradePacket.AlreadyRequest(), SendOp.Trade, 14).Available, Is.Zero);
+
+        reader = Read(TradePacket.Decline("Other"), SendOp.Trade, 4);
+        Assert.That(reader.ReadUnicodeString(), Is.EqualTo("Other"));
+        Assert.That(reader.Available, Is.Zero);
+
+        reader = Read(TradePacket.StartTrade(0x1122334455), SendOp.Trade, 5);
+        Assert.That(reader.ReadLong(), Is.EqualTo(0x1122334455));
+        Assert.That(reader.Available, Is.Zero);
+
+        reader = Read(TradePacket.EndTrade(true), SendOp.Trade, 6);
+        Assert.That(reader.ReadBool(), Is.True);
+        Assert.That(reader.Available, Is.Zero);
+
+        reader = Read(TradePacket.Finalize(false), SendOp.Trade, 11);
+        Assert.That(reader.ReadBool(), Is.False);
+        Assert.That(reader.Available, Is.Zero);
+
+        reader = Read(TradePacket.UnFinalize(true), SendOp.Trade, 12);
+        Assert.That(reader.ReadBool(), Is.True);
+        Assert.That(reader.Available, Is.Zero);
+    }
+
+    // OnTradeItemAdded (:561): byte side, int item id, int64 uid, int rarity, int slot (SetSlot), int count
+    // (SetCountClamped), int trade slot, then the item body.
+    [Test]
+    public void TradeAddItem_FollowsOnTradeItemAdded() {
+        var item = new Item(TestGameSession.Metadata(20000001)) { Uid = 0x0102030405, Rarity = 3, Slot = 4, Amount = 7 };
+        ByteReader reader = Read(TradePacket.AddItem(true, item), SendOp.Trade, 8);
+        Assert.That(reader.ReadBool(), Is.True);
+        Assert.That(reader.ReadInt(), Is.EqualTo(20000001));
+        Assert.That(reader.ReadLong(), Is.EqualTo(0x0102030405));
+        Assert.That(reader.ReadInt(), Is.EqualTo(3));
+        Assert.That(reader.ReadInt(), Is.EqualTo(4));
+        Assert.That(reader.ReadInt(), Is.EqualTo(7));
+        Assert.That(reader.ReadInt(), Is.EqualTo(4));
     }
 }
