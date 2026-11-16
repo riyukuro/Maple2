@@ -39,6 +39,27 @@ public class ItemEquipHandlerTests {
 
     private static byte Mode(byte[] packet) => packet[2];
 
+    // 90000561: <condition type="change_ugc_equip" value="1" />: putting on a design (an item with a template) counts;
+    // a plain item does not.
+    [Test]
+    public void ChangeUgcEquip_90000561_PuttingOnADesign() {
+        test = new TestGameSession();
+        Item plain = test.Store(TestGameSession.Metadata(11300001, EquipSlot.CP, slotMax: 1));
+        Item design = test.Store(TestGameSession.Metadata(11300902, EquipSlot.CL, slotMax: 1));
+        GameSession session = test.Start();
+        session.Item.Inventory.Get(design.Uid)!.Template = new UgcItemLook { Id = 1, CharacterId = session.CharacterId };
+        Quest quest = test.StartQuest(TestGameSession.QuestData(91000001) with {
+            Conditions = [new ConditionMetadata(ConditionType.change_ugc_equip, 1, null, null)],
+        });
+
+        Equip(session, plain, EquipSlot.CP);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Equip(session, design, EquipSlot.CL);
+
+        Assert.That(session.Item.Equips.Get(design.Uid), Is.Not.Null);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
     // An item that is taken off: ItemPutOff, then the bag's add.
     [Test]
     public void Unequip_SendsPutOffBeforeTheBagAdd() {

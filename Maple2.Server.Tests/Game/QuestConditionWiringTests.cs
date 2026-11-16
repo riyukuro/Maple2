@@ -163,6 +163,33 @@ public class QuestConditionWiringTests : TriggerTestBase {
         Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
         Assert.That(test.Errors, Is.Empty);
     }
+
+    // 21230149: <condition type="interact_npc" code="21803500,21803501,21803502,21803503,21803510" value="1" />, the
+    // interact (InteractNpc 0x0032) of one of the row's npcs counts; another npc's, one without an interact, or one out
+    // of reach, does not.
+    [Test]
+    public void InteractNpc_21230149_TheRowsNpc() {
+        var interact = new NpcMetadataInteract(10000001, 1, 0, 0);
+        StartField(2000001, Npc(21803500) with { Interact = interact }, Npc(21803504) with { Interact = interact }, Npc(21803501));
+        // A reach (0 is none), so the npc 1000 away is out of it.
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { InteractionDistance = 150 });
+        Quest quest = StartQuest(Condition(ConditionType.interact_npc, 1, ["21803500", "21803501", "21803502", "21803503", "21803510"], []));
+        FieldNpc Spawn(int npcId, Vector3 position) {
+            Assert.That(Field.NpcMetadata.TryGet(npcId, out NpcMetadata? metadata), Is.True);
+            return Field.SpawnNpc(metadata!, position, Vector3.Zero)!;
+        }
+        void Interact(FieldNpc npc) => new InteractNpcHandler().Handle(test.Session, TestGameSession.Packet(writer => writer.WriteInt(npc.ObjectId)));
+        Vector3 here = test.Session.Player.Position;
+
+        Interact(Spawn(21803504, here));
+        Interact(Spawn(21803501, here));
+        Interact(Spawn(21803500, here + new Vector3(1000, 0, 0)));
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        Interact(Spawn(21803500, here));
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
     #endregion
 
     #region interact objects (InteractObjectHandler, the end of an interaction)

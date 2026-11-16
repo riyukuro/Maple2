@@ -17,14 +17,14 @@ public class GemstoneSocketStateTests {
     private Item gear = null!;
     private Item gem = null!;
 
-    private GameSession Start(TransferType transferType = TransferType.Tradable) {
+    private GameSession Start(TransferType transferType = TransferType.Tradable, int skinType = 1, int equipPart = 4) {
         test = new TestGameSession();
         // An outfit gem (equipPart 4) for the outfit earring.
         test.SetTable(new GemstoneUpgradeTable(new Dictionary<int, GemstoneUpgradeTable.Entry> {
-            [40200001] = new(1, 40200002, [], 4),
+            [40200001] = new(1, 40200002, [], equipPart),
         }));
         ItemMetadata gearData = TestGameSession.Metadata(11200001, type: 1);
-        gear = test.Store(gearData with { Property = gearData.Property with { SkinType = 1 } });
+        gear = test.Store(gearData with { Property = gearData.Property with { SkinType = skinType } });
         ItemMetadata gemData = TestGameSession.Metadata(40200001, type: 13);
         gem = test.Store(gemData with { Limit = gemData.Limit with { TransferType = transferType } });
         GameSession session = test.Start();
@@ -65,6 +65,26 @@ public class GemstoneSocketStateTests {
             found = item;
         }
         return found;
+    }
+
+    // 89010212: <condition type="skin_gemstone_puton" value="1" /> and 89000017: <condition type="equip_gemstone_puton"
+    // value="1" />: a gem put into an outfit's socket (a skin type) counts for the skin row, one put into gear (no skin
+    // type, here with an any-part gem) for the equip row.
+    [TestCase(1, 4, 1, 0)]
+    [TestCase(0, 0, 0, 1)]
+    public void GemstonePutOn_89010212_89000017_TheItemsKind(int skinType, int equipPart, int skin, int equip) {
+        GameSession session = Start(skinType: skinType, equipPart: equipPart);
+        Quest quest = test.StartQuest(TestGameSession.QuestData(91000001) with {
+            Conditions = [
+                new ConditionMetadata(ConditionType.skin_gemstone_puton, 1, null, null),
+                new ConditionMetadata(ConditionType.equip_gemstone_puton, 1, null, null),
+            ],
+        });
+
+        PutOn(session);
+
+        Assert.That(gear.Socket!.Sockets[0], Is.Not.Null);
+        Assert.That((quest.Conditions[0].Counter, quest.Conditions[1].Counter), Is.EqualTo((skin, equip)));
     }
 
     [Test]

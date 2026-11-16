@@ -163,6 +163,78 @@ public class UgcConfirmItemTests {
         });
     }
 
+    // 89020013: <condition type="item_design" code="1,2,7" value="1" /> and 90000560: <condition type="item_design"
+    // value="1" />: the confirmed design counts with its kind (1, an item) for both; a row of another kind (2,
+    // furniture) does not count it.
+    [Test]
+    public void ItemDesign_89020013_90000560_TheKindOfTheDesign() {
+        test = new TestGameSession();
+        test.SetTable(new UgcDesignTable(new Dictionary<int, UgcDesignTable.Entry> {
+            [Design] = new(1, MeretMarketCurrencyType.Meso, 390, 0, 0),
+        }));
+        test.Register(TestGameSession.Metadata(Design, EquipSlot.CL));
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(Town));
+        session.Currency.Meso = 5000;
+        Quest quest = test.StartQuest(TestGameSession.QuestData(91000001) with {
+            Conditions = [
+                new ConditionMetadata(ConditionType.item_design, 1, new ConditionMetadata.Parameters(Integers: [1, 2, 7]), null),
+                new ConditionMetadata(ConditionType.item_design, 1, null, null),
+                new ConditionMetadata(ConditionType.item_design, 1, new ConditionMetadata.Parameters(Integers: [2]), null),
+            ],
+        });
+        UgcHandler handler = Handler(session);
+        handler.Handle(session, Packet(session, 1, 0));
+        Assert.That(quest.Conditions.Values.Select(condition => condition.Counter), Is.EqualTo(new long[] { 0, 0, 0 }));
+
+        handler.Handle(session, Packet(session, 3, session.StagedUgcItem!.Template!.Id));
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions.Values.Select(condition => condition.Counter), Is.EqualTo(new long[] { 1, 1, 0 }));
+    }
+
+    // 23100186: <condition type="banner" value="1" />: the confirmation of a paid banner upload counts; one with no
+    // charged upload (its fee given back, or none taken) shows nothing and does not count.
+    [Test]
+    public void Banner_23100186_APaidUploadsConfirmation() {
+        test = new TestGameSession();
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(Town));
+        Quest quest = test.StartQuest(TestGameSession.QuestData(91000001) with {
+            Conditions = [new ConditionMetadata(ConditionType.banner, 1, null, null)],
+        });
+        var webStorage = new WebStorage(new DbContextOptionsBuilder().UseInMemoryDatabase(System.Guid.NewGuid().ToString()).Options,
+            NullLogger<WebStorage>.Instance);
+        UgcHandler handler = new() { WebStorage = webStorage, ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata, World = null! };
+        const long bannerId = 2000001;
+        long ugcUid;
+        using (WebStorage.Request web = webStorage.Context()) {
+            ugcUid = web.CreateUgc(UgcType.Banner, session.CharacterId, bannerId, System.DateTime.UtcNow.AddMinutes(5))!.Id;
+        }
+        var slot = new Maple2.Model.Game.Ugc.BannerSlot(bannerId, 20501231, 12) {
+            OwnerId = session.CharacterId,
+            Template = new UgcItemLook { Id = ugcUid, CharacterId = session.CharacterId },
+        };
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.AddBannerSlot(slot);
+        }
+        // The banner on the field the player stands in (the test field is made without its constructor).
+        var banners = new System.Collections.Concurrent.ConcurrentDictionary<long, Maple2.Server.Game.Model.Field.FieldUgcBanner>();
+        typeof(Maple2.Server.Game.Manager.Field.FieldManager).GetField("Banners")!.SetValue(session.Field, banners);
+        var banner = new Maple2.Server.Game.Model.Field.FieldUgcBanner(session.Field!, bannerId, Town, [slot]);
+        banners[bannerId] = banner;
+
+        session.StagedBanner = banner;
+        handler.Handle(session, Packet(session, 3, ugcUid, UgcType.Banner));
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        session.UgcFees.Paid(new Maple2.Model.Validators.UgcPendingFee(session.CharacterId, ugcUid, MeretMarketCurrencyType.Meret, 100, 0));
+        session.StagedBanner = banner;
+        handler.Handle(session, Packet(session, 3, ugcUid, UgcType.Banner));
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
     private UgcHandler Handler(GameSession session) => new() {
         WebStorage = new WebStorage(new DbContextOptionsBuilder().UseInMemoryDatabase(System.Guid.NewGuid().ToString()).Options,
             NullLogger<WebStorage>.Instance),
