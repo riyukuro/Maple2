@@ -231,4 +231,55 @@ public class ForceApplyTargetTests {
 
         Assert.That(pool.Select(actor => actor.ObjectId), Is.EqualTo(new[] { scene.Mob.ObjectId }));
     }
+
+    // KR applyTarget flags (1 hostile, 2 friendly, 4 hidden too): 3 and 7 take both kinds, 5 hostile, 6 friendly. Rows
+    // with 3 (35), 6 (13) and 7 (53) are mostly object, event and boss skills. For a player in a plain field: the mobs
+    // are hostile and every player friendly.
+    [TestCase(ApplyTargetType.Hostile, true, false)]
+    [TestCase(ApplyTargetType.Friendly, false, true)]
+    [TestCase(ApplyTargetType.Player1, true, true)]
+    [TestCase(ApplyTargetType.RegionBuff, true, false)]
+    [TestCase(ApplyTargetType.RegionBuff2, false, true)]
+    [TestCase(ApplyTargetType.Player4, true, true)]
+    public void PlayerCaster_ReadsTheApplyTargetFlags(ApplyTargetType type, bool mobs, bool players) {
+        Scene scene = Start();
+
+        int[] pool = Pool(scene, scene.A, type);
+
+        Assert.Multiple(() => {
+            Assert.That(pool.Contains(scene.Mob.ObjectId), Is.EqualTo(mobs));
+            Assert.That(pool.Contains(scene.B.ObjectId), Is.EqualTo(players));
+            Assert.That(pool, Is.Unique);
+        });
+    }
+
+    // A hidden mob and a hidden player are still taken where bit 4 is set (5, 6, 7), not for 3.
+    [TestCase(ApplyTargetType.Player1, false)]
+    [TestCase(ApplyTargetType.Player4, true)]
+    public void BothKinds_TakeTheHiddenOnlyWithBit4(ApplyTargetType type, bool taken) {
+        Scene scene = Start();
+        GiveHide(scene.B);
+        GiveHide(scene.Mob);
+
+        int[] pool = Pool(scene, scene.A, type);
+
+        Assert.Multiple(() => {
+            Assert.That(pool.Contains(scene.Mob.ObjectId), Is.EqualTo(taken));
+            Assert.That(pool.Contains(scene.B.ObjectId), Is.EqualTo(taken));
+        });
+    }
+
+    // A monster's 3 and 7 take its hostile pool like 1: the players, never a fellow mob (the rows are damage and debuff
+    // ones: a bubble or a boss attack must not hit the adds).
+    [TestCase(ApplyTargetType.Hostile)]
+    [TestCase(ApplyTargetType.Player1)]
+    [TestCase(ApplyTargetType.Player4)]
+    public void MonsterCaster_BothKinds_TakesThePlayersOnly(ApplyTargetType type) {
+        Scene scene = Start();
+        Mob(scene.Field, 11, 250);
+
+        int[] pool = Pool(scene, scene.Mob, type);
+
+        Assert.That(pool, Is.EquivalentTo(new[] { scene.A.ObjectId, scene.B.ObjectId }));
+    }
 }

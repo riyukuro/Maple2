@@ -1313,11 +1313,23 @@ public partial class FieldManager {
         // makes the holder hit its allies), bit 1 adds the mobs to a friendly one.
         int force = ForceApplyTarget(caster);
         // applyTarget is a flag set in the client's filter (FilterTarget, basecollision.cpp:784): 1 hostile, 2 friendly,
-        // 4 takes the untargetable, 8 pets. 5 is hostile plus bit 4, so a player's skill with 5 (the object weapons of
-        // the lifted cubes: KR 99901033) hits what a hostile one does, the mobs; before it took only the players.
-        // Other casters keep the players (region pads and the like).
-        if (targetType == ApplyTargetType.RegionBuff && caster is FieldPlayer) {
-            targetType = ApplyTargetType.Hostile;
+        // 4 takes the untargetable (TakesHidden), 8 pets. So 3 and 7 are both kinds, 5 hostile and 6 friendly (each plus
+        // bit 4 for 5, 6 and 7): a player's range takes the union of the hostile and the friendly pool, which is every
+        // mob and player for 7 (the object weapons of the lifted cubes are 5: KR 99901033). A monster's 3 and 7 (damage
+        // and debuff rows: bubbles, mines, boss attacks) take its hostile pool like 1, never the mobs around it; its 5
+        // and 6, and any other caster's, keep the players.
+        if (targetType is ApplyTargetType.Player1 or ApplyTargetType.Player4 && caster is FieldNpc) {
+            return TargetKinds(caster, ApplyTargetType.Hostile);
+        }
+        if (targetType is ApplyTargetType.Player1 or ApplyTargetType.RegionBuff or ApplyTargetType.RegionBuff2 or ApplyTargetType.Player4
+            && caster is FieldPlayer) {
+            bool hostile = targetType is ApplyTargetType.Player1 or ApplyTargetType.RegionBuff or ApplyTargetType.Player4;
+            bool friendly = targetType is ApplyTargetType.Player1 or ApplyTargetType.RegionBuff2 or ApplyTargetType.Player4;
+            IEnumerable<IActor> pools = hostile ? TargetKinds(caster, ApplyTargetType.Hostile) : [];
+            if (friendly) {
+                pools = pools.Concat(TargetKinds(caster, ApplyTargetType.Friendly));
+            }
+            return pools.DistinctBy(actor => actor.ObjectId);
         }
         switch (targetType) {
             case ApplyTargetType.Friendly:
