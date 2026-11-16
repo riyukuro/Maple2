@@ -1,3 +1,4 @@
+using System.Threading;
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -652,6 +653,21 @@ public sealed class TestGameSession {
     // The session stands in a field of this map (AddMap is not needed for it).
     public void EnterMap(MapMetadata map) {
         Session.Field = NewField<FieldManager>(map);
+    }
+
+    // The game server answers GetField (session.FindField) with the session's own field, so a path that looks its field
+    // up through the server (a plot forfeit) finds it.
+    public void ServeField() {
+        FieldManager field = Session.Field!;
+        var factory = (FieldManager.Factory) RuntimeHelpers.GetUninitializedObject(typeof(FieldManager.Factory));
+        void Set(string name, object value) => typeof(FieldManager.Factory).GetField(name, Any)!.SetValue(factory, value);
+        Set("mapLocks", new ConcurrentDictionary<int, SemaphoreSlim>());
+        Set("fields", new ConcurrentDictionary<int, ConcurrentDictionary<int, FieldManager>> {
+            [field.MapId] = new ConcurrentDictionary<int, FieldManager> { [0] = field },
+        });
+        Set("<ServerTableMetadata>k__BackingField", ServerTableMetadata);
+        object server = typeof(GameSession).GetField("server", Any)!.GetValue(Session)!;
+        typeof(Maple2.Server.Game.GameServer).GetField("fieldFactory", Any)!.SetValue(server, factory);
     }
 
     // An interact object of the session's field, at the player's place and ready to be used.
