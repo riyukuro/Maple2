@@ -169,11 +169,11 @@ public static class NpcControlRules {
 
     // How far below a ledge (map units) the floor may be for a push or a dash to step down onto it: the ground
     // height the client probes ahead each frame (CPushControl, hitcontrol.cpp; the linear and move motion
-    // controllers, motioncontroller.cpp).
+    // controllers, motioncontroller.cpp). A push with pushFall goes over any drop.
     public const float PUSH_DROP = 150;
     public const float DASH_DROP = 750;
 
-    public static float PushDrop(SkillMetadataPush push) => PUSH_DROP;
+    public static float PushDrop(SkillMetadataPush push) => push.Fall ? float.PositiveInfinity : PUSH_DROP;
 
     // PushTime is 0 when the npc did not move (no push, or it stands against a wall or a ledge already).
     public static HitEntry Hit(short sequenceId, float hitDelay, SkillMetadataPush? push, bool moved) {

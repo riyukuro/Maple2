@@ -578,6 +578,19 @@ public class AgentNavigationTests {
         });
     }
 
+    // pushFall: any drop, 2000 down here, lands on the floor below; a dash stops at the same edge.
+    [Test]
+    public void LedgeMove_PushFallGoesOverAnyDrop() {
+        RcVec3f fall = Ledge(20f, float.PositiveInfinity);
+        RcVec3f dash = Ledge(20f, 7.5f);
+        Assert.Multiple(() => {
+            Assert.That(fall.X, Is.EqualTo(1.5f).Within(0.01));
+            Assert.That(fall.Y, Is.EqualTo(-20f).Within(0.05));
+            Assert.That(dash.X, Is.EqualTo(0f).Within(0.01));
+            Assert.That(dash.Y, Is.EqualTo(0f).Within(0.05));
+        });
+    }
+
     // No floor below, or a floor at the edge's own height past it (the far side of a wall), or no drop allowed:
     // the move ends at the edge, on the top.
     [Test]
