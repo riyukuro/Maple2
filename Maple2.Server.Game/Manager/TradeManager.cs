@@ -247,10 +247,23 @@ public class TradeManager : IDisposable {
                 }
 
                 IList<(Item Item, int Added)> results = self.Items.Add(item, true);
-                // Sanity check, this should never fail because we ensure an open slot.
+                // Never expected (an open slot is ensured): what went into the window is taken back and the item
+                // returns to the bag (or mail). Before, the throw left the item out of both: taken off the bag (its
+                // split piece already written) and in no window that the trade's end would hand over.
                 if (results.Sum(result => result.Added) != amount) {
-                    // caller.Item.Inventory.Add(item); TODO: refund the item to inventory?
-                    throw new InvalidOperationException("AddItem: Trade consistency error");
+                    foreach ((Item stack, int added) in results.Where(result => !ReferenceEquals(result.Item, item))) {
+                        stack.Amount -= added;
+                        item.Amount += added;
+                    }
+                    if (results.Any(result => ReferenceEquals(result.Item, item))) {
+                        self.Items.Remove(item.Uid, out _);
+                    }
+                    logger.Error("Trade offer {Uid} ({ItemId}) of {CharacterId}: the window took {Added} of {Amount}", item.Uid, item.Id,
+                        caller.CharacterId, results.Sum(result => result.Added), amount);
+                    if (!caller.Item.AddOrMail(item, commit: true)) {
+                        logger.Error("Trade item {Uid} ({ItemId} x{Amount}) of {CharacterId} not returned", item.Uid, item.Id, item.Amount, caller.CharacterId);
+                    }
+                    return;
                 }
                 if (!SaveStacked(caller, item, results)) {
                     return;
@@ -468,6 +481,16 @@ public class TradeManager : IDisposable {
         // On a cancel, the sessions whose offered mesos come back (HandOver clears the offers).
         GameSession[] refunded = success ? [] : new[] { sender, receiver }.Where(trader => trader.Mesos != 0)
             .Select(trader => trader.Session).ToArray();
+        // Before the items move, both wallets are stored with their own offers taken and nothing paid yet: the item
+        // rows move at once (HandOver), so a stop before the stores below kept the bought item with the payer while
+        // the payer's offer, taken in memory only, came back. Now such a stop loses the payment, never makes it twice.
+        if (mesosMoved) {
+            foreach (GameSession wallet in wallets) {
+                if (!wallet.SavePurchase()) {
+                    logger.Error("Trade offer mesos of {CharacterId} not stored before the hand-over", wallet.CharacterId);
+                }
+            }
+        }
         HandOver(sender, success ? receiver.Session : sender.Session, success);
         HandOver(receiver, success ? sender.Session : receiver.Session, success);
         // The items' rows move at once (HandOver), but the mesos were in memory only: an offer is taken from the

@@ -195,6 +195,31 @@ public class TradeHandlerTests {
         });
     }
 
+    // The payer's wallet is stored with its offer taken before the item rows move: every wallet store made once the
+    // item is the taker's fails here (a stop right after the hand-over), and the stored rows still hold the taker's
+    // 1000 mesos paid next to the item. Before, the wallets were stored only after the move, so the taker kept both.
+    [Test]
+    public void Complete_ThePayerIsStoredBeforeTheItemMoves() {
+        Offer();
+        long takerId = taker.CharacterId;
+        bool Moved() {
+            using var context = new Ms2Context(giverTest.Options);
+            return context.Item.AsNoTracking().Any(row => row.Id == item.Uid && row.OwnerId == takerId);
+        }
+        takerTest.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Character>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified) && Moved();
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        Send(taker, 13);
+        takerTest.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Moved(), Is.True);
+            Assert.That(StoredMeso(taker), Is.EqualTo(4000));
+        });
+    }
+
     // The payer's wallet is stored first, and the payee's only once that store is kept: when the payer's fails, the
     // payee's waits for its next save too, so a stop in between loses the payment rather than making it twice.
     [Test]
@@ -216,7 +241,8 @@ public class TradeHandlerTests {
     }
 
     // The same with the giver paying: alone (the taker offers no mesos), or both offering and the giver paying more.
-    // The giver's store fails, so the taker's stored wallet stays as it was.
+    // The giver's store fails, so the taker's stored wallet never holds the giver's payment: it is stored before the
+    // hand-over with only its own offer taken (5000 less that offer).
     [TestCase(0L, 6000L, 4000L)]
     [TestCase(1000L, 7000L, 3000L)]
     public void Complete_GiverPaysNotStored_TakerWaits(long takerOffer, long takerAfter, long giverAfter) {
@@ -230,7 +256,6 @@ public class TradeHandlerTests {
         if (takerOffer != 0) {
             Send(taker, 10, writer => writer.WriteLong(takerOffer));
         }
-        long takerStored = StoredMeso(taker);
         // The taker's options carry the giver's fault hook too (one database), so only the giver's row fails.
         long giverId = giver.CharacterId;
         giverTest.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Character>()
@@ -243,7 +268,7 @@ public class TradeHandlerTests {
 
         Assert.Multiple(() => {
             Assert.That((giver.Currency.Meso, taker.Currency.Meso), Is.EqualTo((giverAfter, takerAfter)));
-            Assert.That(StoredMeso(taker), Is.EqualTo(takerStored));
+            Assert.That(StoredMeso(taker), Is.EqualTo(5000 - takerOffer));
         });
     }
 
