@@ -999,8 +999,11 @@ public sealed class TestGameSession {
         // The world's party side: no party at login; a test scripts what the world answers to a party request.
         public Func<PartyRequest, PartyResponse>? PartyWorld;
 
+        // What the world answers to a party lookup (a party moved to by the matchmaker); none by default.
+        public Func<PartyInfoRequest, PartyInfoResponse>? PartyInfoWorld;
+
         public override PartyInfoResponse PartyInfo(PartyInfoRequest request, CallOptions options) {
-            return new PartyInfoResponse();
+            return PartyInfoWorld?.Invoke(request) ?? new PartyInfoResponse();
         }
 
         public override PartyResponse Party(PartyRequest request, CallOptions options) {
