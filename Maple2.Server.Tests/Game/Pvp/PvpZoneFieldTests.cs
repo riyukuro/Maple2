@@ -535,4 +535,22 @@ public class PvpZoneFieldTests {
         Assert.That(own.Count(packet => packet.StartsWith("B60064")), Is.EqualTo(3));
         Assert.That(own.Count(packet => packet.StartsWith("B60067")), Is.EqualTo(3));
     }
+
+    // The Red Arena: only the two fighters of the face-off are participants (the waiting player is not), a hit between
+    // them is credited, and a fighter leaving the field loses the face-off to the other one.
+    [Test]
+    public void RedArena_ParticipantsAreTheFightersAndALeaveLosesTheFaceOff() {
+        Arena arena = Start(field => field.StartPvpZone(1, 102, 0, 120, 0, [], _ => field.Players.Values.Take(2)));
+        long now = Environment.TickCount64;
+        arena.Field.PvpZone!.Update(now + 10);
+        arena.Field.PvpZone.Update(now + 10 + Maple2.Model.Game.Pvp.RedArenaState.PrepareMs);
+        Assert.That(arena.Field.PvpZone.IsParticipant(arena.Player(0)), Is.True);
+        Assert.That(arena.Field.PvpZone.IsParticipant(arena.Player(2)), Is.False);
+
+        arena.Field.PvpZone.Damage(arena.Player(0), arena.Player(1), 10);
+        arena.Field.PvpZone.Damage(arena.Player(2), arena.Player(1), 10);
+        arena.Field.PvpZone.Leave(arena.Player(1));
+        Assert.That(arena.Field.PvpZone.Ended, Is.True);
+        Assert.That(arena.Tests[0].Session.Item.Inventory.Find(ArenaItem).Sum(item => item.Amount), Is.EqualTo(100));
+    }
 }
