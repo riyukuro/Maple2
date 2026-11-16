@@ -783,4 +783,40 @@ public class AiStateTests : TriggerTestBase {
         npc.MovementState.ApplyHits();
         Assert.That(npc.MovementState.State, Is.Not.EqualTo(ActorState.Hit));
     }
+
+    // setUserValue node: sets the trigger's user value the field's scripts read.
+    [Test]
+    public void TriggerSetUserValueNode_SetsTheFieldUserValue() {
+        Spawn([new TriggerSetUserValueNode("triggerSetUserValue", [], 9001, "Wave", 3, 0, true)]);
+        typeof(FieldManager).GetField(nameof(FieldManager.UserValues), Any)!.SetValue(Field, new TriggerUserValues());
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.Multiple(() => {
+            Assert.That(Field.UserValues.Get(9001, "Wave"), Is.EqualTo(3));
+        });
+    }
+
+    // ride node: the listed npcs ride; isRideOff clears it; an empty list rides nothing.
+    [TestCase(false, new[] { 21000002, 21000003 }, new[] { 21000002, 21000003 })]
+    [TestCase(true, new[] { 21000002 }, null)]
+    [TestCase(false, new int[0], null)]
+    public void RideNode_SetsTheRideList(bool off, int[] ids, int[]? expected) {
+        Spawn([new RideNode("ride", [], NodeRideType.Slave, off, ids)]);
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(npc.RideNpcIds, Is.EqualTo(expected));
+    }
+
+    // setMasterValue / setSlaveValue on an npc with no master and no slaves change nothing and do not throw.
+    [Test]
+    public void MasterAndSlaveValueNodes_WithoutMasterOrSlaves_DoNothing() {
+        Spawn([new SetMasterValueNode("setMasterValue", [], "K", 1, false, 0, false, false),
+            new SetSlaveValueNode("setSlaveValue", [], "K", 1, false, 0, false, false)]);
+
+        Assert.DoesNotThrow(() => npc.AiState.Update(Field.FieldTick));
+
+        Assert.That(npc.AiExtraData.ContainsKey("K"), Is.False);
+    }
 }
