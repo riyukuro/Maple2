@@ -363,4 +363,95 @@ public class GuildModeHandlerTests {
         Assert.That(test.World.GuildRequests, Is.Empty);
         Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildError.s_guild_err_name_value)) }));
     }
+
+    private void SendMail(string title, string content) {
+        Send(71, writer => {
+            writer.WriteUnicodeString(title);
+            writer.WriteUnicodeString(content);
+        });
+    }
+
+    private IList<Mail> MailOf(long characterId) {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.GetAllMail(characterId).ToList();
+    }
+
+    // Guild 71 accepted: the World gives the mail turn, every other member gets a guild mail from the sender (not
+    // the sender), the new-mail notice goes out, and the reply is 71 with no body ("mail sent").
+    [Test]
+    public void GuildMail_Sent_ToEveryOtherMember() {
+        test.World.GuildWorld = _ => new GuildResponse();
+
+        SendMail("Title", "Text");
+
+        Assert.That(test.World.GuildRequests.Single().TakeMailTurn.GuildId, Is.EqualTo(7));
+        Mail mail = MailOf(other.CharacterId).Single();
+        Assert.Multiple(() => {
+            Assert.That((mail.Type, mail.SenderId, mail.SenderName, mail.Title, mail.Content),
+                Is.EqualTo((MailType.Guild, session.CharacterId, session.PlayerName, "Title", "Text")));
+            Assert.That(MailOf(session.CharacterId), Is.Empty);
+            Assert.That(test.World.MailNotifications.Select(notice => (notice.CharacterId, notice.MailId)),
+                Is.EqualTo(new[] { (other.CharacterId, mail.Id) }));
+            Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.SendMail()) }));
+        });
+    }
+
+    // A rank without the mail right (128): no_authority before the World is asked.
+    [Test]
+    public void GuildMail_WithoutTheRight_NoAuthority() {
+        self.Rank = 2;
+
+        SendMail("Title", "Text");
+
+        Assert.That(test.World.GuildRequests, Is.Empty);
+        Assert.That(MailOf(other.CharacterId), Is.Empty);
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildError.s_guild_err_no_authority)) }));
+    }
+
+    // A title of 0 or 101 characters, a text of 0 or 2001 (the client's own limits, CGuildManager::SendGuildMail).
+    [TestCase(0, 4)]
+    [TestCase(101, 4)]
+    [TestCase(5, 0)]
+    [TestCase(5, 2001)]
+    public void GuildMail_OutOfLength_Unknown(int titleLength, int contentLength) {
+        SendMail(new string('t', titleLength), new string('c', contentLength));
+
+        Assert.That(test.World.GuildRequests, Is.Empty);
+        Assert.That(GuildAnswers(), Is.EqualTo(Unknown));
+    }
+
+    // The World refuses the turn (a second mail inside the flood guard) or cannot be reached: its error, no mail.
+    [Test]
+    public void GuildMail_TurnRefusedOrWorldDown_NoMail() {
+        test.World.GuildWorld = _ => new GuildResponse { Error = (int) GuildRules.MailCooldownError };
+        SendMail("Title", "Text");
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildRules.MailCooldownError)) }));
+
+        WorldDown();
+        SendMail("Title", "Text");
+        Assert.That(GuildAnswers(), Is.EqualTo(Unknown));
+
+        Assert.That(MailOf(other.CharacterId), Is.Empty);
+        Assert.That(test.World.MailNotifications, Is.Empty);
+    }
+
+    // Guild 114 (CGuildManager::FUN_1413bb000): the NPC kind goes to the World, which checks and pays; its refusal
+    // or a World down is the error line, an upgrade has no answer of its own (the members get 51 and 59).
+    [Test]
+    public void UpgradeNpc_AsksTheWorld_AndShowsItsRefusal() {
+        test.World.GuildWorld = _ => new GuildResponse();
+        Send(114, writer => writer.WriteInt((int) GuildNpcType.Goods));
+        Assert.That(GuildAnswers(), Is.Empty);
+
+        test.World.GuildWorld = _ => new GuildResponse { Error = (int) GuildError.s_guild_err_not_enough_guild_fund };
+        Send(114, writer => writer.WriteInt((int) GuildNpcType.Goods));
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.Error(GuildError.s_guild_err_not_enough_guild_fund)) }));
+
+        WorldDown();
+        Send(114, writer => writer.WriteInt((int) GuildNpcType.Goods));
+        Assert.That(GuildAnswers(), Is.EqualTo(Unknown));
+
+        Assert.That(test.World.GuildRequests.Select(request => (request.UpgradeNpc.GuildId, request.UpgradeNpc.Type)),
+            Is.EqualTo(Enumerable.Repeat((7L, (int) GuildNpcType.Goods), 3)));
+    }
 }

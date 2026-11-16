@@ -45,6 +45,7 @@ public class ShopHandlerTests {
     private const int GuildFundProductId = 21;
     private const int StarPointProductId = 22;
     private const int ItemCostProductId = 23;
+    private const int GuildFundStockProductId = 24;
     private const int PaymentItemId = 20000004;
     private const long GuildId = 39990009;
     private const int FurnishingItemId = 50400001;
@@ -108,6 +109,7 @@ public class ShopHandlerTests {
                 [GuildFundProductId] = Product(GuildFundProductId, price: 500, stock: 0, currency: ShopCurrencyType.GuildFund),
                 [StarPointProductId] = Product(StarPointProductId, price: 5, stock: 0, currency: ShopCurrencyType.StarPoint),
                 [ItemCostProductId] = Product(ItemCostProductId, price: 3, stock: 0, currency: ShopCurrencyType.Item, costItemId: PaymentItemId),
+                [GuildFundStockProductId] = Product(GuildFundStockProductId, price: 500, stock: 5, currency: ShopCurrencyType.GuildFund),
             },
         }));
         // The KR grade points of Maple Union and the Royal Guard (2: 10000, 3: 30000, 4: 60000, 5: 120000).
@@ -1092,6 +1094,28 @@ public class ShopHandlerTests {
         }));
         Assert.That(Convert.ToHexString(ShopPacket.Error(ShopError.s_err_no_notice).ToArray()), Does.Contain("08000000"));
         Assert.That(session.Item.Inventory.Find(ProductItemId), Is.Empty);
+    }
+
+    // A guild-fund product with a stock in a shop without a reset: the bought count is shown (Shop 5) and stored in
+    // the product's own row, made at the first buy (the shop has no restock row); a buy past the stock is refused
+    // before the World is asked, so no fund is taken for it.
+    [Test]
+    public void Buy_OfAGuildFundProductWithStock_CountsAndStoresTheStock() {
+        GameSession session = Login();
+        JoinAsMaster(session);
+        test.World.GuildWorld = _ => new GuildResponse { GuildId = GuildId };
+
+        Buy(session, GuildFundStockProductId, 2);
+        Assert.That((Purchased(session, GuildFundStockProductId), StoredStock(GuildFundStockProductId)), Is.EqualTo((2, 2)));
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Contain(Hex(ShopPacket.Update(GuildFundStockProductId, 2))));
+
+        Buy(session, GuildFundStockProductId, 1);
+        Assert.That((Purchased(session, GuildFundStockProductId), StoredStock(GuildFundStockProductId)), Is.EqualTo((3, 3)));
+
+        test.TakeSent();
+        Buy(session, GuildFundStockProductId, 3);
+        Assert.That(test.World.GuildRequests, Has.Count.EqualTo(2));
+        Assert.That((Purchased(session, GuildFundStockProductId), StoredStock(GuildFundStockProductId)), Is.EqualTo((3, 3)));
     }
 
     // The instant restock (Shop 9) pays the shop's restock price in one step, and a price below 0 is refused. The
