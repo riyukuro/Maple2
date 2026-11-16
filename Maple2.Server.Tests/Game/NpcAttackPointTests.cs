@@ -521,4 +521,33 @@ public class NpcAttackPointTests : TriggerTestBase {
         Assert.That(Names(aimed.ObjectId), Is.True);
         Assert.That(Names(next.ObjectId), Is.EqualTo(chain));
     }
+
+    // A no-target region's landing takes the aim of its path's own index, as the target packet gives each path its
+    // target (NpcProjectileRules.PathTargets): the npc's given target fills a lone flying path's aim at once (no search),
+    // and lands the region on its cell; behind a path that does not fly, the one aim is that path's, and the flying
+    // path's region lands at its end. A path that does not fly lands no region.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ANoTargetRegionTakesTheAimOfItsPathsIndex(bool behindAStill) {
+        const int regionId = 21000012;
+        SkillEffectMetadata splash = Region(regionId, noTarget: true);
+        MagicPath path = Path(1000, 5000);
+        if (behindAStill) {
+            Paths(Path(0, 0), path);
+        } else {
+            Paths(path);
+        }
+        Player.Position = new Vector3(800, 100, 0);
+        SkillRecord cast = Cast(Attack() with { MagicPathId = PathId, Skills = [splash] });
+
+        mob.SkillState.SkillCastAttack(cast, 0, [Player]);
+
+        long until = Environment.TickCount64 + 2000;
+        while (!Field.DebugFieldSkills.Any() && Environment.TickCount64 < until) {
+            Field.Scheduler.InvokeAll();
+            System.Threading.Thread.Sleep(10);
+        }
+        Vector3 expected = behindAStill ? NpcSplashRules.EndPoint(mob.Position, mob.Rotation, path) : NpcSplashRules.LandPoint(Player.Position);
+        Assert.That(Field.DebugFieldSkills.Select(skill => (skill.Value.Id, skill.Position)), Is.EqualTo(new[] { (regionId, expected) }));
+    }
 }

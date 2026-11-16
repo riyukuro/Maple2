@@ -1147,4 +1147,23 @@ public class BuffAttributeTests {
         Buffs.RefreshPrestigeBuffs();
         Assert.That(Only(100000028).Level, Is.EqualTo(2));
     }
+
+    // A field change gives the player a new actor object (FieldManager.SpawnPlayer: session.Buffs.ResetActor): the
+    // buffs it held keep on with it as their holder and, for its own, as their caster; a buff another actor cast
+    // keeps that caster.
+    [Test]
+    public void ResetActor_MovesTheHeldBuffsToTheNewActor() {
+        Start(MapType.None, Effect(10000051, Plain), Effect(10000061, Plain));
+        using var other = new FieldActor(Field, 77, Field.Metadata, null!);
+        Add(10000051);
+        Add(10000061, caster: other);
+        using var moved = new FieldActor(Field, Player.ObjectId, Field.Metadata, null!);
+
+        Buffs.ResetActor(moved);
+
+        Assert.That(Only(10000051).Owner, Is.SameAs(moved));
+        Assert.That(Only(10000051).Caster, Is.SameAs(moved));
+        Assert.That(Only(10000061).Owner, Is.SameAs(moved));
+        Assert.That(Only(10000061).Caster, Is.SameAs(other));
+    }
 }
