@@ -69,7 +69,10 @@ public class MeretMarketListTests {
         };
         session.Currency.Meret = 5000;
         test.TakeSent();
+        storedMeretAtStart = StoredMeret();
     }
+
+    private long storedMeretAtStart;
 
     private long Listing(ItemMetadata metadata, long accountId, long lookId, long endTime) {
         using GameStorage.Request db = test.Storage.Context();
@@ -293,6 +296,91 @@ public class MeretMarketListTests {
             Assert.That(item.Description, Is.EqualTo(string.Empty));
             Assert.That(item.Tags, Is.Empty);
         });
+    }
+
+    // The wallet's row (Account, Character) cannot be stored, as a crash between the listing's row and the wallet.
+    private void FailWalletSaves() =>
+        test.FailSave = context => context.ChangeTracker.Entries()
+            .Any(entry => entry.State == EntityState.Modified && entry.Entity is Maple2.Database.Model.Account or Maple2.Database.Model.Character);
+
+    private long StoredMeret() {
+        using var context = new Ms2Context(test.Options);
+        return context.Account.AsNoTracking().Single(row => row.Id == test.AccountId).Currency.Meret;
+    }
+
+    private int StoredListings() {
+        using var context = new Ms2Context(test.Options);
+        return context.UgcMarketItem.AsNoTracking().Count();
+    }
+
+    // The fee and the listing are stored together: the stored wallet has the fee taken once the listing is there.
+    [Test]
+    public void ListingFeeIsStoredWithTheListing() {
+        Start(listings: 1); // one listing on sale: the fee is 30
+
+        Send(13, itemUid, 500);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(4970));
+            Assert.That(StoredMeret(), Is.EqualTo(4970));
+            Assert.That(StoredListings(), Is.EqualTo(2));
+        });
+    }
+
+    // The wallet cannot be stored: nothing is listed and the fee stays. Before, the listing's row was stored on its
+    // own and the wallet after it, so the listing was kept with the fee never stored (a free listing after a crash).
+    [Test]
+    public void ListingWhoseWalletIsNotStoredListsNothing() {
+        Start(listings: 1);
+        FailWalletSaves();
+
+        AssertRefused(Send(13, itemUid, 500), 13, 0x68, itemUid);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(session.UgcMarket.IsDesignListed(DesignUid), Is.False);
+            Assert.That(StoredListings(), Is.EqualTo(1));
+            Assert.That(StoredMeret(), Is.EqualTo(StoredMeretBefore));
+        });
+    }
+
+    [Test]
+    public void RelistFeeIsStoredWithTheListing() {
+        Start(listings: 1, endTime: DateTime.Now.AddDays(-1).ToEpochSeconds());
+
+        Send(18, firstListing, 800);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meret, Is.EqualTo(4970));
+            Assert.That(StoredMeret(), Is.EqualTo(4970));
+            Assert.That(StoredListing(firstListing).Price, Is.EqualTo(800));
+        });
+    }
+
+    [Test]
+    public void RelistWhoseWalletIsNotStoredKeepsTheListing() {
+        long ended = DateTime.Now.AddDays(-1).ToEpochSeconds();
+        Start(listings: 1, endTime: ended);
+        FailWalletSaves();
+
+        AssertRefused(Send(18, firstListing, 800), 18, 0x68, firstListing);
+        test.FailSave = null;
+
+        Assert.That(session.UgcMarket.TryGetItem(firstListing, out UgcMarketItem? item), Is.True);
+        Assert.Multiple(() => {
+            Assert.That((item!.Price, item.ListingEndTime), Is.EqualTo((500L, ended)));
+            Assert.That(StoredListing(firstListing).Price, Is.EqualTo(500));
+            Assert.That(StoredListing(firstListing).ListingEndTime, Is.EqualTo(ended));
+            Assert.That(StoredMeret(), Is.EqualTo(StoredMeretBefore));
+        });
+    }
+
+    // The wallet the store held before the step (the session's own row as Start left it).
+    private long StoredMeretBefore => storedMeretAtStart;
+
+    private UgcMarketItem StoredListing(long id) {
+        using GameStorage.Request db = test.Storage.Context();
+        return db.GetUgcMarketItem(id)!;
     }
 
     // The dialogs' ValidateTexts, asked again here: a banned word in the tag line or the description, or a

@@ -245,8 +245,11 @@ public class MeretMarketHandler : FieldPacketHandler {
 
         int tabId = tab.FirstOrDefault(kv => kv.Value.Categories.Contains(item.Metadata.Property.Category)).Key;
 
+        // The fee is held (taken, not yet shown) and stored with the listing's row in one transaction (TrySavePurchase).
+        // Before, the row was stored first and the wallet after it, so a crash in between kept the listing and gave the
+        // fee back.
         long listingFee = UgcMarketRules.RegisterFee(session.UgcMarket.ActiveListingCount(), score, promote, Constants.UGCShopAdFeeMerat, Target.LOCALE == "CN");
-        if (Pay(session, listingFee, MeretMarketCurrencyType.Meret) != StringCode.s_empty_string) {
+        if (Pay(session, listingFee, MeretMarketCurrencyType.Meret, notify: false) != StringCode.s_empty_string) {
             Refuse(MeretMarketError.LackMerat);
             return;
         }
@@ -268,17 +271,16 @@ public class MeretMarketHandler : FieldPacketHandler {
             TabId = tabId,
         };
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        marketItem = db.CreateUgcMarketItem(marketItem);
-        if (marketItem == null) {
+        UgcMarketItem? listed = null;
+        if (!session.TrySavePurchase(db => (listed = db.CreateUgcMarketItem(marketItem)) != null) || listed == null) {
             Logger.Error("Failed to create UGC market item: {ItemUid}", itemUid);
-            session.Currency.ChangeMeret(listingFee); // nothing was listed: the fee goes back
+            Settle(session, listingFee, MeretMarketCurrencyType.Meret, stored: false, mesoSends: 0); // nothing was listed: the fee goes back
             Refuse(MeretMarketError.Common);
             return;
         }
-        session.SavePurchase();
+        Settle(session, listingFee, MeretMarketCurrencyType.Meret, stored: true, mesoSends: 0);
 
-        session.UgcMarket.ListItem(marketItem);
+        session.UgcMarket.ListItem(listed);
         return;
 
         Item? GetUgcItem(long uid) {
@@ -385,8 +387,9 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         bool score = new ItemType(item.ItemMetadata.Id).IsMusicScore;
+        // Held and stored with the listing's row, as for a new listing.
         long listingFee = UgcMarketRules.RegisterFee(session.UgcMarket.ActiveListingCount(), score, promote, Constants.UGCShopAdFeeMerat, Target.LOCALE == "CN");
-        if (Pay(session, listingFee, MeretMarketCurrencyType.Meret) != StringCode.s_empty_string) {
+        if (Pay(session, listingFee, MeretMarketCurrencyType.Meret, notify: false) != StringCode.s_empty_string) {
             Refuse(MeretMarketError.LackMerat);
             return;
         }
@@ -404,15 +407,14 @@ public class MeretMarketHandler : FieldPacketHandler {
         item.Description = description;
         item.Tags = tags;
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        if (!db.SaveUgcMarketItem(item)) {
-            // Not stored: the listing stays as it was and the fee goes back.
-            (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.RelistKind, item.FreeRelistUsed, item.Description, item.Tags) = before;
-            session.Currency.ChangeMeret(listingFee);
+        // Not stored: the listing is put back as it was (before the account lock is given back) and the fee goes back.
+        if (!session.TrySavePurchase(db => db.SaveUgcMarketItem(item), undo: () =>
+                (item.Price, item.PromotionEndTime, item.ListingEndTime, item.Status, item.RelistKind, item.FreeRelistUsed, item.Description, item.Tags) = before)) {
+            Settle(session, listingFee, MeretMarketCurrencyType.Meret, stored: false, mesoSends: 0);
             Refuse(MeretMarketError.Common);
             return;
         }
-        session.SavePurchase();
+        Settle(session, listingFee, MeretMarketCurrencyType.Meret, stored: true, mesoSends: 0);
 
         session.Send(MeretMarketPacket.RelistItem(item));
     }
