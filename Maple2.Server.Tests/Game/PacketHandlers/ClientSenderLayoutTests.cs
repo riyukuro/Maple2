@@ -1,7 +1,8 @@
 using System;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.PacketHandlers;
-using Maple2.Server.Game.PacketHandlers.Field;
+using Maple2.Server.Core.PacketHandlers;
+using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -18,7 +19,7 @@ public class ClientSenderLayoutTests {
         test.TakeSent();
     }
 
-    private void Consumes(FieldPacketHandler handler, Action<ByteWriter> client) {
+    private void Consumes(PacketHandler<GameSession> handler, Action<ByteWriter> client) {
         ByteReader packet = TestGameSession.Packet(client);
         handler.Handle(test.Session, packet);
         Assert.That(packet.Available, Is.EqualTo(0));
@@ -26,7 +27,7 @@ public class ClientSenderLayoutTests {
 
     // As Consumes, for a handler whose action needs the world or tables the test session lacks: it fails after it has
     // read its fields, which is all this checks.
-    private void ReadsAll(FieldPacketHandler handler, Action<ByteWriter> client) {
+    private void ReadsAll(PacketHandler<GameSession> handler, Action<ByteWriter> client) {
         ByteReader packet = TestGameSession.Packet(client);
         try {
             handler.Handle(test.Session, packet);
@@ -99,5 +100,40 @@ public class ClientSenderLayoutTests {
     [Test]
     public void ItemBillboard_Mode1() {
         ReadsAll(new ItemBillboardHandler(), w => { w.WriteByte(1); w.WriteInt(1); });
+    }
+
+    // UIBirthdayCardDialog::SendBirthdayCard (uibirthdaycarddialog.cpp:98): mode 0.
+    [Test]
+    public void BirthdayCard_Mode0() {
+        ReadsAll(new BirthdayCardHandler(), w => w.WriteByte(0));
+    }
+
+    // CSceneStateGame::OnServerEnter (scenestategame.cpp:2150): the list version, 8 bytes.
+    [Test]
+    public void DynamicBanword_TheVersion() {
+        ReadsAll(new DynamicBanwordHandler(), w => w.WriteLong(0));
+    }
+
+    // CNpc::SendInteractNpc (npcactorandvibrate.cpp:1441): the object id.
+    [Test]
+    public void InteractNpc_TheObjectId() {
+        ReadsAll(new InteractNpcHandler(), w => w.WriteInt(1));
+    }
+
+    // UICharacterAbilityDialog learn, reset and the GM learn-all (uicharacterabilitydialog.cpp:422, 504,
+    // usercommandcli.cpp:1961): 2 and the ability id, 1, 3.
+    [Test]
+    public void CharacterAbility_Modes1_2_3() {
+        ReadsAll(new CharacterAbilityHandler(), w => { w.WriteByte(2); w.WriteInt(1); });
+        ReadsAll(new CharacterAbilityHandler(), w => w.WriteByte(1));
+        ReadsAll(new CharacterAbilityHandler(), w => w.WriteByte(3));
+    }
+
+    // The party dialog's give up and the reward dialog's leave (uipartydialog.cpp:787, uidungeonrewarddialog.cpp:553):
+    // the mode alone, 5 and 6.
+    [Test]
+    public void DungeonReward_Modes5_6() {
+        ReadsAll(new DungeonRewardHandler(), w => w.WriteByte(5));
+        ReadsAll(new DungeonRewardHandler(), w => w.WriteByte(6));
     }
 }
