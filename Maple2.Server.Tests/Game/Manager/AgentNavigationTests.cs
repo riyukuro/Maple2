@@ -510,9 +510,34 @@ public class AgentNavigationTests {
     // A floor at height 0 over navmesh x -20..0 and, past a gap (0.6, what the navmesh's erosion leaves at a bare
     // ledge), one drop units lower over x gap..20 (both z -20..20), with no link between them: a ledge. A gap of 0.8
     // is a 0.2 wall with the floor behind it. Without the lower floor the top ends over nothing.
-    internal static DtNavMeshCreateParams LedgeParams(float drop, bool lower = true, float gap = 0.6f) {
+    // dense: the lower floor is instead a grid of 900 polys 0.2 across (x gap..gap+6, z 2..8), more than a ledge
+    // search holds.
+    internal static DtNavMeshCreateParams LedgeParams(float drop, bool lower = true, float gap = 0.6f, bool dense = false) {
         int top = (int) MathF.Round(drop / 0.1f);
         int near = 200 + (int) MathF.Round(gap / 0.1f);
+        if (dense) {
+            var verts = new List<int> { 0, top, 0, 0, top, 400, 200, top, 400, 200, top, 0 };
+            var polys = new List<int> { 0, 1, 2, 3, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff };
+            for (int i = 0; i <= 30; i++) {
+                for (int j = 0; j <= 30; j++) {
+                    verts.AddRange([near + 2 * i, 0, 220 + 2 * j]);
+                }
+            }
+            for (int i = 0; i < 30; i++) {
+                for (int j = 0; j < 30; j++) {
+                    int a = 4 + i * 31 + j;
+                    polys.AddRange([a, a + 1, a + 32, a + 31, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff]);
+                }
+            }
+            DtNavMeshCreateParams grid = LedgeParams(drop, false, gap);
+            grid.verts = verts.ToArray();
+            grid.vertCount = verts.Count / 3;
+            grid.polys = polys.ToArray();
+            grid.polyCount = polys.Count / 12;
+            grid.polyAreas = new int[grid.polyCount];
+            grid.polyFlags = Enumerable.Repeat(1, grid.polyCount).ToArray();
+            return grid;
+        }
         return new DtNavMeshCreateParams {
             verts = [0, top, 0, 0, top, 400, 200, top, 400, 200, top, 0, near, 0, 0, near, 0, 400, 400, 0, 400, 400, 0, 0],
             vertCount = 8,
@@ -541,8 +566,8 @@ public class AgentNavigationTests {
         };
     }
 
-    private static DtNavMeshQuery LedgeQuery(float drop, bool lower = true, float gap = 0.6f) {
-        DtMeshData? data = DtNavMeshBuilder.CreateNavMeshData(LedgeParams(drop, lower, gap));
+    private static DtNavMeshQuery LedgeQuery(float drop, bool lower = true, float gap = 0.6f, bool dense = false) {
+        DtMeshData? data = DtNavMeshBuilder.CreateNavMeshData(LedgeParams(drop, lower, gap, dense));
         Assert.That(data, Is.Not.Null);
         var navMesh = new DtNavMesh();
         Assert.That(navMesh.Init(data, 6, 0).Succeeded(), Is.True);
@@ -551,8 +576,8 @@ public class AgentNavigationTests {
 
     // A move of 2 from 0.5 before the ledge, with the drop limit given (navmesh units: 1.5 is the client's push
     // probe of 150, 7.5 its dash probe of 750, infinity a push with pushFall): the end point.
-    private static RcVec3f Ledge(float drop, float maxDrop, bool lower = true, float gap = 0.6f, float toX = 1.5f) {
-        Assert.That(AgentNavigation.LedgeMove(LedgeQuery(drop, lower, gap), new DtQueryDefaultFilter(), new RcVec3f(-0.5f, 0, 5),
+    private static RcVec3f Ledge(float drop, float maxDrop, bool lower = true, float gap = 0.6f, float toX = 1.5f, bool dense = false) {
+        Assert.That(AgentNavigation.LedgeMove(LedgeQuery(drop, lower, gap, dense), new DtQueryDefaultFilter(), new RcVec3f(-0.5f, 0, 5),
             new RcVec3f(toX, 0, 5), maxDrop, out RcVec3f end), Is.True);
         return end;
     }
@@ -632,5 +657,31 @@ public class AgentNavigationTests {
             Assert.That(wall.X, Is.EqualTo(0f).Within(0.01));
             Assert.That(wall.Y, Is.EqualTo(0f).Within(0.05));
         });
+    }
+
+    // A move 75 degrees off square to the ledge that ends 0.1 past it: the line meets the lower floor far beyond the
+    // target, so the npc lands on that floor at its point nearest the target, not out along the line.
+    [Test]
+    public void LedgeMove_AnObliqueShortMoveLandsNearItsTarget() {
+        var from = new RcVec3f(-0.5f, 0, 5);
+        float angle = 75 * MathF.PI / 180;
+        float length = 0.5f / MathF.Cos(angle) + 0.1f;
+        var to = new RcVec3f(from.X + MathF.Cos(angle) * length, 0, from.Z + MathF.Sin(angle) * length);
+        Assert.That(AgentNavigation.LedgeMove(LedgeQuery(1f), new DtQueryDefaultFilter(), from, to, 1.5f, out RcVec3f end), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(end.Y, Is.EqualTo(-1f).Within(0.05));
+            Assert.That(end.X, Is.EqualTo(0.6f).Within(0.01));
+            Assert.That(end.Z, Is.EqualTo(to.Z).Within(0.01));
+        });
+    }
+
+    // A lower floor cut into more polys than the search holds (LEDGE_MAX_POLYS) may hide the near floor: the move
+    // stops at the edge rather than take a deeper one. The same floor in few polys is stepped down onto.
+    [Test]
+    public void LedgeMove_AFullPolySearchFindsNoFloor() {
+        Assert.That(Ledge(1f, 1.5f).X, Is.EqualTo(1.5f).Within(0.01));
+        RcVec3f end = Ledge(1f, 1.5f, dense: true);
+        Assert.That(end.X, Is.EqualTo(0f).Within(0.01));
+        Assert.That(end.Y, Is.EqualTo(0f).Within(0.05));
     }
 }

@@ -256,6 +256,7 @@ public sealed class AgentNavigation {
     // LEDGE_REACH past the edge is behind a wall, and so is one at about the edge's height.
     public const float LEDGE_REACH = 0.75f;
     public const float LEDGE_MIN_DROP = 0.3f;
+    public const int LEDGE_MAX_POLYS = 256;
 
     // A straight move that steps down off a ledge as the client's push and dash do. Each frame the client probes the
     // ground a step ahead and goes on while it finds ground within a limit below (PCBase::FUN_1416725c0: 150 for a
@@ -272,11 +273,18 @@ public sealed class AgentNavigation {
             float restX = to.X - end.X;
             float restZ = to.Z - end.Z;
             float rest = MathF.Sqrt(restX * restX + restZ * restZ);
-            if (rest < 0.01f || !FloorPastLedge(query, filter, end, restX / rest, restZ / rest, maxDrop, out RcVec3f floor)) {
+            if (rest < 0.01f || !FloorPastLedge(query, filter, end, restX / rest, restZ / rest, maxDrop, out long floorRef, out RcVec3f floor)) {
                 return true;
             }
             float done = MathF.Sqrt((floor.X - end.X) * (floor.X - end.X) + (floor.Z - end.Z) * (floor.Z - end.Z));
-            if (done >= rest || !StraightMove(query, filter, floor, new RcVec3f(to.X, floor.Y, to.Z), out RcVec3f next)) {
+            var target = new RcVec3f(to.X, floor.Y, to.Z);
+            if (done >= rest) {
+                // The line meets the floor past the move's end (a short move, or one at a steep angle to the ledge):
+                // the npc lands on that floor at the point nearest its target, not out along the line.
+                end = query.ClosestPointOnPoly(floorRef, target, out RcVec3f landing, out _).Succeeded() ? landing : floor;
+                return true;
+            }
+            if (!StraightMove(query, filter, floor, target, out RcVec3f next)) {
                 end = floor;
                 return true;
             }
@@ -289,17 +297,19 @@ public sealed class AgentNavigation {
     // edge whose nearest point lies within LEDGE_REACH across of it (the gap square to the ledge, whatever the
     // move's angle), the one the move's line passes over first, where it does (the ground the client's probe meets
     // first), the higher of two met as soon. A poly the line does not pass over within a few gaps (a breakable's
-    // raised island off to the side) is not taken.
+    // raised island off to the side) is not taken. A search that fills its LEDGE_MAX_POLYS (a dense multi-level
+    // spot) may have missed the near floor, so it finds none and the move stops at the edge.
     private static bool FloorPastLedge(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f edge, float dirX, float dirZ,
-            float maxDrop, out RcVec3f floor) {
+            float maxDrop, out long floorRef, out RcVec3f floor) {
+        floorRef = 0;
         const float step = 0.05f;
         const float along = 4 * LEDGE_REACH;
         floor = edge;
         float depth = Math.Min(maxDrop, 1000f);
         var center = new RcVec3f(edge.X + dirX * along / 2, edge.Y - depth / 2, edge.Z + dirZ * along / 2);
-        long[] polys = new long[64];
+        long[] polys = new long[LEDGE_MAX_POLYS];
         if (query.QueryPolygons(center, new RcVec3f(along / 2 + LEDGE_REACH, depth / 2 + 0.1f, along / 2 + LEDGE_REACH), filter, polys,
-                out int count, polys.Length).Failed()) {
+                out int count, polys.Length).Failed() || count >= polys.Length) {
             return false;
         }
         float first = float.MaxValue;
@@ -326,6 +336,7 @@ public sealed class AgentNavigation {
                 float drop = edge.Y - point.Y;
                 if (drop > LEDGE_MIN_DROP && drop <= maxDrop && (s < first - 0.01f || point.Y > floor.Y)) {
                     floor = point;
+                    floorRef = polys[i];
                     first = Math.Min(first, s);
                 }
                 break;
