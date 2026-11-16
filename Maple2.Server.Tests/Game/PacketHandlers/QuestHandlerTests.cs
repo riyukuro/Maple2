@@ -1031,6 +1031,26 @@ public class QuestHandlerTests {
         });
     }
 
+    // A dead player completing from the alliance window gets Quest 4's texts in its order: consume_fail while the
+    // conditions are not done, fail_complete_by_dead once they are; nothing is paid either way.
+    [TestCase(0, QuestError.s_quest_error_consume_fail)]
+    [TestCase(1, QuestError.s_quest_error_fail_complete_by_dead)]
+    public void AllianceWindowComplete_ByADeadPlayer_AnswersAsQuest4(int counter, QuestError error) {
+        GameSession session = Login();
+        Quest quest = test.StartQuest(Data(type: QuestType.AllianceQuest));
+        quest.Conditions[0].Counter = counter;
+        typeof(FieldPlayer).GetField("isDead", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Player, true);
+        long meso = session.Currency.Meso;
+
+        NpcTalkHandler.HandleAllianceQuest(session, QuestId, 2);
+
+        Assert.Multiple(() => {
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Error(error) }));
+            Assert.That(quest.State, Is.EqualTo(QuestState.Started));
+            Assert.That(session.Currency.Meso, Is.EqualTo(meso));
+        });
+    }
+
     // The term of an eventTag quest is the term tag of that name (the client's GetEndTime, questdata.cpp:274): a
     // running term completes it, a term that is over gives invalid_date. A QuestTag game event is no term.
     [TestCase(true, false)]

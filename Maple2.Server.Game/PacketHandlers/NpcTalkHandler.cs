@@ -477,13 +477,13 @@ public class NpcTalkHandler : FieldPacketHandler {
                     session.Send(QuestPacket.Error(QuestError.s_quest_error_invalid_date));
                     return;
                 }
-                if (session.Player.IsDead) {
-                    session.Send(QuestPacket.Error(QuestError.s_quest_error_fail_complete_by_dead));
-                    return;
-                }
                 // Complete answers a full inventory itself.
                 if (!session.Quest.CanComplete(quest)) {
                     session.Send(QuestPacket.Error(QuestError.s_quest_error_consume_fail));
+                    return;
+                }
+                if (session.Player.IsDead) {
+                    session.Send(QuestPacket.Error(QuestError.s_quest_error_fail_complete_by_dead));
                     return;
                 }
                 session.Quest.Complete(quest);
