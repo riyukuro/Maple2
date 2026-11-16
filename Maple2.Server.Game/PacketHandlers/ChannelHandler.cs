@@ -82,6 +82,7 @@ public class ChannelHandler : FieldPacketHandler {
                 Channel = channel,
                 ExactChannel = true,
                 PetUid = session.SummonedPetUid,
+                PetAttackOff = session.PetAttackOff,
             };
 
             MigrateOutResponse response = World.MigrateOut(request, deadline: DateTime.UtcNow.Add(MoveCallDeadline));

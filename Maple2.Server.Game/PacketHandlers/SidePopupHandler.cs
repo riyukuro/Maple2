@@ -79,6 +79,7 @@ public class SidePopupHandler : FieldPacketHandler {
                 RoomId = war.RoomId,
                 MapId = war.MapId,
                 PetUid = session.SummonedPetUid,
+                PetAttackOff = session.PetAttackOff,
             }, deadline: DateTime.UtcNow.Add(ChannelHandler.MoveCallDeadline));
             if (!PlayerWarpUtil.TryEndpoint(response.IpAddress, response.Port, out IPEndPoint? endpoint)) {
                 Logger.Error("{Where}: the World server answered with the address '{Address}' port {Port}", "Field war", response.IpAddress, response.Port);

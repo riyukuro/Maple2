@@ -15,6 +15,7 @@ using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Session;
+using System.Numerics;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -602,7 +603,20 @@ public class PetHandler : FieldPacketHandler {
         }
     }
 
-    internal static void SummonPet(GameSession session, long petUid) {
+    // Where a field entry summons the pet again: on the floor under the arrival spot. That spot (a spawn point or a
+    // portal) can stand well above the floor (+174 and +324 after a channel change or a taxi), and a pet sees no target
+    // below its own height (sightHeightDown 0 for every pet): summoned up there it never attacked. Only the height is
+    // taken from the nearest floor point, when it lies below and close aside; else the owner's spot. A summon by hand
+    // stays at the owner, who may stand on cubes or a bridge above the navmesh.
+    internal const float SummonFloorReach = 100f;
+
+    internal static Vector3 SummonSpot(Vector3 owner, Vector3 floor) {
+        float dx = floor.X - owner.X;
+        float dy = floor.Y - owner.Y;
+        return floor.Z < owner.Z && dx * dx + dy * dy <= SummonFloorReach * SummonFloorReach ? owner with { Z = floor.Z } : owner;
+    }
+
+    internal static void SummonPet(GameSession session, long petUid, bool fieldEntry = false) {
         if (session.Field == null || session.Pet != null) {
             return;
         }
@@ -616,7 +630,8 @@ public class PetHandler : FieldPacketHandler {
                 return;
             }
 
-            FieldPet? fieldPet = session.Field.SpawnPet(pet, session.Player.Position, session.Player.Rotation, player: session.Player);
+            Vector3 spot = fieldEntry ? SummonSpot(session.Player.Position, session.Field.StageSpot(session.Player.Position)) : session.Player.Position;
+            FieldPet? fieldPet = session.Field.SpawnPet(pet, spot, session.Player.Rotation, player: session.Player);
             if (fieldPet == null) {
                 return;
             }

@@ -1503,6 +1503,7 @@ public class DungeonManager {
                 RoomId = LobbyRoomId,
                 Type = MigrationType.Dungeon,
                 PetUid = session.SummonedPetUid,
+                PetAttackOff = session.PetAttackOff,
             };
 
             MigrateOutResponse response = session.World.MigrateOut(request);

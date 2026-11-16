@@ -296,6 +296,7 @@ public sealed partial class GameSession : Core.Network.Session {
     public bool EnterServer(long accountId, Guid machineId, MigrateInResponse migrateResponse) {
         long characterId = migrateResponse.CharacterId;
         resummonPetUid = migrateResponse.PetUid;
+        PetAttackOff = migrateResponse.PetAttackOff;
         int channel = migrateResponse.Channel;
         int mapId = migrateResponse.MapId;
         int portalId = migrateResponse.PortalId;
@@ -690,8 +691,9 @@ public sealed partial class GameSession : Core.Network.Session {
         Dungeon.Load();
         WorldChampionHandler.MailRewards(this);
         Send(InGameRankPacket.Load());
-        // The pet auto flag, on as the client starts with it; it is not stored here.
-        Send(PetPacket.AutoChanged(true));
+        // The pet auto flag: on as the client starts with it, and after a move between game servers the flag the player
+        // left it at, which the client keeps across the move (one CPetManager for the process). It is not stored.
+        Send(PetPacket.AutoChanged(!PetAttackOff));
         Send(FieldEnterPacket.Request(Player));
         // The design market's charge table, where KMS2 sends it.
         Send(UgcPacket.CostTable(UgcMarketRules.CostRows));
@@ -717,7 +719,7 @@ public sealed partial class GameSession : Core.Network.Session {
     private long resummonPetUid;
     // The pet attack flag turned off (RequestPet 15 from the game menu's pet attack button, UIGameMenuDialog::OnPetAttack):
     // a summoned battle pet does not fight. The flag is on as the client starts it (CPetManager m_nAuto,
-    // petmanager.cpp:715) and as the login's AutoChanged(true) says.
+    // petmanager.cpp:715) and as the login's AutoChanged says; a move between game servers carries it.
     public bool PetAttackOff;
     // The client was told the pet is away (a field that allows no pet); sent once until the pet is back.
     private bool resummonUnSummonSent;
@@ -1080,7 +1082,7 @@ public sealed partial class GameSession : Core.Network.Session {
             long petUid = resummonPetUid;
             resummonPetUid = 0;
             resummonUnSummonSent = false;
-            PacketHandlers.PetHandler.SummonPet(this, petUid);
+            PacketHandlers.PetHandler.SummonPet(this, petUid, fieldEntry: true);
         } else if (resummonPetUid != 0 && !resummonUnSummonSent) {
             resummonUnSummonSent = true;
             // The quiet unsummon in LeaveField left the client's summon uid set; clear it now that this
@@ -1682,6 +1684,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 InstancedContent = true,
                 Type = (World.Service.MigrationType) plotMode,
                 PetUid = SummonedPetUid,
+                PetAttackOff = PetAttackOff,
                 RoomId = plotMode is not PlotMode.Normal ? -1 : 0,
             };
 
@@ -1788,6 +1791,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 OwnerId = ownerId,
                 InstancedContent = isInstanced,
                 PetUid = SummonedPetUid,
+                PetAttackOff = PetAttackOff,
                 // The portal the player arrives at (EnterServer); -1, none, rather than an unset 0.
                 PortalId = portalId,
             };

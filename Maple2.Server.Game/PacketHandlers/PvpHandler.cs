@@ -314,6 +314,7 @@ public class PvpHandler : FieldPacketHandler {
                 RoomId = roomId,
                 Type = Maple2.Server.World.Service.MigrationType.PvpMatch,
                 PetUid = session.SummonedPetUid,
+                PetAttackOff = session.PetAttackOff,
             });
             if (!PlayerWarpUtil.TryEndpoint(migrate.IpAddress, migrate.Port, out IPEndPoint? endpoint)) {
                 Undo();

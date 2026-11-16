@@ -107,6 +107,8 @@ message MigrateOutRequest {
   // A character select of the login server: the token ends every earlier token of the account, so only the move of
   // the account's newest login is live. A move from a game session ends none (two moves of one session can overlap).
   bool ends_earlier = 17;
+  // The pet attack flag (RequestPet 15) the target's login sends back to the client.
+  bool pet_attack_off = 18;
 }
 
 enum MigrationType {
@@ -152,6 +154,7 @@ message MigrateInResponse {
   float position_z = 9;
   MigrationType type = 10;
   int64 pet_uid = 11;
+  bool pet_attack_off = 12;
 }
 
 message ChannelsRequest {}

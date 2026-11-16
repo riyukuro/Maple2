@@ -9,7 +9,7 @@ namespace Maple2.Server.World.Service;
 
 public partial class WorldService {
     private readonly record struct TokenEntry(Server Server, long AccountId, long CharacterId, Guid MachineId, int Channel, int MapId, int PortalId, int RoomId, long OwnerId, MigrationType Type, long PetUid = 0,
-        float PositionX = 0, float PositionY = 0, float PositionZ = 0);
+        float PositionX = 0, float PositionY = 0, float PositionZ = 0, bool PetAttackOff = false);
 
     // Duration for which a token remains valid.
     private static readonly TimeSpan AuthExpiry = WorldServer.MigrationLifetime;
@@ -88,7 +88,7 @@ public partial class WorldService {
                 }
 
                 var gameEntry = new TokenEntry(request.Server, request.AccountId, request.CharacterId, new Guid(request.MachineId), channel, request.MapId, request.PortalId, request.RoomId, request.OwnerId, request.Type, request.PetUid,
-                    request.PositionX, request.PositionY, request.PositionZ);
+                    request.PositionX, request.PositionY, request.PositionZ, request.PetAttackOff);
                 Issue(token, gameEntry, request.EndsEarlier);
                 return Task.FromResult(new MigrateOutResponse {
                     IpAddress = endpoint.Address.ToString(),
@@ -169,6 +169,7 @@ public partial class WorldService {
             RoomId = data.RoomId,
             Type = data.Type,
             PetUid = data.PetUid,
+            PetAttackOff = data.PetAttackOff,
             // The spot the move names (the return field's saved spot, a warp to a player); 0 0 0 is the field's spawn.
             PositionX = data.PositionX,
             PositionY = data.PositionY,

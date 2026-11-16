@@ -94,6 +94,7 @@ public class GlobalPortal : FieldPacketHandler {
                 MapId = portal.MapId,
                 PortalId = portal.PortalId,
                 PetUid = session.SummonedPetUid,
+                PetAttackOff = session.PetAttackOff,
             };
 
             MigrateOutResponse response = World.MigrateOut(request, deadline: DateTime.UtcNow.Add(ChannelHandler.MoveCallDeadline));
