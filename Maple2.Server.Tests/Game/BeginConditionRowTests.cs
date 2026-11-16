@@ -152,4 +152,21 @@ public class BeginConditionRowTests {
         player.PositionTick = (player.Position, 0, 100);
         Assert.That(Holds(condition, player), Is.True);
     }
+
+    // requireStates on the owner: 70001111 and 70001241 (KR: gosEmotion, gosEmotionIdle) hold only while the player is
+    // in one of those states, 71000030 and 90000626 (gosPlayInstrument) only while playing. The ingest takes the names by
+    // the states' descriptions (11, 15 and 47).
+    [TestCase(ActorState.Emotion, true)]
+    [TestCase(ActorState.EmotionIdle, true)]
+    [TestCase(ActorState.Idle, false)]
+    [TestCase(ActorState.PlayInstrument, false)]
+    public void RequireStates_HoldsOnlyInTheListedStates(ActorState state, bool holds) {
+        FieldPlayer player = Enter();
+        var owner = new BeginConditionTarget([], new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []), [],
+            [ActorState.Emotion, ActorState.EmotionIdle], [], new Dictionary<MasteryType, int>(), [], []);
+        player.State = state;
+
+        Assert.That(Holds(Plain with { Owner = owner }, player), Is.EqualTo(holds));
+        Assert.That(Holds(Plain with { Owner = owner with { States = [] } }, player), Is.True, "no state asked");
+    }
 }
