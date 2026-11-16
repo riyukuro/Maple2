@@ -209,7 +209,8 @@ public partial class MovementState {
     // about as often), is moved by the attack's push and holds still for NpcControlRules.HitHold; its cast, walk
     // and emote end (no cancel packet, as for a stun). Chosen here: pushprob below 1 is rolled per hit, and an
     // npc in a jump arc or without the sequences is left alone (its cast goes on). The push runs straight over the
-    // navmesh and stops at the first wall or ledge. Field thread only: see QueueHit.
+    // navmesh, steps down a ledge whose floor is within NpcControlRules.PushDrop below, and stops at the first wall
+    // or other ledge. Field thread only: see QueueHit.
     private bool TryHit(NpcControlRules.HitSource source, SkillMetadataAttack attack) {
         MapType mapType = actor.Field.Metadata.Property.Type;
         SkillMetadataPush? push = SuperArmorRules.PushOn(attack.Damage.Push, mapType) is { } p
@@ -242,7 +243,7 @@ public partial class MovementState {
         if (push != null) {
             Vector3 from = actor.Position;
             Vector3 offset = NpcControlRules.PushOffset(push.Type, source, from, push.Distance);
-            moved = offset != default && actor.Navigation != null && actor.Navigation.MoveStraight(from + offset)
+            moved = offset != default && actor.Navigation != null && actor.Navigation.MoveStraight(from + offset, NpcControlRules.PushDrop(push))
                     && Vector2.DistanceSquared(new Vector2(from.X, from.Y), new Vector2(actor.Position.X, actor.Position.Y)) > 1;
         }
 

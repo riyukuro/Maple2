@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model.Skill;
+using Maple2.Server.Game.Util;
 using System.Numerics;
 using static Maple2.Server.Game.Model.ActorStateComponent.TaskState;
 
@@ -128,9 +129,10 @@ public partial class MovementState {
 
         // When the client's probe finds the dash blocked its motion controller ends the whole motion (duration and
         // distance zeroed, motioncontroller.cpp:293-325), so a dash stops at the first block: a straight move over the
-        // navmesh ends at the first wall or mesh edge and never hops a gap to another island.
+        // navmesh ends at the first wall, or at a ledge with no floor within DASH_DROP below, and never hops a gap
+        // to another island.
         if (offset != Vector3.Zero) {
-            actor.Navigation!.MoveStraight(newPosition);
+            actor.Navigation!.MoveStraight(newPosition, NpcControlRules.DASH_DROP);
         }
 
         float timeStep = 0;

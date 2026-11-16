@@ -250,6 +250,71 @@ public sealed class AgentNavigation {
         return true;
     }
 
+    // How far past a ledge (navmesh units) a push or a dash looks for the floor below, and the least drop that
+    // counts as one: a floor at about the edge's height past a mesh edge is the far side of a wall.
+    public const float LEDGE_REACH = 0.5f;
+    public const float LEDGE_MIN_DROP = 0.3f;
+
+    // A straight move that steps down off a ledge as the client's push and dash do. Each frame the client probes the
+    // ground a step ahead and goes on while it finds ground within a limit below (PCBase::FUN_1416725c0: 150 for a
+    // push, 750 for a dash); a push with pushFall goes on over any drop and the actor falls (CPushControl). On the
+    // navmesh: the move stops at the first mesh edge (StraightMove); when it stopped short, the highest poly just
+    // past the edge more than LEDGE_MIN_DROP and at most maxDrop below it is the floor the npc lands on, and the
+    // move goes on from there for the rest of its length. No such floor (a wall, or too far down) ends the move at
+    // the edge. False only as StraightMove is.
+    public static bool LedgeMove(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f from, RcVec3f to, float maxDrop, out RcVec3f end) {
+        if (!StraightMove(query, filter, from, to, out end)) {
+            return false;
+        }
+        for (int drops = 0; drops < 4 && maxDrop > LEDGE_MIN_DROP; drops++) {
+            float restX = to.X - end.X;
+            float restZ = to.Z - end.Z;
+            float rest = MathF.Sqrt(restX * restX + restZ * restZ);
+            if (rest < 0.01f || !FloorPastLedge(query, filter, end, restX / rest, restZ / rest, Math.Min(rest, LEDGE_REACH), maxDrop, out RcVec3f floor)) {
+                return true;
+            }
+            float done = MathF.Sqrt((floor.X - end.X) * (floor.X - end.X) + (floor.Z - end.Z) * (floor.Z - end.Z));
+            if (done >= rest || !StraightMove(query, filter, floor, new RcVec3f(to.X, floor.Y, to.Z), out RcVec3f next)) {
+                end = floor;
+                return true;
+            }
+            end = next;
+        }
+        return true;
+    }
+
+    // The highest poly point ahead of the edge (along dirX, dirZ), within reach of the point reach past it, more than
+    // LEDGE_MIN_DROP and at most maxDrop below the edge.
+    private static bool FloorPastLedge(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f edge, float dirX, float dirZ,
+            float reach, float maxDrop, out RcVec3f floor) {
+        floor = edge;
+        var probe = new RcVec3f(edge.X + dirX * reach, edge.Y, edge.Z + dirZ * reach);
+        float depth = Math.Min(maxDrop, 1000f);
+        var center = new RcVec3f(probe.X, edge.Y - depth / 2, probe.Z);
+        long[] polys = new long[64];
+        if (query.QueryPolygons(center, new RcVec3f(reach, depth / 2 + 0.1f, reach), filter, polys, out int count, polys.Length).Failed()) {
+            return false;
+        }
+        bool found = false;
+        for (int i = 0; i < count; i++) {
+            if (query.ClosestPointOnPoly(polys[i], probe, out RcVec3f point, out _).Failed()) {
+                continue;
+            }
+            float drop = edge.Y - point.Y;
+            float aheadX = point.X - edge.X;
+            float aheadZ = point.Z - edge.Z;
+            float acrossX = point.X - probe.X;
+            float acrossZ = point.Z - probe.Z;
+            if (drop <= LEDGE_MIN_DROP || drop > maxDrop || aheadX * dirX + aheadZ * dirZ <= 0
+                || acrossX * acrossX + acrossZ * acrossZ > reach * reach + 0.0001f || (found && point.Y <= floor.Y)) {
+                continue;
+            }
+            floor = point;
+            found = true;
+        }
+        return found;
+    }
+
     // How far up (navmesh units) a standing point may be above a breakable's base and still be on the floor: the
     // navmesh's agentMaxClimb.
     public const float BREAKABLE_CLIMB = 0.7f;
@@ -335,10 +400,12 @@ public sealed class AgentNavigation {
     }
 
     // Moves the npc in a straight line over the navmesh towards the position and stops it at the first wall or
-    // ledge (StraightMove). False when it could not move at all.
-    public bool MoveStraight(Vector3 position) {
-        if (!StraightMove(crowd.GetNavMeshQuery(), crowd.GetFilter(0), DotRecastHelper.ToNavMeshSpace(npc.Position),
-                DotRecastHelper.ToNavMeshSpace(position), out RcVec3f end)) {
+    // ledge (StraightMove); with a maxDrop (map units) it steps down a ledge whose floor is at most that far below
+    // (LedgeMove). False when it could not move at all.
+    public bool MoveStraight(Vector3 position, float maxDrop = 0) {
+        float scale = DotRecastHelper.MapRotation.GetRightAxis().Length();
+        if (!LedgeMove(crowd.GetNavMeshQuery(), crowd.GetFilter(0), DotRecastHelper.ToNavMeshSpace(npc.Position),
+                DotRecastHelper.ToNavMeshSpace(position), maxDrop * scale, out RcVec3f end)) {
             return false;
         }
 

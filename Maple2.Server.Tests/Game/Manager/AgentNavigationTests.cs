@@ -506,4 +506,86 @@ public class AgentNavigationTests {
             Assert.That((stay, already), Is.EqualTo((to, true)));
         });
     }
+
+    // A floor at height 0 over navmesh x -20..0 and, past a 0.3 gap, one drop units lower over x 0.3..20 (both
+    // z -20..20), with no link between them: a ledge. Without the lower floor the top ends over nothing.
+    internal static DtNavMeshCreateParams LedgeParams(float drop, bool lower = true) {
+        int top = (int) MathF.Round(drop / 0.1f);
+        return new DtNavMeshCreateParams {
+            verts = [0, top, 0, 0, top, 400, 200, top, 400, 200, top, 0, 203, 0, 0, 203, 0, 400, 400, 0, 400, 400, 0, 0],
+            vertCount = 8,
+            polys = lower
+                ? [0, 1, 2, 3, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                    4, 5, 6, 7, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff]
+                : [0, 1, 2, 3, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff],
+            polyAreas = lower ? [0, 0] : [0],
+            polyFlags = lower ? [1, 1] : [1],
+            polyCount = lower ? 2 : 1,
+            nvp = 6,
+            walkableHeight = 2,
+            walkableRadius = 0.5f,
+            walkableClimb = 0.5f,
+            bmin = new RcVec3f(-20, -drop, -20),
+            bmax = new RcVec3f(20, 1, 20),
+            cs = 0.1f,
+            ch = 0.1f,
+            buildBvTree = true,
+            offMeshConVerts = [],
+            offMeshConRad = [],
+            offMeshConDir = [],
+            offMeshConAreas = [],
+            offMeshConFlags = [],
+            offMeshConUserID = [],
+        };
+    }
+
+    private static DtNavMeshQuery LedgeQuery(float drop, bool lower = true) {
+        DtMeshData? data = DtNavMeshBuilder.CreateNavMeshData(LedgeParams(drop, lower));
+        Assert.That(data, Is.Not.Null);
+        var navMesh = new DtNavMesh();
+        Assert.That(navMesh.Init(data, 6, 0).Succeeded(), Is.True);
+        return new DtNavMeshQuery(navMesh);
+    }
+
+    // A move of 2 from 0.5 before the ledge, with the drop limit given (navmesh units: 1.5 is the client's push
+    // probe of 150, 7.5 its dash probe of 750, infinity a push with pushFall): the end point.
+    private static RcVec3f Ledge(float drop, float maxDrop, bool lower = true) {
+        Assert.That(AgentNavigation.LedgeMove(LedgeQuery(drop, lower), new DtQueryDefaultFilter(), new RcVec3f(-0.5f, 0, 5),
+            new RcVec3f(1.5f, 0, 5), maxDrop, out RcVec3f end), Is.True);
+        return end;
+    }
+
+    // A drop within the limit: the npc steps down, lands on the lower floor and goes on to the end of the move.
+    [Test]
+    public void LedgeMove_StepsDownAWithinLimitDrop() {
+        RcVec3f end = Ledge(1f, 1.5f);
+        Assert.Multiple(() => {
+            Assert.That(end.X, Is.EqualTo(1.5f).Within(0.01));
+            Assert.That(end.Z, Is.EqualTo(5).Within(0.01));
+            Assert.That(end.Y, Is.EqualTo(-1f).Within(0.05));
+        });
+    }
+
+    // 300 down: past a push's 150, so the push stops at the edge; within a dash's 750, so the dash steps down.
+    [Test]
+    public void LedgeMove_TheLimitDecides() {
+        RcVec3f push = Ledge(3f, 1.5f);
+        RcVec3f dash = Ledge(3f, 7.5f);
+        Assert.Multiple(() => {
+            Assert.That((push.X, push.Y), Is.EqualTo((0f, 0f)).Using<(float, float)>((a, b) => MathF.Abs(a.Item1 - b.Item1) < 0.01f && MathF.Abs(a.Item2 - b.Item2) < 0.05f));
+            Assert.That(dash.X, Is.EqualTo(1.5f).Within(0.01));
+            Assert.That(dash.Y, Is.EqualTo(-3f).Within(0.05));
+        });
+    }
+
+    // No floor below, or a floor at the edge's own height past it (the far side of a wall), or no drop allowed:
+    // the move ends at the edge, on the top.
+    [Test]
+    public void LedgeMove_StopsAtAWallOrOverNothing() {
+        foreach ((float drop, float maxDrop, bool lower) in new[] { (5f, float.PositiveInfinity, false), (0f, float.PositiveInfinity, true), (1f, 0f, true) }) {
+            RcVec3f end = Ledge(drop, maxDrop, lower);
+            Assert.That(end.X, Is.EqualTo(0f).Within(0.01), $"drop {drop}, limit {maxDrop}, floor {lower}");
+            Assert.That(end.Y, Is.EqualTo(0f).Within(0.05), $"drop {drop}, limit {maxDrop}, floor {lower}");
+        }
+    }
 }
