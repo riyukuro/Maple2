@@ -763,7 +763,8 @@ public partial class FieldManager : IField {
 
     private void EntityUpdateFailed(IUpdatable entity, Exception ex) {
         DropLogLimiter limiter = LazyInitializer.EnsureInitialized(ref entityErrorLog);
-        if (limiter.ShouldLog(DateTime.UtcNow, out int count)) {
+        bool logged = limiter.ShouldLog(DateTime.UtcNow, out int count);
+        if (logged) {
             int objectId = entity switch {
                 IFieldObject fieldObject => fieldObject.ObjectId,
                 FieldReactor reactor => reactor.ObjectId,
@@ -777,6 +778,8 @@ public partial class FieldManager : IField {
         if (entity is FieldNpc { IsDead: false } npc) {
             try {
                 npc.MovementState?.ResetTasks();
+            } catch (Exception) when (!logged) {
+                // Held back with the throw it follows (the same limit).
             } catch (Exception resetEx) {
                 (logger ?? Log.Logger).Debug(resetEx, "Npc task reset failed ObjectId={ObjectId}", npc.ObjectId);
             }

@@ -32,7 +32,8 @@ public class BattleState {
     public bool CanBattle = true;
     public bool InBattle { get => TargetId != 0 || KeepBattle; }
 
-    // Why the last target was dropped, for the battle end log line (AiState).
+    // Why the last target was dropped, for the battle end log line (AiState): "dropped" when the path that dropped it
+    // names no reason (SetTarget(null), a ranked pick of nobody), else the reason that path sets after the drop.
     public string LostReason { get; private set; } = "";
     private static readonly ILogger Logger = Log.ForContext<BattleState>();
     public int TargetId => Target?.ObjectId ?? 0;
@@ -41,6 +42,7 @@ public class BattleState {
         private set {
             if (value != target) {
                 keptPastNode = null;
+                LostReason = value == null ? "dropped" : "";
                 if (actor is FieldNpc npc) {
                     Logger.Verbose("Npc {NpcId} object {ObjectId} target -> {TargetId}", npc.Value.Id, npc.ObjectId, value?.ObjectId ?? 0);
                 }
@@ -122,24 +124,23 @@ public class BattleState {
         bool gone = TargetId != 0 && TargetGone();
         if (TargetId != 0 && NpcTargetRules.LosesTarget(gone, !ShouldKeepTarget() || !CanBattle, KeepBattle)) {
             actor.AppendDebugMessage($"Lost target '{GetTargetName()}'\n");
-            LostReason = gone ? "target gone" : CanBattle ? "target out of range" : "cannot battle";
-
             Target = null;
+            LostReason = gone ? "target gone" : CanBattle ? "target out of range" : "cannot battle";
             if (actor is FieldPet { OwnerId: 0 } pet) {
                 actor.Field.Broadcast(PetPacket.SyncTaming(0, pet));
             }
         }
         // A battle pet whose owner turned its attack off leaves the fight.
         if (TargetId != 0 && actor is FieldPet { IsBattlePet: true, Battles: false }) {
-            LostReason = "attack turned off";
             Target = null;
+            LostReason = "attack turned off";
         }
 
         bool holdsPath = actor is FieldNpc { OnScriptPath: true } && NpcTargetRules.HoldsScriptPath(actor.Value.Metadata.Basic.Friendly, true);
         if (holdsPath && Target is FieldNpc) {
             actor.AppendDebugMessage($"Lost target '{GetTargetName()}' (script path)\n");
-            LostReason = "script path";
             Target = null;
+            LostReason = "script path";
         }
 
         if (CanBattle && TargetId == 0 && nextTargetSearchTick <= tickCount) {

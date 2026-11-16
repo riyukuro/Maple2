@@ -169,14 +169,18 @@ public partial class MovementState {
         SetState(ActorState.Stun);
     }
 
-    // After the npc's update threw (FieldManager.UpdateEach): the cast, walk and emote it was running are dropped
-    // and it stands idle, so its next update starts fresh instead of finding the same half-done task.
+    // After the npc's update threw (FieldManager.UpdateEach): the cast, walk and emote it was running are dropped,
+    // so its next update starts fresh instead of finding the same half-done task. It is put back to idle only from a
+    // state its own update would leave for idle anyway; a hit hold, stun, summon revive, spawn, regen or jump runs out
+    // by its own rule (as SetStunned leaves them).
     public void ResetTasks() {
         CastTask?.Cancel();
         walkTask?.Cancel();
         emoteActionTask?.Cancel();
         Velocity = new Vector3(0, 0, 0);
-        Idle();
+        if (!IsJumping && State is not (ActorState.Hit or ActorState.Stun or ActorState.SummonRevive or ActorState.Spawn or ActorState.Regen)) {
+            Idle();
+        }
     }
 
     // A summoned pet whose owner lies dead stands in StateSummonRevive; the client plays its motion and sends
