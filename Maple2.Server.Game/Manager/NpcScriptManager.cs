@@ -318,16 +318,35 @@ public sealed class NpcScriptManager {
             return;
         }
 
-        if (JobCondition.Mesos > 0) {
-            if (!session.Currency.TryTakeMeso(JobCondition.Mesos)) {
-                session.Send(ChatPacket.Alert(StringCode.s_err_lack_meso));
-                return;
-            }
+        long fare = JobCondition.Mesos;
+        long sends = session.Currency.MesoSends;
+        if (fare > 0 && !session.Currency.TryTakeMeso(fare, notify: false)) {
+            session.Send(ChatPacket.Alert(StringCode.s_err_lack_meso));
+            return;
         }
 
-        if (JobCondition.MoveMapId > 0) {
-            session.SendFieldEnter(session.PrepareField(JobCondition.MoveMapId, portalId: JobCondition.MovePortalId > 0 ? JobCondition.MovePortalId : -1));
+        if (JobCondition.MoveMapId <= 0) {
+            if (fare > 0) {
+                session.Currency.NotifyMeso();
+            }
+            return;
         }
+
+        // A ride the npc sells (KR 11000016 for 100 mesos, 11001056 for 5000): as a taxi's (TaxiHandler.RideForMeso), the
+        // fare is held for the field change and kept only when the change went (GameSession.PaidFieldChange), here or
+        // before a move to another server's save. Before, it was taken for good ahead of the change, so a refused change
+        // (the field not made, the World refusing the move) kept it.
+        bool kept = false;
+        bool prepared = session.PaidFieldChange(JobCondition.MoveMapId, () => {
+            kept = true;
+            if (fare > 0) {
+                session.Currency.NotifyMeso();
+            }
+        }, portalId: JobCondition.MovePortalId > 0 ? JobCondition.MovePortalId : -1);
+        if (!kept && fare > 0) {
+            session.Currency.ReturnHeldMeso(fare, sends);
+        }
+        session.SendFieldEnter(prepared);
     }
 
     private ScriptState? GetQuestScriptState(ScriptMetadata? scriptMetadata) {
