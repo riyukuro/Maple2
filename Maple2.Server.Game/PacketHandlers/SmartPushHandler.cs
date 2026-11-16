@@ -104,14 +104,19 @@ public class SmartPushHandler : FieldPacketHandler {
         }
 
         if (package != null) {
-            PayPackage(session, metadata, package);
+            PayPackage(session, package);
         } else if (meretCost > 0) {
             session.Currency.NotifyMeretTaken(meretCost);
         } else {
             session.Currency.ChangeMeret(-metadata.MeretCost);
         }
 
-        session.Buffs.AddBuff(session.Player, session.Player, (int) metadata.Value, 1, session.Field.FieldTick);
+        // A package lasts its own minutes (autoactionpricepackage duration, shown by
+        // CSmartPushTable::GetPackageDurationText); the effect's durationTick (3 h for 100000011) only when bought
+        // without one. The client sends the package index and sets no time itself.
+        int durationMs = package != null ? package.Duration * 60 * 1000 : -1;
+        session.Buffs.AddBuff(session.Player, session.Player, (int) metadata.Value, 1, session.Field.FieldTick, durationMs: durationMs);
+        session.Send(SmartPushPacket.ActivateEffect(metadata.Id, package?.Id ?? 0));
     }
 
     // By the tag when the push names one, else by the item id; a push with neither needs no item.
@@ -154,7 +159,7 @@ public class SmartPushHandler : FieldPacketHandler {
     }
 
     // The caller has tested the price and taken the merets or the mesos (TryTakeMeret/TryTakeMeso without a packet).
-    private static void PayPackage(GameSession session, SmartPushMetadata smartPushMetadata, AutoActionMetaData packageMetadata) {
+    private static void PayPackage(GameSession session, AutoActionMetaData packageMetadata) {
         SmartPushCurrencyType currencyType;
         if (packageMetadata.MeretCost > 0) {
             currencyType = SmartPushCurrencyType.Meret;
@@ -175,7 +180,5 @@ public class SmartPushHandler : FieldPacketHandler {
             case SmartPushCurrencyType.None:
                 break;
         }
-
-        session.Send(SmartPushPacket.ActivateEffect(currencyType, (int) smartPushMetadata.Value));
     }
 }
