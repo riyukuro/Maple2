@@ -1012,4 +1012,55 @@ public class AiStateTests : TriggerTestBase {
 
         Assert.That(Field.Mobs.Values.Count(mob => mob.Value.Id == SummonedId), Is.EqualTo(0));
     }
+
+    // minimumHp node: the floor damage cannot take the npc under, a percent of its full health.
+    [Test]
+    public void MinimumHpNode_SetsTheFloorPercent() {
+        Spawn([new MinimumHpNode("minimumHp", [], 30f)]);
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(npc.MinimumHpPercent, Is.EqualTo(30f));
+    }
+
+    // targetEffect and sidePopup nodes: one notice to the field each.
+    [Test]
+    public void TargetEffectAndSidePopupNodes_SendOneNoticeEach() {
+        Spawn([new TargetEffectNode("targetEffect", [], "Eff_Test.xml"),
+            new SidePopupNode("sidePopup", [], NodePopupType.Talk, "illust", 3000, "script", "sound", "voice")]);
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.NpcNotice), Is.EqualTo(2));
+    }
+
+    private void KnowEffect(int id) {
+        var skills = (SkillMetadataStorage) typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.GetValue(Field)!;
+        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", Any)!.GetValue(skills)!;
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(id, (short) 1), BuffAttributeTests.Effect(id, DisabledBuffTests.Property with { DurationTick = 10000 })]);
+    }
+
+    // buff node: an effect on the npc (a node without a level is level 1), on its target with isTarget, and its removal.
+    [Test]
+    public void BuffNode_AddsOnTheNpcOrItsTarget_AndRemoves() {
+        Spawn([new BuffNode("buff", [], 70000001, NodeBuffType.Add, 0, 100, 0, 0, false, false),
+            new BuffNode("buff", [], 70000002, NodeBuffType.Add, 0, 100, 0, 0, true, false)], skill: new NpcMetadataSkill([], 0));
+        KnowEffect(70000001);
+        KnowEffect(70000002);
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.Multiple(() => {
+            Assert.That(npc.Buffs.EnumerateBuffs(70000001), Has.Count.EqualTo(1));
+            Assert.That(npc.Buffs.EnumerateBuffs(70000002), Is.Empty);
+            Assert.That(test.Session.Player.Buffs.EnumerateBuffs(70000002), Has.Count.EqualTo(1));
+        });
+
+        Spawn([new BuffNode("buff", [], 70000001, NodeBuffType.Remove, 1, 100, 0, 0, false, false)], skill: new NpcMetadataSkill([], 0));
+        KnowEffect(70000001);
+        npc.Buffs.AddBuff(npc, npc, 70000001, 1, Field.FieldTick);
+        Assert.That(npc.Buffs.EnumerateBuffs(70000001), Has.Count.EqualTo(1));
+        npc.AiState.Update(Field.FieldTick);
+        Assert.That(npc.Buffs.EnumerateBuffs(70000001), Is.Empty);
+    }
 }
