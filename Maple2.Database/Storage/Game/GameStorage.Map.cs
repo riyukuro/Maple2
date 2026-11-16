@@ -1042,7 +1042,11 @@ public partial class GameStorage {
                 .Where(cube => cube != null)
                 .ToList()!;
 
-            return new HomeLayout(model.Uid, model.Id, model.Name, model.Area, model.Height, model.Timestamp, cubes);
+            return new HomeLayout(model.Uid, model.Id, model.Name, model.Area, model.Height, model.Timestamp, cubes) {
+                Background = model.Background,
+                Lighting = model.Lighting,
+                Camera = model.Camera,
+            };
         }
 
         // Converts model to interact cube if possible, otherwise returns null.
