@@ -37,7 +37,7 @@ public class MaidCraftMeretReceiveTests {
     private TestGameSession test = null!;
     private GameSession session => test.Session;
 
-    private void Login(bool fullBag = false, int slotMax = 100, int product = Product, int materials = 0) {
+    private void Login(bool fullBag = false, int slotMax = 100, int product = Product, int materials = 0, int workbench = 0) {
         test = new TestGameSession();
         test.Register(TestGameSession.Metadata(Product, slotMax: slotMax));
         test.Register(TestGameSession.Metadata(MaidCube));
@@ -52,7 +52,7 @@ public class MaidCraftMeretReceiveTests {
         test.Start();
         plot = test.EnterHome();
         test.SetTable(new MaidTable(new Dictionary<int, MaidTable.Entry>(), new Dictionary<int, int>(), new Dictionary<int, MaidTable.Recipe> {
-            [RecipeId] = new MaidTable.Recipe(RecipeId, [new MaidTable.Ingredient(Material, ItemTag.None, 3)], 0, [300, 200, 100], 50, 5, product, 2, 1),
+            [RecipeId] = new MaidTable.Recipe(RecipeId, [new MaidTable.Ingredient(Material, ItemTag.None, 3)], workbench, [300, 200, 100], 50, 5, product, 2, 1),
         }, new Dictionary<int, IReadOnlyList<MaidTable.RecipeLevel>> {
             [3] = [new MaidTable.RecipeLevel(RecipeId, 1)],
         }));
@@ -94,10 +94,10 @@ public class MaidCraftMeretReceiveTests {
         return test.TakeSent();
     }
 
-    private List<byte[]> Start() {
+    private List<byte[]> Start(byte mode = 4) {
         new MaidCraftItemHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
             .Handle(session, TestGameSession.Packet(writer => {
-                writer.WriteByte(4);
+                writer.WriteByte(mode);
                 writer.WriteInt(RecipeId);
                 writer.WriteLong(MaidUid);
             }));
@@ -295,6 +295,69 @@ public class MaidCraftMeretReceiveTests {
             Assert.That(test.Row(materialRow.Uid)!.Amount, Is.EqualTo(2));
             Assert.That(Held(Material), Is.EqualTo(2));
         });
+    }
+
+    // Too few ingredients for the recipe's 3: CraftNotEnough, and nothing is taken or stored.
+    [Test]
+    public void TooFewIngredientsStartNothing() {
+        Login(materials: 2);
+        Place(0, 0, 0);
+
+        List<byte[]> sent = Start();
+
+        Assert.Multiple(() => {
+            Assert.That(Crafts(sent), Is.EqualTo(new[] { Convert.ToHexString(MaidCraftItemPacket.CraftResult(MaidRules.CraftNotEnough).ToArray()) }));
+            Assert.That(Stored()?.RecipeId ?? 0, Is.EqualTo(0));
+            Assert.That(Held(Material), Is.EqualTo(2));
+        });
+    }
+
+    // A recipe needing a workbench (the cube's icon code) the owner has not placed: CraftNotEnough, nothing taken.
+    [Test]
+    public void AMissingWorkbenchStartsNothing() {
+        Login(materials: 5, workbench: 7);
+        Place(0, 0, 0);
+
+        List<byte[]> sent = Start();
+
+        Assert.Multiple(() => {
+            Assert.That(Crafts(sent), Is.EqualTo(new[] { Convert.ToHexString(MaidCraftItemPacket.CraftResult(MaidRules.CraftNotEnough).ToArray()) }));
+            Assert.That(Held(Material), Is.EqualTo(5));
+        });
+    }
+
+    // A maid whose contract ran out: CraftExpired, nothing taken.
+    [Test]
+    public void AnExpiredContractStartsNothing() {
+        Login(materials: 5);
+        Maid maid = Place(0, 0, 0);
+        maid.ExpiryTime = DateTime.UtcNow.ToEpochSeconds() - 60;
+
+        List<byte[]> sent = Start();
+
+        Assert.Multiple(() => {
+            Assert.That(Crafts(sent), Is.EqualTo(new[] { Convert.ToHexString(MaidCraftItemPacket.CraftResult(MaidRules.CraftExpired).ToArray()) }));
+            Assert.That(Held(Material), Is.EqualTo(5));
+        });
+    }
+
+    // Mode 5, the debug craft, is for AdminPermissions.Debug: it starts with no ingredient and takes nothing, and is
+    // answered as mode 4; without the permission it is not answered.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void TheDebugCraftNeedsDebugAndTakesNothing(bool debug) {
+        Login();
+        if (debug) {
+            session.Player.AdminPermissions = AdminPermissions.Debug;
+        }
+        Place(0, 0, 0);
+
+        List<byte[]> sent = Start(mode: 5);
+
+        Assert.That(Crafts(sent), debug
+            ? Does.Contain(Convert.ToHexString(MaidCraftItemPacket.CraftResult(MaidRules.CraftStarted).ToArray()))
+            : Is.Empty);
+        Assert.That(Stored()?.RecipeId ?? 0, Is.EqualTo(debug ? RecipeId : 0));
     }
 
     // A craft another channel stored first refuses the transaction: no ingredient is taken, in storage or the bag.
