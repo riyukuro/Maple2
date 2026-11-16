@@ -204,6 +204,44 @@ public class GemstoneUpgradeHandlerTests {
         Assert.That(session.Item.Inventory.Get(dust.Uid)!.Amount, Is.EqualTo(100));
     }
 
+    // A bag gem upgraded off a stack of 3: with no session save after it (a crash), the rows still hold the 3 gems and
+    // the 100 dust, as before the upgrade; the bag save then writes the gems left, the upgraded one and 90 dust. With a
+    // copy of the gem in the price, the copy comes off the same stack. Before, the gem taken off was split off to
+    // owner 0, which wrote the stack at once (with the copy taken), and a crash lost them while the dust came back.
+    [TestCase(false, 2)]
+    [TestCase(true, 1)]
+    public void InTheInventory_OffAStack_ACrashKeepsTheOldGemsAndTheSaveTheNew(bool copyInThePrice, int left) {
+        GameSession session = copyInThePrice
+            ? Start(SureRates, gemAmount: 3, more: new GemstoneUpgradeTable.Ingredient(ItemTag.None, 1, 40200001))
+            : Start(SureRates, gemAmount: 3);
+        test.EnterMap(TestGameSession.Map(90000100));
+        test.TakeSent();
+
+        new ItemSocketHandler { ItemMetadata = session.ItemMetadata, TableMetadata = test.TableMetadata }.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(4);
+            writer.WriteLong(0);
+            writer.WriteByte(0xFF);
+            writer.WriteLong(bagGem.Uid);
+        }));
+        Assert.That(session.Item.Inventory.Filter(item => item.Id == 40200002).Sum(item => item.Amount), Is.EqualTo(1));
+        var crashed = (Held(40200001), Held(40200002), Held(40300001));
+        using (Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context()) {
+            session.Item.Inventory.Save(db);
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(crashed, Is.EqualTo((3, 0, 100)), "no save: as before the upgrade");
+            Assert.That((Held(40200001), Held(40200002), Held(40300001)), Is.EqualTo((left, 1, 90)), "saved: the upgrade");
+        });
+    }
+
+    // The amount of an item id the character's rows hold.
+    private int Held(int itemId) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AsNoTracking(context.Item)
+            .Where(row => row.ItemId == itemId && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount);
+    }
+
     // A bag gem upgrade with no free gem slot (the client asks no room, FUN_140f76970): one gem alone in its slot leaves
     // the slot to the upgraded gem, and an upgraded gem that stacks needs none; a gem taken off a larger stack with
     // nowhere to go is refused before anything is taken.

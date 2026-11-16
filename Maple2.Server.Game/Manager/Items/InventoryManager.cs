@@ -577,6 +577,40 @@ public class InventoryManager {
         }
     }
 
+    // Takes amount of a stack out of the bag as an item of its own that comes back changed (an upgrade's gem or
+    // lapenshard, the price taken in memory with it). Off a larger stack, the stack is lowered in memory only and the
+    // piece's new row is made at owner 0: the next bag save writes the lowered stack, the piece where it went and the
+    // price together, and a crash before it keeps the stack whole and the price. A split (Remove) wrote the stack at
+    // once with what memory held, the price taken off it too, while the piece was lost. A whole stack leaves as
+    // Remove takes it (its row and uid go with it).
+    public bool TakeOff(long uid, int amount, [NotNullWhen(true)] out Item? piece) {
+        lock (session.Item) {
+            Item? item = tabs.Values.FirstOrDefault(collection => collection.Contains(uid))?.Get(uid);
+            if (item == null || amount <= 0 || item.Amount < amount) {
+                session.Send(ItemInventoryPacket.Error(s_item_err_invalid_count));
+                piece = null;
+                return false;
+            }
+            if (item.Amount == amount) {
+                return RemoveInternal(uid, amount, out piece);
+            }
+
+            Item part = item.Clone(newRow: true);
+            part.Amount = amount;
+            part.Slot = -1;
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                piece = db.CreateItem(0, part);
+            }
+            if (piece == null) {
+                return false;
+            }
+            item.Amount -= amount;
+            session.Send(ItemInventoryPacket.UpdateAmount(uid, item.Amount));
+            session.Quest.UpdateHeld(item.Id);
+            return true;
+        }
+    }
+
     public bool Consume(long uid, int amount = -1) {
         lock (session.Item) {
             return ConsumeInternal(uid, amount);

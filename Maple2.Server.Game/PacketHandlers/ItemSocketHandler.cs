@@ -250,7 +250,9 @@ public class ItemSocketHandler : FieldPacketHandler {
                     return;
                 }
 
-                if (!session.Item.Inventory.Remove(gemUid, out Item? gem, amount: 1)) {
+                // Taken off without a split (TakeOff): a crash before the session save, which writes the upgraded gem
+                // with the price, keeps the stack whole and the price. The split wrote the stack at once and lost the gem.
+                if (!session.Item.Inventory.TakeOff(gemUid, 1, out Item? gem)) {
                     session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_gemstone));
                     return;
                 }
