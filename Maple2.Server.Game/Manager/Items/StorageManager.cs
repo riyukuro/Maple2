@@ -138,6 +138,18 @@ public sealed class StorageManager : IDisposable {
             if (!StoreDeposit(deposit, bagBinding, result)) {
                 return;
             }
+            // Never expected (the room was counted above): a rest the storage did not take, in no slot of it, goes
+            // back to the bag (or the mail) with its row. Before, it stayed out of both, its row at the account.
+            if (deposit.Amount > 0 && !result.Any(entry => ReferenceEquals(entry.Item1, deposit))) {
+                Log.Error("Storage deposit {Uid} ({ItemId}) of {CharacterId}: {Amount} not taken by the storage, returned",
+                    deposit.Uid, deposit.Id, session.CharacterId, deposit.Amount);
+                deposit.Slot = -1;
+                deposit.Binding = bagBinding;
+                if (!session.Item.AddOrMail(deposit, commit: true)) {
+                    Log.Error("Storage deposit {Uid} ({ItemId} x{Amount}) of {CharacterId} not returned", deposit.Uid, deposit.Id,
+                        deposit.Amount, session.CharacterId);
+                }
+            }
 
             foreach ((Item item, int _) in result) {
                 session.Send(deposit.Uid == item.Uid
