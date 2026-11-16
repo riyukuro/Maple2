@@ -33,8 +33,12 @@ public class GuideObjectSyncHandler : FieldPacketHandler {
             session.Field.Broadcast(buffer, sender: session);
         }
 
+        // The record's rotation is in tenths of a degree, as in UserSync (FieldPlayer); the heading a later
+        // GuideObject create sends follows the last move too.
+        float degrees = stateSyncs[^1].Rotation / 10f;
         session.GuideObject.Position = stateSyncs[^1].Position;
-        session.GuideObject.Rotation = new Vector3(0, 0, stateSyncs[^1].Rotation);
+        session.GuideObject.Rotation = new Vector3(0, 0, degrees);
+        session.GuideObject.Heading = new Vector3(0, 0, degrees < 0 ? degrees + 360f : degrees);
     }
 
     // After the kind: u8 count, then per record the UserSync record and one i32, the client's tick.
