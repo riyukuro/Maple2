@@ -658,6 +658,28 @@ public class MentorHandlerTests {
         Assert.That(otherTest.World.MentoringRequests.Any(request => request.Reload != null), Is.False);
     }
 
+    // The pair row the database refuses refuses the accept the same way: an error, no mail, the request unaccepted.
+    [Test]
+    public void Accept_PairNotStored_RefusesTheAccept() {
+        MentorAndMentee();
+        test.Register(TestGameSession.Metadata(90000023));
+        otherTest.Register(TestGameSession.Metadata(90000023));
+        InviteOther();
+        long id = Rows().Single().Id;
+        Mentor(otherTest);
+        otherTest.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Mentoring>().Any(entry => entry.State == EntityState.Modified);
+
+        Send(other, Accept, writer => writer.WriteLong(id));
+        otherTest.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That(Mentor(otherTest), Is.EqualTo(new[] { Error(MentorError.TargetNotExists) }));
+            Assert.That(Rows().Single().Accepted, Is.False);
+            Assert.That(MentorMails(), Is.Empty);
+            Assert.That(otherTest.World.MentoringRequests.Any(request => request.Reload != null), Is.False);
+        });
+    }
+
     [Test]
     public void Accept_MailRefused_KeepsTheRequest() {
         if (MySqlConnection == null) {
@@ -1185,6 +1207,22 @@ public class MentorHandlerTests {
         // Nothing left: a second take gives nothing.
         session.Mentoring.TakeMentorCoins();
         Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(250));
+    }
+
+    // The world's word that a mentee earned coins is taken on the mentor's field thread (ChannelService.Mentoring):
+    // nothing until the field runs its queue, then the coins.
+    [Test]
+    public void MentorCoins_TheWorldsWordIsTakenOnTheFieldThread() {
+        Paired();
+        otherTest.World.MentoringWorld = null;
+        other.Mentoring.AddMenteeCoin(100);
+
+        session.Mentoring.ScheduleTakeMentorCoins();
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(0));
+
+        test.RunFieldQueue();
+        Assert.That(session.Currency[CurrencyType.MentorToken], Is.EqualTo(100));
+        Assert.That(MentorCoinRows(), Is.Empty);
     }
 
     // Near MentorTokenMax only what it lets in is given and counted; the rest is dropped.
