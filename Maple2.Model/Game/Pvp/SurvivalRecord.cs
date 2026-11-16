@@ -60,10 +60,12 @@ public static class SurvivalRules {
 
     // Chosen: 1000 a game, 300 a kill and 200 for each participant ranked below. killExpPercent: the player's
     // improve_survival_kill_exprate (SpecialAttribute.ImproveSurvivalKillExp; KR 70000175, 70000176 and 70000178-183,
-    // 5 to 50, read as percent as their icons SurvivalKillExp_5 .. _50 name them) raises the kill part only, rounded
-    // down. The time exp rate beside it does nothing: this exp has no time part.
+    // 5 to 50, read as percent as their icons SurvivalKillExp_5 .. _50 name them) raises the kill part only. The
+    // percent is taken whole and the part counted in integers, rounded down (in doubles 15 % of 10 kills came to
+    // 3449). The time exp rate beside it does nothing: this exp has no time part.
     public static long GameExp(int rank, int participants, int kills, double killExpPercent = 0) {
-        long killExp = (long) (300L * Math.Max(0, kills) * (1 + Math.Max(0, killExpPercent) / 100));
+        long percent = (long) Math.Round(Math.Max(0, killExpPercent));
+        long killExp = 300L * Math.Max(0, kills) * (100 + percent) / 100;
         return 1000 + killExp + 200L * Math.Max(0, participants - rank);
     }
 
