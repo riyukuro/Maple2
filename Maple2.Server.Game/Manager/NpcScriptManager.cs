@@ -336,15 +336,23 @@ public sealed class NpcScriptManager {
         // fare is held for the field change and kept only when the change went (GameSession.PaidFieldChange), here or
         // before a move to another server's save. Before, it was taken for good ahead of the change, so a refused change
         // (the field not made, the World refusing the move) kept it.
-        bool kept = false;
+        bool kept = false, givenBack = false;
+        void GiveBack() {
+            if (givenBack || fare <= 0) return;
+            givenBack = true;
+            session.Currency.ReturnHeldMeso(fare, sends);
+        }
         bool prepared = session.PaidFieldChange(JobCondition.MoveMapId, () => {
             kept = true;
             if (fare > 0) {
                 session.Currency.NotifyMeso();
             }
-        }, portalId: JobCondition.MovePortalId > 0 ? JobCondition.MovePortalId : -1);
-        if (!kept && fare > 0) {
-            session.Currency.ReturnHeldMeso(fare, sends);
+        }, portalId: JobCondition.MovePortalId > 0 ? JobCondition.MovePortalId : -1, unpay: () => {
+            kept = false;
+            GiveBack();
+        });
+        if (!kept) {
+            GiveBack();
         }
         session.SendFieldEnter(prepared);
     }
@@ -540,10 +548,18 @@ public sealed class NpcScriptManager {
                 // A ride sold for a price (KR 11000994 script 64: one 20000087 for the move to 2000183): the price is
                 // given back when the field change does not go (the field not made, the World refusing a move to
                 // another server), as a taxi's fare. Before, it stayed taken (stored at once) with no ride.
-                bool went = false;
-                bool prepared = session.PaidFieldChange(scriptFunction.MoveMapId, () => went = true, portalId: portalId);
-                if (!went) {
+                bool went = false, givenBack = false;
+                void GiveBack() {
+                    if (givenBack) return;
+                    givenBack = true;
                     GiveBackPrice(scriptFunction, meso, sendsBefore, taken);
+                }
+                bool prepared = session.PaidFieldChange(scriptFunction.MoveMapId, () => went = true, portalId: portalId, unpay: () => {
+                    went = false;
+                    GiveBack();
+                });
+                if (!went) {
+                    GiveBack();
                 }
                 session.SendFieldEnter(prepared);
             } else {

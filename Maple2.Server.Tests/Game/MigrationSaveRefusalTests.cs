@@ -169,6 +169,57 @@ public class MigrationSaveRefusalTests {
         });
     }
 
+    // A payment beforeMove kept (a paid move's fare, GameSession.PaidFieldChange's pay) is given back by moveUndone when
+    // the save after it does not store: once, and before the session's last save, which so stores the wallet with
+    // the fare back and the character on the map it did not leave. Before, the fare stayed taken with no move.
+    [Test]
+    public void Migrate_SecondSaveFails_PaymentGivenBackBeforeTheLastSave() {
+        var test = new TestGameSession();
+        GameSession session = Closable(test);
+        session.Currency.Meso = 10000;
+        bool afterMove = false;
+        int givenBack = 0;
+        var written = new List<long>();
+        test.FailSave = context => {
+            foreach (var row in context.ChangeTracker.Entries<Maple2.Database.Model.Character>()
+                         .Where(row => row.Entity.Id == session.CharacterId)) {
+                written.Add(row.Entity.Currency.Meso);
+            }
+            return afterMove;
+        };
+
+        session.Migrate(Target, beforeMove: () => {
+            Assert.That(session.Currency.TryTakeMeso(4000, notify: false), Is.True);
+            afterMove = true;
+        }, moveUndone: () => {
+            givenBack++;
+            session.Currency.ReturnMeso(4000, notify: false);
+        });
+
+        Assert.That(written, Has.Count.GreaterThanOrEqualTo(4), "the first save, the second one's two tries, the last save");
+        Assert.Multiple(() => {
+            Assert.That(givenBack, Is.EqualTo(1));
+            Assert.That(written[^1], Is.EqualTo(10000), "the last save stores the fare given back");
+            Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+            Assert.That(Ended(session), Is.True);
+        });
+    }
+
+    // A move that went keeps the payment: moveUndone does not run.
+    [Test]
+    public void Migrate_PaidMoveThatWent_KeepsThePayment() {
+        var test = new TestGameSession();
+        GameSession session = Closable(test);
+        int givenBack = 0;
+
+        session.Migrate(Target, beforeMove: () => { }, moveUndone: () => givenBack++);
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.Moves, Has.Count.EqualTo(1));
+            Assert.That(givenBack, Is.Zero);
+        });
+    }
+
     [Test]
     public void Migrate_SaveRefusedOnce_Moves() {
         var test = new TestGameSession();

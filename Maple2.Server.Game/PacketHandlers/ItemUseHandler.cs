@@ -1676,13 +1676,25 @@ public class ItemUseHandler : FieldPacketHandler {
             return;
         }
 
+        // A move to another server undone after the tickets were used (its save after them did not store) gets them
+        // back: copies of the used ticket, as many as were used, before a last save that refusal may lead to.
+        Item? usedCopy = null;
         session.SendFieldEnter(session.PaidFieldChange(mapId, () => {
+            Item? copy = item.Clone(newRow: true);
             bool consumed = tickets == 1
                 ? session.Item.Inventory.Consume(item.Uid, 1)
                 : session.Item.Inventory.Consume([new IngredientInfo(ItemTag.air_taxi_advanced, tickets)]);
             if (!consumed) {
                 Logger.Error("Air taxi to {MapId}: {Tickets} ticket(s) counted for {CharacterId} could not be used", mapId, tickets, session.CharacterId);
+            } else if (copy != null) {
+                copy.Amount = tickets;
+                usedCopy = copy;
             }
+        }, unpay: () => {
+            if (usedCopy is { } back && !session.Item.AddOrMail(back, true)) {
+                Logger.Error("Air taxi to {MapId}: {Tickets} ticket(s) of {CharacterId} not given back after the refused move", mapId, tickets, session.CharacterId);
+            }
+            usedCopy = null;
         }));
     }
 }

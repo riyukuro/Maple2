@@ -791,9 +791,12 @@ public sealed partial class GameSession : Core.Network.Session {
     // A field change bought with a fare or tickets (the taxis): pay runs once the change went, after the move here
     // (PrepareField true) or, for a move to another server, before that move's save (Migrate's beforeMove), so the
     // payment is stored with it. A refused change never runs it. Returns PrepareField's answer, for SendFieldEnter.
-    // Also what a move counts once it went (the sky fortress moves).
-    public bool PaidFieldChange(int mapId, Action pay, in Vector3 position = default, in Vector3 rotation = default, int portalId = -1) {
-        bool prepared = PrepareFieldInternal(mapId, out _, portalId, 0, 0, position, rotation, pay);
+    // Also what a move counts once it went (the sky fortress moves). unpay: run when a move to another server whose
+    // pay ran is undone after all (its save after pay did not store), before the session's last save should that save
+    // end the session; it gives the payment back.
+    public bool PaidFieldChange(int mapId, Action pay, in Vector3 position = default, in Vector3 rotation = default, int portalId = -1,
+                                Action? unpay = null) {
+        bool prepared = PrepareFieldInternal(mapId, out _, portalId, 0, 0, position, rotation, pay, unpay);
         if (prepared) {
             pay();
         }
@@ -849,7 +852,7 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     private bool PrepareFieldInternal(int mapId, out FieldManager? newField, int portalId, long ownerId, int roomId, in Vector3 position, in Vector3 rotation,
-                                      Action? beforeMove) {
+                                      Action? beforeMove, Action? moveUndone = null) {
         PortalArrival = false;
         fieldChangeMigrated = false;
         // If entering home without instanceKey set, default to own home.
@@ -881,7 +884,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 newField = dungeonField.Lobby;
                 Dungeon.LeaveStage();
             } else {
-                Migrate(mapId, beforeMove: beforeMove, position: position, portalId: portalId);
+                Migrate(mapId, beforeMove: beforeMove, position: position, portalId: portalId, moveUndone: moveUndone);
                 fieldChangeMigrated = true;
                 newField = null;
                 return false;
@@ -1696,7 +1699,10 @@ public sealed partial class GameSession : Core.Network.Session {
     // the World server gives no address); a second save of what it changed that does not store puts the return
     // position back (Undo). position is the spot on the map to arrive at (the return field's saved
     // spot); default is the map's spawn.
-    public void Migrate(int mapId, long ownerId = 0, Action? beforeMove = null, Vector3 position = default, int portalId = -1) {
+    // moveUndone: run once when beforeMove ran and the move is then not sent (its second save did not store), before
+    // the session's last save should that save end the session: a payment beforeMove kept is given back there.
+    public void Migrate(int mapId, long ownerId = 0, Action? beforeMove = null, Vector3 position = default, int portalId = -1,
+                        Action? moveUndone = null) {
         // Not to a map the played client does not have (see PrepareFieldInternal).
         if (MapMetadata.TryGet(mapId, out MapMetadata? target) && target.Property.NotInPlayedClient) {
             Send(NoticePacket.Message(FieldEntryRules.NotInPlayedClientNotice(target.Id, target.Name)));
@@ -1708,7 +1714,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Character character = Player.Value.Character;
         (int mapBefore, short returnBefore, Vector3 returnPositionBefore, SessionState state) =
             (character.MapId, character.ReturnChannel, character.ReturnPosition, State);
-        bool moved = false, saved = false;
+        bool moved = false, saved = false, beforeMoveRan = false;
         // Not moved: the character stays where it is, and the session's last save (at Dispose) stores that. Run also
         // by a save that does not store, before it ends the session (MigrationSave). The return position is the one
         // beforeMove sets; its other change (home_goto, HomeHandler) is kept: the client was sent the trophy update
@@ -1719,6 +1725,13 @@ public sealed partial class GameSession : Core.Network.Session {
             character.ReturnPosition = returnPositionBefore;
             if (State is not SessionState.Disconnected) {
                 State = state;
+            }
+            // What beforeMove kept for the move (a fare) is given back: the move is not sent. Run once, before the
+            // last save of a session this refusal ends (MigrationSave runs Undo before its Cut). Before, the fare
+            // stayed taken, and that last save stored it so, with the character on the map it did not leave.
+            if (beforeMoveRan) {
+                beforeMoveRan = false;
+                moveUndone?.Invoke();
             }
         }
         try {
@@ -1766,6 +1779,7 @@ public sealed partial class GameSession : Core.Network.Session {
             }
             if (beforeMove != null) {
                 beforeMove();
+                beforeMoveRan = true;
                 if (saved) {
                     // What it changed (a trophy count, the return position) is stored with the move: a second save,
                     // short, since a reset the first save waited on is stored by now.

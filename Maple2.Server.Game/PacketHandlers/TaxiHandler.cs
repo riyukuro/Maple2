@@ -124,17 +124,27 @@ public class TaxiHandler : FieldPacketHandler {
             return;
         }
 
-        bool kept = false;
+        bool kept = false, givenBack = false;
+        // With the balance if a meso packet (a gain on the field's thread, the fare's own once kept) showed it
+        // without the fare meanwhile. Once only: a move to another server undone after its payment gives it back
+        // there (unpay), before a last save that refusal may lead to.
+        void GiveBack() {
+            if (givenBack) return;
+            givenBack = true;
+            session.Currency.ReturnHeldMeso(cost, sends);
+        }
         bool prepared = session.PaidFieldChange(mapId, () => {
             kept = true;
             if (cost > 0) {
                 session.Currency.NotifyMeso();
             }
             paid?.Invoke();
-        }, position, rotation);
+        }, position, rotation, unpay: () => {
+            kept = false;
+            GiveBack();
+        });
         if (!kept) {
-            // With the balance if a meso packet (a gain on the field's thread) showed it without the fare meanwhile.
-            session.Currency.ReturnHeldMeso(cost, sends);
+            GiveBack();
         }
         session.SendFieldEnter(prepared);
     }
@@ -192,13 +202,21 @@ public class TaxiHandler : FieldPacketHandler {
         }
 
         // As RideForMeso: the merets are shown taken (and counted as spent) only for a change that went.
-        bool kept = false;
+        bool kept = false, givenBack = false;
+        void GiveBack() {
+            if (givenBack) return;
+            givenBack = true;
+            session.Currency.ReturnMeret(price);
+        }
         bool prepared = session.PaidFieldChange(mapId, () => {
             kept = true;
             session.Currency.NotifyMeretTaken(price);
+        }, unpay: () => {
+            kept = false;
+            GiveBack();
         });
         if (!kept) {
-            session.Currency.ReturnMeret(price);
+            GiveBack();
         }
         session.SendFieldEnter(prepared);
     }
