@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using DotRecast.Core;
 using DotRecast.Core.Numerics;
 using DotRecast.Detour;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Tools.DotRecast;
 
 namespace Maple2.Server.Tests.Game.Manager;
 
@@ -434,5 +437,73 @@ public class AgentNavigationTests {
         Assert.That(kept.Z, Is.EqualTo(2).Within(0.01));
 
         Assert.That(AgentNavigation.NearestLinkedPoint(query, filter, originRef, new RcVec3f(9.5f, 0, 5), new RcVec3f(1, 1, 1), out _), Is.False);
+    }
+
+    // The agent on a navmesh path of the given points (navmesh space, 1 unit = 100 map units), no crowd needed.
+    private static AgentNavigation OnPath(params RcVec3f[] points) {
+        var navigation = (AgentNavigation) RuntimeHelpers.GetUninitializedObject(typeof(AgentNavigation));
+        navigation.currentPath = points.ToList();
+        return navigation;
+    }
+
+    // 10 navmesh units = 1000 map units: at 100 map units a second, 5 s is half the segment.
+    [Test]
+    public void Advance_MovesAlongTheSegmentBySpeedAndTime() {
+        AgentNavigation navigation = OnPath(new RcVec3f(0, 0, 0), new RcVec3f(10, 0, 0));
+
+        (Vector3 start, Vector3 end) = navigation.Advance(TimeSpan.FromSeconds(5), 100, out bool following);
+        (Vector3 _, Vector3 next) = navigation.Advance(TimeSpan.FromSeconds(2), 100, out _);
+
+        Assert.Multiple(() => {
+            Assert.That(following, Is.True);
+            Assert.That(start, Is.EqualTo(DotRecastHelper.FromNavMeshSpace(new RcVec3f(0, 0, 0))));
+            Assert.That(Vector3.Distance(end, DotRecastHelper.FromNavMeshSpace(new RcVec3f(5, 0, 0))), Is.LessThan(0.5f));
+            Assert.That(Vector3.Distance(next, DotRecastHelper.FromNavMeshSpace(new RcVec3f(7, 0, 0))), Is.LessThan(0.5f), "the progress is kept");
+        });
+    }
+
+    // Past the last point the step ends on it, and a further call has nothing to follow.
+    [Test]
+    public void Advance_PastTheEnd_StopsOnTheLastPoint() {
+        AgentNavigation navigation = OnPath(new RcVec3f(0, 0, 0), new RcVec3f(1, 0, 0), new RcVec3f(1, 0, 1));
+
+        (Vector3 _, Vector3 end) = navigation.Advance(TimeSpan.FromSeconds(60), 100, out bool following);
+        (Vector3 start, Vector3 again) = navigation.Advance(TimeSpan.FromSeconds(1), 100, out bool followingAgain);
+
+        Assert.Multiple(() => {
+            Assert.That(following, Is.True);
+            Assert.That(Vector3.Distance(end, DotRecastHelper.FromNavMeshSpace(new RcVec3f(1, 0, 1))), Is.LessThan(0.5f));
+            Assert.That(followingAgain, Is.False);
+            Assert.That((start, again), Is.EqualTo((default(Vector3), default(Vector3))));
+        });
+    }
+
+    [Test]
+    public void Advance_WithoutASegmentOrWithoutSpeed_GivesNoNaN() {
+        Assert.That(OnPath(new RcVec3f(1, 0, 1)).Advance(TimeSpan.FromSeconds(1), 100, out bool following), Is.EqualTo((default(Vector3), default(Vector3))));
+        Assert.That(following, Is.False);
+
+        (Vector3 _, Vector3 end) = OnPath(new RcVec3f(0, 0, 0), new RcVec3f(10, 0, 0)).Advance(TimeSpan.FromSeconds(1), 0, out _);
+        Assert.That(float.IsNaN(end.X) || float.IsNaN(end.Y) || float.IsNaN(end.Z), Is.False);
+    }
+
+    // A flying move goes straight to the target: a step shorter than the distance, one that covers it, and no distance.
+    [Test]
+    public void FlyAdvance_StepsStraight_AndLandsOnTheTarget() {
+        AgentNavigation navigation = OnPath();
+        var from = new Vector3(0, 0, 0);
+        var to = new Vector3(300, 400, 0);
+
+        (Vector3 stepped, bool reached) = navigation.FlyAdvance(from, to, 100, 1);
+        (Vector3 landed, bool arrived) = navigation.FlyAdvance(from, to, 100, 5);
+        (Vector3 stay, bool already) = navigation.FlyAdvance(to, to, 100, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(reached, Is.False);
+            Assert.That(stepped.X, Is.EqualTo(60).Within(0.01));
+            Assert.That(stepped.Y, Is.EqualTo(80).Within(0.01));
+            Assert.That((landed, arrived), Is.EqualTo((to, true)));
+            Assert.That((stay, already), Is.EqualTo((to, true)));
+        });
     }
 }
