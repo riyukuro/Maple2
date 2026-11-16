@@ -453,7 +453,9 @@ public class ItemBoxManager {
                     }
                 }
 
-                IEnumerable<Item> itemList = session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session: session);
+                // The global box's rows are banded by level (the mission level-up box 30003: a potion or voucher per
+                // 10 levels): the opener's level, as the other global drops pass their source's.
+                IEnumerable<Item> itemList = session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session.Player.Value.Character.Level, session);
 
                 itemList = itemList.Concat(session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, individualDropBoxId));
                 foreach (Item newItem in itemList) {

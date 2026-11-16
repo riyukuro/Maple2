@@ -8,6 +8,7 @@ using Maple2.File.Parser.Xml.Table;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
+using Maple2.File.Ingest.Helpers;
 using Maple2.File.Ingest.Utils;
 using System.Xml;
 using Slot = Maple2.File.Parser.Xml.Item.Slot;
@@ -19,15 +20,18 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
     private readonly TableParser tableParser;
     private readonly bool newXml;
     private readonly M2dReader? playedReader;
+    // The server pack's global drop box ids (globalDropItemBox), for the played client's item boxes (ClientItemBoxes).
+    private readonly IReadOnlySet<int> globalBoxes;
     private readonly string language;
 
     public static Dictionary<int, ItemMetadata> ItemMetadataById { get; } = new();
 
-    public ItemMapper(M2dReader xmlReader, string language, bool newXml, M2dReader? playedReader = null) {
+    public ItemMapper(M2dReader xmlReader, string language, bool newXml, M2dReader? playedReader = null, IReadOnlySet<int>? globalBoxes = null) {
         parser = new ItemParser(xmlReader, language);
         tableParser = PackTables.NewParser(xmlReader, language);
         this.newXml = newXml;
         this.playedReader = playedReader;
+        this.globalBoxes = globalBoxes ?? new HashSet<int>();
         this.language = language;
     }
 
@@ -38,6 +42,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         Dictionary<int, string>? playedTags = null;
         Dictionary<int, (int Type, int SubType)>? playedTypes = null;
         Dictionary<int, int>? playedRanks = null;
+        Dictionary<int, ClientItemBoxes.Box>? playedBoxes = null;
         Func<XmlElement, bool> available = node =>
             FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
         if (playedReader != null) {
@@ -53,8 +58,11 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 playedTypes = PlayedClientItems.Types(itemFiles, available);
                 // The ranks the client takes as the rarity of every copy (ItemMetadataProperty.ClientRank).
                 playedRanks = PlayedClientItems.Ranks(itemFiles, available);
+                // The boxes the played client's item boxes open (ClientItemBoxes).
+                playedBoxes = ClientItemBoxes.Read(itemFiles, available);
             }
         }
+        int clientBoxesGlobal = 0, clientBoxesIndividual = 0;
         int notInPlayed = 0, inPlayed = 0, lockTagsChanged = 0, typesChanged = 0, clientRanks = 0, clientRanksDiffer = 0, playedUnknown = 0;
 
         Dictionary<int, int> itemExtractionTryCount = tableParser.ParseItemExtraction()
@@ -121,6 +129,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
             Console.WriteLine($"items: {notInPlayed} not in the played client's item data (the server creates none of them), {inPlayed} in it");
             Console.WriteLine($"items: {lockTagsChanged} option-lock tags taken from the played client's item data");
             Console.WriteLine($"items: {typesChanged} types taken from the played client's item data (another bag tab)");
+            Console.WriteLine($"items: {clientBoxesGlobal + clientBoxesIndividual} item boxes open the played client's box instead of the pack's function ({clientBoxesGlobal} global, {clientBoxesIndividual} individual)");
             Console.WriteLine($"items: {clientRanks} client ranks from the played client's item data ({clientRanksDiffer} differ from the server pack's rank)");
             Console.WriteLine($"items: {playedOnly} only in the played client's item data, read from it (by id / 1000000: "
                 + string.Join(", ", playedByRange.Select(entry => $"{entry.Key}: {entry.Value}")) + ")");
@@ -225,6 +234,14 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 Name: data.function.name, // Temp duplicate data makes it easier to read DB
                 Parameters: data.function.parameter,
                 OnlyShadowWorld: data.function.onlyShadowContinent == 1);
+            if (!played && playedBoxes != null && playedBoxes.TryGetValue(id, out ClientItemBoxes.Box clientBox)
+                && !ClientItemBoxes.Names(data.function.name, data.function.parameter, clientBox.Id)) {
+                bool global = globalBoxes.Contains(clientBox.Id);
+                function = new ItemMetadataFunction(ItemFunction.OpenItemBox, nameof(ItemFunction.OpenItemBox),
+                    ClientItemBoxes.Parameter(clientBox, global), data.function.onlyShadowContinent == 1);
+                if (global) clientBoxesGlobal++;
+                else clientBoxesIndividual++;
+            }
 
             bool hasOption = data.option.@static > 0 || data.option.constant > 0 || data.option.random > 0 || data.option.optionID > 0;
             int levelFactor = (int) data.option.optionLevelFactor;

@@ -275,7 +275,8 @@ var modelReaders = new List<PrefixedM2dReader> {
 
 UpdateDatabase(metadataContext, new TriggerMapper(xmlReader, playedReader));
 
-UpdateDatabase(metadataContext, new ItemMapper(xmlReader, language, false, playedReader));
+HashSet<int> globalDropBoxes = new Maple2.File.Parser.ServerTableParser(serverReader).ParseGlobalDropItemBox().Select(entry => entry.Id).ToHashSet();
+UpdateDatabase(metadataContext, new ItemMapper(xmlReader, language, false, playedReader, globalDropBoxes));
 UpdateDatabase(metadataContext, new NpcMapper(xmlReader, language, playedReader));
 
 UpdateDatabase(metadataContext, new ServerTableMapper(serverReader, xmlReader, playedReader, originalDropTable, replayAttendGift, exportedReader, serverOverlay, replayEvents));

@@ -32,7 +32,8 @@ public class ItemBoxHandlerTests {
     // The box in the bag, and drop box 100 = two groups: RewardA x3 | RewardB x1.
     private GameSession Login(ItemFunction function, string parameters, int amount, int rewardSlotMax = 100, short[]? tabCount = null,
                               int otherRarityAmount = 0, int keys = 0, bool requireVip = false,
-                              Func<ItemMetadataLimit, ItemMetadataLimit>? limit = null, int rewardA = RewardA, int lockedAmount = 0) {
+                              Func<ItemMetadataLimit, ItemMetadataLimit>? limit = null, int rewardA = RewardA, int lockedAmount = 0,
+                              GlobalDropItemBoxTable? globalTable = null) {
         test = new TestGameSession();
         ItemMetadata boxMetadata = TestGameSession.Metadata(BoxId, function: new ItemMetadataFunction(function, function.ToString(), parameters, false));
         if (requireVip) {
@@ -47,7 +48,7 @@ public class ItemBoxHandlerTests {
                 ? TestGameSession.DropBox([(rewardA, 3), (RewardB, 1)])
                 : TestGameSession.DropBox([(rewardA, 3)], [(RewardB, 1)]),
         }));
-        test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
+        test.SetServerTable(globalTable ?? new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
             new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
         test.SetTable(new GachaInfoTable(new Dictionary<int, GachaInfoTable.Entry> { [GachaInfoId] = new(0, DropBoxId, 0, 0, 0) }));
         if (tabCount != null) {
@@ -146,12 +147,37 @@ public class ItemBoxHandlerTests {
         Assert.That(test.Row(box.Uid)?.Amount, Is.EqualTo(1), "the box row is stored lowered at the open");
     }
 
-    // The fixed-item shape of OpenItemBox, "global,1,item,0" (30000933 "0,1,30000303,0"; 11 boxes in the server
-    // data): no individual box, so no individual table row. It was refused before its item was given (no answer, the
+    // The fixed-item shape of OpenItemBox, "global,1,item,0" (11 boxes in the data pack, which the played client's
+    // box replaces for the mission boxes, ClientItemBoxes): no individual box, so no individual table row. It was refused before its item was given (no answer, the
     // box kept); now the box is taken and gives its item.
     [Test]
     public void OpenItemBox_Use_FixedItemWithNoDropBox_GivesTheItem() {
         GameSession session = Login(ItemFunction.OpenItemBox, $"0,1,{RewardB},0", amount: 1);
+
+        Use(session);
+
+        Assert.That(Held(session, BoxId), Is.EqualTo(0));
+        Assert.That(Held(session, RewardB), Is.EqualTo(1));
+        Assert.That(Held(session, RewardA), Is.EqualTo(0));
+    }
+
+    // A global box whose rows are banded by level (the mission level-up box 30003: an experience potion or voucher per
+    // 10 levels) gives the opener's band. Before, the open passed level 0, under every band's minLevel, so the box was
+    // taken and gave nothing.
+    [Test]
+    public void OpenItemBox_Use_GlobalBoxGivesTheOpenersLevelBand() {
+        const int globalBoxId = 30003, groupId = 80000001;
+        var group = new GlobalDropItemBoxTable.Group(groupId, 0, 0, [new GlobalDropItemBoxTable.Group.DropCount(1, 100)], false, (MapType) 0, (Continent) 0);
+        var global = new GlobalDropItemBoxTable(
+            new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>> { [globalBoxId] = new() { [groupId] = [group] } },
+            new Dictionary<int, IList<GlobalDropItemBoxTable.Item>> {
+                [groupId] = [
+                    new GlobalDropItemBoxTable.Item(RewardA, 1, 9, new GlobalDropItemBoxTable.Range<int>(1, 1), 1, 10000, [], false),
+                    new GlobalDropItemBoxTable.Item(RewardB, 10, 19, new GlobalDropItemBoxTable.Range<int>(1, 1), 1, 10000, [], false),
+                ],
+            });
+        GameSession session = Login(ItemFunction.OpenItemBox, $"{globalBoxId},1,0,0", amount: 1, globalTable: global);
+        session.Player.Value.Character.Level = 12;
 
         Use(session);
 
