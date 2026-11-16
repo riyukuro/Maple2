@@ -1694,8 +1694,11 @@ public class ItemUseHandler : FieldPacketHandler {
         // Before, copies of the used ticket came back: the tag's take can use other ticket ids or other binding and
         // expiry, so a bound or expiring ticket came back as a fresh one of another kind, and when the bag could not
         // take them they were mailed (stored at once, beside the rows the failed save left the character's).
+        // A stack used up is counted destroyed (item_destroy) at once: the count is put back with the stacks.
         List<(Item Item, int Amount)>? used = null;
+        GameSession.ConditionMark? destroyed = null;
         session.SendFieldEnter(session.PaidFieldChange(mapId, () => {
+            destroyed = session.MarkCondition(ConditionType.item_destroy);
             used = session.Item.Inventory.ConsumeToPutBack(tickets == 1
                 ? [(item.Uid, 1)]
                 : session.Item.Inventory.PlanConsume([new IngredientInfo(ItemTag.air_taxi_advanced, tickets)]));
@@ -1706,7 +1709,11 @@ public class ItemUseHandler : FieldPacketHandler {
             if (used != null && !session.Item.Inventory.PutBack(used)) {
                 Logger.Error("Air taxi to {MapId}: {Tickets} ticket(s) of {CharacterId} not given back after the refused move", mapId, tickets, session.CharacterId);
             }
+            if (destroyed != null) {
+                session.PutBackCondition(destroyed);
+            }
             used = null;
+            destroyed = null;
         }));
     }
 }

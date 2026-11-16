@@ -688,11 +688,14 @@ public class InventoryManager {
         }
     }
 
-    // Puts back what ConsumeToPutBack took, as it was taken (a paid move undone after its payment): a stack taken in
-    // part gets its amount back, and a stack taken whole comes back as the same item, with its uid, binding and
-    // expiry. Its row is still the character's, because the take was not stored (Add takes it off the delete list).
-    // Never mailed: a mail is stored at once, and if the session's save then failed, the database held the item
-    // twice. False when a stack could not be put back.
+    // Puts back what ConsumeToPutBack took, as it was taken (a paid move undone after its payment). A stack taken in
+    // part gets its amount back first. Then a stack taken whole comes back as the same item, with its uid, binding
+    // and expiry, in its slot (another free one when that is taken) and never merged into another stack. Its row is
+    // still the character's, because the take was not stored; the delete list forgets it. It is no add: no
+    // item_collect, item_add or item_exist count (it was the player's all along). Before, in the plan's order through
+    // Add, a whole stack could merge into a stack still short of its part (its uid lost) and was counted as
+    // collected. Never mailed: a mail is stored at once, and if the session's save then failed, the database held the
+    // item twice. False when a stack could not be put back.
     public bool PutBack(IReadOnlyList<(Item Item, int Amount)> taken) {
         lock (session.Item) {
             bool all = true;
@@ -701,9 +704,20 @@ public class InventoryManager {
                     held.Amount += amount;
                     session.Send(ItemInventoryPacket.UpdateAmount(held.Uid, held.Amount));
                     session.Quest.UpdateHeld(held.Id);
-                } else if (!Add(item)) {
-                    all = false;
                 }
+            }
+            foreach ((Item item, int _) in taken) {
+                if (Get(item.Uid) != null) {
+                    continue;
+                }
+                if (!tabs.TryGetValue(item.Inventory, out ItemCollection? items) || items.Add(item, stack: false).Count == 0) {
+                    logger.Error("Item {ItemUid} ({ItemId} x{Amount}) of {CharacterId} not put back", item.Uid, item.Id, item.Amount, session.CharacterId);
+                    all = false;
+                    continue;
+                }
+                Forget(item.Uid);
+                session.Send(ItemInventoryPacket.Add(item));
+                session.Quest.UpdateHeld(item.Id);
             }
             return all;
         }

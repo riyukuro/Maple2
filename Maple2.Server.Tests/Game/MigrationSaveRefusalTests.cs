@@ -247,53 +247,89 @@ public class MigrationSaveRefusalTests {
 
     // Tickets used by tag (the advanced air taxi ticket, ItemUseHandler.HandleCallAirTaxi) for a move to another
     // server whose second save does not store come back as the stacks they were (InventoryManager.PutBack): an
-    // expiring ticket of one id taken whole and part of a stack of another. The last save stores both rows as before
-    // the move and no mail. Before, `tickets` copies of the used ticket came back as a new row (or a mail when the bag
-    // was full): another id, a fresh expiry.
-    [Test]
-    public void Migrate_SecondSaveFails_TicketsTakenByTag_PutBackAsTheyWere() {
+    // expiring ticket taken whole, and part of a second stack (of another id, or of the same id). Returns the session
+    // after the move, the stacks used, PutBack's answer and the stored rows of the two tickets.
+    private const int TicketA = 20300001, TicketB = 20300002;
+    private const int Collected = 23300001, Added = 23300002, Destroyed = 23300003;
+
+    private static (TestGameSession Test, GameSession Session, Maple2.Model.Game.Item Expiring, Maple2.Model.Game.Item Stack, long Expiry,
+        List<(Maple2.Model.Game.Item Item, int Amount)>? Used, bool PutBack, List<(long Uid, int ItemId, int Amount, DateTime Expiry)> Rows) UseTicketsUndone(bool sameId) {
         var test = new TestGameSession();
         Maple2.Model.Metadata.ItemMetadata Ticket(int id) {
             Maple2.Model.Metadata.ItemMetadata metadata = TestGameSession.Metadata(id);
             return metadata with { Property = metadata.Property with { Tag = ItemTag.air_taxi_advanced } };
         }
         test.Store(TestGameSession.Metadata(2000002)); // keeps the item uids off the character id
-        Maple2.Model.Game.Item expiring = test.Store(Ticket(20300001));
-        Maple2.Model.Game.Item stack = test.Store(Ticket(20300002), 3);
+        Maple2.Model.Game.Item expiring = test.Store(Ticket(TicketA));
+        Maple2.Model.Game.Item stack = test.Store(Ticket(sameId ? TicketA : TicketB), 3);
+        // The counts an add or a use makes: none is left after the stacks are put back.
+        test.AddAchievement(
+            TestGameSession.Trophy(Collected, ConditionType.item_collect, [100]),
+            TestGameSession.Trophy(Added, ConditionType.item_add, [100]),
+            TestGameSession.Trophy(Destroyed, ConditionType.item_destroy, [100]));
         GameSession session = Closable(test);
         long expiry = DateTimeOffset.UtcNow.AddDays(3).ToUnixTimeSeconds();
         session.Item.Inventory.Get(expiring.Uid)!.ExpiryTime = expiry;
         bool afterMove = false;
         List<(Maple2.Model.Game.Item Item, int Amount)>? used = null;
+        GameSession.ConditionMark? destroyed = null;
         bool putBack = false;
         test.FailSave = _ => afterMove;
 
+        // As the handler's pay and unpay.
         session.Migrate(Target, beforeMove: () => {
+            destroyed = session.MarkCondition(ConditionType.item_destroy);
             used = session.Item.Inventory.ConsumeToPutBack(
                 session.Item.Inventory.PlanConsume([new Maple2.Model.Game.IngredientInfo(ItemTag.air_taxi_advanced, 2)]));
             afterMove = true;
         }, moveUndone: () => {
-            // The move's field: Closable leaves the session off the map, and an item comes back only in a field.
-            test.EnterMap(TestGameSession.Map(2000001));
             putBack = session.Item.Inventory.PutBack(used!);
-            session.Field = null;
+            session.PutBackCondition(destroyed!);
             afterMove = false; // the last save stores
         });
 
         using var context = new Maple2.Database.Context.Ms2Context(test.Options);
-        var rows = context.Item.Where(row => row.OwnerId == test.CharacterId && (row.ItemId == 20300001 || row.ItemId == 20300002))
-            .Select(row => new { row.Id, row.ItemId, row.Amount, row.ExpiryTime }).OrderBy(row => row.ItemId).ToList();
+        var rows = context.Item.Where(row => row.OwnerId == test.CharacterId && (row.ItemId == TicketA || row.ItemId == TicketB))
+            .OrderBy(row => row.Id).AsEnumerable().Select(row => (row.Id, row.ItemId, row.Amount, row.ExpiryTime)).ToList();
+        Assert.That(context.Mail.Count(mail => mail.ReceiverId == test.CharacterId), Is.Zero, "nothing is mailed");
+        return (test, session, expiring, stack, expiry, used, putBack, rows);
+    }
+
+    // Before, `tickets` copies of the used ticket came back as a new row (or a mail when the bag was full): another
+    // id, a fresh expiry.
+    [Test]
+    public void Migrate_SecondSaveFails_TicketsTakenByTag_PutBackAsTheyWere() {
+        var (test, session, expiring, stack, expiry, used, putBack, rows) = UseTicketsUndone(sameId: false);
+
+        Assume.That(used?.Select(entry => (entry.Item.Uid, entry.Amount)), Is.EqualTo(new[] { (expiring.Uid, 1), (stack.Uid, 1) }));
         Assert.Multiple(() => {
-            Assert.That(used, Has.Count.EqualTo(2), "one of each stack was used");
             Assert.That(putBack, Is.True);
             Assert.That(Ended(session), Is.True);
             Assert.That(session.Item.Inventory.Get(expiring.Uid)?.Amount, Is.EqualTo(1));
             Assert.That(session.Item.Inventory.Get(expiring.Uid)?.ExpiryTime, Is.EqualTo(expiry));
             Assert.That(session.Item.Inventory.Get(stack.Uid)?.Amount, Is.EqualTo(3));
-            Assert.That(rows.Select(row => (row.Id, row.ItemId, row.Amount)),
-                Is.EqualTo(new[] { (expiring.Uid, 20300001, 1), (stack.Uid, 20300002, 3) }));
-            Assert.That(rows[0].ExpiryTime, Is.EqualTo(Maple2.Database.Extensions.DateTimeExtensions.FromEpochSeconds(expiry)));
-            Assert.That(context.Mail.Count(mail => mail.ReceiverId == test.CharacterId), Is.Zero, "nothing is mailed");
+            Assert.That(rows.Select(row => (row.Uid, row.ItemId, row.Amount)),
+                Is.EqualTo(new[] { (expiring.Uid, TicketA, 1), (stack.Uid, TicketB, 3) }));
+            Assert.That(rows[0].Expiry, Is.EqualTo(Maple2.Database.Extensions.DateTimeExtensions.FromEpochSeconds(expiry)));
+        });
+    }
+
+    // One ticket stack used up whole and another of the same id in part: the whole one comes back as itself, not
+    // merged into the other (its uid lost), and the put-back counts nothing (item_collect, item_add, and the
+    // item_destroy of the use). Before, in the plan's order through Add, it could merge, and was counted collected.
+    [Test]
+    public void Migrate_SecondSaveFails_SameIdStacks_PutBackApart_WithNoCounts() {
+        var (test, session, expiring, stack, _, used, putBack, rows) = UseTicketsUndone(sameId: true);
+
+        Assume.That(used?.Select(entry => (entry.Item.Uid, entry.Amount)), Is.EqualTo(new[] { (expiring.Uid, 1), (stack.Uid, 1) }));
+        Assert.Multiple(() => {
+            Assert.That(putBack, Is.True);
+            Assert.That(session.Item.Inventory.Get(expiring.Uid)?.Amount, Is.EqualTo(1));
+            Assert.That(session.Item.Inventory.Get(stack.Uid)?.Amount, Is.EqualTo(3));
+            Assert.That(rows.Select(row => (row.Uid, row.Amount)), Is.EqualTo(new[] { (expiring.Uid, 1), (stack.Uid, 3) }));
+            Assert.That(test.TrophyCounter(Collected) ?? 0, Is.Zero, "item_collect");
+            Assert.That(test.TrophyCounter(Added) ?? 0, Is.Zero, "item_add");
+            Assert.That(test.TrophyCounter(Destroyed) ?? 0, Is.Zero, "item_destroy");
         });
     }
 
