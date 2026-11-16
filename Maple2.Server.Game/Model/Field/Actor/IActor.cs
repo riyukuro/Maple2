@@ -25,8 +25,8 @@ public interface IActor : IFieldEntity {
     public virtual void ApplyEffect(IActor caster, IActor owner, SkillEffectMetadata effect, long startTick, EventConditionType type = EventConditionType.Activate, int skillId = 0, int buffId = 0, bool notifyField = true) { }
     public virtual void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) { }
     public virtual void RecordDotDamage(IActor caster, long amount) { }
-    public virtual IActor GetTarget(SkillTargetType targetType, IActor caster, IActor target, IActor owner) { return this; }
-    public virtual IActor GetOwner(SkillTargetType targetType, IActor caster, IActor target, IActor owner) { return this; }
+    public virtual IActor? GetTarget(SkillTargetType targetType, IActor caster, IActor target, IActor owner) { return this; }
+    public virtual IActor? GetOwner(SkillTargetType targetType, IActor caster, IActor target, IActor owner) { return this; }
 
     public virtual void TargetAttack(SkillRecord record) { }
 
