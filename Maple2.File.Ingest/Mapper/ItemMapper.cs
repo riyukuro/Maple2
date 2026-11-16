@@ -43,6 +43,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         Dictionary<int, (int Type, int SubType)>? playedTypes = null;
         Dictionary<int, int>? playedRanks = null;
         Dictionary<int, ClientItemBoxes.Box>? playedBoxes = null;
+        Dictionary<int, int[]>? playedRepackScrolls = null;
         Func<XmlElement, bool> available = node =>
             FeatureLocaleFilter.FeatureEnabled(node.GetAttribute("feature")) && FeatureLocaleFilter.HasLocale(node.GetAttribute("locale"));
         if (playedReader != null) {
@@ -60,9 +61,11 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 playedRanks = PlayedClientItems.Ranks(itemFiles, available);
                 // The boxes the played client's item boxes open (ClientItemBoxes).
                 playedBoxes = ClientItemBoxes.Read(itemFiles, available);
+                // The repack scroll ids the client checks (ItemRepacking).
+                playedRepackScrolls = ItemRepacking.Played(itemFiles, available, FeatureLocaleFilter.FeatureEnabled("GlobalTransferType"));
             }
         }
-        int clientBoxesGlobal = 0, clientBoxesIndividual = 0, clientFields = 0;
+        int clientBoxesGlobal = 0, clientBoxesIndividual = 0, clientFields = 0, repackScrollsTaken = 0;
         // The items whose box the played client names (ClientItemBoxes): the release client reuses some of those
         // ids for another item (20301431 is a weapon box there, a mini-game ticket in the pack), so the fields the
         // server reads of them are taken from the played client's item data (ClientItemBoxes.ClientFields).
@@ -149,6 +152,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
             Console.WriteLine($"items: {lockTagsChanged} option-lock tags taken from the played client's item data");
             Console.WriteLine($"items: {typesChanged} types taken from the played client's item data (another bag tab)");
             Console.WriteLine($"items: {clientBoxesGlobal + clientBoxesIndividual} item boxes open the played client's box instead of the pack's function ({clientBoxesGlobal} global, {clientBoxesIndividual} individual)");
+            Console.WriteLine($"items: {repackScrollsTaken} repack scroll lists taken from the played client's item data (another list than the pack's)");
             Console.WriteLine($"items: {clientFields} of those item boxes take the played client's name, stack, category, sell prices, life or limits");
             Console.WriteLine($"items: {clientRanks} client ranks from the played client's item data ({clientRanksDiffer} differ from the server pack's rank)");
             Console.WriteLine($"items: {playedOnly} only in the played client's item data, read from it (by id / 1000000: "
@@ -163,17 +167,24 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
         ItemMetadata Build(int id, string name, ItemData data, bool played) {
             int transferType = data.limit.transferType;
             int tradableCount = data.property.tradableCount;
+            // As ItemProperty::Load reads them (itemdatastruct.cpp:1122): tradableCountDeduction alone (the client reads no
+            // global one), and the repack scroll ids of ItemRepacking.ScrollIds; under the GlobalTransferType feature
+            // (0x84) the global repack counts and transfer type replace the item's own.
             int tradableCountDeduction = data.property.tradableCountDeduction;
             int repackingLimitCount = data.property.rePackingLimitCount;
             int repackingItemConsumeCount = data.property.rePackingItemConsumeCount;
-            int[] repackingScrollIds = data.property.globalRePackingScrollID;
-            if (FeatureLocaleFilter.FeatureEnabled("GlobalTransferType")) {
+            bool globalTransferType = FeatureLocaleFilter.FeatureEnabled("GlobalTransferType");
+            int[] repackingScrollIds = ItemRepacking.ScrollIds(data.property.rePackingScrollID, data.property.globalRePackingScrollID, globalTransferType);
+            if (!played && playedRepackScrolls != null && playedRepackScrolls.TryGetValue(id, out int[]? clientScrollIds)
+                && !clientScrollIds.SequenceEqual(repackingScrollIds)) {
+                repackingScrollIds = clientScrollIds;
+                repackScrollsTaken++;
+            }
+            if (globalTransferType) {
                 transferType = data.limit.globalTransferType ?? transferType;
                 tradableCount = data.property.globalTradableCount ?? tradableCount;
-                tradableCountDeduction = data.property.globalTradableCountDeduction ?? tradableCountDeduction;
                 repackingLimitCount = data.property.globalRePackingLimitCount ?? repackingLimitCount;
                 repackingItemConsumeCount = data.property.globalRePackingItemConsumeCount ?? repackingItemConsumeCount;
-                repackingScrollIds = data.property.globalRePackingScrollID ?? repackingScrollIds;
             }
             if (FeatureLocaleFilter.FeatureEnabled("GlobalTransferTypeNA")) {
                 transferType = data.limit.globalTransferTypeNA ?? transferType;
