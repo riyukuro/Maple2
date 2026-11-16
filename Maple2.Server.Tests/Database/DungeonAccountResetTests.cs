@@ -55,4 +55,47 @@ public class DungeonAccountResetTests {
         }
         Assert.That(Stored(), Is.EqualTo(((byte) 0, (byte) 0)));
     }
+
+    private long StoredCheckIn() {
+        using var context = new Ms2Context(options);
+        return context.Home.AsNoTracking().Single(home => home.AccountId == test.AccountId).DecorationRewardTimestamp;
+    }
+
+    private void CheckIn(long time) {
+        using var context = new Ms2Context(options);
+        context.Home.Single(home => home.AccountId == test.AccountId).DecorationRewardTimestamp = time;
+        context.SaveChanges();
+    }
+
+    // The daily reset leaves what was claimed since midnight: a record whose day is not over (a clear since
+    // midnight set its next midnight) keeps its daily clears, a check-in since midnight its time. Those from before
+    // midnight are cleared.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void TheDailyReset_KeepsTheNewDaysClaims(bool sinceMidnight) {
+        long midnight = new DateTimeOffset(DateTime.Today).ToUnixTimeSeconds();
+        long nextReset = sinceMidnight ? midnight + 86400 : midnight;
+        long checkIn = sinceMidnight ? midnight + 1 : midnight - 1;
+        using (GameStorage.Request db = test.Storage.Context()) {
+            Assert.That(db.CreateDungeonAccountRecord(test.AccountId, new DungeonRecord(Room) {
+                UnionClears = 4, UnionSubClears = 2, UnionCooldownTimestamp = midnight + 7 * 86400, UnionSubCooldownTimestamp = nextReset,
+            }), Is.True);
+            Assert.That(db.CreateDungeonRecord(new DungeonRecord(Room + 1) {
+                UnionClears = 1, UnionSubClears = 1, UnionCooldownTimestamp = midnight + 7 * 86400, UnionSubCooldownTimestamp = nextReset,
+            }, test.CharacterId), Is.Not.Null);
+        }
+        CheckIn(checkIn);
+
+        using (GameStorage.Request db = test.Storage.Context()) {
+            db.DailyReset();
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(Stored(), Is.EqualTo(((byte) 4, (byte) (sinceMidnight ? 2 : 0))));
+            Assert.That(StoredCheckIn(), Is.EqualTo(sinceMidnight ? checkIn : 0));
+            using var context = new Ms2Context(options);
+            Assert.That(context.DungeonRecord.AsNoTracking().Single(row => row.OwnerId == test.CharacterId && row.DungeonId == Room + 1).CurrentSubClears,
+                Is.EqualTo((byte) (sinceMidnight ? 1 : 0)), "the character's record");
+        });
+    }
 }
