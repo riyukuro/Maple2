@@ -155,6 +155,38 @@ public class StateReactCastTests {
         Assert.That(session.LastReactTick, Is.Null);
     }
 
+    // A reward state that takes one of a stack of 3 and gives an item, with no session save after it (a crash): the
+    // stack's row is one less, as the reward's row is there. Before, the take was in memory only and came back with
+    // the reward kept.
+    [Test]
+    public void ARewardReact_TheTakeIsStoredWithTheReward() {
+        test = new TestGameSession();
+        Maple2.Model.Game.Item stack = test.Store(TestGameSession.Metadata(20000001, type: 2), amount: 3);
+        test.Register(TestGameSession.Metadata(20000002, type: 2));
+        test.Start();
+        typeof(ConfigManager).GetField(nameof(ConfigManager.ReactLog))!.SetValue(session.Config, new LogGate());
+        var metadata = new ReactorTable.Entry(10000000, 155, 0, 0,
+            [new ReactorTable.State(101, ReactorStateType.Reward, 15, 30, [new ReactorTable.ConditionItem(20000001, 0, 1, 1)])],
+            [new ReactorTable.Reward(20000002, 1, 1)]);
+        FieldInfo field = typeof(FieldManager).GetField("fieldReactors", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        if (field.GetValue(session.Field) == null) {
+            field.SetValue(session.Field, new ConcurrentDictionary<int, FieldReactor>());
+        }
+        var reactors = (ConcurrentDictionary<int, FieldReactor>) field.GetValue(session.Field)!;
+        reactors[ObjectId] = new FieldReactor(session.Field!, ObjectId, "a", metadata, session.Player.Position, default);
+        reactors[ObjectId].Connect(session.CharacterId);
+
+        React();
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        int Rows(int itemId) => context.Item.Where(row => row.ItemId == itemId && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount);
+        Assert.Multiple(() => {
+            Assert.That(session.Item.Inventory.Get(stack.Uid)!.Amount, Is.EqualTo(2));
+            Assert.That(Rows(20000002), Is.EqualTo(1));
+            Assert.That(Rows(20000001), Is.EqualTo(2));
+        });
+    }
+
     private FieldReactor Reactor() {
         var reactors = (ConcurrentDictionary<int, FieldReactor>) typeof(FieldManager).GetField("fieldReactors", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session.Field)!;
         return reactors[ObjectId];

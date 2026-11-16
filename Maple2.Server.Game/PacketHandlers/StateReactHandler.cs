@@ -79,14 +79,13 @@ public class StateReactHandler : FieldPacketHandler {
             if (plan.Any(entry => (session.Item.Inventory.Get(entry.Uid)?.Amount ?? 0) < entry.Amount)) {
                 return;
             }
-            if (!eventReward) {
-                foreach ((long uid, int amount) in plan) {
-                    if (!session.Item.Inventory.Consume(uid, amount)) {
-                        Logger.Error("Reactor {ReactorId}: failed to take {Amount} of item {ItemUid} from {CharacterId}", reactor.Metadata.Id, amount, uid, session.CharacterId);
-                        return;
-                    }
-                }
-            }
+        }
+        // The other states' take is stored at once (ConsumeNow, outside the bag lock as its purchase save needs): a
+        // reward state gives its items as rows at once, so a take in memory only came back on a crash before the
+        // session save, with the reward kept. A take that is not stored gives nothing.
+        if (!eventReward && plan.Count > 0 && !session.Item.Inventory.ConsumeNow(plan)) {
+            Logger.Error("Reactor {ReactorId}: the condition items of {CharacterId} were not taken", reactor.Metadata.Id, session.CharacterId);
+            return;
         }
 
         if (state.Type == ReactorStateType.Connect) {
