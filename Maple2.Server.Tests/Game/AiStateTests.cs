@@ -819,4 +819,39 @@ public class AiStateTests : TriggerTestBase {
 
         Assert.That(npc.AiExtraData.ContainsKey("K"), Is.False);
     }
+
+    // A stun buff holds the monster in the stun state until it leaves, then it idles; a repeat of either is a no-op.
+    [Test]
+    public void SetStunned_HoldsTheStunState_ThenIdles() {
+        Spawn([Standby(1200)], sequences: ["Idle_A", "Attack_Idle_A"]);
+        npc.AiState.Update(Field.FieldTick);
+        npc.TaskState.Update(Field.FieldTick);
+
+        npc.MovementState.SetStunned(true);
+        Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Stun));
+        npc.MovementState.SetStunned(true);
+        Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Stun));
+
+        npc.MovementState.SetStunned(false);
+        Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Idle));
+        npc.MovementState.SetStunned(false);
+        Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Idle));
+    }
+
+    // A summoned pet of a dead owner stands in the summon-revive state; stun comes first and it idles when it ends.
+    [Test]
+    public void SetSummonRevive_StandsUntilOff_ButNotOverAStun() {
+        Spawn([Standby(1200)], sequences: ["Idle_A", "Attack_Idle_A"]);
+        npc.AiState.Update(Field.FieldTick);
+        npc.TaskState.Update(Field.FieldTick);
+
+        npc.MovementState.SetSummonRevive(true);
+        Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.SummonRevive));
+        npc.MovementState.SetSummonRevive(false);
+        Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Idle));
+
+        npc.MovementState.SetStunned(true);
+        npc.MovementState.SetSummonRevive(true);
+        Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Stun));
+    }
 }
