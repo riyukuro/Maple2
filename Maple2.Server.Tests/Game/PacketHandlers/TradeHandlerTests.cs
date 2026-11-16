@@ -220,32 +220,39 @@ public class TradeHandlerTests {
         });
     }
 
-    // The payer's wallet is stored first, and the payee's only once that store is kept: when the payer's fails, the
-    // payee's waits for its next save too, so a stop in between loses the payment rather than making it twice.
+    // A wallet store before the hand-over that fails ends the trade as cancelled: nothing moves, each offer goes back
+    // to its owner and the window closes with the cancelled line. Before, the failure was only logged and the
+    // hand-over went on, so a stop before the payer's next save kept both the bought item and the mesos.
     [Test]
-    public void Complete_PayerNotStored_PayeeWaits() {
+    public void Complete_APreStoreFails_CancelsTheTrade() {
         Offer();
-        long giverStored = StoredMeso(giver);
+        long takerStored = StoredMeso(taker);
         takerTest.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Character>()
             .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified);
         Send(giver, 11);
         Send(taker, 11);
         Send(giver, 13);
+        takerTest.TakeSent();
         Send(taker, 13);
+        List<byte[]> sent = takerTest.TakeSent();
         takerTest.FailSave = null;
 
         Assert.Multiple(() => {
-            Assert.That((giver.Currency.Meso, taker.Currency.Meso), Is.EqualTo((1000L, 4000L)));
-            Assert.That(StoredMeso(giver), Is.EqualTo(giverStored));
+            Assert.That((giver.Currency.Meso, taker.Currency.Meso), Is.EqualTo((0L, 5000L)));
+            Assert.That(StoredMeso(taker), Is.EqualTo(takerStored));
+            Assert.That(OwnerOf(item.Uid), Is.EqualTo(giver.CharacterId));
+            Assert.That(giver.Item.Inventory.Get(item.Uid)?.Amount, Is.EqualTo(3));
+            Assert.That(taker.Trade, Is.Null);
+            Assert.That(sent.Select(packet => Convert.ToHexString(packet)), Does.Contain(Hex(TradePacket.EndTrade(false))));
         });
     }
 
     // The same with the giver paying: alone (the taker offers no mesos), or both offering and the giver paying more.
-    // The giver's store fails, so the taker's stored wallet never holds the giver's payment: it is stored before the
-    // hand-over with only its own offer taken (5000 less that offer).
-    [TestCase(0L, 6000L, 4000L)]
-    [TestCase(1000L, 7000L, 3000L)]
-    public void Complete_GiverPaysNotStored_TakerWaits(long takerOffer, long takerAfter, long giverAfter) {
+    // The giver's store fails: nothing moves and each keeps its own mesos; the taker's wallet, stored with its offer
+    // taken, is stored again with the offer given back.
+    [TestCase(0L)]
+    [TestCase(1000L)]
+    public void Complete_GiverPaysNotStored_Cancels(long takerOffer) {
         giver.Currency.Meso = 5000;
         Send(giver, 8, writer => {
             writer.WriteLong(item.Uid);
@@ -256,6 +263,7 @@ public class TradeHandlerTests {
         if (takerOffer != 0) {
             Send(taker, 10, writer => writer.WriteLong(takerOffer));
         }
+        long takerStored = StoredMeso(taker);
         // The taker's options carry the giver's fault hook too (one database), so only the giver's row fails.
         long giverId = giver.CharacterId;
         giverTest.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Character>()
@@ -267,9 +275,16 @@ public class TradeHandlerTests {
         giverTest.FailSave = null;
 
         Assert.Multiple(() => {
-            Assert.That((giver.Currency.Meso, taker.Currency.Meso), Is.EqualTo((giverAfter, takerAfter)));
-            Assert.That(StoredMeso(taker), Is.EqualTo(5000 - takerOffer));
+            Assert.That((giver.Currency.Meso, taker.Currency.Meso), Is.EqualTo((5000L, 5000L)));
+            // The taker's offer, given back, is stored (SaveRefund); without an offer its wallet is not stored.
+            Assert.That(StoredMeso(taker), Is.EqualTo(takerOffer != 0 ? 5000 : takerStored));
+            Assert.That(OwnerOf(item.Uid), Is.EqualTo(giver.CharacterId));
         });
+    }
+
+    private long OwnerOf(long uid) {
+        using var context = new Ms2Context(giverTest.Options);
+        return context.Item.AsNoTracking().Single(row => row.Id == uid).OwnerId;
     }
 
     // A cancelled trade gives the offered mesos back in memory. A save made while they were offered (here a purchase

@@ -456,6 +456,17 @@ public class TradeManager : IDisposable {
                     return;
                 }
 
+                // Before the items move, both wallets are stored with their own offers taken and nothing paid yet
+                // (StoreOffers): the item rows move at once (HandOver), so a stop before the stores after it kept the
+                // bought item with the payer while the payer's offer, taken in memory only, came back. A store that
+                // fails ends the trade as cancelled before anything moves (each offer back to its owner, the refund
+                // stored): going on, a stop before the next save kept both the item and the mesos.
+                if (!StoreOffers()) {
+                    EndTrade(false);
+                    ClearTraders();
+                    return;
+                }
+
                 // Swap sessions so items are returned to opposite players.
                 (self.Session, other.Session) = (other.Session, self.Session);
                 EndTrade(true);
@@ -464,6 +475,22 @@ public class TradeManager : IDisposable {
                 ClearTraders();
             }
         }
+    }
+
+    // Stores each wallet holding an offer of mesos (taken from it in memory), before the sessions are swapped; false
+    // at the first store that fails. |mutex| Locking is done externally.
+    private bool StoreOffers() {
+        if (sender.Mesos == 0 && receiver.Mesos == 0) {
+            return true;
+        }
+        foreach (Trader trader in new[] { sender, receiver }) {
+            if (!trader.Session.SavePurchase()) {
+                logger.Error("Trade offer mesos of {CharacterId} not stored before the hand-over, the trade is cancelled",
+                    trader.Session.CharacterId);
+                return false;
+            }
+        }
+        return true;
     }
 
     // |mutex| Locking is done externally.
@@ -481,16 +508,6 @@ public class TradeManager : IDisposable {
         // On a cancel, the sessions whose offered mesos come back (HandOver clears the offers).
         GameSession[] refunded = success ? [] : new[] { sender, receiver }.Where(trader => trader.Mesos != 0)
             .Select(trader => trader.Session).ToArray();
-        // Before the items move, both wallets are stored with their own offers taken and nothing paid yet: the item
-        // rows move at once (HandOver), so a stop before the stores below kept the bought item with the payer while
-        // the payer's offer, taken in memory only, came back. Now such a stop loses the payment, never makes it twice.
-        if (mesosMoved) {
-            foreach (GameSession wallet in wallets) {
-                if (!wallet.SavePurchase()) {
-                    logger.Error("Trade offer mesos of {CharacterId} not stored before the hand-over", wallet.CharacterId);
-                }
-            }
-        }
         HandOver(sender, success ? receiver.Session : sender.Session, success);
         HandOver(receiver, success ? sender.Session : receiver.Session, success);
         // The items' rows move at once (HandOver), but the mesos were in memory only: an offer is taken from the
