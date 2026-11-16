@@ -133,8 +133,13 @@ public class EventRewardHandler : FieldPacketHandler {
         EventClaim.Mark day = EventClaim.Of(gameEvent.Id, GameEventUserValueType.LongTermAttendDays, attended + 1);
         switch (step) {
             case LongTermAttendRules.AttendStep.Point:
-                // The point and the day are stored together (EventClaim).
-                if (EventClaim.Give(session, [], [EventClaim.Of(gameEvent.Id, GameEventUserValueType.LongTermAttendPoints, points - 1), day]) == null) {
+                // The point and the day are stored together (EventClaim), with the time of the point's grant: the grant
+                // is kept in memory only, so a crash after this store left the spent point stored with the grant
+                // time before it, and after a relog the same day's point was granted again.
+                GameEventUserValue? grantTime = session.GameEvent.Peek(GameEventUserValueType.LongTermAttendPointTime, gameEvent.Id) == null ? null
+                    : session.GameEvent.Get(GameEventUserValueType.LongTermAttendPointTime, gameEvent.Id, gameEvent.EndTime);
+                if (EventClaim.Give(session, [], [EventClaim.Of(gameEvent.Id, GameEventUserValueType.LongTermAttendPoints, points - 1), day],
+                        alsoSave: db => grantTime == null || db.SaveGameEventUserValues(session.CharacterId, [grantTime])) == null) {
                     return;
                 }
                 break;

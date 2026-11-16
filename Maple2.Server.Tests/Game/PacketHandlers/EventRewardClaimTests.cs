@@ -245,6 +245,24 @@ public class EventRewardClaimTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // The spent point is stored with the time of its grant: a crash after the store (the grant kept in memory only)
+    // left the old grant time stored, and the next login granted the day's point again.
+    [Test]
+    public void LongTerm_AttendWithPoint_StoresTheGrantTime() {
+        GameSession session = Login(GameEventType.LongTermAttendGift, LongTerm());
+        Open(session);
+        string? granted = Value(session, GameEventUserValueType.LongTermAttendPointTime);
+        Assume.That(granted, Is.Not.Null.And.Not.EqualTo("0"));
+
+        AttendDay(session, merat: false);
+
+        Assert.Multiple(() => {
+            Assert.That(Stored(GameEventUserValueType.LongTermAttendPoints), Is.EqualTo("0"));
+            Assert.That(Stored(GameEventUserValueType.LongTermAttendDays), Is.EqualTo("1"));
+            Assert.That(Stored(GameEventUserValueType.LongTermAttendPointTime), Is.EqualTo(granted));
+        });
+    }
+
     // 26 with merets: the price is taken, the day counted; without the merets nothing changes.
     [Test]
     public void LongTerm_AttendWithMerets_TakesThePrice() {
