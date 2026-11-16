@@ -62,12 +62,13 @@ public class NurturingRewardOrderTests {
         var cube = new InteractCube(new Vector3B(0, 0, 0), new FunctionCubeMetadata(CubeId, 0, ConfigurableCubeType.None,
             InteractCubeState.Available, InteractCubeControlType.Nurturing, [], 0, data));
         using (GameStorage.Request db = test.Storage.Context()) {
-            Nurturing created = db.CreateNurturing(ownerId, data, CubeId)!;
-            if (stageExp > 0) {
-                created.Exp = stageExp;
-                cube.Nurturing = created;
-                db.UpdateNurturing(ownerId, cube);
-            }
+            Assert.That(db.CreateNurturing(ownerId, data, CubeId), Is.Not.Null);
+        }
+        if (stageExp > 0) {
+            // The grown pet's exp, written to its row (UpdateNurturing stores only a claimed stage).
+            using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+            context.Nurturing.Single(row => row.AccountId == ownerId && row.InteractId == CubeId).Exp = stageExp;
+            context.SaveChanges();
         }
         FieldFunctionInteract nest = test.AddFunctionCube(cube);
         nest.Position = session.Player.Position;

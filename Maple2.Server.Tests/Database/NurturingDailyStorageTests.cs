@@ -82,6 +82,43 @@ public class NurturingDailyStorageTests {
         return db.CountNurturingDaily(accountId, played);
     }
 
+    private Nurturing Read(long ownerId, int itemId) {
+        using GameStorage.Request db = storage.Context();
+        return db.GetNurturing(ownerId, itemId, Data)!;
+    }
+
+    // The owner's stage claim and a visitor's play, each from a read taken before the other's write (a home is one
+    // instance per channel): neither write puts back what the other stored.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ClaimAndPlayFromTheSameRead_KeepBoth(bool claimFirst) {
+        Place(Me, Cat, 500);
+        InteractCube owner = Pet(Cat);
+        owner.Nurturing = Read(Me, Cat);
+        InteractCube visitor = Pet(Cat);
+        visitor.Nurturing = Read(Me, Cat);
+
+        void Claim() {
+            owner.Nurturing!.ClaimedGiftForStage++;
+            using GameStorage.Request db = storage.Context();
+            Assert.That(db.UpdateNurturing(Me, owner), Is.True);
+        }
+        if (claimFirst) {
+            Claim();
+            Play(Other, Me, visitor);
+        } else {
+            Play(Other, Me, visitor);
+            Claim();
+        }
+
+        Nurturing stored = Read(Me, Cat);
+        Assert.Multiple(() => {
+            Assert.That(stored.ClaimedGiftForStage, Is.EqualTo(2), "the claimed stage");
+            Assert.That(stored.PlayedBy, Is.EqualTo(new[] { Other }), "the visitor's play");
+            Assert.That(stored.Exp, Is.EqualTo(10));
+        });
+    }
+
     [Test]
     public void NoRows_EmptyRecord() {
         Assert.That(Daily(Me, played: false), Is.Empty);

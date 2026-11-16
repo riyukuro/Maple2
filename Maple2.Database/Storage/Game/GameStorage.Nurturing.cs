@@ -31,7 +31,11 @@ public partial class GameStorage {
             return new Maple2.Model.Game.Nurturing(nurturing.Exp, nurturing.ClaimedGiftForStage, nurturing.PlayedBy, nurturing.CreationTime, nurturing.LastFeedTime, metadata);
         }
 
-        // False when the row or the cube's nurturing is missing, or the save fails.
+        // The owner's stage gift claim: stores the claimed stage alone. False when the row or the cube's nurturing is
+        // missing, or the save fails. A home is one instance per channel, so a visitor on another channel can play
+        // with the same pet between this handler's read and its write: the whole row written from that read put the
+        // visitor's play (PlayedBy, exp) back as it was; and the visitor's play written from its read put the stage
+        // back, so the owner took the same stage's gift again.
         public bool UpdateNurturing(long accountId, InteractCube cube) {
             Nurturing? result = Context.Nurturing.Find(accountId, cube.Metadata.Id);
             if (result is null) {
@@ -41,12 +45,8 @@ public partial class GameStorage {
             if (interactNurturing is null) {
                 return false;
             }
-            result.Exp = interactNurturing.Exp;
             result.ClaimedGiftForStage = interactNurturing.ClaimedGiftForStage;
-            result.PlayedBy = interactNurturing.PlayedBy.ToArray();
-            result.LastFeedTime = interactNurturing.LastFeedTime.DateTime;
-
-            Context.Nurturing.Update(result);
+            Context.Entry(result).Property(row => row.ClaimedGiftForStage).IsModified = true;
             return Context.TrySaveChanges();
         }
 
@@ -58,11 +58,12 @@ public partial class GameStorage {
             if (result is null || interactNurturing is null) {
                 return false;
             }
+            // A feeding or a play never changes the claimed stage, and does not write it (see UpdateNurturing).
             result.Exp = interactNurturing.Exp;
-            result.ClaimedGiftForStage = interactNurturing.ClaimedGiftForStage;
             result.PlayedBy = interactNurturing.PlayedBy.ToArray();
             result.LastFeedTime = interactNurturing.LastFeedTime.DateTime;
             Context.Nurturing.Update(result);
+            Context.Entry(result).Property(row => row.ClaimedGiftForStage).IsModified = false;
 
             Context.NurturingDaily.Add(new NurturingDaily {
                 AccountId = accountId,
