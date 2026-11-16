@@ -470,4 +470,84 @@ public class ClientSenderLayoutMiscTests {
         }
         ReadsAll(handler, w => { w.WriteByte(10); w.WriteInt(0); });
     }
+
+    // groupchatmanager.cpp: 1 the name (497), 2 name and chat id (532), 4 chat id and the refuse flag (543), 10 the text and
+    // the chat id (569).
+    [Test]
+    public void GroupChat_Modes() {
+        var handler = new GroupChatHandler { World = test.World };
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteUnicodeString("name"); });
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteUnicodeString("name"); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(4); w.WriteInt(1); w.WriteByte(0); });
+        ReadsAll(handler, w => { w.WriteByte(10); w.WriteUnicodeString("text"); w.WriteInt(1); });
+    }
+
+    // ChatSticker: 1 a count and the group ids (chatemoticoncli.cpp:428), 3 sticker, window name, chat type (uimessenger.cpp:1429),
+    // 4 sticker and group name (uigroupmessenger.cpp:918), 5 and 6 the sticker (uimessenger.cpp:1491, uigroupmessenger.cpp:957).
+    // The client sends no mode 0.
+    [Test]
+    public void ChatSticker_Modes() {
+        var handler = new ChatStickerHandler { TableMetadata = test.TableMetadata };
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteInt(1); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteInt(1); w.WriteUnicodeString("window"); w.WriteByte(0); });
+        ReadsAll(handler, w => { w.WriteByte(4); w.WriteInt(1); w.WriteUnicodeString("group"); });
+        ReadsAll(handler, w => { w.WriteByte(5); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(6); w.WriteInt(1); });
+    }
+
+    // uimasterydialog.cpp: 1 the reward box (507, 522), 2 the recipe (589).
+    [Test]
+    public void Mastery_Modes1_2() {
+        var handler = new MasteryHandler { ItemMetadata = test.ItemMetadata, TableMetadata = test.TableMetadata };
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteInt(1); });
+    }
+
+    // RoomDungeon: 1 (uidungeonroomdialog.cpp:1588), 2 the room, party flag, portal, ticket flag (1709), 3 an int
+    // (partymanager.cpp:800), 4 12 13 14 the mode alone (uidungeonsearchdialog.cpp, uidungeoncategory.cpp:687), 8 an int
+    // (1501), 9 (actionkeyobject.cpp:1093), 15 16 17 a room id (1558-1578), 21 (uidungeonhelper.cpp:294), 24 the room and the
+    // favorite flag (1488).
+    [Test]
+    public void DungeonRoom_Modes() {
+        var handler = new DungeonRoomHandler { TableMetadata = test.TableMetadata, World = test.World };
+        ReadsAll(handler, w => w.WriteByte(1));
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteInt(1); w.WriteBool(false); w.WriteInt(0); w.WriteBool(false); });
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteInt(0); });
+        foreach (byte mode in new byte[] { 4, 9, 12, 13, 14, 21 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => w.WriteByte(sent));
+        }
+        foreach (byte mode in new byte[] { 8, 15, 16, 17 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteInt(1); });
+        }
+        ReadsAll(handler, w => { w.WriteByte(24); w.WriteInt(1); w.WriteBool(true); });
+    }
+
+    // InteractObject: 11 and 12 a count and the names as ASCII strings (stateinteractdata.cpp:434, 458,
+    // interactobject.cpp:600, 618); 9 the debug create (uiobjectcreatedialog.cpp:156) is GM only.
+    [Test]
+    public void InteractObject_Modes11_12() {
+        var handler = new InteractObjectHandler();
+        ReadsAll(handler, w => { w.WriteByte(11); w.WriteInt(1); w.WriteString("name"); });
+        ReadsAll(handler, w => { w.WriteByte(12); w.WriteInt(1); w.WriteString("name"); });
+    }
+
+    // The small ones: the field key (cubemapinformationservice_3.cpp:5703, scenestategame.cpp:2284), the dps window flag
+    // (uidpsdialog.cpp:86, 98), the guide states a count and id pairs (guideentity_1b.cpp:217), the global factor request
+    // (scenestategame.cpp:2144, no fields), furnishing storage 4 uid slot count and 6 uid (networkservice.cpp:497,
+    // uiugccubepalettedialog.cpp:1294), achievements 3 the id, 4 id and bookmark (uiachievedialog.cpp:255, 350) and liftable
+    // 1 the entity name (actionkeyobject.cpp:1311).
+    [Test]
+    public void SmallHandlers() {
+        ReadsAll(new FieldEnterHandler(), w => w.WriteInt(1));
+        ReadsAll(new DpsModeHandler(), w => w.WriteByte(1));
+        ReadsAll(new GuideRecordHandler(), w => { w.WriteInt(1); w.WriteInt(1); w.WriteInt(1); });
+        ReadsAll(new GlobalFactorHandler(), w => { });
+        ReadsAll(new FurnishingStorageHandler(), w => { w.WriteByte(4); w.WriteLong(1); w.WriteShort(1); w.WriteInt(1); });
+        ReadsAll(new FurnishingStorageHandler(), w => { w.WriteByte(6); w.WriteLong(1); });
+        ReadsAll(new AchievementHandler(), w => { w.WriteByte(3); w.WriteInt(1); });
+        ReadsAll(new AchievementHandler(), w => { w.WriteByte(4); w.WriteInt(1); w.WriteBool(true); });
+        ReadsAll(new LiftableHandler(), w => { w.WriteByte(1); w.WriteString("entity"); });
+    }
 }
