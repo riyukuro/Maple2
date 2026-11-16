@@ -75,8 +75,10 @@ public static class ClientItemBoxes {
     // (client: the item built from its played environment, as an item only the client has). The release client
     // reuses some of those ids for another item (20301431 is the client's Halloween weapon box, a mini-game
     // ticket in the pack), and the client shows and counts its own row: its name (searches, logs), stack size,
-    // category (meret market tab), sell prices, life and the level, trade and sale limits. The bag tab type and the
-    // rank are the client's already (PlayedClientItems.ClientType, ClientRank); the rest stays the pack's. A client
+    // category (meret market tab), sell prices, life, the level, transfer and shop-sale limits, and the repack and
+    // trade-count deduction it reads (ItemLimit and ItemProperty::Load, itemdatastruct.cpp). The bag tab type and
+    // the rank are the client's already (PlayedClientItems.ClientType, ClientRank). The rest stays the pack's: the
+    // client reads no tradableCount, tradeLimitRank or priceCustom, so its row has only defaults for them. A client
     // item with no name keeps the pack's name.
     public static ItemMetadata ClientFields(ItemMetadata pack, ItemMetadata client) {
         ItemMetadata taken = pack with {
@@ -86,8 +88,6 @@ public static class ClientItemBoxes {
                 SlotMax = client.Property.SlotMax,
                 Category = client.Property.Category,
                 SellPrices = Values(pack.Property.SellPrices, client.Property.SellPrices),
-                CustomSellPrices = Values(pack.Property.CustomSellPrices, client.Property.CustomSellPrices),
-                TradableCount = client.Property.TradableCount,
                 TradableCountDeduction = client.Property.TradableCountDeduction,
                 RepackCount = client.Property.RepackCount,
                 RepackConsumeCount = client.Property.RepackConsumeCount,
@@ -96,7 +96,6 @@ public static class ClientItemBoxes {
             Limit = pack.Limit with {
                 Level = client.Limit.Level,
                 TransferType = client.Limit.TransferType,
-                TradeMaxRarity = client.Limit.TradeMaxRarity,
                 ShopSell = client.Limit.ShopSell,
             },
         };

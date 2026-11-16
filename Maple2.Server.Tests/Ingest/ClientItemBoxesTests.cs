@@ -66,9 +66,11 @@ public class ClientItemBoxesTests {
         Assert.That(ClientItemBoxes.Parameter(new ClientItemBoxes.Box(box, amount), global), Is.EqualTo(parameter));
     }
 
-    private static ItemMetadata Item(string name, int slotMax, string category, int level, TransferType transfer, long sell, long duration = 0, int type = 10) {
-        var limit = new ItemMetadataLimit(Gender.All, level, transfer, 4, false, false, true, false, false, false, false, 0, [], []);
-        var property = new ItemMetadataProperty(false, 0, slotMax, type, 0, category, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], false, 0, false, [], [sell, sell, sell, sell, sell, sell], [0, 0, 0, 0, 0, 0], 0, 0);
+    private static ItemMetadata Item(string name, int slotMax, string category, int level, TransferType transfer, long sell, long duration = 0, int type = 10,
+            int tradeMaxRarity = 4, int tradableCount = 0, long customSell = 0) {
+        var limit = new ItemMetadataLimit(Gender.All, level, transfer, tradeMaxRarity, false, false, true, false, false, false, false, 0, [], []);
+        var property = new ItemMetadataProperty(false, 0, slotMax, type, 0, category, string.Empty, ItemTag.None, 0, 0, 0, 0, 0, tradableCount, 0, 0, 0, [], false, 0, false, [],
+            [sell, sell, sell, sell, sell, sell], [customSell, 0, 0, 0, 0, 0], 0, 0);
         var function = new ItemMetadataFunction(ItemFunction.OpenItemBox, nameof(ItemFunction.OpenItemBox), "0,1,0,320000547", false);
         return new ItemMetadata(20301431, name, [], "", [], new ItemMetadataLife(duration, 0), property, new ItemMetadataCustomize(0, 0), limit, null, function, [], null, null, null, null);
     }
@@ -78,13 +80,15 @@ public class ClientItemBoxesTests {
     // prices; the pack's type (the bag tab rule decides that) and function (already the client's box).
     [Test]
     public void ClientFields_TakeTheClientsRow() {
-        ItemMetadata pack = Item("Mini-Game: Survival M", 9999, "ETC", 1, TransferType.BindOnLoot, 0);
-        ItemMetadata client = Item("Halloween Weapon Box", 999, "Package", 0, TransferType.Untradeable, 482, 86400, type: 25);
+        // The pack's server-only fields (trade count, trade rarity, custom price) stay; a client row has defaults there.
+        ItemMetadata pack = Item("Mini-Game: Survival M", 9999, "ETC", 10, TransferType.BindOnLoot, 0, tradeMaxRarity: 3, tradableCount: 2, customSell: 241);
+        ItemMetadata client = Item("Halloween Weapon Box", 999, "Package", 1, TransferType.Untradeable, 482, 86400, type: 25, tradeMaxRarity: 0);
         ItemMetadata taken = ClientItemBoxes.ClientFields(pack, client);
         Assert.Multiple(() => {
             Assert.That(taken.Name, Is.EqualTo("Halloween Weapon Box"));
             Assert.That((taken.Property.SlotMax, taken.Property.Category, taken.Property.Type), Is.EqualTo((999, "Package", 10)));
-            Assert.That((taken.Limit.Level, taken.Limit.TransferType), Is.EqualTo((0, TransferType.Untradeable)));
+            Assert.That((taken.Limit.Level, taken.Limit.TransferType), Is.EqualTo((1, TransferType.Untradeable)));
+            Assert.That((taken.Limit.TradeMaxRarity, taken.Property.TradableCount, taken.Property.CustomSellPrices[0]), Is.EqualTo((3, 2, 241L)));
             Assert.That(taken.Property.SellPrices, Is.EqualTo(new long[] { 482, 482, 482, 482, 482, 482 }));
             Assert.That(taken.Life.ExpirationDuration, Is.EqualTo(86400));
             Assert.That(taken.Function, Is.SameAs(pack.Function));
