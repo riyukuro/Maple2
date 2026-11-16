@@ -251,4 +251,52 @@ public class LimitBreakMarketLockHandlerTests {
         Assert.That(session.ItemLockStaging, Is.All.EqualTo(0L));
         Assert.That(test.Errors, Is.Empty);
     }
+
+    // Unlock mode: a locked item is staged, taken out again (2: its uid, answered with its uid; a uid not staged
+    // gets nothing) and staged again; the commit unlocks it, with the KR unlock wait (constants ItemUnLockTime 259200 s,
+    // three days) from now.
+    [Test]
+    public void ItemLock_UnstageThenUnlock() {
+        test = new TestGameSession();
+        Item cap = test.Store(TestGameSession.Metadata(11300001, EquipSlot.CP, type: 1, slotMax: 1));
+        test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { ItemUnLockTime = 259200 });
+        GameSession session = test.Start();
+        session.Item.Inventory.Get(cap.Uid)!.IsLocked = true;
+        test.TakeSent();
+        typeof(GameSession).GetField(nameof(GameSession.ItemLockStaging))!.SetValue(session, new long[18]);
+        var handler = new ItemLockHandler { ServerTableMetadata = test.ServerTableMetadata };
+        void Stage() => handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(1);
+            writer.WriteBool(true);
+            writer.WriteLong(cap.Uid);
+        }));
+        void Unstage(long uid) => handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(2);
+            writer.WriteLong(uid);
+        }));
+
+        Stage();
+        test.TakeSent();
+        Unstage(cap.Uid + 1);
+        Assert.That(test.TakeSent(), Is.Empty);
+        Unstage(cap.Uid);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(ItemLockPacket.Unstage(cap.Uid)) }));
+        Assert.That(session.ItemLockStaging, Has.All.EqualTo(0L));
+
+        Stage();
+        test.TakeSent();
+        long before = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        handler.Handle(session, TestGameSession.Packet(writer => {
+            writer.WriteByte(3);
+            writer.WriteBool(true);
+        }));
+
+        Item unlocked = session.Item.Inventory.Get(cap.Uid)!;
+        Assert.Multiple(() => {
+            Assert.That(unlocked.IsLocked, Is.False);
+            Assert.That(unlocked.UnlockTime, Is.InRange(before + 259200, DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 259200));
+            Assert.That(test.TakeSent().Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.ItemLock }));
+            Assert.That(session.ItemLockStaging, Has.All.EqualTo(0L));
+        });
+    }
 }

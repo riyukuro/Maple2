@@ -910,4 +910,35 @@ public class ItemBoxHandlerTests {
             Assert.That(Held(session, RewardB), Is.EqualTo(1));
         });
     }
+
+    // KR 37000013 (a transcendence crystal box, item type 3/70): OpenItemBox with the xml parameters
+    // globalDropLevel 0, globalDropRank 1, globalDropBoxId 0, individualDropBoxId 330002090, notifyBox. One use takes
+    // the box and gives the individual box's items; the notice name is not a drop box.
+    [Test]
+    public void OpenItemBox_TranscendenceCrystalBox_OpensItsIndividualBox() {
+        const int crystalBoxId = 37000013;
+        const int dropBoxId = 330002090;
+        test = new TestGameSession();
+        ItemMetadata metadata = TestGameSession.Metadata(crystalBoxId, function: new ItemMetadataFunction(ItemFunction.OpenItemBox, "OpenItemBox",
+            "<v globalDropLevel=\"0\" globalDropRank=\"1\" globalDropBoxId=\"0\" individualDropBoxId=\"330002090\" notifyBox=\"s_msg_item_open_item_box_mergeitem\"/>", false));
+        test.Register(TestGameSession.Metadata(RewardA), TestGameSession.Metadata(RewardB));
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+            [dropBoxId] = TestGameSession.DropBox([(RewardA, 3)], [(RewardB, 1)]),
+        }));
+        test.SetServerTable(new GlobalDropItemBoxTable(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(),
+            new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>()));
+        box = test.Store(metadata, amount: 2);
+        GameSession session = test.Start();
+        test.TakeSent();
+        Assert.That(session.Item.Inventory.Get(box.Uid)!.Type.IsTranscendenceCrystal, Is.True);
+
+        Use(session);
+
+        Assert.Multiple(() => {
+            Assert.That(Held(session, box), Is.EqualTo(1));
+            Assert.That(Held(session, RewardA), Is.EqualTo(3));
+            Assert.That(Held(session, RewardB), Is.EqualTo(1));
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
 }
