@@ -207,14 +207,19 @@ public class TriggerFieldObjectTests : TriggerTestBase {
         Action("""<action name="set_effect" trigger_ids="603" visible="0" />""");
         Assert.That(Updates().Select(update => (update.Id, update.Visible)), Is.EqualTo(new[] { (603, false) }));
         Assert.That(Field.TriggerObjects.Effects[603].Visible, Is.False);
+
+        // An effect already in that state, and one the map lacks, send nothing.
+        Action("""<action name="set_effect" trigger_ids="603,699" visible="0" />""");
+        Assert.That(Updates(), Is.Empty);
     }
 
-    // set_actor (6514): visibility and the sequence the actor plays, sent with it.
+    // set_actor (6514): visibility and the sequence the actor plays, sent with it; an actor the map lacks sends nothing.
     [Test]
     public void SetActor_VisibleWithSequence() {
         Start(new Ms2TriggerActor("Idle_A", 201, false));
 
         Action("""<action name="set_actor" trigger_id="201" visible="1" initial_sequence="Attack_01_A" />""");
+        Action("""<action name="set_actor" trigger_id="299" visible="1" initial_sequence="Attack_01_A" />""");
 
         TriggerObjectActor actor = Field.TriggerObjects.Actors[201];
         Assert.That((actor.Visible, actor.SequenceName), Is.EqualTo((true, "Attack_01_A")));
@@ -312,12 +317,13 @@ public class TriggerFieldObjectTests : TriggerTestBase {
         Assert.That((id, visible, rest.ReadBool(), rest.ReadInt()), Is.EqualTo((701, true, true, 4)));
     }
 
-    // set_sound (939): the sound object turns on.
+    // set_sound (939): the sound object turns on; a sound the map lacks sends nothing.
     [Test]
     public void SetSound_TurnsTheSoundOn() {
         Start(new Ms2TriggerSound(701, false));
 
         Action("""<action name="set_sound" trigger_id="701" enable="1" />""");
+        Action("""<action name="set_sound" trigger_id="799" enable="1" />""");
 
         Assert.That(Field.TriggerObjects.Sounds[701].Visible, Is.True);
         Assert.That(Updates().Select(update => (update.Id, update.Visible)), Is.EqualTo(new[] { (701, true) }));
@@ -832,6 +838,8 @@ public class TriggerFieldStateTests : TriggerTestBase {
         test.TakeSent();
 
         Action("""<action name="set_portal" portal_id="3" visible="1" enable="1" minimap_visible="0" />""");
+        // A portal the field lacks is skipped: nothing is sent for it.
+        Action("""<action name="set_portal" portal_id="99" visible="1" enable="1" minimap_visible="1" />""");
 
         Assert.That((portal.Visible, portal.Enabled, portal.MinimapVisible), Is.EqualTo((true, true, false)));
         ByteReader reader = Sent(SendOp.FieldPortal).Single();
@@ -1027,11 +1035,32 @@ public class TriggerFieldStateTests : TriggerTestBase {
         StartWithBoxes();
         WithEffect(70000107);
         typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
+        FieldNpc inBox = BuffableMob(9001, Vector3.Zero);
+        FieldNpc outOfBox = BuffableMob(9002, new Vector3(5000, 0, 0));
 
         Action("""<action name="add_buff" box_ids="1" skill_id="70000107" level="1" ignore_player="1" />""");
         Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.False);
+        // 235 KR rows: the monsters in the box take it.
+        Assert.That((inBox.Buffs.HasBuff(70000107), outOfBox.Buffs.HasBuff(70000107)), Is.EqualTo((true, false)));
         Action("""<action name="add_buff" box_ids="1" skill_id="70000107" level="1" is_skill_set="1" />""");
         Assert.That(test.Session.Player.Buffs.HasBuff(70000107), Is.False);
+    }
+
+    // A monster of the field at the position, with its own buffs.
+    private FieldNpc BuffableMob(int objectId, Vector3 position) {
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        GC.SuppressFinalize(npc);
+        typeof(Actor<Npc>).GetField("<ObjectId>k__BackingField", Any)!.SetValue(npc, objectId);
+        typeof(Actor<Npc>).GetField("<Field>k__BackingField", Any)!.SetValue(npc, Field);
+        var metadata = (NpcMetadata) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadata));
+        typeof(NpcMetadata).GetField("<Property>k__BackingField", Any)!.SetValue(metadata, new NpcMetadataProperty([], new NpcMetadataCapsule(10, 100), null));
+        typeof(Actor<Npc>).GetField("<Value>k__BackingField", Any)!.SetValue(npc, new Npc(metadata, null));
+        typeof(Actor<Npc>).GetField("<Transform>k__BackingField", Any)!.SetValue(npc, new Transform());
+        typeof(Actor<Npc>).GetField("Logger", Any)!.SetValue(npc, Log.Logger);
+        typeof(Actor<Npc>).GetField("<Buffs>k__BackingField", Any)!.SetValue(npc, new BuffManager(npc));
+        npc.Position = position;
+        Field.Mobs[objectId] = npc;
+        return npc;
     }
 
     // add_buff without ignore_player and is_skill_set (237 and 221 KR rows) buffs the players in the boxes: the
@@ -1068,6 +1097,22 @@ public class TriggerFieldStateTests : TriggerTestBase {
 
         Action($"""<action name="move_user" map_id="{Field.MapId}" portal_id="9" box_id="1" />""");
         Assert.That(test.TakeSentOps(), Is.Empty);
+    }
+
+    // move_user with map 0 (104 KR uses): the players in the box go back to their return field, as the field's own
+    // way out; the far box moves nobody. The return map here (the default one) is made one the client never played,
+    // so the move is refused with the notice and the field-enter error.
+    [Test]
+    public void MoveUser_MapZeroReturnsTheBox() {
+        StartWithBoxes();
+        AddUnplayedMap(Constant.DefaultReturnMapId);
+        test.Session.Player.Value.Character.ReturnMaps.Push(Constant.DefaultReturnMapId);
+
+        Action("""<action name="move_user" map_id="0" portal_id="0" box_id="2" />""");
+        Assert.That(test.TakeSentOps(), Is.Empty);
+
+        Action("""<action name="move_user" map_id="0" portal_id="0" box_id="1" />""");
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Notice, SendOp.RequestFieldEnter }));
     }
 
     // move_random_user (51): the field's own map goes to the portal there (a missing portal: no move, no field
@@ -1279,6 +1324,10 @@ public class TriggerNpcTests : TriggerTestBase {
 
         Action("""<action name="move_npc" spawn_id="5" patrol_name="MS2PatrolData_101" />""");
         Assert.That((moved.Patrol, moved.OnScriptPath, other.Patrol), Is.EqualTo((patrol, true, (MS2PatrolData?) null)));
+
+        // A spawn point with no npc moves nothing.
+        Action("""<action name="move_npc" spawn_id="7" patrol_name="MS2PatrolData_101" />""");
+        Assert.That(other.Patrol, Is.Null);
     }
 
     // npc_to_patrol_in_box (96): each npc of npc_id in the box takes the path (spawn_id names where it came from and
@@ -1992,6 +2041,10 @@ public class TriggerAchievementTests : TriggerTestBase {
 
         Action("""<action name="set_achievement" trigger_id="1" type="trigger" achieve="ddstop_pass" />""");
         Assert.That(test.TrophyCounter(OtherTrophy), Is.EqualTo(1));
+
+        // A type that is no condition name counts no trigger row.
+        Action("""<action name="set_achievement" trigger_id="1" type="no_such_condition" achieve="oxquiz_correct" />""");
+        Assert.That(test.TrophyCounter(Trophy), Is.EqualTo(2));
     }
 }
 
@@ -2220,6 +2273,9 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Start();
         typeof(FieldManager).GetField(nameof(FieldManager.Widgets))!.SetValue(Field, new Dictionary<string, Widget>());
         Assert.That(Condition("""<condition name="widget_value" type="SceneMovie" widget_name="IsStop" condition="1" negate="1" />"""), Is.True);
+        // An action on a type the field has no widget of does nothing (and makes none).
+        Action("""<action name="widget_action" type="SceneMovie" func="Clear" />""");
+        Assert.That(Field.Widgets, Is.Empty);
 
         Action("""<action name="create_widget" type="SceneMovie" />""");
         Assert.That(Field.Widgets["SceneMovie"], Is.TypeOf<SceneMovieWidget>());
@@ -2243,6 +2299,9 @@ public class TriggerInterfaceTests : TriggerTestBase {
         Assert.That(spawns[1].Enable, Is.True);
         Action("""<action name="enable_spawn_point_pc" spawn_id="1" is_enable="0" />""");
         Assert.That(spawns[1].Enable, Is.False);
+        // A spawn point the field lacks is skipped; the others keep their switch.
+        Action("""<action name="enable_spawn_point_pc" spawn_id="2" is_enable="1" />""");
+        Assert.That((spawns.Count, spawns[1].Enable), Is.EqualTo((1, false)));
     }
 
     // set_pc_emotion_loop (169): Trigger Ui (9) EmotionLoop (8) as the client reads it: byte loop flag, int
@@ -3059,6 +3118,18 @@ public class TriggerEventUiTests : TriggerTestBase {
         ByteReader reader = Sent(SendOp.MassiveEvent).Single();
         Assert.That((reader.ReadByte(), reader.ReadInt(), reader.ReadInt(), reader.ReadInt(), reader.ReadInt(), reader.Available),
             Is.EqualTo(((byte) 0, round, last, first, offset, 0)));
+    }
+
+    // A last round equal to the first (one number: last and first are both 1) sends no stage. No KR script does so:
+    // every one names a last round above its first.
+    [Test]
+    public void SetEventUiRound_LastEqualToFirstSendsNothing() {
+        Start();
+
+        Action("""<action name="set_event_ui_round" arg1="0" rounds="1" />""");
+        Action("""<action name="set_event_ui_round" arg1="0" rounds="6,6,6" />""");
+
+        Assert.That(Sent(SendOp.MassiveEvent), Is.Empty);
     }
 
     // Trigger SidePopup (0x13): u8 kind, i32 duration, string movie, string illust, string voice, string sound,

@@ -95,6 +95,19 @@ public class TriggerActionGapTests : TriggerTestBase {
         }
     }
 
+    // Type 7 (47 KR uses, each a bare type="7" after types 0 and 2 as a cutscene closes) and a type the server has no
+    // case for (8) send nothing. The client runs no trigger script, so it names no meaning for 7; the close itself is
+    // the type 0 and 2 packets before it.
+    [TestCase(7)]
+    [TestCase(8)]
+    public void SetCinematicUi_TypesWithNoPacket(int type) {
+        Start();
+
+        Action($"""<action name="set_cinematic_ui" type="{type}" />""");
+
+        Assert.That(Sent(SendOp.Cinematic), Is.Empty);
+    }
+
     // The box 1 field with portal 5 at (50, 60) on a flat navmesh.
     private void StartWithPortal() {
         StartWithBox();
