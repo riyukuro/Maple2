@@ -213,10 +213,21 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                 FireCount--;
             }
 
+            NextTick += Interval;
+            // Fires owed from ticks the field did not run (an empty field stops its updates) are dropped, not sent
+            // one per frame when it runs again: KMS2 sends a map region's fires at least 500 ms apart. Chosen here:
+            // the region keeps its rhythm, and a region of a few fires spends the dropped ones, so it ends when it
+            // would have.
+            if (NextTick <= tickCount) {
+                long missed = (tickCount - NextTick) / Interval + 1;
+                NextTick += missed * Interval;
+                if (FireCount != int.MaxValue) {
+                    FireCount -= (int) Math.Min(missed, FireCount);
+                }
+            }
+
             if (FireCount <= 0) {
                 NextTick = long.MaxValue;
-            } else {
-                NextTick += Interval;
             }
         }
     }
