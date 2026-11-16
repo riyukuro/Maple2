@@ -107,7 +107,17 @@ public class MeretMarketListTests {
                 writer.WriteUnicodeString(description);
                 writer.WriteLong(0);
             }));
-        return test.TakeSent().Where(p => TestGameSession.Op(p) == SendOp.MeretMarket).ToList();
+        lastSent = test.TakeSent();
+        return lastSent.Where(p => TestGameSession.Op(p) == SendOp.MeretMarket).ToList();
+    }
+
+    private List<byte[]> lastSent = new();
+
+    // The held fee went back: the wallet is shown once, with the balance it had and no change
+    // (CurrencyManager.ReturnMeret), so the client never shows the fee taken.
+    private void AssertBalanceShown() {
+        string shown = Convert.ToHexString(CurrencyPacket.UpdateMeret(session.Player.Value.Currency, 0).ToArray());
+        Assert.That(lastSent.Select(Convert.ToHexString).Where(p => p.StartsWith(shown[..4])).ToArray(), Is.EqualTo(new[] { shown }));
     }
 
     // ErrorPacket::Read: the command 0x00, then kind, error, the product key (premium id, ugc id), a long and the
@@ -276,6 +286,7 @@ public class MeretMarketListTests {
         Start(listings: 1); // one listing on sale: the fee is 30
         FailMarketSaves();
         AssertRefused(Send(13, itemUid, 500), 13, 0x68, itemUid);
+        AssertBalanceShown();
         Assert.That(session.UgcMarket.ListingCount, Is.EqualTo(1));
         Assert.That(session.UgcMarket.IsDesignListed(DesignUid), Is.False);
     }
@@ -287,6 +298,7 @@ public class MeretMarketListTests {
         long id = firstListing;
         FailMarketSaves();
         AssertRefused(Send(18, id, 800), 18, 0x68, id);
+        AssertBalanceShown();
         Assert.That(session.UgcMarket.TryGetItem(id, out UgcMarketItem? item), Is.True);
         Assert.Multiple(() => {
             Assert.That(item!.Price, Is.EqualTo(500));
@@ -335,6 +347,8 @@ public class MeretMarketListTests {
         FailWalletSaves();
 
         AssertRefused(Send(13, itemUid, 500), 13, 0x68, itemUid);
+
+        AssertBalanceShown();
         test.FailSave = null;
 
         Assert.Multiple(() => {
@@ -364,6 +378,8 @@ public class MeretMarketListTests {
         FailWalletSaves();
 
         AssertRefused(Send(18, firstListing, 800), 18, 0x68, firstListing);
+
+        AssertBalanceShown();
         test.FailSave = null;
 
         Assert.That(session.UgcMarket.TryGetItem(firstListing, out UgcMarketItem? item), Is.True);
