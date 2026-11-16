@@ -4,6 +4,7 @@ using Maple2.Database.Storage;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Game.PacketHandlers;
+using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
@@ -267,5 +268,111 @@ public class ClientSenderLayoutNZTests {
         // Modes 7 and 8 (quest, short) are read only for a quest the open talk offers: compared by reading.
         ReadsAll(handler, w => w.WriteByte(9));
         ReadsAll(handler, w => { w.WriteByte(11); w.WriteInt(1); w.WriteInt(1); });
+    }
+
+    // Party: 1 and 17 a name (FUN_1401fbd30, uipartydialog.cpp:1903), 2 name, answer byte, party id (FUN_1401fc0b0), 3 and 29
+    // and 46 the mode alone, 4 and 45 a character id (partymanager.cpp:721, 734), 23 party id, leader name, search id
+    // (FUN_1401fbf70), 32 kind, room count, room ids, flag (uidungeonsearchdialog.cpp:452, questmanager_2.cpp:1501), 33 a room
+    // id (uidungeonroomdialog.cpp:1328), 34 the kind byte, 39 and 43 party id and room id (uimessenger.cpp:2501, 2519), 48 vote
+    // id and flag (partyvotecli.cpp:170).
+    [Test]
+    public void Party_Modes() {
+        var handler = new PartyHandler { World = test.World, ServerTableMetadata = test.ServerTableMetadata };
+        foreach (byte mode in new byte[] { 1, 17 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteUnicodeString("name"); });
+        }
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteUnicodeString("name"); w.WriteByte(1); w.WriteInt(1); });
+        foreach (byte mode in new byte[] { 3, 29, 46 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => w.WriteByte(sent));
+        }
+        foreach (byte mode in new byte[] { 4, 45 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteLong(1); });
+        }
+        ReadsAll(handler, w => { w.WriteByte(23); w.WriteInt(1); w.WriteUnicodeString("leader"); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(32); w.WriteByte(1); w.WriteInt(1); w.WriteInt(1); w.WriteBool(false); });
+        ReadsAll(handler, w => { w.WriteByte(33); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(34); w.WriteByte(1); });
+        foreach (byte mode in new byte[] { 39, 43 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteInt(1); w.WriteInt(1); });
+        }
+        ReadsAll(handler, w => { w.WriteByte(48); w.WriteInt(1); w.WriteBool(true); });
+    }
+
+    // RequestItemStorage (store.cpp: 0 the payload FUN_1401fbaf0: store id, item, slot, count; 1 the same; 2 store id, item,
+    // slot (storeslot.cpp:362); 3 store id, action byte, amount (557); 6 store id (570); 8 store id (548, which the client
+    // calls RequestClose but sends from its sort button, uiobjectstoredialog.cpp:217); 10 the item (networkservice.cpp:518);
+    // 12 store id (539); 15 none (580, the client's RequestSort, called when the window closes, uistatuseventlistener.cpp:543)).
+    [Test]
+    public void StorageInventory_Modes() {
+        var handler = new StorageInventoryHandler();
+        ReadsAll(handler, w => { w.WriteByte(0); w.WriteLong(0); w.WriteLong(1); w.WriteShort(1); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteLong(0); w.WriteLong(1); w.WriteShort(1); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteLong(0); w.WriteLong(1); w.WriteShort(1); });
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteLong(0); w.WriteBool(true); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(6); w.WriteLong(0); });
+        ReadsAll(handler, w => { w.WriteByte(8); w.WriteLong(0); });
+        ReadsAll(handler, w => { w.WriteByte(10); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(12); w.WriteLong(0); });
+        ReadsAll(handler, w => w.WriteByte(15));
+    }
+
+    // Shop (uishopdialog.cpp: 3 the serial (2826), 4 serial, quantity, shop id (2846), 5 the item and the count (itemugcmesh.cpp:1097),
+    // 9 the restock price (2550), 10 and 13 none (750, 762, 2270)); SystemShop (networkservice.cpp:530: the mode and the open
+    // flag; 10 the open flag then the item id: invenslot.cpp:862).
+    [Test]
+    public void Shop_AndSystemShop_Modes() {
+        var shop = new ShopHandler { GameStorage = test.Storage };
+        ReadsAll(shop, w => { w.WriteByte(3); w.WriteInt(1); });
+        ReadsAll(shop, w => { w.WriteByte(4); w.WriteInt(1); w.WriteInt(1); w.WriteInt(1); });
+        ReadsAll(shop, w => { w.WriteByte(5); w.WriteLong(1); w.WriteInt(1); });
+        ReadsAll(shop, w => { w.WriteByte(9); w.WriteInt(1); });
+        ReadsAll(shop, w => w.WriteByte(10));
+        ReadsAll(shop, w => w.WriteByte(13));
+        var system = new SystemShopHandler { ServerTableMetadata = test.ServerTableMetadata };
+        foreach (byte mode in new byte[] { 3, 4, 6, 7 }) {
+            byte sent = mode;
+            ReadsAll(system, w => { w.WriteByte(sent); w.WriteByte(1); });
+        }
+        ReadsAll(system, w => { w.WriteByte(10); w.WriteByte(1); w.WriteInt(1); });
+    }
+
+    // Revival (uirevivaldialog.cpp: 0 none (312, 425), 1 and 2 the coupon byte (234, 468, 538), statesummon.cpp:811 3 the object
+    // id); Taxi (actionkeyobject.cpp:800 mode 0 and autofindtaxistation.cpp:299 mode 5: none, statetaxicalldata.cpp:285 mode 1: the
+    // WriteTaxiRequest ints (taxi id, a cost the server ignores), statecashcalldata.cpp:369, 376 modes 3 and 4: the
+    // destination field, which the decompile names m_nPrice but CCashCallManager sets from its nCallType, the field checked
+    // against the visited fields).
+    [Test]
+    public void Revival_AndTaxi_Modes() {
+        var revival = new RevivalHandler { ServerTableMetadata = test.ServerTableMetadata };
+        ReadsAll(revival, w => w.WriteByte(0));
+        ReadsAll(revival, w => { w.WriteByte(1); w.WriteByte(0); });
+        ReadsAll(revival, w => { w.WriteByte(2); w.WriteByte(0); });
+        ReadsAll(revival, w => { w.WriteByte(3); w.WriteInt(1); });
+        var taxi = new TaxiHandler {
+            MapMetadata = Bare<MapMetadataStorage>(),
+            EntityMetadata = Bare<MapEntityStorage>(),
+            TaxiRoute = Bare<TaxiRouteStorage>(),
+            ServerTableMetadata = test.ServerTableMetadata,
+        };
+        ReadsAll(taxi, w => w.WriteByte(0));
+        ReadsAll(taxi, w => w.WriteByte(5));
+        ReadsAll(taxi, w => { w.WriteByte(3); w.WriteInt(1); });
+        ReadsAll(taxi, w => { w.WriteByte(4); w.WriteInt(1); });
+    }
+
+    // RequestRide (mypc.cpp:4602 and statesummon.cpp:353 mode 0: RideOnActionUseItem::vfunc_1 = type byte, ride id, object id,
+    // option byte, item int, item uid, then the look the server does not read; 1 and 4 none, 2 the ride id and the item uid
+    // (WriteRideRequest, 4689), 3 an int (3612), 6 a byte (3633)). The start's look is read from the item by the server.
+    [Test]
+    public void Ride_Modes() {
+        var handler = new RideHandler { RideMetadata = Bare<RideMetadataStorage>() };
+        ReadsAll(handler, w => w.WriteByte(1));
+        ReadsAll(handler, w => w.WriteByte(4));
+        // Modes 2 and 3 read their ids only while riding or in reach of another rider: compared by reading.
+        ReadsAll(handler, w => { w.WriteByte(6); w.WriteByte(1); });
     }
 }
