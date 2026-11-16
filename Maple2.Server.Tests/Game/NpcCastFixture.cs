@@ -29,6 +29,11 @@ public abstract class NpcCastFixture : TriggerTestBase {
     protected const int CasterId = 21000001;
 
     protected FieldNpc npc = null!;
+    // The caster's data when a test needs another (set before StartCaster).
+    protected NpcMetadata? CasterMetadata;
+
+    [SetUp]
+    public void ResetCasterMetadata() => CasterMetadata = null;
 
     // The field's navigation: one flat mesh by default.
     protected virtual Navigation BuildNavigation() => TriggerHallGameTests.FlatNavigation();
@@ -43,6 +48,8 @@ public abstract class NpcCastFixture : TriggerTestBase {
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
         typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
         typeof(FieldManager).GetField("<Pets>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldPet>());
+        typeof(FieldManager).GetField("<StringIdDeaths>k__BackingField", Any)!.SetValue(Field, new Maple2.Server.Game.Util.NpcStringIdDeaths());
+        typeof(FieldManager).GetField(nameof(FieldManager.Widgets), Any)!.SetValue(Field, new Dictionary<string, Maple2.Server.Game.Model.Widget.Widget>());
         typeof(FieldManager).GetField("fieldBreakables", Any)!.SetValue(Field, new ConcurrentDictionary<string, FieldBreakable>());
         typeof(FieldManager).GetField("<FieldInstance>k__BackingField", Any)!.SetValue(Field,
             new InstanceFieldMetadata(0, InstanceType.none, 0, false, 0, true, 0, 0, 0, 0));
@@ -55,7 +62,7 @@ public abstract class NpcCastFixture : TriggerTestBase {
             cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(skill.Id, skill.Level), skill]);
         }
         typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, storage);
-        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.NpcTable(sequences, AiStateTests.Npc(CasterId)));
+        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.NpcTable(sequences, CasterMetadata ?? AiStateTests.Npc(CasterId)));
         if (keys != null) {
             var animations = new LRUCache<string, AnimationMetadata>(10, 1);
             animations.AddReplace("test_model", new AnimationMetadata("test_model", sequences.Select((name, i) => new AnimationSequenceMetadata(name, (short) (i + 1), 5,
