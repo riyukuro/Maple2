@@ -1238,6 +1238,12 @@ public sealed partial class GameSession : Core.Network.Session {
     public void ConditionUpdate(ConditionType conditionType, long counter = 1, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0, int fieldMapId = 0) {
         Achievement.Update(conditionType, counter, targetString, targetLong, codeString, codeLong);
         Quest.Update(conditionType, counter, targetString, targetLong, codeString, codeLong, fieldMapId);
+        EventConditionUpdate(conditionType, targetString, targetLong, codeString, codeLong);
+    }
+
+    // The events' part of a condition alone (snowman, promotions, user condition events), for a report the trophies
+    // and quests do not count again (a repeat gold medal of a fish species).
+    public void EventConditionUpdate(ConditionType conditionType, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0) {
         GameEvent.SnowmanCondition(conditionType);
         GameEvent.PromotionCondition(conditionType, targetString, targetLong, codeString, codeLong);
         GameEvent.UserConditionChanged(conditionType);

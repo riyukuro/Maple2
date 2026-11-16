@@ -503,8 +503,13 @@ public class FishingManager {
         int masteryExp = 0;
         var caughtFishType = CaughtFishType.Default;
         bool firstCatch = false;
+        // The first gold medal of the species (a size of the big class or above): the trophies and quests count
+        // fish_goldmedal once per species, as fish_collect (KR 23100369: 43 fish codes for value 43; 23100155
+        // "different types of fish"). The events count every catch (promotion 8804: fish_goldmedal, 23 a day).
+        bool firstGoldMedal = fishSize >= fish.BigSize.Min;
 
         if (FishAlbum.TryGetValue(selectedFish.Id, out FishEntry? fishEntry)) {
+            firstGoldMedal &= fishEntry.LargestSize < fish.BigSize.Min;
             fishEntry.TotalCaught++;
             fishEntry.LargestSize = Math.Max(fishEntry.LargestSize, fishSize);
 
@@ -555,9 +560,13 @@ public class FishingManager {
         return () => {
             if (firstCatch) {
                 session.ConditionUpdate(ConditionType.fish_collect, codeLong: fish.Id, targetLong: mapId);
+            } else {
+                session.EventConditionUpdate(ConditionType.fish_collect, codeLong: fish.Id, targetLong: mapId);
             }
-            if (fishSize >= fish.BigSize.Min) {
+            if (firstGoldMedal) {
                 session.ConditionUpdate(ConditionType.fish_goldmedal, codeLong: fish.Id, targetLong: mapId);
+            } else if (fishSize >= fish.BigSize.Min) {
+                session.EventConditionUpdate(ConditionType.fish_goldmedal, codeLong: fish.Id, targetLong: mapId);
             }
             if (prizeFish) {
                 session.ConditionUpdate(ConditionType.fish_big, codeLong: fish.Id, targetLong: mapId);

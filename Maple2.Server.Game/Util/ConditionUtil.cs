@@ -262,11 +262,13 @@ public static class ConditionUtil {
                     return true;
                 }
                 break;
+            // The catch raises these once per species (its first catch, its first gold medal), after the album
+            // holds the fish: the code is the fish only.
             case ConditionType.fish_collect:
             case ConditionType.fish_goldmedal:
                 if (InRange(code, (int) longValue) ||
                     (code.Integers != null && code.Integers.Contains((int) longValue))) {
-                    return !session.Player.Value.Unlock.FishAlbum.ContainsKey((int) longValue);
+                    return true;
                 }
                 break;
             case ConditionType.meso:

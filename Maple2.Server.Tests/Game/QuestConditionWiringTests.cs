@@ -1398,6 +1398,77 @@ public class QuestConditionWiringTests : TriggerTestBase {
         test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
     }
 
+    // 23100362: <condition type="fish_goldmedal" code="14000022" />: the client's gold medal is a size of the big class
+    // or above (CFishData::GetSizeGrade: classes 2 and 3 are grade 3), so a catch of the big size counts and a medium
+    // one does not. The achieve dialog lists the condition per fish (0xd1, s_achieve_collectiong_fish_collect) and the
+    // KR rows count species (43 fish codes for value 43), so a species counts once.
+    [Test]
+    public void FishGoldMedal_23100362_TheFirstGoldMedalOfTheSpecies() {
+        StartFishing(2000001);
+        Quest quest = StartQuest(Condition(ConditionType.fish_goldmedal, 2, ["14000022"], []));
+
+        CatchOfSize(2000001, 14000022, 35);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        CatchOfSize(2000001, 14000023, 45);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        CatchOfSize(2000001, 14000022, 40);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+        CatchOfSize(2000001, 14000022, 48);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
+
+    // 23100368: <condition type="fish_collect" code="10000046,10000047,10000048,10000054,10000049,10000050" value="6" />:
+    // the first catch of each listed species counts; a second catch, or a species not listed, does not.
+    [Test]
+    public void FishCollect_23100368_TheFirstCatchOfEachSpecies() {
+        StartFishing(2000001);
+        Quest quest = StartQuest(Condition(ConditionType.fish_collect, 6,
+            ["10000046", "10000047", "10000048", "10000054", "10000049", "10000050"], []));
+
+        CatchOfSize(2000001, 10000046, 25);
+        CatchOfSize(2000001, 10000046, 25);
+        CatchOfSize(2000001, 10000001, 25);
+        CatchOfSize(2000001, 10000047, 45);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(2));
+    }
+
+    // A repeat gold medal and a repeat catch of a species still count for the events: KR promotion 8804
+    // (fish_goldmedal, no code, 23 boxes a day) gives a box for every gold-medal catch, and a fish_collect row one
+    // for every catch; the quest counts the species once.
+    [Test]
+    public void FishGoldMedal_8804_ARepeatMedalCountsForThePromotion() {
+        const int box = 20001013, coin = 30001529;
+        StartFishing(2000001);
+        test.Register(TestGameSession.Metadata(coin));
+        test.SetServerTable(new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
+            [box] = TestGameSession.DropBox([(coin, 1)]),
+        }));
+        var start = new DateTime(2022, 6, 9, 8, 0, 0);
+        var end = new DateTime(2022, 9, 8, 8, 0, 0);
+        test.SetServerTable(new PromotionTable([
+            new PromotionTable.Entry(8804, PromotionKind.normal, new ConditionMetadata(ConditionType.fish_goldmedal, 1, null, null), start, end,
+                10000, box, 0, PromotionLimit.day, 23, 8804, true),
+            new PromotionTable.Entry(8805, PromotionKind.normal, new ConditionMetadata(ConditionType.fish_collect, 1, null, null), start, end,
+                10000, box, 0, PromotionLimit.day, 23, 8805, true),
+        ]));
+        test.Session.GameEvent.Clock = () => new DateTime(2022, 6, 15, 13, 30, 0);
+        test.Session.GameEvent.Roll = _ => 0;
+        Quest quest = StartQuest(
+            Condition(ConditionType.fish_goldmedal, 2, ["14000022"], []),
+            Condition(ConditionType.fish_collect, 2, ["14000022"], []));
+
+        CatchOfSize(2000001, 14000022, 45);
+        CatchOfSize(2000001, 14000022, 45);
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(test.Session.Item.Inventory.Find(coin).Sum(item => item.Amount), Is.EqualTo(4));
+        Assert.That(quest.Conditions.Values.Select(condition => condition.Counter), Is.EqualTo(new[] { 1, 1 }));
+    }
+
     // 80010231: <condition type="fish_big" target="63000062" value="7" />: the client's big fish is the largest size
     // class (UIRewardNotify's bigFish, class 3), past the big size; a catch of that size on the map counts, a gold-medal
     // size or another map does not.
