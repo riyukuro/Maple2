@@ -146,6 +146,7 @@ public class AiState {
             // at the death, RunDeathBattleEnd). The tree was set here and then never pushed.
             if (currentTree == DecisionTreeType.Battle) {
                 ClearStack();
+                LogBattle("end", actor.BattleState.LostReason, AiMetadata.BattleEndAni);
 
                 if (battleEnd is not null && !AiMetadata.BattleEndOnlyDead) {
                     currentTree = DecisionTreeType.BattleEnd;
@@ -175,6 +176,7 @@ public class AiState {
             bool starts = currentTree != DecisionTreeType.Battle;
             if (starts) {
                 battleStartTick = actor.Field.FieldTick;
+                LogBattle("start", $"target {actor.BattleState.TargetId}", AiMetadata.BattleStartAni);
             }
             currentTree = DecisionTreeType.Battle;
             // The battle's startAni plays before its tree runs.
@@ -215,6 +217,9 @@ public class AiState {
     // (the AI file's comment says onlyDead makes battleEnd run only at death). The npc stops, so the tree
     // runs through at once: a node that starts a task (a move, a skill) does not wait, and the task is cancelled.
     public void RunDeathBattleEnd() {
+        if (currentTree == DecisionTreeType.Battle) {
+            LogBattle("end", "dead", "");
+        }
         currentTask?.Cancel();
         currentTask = null;
         currentLimitTick = 0;
@@ -244,6 +249,14 @@ public class AiState {
 
     // <battle startAni endAni>: the npc plays the sequence once as the battle starts or ends; the AI waits for it. A
     // rig without the sequence plays nothing (the emote cancels itself) and the AI goes on at once.
+    // One verbose line per battle start and end, so a live check can time when a mob engages and gives up (the
+    // NpcControl packets are not logged).
+    // ani: the battle's startAni or endAni the npc plays ("-" for none; at a death none plays).
+    private void LogBattle(string what, string reason, string ani) {
+        Logger.Verbose("Npc {NpcId} object {ObjectId} battle {What} ani {Ani}: {Reason}", actor.Value.Id, actor.ObjectId, what,
+            string.IsNullOrEmpty(ani) ? "-" : ani, reason);
+    }
+
     private bool PlayBattleAnimation(string sequence) {
         if (string.IsNullOrEmpty(sequence)) {
             return false;
@@ -615,6 +628,9 @@ public class AiState {
 
     private void ProcessNode(StandbyNode node) {
         IActor? faceTarget = AiStandbyFace.FacesTarget(node.FaceTarget) ? actor.BattleState.Target : null;
+        if (node.FaceTarget == 3 && faceTarget != null) {
+            Logger.Verbose("Npc {NpcId} object {ObjectId} faceTarget 3 turn (standby) to {TargetId}", actor.Value.Id, actor.ObjectId, faceTarget.ObjectId);
+        }
         // animation: the sequence the npc stands in (KR: 1711 standby nodes, e.g. Attack_Idle_B, Parking_01).
         NpcTask task = actor.MovementState.TryStandby(faceTarget, false, node.Animation ?? string.Empty, node.FacePos);
 

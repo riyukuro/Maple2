@@ -3,6 +3,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Model.Validators;
 using Maple2.Server.Game.Packets;
+using Serilog;
 using static Maple2.Model.Metadata.AiMetadata;
 
 namespace Maple2.Server.Game.Model.ActorStateComponent;
@@ -30,12 +31,19 @@ public class BattleState {
     public bool KeepBattle = false;
     public bool CanBattle = true;
     public bool InBattle { get => TargetId != 0 || KeepBattle; }
+
+    // Why the last target was dropped, for the battle end log line (AiState).
+    public string LostReason { get; private set; } = "";
+    private static readonly ILogger Logger = Log.ForContext<BattleState>();
     public int TargetId => Target?.ObjectId ?? 0;
     public IActor? Target {
         get => target;
         private set {
             if (value != target) {
                 keptPastNode = null;
+                if (actor is FieldNpc npc) {
+                    Logger.Verbose("Npc {NpcId} object {ObjectId} target -> {TargetId}", npc.Value.Id, npc.ObjectId, value?.ObjectId ?? 0);
+                }
             }
             target = value;
         }
@@ -102,6 +110,7 @@ public class BattleState {
     public void Update(long tickCount) {
         if (actor.IsDead) {
             Target = null;
+            LostReason = "dead";
 
             return;
         }
@@ -110,8 +119,10 @@ public class BattleState {
             return;
         }
 
-        if (TargetId != 0 && NpcTargetRules.LosesTarget(TargetGone(), !ShouldKeepTarget() || !CanBattle, KeepBattle)) {
+        bool gone = TargetId != 0 && TargetGone();
+        if (TargetId != 0 && NpcTargetRules.LosesTarget(gone, !ShouldKeepTarget() || !CanBattle, KeepBattle)) {
             actor.AppendDebugMessage($"Lost target '{GetTargetName()}'\n");
+            LostReason = gone ? "target gone" : CanBattle ? "target out of range" : "cannot battle";
 
             Target = null;
             if (actor is FieldPet { OwnerId: 0 } pet) {
@@ -120,12 +131,14 @@ public class BattleState {
         }
         // A battle pet whose owner turned its attack off leaves the fight.
         if (TargetId != 0 && actor is FieldPet { IsBattlePet: true, Battles: false }) {
+            LostReason = "attack turned off";
             Target = null;
         }
 
         bool holdsPath = actor is FieldNpc { OnScriptPath: true } && NpcTargetRules.HoldsScriptPath(actor.Value.Metadata.Basic.Friendly, true);
         if (holdsPath && Target is FieldNpc) {
             actor.AppendDebugMessage($"Lost target '{GetTargetName()}' (script path)\n");
+            LostReason = "script path";
             Target = null;
         }
 

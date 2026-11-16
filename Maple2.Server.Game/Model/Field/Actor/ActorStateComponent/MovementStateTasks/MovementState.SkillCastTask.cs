@@ -53,6 +53,9 @@ public partial class MovementState {
             return;
         }
 
+        if (faceTarget == 3 && actor is FieldNpc npc) {
+            Serilog.Log.ForContext<MovementState>().Verbose("Npc {NpcId} object {ObjectId} faceTarget 3 turn (skill {SkillId}) to {TargetId}", npc.Value.Id, npc.ObjectId, metadata.Id, target.ObjectId);
+        }
         // faceTarget 1 and 3 turn outright (AiStandbyFace.FacesTarget); only the motion's own turn is bounded by the
         // skill's autoTargeting cone, and only that turn has one.
         if (!AiStandbyFace.FacesTarget(faceTarget)) {
