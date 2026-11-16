@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Numerics;
 using Maple2.Model.Enum;
@@ -150,5 +150,14 @@ public class InstrumentLayoutTests {
         reader = Open(writer, 17);
         Assert.That(reader.ReadByte(), Is.EqualTo(0x10));
         Assert.That(reader.Position, Is.EqualTo(writer.Length));
+    }
+
+    // Mode 1 (instrumentmanager.cpp, the second branch of OnPacket): i32 key, i32 owner, i32 midi message.
+    [Test]
+    public void Improvise() {
+        ByteReader reader = Open(InstrumentPacket.Improvise(Instrument(), 0x00904060), 1);
+        ReadKeyOwner(reader);
+        Assert.That(reader.ReadInt(), Is.EqualTo(0x00904060));
+        Assert.That(reader.Position, Is.EqualTo(2 + 1 + 4 + 4 + 4));
     }
 }
