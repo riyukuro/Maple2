@@ -58,6 +58,29 @@ public class MapleopolyLapRewardTests {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // A roll that pays its ticket, with no session save after it (a crash): the ticket's row is one less. Before, the
+    // ticket was taken in memory only, so after a crash it came back while the tile's item (a row at once) stayed.
+    [Test]
+    public void Mapleopoly_RollTicket_IsStoredTakenAtOnce() {
+        var test = new TestGameSession();
+        Item tickets = test.Store(TestGameSession.Metadata(Ticket, type: 2), amount: 3);
+        var none = new ItemComponent(0, 0, 0, ItemTag.None);
+        var board = new BlueMarble(new ItemComponent(Ticket, -1, 1, ItemTag.None), [], [
+            new BlueMarble.Slot(BlueMarbleSlotType.Start, 0, none),
+            new BlueMarble.Slot(BlueMarbleSlotType.Forward, 1, none),
+        ]);
+        test.AddEvent(EventId, GameEventType.BlueMarble, board);
+        GameSession session = test.Start();
+
+        new MapleopolyHandler { ItemMetadata = null! }.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(1)));
+
+        using var context = new Ms2Context(test.Options);
+        Assert.Multiple(() => {
+            Assert.That(Held(session, Ticket), Is.EqualTo(2));
+            Assert.That(context.Item.Where(row => row.Id == tickets.Uid).Select(row => row.Amount).Single(), Is.EqualTo(2));
+        });
+    }
+
     // The time run's value2: the step rows at their distances and the final row (the CN row has both, KR only the final).
     [Test]
     public void TimeRun_IngestReadsTheStepRewards() {

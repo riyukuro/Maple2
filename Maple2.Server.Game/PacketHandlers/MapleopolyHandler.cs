@@ -92,9 +92,9 @@ public class MapleopolyHandler : FieldPacketHandler {
         if (freeRollValue > 0) {
             freeRollValue--;
         } else {
-            if (!session.Item.Inventory.ConsumeItemComponents(new List<ItemComponent> {
-                    blueMarble.RequiredItem,
-                })) {
+            // The ticket is stored taken at once (ConsumeNow): the roll's tile item is a row at once, so a ticket taken
+            // in memory only came back on a crash before the session save, with the item kept.
+            if (!session.Item.Inventory.ConsumeNow(session.Item.Inventory.PlanItemComponents([blueMarble.RequiredItem]))) {
                 session.Send(MapleopolyPacket.Error(MapleopolyError.s_bluemarble_result_consume_fail));
                 return;
             }
