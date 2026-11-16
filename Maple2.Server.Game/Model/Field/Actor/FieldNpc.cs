@@ -913,6 +913,11 @@ public class FieldNpc : Actor<Npc> {
         }
     }
 
+    // A dot tick that took health, of an effect with that hitImmuneBreak: a hit without a push, from where the npc stands.
+    public void QueueDotHit(int hitImmuneBreak) {
+        MovementState.QueueHit(new NpcControlRules.HitSource(Position, null, Transform.FrontAxis), NpcControlRules.DotHit(hitImmuneBreak));
+    }
+
     // Where the hit came from, from what the damage packet sends (NpcControlRules.Source).
     internal static NpcControlRules.HitSource HitSourceOf(IActor caster, DamageRecord damage, DamageRecordTarget hit, SkillMetadataAttack attack) {
         return NpcControlRules.Source(damage.OwnerId, damage.CasterId, damage.Position, damage.Direction,

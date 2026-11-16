@@ -456,6 +456,10 @@ public class Buff : IUpdatable, IByteSerializable {
             if (record.HpAmount < 0 && Owner is FieldPlayer player) {
                 player.DelayHpRegen();
             }
+            // A tick of an effect with an offensive hitImmuneBreak can put a monster in its hit state (NpcControlRules.DotHit).
+            if (record.HpAmount < 0 && Metadata.Status.ImmuneBreak > 0 && Owner is FieldNpc npc && !npc.IsDead) {
+                npc.QueueDotHit(Metadata.Status.ImmuneBreak);
+            }
         }
         if (record.SpAmount != 0) {
             Owner.Stats.Values[BasicAttribute.Spirit].Add(record.SpAmount);

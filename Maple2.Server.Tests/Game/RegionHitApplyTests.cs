@@ -11,6 +11,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model.State;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Util;
@@ -88,6 +89,57 @@ public class RegionHitApplyTests : TriggerTestBase {
         test.Session.Player.DeathPower = deathPower;
         Fire(npc, new Vector3(600, 0, 0), Attack(0, 0, value: 10));
         Assert.That(npc.Buffs.Reflect.Counter, Is.EqualTo(reflects));
+    }
+
+    // OffensiveProperty hitImmuneBreak: a dot tick that took the npc's health, of an effect with that value, queues a
+    // hit for the npc's hit state carrying it, with no push (CDotDamageRecord::vfunc_1, PC::vfunc_34 for a player).
+    // 10300032 (KR: hitImmuneBreak 5) here as a constant dot of 50 every 100 ms; an effect without the value, or a
+    // tick that took nothing (value 0), queues none.
+    [TestCase(5, 50, new[] { 5 })]
+    [TestCase(0, 50, new int[0])]
+    [TestCase(5, 0, new int[0])]
+    public void ADotTickOfABreakingEffectQueuesAHit(int hitImmuneBreak, int hpValue, int[] queued) {
+        FieldNpc npc = SpawnMob(new Vector3(400, 0, 0));
+        var dot = new AdditionalEffectMetadataDot.DotDamage(AttackType.Physical, Element.None, UseGrade: false, Rate: 0, HpValue: hpValue,
+            SpValue: 0, EpValue: 0, DamageByTargetMaxHp: 0, RecoverHpByDamage: 0, IsConstDamage: true, NotKill: false);
+        AdditionalEffectMetadata effect = BuffAttributeTests.Effect(10300032, DisabledBuffTests.Property with { DurationTick = 1000, IntervalTick = 100 });
+        effect = effect with { Dot = new AdditionalEffectMetadataDot(dot, null), Status = effect.Status with { ImmuneBreak = hitImmuneBreak } };
+        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", Any)!.GetValue(skills)!;
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(effect.Id, effect.Level), effect]);
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, skills);
+        long health = npc.Stats.Values[BasicAttribute.Health].Current;
+
+        npc.Buffs.AddBuff(test.Session.Player, npc, effect.Id, 1, Field.FieldTick);
+        Buff buff = npc.Buffs.EnumerateBuffs(effect.Id).Single();
+        buff.Update(buff.NextProcTick);
+
+        Assert.That(npc.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(health - hpValue));
+        var pending = (NpcControlRules.PendingHits) npc.MovementState.GetType().GetField("pendingHits", Any)!.GetValue(npc.MovementState)!;
+        var breaks = new List<int>();
+        pending.Apply((_, attack) => {
+            Assert.That(attack.Damage.Push, Is.Null);
+            breaks.Add(attack.HitImmuneBreak);
+            return true;
+        });
+        Assert.That(breaks, Is.EqualTo(queued));
+    }
+
+    // The dot's hit takes the gate of a hit without a push: above the npc's hitImmune, class 1 or 2, standing or
+    // walking, and any super armor holds it off (the client's dot react needs no super armor buff held).
+    [Test]
+    public void ADotHitReactsLikeAHitWithoutAPush() {
+        SkillMetadataAttack hit = NpcControlRules.DotHit(5);
+        Assert.Multiple(() => {
+            Assert.That(NpcControlRules.HitReacts(hit.HitImmuneBreak, 3, 1, false, ActorState.Idle), Is.True);
+            Assert.That(NpcControlRules.HitReacts(hit.HitImmuneBreak, 5, 1, false, ActorState.Idle), Is.False);
+            Assert.That(NpcControlRules.HitReacts(hit.HitImmuneBreak, 3, 3, false, ActorState.Idle), Is.False);
+            Assert.That(NpcControlRules.HitReacts(hit.HitImmuneBreak, 3, 1, false, ActorState.PcSkill), Is.False);
+            foreach (int armor in new[] { 1, 2, 3, 4 }) {
+                Assert.That(SuperArmorRules.Holds(armor, hit, null), Is.True, $"armor {armor}");
+            }
+            Assert.That(SuperArmorRules.Holds(0, hit, null), Is.False);
+        });
     }
 
     // SkillDamage::HasDamage: any of value, constDamageByTargetHP, rate and damageByTargetMaxHP above 0.

@@ -49,6 +49,20 @@ public static class NpcControlRules {
     // a push does it only to an npc that stands or walks: not during a cast, not while the last hit's hold runs. A
     // hit with a push does it in those too and ends the cast. Chosen here: none while spawning or stunned. Super
     // armor that holds (SuperArmorRules.Holds) keeps it off as well.
+    // A dot tick's hit: the effect's OffensiveProperty hitImmuneBreak (35 KR effects, e.g. 10300032 at 5), no push and
+    // no hold after the sequence. The client gives a player's dot tick (CDotDamageRecord) the hitImmuneBreak of its
+    // effect's level data (+0x298, the Offensive node's value; CDotDamageRecord::vfunc_1, skillrecord.cpp:650) and a
+    // tick that took health puts the holder in the hit state when that value is above its hitImmune and it holds no
+    // super armor (PC::vfunc_34, pc.cpp:980). An npc's hit state is the server's, so an npc's tick takes HitReacts
+    // the same way (no push: only standing or walking), and its super armor keeps it off as the client's does.
+    public static SkillMetadataAttack DotHit(int hitImmuneBreak) => DotHitAttack with { HitImmuneBreak = hitImmuneBreak };
+
+    private static readonly SkillMetadataAttack DotHitAttack = new(Point: string.Empty, PointGroup: 0, TargetCount: 0, MagicPathId: 0,
+        CubeMagicPathId: 0, HitImmuneBreak: 0, BrokenOffence: 0, CompulsionTypes: [], Pet: null, Range: null!, Arrow: null!,
+        Damage: new SkillMetadataDamage(Count: 0, Rate: 0, HitSpeed: 0, HitDelay: 0, IsConstDamage: false, Value: 0,
+            DamageByTargetMaxHp: 0, SuperArmorBreak: false, Push: null),
+        Skills: [], SkillsOnDamage: []);
+
     public static bool HitReacts(int hitImmuneBreak, int hitImmune, int npcClass, bool push, ActorState state, bool armorHolds = false) {
         if (hitImmuneBreak <= hitImmune || npcClass >= 3 || armorHolds) {
             return false;
