@@ -329,24 +329,46 @@ public class AiStateTests : TriggerTestBase {
     // children then target a far player, 300 to 1300 away). The node holds the battle; one without the flag does not.
     [Test]
     public void Teleport_IsKeepBattle_HoldsTheBattle() {
-        Spawn([new TeleportNode("teleport", [], new Vector3(-2700, -1800, 2750), 0, Vector3.Zero, 0, 0, 0, true)]);
+        Spawn([new TeleportNode("teleport", [Standby(1000)], new Vector3(-2700, -1800, 2750), 0, Vector3.Zero, 0, 0, 0, true)]);
         npc.AiState.Update(Field.FieldTick);
 
         Assert.That(test.Errors, Is.Empty);
         Assert.That(npc.Position, Is.EqualTo(new Vector3(-2700, -1800, 2750)));
         Assert.That(npc.BattleState.KeepBattle, Is.True);
 
-        Spawn([new TeleportNode("teleport", [], new Vector3(-2700, -1800, 2750), 0, Vector3.Zero, 0, 0, 0, false)]);
+        Spawn([new TeleportNode("teleport", [Standby(1000)], new Vector3(-2700, -1800, 2750), 0, Vector3.Zero, 0, 0, 0, false)]);
         npc.AiState.Update(Field.FieldTick);
         Assert.That(npc.BattleState.KeepBattle, Is.False);
     }
 
+    // KR AI_Witch2CerberosTrainer_PaterB.xml: a teleport with isKeepBattle whose children retarget, trace, cast and
+    // stand by. The hold lasts while the node's children run (here its standby, 1000 ms), with no target; when the AI
+    // steps on past the node the hold ends: the npc leaves the battle without starting the node's next sibling (the
+    // 5000 ms standby) and runs battleEnd.
+    [Test]
+    public void KeepBattle_EndsWhenItsNodeHasRun() {
+        Spawn([new TeleportNode("teleport", [Standby(1000)], new Vector3(100, 0, 0), 0, Vector3.Zero, 0, 0, 0, true), Standby(5000)],
+            battleEnd: [SetValue("Ended", 1)]);
+        Run();
+        NpcTask? held = CurrentTask;
+        typeof(BattleState).GetProperty(nameof(BattleState.Target))!.SetValue(npc.BattleState, null);
+        Run(5);
+        Assert.That(npc.BattleState.InBattle, Is.True, "held while the node's standby runs");
+        Assert.That(CurrentTask, Is.SameAs(held));
+
+        Run(6);
+        Assert.That(npc.BattleState.KeepBattle, Is.False);
+        Assert.That(npc.BattleState.InBattle, Is.False);
+        Assert.That(npc.AiExtraData.GetValueOrDefault("Ended"), Is.EqualTo(1), "battleEnd ran");
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // KR BossDungeon/EyeOfLapenta/AI_YuperiaRbladerDark.xml: <condition name="extraData" isKeepBattle="true"
     // key="SpecialPattern" value="2"> in a conditions node, its branch setting SpecialPattern 3 (the standby before it
-    // left out, as a standby holds the battle by itself). The passing condition holds the battle.
+    // left out). The passing condition holds the battle while its branch runs (here a standby).
     [Test]
     public void ExtraDataCondition_IsKeepBattle_HoldsTheBattle() {
-        var condition = new ExtraDataCondition("extraData", [SetValue("SpecialPattern", 3)], "SpecialPattern", 2, AiConditionOp.Equal, true);
+        var condition = new ExtraDataCondition("extraData", [SetValue("SpecialPattern", 3), Standby(5000)], "SpecialPattern", 2, AiConditionOp.Equal, true);
         Spawn([new ConditionsNode("conditions", [], [condition], 0, 0, false)]);
         npc.AiExtraData["SpecialPattern"] = 2;
         for (int i = 0; i < 3; i++) {

@@ -124,13 +124,16 @@ public class AiState {
             return;
         }
 
+        // A node with isKeepBattle that has run out (its task done, its children popped) lets go of the battle.
+        EndHeldBattle();
+
         if (AiMetadata is null) {
             if (actor.Value.Metadata.AiPath != "") {
                 actor.AppendDebugMessage("Missing AI\n");
                 actor.AppendDebugMessage(actor.Value.Metadata.AiPath + "\n");
             }
 
-            aiStack.Clear();
+            ClearStack();
             currentTree = DecisionTreeType.None;
 
             return;
@@ -142,7 +145,7 @@ public class AiState {
             // A battle that ends with the npc alive runs the battleEnd tree, unless it is onlyDead (then it runs
             // at the death, RunDeathBattleEnd). The tree was set here and then never pushed.
             if (currentTree == DecisionTreeType.Battle) {
-                aiStack.Clear();
+                ClearStack();
 
                 if (battleEnd is not null && !AiMetadata.BattleEndOnlyDead) {
                     currentTree = DecisionTreeType.BattleEnd;
@@ -159,7 +162,7 @@ public class AiState {
             }
             return;
         } else if (currentTree == DecisionTreeType.BattleEnd) {
-            aiStack.Clear();
+            ClearStack();
 
             currentTree = DecisionTreeType.None;
         }
@@ -172,17 +175,17 @@ public class AiState {
         }
 
         if (lastEvaluated != AiMetadata) {
-            aiStack.Clear();
+            ClearStack();
         }
 
         lastEvaluated = AiMetadata;
 
         foreach (var node in reservedNodes.ToList()) {
             if (ProcessCondition((dynamic) node)) {
+                ClearStack();
                 if (KeepsBattle(node)) {
-                    actor.BattleState.KeepBattle = true;
+                    HoldBattle();
                 }
-                aiStack.Clear();
                 reservedNodes.Remove(node);
                 Push(node);
             }
@@ -206,7 +209,7 @@ public class AiState {
         currentTask?.Cancel();
         currentTask = null;
         currentLimitTick = 0;
-        aiStack.Clear();
+        ClearStack();
         if (battleEnd is null) {
             currentTree = DecisionTreeType.None;
             return;
@@ -224,7 +227,7 @@ public class AiState {
             currentLimitTick = 0;
         }
 
-        aiStack.Clear();
+        ClearStack();
         currentTree = DecisionTreeType.None;
     }
 
@@ -232,6 +235,11 @@ public class AiState {
 
     private void RunStack(long tickCount) {
         while (aiStack.Count > 0) {
+            // Stepping on at the level of a node with isKeepBattle (or above it) means that node has run out. With
+            // no target the battle is over: the next update runs battleEnd, not the node's next sibling.
+            if (EndHeldBattle() && currentTree == DecisionTreeType.Battle && !actor.BattleState.InBattle) {
+                break;
+            }
             if (Step() && IsWaitingOnTask(tickCount)) {
                 break;
             }
@@ -273,6 +281,41 @@ public class AiState {
         public Node Node;
         public int Index;
         public bool LockIndex;
+    }
+
+    // isKeepBattle holds the battle while its node runs: the node's own task (a skill, a standby, a jump) and its
+    // children, or a passing condition's branch. KR AI_Witch2CerberosTrainer_PaterB.xml: a teleport with isKeepBattle
+    // whose children retarget, trace, cast and stand by, so the boss fights the pattern out even when it loses its
+    // target on the way. Once the AI steps on past the node (to the node's next sibling, or up out of its parent) the
+    // hold ends, and an npc with no target leaves the battle (battleEnd runs). A reserved node holds until its branch
+    // has run. The scripts give the hold no other end; it is never permanent (it was, so an npc that ran one such
+    // node stayed in battle until it died).
+    private int? keepDepth;
+
+    private void HoldBattle() {
+        // The stack depth the node was run from: its children run above it.
+        int depth = aiStack.Count;
+        keepDepth = keepDepth is null ? depth : Math.Min(keepDepth.Value, depth);
+        actor.BattleState.KeepBattle = true;
+    }
+
+    // True when a hold ended here.
+    private bool EndHeldBattle() {
+        if (keepDepth is null || aiStack.Count > keepDepth.Value) {
+            return false;
+        }
+        keepDepth = null;
+        actor.BattleState.KeepBattle = false;
+        return true;
+    }
+
+    // A cleared stack ends a hold its nodes had (a new tree, the death).
+    private void ClearStack() {
+        aiStack.Clear();
+        if (keepDepth is not null) {
+            keepDepth = null;
+            actor.BattleState.KeepBattle = false;
+        }
     }
 
     private void Push(Node node) {
@@ -424,7 +467,7 @@ public class AiState {
             }
 
             if (KeepsBattle(entry)) {
-                actor.BattleState.KeepBattle = true;
+                HoldBattle();
             }
 
             if (entry is SkillNode skillNode && WaitsOutSkillCooldown(skillNode)) {
@@ -523,7 +566,7 @@ public class AiState {
         NpcTask task = actor.CastAiSkill(skill.Id, skill.Level, node.FaceTarget, node.FacePos);
 
         if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
+            HoldBattle();
         }
 
         SetNodeTask(task, node.Limit);
@@ -552,7 +595,7 @@ public class AiState {
         NpcTask task = actor.MovementState.TryStandby(faceTarget, false, node.Animation ?? string.Empty, node.FacePos);
 
         if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
+            HoldBattle();
         }
 
         SetNodeTask(task, node.Limit);
@@ -607,7 +650,7 @@ public class AiState {
         actor.AppendDebugMessage($"+ Condition: '{passed.Name}'\n");
 
         if (KeepsBattle(passed)) {
-            actor.BattleState.KeepBattle = true;
+            HoldBattle();
         }
 
         Push(passed);
@@ -618,7 +661,7 @@ public class AiState {
     // during the arc, as the files' order has it.
     private void ProcessNode(JumpNode node) {
         if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
+            HoldBattle();
         }
         Vector3 from = actor.Position;
         if (actor.Navigation == null || !actor.Navigation.UpdatePosition(node.Pos)) {
@@ -692,7 +735,7 @@ public class AiState {
 
     private void ProcessNode(SetSlaveValueNode node) {
         if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
+            HoldBattle();
         }
         foreach (FieldNpc slave in AiSummon.ValueTargets(actor.Slaves(), node.IsRandom, Random.Shared)) {
             bool hasOld = slave.AiExtraData.TryGetValue(node.Key, out int oldValue);
@@ -704,7 +747,7 @@ public class AiState {
     // node); an npc that is no one's slave sets nothing.
     private void ProcessNode(SetMasterValueNode node) {
         if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
+            HoldBattle();
         }
         if (actor.Master is not { IsDead: false } master) {
             return;
@@ -787,7 +830,7 @@ public class AiState {
 
     private void ProcessNode(SetValueRangeTargetNode node) {
         if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
+            HoldBattle();
         }
 
         int range = node.Radius;
@@ -836,7 +879,7 @@ public class AiState {
     // Every shown vibrate object of a hidden group fades out again (AiVibrate).
     private void ProcessNode(HideVibrateAllNode node) {
         if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
+            HoldBattle();
         }
         foreach (string vibrateId in actor.Field.Vibrate.HideAll()) {
             actor.Field.Broadcast(VibratePacket.Hide(vibrateId));
@@ -850,7 +893,7 @@ public class AiState {
     // The one isKeepBattle node (a boss clearing its slaves just before a skill break) keeps the boss in battle.
     private void ProcessNode(RemoveSlavesNode node) {
         if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
+            HoldBattle();
         }
         actor.RemoveSummons();
     }
