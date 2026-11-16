@@ -736,4 +736,51 @@ public class AiStateTests : TriggerTestBase {
             Assert.That(AiState.FirstMissingSkill(NpcId, AiPath, 6), Is.False);
         });
     }
+
+    private static SkillMetadataAttack HitAttack(int hitImmuneBreak) {
+        var range = new SkillMetadataRange(SkillRegion.Box, 300, 150, 450, 0, 0, default, default, IncludeCasterType.Exclude,
+            ApplyTargetType.Hostile, SkillTargetType.None);
+        var arrow = new SkillMetadataArrow(Overlap: false, Explosion: false, RayPhysXTest: false, NonTarget: SkillTargetType.None,
+            BounceType: BounceType.None, BounceCount: 0, BounceRadius: 0, BounceOverlap: false,
+            Collision: default, CollisionAdd: default, RayType: 0);
+        var damage = new SkillMetadataDamage(1, 1, 0, 0, false, 0, 0, false, null);
+        return new SkillMetadataAttack("Attack_01", 0, 5, 0, 0, hitImmuneBreak, 0, [], null, range, arrow, damage, [], []);
+    }
+
+    private static readonly NpcControlRules.HitSource FromTheLeft = new(Vector3.Zero, Vector3.Zero, Vector3.UnitX);
+
+    // A damaging hit on a monster that gives way (hitImmuneBreak above the npc's hitImmune): it plays Damg_A or
+    // Damg_B and holds in the hit state; the hit is queued on the attacker's thread and applied in the npc's update.
+    [Test]
+    public void Hit_QueuedThenApplied_PlaysADamgSequence() {
+        Spawn([Standby(1200)], sequences: ["Idle_A", "Damg_A", "Damg_B"]);
+        npc.AiState.Update(Field.FieldTick);
+        npc.TaskState.Update(Field.FieldTick);
+
+        npc.MovementState.QueueHit(FromTheLeft, HitAttack(1));
+        Assert.That(npc.MovementState.State, Is.Not.EqualTo(ActorState.Hit), "queued only");
+        npc.MovementState.ApplyHits();
+
+        Assert.Multiple(() => {
+            Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Hit));
+            Assert.That(npc.Animation.PlayingSequence?.Name, Is.AnyOf("Damg_A", "Damg_B"));
+            Assert.That(npc.SendControl, Is.True);
+        });
+    }
+
+    // hitImmuneBreak 0 does not break the npc's hitImmune 0; an npc without a Damg sequence is left alone.
+    [Test]
+    public void Hit_DoesNotReact_WithoutBreakOrWithoutSequences() {
+        Spawn([Standby(1200)], sequences: ["Idle_A", "Damg_A"]);
+        npc.AiState.Update(Field.FieldTick);
+        npc.MovementState.QueueHit(FromTheLeft, HitAttack(0));
+        npc.MovementState.ApplyHits();
+        Assert.That(npc.MovementState.State, Is.Not.EqualTo(ActorState.Hit));
+
+        Spawn([Standby(1200)], sequences: ["Idle_A"]);
+        npc.AiState.Update(Field.FieldTick);
+        npc.MovementState.QueueHit(FromTheLeft, HitAttack(1));
+        npc.MovementState.ApplyHits();
+        Assert.That(npc.MovementState.State, Is.Not.EqualTo(ActorState.Hit));
+    }
 }
