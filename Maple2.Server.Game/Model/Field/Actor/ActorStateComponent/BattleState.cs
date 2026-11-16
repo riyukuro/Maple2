@@ -240,20 +240,15 @@ public class BattleState {
                 }
                 return canMatch;
 
+            // The nearest actor of the node's side (GetTargetType, which FindNewTarget scans) that has the node's
+            // additional effect (KR: 55 nodes; their comments: target the player the boss's effect marked, and with
+            // none so marked go on to the next target node). An actor without it is no match.
             case NodeTargetType.HasAdditional:
-                int friendlyType = GetTargetType();
                 if (currentBestMatch != -1 && distanceSquared >= currentBestMatch) {
                     return false;
                 }
-                canMatch = false;
-                if (TargetNode.Target != NodeAiTarget.DefaultTarget) {
-                    canMatch = friendlyType switch {
-                        0 => target is FieldPlayer,
-                        1 => target is FieldNpc,
-                        _ => false,
-                    };
-                }
-                canMatch |= target.Buffs.HasBuff(TargetNode.AdditionalId, TargetNode.AdditionalLevel, 0);
+                canMatch = InWindow(distanceSquared, from, to)
+                    && target.Buffs.HasBuff(TargetNode.AdditionalId, TargetNode.AdditionalLevel, 0);
                 if (canMatch && currentBestMatch != -1) {
                     currentBestMatch = distanceSquared;
                 }

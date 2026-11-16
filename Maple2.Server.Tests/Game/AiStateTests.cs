@@ -588,6 +588,26 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // KR: 55 hasAdditional target nodes; their comments say the boss targets the player its effect marked, and goes on
+    // to its next target node when no one is marked. The marked player is the target though others stand nearer;
+    // with no one marked the npc keeps its target.
+    [Test]
+    public void Target_HasAdditional_TakesOnlyTheMarked() {
+        var node = new TargetNode("target", [], NodeTargetType.HasAdditional, 0, 0, 70000001, 1, 0, 0, Vector3.Zero, NodeAiTarget.Hostile, false, 0, 0, false);
+        Spawn([node], position: Vector3.Zero, skill: new NpcMetadataSkill([], 0));
+        KnowEffect(70000001);
+        FieldPlayer near = AddPlayer(2, 200);
+        FieldPlayer marked = AddPlayer(3, 800);
+        npc.BattleState.ForceTarget(near);
+        Run();
+        Assert.That(npc.BattleState.Target, Is.SameAs(near), "no one marked");
+
+        marked.Buffs.AddBuff(npc, marked, 70000001, 1, Field.FieldTick);
+        Run();
+        Assert.That(npc.BattleState.Target, Is.SameAs(marked));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // A hasAdditional node with noChangeWhenNoTarget takes no target when the npc has none, as the npc's own update
     // does not search under it. The npc is held in battle (isKeepBattle) with no target, so its battle tree runs the
     // node; the test player is a hostile npc's target type and stands in sight.
