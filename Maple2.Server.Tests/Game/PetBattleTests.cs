@@ -164,6 +164,7 @@ public class PetBattleTests : NpcCastFixture {
         Pet(owned: true);
         Hit(pet);
         Assert.That(Field.Pets.TryRemove(pet.ObjectId, out _), Is.True);
+        Assert.That(npc.CreditedPlayers(), Is.EqualTo(new[] { test.Session.Player }), "the pet's hit alone");
         Hit(test.Session.Player);
         Assert.Multiple(() => {
             Assert.That(npc.CreditedPlayers(), Is.EqualTo(new[] { test.Session.Player }));
