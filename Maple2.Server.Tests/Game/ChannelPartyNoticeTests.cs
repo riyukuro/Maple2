@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -590,4 +591,75 @@ public class ChannelPartyNoticeTests {
         Assert.That(session.Party.Party, Is.SameAs(party));
         Assert.That(test.TakeSent(), Is.Empty);
     }
+
+    #region PartySearch
+    private PartySearchError Search(Action<PartySearchRequest> fill, long receiverId = 0, int partyId = PartyId) {
+        var request = new PartySearchRequest { PartyId = partyId, ReceiverIds = { receiverId == 0 ? session.CharacterId : receiverId } };
+        fill(request);
+        return (PartySearchError) channel.PartySearch(request, null!).GetAwaiter().GetResult().Error;
+    }
+
+    private static PartySearchRequest.Types.Set Listing(long requestorId) => new() {
+        RequestorId = requestorId,
+        PartySearch = new PartySearchInfo {
+            Id = 41, Name = "Chaos raid", Size = 4, LeaderAccountId = 1900, LeaderCharacterId = 900, LeaderName = "Leader",
+            MemberCount = 3, NoApproval = true,
+        },
+    };
+
+    // The party's listing reaches every member's party window; the member who listed it also gets the listing's add.
+    [Test]
+    public void PartySearchSet_TheListingReachesTheMember_AndTheRequestorGetsItsAdd() {
+        Party party = Join();
+
+        Assert.That(Search(request => request.Set = Listing(session.CharacterId)), Is.EqualTo(PartySearchError.none));
+
+        Assert.That(party.Search, Is.Not.Null);
+        Assert.That((party.Search!.Id, party.Search.Name, party.Search.Size, party.Search.PartyId, party.Search.LeaderCharacterId,
+            party.Search.LeaderName, party.Search.MemberCount, party.Search.NoApproval), Is.EqualTo((41L, "Chaos raid", 4, PartyId, 900L,
+            "Leader", 3, true)));
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Select(Convert.ToHexString), Is.EqualTo(new[] {
+            Hex(PartyPacket.LoadPartySearchListing(party)), Hex(PartySearchPacket.Add(party.Search)),
+        }));
+    }
+
+    [Test]
+    public void PartySearchSet_AnotherMembersListing_NoAdd() {
+        Party party = Join();
+
+        Assert.That(Search(request => request.Set = Listing(OtherId)), Is.EqualTo(PartySearchError.none));
+
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(PartyPacket.LoadPartySearchListing(party)) }));
+    }
+
+    [Test]
+    public void PartySearchRemove_ClearsTheListing() {
+        Party party = Join();
+        Search(request => request.Set = Listing(OtherId));
+        test.TakeSent();
+
+        Assert.That(Search(request => request.Remove = new PartySearchRequest.Types.Remove()), Is.EqualTo(PartySearchError.none));
+
+        Assert.That(party.Search, Is.Null);
+        Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(PartyPacket.LoadPartySearchListing(party)) }));
+    }
+
+    // A member who is not on this channel, or whose party is another one, or an empty request: the World gets an error.
+    [Test]
+    public void PartySearch_AnotherPartyOrAnAbsentMember_IsRefused() {
+        Party party = Join();
+
+        Assert.That(Search(request => request.Set = Listing(OtherId), partyId: PartyId + 1), Is.EqualTo(PartySearchError.s_partysearch_err_server_db));
+        Assert.That(Search(request => request.Set = Listing(OtherId), receiverId: 424242), Is.EqualTo(PartySearchError.s_partysearch_err_server_db));
+        Assert.That(Search(request => request.Remove = new PartySearchRequest.Types.Remove(), partyId: PartyId + 1),
+            Is.EqualTo(PartySearchError.s_partysearch_err_server_db));
+        Assert.That(Search(request => request.Remove = new PartySearchRequest.Types.Remove(), receiverId: 424242),
+            Is.EqualTo(PartySearchError.s_partysearch_err_server_db));
+        Assert.That(Search(_ => { }), Is.EqualTo(PartySearchError.s_partysearch_err_server_db));
+
+        Assert.That(party.Search, Is.Null);
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+    #endregion
 }
