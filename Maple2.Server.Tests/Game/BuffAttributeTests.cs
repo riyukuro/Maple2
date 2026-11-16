@@ -35,10 +35,14 @@ public class BuffAttributeTests {
 
     // A session in a field of the given type that knows the given effects (level 1).
     private void Start(MapType type, params AdditionalEffectMetadata[] effects) {
+        MapMetadata map = TestGameSession.Map(2000001);
+        Start(map with { Property = map.Property with { Type = type } }, effects);
+    }
+
+    private void Start(MapMetadata map, params AdditionalEffectMetadata[] effects) {
         test = new TestGameSession();
         test.Start();
-        MapMetadata map = TestGameSession.Map(2000001);
-        test.EnterMap(map with { Property = map.Property with { Type = type } });
+        test.EnterMap(map);
         var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
         object cache = typeof(SkillMetadataStorage).GetField("EffectCache", Any)!.GetValue(skills)!;
         foreach (AdditionalEffectMetadata effect in effects) {
@@ -977,4 +981,132 @@ public class BuffAttributeTests {
         int adds = test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.Buff);
         Assert.That(adds, Is.EqualTo(1));
     }
+
+    // ModifyEffectDuration on a proc: 50003004 (KR: factor 2 on 50003000) doubles the time left of the held
+    // 50003000 and sends its update; a copy without an end (73000004 made unlimited here) is left alone.
+    [Test]
+    public void ModifyDuration_ScalesTheTimeLeftOfTheNamedBuff() {
+        var update = new AdditionalEffectMetadataUpdate(null, [], [], [], [
+            new AdditionalEffectMetadataUpdate.ModifyDuration(50003000, 2f, 0f),
+            new AdditionalEffectMetadataUpdate.ModifyDuration(73000004, 2f, 0f),
+        ]);
+        Start(MapType.None,
+            Effect(50003000, Plain with { DurationTick = 26000 }) with { Dot = new AdditionalEffectMetadataDot(null, null) },
+            Effect(73000004, Plain with { DurationTick = 0, KeepCondition = BuffKeepCondition.UnlimitedDuration }) with { Dot = new AdditionalEffectMetadataDot(null, null) },
+            Effect(50003004, Plain with { DurationTick = 1000 }) with { Update = update, Dot = new AdditionalEffectMetadataDot(null, null) });
+        long now = Field.FieldTick;
+        Add(50003000, tick: now);
+        Add(73000004, tick: now);
+        long unlimitedEnd = Only(73000004).EndTick;
+        Add(50003004, tick: now);
+        test.TakeSent();
+
+        Buffs.Update(now + 100);
+
+        Assert.That(Only(50003000).EndTick, Is.EqualTo(Buff.ModifiedEndTick(now + 26000, Field.FieldTick, 2f, 0f)));
+        Assert.That(Only(50003000).EndTick, Is.GreaterThan(now + 26000));
+        Assert.That(Only(73000004).EndTick, Is.EqualTo(unlimitedEnd));
+        Assert.That(test.TakeSentOps().Count(op => op == SendOp.Buff), Is.GreaterThanOrEqualTo(1));
+    }
+
+    // An interact object's modify code (BuffManager.ModifyDuration): each held copy of the buff ends that many ms
+    // later, and the field hears it.
+    [Test]
+    public void ModifyDurationByInteract_MovesTheEnd() {
+        Start(MapType.None, Effect(50003000, Plain with { DurationTick = 26000 }));
+        Add(50003000, tick: 1000);
+        test.TakeSent();
+
+        Buffs.ModifyDuration(50003000, 5000);
+        Buffs.ModifyDuration(50003001, 5000);
+
+        Assert.That(Only(50003000).EndTick, Is.EqualTo(32000));
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Buff }));
+    }
+
+    // A buff's timer ends it once its procs are spent: 10000051 (KR: 100 ms, one proc) is held through its proc and
+    // gone at the first update past its end.
+    [Test]
+    public void TheTimerEndsABuffWhoseProcsAreSpent() {
+        Start(MapType.None, Effect(10000051, Plain with { DurationTick = 1000, IntervalTick = 0 }) with { Dot = new AdditionalEffectMetadataDot(null, null) });
+        Add(10000051, tick: 1000);
+
+        Buffs.Update(1100);
+        Assert.That(Only(10000051).ProcCount, Is.EqualTo(1));
+        Buffs.Update(2000);
+        Assert.That(Held(), Is.EqualTo(new[] { 10000051 }), "at its end");
+        Buffs.Update(2001);
+        Assert.That(Held(), Is.Empty);
+    }
+
+    // A buff whose begin condition stops holding is disabled and does not proc; once it holds again its next proc is
+    // the first of its schedule at or after then, the missed ones not paid (ResumedProcTick). 70001111 (KR:
+    // requireStates gosEmotion) with a proc each second.
+    [Test]
+    public void ADisabledBuffSkipsItsProcsAndResumesOnItsSchedule() {
+        var owner = new BeginConditionTarget([], new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []), [],
+            [ActorState.Emotion], [], new Dictionary<MasteryType, int>(), [], []);
+        AdditionalEffectMetadata effect = Effect(70001111, Plain with { DurationTick = 10000, IntervalTick = 1000 })
+            with { Dot = new AdditionalEffectMetadataDot(null, null) };
+        Start(MapType.None, effect with { Condition = effect.Condition with { Owner = owner } });
+        Player.State = ActorState.Emotion;
+        Add(70001111, tick: 1000);
+        Buff buff = Only(70001111);
+        Buffs.Update(1000);
+        Assert.That(buff.ProcCount, Is.EqualTo(1));
+
+        Player.State = ActorState.Idle;
+        Buffs.Update(2000);
+        Buffs.Update(3000);
+        Assert.That(buff.Enabled, Is.False);
+        Assert.That(buff.ProcCount, Is.EqualTo(1), "no proc while disabled");
+
+        Player.State = ActorState.Emotion;
+        Buffs.Update(3500);
+        Assert.That(buff.Enabled, Is.True);
+        Assert.That(buff.NextProcTick, Is.EqualTo(4000));
+        Assert.That(buff.ProcCount, Is.EqualTo(1));
+        Buffs.Update(4000);
+        Assert.That(buff.ProcCount, Is.EqualTo(2));
+    }
+
+    // A worn item's socketed gem gives its effects with the item's own (AddItemBuffs) and they go with the item
+    // (RemoveItemBuffs); its effect ids are the item's (ItemEffectIds). KR gem 40220121 gives 90051021 and 90051022.
+    [Test]
+    public void AGemsEffectsComeAndGoWithItsItem() {
+        Start(MapType.None, Effect(90051021, Plain with { DurationTick = 0, KeepCondition = BuffKeepCondition.UnlimitedDuration }),
+            Effect(90051022, Plain with { DurationTick = 0, KeepCondition = BuffKeepCondition.UnlimitedDuration }),
+            Effect(90000001, Plain with { DurationTick = 0, KeepCondition = BuffKeepCondition.UnlimitedDuration }));
+        test.Register(TestGameSession.Metadata(40220121) with {
+            AdditionalEffects = [new ItemMetadataAdditionalEffect(90051021, 1, false), new ItemMetadataAdditionalEffect(90051022, 1, false)],
+        });
+        var item = new Item(TestGameSession.Metadata(11400001) with { AdditionalEffects = [new ItemMetadataAdditionalEffect(90000001, 1, false)] }) {
+            Socket = new ItemSocket(2, [new ItemGemstone(40220121, stats: new ItemStats()), null]),
+        };
+
+        Buffs.AddItemBuffs(item);
+        Assert.That(Held(), Is.EqualTo(new[] { 90000001, 90051021, 90051022 }));
+        Assert.That(Buffs.ItemEffectIds(item).Order(), Is.EqualTo(new[] { 90000001, 90051021, 90051022 }));
+
+        Buffs.RemoveItemBuffs(item);
+        Assert.That(Held(), Is.Empty);
+    }
+
+    // Entering a field gives its entrance buffs (the map's EntranceBuffs), and a Shadow World map (region 202) the
+    // player the constants' shadowWorldBuffHpUp and shadowWorldBuffMoveProtect (KR 70000027 and 70000032).
+    [TestCase(MapRegion.ShadowWorld, new[] { 61000010, 70000027, 70000032 })]
+    [TestCase(MapRegion.None, new[] { 61000010 })]
+    public void EnterField_GivesTheEntranceAndShadowWorldBuffs(MapRegion region, int[] held) {
+        MapMetadata map = TestGameSession.Map(2000001);
+        Start(map with { Property = map.Property with { Region = region }, EntranceBuffs = [new MapEntranceBuff(61000010, 1)] },
+            Effect(61000010, Plain), Effect(70000027, Plain), Effect(70000032, Plain));
+        test.SetServerTable(test.Session.ServerTableMetadata.ConstantsTable with {
+            shadowWorldBuffHpUp = 70000027, shadowWorldBuffMoveProtect = 70000032,
+        });
+
+        EnterField();
+
+        Assert.That(Held(), Is.EqualTo(held));
+    }
 }
+

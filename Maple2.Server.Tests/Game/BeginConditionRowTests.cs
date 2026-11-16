@@ -202,4 +202,49 @@ public class BeginConditionRowTests {
 
         Assert.That(Holds(Plain with { Owner = owner }, player), Is.EqualTo(holds));
     }
+
+    // The caster's own requirements of a skill's begin condition. 90200032 (KR: gender 1, stat Health 1): a female
+    // caster with health holds; a male one, or one whose health total is below 1, does not.
+    [TestCase(Gender.Female, 1, true)]
+    [TestCase(Gender.Male, 1, false)]
+    [TestCase(Gender.Female, 0, false)]
+    public void GenderAndStat_AreTheCastersOwn(Gender gender, long health, bool holds) {
+        FieldPlayer player = Enter(new TestGameSession(gender: gender));
+        Stat stat = player.Stats.Values[BasicAttribute.Health];
+        (stat.Total, stat.Current) = (health, health);
+        var condition = Plain with { Gender = Gender.Female, Stat = new Dictionary<BasicAttribute, long> { [BasicAttribute.Health] = 1 } };
+
+        Assert.That(Holds(condition, player), Is.EqualTo(holds));
+    }
+
+    // onlyFlyableMap (KR: 154 skills, as 80010002): only on a map where flying is allowed (the map's canFly).
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    public void OnlyFlyableMap_HoldsWhereFlyingIsAllowed(bool canFly, bool holds) {
+        var test = new TestGameSession();
+        test.Start();
+        MapMetadata map = TestGameSession.Map(2000001);
+        test.EnterMap(map with { Property = map.Property with { CanFly = canFly } });
+        FieldPlayer player = test.Session.Player;
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(player, test.Session.Field);
+
+        Assert.That(Holds(Plain with { OnlyFlyableMap = true }, player), Is.EqualTo(holds));
+        Assert.That(Holds(Plain, player), Is.True);
+    }
+
+    // level and mesos: the caster's character level and mesos at least the values (no KR row asks more than level 1
+    // or any mesos; the checks are pinned as they are).
+    [TestCase(49, 0, false)]
+    [TestCase(50, 0, true)]
+    [TestCase(50, 999, false)]
+    [TestCase(50, 1000, true)]
+    public void LevelAndMesos_AreTheCastersAtLeast(short level, long mesos, bool holds) {
+        FieldPlayer player = Enter();
+        player.Value.Character.Level = level;
+        player.Session.Currency.Meso = mesos;
+        var condition = Plain with { Level = 50, Mesos = mesos > 0 ? 1000 : 0 };
+
+        Assert.That(Holds(condition, player), Is.EqualTo(holds));
+    }
 }
+
