@@ -928,4 +928,42 @@ public class BuffAttributeTests {
 
         Assert.That(Held(), kept ? Is.EqualTo(new[] { 62100022 }) : Is.Empty);
     }
+
+    // A recovery buff's proc (Buff.ApplyRecovery): 10000051 (KR: hpRate / spRate 0.11, epValue 40, no crit, 100 ms)
+    // heals the holder's health, spirit and stamina by its heal record, sends the holder's stat update and a
+    // SkillDamage Heal, and with the DPS meter open the health restored after the cap: as given and as received for a
+    // self-cast heal, nothing for a holder at full health.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Recovery_HealsTheHolderAndSendsTheRestoredPart(bool hurt) {
+        var recovery = new AdditionalEffectMetadataRecovery(RecoveryRate: 0, HpValue: 0, HpRate: 0.11f, HpConsumeRate: 0,
+            SpValue: 0, SpRate: 0.11f, SpConsumeRate: 0, EpValue: 40, EpRate: 0, DisableCrit: true);
+        Start(MapType.None, Effect(10000051, Plain with { DurationTick = 100, IntervalTick = 100 })
+            with { Recovery = recovery, Dot = new AdditionalEffectMetadataDot(null, null) });
+        test.Session.DpsMeterOpen = true;
+        Stat health = Player.Stats.Values[BasicAttribute.Health];
+        Stat spirit = Player.Stats.Values[BasicAttribute.Spirit];
+        Stat stamina = Player.Stats.Values[BasicAttribute.Stamina];
+        (health.Total, health.Current) = (10000, hurt ? 1 : 10000);
+        (spirit.Total, spirit.Current) = (100, 0);
+        (stamina.Total, stamina.Current) = (120, 0);
+        long healthBefore = health.Current;
+        var record = new HealDamageRecord(Player, Player, 0, recovery);
+        Assert.That(record.HpAmount, Is.GreaterThan(0));
+        Add(10000051);
+        test.TakeSent();
+
+        Buffs.Update(1000);
+
+        long restored = health.Current - healthBefore;
+        Assert.That(restored, Is.EqualTo(hurt ? Math.Min(record.HpAmount, health.Total - 1) : 0));
+        Assert.That(spirit.Current, Is.EqualTo(Math.Min(record.SpAmount, spirit.Total)).And.GreaterThan(0));
+        Assert.That(stamina.Current, Is.EqualTo(Math.Min(40, stamina.Total)));
+        List<byte[]> sent = test.TakeSent();
+        Assert.That(sent.Count(packet => TestGameSession.Op(packet) == SendOp.Stat), Is.GreaterThanOrEqualTo(1));
+        Assert.That(sent.Count(packet => TestGameSession.Op(packet) == SendOp.SkillDamage && packet[2] == 4), Is.EqualTo(1));
+        (bool Received, int Amount)[] effective = sent.Where(packet => TestGameSession.Op(packet) == SendOp.DpsStat && packet[2] == 2)
+            .Select(packet => (packet[3] != 0, BitConverter.ToInt32(packet, 4))).ToArray();
+        Assert.That(effective, Is.EqualTo(hurt ? new[] { (false, (int) restored), (true, (int) restored) } : Array.Empty<(bool, int)>()));
+    }
 }
