@@ -539,6 +539,24 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // KR: 17 rand, 15 randAssociated and 9 random target nodes have no from or to. Each run picks among every player in
+    // sight, at random.
+    [Test]
+    public void Target_RandWithoutWindow_PicksAnyoneInSight() {
+        Spawn([Target(NodeTargetType.Rand, 0, 0)], position: Vector3.Zero);
+        FieldPlayer first = AddPlayer(2, 400);
+        FieldPlayer second = AddPlayer(3, 2500);
+        AddPlayer(4, 3500);
+        var picked = new HashSet<IActor>();
+        for (int i = 0; i < 60; i++) {
+            npc.BattleState.ForceTarget(first);
+            Run();
+            picked.Add(npc.BattleState.Target!);
+        }
+        Assert.That(picked, Is.EquivalentTo(new IActor[] { test.Session.Player, first, second }));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // The target a node kept with no actor in its window (rand 10 to 300, target 400 away) stays through the npc's own
     // updates, which check it against the npc's sight (3000), not the node's window; out of sight it is let go of. Found
     // again by the npc's own search (200 away, in the window), it is held by the window again.

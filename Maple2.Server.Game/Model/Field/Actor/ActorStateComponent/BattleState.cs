@@ -204,10 +204,8 @@ public class BattleState {
         switch (TargetType) {
             case NodeTargetType.Rand:
             case NodeTargetType.RandAssociated:
-                canMatch = false;
-                if (TargetNode.From != 0 || TargetNode.To != 0) {
-                    canMatch = distanceSquared >= from && distanceSquared <= to;
-                }
+                // KR: 17 rand, 15 randAssociated and 9 random nodes have no window, so pick among everyone in sight.
+                canMatch = InWindow(distanceSquared, from, to);
                 if (canMatch && targetCandidates is not null) {
                     targetCandidates.Add((distanceSquared, target));
                 }
@@ -272,7 +270,7 @@ public class BattleState {
     }
 
     // A target node with neither from nor to has no window: every actor in sight is a candidate (KR: 687 near nodes
-    // name only a center, 4 far nodes nothing). The parser leaves both 0, which as a window held no one.
+    // name only a center, 4 far nodes and 41 rand nodes nothing). The parser leaves both 0, which as a window held no one.
     private bool InWindow(float distanceSquared, float fromSquared, float toSquared) {
         if (TargetNode is { From: 0, To: 0 }) {
             return true;
