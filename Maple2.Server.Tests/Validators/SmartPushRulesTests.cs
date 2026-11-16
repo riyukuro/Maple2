@@ -47,4 +47,19 @@ public class SmartPushRulesTests {
         Assert.That(SmartPushRules.Affords(30, -1), Is.False);
         Assert.That(SmartPushRules.Affords(0, 0), Is.True);
     }
+
+    // KR additionaleffect: 100000017-19 are auto fishing 30/60/180 min, 47-49 the same for the meso event, 20-22 and
+    // 50-52 the auto play ones; an unknown length or content keeps the push row's effect.
+    [TestCase("AutoFishing", 30, 100000017)]
+    [TestCase("AutoFishing", 60, 100000018)]
+    [TestCase("AutoFishing", 180, 100000019)]
+    [TestCase("AutoFishingMesoEvent", 30, 100000047)]
+    [TestCase("AutoFishingMesoEvent", 180, 100000049)]
+    [TestCase("AutoPlayInstrument", 60, 100000021)]
+    [TestCase("AutoPlayInstrumentMesoEvent", 180, 100000052)]
+    [TestCase("AutoFishing", 45, 100000011)]
+    [TestCase("Other", 30, 100000011)]
+    public void PackageEffectId_OnePerLength(string content, int minutes, int expected) {
+        Assert.That(SmartPushRules.PackageEffectId(content, minutes, 100000011), Is.EqualTo(expected));
+    }
 }

@@ -6,6 +6,22 @@ namespace Maple2.Model.Validators;
 // stateinteractdata.cpp:733): i32 push id, i32 argument (the price package id of an effect push, the
 // count of an auto interaction), i32 recipe id (0 on an effect push), bool "this extends a running effect".
 public static class SmartPushRules {
+    // The effect of a timed package, one per length: the KR additionaleffect rows 100000017-19 (auto fishing 30, 60
+    // and 180 minutes), 100000020-22 (auto play), and the same lengths at 100000047-49 and 100000050-52 for the
+    // MesoEvent content. The push row names only 100000011 (the 3 hour effect), which a 30 minute package must not
+    // hold: its durationTick differs from the minutes sold. A length or content not listed keeps the push row's effect.
+    private static readonly Dictionary<string, int> PackageEffects = new() {
+        ["AutoFishing"] = 100000017,
+        ["AutoFishingMesoEvent"] = 100000047,
+        ["AutoPlayInstrument"] = 100000020,
+        ["AutoPlayInstrumentMesoEvent"] = 100000050,
+    };
+
+    public static int PackageEffectId(string content, int minutes, int pushEffectId) {
+        int step = minutes switch { 30 => 0, 60 => 1, 180 => 2, _ => -1 };
+        return step >= 0 && PackageEffects.TryGetValue(content, out int first) ? first + step : pushEffectId;
+    }
+
     public const int MaxAutoCount = 1000;
 
     public static (int Id, int Arg, int RecipeId, bool Extend) Read(IByteReader packet) {

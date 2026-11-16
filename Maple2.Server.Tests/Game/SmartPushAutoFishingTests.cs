@@ -24,6 +24,7 @@ public class SmartPushAutoFishingTests {
     private const int EffectId = 100000011;
     private const int EffectDurationMs = 10800000;
     private const int MissingPushId = 2;
+    private const int InstrumentPushId = 4;
     private const int MissingEffectId = 100000012; // not in the field's skill data: AddBuff fails
 
     private TestGameSession test = null!;
@@ -34,6 +35,7 @@ public class SmartPushAutoFishingTests {
         test = new TestGameSession();
         test.SetTable(new SmartPushTable(new Dictionary<int, SmartPushMetadata> {
             [PushId] = new(PushId, "AutoFishing", SmartPushType.additionalEffect, EffectId, 300, default),
+            [InstrumentPushId] = new(InstrumentPushId, "AutoPlayInstrument", SmartPushType.additionalEffect, 100000016, 300, default),
             [MissingPushId] = new(MissingPushId, "SafeRiding", SmartPushType.additionalEffect, MissingEffectId, 120, default),
         }));
         test.SetTable(new AutoActionTable(new Dictionary<string, IReadOnlyDictionary<int, AutoActionMetaData>> {
@@ -42,6 +44,9 @@ public class SmartPushAutoFishingTests {
                 [1] = new("AutoFishing", 1, 60, 60, 0),
                 [2] = new("AutoFishing", 2, 180, 150, 0),
                 [9] = new("AutoFishing", 9, 0, 10, 0),
+            },
+            ["AutoPlayInstrument"] = new Dictionary<int, AutoActionMetaData> {
+                [0] = new("AutoPlayInstrument", 0, 30, 30, 0),
             },
         }));
         session = test.Start();
@@ -60,9 +65,17 @@ public class SmartPushAutoFishingTests {
         var skills = new SkillMetadataStorage(new Maple2.Database.Context.MetadataContext(
             new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
         object cache = typeof(SkillMetadataStorage).GetField("EffectCache", any)!.GetValue(skills)!;
-        AdditionalEffectMetadata effect = BuffAttributeTests.Effect(EffectId,
-            DisabledBuffTests.Property with { EventType = BuffEventType.AutoFish, Group = 10, DurationTick = EffectDurationMs });
-        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(EffectId, (short) 1), effect]);
+        // KR: 100000011 is the 3 h effect, 100000017-19 the 30, 60 and 180 minute ones the packages give.
+        foreach ((int id, int ms) in new[] { (EffectId, EffectDurationMs), (100000017, 1800000), (100000018, 3600000), (100000019, 10800000) }) {
+            AdditionalEffectMetadata effect = BuffAttributeTests.Effect(id,
+                DisabledBuffTests.Property with { EventType = BuffEventType.AutoFish, Group = 10, DurationTick = ms, UseInGameTime = true });
+            cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(id, (short) 1), effect]);
+        }
+        foreach (int id in new[] { 100000016, 100000020 }) {
+            AdditionalEffectMetadata effect = BuffAttributeTests.Effect(id,
+                DisabledBuffTests.Property with { EventType = BuffEventType.AutoPerform, Group = 11, DurationTick = 1800000, UseInGameTime = true });
+            cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(id, (short) 1), effect]);
+        }
         FieldManager field = session.Field!;
         typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", any)!.SetValue(field, skills);
         typeof(FieldManager).GetField(nameof(FieldManager.FieldActor), any)!.SetValue(field, new FieldActor(field, 99, field.Metadata, null!));
@@ -78,13 +91,13 @@ public class SmartPushAutoFishingTests {
         }));
     }
 
-    [TestCase(0, 30, 40)]
-    [TestCase(1, 60, 60)]
-    [TestCase(2, 180, 150)]
-    public void Package_LastsItsMinutes_ForItsMerets(int package, int minutes, int merets) {
+    [TestCase(0, 30, 40, 100000017)]
+    [TestCase(1, 60, 60, 100000018)]
+    [TestCase(2, 180, 150, 100000019)]
+    public void Package_LastsItsMinutes_ForItsMerets(int package, int minutes, int merets, int effectId) {
         Buy(package);
 
-        List<Buff> buffs = session.Player.Buffs.EnumerateBuffs(EffectId);
+        List<Buff> buffs = session.Player.Buffs.EnumerateBuffs(effectId);
         List<byte[]> sent = test.TakeSent();
         Assert.Multiple(() => {
             Assert.That(session.Currency.Meret, Is.EqualTo(217 - merets));
@@ -100,7 +113,7 @@ public class SmartPushAutoFishingTests {
     [Test]
     public void BuyWhileHeld_IsRefused_AndKeepsTheEnd() {
         Buy(2);
-        Buff held = session.Player.Buffs.EnumerateBuffs(EffectId).Single();
+        Buff held = session.Player.Buffs.EnumerateBuffs(100000019).Single();
         long end = held.EndTick;
         test.TakeSent();
 
@@ -108,7 +121,8 @@ public class SmartPushAutoFishingTests {
 
         Assert.Multiple(() => {
             Assert.That(session.Currency.Meret, Is.EqualTo(217 - 150));
-            Assert.That(session.Player.Buffs.EnumerateBuffs(EffectId).Single().EndTick, Is.EqualTo(end));
+            Assert.That(session.Player.Buffs.EnumerateBuffs(100000019).Single().EndTick, Is.EqualTo(end));
+            Assert.That(session.Player.Buffs.EnumerateBuffs(100000017), Is.Empty);
             Assert.That(test.TakeSent().Select(TestGameSession.Op), Has.None.EqualTo(SendOp.SmartPush).And.None.EqualTo(SendOp.Buff));
         });
     }
@@ -133,6 +147,35 @@ public class SmartPushAutoFishingTests {
         Assert.Multiple(() => {
             Assert.That(session.Currency.Meret, Is.EqualTo(217));
             Assert.That(session.Player.Buffs.EnumerateBuffs(EffectId), Is.Empty);
+        });
+    }
+
+    // The client re-buys auto play while auto fishing runs (event types 4 and 1): one does not block the other.
+    [Test]
+    public void HeldAutoFishing_DoesNotBlockAnAutoPlayBuy() {
+        Buy(0);
+        session.Currency.Meret = 100;
+        test.TakeSent();
+
+        Buy(0, InstrumentPushId);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Buffs.EnumerateBuffs(100000020), Has.Count.EqualTo(1));
+            Assert.That(session.Player.Buffs.EnumerateBuffs(100000017), Has.Count.EqualTo(1));
+        });
+    }
+
+    // An effect of the push's event type held from before the packages (the 3 h 100000011) blocks a package buy.
+    [Test]
+    public void HeldOldAutoFishEffect_BlocksAPackageBuy() {
+        session.Player.Buffs.AddBuff(session.Player, session.Player, EffectId, 1, session.Field!.FieldTick);
+        test.TakeSent();
+
+        Buy(0);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.Buffs.EnumerateBuffs(100000017), Is.Empty);
+            Assert.That(session.Currency.Meret, Is.EqualTo(217));
         });
     }
 }

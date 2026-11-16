@@ -81,7 +81,7 @@ public class SmartPushHandler : FieldPacketHandler {
             // (CSmartPushAutoFishing::vfunc_2 checks the buff is gone) and its extend box only arms that re-buy
             // (UISystemShopDialog::FUN_140fa62d0 sends nothing). A buy while held would have set the end to the new
             // package's minutes from now, shortening a longer one; a package without minutes gives nothing.
-            if (package == null || package.Duration <= 0 || session.Buffs.EnumerateBuffs((int) metadata.Value).Count > 0) {
+            if (package == null || package.Duration <= 0 || HoldsEventBuff(session, (int) metadata.Value)) {
                 return;
             }
             if (!SmartPushRules.Affords(session.Currency.Meret, package.MeretCost)
@@ -113,10 +113,11 @@ public class SmartPushHandler : FieldPacketHandler {
         // A package lasts its own minutes (autoactionpricepackage duration, shown by
         // CSmartPushTable::GetPackageDurationText); the effect's durationTick (3 h for 100000011) only when bought
         // without one. The client sends the package index and sets no time itself.
+        int effectId = package != null ? SmartPushRules.PackageEffectId(package.Content, package.Duration, (int) metadata.Value) : (int) metadata.Value;
         int durationMs = package != null ? package.Duration * 60 * 1000 : -1;
         // A buff that is not given (no effect data, an immunity, nothing changed) costs nothing and has no notice:
         // the price comes back. (No KR effect push needs an item, so none is lost to this.)
-        if (!session.Buffs.AddBuff(session.Player, session.Player, (int) metadata.Value, 1, session.Field.FieldTick, durationMs: durationMs)) {
+        if (!session.Buffs.AddBuff(session.Player, session.Player, effectId, 1, session.Field.FieldTick, durationMs: durationMs)) {
             session.Currency.ReturnMeret(meretCost);
             session.Currency.ReturnMeso(mesoCost, notify: false);
             return;
@@ -143,6 +144,17 @@ public class SmartPushHandler : FieldPacketHandler {
             ]);
         }
         return true;
+    }
+
+    // The client's own rule: a package is bought only without a buff of the push effect's event type (auto fishing
+    // type 1, auto play type 4), whichever effect of the family gave it, so an old 100000011 held also blocks.
+    private static bool HoldsEventBuff(GameSession session, int pushEffectId) {
+        if (!session.Field!.SkillMetadata.TryGetEffect(pushEffectId, 1, out AdditionalEffectMetadata? effect)) {
+            return session.Buffs.EnumerateBuffs(pushEffectId).Count > 0;
+        }
+        return effect.Property.EventType != BuffEventType.None
+            ? session.Buffs.HasBuff(effect.Property.EventType)
+            : session.Buffs.EnumerateBuffs(pushEffectId).Count > 0;
     }
 
     private AutoActionMetaData? FindPackage(GameSession session, SmartPushMetadata smartPushMetadata, int packageId) {
