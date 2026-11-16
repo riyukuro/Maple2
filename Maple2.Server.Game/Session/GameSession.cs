@@ -1032,6 +1032,23 @@ public sealed partial class GameSession : Core.Network.Session {
         return true;
     }
 
+    // The conditions of a map's first visit: its continent (explore_continent, continent) and the map (explore).
+    internal void FirstVisitConditions() {
+        ConditionUpdate(ConditionType.explore_continent, codeLong: (int) Field!.Metadata.Property.Continent);
+        ConditionUpdate(ConditionType.continent, codeLong: (int) Field.Metadata.Property.Continent);
+        ConditionUpdate(ConditionType.explore, codeLong: Field.MapId);
+    }
+
+    // The conditions of every field entry: the map, the job held (job_change), and another account's home.
+    internal void EntryConditions() {
+        ConditionUpdate(ConditionType.map, codeLong: Player.Value.Character.MapId);
+        ConditionUpdate(ConditionType.job_change, codeLong: (int) Player.Value.Character.Job.Code());
+        if (Field is HomeFieldManager home
+            && FieldEntryRules.VisitsOtherHome(home.OwnerId, home.MapId, AccountId, leftField.MapId, leftField.OwnerId)) {
+            ConditionUpdate(ConditionType.enter_otherhouse);
+        }
+    }
+
     public bool EnterField() {
         if (Field == null) return false;
 
@@ -1084,9 +1101,7 @@ public sealed partial class GameSession : Core.Network.Session {
         // The mentor coins the mentor's mentees earned while it was away (MentoringManager.TakeMentorCoins).
         Mentoring.TakeMentorCoins();
         if (firstVisit) {
-            ConditionUpdate(ConditionType.explore_continent, codeLong: (int) Field.Metadata.Property.Continent);
-            ConditionUpdate(ConditionType.continent, codeLong: (int) Field.Metadata.Property.Continent);
-            ConditionUpdate(ConditionType.explore, codeLong: Field.MapId);
+            FirstVisitConditions();
         }
         MarkVisited(Player.Value.Character.MapId);
 
@@ -1126,12 +1141,7 @@ public sealed partial class GameSession : Core.Network.Session {
         PaybackService.EnterField(this);
         // The quest "map" condition: one count per field entry, whatever the way in (a portal, a warp, a login). Chosen
         // here: the client does not show when the server counts it.
-        ConditionUpdate(ConditionType.map, codeLong: Player.Value.Character.MapId);
-        ConditionUpdate(ConditionType.job_change, codeLong: (int) Player.Value.Character.Job.Code());
-        if (Field is HomeFieldManager home
-            && FieldEntryRules.VisitsOtherHome(home.OwnerId, home.MapId, AccountId, leftField.MapId, leftField.OwnerId)) {
-            ConditionUpdate(ConditionType.enter_otherhouse);
-        }
+        EntryConditions();
 
         // A save that cannot be stored ends the session: nothing more is done on it.
         if (!SessionSave()) {
