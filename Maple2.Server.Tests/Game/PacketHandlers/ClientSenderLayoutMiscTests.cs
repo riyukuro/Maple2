@@ -384,4 +384,90 @@ public class ClientSenderLayoutMiscTests {
             ReadsAll(handler, w => { w.WriteByte(sent); w.WriteInt(0); });
         }
     }
+
+    // instrumentmanager.cpp: 0 the item uid (631), 1 the note (645, 662), 2 (580), 3 and 5 the instrument and the score
+    // (705, 758), 4 and 6 (781, 770), 8 the score (FUN_1401ffdc0: uid, int, instrument as int, title, mml; 1066), 10 the
+    // score uid (1077); uimusicconcertdialog.cpp: 11, 13, 14 (354, 290, 318) and 15 the emotion (343). The client sends
+    // no 12 (end perform). Most modes are read only for a player holding the instrument and the feature on: compared by
+    // reading, run here are the ones that read before any check.
+    [Test]
+    public void Instrument_ModesWithoutAChecksBeforeTheRead() {
+        var handler = new InstrumentHandler { TableMetadata = test.TableMetadata, BanWordStorage = TestGameSession.BanWords() };
+        ReadsAll(handler, w => w.WriteByte(11));
+        ReadsAll(handler, w => w.WriteByte(13));
+        ReadsAll(handler, w => w.WriteByte(14));
+    }
+
+    // Unk_LapenEquip, Unk_LapenUnequip, Unk_LapenItem, Unk_LapenAddFodder, Unk_LapenUpgrade (itemlapensharddata.cpp:461-530):
+    // 1 slot int and uid; 2 slot int; 3 uid, item id, slot int; 4 the same and the amount; 5 the same, a count and per
+    // fodder uid and amount, then a trailing int the handler does not read; 6 item id and a second int, also unread.
+    [Test]
+    public void Lapenshard_Modes() {
+        var handler = new LapenshardHandler { TableMetadata = test.TableMetadata, ItemMetadata = test.ItemMetadata };
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteInt(1); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteLong(1); w.WriteInt(1); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(4); w.WriteLong(1); w.WriteInt(1); w.WriteInt(1); w.WriteInt(1); });
+    }
+
+    // Attendance: 0 (usercommandcli.cpp:1029), 1 (worldservice_1.cpp:5778), 2 and 3 (uiattendgiftdialog.cpp:419, 377), 4 the
+    // event id and the coupon uid (uiattendgiftdialog.cpp:477), 8 the event id (385).
+    [Test]
+    public void Attendance_Modes() {
+        var handler = new AttendanceHandler { ItemMetadata = test.ItemMetadata };
+        ReadsAll(handler, w => w.WriteByte(0));
+        ReadsAll(handler, w => w.WriteByte(1));
+        ReadsAll(handler, w => w.WriteByte(2));
+        ReadsAll(handler, w => w.WriteByte(3));
+        ReadsAll(handler, w => { w.WriteByte(4); w.WriteInt(1); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(8); w.WriteInt(1); });
+    }
+
+    // BonusGame: 0 the game id (uitalkcinematic.cpp:1137, payload 0x1401fcd50), 2 (cinematiccomponent.cpp:1215), 3
+    // (uirewardnotify.cpp:973).
+    [Test]
+    public void BonusGame_Modes0_2_3() {
+        var handler = new BonusGameHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata };
+        ReadsAll(handler, w => { w.WriteByte(0); w.WriteInt(1); });
+        ReadsAll(handler, w => w.WriteByte(2));
+        ReadsAll(handler, w => w.WriteByte(3));
+    }
+
+    // RequestMoveField (mypc.cpp:3155 mode 0: the field id, portal id, two ints, a string, the password string; 974 mode 1;
+    // 3086 mode 2: three ints, the account id, the passcode; 3136, 3107, 3125, 4970 modes 3, 4, 5, 6: the mode alone).
+    [Test]
+    public void MoveField_Modes() {
+        var handler = new MoveFieldHandler();
+        ReadsAll(handler, w => {
+            w.WriteByte(0);
+            w.WriteInt(test.Session.Field!.MapId);
+            w.WriteInt(1);
+            w.WriteInt(0);
+            w.WriteInt(0);
+            w.WriteUnicodeString("");
+            w.WriteUnicodeString("");
+        });
+        ReadsAll(handler, w => w.WriteByte(1));
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteInt(1); w.WriteInt(0); w.WriteInt(0); w.WriteLong(1); w.WriteUnicodeString(""); });
+        foreach (byte mode in new byte[] { 3, 4, 5, 6 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => w.WriteByte(sent));
+        }
+    }
+
+    // Job: 2 the npc id (cinematiccomponent.cpp:993), 7 job, serial, skill, level (FUN_1401fdb50), 8 (jobsystemcli.cpp:157), 9
+    // and 11 a count and per skill id, level short, learned flag (uiskillbookautodistributedialog.cpp:1202), 10 the
+    // rank (975).
+    [Test]
+    public void Job_Modes() {
+        var handler = new JobHandler();
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(7); w.WriteInt(1); w.WriteLong(1); w.WriteInt(1); w.WriteShort(1); });
+        ReadsAll(handler, w => w.WriteByte(8));
+        foreach (byte mode in new byte[] { 9, 11 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteInt(1); w.WriteInt(1); w.WriteShort(1); w.WriteBool(true); });
+        }
+        ReadsAll(handler, w => { w.WriteByte(10); w.WriteInt(0); });
+    }
 }
