@@ -204,6 +204,14 @@ public class QuestHandler : FieldPacketHandler {
             return session.Quest.Start(questId);
         }
 
+        // An alliance mission without a start npc (679 of the 694 KR ones) is accepted in the talk the alliance window
+        // opens (NpcTalk 8 mode 0, NpcTalkHandler.HandleAllianceQuest): its accept button sends the talk's npc, the
+        // alliance officer, which is no start npc of the quest. Before, every such accept was refused. The window
+        // starts a mission without a script at once, with no npc either.
+        if (metadata.Basic.Type == QuestType.AllianceQuest && metadata.Basic.StartNpc == 0) {
+            return session.Quest.Start(questId);
+        }
+
         bool isPostbox = npcObjectId == 0 && metadata.Basic.UsePostbox;
         // The talk's npc is the quest's start npc (CQuestManagerCommon::vfunc_o10_21, commonfiles/questdata.cpp:330).
         bool atStartNpc = session.Field!.Npcs.TryGetValue(npcObjectId, out FieldNpc? npc) && npc.Value.Id == metadata.Basic.StartNpc;

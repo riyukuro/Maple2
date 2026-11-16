@@ -690,6 +690,21 @@ public class QuestHandlerTests {
         });
     }
 
+    // An alliance mission without a start npc is accepted in the talk the alliance window opens, whose accept button
+    // names the officer (KR 91000011: no <start npc>, a quest script). One with a start npc keeps the npc rule.
+    [TestCase(0, true)]
+    [TestCase(Npc + 1, false)]
+    public void Accept_OfAnAllianceMissionInTheOfficersTalk(int startNpc, bool expected) {
+        GameSession session = Login();
+        QuestMetadata data = Data(type: QuestType.AllianceQuest);
+        test.Register(data with { Basic = data.Basic with { StartNpc = startNpc }, RemoteAccept = new QuestRemoteAccept(QuestRemoteType.None, 0) });
+        AddNpc(session, 55, Npc);
+
+        Accept(session, npcObjectId: 55);
+
+        Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.EqualTo(expected));
+    }
+
     // A field mission is accepted on its first progress map or a field whose outdoor parent that map is, nowhere else
     // (CQuestManager::vfunc_1, questmanager_2.cpp:560-569); a mission without a progress map is refused. Without the
     // parent table (an older ingest) the server cannot tell, and accepts.
