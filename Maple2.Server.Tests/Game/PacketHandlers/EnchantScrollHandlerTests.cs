@@ -184,6 +184,20 @@ public class EnchantScrollHandlerTests {
         Assert.That(Sent(), Is.EqualTo(new[] { Convert.ToHexString(EnchantScrollPacket.Enchant(Held()).ToArray()) }));
     }
 
+    // A raised grade drops the Peachy exp toward the next grade, as the client's level change does
+    // (CItemEnchantInfo::IncreaseLevel clears the charge); a roll that keeps the grade keeps the exp.
+    [TestCase(1, 3, 0)]
+    [TestCase(4, 4, 60)]
+    public void Enchant_ARaisedGradeDropsTheEnchantExp(int grade, int after, int exp) {
+        Start(Row(EnchantScrollType.Random, enchants: [3]));
+        Held().Enchant = new ItemEnchant { Enchants = grade, EnchantExp = 60 };
+
+        Send(2, scroll.Uid, gear.Uid);
+
+        Assert.That(Held().Enchant!.Enchants, Is.EqualTo(after));
+        Assert.That(Held().Enchant!.EnchantExp, Is.EqualTo(exp));
+    }
+
     // The roll never lowers an item: a random scroll under the item's grade keeps the grade (the scroll is spent).
     [Test]
     public void Enchant_RandomScrollBelowTheItemsGrade_KeepsTheGrade() {

@@ -114,6 +114,9 @@ public class EnchantScrollHandler : FieldPacketHandler {
             if (enchantLevel > item.Enchant.Enchants) {
                 ItemEnchant computed = GetCumulativeEnchant(session, item, enchantLevel);
                 item.Enchant.Enchants = computed.Enchants;
+                // A grade change starts the Peachy exp toward the next grade over: the client's level change clears
+                // it (CItemEnchantInfo::IncreaseLevel, ClearCharge; itemenchantinfo.cpp:70).
+                item.Enchant.EnchantExp = 0;
                 item.Enchant.BasicOptions.Clear();
                 foreach ((BasicAttribute attribute, BasicOption option) in computed.BasicOptions) {
                     item.Enchant.BasicOptions[attribute] = option;
