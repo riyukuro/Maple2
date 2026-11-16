@@ -285,36 +285,53 @@ public sealed class AgentNavigation {
         return true;
     }
 
-    // The floor past an edge along (dirX, dirZ): of the poly points more than LEDGE_MIN_DROP and at most maxDrop
-    // below the edge, within LEDGE_REACH across of it and ahead (no more than 45 degrees off the move), the one
-    // nearest the edge across (the ground the client's probe meets first), the higher of two as near. A raised
-    // island off to the side (a breakable's top) loses to the floor straight ahead.
+    // The floor past an edge along (dirX, dirZ): of the polys more than LEDGE_MIN_DROP and at most maxDrop below the
+    // edge whose nearest point lies within LEDGE_REACH across of it (the gap square to the ledge, whatever the
+    // move's angle), the one the move's line passes over first, where it does (the ground the client's probe meets
+    // first), the higher of two met as soon. A poly the line does not pass over within a few gaps (a breakable's
+    // raised island off to the side) is not taken.
     private static bool FloorPastLedge(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f edge, float dirX, float dirZ,
             float maxDrop, out RcVec3f floor) {
+        const float step = 0.05f;
+        const float along = 4 * LEDGE_REACH;
         floor = edge;
         float depth = Math.Min(maxDrop, 1000f);
-        var center = new RcVec3f(edge.X, edge.Y - depth / 2, edge.Z);
+        var center = new RcVec3f(edge.X + dirX * along / 2, edge.Y - depth / 2, edge.Z + dirZ * along / 2);
         long[] polys = new long[64];
-        if (query.QueryPolygons(center, new RcVec3f(LEDGE_REACH, depth / 2 + 0.1f, LEDGE_REACH), filter, polys, out int count, polys.Length).Failed()) {
+        if (query.QueryPolygons(center, new RcVec3f(along / 2 + LEDGE_REACH, depth / 2 + 0.1f, along / 2 + LEDGE_REACH), filter, polys,
+                out int count, polys.Length).Failed()) {
             return false;
         }
-        float best = float.MaxValue;
+        float first = float.MaxValue;
         for (int i = 0; i < count; i++) {
-            if (query.ClosestPointOnPoly(polys[i], edge, out RcVec3f point, out _).Failed()) {
+            if (query.ClosestPointOnPoly(polys[i], edge, out RcVec3f nearest, out _).Failed()) {
                 continue;
             }
-            float drop = edge.Y - point.Y;
-            float acrossX = point.X - edge.X;
-            float acrossZ = point.Z - edge.Z;
-            float across = MathF.Sqrt(acrossX * acrossX + acrossZ * acrossZ);
-            if (drop <= LEDGE_MIN_DROP || drop > maxDrop || across > LEDGE_REACH || acrossX * dirX + acrossZ * dirZ < across * 0.7071f
-                || across > best + 0.01f || (across > best - 0.01f && point.Y <= floor.Y)) {
+            float gapX = nearest.X - edge.X;
+            float gapZ = nearest.Z - edge.Z;
+            float nearDrop = edge.Y - nearest.Y;
+            if (gapX * gapX + gapZ * gapZ > LEDGE_REACH * LEDGE_REACH || nearDrop <= LEDGE_MIN_DROP || nearDrop > maxDrop + 0.1f) {
                 continue;
             }
-            floor = point;
-            best = Math.Min(best, across);
+            for (float s = step; s <= along && s < first + 0.01f; s += step) {
+                var probe = new RcVec3f(edge.X + dirX * s, edge.Y, edge.Z + dirZ * s);
+                if (query.ClosestPointOnPoly(polys[i], probe, out RcVec3f point, out _).Failed()) {
+                    break;
+                }
+                float offX = point.X - probe.X;
+                float offZ = point.Z - probe.Z;
+                if (offX * offX + offZ * offZ > 0.0001f) {
+                    continue;
+                }
+                float drop = edge.Y - point.Y;
+                if (drop > LEDGE_MIN_DROP && drop <= maxDrop && (s < first - 0.01f || point.Y > floor.Y)) {
+                    floor = point;
+                    first = Math.Min(first, s);
+                }
+                break;
+            }
         }
-        return best < float.MaxValue;
+        return first < float.MaxValue;
     }
 
     // How far up (navmesh units) a standing point may be above a breakable's base and still be on the floor: the

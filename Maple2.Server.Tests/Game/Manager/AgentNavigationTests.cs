@@ -616,4 +616,21 @@ public class AgentNavigationTests {
             Assert.That(end.Y, Is.EqualTo(-1f).Within(0.05));
         });
     }
+
+    // A push 60 degrees off square to the ledge steps down too, landing where its line meets the lower floor; the
+    // same push at a 0.2 wall (gap 0.8 square to it) stops at the edge.
+    [Test]
+    public void LedgeMove_AnObliquePushStepsDownButNotThroughAWall() {
+        var from = new RcVec3f(-0.5f, 0, 5);
+        var to = new RcVec3f(1.5f, 0, 5 + 2 * MathF.Tan(MathF.PI / 3));
+        Assert.That(AgentNavigation.LedgeMove(LedgeQuery(1f), new DtQueryDefaultFilter(), from, to, 1.5f, out RcVec3f down), Is.True);
+        Assert.That(AgentNavigation.LedgeMove(LedgeQuery(1f, gap: 0.8f), new DtQueryDefaultFilter(), from, to, 1.5f, out RcVec3f wall), Is.True);
+        Assert.Multiple(() => {
+            Assert.That(down.X, Is.EqualTo(to.X).Within(0.01));
+            Assert.That(down.Z, Is.EqualTo(to.Z).Within(0.01));
+            Assert.That(down.Y, Is.EqualTo(-1f).Within(0.05));
+            Assert.That(wall.X, Is.EqualTo(0f).Within(0.01));
+            Assert.That(wall.Y, Is.EqualTo(0f).Within(0.05));
+        });
+    }
 }
