@@ -33,6 +33,23 @@ public class AiMapper : TypeMapper<AiMetadata> {
     /// <summary>The onlyDead flag of an AI file's battleEnd tree.</summary>
     public static bool BattleEndOnlyDead(string xml) => OnlyDeadPattern.IsMatch(CommentPattern.Replace(xml, ""));
 
+    // The parser reads no attribute of <battle> either: startAni and endAni (KR: 70 files).
+    private static readonly Regex BattleTagPattern = new(@"<battle\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>The startAni and endAni of an AI file's battle tree ("" when absent).</summary>
+    public static (string Start, string End) BattleAnimations(string xml) {
+        Match tag = BattleTagPattern.Match(CommentPattern.Replace(xml, ""));
+        if (!tag.Success) {
+            return ("", "");
+        }
+        return (Attribute(tag.Value, "startAni"), Attribute(tag.Value, "endAni"));
+
+        static string Attribute(string tag, string name) {
+            Match match = Regex.Match(tag, $@"\b{name}\s*=\s*""([^""]*)""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return match.Success ? match.Groups[1].Value.Trim() : "";
+        }
+    }
+
     private static readonly Regex CommentPattern = new("<!--.*?-->", RegexOptions.Singleline | RegexOptions.CultureInvariant);
 
     // A feature condition is decided here, by the locale's feature level, as the client's CFeatureManager decides
@@ -103,13 +120,16 @@ public class AiMapper : TypeMapper<AiMetadata> {
                 ));
             }
 
+            (string startAni, string endAni) = file == null ? ("", "") : BattleAnimations(xmlReader.GetString(file));
             yield return new AiMetadata(
                 Name: name,
                 Reserved: reserved.ToArray(),
                 Battle: battle.ToArray(),
                 BattleEnd: battleEnd.ToArray(),
                 AiPresets: aiPresets.ToArray(),
-                BattleEndOnlyDead: battleEnd.Count > 0 && BattleEndOnlyDeadOf(name)
+                BattleEndOnlyDead: battleEnd.Count > 0 && BattleEndOnlyDeadOf(name),
+                BattleStartAni: startAni,
+                BattleEndAni: endAni
             );
         }
         Console.WriteLine($"AI skill nodes without faceTarget: {faceNodes} in {faceFiles} files ({faceUnknown} files not told apart)");

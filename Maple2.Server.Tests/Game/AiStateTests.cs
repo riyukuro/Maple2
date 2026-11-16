@@ -33,7 +33,8 @@ public class AiStateTests : TriggerTestBase {
     private FieldNpc npc = null!;
 
     private FieldNpc Spawn(Entry[] battle, Condition[]? reserved = null, Vector3? position = null, string[]? sequences = null,
-            NpcMetadataSkill? skill = null, Entry[]? battleEnd = null, bool onlyDead = false, AiPresetDefinition[]? presets = null) {
+            NpcMetadataSkill? skill = null, Entry[]? battleEnd = null, bool onlyDead = false, AiPresetDefinition[]? presets = null,
+            string startAni = "", string endAni = "") {
         Start();
         typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
@@ -49,7 +50,7 @@ public class AiStateTests : TriggerTestBase {
         }
         typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, NpcTable(sequences ?? [], Npc(NpcId, skill)));
         typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field,
-            AiTable(new AiMetadata(AiPath, reserved ?? [], battle, battleEnd ?? [], presets ?? [], onlyDead)));
+            AiTable(new AiMetadata(AiPath, reserved ?? [], battle, battleEnd ?? [], presets ?? [], onlyDead, startAni, endAni)));
         SetTick(1_000_000);
 
         Assert.That(Field.NpcMetadata.TryGet(NpcId, out NpcMetadata? metadata), Is.True);
@@ -398,6 +399,32 @@ public class AiStateTests : TriggerTestBase {
         Run(3);
         Assert.That(npc.AiExtraData.GetValueOrDefault("Shown"), Is.EqualTo(1));
         Assert.That(npc.AiExtraData.GetValueOrDefault("Fallback"), Is.EqualTo(2));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // KR AI_Default.xml and 69 more: <battle startAni="Up_A" endAni="Down_A">. As the battle starts the npc plays Up_A
+    // before its battle tree runs; as the battle ends with the npc alive it plays Down_A before battleEnd runs.
+    [Test]
+    public void Battle_StartAniThenTheTree_EndAniThenBattleEnd() {
+        Spawn([SetValue("Fought", 1, isModify: true), Standby(100)], sequences: ["Idle_A", "Up_A", "Down_A"],
+            battleEnd: [SetValue("Ended", 1)], startAni: "Up_A", endAni: "Down_A");
+        Run();
+        Assert.That(CurrentTask, Is.InstanceOf<MovementState.NpcEmoteTask>());
+        Assert.That(((MovementState.NpcEmoteTask) CurrentTask!).Sequence, Is.EqualTo("Up_A"));
+        Assert.That(npc.AiExtraData.ContainsKey("Fought"), Is.False, "the tree waits for startAni");
+
+        CurrentTask!.Cancel();
+        Run();
+        Assert.That(npc.AiExtraData.GetValueOrDefault("Fought"), Is.EqualTo(1));
+
+        typeof(BattleState).GetProperty(nameof(BattleState.Target))!.SetValue(npc.BattleState, null);
+        CurrentTask?.Cancel();
+        Run();
+        Assert.That(((MovementState.NpcEmoteTask) CurrentTask!).Sequence, Is.EqualTo("Down_A"));
+        Assert.That(npc.AiExtraData.ContainsKey("Ended"), Is.False, "battleEnd waits for endAni");
+        CurrentTask!.Cancel();
+        Run();
+        Assert.That(npc.AiExtraData.GetValueOrDefault("Ended"), Is.EqualTo(1));
         Assert.That(test.Errors, Is.Empty);
     }
 

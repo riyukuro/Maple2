@@ -153,6 +153,10 @@ public class AiState {
                 } else {
                     currentTree = DecisionTreeType.None;
                 }
+                // The battle's endAni plays first; the battleEnd tree runs after it.
+                if (PlayBattleAnimation(AiMetadata.BattleEndAni)) {
+                    return;
+                }
             } else if (currentTree == DecisionTreeType.BattleEnd && aiStack.Count == 0) {
                 currentTree = DecisionTreeType.None;
             }
@@ -168,10 +172,15 @@ public class AiState {
         }
 
         if (isInBattle && battle is not null) {
-            if (currentTree != DecisionTreeType.Battle) {
+            bool starts = currentTree != DecisionTreeType.Battle;
+            if (starts) {
                 battleStartTick = actor.Field.FieldTick;
             }
             currentTree = DecisionTreeType.Battle;
+            // The battle's startAni plays before its tree runs.
+            if (starts && PlayBattleAnimation(AiMetadata.BattleStartAni)) {
+                return;
+            }
         }
 
         if (lastEvaluated != AiMetadata) {
@@ -232,6 +241,16 @@ public class AiState {
     }
 
     private const int MaxDeathSteps = 1000;
+
+    // <battle startAni endAni>: the npc plays the sequence once as the battle starts or ends; the AI waits for it. A
+    // rig without the sequence plays nothing (the emote cancels itself) and the AI goes on at once.
+    private bool PlayBattleAnimation(string sequence) {
+        if (string.IsNullOrEmpty(sequence)) {
+            return false;
+        }
+        SetNodeTask(actor.MovementState.TryEmote(sequence, false));
+        return true;
+    }
 
     private void RunStack(long tickCount) {
         while (aiStack.Count > 0) {

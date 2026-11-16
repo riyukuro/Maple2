@@ -12,7 +12,11 @@ public record AiMetadata(
     AiMetadata.AiPresetDefinition[] AiPresets,
     // <battleEnd onlyDead="true">: the battleEnd tree runs only when the npc dies, not when a battle ends with
     // the npc alive (the AI files' own comments say so).
-    bool BattleEndOnlyDead = false) {
+    bool BattleEndOnlyDead = false,
+    // <battle startAni="Up_A" endAni="Down_A"> (KR: 70 files, always that pair): the sequence the npc plays as its
+    // battle starts, and as it ends with the npc alive.
+    string BattleStartAni = "",
+    string BattleEndAni = "") {
 
     [JsonPolymorphic(TypeDiscriminatorPropertyName = "!")]
     [JsonDerivedType(typeof(AiPreset), typeDiscriminator: nameof(AiPreset))]
