@@ -988,6 +988,16 @@ public sealed class TestGameSession {
             return PartyWorld?.Invoke(request) ?? new PartyResponse();
         }
 
+        // The field requests (dungeon room create and destroy) handed to the world, and its answer (an empty
+        // answer, error 0 and room 0, without FieldWorld).
+        public readonly List<FieldRequest> FieldRequests = [];
+        public Func<FieldRequest, FieldResponse>? FieldWorld;
+
+        public override FieldResponse Field(FieldRequest request, CallOptions options) {
+            FieldRequests.Add(request);
+            return FieldWorld?.Invoke(request) ?? new FieldResponse();
+        }
+
         // The guild requests handed to the world.
         public readonly List<GuildRequest> GuildRequests = [];
         // The world's answer to a guild request; an empty answer without it.
