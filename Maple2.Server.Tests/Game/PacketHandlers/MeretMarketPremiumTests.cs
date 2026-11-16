@@ -125,6 +125,26 @@ public class MeretMarketPremiumTests {
         });
     }
 
+    // The same buy packet twice, for a package that may be bought once: its row asks for its own trophy not had
+    // (the trophy is the KR one that counts the product; the requirement is made up here). The first buy completes
+    // the trophy, so the repeat is refused (0xB1) before paying: the price is taken once and one item given.
+    [Test]
+    public void ARepeatedBuyOfAOnceOnlyPackage_IsRefusedAndPaysOnce() {
+        SetMarket(Row(Package, achievement: Trophy));
+
+        Buy(Package);
+        (byte Sub, int Code) first = Answer();
+        Buy(Package);
+        (byte Sub, int Code) second = Answer();
+
+        Assert.Multiple(() => {
+            Assert.That(first.Sub, Is.EqualTo(0x1E));
+            Assert.That(second, Is.EqualTo(((byte) 0x1F, 0xB1)));
+            Assert.That(session.Currency.Meret, Is.EqualTo(4900));
+            Assert.That(Owned(), Is.EqualTo(1));
+        });
+    }
+
     // A refused buy counts nothing, and neither does a design.
     [Test]
     public void ARefusedBuy_OrADesign_CountsNothing() {
