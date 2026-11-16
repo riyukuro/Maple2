@@ -422,4 +422,10 @@ public static class DungeonRoomRules {
         target.UnionSubCooldownTimestamp = subEnd;
         target.ExtraCooldownTimestamp = extraEnd;
     }
+
+    // RoomDungeon 1 (the leader resets the party's dungeon): the party's dungeon is cleared once its room is destroyed or
+    // already gone. Any other answer (players still inside, no channel) is sent back and the dungeon is kept.
+    public static bool ResetGoesOn(MigrationError destroyed) {
+        return destroyed is MigrationError.ok or MigrationError.s_move_err_dungeon_not_exist;
+    }
 }

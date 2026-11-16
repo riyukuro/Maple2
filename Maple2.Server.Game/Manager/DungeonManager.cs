@@ -1444,13 +1444,16 @@ public class DungeonManager {
             return;
         }
 
+        // The party's room is the one the leader's "the party has a dungeon" box (RoomDungeon 1) asks to reset. A room
+        // already closed (an empty room goes after some minutes) is reset as well: before, its not-exist error kept the
+        // party's dungeon set, so the box came back on every try and no other dungeon could be set.
         try {
             FieldResponse response = session.World.Field(new FieldRequest {
                 DestroyDungeon = new FieldRequest.Types.DestroyDungeon {
-                    RoomId = LobbyRoomId,
+                    RoomId = session.Party.Party.DungeonLobbyRoomId,
                 },
             });
-            if ((MigrationError) response.Error != MigrationError.ok) {
+            if (!DungeonRoomRules.ResetGoesOn((MigrationError) response.Error)) {
                 session.Send(MigrationPacket.GameToGameError((MigrationError) response.Error));
                 return;
             }
