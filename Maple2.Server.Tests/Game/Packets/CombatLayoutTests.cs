@@ -1,4 +1,4 @@
-using System.Numerics;
+﻿using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Maple2.Model.Enum;
@@ -422,5 +422,42 @@ public class CombatLayoutTests {
             Assert.That(reader.ReadFloat(), Is.EqualTo(1.25f));
         }
         Assert.That(reader.Available, Is.Zero);
+    }
+
+    // SkillSync (OnSkillSync :3361): long uid, int caster, int skill, short level, byte motion, four vectors of three
+    // floats (position, direction, rotation, move input), two bools, float speed.
+    [Test]
+    public void SkillSync() {
+        FieldPlayer caster = Player();
+        ByteReader reader = Reader(SkillPacket.Sync(Cast(caster), new Vector3(1, 2, 3), new Vector3(4, 5, 6), new Vector3(7, 8, 9),
+            new Vector3(10, 11, 12), true, false, System.BitConverter.SingleToInt32Bits(1.25f)), SendOp.SkillSync);
+        Assert.That(reader.ReadLong(), Is.EqualTo(9_000_000_001));
+        Assert.That(reader.ReadInt(), Is.EqualTo(caster.ObjectId));
+        Assert.That(reader.ReadInt(), Is.EqualTo(10200001));
+        Assert.That(reader.ReadShort(), Is.EqualTo(3));
+        Assert.That(reader.ReadByte(), Is.EqualTo(0));
+        foreach (float expected in new float[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }) {
+            Assert.That(reader.ReadFloat(), Is.EqualTo(expected));
+        }
+        Assert.That(reader.ReadBool(), Is.True);
+        Assert.That(reader.ReadBool(), Is.False);
+        Assert.That(reader.ReadFloat(), Is.EqualTo(1.25f));
+        Assert.That(reader.Available, Is.Zero);
+    }
+
+    // SkillCancel (OnSkillCancel :3409): long cast uid, int caster. UserBattle (OnUserBattle :3269): int object id,
+    // byte emotion (the battle flag).
+    [Test]
+    public void SkillCancelAndUserBattle() {
+        FieldPlayer caster = Player();
+        ByteReader cancel = Reader(SkillPacket.Cancel(Cast(caster)), SendOp.SkillCancel);
+        Assert.That(cancel.ReadLong(), Is.EqualTo(9_000_000_001));
+        Assert.That(cancel.ReadInt(), Is.EqualTo(caster.ObjectId));
+        Assert.That(cancel.Available, Is.Zero);
+
+        ByteReader battle = Reader(SkillPacket.InBattle(caster), SendOp.UserBattle);
+        Assert.That(battle.ReadInt(), Is.EqualTo(caster.ObjectId));
+        Assert.That(battle.ReadByte(), Is.EqualTo(0));
+        Assert.That(battle.Available, Is.Zero);
     }
 }
