@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
+using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Field;
@@ -297,5 +301,113 @@ public class HomeActionUgcOxTests {
         Quiz(8);
         Quiz(7);
         Assert.That(ox.Canceled, Is.False);
+    }
+
+    // The event listed on the factory with the home field standing in for its stadium room, as CreateUgcOxStadium
+    // leaves it (the stadium map itself needs its navmesh file).
+    private UgcOxEvent Listed() {
+        FieldManager home = session.Field!;
+        var ox = new UgcOxEvent(session.AccountId, session.CharacterId, session.PlayerName, home.MapId, new UgcOxRules.Settings(2000, 20, 50)) {
+            StadiumRoomId = home.RoomId,
+            HomePortalId = 7,
+        };
+        home.SetUgcOx(ox);
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.NonPublic;
+        var rooms = new ConcurrentDictionary<int, ConcurrentDictionary<int, FieldManager>>();
+        rooms[UgcOxRules.StadiumMapId] = new ConcurrentDictionary<int, FieldManager> { [home.RoomId] = home };
+        typeof(FieldManager.Factory).GetField("fields", any)!.SetValue(session.FieldFactory, rooms);
+        typeof(FieldManager.Factory).GetField("logger", any)!.SetValue(session.FieldFactory, Serilog.Log.Logger);
+        typeof(FieldManager.Factory).GetField("homes", any)!.SetValue(session.FieldFactory,
+            new ConcurrentDictionary<long, HomeFieldManager> { [session.AccountId] = (HomeFieldManager) home });
+        var events = (ConcurrentDictionary<long, UgcOxEvent>) typeof(FieldManager.Factory).GetField("ugcOxEvents", any)!.GetValue(session.FieldFactory)!;
+        events[ox.HostAccountId] = ox;
+        return ox;
+    }
+
+    // c2s 5, the stadium portal in the host's home: the move box with the event's terms.
+    [Test]
+    public void Enter_WithTheHostsEvent_AnswersTheMoveBox() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Listed();
+
+        Quiz(5, writer => {
+            writer.WriteInt(0);
+            writer.WriteInt(0);
+        });
+
+        Assert.That(Sent(), Is.EqualTo(new[] {
+            Hex(HomeActionPacket.UgcOxMove(ox.HomeMapId, 7, session.AccountId, session.PlayerName, 2000, 20, 50)),
+        }));
+    }
+
+    // An event canceled at its start (no entrants) is taken off the list: the portal answers nothing.
+    [Test]
+    public void Enter_AfterTheEventWasCanceled_Silent() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Listed();
+        Assert.That(ox.Start(), Is.False);
+
+        Quiz(5, writer => {
+            writer.WriteInt(0);
+            writer.WriteInt(0);
+        });
+
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    // c2s 1: a promote counts once and answers the count; one again within the cooldown is not counted.
+    [Test]
+    public void Promote_CountsOnceWithinTheCooldown() {
+        Begin(ticket: false);
+        UgcOxEvent ox = Listed();
+
+        Quiz(1);
+        Assert.That(ox.PromoteCount, Is.EqualTo(1));
+        Assert.That(test.TakeSentOps(), Does.Contain(SendOp.HomeAction));
+
+        Quiz(1);
+        Assert.That(ox.PromoteCount, Is.EqualTo(1));
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.HomeAction }));
+    }
+
+    // c2s 18: a player in the fallen box (104) goes back on top of the stage box (105); one outside it stays.
+    [Test]
+    public void Resurrect_MovesTheFallenOntoTheStage() {
+        Begin(ticket: false);
+        Host();
+        FieldManager field = session.Field!;
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var boxes = new Dictionary<int, TriggerBox> {
+            [104] = new TriggerBox(new Ms2TriggerBox(new Vector3(-500, -500, 0), new Vector3(300, 300, 300), 104, true)),
+            [105] = new TriggerBox(new Ms2TriggerBox(new Vector3(500, 500, 0), new Vector3(300, 300, 100), 105, true)),
+        };
+        var objects = (TriggerCollection) RuntimeHelpers.GetUninitializedObject(typeof(TriggerCollection));
+        typeof(TriggerCollection).GetField(nameof(TriggerCollection.Boxes), any)!.SetValue(objects, boxes);
+        typeof(FieldManager).GetField(nameof(FieldManager.TriggerObjects), any)!.SetValue(field, objects);
+        typeof(FieldManager).GetField("<Navigation>k__BackingField", any)!.SetValue(field, TriggerHallGameTests.FlatNavigation());
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", any)!.SetValue(session.Player, field);
+
+        session.Player.Position = new Vector3(1500, 1500, 0);
+        Quiz(18);
+        Assert.That(test.TakeSent(), Is.Empty);
+
+        session.Player.Position = new Vector3(-500, -500, 0);
+        Quiz(18);
+        Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.UserMoveByPortal }));
+    }
+
+    // Without the stadium's boxes (another map's trigger set) the resurrect does nothing.
+    [Test]
+    public void Resurrect_WithoutTheBoxes_DoesNothing() {
+        Begin(ticket: false);
+        Host();
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var objects = (TriggerCollection) RuntimeHelpers.GetUninitializedObject(typeof(TriggerCollection));
+        typeof(TriggerCollection).GetField(nameof(TriggerCollection.Boxes), any)!.SetValue(objects, new Dictionary<int, TriggerBox>());
+        typeof(FieldManager).GetField(nameof(FieldManager.TriggerObjects), any)!.SetValue(session.Field!, objects);
+
+        Quiz(18);
+
+        Assert.That(test.TakeSent(), Is.Empty);
     }
 }
