@@ -302,6 +302,8 @@ public class FieldNpc : Actor<Npc> {
     // Called with the player and the damage of each hit a player deals.
     public Action<FieldPlayer, long>? PlayerDamageCallback { get; set; }
     private long lastCorpseBroadcastTick;
+    // The corpse box rolls, once a second a player (CorpseLootRolls).
+    private readonly CorpseLootRolls corpseRolls = new();
     private byte lastControlFlags;
     // The flags byte of this npc's NpcControl entries.
     public byte ControlFlags => NpcControlRules.Flags(BattleState.InBattle, MovementState.State == ActorState.Stun);
@@ -893,11 +895,8 @@ public class FieldNpc : Actor<Npc> {
 
     public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
         if (IsCorpse) {
-            // Corpse loot intentionally drops on every hit — players are expected to keep
-            // attacking the corpse to collect loot. A per-player rate limit (e.g. once per
-            // second) could be added here if spamming turns out to be an issue, but whether
-            // the original server enforced one is unknown.
-            if (caster is FieldPlayer player) {
+            // Anyone who hits the corpse rolls its box, once a second (CorpseLootRolls).
+            if (caster is FieldPlayer player && corpseRolls.TryRoll(player.Value.Character.Id, Environment.TickCount64)) {
                 DropCorpseLoot(player);
             }
             SequenceCounter++;
@@ -928,7 +927,8 @@ public class FieldNpc : Actor<Npc> {
     // - GlobalDropBoxIds       : drops spawned on death, rolled once per damage dealer and locked to it.
     // - GlobalHitDropBoxIds    : drops spawned each time the NPC is hit while alive (triggered in OnDamageReceived),
     //                            locked to the player who hit.
-    // - DeadGlobalDropBoxIds   : drops spawned when a player hits the NPC corpse (IsCorpse == true).
+    // - DeadGlobalDropBoxIds   : drops spawned when a player hits the NPC corpse (IsCorpse == true), once a second
+    //                            a player (CorpseLootRolls).
     // - IndividualDropBoxIds   : per-player drops on death (each damage dealer gets their own).
     // - IndividualHitDropBoxIds: per-player drops each time the NPC is hit while alive.
     //
