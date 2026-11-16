@@ -234,4 +234,31 @@ public class ChatStickerHandlerTests {
             Assert.That(session.Player.Value.Unlock.StickerSets.ContainsKey(ExpiredGroup), Is.True);
         });
     }
+
+    // ChatStamp 0 at the field entry: u16 count and the favourite sticker ids, then u16 count and per held group its
+    // id and its end time (CChatEmoticonCli::OnEmoticonList, chatemoticoncli.cpp:153-165).
+    [Test]
+    public void Load_ListsTheFavouritesAndTheHeldGroups() {
+        (TestGameSession test, GameSession session, ChatStickerHandler handler) = Setup();
+        handler.Handle(session, Single(5, HeldSticker));
+        test.TakeSent();
+        typeof(ConfigManager).GetField("session", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session.Config, session);
+        long expired = session.Player.Value.Unlock.StickerSets[ExpiredGroup];
+
+        session.Config.LoadChatStickers();
+
+        ByteReader reader = Reply(test.TakeSent().Single(), 0);
+        Assert.Multiple(() => {
+            Assert.That(reader.ReadShort(), Is.EqualTo(1));
+            Assert.That(reader.ReadInt(), Is.EqualTo(HeldSticker));
+            Assert.That(reader.ReadShort(), Is.EqualTo(2));
+            var groups = new Dictionary<int, long>();
+            for (int i = 0; i < 2; i++) {
+                int id = reader.ReadInt();
+                groups[id] = reader.ReadLong();
+            }
+            Assert.That(groups, Is.EqualTo(new Dictionary<int, long> { [HeldGroup] = ChatStickerRules.Permanent, [ExpiredGroup] = expired }));
+            Assert.That(reader.Available, Is.EqualTo(0));
+        });
+    }
 }

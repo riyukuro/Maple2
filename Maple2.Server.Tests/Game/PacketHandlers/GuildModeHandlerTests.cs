@@ -32,6 +32,8 @@ namespace Maple2.Server.Tests.Game.PacketHandlers;
 public class GuildModeHandlerTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private const string BannedWord = "badword";
+    private const int EventId = 3;
+    private const int EventMap = 2000062;
 
     private TestGameSession test = null!;
     private GameSession session = null!;
@@ -47,7 +49,8 @@ public class GuildModeHandlerTests {
             new Dictionary<int, IReadOnlyDictionary<short, GuildTable.Buff>>(),
             new Dictionary<int, IReadOnlyDictionary<int, GuildTable.House>>(),
             new Dictionary<GuildNpcType, IReadOnlyDictionary<short, GuildTable.Npc>>(),
-            new Dictionary<short, GuildTable.Property> { [1] = property with { Level = 1, Capacity = 10, DonateMax = 3 } }));
+            new Dictionary<short, GuildTable.Property> { [1] = property with { Level = 1, Capacity = 10, DonateMax = 3 } },
+            Events: new Dictionary<int, GuildTable.Event> { [EventId] = new(EventId, EventMap) }));
         test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
         test.Start();
         session = test.Session;
@@ -453,5 +456,100 @@ public class GuildModeHandlerTests {
 
         Assert.That(test.World.GuildRequests.Select(request => (request.UpgradeNpc.GuildId, request.UpgradeNpc.Type)),
             Is.EqualTo(Enumerable.Repeat((7L, (int) GuildNpcType.Goods), 3)));
+    }
+
+    // Guild 100 (CGuildManager::SendGuildMode100, guildmanager.cpp:881-898: byte 100, int event id): an open event
+    // of the guild sends the member to the event's map, in the guild's own copy of it.
+    [Test]
+    public void EnterEvent_Open_MovesToTheEventMapOfTheGuild() {
+        session.Guild.Guild!.Events.Add(new GuildEvent(EventId, (int) DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+        Send(100, writer => writer.WriteInt(EventId));
+
+        MigrateOutRequest move = test.World.Moves.Single();
+        Assert.Multiple(() => {
+            Assert.That(move.MapId, Is.EqualTo(EventMap));
+            Assert.That(move.OwnerId, Is.EqualTo(7L));
+        });
+    }
+
+    // An event the table has no row for, one the guild has not opened, one whose open time has passed, and the
+    // event's own map: no move.
+    [Test]
+    public void EnterEvent_NotOpenOrNoRow_NoMove() {
+        int now = (int) DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        session.Guild.Guild!.Events.Add(new GuildEvent(9, now));
+        Send(100, writer => writer.WriteInt(9));
+        Send(100, writer => writer.WriteInt(EventId));
+        session.Guild.Guild!.Events.Add(new GuildEvent(EventId, now - GuildRules.EventOpenSeconds - 1));
+        Send(100, writer => writer.WriteInt(EventId));
+
+        Assert.That(test.World.Moves, Is.Empty);
+    }
+
+    [Test]
+    public void EnterEvent_OnTheEventMap_NoMove() {
+        test.EnterMap(TestGameSession.Map(EventMap));
+        session.Guild.Guild!.Events.Add(new GuildEvent(EventId, (int) DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+        Send(100, writer => writer.WriteInt(EventId));
+
+        Assert.That(test.World.Moves, Is.Empty);
+    }
+
+    // Guild 109 (CGuildManager::FUN_1413bb490, guildmanager.cpp:1086-1088): the item as ItemEntity::Write puts it
+    // (commonstruct_wa.cpp:84: int id, short rank, int count, 4 bools), then the receiver's name.
+    private void SendGift(int itemId, short rank, int count, string receiver) {
+        Send(109, writer => {
+            writer.WriteInt(itemId);
+            writer.WriteShort(rank);
+            writer.WriteInt(count);
+            writer.WriteBool(false);
+            writer.WriteBool(false);
+            writer.WriteBool(false);
+            writer.WriteBool(false);
+            writer.WriteUnicodeString(receiver);
+        });
+    }
+
+    // The World is asked with the item and the name; the answer (OnPacketStorageGiftResult) is the result byte,
+    // with the receiver's name on success.
+    [Test]
+    public void StorageGift_AsksTheWorld_AndAnswersWithTheReceiver() {
+        test.World.GuildWorld = _ => new GuildResponse { ReceiverName = "Other" };
+        SendGift(20000001, 3, 2, "Other");
+
+        GuildRequest.Types.StorageGift gift = test.World.GuildRequests.Single().StorageGift;
+        Assert.Multiple(() => {
+            Assert.That((gift.GuildId, gift.ItemId, gift.Rarity, gift.Amount, gift.ReceiverName),
+                Is.EqualTo((7L, 20000001, 3, 2, "Other")));
+            Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.StorageGift(GuildError.none, "Other")) }));
+        });
+    }
+
+    [Test]
+    public void StorageGift_Refused_AnswersTheError() {
+        test.World.GuildWorld = _ => new GuildResponse { Error = (int) GuildError.s_guild_err_no_master };
+        SendGift(20000001, 1, 1, "Nobody");
+
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.StorageGift(GuildError.s_guild_err_no_master)) }));
+    }
+
+    [Test]
+    public void StorageGift_WorldDown_Unknown() {
+        WorldDown();
+        SendGift(20000001, 1, 1, "Other");
+
+        Assert.That(GuildAnswers(), Is.EqualTo(new[] { Hex(GuildPacket.StorageGift(GuildError.s_guild_err_unknown)) }));
+    }
+
+    // The client's reader drops 109 outside a guild; the server neither asks nor answers.
+    [Test]
+    public void StorageGift_OutsideAGuild_Nothing() {
+        typeof(GuildManager).GetProperty("Guild", Any)!.SetValue(session.Guild, null);
+        SendGift(20000001, 1, 1, "Other");
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.GuildRequests, Is.Empty);
+            Assert.That(GuildAnswers(), Is.Empty);
+        });
     }
 }

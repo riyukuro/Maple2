@@ -585,4 +585,22 @@ public class VipGoodsShopTests {
             Assert.That(bag.Single(item => item.Amount == 2).ExpiryTime, Is.EqualTo(expiry));
         });
     }
+
+    // PremiumClub 1 (UIVIPDialog::SendPremiumClubMode1, uivipdialog.cpp:204: byte 1, no body), sent when the dialog
+    // loads: the answer is mode 1 with the count and the claimed benefit ids (FUN_140fb87d0 mode 1: int count, ints),
+    // first none, then the one claimed.
+    [Test]
+    public void LoadClaimed_ListsTheClaimedBenefits() {
+        SetMember();
+        void LoadClaimed() => Handler().Handle(session, TestGameSession.Packet(writer => writer.WriteByte(1)));
+
+        LoadClaimed();
+        Assert.That(Sent(1).Select(packet => packet[3..]), Is.EqualTo(new[] { BitConverter.GetBytes(0) }));
+
+        Claim(BenefitId);
+        test.TakeSent();
+        LoadClaimed();
+        Assert.That(Sent(1).Select(packet => packet[3..]),
+            Is.EqualTo(new[] { BitConverter.GetBytes(1).Concat(BitConverter.GetBytes(BenefitId)).ToArray() }));
+    }
 }
