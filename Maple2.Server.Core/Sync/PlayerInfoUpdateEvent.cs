@@ -55,6 +55,9 @@ public class PlayerInfoUpdateEvent {
             Type |= UpdateField.Profile;
         } else if (request.HasAdminPermissions && player.AccountAdminPermissions != (AdminPermissions) request.AdminPermissions) {
             Type |= UpdateField.Profile;
+        } else if (request.HasMentorRole && player.MentorRole != (MentorRole) request.MentorRole) {
+            // A mentoring registration sends the role alone; other players' mentee checks read it from the record.
+            Type |= UpdateField.Profile;
         }
         if (request.HasJob && player.Job != (Job) request.Job) {
             Type |= UpdateField.Job;
