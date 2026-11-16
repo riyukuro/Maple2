@@ -2123,7 +2123,13 @@ public sealed partial class GameSession : Core.Network.Session {
                     ResetWait, AccountId, CharacterId);
                 return false;
             case SaveResult.Unknown:
-                // Logged with its stack where the commit threw, and the session is ended there (one try was made).
+                // Logged with its stack where the commit threw (one try was made). The database holds the move whole
+                // (the target map with the payment taken before it) or nothing of it, and nothing more of the session
+                // is stored (StoreRefused): the payment given back by the undo is memory only. The session is ended
+                // after the undo, as below (its LockedSave left the cut to here), so that Dispose finds it out of
+                // ChangeMap and tells the World the player is offline. Cut first, Dispose took it for a session that
+                // left for another server and the World was not told.
+                Cut();
                 return false;
         }
         Logger.Fatal("MigrationSave: not stored after a second try, the move is refused and the session is ended; the stored state is the last full save AccountId={AccountId} CharacterId={CharacterId}",
@@ -2213,7 +2219,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // An open storage and the summoned pet are stored by the save below (SaveRows), with the bag. Once the move's
         // save stored, they write nothing more (MoveStored).
 
-        SaveResult result = LockedSave(tries: 2, ResetWait, last);
+        // An unknown commit is not cut there: MigrationSave cuts after its undo (Dispose's own save needs no cut).
+        SaveResult result = LockedSave(tries: 2, ResetWait, last, cutUnknown: false);
         if (result != SaveResult.Stored) {
             preMigrationSaved = false;
         }
@@ -2337,7 +2344,8 @@ public sealed partial class GameSession : Core.Network.Session {
     // logged, as all saves did before the lock refused them (a session that entered after this one has claimed the
     // account, ClaimSession, and such a save writes nothing). A World that is down lets every save go on without the
     // lock; a World error other than that throws and refuses the save.
-    private SaveResult LockedSave(int tries, TimeSpan resetWait, bool last = false) {
+    // cutUnknown: the session is ended here when the commit's outcome is unknown; a move's save leaves it to its caller.
+    private SaveResult LockedSave(int tries, TimeSpan resetWait, bool last = false, bool cutUnknown = true) {
         if (StoreRefused("SessionSave") || NestedStore("SessionSave")) {
             return SaveResult.Failed;
         }
@@ -2381,7 +2389,7 @@ public sealed partial class GameSession : Core.Network.Session {
             // Before the queued steps: they run once the lock is given back, and may store.
             LeaveStore();
             EndStoreScope(outer);
-            if (unknown) {
+            if (unknown && cutUnknown) {
                 Cut();
             }
         }

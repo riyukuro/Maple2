@@ -205,6 +205,46 @@ public class MigrationSaveRefusalTests {
         });
     }
 
+    // The second save's commit throws and its outcome cannot be read (no mark in memory): the move may be stored
+    // whole, or nothing of it, and nothing more is stored. The session is ended only after the undo: the payment is
+    // given back and the session's state put back first, so Dispose tells the World the player is offline (a session
+    // in ChangeMap is one that left). Before, LockedSave cut the session first: Dispose found it in ChangeMap with the
+    // target map and the fare taken, and the World was not told.
+    [Test]
+    public void Migrate_SecondSaveCommitUnknown_UndoneBeforeTheCut() {
+        var test = new TestGameSession();
+        GameSession session = Closable(test);
+        int mapBefore = session.Player.Value.Character.MapId;
+        int givenBack = 0;
+        bool endedAtGiveBack = true;
+
+        try {
+            session.Migrate(Target, beforeMove: () => {
+                Maple2.Database.Storage.DatabaseRequest<Maple2.Database.Context.Ms2Context>.CommitFault = after => {
+                    if (after) {
+                        Maple2.Database.Storage.DatabaseRequest<Maple2.Database.Context.Ms2Context>.CommitFault = null;
+                        throw new InvalidOperationException("commit answer lost");
+                    }
+                };
+            }, moveUndone: () => {
+                givenBack++;
+                endedAtGiveBack = Ended(session);
+            });
+        } finally {
+            Maple2.Database.Storage.DatabaseRequest<Maple2.Database.Context.Ms2Context>.CommitFault = null;
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(givenBack, Is.EqualTo(1));
+            Assert.That(endedAtGiveBack, Is.False, "given back before the cut");
+            Assert.That(Ended(session), Is.True);
+            Assert.That(session.Player.Value.Character.MapId, Is.EqualTo(mapBefore));
+            Assert.That(session.State, Is.EqualTo(SessionState.Disconnected));
+            Assert.That(test.World.PlayerUpdates.Count(update => update.CharacterId == session.CharacterId && update.Channel == -1), Is.EqualTo(1),
+                "the World sets the player offline");
+        });
+    }
+
     // A move that went keeps the payment: moveUndone does not run.
     [Test]
     public void Migrate_PaidMoveThatWent_KeepsThePayment() {
