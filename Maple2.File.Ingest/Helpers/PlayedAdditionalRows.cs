@@ -626,7 +626,7 @@ public static class PlayedAdditionalRows {
         // the client's own (PlayedClientAdditionalEffects); the client has no meso guard.
         "FinalStatusProperty/", "InvokeEffectProperty/", "MesoGuardProperty/",
         // The client's <Defensive> reads only invincible.
-        "DefensiveProperty/@mapDamageR", "DefensiveProperty/@papDamageR",
+        "DefensiveProperty/@mapDamageR", "DefensiveProperty/@papDamageR", "DefensiveProperty/@mapDamageV", "DefensiveProperty/@papDamageV",
         // The client's <Motion> has none of these.
         "MotionProperty/@IgnoreOptimalHideInvokeEffect", "MotionProperty/@IgnoreOptimalHideKeepEffect", "MotionProperty/@IgnoreOptimalHideStopEffect",
         "MotionProperty/@holdWeapon", "MotionProperty/@useFixedZRotation",

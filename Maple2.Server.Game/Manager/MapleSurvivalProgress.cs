@@ -331,7 +331,8 @@ public static class MapleSurvivalProgress {
         bool inSeason = false;
         int levelBefore = Math.Max(1, account.SurvivalLevel);
         long expBefore = account.SurvivalExp;
-        long gained = SurvivalRules.GameExp(rank, participants, kills);
+        long gained = SurvivalRules.GameExp(rank, participants, kills,
+            session.Player.Stats.Values[SpecialAttribute.ImproveSurvivalKillExp].Multiplier());
         int level = levelBefore;
         long exp = expBefore;
         if (table != null) {

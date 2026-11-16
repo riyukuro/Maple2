@@ -211,8 +211,8 @@ public static class MapperExtensions {
             SpecialAttribute.ReduceGemstoneUpgradeFee => 168,
             SpecialAttribute.ReducePetRemakeOptionFee => 169,
             SpecialAttribute.RidingSpeed => 170,
-            // SurvivalKillExp = 171
-            // SurvivalTimeExp = 172
+            // SurvivalKillExp = 171: an effect's only (AdditionalEffectMapper.SurvivalKillExpIndex), the item option tables have no such slot.
+            // SurvivalTimeExp = 172: not taken, as the survival game's exp has no time part to raise (SurvivalRules.GameExp).
             // PhysicalDamage = 173
             // MagicalDamage = 174
             SpecialAttribute.ReduceGameItemSocketUnlockFee => 175,

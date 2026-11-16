@@ -34,12 +34,29 @@ public class EffectStatLineTests {
         ("bap_pet", BasicAttribute.PetBonusAtk),
     ];
 
-    private static AdditionalEffectMetadataStatus Convert(string statLine) {
+    private static AdditionalEffectMetadataStatus Convert(string statLine, string defensive = "<DefensiveProperty />") {
         var status = (StatusProperty) new XmlSerializer(typeof(StatusProperty), new XmlRootAttribute("StatusProperty"))
             .Deserialize(new StringReader($"<StatusProperty>{statLine}</StatusProperty>"))!;
+        var defensiveProperty = (DefensiveProperty) new XmlSerializer(typeof(DefensiveProperty), new XmlRootAttribute("DefensiveProperty"))
+            .Deserialize(new StringReader(defensive))!;
         MethodInfo convert = typeof(AdditionalEffectMapper).GetMethod("Convert", BindingFlags.Static | BindingFlags.NonPublic,
             [typeof(StatusProperty), typeof(OffensiveProperty), typeof(DefensiveProperty)])!;
-        return (AdditionalEffectMetadataStatus) convert.Invoke(null, [status, new OffensiveProperty(), new DefensiveProperty()])!;
+        return (AdditionalEffectMetadataStatus) convert.Invoke(null, [status, new OffensiveProperty(), defensiveProperty])!;
+    }
+
+    // DefensiveProperty papDamageV / mapDamageV (KR: only 10800283, Secret Art: Mark's 3-hit debuff, -60 at each
+    // level; its text: "decreases physical and magic resistance") are the holder's physical and magical resistance
+    // values, added to a Stat line's par / mar value. The rates (papDamageR / mapDamageR) stay damage taken rates.
+    [Test]
+    public void DefensiveDamageValuesAreResistanceValues() {
+        AdditionalEffectMetadataStatus mark = Convert("", "<DefensiveProperty papDamageV=\"-60\" mapDamageV=\"-60\" />");
+        Assert.That(mark.Values, Is.EquivalentTo(new Dictionary<BasicAttribute, long> {
+            [BasicAttribute.PhysicalRes] = -60, [BasicAttribute.MagicalRes] = -60,
+        }));
+
+        AdditionalEffectMetadataStatus both = Convert("<Stat parvalue=\"100\" />", "<DefensiveProperty papDamageV=\"-45\" papDamageR=\"0.3\" />");
+        Assert.That(both.Values, Is.EquivalentTo(new Dictionary<BasicAttribute, long> { [BasicAttribute.PhysicalRes] = 55 }));
+        Assert.That(both.PhysicalDamageTakenRate, Is.EqualTo(0.3f).Within(1e-6f));
     }
 
     [Test]
@@ -64,4 +81,15 @@ public class EffectStatLineTests {
         Assert.That(status.Rates.GetValueOrDefault(BasicAttribute.Unknown), Is.EqualTo(status.Rates[BasicAttribute.Damage]));
         Assert.That(status.Rates, Has.Count.EqualTo(Names.Length + 1));
     }
+
+    // The Mushking Royale kill exp buffs (KR 70000175, 70000176 and 70000178-183: improve_survival_kill_exprate 5 to
+    // 50, icons SurvivalKillExp_5 .. _50) carry the rate in percent on the special rate ImproveSurvivalKillExp. The
+    // time exp rate beside it is not taken: the game's exp has no time part.
+    [Test]
+    public void SurvivalKillExpRateIsTaken() {
+        AdditionalEffectMetadataStatus kill = Convert("<SpecialAbility improve_survival_kill_exprate=\"10\" />");
+        Assert.That(kill.SpecialRates, Is.EquivalentTo(new Dictionary<SpecialAttribute, float> { [SpecialAttribute.ImproveSurvivalKillExp] = 10f }));
+        Assert.That(Convert("<SpecialAbility improve_survival_time_exprate=\"10\" />").SpecialRates, Is.Empty);
+    }
+
 }

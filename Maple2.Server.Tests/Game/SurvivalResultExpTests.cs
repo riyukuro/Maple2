@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Session;
@@ -79,5 +80,19 @@ public class SurvivalResultExpTests {
         MapleSurvivalProgress.Result(session, 3, 10, 1, 120, out _);
 
         Assert.That((session.Player.Value.Character.Exp - exp, session.Exp.PrestigeCurrentExp - prestige), Is.EqualTo((Base, 0L)));
+    }
+
+    // A held improve_survival_kill_exprate buff (KR 70000176: 10) raises the survival exp of the game's kills by 10 %:
+    // rank 3 of 10 with 1 kill gives 1000 + 330 + 1400, not 1000 + 300 + 1400.
+    [TestCase(0f, 2700L)]
+    [TestCase(10f, 2730L)]
+    public void Result_KillExpRateRaisesTheKillPart(float rate, long gained) {
+        GameSession session = Start(60);
+        session.Player.Stats.Values[SpecialAttribute.ImproveSurvivalKillExp].AddTotal(new SpecialOption(rate));
+        long before = session.Player.Value.Account.SurvivalExp;
+
+        MapleSurvivalProgress.Result(session, 3, 10, 1, 120, out _);
+
+        Assert.That(session.Player.Value.Account.SurvivalExp - before, Is.EqualTo(gained));
     }
 }

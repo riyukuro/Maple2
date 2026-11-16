@@ -58,9 +58,13 @@ public static class SurvivalRules {
         return rank <= (participants + 1) / 2 ? 10 : -10;
     }
 
-    // Chosen: 1000 a game, 300 a kill and 200 for each participant ranked below.
-    public static long GameExp(int rank, int participants, int kills) {
-        return 1000 + 300L * Math.Max(0, kills) + 200L * Math.Max(0, participants - rank);
+    // Chosen: 1000 a game, 300 a kill and 200 for each participant ranked below. killExpPercent: the player's
+    // improve_survival_kill_exprate (SpecialAttribute.ImproveSurvivalKillExp; KR 70000175, 70000176 and 70000178-183,
+    // 5 to 50, read as percent as their icons SurvivalKillExp_5 .. _50 name them) raises the kill part only, rounded
+    // down. The time exp rate beside it does nothing: this exp has no time part.
+    public static long GameExp(int rank, int participants, int kills, double killExpPercent = 0) {
+        long killExp = (long) (300L * Math.Max(0, kills) * (1 + Math.Max(0, killExpPercent) / 100));
+        return 1000 + killExp + 200L * Math.Max(0, participants - rank);
     }
 
     // Adds exp at a level: level L goes up to L + 1 once its exp reaches survivallevel's reqExp of L + 1; at the

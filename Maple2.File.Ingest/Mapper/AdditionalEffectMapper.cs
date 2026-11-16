@@ -540,6 +540,15 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
             DamageReduceRate: reflect.reflectionDamageReduceRate);
     }
 
+    // The SpecialAbility slot of improve_survival_kill_exprate (the parser's index; 172 is the time exp rate, not taken).
+    private const byte SurvivalKillExpIndex = 171;
+
+    private static void AddValue(Dictionary<BasicAttribute, long> values, BasicAttribute attribute, long value) {
+        if (value != 0) {
+            values[attribute] = values.GetValueOrDefault(attribute) + value;
+        }
+    }
+
     private static AdditionalEffectMetadataStatus Convert(StatusProperty status, OffensiveProperty offensive, DefensiveProperty defensive) {
         var values = new Dictionary<BasicAttribute, long>();
         var rates = new Dictionary<BasicAttribute, float>();
@@ -563,7 +572,17 @@ public class AdditionalEffectMapper : TypeMapper<AdditionalEffectMetadata> {
                 specialValues.AddIfNotDefault(attribute, status.SpecialAbility.Value(attributeIndex));
                 specialRates.AddIfNotDefault(attribute, status.SpecialAbility.Rate(attributeIndex));
             }
+            // improve_survival_kill_exprate: read here and not through OptionIndex, as the item option tables share
+            // that index list and have no slot 171 (ItemOption.SpecialValue throws on it).
+            specialValues.AddIfNotDefault(SpecialAttribute.ImproveSurvivalKillExp, status.SpecialAbility.Value(SurvivalKillExpIndex));
+            specialRates.AddIfNotDefault(SpecialAttribute.ImproveSurvivalKillExp, status.SpecialAbility.Rate(SurvivalKillExpIndex));
         }
+
+        // DefensiveProperty papDamageV / mapDamageV: the holder's physical and magical resistance values. KR has them on
+        // 10800283 only (Secret Art: Mark's 3-hit debuff, -60 at each level), whose text says it "decreases physical
+        // and magic resistance" for 5 s. The client's <Defensive> reads only invincible, so the rule is the server's.
+        AddValue(values, BasicAttribute.PhysicalRes, (long) defensive.papDamageV);
+        AddValue(values, BasicAttribute.MagicalRes, (long) defensive.mapDamageV);
 
         specialValues.AddIfNotDefault(SpecialAttribute.OffensiveMagicalDamage, offensive.mapDamageV);
         specialRates.AddIfNotDefault(SpecialAttribute.OffensiveMagicalDamage, offensive.mapDamageR);

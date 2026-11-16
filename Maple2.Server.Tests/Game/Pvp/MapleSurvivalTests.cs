@@ -315,6 +315,11 @@ public class MapleSurvivalTests {
         Assert.That(SurvivalRules.RatingChange(10, 20), Is.EqualTo(10));
         Assert.That(SurvivalRules.RatingChange(11, 20), Is.EqualTo(-10));
         Assert.That(SurvivalRules.GameExp(2, 20, 3), Is.EqualTo(1000 + 900 + 3600));
+        // The kill exp rate (percent) raises the kill part only, rounded down; a negative one is no rate.
+        Assert.That(SurvivalRules.GameExp(2, 20, 3, 10), Is.EqualTo(1000 + 990 + 3600));
+        Assert.That(SurvivalRules.GameExp(2, 20, 1, 5), Is.EqualTo(1000 + 315 + 3600));
+        Assert.That(SurvivalRules.GameExp(2, 20, 0, 50), Is.EqualTo(1000 + 3600));
+        Assert.That(SurvivalRules.GameExp(2, 20, 3, -10), Is.EqualTo(1000 + 900 + 3600));
         Assert.That(SurvivalRules.CurrentPeriod(table, new DateTime(2026, 11, 12))?.Id, Is.EqualTo(1));
         Assert.That(SurvivalRules.CurrentPeriod(table, new DateTime(2017, 1, 1)), Is.Null);
         // rank 2 of 20, 3 kills, in season: r0 1, r4 participants, r5 rank, r12 / r13 the levels, r15 the kills;
