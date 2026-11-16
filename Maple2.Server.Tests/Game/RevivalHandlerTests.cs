@@ -102,6 +102,28 @@ public class RevivalHandlerTests {
         Assert.That(test.TakeSent(), Is.Empty);
     }
 
+    // A coupon is taken before the revive: one the bag shows but cannot spend (locked) revives no one. Before, the
+    // revive came first and the take's result was not read, so such a coupon revived for nothing and stayed.
+    [TestCase(2, false)]
+    [TestCase(2, true)]
+    [TestCase(1, false)]
+    [TestCase(1, true)]
+    public void CouponRevive_TakesTheCouponFirst(byte mode, bool locked) {
+        ItemMetadata metadata = TestGameSession.Metadata(20300100, type: 2);
+        metadata = metadata with { Property = metadata.Property with { Tag = ItemTag.FreeReviveCoupon } };
+        test.Register(metadata);
+        var coupon = new Item(metadata, 1, 1);
+        coupon.IsLocked = locked;
+        Assert.That(session.Item.Inventory.Add(coupon), Is.True);
+        Die();
+        Send(mode, 1);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Player.IsDead, Is.EqualTo(locked));
+            Assert.That(session.Item.Inventory.Find(ItemTag.FreeReviveCoupon).Sum(item => item.Amount), Is.EqualTo(locked ? 1 : 0));
+        });
+    }
+
     [Test]
     public void MeretRevive_WithoutMeretsTellsTheClientAndStaysDead() {
         Die();

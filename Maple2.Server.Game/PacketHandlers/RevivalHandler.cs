@@ -136,6 +136,13 @@ public class RevivalHandler : FieldPacketHandler {
             Logger.Debug("Instant revive refused for {CharacterId}: {Refusal}", session.CharacterId, MesoReviveRefusal.LackMeso);
             return;
         }
+        // The coupon is taken before the revive, as the fee is: taken after it with the result not read, a coupon
+        // gone meanwhile gave the revive for nothing. A revive that then does not happen keeps it taken (a race with
+        // another revive), which loses a coupon rather than giving a revive free.
+        if (useVoucher && !session.Item.Inventory.Consume([new IngredientInfo(ItemTag.FreeReviveCoupon, 1)])) {
+            Logger.Debug("Instant revive refused for {CharacterId}: the coupon could not be taken", session.CharacterId);
+            return;
+        }
 
         // The count goes up first: the revive sends it. Paid only once the revive has happened. The free
         // revive of a home field and a meso revive while a meso revival event runs leave the count alone.
@@ -154,9 +161,7 @@ public class RevivalHandler : FieldPacketHandler {
         }
         session.Player.Tombstone = null;
         if (useVoucher) {
-            if (session.Item.Inventory.Consume([new IngredientInfo(ItemTag.FreeReviveCoupon, 1)])) {
-                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
-            }
+            session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
         } else {
             session.Currency.NotifyMeso();
         }
@@ -211,6 +216,11 @@ public class RevivalHandler : FieldPacketHandler {
             session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
             return;
         }
+        // The coupon before the revive too (see the meso revive).
+        if (useCoupon && !session.Item.Inventory.Consume([new IngredientInfo(ItemTag.FreeReviveCoupon, 1)])) {
+            Logger.Debug("Meret revive refused for {CharacterId}: the coupon could not be taken", session.CharacterId);
+            return;
+        }
         if (!session.Player.Revive(true)) {
             if (!useCoupon) {
                 session.Currency.ReturnMeret(cost);
@@ -219,9 +229,7 @@ public class RevivalHandler : FieldPacketHandler {
         }
         session.Player.Tombstone = null;
         if (useCoupon) {
-            if (session.Item.Inventory.Consume([new IngredientInfo(ItemTag.FreeReviveCoupon, 1)])) {
-                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
-            }
+            session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_revival_use_coupon));
         } else {
             session.Currency.NotifyMeretTaken(cost);
         }
