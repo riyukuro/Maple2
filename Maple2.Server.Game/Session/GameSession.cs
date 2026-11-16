@@ -778,8 +778,9 @@ public sealed partial class GameSession : Core.Network.Session {
     // A field change bought with a fare or tickets (the taxis): pay runs once the change went, after the move here
     // (PrepareField true) or, for a move to another server, before that move's save (Migrate's beforeMove), so the
     // payment is stored with it. A refused change never runs it. Returns PrepareField's answer, for SendFieldEnter.
-    public bool PaidFieldChange(int mapId, Action pay, in Vector3 position = default, in Vector3 rotation = default) {
-        bool prepared = PrepareFieldInternal(mapId, out _, -1, 0, 0, position, rotation, pay);
+    // Also what a move counts once it went (the sky fortress moves).
+    public bool PaidFieldChange(int mapId, Action pay, in Vector3 position = default, in Vector3 rotation = default, int portalId = -1) {
+        bool prepared = PrepareFieldInternal(mapId, out _, portalId, 0, 0, position, rotation, pay);
         if (prepared) {
             pay();
         }

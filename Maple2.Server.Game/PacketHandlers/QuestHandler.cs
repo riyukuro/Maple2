@@ -564,12 +564,9 @@ public class QuestHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.PrepareField(mapId)) {
-            session.SendFieldEnter(false);
-            return;
-        }
-        session.Quest.CountMissionAttack();
-        session.Send(FieldEnterPacket.Request(session.Player));
+        // Counted once the move went, here or before a move to another server (from a dungeon: the client sends the
+        // attack from any field where its PC is alive, CanEnterSkyFortress).
+        session.SendFieldEnter(session.PaidFieldChange(mapId, session.Quest.CountMissionAttack));
     }
 
     private void HandleSkyFortressTeleport(GameSession session) {
@@ -578,13 +575,10 @@ public class QuestHandler : FieldPacketHandler {
             return;
         }
 
-        if (!session.PrepareField(Constants.FameContentsSkyFortressGotoMapID, Constants.FameContentsSkyFortressGotoPortalID)) {
-            session.SendFieldEnter(false);
-            return;
-        }
         // The trophy condition skyfortress_system: the trophy 22500040's description (achievedescription.xml
-        // manualDesc) counts the rides on the warship, this move.
-        session.ConditionUpdate(ConditionType.skyfortress_system);
-        session.Send(FieldEnterPacket.Request(session.Player));
+        // manualDesc) counts the rides on the warship, this move, once it went here or before a move to another
+        // server (from a dungeon, as for the mission attack).
+        session.SendFieldEnter(session.PaidFieldChange(Constants.FameContentsSkyFortressGotoMapID,
+            () => session.ConditionUpdate(ConditionType.skyfortress_system), portalId: Constants.FameContentsSkyFortressGotoPortalID));
     }
 }

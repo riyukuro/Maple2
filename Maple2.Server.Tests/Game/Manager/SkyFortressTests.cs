@@ -385,4 +385,46 @@ public class SkyFortressTests {
             Assert.That(test.TrophyCounter(22500040), Is.EqualTo(1));
         });
     }
+
+    // The client sends both moves from any field where its PC is alive (CanEnterSkyFortress), a dungeon too, from
+    // where the move goes to another server: the move counts (skyfortress_system, the day's mission attacks) once
+    // it is made, and a move the World refuses (asked, not made) counts nothing.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void SkyFortressMove_FromADungeon_CountsWhenItGoes(bool goes) {
+        Login(Seasons(RequireQuest));
+        test.AddAchievement(TestGameSession.Trophy(22500040, ConditionType.skyfortress_system, [100]));
+        Hold(RequireQuest, QuestState.Completed);
+        test.AddMap(TestGameSession.Map(Target) with { Limit = (MapMetadataLimit) RuntimeHelpers.GetUninitializedObject(typeof(MapMetadataLimit)) });
+        test.EnterMovingOut(TestGameSession.Map(2000001));
+        if (!goes) {
+            test.World.MoveAddress = "";
+        }
+
+        new QuestHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+            .Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(14)));
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.Moves, Has.Count.EqualTo(1));
+            Assert.That(test.TrophyCounter(22500040), Is.EqualTo(goes ? 1 : null));
+        });
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void MissionAttack_FromADungeon_CountsWhenItGoes(bool goes) {
+        ReadyToAttack();
+        test.AddMap(TestGameSession.Map(Target) with { Limit = (MapMetadataLimit) RuntimeHelpers.GetUninitializedObject(typeof(MapMetadataLimit)) });
+        test.EnterMovingOut(TestGameSession.Map(2000001));
+        if (!goes) {
+            test.World.MoveAddress = "";
+        }
+
+        Attack();
+
+        Assert.Multiple(() => {
+            Assert.That(test.World.Moves, Has.Count.EqualTo(1));
+            Assert.That(test.Session.Quest.MissionAttackCount(), Is.EqualTo(goes ? 1 : 0));
+        });
+    }
 }
