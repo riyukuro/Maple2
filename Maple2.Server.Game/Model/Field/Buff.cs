@@ -441,8 +441,10 @@ public class Buff : IUpdatable, IByteSerializable {
         };
         var targetUpdated = new List<BasicAttribute>(3);
         long healthBefore = Owner.Stats.Values[BasicAttribute.Health].Current;
+        // The change this tick made to the holder's health, after the floors (0 for a tick that takes none).
+        long healthChange = 0;
         if (record.HpAmount != 0) {
-            long healthChange = NpcTargetRules.HealthChange(Owner.Stats.Values[BasicAttribute.Health].Current, record.HpAmount, Owner is FieldNpc { NoDie: true } || Owner.Buffs.DeathResistance);
+            healthChange = NpcTargetRules.HealthChange(Owner.Stats.Values[BasicAttribute.Health].Current, record.HpAmount, Owner is FieldNpc { NoDie: true } || Owner.Buffs.DeathResistance);
             if (Owner is FieldNpc { MinimumHealth: > 0 } floored) {
                 healthChange = NpcTargetRules.FloorChange(Owner.Stats.Values[BasicAttribute.Health].Current, healthChange, floored.MinimumHealth);
             }
@@ -484,9 +486,10 @@ public class Buff : IUpdatable, IByteSerializable {
         if (Owner is FieldPlayer victim) {
             victim.PkKilledBy(caster, healthBefore);
         }
-        // The lifesteal goes to a living caster, up to its max health (Stat.Add).
-        long recovered = DotDamageRecord.Lifesteal(dotDamage.RecoverHpByDamage, healthBefore - Owner.Stats.Values[BasicAttribute.Health].Current);
-        if (recovered > 0 && !caster.IsDead) {
+        // The lifesteal goes to a living caster, up to its max health (Stat.Add). A caster at 0 health is dead even
+        // before its next update sets IsDead (a self-cast tick that killed it), so it is not healed back.
+        long recovered = DotDamageRecord.Lifesteal(dotDamage.RecoverHpByDamage, -healthChange);
+        if (recovered > 0 && !caster.IsDead && caster.Stats.Values[BasicAttribute.Health].Current > 0) {
             caster.Stats.Values[BasicAttribute.Health].Add(recovered);
             Field.Broadcast(StatsPacket.Update(caster, BasicAttribute.Health));
         }

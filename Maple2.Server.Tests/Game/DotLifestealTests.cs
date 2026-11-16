@@ -92,6 +92,15 @@ public class DotLifestealTests {
         Assert.That(Health.Current, Is.EqualTo(4000));
     }
 
+    // A self-cast tick that takes the caster's last health heals nothing: at 500 health a tick of 1000 at 0.3 leaves 0,
+    // not 150 (IsDead is set only at the caster's next update).
+    [Test]
+    public void AKillingSelfCastTickDoesNotHealItsCaster() {
+        Health.Add(500 - Health.Current);
+        Tick(Dot(1000, 0.3f));
+        Assert.That(Health.Current, Is.EqualTo(0));
+    }
+
     private void Tick(AdditionalEffectMetadataDot.DotDamage damage) {
         AdditionalEffectMetadata dot = DisabledBuffTests.Effect(1) with {
             Dot = new AdditionalEffectMetadataDot(damage, null),
