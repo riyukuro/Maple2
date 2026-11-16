@@ -646,6 +646,35 @@ public class BuffAttributeTests {
         Assert.That(Only(10300131).ShieldHealth, Is.EqualTo(3000));
     }
 
+    // A hit on a shield's holder: the shield takes it whole while it holds (a Block of 0, and the holder's buff update
+    // carries what is left), and a hit beyond it breaks the shield, which takes off the buff and lets the rest
+    // through. 62100016 (KR: level 1 hpValue 95000) on a player whose even weapon attack makes every hit the same.
+    [Test]
+    public void Shield_TakesTheHitUntilItBreaks() {
+        Start(MapType.None, Effect(62100016, Plain) with { Shield = new AdditionalEffectMetadataShield(95000, 0f) });
+        Stats stats = Player.Stats.Values;
+        stats[BasicAttribute.MinWeaponAtk].AddTotal(1000 - stats[BasicAttribute.MinWeaponAtk].Total);
+        stats[BasicAttribute.MaxWeaponAtk].AddTotal(1000 - stats[BasicAttribute.MaxWeaponAtk].Total);
+        stats[BasicAttribute.PhysicalAtk].AddTotal(1000);
+        var hit = new DamagePropertyRecord { CanCrit = false, AttackType = AttackType.Physical, Rate = 1, SuperArmorBreak = true };
+        (DamageType plainType, long plain) = DamageCalculator.CalculateDamage(Player, Player, hit);
+        Assert.That((plainType, plain > 1000), Is.EqualTo((DamageType.Normal, true)));
+        Assert.That(plain, Is.LessThan(95000 / 2));
+
+        Add(62100016);
+        test.TakeSent();
+        Assert.That(DamageCalculator.CalculateDamage(Player, Player, hit), Is.EqualTo((DamageType.Block, 0L)));
+        Assert.That(Only(62100016).ShieldHealth, Is.EqualTo(95000 - plain).Within(1));
+        Assert.That(test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.Buff), Is.EqualTo(1));
+
+        // Left with less than a hit: the shield breaks and takes its share.
+        Only(62100016).ShieldHealth = 100;
+        (DamageType type, long through) = DamageCalculator.CalculateDamage(Player, Player, hit);
+        Assert.That(type, Is.EqualTo(DamageType.Normal));
+        Assert.That(through, Is.EqualTo(plain - 100).Within(1));
+        Assert.That(Held(), Is.Empty);
+    }
+
     // dotBuff: each proc gives the second buff to the caster (target 0, the default) or to the holder (target 1).
     // 10200035 (KR: dotBuff 10200036 level 1, no target, interval 1000, 1 s); 70001041 (KR: dotBuff 70001011 level 1,
     // target 1, interval 1000, 3 s). The field actor casts both on the player.
@@ -681,6 +710,46 @@ public class BuffAttributeTests {
         Buffs.Update(1000);
 
         Assert.That(Held(), Is.EqualTo(new[] { 10200183, 10200191 }));
+    }
+
+    // The reflect a buff gives goes with the buff: once it is taken off, a hit on the holder reflects nothing.
+    // 50003300 (KR: reflectionRate 1, reflectionCount 99999, reflectionAdditionalEffectId 50003301 level 1).
+    [Test]
+    public void Reflect_EndsWithItsBuff() {
+        Start(MapType.None,
+            Effect(50003300, Plain) with {
+                Reflect = new AdditionalEffectMetadataReflect(1f, 50003301, 1, 99999, 0, 0, new Dictionary<BasicAttribute, long>(), new Dictionary<BasicAttribute, float>()),
+            },
+            Effect(50003301, Plain));
+        Add(50003300);
+        Assert.That(Buffs.Reflect?.SourceBuffId, Is.EqualTo(50003300));
+
+        Buffs.Remove(50003300, Player.ObjectId);
+
+        Assert.That(Buffs.Reflect, Is.Null);
+        Player.Reflect(Field.FieldActor);
+        Assert.That(((IActor) Field.FieldActor).Buffs.EnumerateBuffs(50003301), Is.Empty);
+    }
+
+    // ConsumeProperty spRate: the spirit rates of the buffs held add up, each times its stacks, and cut a cast's spirit
+    // cost (SkillCastRules.SpiritCost); -1 makes casts free. 10300173 (KR: spRate -0.5, held here at 2 stacks of a
+    // maximum of 2 where KR has 1) and 10500181 (KR: spRate -1).
+    [Test]
+    public void ConsumeSpRate_AddsUpByStacks() {
+        Start(MapType.None,
+            Effect(10300173, Plain with { MaxCount = 2 }) with { Consume = new AdditionalEffectMetadataConsume(0, -0.5f) },
+            Effect(10500181, Plain with { DurationTick = 20000 }) with { Consume = new AdditionalEffectMetadataConsume(0, -1f) });
+        Assert.That(Buffs.ConsumeSpRate, Is.Zero);
+
+        Add(10300173);
+        Assert.That(Buffs.ConsumeSpRate, Is.EqualTo(-0.5f));
+        Assert.That(SkillCastRules.SpiritCost(20, 0, 0, Buffs.ConsumeSpRate), Is.EqualTo(10));
+        Add(10300173);
+        Assert.That(Only(10300173).Stacks, Is.EqualTo(2));
+        Assert.That(Buffs.ConsumeSpRate, Is.EqualTo(-1f));
+        Add(10500181);
+        Assert.That(Buffs.ConsumeSpRate, Is.EqualTo(-2f));
+        Assert.That(SkillCastRules.SpiritCost(20, 0, 0, Buffs.ConsumeSpRate), Is.EqualTo(0));
     }
 
     // reflectionAdditionalEffectId: a hit on the holder gives its attacker the reflect effect. 50003300 (KR:

@@ -42,8 +42,8 @@ public class OwnedBuffConditionTests {
         buffs.GetOrAdd(BuffId, _ => []).Add(buff);
     }
 
-    private static BeginConditionTarget Test(bool owned, int count = 0) {
-        return new BeginConditionTarget([new BeginConditionTarget.HasBuff(BuffId, 0, owned, count, CompareType.Equals)],
+    private static BeginConditionTarget Test(bool owned, int count = 0, CompareType compare = CompareType.Equals) {
+        return new BeginConditionTarget([new BeginConditionTarget.HasBuff(BuffId, 0, owned, count, compare)],
             new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []), [], [], [],
             new Dictionary<MasteryType, int>(), [], []);
     }
@@ -120,6 +120,24 @@ public class OwnedBuffConditionTests {
             Assert.That(three.Check(a, a, target), Is.True);
             Assert.That(three.Check(b, b, target), Is.False);
         });
+    }
+
+    // hasBuffCountCompare: the held copy's stacks against hasBuffCount by each of the five signs the client parses
+    // (ParseCompareSign, skilloverlapcompare.cpp:632). A copy of 3 stacks against counts 2, 3 and 4.
+    [TestCase(CompareType.Equals, false, true, false)]
+    [TestCase(CompareType.Less, false, false, true)]
+    [TestCase(CompareType.LessEquals, false, true, true)]
+    [TestCase(CompareType.Greater, true, false, false)]
+    [TestCase(CompareType.GreaterEquals, true, true, false)]
+    public void TargetTest_ComparesTheStacksBySign(CompareType compare, bool vsTwo, bool vsThree, bool vsFour) {
+        var ta = new TestGameSession();
+        ta.Start();
+        var tt = new TestGameSession(ta.Options);
+        tt.Start();
+        FieldPlayer a = Player(ta, 1), target = Player(tt, 3);
+        Give(target, a, stacks: 3);
+        bool Passes(int count) => Condition(null, Test(owned: false, count, compare)).Check(a, a, target);
+        Assert.That((Passes(2), Passes(3), Passes(4)), Is.EqualTo((vsTwo, vsThree, vsFour)));
     }
 
     // A caster test with hasBuffOwner takes the buff the caster gave itself, not one another player gave it.
