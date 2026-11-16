@@ -303,5 +303,20 @@ public class BeginConditionRowTests {
 
         Assert.That(condition.Check(player, player, player, eventType, eventBuffId: buffId), Is.EqualTo(holds));
     }
-}
 
+    // dungeonGroupType: 90000859 (KR: 3, chaos raids) holds only in a dungeon room of that group, not in another
+    // group's room or off a dungeon.
+    [TestCase(DungeonGroupType.chaosRaid, true)]
+    [TestCase(DungeonGroupType.raid, false)]
+    [TestCase(null, false)]
+    public void DungeonGroupType_HoldsOnlyInThatGroupsRoom(DungeonGroupType? group, bool holds) {
+        var test = new TestGameSession();
+        FieldPlayer player = Enter(test);
+        if (group is { } type) {
+            test.EnterDungeon(TestGameSession.DungeonRoom(23000001, 2000001) with { GroupType = type });
+            typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(player, test.Session.Field);
+        }
+
+        Assert.That(Holds(Plain with { DungeonGroupType = [DungeonGroupType.chaosRaid] }, player), Is.EqualTo(holds));
+    }
+}
