@@ -477,6 +477,7 @@ public class UgcHandler : FieldPacketHandler {
 
         if (info.AccountId != session.AccountId || info.CharacterId != session.CharacterId || ugcUid == 0) {
             Logger.Warning("Invalid UGC confirmation {AccountId} {CharacterId} {UgcUid}", info.AccountId, info.CharacterId, ugcUid);
+            session.Send(UgcPacket.Error(info.Type, UgcError.Refused));
             return;
         }
 
@@ -484,7 +485,16 @@ public class UgcHandler : FieldPacketHandler {
         UgcResource? resource = webRequest.GetUgc(ugcUid);
         if (resource == null) {
             Logger.Warning("Failed to find UGC resource {UgcUid}", ugcUid);
+            session.Send(UgcPacket.Error(info.Type, UgcError.Refused));
             return;
+        }
+
+        // The client keeps its upload locked until the server answers its confirmation (CUgcManager::OnUgc): Ugc 4
+        // (the stored path) finishes the upload, Ugc 0 drops it. Every confirmation sends one of the two.
+        bool answered = false;
+        void Answer() {
+            answered = true;
+            session.Send(UgcPacket.UpdatePath(resource));
         }
 
         // True for the upload that mode 1 charged; after it a mode 0 gives nothing back. A mode 3
@@ -511,6 +521,10 @@ public class UgcHandler : FieldPacketHandler {
             default:
                 Logger.Warning("Unhandled Confirmation for UGC Type {UgcType}", info.Type);
                 break;
+        }
+
+        if (!answered) {
+            session.Send(UgcPacket.Error(info.Type, UgcError.Refused));
         }
 
         session.StagedUgcItem = null;
@@ -549,6 +563,7 @@ public class UgcHandler : FieldPacketHandler {
                     session.Send(GuildPacket.Error(error));
                     return;
                 }
+                Answer();
             } catch (RpcException) { /* ignored */
             }
         }
@@ -581,6 +596,7 @@ public class UgcHandler : FieldPacketHandler {
                     session.Send(GuildPacket.Error(error));
                     return;
                 }
+                Answer();
             } catch (RpcException) { /* ignored */
             }
         }
@@ -623,6 +639,7 @@ public class UgcHandler : FieldPacketHandler {
             if (session.Field != null && session.Field.Banners.TryGetValue(banner.Id, out FieldUgcBanner? shown) && ReferenceEquals(shown, banner)) {
                 session.Send(UgcPacket.UpdateBanner(banner));
             }
+            Answer();
         }
 
         void ConfirmItem() {
@@ -676,7 +693,7 @@ public class UgcHandler : FieldPacketHandler {
             // A design made from a template counts with its kind (70400058 "Craft 1 template in the workshop":
             // codes 1 item, 2 furniture, 7 mount, the three kinds made here).
             session.ConditionUpdate(ConditionType.item_design, codeLong: (long) info.Type);
-            session.Send(UgcPacket.UpdatePath(resource));
+            Answer();
         }
 
         void ConfirmLayoutBlueprint() {
@@ -699,7 +716,7 @@ public class UgcHandler : FieldPacketHandler {
             }
 
             session.Send(UgcPacket.UpdateLayoutBlueprint(session.Player.ObjectId, item));
-            session.Send(UgcPacket.UpdatePath(resource));
+            Answer();
         }
     }
 
