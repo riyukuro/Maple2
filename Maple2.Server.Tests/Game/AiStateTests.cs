@@ -387,6 +387,20 @@ public class AiStateTests : TriggerTestBase {
         }
     }
 
+    // KR AI_Balrog_Chaos.xml: a select of 3 ShowVibrate nodes, each with cooltime="82000". The ingest dropped the
+    // cooltime, so a group showed on every pass. Within its cooltime the node is not picked; the select's other child
+    // runs instead.
+    [Test]
+    public void ShowVibrate_Cooltime_HoldsTheNodeInASelect() {
+        Spawn([new SelectNode("select", [new ShowVibrateNode("ShowVibrate", [SetValue("Shown", 1, isModify: true)], 1, 82000),
+            SetValue("Fallback", 1, isModify: true)], [9999, 0], false)]);
+        typeof(FieldManager).GetField("<Vibrate>k__BackingField", Any)!.SetValue(Field, new AiVibrate([]));
+        Run(3);
+        Assert.That(npc.AiExtraData.GetValueOrDefault("Shown"), Is.EqualTo(1));
+        Assert.That(npc.AiExtraData.GetValueOrDefault("Fallback"), Is.EqualTo(2));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     private void SetHealthPercent(long percent) {
         Stat health = npc.Stats.Values[BasicAttribute.Health];
         health.Add(health.Total * percent / 100 - health.Current);

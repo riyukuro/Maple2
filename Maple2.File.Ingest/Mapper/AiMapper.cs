@@ -119,6 +119,10 @@ public class AiMapper : TypeMapper<AiMetadata> {
     // name="SlaveCount" count="N" (optionally useSummonGroup="1" summonGroup="G"), 26 conditions, and
     // name="slaveCount" slaveCount="N" slaveCountOp="Greater", 6 conditions (the Seolnunyi friends). The second form
     // has no count, so it must not become a count="0" test.
+    // ShowVibrate's cooltime (KR: 3 nodes, 82000) was dropped here, so a vibrate group showed on every pass.
+    public static AiMetadata.ShowVibrateNode MapShowVibrate(string name, AiMetadata.Entry[] entries, ShowVibrateNode showVibrate) =>
+        new(Name: name, Entries: entries, GroupId: showVibrate.groupID, Cooltime: showVibrate.cooltime);
+
     public static AiMetadata.Condition MapSlaveCount(string name, AiMetadata.Entry[] entries, SlaveCountCondition slaveCount) {
         if (slaveCount.slaveCount != 0 || (AiConditionOp) slaveCount.slaveCountOp != AiConditionOp.Equal) {
             return new AiMetadata.SlaveCountOpCondition(
@@ -507,11 +511,7 @@ public class AiMapper : TypeMapper<AiMetadata> {
                     EffectName: targetEffect.effectName
                 );
             case ShowVibrateNode showVibrate:
-                return new AiMetadata.ShowVibrateNode(
-                    Name: node.name,
-                    Entries: childNodes.ToArray(),
-                    GroupId: showVibrate.groupID
-                );
+                return MapShowVibrate(node.name, childNodes.ToArray(), showVibrate);
             case SidePopupNode sidePopup:
                 return new AiMetadata.SidePopupNode(
                     Name: node.name,

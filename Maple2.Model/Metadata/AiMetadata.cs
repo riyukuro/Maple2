@@ -307,10 +307,12 @@ public record AiMetadata(
         string EffectName // xml effect
         ) : Node(Name, Entries);
 
+    // Cooltime: the node runs again only after it (KR: 3 ShowVibrate nodes, 82000), as on the other nodes.
     public record ShowVibrateNode(
         string Name,
         Entry[] Entries,
-        int GroupId) : Node(Name, Entries);
+        int GroupId,
+        long Cooltime = 0) : Node(Name, Entries);
 
     public record SidePopupNode(
         string Name,
