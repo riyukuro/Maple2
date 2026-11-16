@@ -8,6 +8,7 @@ using Maple2.Model.Game.Party;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
@@ -363,5 +364,298 @@ public class PartyHandlerTests {
 
         Assert.That(test.TakeSent(), Is.Empty);
         Assert.That(asked, Is.Empty);
+    }
+
+    // The dungeon match errors (DungeonMatch command 0: error byte, int param) sent since the last call.
+    private List<(DungeonMatchError Error, int Param)> MatchErrors() => test.TakeSent()
+        .Where(packet => TestGameSession.Op(packet) == SendOp.DungeonMatch && packet[2] == 0)
+        .Select(packet => ((DungeonMatchError) packet[3], System.BitConverter.ToInt32(packet, 4))).ToList();
+
+    private static DungeonRoomMetadata Room(int id, DungeonGroupType group, int maxUsers = 4, int minLevel = 0,
+                                            bool randomMatch = false, int gearScore = 0) {
+        DungeonRoomMetadata room = TestGameSession.DungeonRoom(id, 2000000 + id);
+        return room with {
+            GroupType = group,
+            UseRandomMatch = randomMatch,
+            Limit = room.Limit with { MaxUserCount = maxUsers, MinLevel = minLevel, GearScore = gearScore },
+        };
+    }
+
+    private void Rooms(params DungeonRoomMetadata[] rooms) =>
+        test.SetTable(new DungeonRoomTable(rooms.ToDictionary(room => room.Id)));
+
+    // Party 32: byte kind, int count, the room ids, bool rewarded.
+    private void Search(byte kind, params int[] roomIds) => Send(32, writer => {
+        writer.WriteByte(kind);
+        writer.WriteInt(roomIds.Length);
+        foreach (int id in roomIds) {
+            writer.WriteInt(id);
+        }
+        writer.WriteBool(false);
+    });
+
+    [Test]
+    public void DungeonMatch_PickedRoomsGoToTheWorldOnce() {
+        Rooms(Room(101, DungeonGroupType.normal, maxUsers: 4), Room(102, DungeonGroupType.raid, maxUsers: 10));
+
+        Search(1, 101, 102, 101);
+
+        PartyRequest.Types.DungeonMatch match = asked.Single().DungeonMatch;
+        Assert.That(match.Kind, Is.EqualTo(1));
+        Assert.That(match.Rooms.Select(room => (room.Id, room.MinUsers, room.MaxUsers)),
+            Is.EqualTo(new[] { (101, 1, 4), (102, 1, 10) }));
+        Assert.That(MatchErrors(), Is.Empty);
+    }
+
+    [Test]
+    public void DungeonMatch_WithNoPickedRoomSearchesTheRecommendedNormalRooms() {
+        Rooms(Room(101, DungeonGroupType.normal), Room(102, DungeonGroupType.raid), Room(103, DungeonGroupType.@event),
+            Room(104, DungeonGroupType.normal, minLevel: 99));
+
+        Search(1);
+
+        Assert.That(asked.Single().DungeonMatch.Rooms.Select(room => room.Id), Is.EquivalentTo(new[] { 101, 102 }));
+    }
+
+    [TestCase((byte) 1)]
+    [TestCase((byte) 3)]
+    public void DungeonMatch_WithNoRoomToRecommendIsNotFound(byte kind) {
+        Rooms(Room(103, DungeonGroupType.@event));
+
+        Search(kind);
+
+        Assert.That(MatchErrors(), Is.EqualTo(new[] { (DungeonMatchError.s_dungeonMatch_error_notFoundDungeon, 0) }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [Test]
+    public void DungeonMatch_RecommendedRoomsAllTooSmallGiveTheLargestCount() {
+        Join(4, leaderIsSelf: true);
+        Rooms(Room(101, DungeonGroupType.normal, maxUsers: 2), Room(102, DungeonGroupType.normal, maxUsers: 3));
+
+        Search(1);
+
+        Assert.That(MatchErrors(), Is.EqualTo(new[] { (DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser, 3) }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [TestCase(103, Description = "a room of another kind")]
+    [TestCase(999, Description = "a room the table lacks")]
+    public void DungeonMatch_APickedRoomThatCannotBeEnteredIsRefused(int roomId) {
+        Rooms(Room(101, DungeonGroupType.normal), Room(103, DungeonGroupType.@event));
+
+        Search(1, roomId);
+
+        Assert.That(MatchErrors(), Is.EqualTo(new[] { (DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter, 0) }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [Test]
+    public void DungeonMatch_OneRefusedAmongSeveralPickedRefusesTheSearch() {
+        Rooms(Room(101, DungeonGroupType.normal), Room(102, DungeonGroupType.normal, minLevel: 99));
+
+        Search(1, 101, 102);
+
+        Assert.That(MatchErrors(), Is.EqualTo(new[] { (DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter, 0) }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [Test]
+    public void DungeonMatch_UnderTheRoomLevelLacksTheRequirement() {
+        Join(2, leaderIsSelf: true);
+        Rooms(Room(101, DungeonGroupType.normal, minLevel: 21));
+
+        Search(1, 101);
+
+        Assert.That(MatchErrors(), Is.EqualTo(new[] { (DungeonMatchError.s_dungeonMatch_error_lackRequire, 0) }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [Test]
+    public void DungeonMatch_ABlockingEnterStateLacksTheRequirement() {
+        Rooms(Room(101, DungeonGroupType.normal));
+        session.Player.Value.Character.DungeonEnterLimits[101] = DungeonEnterLimit.Gearscore;
+
+        Search(1, 101);
+
+        Assert.That(MatchErrors(), Is.EqualTo(new[] { (DungeonMatchError.s_dungeonMatch_error_lackRequire, 0) }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [Test]
+    public void DungeonMatch_APartyOverTheRoomSizeGetsTheSmallestCount() {
+        Join(4, leaderIsSelf: true);
+        Rooms(Room(101, DungeonGroupType.normal, maxUsers: 3), Room(102, DungeonGroupType.normal, maxUsers: 2));
+
+        Search(1, 101, 102);
+
+        Assert.That(MatchErrors(), Is.EqualTo(new[] { (DungeonMatchError.s_dungeonMatch_error_overMaxRegisterUser, 2) }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [Test]
+    public void DungeonMatch_AMemberInsideADungeonStopsTheSearch() {
+        Maple2.Model.Game.Party.Party party = Join(2, leaderIsSelf: true);
+        party.Members.Values.First(member => member.CharacterId != session.CharacterId).Info.DungeonId = 7;
+        Rooms(Room(101, DungeonGroupType.normal));
+
+        Search(1, 101);
+
+        Assert.That(MatchErrors(), Is.EqualTo(new[] { (DungeonMatchError.s_dungeonMatch_error_insideDungeonUser, 0) }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [Test]
+    public void DungeonMatch_TheWorldsRefusalIsAPartyError() {
+        Rooms(Room(101, DungeonGroupType.normal));
+        test.World.PartyWorld = request => {
+            asked.Add(request);
+            return new PartyResponse { Error = (int) PartyError.s_party_err_not_chief };
+        };
+
+        Search(1, 101);
+
+        Assert.That(asked, Has.Count.EqualTo(1));
+        Assert.That(Errors(), Is.EqualTo(new[] { PartyError.s_party_err_not_chief }));
+    }
+
+    [Test]
+    public void DungeonMatch_ATruncatedSearchIsDropped() {
+        Send(32, writer => writer.WriteByte(1));
+
+        Assert.That(asked, Is.Empty);
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    [TestCase(DungeonGroupType.normal, (byte) 1)]
+    [TestCase(DungeonGroupType.worldBossDungeon, (byte) 2)]
+    [TestCase(DungeonGroupType.@event, (byte) 3)]
+    [TestCase(DungeonGroupType.lapenta, (byte) 4)]
+    public void PartySearch_SearchesTheRoomUnderItsGroupsKind(DungeonGroupType group, byte kind) {
+        Rooms(Room(101, group, randomMatch: true));
+
+        Send(33, writer => writer.WriteInt(101));
+
+        PartyRequest.Types.DungeonMatch match = asked.Single().DungeonMatch;
+        Assert.That(match.Kind, Is.EqualTo(kind));
+        Assert.That(match.Rooms.Single().Id, Is.EqualTo(101));
+    }
+
+    [TestCase(101, Description = "a room without random match")]
+    [TestCase(999, Description = "a room the table lacks")]
+    public void PartySearch_OfARoomWithoutThePartySearchIsRefused(int roomId) {
+        Rooms(Room(101, DungeonGroupType.normal, randomMatch: false));
+
+        Send(33, writer => writer.WriteInt(roomId));
+
+        Assert.That(MatchErrors(), Is.EqualTo(new[] { (DungeonMatchError.s_dungeonMatch_error_containCouldNotEnter, 0) }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [Test]
+    public void PartySearch_ATruncatedRequestIsDropped() {
+        Send(33, writer => writer.WriteShort(1));
+
+        Assert.That(asked, Is.Empty);
+        Assert.That(test.TakeSent(), Is.Empty);
+    }
+
+    private void JoinListing() => Send(23, writer => {
+        writer.WriteInt(9);
+        writer.WriteUnicodeString("Leader");
+        writer.WriteLong(77);
+    });
+
+    [Test]
+    public void SearchPartyJoin_InAPartyAlreadyIsRefused() {
+        Join(2, leaderIsSelf: false);
+
+        JoinListing();
+
+        Assert.That(Errors(), Is.EqualTo(new[] { PartyError.s_party_err_already }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [Test]
+    public void SearchPartyJoin_TheWorldsAnswerCarriesTheLeadersName() {
+        test.World.PartyWorld = request => {
+            asked.Add(request);
+            return new PartyResponse { Error = 0x20, LeaderName = "Leader" };
+        };
+
+        JoinListing();
+
+        PartyRequest.Types.JoinByPartySearch join = asked.Single().JoinByPartySearch;
+        Assert.That((join.PartyId, join.PartySearchId), Is.EqualTo((9, 77L)));
+        Assert.That(test.TakeSent().Select(System.Convert.ToHexString),
+            Is.EqualTo(new[] { System.Convert.ToHexString(PartyPacket.Error((PartyError) 0x20, "Leader").ToArray()) }));
+        Assert.That(session.Party.Party, Is.Null);
+    }
+
+    [Test]
+    public void SearchPartyJoin_AcceptedLoadsTheParty() {
+        const long leaderId = 4242;
+        test.World.AddPlayer(session.AccountId, session.CharacterId, session.PlayerName);
+        test.World.AddPlayer(leaderId + 1000, leaderId, "Leader");
+        test.World.PartyWorld = request => {
+            asked.Add(request);
+            return new PartyResponse {
+                Party = new PartyInfo {
+                    Id = 9, LeaderCharacterId = leaderId, LeaderAccountId = leaderId + 1000, LeaderName = "Leader",
+                    Members = { new PartyInfo.Types.Member { CharacterId = leaderId }, new PartyInfo.Types.Member { CharacterId = session.CharacterId } },
+                },
+            };
+        };
+
+        JoinListing();
+
+        Assert.That(session.Party.Id, Is.EqualTo(9));
+        Assert.That(session.Party.Party!.Members.Keys, Is.EquivalentTo(new[] { leaderId, session.CharacterId }));
+        Assert.That(Errors(), Is.Empty);
+    }
+
+    [Test]
+    public void JoinDungeonRecruit_ABlockingEnterStateShowsTheEntranceLimit() {
+        session.Player.Value.Character.DungeonEnterLimits[23050003] = DungeonEnterLimit.MinLevel;
+
+        Send(43, writer => {
+            writer.WriteInt(9);
+            writer.WriteInt(23050003);
+        });
+
+        Assert.That(test.TakeSent().Select(System.Convert.ToHexString),
+            Is.EqualTo(new[] { System.Convert.ToHexString(FieldEntrancePacket.Error(23050003, DungeonEnterLimit.MinLevel).ToArray()) }));
+        Assert.That(asked, Is.Empty);
+    }
+
+    [Test]
+    public void JoinDungeonRecruit_TheWorldsRefusalIsShown() {
+        test.World.PartyWorld = request => {
+            asked.Add(request);
+            return new PartyResponse { Error = (int) PartyError.s_party_err_full };
+        };
+
+        Send(43, writer => {
+            writer.WriteInt(9);
+            writer.WriteInt(23050003);
+        });
+
+        Assert.That(Errors(), Is.EqualTo(new[] { PartyError.s_party_err_full }));
+        Assert.That(session.Party.Party, Is.Null);
+    }
+
+    [Test]
+    public void SummonParty_ARecallThatCannotGoReturnsTheMerets() {
+        Join(2, leaderIsSelf: true);
+        // A field whose cash call row forbids the recall.
+        FieldInfo metadata = typeof(Maple2.Server.Game.Manager.Field.FieldManager).GetField("Metadata")!;
+        metadata.SetValue(session.Field, session.Field!.Metadata with { CashCall = new MapMetadataCashCall(false, false, false, false, false) });
+        session.Currency.ChangeMeret(10_000, reportSpent: false);
+        test.TakeSent();
+
+        Send(29);
+
+        Assert.That(session.Currency.Meret, Is.EqualTo(10_000));
+        Assert.That(test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Party), Is.Empty);
     }
 }
