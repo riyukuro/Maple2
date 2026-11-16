@@ -939,4 +939,77 @@ public class AiStateTests : TriggerTestBase {
             Assert.That(npc.Transform.FrontAxis.Y, Is.GreaterThan(0.99f));
         });
     }
+
+    private const int SummonedId = 21000002;
+
+    private static AiMetadata.SummonNode SummonOf(int count, int countMax, int group, NodeSummonMaster master, params NodeSummonOption[] option) =>
+        new("summon", [], 0, countMax, count, 0, 0, Vector3.Zero, Vector3.Zero, Vector3.Zero, Vector3.Zero, Vector3.Zero, group, master, option, 0, false);
+
+    private void SpawnWithSummonable() {
+        Spawn([Standby(1200)], sequences: Walker);
+        typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field,
+            NpcTable(Walker, Npc(NpcId), Npc(SummonedId)));
+        typeof(FieldManager).GetField("<Pets>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldPet>());
+    }
+
+    private NpcMetadata Summoned() {
+        Assert.That(Field.NpcMetadata.TryGet(SummonedId, out NpcMetadata? metadata), Is.True);
+        return metadata!;
+    }
+
+    // A summon node makes npcCount summons a run while at most npcCountMax of its group are alive; a slave ties to
+    // its summoner and each one is announced.
+    [Test]
+    public void Summon_SlavesUpToTheGroupMax() {
+        SpawnWithSummonable();
+        test.TakeSent();
+
+        npc.Summon(Summoned(), SummonOf(2, 3, 7, NodeSummonMaster.Slave));
+        npc.Summon(Summoned(), SummonOf(2, 3, 7, NodeSummonMaster.Slave));
+
+        Assert.Multiple(() => {
+            Assert.That(npc.SummonCount(7), Is.EqualTo(3));
+            Assert.That(npc.SlaveCount(null), Is.EqualTo(3));
+            Assert.That(npc.SlaveCount(8), Is.EqualTo(0));
+            Assert.That(Field.Mobs.Values.Count(mob => mob.Value.Id == SummonedId && mob.Master == npc), Is.EqualTo(3));
+            Assert.That(test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.FieldAddNpc), Is.EqualTo(3));
+        });
+    }
+
+    // master="None": a summon no one's slave.
+    [Test]
+    public void Summon_MasterNone_IsNoSlave() {
+        SpawnWithSummonable();
+
+        npc.Summon(Summoned(), SummonOf(1, 1, 7, NodeSummonMaster.None));
+
+        Assert.Multiple(() => {
+            Assert.That(npc.SummonCount(7), Is.EqualTo(1));
+            Assert.That(npc.SlaveCount(null), Is.EqualTo(0));
+            Assert.That(Field.Mobs.Values.Single(mob => mob.Value.Id == SummonedId).Master, Is.Null);
+        });
+    }
+
+    // masterHP: the summon takes over the summoner's health as it is, within its own total.
+    [Test]
+    public void Summon_MasterHp_InheritsTheSummonersHealth() {
+        SpawnWithSummonable();
+        npc.Stats.Values[BasicAttribute.Health].Current = 40;
+
+        npc.Summon(Summoned(), SummonOf(1, 1, 7, NodeSummonMaster.Slave, NodeSummonOption.MasterHp));
+
+        FieldNpc summon = Field.Mobs.Values.Single(mob => mob.Value.Id == SummonedId);
+        Assert.That(summon.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(40));
+    }
+
+    // A dead summoner summons nothing.
+    [Test]
+    public void Summon_ByADeadSummoner_DoesNothing() {
+        SpawnWithSummonable();
+        typeof(Actor<Npc>).GetProperty(nameof(FieldNpc.IsDead))!.SetValue(npc, true);
+
+        npc.Summon(Summoned(), SummonOf(2, 2, 7, NodeSummonMaster.Slave));
+
+        Assert.That(Field.Mobs.Values.Count(mob => mob.Value.Id == SummonedId), Is.EqualTo(0));
+    }
 }
