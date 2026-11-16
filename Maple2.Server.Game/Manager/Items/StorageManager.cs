@@ -43,12 +43,23 @@ public sealed class StorageManager : IDisposable {
         }
     }
 
-    public void Dispose() {
+    // Stores the mesos, the expansion and the items (a deposit is in memory until then).
+    public void Save() {
         using GameStorage.Request db = session.GameStorage.Context();
         lock (session.Item) {
-            db.SaveStorageInfo(session.AccountId, mesos, expand);
-            db.SaveItems(session.AccountId, items.ToArray());
+            if (!db.SaveStorageInfo(session.AccountId, mesos, expand) | !db.SaveItems(session.AccountId, items.ToArray())) {
+                Log.Error("Storage of account {AccountId} not stored", session.AccountId);
+            }
+        }
+    }
 
+    // A close stores the storage, except after the save before a move stored it (GameSession.MoveStored): the next
+    // server may have loaded the account already, and a write from here would land after that load.
+    public void Dispose() {
+        lock (session.Item) {
+            if (!session.MoveStored) {
+                Save();
+            }
             session.Storage = null;
         }
     }

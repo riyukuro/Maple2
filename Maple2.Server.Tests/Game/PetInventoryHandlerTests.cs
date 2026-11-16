@@ -14,6 +14,7 @@ using Maple2.Server.Game.Model;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -218,5 +219,28 @@ public class PetInventoryHandlerTests {
             Assert.That(test.TakeSent(), Is.Empty);
             Assert.That(HeldAmount(), Is.EqualTo(5));
         });
+    }
+
+    // The save before a move stores the summoned pet (its config and its bag) before it gives the account lock back,
+    // and the pet's dispose at LeaveField, after the move, writes nothing more: the next server owns the rows from its
+    // load (here it stored a config of its own, gone from the table). Before, the pet was stored only at that dispose,
+    // with no lock, so its write landed after the next server's load and stores.
+    [Test]
+    public void MigrationSave_StoresThePet_AndTheLeaveAfterItWritesNothing() {
+        Setup();
+        test.SavingConfig(session);
+        typeof(GameSession).GetField("preMigrationSaved", Any)!.SetValue(session, false);
+
+        Assert.That(session.MigrationSave(), Is.True);
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            context.PetConfig.Remove(context.PetConfig.Single(row => row.ItemUid == pet.Uid));
+            context.SaveChanges();
+        }
+        session.Field = null; // off the half-built test field: the dispose's writes come before the pet leaves it
+        session.Pet!.Dispose(fieldChange: true);
+
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            Assert.That(context.PetConfig.Any(row => row.ItemUid == pet.Uid), Is.False);
+        }
     }
 }

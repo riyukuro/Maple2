@@ -8,6 +8,7 @@ using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Tools.Extensions;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game.PacketHandlers;
 
@@ -636,5 +637,74 @@ public class StorageInventoryHandlerTests {
         Mesos(session, deposit: false, 20);
         Assert.That(session.Currency.Meso, Is.EqualTo(100));
         Assert.That(test.TakeSent().Select(Convert.ToHexString), Does.Contain(Hex(StorageInventoryPacket.UpdateMesos(0))));
+    }
+
+    private long StoredOwner(long uid) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.Item.AsNoTracking().Single(row => row.Id == uid).OwnerId;
+    }
+
+    private void SetStoredOwner(long uid, long owner) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        context.Item.Single(row => row.Id == uid).OwnerId = owner;
+        context.SaveChanges();
+    }
+
+    private static void MoveSave(TestGameSession test, GameSession session) {
+        // The test session skips the save before a move; this test makes the one the move runs.
+        test.SavingConfig(session);
+        typeof(GameSession).GetField("preMigrationSaved", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .SetValue(session, false);
+        Assert.That(session.MigrationSave(), Is.True);
+    }
+
+    private long StoredMesos(GameSession session) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        return context.ItemStorage.AsNoTracking().Single(row => row.AccountId == session.AccountId).Meso;
+    }
+
+    private void SetStoredMesos(GameSession session, long mesos) {
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        context.ItemStorage.Single(row => row.AccountId == session.AccountId).Meso = mesos;
+        context.SaveChanges();
+    }
+
+    // The save before a move (a channel change, a move to another server, a quit to the character list) stores an
+    // open storage before it gives the account lock back: the deposit is the storage's when the next server loads.
+    // The close at LeaveField, after the move, writes nothing more: the next server owns the rows from its load (here
+    // the next session took the item and the mesos out again). Before, the storage was stored only at that close,
+    // with no lock, so the write could land after the next server's load: the storage mesos it wrote whole undid a
+    // withdrawal the next session had stored (the mesos in its wallet and back in the storage).
+    [Test]
+    public void MigrationSave_StoresTheStorage_AndTheCloseAfterItWritesNothing() {
+        GameSession session = Open(meso: 1000);
+        Item(session, 0, stack.Uid, 5);
+        Mesos(session, deposit: true, 400);
+
+        MoveSave(test, session);
+        Assert.That(StoredOwner(stack.Uid), Is.EqualTo(session.AccountId));
+        SetStoredOwner(stack.Uid, session.CharacterId);
+        SetStoredMesos(session, 0);
+
+        session.Storage!.Dispose();
+
+        Assert.Multiple(() => {
+            Assert.That(session.Storage, Is.Null);
+            Assert.That(StoredOwner(stack.Uid), Is.EqualTo(session.CharacterId));
+            Assert.That(StoredMesos(session), Is.Zero);
+        });
+    }
+
+    // A move refused after its save: the session plays on here, and the storage's close stores it again.
+    [Test]
+    public void ARefusedMove_StoresTheStorageAtItsClose() {
+        GameSession session = Open();
+        MoveSave(test, session);
+        session.MigrationRefused();
+        Item(session, 0, stack.Uid, 5);
+
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(15)));
+
+        Assert.That(StoredOwner(stack.Uid), Is.EqualTo(session.AccountId));
     }
 }

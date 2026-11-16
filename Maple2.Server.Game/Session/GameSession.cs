@@ -2160,11 +2160,19 @@ public sealed partial class GameSession : Core.Network.Session {
         // character list lost them. Ended here, the partner cannot finish the trade after the save either (its mesos
         // would reach this wallet unstored). The client sends these moves with a trade open (no trade check).
         Trade?.Dispose();
+        // An open storage and the summoned pet's bag are stored here too, before the save gives the account lock back:
+        // their item moves (a deposit, an item put in the pet's bag) are in memory until they are stored. Stored only
+        // at LeaveField, after the move's save, the next server could load a moved item in the bag first and this
+        // server's write landed after that load (the item in the next session's bag, and stored in the storage or the
+        // pet's bag). Once the move's save stored, they write nothing more (MoveStored).
+        Storage?.Save();
+        Pet?.Save();
 
         SaveResult result = LockedSave(tries: 2, ResetWait, last);
         if (result != SaveResult.Stored) {
             preMigrationSaved = false;
         }
+        moveStored = result == SaveResult.Stored;
         return result;
     }
 
@@ -2200,7 +2208,14 @@ public sealed partial class GameSession : Core.Network.Session {
     // plays on here): the session saves again, by its timed save and at Dispose.
     internal void MigrationRefused() {
         preMigrationSaved = false;
+        moveStored = false;
     }
+
+    // The save before a move stored the session, its open storage and its pet's bag: the next server may load them
+    // from here on, and the storage's and pet's own writes at LeaveField are skipped (what they hold was stored, and
+    // no handler of the session ran since). Cleared by a refused move: the session plays on here.
+    private volatile bool moveStored;
+    internal bool MoveStored => moveStored;
 
     // The last channel change this session was refused (Environment.TickCount64) and its error, for the throttle of
     // ChannelHandler; 0 before any.
