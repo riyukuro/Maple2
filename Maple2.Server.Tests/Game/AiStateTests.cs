@@ -1063,4 +1063,34 @@ public class AiStateTests : TriggerTestBase {
         npc.AiState.Update(Field.FieldTick);
         Assert.That(npc.Buffs.EnumerateBuffs(70000001), Is.Empty);
     }
+
+    // setValueRangeTarget: the key goes on each npc within the radius and the height of the npc that runs the node
+    // (itself included), not on those outside; a radius or height of 0 is 10; isModify adds to the held value.
+    [Test]
+    public void SetValueRangeTargetNode_SetsTheKeyOnTheNpcsInRange() {
+        Spawn([new SetValueRangeTargetNode("setValueRangeTarget", [], "Hit", 2, 100, 500, 0, true, false)]);
+        FieldNpc near = Field.SpawnNpc(npc.Value.Metadata, npc.Position + new Vector3(300, 0, 0), Vector3.Zero)!;
+        FieldNpc far = Field.SpawnNpc(npc.Value.Metadata, npc.Position + new Vector3(900, 0, 0), Vector3.Zero)!;
+        FieldNpc high = Field.SpawnNpc(npc.Value.Metadata, npc.Position + new Vector3(0, 0, 400), Vector3.Zero)!;
+        near.AiExtraData["Hit"] = 5;
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.Multiple(() => {
+            Assert.That(npc.AiExtraData["Hit"], Is.EqualTo(2));
+            Assert.That(near.AiExtraData["Hit"], Is.EqualTo(7));
+            Assert.That(far.AiExtraData.ContainsKey("Hit"), Is.False);
+            Assert.That(high.AiExtraData.ContainsKey("Hit"), Is.False);
+        });
+    }
+
+    // announce node: one notice to the field.
+    [Test]
+    public void AnnounceNode_SendsOneNotice() {
+        Spawn([new AnnounceNode("announce", [], "hello", 3000, 0)]);
+
+        npc.AiState.Update(Field.FieldTick);
+
+        Assert.That(test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.NpcNotice), Is.EqualTo(1));
+    }
 }
