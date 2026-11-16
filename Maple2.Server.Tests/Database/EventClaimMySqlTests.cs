@@ -95,7 +95,7 @@ public class EventClaimMySqlTests {
                 claim = session => Event(session, 25, writer => writer.WriteInt(1));
                 break;
             case "stamp":
-                data = new StampEvent("tag", 1, stamps, [new StampEvent.Reward(1, false, reward, default)], other);
+                data = new StampEvent("tag", 0, stamps, [new StampEvent.Reward(1, false, reward, default)], other);
                 after = _ => test.SetQuest(QuestA, QuestState.Completed);
                 mark = GameEventUserValueType.StampRewardsClaimed;
                 claim = session => Event(session, 0, writer => {
@@ -104,7 +104,7 @@ public class EventClaimMySqlTests {
                 });
                 break;
             case "stampcomplete":
-                data = new StampEvent("tag", 1, stamps, [new StampEvent.Reward(1, false, other, default)], reward);
+                data = new StampEvent("tag", 0, stamps, [new StampEvent.Reward(1, false, other, default)], reward);
                 after = _ => test.SetQuest(QuestA, QuestState.Completed);
                 mark = GameEventUserValueType.StampCompleteRewardClaimed;
                 claim = session => Event(session, 1);
