@@ -59,6 +59,28 @@ public class DamageBranchTests {
         Assert.That(Damage(Hit(element: other)), Is.EqualTo(otherPlain));
     }
 
+    // The physical and magical piercing rates (parpen, marpen; special attributes 26, 27, in thousandths) take that
+    // part of 1500 off the target's resistance of their own type: resistance 600 keeps 0.6 of a hit, piercing 200 takes
+    // 300 off and keeps 0.8, piercing 1000 takes all of it off and keeps the whole hit (never more). The other type's
+    // hits stay as they were.
+    [TestCase(AttackType.Physical, SpecialAttribute.PhysicalPiercing, AttackType.Magic)]
+    [TestCase(AttackType.Magic, SpecialAttribute.MagicalPiercing, AttackType.Physical)]
+    public void PiercingTakesItsPartOffTheResistanceOfItsType(AttackType type, SpecialAttribute piercing, AttackType other) {
+        Stats[BasicAttribute.PhysicalRes].AddTotal(600 - Stats[BasicAttribute.PhysicalRes].Total);
+        Stats[BasicAttribute.MagicalRes].AddTotal(600 - Stats[BasicAttribute.MagicalRes].Total);
+        long resisted = Damage(Hit(type));
+        long otherResisted = Damage(Hit(other));
+
+        Stats[piercing].AddTotal(200);
+        Assert.That(Damage(Hit(type)), Is.EqualTo(resisted * 0.8 / 0.6).Within(2));
+        Assert.That(Damage(Hit(other)), Is.EqualTo(otherResisted));
+
+        Stats[piercing].AddTotal(800);
+        Assert.That(Damage(Hit(type)), Is.EqualTo(resisted / 0.6).Within(2));
+        Stats[piercing].AddTotal(1000);
+        Assert.That(Damage(Hit(type)), Is.EqualTo(resisted / 0.6).Within(2));
+    }
+
     // Attack type All (both): half the higher of the two attacks, against the resistance and with the damage rate of
     // that attack's own type. Physical resistance 500 makes the two types' hits differ.
     [TestCase(2000, 1000, AttackType.Physical)]
