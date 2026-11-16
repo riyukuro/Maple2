@@ -70,6 +70,14 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
         long characterId = command == Command.Create ? 0 : packet.ReadLong();
         string name = command == Command.Rename ? packet.ReadUnicodeString() : string.Empty;
         try {
+            // A delete of a character in game: another client of the account entered with it after this login was let
+            // in (see EndGameSession). That session is ended first, so its end's save lands before the delete reads
+            // the character, and the checks see what it did in game (a guild it leads, a marriage, unread mail).
+            // Before, a character could be deleted while it played on, and its guild, marriage and listings were
+            // left without it.
+            if (command is Command.Delete or Command.ConfirmDelete) {
+                EndGameSession(session);
+            }
             switch (command) {
                 case Command.Create:
                     HandleCreate(session, packet);
@@ -178,7 +186,8 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
     }
 
     // The account still in game: another client of it entered with a character it picked after this login was let
-    // in (a login is refused only while the account is in game, LoginHandler), so both would play. That session is
+    // in (a login is refused only while the account is in game, LoginHandler), so both would play (or a delete would
+    // take the character from under its game session). That session is
     // ended first, as a login of an account in game ends it. Its end saves it before the answer comes back (the
     // channel's Disconnect cuts the session, and the cut runs its Dispose and its save), so the entry of this
     // character loads what it saved. A record that went offline in between is not found: nothing to end.

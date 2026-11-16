@@ -171,11 +171,15 @@ public sealed class TestLoginSession {
 
         public override PlayerInfoResponse AccountInfo(PlayerInfoRequest request, CallOptions options) => Account;
 
+        // Runs at a Disconnect, as the ended game session's last save.
+        public Action<DisconnectRequest>? OnDisconnect;
+
         public override DisconnectResponse Disconnect(DisconnectRequest request, CallOptions options) {
             Disconnects.Add(request);
             if (DisconnectError != null) {
                 throw DisconnectError;
             }
+            OnDisconnect?.Invoke(request);
             Account = new PlayerInfoResponse { Channel = -1 };
             return new DisconnectResponse { Success = true };
         }
