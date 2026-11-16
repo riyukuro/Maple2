@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Maple2.File.Ingest;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -169,6 +170,23 @@ public class PetBattleTests : NpcCastFixture {
             Assert.That(npc.CreditedDamage(), Is.EqualTo(new[] { (test.Session.Player.ObjectId, 20L) }), "10 by the pet, 10 by the owner");
             Assert.That(npc.DamageByDealer.Count(), Is.EqualTo(2));
         });
+    }
+
+    // The kill itself (the dealers' part of the death, FieldNpc.HandleDamageDealers): a monster the pet and its owner
+    // both hit counts once for the owner's npc kill condition; one only the pet hit counts too.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void AMonsterThePetHit_CountsOnceForTheOwnersKillCondition(bool ownerHitsToo) {
+        Pet(owned: true);
+        var condition = new ConditionMetadata(ConditionType.npc, 5, new[] { CasterId.ToString() }.ConvertCodes(), System.Array.Empty<string>().ConvertCodes());
+        Quest quest = test.StartQuest(TestGameSession.QuestData(91000001) with { Conditions = [condition] });
+        Hit(pet);
+        if (ownerHitsToo) {
+            Hit(test.Session.Player);
+        }
+        typeof(FieldNpc).GetMethod("HandleDamageDealers", Any)!.Invoke(npc, []);
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
     }
 
     [Test]
