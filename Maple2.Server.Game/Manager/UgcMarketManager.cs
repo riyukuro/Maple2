@@ -154,10 +154,23 @@ public sealed class UgcMarketManager {
         // The merets paid and the sale's row taken away are stored together (TrySavePurchase). Before, the row was
         // deleted first and the merets were only in the session until its next save, so a crash or a failed save in
         // between lost the profit for good.
-        session.Currency.ChangeMeret(sale.Profit);
-        if (!session.TrySavePurchase(db => db.DeleteSoldUgcMarketItem(id))) {
-            // The profit was not stored: it goes back out of the wallet, which is no meret spent (use_merat).
-            if (!session.Currency.TryTakeMeret(sale.Profit, reportSpent: false)) {
+        // The merets go into the wallet under the store's account lock, and a refused store takes them back before the
+        // lock is given back: no other save (a timed one, another purchase) can store the wallet with the profit while
+        // the sale's row is still there. Added before the store, they could be, and a crash before this store then
+        // paid the profit twice (the stored wallet held it, the row loaded again at the next login).
+        bool added = false;
+        bool spent = false;
+        if (!session.TrySavePurchase(db => {
+                session.Currency.ChangeMeret(sale.Profit);
+                added = true;
+                return db.DeleteSoldUgcMarketItem(id) && db.SaveCurrency(session.Player);
+            }, undo: () => {
+                // The profit was not stored: it goes back out of the wallet, which is no meret spent (use_merat).
+                if (added && !session.Currency.TryTakeMeret(sale.Profit, reportSpent: false)) {
+                    spent = true;
+                }
+            })) {
+            if (spent) {
                 ProfitSpentBeforeSave(sale);
                 return;
             }

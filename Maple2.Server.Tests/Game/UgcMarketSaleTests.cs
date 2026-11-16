@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -7,6 +8,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Session;
+using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Server.Tests.Game;
 
@@ -92,6 +94,58 @@ public class UgcMarketSaleTests {
         Assert.Multiple(() => {
             Assert.That(sold.SoldTime, Is.InRange(before - 1, before + 60));
             Assert.That(stored.SoldTime, Is.InRange(before - 1, before + 60));
+        });
+    }
+
+    // A sale whose payment wait is over: its stored time moved back past the wait.
+    private static SoldUgcMarketItem Due(TestGameSession test, long id) {
+        SoldUgcMarketItem sold = Sell(test, id);
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        context.SoldUgcMarketItem.Find(sold.Id)!.SoldTime = DateTime.Now.AddDays(-(Constant.UGCShopProfitDelayDays + 1));
+        context.SaveChanges();
+        return sold;
+    }
+
+    // A collect pays the profit and takes the sale's row in one store, the profit added under its account lock.
+    // Another save of the wallet before that store cannot store the profit before the row goes: with the row's delete
+    // then refused (as a crash before it), the stored wallet holds no profit and the row stays, so the next collect
+    // pays it once. Before, the profit was added before the store: that save stored it, and the row stayed too,
+    // which paid it twice.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void CollectProfit_NoOtherSaveStoresTheProfitBeforeTheRowGoes(bool refused) {
+        var test = new TestGameSession();
+        long id = List(test, 3000).Id;
+        GameSession seller = Login(test);
+        SoldUgcMarketItem sold = Due(test, id);
+        seller.UgcMarket.RefreshSales();
+
+        // The other save (a timed save, another purchase) runs on another thread as the collect asks for the account
+        // lock, so it is stored first. Before, the profit was in the wallet by then.
+        bool other = false;
+        test.World.OnAcquire = () => {
+            if (other) {
+                return;
+            }
+            other = true;
+            System.Threading.Tasks.Task.Run(() => seller.SavePurchase()).Wait();
+        };
+        if (refused) {
+            test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.SoldUgcMarketItem>()
+                .Any(entry => entry.State == EntityState.Deleted);
+        }
+        seller.UgcMarket.CollectProfit(sold.Id);
+        Assert.That(other, Is.True);
+        test.World.OnAcquire = null;
+        test.FailSave = null;
+
+        using var read = new Maple2.Database.Context.Ms2Context(test.Options);
+        long storedMeret = read.Account.Find(test.AccountId)!.Currency.Meret;
+        bool rowKept = read.SoldUgcMarketItem.Find(sold.Id) != null;
+        Assert.Multiple(() => {
+            Assert.That(storedMeret, Is.EqualTo(refused ? 0 : sold.Profit));
+            Assert.That(rowKept, Is.EqualTo(refused));
+            Assert.That(seller.Currency.Meret, Is.EqualTo(refused ? 0 : sold.Profit));
         });
     }
 
