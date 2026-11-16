@@ -13,6 +13,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -1394,5 +1395,44 @@ public class MentorHandlerTests {
         session.Mentoring.Load();
         Assert.That(session.Player.Value.Character.MentorRole, Is.EqualTo(MentorRole.Mentee));
         Assert.That(HasUnseasonedRegistration(session), Is.False);
+    }
+
+    // A player with no role (no mentee, no mentor) gets 0 coins today on the dialog's open.
+    [Test]
+    public void OpenDialog_WithoutARole_SendsNoCoins() {
+        Login(season: true);
+
+        Send(session, OpenDialog);
+
+        Assert.That(Mentor(test), Has.Member(Coins(0)));
+    }
+
+    // The account's registration names another of its characters (stored since this login): this character's
+    // register is refused with the role's notice and changes nothing.
+    [TestCase(RegisterMentee, MentorError.IsNotReturnUser)]
+    [TestCase(RegisterMentor, MentorError.InvalidTarget)]
+    public void Register_WhenTheAccountRegisteredAnotherCharacterIsRefused(byte command, MentorError error) {
+        Login(season: true);
+        session.GameEvent.Get(GameEventUserValueType.MentoringRegistration, 77, DateTime.MaxValue.ToEpochSeconds());
+        session.GameEvent.Set(77, GameEventUserValueType.MentoringRegistration, MentoringRegistration.Text(MentorRole.Mentee, session.CharacterId + 1));
+        test.TakeSent();
+
+        Send(session, command);
+
+        Assert.That(Mentor(test), Is.EqualTo(new[] { Error(error) }));
+        Assert.That(session.Player.Value.Character.MentorRole, Is.Not.EqualTo(MentorRole.Mentee).And.Not.EqualTo(MentorRole.Mentor));
+    }
+
+    // A request the world delivers to a player who is not its mentee (here the mentor who sent it) is not shown.
+    [Test]
+    public void ReceiveRequest_ForAnotherPlayerShowsNothing() {
+        MentorAndMentee();
+        InviteOther();
+        Mentor(test);
+        long id = Rows().Single().Id;
+
+        session.Mentoring.ReceiveRequest(id);
+
+        Assert.That(Mentor(test), Is.Empty);
     }
 }
