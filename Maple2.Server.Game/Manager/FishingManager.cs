@@ -167,7 +167,12 @@ public class FishingManager {
             return tiles;
         }
         Vector3 playerPosition = session.Player.Position;
+        // The facing read back from the transform is in (-180, 180]: a north-west facing (the client's heading near
+        // either end) aligns to 180 as well as -180, and both are the one north-west case below.
         float direction = session.Player.Rotation.AlignRotation().Z;
+        if (direction >= 180) {
+            direction -= 360;
+        }
 
         Vector3 position1 = Vector3.Zero;
         Vector3 position2 = Vector3.Zero;

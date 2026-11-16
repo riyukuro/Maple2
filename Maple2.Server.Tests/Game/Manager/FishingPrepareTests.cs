@@ -85,8 +85,12 @@ public class FishingPrepareTests {
         test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Fishing).Select(Command).ToList();
 
     // Each facing finds the water block in its own box (one block under the player's feet, the surface).
+    // The transform reads a north-west facing back as 180 (175 aligns there too): it is the north-west box as
+    // well as -180 is. Before, it found no water.
     [TestCase(Constant.NorthEast, 2, 0)]
+    [TestCase(Constant.NorthWest, 0, 2)]
     [TestCase(-175f, 0, 2)]
+    [TestCase(175f, 0, 2)]
     [TestCase(-95f, -2, 0)]
     [TestCase(Constant.SouthWest, -2, 0)]
     [TestCase(Constant.SouthEast, 0, -2)]
