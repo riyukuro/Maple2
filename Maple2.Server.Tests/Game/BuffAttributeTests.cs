@@ -1108,5 +1108,43 @@ public class BuffAttributeTests {
 
         Assert.That(Held(), Is.EqualTo(held));
     }
-}
 
+    // The adventure level abilities (KR adventurelevelability 1: buff 100000028 from level 5, a step every 50 levels;
+    // 2: 100000029 from level 10, so its second step at 60): the player holds each ability's buff at its step for the prestige level, and none
+    // below the first step. A held step is not given again.
+    [TestCase(4, new int[0], new short[0])]
+    [TestCase(5, new[] { 100000028 }, new short[] { 1 })]
+    [TestCase(59, new[] { 100000028, 100000029 }, new short[] { 2, 1 })]
+    [TestCase(60, new[] { 100000028, 100000029 }, new short[] { 2, 2 })]
+    public void PrestigeAbilities_GiveTheirBuffAtTheStep(int prestigeLevel, int[] held, short[] levels) {
+        Start(MapType.None, Effect(100000028, Plain), Effect(100000028, Plain) with { Level = 2 }, Effect(100000029, Plain),
+            Effect(100000029, Plain) with { Level = 2 });
+        test.SetTable(new PrestigeLevelAbilityTable(new Dictionary<int, PrestigeLevelAbilityMetadata> {
+            [1] = new(1, 5, 50, 20, 100000028, 0.04f, 0.02f),
+            [2] = new(2, 10, 50, 20, 100000029, 0.075f, 0.025f),
+        }));
+        test.Session.Player.Value.Account.PrestigeLevel = prestigeLevel;
+
+        Buffs.RefreshPrestigeBuffs();
+        Buffs.RefreshPrestigeBuffs();
+
+        Assert.That(Held(), Is.EqualTo(held));
+        Assert.That(held.Select(id => Only(id).Level), Is.EqualTo(levels));
+    }
+
+    // A prestige level up into the next step (55 for ability 1) puts the buff at that step in place of the held one.
+    [Test]
+    public void PrestigeAbilities_StepUpReplacesTheHeldStep() {
+        Start(MapType.None, Effect(100000028, Plain), Effect(100000028, Plain) with { Level = 2 });
+        test.SetTable(new PrestigeLevelAbilityTable(new Dictionary<int, PrestigeLevelAbilityMetadata> {
+            [1] = new(1, 5, 50, 20, 100000028, 0.04f, 0.02f),
+        }));
+        test.Session.Player.Value.Account.PrestigeLevel = 54;
+        Buffs.RefreshPrestigeBuffs();
+        Assert.That(Only(100000028).Level, Is.EqualTo(1));
+
+        test.Session.Player.Value.Account.PrestigeLevel = 55;
+        Buffs.RefreshPrestigeBuffs();
+        Assert.That(Only(100000028).Level, Is.EqualTo(2));
+    }
+}

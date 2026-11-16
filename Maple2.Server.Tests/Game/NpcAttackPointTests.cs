@@ -457,4 +457,68 @@ public class NpcAttackPointTests : TriggerTestBase {
 
         Assert.That(Field.InvokeSplashes(mob, [region]), Is.EqualTo(names && inRange ? 0 : 1));
     }
+
+    // A blocked hit fires the holder's OnBlock (eventCondition 2; KR 10100162 gives 10100124 on it) and not OnAttacked,
+    // and no hit event of the attacker's. The player holds a block of rate 1 (KR 10100081: compulsion type 3, rate 1)
+    // and a buff whose event skills give the attacking npc 90000005 on a block, 90000006 on a hit.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ABlockedHitFiresTheHoldersBlockEvent(bool block) {
+        BeginCondition On(EventConditionType type) => Always with {
+            Owner = new BeginConditionTarget([], new BeginConditionTarget.EventCondition(type, false, [], [], []), [], [], [],
+                new Dictionary<MasteryType, int>(), [], []),
+        };
+        SkillEffectMetadata Gives(EventConditionType type, int id) =>
+            new(0, [new SkillEffectMetadata.Skill(id, 1)], new SkillEffectMetadataCondition(On(type), SkillTargetType.Owner, SkillTargetType.Target, 1, false), null);
+        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).GetField("EffectCache", Any)!.GetValue(skills)!;
+        AdditionalEffectMetadata Plain(int id) => BuffAttributeTests.Effect(id, DisabledBuffTests.Property with { DurationTick = 10000 });
+        AdditionalEffectMetadata blocker = Plain(10100081);
+        foreach (AdditionalEffectMetadata effect in new[] {
+                     blocker with { Status = blocker.Status with { Compulsion = new AdditionalEffectMetadataStatus.CompulsionEvent(BuffCompulsionEventType.BlockChance, 1, []) } },
+                     Plain(10100162) with { Skills = [Gives(EventConditionType.OnBlock, 90000005), Gives(EventConditionType.OnAttacked, 90000006)] },
+                     Plain(90000005), Plain(90000006),
+                 }) {
+            cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(effect.Id, (short) 1), effect]);
+        }
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, skills);
+        Player.Buffs.AddBuff(Player, Player, 10100162, 1, Field.FieldTick);
+        if (block) {
+            Player.Buffs.AddBuff(Player, Player, 10100081, 1, Field.FieldTick);
+        }
+        Player.Position = new Vector3(200, 0, 0);
+        SkillMetadataAttack attack = Attack();
+        SkillRecord cast = Cast(attack with { Damage = attack.Damage with { IsConstDamage = false, Value = 0, Rate = 1, SuperArmorBreak = true } });
+        long before = Health;
+
+        mob.SkillState.SkillCastAttack(cast, 0, []);
+
+        int[] held = mob.Buffs.EnumerateBuffs().Select(buff => buff.Id).Order().ToArray();
+        Assert.That(held, Is.EqualTo(block ? new[] { 90000005 } : new[] { 90000006 }));
+        Assert.That(Health, block ? Is.EqualTo(before) : Is.LessThan(before));
+    }
+
+    // A Chain arrow on a path (BounceChain), an overlap one so the path names its target: the path's target packet
+    // draws the bounce from its target on to the next one in the bounce radius, a record chained after the path's own.
+    // Here the npc's friendly attack aims at a second npc 200 ahead, and a third 200 past it is the bounce; with no
+    // bounce the packet names the aimed npc alone.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void AChainArrowsPathTargetDrawsItsBounce(bool chain) {
+        Paths(Path(0, 0));
+        Field.NpcMetadata.TryGet(MobId, out NpcMetadata? metadata);
+        FieldNpc aimed = Field.SpawnNpc(metadata!, new Vector3(0, 200, 0), Vector3.Zero)!;
+        FieldNpc next = Field.SpawnNpc(metadata!, new Vector3(0, 400, 0), Vector3.Zero)!;
+        Player.Position = new Vector3(5000, 0, 0);
+        var arrow = NoArrow with { Overlap = true, BounceType = chain ? BounceType.Chain : BounceType.None, BounceCount = 2, BounceRadius = 300 };
+        SkillRecord cast = Cast(Attack(apply: ApplyTargetType.Friendly) with { MagicPathId = PathId, Arrow = arrow });
+        test.TakeSent();
+
+        mob.SkillState.SkillCastAttack(cast, 0, [aimed]);
+
+        byte[] packet = TargetPackets(test.TakeSent()).Single();
+        bool Names(int objectId) => Enumerable.Range(0, packet.Length - 3).Any(i => BitConverter.ToInt32(packet, i) == objectId);
+        Assert.That(Names(aimed.ObjectId), Is.True);
+        Assert.That(Names(next.ObjectId), Is.EqualTo(chain));
+    }
 }

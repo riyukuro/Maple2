@@ -35,10 +35,10 @@ public class DotDamageCreditTests {
     // A caster other than the holder.
     private FieldActor Other() => new(test.Session.Field!, 99, test.Session.Field!.Metadata, null!);
 
-    internal static void DotTick(IActor caster, IActor owner, int amount) {
+    internal static void DotTick(IActor caster, IActor owner, int amount, int spirit = 0, int stamina = 0) {
         AdditionalEffectMetadata dot = DisabledBuffTests.Effect(1) with {
             Dot = new AdditionalEffectMetadataDot(new AdditionalEffectMetadataDot.DotDamage(AttackType.None, Element.None, UseGrade: false,
-                Rate: 0, HpValue: amount, SpValue: 0, EpValue: 0, DamageByTargetMaxHp: 0, RecoverHpByDamage: 0, IsConstDamage: true, NotKill: false), null),
+                Rate: 0, HpValue: amount, SpValue: spirit, EpValue: stamina, DamageByTargetMaxHp: 0, RecoverHpByDamage: 0, IsConstDamage: true, NotKill: false), null),
         };
         Buff tick = DisabledBuffTests.Held(dot, true);
         typeof(Buff).GetField("<Caster>k__BackingField", Any)!.SetValue(tick, caster);
@@ -69,6 +69,25 @@ public class DotDamageCreditTests {
     public void ATickWithoutDamageIsNotCredited(int amount) {
         using FieldActor other = Other();
         DotTick(other, player, amount);
+        Assert.That(player.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(10000));
+        Assert.That(player.DamageByDealer, Is.Empty);
+    }
+
+    // A tick of 10700042 (KR: SpValue 10) takes 10 spirit, one of 10400031 (EpValue 120) 120 stamina; neither takes
+    // health, and neither is credited as damage.
+    [TestCase(10, 0, 490, 500)]
+    [TestCase(0, 120, 500, 380)]
+    public void ASpiritOrStaminaTickTakesOnlyThat(int spirit, int stamina, long spiritLeft, long staminaLeft) {
+        using FieldActor other = Other();
+        foreach (BasicAttribute attribute in new[] { BasicAttribute.Spirit, BasicAttribute.Stamina }) {
+            Stat stat = player.Stats.Values[attribute];
+            (stat.Total, stat.Current) = (500, 500);
+        }
+
+        DotTick(other, player, 0, spirit, stamina);
+
+        Assert.That(player.Stats.Values[BasicAttribute.Spirit].Current, Is.EqualTo(spiritLeft));
+        Assert.That(player.Stats.Values[BasicAttribute.Stamina].Current, Is.EqualTo(staminaLeft));
         Assert.That(player.Stats.Values[BasicAttribute.Health].Current, Is.EqualTo(10000));
         Assert.That(player.DamageByDealer, Is.Empty);
     }
