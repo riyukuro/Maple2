@@ -83,4 +83,18 @@ public class ScriptEventPacketLayoutTests {
             Assert.That(Hex(StateSyncPacket.SyncNumber(4)), Is.EqualTo(Op(SendOp.SyncNumber) + "04"));
         });
     }
+
+    // Mail mode 12 (ad bill): int64 mail id, int64 time. PlayerHost mode 2 (OnPlayerHost, scenestategame.cpp:5106): bool,
+    // three ints, then the opener and the getter of the envelope as unicode strings. RecallScroll mode 1
+    // (OnRecallScroll, scenestategame.cpp:8038): the type byte, a unicode string, an int, the map id, an int, an int64.
+    [Test]
+    public void AdBillHongBaoAndRecallNotify_FollowTheClientsReaders() {
+        Assert.Multiple(() => {
+            Assert.That(Hex(MailPacket.AdBill(new Maple2.Model.Game.Mail { Id = 5 })), Is.EqualTo(Op(SendOp.Mail) + "0C" + Long(5) + Long(0)));
+            Assert.That(Hex(PlayerHostPacket.GiftHongBao(1, 2, 3, "O", "P")),
+                Is.EqualTo(Op(SendOp.PlayerHost) + "02" + "01" + Int(1) + Int(2) + Int(3) + "0100" + "4F00" + "0100" + "5000"));
+            Assert.That(Hex(RecallScrollPacket.Notify(Maple2.Server.Game.Model.RecallScrollType.Guild, "C", 2000001, 99)),
+                Is.EqualTo(Op(SendOp.RecallScroll) + "01" + "01" + "0100" + "4300" + Int(0) + Int(2000001) + Int(0) + Long(99)));
+        });
+    }
 }
