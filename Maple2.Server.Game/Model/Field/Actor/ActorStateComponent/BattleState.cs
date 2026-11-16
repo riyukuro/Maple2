@@ -218,24 +218,25 @@ public class BattleState {
                 if (currentBestMatch != -1 && distanceSquared >= currentBestMatch) {
                     return false;
                 }
-                canMatch = distanceSquared >= from && distanceSquared <= to;
+                canMatch = InWindow(distanceSquared, from, to);
                 if (canMatch && currentBestMatch != -1) {
                     currentBestMatch = distanceSquared;
                 }
                 return canMatch;
 
+            // The farthest in the window. FindNewTarget starts a far search below any distance (FarthestUnset).
             case NodeTargetType.Far:
                 if (currentBestMatch != -1 && distanceSquared <= currentBestMatch) {
                     return false;
                 }
-                canMatch = distanceSquared >= from && distanceSquared <= to;
+                canMatch = InWindow(distanceSquared, from, to);
                 if (canMatch && currentBestMatch != -1) {
                     currentBestMatch = distanceSquared;
                 }
                 return canMatch;
 
             case NodeTargetType.Mid:
-                canMatch = distanceSquared >= from && distanceSquared <= to;
+                canMatch = InWindow(distanceSquared, from, to);
                 if (canMatch && targetCandidates is not null) {
                     targetCandidates.Add((distanceSquared, target));
                 }
@@ -269,6 +270,18 @@ public class BattleState {
 
         return true;
     }
+
+    // A target node with neither from nor to has no window: every actor in sight is a candidate (KR: 687 near nodes
+    // name only a center, 4 far nodes nothing). The parser leaves both 0, which as a window held no one.
+    private bool InWindow(float distanceSquared, float fromSquared, float toSquared) {
+        if (TargetNode is { From: 0, To: 0 }) {
+            return true;
+        }
+        return distanceSquared >= fromSquared && distanceSquared <= toSquared;
+    }
+
+    // A far search's best distance before any match: below every distance, and not the -1 that means no search.
+    private const float FarthestUnset = float.MinValue;
 
     // The target died or left the field.
     private bool TargetGone() {
@@ -363,7 +376,7 @@ public class BattleState {
         sightSquared *= sightSquared;
 
         IActor? nextTarget = null;
-        float nextTargetDistance = float.MaxValue;
+        float nextTargetDistance = TargetType == NodeTargetType.Far ? FarthestUnset : float.MaxValue;
         List<(float, IActor)>? candidates = null;
 
         if (TargetType == NodeTargetType.Rand || TargetType == NodeTargetType.RandAssociated || TargetType == NodeTargetType.Mid) {

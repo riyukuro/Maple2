@@ -477,6 +477,43 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // KR AI_Witch2CerberosTrainer_PaterB.xml: a teleport whose first child is a far target node, 300 to 1300 (1092 far
+    // nodes in KR). The farthest player in the window is the target; one past the window is not. A far node with no
+    // window (4 in KR) takes the farthest in sight.
+    [Test]
+    public void Target_Far_TakesTheFarthestInItsWindow() {
+        Spawn([Target(NodeTargetType.Far, 300, 1300)], position: Vector3.Zero);
+        FieldPlayer near = AddPlayer(2, 400);
+        FieldPlayer far = AddPlayer(3, 1200);
+        AddPlayer(4, 1500);
+        AddPlayer(5, 100);
+        npc.BattleState.ForceTarget(near);
+        Run();
+        Assert.That(npc.BattleState.Target, Is.SameAs(far));
+
+        Spawn([Target(NodeTargetType.Far, 0, 0)], position: Vector3.Zero);
+        AddPlayer(2, 400);
+        FieldPlayer farthest = AddPlayer(3, 2500);
+        npc.BattleState.ForceTarget(test.Session.Player);
+        Run();
+        Assert.That(npc.BattleState.Target, Is.SameAs(farthest));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // KR: 687 near target nodes name only a center (an arena's middle), no from or to. The player nearest the center
+    // is the target.
+    [Test]
+    public void Target_NearCenterWithoutWindow_TakesTheNearestToTheCenter() {
+        var node = new TargetNode("target", [], NodeTargetType.Near, 0, 0, 0, 0, 0, 0, new Vector3(1000, 0, 0), NodeAiTarget.DefaultTarget, false, 0, 0, false);
+        Spawn([node], position: Vector3.Zero);
+        AddPlayer(2, 300);
+        FieldPlayer byCenter = AddPlayer(3, 900);
+        npc.BattleState.ForceTarget(test.Session.Player);
+        Run();
+        Assert.That(npc.BattleState.Target, Is.SameAs(byCenter));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // KR AI_Alex_AnchorLizard.xml: a standby with cooltime="10000" (its comment: the periodic target switch) whose child is
     // <node name="target" type="rand" from="10" to="1500" />. Each run picks one of the players in the window at
     // random; with none in it the npc keeps its target.
