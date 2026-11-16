@@ -102,4 +102,17 @@ public class ItemInventoryModeLayoutTests {
             Assert.That(level.Available, Is.Zero);
         }
     }
+
+    [Test]
+    public void ItemUpdate_IsPlayerUidAndItem() {
+        var test = new TestGameSession();
+        test.Start();
+        Item item = Item();
+        var reader = new ByteReader(ItemUpdatePacket.Update(test.Session.Player, item).ToArray(), 0);
+        Assert.That(reader.Read<SendOp>(), Is.EqualTo(SendOp.ItemUpdate));
+        Assert.That(reader.ReadInt(), Is.EqualTo(test.Session.Player.ObjectId));
+        Assert.That(reader.ReadLong(), Is.EqualTo(item.Uid));
+        Assert.That(reader.ReadBytes(Body(item).Length), Is.EqualTo(Body(item)));
+        Assert.That(reader.Available, Is.Zero);
+    }
 }
