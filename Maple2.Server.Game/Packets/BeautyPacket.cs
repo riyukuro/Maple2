@@ -129,13 +129,15 @@ public static class BeautyPacket {
         return pWriter;
     }
 
-    // extended: the save also extended the style slots (17).
-    public static ByteWriter SaveHair(Item currentHair, Item hairCopy, bool extended = false) {
+    // extended: the save also extended the style slots (17). slot: the index the style window gives the new row, its
+    // place at the end of the list (the saved styles before it); the window shows it as the row's "idx"
+    // (UIBeautyShopStyleDialog::FUN_140f05a80, FUN_140f096f0).
+    public static ByteWriter SaveHair(Item currentHair, Item hairCopy, bool extended = false, byte slot = 0) {
         var pWriter = Packet.Of(SendOp.Beauty);
         pWriter.WriteByte((byte) (extended ? Command.SaveHairExtended : Command.SaveHair));
         pWriter.WriteLong(currentHair.Uid);
         pWriter.WriteLong(hairCopy.Uid);
-        pWriter.WriteByte();
+        pWriter.WriteByte(slot);
         pWriter.WriteLong(hairCopy.CreationTime);
 
         return pWriter;

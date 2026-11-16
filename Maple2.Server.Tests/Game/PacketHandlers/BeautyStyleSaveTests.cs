@@ -1,4 +1,6 @@
 using System;
+using Maple2.Server.Core.Constants;
+using System.Collections.Generic;
 using System.Linq;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
@@ -490,5 +492,59 @@ public class BeautyStyleSaveTests {
         long uid = test.Rows().Where(row => row.Group == ItemGroup.SavedHair).Select(row => row.Id).Single();
         Assert.That(session.Beauty.HasSavedCosmetic(uid), Is.True);
         return uid;
+    }
+
+    // The slot byte of the sent Beauty 16 packets (the index the style window gives the new row, uibeautyshopstyledialog.cpp
+    // :1291-1295): op, mode, long uid, long copy uid, then the byte.
+    private List<byte> SentSlots() {
+        return test.TakeSent().Where(packet => TestGameSession.Op(packet) == SendOp.Beauty && packet[2] is 16 or 17)
+            .Select(packet => packet[2 + 1 + 8 + 8]).ToList();
+    }
+
+    // Two styles saved on an empty list get the rows 0 and 1 (before, both were 0).
+    [Test]
+    public void Save_GivesEachNewCopyTheIndexOfItsPlaceInTheList() {
+        Start(BeautyShopType.Save);
+        session.Beauty.Load();
+        test.TakeSent();
+
+        Save(hair.Uid);
+        Item other = Wear();
+        Save(other.Uid);
+
+        Assert.That(SentSlots(), Is.EqualTo(new List<byte> { 0, 1 }));
+    }
+
+    // A list of one saved style: the next copy is row 1.
+    [Test]
+    public void Save_GoesOnAfterTheStylesAlreadySaved() {
+        Start(BeautyShopType.Save);
+        Save(hair.Uid);
+        test.TakeSent();
+
+        Item other = Wear();
+        Save(other.Uid);
+
+        Assert.That(SentSlots(), Is.EqualTo(new List<byte> { 1 }));
+    }
+
+    // A list of two, the first deleted (the window erases the row without renumbering), then a save: the new row is the
+    // second of two, index 1.
+    [Test]
+    public void Save_AfterADeleteTakesTheIndexOfTheShorterList() {
+        Start(BeautyShopType.Save);
+        Save(hair.Uid);
+        // The saved copy's uid is the second long of the save answer.
+        byte[] firstSave = test.TakeSent().First(packet => TestGameSession.Op(packet) == SendOp.Beauty && packet[2] is 16 or 17);
+        long firstCopy = BitConverter.ToInt64(firstSave, 2 + 1 + 8);
+        Item second = Wear();
+        Save(second.Uid);
+        Delete(firstCopy);
+        test.TakeSent();
+
+        Item third = Wear();
+        Save(third.Uid);
+
+        Assert.That(SentSlots(), Is.EqualTo(new List<byte> { 1 }));
     }
 }

@@ -121,8 +121,12 @@ public sealed class BeautyManager : IDisposable {
         if (hairCopy == null) {
             return;
         }
+        // The style window appends the copy at the end of its list and gives the new row the index of that place
+        // (uibeautyshopstyledialog.cpp:1291-1295), which is the count of styles saved before it: a delete leaves no gap in
+        // the window's list.
+        byte rowIndex = (byte) items.Count;
         items.Add(hairCopy);
-        session.Send(BeautyPacket.SaveHair(hair, hairCopy, extended));
+        session.Send(BeautyPacket.SaveHair(hair, hairCopy, extended, rowIndex));
         session.ConditionUpdate(ConditionType.beauty_style_add, codeLong: hairCopy.Id);
     }
 
