@@ -60,4 +60,26 @@ public class DungeonExtraRewardRefusalTests {
         Assert.That(Ops(), Is.EqualTo(new[] { SendOp.RoomDungeon }));
         Assert.That(test.Session.Dungeon.Records[Room].ExtraSubClears, Is.EqualTo(0));
     }
+
+    // With the ticket items the count is bought: the tickets of the next count are taken (the first count costs 1 here),
+    // the record's extra clears go up and the record and the add notice are sent.
+    [Test]
+    public void WithTheTicketItems_TheCountIsBought() {
+        test = new TestGameSession();
+        DungeonRoomMetadata room = TestGameSession.DungeonRoom(Room, 50000016) with { ExtraRewardTicket = Ticket(3) };
+        test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> { [Room] = room }));
+        ItemMetadata metadata = TestGameSession.Metadata(20000123, slotMax: 99);
+        test.Store(metadata with { Property = metadata.Property with { Tag = ItemTag.FreeChannelChatCoupon } }, amount: 2);
+        test.Start();
+        test.TakeSent();
+        int tickets() => test.Session.Item.Inventory.Find(ItemTag.FreeChannelChatCoupon).Sum(item => item.Amount);
+
+        Buy(Room);
+
+        Assert.Multiple(() => {
+            Assert.That(test.Session.Dungeon.Records[Room].ExtraSubClears, Is.EqualTo(1));
+            Assert.That(tickets(), Is.EqualTo(1));
+            Assert.That(Ops().Count(op => op == SendOp.RoomDungeon), Is.EqualTo(2));
+        });
+    }
 }

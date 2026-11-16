@@ -521,6 +521,30 @@ public class GuildWorldFlowTests {
         Assert.That(Answers(), Is.Empty);
     }
 
+    // A personal skill the guild has no row for (the test guild holds none) is refused with the unknown guild error and takes
+    // no mesos; the guild level, the cost and a held effect are the rules' (GuildRulesTests).
+    [Test]
+    public void UsePersonalBuff_WithoutASkillRow_IsRefusedAndTakesNothing() {
+        test.SetTable(new GuildTable(
+            new System.Collections.Generic.Dictionary<int, System.Collections.Generic.IReadOnlyDictionary<short, GuildTable.Buff>>(),
+            new System.Collections.Generic.Dictionary<int, System.Collections.Generic.IReadOnlyDictionary<int, GuildTable.House>>(),
+            new System.Collections.Generic.Dictionary<GuildNpcType, System.Collections.Generic.IReadOnlyDictionary<short, GuildTable.Npc>>(),
+            new System.Collections.Generic.Dictionary<short, GuildTable.Property> {
+                [1] = new GuildTable.Property(1, 1000, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0f, 0f, 0, 0, 0, 0),
+            }));
+        Join();
+        test.EnterMap(TestGameSession.Map(2000001));
+        session.Currency.Meso = 5000;
+        test.TakeSent();
+
+        Send(91, writer => writer.WriteInt(20001));
+
+        Assert.Multiple(() => {
+            Assert.That(Answers(), Is.EqualTo(new[] { Error(GuildError.s_guild_err_unknown) }));
+            Assert.That(session.Currency.Meso, Is.EqualTo(5000));
+        });
+    }
+
     [Test]
     public void UpdateGiftLog_WithoutAGuild_IsIgnored() {
         Send(112);

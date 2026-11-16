@@ -28,6 +28,17 @@ public class DungeonEnterLimitTests {
         test.Start();
     }
 
+    // The session starts on a room without limits (the managers a limit reads are built after the dungeon manager), then
+    // the room gets its limit and the limits are worked out again.
+    private void Relimit(DungeonRoomLimitMetadata limit) {
+        typeof(Maple2.Server.Game.Manager.ConfigManager).GetField("session", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(session.Config, session);
+        test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> {
+            [Room] = TestGameSession.DungeonRoom(Room, 90000301) with { Limit = limit },
+        }));
+        session.Dungeon.UpdateDungeonEnterLimit();
+    }
+
     private static DungeonRoomLimitMetadata Limit(int minLevel = 1, int gearScore = 0, int achievement = 0, int[]? clears = null) =>
         TestGameSession.DungeonRoom(Room, 0).Limit with { MinLevel = minLevel, GearScore = gearScore, RequiredAchievementId = achievement, ClearDungeonIds = clears ?? [] };
 
@@ -114,5 +125,59 @@ public class DungeonEnterLimitTests {
     public void DefaultRevivals_OutsideADungeonThereIsNoLimit() {
         Start(Limit(), maxRevivals: 1);
         Assert.That(session.Dungeon.HasDefaultRevivalLeft(), Is.True);
+    }
+
+    // A room for premium club members only: the vip limit for a player without the club time.
+    [Test]
+    public void AVipOnlyRoomForAPlayerWithoutTheClub_TheVipLimit() {
+        Start(Limit());
+        Relimit(Limit() with { VipOnly = true });
+        Assert.That(Current, Is.EqualTo(DungeonEnterLimit.Vip));
+
+        session.Player.Value.Account.PremiumTime = System.DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds();
+        session.Dungeon.UpdateDungeonEnterLimit();
+        Assert.That(Current, Is.EqualTo(DungeonEnterLimit.Rookie));
+    }
+
+    // A room that asks for a buff the player does not hold: the buff limit.
+    [Test]
+    public void ARequiredBuffThePlayerLacks_TheBuffLimit() {
+        Start(Limit());
+        Relimit(Limit() with { Buffs = [70000001] });
+        Assert.That(Current, Is.EqualTo(DungeonEnterLimit.Buff));
+    }
+
+    // The recommended weapon of the job: the right weapon type of the job in the right hand gives no limit, any other or
+    // none gives the weapon limit. Weapon item ids are 1 (group), the type, then the number (ItemType).
+    [TestCase(Job.Newbie, 30)]
+    [TestCase(Job.Knight, 32)]
+    [TestCase(Job.Berserker, 50)]
+    [TestCase(Job.Wizard, 52)]
+    [TestCase(Job.Priest, 33)]
+    [TestCase(Job.Archer, 51)]
+    [TestCase(Job.HeavyGunner, 53)]
+    [TestCase(Job.Assassin, 34)]
+    [TestCase(Job.Thief, 31)]
+    [TestCase(Job.RuneBlader, 54)]
+    [TestCase(Job.Striker, 55)]
+    [TestCase(Job.SoulBinder, 56)]
+    public void TheRecommendedWeaponOfTheJob(Job job, int weaponType) {
+        // The wrong weapon is a type of another job: a bludgeon, or a dagger for the newbie's own.
+        int wrongType = weaponType == 30 ? 31 : 30;
+        foreach ((int type, bool expectsLimit) in new[] { (weaponType, false), (wrongType, true), (0, true) }) {
+            test = new TestGameSession();
+            test.SetTable(new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> {
+                [Room] = TestGameSession.DungeonRoom(Room, 90000301),
+            }));
+            if (type != 0) {
+                test.Store(TestGameSession.Metadata(10_000_000 + type * 100_000 + 1, EquipSlot.RH, type: 1), group: ItemGroup.Gear, slot: EquipSlot.RH);
+            }
+            test.Start();
+            session.Player.Value.Character.Job = job;
+            Relimit(Limit() with { EquippedRecommendedWeapon = true });
+
+            Assert.That(Current, expectsLimit ? Is.EqualTo(DungeonEnterLimit.RecommendedWeapon) : Is.Not.EqualTo(DungeonEnterLimit.RecommendedWeapon),
+                $"{job} with weapon type {type}");
+        }
     }
 }
