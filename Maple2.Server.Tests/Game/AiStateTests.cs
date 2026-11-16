@@ -901,4 +901,42 @@ public class AiStateTests : TriggerTestBase {
 
         Assert.That(npc.AiExtraData["Phase"], Is.EqualTo(4));
     }
+
+    private static readonly string[] Walker = ["Idle_A", "Attack_Idle_A", "Walk_A", "Run_A"];
+
+    // A move in a direction that is zero or not a number would put the npc at a NaN position each tick: it is
+    // cancelled instead.
+    [TestCase(0f, 0f, 0f)]
+    [TestCase(float.NaN, 0f, 0f)]
+    public void MoveDirection_WithNoUsableDirection_IsCancelled(float x, float y, float z) {
+        Spawn([Standby(1200)], sequences: Walker);
+        npc.AiState.Update(Field.FieldTick);
+        npc.TaskState.Update(Field.FieldTick);
+        Vector3 before = npc.Position;
+
+        NpcTask task = npc.MovementState.TryMoveDirection(new Vector3(x, y, z), true, "Walk_A");
+        npc.TaskState.Update(Field.FieldTick);
+
+        Assert.Multiple(() => {
+            Assert.That(task.IsDone, Is.True);
+            Assert.That(npc.Position, Is.EqualTo(before));
+        });
+    }
+
+    // A move in a direction turns the npc to it and walks.
+    [Test]
+    public void MoveDirection_TurnsAndWalks() {
+        Spawn([Standby(1200)], sequences: Walker);
+        npc.AiState.Update(Field.FieldTick);
+        npc.TaskState.Update(Field.FieldTick);
+
+        NpcTask task = npc.MovementState.TryMoveDirection(new Vector3(0, 5, 0), true, "Walk_A");
+        npc.TaskState.Update(Field.FieldTick);
+
+        Assert.Multiple(() => {
+            Assert.That(task.IsDone, Is.False);
+            Assert.That(npc.MovementState.State, Is.EqualTo(ActorState.Walk));
+            Assert.That(npc.Transform.FrontAxis.Y, Is.GreaterThan(0.99f));
+        });
+    }
 }
