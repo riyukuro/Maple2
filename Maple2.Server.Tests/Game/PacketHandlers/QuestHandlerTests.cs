@@ -211,10 +211,13 @@ public class QuestHandlerTests {
     }
 
     // An npc of the session's field with this object id (only its id is set).
-    private static void AddNpc(GameSession session, int objectId, int npcId) {
+    private static void AddNpc(GameSession session, int objectId, int npcId, int kind = 0) {
         const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         var metadata = (NpcMetadata) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadata));
         typeof(NpcMetadata).GetField("<Id>k__BackingField", any)!.SetValue(metadata, npcId);
+        var basic = (NpcMetadataBasic) RuntimeHelpers.GetUninitializedObject(typeof(NpcMetadataBasic));
+        typeof(NpcMetadataBasic).GetField("<Kind>k__BackingField", any)!.SetValue(basic, kind);
+        typeof(NpcMetadata).GetField("<Basic>k__BackingField", any)!.SetValue(metadata, basic);
         var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
         typeof(Actor<Npc>).GetField("<Value>k__BackingField", any)!.SetValue(npc, new Npc(metadata, null));
         session.Field!.Npcs[objectId] = npc;
@@ -697,10 +700,32 @@ public class QuestHandlerTests {
     public void Accept_OfAnAllianceMissionInTheOfficersTalk(int startNpc, bool expected) {
         GameSession session = Login();
         QuestMetadata data = Data(type: QuestType.AllianceQuest);
-        test.Register(data with { Basic = data.Basic with { StartNpc = startNpc }, RemoteAccept = new QuestRemoteAccept(QuestRemoteType.None, 0) });
-        AddNpc(session, 55, Npc);
+        test.Register(data with { Basic = data.Basic with { StartNpc = startNpc, Alliance = AllianceType.GreenHoods }, RemoteAccept = new QuestRemoteAccept(QuestRemoteType.None, 0) });
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType> { [OfficerKind] = AllianceType.GreenHoods }));
+        AddNpc(session, 55, Npc, OfficerKind);
 
         Accept(session, npcObjectId: 55);
+
+        Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.EqualTo(expected));
+    }
+
+    private const int OfficerKind = 105;
+
+    // The talk's npc of a mission without a start npc must be an officer of the mission's alliance (the window lists
+    // only its npc's alliance's missions); before, any npc or none was taken. A mission of no alliance takes any officer.
+    [TestCase(AllianceType.GreenHoods, OfficerKind, 55, true)]
+    [TestCase(AllianceType.GreenHoods, OfficerKind + 1, 55, false)]
+    [TestCase(AllianceType.GreenHoods, OfficerKind, 0, false)]
+    [TestCase(AllianceType.DarkWind, OfficerKind, 55, false)]
+    [TestCase(AllianceType.AnyFaction, OfficerKind, 55, true)]
+    public void Accept_OfAnAllianceMissionWithoutAStartNpc_NeedsAnOfficerOfItsAlliance(AllianceType alliance, int kind, int npcObjectId, bool expected) {
+        GameSession session = Login();
+        QuestMetadata data = Data(type: QuestType.AllianceQuest);
+        test.Register(data with { Basic = data.Basic with { StartNpc = 0, Alliance = alliance }, RemoteAccept = new QuestRemoteAccept(QuestRemoteType.None, 0) });
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType> { [OfficerKind] = AllianceType.GreenHoods }));
+        AddNpc(session, 55, Npc, kind);
+
+        Accept(session, npcObjectId: npcObjectId);
 
         Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.EqualTo(expected));
     }

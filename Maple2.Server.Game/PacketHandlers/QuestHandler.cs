@@ -184,6 +184,12 @@ public class QuestHandler : FieldPacketHandler {
         }
     }
 
+    // An npc of the kind is an officer of the alliance (famedef officerNpcKind); a mission of no alliance (none) takes
+    // any officer.
+    internal static bool OfficerOf(IReadOnlyDictionary<int, AllianceType> officerNpcKinds, int kind, AllianceType alliance) {
+        return officerNpcKinds.TryGetValue(kind, out AllianceType officer) && (alliance == AllianceType.AnyFaction || officer == alliance);
+    }
+
     private static QuestError AcceptError(GameSession session, int questId, int npcObjectId) {
         if (!session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata)) {
             return QuestError.s_quest_error_accept_fail;
@@ -207,8 +213,14 @@ public class QuestHandler : FieldPacketHandler {
         // An alliance mission without a start npc (679 of the 694 KR ones) is accepted in the talk the alliance window
         // opens (NpcTalk 8 mode 0, NpcTalkHandler.HandleAllianceQuest): its accept button sends the talk's npc, the
         // alliance officer, which is no start npc of the quest. Before, every such accept was refused. The window
-        // starts a mission without a script at once, with no npc either.
+        // starts a mission without a script at once, with no npc either. The talk's npc must be an officer of the
+        // quest's alliance: the window lists the missions of its npc's alliance (UIAllianceQuestDialog::FUN_140bf6af0,
+        // CFameTable::GetAllianceByNpc), so no client talk sends one from another npc or none.
         if (metadata.Basic.Type == QuestType.AllianceQuest && metadata.Basic.StartNpc == 0) {
+            int kind = session.Field!.Npcs.TryGetValue(npcObjectId, out FieldNpc? officer) ? officer.Value.Metadata.Basic.Kind : 0;
+            if (!OfficerOf(session.TableMetadata.FameTable.OfficerNpcKinds, kind, metadata.Basic.Alliance)) {
+                return QuestError.s_quest_error_accept_fail;
+            }
             return session.Quest.Start(questId);
         }
 
