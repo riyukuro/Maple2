@@ -510,6 +510,8 @@ public sealed class TestGameSession {
         session.Guild = Uninitialized<GuildManager>();
         session.Exp = new ExperienceManager(session);
         session.Mastery = new MasteryManager(session);
+        session.Stats = Uninitialized<StatsManager>();
+        typeof(StatsManager).GetField("<Values>k__BackingField", Any)!.SetValue(session.Stats, new Stats(new Dictionary<BasicAttribute, long>(), 0));
         session.Dungeon = new DungeonManager(session);
         session.Housing = new HousingManager(session, TableMetadata);
         session.Item = new ItemManager(db, session, stats);
@@ -527,8 +529,6 @@ public sealed class TestGameSession {
         typeof(GameSession).GetField(nameof(GameSession.ClubInvites), Any)!.SetValue(session, new ClubInviteList());
         session.ItemEnchant = new ItemEnchantManager(session);
         // Stats without an actor: Refresh does nothing. The values start empty.
-        session.Stats = Uninitialized<StatsManager>();
-        typeof(StatsManager).GetField("<Values>k__BackingField", Any)!.SetValue(session.Stats, new Stats(new Dictionary<BasicAttribute, long>(), 0));
         session.GameEvent = new GameEventManager(session);
         session.Mentoring = new MentoringManager(session);
         session.AdventureProtect = new AdventureProtectManager(session);
