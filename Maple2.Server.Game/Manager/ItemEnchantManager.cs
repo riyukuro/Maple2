@@ -1,4 +1,5 @@
-﻿using Maple2.Model;
+﻿using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
@@ -481,6 +482,18 @@ public class ItemEnchantManager {
                     return false;
                 }
                 refund.Add(item);
+            }
+        }
+        // The rows are made at owner 0 and go to the bag in memory, so the session save writes them with the cleared
+        // exp and the spent materials: made as the character's at once (an add of a new item), a crash before that
+        // save kept the exp on the item and the refund, so the next try paid it back again.
+        using (GameStorage.Request db = session.GameStorage.Context()) {
+            for (int i = 0; i < refund.Count; i++) {
+                Item? made = db.CreateItem(0, refund[i]);
+                if (made == null) {
+                    return false;
+                }
+                refund[i] = made;
             }
         }
         foreach (Item item in refund) {

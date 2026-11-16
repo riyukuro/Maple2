@@ -149,6 +149,32 @@ public class ItemEnchantKrRulesTests {
         Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(onyx - cost.GetValueOrDefault(ItemTag.Onix)));
     }
 
+    // The refund goes in with the session save, as the cleared exp and the spent materials do: with no save (a
+    // crash) the stored rows are the old ones (no refund, all materials), after it the new ones.
+    [Test]
+    public void Ophelia_TheRefundIsStoredWithTheClearedExp() {
+        GameSession session = Login(4, new ItemEnchant(enchants: 6, enchantExp: 7500));
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        Dictionary<ItemTag, int> cost = Maple2.Server.Core.Formulas.Enchant.GetEnchantCost(session.Item.Inventory.Get(gear.Uid)!)
+            .ToDictionary(c => c.Tag, c => c.Amount);
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
+
+        int Stored(int itemId) {
+            using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+            return context.Item.Where(row => row.ItemId == itemId && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount);
+        }
+        var crashed = (Stored(OnyxId), Stored(FragmentId));
+        using (Maple2.Database.Storage.GameStorage.Request db = test.Storage.Context()) {
+            session.Item.Inventory.Save(db);
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(crashed, Is.EqualTo((30000, 30000)));
+            Assert.That((Stored(OnyxId), Stored(FragmentId)), Is.EqualTo((30000 - cost.GetValueOrDefault(ItemTag.Onix) + 181,
+                30000 - cost.GetValueOrDefault(ItemTag.CrystalPiece) + 4)));
+        });
+    }
+
     // With no field the refund items cannot be made: the try goes on, but the Peachy exp stays on the item
     // instead of being cleared with nothing given back.
     [Test]
