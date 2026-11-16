@@ -57,8 +57,11 @@ public class GroupChatManager : IDisposable {
             return GroupChatError.s_err_groupchat_add_member_target;
         }
 
+        // The lookup's own record, as a party or guild member's: a copy kept the channel and the online state of the
+        // join, so a member who changed channel or logged in again on another one got no line, member change or
+        // disband, and Ended read a member who had logged out as online.
         GroupChatMember member = new GroupChatMember {
-            Info = info.Clone(),
+            Info = info,
         };
         GroupChat.Members.TryAdd(info.CharacterId, member);
 
@@ -76,7 +79,7 @@ public class GroupChatManager : IDisposable {
 
     public bool Create(PlayerInfo info) {
         var member = new GroupChatMember {
-            Info = info.Clone(),
+            Info = info, // the lookup's record, as in Invite
         };
 
         GroupChat.Members.TryAdd(info.CharacterId, member);
