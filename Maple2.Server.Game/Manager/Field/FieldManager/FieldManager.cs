@@ -597,9 +597,9 @@ public partial class FieldManager : IField {
 
     private DropLogLimiter? updateErrorLog;
 
-    // One update of the loop. A throw (an actor's update, a trigger) is logged and the loop goes on: uncaught, it
-    // ended the field's thread and, as an unhandled exception on a thread of its own, the whole channel process. The
-    // actors after the thrower are not updated in that tick. The log is limited (a thrower that fails every tick
+    // One update of the loop. A throw (a trigger, the field's own steps) is logged and the loop goes on: uncaught, it
+    // ended the field's thread and, as an unhandled exception on a thread of its own, the whole channel process. An
+    // entity's own throw is caught per entity (UpdateEach). The log is limited (a thrower that fails every tick
     // logs its first lines, then one line a minute with the count).
     internal void RunUpdate() {
         try {
@@ -714,27 +714,27 @@ public partial class FieldManager : IField {
         FieldTick = Environment.TickCount64;
         FieldTrigger.UpdateAll(fieldTriggers.Values, FieldTick);
 
-        foreach (FieldPlayer player in Players.Values) player.Update(FieldTick);
-        foreach (FieldNpc npc in Npcs.Values) npc.Update(FieldTick);
-        foreach (FieldNpc mob in Mobs.Values) mob.Update(FieldTick);
-        foreach (FieldPet pet in Pets.Values) pet.Update(FieldTick);
-        foreach (FieldBreakable breakable in fieldBreakables.Values) breakable.Update(FieldTick);
-        foreach (FieldLiftable liftable in fieldLiftables.Values) liftable.Update(FieldTick);
-        foreach (FieldInteract interact in fieldInteracts.Values) interact.Update(FieldTick);
-        foreach (FieldFunctionInteract interact in fieldFunctionInteracts.Values) interact.Update(FieldTick);
-        foreach (FieldInteract interact in fieldAdBalloons.Values) interact.Update(FieldTick);
+        UpdateEach(Players.Values);
+        UpdateEach(Npcs.Values);
+        UpdateEach(Mobs.Values);
+        UpdateEach(Pets.Values);
+        UpdateEach(fieldBreakables.Values);
+        UpdateEach(fieldLiftables.Values);
+        UpdateEach(fieldInteracts.Values);
+        UpdateEach(fieldFunctionInteracts.Values);
+        UpdateEach(fieldAdBalloons.Values);
         UpdateChests(FieldTick);
         UpdateInteractEvents(DateTime.Now);
         UpdateTriggerEvents(DateTime.Now);
         UpdateRoomEvents(DateTime.Now);
-        foreach (HongBao hongBao in hongBaos.Values) hongBao.Update(FieldTick);
-        foreach (FieldItem item in fieldItems.Values) item.Update(FieldTick);
-        foreach (FieldMobSpawn mobSpawn in fieldMobSpawns.Values) mobSpawn.Update(FieldTick);
-        foreach (FieldSpawnPointNpc spawnPointNpc in fieldSpawnPointNpcs.Values) spawnPointNpc.Update(FieldTick);
-        foreach (FieldSkill skill in fieldSkills.Values) skill.Update(FieldTick);
-        foreach (FieldSkill skill in cubeSkills.Values) skill.Update(FieldTick);
-        foreach (FieldPortal portal in fieldPortals.Values) portal.Update(FieldTick);
-        foreach (FieldReactor reactor in fieldReactors.Values) reactor.Update(FieldTick);
+        UpdateEach(hongBaos.Values);
+        UpdateEach(fieldItems.Values);
+        UpdateEach(fieldMobSpawns.Values);
+        UpdateEach(fieldSpawnPointNpcs.Values);
+        UpdateEach(fieldSkills.Values);
+        UpdateEach(cubeSkills.Values);
+        UpdateEach(fieldPortals.Values);
+        UpdateEach(fieldReactors.Values);
         UpdateBanners();
         ExpireMicrogames();
 
@@ -745,6 +745,42 @@ public partial class FieldManager : IField {
         Survival?.Update(FieldTick);
         HideAndSeek?.Update(FieldTick);
         (Widgets.GetValueOrDefault("RainbowMonster") as RainbowMonsterWidget)?.Update(FieldTick);
+    }
+
+    private DropLogLimiter? entityErrorLog;
+
+    // Updates each entity on its own: one that throws is logged (limited like the field's own failures) and, for an
+    // npc, its running tasks are dropped; the entities after it still update in this tick.
+    private void UpdateEach<T>(ICollection<T> entities) where T : IUpdatable {
+        foreach (T entity in entities) {
+            try {
+                entity.Update(FieldTick);
+            } catch (Exception ex) {
+                EntityUpdateFailed(entity, ex);
+            }
+        }
+    }
+
+    private void EntityUpdateFailed(IUpdatable entity, Exception ex) {
+        DropLogLimiter limiter = LazyInitializer.EnsureInitialized(ref entityErrorLog);
+        if (limiter.ShouldLog(DateTime.UtcNow, out int count)) {
+            int objectId = entity switch {
+                IFieldObject fieldObject => fieldObject.ObjectId,
+                FieldReactor reactor => reactor.ObjectId,
+                _ => 0,
+            };
+            int npcId = (entity as FieldNpc)?.Value?.Id ?? 0;
+            (logger ?? Log.Logger).Error(ex, "Entity update failed {Type} ObjectId={ObjectId} NpcId={NpcId} MapId={MapId} RoomId={RoomId} ({Count} since the last line)",
+                entity.GetType().Name, objectId, npcId, MapId, RoomId, count);
+        }
+        // A dead npc keeps its dead state; only a live one is put back to idle.
+        if (entity is FieldNpc { IsDead: false } npc) {
+            try {
+                npc.MovementState?.ResetTasks();
+            } catch (Exception resetEx) {
+                (logger ?? Log.Logger).Debug(resetEx, "Npc task reset failed ObjectId={ObjectId}", npc.ObjectId);
+            }
+        }
     }
 
     protected virtual void UpdateRoomTimer(long tickCount) => RoomTimer?.Update(tickCount);
