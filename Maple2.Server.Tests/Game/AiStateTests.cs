@@ -557,6 +557,25 @@ public class AiStateTests : TriggerTestBase {
         Assert.That(test.Errors, Is.Empty);
     }
 
+    // KR: 15 randAssociated nodes carry the comment "a random target among the players who attacked it"; 116
+    // nearAssociated nodes. The nearest player who dealt the npc damage is the target, though another stands nearer;
+    // with no dealer the node picks as plain near.
+    [Test]
+    public void Target_NearAssociated_TakesTheNearestDealer() {
+        Spawn([Target(NodeTargetType.NearAssociated, 10, 1500)], position: Vector3.Zero);
+        FieldPlayer near = AddPlayer(2, 200);
+        FieldPlayer dealer = AddPlayer(3, 900);
+        npc.BattleState.ForceTarget(dealer);
+        Run();
+        Assert.That(npc.BattleState.Target, Is.SameAs(near), "no dealer yet");
+
+        npc.RecordDamage(dealer, 10);
+        npc.BattleState.ForceTarget(near);
+        Run();
+        Assert.That(npc.BattleState.Target, Is.SameAs(dealer));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
     // The target a node kept with no actor in its window (rand 10 to 300, target 400 away) stays through the npc's own
     // updates, which check it against the npc's sight (3000), not the node's window; out of sight it is let go of. Found
     // again by the npc's own search (200 away, in the window), it is held by the window again.

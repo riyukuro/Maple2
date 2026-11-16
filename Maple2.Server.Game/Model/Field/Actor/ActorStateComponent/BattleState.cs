@@ -196,6 +196,9 @@ public class BattleState {
             }
             return true;
         }
+        if (scanDealers is not null && !scanDealers.Contains(target.ObjectId)) {
+            return false;
+        }
 
         bool canMatch;
         float from = TargetNode.From * TargetNode.From;
@@ -353,12 +356,26 @@ public class BattleState {
         return actor.Field.Players.GetValueOrDefault(objectId);
     }
 
-    private void FindNewTarget() {
+    // nearAssociated and randAssociated choose among the players who dealt the npc damage (KR: the comment on 15
+    // randAssociated nodes: a random target among the players who attacked it; 116 nearAssociated nodes), the
+    // dealers rankAssociate ranks. Chosen here, as for rankAssociate: with no such player in the node's reach the node
+    // picks as its plain type (near, rand), so an npc nobody has hit still finds a target.
+    private HashSet<int>? scanDealers;
+
+    private void FindNewTarget(bool dealersFirst = true) {
         // Chosen here: with nobody at the rank (no player has dealt damage yet), an npc with no target looks for
         // one in its sight as with no node, and Retarget keeps the one it has.
         if (TargetType == NodeTargetType.RankAssociated && RankedTarget() is { } ranked) {
             Target = ranked;
             return;
+        }
+
+        scanDealers = null;
+        if (dealersFirst && TargetType is NodeTargetType.NearAssociated or NodeTargetType.RandAssociated) {
+            scanDealers = actor.CreditedDamage().Select(dealer => dealer.ObjectId).ToHashSet();
+            if (scanDealers.Count == 0) {
+                scanDealers = null;
+            }
         }
 
         int friendlyType = GetTargetType();
@@ -437,6 +454,11 @@ public class BattleState {
             }
         }
 
+        if (nextTarget is null && scanDealers is not null) {
+            FindNewTarget(dealersFirst: false);
+            return;
+        }
+        scanDealers = null;
         Target = nextTarget;
     }
 }
