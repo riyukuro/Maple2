@@ -23,13 +23,14 @@ public class InventoryCurrencyItemTests {
     private static Maple2.Model.Game.Item Currency(int id, int amount) => new(TestGameSession.Metadata(id, type: 4), amount: amount);
 
     // 90000013 Rue, 90000014 Havi Fruit, 90000017 Treva, 90000022 Reverse Coin, 90000024 Mentee Point,
-    // 90000025 Star Point.
+    // 90000025 Star Point, 90000027 Meso Token.
     [TestCase(90000013, CurrencyType.Rue)]
     [TestCase(90000014, CurrencyType.HaviFruit)]
     [TestCase(90000017, CurrencyType.Treva)]
     [TestCase(90000022, CurrencyType.ReverseCoin)]
     [TestCase(90000024, CurrencyType.MenteeToken)]
     [TestCase(90000025, CurrencyType.StarPoint)]
+    [TestCase(90000027, CurrencyType.MesoToken)]
     public void Row_GoesToItsWallet(int id, CurrencyType type) {
         GameSession session = Started(out TestGameSession test);
 
