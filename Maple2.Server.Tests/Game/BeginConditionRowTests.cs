@@ -35,7 +35,7 @@ public class BeginConditionRowTests {
 
     // The KR defaults: no allowDeadState, no allowOnSurvival, nothing else asked. Battle mounts are allowed here: a
     // test session has no ride manager to look at.
-    private static readonly BeginCondition Plain = new(0, 0, Gender.All, [], 1, 0, 0, 0, false, false, false, true, false, false, [],
+    internal static readonly BeginCondition Plain = new(0, 0, Gender.All, [], 1, 0, 0, 0, false, false, false, true, false, false, [],
         new Dictionary<BasicAttribute, long>(), [], [], [], [], null, null, null, null);
 
     private static bool Holds(BeginCondition condition, FieldPlayer player) => condition.Check(player, player, player);
@@ -245,6 +245,63 @@ public class BeginConditionRowTests {
         var condition = Plain with { Level = 50, Mesos = mesos > 0 ? 1000 : 0 };
 
         Assert.That(Holds(condition, player), Is.EqualTo(holds));
+    }
+
+    internal static BeginConditionTarget Side(BeginConditionTarget.BeginConditionStat[]? stat = null, EventConditionType type = EventConditionType.Activate,
+            int[]? eventBuffIds = null, int[]? npcIds = null) {
+        return new BeginConditionTarget([], new BeginConditionTarget.EventCondition(type, false, [], eventBuffIds ?? [], []), stat ?? [],
+            [], [], new Dictionary<MasteryType, int>(), npcIds ?? [], []);
+    }
+
+    // ownerStat on health, by the current share of the total (the data's default value type): 10200081 (KR: at least
+    // 0.45 and below 0.6) holds in that band, 10100231 (at least 0.7) from 70% up. A total of 0 counts as 0%.
+    [TestCase(44, 100, false, false)]
+    [TestCase(45, 100, true, false)]
+    [TestCase(59, 100, true, false)]
+    [TestCase(60, 100, false, false)]
+    [TestCase(70, 100, false, true)]
+    [TestCase(100, 100, false, true)]
+    [TestCase(0, 0, false, false)]
+    public void OwnerHealthShare_HoldsInTheRowsBand(long current, long total, bool band, bool high) {
+        FieldPlayer player = Enter();
+        Stat health = player.Stats.Values[BasicAttribute.Health];
+        (health.Total, health.Current) = (total, current);
+        BeginCondition mid = Plain with { Owner = Side([
+            new BeginConditionTarget.BeginConditionStat(BasicAttribute.Health, 0.45f, CompareType.GreaterEquals, CompareStatValueType.CurrentPercentage),
+            new BeginConditionTarget.BeginConditionStat(BasicAttribute.Health, 0.6f, CompareType.Less, CompareStatValueType.CurrentPercentage),
+        ]) };
+        BeginCondition top = Plain with { Owner = Side([
+            new BeginConditionTarget.BeginConditionStat(BasicAttribute.Health, 0.7f, CompareType.GreaterEquals, CompareStatValueType.CurrentPercentage),
+        ]) };
+
+        Assert.That(Holds(mid, player), Is.EqualTo(band));
+        Assert.That(Holds(top, player), Is.EqualTo(high));
+    }
+
+    // A stat compare of Equals, on the total value: no KR row asks one, but the data's compare type allows it.
+    [TestCase(500, true)]
+    [TestCase(499, false)]
+    public void OwnerTotalEquals_HoldsOnlyAtTheValue(long total, bool holds) {
+        FieldPlayer player = Enter();
+        Stat health = player.Stats.Values[BasicAttribute.Health];
+        (health.Total, health.Current) = (total, 1);
+        BeginCondition condition = Plain with { Owner = Side([
+            new BeginConditionTarget.BeginConditionStat(BasicAttribute.Health, 500, CompareType.Equals, CompareStatValueType.TotalValue),
+        ]) };
+
+        Assert.That(Holds(condition, player), Is.EqualTo(holds));
+    }
+
+    // 10200261 (KR: ownerEventType 16, an effect applied to the holder, eventEffectID 10200033) fires only for that
+    // effect, and only on that event.
+    [TestCase(EventConditionType.OnEffectApplied, 10200033, true)]
+    [TestCase(EventConditionType.OnEffectApplied, 10200034, false)]
+    [TestCase(EventConditionType.Activate, 10200033, false)]
+    public void EventBuffIds_HoldOnlyForTheNamedEffect(EventConditionType eventType, int buffId, bool holds) {
+        FieldPlayer player = Enter();
+        BeginCondition condition = Plain with { Owner = Side(type: EventConditionType.OnEffectApplied, eventBuffIds: [10200033]) };
+
+        Assert.That(condition.Check(player, player, player, eventType, eventBuffId: buffId), Is.EqualTo(holds));
     }
 }
 

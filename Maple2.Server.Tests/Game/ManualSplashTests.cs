@@ -18,7 +18,7 @@ public class ManualSplashTests {
     private const BindingFlags Any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private const int Region = 10400292;
 
-    private static SkillMetadata Skill(int id, bool manual, int life = 6000, int cool = 100) {
+    internal static SkillMetadata Skill(int id, bool manual, int life = 6000, int cool = 100) {
         var level = (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with {
             Skills = [],
             Motions = [new SkillMetadataMotion(new SkillMetadataMotionProperty("", 1, 0, false, SplashLifeTick: life, SplashInvokeCoolTick: cool),
@@ -37,7 +37,7 @@ public class ManualSplashTests {
         typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(field, tick);
     }
 
-    private static FieldSkill Place(FieldManager field, int objectId, IActor caster, SkillMetadata skill, int fireCount = -1) {
+    internal static FieldSkill Place(FieldManager field, int objectId, IActor caster, SkillMetadata skill, int fireCount = -1) {
         var placed = new FieldSkill(field, objectId, caster, skill, fireCount, Splash, Vector3.Zero) { Position = Vector3.Zero };
         FieldInfo info = typeof(FieldManager).GetField("fieldSkills", Any)!;
         if (info.GetValue(field) is not ConcurrentDictionary<int, FieldSkill> skills) {

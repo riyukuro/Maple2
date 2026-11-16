@@ -326,15 +326,7 @@ public class NpcAttackPointTests : TriggerTestBase {
     [TestCase(false)]
     public void ANoTargetRegionLandsOnTheAimOrThePathsEnd(bool aimed) {
         const int regionId = 21000012;
-        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
-        object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", Any)!.GetValue(skills)!;
-        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
-        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(regionId, (short) 1), new SkillMetadata(regionId, 1, null, property, null!,
-            (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with { Motions = [] })]);
-        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, skills);
-        typeof(FieldManager).GetField("fieldSkills", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldSkill>());
-        var splash = new SkillEffectMetadata(0, [new SkillEffectMetadata.Skill(regionId, 1)], null,
-            new SkillEffectMetadataSplash(0, 0, 0, false, false, NonTargetActive: true, false, false, false, null));
+        SkillEffectMetadata splash = Region(regionId, noTarget: true);
         MagicPath path = Path(1000, 5000);
         Paths(path);
         // In reach of the path (1,000 + 150) and past the attack's range; or out of every reach.
@@ -406,5 +398,63 @@ public class NpcAttackPointTests : TriggerTestBase {
         int[] held = Player.Buffs.EnumerateBuffs().Select(buff => buff.Id).Order().ToArray();
         Assert.That(held, Is.EqualTo(critical ? new[] { 90000002, 90000003 } : new[] { 90000003 }));
     }
-}
 
+    // A region skill of the field's skill table (no motion), and the field's region list; the splash row that places
+    // it, needing a hit target or not (nonTargetActive).
+    private SkillEffectMetadata Region(int regionId, bool noTarget) {
+        var skills = new SkillMetadataStorage(new MetadataContext(new DbContextOptionsBuilder().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options));
+        object cache = typeof(SkillMetadataStorage).BaseType!.GetField("Cache", Any)!.GetValue(skills)!;
+        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(regionId, (short) 1), new SkillMetadata(regionId, 1, null, property, null!,
+            (SkillMetadataLevel) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataLevel)) with { Motions = [] })]);
+        typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, skills);
+        typeof(FieldManager).GetField("fieldSkills", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldSkill>());
+        return new SkillEffectMetadata(0, [new SkillEffectMetadata.Skill(regionId, 1)], null,
+            new SkillEffectMetadataSplash(0, 0, 0, false, false, NonTargetActive: noTarget, false, false, false, null));
+    }
+
+    // A splash row that needs a hit target (Actor.TargetAttack): its region is placed on each actor the attack hit,
+    // at once; an attack that hits no one places none.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ATargetSplashIsPlacedOnEachHitActor(bool inRange) {
+        const int regionId = 21000013;
+        SkillEffectMetadata splash = Region(regionId, noTarget: false);
+        Player.Position = inRange ? new Vector3(200, 50, 0) : new Vector3(900, 0, 0);
+        SkillRecord cast = Cast(Attack() with { Skills = [splash] });
+
+        mob.SkillState.SkillCastAttack(cast, 0, []);
+
+        Assert.That(Field.DebugFieldSkills.Select(skill => (skill.Value.Id, skill.Position)),
+            Is.EqualTo(inRange ? new[] { (regionId, Player.Position) } : Array.Empty<(int, Vector3)>()));
+    }
+
+    // targetNpcID: 50001412 (KR: its proc's target must be npc 23000116, 23000117 or 23000118) holds only on those
+    // npcs; a player target is not asked.
+    [Test]
+    public void TargetNpcIds_HoldOnlyOnTheListedNpcs() {
+        BeginCondition listed = BeginConditionRowTests.Plain with { Target = BeginConditionRowTests.Side(npcIds: [23000116, 23000117, 23000118]) };
+        BeginCondition own = BeginConditionRowTests.Plain with { Target = BeginConditionRowTests.Side(npcIds: [MobId]) };
+
+        Assert.That(listed.Check(Player, Player, mob), Is.False);
+        Assert.That(own.Check(Player, Player, mob), Is.True);
+        Assert.That(listed.Check(Player, Player, Player), Is.True);
+    }
+
+    // splashActiveSkillID (KR: the priest heal 10400071 names 10400292): a hit of the attack fires the attacker's own
+    // regions of those skills that fire only when made to, so the next invoke within the region's 100 ms invoke cool
+    // time finds it spent. An attack that names none, or that hits no one, leaves it ready.
+    [TestCase(true, true)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void AHitFiresTheAttackersManualRegions(bool names, bool inRange) {
+        const int region = 10400292;
+        ManualSplashTests.Place(Field, 900, mob, ManualSplashTests.Skill(region, true));
+        Player.Position = inRange ? new Vector3(200, 50, 0) : new Vector3(900, 0, 0);
+        SkillRecord cast = Cast(Attack() with { SplashActiveSkillIds = names ? [region] : [] });
+
+        mob.SkillState.SkillCastAttack(cast, 0, []);
+
+        Assert.That(Field.InvokeSplashes(mob, [region]), Is.EqualTo(names && inRange ? 0 : 1));
+    }
+}
