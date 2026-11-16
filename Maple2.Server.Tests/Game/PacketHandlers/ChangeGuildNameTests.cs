@@ -141,6 +141,10 @@ public class ChangeGuildNameTests {
         Assert.That((request.RequestorId, request.Rename.GuildId, request.Rename.Name), Is.EqualTo((session.CharacterId, 7L, "NewName")));
         Assert.That(Tickets(), Is.EqualTo(1));
         Assert.That(GuildAnswers(), Is.Empty);
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            // Stored taken with no session save (a crash keeps the take with what it gave).
+            Assert.That(context.Item.Where(row => row.Id == ticket.Uid && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount), Is.EqualTo(1));
+        }
     }
 
     // The World's rename on a member's channel: the guild and the character take the name, the member gets Guild 34

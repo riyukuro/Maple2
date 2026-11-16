@@ -370,7 +370,12 @@ public class ItemUseHandler : FieldPacketHandler {
         }
         if (session.Housing.InstallPackage(plot, package, () => session.Item.Inventory.Consume(item.Uid, 1), out _) is { } failed) {
             Refuse(failed);
+            return;
         }
+        // The package's cubes are stored as they are placed, so the used package is stored too (outside the plot's
+        // edit lock, which a store must not be taken under): left to the session save, a crash gave it back next to
+        // the built home.
+        session.SavePurchase(save => session.Item.Inventory.Save(save));
     }
 
     private static void HandleStoryBook(GameSession session, Item item) {
@@ -1038,7 +1043,11 @@ public class ItemUseHandler : FieldPacketHandler {
         if (totalCount < 1 || totalUser < 1 || session.Field == null) {
             return;
         }
-        session.Item.Inventory.Consume(item.Uid, 1);
+        // Stored taken at once: the owner's share and the others' claims get their rows at once, so an envelope taken
+        // in memory only came back on a crash before the session save, next to what it gave.
+        if (!session.Item.Inventory.ConsumeNow([(item.Uid, 1)])) {
+            return;
+        }
         session.Field.AddHongBao(session.Player, item.Id, itemId, totalUser, durationSec, totalCount);
     }
 
@@ -1279,7 +1288,9 @@ public class ItemUseHandler : FieldPacketHandler {
             session.Send(GuildPacket.Error(error));
             return;
         }
-        if (!session.Item.Inventory.Consume(item.Uid, 1)) {
+        // Stored taken at once: the World stores the new name at once, so a ticket taken in memory only came back on
+        // a crash before the session save, with the guild renamed.
+        if (!session.Item.Inventory.ConsumeNow([(item.Uid, 1)])) {
             Logger.Warning("Guild {GuildId} renamed, but rename ticket {ItemUid} was not used", guild.Id, item.Uid);
         }
     }

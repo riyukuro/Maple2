@@ -83,6 +83,10 @@ public class UgcMapPackageTests {
         Assert.That(plot.Cubes.Values.All(cube => cube.ItemId == Cube), Is.True);
         Assert.That(Packages(session), Is.EqualTo(1));
         Assert.That(test.Errors, Is.Empty);
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            // Stored taken with no session save (a crash keeps the take with what it gave).
+            Assert.That(context.Item.Where(row => row.Id == package.Uid && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount), Is.EqualTo(1));
+        }
     }
 
     // Cubes in the home: the plain use is refused (the client asks first); after a yes they go back to storage.

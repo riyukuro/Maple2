@@ -725,6 +725,10 @@ public class ItemFunctionUseTests {
         long share = session.Currency.Meret - before;
         Assert.That(share, Is.InRange(1, 50 - 5));
         Assert.That(test.TakeSentOps(), Does.Contain(SendOp.PlayerHost));
+        using (var context = new Maple2.Database.Context.Ms2Context(test.Options)) {
+            // Stored taken with no session save (a crash keeps the take with what it gave).
+            Assert.That(context.Item.Where(row => row.Id == envelope.Uid && row.OwnerId == test.CharacterId).AsEnumerable().Sum(row => row.Amount), Is.EqualTo(1));
+        }
     }
 
     // The same envelope with no items or no users is kept and gives nothing; it gave the opener a share of 0.
