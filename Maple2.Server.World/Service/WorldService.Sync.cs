@@ -150,17 +150,24 @@ public partial class WorldService {
             return Task.FromResult(new DisconnectResponse());
         }
 
+        // The session that arrived on the target is ended, else it plays on next to a login that ended "the account's
+        // session" (a second client of the account would get in next to it). Asked also when the record's channel
+        // finds one: that is the session that left, still closing after its move's save (its send queue's drain, its
+        // field leave), while the client is already loading or playing on the target. Both are asked at once, and
+        // each answers after its session's close (up to the channel's CloseWait); asked one after the other, the
+        // login waited for both waits. The order does not matter: the session that left made its move's save before
+        // it sent the move, and the target's load waited for that save (ClaimSession, the account lock).
+        Task<DisconnectResponse>? targetKick = null;
+        if (target != -1 && channelClients.TryGetClient(target, out ChannelClient? targetClient)) {
+            targetKick = Task.Run(() => targetClient.Disconnect(new DisconnectRequest {
+                CharacterId = info.CharacterId,
+            }));
+        }
         DisconnectResponse disconnectResponse = channelClient.Disconnect(new DisconnectRequest {
             CharacterId = info.CharacterId,
         });
-        // The session that arrived on the target is ended, else it plays on next to a login that ended "the account's
-        // session" (a second client of the account would get in next to it). Asked also when the record's channel
-        // found one: that is the session that left, still closing after its move's save (its send queue's drain, its
-        // field leave), while the client is already loading or playing on the target.
-        if (target != -1 && channelClients.TryGetClient(target, out ChannelClient? targetClient)) {
-            DisconnectResponse targetResponse = targetClient.Disconnect(new DisconnectRequest {
-                CharacterId = info.CharacterId,
-            });
+        if (targetKick != null) {
+            DisconnectResponse targetResponse = targetKick.GetAwaiter().GetResult();
             if (targetResponse.Success) {
                 disconnectResponse = targetResponse;
             }

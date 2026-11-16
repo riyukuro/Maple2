@@ -26,9 +26,19 @@ public class DisconnectChannelChangeTests {
     private sealed class FakeChannel : ChannelClient {
         public readonly List<long> Disconnects = [];
         public bool HasSession;
+        public readonly System.Threading.ManualResetEventSlim Asked = new();
+        // A channel whose answer waits (its session's close) until the other channel was asked, or the wait ran out.
+        public FakeChannel? WaitsFor;
+        public bool SawTheOtherAsked;
 
         public override DisconnectResponse Disconnect(DisconnectRequest request, CallOptions options) {
-            Disconnects.Add(request.CharacterId);
+            lock (Disconnects) {
+                Disconnects.Add(request.CharacterId);
+            }
+            Asked.Set();
+            if (WaitsFor != null) {
+                SawTheOtherAsked = WaitsFor.Asked.Wait(2000);
+            }
             return new DisconnectResponse { Success = HasSession };
         }
 
@@ -121,6 +131,23 @@ public class DisconnectChannelChangeTests {
             Assert.That(left.Disconnects, Is.EqualTo(new[] { CharacterId }));
             Assert.That(target.Disconnects, Is.EqualTo(new[] { CharacterId }));
             Assert.That(players[CharacterId].Channel, Is.EqualTo(-1));
+        });
+    }
+
+    // Both channels are asked at once: each answers only after its session's close, and the login waits for the
+    // longer of the two, not their sum. Before, the target was asked after the record's channel had answered.
+    [Test]
+    public void BothChannels_AreAskedAtOnce() {
+        worldServer.Migrations.Begin(CharacterId, 1, 2, DateTime.UtcNow);
+        left.HasSession = true;
+        target.HasSession = true;
+        left.WaitsFor = target;
+        target.WaitsFor = left;
+
+        Assert.That(Disconnect().Success, Is.True);
+        Assert.Multiple(() => {
+            Assert.That(left.SawTheOtherAsked, Is.True);
+            Assert.That(target.SawTheOtherAsked, Is.True);
         });
     }
 
