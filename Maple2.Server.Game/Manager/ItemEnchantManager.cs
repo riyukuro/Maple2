@@ -64,6 +64,8 @@ public class ItemEnchantManager {
     private readonly Dictionary<BasicAttribute, BasicOption> attributeDeltas;
     private readonly EnchantRates rates;
     private int fodderWeight;
+    // The grade the staged cost and rate were made for (Prepare).
+    private int stagedEnchants;
     private int useCharges;
     private EnchantResult enchantResult;
     // The last try (result, level after it, grade) for the dialog's result event (talk event 3), which comes after the
@@ -148,6 +150,7 @@ public class ItemEnchantManager {
         // Ensure this item has an Enchant field set.
         upgradeItem.Enchant ??= new ItemEnchant();
         int enchants = Math.Clamp(upgradeItem.Enchant.Enchants, 0, 14);
+        stagedEnchants = upgradeItem.Enchant.Enchants;
 
         // SaleEnchant and ReduceEnchantMaterialFee lower each count, held to IngredientFeeReduceLimit; the reply
         // and the charge use the same counts (EventSaleRules.EnchantDiscount). The 10% exp payback of a failed Peachy
@@ -357,6 +360,14 @@ public class ItemEnchantManager {
         if (!CanEnchant(upgradeItem, upgradeItem.Enchant.Enchants)) {
             session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_invalid_item));
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_invalid_item);
+            return false;
+        }
+        // The grade changed since the stage (an enchant scroll on the staged item, EnchantScrollHandler): the staged
+        // cost and rate are those of the old grade. The item is staged again at its grade, as a new stage would show
+        // it, and this try is not made.
+        if (upgradeItem.Enchant.Enchants != stagedEnchants) {
+            int minFodder = Prepare();
+            session.Send(ItemEnchantPacket.StageItem(Type, upgradeItem, catalysts, attributeDeltas, rates, minFodder));
             return false;
         }
         int enchants = Math.Clamp(upgradeItem.Enchant.Enchants, 0, 14);

@@ -248,4 +248,37 @@ public class ItemEnchantRefusalTests {
             Assert.That(Held(session, ItemTag.CrystalPiece), Is.EqualTo(fragments));
         });
     }
+
+    // The staged cost and rate are those of the grade at the stage. An enchant scroll that raises the staged item
+    // (EnchantScrollHandler writes the grade onto the same item) leaves them stale: a +0 stage's 100% rate and +0
+    // cost would carry the +9 item's try. The request after the change stages the item again at its grade, takes
+    // nothing and makes no try; the next one pays and rolls as a +9 stage does.
+    [TestCase(EnchantType.Ophelia)]
+    [TestCase(EnchantType.Peachy)]
+    public void AGradeChangedSinceTheStage_StagesItAgain_AndMakesNoTry(EnchantType type) {
+        GameSession session = Login(30000, 30000, 30000, 1000000);
+        Item item = session.Item.Inventory.Get(gear.Uid)!;
+        Assert.That(session.ItemEnchant.StageItem(type, gear.Uid), Is.True);
+        Dictionary<ItemTag, int> stagedCost = Cost(session);
+        item.Enchant = new ItemEnchant(enchants: 9);
+        Dictionary<ItemTag, int> gradeCost = Cost(session);
+        Assert.That(gradeCost, Is.Not.EqualTo(stagedCost), "the +9 cost differs from the +0 one");
+        int onyx = Held(session, ItemTag.Onix);
+        test.TakeSent();
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.False);
+        Assert.Multiple(() => {
+            Assert.That(item.Enchant!.Enchants, Is.EqualTo(9));
+            Assert.That(item.Enchant.EnchantExp, Is.EqualTo(0));
+            Assert.That(Held(session, ItemTag.Onix), Is.EqualTo(onyx), "nothing taken");
+            Assert.That(test.TakeSent().Select(TestGameSession.Op), Is.EqualTo(new[] { SendOp.ItemEnchant }), "the new stage");
+        });
+        if (type == EnchantType.Ophelia) {
+            Assert.That(session.ItemEnchant.OpheliaRate(), Is.EqualTo(40f), "the +9 rate (try for +10)");
+        }
+
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
+        // Peachy's own table (ItemEnchantManager.PeachyCost): 2238 onyx at +9, 802 at +0.
+        Assert.That(onyx - Held(session, ItemTag.Onix), Is.EqualTo(type == EnchantType.Ophelia ? gradeCost[ItemTag.Onix] : 2238), "the +9 cost");
+    }
 }
