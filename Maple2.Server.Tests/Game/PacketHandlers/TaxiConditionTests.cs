@@ -162,4 +162,36 @@ public class TaxiConditionTests {
             Assert.That(counter, Is.Zero);
         });
     }
+
+    // 22100010: <condition type="taxifind" value="1" />: the station's discovery (the action key, mode 0, or the
+    // station finder, mode 5) counts once; a station already known counts nothing, and a map the server does not
+    // know reveals nothing.
+    [TestCase((byte) 0)]
+    [TestCase((byte) 5)]
+    public void TaxiFind_22100010_TheStationsDiscovery(byte mode) {
+        var test = new TestGameSession();
+        test.AddMap(Field(From));
+        test.SetTable(new CommonExpTable(new Dictionary<ExpType, CommonExpTable.Entry>()));
+        GameSession session = test.Start();
+        test.EnterMap(TestGameSession.Map(To));
+        QuestMetadata metadata = TestGameSession.QuestData(91000001);
+        Quest quest = test.StartQuest(metadata with { Conditions = [new ConditionMetadata(ConditionType.taxifind, 2, null, null)] });
+        var handler = new TaxiHandler {
+            MapMetadata = test.MapMetadata,
+            EntityMetadata = Entities(),
+            TaxiRoute = new TaxiRouteStorage(test.TableMetadata, test.MapMetadata),
+            ServerTableMetadata = test.ServerTableMetadata,
+        };
+
+        session.Player.Value.Character.MapId = To;
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(mode)));
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(0));
+        session.Player.Value.Character.MapId = From;
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(mode)));
+        handler.Handle(session, TestGameSession.Packet(writer => writer.WriteByte(mode)));
+
+        Assert.That(test.Errors, Is.Empty);
+        Assert.That(session.Player.Value.Unlock.Taxis, Does.Contain(From).And.Not.Contain(To));
+        Assert.That(quest.Conditions[0].Counter, Is.EqualTo(1));
+    }
 }

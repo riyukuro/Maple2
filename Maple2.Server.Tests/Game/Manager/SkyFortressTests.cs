@@ -7,6 +7,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
@@ -354,6 +355,34 @@ public class SkyFortressTests {
         Assert.Multiple(() => {
             Assert.That(test.TakeSentOps(), Is.EqualTo(new[] { SendOp.Notice, SendOp.RequestFieldEnter }));
             Assert.That(test.TrophyCounter(22500040), Is.Null);
+        });
+    }
+
+    // 22500040: <condition type="skyfortress_system" value="100" />: each prepared move to the sky fortress counts one.
+    [Test]
+    public void SkyFortressMove_22500040_APreparedMoveCounts() {
+        Login(Seasons(RequireQuest));
+        test.AddAchievement(TestGameSession.Trophy(22500040, ConditionType.skyfortress_system, [100]));
+        Hold(RequireQuest, QuestState.Completed);
+        MapMetadata map = TestGameSession.Map(Target) with {
+            Limit = (MapMetadataLimit) RuntimeHelpers.GetUninitializedObject(typeof(MapMetadataLimit)),
+        };
+        test.AddMap(map);
+        // The fortress field runs on this channel: the move is prepared here.
+        test.EnterMap(map);
+        FieldManager fortress = test.Session.Field!;
+        test.EnterMap(TestGameSession.Map(2000001));
+        QuestConditionWiringTests.SetSkills(test);
+        QuestConditionWiringTests.ReadyFieldChange(test, fortress);
+        test.TakeSent();
+
+        new QuestHandler { TableMetadata = test.TableMetadata, ServerTableMetadata = test.ServerTableMetadata }
+            .Handle(test.Session, TestGameSession.Packet(writer => writer.WriteByte(14)));
+
+        Assert.Multiple(() => {
+            Assert.That(test.Errors, Is.Empty);
+            Assert.That(test.TakeSentOps(), Does.Contain(SendOp.RequestFieldEnter).And.Not.Contain(SendOp.Notice));
+            Assert.That(test.TrophyCounter(22500040), Is.EqualTo(1));
         });
     }
 }
