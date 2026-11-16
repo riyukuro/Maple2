@@ -31,7 +31,10 @@ public abstract class NpcCastFixture : TriggerTestBase {
     protected FieldNpc npc = null!;
 
     // The npc has the given sequences in its model; the skills are known to the field.
-    protected FieldNpc StartCaster(string[] sequences, params SkillMetadata[] skills) {
+    protected FieldNpc StartCaster(string[] sequences, params SkillMetadata[] skills) => StartCaster(sequences, null, skills);
+
+    // Keys: the named keys of a sequence (name -> key name and time in seconds); the sequence lasts 5 s.
+    protected FieldNpc StartCaster(string[] sequences, IReadOnlyDictionary<string, (string Name, float Time)[]>? keys, params SkillMetadata[] skills) {
         Start();
         typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
@@ -50,6 +53,12 @@ public abstract class NpcCastFixture : TriggerTestBase {
         }
         typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.SetValue(Field, storage);
         typeof(FieldManager).GetField("<NpcMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.NpcTable(sequences, AiStateTests.Npc(CasterId)));
+        if (keys != null) {
+            var animations = new LRUCache<string, AnimationMetadata>(10, 1);
+            animations.AddReplace("test_model", new AnimationMetadata("test_model", sequences.Select((name, i) => new AnimationSequenceMetadata(name, (short) (i + 1), 5,
+                keys.TryGetValue(name, out (string Name, float Time)[]? named) ? named.Select(key => new AnimationKey(key.Name, key.Time)).ToList() : [])).ToDictionary(sequence => sequence.Name)));
+            typeof(NpcMetadataStorage).GetField("AniCache", Any)!.SetValue(Field.NpcMetadata, animations);
+        }
         typeof(FieldManager).GetField("<AiMetadata>k__BackingField", Any)!.SetValue(Field, AiStateTests.AiTable(new AiMetadata("AI_StateTest.xml", [], [], [], [])));
         typeof(FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(Field, 1_000_000L);
 
@@ -65,9 +74,12 @@ public abstract class NpcCastFixture : TriggerTestBase {
 
     // A skill of one level: one motion per (sequence, attack point name) of the list; each motion's attack is a plain
     // hostile box of the given count of hits, named by its point.
-    protected static SkillMetadata Skill(int id, params (string Sequence, string Point)[] motions) {
+    protected static SkillMetadata Skill(int id, params (string Sequence, string Point)[] motions) => Skill(id, 0f, motions);
+
+    // The same with the motion's movedistance (the first motion's).
+    protected static SkillMetadata Skill(int id, float moveDistance, params (string Sequence, string Point)[] motions) {
         SkillMetadataMotion[] built = motions.Select(motion => new SkillMetadataMotion(
-            new SkillMetadataMotionProperty(motion.Sequence, 1f, 0f, false),
+            new SkillMetadataMotionProperty(motion.Sequence, 1f, moveDistance, false),
             string.IsNullOrEmpty(motion.Point) ? [] : [Attack(motion.Point)],
             string.IsNullOrEmpty(motion.Point) ? new Dictionary<string, byte>() : new Dictionary<string, byte> { [motion.Point] = 0 })).ToArray();
         var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));

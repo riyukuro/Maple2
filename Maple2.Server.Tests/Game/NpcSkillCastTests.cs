@@ -151,4 +151,57 @@ public class NpcSkillCastTests : NpcCastFixture {
             Assert.That(Sent(SendOp.SkillDamage, out _), Is.EqualTo(0));
         });
     }
+
+    private static readonly System.Collections.Generic.Dictionary<string, (string Name, float Time)[]> DashKeys = new() {
+        ["Attack_01_A"] = [("move0", 0.5f), ("move1", 1.5f), ("end", 2.5f)],
+    };
+
+    // Runs the animation and the npc's movement update in 100 ms steps from the cast's start for the given ms.
+    private void Play(int ms) {
+        long start = Field.FieldTick;
+        for (int elapsed = 0; elapsed <= ms; elapsed += 100) {
+            long tick = start + elapsed;
+            typeof(Maple2.Server.Game.Manager.Field.FieldManager).GetField("<FieldTick>k__BackingField", Any)!.SetValue(Field, tick);
+            npc.Animation.Update(tick);
+            npc.MovementState.Update(tick);
+        }
+    }
+
+    // KR movedistance (the cast's dash): the client moves the npc by that much along its facing between the sequence's
+    // move0 and move1 keys (CSkillRecord::FUN_141759b60 over StateSkill::CalcSkillDuration); the server's position follows.
+    [Test]
+    public void MoveKeys_DashTheNpcByItsMoveDistance() {
+        StartCaster(Rig, DashKeys, Skill(50100010, 300f, ("Attack_01_A", "p0")));
+        System.Numerics.Vector3 start = npc.Position;
+        System.Numerics.Vector3 front = npc.Transform.FrontAxis;
+        Cast(50100010);
+
+        Play(900);
+        float midway = System.Numerics.Vector3.Distance(npc.Position, start);
+        Play(2600);
+        float end = System.Numerics.Vector3.Distance(npc.Position, start);
+
+        Assert.Multiple(() => {
+            Assert.That(midway, Is.GreaterThan(0).And.LessThan(300));
+            Assert.That(end, Is.EqualTo(300).Within(5));
+            Assert.That(System.Numerics.Vector3.Dot(System.Numerics.Vector3.Normalize(npc.Position - start), front), Is.GreaterThan(0.99f));
+        });
+    }
+
+    // A dash that would end off the navmesh is refused as the client's blocked probe stops its move: the npc stays on the
+    // mesh where it was, and the cast still ends.
+    [Test]
+    public void MoveKeys_DashOffTheNavmesh_IsBlocked() {
+        StartCaster(Rig, DashKeys, Skill(50100011, 1_000_000f, ("Attack_01_A", "p0")));
+        System.Numerics.Vector3 start = npc.Position;
+        Cast(50100011);
+
+        Play(3000);
+
+        Assert.Multiple(() => {
+            Assert.That(System.Numerics.Vector3.Distance(npc.Position, start), Is.LessThan(1000));
+            Assert.That(npc.Position.X, Is.Not.NaN);
+            Assert.That(npc.Navigation!.UpdatePosition(npc.Position), Is.True, "still on the mesh");
+        });
+    }
 }
