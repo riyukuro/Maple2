@@ -169,4 +169,37 @@ public class BeginConditionRowTests {
         Assert.That(Holds(Plain with { Owner = owner }, player), Is.EqualTo(holds));
         Assert.That(Holds(Plain with { Owner = owner with { States = [] } }, player), Is.True, "no state asked");
     }
+
+    // requireSubStates on the owner: 71000030 and 90000626 (KR: StatePlayInstrument_Playing_Score_Solo and _Ensemble,
+    // sub states 127 and 129) hold only while the player plays a score, alone or in an ensemble, not while playing
+    // freely (126).
+    [TestCase(ActorSubState.PlayInstrument_Playing_Score_Solo, true)]
+    [TestCase(ActorSubState.PlayInstrument_Playing_Score_Ensemble, true)]
+    [TestCase(ActorSubState.PlayInstrument_Playing_Direct, false)]
+    [TestCase(ActorSubState.None, false)]
+    public void RequireSubStates_HoldsOnlyInTheListedSubStates(ActorSubState subState, bool holds) {
+        FieldPlayer player = Enter();
+        var owner = new BeginConditionTarget([], new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []), [],
+            [], [ActorSubState.PlayInstrument_Playing_Score_Solo, ActorSubState.PlayInstrument_Playing_Score_Ensemble],
+            new Dictionary<MasteryType, int>(), [], []);
+        player.SubState = subState;
+
+        Assert.That(Holds(Plain with { Owner = owner }, player), Is.EqualTo(holds));
+        Assert.That(Holds(Plain with { Owner = owner with { SubStates = [] } }, player), Is.True, "no sub state asked");
+    }
+
+    // requireMasteryTypes / requireMasteryValues on the owner: 90000626 (KR: Music 10800) holds only for a player whose
+    // performance mastery is at least 10800; 71000030 (Music 0) for any player.
+    [TestCase(10800, 10799, false)]
+    [TestCase(10800, 10800, true)]
+    [TestCase(10800, 20000, true)]
+    [TestCase(0, 0, true)]
+    public void RequireMastery_HoldsFromTheValueUp(int required, int mastery, bool holds) {
+        FieldPlayer player = Enter();
+        var owner = new BeginConditionTarget([], new BeginConditionTarget.EventCondition(EventConditionType.Activate, false, [], [], []), [],
+            [], [], new Dictionary<MasteryType, int> { [MasteryType.Music] = required }, [], []);
+        player.Value.Character.Mastery.Instrument = mastery;
+
+        Assert.That(Holds(Plain with { Owner = owner }, player), Is.EqualTo(holds));
+    }
 }

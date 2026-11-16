@@ -912,4 +912,20 @@ public class BuffAttributeTests {
             Assert.That(calls, Is.EqualTo(3));
         });
     }
+
+    // clearDistanceFromCaster (KR 62100022: 300, a 20 s buff): the buff ends at its next update once its holder is
+    // farther than that from its caster, and stays while within it (exactly 300 still holds).
+    [TestCase(300f, true)]
+    [TestCase(301f, false)]
+    public void ClearDistanceFromCaster_EndsTheBuffPastTheDistance(float distance, bool kept) {
+        Start(MapType.None, Effect(62100022, Plain with { DurationTick = 20000, ClearOnDistanceFromCaster = 300 })
+            with { Dot = new AdditionalEffectMetadataDot(null, null) });
+        Field.FieldActor.Position = System.Numerics.Vector3.Zero;
+        Player.Position = new System.Numerics.Vector3(distance, 0, 0);
+        Add(62100022, caster: Field.FieldActor);
+
+        Buffs.Update(1100);
+
+        Assert.That(Held(), kept ? Is.EqualTo(new[] { 62100022 }) : Is.Empty);
+    }
 }
