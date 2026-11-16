@@ -126,7 +126,12 @@ public partial class MovementState {
             castMoveLastTick = castMoveTick;
         }
 
-        actor.Navigation!.UpdatePosition(newPosition);
+        // When the client's probe finds the dash blocked its motion controller ends the whole motion (duration and
+        // distance zeroed, motioncontroller.cpp:293-325), so a dash stops at the first block: a straight move over the
+        // navmesh ends at the first wall or mesh edge and never hops a gap to another island.
+        if (offset != Vector3.Zero) {
+            actor.Navigation!.MoveStraight(newPosition);
+        }
 
         float timeStep = 0;
 
@@ -137,7 +142,7 @@ public partial class MovementState {
         Velocity = timeStep * offset;
 
         UpdateDebugMarker(actor.Position, debugNpc, tickCount);
-        UpdateDebugMarker(actor.Navigation.GetAgentPosition(), debugAgent, tickCount);
+        UpdateDebugMarker(actor.Navigation!.GetAgentPosition(), debugAgent, tickCount);
     }
 
     private void StateSkillCastUpdate(long tickCount, long tickDelta) {

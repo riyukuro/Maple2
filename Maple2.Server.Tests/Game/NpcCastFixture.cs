@@ -30,13 +30,16 @@ public abstract class NpcCastFixture : TriggerTestBase {
 
     protected FieldNpc npc = null!;
 
+    // The field's navigation: one flat mesh by default.
+    protected virtual Navigation BuildNavigation() => TriggerHallGameTests.FlatNavigation();
+
     // The npc has the given sequences in its model; the skills are known to the field.
     protected FieldNpc StartCaster(string[] sequences, params SkillMetadata[] skills) => StartCaster(sequences, null, skills);
 
     // Keys: the named keys of a sequence (name -> key name and time in seconds); the sequence lasts 5 s.
     protected FieldNpc StartCaster(string[] sequences, IReadOnlyDictionary<string, (string Name, float Time)[]>? keys, params SkillMetadata[] skills) {
         Start();
-        typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, TriggerHallGameTests.FlatNavigation());
+        typeof(FieldManager).GetField("<Navigation>k__BackingField", Any)!.SetValue(Field, BuildNavigation());
         typeof(Actor<Maple2.Model.Game.Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
         typeof(FieldManager).GetField("<Mobs>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldNpc>());
         typeof(FieldManager).GetField("<Pets>k__BackingField", Any)!.SetValue(Field, new ConcurrentDictionary<int, FieldPet>());

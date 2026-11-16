@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Server.Core.Constants;
@@ -188,20 +189,21 @@ public class NpcSkillCastTests : NpcCastFixture {
         });
     }
 
-    // A dash that would end off the navmesh is refused as the client's blocked probe stops its move: the npc stays on the
-    // mesh where it was, and the cast still ends.
+    // A dash that would end off the navmesh stops at the mesh's edge, as the client ends the whole motion at the first
+    // block (CLinearMotionController zeroes its duration): the npc moved toward the edge, is on the mesh and on its boundary, and the cast still ends.
     [Test]
-    public void MoveKeys_DashOffTheNavmesh_IsBlocked() {
+    public void MoveKeys_DashTowardTheEdge_StopsAtTheEdge() {
         StartCaster(Rig, DashKeys, Skill(50100011, 1_000_000f, ("Attack_01_A", "p0")));
         System.Numerics.Vector3 start = npc.Position;
         Cast(50100011);
 
         Play(3000);
+        DotRecast.Core.Numerics.RcVec3f nav = Maple2.Tools.DotRecast.DotRecastHelper.ToNavMeshSpace(npc.Position);
 
         Assert.Multiple(() => {
-            Assert.That(System.Numerics.Vector3.Distance(npc.Position, start), Is.LessThan(1000));
-            Assert.That(npc.Position.X, Is.Not.NaN);
+            Assert.That(System.Numerics.Vector3.Distance(npc.Position, start), Is.GreaterThan(100).And.LessThan(10_000));
             Assert.That(npc.Navigation!.UpdatePosition(npc.Position), Is.True, "still on the mesh");
+            Assert.That(Math.Min(Math.Min(20 - Math.Abs(nav.X), 20 - Math.Abs(nav.Z)), 1), Is.LessThan(0.2f), "on the boundary");
         });
     }
 }

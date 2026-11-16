@@ -394,7 +394,7 @@ public class TriggerNpcSpawnTests : TriggerTestBase {
 
         Assert.That(Field.Mobs.Values.Select(npc => npc.Value.Metadata.Id), Is.EqualTo(new[] { MobId }));
         Assert.That(log.Events.Where(e => e.Level >= LogEventLevel.Warning), Is.Empty);
-        Assert.That(log.Events.Where(e => e.Level == LogEventLevel.Debug).Select(e => e.Properties["NpcId"].ToString()),
+        Assert.That(log.Events.Where(e => e.Level == LogEventLevel.Debug && e.Properties.ContainsKey("NpcId")).Select(e => e.Properties["NpcId"].ToString()),
             Is.EqualTo(new[] { "29000404" }));
     }
 
