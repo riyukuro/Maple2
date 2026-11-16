@@ -16,6 +16,9 @@ namespace Maple2.Server.Game.PacketHandlers;
 public class MoveEventFieldHandler : FieldPacketHandler {
     public override RecvOp OpCode => RecvOp.RequestMoveEventField;
 
+    // A World that hangs cannot hold the session's handler: past this the request counts as unanswered.
+    internal static readonly TimeSpan WorldDeadline = TimeSpan.FromSeconds(2);
+
     public override void Handle(GameSession session, IByteReader packet) {
         int fieldId = packet.ReadInt();
         HashSet<int> eventFields;
@@ -50,7 +53,7 @@ public class MoveEventFieldHandler : FieldPacketHandler {
             try {
                 TimeEventResponse response = session.World.TimeEvent(new TimeEventRequest {
                     GetActiveWorldBosses = new TimeEventRequest.Types.GetActiveWorldBosses(),
-                });
+                }, deadline: DateTime.UtcNow + WorldDeadline);
                 foreach (TimeEventResponse.Types.ActiveWorldBoss active in response.ActiveWorldBosses) {
                     if (active.AliveChannels.Count == 0) {
                         continue;

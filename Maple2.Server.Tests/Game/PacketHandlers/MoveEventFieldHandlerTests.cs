@@ -147,4 +147,17 @@ public class MoveEventFieldHandlerTests {
         Assert.That(test.World.TimeEventDeadlines, Has.Count.EqualTo(2));
         Assert.That(test.World.Moves, Has.Count.EqualTo(1));
     }
+
+    // The World call has a deadline (a World past it throws DeadlineExceeded, answered as a World down above).
+    [Test]
+    public void WorldCall_HasADeadline() {
+        Start(Field(BossField));
+        Alive(1);
+        DateTime before = DateTime.UtcNow;
+
+        Move(BossField);
+
+        Assert.That(test.World.TimeEventDeadlines, Has.Count.EqualTo(1));
+        Assert.That(test.World.TimeEventDeadlines.Single(), Is.InRange(before, DateTime.UtcNow + MoveEventFieldHandler.WorldDeadline));
+    }
 }
