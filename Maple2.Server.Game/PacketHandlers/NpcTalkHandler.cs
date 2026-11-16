@@ -452,6 +452,14 @@ public class NpcTalkHandler : FieldPacketHandler {
                 if (!session.QuestMetadata.TryGet(questId, out QuestMetadata? metadata) || metadata.Basic.Type != QuestType.AllianceQuest) {
                     return;
                 }
+                // The window is open in a talk with an officer and lists its alliance's missions
+                // (UIAllianceQuestDialog::FUN_140bf6af0): a mission of another alliance, or none in an officer's talk,
+                // is refused as the Quest accept refuses it.
+                int kind = session.NpcScript?.Npc?.Value.Metadata.Basic.Kind ?? 0;
+                if (!QuestHandler.OfficerOf(session.TableMetadata.FameTable.OfficerNpcKinds, kind, metadata.Basic.Alliance)) {
+                    session.Send(QuestPacket.Error(QuestError.s_quest_error_accept_fail));
+                    return;
+                }
                 // The quest's start talk, as the client asks for it (see BeginAllianceQuest); a quest without a
                 // start script is started at once.
                 if (session.NpcScript?.Npc is { } npc && session.ScriptMetadata.TryGet(questId, out ScriptMetadata? script)) {

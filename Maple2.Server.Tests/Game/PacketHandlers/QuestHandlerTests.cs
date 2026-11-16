@@ -730,6 +730,27 @@ public class QuestHandlerTests {
         Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.EqualTo(expected));
     }
 
+    // The alliance window's accept (NpcTalk 8 mode 0) starts a mission only in a talk with an officer of its alliance;
+    // before, it started one with no talk at all.
+    [TestCase(true, AllianceType.GreenHoods, true)]
+    [TestCase(true, AllianceType.DarkWind, false)]
+    [TestCase(false, AllianceType.GreenHoods, false)]
+    public void AllianceWindowAccept_NeedsATalkWithAnOfficerOfItsAlliance(bool inTalk, AllianceType alliance, bool expected) {
+        GameSession session = Login();
+        QuestMetadata data = Data(type: QuestType.AllianceQuest);
+        test.Register(data with { Basic = data.Basic with { StartNpc = 0, Alliance = alliance }, RemoteAccept = new QuestRemoteAccept(QuestRemoteType.None, 0) });
+        test.SetTable(new FameTable([], new Dictionary<int, AllianceType> { [OfficerKind] = AllianceType.GreenHoods }));
+        if (inTalk) {
+            test.SetServerTable(new ScriptConditionTable(new Dictionary<int, Dictionary<int, ScriptConditionMetadata>>()));
+            test.SetServerTable(new ScriptFunctionTable(new Dictionary<int, Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>>()));
+            session.NpcScript = new NpcScriptManager(session, TalkNpc(Npc, OfficerKind), null, null, NpcTalkType.Talk);
+        }
+
+        NpcTalkHandler.HandleAllianceQuest(session, QuestId, 0);
+
+        Assert.That(session.Quest.TryGetQuest(QuestId, out _), Is.EqualTo(expected));
+    }
+
     // A field mission is accepted on its first progress map or a field whose outdoor parent that map is, nowhere else
     // (CQuestManager::vfunc_1, questmanager_2.cpp:560-569); a mission without a progress map is refused. Without the
     // parent table (an older ingest) the server cannot tell, and accepts.
@@ -978,9 +999,9 @@ public class QuestHandlerTests {
     }
 
     // A field npc of the given id with no movement state to play the talk on.
-    private static FieldNpc TalkNpc(int id) {
+    private static FieldNpc TalkNpc(int id, int kind = 0) {
         const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        var basic = new NpcMetadataBasic(0, 0, 0, 0, 0, 0, 0, 1, 0, false, 0, 0, 0, 0, [], [], 0);
+        var basic = new NpcMetadataBasic(0, 0, 0, kind, 0, 0, 0, 1, 0, false, 0, 0, 0, 0, [], [], 0);
         var metadata = new NpcMetadata(id, "npc", "", null!, null!, basic, null!, null!, null!, null!, null!, null!, null, null!);
         var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
         typeof(Actor<Npc>).GetField("<Value>k__BackingField", any)!.SetValue(npc, new Npc(metadata, null));
