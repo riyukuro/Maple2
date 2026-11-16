@@ -140,15 +140,35 @@ public class PetBattleTests : NpcCastFixture {
     [Test]
     public void AWildPetsHit_IsCreditedToNoOne() {
         Pet(owned: false);
+        Hit(pet);
         Assert.That(npc.CreditedPlayer(pet.ObjectId), Is.Null);
+        Assert.That(npc.CreditedPlayers(), Is.Empty);
     }
 
     [Test]
-    public void APetsHitWithItsOwnerAway_IsCreditedToNoOne() {
+    public void APetsHitWithItsOwnerGone_IsCreditedToNoOne() {
         Pet(owned: true);
-        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, null);
+        Hit(pet);
+        Assert.That(Field.Players.TryRemove(test.Session.Player.ObjectId, out _), Is.True);
         Assert.That(npc.CreditedPlayer(pet.ObjectId), Is.Null);
-        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
+        Assert.That(npc.CreditedPlayers(), Is.Empty);
+        Field.Players[test.Session.Player.ObjectId] = test.Session.Player;
+    }
+
+    // The owner is taken at the hit: the pet put away (or summoned again, under a new object id) before the kill
+    // still credits its owner, once with the owner's own hits, and its damage adds to the owner's share (the rank
+    // node's RankedTarget ranks by it).
+    [Test]
+    public void APetsHitBeforeItIsPutAway_StillCountsForItsOwner() {
+        Pet(owned: true);
+        Hit(pet);
+        Assert.That(Field.Pets.TryRemove(pet.ObjectId, out _), Is.True);
+        Hit(test.Session.Player);
+        Assert.Multiple(() => {
+            Assert.That(npc.CreditedPlayers(), Is.EqualTo(new[] { test.Session.Player }));
+            Assert.That(npc.CreditedDamage(), Is.EqualTo(new[] { (test.Session.Player.ObjectId, 20L) }), "10 by the pet, 10 by the owner");
+            Assert.That(npc.DamageByDealer.Count(), Is.EqualTo(2));
+        });
     }
 
     [Test]

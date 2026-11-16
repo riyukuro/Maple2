@@ -310,6 +310,9 @@ public class FieldNpc : Actor<Npc> {
     public Action<FieldNpc>? WorldBossDeathCallback { get; set; }
     public long LastDamageTick { get; private set; }
     private int lastAttackerObjectId;
+    // The owner of each summoned pet that hit this npc, taken at the hit: the pet may be put away or summoned again
+    // (a new object id) before the npc dies, and its hits still count for the owner (CreditedPlayer).
+    private readonly ConcurrentDictionary<int, int> petOwnerIds = new();
 
     public MS2PatrolData? Patrol { get; private set; }
     private bool scriptPatrol;
@@ -722,6 +725,9 @@ public class FieldNpc : Actor<Npc> {
             Field.Broadcast(FieldPacket.NpcAccumulatedDamage(this));
         }
         lastAttackerObjectId = caster.ObjectId;
+        if (caster is FieldPet { OwnerPlayer: { } petOwner }) {
+            petOwnerIds[caster.ObjectId] = petOwner.ObjectId;
+        }
         // A summoned pet's damage counts as its owner's (CreditedPlayer).
         if (CreditedPlayer(caster.ObjectId) is { } hitPlayer) {
             PlayerDamageCallback?.Invoke(hitPlayer, amount);
@@ -1237,15 +1243,22 @@ public class FieldNpc : Actor<Npc> {
 
     public FieldPlayer? GetLastAttacker() => lastAttackerObjectId == 0 ? null : CreditedPlayer(lastAttackerObjectId);
 
-    // The player a damage dealer's kill counts for: the dealer, or a summoned pet's owner in this field (the client
-    // credits a pet's hits to its owner too: CDPSMeterSystem::OnDamage, dpsmetersystem.cpp:1087-1090; the battle
-    // record, battlerecordmanager.cpp:328).
+    // The player a damage dealer's kill counts for: the dealer, or the owner of a summoned pet that hit this npc, while
+    // the owner is in this field (the client credits a pet's hits to its owner too: CDPSMeterSystem::OnDamage,
+    // dpsmetersystem.cpp:1087-1090; the battle record, battlerecordmanager.cpp:328).
     internal FieldPlayer? CreditedPlayer(int objectId) {
         if (Field.TryGetPlayer(objectId, out FieldPlayer? player)) {
             return player;
         }
-        return Field.Pets.TryGetValue(objectId, out FieldPet? pet) && pet.OwnerPlayer is { } owner && owner.Field == Field ? owner : null;
+        return petOwnerIds.TryGetValue(objectId, out int ownerId) && Field.TryGetPlayer(ownerId, out FieldPlayer? owner) ? owner : null;
     }
+
+    // The damage dealt to this npc by player, a pet's counted as its owner's.
+    internal IEnumerable<(int ObjectId, long Damage)> CreditedDamage() =>
+        DamageByDealer.Select(dealer => (Player: CreditedPlayer(dealer.ObjectId), dealer.Damage))
+            .Where(dealer => dealer.Player != null)
+            .GroupBy(dealer => dealer.Player!.ObjectId)
+            .Select(group => (group.Key, group.Sum(dealer => dealer.Damage)));
 
     // The players the kill counts for, once each (a player and its pet both dealing count once).
     internal IEnumerable<FieldPlayer> CreditedPlayers() {

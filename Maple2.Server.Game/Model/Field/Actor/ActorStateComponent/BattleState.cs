@@ -319,9 +319,9 @@ public class BattleState {
     }
 
     // The player at the rank node's place by the damage it dealt to this npc (NpcTargetRules.RankedDealer), among
-    // the players in the field the npc can target. Null when nobody holds the rank.
+    // the players in the field the npc can target (a summoned pet's damage is its owner's). Null when nobody holds the rank.
     private FieldPlayer? RankedTarget() {
-        IEnumerable<(int ObjectId, long Damage)> dealers = actor.DamageByDealer.Where(dealer =>
+        IEnumerable<(int ObjectId, long Damage)> dealers = actor.CreditedDamage().Where(dealer =>
             actor.Field.Players.TryGetValue(dealer.ObjectId, out FieldPlayer? player) && NpcTargetRules.CanTarget(player.IsDead, player.InvisibleFromNpc));
         int objectId = NpcTargetRules.RankedDealer(dealers, TargetNode?.Rank ?? 1);
         return actor.Field.Players.GetValueOrDefault(objectId);
