@@ -329,4 +329,53 @@ public class MailModeTests {
             Assert.That(Stored(mail.Id)!.ReadTime, Is.EqualTo(0));
         });
     }
+
+    // A collect (11) sent twice: everything is given with the first; the second gives nothing again.
+    [Test]
+    public void Collect_SentTwice_GivesOnce() {
+        Begin();
+        Mail mail = StoreMail(meso: 300, amount: 2);
+        GameSession session = Login();
+        session.Mail.Notify(force: true);
+        test.TakeSent();
+
+        Request(session, 11, mail.Id);
+        Request(session, 11, mail.Id);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(1300));
+            Assert.That(Held(session), Is.EqualTo(2));
+            Assert.That(Stored(mail.Id)!.Items, Is.Empty);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
+
+    // A collect sent after the mail was deleted (13) finds no mail: the client is told it is gone and nothing is
+    // given. A delete after the collect keeps what was collected.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void CollectAndDelete_GiveAtMostOnce(bool deleteFirst) {
+        Begin();
+        Mail mail = StoreMail(meso: 300, amount: 2);
+        GameSession session = Login();
+        session.Mail.Notify(force: true);
+        test.TakeSent();
+
+        if (deleteFirst) {
+            Request(session, 13, mail.Id);
+            test.TakeSent();
+            Request(session, 11, mail.Id);
+            Assert.That(test.TakeSent().Select(Convert.ToHexString), Is.EqualTo(new[] { Hex(MailPacket.Deleted(mail.Id)) }));
+        } else {
+            Request(session, 11, mail.Id);
+            Request(session, 13, mail.Id);
+        }
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(deleteFirst ? 1000 : 1300));
+            Assert.That(Held(session), Is.EqualTo(deleteFirst ? 0 : 2));
+            Assert.That(Stored(mail.Id), Is.Null);
+            Assert.That(test.Errors, Is.Empty);
+        });
+    }
 }

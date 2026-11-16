@@ -901,4 +901,114 @@ public class TradeHandlerTests {
             Assert.That(takerTest.TakeSent(), noTransfer ? Is.Empty : Is.Not.Empty);
         });
     }
+
+    // Double submits and races. Each answers one success: the second is refused, nothing is doubled or lost, and
+    // the mesos are exact.
+
+    private void OfferItem(int amount) => Send(giver, 8, writer => {
+        writer.WriteLong(item.Uid);
+        writer.WriteInt(amount);
+        writer.WriteInt(0);
+    });
+
+    private int Held(GameSession session) => session.Item.Inventory.Find(20000001).Sum(got => got.Amount);
+
+    // The same offer sent twice: the stack is in the window after the first, so the second finds nothing to offer.
+    // A part offered twice gets only what is left; a second part larger than that is refused.
+    [TestCase(3, 3, 0)]
+    [TestCase(2, 2, 1)]
+    [TestCase(1, 1, 1)]
+    public void AddItem_TheSameOfferTwice(int first, int second, int left) {
+        OfferItem(first);
+        OfferItem(second);
+        Send(taker, 10, writer => writer.WriteLong(1000));
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        Send(taker, 13);
+
+        int offered = 3 - left;
+        Assert.Multiple(() => {
+            Assert.That(Held(giver), Is.EqualTo(left));
+            Assert.That(Held(taker), Is.EqualTo(offered));
+            Assert.That(giver.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(taker.Currency.Meso, Is.EqualTo(4000));
+            Assert.That(giverTest.Errors.Concat(takerTest.Errors), Is.Empty);
+        });
+    }
+
+    // Latch and finish sent twice by both sides: the offers move once.
+    [Test]
+    public void Complete_SentTwiceByBothSides_HandsOverOnce() {
+        Offer();
+        Send(giver, 11);
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        Send(giver, 13);
+        Send(taker, 13);
+        Send(taker, 13);
+        Send(giver, 13);
+
+        Assert.Multiple(() => {
+            Assert.That(Held(giver), Is.EqualTo(0));
+            Assert.That(Held(taker), Is.EqualTo(3));
+            Assert.That(giver.Currency.Meso, Is.EqualTo(1000));
+            Assert.That(taker.Currency.Meso, Is.EqualTo(4000));
+            Assert.That(giver.Trade, Is.Null);
+            Assert.That(taker.Trade, Is.Null);
+        });
+    }
+
+    // A window closed while the trade is being finished (both latched, one side confirmed): the trade ends as
+    // cancelled and each offer goes back; the other side's confirm after it moves nothing.
+    [Test]
+    public void Cancel_WhileFinishing_ReturnsTheOffers() {
+        Offer();
+        Send(giver, 11);
+        Send(taker, 11);
+        Send(giver, 13);
+        TradeManager trade = taker.Trade!;
+
+        Send(taker, 7);
+        trade.Complete(taker);
+        Send(taker, 13);
+
+        Assert.Multiple(() => {
+            Assert.That(Held(giver), Is.EqualTo(3));
+            Assert.That(Held(taker), Is.EqualTo(0));
+            Assert.That(giver.Currency.Meso, Is.EqualTo(0));
+            Assert.That(taker.Currency.Meso, Is.EqualTo(5000));
+            Assert.That(giver.Trade, Is.Null);
+            Assert.That(taker.Trade, Is.Null);
+        });
+    }
+
+    // The last confirm and a window close at the same moment, from both sides: either the trade completes or it is
+    // cancelled, and the items and mesos are where that outcome puts them, never in both places or in neither.
+    [Test]
+    public void Complete_RacingACancel_MovesAllOrNothing() {
+        for (int round = 0; round < 60; round++) {
+            StartTrade();
+            Offer();
+            Send(giver, 11);
+            Send(taker, 11);
+            Send(giver, 13);
+            GameSession closer = round % 2 == 0 ? giver : taker;
+
+            System.Threading.Tasks.Parallel.Invoke(
+                () => Send(taker, 13),
+                () => Send(closer, 7));
+
+            bool traded = Held(taker) == 3;
+            Assert.That(Held(giver) + Held(taker), Is.EqualTo(3), $"round {round}");
+            Assert.That(Held(giver), Is.EqualTo(traded ? 0 : 3), $"round {round}");
+            Assert.That(giver.Currency.Meso, Is.EqualTo(traded ? 1000 : 0), $"round {round}");
+            Assert.That(taker.Currency.Meso, Is.EqualTo(4000 + (traded ? 0 : 1000)), $"round {round}");
+            Assert.That(giver.Trade, Is.Null, $"round {round}");
+            Assert.That(taker.Trade, Is.Null, $"round {round}");
+            Assert.That(giverTest.Errors.Concat(takerTest.Errors), Is.Empty, $"round {round}");
+        }
+    }
 }

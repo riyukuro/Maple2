@@ -1690,4 +1690,48 @@ public class ShopHandlerTests {
             held?.Dispose();
         }
     }
+
+    // The same sale sent twice: the first sells the stack, so the second finds no item and pays nothing. A part
+    // sold twice sells only while enough is left; the second part of 3 out of the 2 left is refused.
+    [TestCase(5, 5, 0, 5)]
+    [TestCase(3, 3, 2, 3)]
+    [TestCase(2, 2, 1, 4)]
+    public void Sell_TheSameStackTwice(int first, int second, int left, int sold) {
+        GameSession session = Login();
+
+        Sell(session, bagItem.Uid, first);
+        Sell(session, bagItem.Uid, second);
+
+        Assert.Multiple(() => {
+            Assert.That(session.Currency.Meso, Is.EqualTo(10000 + 70 * sold));
+            Assert.That(StoredMeso(), Is.EqualTo(10000 + 70 * sold));
+            Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(left));
+            Assert.That(ItemRows(20000003).Sum(row => row.Amount), Is.EqualTo(5), "no row is made or lost");
+        });
+    }
+
+    // The same buy back sent twice: the entry leaves the list with the first, so the second is refused as an invalid
+    // item and takes no mesos.
+    [Test]
+    public void BuyBack_Twice_BuysOnce() {
+        GameSession session = Login();
+        Sell(session, bagItem.Uid, 5);
+        int entryId = BitConverter.ToInt32(test.TakeSent()[1], 5);
+
+        for (int i = 0; i < 2; i++) {
+            new ShopHandler { GameStorage = test.Storage }.Handle(session, TestGameSession.Packet(writer => {
+                writer.WriteByte(BuyBackCommand);
+                writer.WriteInt(entryId);
+            }));
+        }
+
+        List<byte[]> sent = test.TakeSent();
+        Assert.Multiple(() => {
+            Assert.That(Convert.ToHexString(sent[^1]), Is.EqualTo(Hex(ShopPacket.Error(ShopError.s_err_invalid_item, BuyBackCommand))));
+            Assert.That(session.Currency.Meso, Is.EqualTo(10000));
+            Assert.That(StoredMeso(), Is.EqualTo(10000));
+            Assert.That(session.Item.Inventory.Find(20000003).Sum(item => item.Amount), Is.EqualTo(5));
+            Assert.That(ItemRows(20000003), Is.EqualTo(new[] { (test.CharacterId, 5) }));
+        });
+    }
 }

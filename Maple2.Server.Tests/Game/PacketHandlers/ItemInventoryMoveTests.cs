@@ -107,4 +107,55 @@ public class ItemInventoryMoveTests {
             Is.EqualTo(error ? new[] { Hex(ItemInventoryPacket.Error(ItemInventoryError.s_item_err_Invalid_slot)) } : Array.Empty<string>()));
         Assert.That(a.Slot, Is.EqualTo(before));
     }
+
+    // The same merge sent twice: the dragged stack is gone after the first, so the second moves nothing.
+    [Test]
+    public void SameItem_MergeSentTwice_MergesOnce() {
+        GameSession session = Login();
+        GameItem full = Add(session, StackId, 10);
+        GameItem rest = Add(session, StackId, 5);
+        full.Amount = 2;
+        test.TakeSent();
+
+        Move(session, full.Uid, rest.Slot);
+        Move(session, full.Uid, rest.Slot);
+
+        Assert.That(session.Item.Inventory.Find(StackId).Select(item => (item.Uid, item.Amount)), Is.EqualTo(new[] { (rest.Uid, 7) }));
+        Assert.That(test.Errors, Is.Empty);
+    }
+
+    // A stack dropped on its own slot (sent twice): it stacks onto itself, which adds nothing.
+    [TestCase(3)]
+    [TestCase(5)]
+    [TestCase(8)]
+    public void OwnSlot_KeepsTheAmount(int amount) {
+        GameSession session = Login();
+        GameItem stack = Add(session, StackId, amount);
+
+        Move(session, stack.Uid, stack.Slot);
+        Move(session, stack.Uid, stack.Slot);
+
+        Assert.That(session.Item.Inventory.Find(StackId).Select(item => (item.Uid, item.Amount)), Is.EqualTo(new[] { (stack.Uid, amount) }));
+    }
+
+    // A move into an empty slot while an item is added to the bag on another thread (a pickup on the field's thread):
+    // both hold the bag lock, so the two items end in two slots and nothing is lost.
+    [Test]
+    public void MoveRacingAnAdd_KeepsBothItems() {
+        for (int round = 0; round < 40; round++) {
+            GameSession session = Login();
+            GameItem moved = Add(session, StackId, 4);
+            short target = (short) (moved.Slot + 1);
+            GameItem added = session.Field!.ItemDrop.CreateItem(OtherId, amount: 3)!;
+
+            System.Threading.Tasks.Parallel.Invoke(
+                () => Move(session, moved.Uid, target),
+                () => session.Item.Inventory.Add(added, commit: true));
+
+            List<GameItem> bag = session.Item.Inventory.Find(StackId).Concat(session.Item.Inventory.Find(OtherId)).ToList();
+            Assert.That(bag.Select(item => (item.Id, item.Amount)).OrderBy(pair => pair.Id), Is.EqualTo(new[] { (StackId, 4), (OtherId, 3) }), $"round {round}");
+            Assert.That(bag.Select(item => item.Slot).Distinct().Count(), Is.EqualTo(2), $"round {round}");
+            Assert.That(test.Errors, Is.Empty, $"round {round}");
+        }
+    }
 }
