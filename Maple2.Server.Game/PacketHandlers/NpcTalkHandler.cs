@@ -240,7 +240,8 @@ public class NpcTalkHandler : FieldPacketHandler {
 
     private void HandleContinue(GameSession session, IByteReader packet) {
         // Not talking to an Npc.
-        if (session.NpcScript == null) {
+        NpcScriptManager? script = session.NpcScript;
+        if (script == null) {
             return;
         }
         int pick = packet.ReadInt();
@@ -248,33 +249,38 @@ public class NpcTalkHandler : FieldPacketHandler {
         // unchecked (client/ms2/cinematiccomponent.cpp:721 and :781 call SendNpcTalkMode2(nSelect)), and a pick past
         // the page's choices closes the talk, so it must not run the page's function first. A negative pick on the
         // select list closes the same way.
-        if (session.NpcScript.TalkType.HasFlag(NpcTalkType.Select) ? pick < 0 : !session.NpcScript.HasPick(pick)) {
+        if (script.TalkType.HasFlag(NpcTalkType.Select) ? pick < 0 : !script.HasPick(pick)) {
             session.Send(NpcTalkPacket.Close());
-            session.NpcScript.Npc?.StopTalk();
+            script.Npc?.StopTalk();
             session.NpcScript = null;
             return;
         }
-        session.NpcScript.ProcessScriptFunction(false);
+        script.ProcessScriptFunction(false);
+        // The page's function can end the talk (a warp or a trigger that moves the player clears it): nothing is left
+        // to continue then.
+        if (session.NpcScript != script) {
+            return;
+        }
 
         /* The ordering is
         / Quests
         / Dialog
         / Talk */
         int addedOptions = 0;
-        if (session.NpcScript.TalkType.HasFlag(NpcTalkType.Select)) {
+        if (script.TalkType.HasFlag(NpcTalkType.Select)) {
             // The client sends 0 or an index into its list (UITalkManager::SendNpcTalkMode2); a negative pick
             // passed the checks below and threw in the quest lookup. It ended the talk above, as an unknown pick
             // does on a plain talk, so a resend cannot run the script's function again.
-            if (session.NpcScript.TalkType.HasFlag(NpcTalkType.Quest)) {
-                addedOptions += session.NpcScript.Quests.Count;
+            if (script.TalkType.HasFlag(NpcTalkType.Quest)) {
+                addedOptions += script.Quests.Count;
                 // Picked quest
                 if (pick < addedOptions) {
-                    FieldNpc? npc = session.NpcScript.Npc;
+                    FieldNpc? npc = script.Npc;
                     if (npc == null) {
                         session.Send(NpcTalkPacket.Close());
                         return;
                     }
-                    if (!session.ScriptMetadata.TryGet(session.NpcScript.Quests.ElementAt(pick).Value.Id, out ScriptMetadata? metadata)) {
+                    if (!session.ScriptMetadata.TryGet(script.Quests.ElementAt(pick).Value.Id, out ScriptMetadata? metadata)) {
                         // A quest with no script row (10 in the KR data, 80000220 to 80000225 among them): the talk
                         // ends. The client set its pending flag on this mode 2 (UITalkManager::SendNpcTalkMode2,
                         // uitalkcinematic.cpp:1674) and clears it only on a mode 2 answer; a Respond (s2c mode 1)
@@ -286,8 +292,9 @@ public class NpcTalkHandler : FieldPacketHandler {
                         return;
                     }
                     ScriptState? state = NpcTalkUtil.GetQuestScriptState(session, metadata, npc.Value.Id);
-                    session.NpcScript = new NpcScriptManager(session, npc, metadata, state, NpcTalkType.Quest);
-                    if (!session.NpcScript.BeginQuest()) {
+                    var questScript = new NpcScriptManager(session, npc, metadata, state, NpcTalkType.Quest);
+                    session.NpcScript = questScript;
+                    if (!questScript.BeginQuest()) {
                         session.NpcScript = null;
                     }
                     return;
@@ -295,25 +302,25 @@ public class NpcTalkHandler : FieldPacketHandler {
             }
 
             NpcDialogue dialogue;
-            if (session.NpcScript.TalkType.HasFlag(NpcTalkType.Dialog)) {
+            if (script.TalkType.HasFlag(NpcTalkType.Dialog)) {
                 addedOptions++;
                 if (pick < addedOptions) {
-                    session.NpcScript.EnterDialog();
-                    dialogue = new NpcDialogue(session.NpcScript.State?.Id ?? 0, session.NpcScript.Index, session.NpcScript.Button);
-                    session.Send(NpcTalkPacket.Continue(session.NpcScript.TalkType, dialogue));
+                    script.EnterDialog();
+                    dialogue = new NpcDialogue(script.State?.Id ?? 0, script.Index, script.Button);
+                    session.Send(NpcTalkPacket.Continue(script.TalkType, dialogue));
                     return;
                 }
             }
 
-            session.NpcScript.EnterTalk();
-            dialogue = new NpcDialogue(session.NpcScript.State?.Id ?? 0, session.NpcScript.Index, session.NpcScript.Button);
-            session.Send(NpcTalkPacket.Continue(session.NpcScript.TalkType, dialogue));
+            script.EnterTalk();
+            dialogue = new NpcDialogue(script.State?.Id ?? 0, script.Index, script.Button);
+            session.Send(NpcTalkPacket.Continue(script.TalkType, dialogue));
             return;
         }
 
 
         // Attempt to Continue, if |false|, the dialogue has terminated.
-        if (!session.NpcScript.Continue(pick)) {
+        if (!script.Continue(pick)) {
             session.NpcScript = null;
         }
     }
