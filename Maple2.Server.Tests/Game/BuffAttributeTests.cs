@@ -966,4 +966,15 @@ public class BuffAttributeTests {
             .Select(packet => (packet[3] != 0, BitConverter.ToInt32(packet, 4))).ToArray();
         Assert.That(effective, Is.EqualTo(hurt ? new[] { (false, (int) restored), (true, (int) restored) } : Array.Empty<(bool, int)>()));
     }
+
+    // One add is one Buff add packet to the holder (and to each other player in the field), whatever the effect.
+    [Test]
+    public void Add_SendsOneAddPacketToTheHolder() {
+        Start(MapType.None, Effect(10000051, Plain));
+
+        Add(10000051);
+
+        int adds = test.TakeSent().Count(packet => TestGameSession.Op(packet) == SendOp.Buff);
+        Assert.That(adds, Is.EqualTo(1));
+    }
 }
