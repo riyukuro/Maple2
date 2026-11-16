@@ -706,6 +706,10 @@ public sealed partial class GameSession : Core.Network.Session {
     }
 
     private long resummonPetUid;
+    // The pet attack flag turned off (RequestPet 15 from the game menu's pet attack button, UIGameMenuDialog::OnPetAttack):
+    // a summoned battle pet does not fight. The flag is on as the client starts it (CPetManager m_nAuto,
+    // petmanager.cpp:715) and as the login's AutoChanged(true) says.
+    public bool PetAttackOff;
     // The client was told the pet is away (a field that allows no pet); sent once until the pet is back.
     private bool resummonUnSummonSent;
     private bool noticeBannerSent;

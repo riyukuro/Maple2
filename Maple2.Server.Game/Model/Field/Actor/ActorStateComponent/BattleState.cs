@@ -118,6 +118,10 @@ public class BattleState {
                 actor.Field.Broadcast(PetPacket.SyncTaming(0, pet));
             }
         }
+        // A battle pet whose owner turned its attack off leaves the fight.
+        if (TargetId != 0 && actor is FieldPet { IsBattlePet: true, Battles: false }) {
+            Target = null;
+        }
 
         bool holdsPath = actor is FieldNpc { OnScriptPath: true } && NpcTargetRules.HoldsScriptPath(actor.Value.Metadata.Basic.Friendly, true);
         if (holdsPath && Target is FieldNpc) {
@@ -162,6 +166,10 @@ public class BattleState {
         float verticalOffset = target.Position.Z - position.Z;
 
         if (!IsInRange(distanceSquared, verticalOffset, radiusSquared, heightUp, -heightDown)) {
+            return false;
+        }
+        // A battle pet fights only what stands within its battleTraceDistance of its owner.
+        if (actor is FieldPet { Battles: true } battlePet && !battlePet.InBattleRange(target.Position)) {
             return false;
         }
 
@@ -287,6 +295,10 @@ public class BattleState {
     }
 
     private int GetTargetType() {
+        // A summoned battle pet is on its owner's side: it fights the monsters, never a player.
+        if (actor is FieldPet { Battles: true }) {
+            return 1;
+        }
         int friendlyType = actor.Value.Metadata.Basic.Friendly;
 
         if (friendlyType != 2 && TargetNode is not null && TargetType == NodeTargetType.HasAdditional) {

@@ -26,6 +26,26 @@ public sealed class FieldPet : FieldNpc {
     public int OwnerId => owner?.ObjectId ?? 0;
     // The player who summoned the pet; null for a wild pet.
     public FieldPlayer? OwnerPlayer => owner;
+    // A summoned battle pet (pet data type 1: the pets that level, train and fuse; all 71 KR rows have
+    // battleTraceDistance 5000) fights the monsters near its owner with the pet battle AI (ConstantsTable
+    // PetBattleAiPath), while the owner's pet attack flag is on. A wild pet, or a summoned pet of type 0 (the item bag
+    // pets), does not.
+    public bool IsBattlePet => owner != null && Metadata.Type == 1;
+    public bool Battles => IsBattlePet && !owner!.Session.PetAttackOff;
+
+    // A summoned battle pet runs the pet battle AI (KR Pet/AI_DefaultPetBattle.xml: skill 1 in its range, else trace);
+    // a wild pet and a summoned bag pet the taming AI.
+    public static string AiPath(bool summoned, int petType, string battleAiPath) =>
+        summoned && petType == 1 && !string.IsNullOrEmpty(battleAiPath) ? battleAiPath : Constant.PetFieldAiPath;
+
+    // Within the pet's battleTraceDistance of its owner (in the owner's field); a row without one has no limit.
+    public bool InBattleRange(Vector3 position) {
+        if (owner == null || owner.Field != Field) {
+            return false;
+        }
+        float range = Metadata.Distance.BattleTrace;
+        return range <= 0 || Vector2.DistanceSquared(new Vector2(position.X, position.Y), new Vector2(owner.Position.X, owner.Position.Y)) <= range * range;
+    }
     public int SkinId { get; private set; }
 
     public readonly float Scale = 1f;

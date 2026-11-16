@@ -401,10 +401,10 @@ public class PetHandler : FieldPacketHandler {
     }
 
     // Mode 15: the game menu's pet attack button, shown for a pet whose row has type 1 (feature 0x97). The
-    // client flips its own flag, shows it on the button and reads nothing back; an owned pet does not fight
-    // on this server, so the flag has nothing to switch (FORK.md).
+    // client flips its own flag (CPetManager::SendRequestPet, petmanager.cpp:1118), shows it on the button and reads
+    // nothing back. Off, the summoned battle pet stops fighting (FieldPet.Battles).
     private void HandleAttackState(GameSession session, IByteReader packet) {
-        packet.ReadBool(); // attack on
+        session.PetAttackOff = !packet.ReadBool();
     }
 
     // Mode 16: "pet info" in the popup of another player's pet (uipartydialog.cpp:3397). The body is the owner's

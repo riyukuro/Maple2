@@ -307,7 +307,8 @@ public partial class FieldManager {
         int objectId = player != null ? NextGlobalId() : NextLocalId();
         AnimationMetadata? animation = NpcMetadata.GetAnimation(npc.Model.Name);
 
-        var fieldPet = new FieldPet(this, objectId, agent, new Npc(npc, animation), pet, petMetadata, Constant.PetFieldAiPath, player) {
+        string aiPath = FieldPet.AiPath(player != null, petMetadata.Type, Constants.PetBattleAiPath);
+        var fieldPet = new FieldPet(this, objectId, agent, new Npc(npc, animation), pet, petMetadata, aiPath, player) {
             Owner = owner,
             Position = position,
             Rotation = rotation,
@@ -1350,6 +1351,10 @@ public partial class FieldManager {
                 Log.Debug("Unhandled ApplyTargetType:{Entity} for {caster.GetType()}", targetType, caster.GetType());
                 return [];
             case ApplyTargetType.Hostile:
+                // A summoned battle pet's hostiles are the monsters; a wild pet's, the players.
+                if (caster is FieldPet { Battles: true }) {
+                    return Mobs.Values;
+                }
                 if (caster is FieldPet) {
                     return TargetPlayers;
                 }
