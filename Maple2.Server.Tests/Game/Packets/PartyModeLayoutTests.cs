@@ -9,7 +9,7 @@ namespace Maple2.Server.Tests.Game.Packets;
 // The fixed Party modes read the way CPartyManager::OnParty (partymanager.cpp:447) and each mode's reader reads
 // them, field by field: leave (long id, bool disband), kick and offline and leader change (long id), invite (unicode
 // party name, int), gear score (long id, int), tombstone (long id, byte), match dungeon change (bool, int),
-// dungeon match register (byte kind, bool registered, bool announce, one more byte), dungeon record (long), find
+// dungeon match register (byte kind, bool registered, bool announce, then the one-byte set FUN_14031bf10 reads), dungeon record (long), find
 // dungeon cooldown (int), invite sent (unicode name), vote reply (long id, bool), survival squad register (two
 // bools), dungeon room create (int). Disband, match confirm and vote end read nothing.
 public class PartyModeLayoutTests {
