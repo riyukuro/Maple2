@@ -74,9 +74,10 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
             // in (see EndGameSession). That session is ended first, so its end's save lands before the delete reads
             // the character, and the checks see what it did in game (a guild it leads, a marriage, unread mail).
             // Before, a character could be deleted while it played on, and its guild, marriage and listings were
-            // left without it.
+            // left without it. Only a session playing the deleted character is ended: one playing another character
+            // of the account is not concerned by the delete and plays on.
             if (command is Command.Delete or Command.ConfirmDelete) {
-                EndGameSession(session);
+                EndGameSession(session, "deletes", characterId);
             }
             switch (command) {
                 case Command.Create:
@@ -191,14 +192,18 @@ public class CharacterManagementHandler : PacketHandler<LoginSession> {
     // ended first, as a login of an account in game ends it. Its end saves it before the answer comes back (the
     // channel's Disconnect cuts the session, and the cut runs its Dispose and its save), so the entry of this
     // character loads what it saved. A record that went offline in between is not found: nothing to end.
-    private void EndGameSession(LoginSession session) {
+    // onlyCharacterId (a delete's character): the session is ended only while it plays that character.
+    private void EndGameSession(LoginSession session, string action = "picked", long onlyCharacterId = 0) {
         PlayerInfoResponse online = World.AccountInfo(new PlayerInfoRequest { AccountId = session.AccountId });
         if (online is not { CharacterId: > 0 } || online.Channel == -1) {
             return;
         }
+        if (onlyCharacterId != 0 && online.CharacterId != onlyCharacterId) {
+            return;
+        }
 
-        Logger.Information("Account {AccountId} picked a character while {CharacterId} is in game on channel {Channel}: ending that session",
-            session.AccountId, online.CharacterId, online.Channel);
+        Logger.Information("Account {AccountId} {Action} a character while {CharacterId} is in game on channel {Channel}: ending that session",
+            session.AccountId, action, online.CharacterId, online.Channel);
         try {
             World.Disconnect(new DisconnectRequest { CharacterId = online.CharacterId, Force = true });
         } catch (RpcException ex) when (ex.StatusCode == StatusCode.NotFound) {

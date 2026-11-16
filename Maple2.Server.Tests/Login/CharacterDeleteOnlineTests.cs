@@ -104,6 +104,17 @@ public class CharacterDeleteOnlineTests {
         AssertWaitBegan(sent, characterId);
     }
 
+    // Another character of the account is in game: the delete does not concern it, so it plays on.
+    [Test]
+    public void ADeleteOfAnotherCharacter_LeavesTheSessionPlaying() {
+        long playing = test.AddCharacter("Live");
+        long characterId = test.AddCharacter("Other");
+        InGame(playing);
+
+        AssertWaitBegan(Delete(characterId), characterId);
+        Assert.That(test.World.Disconnects, Is.Empty);
+    }
+
     [Test]
     public void AnAccountNotInGame_EndsNothing() {
         long characterId = test.AddCharacter("Offline");
