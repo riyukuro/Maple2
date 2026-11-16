@@ -86,7 +86,7 @@ public partial class WebStorage {
                 return false;
             }
 
-            model.UploadedParts &= (byte) ~part;
+            model.UploadedParts = (byte) (model.UploadedParts & ~part);
             Context.UgcResource.Update(model);
             return Context.TrySaveChanges();
         }
