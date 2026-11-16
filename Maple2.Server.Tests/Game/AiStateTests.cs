@@ -683,6 +683,21 @@ public class AiStateTests : TriggerTestBase {
         npc.Skills[0] = new SkillMetadata(1, 1, null, property, null!, null!);
     }
 
+    // KR: 485 skill nodes name a level (a boss casts its idx 11 at level 2 in one phase). The node's level is cast; a
+    // level the skill data lacks, or none, casts the npc's own.
+    [TestCase((short) 2, (short) 2)]
+    [TestCase((short) 0, (short) 1)]
+    [TestCase((short) 3, (short) 1)]
+    public void SkillNode_Level_IsTheLevelCast(short nodeLevel, short cast) {
+        CooldownSkill([new SkillNode("skill", [], 1, nodeLevel, 0, false, Vector3.Zero, 1, 0, 0, 0, 0, false)], 0);
+        var skills = (SkillMetadataStorage) typeof(FieldManager).GetField("<SkillMetadata>k__BackingField", Any)!.GetValue(Field)!;
+        object cache = typeof(MetadataStorage<(int, short), SkillMetadata>).GetField("Cache", Any)!.GetValue(skills)!;
+        cache.GetType().GetMethod("AddReplace")!.Invoke(cache, [(1, (short) 2), npc.Skills[0]! with { Level = 2 }]);
+        Run();
+        Assert.That(CurrentTask, Is.InstanceOf<MovementState.NpcSkillCastTask>());
+        Assert.That(((MovementState.NpcSkillCastTask) CurrentTask!).SkillLevel, Is.EqualTo(cast));
+    }
+
     // A default AI tree's skill node (AI_DefaultNew: <node name="skill" idx="1"><node name="standby" limit="1000" .../>)
     // on an npc with <skill coolDown="3000">: a cast 1000 ms ago leaves 2000 ms, which the npc stands out facing its
     // target, with the node's standby; then the node runs again and casts. With no coolDown it casts at once.

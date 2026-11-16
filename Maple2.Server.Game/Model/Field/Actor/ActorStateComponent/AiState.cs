@@ -366,8 +366,11 @@ public class AiState {
 
         SkillMetadata? skill = actor.Skills[idx - 1];
 
-        if (skill is not null && levelOverride != 0) {
-            actor.Field.SkillMetadata.TryGet(skill.Id, levelOverride, out skill);
+        // A node's level (skill node level, skillRange skillLev) names the level to use; a level the skill data
+        // lacks leaves the npc's own.
+        if (skill is not null && levelOverride != 0 && levelOverride != skill.Level
+            && actor.Field.SkillMetadata.TryGet(skill.Id, levelOverride, out SkillMetadata? leveled)) {
+            skill = leveled;
         }
 
         if (skill is null) {
@@ -552,8 +555,10 @@ public class AiState {
         return true;
     }
 
+    // The node's level, when it has one, is the level cast (KR: 485 skill nodes in 29 files name one, e.g. a boss's
+    // idx 11 at level 2 in one phase), else the npc's own level of the skill.
     private void ProcessNode(SkillNode node) {
-        SkillMetadata? skill = TryGetSkill(node.Idx);
+        SkillMetadata? skill = TryGetSkill(node.Idx, node.Level);
 
         if (skill is null) {
             return;
