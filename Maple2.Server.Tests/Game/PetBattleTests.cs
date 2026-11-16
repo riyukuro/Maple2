@@ -13,8 +13,9 @@ namespace Maple2.Server.Tests.Game;
 
 // A summoned battle pet (pet data type 1; KR 71 pets, all with battleTraceDistance 5000) fights the monsters near its
 // owner with the pet battle AI (ConstantsTable PetBattleAiPath, Pet/AI_DefaultPetBattle.xml) while the owner's pet
-// attack flag (RequestPet 15, on at login) is on. A wild pet keeps the taming AI and its rule: it targets a player
-// once fed. The npc (a monster in Mobs) stands at 1000, the player at 0, the pet
+// attack flag (RequestPet 15, on at login) is on. The client credits the pet's hits to its owner
+// (dpsmetersystem.cpp:1087-1090, battlerecordmanager.cpp:328), and so does the kill here. A wild pet keeps the taming
+// AI and its rule: it targets a player once fed. The npc (a monster in Mobs) stands at 1000, the player at 0, the pet
 // at 900.
 public class PetBattleTests : NpcCastFixture {
     private FieldPet pet = null!;
@@ -107,6 +108,47 @@ public class PetBattleTests : NpcCastFixture {
         SkillMetadataAttack attack = Attack("Attack_01_A");
         IActor[] targets = Field.GetTargets(pet, [new Prism(new Circle(new Vector2(500, 0), 600), -100, 300)], attack.Range, 10).ToArray();
         Assert.That(targets, Is.EqualTo(owned ? new IActor[] { npc } : new IActor[] { test.Session.Player }));
+    }
+
+    private static SkillMetadataAttack HitAttack() =>
+        (SkillMetadataAttack) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataAttack)) with {
+            CompulsionTypes = [],
+            Damage = new SkillMetadataDamage(Count: 1, Rate: 0, HitSpeed: 0, HitDelay: 0, IsConstDamage: true, Value: 10,
+                DamageByTargetMaxHp: 0, SuperArmorBreak: false, Push: null, ConstDamageByTargetHp: 0, ConstDamageByTargetSp: 0),
+        };
+
+    private void Hit(IActor caster) {
+        var property = (SkillMetadataProperty) RuntimeHelpers.GetUninitializedObject(typeof(SkillMetadataProperty));
+        SkillMetadataAttack attack = HitAttack();
+        npc.ApplyDamage(caster, new DamageRecord(new SkillMetadata(61100001, 1, null, property, null!, null!), attack) { SkillId = 61100001 }, attack);
+    }
+
+    // The pet's hit counts as its owner's: the last hitter and the kill's players are the owner, once with both
+    // hitting. A wild pet's hit credits no one.
+    [Test]
+    public void APetsHit_IsCreditedToItsOwner() {
+        Pet(owned: true);
+        Hit(pet);
+        Assert.That(npc.GetLastAttacker(), Is.SameAs(test.Session.Player));
+        Assert.That(npc.CreditedPlayers(), Is.EqualTo(new[] { test.Session.Player }));
+
+        Hit(test.Session.Player);
+        Hit(pet);
+        Assert.That(npc.CreditedPlayers(), Is.EqualTo(new[] { test.Session.Player }), "the owner and its pet count once");
+    }
+
+    [Test]
+    public void AWildPetsHit_IsCreditedToNoOne() {
+        Pet(owned: false);
+        Assert.That(npc.CreditedPlayer(pet.ObjectId), Is.Null);
+    }
+
+    [Test]
+    public void APetsHitWithItsOwnerAway_IsCreditedToNoOne() {
+        Pet(owned: true);
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, null);
+        Assert.That(npc.CreditedPlayer(pet.ObjectId), Is.Null);
+        typeof(Actor<Player>).GetField("<Field>k__BackingField", Any)!.SetValue(test.Session.Player, Field);
     }
 
     [Test]

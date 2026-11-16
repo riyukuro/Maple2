@@ -722,7 +722,8 @@ public class FieldNpc : Actor<Npc> {
             Field.Broadcast(FieldPacket.NpcAccumulatedDamage(this));
         }
         lastAttackerObjectId = caster.ObjectId;
-        if (caster is FieldPlayer hitPlayer) {
+        // A summoned pet's damage counts as its owner's (CreditedPlayer).
+        if (CreditedPlayer(caster.ObjectId) is { } hitPlayer) {
             PlayerDamageCallback?.Invoke(hitPlayer, amount);
             if (Field is DungeonFieldManager dungeonField) {
                 dungeonField.CountMissions(hitPlayer, mission => mission.AddDamage(Value.Metadata.Id, amount));
@@ -1086,11 +1087,7 @@ public class FieldNpc : Actor<Npc> {
         NpcMetadataBasic basic = Value.Metadata.Basic;
         int[] eventDropIds = NpcEventDropRules.DropIds(Field.ServerTableMetadata.GameEventTable.Entries.Values, Value.Metadata.Id,
             basic.Level, basic.Class, Field.MapId, DateTime.Now);
-        foreach (KeyValuePair<int, DamageRecordTarget> damageDealer in DamageDealers) {
-            if (!Field.TryGetPlayer(damageDealer.Key, out FieldPlayer? player)) {
-                continue;
-            }
-
+        foreach (FieldPlayer player in CreditedPlayers()) {
             DropGlobalLoot(player);
             DropIndividualLoot(player);
             DropIndividualLoot(player, eventDropIds);
@@ -1125,8 +1122,8 @@ public class FieldNpc : Actor<Npc> {
     private void SendKillNotices() {
         int npcClass = Value.Metadata.Basic.Class;
         if (BossKillRules.FieldBoss(npcClass)) {
-            foreach (int dealerId in DamageDealers.Keys) {
-                if (Field.TryGetPlayer(dealerId, out FieldPlayer? dealer) && BossKillRules.DealerGetsExp(dealer.IsDead)) {
+            foreach (FieldPlayer dealer in CreditedPlayers()) {
+                if (BossKillRules.DealerGetsExp(dealer.IsDead)) {
                     dealer.Session.Send(AppendMessagePacket.AssistBonus(Value.Id));
                     ReportAssistBonus(dealer.Session, Value.Id);
                 }
@@ -1238,11 +1235,26 @@ public class FieldNpc : Actor<Npc> {
         currentWaypointIndex = 0;
     }
 
-    public FieldPlayer? GetLastAttacker() {
-        if (lastAttackerObjectId == 0 || !Field.TryGetPlayer(lastAttackerObjectId, out FieldPlayer? player)) {
-            return null;
+    public FieldPlayer? GetLastAttacker() => lastAttackerObjectId == 0 ? null : CreditedPlayer(lastAttackerObjectId);
+
+    // The player a damage dealer's kill counts for: the dealer, or a summoned pet's owner in this field (the client
+    // credits a pet's hits to its owner too: CDPSMeterSystem::OnDamage, dpsmetersystem.cpp:1087-1090; the battle
+    // record, battlerecordmanager.cpp:328).
+    internal FieldPlayer? CreditedPlayer(int objectId) {
+        if (Field.TryGetPlayer(objectId, out FieldPlayer? player)) {
+            return player;
         }
-        return player;
+        return Field.Pets.TryGetValue(objectId, out FieldPet? pet) && pet.OwnerPlayer is { } owner && owner.Field == Field ? owner : null;
+    }
+
+    // The players the kill counts for, once each (a player and its pet both dealing count once).
+    internal IEnumerable<FieldPlayer> CreditedPlayers() {
+        var seen = new HashSet<int>();
+        foreach (int dealerId in DamageDealers.Keys) {
+            if (CreditedPlayer(dealerId) is { } player && seen.Add(player.ObjectId)) {
+                yield return player;
+            }
+        }
     }
 
     public override string ToString() {
