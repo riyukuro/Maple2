@@ -353,6 +353,30 @@ public class PetBattleTests : NpcCastFixture {
         Assert.That(Search(), Is.Null);
     }
 
+    // A pet on a ledge whose monster only its owner's floor reaches is put with its owner instead of standing at the
+    // ledge's edge.
+    [Test]
+    public void ABattlePetCutOffFromItsMonster_IsPutWithItsOwner() {
+        ledge = true;
+        Pet(owned: true, sight: PetSight);
+        pet.Position = new Vector3(900, 0, 150);
+        test.Session.Player.Position = new Vector3(0, 0, 0);
+        Assert.That(Search(), Is.SameAs(npc));
+        pet.Update(searchTick);
+        Assert.That(pet.Position, Is.EqualTo(test.Session.Player.Position));
+    }
+
+    // With no target node in its AI, a new search takes the nearest monster in sight, whichever the field lists last.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ABattlePet_TakesTheNearestMonster(bool firstIsNearer) {
+        Pet(owned: true, sight: PetSight);
+        Assert.That(Field.NpcMetadata.TryGet(CasterId, out NpcMetadata? metadata), Is.True);
+        FieldNpc other = Field.SpawnNpc(metadata!, new Vector3(firstIsNearer ? 2500 : 950, 0, 0), Vector3.Zero)!;
+        npc.Position = new Vector3(firstIsNearer ? 1000 : 2600, 0, 0);
+        Assert.That(Search(), Is.SameAs(firstIsNearer ? npc : other));
+    }
+
     // The pet battle AI (Pet/AI_DefaultPetBattle.xml) has no target node: nothing in it changes the target, so a pet
     // keeps the monster it fights while it can still take it, though its owner hits another one in its sight.
     [Test]

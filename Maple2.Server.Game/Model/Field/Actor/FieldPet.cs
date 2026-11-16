@@ -64,6 +64,16 @@ public sealed class FieldPet : FieldNpc {
             || owner != null && owner.Field == Field && IslandUnder(owner.Position, ref ownerFloor) == island;
     }
 
+    // Whether no walk joins the pet's floor to the spot's while one joins its owner's floor to it.
+    private bool CutOffFromTarget(Vector3 spot) {
+        if (Field.Navigation == null || !Field.FindNearestPoly(spot, out long spotRef, out _) || spotRef == 0) {
+            return false;
+        }
+        int island = Field.Navigation.Island(spotRef);
+        int ownIsland = IslandUnder(Position, ref ownFloor);
+        return ownIsland != 0 && ownIsland != island && IslandUnder(owner!.Position, ref ownerFloor) == island;
+    }
+
     // The island of the floor under a position, kept while the position stays (one search asks it for every monster).
     private (Vector3 At, int Island) ownFloor;
     private (Vector3 At, int Island) ownerFloor;
@@ -201,6 +211,12 @@ public sealed class FieldPet : FieldNpc {
             Position = spot;
             Origin = spot;
             SendControl = true;
+        }
+        // A battle pet whose target it reaches only through its owner's floor (Reaches) walks to the edge of its own
+        // floor and stops there, and the follow warp runs only while it idles: put it with its owner, from where it
+        // walks to the target.
+        if (owner != null && owner.Field == Field && BattleState.Target is { } target && Battles && CutOffFromTarget(target.Position)) {
+            WarpTo(owner.Position);
         }
         base.Update(tickCount);
     }

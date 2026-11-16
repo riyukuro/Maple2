@@ -185,6 +185,15 @@ public class BattleState {
         }
 
         if (TargetNode is null) {
+            // A battle pet's AI (Pet/AI_DefaultPetBattle.xml) has no target node, so nothing in it orders the monsters
+            // in its sight. Chosen here: a new search takes the nearest (a match test outside a search passes -1 and
+            // is not ranked); the pet keeps it after that, as the AI has nothing that changes the target.
+            if (actor is FieldPet { Battles: true } && currentBestMatch != -1) {
+                if (distanceSquared >= currentBestMatch) {
+                    return false;
+                }
+                currentBestMatch = distanceSquared;
+            }
             return true;
         }
 
