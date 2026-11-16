@@ -71,6 +71,45 @@ public class ItemManager {
             ?? ItemDropManager.Create(session.ItemMetadata, itemStatsCalc, session.TableMetadata, session.ServerTableMetadata, itemId, rarity, amount);
     }
 
+    // Mails a result whose price is taken from the bag in memory: the mail, the item's row in it, the bag (with the
+    // price taken) and the worn items are stored in one purchase save, or none of it. A mail written at once while the price waited for
+    // the session save gave the result twice on a crash in between. item: a new item (no uid) or a row no bag holds
+    // (made at owner 0). Not under the bag lock (the purchase save takes the account lock first).
+    public bool MailWithBag(Item item) {
+        Mail? mail = null;
+        if (!session.TrySavePurchase(db => {
+                mail = db.CreateMail(new Mail {
+                    Type = MailType.System,
+                    ReceiverId = session.CharacterId,
+                    Content = "50000000", // id from string/en/systemmailcontentna.xml
+                });
+                if (mail == null) {
+                    return false;
+                }
+                item.Group = ItemGroup.Default;
+                item.Slot = -1;
+                if (item.Uid == 0) {
+                    Item? made = db.CreateItem(mail.Id, item);
+                    if (made == null) {
+                        return false;
+                    }
+                    item = made;
+                } else if (!db.SaveItems(mail.Id, item)) {
+                    return false;
+                }
+                Inventory.Save(db);
+                Equips.Save(db);
+                return true;
+            })) {
+            return false;
+        }
+        mail!.Items.Add(item);
+        try {
+            session.World.NotifyMail(session.CharacterId, mail.Id);
+        } catch { /* ignored */ }
+        return true;
+    }
+
     public bool MailItem(Item item) {
         lock (session.Item) {
             using GameStorage.Request db = session.GameStorage.Context();

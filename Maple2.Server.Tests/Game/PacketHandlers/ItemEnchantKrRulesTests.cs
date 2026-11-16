@@ -24,15 +24,17 @@ public class ItemEnchantKrRulesTests {
         return metadata with { Property = metadata.Property with { Tag = tag } };
     }
 
-    private GameSession Login(int rarity, ItemEnchant enchant, int gearId = 11400001, int level = 50, int copies = 0) {
+    private GameSession Login(int rarity, ItemEnchant enchant, int gearId = 11400001, int level = 50, int copies = 0, bool fullBag = false) {
         test = new TestGameSession();
         ItemMetadata gearMetadata = TestGameSession.Metadata(gearId, EquipSlot.CL, type: 1);
         gearMetadata = gearMetadata with { Limit = gearMetadata.Limit with { Level = level } };
         gear = test.Store(gearMetadata);
         List<Item> stored = Enumerable.Range(0, copies).Select(_ => test.Store(gearMetadata)).ToList();
-        test.Store(Material(OnyxId, ItemTag.Onix), amount: 30000);
-        test.Store(Material(ChaosOnyxId, ItemTag.ChaosOnix), amount: 30000);
-        test.Store(Material(FragmentId, ItemTag.CrystalPiece), amount: 30000);
+        // With a full bag the stacks are of rarity 2, which a refund stack (rarity 1) does not join.
+        int materialRarity = fullBag ? 2 : 1;
+        test.Store(Material(OnyxId, ItemTag.Onix), amount: 30000, rarity: materialRarity);
+        test.Store(Material(ChaosOnyxId, ItemTag.ChaosOnix), amount: 30000, rarity: materialRarity);
+        test.Store(Material(FragmentId, ItemTag.CrystalPiece), amount: 30000, rarity: materialRarity);
         test.SetServerTable(new EnchantOptionTable(new Dictionary<int, EnchantOptionMetadata>()));
         // KR constants.xml.
         test.SetServerTable(test.ServerTableMetadata.ConstantsTable with {
@@ -41,6 +43,10 @@ public class ItemEnchantKrRulesTests {
             EnchantEquipIngredientOpenLevel = 11,
             EnchantEquipIngredientOpenRank = 4,
         });
+        if (fullBag) {
+            // The three material stacks fill their tab.
+            test.SetServerTable(test.ServerTableMetadata.ConstantsTable with { bagSlotTabActiveSkillCount = [3, 0] });
+        }
         GameSession session = test.Start();
         Item item = session.Item.Inventory.Get(gear.Uid)!;
         item.Rarity = rarity;
@@ -172,6 +178,33 @@ public class ItemEnchantKrRulesTests {
             Assert.That(crashed, Is.EqualTo((30000, 30000)));
             Assert.That((Stored(OnyxId), Stored(FragmentId)), Is.EqualTo((30000 - cost.GetValueOrDefault(ItemTag.Onix) + 181,
                 30000 - cost.GetValueOrDefault(ItemTag.CrystalPiece) + 4)));
+        });
+    }
+
+    // A full bag: the refund stacks are mailed, each stored with the bag and the item (the price taken, the exp
+    // cleared) in one save. With no session save after it (a crash) the rows hold the price taken, the exp cleared and
+    // the mailed refund; before, the mail was written alone and the crash kept the exp and the price too.
+    [Test]
+    public void Ophelia_AFullBagMailsTheRefundWithThePrice() {
+        GameSession session = Login(4, new ItemEnchant(enchants: 6, enchantExp: 7500), fullBag: true);
+        Assert.That(session.ItemEnchant.StageItem(EnchantType.Ophelia, gear.Uid), Is.True);
+        Dictionary<ItemTag, int> cost = Maple2.Server.Core.Formulas.Enchant.GetEnchantCost(session.Item.Inventory.Get(gear.Uid)!)
+            .ToDictionary(c => c.Tag, c => c.Amount);
+        Assert.That(session.Item.Inventory.FreeSlots(InventoryType.Consumable), Is.EqualTo(0));
+        Assert.That(session.ItemEnchant.Enchant(gear.Uid), Is.True);
+        Assert.That(session.Item.Inventory.Find(ItemTag.Onix).Count(), Is.EqualTo(1), "one stack: the refund was mailed");
+        Assert.That(test.Errors, Is.Empty);
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        long[] mails = context.Mail.Where(mail => mail.ReceiverId == test.CharacterId).Select(mail => mail.Id).ToArray();
+        // A mail's id can be the character's: a mailed row has no slot, a bag row has one.
+        int Stored(int itemId, bool mailed) => context.Item
+            .Where(row => row.ItemId == itemId && (mailed ? mails.Contains(row.OwnerId) && row.Slot < 0 : row.OwnerId == test.CharacterId && row.Slot >= 0))
+            .AsEnumerable().Sum(row => row.Amount);
+        Assert.Multiple(() => {
+            Assert.That((Stored(OnyxId, false), Stored(OnyxId, true)), Is.EqualTo((30000 - cost.GetValueOrDefault(ItemTag.Onix), 181)));
+            Assert.That((Stored(FragmentId, false), Stored(FragmentId, true)), Is.EqualTo((30000 - cost.GetValueOrDefault(ItemTag.CrystalPiece), 4)));
+            Assert.That(context.Item.Single(row => row.Id == gear.Uid).Enchant!.EnchantExp, Is.EqualTo(0));
         });
     }
 

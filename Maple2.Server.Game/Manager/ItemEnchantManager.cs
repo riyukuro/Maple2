@@ -496,9 +496,13 @@ public class ItemEnchantManager {
                 refund[i] = made;
             }
         }
+        // The exp is cleared here, before a stack can be mailed: that mail stores the item with the bag.
+        upgradeItem!.Enchant!.EnchantExp = 0;
+        // A full bag mails a stack with the bag and the worn items (the try's price taken, the exp cleared) in one
+        // save (MailWithBag); alone, as before, only when that save fails.
         foreach (Item item in refund) {
-            if (!session.Item.Inventory.Add(item, true)) {
-                session.Item.MailItem(item);
+            if (!session.Item.Inventory.Add(item, true) && !session.Item.MailWithBag(item) && !session.Item.MailHeldItem(item)) {
+                logger.Error("Enchant exp refund {ItemId} x{Amount} of {CharacterId} not given", item.Id, item.Amount, session.CharacterId);
             }
         }
         return true;
