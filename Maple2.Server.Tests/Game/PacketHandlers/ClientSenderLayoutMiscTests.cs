@@ -227,4 +227,161 @@ public class ClientSenderLayoutMiscTests {
         ReadsAll(handler, w => { w.WriteByte(3); w.WriteInt(1); });
         ReadsAll(handler, w => { w.WriteByte(9); w.WriteLong(1); });
     }
+
+    // CCItemRemakeOptionPacket (itemremakescrolldata.cpp:469-621): 0 the item uid, the ingredient uid, a lock count and
+    // per lock a flag byte and a short (tabcontentspetremakeoption.cpp:1113); 2 the item uid (493); 3 and 6 the kind
+    // byte (500, 791); 4 the item uid (unit_14129cfa0_itemremakeoptiondialog.cpp:619). Mode 7 (the same body and a kind
+    // and a value) and 8 (uid, count) are GM only: compared by reading, not run.
+    [Test]
+    public void ChangeAttributes_Modes0_2_3_4_6() {
+        var handler = new ChangeAttributesHandler { ItemStatsCalc = test.ItemStats };
+        ReadsAll(handler, w => {
+            w.WriteByte(0);
+            w.WriteLong(1);
+            w.WriteLong(0);
+            w.WriteByte(1);
+            w.WriteBool(false);
+            w.WriteShort(1);
+        });
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteByte(2); });
+        ReadsAll(handler, w => { w.WriteByte(4); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(6); w.WriteByte(2); });
+    }
+
+    // The remake scroll (uiitemremakescrolldialog.cpp:516, 702; RemakeOption itemremakescrolldata.cpp:641): 1 the scroll
+    // uid, the item uid, the ingredient uid, the lock flag, a lock count and per lock a byte and a short; 3 the item uid.
+    [Test]
+    public void ChangeAttributesScroll_Modes1_3() {
+        var handler = new ChangeAttributesScrollHandler { TableMetadata = test.TableMetadata, ItemStatsCalc = test.ItemStats };
+        ReadsAll(handler, w => {
+            w.WriteByte(1);
+            w.WriteLong(1);
+            w.WriteLong(2);
+            w.WriteLong(0);
+            w.WriteBool(true);
+            w.WriteByte(1);
+            w.WriteBool(false);
+            w.WriteShort(1);
+        });
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteLong(1); });
+    }
+
+    // RequestHome: 0 the inviter and the answer byte (scenestategame.cpp:6997), 1 the name (uipartydialog.cpp:3389,
+    // usercommandcli.cpp:2029), 3 the template id (mypc.cpp:3165; read only for a home without a name).
+    [Test]
+    public void Home_Modes0_1_3() {
+        var handler = new HomeHandler { MapMetadataStorage = test.MapMetadata, World = test.World };
+        ReadsAll(handler, w => { w.WriteByte(0); w.WriteUnicodeString("name"); w.WriteByte(1); });
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteUnicodeString("name"); });
+    }
+
+    // HomeAction (uipartydialog.cpp:3450-3474 modes 1, 2, 3: the name; uisurveydialog.cpp:125 mode 5: sub 5, character
+    // id, survey id, answer; uiugcportaldialog.cpp:239 mode 6; ugcballobject.cpp:123, 258 mode 7: 3 and 2, object id and
+    // the vectors; uiugccubenoticedialog.cpp:111 mode 12; cubecraft_2.cpp:1277 mode 13: the cell key; 
+    // uiugcpvpcontroldialog.cpp:109 mode 14: sub 1 and six bytes). Survey, portal, notice, ball and the cell key are read
+    // only inside a home field or for a plot owner, which the test session has none of: compared by reading, not run.
+    [Test]
+    public void HomeAction_VisitorAndPvpModes() {
+        var handler = new HomeActionHandler();
+        foreach (byte mode in new byte[] { 1, 2, 3 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteUnicodeString("name"); });
+        }
+        ReadsAll(handler, w => { w.WriteByte(14); w.WriteByte(1); for (int i = 0; i < 6; i++) { w.WriteByte(0); } });
+    }
+
+    // clubcli.cpp: 1 the name (925), 3 the club id and the int code (940), 6 id and name (455), 8 the invite (id and three
+    // names, PacketInvite 0x14020c670) and the accept byte (971), 10 id (469), 12 id and name (488), 13 id, int, int
+    // (514), 14 id and the new name (545).
+    [Test]
+    public void Club_Modes() {
+        var handler = new ClubHandler {
+            World = test.World,
+            BanWordStorage = TestGameSession.BanWords(),
+            ServerTableMetadata = test.ServerTableMetadata,
+        };
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteUnicodeString("club"); });
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteLong(1); w.WriteInt(0); });
+        ReadsAll(handler, w => { w.WriteByte(6); w.WriteLong(1); w.WriteUnicodeString("name"); });
+        ReadsAll(handler, w => {
+            w.WriteByte(8);
+            w.WriteLong(1);
+            w.WriteUnicodeString("club");
+            w.WriteUnicodeString("inviter");
+            w.WriteUnicodeString("invitee");
+            w.WriteByte(1);
+        });
+        ReadsAll(handler, w => { w.WriteByte(10); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(12); w.WriteLong(1); w.WriteUnicodeString("name"); });
+        ReadsAll(handler, w => { w.WriteByte(13); w.WriteLong(1); w.WriteInt(1); w.WriteInt(1); });
+        ReadsAll(handler, w => { w.WriteByte(14); w.WriteLong(1); w.WriteUnicodeString("club"); });
+    }
+
+    // WriteBuddyRequest (0x1401fc790): 2 name and memo, 3 4 6 7 17 the entry id, 5 and 10 id, name, memo; buddymanager.cpp:243
+    // mode 20: the auto reject int.
+    [Test]
+    public void Buddy_Modes() {
+        var handler = new BuddyHandler { BanWordStorage = TestGameSession.BanWords() };
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteUnicodeString("name"); w.WriteUnicodeString("memo"); });
+        foreach (byte mode in new byte[] { 3, 4, 6, 7, 17 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteLong(1); });
+        }
+        foreach (byte mode in new byte[] { 5, 10 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteLong(1); w.WriteUnicodeString("name"); w.WriteUnicodeString("memo"); });
+        }
+        ReadsAll(handler, w => { w.WriteByte(20); w.WriteInt(1); });
+    }
+
+    // coupleeffectsystem.cpp:305 (0 and 1: the character id), 148 (2: character id and the newcomer), 287 (3: the partner).
+    [Test]
+    public void BuddyBadge_Modes0_to_3() {
+        var handler = new BuddyBadgeHandler();
+        ReadsAll(handler, w => { w.WriteByte(0); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteLong(1); w.WriteLong(2); });
+        ReadsAll(handler, w => { w.WriteByte(3); w.WriteLong(1); });
+    }
+
+    // stateskill.cpp:1983 (0: emote id, partner), networkservice.cpp:1121 (1: the sender), statecoupleemotion.cpp:1349
+    // to 1399 (2: character id and the reason byte), 1408 (3: emote id, sender, two points, the yaw), uimessagebox.cpp:2283
+    // (4: emote id, sender) and statecoupleemotion.cpp:924 (6: emote id, partner).
+    [Test]
+    public void BuddyEmote_Modes() {
+        var handler = new BuddyEmoteHandler();
+        ReadsAll(handler, w => { w.WriteByte(0); w.WriteInt(1); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(2); w.WriteLong(1); w.WriteByte(5); });
+        ReadsAll(handler, w => {
+            w.WriteByte(3);
+            w.WriteInt(1);
+            w.WriteLong(1);
+            for (int i = 0; i < 6; i++) {
+                w.WriteFloat(0);
+            }
+            w.WriteFloat(0);
+        });
+        ReadsAll(handler, w => { w.WriteByte(4); w.WriteInt(1); w.WriteLong(1); });
+        ReadsAll(handler, w => { w.WriteByte(6); w.WriteInt(1); w.WriteLong(1); });
+    }
+
+    // uimaillistdialog.cpp and FUN_1401fc2a0: 0 (808), 1 the receiver, the title and the content (1619), 2 and 11 and 12
+    // the mail id (562, 578, 1346), 13 a count and the ids (1025, 1150, 1173), 18 and 19 the same (1104, 1122). The count
+    // modes are run with a count of 0: a count over the mailbox's size is refused before its ids are read.
+    [Test]
+    public void Mail_Modes() {
+        var handler = new MailHandler { BanWordStorage = TestGameSession.BanWords() };
+        ReadsAll(handler, w => w.WriteByte(0));
+        ReadsAll(handler, w => { w.WriteByte(1); w.WriteUnicodeString("to"); w.WriteUnicodeString("title"); w.WriteUnicodeString("content"); });
+        foreach (byte mode in new byte[] { 2, 11, 12 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteLong(1); });
+        }
+        foreach (byte mode in new byte[] { 13, 18, 19 }) {
+            byte sent = mode;
+            ReadsAll(handler, w => { w.WriteByte(sent); w.WriteInt(0); });
+        }
+    }
 }

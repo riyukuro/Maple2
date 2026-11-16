@@ -81,6 +81,7 @@ public sealed class TestGameSession {
     private readonly Dictionary<int, GameEvent> events = new();
     private readonly ItemMetadataStorage itemMetadata = Uninitialized<ItemMetadataStorage>();
     public ItemMetadataStorage ItemMetadata => itemMetadata;
+    public ItemStatsCalculator ItemStats => stats;
     private BlockingCollection<(byte[] packet, int length)> sendQueue;
     // Runs at each packet the session sends, on the sending thread, before the packet is queued: a test acts there in
     // the middle of the step that sent it.
