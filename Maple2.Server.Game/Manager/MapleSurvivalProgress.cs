@@ -93,11 +93,23 @@ public static class MapleSurvivalProgress {
         Item? bonus = purchase is { BonusItemId: not 0 } ? session.Item.CreateItem(purchase.Value.BonusItemId, 1, 1) : null;
         if (!SurvivalRules.PassOn(session.ServerTableMetadata.FeatureTable) || purchase == null || account.ActiveGoldPass
             || MapleSurvivalHandler.Shutdown(session, GameEventType.ShutdownMapleSurvivalPass)
-            || (purchase.Value.BonusItemId != 0 && bonus == null) || !session.Currency.TryTakeMeret(purchase.Value.Cost)) {
+            || (purchase.Value.BonusItemId != 0 && bonus == null) || !session.Currency.TryTakeMeret(purchase.Value.Cost, notify: false)) {
             session.Send(SurvivalPacket.UpdateStats(account));
             return;
         }
+        // The pass and the merets taken are stored together at once, before the bonus item is a row (Add with commit,
+        // a mail): left to the session save, a crash kept the bonus item and gave the merets back with no pass. A crash
+        // between this store and the bonus row loses the bonus, never pays twice. A refused store buys nothing.
         account.ActiveGoldPass = true;
+        if (!session.TrySavePurchase(db => db.SavePlayer(session.Player), undo: () => {
+                account.ActiveGoldPass = false;
+                session.Currency.ReturnMeret(purchase.Value.Cost);
+            })) {
+            Serilog.Log.Error("Survival pass of {CharacterId} not stored, not bought", session.CharacterId);
+            session.Send(SurvivalPacket.UpdateStats(account));
+            return;
+        }
+        session.Currency.NotifyMeretTaken(purchase.Value.Cost);
         if (bonus != null && (session.Field == null || !session.Item.Inventory.Add(bonus, true))) {
             session.Item.MailItem(bonus);
         }

@@ -208,6 +208,37 @@ public class MapleSurvivalPassTests {
         Assert.That(Amount(session, BonusItemId), Is.EqualTo(1));
     }
 
+    // The pass and the merets taken are in the database before the bonus item is a row: a crash after the bonus item
+    // finds the pass bought and paid. Before, both waited for the session save while the bonus row was written at
+    // once, so a crash kept the bonus and gave the merets back with no pass.
+    [Test]
+    public void BuyPass_Bundle_StoresThePassAndTheMeretsWithTheBonus() {
+        GameSession session = Start(new MapleSurvivalPassBundle(700, 1500, BonusItemId));
+        MapleSurvivalProgress.BuyPass(session, true, 1500);
+
+        using var context = new Maple2.Database.Context.Ms2Context(test.Options);
+        Maple2.Database.Model.Account stored = context.Account.Find(session.AccountId)!;
+        Assert.Multiple(() => {
+            Assert.That(context.Item.Count(item => item.OwnerId == session.CharacterId && item.ItemId == BonusItemId), Is.EqualTo(1));
+            Assert.That((stored.ActiveGoldPass, stored.Currency.Meret), Is.EqualTo((true, 3500L)));
+        });
+    }
+
+    // A pass whose store is refused is not bought: the merets stay, no pass and no bonus item.
+    [Test]
+    public void BuyPass_StoreRefused_NothingBought() {
+        GameSession session = Start(new MapleSurvivalPassBundle(700, 1500, BonusItemId));
+        test.FailSave = context => context.ChangeTracker.Entries<Maple2.Database.Model.Account>()
+            .Any(entry => entry.State == Microsoft.EntityFrameworkCore.EntityState.Modified);
+        MapleSurvivalProgress.BuyPass(session, true, 1500);
+        test.FailSave = null;
+
+        Assert.Multiple(() => {
+            Assert.That((session.Player.Value.Account.ActiveGoldPass, session.Currency.Meret), Is.EqualTo((false, 5000L)));
+            Assert.That(Amount(session, BonusItemId), Is.EqualTo(0));
+        });
+    }
+
     // Between fields (Field null) the bonus item is made all the same and goes by mail.
     [Test]
     public void BuyPass_Bundle_NoField_MailsTheBonusItem() {
